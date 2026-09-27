@@ -1,4 +1,4 @@
-import { type PatchOp } from './protocol';
+import type { PatchOp } from './protocol';
 
 type PlainObject = Record<string, unknown>;
 

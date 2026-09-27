@@ -1,11 +1,11 @@
-import { type RenderSlide } from '../../shared/model';
-import {
-  type AudioLayer,
-  type BackgroundLayer,
-  type LayerName,
-  type MaskLayer,
-  type MessageItem,
-  type PropItem,
+import type { RenderSlide } from '../../shared/model';
+import type {
+  AudioLayer,
+  BackgroundLayer,
+  LayerName,
+  MaskLayer,
+  MessageItem,
+  PropItem,
 } from '../../shared/engine/state';
 
 /**

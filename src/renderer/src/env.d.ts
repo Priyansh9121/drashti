@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import { type DrashtiBridge } from '../../shared/bridge';
+import type { DrashtiBridge } from '../../shared/bridge';
 
 declare global {
   interface Window {

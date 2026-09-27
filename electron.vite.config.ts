@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { defineConfig } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import { type Plugin } from 'vite';
+import type { Plugin } from 'vite';
 
 /**
  * React Fast Refresh injects an inline script in development only. Allow it

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type EngineState, initialEngineState, LAYER_NAMES, type LayerName } from '../../shared/engine/state';
-import { type EngineAction } from './actions';
+import type { EngineAction } from './actions';
 import { reduce } from './reducer';
 import { deepFreeze, textSlide } from './testing';
 

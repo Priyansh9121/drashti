@@ -1,4 +1,4 @@
-import { type RenderSlide } from '../../shared/model';
+import type { RenderSlide } from '../../shared/model';
 
 /** Where the engine looks up slides. Backed by SQLite in the app, by memory in tests. */
 export interface SlideSource {

@@ -1,5 +1,5 @@
 import { ipcMain, type IpcMainInvokeEvent } from 'electron';
-import { type InvokeChannel, type InvokeResult } from '../../shared/ipc';
+import type { InvokeChannel, InvokeResult } from '../../shared/ipc';
 import { isAppUrl } from '../windows/navigation';
 import { devServerUrl, rendererDir } from '../windows/renderer';
 

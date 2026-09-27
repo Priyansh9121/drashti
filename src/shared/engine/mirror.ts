@@ -1,5 +1,5 @@
 import { applyPatch } from './patch';
-import { type EngineMessage } from './protocol';
+import type { EngineMessage } from './protocol';
 import { ENGINE_STATE_VERSION, type EngineState } from './state';
 
 export type MirrorResult =

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
-import { type DrashtiBridge } from '../shared/bridge';
-import { type EngineMessage } from '../shared/engine/protocol';
+import type { DrashtiBridge } from '../shared/bridge';
+import type { EngineMessage } from '../shared/engine/protocol';
 import { IPC, type InvokeArgs, type InvokeChannel, type InvokeResult } from '../shared/ipc';
 
 /** Typed ipcRenderer.invoke over the shared contract. */
@@ -25,6 +25,10 @@ const bridge: DrashtiBridge = {
     subscribe: () => invoke(IPC.engine.subscribe),
     snapshot: () => invoke(IPC.engine.snapshot),
     dispatch: (command) => invoke(IPC.engine.command, command),
+  },
+  library: {
+    listPresentations: () => invoke(IPC.library.listPresentations),
+    getPresentation: (id) => invoke(IPC.library.getPresentation, id),
   },
 };
 

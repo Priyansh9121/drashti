@@ -1,11 +1,11 @@
-import { type CommandResult, type EngineCommand } from '../../shared/engine/commands';
+import type { CommandResult, EngineCommand } from '../../shared/engine/commands';
 import { diffState } from '../../shared/engine/patch';
-import { type EngineSnapshotMessage } from '../../shared/engine/protocol';
+import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
 import { ENGINE_STATE_VERSION, type EngineState, initialEngineState } from '../../shared/engine/state';
-import { type EngineTransport } from '../../shared/engine/transport';
-import { type EngineAction } from './actions';
+import type { EngineTransport } from '../../shared/engine/transport';
+import type { EngineAction } from './actions';
 import { reduce } from './reducer';
-import { type SlideSource } from './slide-source';
+import type { SlideSource } from './slide-source';
 
 type Resolved = { ok: true; actions: EngineAction[] } | Extract<CommandResult, { ok: false }>;
 

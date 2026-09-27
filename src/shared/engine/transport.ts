@@ -1,4 +1,4 @@
-import { type EngineMessage } from './protocol';
+import type { EngineMessage } from './protocol';
 
 /**
  * Carries engine messages from the main process to everyone who shows the

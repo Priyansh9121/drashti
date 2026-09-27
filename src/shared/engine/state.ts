@@ -1,4 +1,4 @@
-import { type Rect, type RenderSlide, type SlideElement } from '../model';
+import type { Rect, RenderSlide, SlideElement } from '../model';
 
 /**
  * Show engine state. The main process owns it; every renderer (and, later,

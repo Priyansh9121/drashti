@@ -5,7 +5,7 @@ import {
   type LayerName,
   type Layers,
 } from '../../shared/engine/state';
-import { type EngineAction } from './actions';
+import type { EngineAction } from './actions';
 
 /** Deep equality for plain JSON data. */
 export function sameData(a: unknown, b: unknown): boolean {

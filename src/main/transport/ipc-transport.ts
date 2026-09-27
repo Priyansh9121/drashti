@@ -1,5 +1,5 @@
-import { type EngineMessage } from '../../shared/engine/protocol';
-import { type EngineTransport } from '../../shared/engine/transport';
+import type { EngineMessage } from '../../shared/engine/protocol';
+import type { EngineTransport } from '../../shared/engine/transport';
 import { IPC } from '../../shared/ipc';
 
 /** The parts of Electron's WebContents the transport uses (easy to fake in tests). */

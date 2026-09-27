@@ -1,4 +1,4 @@
-import { type Session, type WebContents } from 'electron';
+import type { Session, WebContents } from 'electron';
 import { isAppUrl } from './navigation';
 import { rendererDir, devServerUrl } from './renderer';
 
