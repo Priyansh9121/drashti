@@ -1,0 +1,37 @@
+name: Audit kit
+
+on:
+  push:
+    paths: ['tools/audit/**', '.github/workflows/audit-kit.yml']
+  pull_request:
+    paths: ['tools/audit/**', '.github/workflows/audit-kit.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-kit:
+    name: Audit scripts (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Bash syntax (macOS)
+        if: runner.os == 'macOS'
+        run: bash -n tools/audit/audit-mac.sh
+      - name: Static checks with PowerShell 7
+        shell: pwsh
+        run: ./tools/audit/test/check-windows-script.ps1
+      - name: Static checks with Windows PowerShell 5.1
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./tools/audit/test/check-windows-script.ps1
+      - name: Fixture tests and a full run on this runner
+        run: node tools/audit/test/run-tests.mjs --full
