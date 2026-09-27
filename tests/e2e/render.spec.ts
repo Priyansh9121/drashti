@@ -28,7 +28,7 @@ test('the test slide renders all four languages with the bundled fonts, shaped c
   const testInfo = test.info();
   const { app } = await launchApp();
   const win = await app.firstWindow();
-  await expect(win.getByTestId('engine-status')).toHaveText('Engine revision 0');
+  await expect(win.getByTestId('presentation-list').getByRole('button')).toHaveCount(2);
   const screenId = await setUpOneScreen(win);
   const output = await outputPage(app);
   await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');

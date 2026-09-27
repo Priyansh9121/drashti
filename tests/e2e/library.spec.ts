@@ -6,7 +6,7 @@ import { launchApp, type PageGlobals } from './helpers';
 test('a new install has the placeholder presentations in a database in userData', async () => {
   const { app, userData } = await launchApp();
   const win = await app.firstWindow();
-  await expect(win.getByTestId('engine-status')).toHaveText('Engine revision 0');
+  await expect(win.getByTestId('presentation-list').getByRole('button')).toHaveCount(2);
   expect(existsSync(join(userData, 'drashti.sqlite'))).toBe(true);
 
   const list = await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listPresentations());

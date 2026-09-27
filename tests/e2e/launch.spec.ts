@@ -34,13 +34,13 @@ test('opens a sandboxed, context-isolated operator window', async () => {
 test('the operator window reaches the show engine through the typed bridge', async () => {
   const { app } = await launchApp();
   const win = await app.firstWindow();
-  await expect(win.getByTestId('engine-status')).toHaveText('Engine revision 0');
+  await expect(win.getByTestId('live-text')).toHaveText('Nothing live');
 
   const result = await win.evaluate(() =>
     (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'toggleBlackout' }),
   );
   expect(result).toEqual({ ok: true, changed: true, rev: 1 });
-  await expect(win.getByTestId('engine-status')).toHaveText('Engine revision 1 · black-out on');
+  await expect(win.getByTestId('blackout-button')).toHaveAttribute('aria-pressed', 'true');
 
   // Invalid input is rejected by the main process, not trusted.
   const bad = await win.evaluate(() =>
