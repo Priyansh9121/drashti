@@ -1,0 +1,11 @@
+# Settings for this single-package repo.
+
+# A flat node_modules keeps electron-builder and native modules simple.
+nodeLinker: hoisted
+
+# Dependencies allowed to run install scripts (pnpm blocks all others).
+# better-sqlite3 ships Node-API prebuilds that load in both Node and Electron.
+allowBuilds:
+  better-sqlite3: true
+  electron-winstaller: false
+  esbuild: true

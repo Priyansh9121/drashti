@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      # Unsigned internal builds for now; signing comes with distribution.
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Lint
+        run: pnpm lint
+      - name: Unit tests (inside Electron's Node)
+        run: pnpm test
+      - name: End-to-end tests (Playwright + Electron)
+        run: pnpm test:e2e
+      - name: Package installers
+        run: pnpm exec electron-builder --publish never
+      - name: Upload installers
+        uses: actions/upload-artifact@v7
+        with:
+          name: drashti-${{ runner.os }}
+          path: |
+            release/*/*.dmg
+            release/*/*.zip
+            release/*/*.exe
+          if-no-files-found: error
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-${{ runner.os }}
+          path: |
+            playwright-report
+            test-results

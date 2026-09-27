@@ -1,0 +1,29 @@
+appId: org.drashti.app
+productName: Drashti
+directories:
+  buildResources: build
+  output: release/${version}
+files:
+  - out/**/*
+  - package.json
+  # better-sqlite3 needs only its JS and the prebuilt Node-API binaries.
+  - '!node_modules/better-sqlite3/{deps,src,build}/**'
+  - '!node_modules/better-sqlite3/prebuilds/linux*'
+asarUnpack:
+  - '**/*.node'
+# better-sqlite3's Node-API prebuilds load in Electron as they are.
+npmRebuild: false
+mac:
+  target: [dmg, zip]
+  category: public.app-category.productivity
+  # Electron 44 needs macOS 13 Ventura or later (see README, open risks).
+  minimumSystemVersion: '13.0'
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-${version}-setup-${arch}.${ext}
