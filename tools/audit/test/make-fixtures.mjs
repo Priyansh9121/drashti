@@ -8,6 +8,7 @@
 // profile) and prints a JSON description of what the scripts should find.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const root = process.argv[2];
 if (!root) {
@@ -20,7 +21,8 @@ function put(path, data) {
   writeFileSync(path, data);
 }
 const b64 = (s, enc = 'latin1') => Buffer.from(s, enc).toString('base64');
-const fileUrl = (p) => 'file://' + p.split('/').map(encodeURIComponent).join('/');
+// file:///C:/... on Windows, file:///Users/... on macOS, percent-encoded.
+const fileUrl = (p) => pathToFileURL(p).href;
 const xmlAttr = (s) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
 // Unicode code points for the placeholder word "sample" (Gujarati and Hindi).
