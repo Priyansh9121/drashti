@@ -28,7 +28,7 @@ export async function launchApp(
   const userData = userDataDir ?? mkdtempSync(join(tmpdir(), 'drashti-e2e-'));
   const app = await electron.launch({
     args: ['.'],
-    env: appEnv({ DRASHTI_USER_DATA_DIR: userData, ...extraEnv }),
+    env: appEnv({ DRASHTI_USER_DATA_DIR: userData, DRASHTI_NO_QUIT_CONFIRM: '1', ...extraEnv }),
   });
   return { app, userData };
 }
