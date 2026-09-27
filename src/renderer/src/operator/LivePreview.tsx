@@ -18,7 +18,7 @@ export function LivePreview() {
   const canvas = { width: first?.canvasWidth ?? 1920, height: first?.canvasHeight ?? 1080 };
   const scaling = first?.scaling ?? 'fit';
   return (
-    <div className="rounded-lg border border-line bg-black" data-testid="live-preview">
+    <div className="overflow-hidden rounded-lg border border-line bg-black" data-testid="live-preview">
       <PlacedInParent content={canvas} mode="fit" className="relative aspect-video w-full">
         {state && <Scene state={state} canvas={canvas} scaling={scaling} />}
       </PlacedInParent>

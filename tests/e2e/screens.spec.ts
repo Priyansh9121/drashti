@@ -16,7 +16,7 @@ test('screen groups: assign a display, open an output, restore it after a restar
   const win = await app.firstWindow();
 
   // Displays are listed with the resolution and refresh rate the OS reports.
-  await win.getByRole('button', { name: 'Screens' }).click();
+  await win.getByRole('button', { name: 'Screens', exact: true }).click();
   const displayRow = win.getByTestId('display-row').first();
   await expect(displayRow).toContainText(/\d+ × \d+ · [\d.]+ Hz/);
 
@@ -65,7 +65,7 @@ test('screen groups: assign a display, open an output, restore it after a restar
   const out2 = await outputPage(app);
   await expect(out2.getByTestId('output-root')).toHaveAttribute('data-screen', /.+/);
   const win2 = await app.firstWindow();
-  await win2.getByRole('button', { name: 'Screens' }).click();
+  await win2.getByRole('button', { name: 'Screens', exact: true }).click();
   await expect(win2.getByLabel('Canvas width')).toHaveValue('1536');
   await expect(win2.getByTestId('screen-state')).toContainText('Showing');
   await app.close();
@@ -88,7 +88,7 @@ test('screen groups: assign a display, open an output, restore it after a restar
   const third = await launchApp({}, first.userData);
   app = third.app;
   const win3 = await app.firstWindow();
-  await win3.getByRole('button', { name: 'Screens' }).click();
+  await win3.getByRole('button', { name: 'Screens', exact: true }).click();
   await expect(win3.getByTestId('screen-state')).toHaveText('Display not connected');
   expect(app.windows().some((w) => w.url().includes('output.html'))).toBe(false);
   await app.close();

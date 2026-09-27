@@ -46,6 +46,14 @@ If you start these from inside another Electron app's process (for example an ed
 
 CI (`.github/workflows/ci.yml`) runs install, typecheck, lint, unit tests, end-to-end tests and packaging on `macos-latest` and `windows-latest`, and uploads the installers.
 
+## Running a show (Phase 0)
+
+1. Open **Screens**, add a group (for example "Main Hall"), and press **Use this display** next to each display that feeds the audience. Set the canvas size and scaling if a screen needs something other than 1920 × 1080 fit. The setup is saved and comes back on the next start.
+2. Pick a presentation on the left, then click a slide, or press Space or the right arrow, to put it on the screens.
+3. Use the clear buttons (or F1 to F7) and **Black-out** (B) on the right.
+
+Every shortcut is defined in one file, `src/renderer/src/operator/keymap.ts`. The current keys are provisional and will be changed to match the ones the operators use in ProPresenter once the setup checklist is back.
+
 ## Folder layout
 
 | Path            | What lives there                                                                            |

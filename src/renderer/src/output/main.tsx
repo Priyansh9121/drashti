@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../render/fonts.css';
 import '../styles/app.css';
@@ -33,10 +33,34 @@ function IdentifyOverlay() {
   );
 }
 
+/**
+ * Record, on the output root, the last engine revision that reached a painted
+ * frame and how long after the main process sent it (same machine clock).
+ * Tests read these to check that outputs update within a frame.
+ */
+function usePaintTiming(root: React.RefObject<HTMLDivElement | null>) {
+  const rev = useEngine((s) => s.rev);
+  const sentAt = useEngine((s) => s.sentAt);
+  useLayoutEffect(() => {
+    if (rev < 0) return;
+    const frame = requestAnimationFrame(() => {
+      const el = root.current;
+      if (!el) return;
+      el.dataset['paintedRev'] = String(rev);
+      el.dataset['latencyMs'] = String(Math.max(0, Date.now() - sentAt));
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [rev, sentAt, root]);
+}
+
 function Output() {
   const context = useOutput((s) => s.context);
   const state = useEngine((s) => s.state);
   const [fontsReady, setFontsReady] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  usePaintTiming(rootRef);
   useEffect(() => {
     connectOutput();
     // Fonts first, so the first live slide never shows a fallback font.
@@ -49,6 +73,7 @@ function Output() {
   const scaling = context?.scaling ?? 'fit';
   return (
     <div
+      ref={rootRef}
       className="relative h-full w-full bg-black"
       data-testid="output-root"
       data-screen={context?.screenId ?? ''}
