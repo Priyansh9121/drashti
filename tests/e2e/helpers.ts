@@ -2,7 +2,7 @@ import { _electron as electron, type ElectronApplication } from '@playwright/tes
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type DrashtiBridge } from '../../src/shared/bridge';
+import type { DrashtiBridge } from '../../src/shared/bridge';
 
 /** Globals inside our pages, for code passed to page.evaluate(). */
 export type PageGlobals = typeof globalThis & { drashti: DrashtiBridge };

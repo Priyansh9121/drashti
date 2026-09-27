@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { EngineMirror } from '../../../shared/engine/mirror';
-import { type EngineMessage } from '../../../shared/engine/protocol';
-import { type EngineState } from '../../../shared/engine/state';
+import type { EngineMessage } from '../../../shared/engine/protocol';
+import type { EngineState } from '../../../shared/engine/state';
 
 interface EngineView {
   state: EngineState | null;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EngineMirror } from './mirror';
-import { type EnginePatchMessage, type EngineSnapshotMessage } from './protocol';
+import type { EnginePatchMessage, EngineSnapshotMessage } from './protocol';
 import { initialEngineState } from './state';
 
 const snapshot = (rev: number, blackout = false): EngineSnapshotMessage => ({

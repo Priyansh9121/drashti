@@ -1,6 +1,7 @@
-import { type AppInfo } from './app-info';
-import { type CommandResult, type EngineCommand } from './engine/commands';
-import { type EngineMessage, type EngineSnapshotMessage } from './engine/protocol';
+import type { AppInfo } from './app-info';
+import type { CommandResult, EngineCommand } from './engine/commands';
+import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
+import type { PresentationDoc, PresentationSummary } from './library';
 
 /**
  * The API the preload script exposes to every renderer as `window.drashti`.
@@ -23,5 +24,9 @@ export interface DrashtiBridge {
     snapshot(): Promise<EngineSnapshotMessage>;
     /** Ask the engine to do something. Only the operator window may. */
     dispatch(command: EngineCommand): Promise<CommandResult>;
+  };
+  library: {
+    listPresentations(): Promise<PresentationSummary[]>;
+    getPresentation(id: string): Promise<PresentationDoc | null>;
   };
 }

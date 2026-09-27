@@ -1,7 +1,7 @@
 /* Test helpers for the show engine. Not used by the app itself. */
-import { type EngineMessage } from '../../shared/engine/protocol';
-import { type EngineTransport } from '../../shared/engine/transport';
-import { type RenderSlide, type TextStyle } from '../../shared/model';
+import type { EngineMessage } from '../../shared/engine/protocol';
+import type { EngineTransport } from '../../shared/engine/transport';
+import type { RenderSlide, TextStyle } from '../../shared/model';
 import { MemorySlideSource } from './slide-source';
 
 export const defaultStyle: TextStyle = {

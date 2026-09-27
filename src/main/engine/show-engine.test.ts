@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { type EngineCommand } from '../../shared/engine/commands';
+import type { EngineCommand } from '../../shared/engine/commands';
 import { EngineMirror } from '../../shared/engine/mirror';
-import { type EnginePatchMessage } from '../../shared/engine/protocol';
+import type { EnginePatchMessage } from '../../shared/engine/protocol';
 import { LAYER_NAMES } from '../../shared/engine/state';
 import { ShowEngine } from './show-engine';
 import { makeSource, RecordingTransport, textSlide } from './testing';

@@ -1,4 +1,4 @@
-import { type EngineState } from './state';
+import type { EngineState } from './state';
 
 /**
  * Replace the value at `path` with `value`. Paths address plain objects only

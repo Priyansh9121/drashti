@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type EngineMessage } from '../../shared/engine/protocol';
+import type { EngineMessage } from '../../shared/engine/protocol';
 import { initialEngineState } from '../../shared/engine/state';
 import { IPC } from '../../shared/ipc';
 import { IpcTransport, type MessageTarget } from './ipc-transport';

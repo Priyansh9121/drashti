@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { type SlideElement, type TextStyle } from '../model';
+import { hexColorSchema, idSchema, rectSchema, slideElementSchema } from '../model-schema';
 import {
   type AudioLayer,
   type BackgroundLayer,
@@ -15,43 +15,10 @@ import {
  * these schemas; unknown keys are dropped.
  */
 
-const id = z.string().min(1).max(128);
-const hexColor = z
-  .string()
-  .regex(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/, 'expected a #rrggbb or #rrggbbaa colour');
-/** z.number() already rejects NaN and Infinity. */
-const finite = z.number();
-const rect = z.object({ x: finite, y: finite, width: finite.nonnegative(), height: finite.nonnegative() });
-
-const textStyle: z.ZodType<TextStyle> = z.object({
-  fontFamily: z.string().max(200).nullable(),
-  fontSize: finite.positive().max(2000),
-  fontWeight: z.number().int().min(100).max(900),
-  color: hexColor,
-  align: z.enum(['left', 'center', 'right']),
-  verticalAlign: z.enum(['top', 'middle', 'bottom']),
-  lineHeight: finite.positive().max(5),
-  shadow: z.boolean(),
-});
-
-const slideElement: z.ZodType<SlideElement> = z.discriminatedUnion('kind', [
-  z.object({
-    id,
-    kind: z.literal('text'),
-    frame: rect,
-    text: z.string().max(10_000),
-    lang: z.enum(['en', 'gu', 'hi', 'translit']).nullable(),
-    style: textStyle,
-  }),
-  z.object({
-    id,
-    kind: z.literal('shape'),
-    frame: rect,
-    fill: hexColor,
-    cornerRadius: finite.nonnegative(),
-    opacity: finite.min(0).max(1),
-  }),
-]);
+const id = idSchema;
+const hexColor = hexColorSchema;
+const rect = rectSchema;
+const slideElement = slideElementSchema;
 
 const background: z.ZodType<BackgroundLayer> = z.object({ kind: z.literal('color'), color: hexColor });
 const audio: z.ZodType<AudioLayer> = z.object({ id, title: z.string().max(300), mediaId: id.nullable() });

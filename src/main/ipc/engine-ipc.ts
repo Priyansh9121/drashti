@@ -1,5 +1,5 @@
 import { type CommandResult, parseEngineCommand } from '../../shared/engine/commands';
-import { type ShowEngine } from '../engine/show-engine';
+import type { ShowEngine } from '../engine/show-engine';
 
 /**
  * Validates and runs one engine command that arrived over IPC.
