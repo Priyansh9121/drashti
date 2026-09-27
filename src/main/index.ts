@@ -1,15 +1,22 @@
-import { app, type BrowserWindow, dialog, session } from 'electron';
+import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
+import { app, dialog, session } from 'electron';
 import { join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
 import { IPC } from '../shared/ipc';
 import { idSchema } from '../shared/model-schema';
-import { type Db, openDatabase } from './db/database';
+import type { OutputContext } from '../shared/screens';
+import type { Db } from './db/database';
+import { openDatabase } from './db/database';
 import { DbSlideSource, PresentationRepo } from './db/presentations';
+import { ScreenRepo } from './db/screens';
 import { seedPlaceholders } from './db/seed';
 import { ShowEngine } from './engine/show-engine';
 import { runEngineCommand } from './ipc/engine-ipc';
 import { handle } from './ipc/handle';
 import { log } from './log';
+import { createOutputWindow, listDisplays, watchDisplays } from './outputs/electron-outputs';
+import { OutputManager } from './outputs/output-manager';
+import { ScreensService } from './outputs/screens-service';
 import { IpcTransport } from './transport/ipc-transport';
 import { createOperatorWindow } from './windows/operator-window';
 import { applySessionSecurity, secureWebContents } from './windows/security';
@@ -17,9 +24,12 @@ import { applySessionSecurity, secureWebContents } from './windows/security';
 // Tests (and multiple installs) can point Drashti at its own data folder.
 const userDataOverride = process.env['DRASHTI_USER_DATA_DIR'];
 if (userDataOverride) app.setPath('userData', userDataOverride);
+// Development only: outputs as normal windows, for machines with one screen.
+const windowedOutputs = process.env['DRASHTI_WINDOWED_OUTPUTS'] === '1';
 
 let operatorWindow: BrowserWindow | null = null;
 let db: Db | null = null;
+let outputs: OutputManager | null = null;
 
 function appInfo(): AppInfo {
   return {
@@ -50,6 +60,9 @@ function openLibrary(): Db | null {
   }
 }
 
+const fromOperator = (event: IpcMainInvokeEvent) => event.sender.id === operatorWindow?.webContents.id;
+const notAllowed = { ok: false as const, message: 'Only the operator window can change the screens.' };
+
 function start(): void {
   applySessionSecurity(session.defaultSession);
 
@@ -60,30 +73,123 @@ function start(): void {
   }
   const presentations = new PresentationRepo(db);
   const slides = new DbSlideSource(presentations);
+  const screenRepo = new ScreenRepo(db);
 
   const transport = new IpcTransport((error, target) => {
     log.warn(`Could not send an engine message to window ${target.id}`, error);
   });
   const engine = new ShowEngine(slides, transport);
 
+  // ---- outputs ----------------------------------------------------------
+  const outputWindows = new Map<string, BrowserWindow>();
+  const contextFor = (screenId: string): OutputContext | null => {
+    const s = screenRepo.screen(screenId);
+    if (!s) return null;
+    const displayId = manager.status().find((st) => st.screenId === screenId)?.displayId;
+    const d = listDisplays().find((x) => x.id === displayId);
+    return {
+      screenId: s.id,
+      screenName: s.name,
+      groupName: screenRepo.groupName(s.groupId) ?? '',
+      canvasWidth: s.canvasWidth,
+      canvasHeight: s.canvasHeight,
+      scaling: s.scaling,
+      display: d
+        ? {
+            pixelWidth: d.pixelWidth,
+            pixelHeight: d.pixelHeight,
+            refreshHz: d.refreshHz,
+            scaleFactor: d.scaleFactor,
+          }
+        : null,
+    };
+  };
+  const manager = new OutputManager({
+    listDisplays,
+    screens: () => screenRepo.screens(),
+    saveDisplayKey: (id, key) => {
+      screenRepo.setDisplayKey(id, key);
+    },
+    openWindow: (config, display) => {
+      log.info(
+        `Opening output "${config.name}" on ${display.label || display.id} (${display.pixelWidth}x${display.pixelHeight} @ ${display.refreshHz} Hz)`,
+      );
+      const { window, handle: h } = createOutputWindow(config, display, { windowed: windowedOutputs });
+      outputWindows.set(config.id, window);
+      window.on('closed', () => {
+        if (outputWindows.get(config.id) === window) outputWindows.delete(config.id);
+      });
+      return h;
+    },
+    onChange: () => {
+      if (operatorWindow && !operatorWindow.isDestroyed()) {
+        operatorWindow.webContents.send(IPC.screens.changed, screens.snapshot());
+      }
+      for (const [screenId, win] of outputWindows) {
+        const context = contextFor(screenId);
+        if (context && !win.isDestroyed()) win.webContents.send(IPC.output.context, context);
+      }
+    },
+  });
+  outputs = manager;
+  const screens = new ScreensService(screenRepo, manager, listDisplays);
+
+  // ---- IPC ----------------------------------------------------------------
   handle(IPC.app.getInfo, () => appInfo());
   handle(IPC.engine.subscribe, (event) => {
     transport.add(event.sender);
     return engine.snapshot();
   });
   handle(IPC.engine.snapshot, () => engine.snapshot());
-  handle(IPC.engine.command, (event, command) =>
-    runEngineCommand(engine, command, event.sender.id === operatorWindow?.webContents.id),
-  );
+  handle(IPC.engine.command, (event, command) => runEngineCommand(engine, command, fromOperator(event)));
   handle(IPC.library.listPresentations, () => presentations.list());
   handle(IPC.library.getPresentation, (_event, id) => {
     const parsed = idSchema.safeParse(id);
     return parsed.success ? presentations.get(parsed.data) : null;
   });
+  handle(IPC.screens.get, () => screens.snapshot());
+  handle(IPC.screens.createGroup, (e, name) => (fromOperator(e) ? screens.createGroup(name) : notAllowed));
+  handle(IPC.screens.renameGroup, (e, id, name) =>
+    fromOperator(e) ? screens.renameGroup(id, name) : notAllowed,
+  );
+  handle(IPC.screens.deleteGroup, (e, id) => (fromOperator(e) ? screens.deleteGroup(id) : notAllowed));
+  handle(IPC.screens.assignDisplay, (e, groupId, displayId) =>
+    fromOperator(e) ? screens.assignDisplay(groupId, displayId) : notAllowed,
+  );
+  handle(IPC.screens.updateScreen, (e, id, patch) =>
+    fromOperator(e) ? screens.updateScreen(id, patch) : notAllowed,
+  );
+  handle(IPC.screens.removeScreen, (e, id) => (fromOperator(e) ? screens.removeScreen(id) : notAllowed));
+  handle(IPC.screens.identify, (e) => {
+    if (!fromOperator(e)) return null;
+    for (const [screenId, win] of outputWindows) {
+      const s = screenRepo.screen(screenId);
+      if (s && !win.isDestroyed()) {
+        win.webContents.send(IPC.output.identify, {
+          name: s.name,
+          groupName: screenRepo.groupName(s.groupId) ?? '',
+        });
+      }
+    }
+    return null;
+  });
+  handle(IPC.output.getContext, (event) => {
+    const screenId = manager.screenIdFor(event.sender.id);
+    return screenId ? contextFor(screenId) : null;
+  });
 
+  // ---- windows --------------------------------------------------------------
   operatorWindow = createOperatorWindow();
   operatorWindow.on('closed', () => {
     operatorWindow = null;
+    // Output windows would otherwise keep the app alive.
+    app.quit();
+  });
+
+  // Restore the saved screen assignments, and follow display changes.
+  manager.reconcile();
+  watchDisplays(() => {
+    manager.reconcile();
   });
 }
 
@@ -102,12 +208,12 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(start);
 
-  // Closing the operator window ends the show on every platform.
   app.on('window-all-closed', () => {
     app.quit();
   });
 
   app.on('will-quit', () => {
+    outputs?.closeAll();
     db?.close();
     db = null;
   });

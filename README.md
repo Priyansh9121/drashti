@@ -40,6 +40,8 @@ The Electron binary downloads the first time something needs it (for example `pn
 | `pnpm test:audit` | Tests for the audit kit in `tools/audit/`.                                                                                   |
 | `pnpm package`    | Build installers into `release/` (`.dmg` and `.zip` on macOS, `.exe` on Windows). They are unsigned for now.                 |
 
+Output windows cover their whole display. To try outputs on a computer with a single screen, run `DRASHTI_WINDOWED_OUTPUTS=1 pnpm dev` (macOS) or `$env:DRASHTI_WINDOWED_OUTPUTS=1; pnpm dev` (Windows) to open them as normal windows instead. This is for development only.
+
 If you start these from inside another Electron app's process (for example an editor extension), make sure `ELECTRON_RUN_AS_NODE` is not set in that environment. When it's set, Electron starts as plain Node. The end-to-end tests clear it automatically.
 
 CI (`.github/workflows/ci.yml`) runs install, typecheck, lint, unit tests, end-to-end tests and packaging on `macos-latest` and `windows-latest`, and uploads the installers.

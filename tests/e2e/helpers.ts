@@ -20,11 +20,12 @@ function appEnv(extra: Record<string, string>): Record<string, string> {
   return { ...env, ...extra };
 }
 
-/** Launch the built app (out/) with a fresh, empty data folder. */
+/** Launch the built app (out/), with a fresh data folder unless one is given (to test restarts). */
 export async function launchApp(
   extraEnv: Record<string, string> = {},
+  userDataDir?: string,
 ): Promise<{ app: ElectronApplication; userData: string }> {
-  const userData = mkdtempSync(join(tmpdir(), 'drashti-e2e-'));
+  const userData = userDataDir ?? mkdtempSync(join(tmpdir(), 'drashti-e2e-'));
   const app = await electron.launch({
     args: ['.'],
     env: appEnv({ DRASHTI_USER_DATA_DIR: userData, ...extraEnv }),

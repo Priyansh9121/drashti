@@ -19,7 +19,14 @@ function devInlineScripts(): Plugin {
 export default defineConfig({
   main: {
     build: {
-      rollupOptions: { input: { index: resolve('src/main/index.ts') } },
+      rollupOptions: {
+        input: { index: resolve('src/main/index.ts') },
+        onwarn(warning, warn) {
+          // zod's comments confuse Rollup's annotation parser; harmless, so keep the build output readable.
+          if (warning.code === 'INVALID_ANNOTATION' && warning.id?.includes('node_modules/zod')) return;
+          warn(warning);
+        },
+      },
     },
   },
   preload: {

@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import { describeAppInfo } from '../../../shared/app-info';
 import { connectEngine, useEngine } from '../engine/engine-store';
+import { ScreensPanel } from '../screens/ScreensPanel';
+import { Button } from '../ui/Button';
 
 export function App() {
   const [info, setInfo] = useState('');
+  const [screensOpen, setScreensOpen] = useState(false);
   const rev = useEngine((s) => s.rev);
   const blackout = useEngine((s) => s.state?.blackout ?? false);
 
@@ -16,11 +19,19 @@ export function App() {
 
   return (
     <main className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-line bg-panel px-4 py-2">
+      <header className="flex items-center gap-3 border-b border-line bg-panel px-4 py-2">
         <h1 className="text-lg font-semibold tracking-wide">Drashti</h1>
+        <span className="flex-1" />
         <span className="text-xs text-muted" data-testid="app-info">
           {info}
         </span>
+        <Button
+          onClick={() => {
+            setScreensOpen(true);
+          }}
+        >
+          Screens
+        </Button>
       </header>
       <section className="flex flex-1 flex-col items-center justify-center gap-2 text-muted">
         <p>Operator view</p>
@@ -30,6 +41,13 @@ export function App() {
             : `Engine revision ${rev}${blackout ? ' · black-out on' : ''}`}
         </p>
       </section>
+      {screensOpen && (
+        <ScreensPanel
+          onClose={() => {
+            setScreensOpen(false);
+          }}
+        />
+      )}
     </main>
   );
 }
