@@ -9,6 +9,9 @@ files:
   # better-sqlite3 needs only its JS and the prebuilt Node-API binaries.
   - '!node_modules/better-sqlite3/{deps,src,build}/**'
   - '!node_modules/better-sqlite3/prebuilds/linux*'
+extraResources:
+  - from: LICENSES
+    to: licenses
 asarUnpack:
   - '**/*.node'
 # better-sqlite3's Node-API prebuilds load in Electron as they are.

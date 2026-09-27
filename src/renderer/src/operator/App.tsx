@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { describeAppInfo } from '../../../shared/app-info';
 import { connectEngine, useEngine } from '../engine/engine-store';
 import { ScreensPanel } from '../screens/ScreensPanel';
+import { connectScreens } from '../screens/screens-store';
 import { Button } from '../ui/Button';
+import { LivePreview } from './LivePreview';
 
 export function App() {
   const [info, setInfo] = useState('');
@@ -12,6 +14,7 @@ export function App() {
 
   useEffect(() => {
     connectEngine();
+    connectScreens();
     void window.drashti.app.getInfo().then((i) => {
       setInfo(describeAppInfo(i));
     });
@@ -34,7 +37,9 @@ export function App() {
         </Button>
       </header>
       <section className="flex flex-1 flex-col items-center justify-center gap-2 text-muted">
-        <p>Operator view</p>
+        <div className="w-full max-w-xl">
+          <LivePreview />
+        </div>
         <p className="text-xs" data-testid="engine-status">
           {rev < 0
             ? 'Connecting to the show engine...'
