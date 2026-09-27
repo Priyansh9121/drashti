@@ -1,11 +1,27 @@
-import type { AppInfo } from './app-info';
+import { type AppInfo } from './app-info';
+import { type CommandResult, type EngineCommand } from './engine/commands';
+import { type EngineMessage, type EngineSnapshotMessage } from './engine/protocol';
 
 /**
  * The API the preload script exposes to every renderer as `window.drashti`.
- * Renderers talk to the main process only through this object.
+ * Renderers reach the main process only through this object: no Node, no
+ * ipcRenderer, no raw channel names.
  */
 export interface DrashtiBridge {
   app: {
     getInfo(): Promise<AppInfo>;
+  };
+  engine: {
+    /**
+     * Listen for engine messages (snapshots and patches). Register before
+     * calling subscribe() so nothing is missed. Returns an unsubscribe function.
+     */
+    onMessage(listener: (message: EngineMessage) => void): () => void;
+    /** Start receiving messages in this window and get the current snapshot. */
+    subscribe(): Promise<EngineSnapshotMessage>;
+    /** A fresh snapshot (after a missed revision). */
+    snapshot(): Promise<EngineSnapshotMessage>;
+    /** Ask the engine to do something. Only the operator window may. */
+    dispatch(command: EngineCommand): Promise<CommandResult>;
   };
 }

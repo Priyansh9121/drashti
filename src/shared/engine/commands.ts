@@ -88,7 +88,7 @@ export type EngineCommand = z.infer<typeof engineCommandSchema>;
 export type EngineCommandType = EngineCommand['type'];
 
 export type EngineErrorCode =
-  'invalid-command' | 'unknown-presentation' | 'slide-out-of-range' | 'nothing-live';
+  'invalid-command' | 'forbidden' | 'unknown-presentation' | 'slide-out-of-range' | 'nothing-live';
 
 export type CommandResult =
   { ok: true; changed: boolean; rev: number } | { ok: false; error: EngineErrorCode; message: string };
