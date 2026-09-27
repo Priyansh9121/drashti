@@ -1,0 +1,88 @@
+import {
+  type EngineState,
+  isLayerEmpty,
+  LAYER_NAMES,
+  type LayerName,
+  type Layers,
+} from '../../shared/engine/state';
+import { type EngineAction } from './actions';
+
+/** Deep equality for plain JSON data. */
+export function sameData(a: unknown, b: unknown): boolean {
+  return a === b || JSON.stringify(a) === JSON.stringify(b);
+}
+
+function withLayers(state: EngineState, layers: Partial<Layers>): EngineState {
+  return { ...state, layers: { ...state.layers, ...layers } };
+}
+
+function clearLayer(state: EngineState, layer: LayerName): EngineState {
+  if (isLayerEmpty(state.layers, layer)) return state;
+  return withLayers(state, { [layer]: layer === 'props' || layer === 'messages' ? [] : null });
+}
+
+function upsert<T extends { id: string }>(items: T[], item: T): T[] | null {
+  const index = items.findIndex((i) => i.id === item.id);
+  if (index === -1) return [...items, item];
+  if (sameData(items[index], item)) return null;
+  return items.map((i, n) => (n === index ? item : i));
+}
+
+/**
+ * The show engine's pure state transition. Returns the same object when an
+ * action changes nothing, so callers can skip broadcasting.
+ */
+export function reduce(state: EngineState, action: EngineAction): EngineState {
+  switch (action.type) {
+    case 'slide/show': {
+      const { presentationId, slideIndex, slideCount, slide } = action;
+      const live = state.live;
+      const sameCursor =
+        live.presentationId === presentationId &&
+        live.slideIndex === slideIndex &&
+        live.slideCount === slideCount;
+      const current = state.layers.slide;
+      const sameSlide =
+        current !== null &&
+        current.presentationId === presentationId &&
+        current.slideIndex === slideIndex &&
+        sameData(current.slide, slide);
+      if (sameCursor && sameSlide) return state;
+      return {
+        ...state,
+        live: sameCursor ? live : { presentationId, slideIndex, slideCount },
+        layers: sameSlide ? state.layers : { ...state.layers, slide: { presentationId, slideIndex, slide } },
+      };
+    }
+    case 'layer/clear':
+      return clearLayer(state, action.layer);
+    case 'layers/clearAll':
+      return LAYER_NAMES.reduce<EngineState>((s, layer) => clearLayer(s, layer), state);
+    case 'blackout/set':
+      return state.blackout === action.on ? state : { ...state, blackout: action.on };
+    case 'background/set':
+      return sameData(state.layers.background, action.background)
+        ? state
+        : withLayers(state, { background: action.background });
+    case 'audio/set':
+      return sameData(state.layers.audio, action.audio) ? state : withLayers(state, { audio: action.audio });
+    case 'mask/set':
+      return sameData(state.layers.masks, action.mask) ? state : withLayers(state, { masks: action.mask });
+    case 'prop/show': {
+      const props = upsert(state.layers.props, action.prop);
+      return props ? withLayers(state, { props }) : state;
+    }
+    case 'prop/hide': {
+      if (!state.layers.props.some((p) => p.id === action.propId)) return state;
+      return withLayers(state, { props: state.layers.props.filter((p) => p.id !== action.propId) });
+    }
+    case 'message/show': {
+      const messages = upsert(state.layers.messages, action.message);
+      return messages ? withLayers(state, { messages }) : state;
+    }
+    case 'message/hide': {
+      if (!state.layers.messages.some((m) => m.id === action.messageId)) return state;
+      return withLayers(state, { messages: state.layers.messages.filter((m) => m.id !== action.messageId) });
+    }
+  }
+}
