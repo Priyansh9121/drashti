@@ -1,7 +1,11 @@
-import { StrictMode, useEffect } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import '../render/fonts.css';
 import '../styles/app.css';
-import { connectEngine } from '../engine/engine-store';
+import { connectEngine, useEngine } from '../engine/engine-store';
+import { preloadFonts } from '../render/fonts';
+import { PlacedInParent } from '../render/Placed';
+import { Scene } from '../render/Scene';
 import { connectOutput, useOutput } from './output-store';
 
 function IdentifyOverlay() {
@@ -31,16 +35,30 @@ function IdentifyOverlay() {
 
 function Output() {
   const context = useOutput((s) => s.context);
+  const state = useEngine((s) => s.state);
+  const [fontsReady, setFontsReady] = useState(false);
   useEffect(() => {
     connectOutput();
-    connectEngine();
+    // Fonts first, so the first live slide never shows a fallback font.
+    void preloadFonts().then(() => {
+      setFontsReady(true);
+      connectEngine();
+    });
   }, []);
+  const canvas = { width: context?.canvasWidth ?? 1920, height: context?.canvasHeight ?? 1080 };
+  const scaling = context?.scaling ?? 'fit';
   return (
     <div
       className="relative h-full w-full bg-black"
       data-testid="output-root"
       data-screen={context?.screenId ?? ''}
+      data-fonts={fontsReady ? 'ready' : 'loading'}
     >
+      {state && fontsReady && (
+        <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
+          <Scene state={state} canvas={canvas} scaling={scaling} />
+        </PlacedInParent>
+      )}
       <IdentifyOverlay />
     </div>
   );

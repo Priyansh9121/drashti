@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.e2e.tsbuildinfo"
+  },
+  "include": [
+    "tests/**/*",
+    "src/shared/**/*",
+    "src/main/db/seed.ts",
+    "src/main/db/presentations.ts",
+    "src/main/db/database.ts",
+    "src/main/db/migrate.ts",
+    "src/main/db/migrations/**/*",
+    "src/main/engine/slide-source.ts"
+  ]
+}
