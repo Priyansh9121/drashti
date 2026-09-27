@@ -1,0 +1,31 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Noto Sans', 'Noto Sans Gujarati', 'Noto Sans Devanagari', system-ui, sans-serif;
+  --color-ink: #0f1115;
+  --color-panel: #171a21;
+  --color-panel-2: #1f232c;
+  --color-line: #2b303b;
+  --color-muted: #9aa3b2;
+  --color-live: #e5484d;
+  --color-accent: #f5a524;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-ink);
+  color: #e8ebf0;
+  font-family: var(--font-sans);
+}
+
+body.output {
+  background: #000;
+  overflow: hidden;
+  cursor: none;
+}
