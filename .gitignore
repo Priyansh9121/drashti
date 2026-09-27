@@ -1,0 +1,22 @@
+# dependencies and build output
+node_modules/
+out/
+dist/
+release/
+coverage/
+playwright-report/
+test-results/
+blob-report/
+*.tsbuildinfo
+*.log
+.DS_Store
+.eslintcache
+
+# local secrets and machine data: never commit
+.env
+.env.*
+.mcp.json
+migration-samples/
+*-collect/
+# audit reports written next to the scripts (<machine>_<yyyymmdd>-<hhmmss>/)
+/tools/audit/*_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]/
