@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
 import { describeAppInfo } from '../../../shared/app-info';
+import { connectEngine, useEngine } from '../engine/engine-store';
 
 export function App() {
   const [info, setInfo] = useState('');
+  const rev = useEngine((s) => s.rev);
+  const blackout = useEngine((s) => s.state?.blackout ?? false);
 
   useEffect(() => {
+    connectEngine();
     void window.drashti.app.getInfo().then((i) => {
       setInfo(describeAppInfo(i));
     });
@@ -18,7 +22,14 @@ export function App() {
           {info}
         </span>
       </header>
-      <section className="flex flex-1 items-center justify-center text-muted">Operator view</section>
+      <section className="flex flex-1 flex-col items-center justify-center gap-2 text-muted">
+        <p>Operator view</p>
+        <p className="text-xs" data-testid="engine-status">
+          {rev < 0
+            ? 'Connecting to the show engine...'
+            : `Engine revision ${rev}${blackout ? ' · black-out on' : ''}`}
+        </p>
+      </section>
     </main>
   );
 }
