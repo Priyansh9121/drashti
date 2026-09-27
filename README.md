@@ -54,6 +54,29 @@ CI (`.github/workflows/ci.yml`) runs install, typecheck, lint, unit tests, end-t
 
 Every shortcut is defined in one file, `src/renderer/src/operator/keymap.ts`. The current keys are provisional and will be changed to match the ones the operators use in ProPresenter once the setup checklist is back.
 
+## What keeps the screens up (watchdog)
+
+- Every output window is its own renderer process with its own copy of the show state. The operator window crashing, hanging or reloading cannot change what the screens show: they keep their last frame.
+- The main process watches every window. A crashed window is reloaded (after about 0.1 s, then with back-off, giving up after 5 crashes in a minute). A window that stays unresponsive for 5 seconds is restarted. A reloaded window picks up the live state at once.
+- A crashed _output_ is black for a moment (well under a second here) until the watchdog reloads it, and then shows the live slide again.
+- Closing the operator window while screens are showing asks first, because quitting blacks out every screen.
+- Not covered yet: a crash of the main process itself ends the app. ProPresenter stays installed as the practised fallback until cutover (PLAN.md section 5.1).
+
+**Manual check.** Start Drashti with diagnostics turned on:
+
+```bash
+DRASHTI_DIAGNOSTICS=1 pnpm dev                                        # macOS, from the source
+DRASHTI_DIAGNOSTICS=1 /Applications/Drashti.app/Contents/MacOS/Drashti  # macOS, installed app
+```
+
+```powershell
+$env:DRASHTI_DIAGNOSTICS=1; pnpm dev                                  # Windows, from the source
+```
+
+Then set up a screen, put a slide live, and choose **Diagnostics > Run Watchdog Self-Test**. It crashes and reloads the operator window and one output, then reports each check. Everything should say PASS. You can also try **Diagnostics > Crash the Operator Window** or **View > Reload Operator Window** (Cmd/Ctrl+R) yourself and watch the screens keep their picture.
+
+The same self-test runs headless in the end-to-end tests (`tests/e2e/watchdog.spec.ts`) with `DRASHTI_SELFTEST=watchdog`, because Playwright cannot stay attached to a renderer that crashes.
+
 ## Folder layout
 
 | Path            | What lives there                                                                            |

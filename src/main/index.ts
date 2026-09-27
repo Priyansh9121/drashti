@@ -14,11 +14,14 @@ import { ShowEngine } from './engine/show-engine';
 import { runEngineCommand } from './ipc/engine-ipc';
 import { handle } from './ipc/handle';
 import { log } from './log';
+import { installMenu } from './menu';
+import { createdGroupId, runWatchdogSelfTest } from './selftest';
 import { createOutputWindow, listDisplays, watchDisplays } from './outputs/electron-outputs';
 import { OutputManager } from './outputs/output-manager';
 import { ScreensService } from './outputs/screens-service';
 import { IpcTransport } from './transport/ipc-transport';
 import { createOperatorWindow } from './windows/operator-window';
+import { RendererWatchdog, shouldConfirmQuit } from './watchdog';
 import { applySessionSecurity, secureWebContents } from './windows/security';
 
 // Tests (and multiple installs) can point Drashti at its own data folder.
@@ -26,6 +29,21 @@ const userDataOverride = process.env['DRASHTI_USER_DATA_DIR'];
 if (userDataOverride) app.setPath('userData', userDataOverride);
 // Development only: outputs as normal windows, for machines with one screen.
 const windowedOutputs = process.env['DRASHTI_WINDOWED_OUTPUTS'] === '1';
+// A Diagnostics menu for the manual watchdog check (see README).
+const diagnostics = process.env['DRASHTI_DIAGNOSTICS'] === '1';
+// Automated tests cannot answer the quit confirmation.
+const noQuitConfirm = process.env['DRASHTI_NO_QUIT_CONFIRM'] === '1';
+// Headless watchdog self-test: run it, print the result, exit (see README).
+const selfTest = process.env['DRASHTI_SELFTEST'] === 'watchdog';
+
+const watchdog = new RendererWatchdog((e) => {
+  const text = `Watchdog: ${e.window} ${e.kind}${e.reason ? ` (${e.reason})` : ''}`;
+  if (e.kind === 'crashed' || e.kind === 'hung' || e.kind === 'gave-up') log.warn(text);
+  else log.info(text);
+});
+// Readable from the main process in end-to-end tests.
+(globalThis as { drashtiDiagnostics?: unknown }).drashtiDiagnostics = { watchdog };
+let quitConfirmed = false;
 
 let operatorWindow: BrowserWindow | null = null;
 let db: Db | null = null;
@@ -116,6 +134,7 @@ function start(): void {
       );
       const { window, handle: h } = createOutputWindow(config, display, { windowed: windowedOutputs });
       outputWindows.set(config.id, window);
+      watchdog.watch(window.webContents, `output "${config.name}"`);
       window.on('closed', () => {
         if (outputWindows.get(config.id) === window) outputWindows.delete(config.id);
       });
@@ -179,11 +198,110 @@ function start(): void {
   });
 
   // ---- windows --------------------------------------------------------------
+  const showingCount = () => manager.status().filter((st) => st.state === 'showing').length;
+  /** Ask before anything that would black out the screens. Returns true when it is fine to quit. */
+  const confirmQuit = (): boolean => {
+    if (!shouldConfirmQuit(showingCount(), quitConfirmed, noQuitConfirm)) return true;
+    const parent = operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : undefined;
+    const options = {
+      type: 'warning' as const,
+      buttons: ['Keep showing', 'Quit Drashti'],
+      defaultId: 0,
+      cancelId: 0,
+      message: 'Quit Drashti?',
+      detail: `${showingCount()} screen(s) are showing. If Drashti quits, they go black.`,
+    };
+    const choice = parent ? dialog.showMessageBoxSync(parent, options) : dialog.showMessageBoxSync(options);
+    quitConfirmed = choice === 1;
+    return quitConfirmed;
+  };
+
   operatorWindow = createOperatorWindow();
+  watchdog.watch(operatorWindow.webContents, 'operator');
+  operatorWindow.on('close', (event) => {
+    if (!confirmQuit()) event.preventDefault();
+  });
   operatorWindow.on('closed', () => {
     operatorWindow = null;
     // Output windows would otherwise keep the app alive.
     app.quit();
+  });
+  app.on('before-quit', (event) => {
+    if (!confirmQuit()) event.preventDefault();
+  });
+
+  const runSelfTest = () =>
+    runWatchdogSelfTest({
+      operator: () => (operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : null),
+      outputs: () => [...outputWindows.values()].filter((w) => !w.isDestroyed()),
+      watchdog,
+      dispatch: (command) => engine.dispatch(command),
+      engineRev: () => engine.rev,
+      firstPresentationId: () => presentations.list()[0]?.id ?? null,
+      ensureOutput: async () => {
+        if (showingCount() > 0) return () => undefined;
+        const created = screens.createGroup('Watchdog self-test');
+        const groupId = createdGroupId(created, 'Watchdog self-test');
+        const display = listDisplays()[0];
+        if (groupId && display) screens.assignDisplay(groupId, display.id);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        return () => {
+          if (groupId) screens.deleteGroup(groupId);
+        };
+      },
+    });
+
+  installMenu({
+    reloadOperator: () => {
+      operatorWindow?.webContents.reload();
+    },
+    diagnostics: diagnostics
+      ? {
+          crashOperator: () => {
+            operatorWindow?.webContents.forcefullyCrashRenderer();
+          },
+          crashOutputs: () => {
+            for (const w of outputWindows.values())
+              if (!w.isDestroyed()) w.webContents.forcefullyCrashRenderer();
+          },
+          runSelfTest: () => {
+            void runSelfTest().then((result) => {
+              const lines = result.checks.map(
+                (c) => `${c.ok ? 'PASS' : 'FAIL'}  ${c.name}${c.detail ? ` (${c.detail})` : ''}`,
+              );
+              const box = {
+                type: result.passed ? ('info' as const) : ('error' as const),
+                message: result.passed ? 'Watchdog self-test passed' : 'Watchdog self-test FAILED',
+                detail: lines.join('\n'),
+              };
+              const parent = operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : undefined;
+              if (parent) void dialog.showMessageBox(parent, box);
+              else void dialog.showMessageBox(box);
+            });
+          },
+        }
+      : null,
+  });
+  if (selfTest) {
+    operatorWindow.webContents.once('did-finish-load', () => {
+      void runSelfTest().then(
+        (result) => {
+          process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
+          app.exit(result.passed ? 0 : 1);
+        },
+        (error: unknown) => {
+          const result = {
+            passed: false,
+            checks: [{ name: 'self-test ran', ok: false, detail: String(error) }],
+          };
+          process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
+          app.exit(1);
+        },
+      );
+    });
+  }
+  app.on('child-process-gone', (_event, details) => {
+    log.warn(`A ${details.type} process stopped (${details.reason}); Chromium restarts it by itself.`);
   });
 
   // Restore the saved screen assignments, and follow display changes.

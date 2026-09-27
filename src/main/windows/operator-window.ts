@@ -11,6 +11,8 @@ export function createOperatorWindow(): BrowserWindow {
     show: false,
     title: 'Drashti',
     backgroundColor: '#0f1115',
+    // Windows: keep the menu bar out of a volunteer's way (Alt shows it).
+    autoHideMenuBar: true,
     webPreferences: secureWebPreferences(),
   });
   win.once('ready-to-show', () => {
