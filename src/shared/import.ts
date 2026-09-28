@@ -122,7 +122,19 @@ export interface ImportProgress {
   current: string | null;
 }
 
-export type ImportResult = { ok: true; run: ImportRunSummary } | { ok: false; message: string };
+/** Where an import spent its time, in milliseconds (for diagnosing slow machines). */
+export interface ImportTimings {
+  scan: number;
+  read: number;
+  lookup: number;
+  parse: number;
+  write: number;
+  media: number;
+  total: number;
+}
+
+export type ImportResult =
+  { ok: true; run: ImportRunSummary; timings?: ImportTimings } | { ok: false; message: string };
 
 export function emptyTotals(): ImportTotals {
   return {

@@ -40,8 +40,10 @@ test("an output on the operator's display needs consent, and Uncover gets the co
 
   // Agreeing opens the output over the controls; the uncover shortcut is now registered system-wide.
   await row.getByRole('button', { name: 'Use this display' }).click();
+  // Listen before agreeing: the window can open before a listener added afterwards would see it.
+  const outputOpened = app.waitForEvent('window', { predicate: (w) => isOutput(w.url()) });
   await confirm.getByRole('button', { name: 'Cover the controls' }).click();
-  await app.waitForEvent('window', { predicate: (w) => isOutput(w.url()) });
+  await outputOpened;
   await expect(op.getByTestId('screen-state')).toContainText('Showing');
   await expect.poll(shortcutRegistered).toBe(true);
   // While an output shows, the display may not sleep.

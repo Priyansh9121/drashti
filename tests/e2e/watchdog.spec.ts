@@ -78,6 +78,8 @@ test('reloading the operator window (Cmd/Ctrl+R) leaves the output page untouche
   const { app } = await launchApp();
   const operator = await app.firstWindow();
   await expect(operator.getByTestId('presentation-list').getByRole('button')).toHaveCount(2);
+  // Listen first: the output window can open before the call below returns.
+  const outputOpened = app.waitForEvent('window', { predicate: (w) => w.url().includes('output.html') });
   await operator.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     const created = await d.screens.createGroup('Main Hall');
@@ -88,7 +90,7 @@ test('reloading the operator window (Cmd/Ctrl+R) leaves the output page untouche
       { coverOperator: true },
     );
   });
-  const output = await app.waitForEvent('window', { predicate: (w) => w.url().includes('output.html') });
+  const output = await outputOpened;
   await operator.getByTestId('slide-thumb').first().click();
   await expect(output.locator('[data-lang="en"]')).toHaveText('Welcome to the test slide');
   const loadedAt = await output.evaluate(() => performance.timeOrigin);
