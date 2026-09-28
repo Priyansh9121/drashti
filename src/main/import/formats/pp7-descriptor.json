@@ -1,0 +1,1947 @@
+{
+  "source": "greyshirtguy/ProPresenter7-Proto @ bf6325d (autogen-proto, ProPresenter 21.4), MIT",
+  "roots": ["rv.data.Presentation", "rv.data.PlaylistDocument", "rv.data.Template.Document"],
+  "messages": {
+    "rv.data.Presentation": {
+      "1": { "name": "application_info", "kind": "message", "type": "rv.data.ApplicationInfo" },
+      "2": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" },
+      "3": { "name": "name", "kind": "scalar", "type": "string" },
+      "4": { "name": "last_date_used", "kind": "message", "type": "rv.data.Timestamp" },
+      "5": { "name": "last_modified_date", "kind": "message", "type": "rv.data.Timestamp" },
+      "6": { "name": "category", "kind": "scalar", "type": "string" },
+      "7": { "name": "notes", "kind": "scalar", "type": "string" },
+      "8": { "name": "background", "kind": "message", "type": "rv.data.Background" },
+      "9": { "name": "chord_chart", "kind": "message", "type": "rv.data.URL" },
+      "10": { "name": "selected_arrangement", "kind": "message", "type": "rv.data.UUID" },
+      "11": {
+        "name": "arrangements",
+        "kind": "message",
+        "type": "rv.data.Presentation.Arrangement",
+        "repeated": true
+      },
+      "12": {
+        "name": "cue_groups",
+        "kind": "message",
+        "type": "rv.data.Presentation.CueGroup",
+        "repeated": true
+      },
+      "13": { "name": "cues", "kind": "message", "type": "rv.data.Cue", "repeated": true },
+      "14": { "name": "ccli", "kind": "message", "type": "rv.data.Presentation.CCLI" },
+      "15": { "name": "bible_reference", "kind": "message", "type": "rv.data.Presentation.BibleReference" },
+      "17": { "name": "timeline", "kind": "message", "type": "rv.data.Presentation.Timeline" },
+      "18": { "name": "transition", "kind": "message", "type": "rv.data.Transition" },
+      "19": { "name": "content_destination", "kind": "enum", "type": "rv.data.Action.ContentDestination" },
+      "20": { "name": "slide_show_duration", "kind": "scalar", "type": "double" },
+      "21": {
+        "name": "multi_tracks_licensing",
+        "kind": "message",
+        "type": "rv.data.Presentation.MultiTracksLicensing"
+      },
+      "22": { "name": "music_key", "kind": "scalar", "type": "string" },
+      "23": { "name": "music", "kind": "message", "type": "rv.data.Presentation.Music" }
+    },
+    "rv.data.PlaylistDocument": {
+      "1": { "name": "application_info", "kind": "message", "type": "rv.data.ApplicationInfo" },
+      "2": { "name": "type", "kind": "enum", "type": "rv.data.PlaylistDocument.Type" },
+      "3": { "name": "root_node", "kind": "message", "type": "rv.data.Playlist" },
+      "4": { "name": "tags", "kind": "message", "type": "rv.data.Playlist.Tag", "repeated": true },
+      "5": { "name": "live_video_playlist", "kind": "message", "type": "rv.data.Playlist" },
+      "6": { "name": "downloads_playlist", "kind": "message", "type": "rv.data.Playlist" }
+    },
+    "rv.data.Template.Document": {
+      "1": { "name": "application_info", "kind": "message", "type": "rv.data.ApplicationInfo" },
+      "3": { "name": "slides", "kind": "message", "type": "rv.data.Template.Slide", "repeated": true }
+    },
+    "rv.data.ApplicationInfo": {
+      "1": { "name": "platform", "kind": "enum", "type": "rv.data.ApplicationInfo.Platform" },
+      "2": { "name": "platform_version", "kind": "message", "type": "rv.data.Version" },
+      "3": { "name": "application", "kind": "enum", "type": "rv.data.ApplicationInfo.Application" },
+      "4": { "name": "application_version", "kind": "message", "type": "rv.data.Version" }
+    },
+    "rv.data.UUID": { "1": { "name": "string", "kind": "scalar", "type": "string" } },
+    "rv.data.Timestamp": {
+      "1": { "name": "seconds", "kind": "scalar", "type": "int64" },
+      "2": { "name": "nanos", "kind": "scalar", "type": "int32" }
+    },
+    "rv.data.Background": {
+      "1": { "name": "color", "kind": "message", "type": "rv.data.Color" },
+      "2": { "name": "gradient", "kind": "message", "type": "rv.data.Graphics.Gradient" },
+      "3": { "name": "is_enabled", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.URL": {
+      "1": { "name": "absolute_string", "kind": "scalar", "type": "string" },
+      "2": { "name": "relative_path", "kind": "scalar", "type": "string" },
+      "3": { "name": "platform", "kind": "enum", "type": "rv.data.URL.Platform" },
+      "4": { "name": "local", "kind": "message", "type": "rv.data.URL.LocalRelativePath" },
+      "5": { "name": "external", "kind": "message", "type": "rv.data.URL.ExternalRelativePath" }
+    },
+    "rv.data.Presentation.Arrangement": {
+      "1": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "name", "kind": "scalar", "type": "string" },
+      "3": { "name": "group_identifiers", "kind": "message", "type": "rv.data.UUID", "repeated": true }
+    },
+    "rv.data.Presentation.CueGroup": {
+      "1": { "name": "group", "kind": "message", "type": "rv.data.Group" },
+      "2": { "name": "cue_identifiers", "kind": "message", "type": "rv.data.UUID", "repeated": true }
+    },
+    "rv.data.Cue": {
+      "1": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "name", "kind": "scalar", "type": "string" },
+      "3": { "name": "completion_target_type", "kind": "enum", "type": "rv.data.Cue.CompletionTargetType" },
+      "4": { "name": "completion_target_uuid", "kind": "message", "type": "rv.data.UUID" },
+      "5": { "name": "completion_action_type", "kind": "enum", "type": "rv.data.Cue.CompletionActionType" },
+      "6": { "name": "completion_action_uuid", "kind": "message", "type": "rv.data.UUID" },
+      "7": { "name": "trigger_time", "kind": "message", "type": "rv.data.Cue.TimecodeTime" },
+      "8": { "name": "hot_key", "kind": "message", "type": "rv.data.HotKey" },
+      "10": { "name": "actions", "kind": "message", "type": "rv.data.Action", "repeated": true },
+      "11": {
+        "name": "pending_imports",
+        "kind": "message",
+        "type": "rv.data.Cue.PendingImportsEntry",
+        "repeated": true
+      },
+      "12": { "name": "isEnabled", "kind": "scalar", "type": "bool" },
+      "13": { "name": "completion_time", "kind": "scalar", "type": "double" }
+    },
+    "rv.data.Presentation.CCLI": {
+      "1": { "name": "author", "kind": "scalar", "type": "string" },
+      "2": { "name": "artist_credits", "kind": "scalar", "type": "string" },
+      "3": { "name": "song_title", "kind": "scalar", "type": "string" },
+      "4": { "name": "publisher", "kind": "scalar", "type": "string" },
+      "5": { "name": "copyright_year", "kind": "scalar", "type": "uint32" },
+      "6": { "name": "song_number", "kind": "scalar", "type": "uint32" },
+      "7": { "name": "display", "kind": "scalar", "type": "bool" },
+      "8": { "name": "album", "kind": "scalar", "type": "string" },
+      "9": { "name": "artwork", "kind": "scalar", "type": "bytes" }
+    },
+    "rv.data.Presentation.BibleReference": {
+      "1": { "name": "book_index", "kind": "scalar", "type": "uint32" },
+      "2": { "name": "book_name", "kind": "scalar", "type": "string" },
+      "3": { "name": "chapter_range", "kind": "message", "type": "rv.data.IntRange" },
+      "4": { "name": "verse_range", "kind": "message", "type": "rv.data.IntRange" },
+      "5": { "name": "translation_name", "kind": "scalar", "type": "string" },
+      "6": { "name": "translation_display_abbreviation", "kind": "scalar", "type": "string" },
+      "7": { "name": "translation_internal_abbreviation", "kind": "scalar", "type": "string" },
+      "8": { "name": "book_key", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Presentation.Timeline": {
+      "1": {
+        "name": "cues",
+        "kind": "message",
+        "type": "rv.data.Presentation.Timeline.Cue",
+        "repeated": true
+      },
+      "5": { "name": "duration", "kind": "scalar", "type": "double" },
+      "6": { "name": "loop", "kind": "scalar", "type": "bool" },
+      "8": { "name": "audio_action", "kind": "message", "type": "rv.data.Action" },
+      "9": { "name": "timecode_enable", "kind": "scalar", "type": "bool" },
+      "10": { "name": "timecode_offset", "kind": "scalar", "type": "double" },
+      "11": {
+        "name": "cues_v2",
+        "kind": "message",
+        "type": "rv.data.Presentation.Timeline.Cue",
+        "repeated": true
+      }
+    },
+    "rv.data.Transition": {
+      "1": { "name": "duration", "kind": "scalar", "type": "double" },
+      "2": { "name": "favorite_uuid", "kind": "message", "type": "rv.data.UUID" },
+      "3": { "name": "effect", "kind": "message", "type": "rv.data.Effect" }
+    },
+    "rv.data.Presentation.MultiTracksLicensing": {
+      "1": { "name": "song_identifier", "kind": "scalar", "type": "int64" },
+      "2": { "name": "customer_identifier", "kind": "scalar", "type": "string" },
+      "3": { "name": "expiration_date", "kind": "message", "type": "rv.data.Timestamp" },
+      "4": { "name": "license_expiration", "kind": "message", "type": "rv.data.Timestamp" },
+      "5": {
+        "name": "subscription",
+        "kind": "enum",
+        "type": "rv.data.Presentation.MultiTracksLicensing.Subscription"
+      }
+    },
+    "rv.data.Presentation.Music": {
+      "1": { "name": "original_music_key", "kind": "scalar", "type": "string" },
+      "2": { "name": "user_music_key", "kind": "scalar", "type": "string" },
+      "3": { "name": "original", "kind": "message", "type": "rv.data.MusicKeyScale" },
+      "4": { "name": "user", "kind": "message", "type": "rv.data.MusicKeyScale" }
+    },
+    "rv.data.Playlist": {
+      "1": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "name", "kind": "scalar", "type": "string" },
+      "3": { "name": "type", "kind": "enum", "type": "rv.data.Playlist.Type" },
+      "4": { "name": "expanded", "kind": "scalar", "type": "bool" },
+      "5": { "name": "targeted_layer_uuid", "kind": "message", "type": "rv.data.UUID" },
+      "6": { "name": "smart_directory_path", "kind": "message", "type": "rv.data.URL" },
+      "7": { "name": "hot_key", "kind": "message", "type": "rv.data.HotKey" },
+      "8": { "name": "cues", "kind": "message", "type": "rv.data.Cue", "repeated": true },
+      "9": { "name": "children", "kind": "message", "type": "rv.data.Playlist", "repeated": true },
+      "10": { "name": "timecode_enabled", "kind": "scalar", "type": "bool" },
+      "11": { "name": "timing", "kind": "enum", "type": "rv.data.Playlist.TimingType" },
+      "12": { "name": "playlists", "kind": "message", "type": "rv.data.Playlist.PlaylistArray" },
+      "13": { "name": "items", "kind": "message", "type": "rv.data.Playlist.PlaylistItems" },
+      "14": { "name": "smart_directory", "kind": "message", "type": "rv.data.Playlist.FolderDirectory" },
+      "15": { "name": "pco_plan", "kind": "message", "type": "rv.data.PlanningCenterPlan" },
+      "16": { "name": "startup_info", "kind": "message", "type": "rv.data.Playlist.StartupInfo" }
+    },
+    "rv.data.Playlist.Tag": {
+      "1": { "name": "color", "kind": "message", "type": "rv.data.Color" },
+      "2": { "name": "name", "kind": "scalar", "type": "string" },
+      "3": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" }
+    },
+    "rv.data.Template.Slide": {
+      "1": { "name": "base_slide", "kind": "message", "type": "rv.data.Slide" },
+      "2": { "name": "name", "kind": "scalar", "type": "string" },
+      "3": { "name": "actions", "kind": "message", "type": "rv.data.Action", "repeated": true }
+    },
+    "rv.data.Version": {
+      "1": { "name": "major_version", "kind": "scalar", "type": "uint32" },
+      "2": { "name": "minor_version", "kind": "scalar", "type": "uint32" },
+      "3": { "name": "patch_version", "kind": "scalar", "type": "uint32" },
+      "4": { "name": "build", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Color": {
+      "1": { "name": "red", "kind": "scalar", "type": "float" },
+      "2": { "name": "green", "kind": "scalar", "type": "float" },
+      "3": { "name": "blue", "kind": "scalar", "type": "float" },
+      "4": { "name": "alpha", "kind": "scalar", "type": "float" }
+    },
+    "rv.data.Graphics.Gradient": {
+      "1": { "name": "type", "kind": "enum", "type": "rv.data.Graphics.Gradient.Type" },
+      "2": { "name": "angle", "kind": "scalar", "type": "double" },
+      "3": { "name": "length", "kind": "scalar", "type": "double" },
+      "4": {
+        "name": "stops",
+        "kind": "message",
+        "type": "rv.data.Graphics.Gradient.ColorStop",
+        "repeated": true
+      }
+    },
+    "rv.data.URL.LocalRelativePath": {
+      "1": { "name": "root", "kind": "enum", "type": "rv.data.URL.LocalRelativePath.Root" },
+      "2": { "name": "path", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.URL.ExternalRelativePath": {
+      "1": {
+        "name": "macos",
+        "kind": "message",
+        "type": "rv.data.URL.ExternalRelativePath.MacOSExternalVolume"
+      },
+      "2": {
+        "name": "win32",
+        "kind": "message",
+        "type": "rv.data.URL.ExternalRelativePath.Win32ExternalVolume"
+      },
+      "3": { "name": "path", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Group": {
+      "1": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "name", "kind": "scalar", "type": "string" },
+      "3": { "name": "color", "kind": "message", "type": "rv.data.Color" },
+      "4": { "name": "hotKey", "kind": "message", "type": "rv.data.HotKey" },
+      "5": { "name": "application_group_identifier", "kind": "message", "type": "rv.data.UUID" },
+      "6": { "name": "application_group_name", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Cue.TimecodeTime": { "1": { "name": "time", "kind": "scalar", "type": "double" } },
+    "rv.data.HotKey": {
+      "1": { "name": "code", "kind": "enum", "type": "rv.data.KeyCode" },
+      "2": { "name": "control_identifier", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Action": {
+      "1": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "name", "kind": "scalar", "type": "string" },
+      "3": { "name": "label", "kind": "message", "type": "rv.data.Action.Label" },
+      "4": { "name": "delay_time", "kind": "scalar", "type": "double" },
+      "5": { "name": "old_type", "kind": "message", "type": "rv.data.Action.OldType" },
+      "6": { "name": "isEnabled", "kind": "scalar", "type": "bool" },
+      "7": {
+        "name": "layer_identification",
+        "kind": "message",
+        "type": "rv.data.Action.LayerIdentification"
+      },
+      "8": { "name": "duration", "kind": "scalar", "type": "double" },
+      "9": { "name": "type", "kind": "enum", "type": "rv.data.Action.ActionType" },
+      "16": { "name": "collection_element", "kind": "message", "type": "rv.data.CollectionElementType" },
+      "17": { "name": "playlist_item", "kind": "message", "type": "rv.data.Action.PlaylistItemType" },
+      "18": { "name": "blend_mode", "kind": "message", "type": "rv.data.Action.BlendModeType" },
+      "19": { "name": "transition", "kind": "message", "type": "rv.data.Action.TransitionType" },
+      "20": { "name": "media", "kind": "message", "type": "rv.data.Action.MediaType" },
+      "21": { "name": "double_item", "kind": "message", "type": "rv.data.Action.DoubleType" },
+      "22": { "name": "effects", "kind": "message", "type": "rv.data.Action.EffectsType" },
+      "23": { "name": "slide", "kind": "message", "type": "rv.data.Action.SlideType" },
+      "24": { "name": "background", "kind": "message", "type": "rv.data.Action.BackgroundType" },
+      "25": { "name": "timer", "kind": "message", "type": "rv.data.Action.TimerType" },
+      "26": { "name": "clear", "kind": "message", "type": "rv.data.Action.ClearType" },
+      "27": { "name": "stage", "kind": "message", "type": "rv.data.Action.StageLayoutType" },
+      "28": { "name": "prop", "kind": "message", "type": "rv.data.Action.PropType" },
+      "29": { "name": "mask", "kind": "message", "type": "rv.data.Action.MaskType" },
+      "30": { "name": "message", "kind": "message", "type": "rv.data.Action.MessageType" },
+      "32": { "name": "communication", "kind": "message", "type": "rv.data.Action.CommunicationType" },
+      "33": { "name": "multi_screen", "kind": "message", "type": "rv.data.Action.MultiScreenType" },
+      "34": { "name": "presentation_document", "kind": "message", "type": "rv.data.Action.DocumentType" },
+      "36": {
+        "name": "external_presentation",
+        "kind": "message",
+        "type": "rv.data.Action.ExternalPresentationType"
+      },
+      "37": { "name": "audience_look", "kind": "message", "type": "rv.data.Action.AudienceLookType" },
+      "38": { "name": "audio_input", "kind": "message", "type": "rv.data.Action.AudioInputType" },
+      "39": { "name": "slide_destination", "kind": "message", "type": "rv.data.Action.SlideDestinationType" },
+      "40": { "name": "macro", "kind": "message", "type": "rv.data.Action.MacroType" },
+      "41": { "name": "clear_group", "kind": "message", "type": "rv.data.Action.ClearGroupType" },
+      "42": { "name": "transport_control", "kind": "message", "type": "rv.data.Action.TransportControlType" },
+      "43": { "name": "capture", "kind": "message", "type": "rv.data.Action.CaptureType" }
+    },
+    "rv.data.Cue.PendingImportsEntry": {
+      "1": { "name": "key", "kind": "scalar", "type": "string" },
+      "2": { "name": "value", "kind": "message", "type": "rv.data.URLs" }
+    },
+    "rv.data.IntRange": {
+      "1": { "name": "start", "kind": "scalar", "type": "int32" },
+      "2": { "name": "end", "kind": "scalar", "type": "int32" }
+    },
+    "rv.data.Presentation.Timeline.Cue": {
+      "1": { "name": "trigger_time", "kind": "scalar", "type": "double" },
+      "2": { "name": "cue_id", "kind": "message", "type": "rv.data.UUID" },
+      "3": { "name": "name", "kind": "scalar", "type": "string" },
+      "4": { "name": "action", "kind": "message", "type": "rv.data.Action" }
+    },
+    "rv.data.Effect": {
+      "1": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "enabled", "kind": "scalar", "type": "bool" },
+      "3": { "name": "name", "kind": "scalar", "type": "string" },
+      "4": { "name": "render_id", "kind": "scalar", "type": "string" },
+      "5": { "name": "behavior_description", "kind": "scalar", "type": "string" },
+      "6": { "name": "category", "kind": "scalar", "type": "string" },
+      "7": {
+        "name": "variables",
+        "kind": "message",
+        "type": "rv.data.Effect.EffectVariable",
+        "repeated": true
+      }
+    },
+    "rv.data.MusicKeyScale": {
+      "1": { "name": "music_key", "kind": "enum", "type": "rv.data.MusicKeyScale.MusicKey" },
+      "2": { "name": "music_scale", "kind": "enum", "type": "rv.data.MusicKeyScale.MusicScale" }
+    },
+    "rv.data.Playlist.StartupInfo": {
+      "1": { "name": "trigger_on_startup", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Playlist.PlaylistArray": {
+      "1": { "name": "playlists", "kind": "message", "type": "rv.data.Playlist", "repeated": true }
+    },
+    "rv.data.Playlist.PlaylistItems": {
+      "1": { "name": "items", "kind": "message", "type": "rv.data.PlaylistItem", "repeated": true }
+    },
+    "rv.data.Playlist.FolderDirectory": {
+      "1": { "name": "smart_directory", "kind": "message", "type": "rv.data.URL" },
+      "2": {
+        "name": "import_behavior",
+        "kind": "enum",
+        "type": "rv.data.Playlist.FolderDirectory.ImportBehavior"
+      }
+    },
+    "rv.data.PlanningCenterPlan": {
+      "1": { "name": "plan_id_num", "kind": "scalar", "type": "uint32" },
+      "2": { "name": "parent_id_num", "kind": "scalar", "type": "uint32" },
+      "3": { "name": "series_title", "kind": "scalar", "type": "string" },
+      "4": { "name": "plan_title", "kind": "scalar", "type": "string" },
+      "5": { "name": "date_list", "kind": "scalar", "type": "string" },
+      "6": { "name": "created_date", "kind": "message", "type": "rv.data.Timestamp" },
+      "7": { "name": "update_date", "kind": "message", "type": "rv.data.Timestamp" },
+      "8": { "name": "last_update_check_date", "kind": "message", "type": "rv.data.Timestamp" },
+      "9": { "name": "plan_id_str", "kind": "scalar", "type": "string" },
+      "10": { "name": "parent_id_str", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Slide": {
+      "1": { "name": "elements", "kind": "message", "type": "rv.data.Slide.Element", "repeated": true },
+      "2": { "name": "element_build_order", "kind": "message", "type": "rv.data.UUID", "repeated": true },
+      "3": { "name": "guidelines", "kind": "message", "type": "rv.data.AlignmentGuide", "repeated": true },
+      "4": { "name": "draws_background_color", "kind": "scalar", "type": "bool" },
+      "5": { "name": "background_color", "kind": "message", "type": "rv.data.Color" },
+      "6": { "name": "size", "kind": "message", "type": "rv.data.Graphics.Size" },
+      "7": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" }
+    },
+    "rv.data.Graphics.Gradient.ColorStop": {
+      "1": { "name": "color", "kind": "message", "type": "rv.data.Color" },
+      "2": { "name": "position", "kind": "scalar", "type": "double" },
+      "3": { "name": "blend_point", "kind": "scalar", "type": "double" }
+    },
+    "rv.data.URL.ExternalRelativePath.MacOSExternalVolume": {
+      "1": { "name": "volume_name", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.URL.ExternalRelativePath.Win32ExternalVolume": {
+      "1": { "name": "drive_letter", "kind": "scalar", "type": "string" },
+      "2": { "name": "volume_name", "kind": "scalar", "type": "string" },
+      "3": { "name": "network_share", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Action.Label": {
+      "2": { "name": "text", "kind": "scalar", "type": "string" },
+      "3": { "name": "color", "kind": "message", "type": "rv.data.Color" }
+    },
+    "rv.data.Action.OldType": {
+      "1": { "name": "category", "kind": "enum", "type": "rv.data.Action.OldType.Category" },
+      "2": { "name": "application_type", "kind": "scalar", "type": "int32" }
+    },
+    "rv.data.Action.LayerIdentification": {
+      "1": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "name", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.CollectionElementType": {
+      "1": { "name": "parameter_uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "parameter_name", "kind": "scalar", "type": "string" },
+      "3": { "name": "parent_collection", "kind": "message", "type": "rv.data.CollectionElementType" }
+    },
+    "rv.data.Action.PlaylistItemType": {
+      "1": { "name": "playlist_uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "playlist_name", "kind": "scalar", "type": "string" },
+      "3": { "name": "item_uuid", "kind": "message", "type": "rv.data.UUID" },
+      "4": { "name": "item_name", "kind": "scalar", "type": "string" },
+      "5": { "name": "select_playlist", "kind": "scalar", "type": "bool" },
+      "6": { "name": "always_retrigger", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Action.BlendModeType": {
+      "1": { "name": "blend_mode", "kind": "enum", "type": "rv.data.Layer.BlendMode" },
+      "2": { "name": "blend", "kind": "message", "type": "rv.data.Layer.Blending" }
+    },
+    "rv.data.Action.TransitionType": {
+      "1": { "name": "transition_name", "kind": "scalar", "type": "string" },
+      "2": { "name": "transition", "kind": "message", "type": "rv.data.Transition" }
+    },
+    "rv.data.Action.MediaType": {
+      "1": { "name": "transition_duration", "kind": "scalar", "type": "double" },
+      "2": { "name": "selected_effect_preset_uuid", "kind": "message", "type": "rv.data.UUID" },
+      "3": { "name": "transition", "kind": "message", "type": "rv.data.Transition" },
+      "4": { "name": "effects", "kind": "message", "type": "rv.data.Effect", "repeated": true },
+      "5": { "name": "element", "kind": "message", "type": "rv.data.Media" },
+      "6": { "name": "image", "kind": "message", "type": "rv.data.Action.MediaType.Image" },
+      "7": { "name": "video", "kind": "message", "type": "rv.data.Action.MediaType.Video" },
+      "8": { "name": "audio", "kind": "message", "type": "rv.data.Action.MediaType.Audio" },
+      "9": { "name": "live_video", "kind": "message", "type": "rv.data.Action.MediaType.LiveVideo" },
+      "10": { "name": "layer_type", "kind": "enum", "type": "rv.data.Action.LayerType" },
+      "11": { "name": "always_retrigger", "kind": "scalar", "type": "bool" },
+      "12": {
+        "name": "markers",
+        "kind": "message",
+        "type": "rv.data.Action.MediaType.PlaybackMarker",
+        "repeated": true
+      }
+    },
+    "rv.data.Action.DoubleType": { "1": { "name": "value", "kind": "scalar", "type": "double" } },
+    "rv.data.Action.EffectsType": {
+      "1": { "name": "effects", "kind": "message", "type": "rv.data.Effect", "repeated": true }
+    },
+    "rv.data.Action.SlideType": {
+      "2": { "name": "presentation", "kind": "message", "type": "rv.data.PresentationSlide" },
+      "3": { "name": "prop", "kind": "message", "type": "rv.data.PropSlide" }
+    },
+    "rv.data.Action.BackgroundType": {
+      "1": { "name": "element", "kind": "message", "type": "rv.data.Background" }
+    },
+    "rv.data.Action.TimerType": {
+      "2": { "name": "action_type", "kind": "enum", "type": "rv.data.Action.TimerType.TimerAction" },
+      "4": { "name": "timer_identification", "kind": "message", "type": "rv.data.CollectionElementType" },
+      "10": { "name": "timer_configuration", "kind": "message", "type": "rv.data.Timer.Configuration" },
+      "11": { "name": "increment_amount", "kind": "scalar", "type": "double" }
+    },
+    "rv.data.Action.ClearType": {
+      "2": { "name": "target_layer", "kind": "enum", "type": "rv.data.Action.ClearType.ClearTargetLayer" },
+      "4": { "name": "content_destination", "kind": "enum", "type": "rv.data.Action.ContentDestination" }
+    },
+    "rv.data.Action.StageLayoutType": {
+      "4": {
+        "name": "stage_screen_assignments",
+        "kind": "message",
+        "type": "rv.data.Stage.ScreenAssignment",
+        "repeated": true
+      },
+      "5": { "name": "slide_target", "kind": "enum", "type": "rv.data.Action.StageLayoutType.SlideTarget" }
+    },
+    "rv.data.Action.PropType": {
+      "3": { "name": "identification", "kind": "message", "type": "rv.data.CollectionElementType" },
+      "4": { "name": "trigger", "kind": "message", "type": "rv.data.Action.PropType.PropTrigger" },
+      "5": { "name": "clear", "kind": "message", "type": "rv.data.Action.PropType.PropClear" }
+    },
+    "rv.data.Action.MaskType": {
+      "3": { "name": "identification", "kind": "message", "type": "rv.data.CollectionElementType" }
+    },
+    "rv.data.Action.MessageType": {
+      "1": { "name": "message_identificaton", "kind": "message", "type": "rv.data.CollectionElementType" },
+      "3": { "name": "content", "kind": "message", "type": "rv.data.Message.TokenValue", "repeated": true }
+    },
+    "rv.data.Action.CommunicationType": {
+      "1": { "name": "device_identification", "kind": "message", "type": "rv.data.CollectionElementType" },
+      "2": { "name": "format", "kind": "scalar", "type": "string" },
+      "3": { "name": "description", "kind": "scalar", "type": "string" },
+      "4": {
+        "name": "commands",
+        "kind": "message",
+        "type": "rv.data.Action.CommunicationType.Command",
+        "repeated": true
+      },
+      "5": {
+        "name": "midi_command",
+        "kind": "message",
+        "type": "rv.data.Action.CommunicationType.MIDICommand"
+      },
+      "6": {
+        "name": "global_cache_command",
+        "kind": "message",
+        "type": "rv.data.Action.CommunicationType.GlobalCacheCommand"
+      },
+      "7": {
+        "name": "gvg100_command",
+        "kind": "message",
+        "type": "rv.data.Action.CommunicationType.GVG100Command"
+      },
+      "8": {
+        "name": "sony_BVS_command",
+        "kind": "message",
+        "type": "rv.data.Action.CommunicationType.SonyBVSCommand"
+      }
+    },
+    "rv.data.Action.MultiScreenType": {
+      "3": { "name": "identification", "kind": "message", "type": "rv.data.CollectionElementType" }
+    },
+    "rv.data.Action.DocumentType": {
+      "1": { "name": "identification", "kind": "message", "type": "rv.data.CollectionElementType" },
+      "2": { "name": "selected_arrangement", "kind": "message", "type": "rv.data.UUID" },
+      "3": { "name": "content_destination", "kind": "enum", "type": "rv.data.Action.ContentDestination" }
+    },
+    "rv.data.Action.ExternalPresentationType": {
+      "1": { "name": "url", "kind": "message", "type": "rv.data.URL" }
+    },
+    "rv.data.Action.AudienceLookType": {
+      "1": { "name": "identification", "kind": "message", "type": "rv.data.CollectionElementType" }
+    },
+    "rv.data.Action.AudioInputType": {
+      "1": { "name": "index", "kind": "scalar", "type": "int32" },
+      "2": { "name": "override_mode", "kind": "scalar", "type": "bool" },
+      "3": { "name": "behavior_mode", "kind": "message", "type": "rv.data.AudioInput.BehaviorMode" },
+      "4": { "name": "override_volume", "kind": "scalar", "type": "bool" },
+      "5": { "name": "volume", "kind": "scalar", "type": "double" }
+    },
+    "rv.data.Action.SlideDestinationType": {
+      "1": { "name": "slide_target", "kind": "enum", "type": "rv.data.Action.StageLayoutType.SlideTarget" }
+    },
+    "rv.data.Action.MacroType": {
+      "1": { "name": "identification", "kind": "message", "type": "rv.data.CollectionElementType" }
+    },
+    "rv.data.Action.ClearGroupType": {
+      "1": { "name": "identification", "kind": "message", "type": "rv.data.CollectionElementType" }
+    },
+    "rv.data.Action.TransportControlType": {
+      "1": { "name": "play", "kind": "message", "type": "rv.data.Action.TransportControlType.Play" },
+      "2": { "name": "pause", "kind": "message", "type": "rv.data.Action.TransportControlType.Pause" },
+      "3": {
+        "name": "jumpToTime",
+        "kind": "message",
+        "type": "rv.data.Action.TransportControlType.JumpToTime"
+      }
+    },
+    "rv.data.Action.CaptureType": {
+      "1": { "name": "start", "kind": "message", "type": "rv.data.Action.CaptureType.CaptureStart" },
+      "2": { "name": "stop", "kind": "message", "type": "rv.data.Action.CaptureType.CaptureStop" }
+    },
+    "rv.data.URLs": { "1": { "name": "urls", "kind": "message", "type": "rv.data.URL", "repeated": true } },
+    "rv.data.Effect.EffectVariable": {
+      "1": { "name": "name", "kind": "scalar", "type": "string" },
+      "2": { "name": "description", "kind": "scalar", "type": "string" },
+      "3": { "name": "int", "kind": "message", "type": "rv.data.Effect.EffectVariable.EffectInt" },
+      "4": { "name": "float", "kind": "message", "type": "rv.data.Effect.EffectVariable.EffectFloat" },
+      "5": { "name": "color", "kind": "message", "type": "rv.data.Effect.EffectVariable.EffectColor" },
+      "6": {
+        "name": "direction",
+        "kind": "message",
+        "type": "rv.data.Effect.EffectVariable.EffectDirection"
+      },
+      "7": { "name": "double", "kind": "message", "type": "rv.data.Effect.EffectVariable.EffectDouble" }
+    },
+    "rv.data.PlaylistItem": {
+      "1": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "name", "kind": "scalar", "type": "string" },
+      "3": { "name": "header", "kind": "message", "type": "rv.data.PlaylistItem.Header" },
+      "4": { "name": "presentation", "kind": "message", "type": "rv.data.PlaylistItem.Presentation" },
+      "5": { "name": "cue", "kind": "message", "type": "rv.data.Cue" },
+      "6": { "name": "planning_center", "kind": "message", "type": "rv.data.PlaylistItem.PlanningCenter" },
+      "7": { "name": "tags", "kind": "message", "type": "rv.data.UUID", "repeated": true },
+      "8": { "name": "placeholder", "kind": "message", "type": "rv.data.PlaylistItem.Placeholder" },
+      "9": { "name": "is_hidden", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Slide.Element": {
+      "1": { "name": "element", "kind": "message", "type": "rv.data.Graphics.Element" },
+      "2": { "name": "build_in", "kind": "message", "type": "rv.data.Slide.Element.Build" },
+      "3": { "name": "build_out", "kind": "message", "type": "rv.data.Slide.Element.Build" },
+      "4": { "name": "info", "kind": "scalar", "type": "uint32" },
+      "5": { "name": "reveal_type", "kind": "enum", "type": "rv.data.Slide.Element.TextRevealType" },
+      "6": {
+        "name": "data_links",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink",
+        "repeated": true
+      },
+      "7": {
+        "name": "childBuilds",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.ChildBuild",
+        "repeated": true
+      },
+      "8": { "name": "reveal_from_index", "kind": "scalar", "type": "uint32" },
+      "9": { "name": "text_scroller", "kind": "message", "type": "rv.data.Slide.Element.TextScroller" }
+    },
+    "rv.data.AlignmentGuide": {
+      "1": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "orientation", "kind": "enum", "type": "rv.data.AlignmentGuide.GuidelineOrientation" },
+      "3": { "name": "location", "kind": "scalar", "type": "double" }
+    },
+    "rv.data.Graphics.Size": {
+      "1": { "name": "width", "kind": "scalar", "type": "double" },
+      "2": { "name": "height", "kind": "scalar", "type": "double" }
+    },
+    "rv.data.Layer.Blending": {
+      "1": { "name": "standard", "kind": "message", "type": "rv.data.Layer.Blending.Standard" },
+      "2": { "name": "matte", "kind": "message", "type": "rv.data.Layer.Blending.Matte" }
+    },
+    "rv.data.Media": {
+      "1": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "url", "kind": "message", "type": "rv.data.URL" },
+      "3": { "name": "metadata", "kind": "message", "type": "rv.data.Media.Metadata" },
+      "4": { "name": "audio", "kind": "message", "type": "rv.data.Media.AudioTypeProperties" },
+      "5": { "name": "image", "kind": "message", "type": "rv.data.Media.ImageTypeProperties" },
+      "6": { "name": "video", "kind": "message", "type": "rv.data.Media.VideoTypeProperties" },
+      "7": { "name": "live_video", "kind": "message", "type": "rv.data.Media.LiveVideoTypeProperties" },
+      "8": { "name": "web_content", "kind": "message", "type": "rv.data.Media.WebContentTypeProperties" }
+    },
+    "rv.data.Action.MediaType.PlaybackMarker": {
+      "1": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "time", "kind": "scalar", "type": "double" },
+      "3": { "name": "color", "kind": "message", "type": "rv.data.Color" },
+      "4": { "name": "name", "kind": "scalar", "type": "string" },
+      "5": { "name": "actions", "kind": "message", "type": "rv.data.Action", "repeated": true }
+    },
+    "rv.data.Action.MediaType.Image": {},
+    "rv.data.Action.MediaType.Video": {
+      "1": {
+        "name": "playback_behavior",
+        "kind": "enum",
+        "type": "rv.data.Action.MediaType.PlaybackBehavior"
+      },
+      "2": { "name": "end_behavior", "kind": "enum", "type": "rv.data.Action.MediaType.EndBehavior" },
+      "3": { "name": "loop_time", "kind": "scalar", "type": "double" },
+      "4": { "name": "times_to_loop", "kind": "scalar", "type": "uint32" },
+      "5": { "name": "soft_loop", "kind": "scalar", "type": "bool" },
+      "6": { "name": "soft_loop_duration", "kind": "scalar", "type": "double" }
+    },
+    "rv.data.Action.MediaType.Audio": {
+      "1": {
+        "name": "playback_behavior",
+        "kind": "enum",
+        "type": "rv.data.Action.MediaType.PlaybackBehavior"
+      },
+      "2": { "name": "loop_time", "kind": "scalar", "type": "double" },
+      "3": { "name": "times_to_loop", "kind": "scalar", "type": "uint32" },
+      "4": {
+        "name": "audio_type",
+        "kind": "enum",
+        "type": "rv.data.Action.MediaType.Audio.MediaActionAudioType"
+      }
+    },
+    "rv.data.Action.MediaType.LiveVideo": {},
+    "rv.data.PresentationSlide": {
+      "1": { "name": "base_slide", "kind": "message", "type": "rv.data.Slide" },
+      "2": { "name": "notes", "kind": "message", "type": "rv.data.PresentationSlide.Notes" },
+      "3": {
+        "name": "template_guidelines",
+        "kind": "message",
+        "type": "rv.data.AlignmentGuide",
+        "repeated": true
+      },
+      "4": { "name": "chord_chart", "kind": "message", "type": "rv.data.URL" },
+      "5": { "name": "transition", "kind": "message", "type": "rv.data.Transition" }
+    },
+    "rv.data.PropSlide": {
+      "1": { "name": "base_slide", "kind": "message", "type": "rv.data.Slide" },
+      "2": { "name": "transition", "kind": "message", "type": "rv.data.Transition" },
+      "3": { "name": "auto_clear_enabled", "kind": "scalar", "type": "bool" },
+      "4": { "name": "auto_clear_duration", "kind": "scalar", "type": "double" }
+    },
+    "rv.data.Timer.Configuration": {
+      "1": {
+        "name": "countdown",
+        "kind": "message",
+        "type": "rv.data.Timer.Configuration.TimerTypeCountdown"
+      },
+      "2": {
+        "name": "countdown_to_time",
+        "kind": "message",
+        "type": "rv.data.Timer.Configuration.TimerTypeCountdownToTime"
+      },
+      "3": {
+        "name": "elapsed_time",
+        "kind": "message",
+        "type": "rv.data.Timer.Configuration.TimerTypeElapsedTime"
+      },
+      "4": { "name": "allows_overrun", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Stage.ScreenAssignment": {
+      "1": { "name": "screen", "kind": "message", "type": "rv.data.CollectionElementType" },
+      "2": { "name": "layout", "kind": "message", "type": "rv.data.CollectionElementType" }
+    },
+    "rv.data.Action.PropType.PropTrigger": {
+      "1": { "name": "auto_clear_enabled", "kind": "scalar", "type": "bool" },
+      "2": { "name": "auto_clear_follows_prop_duration", "kind": "scalar", "type": "bool" },
+      "3": { "name": "auto_clear_duration", "kind": "scalar", "type": "double" }
+    },
+    "rv.data.Action.PropType.PropClear": {},
+    "rv.data.Message.TokenValue": {
+      "1": { "name": "token_id", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "text", "kind": "message", "type": "rv.data.Message.TokenValue.TokenValueText" },
+      "3": { "name": "timer", "kind": "message", "type": "rv.data.Message.TokenValue.TokenValueTimer" },
+      "4": { "name": "clock", "kind": "message", "type": "rv.data.Message.TokenValue.TokenValueClock" },
+      "5": { "name": "token_name", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Action.CommunicationType.Command": {
+      "1": { "name": "name", "kind": "scalar", "type": "string" },
+      "2": { "name": "value", "kind": "scalar", "type": "string" },
+      "3": { "name": "replacement_range", "kind": "message", "type": "rv.data.IntRange" },
+      "4": { "name": "possible_values", "kind": "scalar", "type": "string", "repeated": true }
+    },
+    "rv.data.Action.CommunicationType.MIDICommand": {
+      "1": { "name": "state", "kind": "enum", "type": "rv.data.Action.CommunicationType.MIDICommand.State" },
+      "2": { "name": "channel", "kind": "scalar", "type": "uint32" },
+      "3": { "name": "note", "kind": "scalar", "type": "uint32" },
+      "4": { "name": "intensity", "kind": "scalar", "type": "uint32" }
+    },
+    "rv.data.Action.CommunicationType.GlobalCacheCommand": {
+      "1": {
+        "name": "command_action",
+        "kind": "enum",
+        "type": "rv.data.Action.CommunicationType.GlobalCacheCommand.CommandAction"
+      },
+      "2": { "name": "output", "kind": "scalar", "type": "uint32" },
+      "3": { "name": "interval", "kind": "scalar", "type": "uint32" }
+    },
+    "rv.data.Action.CommunicationType.GVG100Command": {
+      "1": {
+        "name": "command_action",
+        "kind": "enum",
+        "type": "rv.data.Action.CommunicationType.GVG100Command.CommandAction"
+      }
+    },
+    "rv.data.Action.CommunicationType.SonyBVSCommand": {
+      "1": {
+        "name": "command_action",
+        "kind": "enum",
+        "type": "rv.data.Action.CommunicationType.SonyBVSCommand.CommandAction"
+      }
+    },
+    "rv.data.AudioInput.BehaviorMode": {
+      "1": { "name": "on", "kind": "message", "type": "rv.data.AudioInput.BehaviorMode.On" },
+      "2": { "name": "off", "kind": "message", "type": "rv.data.AudioInput.BehaviorMode.Off" },
+      "3": { "name": "auto_on", "kind": "message", "type": "rv.data.AudioInput.BehaviorMode.AutoOn" },
+      "4": { "name": "auto_off", "kind": "message", "type": "rv.data.AudioInput.BehaviorMode.AutoOff" }
+    },
+    "rv.data.Action.TransportControlType.Play": {},
+    "rv.data.Action.TransportControlType.Pause": {},
+    "rv.data.Action.TransportControlType.JumpToTime": {
+      "1": { "name": "time", "kind": "scalar", "type": "double" }
+    },
+    "rv.data.Action.CaptureType.CaptureStart": {
+      "1": { "name": "preset_identification", "kind": "message", "type": "rv.data.CollectionElementType" }
+    },
+    "rv.data.Action.CaptureType.CaptureStop": {
+      "1": { "name": "shows_alert_before_stopping", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Effect.EffectVariable.EffectInt": {
+      "1": { "name": "value", "kind": "scalar", "type": "int32" },
+      "2": { "name": "default_value", "kind": "scalar", "type": "int32" },
+      "3": { "name": "min", "kind": "scalar", "type": "int32" },
+      "4": { "name": "max", "kind": "scalar", "type": "int32" }
+    },
+    "rv.data.Effect.EffectVariable.EffectFloat": {
+      "1": { "name": "value", "kind": "scalar", "type": "float" },
+      "2": { "name": "default_value", "kind": "scalar", "type": "float" },
+      "3": { "name": "min", "kind": "scalar", "type": "float" },
+      "4": { "name": "max", "kind": "scalar", "type": "float" }
+    },
+    "rv.data.Effect.EffectVariable.EffectColor": {
+      "1": { "name": "color", "kind": "message", "type": "rv.data.Color" },
+      "2": { "name": "default_color", "kind": "message", "type": "rv.data.Color" }
+    },
+    "rv.data.Effect.EffectVariable.EffectDirection": {
+      "1": {
+        "name": "direction",
+        "kind": "enum",
+        "type": "rv.data.Effect.EffectVariable.EffectDirection.EffectDirection"
+      },
+      "2": {
+        "name": "default_direction",
+        "kind": "enum",
+        "type": "rv.data.Effect.EffectVariable.EffectDirection.EffectDirection"
+      },
+      "3": { "name": "available_directions", "kind": "scalar", "type": "uint32" }
+    },
+    "rv.data.Effect.EffectVariable.EffectDouble": {
+      "1": { "name": "value", "kind": "scalar", "type": "double" },
+      "2": { "name": "default_value", "kind": "scalar", "type": "double" },
+      "3": { "name": "min", "kind": "scalar", "type": "double" },
+      "4": { "name": "max", "kind": "scalar", "type": "double" }
+    },
+    "rv.data.PlaylistItem.Header": {
+      "1": { "name": "color", "kind": "message", "type": "rv.data.Color" },
+      "2": { "name": "actions", "kind": "message", "type": "rv.data.Action", "repeated": true }
+    },
+    "rv.data.PlaylistItem.Presentation": {
+      "1": { "name": "document_path", "kind": "message", "type": "rv.data.URL" },
+      "2": { "name": "arrangement", "kind": "message", "type": "rv.data.UUID" },
+      "3": { "name": "content_destination", "kind": "enum", "type": "rv.data.Action.ContentDestination" },
+      "4": { "name": "user_music_key", "kind": "message", "type": "rv.data.MusicKeyScale" },
+      "5": { "name": "arrangement_name", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.PlaylistItem.PlanningCenter": {
+      "1": { "name": "item", "kind": "message", "type": "rv.data.PlanningCenterPlan.PlanItem" },
+      "2": { "name": "linked_data", "kind": "message", "type": "rv.data.PlaylistItem" }
+    },
+    "rv.data.PlaylistItem.Placeholder": {
+      "1": { "name": "linked_data", "kind": "message", "type": "rv.data.PlaylistItem" }
+    },
+    "rv.data.Graphics.Element": {
+      "1": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "name", "kind": "scalar", "type": "string" },
+      "3": { "name": "bounds", "kind": "message", "type": "rv.data.Graphics.Rect" },
+      "4": { "name": "rotation", "kind": "scalar", "type": "double" },
+      "5": { "name": "opacity", "kind": "scalar", "type": "double" },
+      "6": { "name": "locked", "kind": "scalar", "type": "bool" },
+      "7": { "name": "aspect_ratio_locked", "kind": "scalar", "type": "bool" },
+      "8": { "name": "path", "kind": "message", "type": "rv.data.Graphics.Path" },
+      "9": { "name": "fill", "kind": "message", "type": "rv.data.Graphics.Fill" },
+      "10": { "name": "stroke", "kind": "message", "type": "rv.data.Graphics.Stroke" },
+      "11": { "name": "shadow", "kind": "message", "type": "rv.data.Graphics.Shadow" },
+      "12": { "name": "feather", "kind": "message", "type": "rv.data.Graphics.Feather" },
+      "13": { "name": "text", "kind": "message", "type": "rv.data.Graphics.Text" },
+      "14": { "name": "text_line_mask", "kind": "message", "type": "rv.data.Graphics.Text.LineFillMask" },
+      "15": { "name": "flipMode", "kind": "enum", "type": "rv.data.Graphics.Element.FlipMode" },
+      "16": { "name": "hidden", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Slide.Element.Build": {
+      "1": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "elementUUID", "kind": "message", "type": "rv.data.UUID" },
+      "3": { "name": "start", "kind": "enum", "type": "rv.data.Slide.Element.Build.Start" },
+      "4": { "name": "delayTime", "kind": "scalar", "type": "double" },
+      "5": { "name": "transition", "kind": "message", "type": "rv.data.Transition" }
+    },
+    "rv.data.Slide.Element.DataLink": {
+      "1": { "name": "ticker", "kind": "message", "type": "rv.data.Slide.Element.DataLink.Ticker" },
+      "2": {
+        "name": "alternate_text",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.AlternateElementText"
+      },
+      "3": { "name": "timer_text", "kind": "message", "type": "rv.data.Slide.Element.DataLink.TimerText" },
+      "4": { "name": "clock_text", "kind": "message", "type": "rv.data.Slide.Element.DataLink.ClockText" },
+      "5": { "name": "chord_chart", "kind": "message", "type": "rv.data.Slide.Element.DataLink.ChordChart" },
+      "6": {
+        "name": "output_screen",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.OutputScreen"
+      },
+      "7": { "name": "pco_live", "kind": "message", "type": "rv.data.Slide.Element.DataLink.PCOLive" },
+      "8": {
+        "name": "alternate_fill",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.AlternateElementFill"
+      },
+      "9": {
+        "name": "visibility_link",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.VisibilityLink"
+      },
+      "10": { "name": "slide_text", "kind": "message", "type": "rv.data.Slide.Element.DataLink.SlideText" },
+      "11": {
+        "name": "stage_message",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.StageMessage"
+      },
+      "12": {
+        "name": "video_countdown",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.VideoCountdown"
+      },
+      "13": { "name": "slide_image", "kind": "message", "type": "rv.data.Slide.Element.DataLink.SlideImage" },
+      "14": { "name": "ccli_text", "kind": "message", "type": "rv.data.Slide.Element.DataLink.CCLIText" },
+      "15": { "name": "group_name", "kind": "message", "type": "rv.data.Slide.Element.DataLink.GroupName" },
+      "16": { "name": "group_color", "kind": "message", "type": "rv.data.Slide.Element.DataLink.GroupColor" },
+      "17": {
+        "name": "presentation_notes",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.PresentationNotes"
+      },
+      "18": {
+        "name": "playlist_item",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.PlaylistItem"
+      },
+      "19": {
+        "name": "auto_advance_time_remaining",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.AutoAdvanceTimeRemaining"
+      },
+      "20": {
+        "name": "capture_status_text",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.CaptureStatusText"
+      },
+      "21": {
+        "name": "capture_status_color",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.CaptureStatusColor"
+      },
+      "22": { "name": "slide_count", "kind": "message", "type": "rv.data.Slide.Element.DataLink.SlideCount" },
+      "23": {
+        "name": "audio_countdown",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.AudioCountdown"
+      },
+      "24": {
+        "name": "presentation",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.Presentation"
+      },
+      "25": {
+        "name": "slide_Label_Text",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.SlideLabelText"
+      },
+      "26": {
+        "name": "slide_Label_Color",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.SlideLabelColor"
+      },
+      "27": { "name": "rss_feed", "kind": "message", "type": "rv.data.Slide.Element.DataLink.RSSFeed" },
+      "28": { "name": "file_feed", "kind": "message", "type": "rv.data.Slide.Element.DataLink.FileFeed" },
+      "29": {
+        "name": "chord_pro_chart",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.ChordProChart"
+      },
+      "30": {
+        "name": "playback_marker_text",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.PlaybackMarkerText"
+      },
+      "32": {
+        "name": "playback_marker_color",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.PlaybackMarkerIdentifier"
+      },
+      "33": {
+        "name": "timecode_text",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.TimecodeText"
+      },
+      "34": {
+        "name": "timecode_status",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.TimecodeStatus"
+      },
+      "35": { "name": "message_text", "kind": "message", "type": "rv.data.Message" },
+      "36": {
+        "name": "key_value_text",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.KeyValueText"
+      },
+      "37": {
+        "name": "key_value_fill",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.KeyValueFill"
+      },
+      "38": { "name": "zone", "kind": "message", "type": "rv.data.Slide.Element.DataLink.Zone" }
+    },
+    "rv.data.Slide.Element.ChildBuild": {
+      "1": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "start", "kind": "enum", "type": "rv.data.Slide.Element.Build.Start" },
+      "3": { "name": "delayTime", "kind": "scalar", "type": "double" },
+      "4": { "name": "index", "kind": "scalar", "type": "uint32" }
+    },
+    "rv.data.Slide.Element.TextScroller": {
+      "1": { "name": "should_scroll", "kind": "scalar", "type": "bool" },
+      "2": { "name": "scroll_rate", "kind": "scalar", "type": "double" },
+      "3": { "name": "should_repeat", "kind": "scalar", "type": "bool" },
+      "4": { "name": "repeat_distance", "kind": "scalar", "type": "double" },
+      "5": {
+        "name": "scrolling_direction",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.TextScroller.Direction"
+      },
+      "6": { "name": "starts_off_screen", "kind": "scalar", "type": "bool" },
+      "7": { "name": "fade_left", "kind": "scalar", "type": "double" },
+      "8": { "name": "fade_right", "kind": "scalar", "type": "double" }
+    },
+    "rv.data.Layer.Blending.Standard": {
+      "1": { "name": "mode", "kind": "enum", "type": "rv.data.Layer.BlendMode" },
+      "2": { "name": "opacity", "kind": "scalar", "type": "double" }
+    },
+    "rv.data.Layer.Blending.Matte": {
+      "1": { "name": "alpha", "kind": "message", "type": "rv.data.Layer.Blending.Matte.Alpha" },
+      "2": { "name": "luma", "kind": "message", "type": "rv.data.Layer.Blending.Matte.Luma" },
+      "4": { "name": "white", "kind": "message", "type": "rv.data.Layer.Blending.Matte.White" }
+    },
+    "rv.data.Media.Metadata": {
+      "1": { "name": "manufacture_name", "kind": "scalar", "type": "string" },
+      "2": { "name": "manufacture_url", "kind": "message", "type": "rv.data.URL" },
+      "3": { "name": "information", "kind": "scalar", "type": "string" },
+      "4": { "name": "artist", "kind": "scalar", "type": "string" },
+      "5": { "name": "format", "kind": "scalar", "type": "string" },
+      "6": { "name": "color_format", "kind": "enum", "type": "rv.data.Media.Metadata.ColorFormat" }
+    },
+    "rv.data.Media.AudioTypeProperties": {
+      "1": { "name": "audio", "kind": "message", "type": "rv.data.Media.AudioProperties" },
+      "2": { "name": "transport", "kind": "message", "type": "rv.data.Media.TransportProperties" },
+      "3": { "name": "file", "kind": "message", "type": "rv.data.FileProperties" }
+    },
+    "rv.data.Media.ImageTypeProperties": {
+      "1": { "name": "drawing", "kind": "message", "type": "rv.data.Media.DrawingProperties" },
+      "2": { "name": "file", "kind": "message", "type": "rv.data.FileProperties" }
+    },
+    "rv.data.Media.VideoTypeProperties": {
+      "1": { "name": "drawing", "kind": "message", "type": "rv.data.Media.DrawingProperties" },
+      "2": { "name": "audio", "kind": "message", "type": "rv.data.Media.AudioProperties" },
+      "3": { "name": "transport", "kind": "message", "type": "rv.data.Media.TransportProperties" },
+      "4": { "name": "video", "kind": "message", "type": "rv.data.Media.VideoProperties" },
+      "5": { "name": "file", "kind": "message", "type": "rv.data.FileProperties" }
+    },
+    "rv.data.Media.LiveVideoTypeProperties": {
+      "1": { "name": "drawing", "kind": "message", "type": "rv.data.Media.DrawingProperties" },
+      "2": { "name": "audio", "kind": "message", "type": "rv.data.Media.AudioProperties" },
+      "3": { "name": "live_video", "kind": "message", "type": "rv.data.Media.LiveVideoProperties" }
+    },
+    "rv.data.Media.WebContentTypeProperties": {
+      "1": { "name": "drawing", "kind": "message", "type": "rv.data.Media.DrawingProperties" },
+      "2": { "name": "url", "kind": "message", "type": "rv.data.URL" }
+    },
+    "rv.data.PresentationSlide.Notes": {
+      "1": { "name": "rtf_data", "kind": "scalar", "type": "bytes" },
+      "2": { "name": "attributes", "kind": "message", "type": "rv.data.Graphics.Text.Attributes" }
+    },
+    "rv.data.Timer.Configuration.TimerTypeCountdown": {
+      "1": { "name": "duration", "kind": "scalar", "type": "double" }
+    },
+    "rv.data.Timer.Configuration.TimerTypeCountdownToTime": {
+      "1": { "name": "time_of_day", "kind": "scalar", "type": "double" },
+      "2": {
+        "name": "period",
+        "kind": "enum",
+        "type": "rv.data.Timer.Configuration.TimerTypeCountdownToTime.TimePeriod"
+      }
+    },
+    "rv.data.Timer.Configuration.TimerTypeElapsedTime": {
+      "1": { "name": "start_time", "kind": "scalar", "type": "double" },
+      "2": { "name": "end_time", "kind": "scalar", "type": "double" },
+      "3": { "name": "has_end_time", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Message.TokenValue.TokenValueText": {
+      "1": { "name": "value", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Message.TokenValue.TokenValueTimer": {
+      "1": { "name": "configuration", "kind": "message", "type": "rv.data.Timer.Configuration" },
+      "2": { "name": "format", "kind": "message", "type": "rv.data.Timer.Format" }
+    },
+    "rv.data.Message.TokenValue.TokenValueClock": {
+      "1": { "name": "format", "kind": "message", "type": "rv.data.Clock.Format" }
+    },
+    "rv.data.AudioInput.BehaviorMode.On": {},
+    "rv.data.AudioInput.BehaviorMode.Off": {},
+    "rv.data.AudioInput.BehaviorMode.AutoOn": {
+      "1": { "name": "linked_video_inputs", "kind": "scalar", "type": "uint32", "repeated": true }
+    },
+    "rv.data.AudioInput.BehaviorMode.AutoOff": {},
+    "rv.data.PlanningCenterPlan.PlanItem": {
+      "1": {
+        "name": "item_type",
+        "kind": "enum",
+        "type": "rv.data.PlanningCenterPlan.PlanItem.PlanItemType"
+      },
+      "2": { "name": "pco_id_num", "kind": "scalar", "type": "uint32" },
+      "3": { "name": "service_id_num", "kind": "scalar", "type": "uint32" },
+      "4": { "name": "parent_id_num", "kind": "scalar", "type": "uint32" },
+      "5": { "name": "name", "kind": "scalar", "type": "string" },
+      "6": {
+        "name": "attachments",
+        "kind": "message",
+        "type": "rv.data.PlanningCenterPlan.PlanItem.Attachment",
+        "repeated": true
+      },
+      "7": { "name": "update_date", "kind": "message", "type": "rv.data.Timestamp" },
+      "8": {
+        "name": "linked_song",
+        "kind": "message",
+        "type": "rv.data.PlanningCenterPlan.PlanItem.SongItem"
+      },
+      "9": { "name": "pco_id_str", "kind": "scalar", "type": "string" },
+      "10": { "name": "service_id_str", "kind": "scalar", "type": "string" },
+      "11": { "name": "parent_id_str", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Graphics.Rect": {
+      "1": { "name": "origin", "kind": "message", "type": "rv.data.Graphics.Point" },
+      "2": { "name": "size", "kind": "message", "type": "rv.data.Graphics.Size" }
+    },
+    "rv.data.Graphics.Path": {
+      "1": { "name": "closed", "kind": "scalar", "type": "bool" },
+      "2": {
+        "name": "points",
+        "kind": "message",
+        "type": "rv.data.Graphics.Path.BezierPoint",
+        "repeated": true
+      },
+      "3": { "name": "shape", "kind": "message", "type": "rv.data.Graphics.Path.Shape" }
+    },
+    "rv.data.Graphics.Fill": {
+      "1": { "name": "color", "kind": "message", "type": "rv.data.Color" },
+      "2": { "name": "gradient", "kind": "message", "type": "rv.data.Graphics.Gradient" },
+      "3": { "name": "media", "kind": "message", "type": "rv.data.Media" },
+      "4": { "name": "enable", "kind": "scalar", "type": "bool" },
+      "5": { "name": "backgroundEffect", "kind": "message", "type": "rv.data.Graphics.BackgroundEffect" }
+    },
+    "rv.data.Graphics.Stroke": {
+      "1": { "name": "style", "kind": "enum", "type": "rv.data.Graphics.Stroke.Style" },
+      "2": { "name": "width", "kind": "scalar", "type": "double" },
+      "3": { "name": "color", "kind": "message", "type": "rv.data.Color" },
+      "4": { "name": "pattern", "kind": "scalar", "type": "double", "repeated": true },
+      "5": { "name": "enable", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Graphics.Shadow": {
+      "1": { "name": "style", "kind": "enum", "type": "rv.data.Graphics.Shadow.Style" },
+      "2": { "name": "angle", "kind": "scalar", "type": "double" },
+      "3": { "name": "offset", "kind": "scalar", "type": "double" },
+      "4": { "name": "radius", "kind": "scalar", "type": "double" },
+      "5": { "name": "color", "kind": "message", "type": "rv.data.Color" },
+      "6": { "name": "opacity", "kind": "scalar", "type": "double" },
+      "7": { "name": "enable", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Graphics.Feather": {
+      "1": { "name": "style", "kind": "enum", "type": "rv.data.Graphics.Feather.Style" },
+      "2": { "name": "radius", "kind": "scalar", "type": "double" },
+      "3": { "name": "enable", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Graphics.Text": {
+      "3": { "name": "attributes", "kind": "message", "type": "rv.data.Graphics.Text.Attributes" },
+      "4": { "name": "shadow", "kind": "message", "type": "rv.data.Graphics.Shadow" },
+      "5": { "name": "rtf_data", "kind": "scalar", "type": "bytes" },
+      "6": {
+        "name": "vertical_alignment",
+        "kind": "enum",
+        "type": "rv.data.Graphics.Text.VerticalAlignment"
+      },
+      "7": { "name": "scale_behavior", "kind": "enum", "type": "rv.data.Graphics.Text.ScaleBehavior" },
+      "8": { "name": "margins", "kind": "message", "type": "rv.data.Graphics.EdgeInsets" },
+      "9": { "name": "is_superscript_standardized", "kind": "scalar", "type": "bool" },
+      "10": { "name": "transform", "kind": "enum", "type": "rv.data.Graphics.Text.Transform" },
+      "11": { "name": "transformDelimiter", "kind": "scalar", "type": "string" },
+      "12": { "name": "chord_pro", "kind": "message", "type": "rv.data.Graphics.Text.ChordPro" },
+      "13": {
+        "name": "alternate_texts",
+        "kind": "message",
+        "type": "rv.data.Graphics.Text.AlternateText",
+        "repeated": true
+      }
+    },
+    "rv.data.Graphics.Text.LineFillMask": {
+      "1": { "name": "enabled", "kind": "scalar", "type": "bool" },
+      "2": { "name": "height_offset", "kind": "scalar", "type": "double" },
+      "3": { "name": "vertical_offset", "kind": "scalar", "type": "double" },
+      "4": {
+        "name": "mask_style",
+        "kind": "enum",
+        "type": "rv.data.Graphics.Text.LineFillMask.LineMaskStyle"
+      },
+      "5": { "name": "width_offset", "kind": "scalar", "type": "double" },
+      "6": { "name": "horizontal_offset", "kind": "scalar", "type": "double" }
+    },
+    "rv.data.Slide.Element.DataLink.Ticker": {
+      "1": {
+        "name": "text_type",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.Ticker.TextType"
+      },
+      "2": { "name": "rss_type", "kind": "message", "type": "rv.data.Slide.Element.DataLink.Ticker.RSSType" },
+      "3": {
+        "name": "file_type",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.Ticker.FileType"
+      },
+      "4": { "name": "play_rate", "kind": "scalar", "type": "double" },
+      "5": { "name": "should_loop", "kind": "scalar", "type": "bool" },
+      "6": { "name": "loop_delay", "kind": "scalar", "type": "double" },
+      "7": { "name": "text_delimiter", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Slide.Element.DataLink.AlternateElementText": {
+      "1": { "name": "other_element_uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "other_element_name", "kind": "scalar", "type": "string" },
+      "3": { "name": "text_transform_options", "kind": "scalar", "type": "uint32" },
+      "4": {
+        "name": "text_transform",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.AlternateElementText.TextTransformOption"
+      }
+    },
+    "rv.data.Slide.Element.DataLink.TimerText": {
+      "1": { "name": "timer_uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "timer_name", "kind": "scalar", "type": "string" },
+      "3": { "name": "timer_format", "kind": "message", "type": "rv.data.Timer.Format" },
+      "4": { "name": "timer_format_string", "kind": "scalar", "type": "string" },
+      "5": {
+        "name": "color_triggers",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.ColorTrigger",
+        "repeated": true
+      }
+    },
+    "rv.data.Slide.Element.DataLink.ClockText": {
+      "1": { "name": "clock_format_string", "kind": "scalar", "type": "string" },
+      "5": { "name": "format", "kind": "message", "type": "rv.data.Clock.Format" }
+    },
+    "rv.data.Slide.Element.DataLink.ChordChart": {},
+    "rv.data.Slide.Element.DataLink.OutputScreen": {
+      "1": { "name": "screen_id", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "screen_name", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Slide.Element.DataLink.PCOLive": {
+      "2": { "name": "theme", "kind": "enum", "type": "rv.data.Slide.Element.DataLink.PCOLive.Theme" },
+      "3": {
+        "name": "countdown_type",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.PCOLive.CountdownType"
+      }
+    },
+    "rv.data.Slide.Element.DataLink.AlternateElementFill": {
+      "1": { "name": "other_element_uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "other_element_name", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Slide.Element.DataLink.VisibilityLink": {
+      "1": {
+        "name": "visibility_criterion",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.VisibilityLink.VisibilityCriterion"
+      },
+      "2": {
+        "name": "conditions",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.VisibilityLink.Condition",
+        "repeated": true
+      }
+    },
+    "rv.data.Slide.Element.DataLink.SlideText": {
+      "1": {
+        "name": "source_slide",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.SlideSourceType"
+      },
+      "2": {
+        "name": "source_option",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.SlideText.TextSourceOption"
+      },
+      "3": { "name": "preserve_notes_format", "kind": "scalar", "type": "bool" },
+      "4": { "name": "name_to_match", "kind": "scalar", "type": "string" },
+      "5": {
+        "name": "element_text_transform",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.AlternateElementText.TextTransformOption"
+      }
+    },
+    "rv.data.Slide.Element.DataLink.StageMessage": {
+      "1": { "name": "should_flash", "kind": "scalar", "type": "bool" },
+      "2": { "name": "flash_color", "kind": "message", "type": "rv.data.Color" }
+    },
+    "rv.data.Slide.Element.DataLink.VideoCountdown": {
+      "1": { "name": "timer_format", "kind": "message", "type": "rv.data.Timer.Format" },
+      "2": { "name": "timer_format_string", "kind": "scalar", "type": "string" },
+      "3": {
+        "name": "color_triggers",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.ColorTrigger",
+        "repeated": true
+      },
+      "4": { "name": "ignore_looping_videos", "kind": "scalar", "type": "bool" },
+      "5": {
+        "name": "video_countdown_source",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.VideoCountdown.VideoCountdownSource"
+      }
+    },
+    "rv.data.Slide.Element.DataLink.SlideImage": {
+      "1": {
+        "name": "source_slide",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.SlideSourceType"
+      }
+    },
+    "rv.data.Slide.Element.DataLink.CCLIText": {},
+    "rv.data.Slide.Element.DataLink.GroupName": {
+      "1": { "name": "groupSource", "kind": "enum", "type": "rv.data.Slide.Element.DataLink.GroupSourceType" }
+    },
+    "rv.data.Slide.Element.DataLink.GroupColor": {
+      "1": { "name": "groupSource", "kind": "enum", "type": "rv.data.Slide.Element.DataLink.GroupSourceType" }
+    },
+    "rv.data.Slide.Element.DataLink.PresentationNotes": {},
+    "rv.data.Slide.Element.DataLink.PlaylistItem": {
+      "1": {
+        "name": "playlistItemSource",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.PlaylistItem.PlaylistItemSourceType"
+      },
+      "2": { "name": "showArrangement", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Slide.Element.DataLink.AutoAdvanceTimeRemaining": {
+      "1": {
+        "name": "auto_advance_source",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.AutoAdvanceTimeRemaining.AutoAdvanceSource"
+      },
+      "2": { "name": "timer_format", "kind": "message", "type": "rv.data.Timer.Format" }
+    },
+    "rv.data.Slide.Element.DataLink.CaptureStatusText": {
+      "1": {
+        "name": "status_text",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.CaptureStatusText.StatusText"
+      },
+      "2": {
+        "name": "elapsed_time",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.CaptureStatusText.ElapsedTime"
+      }
+    },
+    "rv.data.Slide.Element.DataLink.CaptureStatusColor": {},
+    "rv.data.Slide.Element.DataLink.SlideCount": {
+      "1": {
+        "name": "slideCountSourceType",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.SlideCount.SlideCountSourceType"
+      }
+    },
+    "rv.data.Slide.Element.DataLink.AudioCountdown": {
+      "1": { "name": "timer_format", "kind": "message", "type": "rv.data.Timer.Format" },
+      "2": { "name": "timer_format_string", "kind": "scalar", "type": "string" },
+      "3": {
+        "name": "color_triggers",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.ColorTrigger",
+        "repeated": true
+      },
+      "4": { "name": "ignore_looping_audio", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Slide.Element.DataLink.Presentation": {
+      "1": {
+        "name": "presentation_source",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.Presentation.PresentationSource"
+      }
+    },
+    "rv.data.Slide.Element.DataLink.SlideLabelText": {
+      "1": {
+        "name": "slide_label_source",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.SlideLabelSource"
+      }
+    },
+    "rv.data.Slide.Element.DataLink.SlideLabelColor": {
+      "1": {
+        "name": "slide_label_source",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.SlideLabelSource"
+      }
+    },
+    "rv.data.Slide.Element.DataLink.RSSFeed": {
+      "1": { "name": "url", "kind": "message", "type": "rv.data.URL" },
+      "2": {
+        "name": "content",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.RSSFeed.ContentType"
+      },
+      "3": { "name": "text_delimiter", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Slide.Element.DataLink.FileFeed": {
+      "1": { "name": "url", "kind": "message", "type": "rv.data.URL" }
+    },
+    "rv.data.Slide.Element.DataLink.ChordProChart": {},
+    "rv.data.Slide.Element.DataLink.PlaybackMarkerText": {
+      "1": {
+        "name": "identifier",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.PlaybackMarkerIdentifier"
+      },
+      "2": {
+        "name": "name",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.PlaybackMarkerText.Name"
+      },
+      "3": {
+        "name": "time",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.PlaybackMarkerText.Time"
+      },
+      "4": { "name": "should_use_marker_color", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Slide.Element.DataLink.PlaybackMarkerIdentifier": {
+      "1": {
+        "name": "destination",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.PlaybackMarkerIdentifier.Destination"
+      },
+      "2": {
+        "name": "type",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.PlaybackMarkerIdentifier.Type"
+      },
+      "3": { "name": "name", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Slide.Element.DataLink.TimecodeText": {},
+    "rv.data.Slide.Element.DataLink.TimecodeStatus": {},
+    "rv.data.Message": {
+      "1": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "title", "kind": "scalar", "type": "string" },
+      "3": { "name": "time_to_remove", "kind": "scalar", "type": "double" },
+      "4": { "name": "visible_on_network", "kind": "scalar", "type": "bool" },
+      "6": { "name": "template", "kind": "message", "type": "rv.data.TemplateIdentification" },
+      "9": { "name": "clear_type", "kind": "enum", "type": "rv.data.Message.ClearType" },
+      "10": { "name": "message_text", "kind": "scalar", "type": "string" },
+      "11": { "name": "tokens", "kind": "message", "type": "rv.data.Message.Token", "repeated": true },
+      "12": {
+        "name": "token_values",
+        "kind": "message",
+        "type": "rv.data.Message.TokenValue",
+        "repeated": true
+      }
+    },
+    "rv.data.Slide.Element.DataLink.KeyValueText": {
+      "1": { "name": "key", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Slide.Element.DataLink.KeyValueFill": {
+      "1": { "name": "key", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Slide.Element.DataLink.Zone": {
+      "1": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "name", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Layer.Blending.Matte.Alpha": { "1": { "name": "inverted", "kind": "scalar", "type": "bool" } },
+    "rv.data.Layer.Blending.Matte.Luma": { "1": { "name": "inverted", "kind": "scalar", "type": "bool" } },
+    "rv.data.Layer.Blending.Matte.White": {},
+    "rv.data.Media.AudioProperties": {
+      "1": { "name": "volume", "kind": "scalar", "type": "double" },
+      "2": {
+        "name": "audio_channels",
+        "kind": "message",
+        "type": "rv.data.Media.Audio.Channel",
+        "repeated": true
+      },
+      "3": { "name": "is_custom_mapping", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Media.TransportProperties": {
+      "1": { "name": "play_rate", "kind": "scalar", "type": "double" },
+      "2": { "name": "in_point", "kind": "scalar", "type": "double" },
+      "3": { "name": "out_point", "kind": "scalar", "type": "double" },
+      "7": { "name": "fade_in_duration", "kind": "scalar", "type": "double" },
+      "8": { "name": "fade_out_duration", "kind": "scalar", "type": "double" },
+      "9": { "name": "should_fade_in", "kind": "scalar", "type": "bool" },
+      "10": { "name": "should_fade_out", "kind": "scalar", "type": "bool" },
+      "11": { "name": "end_point", "kind": "scalar", "type": "double" },
+      "12": {
+        "name": "playback_behavior",
+        "kind": "enum",
+        "type": "rv.data.Media.TransportProperties.PlaybackBehavior"
+      },
+      "13": { "name": "loop_time", "kind": "scalar", "type": "double" },
+      "14": { "name": "times_to_loop", "kind": "scalar", "type": "uint32" },
+      "15": {
+        "name": "retrigger",
+        "kind": "enum",
+        "type": "rv.data.Media.TransportProperties.RetriggerSetting"
+      }
+    },
+    "rv.data.FileProperties": {
+      "1": { "name": "local_url", "kind": "message", "type": "rv.data.URL" },
+      "2": {
+        "name": "remote_properties",
+        "kind": "message",
+        "type": "rv.data.FileProperties.RemoteProperties"
+      }
+    },
+    "rv.data.Media.DrawingProperties": {
+      "1": { "name": "scale_behavior", "kind": "enum", "type": "rv.data.Media.ScaleBehavior" },
+      "2": { "name": "scale_alignment", "kind": "enum", "type": "rv.data.Media.ScaleAlignment" },
+      "3": { "name": "flipped_horizontally", "kind": "scalar", "type": "bool" },
+      "4": { "name": "flipped_vertically", "kind": "scalar", "type": "bool" },
+      "5": { "name": "natural_size", "kind": "message", "type": "rv.data.Graphics.Size" },
+      "6": { "name": "custom_image_rotation", "kind": "scalar", "type": "double" },
+      "7": { "name": "custom_image_bounds", "kind": "message", "type": "rv.data.Graphics.Rect" },
+      "8": { "name": "custom_image_aspect_locked", "kind": "scalar", "type": "bool" },
+      "9": { "name": "alpha_inverted", "kind": "scalar", "type": "bool" },
+      "10": {
+        "name": "native_rotation",
+        "kind": "enum",
+        "type": "rv.data.Media.DrawingProperties.NativeRotationType"
+      },
+      "11": { "name": "selected_effect_preset_uuid", "kind": "message", "type": "rv.data.UUID" },
+      "12": { "name": "effects", "kind": "message", "type": "rv.data.Effect", "repeated": true },
+      "13": { "name": "crop_enable", "kind": "scalar", "type": "bool" },
+      "14": { "name": "crop_insets", "kind": "message", "type": "rv.data.Graphics.EdgeInsets" },
+      "15": { "name": "alpha_type", "kind": "enum", "type": "rv.data.AlphaType" },
+      "16": { "name": "is_blurred", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Media.VideoProperties": {
+      "1": { "name": "frame_rate", "kind": "scalar", "type": "double" },
+      "2": { "name": "field_type", "kind": "enum", "type": "rv.data.Media.VideoProperties.FieldType" },
+      "3": { "name": "thumbnail_position", "kind": "scalar", "type": "double" },
+      "4": { "name": "end_behavior", "kind": "enum", "type": "rv.data.Media.VideoProperties.EndBehavior" },
+      "5": { "name": "soft_loop", "kind": "scalar", "type": "bool" },
+      "6": { "name": "soft_loop_duration", "kind": "scalar", "type": "double" },
+      "7": {
+        "name": "hardware_decoding",
+        "kind": "enum",
+        "type": "rv.data.Media.VideoProperties.HardwareDecodingType"
+      }
+    },
+    "rv.data.Media.LiveVideoProperties": {
+      "1": { "name": "video_device", "kind": "message", "type": "rv.data.Media.VideoDevice" },
+      "2": { "name": "audio_device", "kind": "message", "type": "rv.data.Media.AudioDevice" },
+      "3": { "name": "live_video_index", "kind": "scalar", "type": "int32" }
+    },
+    "rv.data.Graphics.Text.Attributes": {
+      "1": { "name": "font", "kind": "message", "type": "rv.data.Font" },
+      "2": {
+        "name": "capitalization",
+        "kind": "enum",
+        "type": "rv.data.Graphics.Text.Attributes.Capitalization"
+      },
+      "3": { "name": "text_solid_fill", "kind": "message", "type": "rv.data.Color" },
+      "4": {
+        "name": "underline_style",
+        "kind": "message",
+        "type": "rv.data.Graphics.Text.Attributes.Underline"
+      },
+      "5": { "name": "underline_color", "kind": "message", "type": "rv.data.Color" },
+      "6": {
+        "name": "paragraph_style",
+        "kind": "message",
+        "type": "rv.data.Graphics.Text.Attributes.Paragraph"
+      },
+      "7": { "name": "kerning", "kind": "scalar", "type": "double" },
+      "8": { "name": "superscript", "kind": "scalar", "type": "int32" },
+      "9": {
+        "name": "strikethrough_style",
+        "kind": "message",
+        "type": "rv.data.Graphics.Text.Attributes.Underline"
+      },
+      "10": { "name": "strikethrough_color", "kind": "message", "type": "rv.data.Color" },
+      "11": { "name": "stroke_width", "kind": "scalar", "type": "double" },
+      "12": { "name": "stroke_color", "kind": "message", "type": "rv.data.Color" },
+      "13": {
+        "name": "custom_attributes",
+        "kind": "message",
+        "type": "rv.data.Graphics.Text.Attributes.CustomAttribute",
+        "repeated": true
+      },
+      "14": { "name": "text_gradient_fill", "kind": "message", "type": "rv.data.Graphics.Text.GradientFill" },
+      "15": { "name": "background_color", "kind": "message", "type": "rv.data.Color" },
+      "16": { "name": "cut_out_fill", "kind": "message", "type": "rv.data.Graphics.Text.CutOutFill" },
+      "17": { "name": "media_fill", "kind": "message", "type": "rv.data.Graphics.Text.MediaFill" },
+      "18": { "name": "background_effect", "kind": "message", "type": "rv.data.Graphics.BackgroundEffect" },
+      "19": {
+        "name": "ligature_style",
+        "kind": "enum",
+        "type": "rv.data.Graphics.Text.Attributes.LigatureStyle"
+      }
+    },
+    "rv.data.Timer.Format": {
+      "1": { "name": "hour", "kind": "enum", "type": "rv.data.Timer.Format.Style" },
+      "2": { "name": "minute", "kind": "enum", "type": "rv.data.Timer.Format.Style" },
+      "3": { "name": "second", "kind": "enum", "type": "rv.data.Timer.Format.Style" },
+      "4": { "name": "millisecond", "kind": "enum", "type": "rv.data.Timer.Format.Style" },
+      "5": { "name": "is_wall_clock_time", "kind": "scalar", "type": "bool" },
+      "6": { "name": "is_24_hour_time", "kind": "scalar", "type": "bool" },
+      "7": { "name": "show_milliseconds_under_minute_only", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Clock.Format": {
+      "2": { "name": "date_type", "kind": "enum", "type": "rv.data.Clock.Format.DateFormatterStyle" },
+      "3": { "name": "time_format", "kind": "enum", "type": "rv.data.Clock.Format.DateFormatterStyle" },
+      "4": { "name": "military_time_enabled", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.PlanningCenterPlan.PlanItem.Attachment": {
+      "1": { "name": "name", "kind": "scalar", "type": "string" },
+      "2": { "name": "url", "kind": "message", "type": "rv.data.URL" },
+      "3": { "name": "created_date", "kind": "message", "type": "rv.data.Timestamp" },
+      "4": { "name": "linked_path", "kind": "message", "type": "rv.data.URL" },
+      "5": { "name": "pco_id_num", "kind": "scalar", "type": "uint32" },
+      "6": { "name": "needs_update", "kind": "scalar", "type": "bool" },
+      "7": { "name": "update_date", "kind": "message", "type": "rv.data.Timestamp" },
+      "8": { "name": "pco_id_str", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.PlanningCenterPlan.PlanItem.SongItem": {
+      "1": { "name": "pco_id_num", "kind": "scalar", "type": "uint32" },
+      "2": { "name": "arrangement_id_num", "kind": "scalar", "type": "uint32" },
+      "3": { "name": "ccli", "kind": "message", "type": "rv.data.Presentation.CCLI" },
+      "4": {
+        "name": "sequence",
+        "kind": "message",
+        "type": "rv.data.PlanningCenterPlan.PlanItem.SongItem.Sequence"
+      },
+      "5": { "name": "pco_id_str", "kind": "scalar", "type": "string" },
+      "6": { "name": "arrangement_id_str", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Graphics.Point": {
+      "1": { "name": "x", "kind": "scalar", "type": "double" },
+      "2": { "name": "y", "kind": "scalar", "type": "double" }
+    },
+    "rv.data.Graphics.Path.BezierPoint": {
+      "1": { "name": "point", "kind": "message", "type": "rv.data.Graphics.Point" },
+      "2": { "name": "q0", "kind": "message", "type": "rv.data.Graphics.Point" },
+      "3": { "name": "q1", "kind": "message", "type": "rv.data.Graphics.Point" },
+      "4": { "name": "curved", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Graphics.Path.Shape": {
+      "1": { "name": "type", "kind": "enum", "type": "rv.data.Graphics.Path.Shape.Type" },
+      "2": {
+        "name": "rounded_rectangle",
+        "kind": "message",
+        "type": "rv.data.Graphics.Path.Shape.RoundedRectangle"
+      },
+      "3": { "name": "polygon", "kind": "message", "type": "rv.data.Graphics.Path.Shape.Polygon" },
+      "4": { "name": "star", "kind": "message", "type": "rv.data.Graphics.Path.Shape.Star" },
+      "5": { "name": "arrow", "kind": "message", "type": "rv.data.Graphics.Path.Shape.Arrow" }
+    },
+    "rv.data.Graphics.BackgroundEffect": {
+      "2": {
+        "name": "backgroundBlur",
+        "kind": "message",
+        "type": "rv.data.Graphics.BackgroundEffect.BackgroundEffectBlur"
+      },
+      "3": {
+        "name": "backgroundInvert",
+        "kind": "message",
+        "type": "rv.data.Graphics.BackgroundEffect.BackgroundEffectInvert"
+      }
+    },
+    "rv.data.Graphics.EdgeInsets": {
+      "1": { "name": "left", "kind": "scalar", "type": "double" },
+      "2": { "name": "right", "kind": "scalar", "type": "double" },
+      "3": { "name": "top", "kind": "scalar", "type": "double" },
+      "4": { "name": "bottom", "kind": "scalar", "type": "double" }
+    },
+    "rv.data.Graphics.Text.ChordPro": {
+      "1": { "name": "enabled", "kind": "scalar", "type": "bool" },
+      "2": { "name": "notation", "kind": "enum", "type": "rv.data.Graphics.Text.ChordPro.Notation" },
+      "3": { "name": "color", "kind": "message", "type": "rv.data.Color" }
+    },
+    "rv.data.Graphics.Text.AlternateText": {
+      "1": { "name": "key", "kind": "scalar", "type": "string" },
+      "2": { "name": "plain_text", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Slide.Element.DataLink.Ticker.TextType": {
+      "1": { "name": "text", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Slide.Element.DataLink.Ticker.RSSType": {
+      "1": { "name": "url", "kind": "message", "type": "rv.data.URL" },
+      "2": {
+        "name": "content",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.Ticker.RSSType.ContentType"
+      }
+    },
+    "rv.data.Slide.Element.DataLink.Ticker.FileType": {
+      "1": { "name": "url", "kind": "message", "type": "rv.data.URL" }
+    },
+    "rv.data.Slide.Element.DataLink.ColorTrigger": {
+      "1": { "name": "time", "kind": "scalar", "type": "double" },
+      "2": { "name": "color", "kind": "message", "type": "rv.data.Color" }
+    },
+    "rv.data.Slide.Element.DataLink.VisibilityLink.Condition": {
+      "1": {
+        "name": "element_visibility",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.VisibilityLink.Condition.ElementVisibility"
+      },
+      "2": {
+        "name": "timer_visibility",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.VisibilityLink.Condition.TimerVisibility"
+      },
+      "3": {
+        "name": "video_countdown_visibility",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.VisibilityLink.Condition.VideoCountdownVisibility"
+      },
+      "4": {
+        "name": "capture_session_visibility",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.VisibilityLink.Condition.CaptureSessionVisibility"
+      },
+      "5": {
+        "name": "video_input_visibility",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.VisibilityLink.Condition.VideoInputVisibility"
+      },
+      "6": {
+        "name": "audio_countdown_visibility",
+        "kind": "message",
+        "type": "rv.data.Slide.Element.DataLink.VisibilityLink.Condition.AudioCountdownVisibility"
+      }
+    },
+    "rv.data.Slide.Element.DataLink.CaptureStatusText.StatusText": {},
+    "rv.data.Slide.Element.DataLink.CaptureStatusText.ElapsedTime": {
+      "1": { "name": "timer_format", "kind": "message", "type": "rv.data.Timer.Format" }
+    },
+    "rv.data.Slide.Element.DataLink.PlaybackMarkerText.Name": {},
+    "rv.data.Slide.Element.DataLink.PlaybackMarkerText.Time": {
+      "1": { "name": "format", "kind": "message", "type": "rv.data.Timer.Format" }
+    },
+    "rv.data.TemplateIdentification": {
+      "1": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "name", "kind": "scalar", "type": "string" },
+      "3": { "name": "slide_uuid", "kind": "message", "type": "rv.data.UUID" },
+      "4": { "name": "slide_name", "kind": "scalar", "type": "string" },
+      "5": { "name": "slide_index", "kind": "scalar", "type": "uint32" }
+    },
+    "rv.data.Message.Token": {
+      "1": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "text", "kind": "message", "type": "rv.data.Message.Token.TokenTypeText" },
+      "3": { "name": "timer", "kind": "message", "type": "rv.data.Message.Token.TokenTypeTimer" },
+      "4": { "name": "clock", "kind": "message", "type": "rv.data.Message.Token.TokenTypeClock" }
+    },
+    "rv.data.Media.Audio.Channel": {
+      "1": { "name": "index", "kind": "scalar", "type": "uint32" },
+      "2": { "name": "muted", "kind": "scalar", "type": "bool" },
+      "3": { "name": "volume", "kind": "scalar", "type": "double" },
+      "4": { "name": "compress_limit", "kind": "scalar", "type": "bool" },
+      "5": {
+        "name": "outputs",
+        "kind": "message",
+        "type": "rv.data.Media.Audio.Channel.Output",
+        "repeated": true
+      }
+    },
+    "rv.data.FileProperties.RemoteProperties": {
+      "1": {
+        "name": "procontent",
+        "kind": "message",
+        "type": "rv.data.FileProperties.RemoteProperties.ProContent"
+      }
+    },
+    "rv.data.Media.VideoDevice": {
+      "1": { "name": "type", "kind": "enum", "type": "rv.data.Media.VideoDevice.Type" },
+      "2": { "name": "name", "kind": "scalar", "type": "string" },
+      "3": { "name": "unique_id", "kind": "scalar", "type": "string" },
+      "4": { "name": "model_id", "kind": "scalar", "type": "string" },
+      "5": { "name": "format_index", "kind": "scalar", "type": "uint32" },
+      "6": { "name": "audio_routing", "kind": "message", "type": "rv.data.DigitalAudio.Device.Routing" },
+      "7": { "name": "aircast", "kind": "message", "type": "rv.data.Media.VideoDevice.AirCast" }
+    },
+    "rv.data.Media.AudioDevice": {
+      "1": { "name": "name", "kind": "scalar", "type": "string" },
+      "2": { "name": "unique_id", "kind": "scalar", "type": "string" },
+      "3": { "name": "model_id", "kind": "scalar", "type": "string" },
+      "4": { "name": "channel_count", "kind": "scalar", "type": "uint32" }
+    },
+    "rv.data.Font": {
+      "1": { "name": "name", "kind": "scalar", "type": "string" },
+      "2": { "name": "size", "kind": "scalar", "type": "double" },
+      "4": { "name": "italic", "kind": "scalar", "type": "bool" },
+      "8": { "name": "bold", "kind": "scalar", "type": "bool" },
+      "9": { "name": "family", "kind": "scalar", "type": "string" },
+      "10": { "name": "face", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Graphics.Text.Attributes.Underline": {
+      "1": { "name": "style", "kind": "enum", "type": "rv.data.Graphics.Text.Attributes.Underline.Style" },
+      "2": {
+        "name": "pattern",
+        "kind": "enum",
+        "type": "rv.data.Graphics.Text.Attributes.Underline.Pattern"
+      },
+      "3": { "name": "by_word", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Graphics.Text.Attributes.Paragraph": {
+      "1": { "name": "alignment", "kind": "enum", "type": "rv.data.Graphics.Text.Attributes.Alignment" },
+      "2": { "name": "first_line_head_indent", "kind": "scalar", "type": "double" },
+      "3": { "name": "head_indent", "kind": "scalar", "type": "double" },
+      "4": { "name": "tail_indent", "kind": "scalar", "type": "double" },
+      "5": { "name": "line_height_multiple", "kind": "scalar", "type": "double" },
+      "6": { "name": "maximum_line_height", "kind": "scalar", "type": "double" },
+      "7": { "name": "minimum_line_height", "kind": "scalar", "type": "double" },
+      "8": { "name": "line_spacing", "kind": "scalar", "type": "double" },
+      "9": { "name": "paragraph_spacing", "kind": "scalar", "type": "double" },
+      "10": { "name": "paragraph_spacing_before", "kind": "scalar", "type": "double" },
+      "11": {
+        "name": "tab_stops",
+        "kind": "message",
+        "type": "rv.data.Graphics.Text.Attributes.Paragraph.TabStop",
+        "repeated": true
+      },
+      "12": { "name": "default_tab_interval", "kind": "scalar", "type": "double" },
+      "13": {
+        "name": "text_list",
+        "kind": "message",
+        "type": "rv.data.Graphics.Text.Attributes.Paragraph.TextList"
+      },
+      "14": {
+        "name": "text_lists",
+        "kind": "message",
+        "type": "rv.data.Graphics.Text.Attributes.Paragraph.TextList",
+        "repeated": true
+      }
+    },
+    "rv.data.Graphics.Text.Attributes.CustomAttribute": {
+      "1": { "name": "range", "kind": "message", "type": "rv.data.IntRange" },
+      "2": {
+        "name": "capitalization",
+        "kind": "enum",
+        "type": "rv.data.Graphics.Text.Attributes.Capitalization"
+      },
+      "3": { "name": "original_font_size", "kind": "scalar", "type": "double" },
+      "4": { "name": "font_scale_factor", "kind": "scalar", "type": "double" },
+      "5": { "name": "text_gradient_fill", "kind": "message", "type": "rv.data.Graphics.Text.GradientFill" },
+      "6": { "name": "should_preserve_foreground_color", "kind": "scalar", "type": "bool" },
+      "7": { "name": "chord", "kind": "scalar", "type": "string" },
+      "8": { "name": "cut_out_fill", "kind": "message", "type": "rv.data.Graphics.Text.CutOutFill" },
+      "9": { "name": "media_fill", "kind": "message", "type": "rv.data.Graphics.Text.MediaFill" },
+      "10": { "name": "background_effect", "kind": "message", "type": "rv.data.Graphics.BackgroundEffect" },
+      "11": {
+        "name": "character_size_mode",
+        "kind": "enum",
+        "type": "rv.data.Graphics.Text.Attributes.CharacterSizeMode"
+      },
+      "12": { "name": "original_font", "kind": "message", "type": "rv.data.Font" }
+    },
+    "rv.data.Graphics.Text.GradientFill": {
+      "1": { "name": "gradient", "kind": "message", "type": "rv.data.Graphics.Gradient" },
+      "2": { "name": "stretch_to_document_bounds", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Graphics.Text.CutOutFill": {},
+    "rv.data.Graphics.Text.MediaFill": {
+      "1": { "name": "media", "kind": "message", "type": "rv.data.Media" }
+    },
+    "rv.data.PlanningCenterPlan.PlanItem.SongItem.Sequence": {
+      "1": { "name": "pco_id_num", "kind": "scalar", "type": "uint32" },
+      "2": { "name": "name", "kind": "scalar", "type": "string" },
+      "3": { "name": "group_names", "kind": "scalar", "type": "string", "repeated": true },
+      "4": { "name": "pco_id_str", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.Graphics.Path.Shape.RoundedRectangle": {
+      "1": { "name": "roundness", "kind": "scalar", "type": "double" }
+    },
+    "rv.data.Graphics.Path.Shape.Polygon": {
+      "1": { "name": "number_sides", "kind": "scalar", "type": "uint32" }
+    },
+    "rv.data.Graphics.Path.Shape.Star": {
+      "1": { "name": "inner_radius", "kind": "scalar", "type": "double" },
+      "2": { "name": "number_points", "kind": "scalar", "type": "uint32" }
+    },
+    "rv.data.Graphics.Path.Shape.Arrow": {
+      "1": { "name": "corner", "kind": "message", "type": "rv.data.Graphics.Point" }
+    },
+    "rv.data.Graphics.BackgroundEffect.BackgroundEffectBlur": {
+      "1": { "name": "saturation", "kind": "scalar", "type": "double" },
+      "2": { "name": "blur_amount", "kind": "scalar", "type": "double" }
+    },
+    "rv.data.Graphics.BackgroundEffect.BackgroundEffectInvert": {},
+    "rv.data.Slide.Element.DataLink.VisibilityLink.Condition.ElementVisibility": {
+      "1": { "name": "other_element_uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "other_element_name", "kind": "scalar", "type": "string" },
+      "3": {
+        "name": "visibility_criterion",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.VisibilityLink.Condition.ElementVisibility.ElementVisibilityCriterion"
+      }
+    },
+    "rv.data.Slide.Element.DataLink.VisibilityLink.Condition.TimerVisibility": {
+      "1": { "name": "timer_uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "timer_name", "kind": "scalar", "type": "string" },
+      "3": {
+        "name": "visibility_criterion",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.VisibilityLink.Condition.TimerVisibility.TimerVisibilityCriterion"
+      }
+    },
+    "rv.data.Slide.Element.DataLink.VisibilityLink.Condition.VideoCountdownVisibility": {
+      "1": {
+        "name": "visibility_criterion",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.VisibilityLink.Condition.VideoCountdownVisibility.VideoCountdownVisibilityCriterion"
+      }
+    },
+    "rv.data.Slide.Element.DataLink.VisibilityLink.Condition.CaptureSessionVisibility": {
+      "1": {
+        "name": "visibility_criterion",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.VisibilityLink.Condition.CaptureSessionVisibility.CaptureSessionVisibilityCriterion"
+      }
+    },
+    "rv.data.Slide.Element.DataLink.VisibilityLink.Condition.VideoInputVisibility": {
+      "1": { "name": "video_input_index", "kind": "scalar", "type": "int32" },
+      "2": {
+        "name": "visibility_criterion",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.VisibilityLink.Condition.VideoInputVisibility.VideoInputVisibilityCriterion"
+      }
+    },
+    "rv.data.Slide.Element.DataLink.VisibilityLink.Condition.AudioCountdownVisibility": {
+      "1": {
+        "name": "visibility_criterion",
+        "kind": "enum",
+        "type": "rv.data.Slide.Element.DataLink.VisibilityLink.Condition.AudioCountdownVisibility.AudioCountdownVisibilityCriterion"
+      }
+    },
+    "rv.data.Message.Token.TokenTypeText": { "1": { "name": "name", "kind": "scalar", "type": "string" } },
+    "rv.data.Message.Token.TokenTypeTimer": {
+      "1": { "name": "name", "kind": "scalar", "type": "string" },
+      "2": { "name": "timer_uuid", "kind": "message", "type": "rv.data.UUID" }
+    },
+    "rv.data.Message.Token.TokenTypeClock": {},
+    "rv.data.Media.Audio.Channel.Output": {
+      "2": { "name": "channel_index", "kind": "scalar", "type": "int32" }
+    },
+    "rv.data.FileProperties.RemoteProperties.ProContent": {
+      "1": { "name": "download_identifier", "kind": "scalar", "type": "string" }
+    },
+    "rv.data.DigitalAudio.Device.Routing": {
+      "1": {
+        "name": "channels",
+        "kind": "message",
+        "type": "rv.data.DigitalAudio.Device.Channel",
+        "repeated": true
+      },
+      "2": { "name": "map", "kind": "message", "type": "rv.data.DigitalAudio.Device.Map", "repeated": true },
+      "3": { "name": "is_custom_map", "kind": "scalar", "type": "bool" },
+      "4": { "name": "master_channel", "kind": "message", "type": "rv.data.DigitalAudio.Device.Channel" }
+    },
+    "rv.data.Media.VideoDevice.AirCast": {
+      "1": { "name": "service_name", "kind": "scalar", "type": "string" },
+      "2": { "name": "password", "kind": "scalar", "type": "string" },
+      "3": { "name": "password_enabled", "kind": "scalar", "type": "bool" }
+    },
+    "rv.data.Graphics.Text.Attributes.Paragraph.TabStop": {
+      "1": { "name": "location", "kind": "scalar", "type": "double" },
+      "2": { "name": "alignment", "kind": "enum", "type": "rv.data.Graphics.Text.Attributes.Alignment" }
+    },
+    "rv.data.Graphics.Text.Attributes.Paragraph.TextList": {
+      "1": { "name": "is_enabled", "kind": "scalar", "type": "bool" },
+      "2": {
+        "name": "number_type",
+        "kind": "enum",
+        "type": "rv.data.Graphics.Text.Attributes.Paragraph.TextList.NumberType"
+      },
+      "3": { "name": "prefix", "kind": "scalar", "type": "string" },
+      "4": { "name": "postfix", "kind": "scalar", "type": "string" },
+      "5": { "name": "starting_number", "kind": "scalar", "type": "int32" }
+    },
+    "rv.data.DigitalAudio.Device.Channel": {
+      "1": { "name": "mute_enable", "kind": "scalar", "type": "bool" },
+      "2": { "name": "solo_enable", "kind": "scalar", "type": "bool" },
+      "3": { "name": "tone_enable", "kind": "scalar", "type": "bool" },
+      "4": { "name": "audio_delay", "kind": "scalar", "type": "double" },
+      "5": { "name": "level", "kind": "scalar", "type": "double" }
+    },
+    "rv.data.DigitalAudio.Device.Map": {
+      "1": { "name": "channel_index", "kind": "scalar", "type": "uint32" },
+      "2": { "name": "mapped_indices", "kind": "scalar", "type": "uint32", "repeated": true }
+    }
+  }
+}

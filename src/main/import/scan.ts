@@ -1,6 +1,6 @@
 import type { Dirent } from 'node:fs';
 import { lstat, readdir, stat } from 'node:fs/promises';
-import { basename, extname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import type { ImportFormat } from '../../shared/import';
 
 export type MediaKind = 'image' | 'video' | 'audio';
@@ -33,6 +33,8 @@ export function formatOf(path: string): ImportFormat {
   if (MEDIA[ext]) return 'media';
   if (PP6.has(ext)) return 'pp6';
   if (PP7.has(ext)) return 'pp7';
+  // ProPresenter 7 keeps themes and playlists in files without an extension.
+  if (ext === '' && (basename(path) === 'Theme' || basename(dirname(path)) === 'Playlists')) return 'pp7';
   return 'unknown';
 }
 
