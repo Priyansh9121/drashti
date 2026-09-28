@@ -142,4 +142,4 @@ DRASHTI_PWSH=/path/to/pwsh node tools/audit/test/run-tests.mjs   # pick a PowerS
 pwsh -NoProfile -File tools/audit/test/check-windows-script.ps1  # parse, C# 5 and PS 5.1 compatibility
 ```
 
-The fixture tests check that planted fonts, media and secrets are found or redacted, and that the fixture tree is byte-for-byte unchanged afterwards. CI runs them on `macos-latest` and on `windows-latest` with both Windows PowerShell 5.1 and PowerShell 7.
+The fixture tests check that planted fonts, media and secrets are found or redacted, and that the fixture tree is byte-for-byte unchanged afterwards. On macOS they run the script with a fake home folder, and point `DRASHTI_AUDIT_SYSTEM_ROOT` at an empty folder so the machine-wide places (`/Library/Application Support`, `/Users/Shared`) are empty too. That variable is only for the tests. One case plays a Mac with no ProPresenter data at all and checks the report is still valid JSON. CI runs them on `macos-latest` and on `windows-latest` with both Windows PowerShell 5.1 and PowerShell 7.

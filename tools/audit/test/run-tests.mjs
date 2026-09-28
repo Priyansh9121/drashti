@@ -89,7 +89,11 @@ if (process.platform === 'darwin') {
   const script = join(auditDir, 'audit-mac.sh');
   const out = join(work, 'mac-out');
   mkdirSync(out);
-  const env = { ...process.env, HOME: fxInfo.home };
+  // Machine-wide folders (/Library/Application Support, /Users/Shared) point at an empty folder,
+  // so the fixtures are all the script sees, even on a Mac that has ProPresenter installed.
+  const sysRoot = join(work, 'empty-system-root');
+  mkdirSync(sysRoot);
+  const env = { ...process.env, HOME: fxInfo.home, DRASHTI_AUDIT_SYSTEM_ROOT: sysRoot };
   const r = spawnSync('/bin/bash', [script, '--out', out, '--no-spotlight', '--skip-system'], { env, encoding: 'utf8' });
   check('mac: exits 0', r.status === 0, r.stderr.slice(-2000));
   const dir = onlyDir(out);
@@ -147,6 +151,30 @@ if (process.platform === 'darwin') {
     const jc = JSON.parse(readFileSync(join(onlyDir(out2), 'audit.json'), 'utf8'));
     check(`${tag}: status done`, jc.collect.status === 'done', jc.collect.status);
     if (noMedia) check(`${tag}: media left out`, !copied.some((p) => /\.(mp4|mov|jpg|png)$/i.test(p)), copied.filter((p) => /\.(mp4|mov|jpg|png)$/i.test(p)).join(', '));
+  }
+
+  // A Mac with no ProPresenter data at all (a CI runner, a fresh machine): the report must still be valid.
+  const emptyHome = join(work, 'empty-home');
+  const outEmpty = join(work, 'mac-out-empty');
+  mkdirSync(emptyHome);
+  mkdirSync(outEmpty);
+  const re = spawnSync('/bin/bash', [script, '--out', outEmpty, '--no-spotlight', '--skip-system'], { env: { ...env, HOME: emptyHome }, encoding: 'utf8' });
+  check('mac, no ProPresenter data: exits 0', re.status === 0, re.stderr.slice(-2000));
+  if (re.status === 0) {
+    const edir = onlyDir(outEmpty);
+    let je = null;
+    let parseError = '';
+    try {
+      je = JSON.parse(readFileSync(join(edir, 'audit.json'), 'utf8'));
+    } catch (e) {
+      parseError = String(e);
+    }
+    check('mac, no ProPresenter data: audit.json is valid JSON', je !== null, parseError);
+    if (je) {
+      check('mac, no ProPresenter data: no locations', je.propresenter.locations.length === 0, JSON.stringify(je.propresenter.locations));
+      check('mac, no ProPresenter data: no media or documents', je.propresenter.mediaReferences.length === 0 && je.propresenter.documentReferences.length === 0);
+    }
+    check('mac, no ProPresenter data: markdown report written', readFileSync(join(edir, 'audit-report.md'), 'utf8').includes('## Summary'));
   }
 } else {
   console.log('SKIP  mac: not running on macOS');
