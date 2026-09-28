@@ -48,6 +48,26 @@ function line(
   };
 }
 
+/**
+ * One text box with two styled runs: a large Gujarati line and a smaller,
+ * italic transliteration line (the mix PLAN.md 4.3 describes).
+ */
+function kirtanBox(lines: Record<Lang, string>): TextElement {
+  return {
+    id: 'lines',
+    kind: 'text',
+    frame: { x: 100, y: 240, width: 1720, height: 600 },
+    text: `${lines.gu}\n${lines.translit}`,
+    lang: 'gu',
+    style: style({ fontSize: 92 }),
+    runs: [
+      { text: lines.gu, lang: 'gu', size: 92, weight: 600 },
+      { text: '\n' },
+      { text: lines.translit, lang: 'translit', size: 60, weight: 400, italic: true },
+    ],
+  };
+}
+
 const KIRTAN_LINES: { group: string; lines: Record<Lang, string> }[] = [
   {
     group: 'Verse 1',
@@ -125,15 +145,7 @@ export function seedPlaceholders(db: Db): boolean {
       groups: KIRTAN_LINES.map((k) => ({
         name: k.group,
         color: k.group === 'Chorus' ? '#e5484d' : '#3e63dd',
-        slides: [
-          {
-            background: '#000000',
-            elements: [
-              line('gu', k.lines.gu, 'gu', 330, { fontSize: 92 }),
-              line('translit', k.lines.translit, 'translit', 570, { fontSize: 64, fontWeight: 400 }),
-            ],
-          },
-        ],
+        slides: [{ background: '#000000', elements: [kirtanBox(k.lines)] }],
       })),
       kirtan: {
         category: 'kirtan',

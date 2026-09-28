@@ -31,14 +31,41 @@ export interface TextStyle {
   shadow: boolean;
 }
 
+/**
+ * A stretch of text with its own style inside a text element (PLAN.md 4.3):
+ * ProPresenter text boxes often mix, say, a large Gujarati line and a smaller
+ * transliteration line. Anything left unset falls back to the element's style.
+ */
+export interface TextRun {
+  /** May contain "\n" for line and paragraph breaks. */
+  text: string;
+  /** Font family as the source named it; the bundled fonts stay as fallbacks. */
+  font?: string | null;
+  /** Size in slide pixels. */
+  size?: number;
+  color?: string;
+  weight?: number;
+  italic?: boolean;
+  /** Language of this run; when a source gives none it is detected from the script. */
+  lang?: Lang | null;
+  /**
+   * Typed in a legacy (non-Unicode) Gujarati or Hindi font: the characters are
+   * Latin codes that only look right in that font. Shown in that font; not searchable.
+   */
+  legacy?: boolean;
+}
+
 export interface TextElement {
   id: string;
   kind: 'text';
   frame: Rect;
+  /** The plain text (all runs joined): for search, thumbnails and tests. */
   text: string;
-  /** Language of the text; selects shaping rules and fallback fonts. */
+  /** Main language of the text; selects shaping rules and fallback fonts. */
   lang: Lang | null;
   style: TextStyle;
+  /** Styled runs. When present they are drawn instead of `text`, in the element's style where unset. */
+  runs?: TextRun[];
 }
 
 export interface ShapeElement {

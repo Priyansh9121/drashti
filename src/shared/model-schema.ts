@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { SlideElement, TextStyle } from './model';
+import type { SlideElement, TextRun, TextStyle } from './model';
 
 /*
  * Runtime schemas for the content model. Used to validate anything that
@@ -29,14 +29,26 @@ export const textStyleSchema: z.ZodType<TextStyle> = z.object({
   shadow: z.boolean(),
 });
 
+export const textRunSchema: z.ZodType<TextRun> = z.object({
+  text: z.string().max(10_000),
+  font: z.string().max(200).nullable().optional(),
+  size: num.positive().max(2000).optional(),
+  color: hexColorSchema.optional(),
+  weight: z.number().int().min(100).max(900).optional(),
+  italic: z.boolean().optional(),
+  lang: langSchema.nullable().optional(),
+  legacy: z.boolean().optional(),
+});
+
 export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion('kind', [
   z.object({
     id: idSchema,
     kind: z.literal('text'),
     frame: rectSchema,
-    text: z.string().max(10_000),
+    text: z.string().max(20_000),
     lang: langSchema.nullable(),
     style: textStyleSchema,
+    runs: z.array(textRunSchema).max(2000).optional(),
   }),
   z.object({
     id: idSchema,
