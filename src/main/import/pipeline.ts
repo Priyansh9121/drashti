@@ -152,11 +152,15 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
   /** Write content and its report row in one transaction. */
   const recordWrite = <T>(write: () => { item: NewImportItem; result: T }): T => {
     const at = position++;
+    let rowsDone = 0;
     const out = ctx.db.transaction(() => {
+      const started = performance.now();
       const written = write();
       imports.addItem(ctx.runId, at, written.item);
+      rowsDone = time('write', started);
       return written;
     })();
+    time('commit', rowsDone);
     addToTotals(totals, out.item);
     return out.result;
   };
@@ -242,7 +246,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     t = performance.now();
     const parsed = parseLyricsText(bytes, file.path);
     dropInvalidElements(parsed);
-    t = time('parse', t);
+    time('parse', t);
     if (slideCount(parsed) === 0) {
       record({
         ...base,
@@ -295,7 +299,6 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         result: { presentationId: id, replaced: false },
       };
     });
-    time('write', t);
     ctx.onWrote?.(wrote);
   };
 

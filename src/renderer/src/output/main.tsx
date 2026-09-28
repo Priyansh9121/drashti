@@ -52,7 +52,7 @@ function usePaintTiming(root: React.RefObject<HTMLDivElement | null>) {
       // A short history, so a test can match every command to the frame that showed it.
       const log = (window.drashtiPaintLog ??= []);
       log.push({ rev, sentAt, paintedAt });
-      if (log.length > 2000) log.splice(0, log.length - 2000);
+      if (log.length > 20_000) log.splice(0, log.length - 20_000);
     });
     return () => {
       cancelAnimationFrame(frame);

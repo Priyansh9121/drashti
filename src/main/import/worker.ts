@@ -63,7 +63,7 @@ async function start(message: StartMessage): Promise<void> {
       },
       isCancelled: () => cancelled.has(message.runId),
     };
-    const timings = { scan: 0, read: 0, lookup: 0, parse: 0, write: 0, media: 0, total: 0 };
+    const timings = { scan: 0, read: 0, lookup: 0, parse: 0, write: 0, commit: 0, media: 0, total: 0 };
     const run =
       message.job === 'relink'
         ? await runRelink({ ...common, folder: message.paths[0] ?? '', mediaIds: message.mediaIds })
