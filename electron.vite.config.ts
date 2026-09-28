@@ -20,7 +20,8 @@ export default defineConfig({
   main: {
     build: {
       rollupOptions: {
-        input: { index: resolve('src/main/index.ts') },
+        // The import worker is its own bundle, started as a utility process (src/main/import/worker.ts).
+        input: { index: resolve('src/main/index.ts'), 'import-worker': resolve('src/main/import/worker.ts') },
         onwarn(warning, warn) {
           // zod's comments confuse Rollup's annotation parser; harmless, so keep the build output readable.
           if (warning.code === 'INVALID_ANNOTATION' && warning.id?.includes('node_modules/zod')) return;

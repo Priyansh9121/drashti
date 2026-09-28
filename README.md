@@ -15,7 +15,12 @@ Phase 0 (foundations) is in place:
 - one **shared renderer** with bundled Noto fonts, used by the operator preview, the thumbnails and every output;
 - a minimal **operator UI** with a single keymap, and an **output watchdog**.
 
-Next (Phase 1): the ProPresenter 6 and 7 importers, built against the audit results and the files in `migration-samples/`.
+Phase 1 has started:
+
+- text boxes hold **styled runs** (font, size, colour, weight and language per run);
+- the **import pipeline** runs in a background worker process: plain-text lyrics and media files so far, with re-import rules, a media folder that stores each file once, and a report kept for every import.
+
+Next: drag-and-drop and the import report in the operator window, then the ProPresenter 6 and 7 importers, built against the audit results and the files in `migration-samples/`.
 
 ## Setup
 
@@ -108,6 +113,16 @@ Then set up a screen, put a slide live, and choose **Diagnostics > Run Watchdog 
 
 The same self-test runs headless in the end-to-end tests (`tests/e2e/watchdog.spec.ts`), because Playwright cannot stay attached to a renderer that crashes.
 
+## Importing
+
+Imports run in a separate worker process (an Electron utility process, `src/main/import/`), one run at a time. The main process only passes messages along, so slides keep going live during a big import. The end-to-end test imports 400 generated presentations while changing slides every 40 ms. It checks that each change still reaches the output within a frame, and that the import really ran in its own process.
+
+- **Formats so far.** Plain-text lyrics (`.txt`): a blank line starts a new slide, and a line like `[Verse 1]` or `[Chorus]` starts a group. A header repeated with no text after it repeats that group, which gives the presentation an arrangement. Each line gets the language of its script. Image, video and audio files go into the media library. Other files are listed in the report, one line per file type, and never dropped silently.
+- **One transaction per presentation.** Each file is parsed into an intermediate model with no database access. The presentation and its report line are then written together, so a failure never leaves half a presentation behind.
+- **Importing again.** A file already imported with the same content is skipped, even from another folder. A changed file is not touched until the operator chooses **replace** (same presentation, new slides; its name and playlists stay) or **keep both** (a second presentation, for example "Song (2)").
+- **Media.** Files are copied into the media folder, stored once per sha256 whatever they are called. Drashti checks free space first and always leaves 2 GB free for the show. Missing media is looked for by its original path, then by the same name next to the imported file or in a bundle or collected folder, then anywhere in the imported folders. Anything still missing is kept as a missing item, ready to relink from a folder the operator picks.
+- **Reports.** Every run, each file's outcome and each issue (with its fix) are stored in the library database.
+
 ## How it fits together
 
 - **Show engine** (`src/main/engine/`). The main process owns the state: the live presentation and slide, the six layers (audio, background, slide, props, messages, masks) and black-out. Commands from the operator are validated (zod), resolved against the library, and applied by a pure reducer. Every change goes out as a patch with a revision number through `EngineTransport` (`src/shared/engine/transport.ts`). Windows keep an `EngineMirror` and ask for a snapshot if they miss a revision. Phase 3's remote Drashti Nodes will be another transport.
@@ -117,7 +132,7 @@ The same self-test runs headless in the end-to-end tests (`tests/e2e/watchdog.sp
 
 ## Where data lives
 
-The library is `drashti.sqlite` in Electron's userData folder: `~/Library/Application Support/Drashti/` on macOS and `%APPDATA%\Drashti\` on Windows. Real ProPresenter data from the mandir machines belongs in `migration-samples/` at the workspace root, outside this repository, and is never committed.
+The library is `drashti.sqlite` in Electron's userData folder: `~/Library/Application Support/Drashti/` on macOS and `%APPDATA%\Drashti\` on Windows. Imported media is in the `Media` folder next to it. Real ProPresenter data from the mandir machines belongs in `migration-samples/` at the workspace root, outside this repository, and is never committed.
 
 ## Folder layout
 
@@ -126,6 +141,7 @@ The library is `drashti.sqlite` in Electron's userData folder: `~/Library/Applic
 | `src/main/engine/`                                        | Show engine: reducer, commands to actions, slide source.                                                                         |
 | `src/main/db/`                                            | SQLite: migrations, presentations and screens repositories, seed.                                                                |
 | `src/main/outputs/`                                       | Displays, output windows, the output manager and the screens service.                                                            |
+| `src/main/import/`                                        | Importers: the pipeline, the worker process, file formats, the media folder and relinking.                                       |
 | `src/main/transport/`, `src/main/ipc/`                    | IPC transport for engine messages; IPC handler helpers.                                                                          |
 | `src/main/windows/`                                       | Operator window, security and web preferences.                                                                                   |
 | `src/main/watchdog.ts`, `selftest.ts`, `menu.ts`          | Watchdog, its self-test, the application menu.                                                                                   |

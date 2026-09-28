@@ -68,6 +68,8 @@ export interface NewSlide {
   label?: string;
   notes?: string;
   background?: string | null;
+  /** Disabled slides are kept but skipped in the show (ProPresenter can disable slides). */
+  enabled?: boolean;
   elements: SlideElement[];
 }
 
@@ -76,7 +78,10 @@ export interface NewPresentation {
   name: string;
   width?: number;
   height?: number;
+  notes?: string;
   groups: { name: string; color?: string | null; slides: NewSlide[] }[];
+  /** Named orders of groups, as indexes into `groups` (repeats allowed). */
+  arrangements?: { name: string; groups: number[] }[];
   /** Optional kirtan metadata and per-slide language lines (slide order across groups). */
   kirtan?: {
     category?: string | null;
@@ -85,6 +90,16 @@ export interface NewPresentation {
     lines: Partial<Record<Lang, string>>[];
   };
   source?: ImportSource | null;
+  /** sha256 of the source file, to recognise a re-import. */
+  sourceHash?: string | null;
+}
+
+/** An earlier import of a file, found by the file's own id or its path. */
+export interface ImportedMatch {
+  id: string;
+  name: string;
+  sourcePath: string | null;
+  sourceHash: string | null;
 }
 
 export class PresentationRepo {
@@ -226,87 +241,204 @@ export class PresentationRepo {
   /** Insert a whole presentation in one transaction; returns its id. */
   insert(input: NewPresentation): string {
     const id = randomUUID();
+    this.db.transaction(() => {
+      const s = input.source ?? null;
+      this.db
+        .prepare(
+          `INSERT INTO presentations (id, library_id, name, width, height, notes, source_kind, source_path, source_ref, source_imported_at, source_hash)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          input.libraryId,
+          input.name,
+          input.width ?? 1920,
+          input.height ?? 1080,
+          input.notes ?? '',
+          s?.kind ?? null,
+          s?.path ?? null,
+          s?.ref ?? null,
+          s?.importedAt ?? null,
+          input.sourceHash ?? null,
+        );
+      this.writeContent(id, input);
+    })();
+    return id;
+  }
+
+  /**
+   * Replace a presentation's content (groups, slides, arrangements, kirtan
+   * lines) and source in one transaction. It keeps its id, library and name,
+   * so playlists and the operator's renaming survive a re-import.
+   */
+  replace(id: string, input: NewPresentation): boolean {
+    let found = false;
+    this.db.transaction(() => {
+      const s = input.source ?? null;
+      const changed = this.db
+        .prepare(
+          `UPDATE presentations SET width = ?, height = ?, notes = ?, source_kind = ?, source_path = ?, source_ref = ?,
+             source_imported_at = ?, source_hash = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+           WHERE id = ?`,
+        )
+        .run(
+          input.width ?? 1920,
+          input.height ?? 1080,
+          input.notes ?? '',
+          s?.kind ?? null,
+          s?.path ?? null,
+          s?.ref ?? null,
+          s?.importedAt ?? null,
+          input.sourceHash ?? null,
+          id,
+        );
+      if (changed.changes === 0) return;
+      found = true;
+      // Groups cascade to slides, elements and arrangement entries.
+      this.db.prepare('DELETE FROM slide_groups WHERE presentation_id = ?').run(id);
+      this.db.prepare('DELETE FROM arrangements WHERE presentation_id = ?').run(id);
+      this.db.prepare('DELETE FROM kirtans WHERE presentation_id = ?').run(id);
+      this.writeContent(id, input);
+    })();
+    return found;
+  }
+
+  private writeContent(id: string, input: NewPresentation): void {
     const db = this.db;
-    const insertPresentation = db.prepare(
-      `INSERT INTO presentations (id, library_id, name, width, height, source_kind, source_path, source_ref, source_imported_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    );
     const insertGroup = db.prepare(
       'INSERT INTO slide_groups (id, presentation_id, name, color, position) VALUES (?, ?, ?, ?, ?)',
     );
     const insertSlide = db.prepare(
-      'INSERT INTO slides (id, group_id, position, label, notes, background) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO slides (id, group_id, position, label, notes, background, enabled) VALUES (?, ?, ?, ?, ?, ?, ?)',
     );
     const insertElement = db.prepare(
       'INSERT INTO elements (id, slide_id, position, kind, x, y, width, height, props) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
-    db.transaction(() => {
-      const s = input.source ?? null;
-      insertPresentation.run(
-        id,
-        input.libraryId,
-        input.name,
-        input.width ?? 1920,
-        input.height ?? 1080,
-        s?.kind ?? null,
-        s?.path ?? null,
-        s?.ref ?? null,
-        s?.importedAt ?? null,
-      );
-      const slideIds: string[] = [];
-      input.groups.forEach((group, gi) => {
-        const groupId = randomUUID();
-        insertGroup.run(groupId, id, group.name, group.color ?? null, gi);
-        group.slides.forEach((slide, si) => {
-          const slideId = randomUUID();
-          slideIds.push(slideId);
-          insertSlide.run(
+    const slideIds: string[] = [];
+    const groupIds: string[] = [];
+    input.groups.forEach((group, gi) => {
+      const groupId = randomUUID();
+      groupIds.push(groupId);
+      insertGroup.run(groupId, id, group.name, group.color ?? null, gi);
+      group.slides.forEach((slide, si) => {
+        const slideId = randomUUID();
+        slideIds.push(slideId);
+        insertSlide.run(
+          slideId,
+          groupId,
+          si,
+          slide.label ?? '',
+          slide.notes ?? '',
+          slide.background ?? null,
+          slide.enabled === false ? 0 : 1,
+        );
+        slide.elements.forEach((element, ei) => {
+          const { id: _id, kind, frame, ...props } = element;
+          insertElement.run(
+            randomUUID(),
             slideId,
-            groupId,
-            si,
-            slide.label ?? '',
-            slide.notes ?? '',
-            slide.background ?? null,
+            ei,
+            kind,
+            frame.x,
+            frame.y,
+            frame.width,
+            frame.height,
+            JSON.stringify(props),
           );
-          slide.elements.forEach((element, ei) => {
-            const { id: _id, kind, frame, ...props } = element;
-            insertElement.run(
-              randomUUID(),
-              slideId,
-              ei,
-              kind,
-              frame.x,
-              frame.y,
-              frame.width,
-              frame.height,
-              JSON.stringify(props),
-            );
-          });
         });
       });
-      if (input.kirtan) {
-        const k = input.kirtan;
-        db.prepare('INSERT INTO kirtans (presentation_id, category, kavi) VALUES (?, ?, ?)').run(
-          id,
-          k.category ?? null,
-          k.kavi ?? null,
-        );
-        const insertTrack = db.prepare('INSERT INTO kirtan_tracks (kirtan_id, lang) VALUES (?, ?)');
-        for (const lang of k.tracks) insertTrack.run(id, lang);
-        const insertLine = db.prepare(
-          'INSERT INTO kirtan_track_lines (kirtan_id, lang, slide_id, text) VALUES (?, ?, ?, ?)',
-        );
-        k.lines.forEach((perLang, i) => {
-          const slideId = slideIds[i];
-          if (!slideId) return;
-          for (const lang of k.tracks) {
-            const text = perLang[lang];
-            if (text !== undefined) insertLine.run(id, lang, slideId, text);
-          }
-        });
+    });
+    if (input.arrangements?.length) {
+      const insertArrangement = db.prepare(
+        'INSERT INTO arrangements (id, presentation_id, name) VALUES (?, ?, ?)',
+      );
+      const insertEntry = db.prepare(
+        'INSERT INTO arrangement_groups (arrangement_id, position, group_id) VALUES (?, ?, ?)',
+      );
+      for (const arrangement of input.arrangements) {
+        const arrangementId = randomUUID();
+        insertArrangement.run(arrangementId, id, arrangement.name);
+        let position = 0;
+        for (const index of arrangement.groups) {
+          const groupId = groupIds[index];
+          if (groupId) insertEntry.run(arrangementId, position++, groupId);
+        }
       }
-    })();
-    return id;
+    }
+    if (input.kirtan) {
+      const k = input.kirtan;
+      db.prepare('INSERT INTO kirtans (presentation_id, category, kavi) VALUES (?, ?, ?)').run(
+        id,
+        k.category ?? null,
+        k.kavi ?? null,
+      );
+      const insertTrack = db.prepare('INSERT INTO kirtan_tracks (kirtan_id, lang) VALUES (?, ?)');
+      for (const lang of k.tracks) insertTrack.run(id, lang);
+      const insertLine = db.prepare(
+        'INSERT INTO kirtan_track_lines (kirtan_id, lang, slide_id, text) VALUES (?, ?, ?, ?)',
+      );
+      k.lines.forEach((perLang, i) => {
+        const slideId = slideIds[i];
+        if (!slideId) return;
+        for (const lang of k.tracks) {
+          const text = perLang[lang];
+          if (text !== undefined) insertLine.run(id, lang, slideId, text);
+        }
+      });
+    }
+  }
+
+  /**
+   * Earlier imports of a source: by the file's own id when it has one,
+   * otherwise by path. Newest first.
+   */
+  findImported(kind: ImportSource['kind'], ref: string | null, path: string): ImportedMatch[] {
+    const rows = (
+      ref
+        ? this.db
+            .prepare(
+              'SELECT id, name, source_path, source_hash FROM presentations WHERE source_kind = ? AND source_ref = ? ORDER BY created_at DESC, rowid DESC',
+            )
+            .all(kind, ref)
+        : this.db
+            .prepare(
+              'SELECT id, name, source_path, source_hash FROM presentations WHERE source_kind = ? AND source_path = ? AND source_ref IS NULL ORDER BY created_at DESC, rowid DESC',
+            )
+            .all(kind, path)
+    ) as { id: string; name: string; source_path: string | null; source_hash: string | null }[];
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      sourcePath: r.source_path,
+      sourceHash: r.source_hash,
+    }));
+  }
+
+  /** A presentation imported from a file with exactly these bytes (from anywhere). */
+  findByHash(kind: ImportSource['kind'], hash: string): ImportedMatch | null {
+    const r = this.db
+      .prepare(
+        'SELECT id, name, source_path, source_hash FROM presentations WHERE source_kind = ? AND source_hash = ? LIMIT 1',
+      )
+      .get(kind, hash) as
+      { id: string; name: string; source_path: string | null; source_hash: string | null } | undefined;
+    return r ? { id: r.id, name: r.name, sourcePath: r.source_path, sourceHash: r.source_hash } : null;
+  }
+
+  /** `name`, or `name (2)`, `name (3)`... whichever is free in the library. */
+  uniqueName(libraryId: string, name: string): string {
+    const taken = new Set(
+      (
+        this.db
+          .prepare('SELECT name FROM presentations WHERE library_id = ? AND (name = ? OR name LIKE ?)')
+          .all(libraryId, name, `${name} (%)`) as { name: string }[]
+      ).map((r) => r.name),
+    );
+    if (!taken.has(name)) return name;
+    for (let n = 2; ; n++) {
+      const candidate = `${name} (${n})`;
+      if (!taken.has(candidate)) return candidate;
+    }
   }
 }
 

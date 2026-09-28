@@ -1,6 +1,7 @@
 import type { AppInfo } from './app-info';
 import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
+import type { ImportOptions, ImportProgress, ImportReport, ImportResult, ImportRunSummary } from './import';
 import type { PresentationDoc, PresentationSummary } from './library';
 import type { CoverOptions, OutputContext, ScreenPatch, ScreensResult, ScreensSnapshot } from './screens';
 
@@ -29,6 +30,17 @@ export interface DrashtiBridge {
   library: {
     listPresentations(): Promise<PresentationSummary[]>;
     getPresentation(id: string): Promise<PresentationDoc | null>;
+    /** Presentations were added or changed (for example by an import). */
+    onChanged(listener: () => void): () => void;
+    /**
+     * Import files and folders (operator window only). Resolves when the run
+     * has ended; changed files come back as conflicts unless options say what to do.
+     */
+    importPaths(paths: string[], options?: ImportOptions): Promise<ImportResult>;
+    cancelImport(runId: string): Promise<boolean>;
+    onImportProgress(listener: (progress: ImportProgress) => void): () => void;
+    listImportRuns(): Promise<ImportRunSummary[]>;
+    getImportReport(runId: string): Promise<ImportReport | null>;
   };
   /** Screen setup (operator window only). */
   screens: {

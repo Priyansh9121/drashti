@@ -1,6 +1,7 @@
 import type { AppInfo } from './app-info';
 import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
+import type { ImportOptions, ImportProgress, ImportReport, ImportResult, ImportRunSummary } from './import';
 import type { PresentationDoc, PresentationSummary } from './library';
 import type { CoverOptions, OutputContext, ScreenPatch, ScreensResult, ScreensSnapshot } from './screens';
 
@@ -25,6 +26,15 @@ export const IPC = {
   library: {
     listPresentations: 'library:list-presentations',
     getPresentation: 'library:get-presentation',
+    /** Import files and folders (operator window only). */
+    importPaths: 'library:import-paths',
+    cancelImport: 'library:cancel-import',
+    listImportRuns: 'library:list-import-runs',
+    getImportReport: 'library:get-import-report',
+    /** main -> operator: how an import is going. */
+    importProgress: 'library:import-progress',
+    /** main -> operator: presentations were added or changed. */
+    changed: 'library:changed',
   },
   screens: {
     get: 'screens:get',
@@ -57,6 +67,10 @@ export interface InvokeContract {
   [IPC.engine.command]: { args: [command: EngineCommand]; result: CommandResult };
   [IPC.library.listPresentations]: { args: []; result: PresentationSummary[] };
   [IPC.library.getPresentation]: { args: [id: string]; result: PresentationDoc | null };
+  [IPC.library.importPaths]: { args: [paths: string[], options?: ImportOptions]; result: ImportResult };
+  [IPC.library.cancelImport]: { args: [runId: string]; result: boolean };
+  [IPC.library.listImportRuns]: { args: []; result: ImportRunSummary[] };
+  [IPC.library.getImportReport]: { args: [runId: string]; result: ImportReport | null };
   [IPC.screens.get]: { args: []; result: ScreensSnapshot };
   [IPC.screens.createGroup]: { args: [name: string]; result: ScreensResult };
   [IPC.screens.renameGroup]: { args: [groupId: string, name: string]; result: ScreensResult };
@@ -78,6 +92,8 @@ export interface InvokeContract {
 /** main -> renderer event channels and their payloads. */
 export interface EventContract {
   [IPC.engine.message]: EngineMessage;
+  [IPC.library.importProgress]: ImportProgress;
+  [IPC.library.changed]: { at: number };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.output.context]: OutputContext;
   [IPC.output.identify]: { name: string; groupName: string };

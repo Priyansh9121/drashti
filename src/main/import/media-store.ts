@@ -1,0 +1,286 @@
+import { randomUUID, createHash } from 'node:crypto';
+import { constants, createReadStream, statfsSync } from 'node:fs';
+import { copyFile, mkdir, rename, rm, stat } from 'node:fs/promises';
+import { basename, join } from 'node:path';
+import type { ImportIssue } from '../../shared/import';
+import type { ImportSource } from '../../shared/library';
+import type { Db } from '../db/database';
+import type { MediaKind } from './scan';
+import { extOf, mediaKindOf } from './scan';
+
+/*
+ * Drashti's media folder. Every file is stored once, under its sha256
+ * (<folder>/ab/abcdef....mp4), whatever it was called and however often it
+ * is imported. The library keeps the original name and where it came from.
+ */
+
+export interface MediaStoreOptions {
+  /** The media folder (userData/Media). */
+  dir: string;
+  /** Free bytes on the disk holding `dir` (tests pass their own). */
+  freeBytes?: (dir: string) => number;
+  /** Space always left free on that disk, so the show never runs out. Default 2 GiB. */
+  reserveBytes?: number;
+}
+
+export type MediaImportResult =
+  | { outcome: 'imported' | 'skipped'; mediaId: string; sha256: string; bytes: number; name: string }
+  | { outcome: 'failed'; issue: ImportIssue };
+
+type MediaSource = Pick<ImportSource, 'kind'> & { path: string; ref?: string | null };
+
+const GiB = 1024 ** 3;
+
+export function diskFreeBytes(dir: string): number {
+  const s = statfsSync(dir);
+  return s.bavail * s.bsize;
+}
+
+export async function sha256File(path: string): Promise<{ sha256: string; bytes: number }> {
+  const hash = createHash('sha256');
+  let bytes = 0;
+  for await (const chunk of createReadStream(path, { highWaterMark: 1024 * 1024 })) {
+    const buf = chunk as Buffer;
+    hash.update(buf);
+    bytes += buf.length;
+  }
+  return { sha256: hash.digest('hex'), bytes };
+}
+
+export function formatBytes(n: number): string {
+  const units = ['bytes', 'KB', 'MB', 'GB', 'TB'];
+  let v = n;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return i === 0 ? `${v} bytes` : `${v.toFixed(1)} ${units[i]}`;
+}
+
+export class MediaStore {
+  private readonly freeBytes: (dir: string) => number;
+  private readonly reserve: number;
+
+  constructor(
+    private readonly db: Db,
+    private readonly options: MediaStoreOptions,
+  ) {
+    this.freeBytes = options.freeBytes ?? diskFreeBytes;
+    this.reserve = options.reserveBytes ?? 2 * GiB;
+  }
+
+  get dir(): string {
+    return this.options.dir;
+  }
+
+  /** Where a stored file lives, relative to the media folder. */
+  static storedPath(sha256: string, ext: string): string {
+    return `${sha256.slice(0, 2)}/${sha256}${ext ? `.${ext}` : ''}`;
+  }
+
+  private bySha(sha256: string): { id: string; name: string } | undefined {
+    return this.db.prepare('SELECT id, name FROM media WHERE sha256 = ?').get(sha256) as
+      { id: string; name: string } | undefined;
+  }
+
+  /**
+   * Put a file's bytes into the media folder (once per sha256), checking
+   * free space first. Never touches the original. No library rows.
+   */
+  private async store(
+    path: string,
+  ): Promise<
+    | { ok: true; kind: MediaKind; name: string; rel: string; sha256: string; bytes: number }
+    | { ok: false; issue: ImportIssue }
+  > {
+    const kind = mediaKindOf(path);
+    const name = basename(path);
+    if (!kind) {
+      return {
+        ok: false,
+        issue: {
+          severity: 'error',
+          code: 'not-media',
+          message: `${name} is not a media file Drashti knows.`,
+          fix: null,
+        },
+      };
+    }
+    let hashed: { sha256: string; bytes: number };
+    try {
+      hashed = await sha256File(path);
+    } catch (error) {
+      return {
+        ok: false,
+        issue: {
+          severity: 'error',
+          code: 'unreadable',
+          message: `Could not read ${name}: ${(error as Error).message}`,
+          fix: { kind: 'import-again', sourcePath: path },
+        },
+      };
+    }
+    const rel = MediaStore.storedPath(hashed.sha256, extOf(path));
+    const target = join(this.dir, rel);
+    const already = await stat(target).then(
+      (s) => s.size === hashed.bytes,
+      () => false,
+    );
+    if (!already) {
+      const free = this.freeBytes(this.dir);
+      if (hashed.bytes + this.reserve > free) {
+        return {
+          ok: false,
+          issue: {
+            severity: 'error',
+            code: 'no-space',
+            message: `Not enough free disk space to copy ${name} (${formatBytes(hashed.bytes)}). Drashti keeps ${formatBytes(this.reserve)} free for the show.`,
+            fix: { kind: 'free-space', neededBytes: hashed.bytes + this.reserve - free },
+          },
+        };
+      }
+      const partial = `${target}.part-${randomUUID()}`;
+      try {
+        await mkdir(join(this.dir, hashed.sha256.slice(0, 2)), { recursive: true });
+        // A copy-on-write clone where the disk supports it (APFS), else a normal copy.
+        await copyFile(path, partial, constants.COPYFILE_FICLONE);
+        await rename(partial, target);
+      } catch (error) {
+        await rm(partial, { force: true }).catch(() => undefined);
+        return {
+          ok: false,
+          issue: {
+            severity: 'error',
+            code: 'copy-failed',
+            message: `Could not copy ${name} into the media folder: ${(error as Error).message}`,
+            fix: { kind: 'import-again', sourcePath: path },
+          },
+        };
+      }
+    }
+    return { ok: true, kind, name, rel, ...hashed };
+  }
+
+  /**
+   * Import a media file: copy it into the media folder, unless the same
+   * bytes are in the library already (then that item is returned, 'skipped').
+   */
+  async importFile(path: string, source: MediaSource): Promise<MediaImportResult> {
+    const stored = await this.store(path);
+    if (!stored.ok) return { outcome: 'failed', issue: stored.issue };
+    const existing = this.bySha(stored.sha256);
+    if (existing) {
+      return {
+        outcome: 'skipped',
+        mediaId: existing.id,
+        sha256: stored.sha256,
+        bytes: stored.bytes,
+        name: existing.name,
+      };
+    }
+    const id = randomUUID();
+    this.db
+      .prepare(
+        `INSERT INTO media (id, kind, name, path, sha256, bytes, source_kind, source_path, source_ref, source_imported_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id,
+        stored.kind,
+        stored.name,
+        stored.rel,
+        stored.sha256,
+        stored.bytes,
+        source.kind,
+        source.path,
+        source.ref ?? null,
+        new Date().toISOString(),
+      );
+    return {
+      outcome: 'imported',
+      mediaId: id,
+      sha256: stored.sha256,
+      bytes: stored.bytes,
+      name: stored.name,
+    };
+  }
+
+  /**
+   * A media item whose file was not found: kept (path '') so slides can
+   * point at it and the operator can relink it later. One per original path.
+   */
+  addMissing(originalPath: string, kind: MediaKind, source: MediaSource): string {
+    const found = this.db
+      .prepare('SELECT id FROM media WHERE missing = 1 AND source_path = ? AND source_kind = ?')
+      .get(originalPath, source.kind) as { id: string } | undefined;
+    if (found) return found.id;
+    const id = randomUUID();
+    const name = originalPath.split(/[\\/]/u).pop() ?? originalPath;
+    this.db
+      .prepare(
+        `INSERT INTO media (id, kind, name, path, missing, source_kind, source_path, source_ref, source_imported_at)
+         VALUES (?, ?, ?, '', 1, ?, ?, ?, ?)`,
+      )
+      .run(id, kind, name, source.kind, originalPath, source.ref ?? null, new Date().toISOString());
+    return id;
+  }
+
+  /** Media items still waiting for their file. */
+  missing(): { id: string; name: string; kind: MediaKind; originalPath: string | null }[] {
+    return (
+      this.db
+        .prepare(
+          'SELECT id, name, kind, source_path FROM media WHERE missing = 1 ORDER BY name COLLATE NOCASE',
+        )
+        .all() as { id: string; name: string; kind: MediaKind; source_path: string | null }[]
+    ).map((r) => ({ id: r.id, name: r.name, kind: r.kind, originalPath: r.source_path }));
+  }
+
+  /**
+   * Fill in a missing media item from a file found later; the item keeps its
+   * id. When those bytes are already stored under another item, the missing
+   * one is merged into it: `repoint` moves any references, and the other
+   * item's id is returned.
+   */
+  async fillMissing(
+    mediaId: string,
+    path: string,
+    repoint: (fromId: string, toId: string) => void = () => undefined,
+  ): Promise<MediaImportResult> {
+    const row = this.db.prepare('SELECT id FROM media WHERE id = ? AND missing = 1').get(mediaId);
+    if (!row) {
+      return {
+        outcome: 'failed',
+        issue: {
+          severity: 'error',
+          code: 'not-missing',
+          message: 'That media item is not missing.',
+          fix: null,
+        },
+      };
+    }
+    const stored = await this.store(path);
+    if (!stored.ok) return { outcome: 'failed', issue: stored.issue };
+    const existing = this.bySha(stored.sha256);
+    if (existing) {
+      this.db.transaction(() => {
+        repoint(mediaId, existing.id);
+        this.db.prepare('DELETE FROM media WHERE id = ?').run(mediaId);
+      })();
+      return {
+        outcome: 'skipped',
+        mediaId: existing.id,
+        sha256: stored.sha256,
+        bytes: stored.bytes,
+        name: existing.name,
+      };
+    }
+    this.db
+      .prepare(
+        "UPDATE media SET path = ?, sha256 = ?, bytes = ?, missing = 0, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+      )
+      .run(stored.rel, stored.sha256, stored.bytes, mediaId);
+    return { outcome: 'imported', mediaId, sha256: stored.sha256, bytes: stored.bytes, name: stored.name };
+  }
+}

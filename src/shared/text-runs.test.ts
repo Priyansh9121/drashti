@@ -58,10 +58,17 @@ describe('runs', () => {
     expect(runs.map((r) => r.lang)).toEqual(['gu', undefined, undefined, 'translit']);
   });
 
-  it('finds the main language by letters', () => {
+  it('finds the main language: the native script when there is one, else by letters', () => {
     expect(
       mainLang([{ text: 'નમૂનાની પહેલી પંક્તિ' }, { text: '\n' }, { text: 'Namūnā', lang: 'translit' }]),
     ).toBe('gu');
+    // A full transliteration has more letters than the Gujarati line; Gujarati is still the main language.
+    expect(
+      mainLang([{ text: 'નમૂનાની પહેલી પંક્તિ\n' }, { text: 'Namūnānī pahelī paṅkti with more words' }]),
+    ).toBe('gu');
+    expect(mainLang([{ text: 'नमूने की पहली पंक्ति' }, { text: 'નમૂનો' }])).toBe('hi');
+    expect(mainLang([{ text: 'Placeholder English line' }, { text: 'Namūnā', lang: 'translit' }])).toBe('en');
+    expect(mainLang([{ text: 'nmUnO', legacy: true }, { text: 'Placeholder' }])).toBe('en');
     expect(mainLang([{ text: '12' }])).toBeNull();
   });
 });

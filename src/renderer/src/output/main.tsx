@@ -46,8 +46,13 @@ function usePaintTiming(root: React.RefObject<HTMLDivElement | null>) {
     const frame = requestAnimationFrame(() => {
       const el = root.current;
       if (!el) return;
+      const paintedAt = Date.now();
       el.dataset['paintedRev'] = String(rev);
-      el.dataset['latencyMs'] = String(Math.max(0, Date.now() - sentAt));
+      el.dataset['latencyMs'] = String(Math.max(0, paintedAt - sentAt));
+      // A short history, so a test can match every command to the frame that showed it.
+      const log = (window.drashtiPaintLog ??= []);
+      log.push({ rev, sentAt, paintedAt });
+      if (log.length > 2000) log.splice(0, log.length - 2000);
     });
     return () => {
       cancelAnimationFrame(frame);

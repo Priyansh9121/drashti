@@ -1,19 +1,25 @@
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import { app, dialog, globalShortcut, powerSaveBlocker, screen as electronScreen, session } from 'electron';
-import { join } from 'node:path';
+import { mkdirSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
-import { IPC } from '../shared/ipc';
+import type { ImportResult } from '../shared/import';
+import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/import-schema';
+import { type EventChannel, type EventContract, IPC } from '../shared/ipc';
 import { acceleratorFor } from '../shared/keymap';
 import { idSchema } from '../shared/model-schema';
 import type { OutputContext } from '../shared/screens';
 import type { Db } from './db/database';
-import { openDatabase } from './db/database';
+import { LATEST_VERSION, openDatabase } from './db/database';
+import { ImportRepo } from './db/imports';
 import { DbSlideSource, PresentationRepo } from './db/presentations';
 import { ScreenRepo } from './db/screens';
 import { seedPlaceholders } from './db/seed';
 import { ShowEngine } from './engine/show-engine';
 import { runEngineCommand } from './ipc/engine-ipc';
 import { handle } from './ipc/handle';
+import { ImportService } from './import/import-service';
+import { spawnImportWorker } from './import/spawn-worker';
 import { log } from './log';
 import { installMenu } from './menu';
 import { createdGroupId, runWatchdogSelfTest } from './selftest';
@@ -55,6 +61,7 @@ let quitConfirmed = false;
 let operatorWindow: BrowserWindow | null = null;
 let db: Db | null = null;
 let outputs: OutputManager | null = null;
+let importer: ImportService | null = null;
 
 function appInfo(): AppInfo {
   return {
@@ -68,8 +75,10 @@ function appInfo(): AppInfo {
   };
 }
 
+const libraryFile = () => join(app.getPath('userData'), 'drashti.sqlite');
+
 function openLibrary(): Db | null {
-  const file = join(app.getPath('userData'), 'drashti.sqlite');
+  const file = libraryFile();
   try {
     const opened = openDatabase(file);
     if (seedPlaceholders(opened)) log.info('Added the placeholder presentations');
@@ -99,6 +108,7 @@ function start(): void {
   const presentations = new PresentationRepo(db);
   const slides = new DbSlideSource(presentations);
   const screenRepo = new ScreenRepo(db);
+  const importRepo = new ImportRepo(db);
 
   const transport = new IpcTransport((error, target) => {
     log.warn(`Could not send an engine message to window ${target.id}`, error);
@@ -207,6 +217,61 @@ function start(): void {
     setUncoverShortcut(here !== null && showing.has(here));
   };
 
+  // ---- imports ----------------------------------------------------------------
+  const userDataDir = app.getPath('userData');
+  const mediaDir = join(userDataDir, 'Media');
+  mkdirSync(mediaDir, { recursive: true });
+  const sendToOperator = <C extends EventChannel>(channel: C, payload: EventContract[C]) => {
+    if (operatorWindow && !operatorWindow.isDestroyed()) operatorWindow.webContents.send(channel, payload);
+  };
+  // The operator's library list refreshes at most once a second during an import.
+  let changedTimer: NodeJS.Timeout | null = null;
+  let lastChanged = 0;
+  const libraryChanged = (now = false) => {
+    const send = () => {
+      changedTimer = null;
+      lastChanged = Date.now();
+      sendToOperator(IPC.library.changed, { at: lastChanged });
+    };
+    if (now) {
+      if (changedTimer) clearTimeout(changedTimer);
+      send();
+    } else {
+      changedTimer ??= setTimeout(send, Math.max(0, lastChanged + 1000 - Date.now()));
+    }
+  };
+  const imports = new ImportService({
+    spawn: spawnImportWorker,
+    worker: { dbFile: libraryFile(), mediaDir, userDataDir, schemaVersion: LATEST_VERSION },
+    onProgress: (progress) => {
+      sendToOperator(IPC.library.importProgress, progress);
+    },
+    onWrote: ({ presentationId, replaced }) => {
+      if (replaced) slides.invalidate(presentationId);
+      libraryChanged();
+    },
+    onFinished: () => {
+      libraryChanged(true);
+    },
+    failRun: (runId, paths, message) => {
+      importRepo.failRun(runId, paths, message);
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+  });
+  importer = imports;
+  const importPaths = async (rawPaths: unknown, rawOptions: unknown): Promise<ImportResult> => {
+    const paths = importPathsSchema.safeParse(rawPaths);
+    const options = importOptionsSchema.safeParse(rawOptions ?? {});
+    if (!paths.success) return { ok: false, message: 'Choose one or more files or folders to import.' };
+    if (!options.success) return { ok: false, message: 'Those import options are not valid.' };
+    if (!paths.data.every((p) => isAbsolute(p)))
+      return { ok: false, message: 'Import needs full file paths.' };
+    return imports.start(paths.data, options.data);
+  };
+
   // ---- IPC ----------------------------------------------------------------
   handle(IPC.app.getInfo, () => appInfo());
   handle(IPC.engine.subscribe, (event) => {
@@ -219,6 +284,20 @@ function start(): void {
   handle(IPC.library.getPresentation, (_event, id) => {
     const parsed = idSchema.safeParse(id);
     return parsed.success ? presentations.get(parsed.data) : null;
+  });
+  handle(IPC.library.importPaths, (e, paths, options) =>
+    fromOperator(e)
+      ? importPaths(paths, options)
+      : { ok: false as const, message: 'Only the operator window can import.' },
+  );
+  handle(IPC.library.cancelImport, (e, runId) => {
+    const parsed = runIdSchema.safeParse(runId);
+    return fromOperator(e) && parsed.success ? imports.cancel(parsed.data) : false;
+  });
+  handle(IPC.library.listImportRuns, () => importRepo.listRuns());
+  handle(IPC.library.getImportReport, (_e, runId) => {
+    const parsed = runIdSchema.safeParse(runId);
+    return parsed.success ? importRepo.report(parsed.data) : null;
   });
   handle(IPC.screens.get, () => screens.snapshot());
   handle(IPC.screens.createGroup, (e, name) => (fromOperator(e) ? screens.createGroup(name) : notAllowed));
@@ -398,6 +477,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
     sleepGuard.release();
+    importer?.stop();
     outputs?.closeAll();
     db?.close();
     db = null;

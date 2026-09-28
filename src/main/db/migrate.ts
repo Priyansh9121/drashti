@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { up as core } from './migrations/001-core';
+import { up as imports } from './migrations/002-imports';
 
 export interface Migration {
   version: number;
@@ -8,7 +9,10 @@ export interface Migration {
 }
 
 /** All migrations, oldest first. Never edit a released one; add a new one. */
-export const MIGRATIONS: readonly Migration[] = [{ version: 1, name: 'core model', up: core }];
+export const MIGRATIONS: readonly Migration[] = [
+  { version: 1, name: 'core model', up: core },
+  { version: 2, name: 'imports', up: imports },
+];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));
 

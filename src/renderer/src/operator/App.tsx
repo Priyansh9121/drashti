@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { AppInfo } from '../../../shared/app-info';
 import { describeAppInfo } from '../../../shared/app-info';
 import { connectEngine } from '../engine/engine-store';
-import { loadLibrary } from '../library/library-store';
+import { loadLibrary, watchLibrary } from '../library/library-store';
 import { ScreensPanel } from '../screens/ScreensPanel';
 import { connectScreens } from '../screens/screens-store';
 import { Button } from '../ui/Button';
@@ -25,6 +25,7 @@ export function App() {
   useEffect(() => {
     connectEngine();
     connectScreens();
+    watchLibrary();
     void loadLibrary();
     void window.drashti.app.getInfo().then(setInfo);
   }, []);
