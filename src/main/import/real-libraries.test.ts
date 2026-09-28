@@ -22,8 +22,10 @@ const PP6 = [
   join(HOME, 'Documents', 'ProPresenter6'),
   join(HOME, 'Library', 'Application Support', 'RenewedVision', 'ProPresenter6'),
 ];
+const PP7 = [join(HOME, 'Documents', 'ProPresenter')];
 const present = PP6.filter((p) => existsSync(p));
-const enabled = !process.env['CI'] && present.length > 0;
+const present7 = PP7.filter((p) => existsSync(p));
+const enabled = !process.env['CI'] && present.length + present7.length > 0;
 
 describe.skipIf(!enabled)("this computer's own libraries (counts only)", () => {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-real-'));
@@ -31,19 +33,21 @@ describe.skipIf(!enabled)("this computer's own libraries (counts only)", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('imports the ProPresenter 6 library without a failed file', async () => {
-    mkdirSync(join(dir, 'Media'));
-    const db = openDatabase(join(dir, 'drashti.sqlite'));
-    const media = new MediaStore(db, { dir: join(dir, 'Media') });
+  /** Import some folders into a fresh temporary library and print what happened, as counts. */
+  const importCounts = async (label: string, paths: string[]) => {
+    const sub = join(dir, label);
+    mkdirSync(join(sub, 'Media'), { recursive: true });
+    const db = openDatabase(join(sub, 'drashti.sqlite'));
+    const media = new MediaStore(db, { dir: join(sub, 'Media') });
     const timings = { scan: 0, read: 0, lookup: 0, parse: 0, write: 0, commit: 0, media: 0, total: 0 };
     const run = await runImport({
       db,
       media,
       runId: randomUUID(),
-      paths: present,
+      paths,
       options: {},
       timings,
-      tempDir: dir,
+      tempDir: sub,
     });
     const report = new ImportRepo(db).report(run.id);
     const byOutcome: Record<string, number> = {};
@@ -69,10 +73,30 @@ describe.skipIf(!enabled)("this computer's own libraries (counts only)", () => {
       byIssue,
       ms: timings,
     };
-    console.log(`real PP6 import (counts only): ${JSON.stringify(counts)}`);
+    console.log(`real ${label} import (counts only): ${JSON.stringify(counts)}`);
     db.close();
-    expect(run.status).toBe('done');
-    expect(t.failed).toBe(0);
-    expect(t.presentations).toBeGreaterThan(0);
-  }, 300_000);
+    return run;
+  };
+
+  it.skipIf(present.length === 0)(
+    'imports the ProPresenter 6 library without a failed file',
+    async () => {
+      const run = await importCounts('PP6', present);
+      expect(run.status).toBe('done');
+      expect(run.totals.failed).toBe(0);
+      expect(run.totals.presentations).toBeGreaterThan(0);
+    },
+    300_000,
+  );
+
+  it.skipIf(present7.length === 0)(
+    'imports the ProPresenter 7 library without a failed file',
+    async () => {
+      const run = await importCounts('PP7', present7);
+      expect(run.status).toBe('done');
+      expect(run.totals.failed).toBe(0);
+      expect(run.totals.presentations).toBeGreaterThan(0);
+    },
+    300_000,
+  );
 });

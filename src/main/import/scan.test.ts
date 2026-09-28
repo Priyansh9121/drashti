@@ -23,7 +23,9 @@ describe('formatOf', () => {
     expect(formatOf('/a/x.pro')).toBe('pp7');
     expect(formatOf('/a/x.probundle')).toBe('pp7');
     expect(formatOf('/a/x.docx')).toBe('unknown');
-    expect(formatOf('/a/Theme')).toBe('unknown');
+    expect(formatOf('/ProPresenter/Themes/Clouds/Theme')).toBe('pp7');
+    expect(formatOf('/ProPresenter/Playlists/Library')).toBe('pp7');
+    expect(formatOf('/ProPresenter/Configuration/Screens')).toBe('unknown');
     expect(mediaKindOf('a.jpeg')).toBe('image');
     expect(mediaKindOf('a.m4a')).toBe('audio');
     expect(mediaKindOf('a.txt')).toBeNull();

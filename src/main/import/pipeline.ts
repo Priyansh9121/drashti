@@ -24,9 +24,10 @@ import { type NewPlaylist, type NewPlaylistItem, PlaylistRepo } from '../db/play
 import { type NewPresentation, PresentationRepo } from '../db/presentations';
 import { BatchWriter } from './batch';
 import { parsePp6 } from './formats/pp6';
+import { parsePp7, type Pp7Kind, pp7KindOf } from './formats/pp7';
 import { parseLyricsText } from './formats/text';
 import { diskFreeBytes, type MediaStore, type StagedMedia } from './media-store';
-import { fileNameOf, resolveMedia } from './media-resolver';
+import { fileNameOf, pathFromReference, resolveMedia } from './media-resolver';
 import type { ParsedMediaRef, ParsedPlaylist, ParsedPlaylistDoc, ParsedPresentation } from './model';
 import { MEDIA_REF, slideCount } from './model';
 import { extOf, formatOf, type ScannedFile, scanPaths } from './scan';
@@ -86,6 +87,8 @@ interface Where {
   mediaByName: ReadonlyMap<string, readonly string[]>;
   /** Presentation files found by name, for playlists that name them. */
   docsByName: ReadonlyMap<string, readonly ScannedFile[]>;
+  /** Inside a bundle of this kind (a .proplaylist keeps its playlist in a file called "data"). */
+  bundle?: 'pp6' | 'pp7';
 }
 
 /** Files that come with the older app but are not presentations: said plainly in the report. */
@@ -108,6 +111,7 @@ const SUPPORT_FILES: Record<string, { format: ImportFormat; message: string }> =
     message: 'Stage display layouts are set up again in Drashti (see the audit report).',
   },
   'cclidata.txt': { format: 'text', message: 'CCLI reporting data, not lyrics: not imported.' },
+  librarydata: { format: 'pp7', message: 'Library settings, not a presentation: not imported.' },
 };
 const SUPPORT_EXTENSIONS: Record<string, string> = { pro6dvd: 'DVD clip lists are not imported.' };
 
@@ -118,7 +122,9 @@ const normalizePath = (p: string) => p.replace(/\\/gu, '/').toLowerCase();
 /** Presentations first, then media, then bundles, and playlists last (they name presentations). */
 export function importOrder(file: ScannedFile): number {
   const ext = extOf(file.path);
-  if (file.format === 'text' || ext === 'pro6' || ext === 'pro6template' || ext === 'pro') return 0;
+  const pp7 = file.format === 'pp7' ? pp7KindOf(file.path) : null;
+  if (pp7 === 'playlist') return 3;
+  if (file.format === 'text' || ext === 'pro6' || ext === 'pro6template' || pp7 !== null) return 0;
   if (file.format === 'media') return 1;
   if (ext === 'pro6x' || ext === 'probundle') return 2;
   if (ext === 'pro6pl' || ext === 'pro6plx' || ext === 'proplaylist') return 3;
@@ -509,10 +515,12 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
 
   /** The presentation a playlist names: imported in this run, or earlier, or found now and imported. */
   const presentationFor = async (
-    item: { path: string | null; name: string },
+    named: { path: string | null; name: string },
     kind: SourceKind,
     where: Where,
   ): Promise<string | null> => {
+    // Playlists store paths as file URLs or percent-encoded paths: compare real paths.
+    const item = { ...named, path: named.path ? pathFromReference(named.path) : null };
     const known = () => {
       if (item.path) {
         const byPath = written.byPath.get(normalizePath(item.path));
@@ -689,6 +697,57 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     }
   };
 
+  const PP7_LABEL: Record<Pp7Kind, string> = {
+    presentation: '.pro file',
+    playlist: 'playlist file',
+    template: 'theme',
+  };
+
+  const importPp7 = async (file: ScannedFile, where: Where, kind: Pp7Kind | null) => {
+    if (!kind) {
+      record({
+        sourcePath: where.sourcePath,
+        format: 'pp7',
+        outcome: 'unsupported',
+        name: basename(file.path),
+        target: null,
+        counts: NO_COUNTS,
+        message: 'Not a presentation, playlist or theme file.',
+        issues: [],
+      });
+      return;
+    }
+    if (file.size > MAX_DOCUMENT_BYTES) {
+      failed(
+        where,
+        'pp7',
+        basename(file.path),
+        `${basename(file.path)} is ${formatBytes(file.size)}, too big to be a presentation.`,
+      );
+      return;
+    }
+    let t = performance.now();
+    const bytes = await readFile(file.path);
+    const hash = sha256(bytes);
+    t = time('read', t);
+    // A .proplaylist keeps its playlist in a file called "data": name it after the bundle.
+    const namePath =
+      where.bundle === 'pp7' && basename(file.path) === 'data'
+        ? (where.sourcePath.split(BUNDLE_SEP)[0] ?? file.path)
+        : file.path;
+    let parsed;
+    try {
+      parsed = parsePp7(bytes, namePath, kind);
+    } catch (error) {
+      failed(where, 'pp7', basename(file.path), `Not a readable ${PP7_LABEL[kind]}: ${errorText(error)}`);
+      return;
+    }
+    time('parse', t);
+    if (parsed.kind === 'presentation')
+      await importPresentation(file, where, 'pp7', hash, parsed.presentation);
+    else await importPlaylist(where, 'pp7', hash, parsed.playlist);
+  };
+
   const importMedia = async (file: ScannedFile, where: Where) => {
     const t = performance.now();
     const stage = await ctx.media.stage(file.path);
@@ -758,6 +817,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           nearby: [dirname(f.path), temp],
           mediaByName: inner.mediaByName,
           docsByName: docs,
+          bundle: kind,
         });
         maybeCommit();
       }
@@ -789,7 +849,10 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     const ext = extOf(file.path);
     const support =
       SUPPORT_FILES[name] ??
-      (SUPPORT_EXTENSIONS[ext] ? { format: 'unknown' as const, message: SUPPORT_EXTENSIONS[ext] } : null);
+      (SUPPORT_EXTENSIONS[ext] ? { format: 'unknown' as const, message: SUPPORT_EXTENSIONS[ext] } : null) ??
+      (ext === '' && basename(dirname(file.path)) === 'Configuration'
+        ? { format: 'pp7' as const, message: 'Settings are set up again in Drashti (see the audit report).' }
+        : null);
     if (support) {
       record({
         sourcePath: where.sourcePath,
@@ -815,18 +878,14 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         else await importPp6(file, where);
         return;
       case 'pp7':
-        record({
-          sourcePath: where.sourcePath,
-          format: 'pp7',
-          outcome: 'unsupported',
-          name: basename(file.path),
-          target: null,
-          counts: NO_COUNTS,
-          message: 'Files of type .pro cannot be imported yet.',
-          issues: [],
-        });
+        if (ext === 'probundle' || ext === 'proplaylist') await importBundle(file, where, 'pp7');
+        else await importPp7(file, where, pp7KindOf(file.path));
         return;
       default: {
+        if (where.bundle === 'pp7' && name === 'data') {
+          await importPp7(file, where, 'playlist');
+          return;
+        }
         const list = unknown.get(ext) ?? [];
         list.push(where.sourcePath);
         unknown.set(ext, list);
