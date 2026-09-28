@@ -21,6 +21,7 @@ import type {
   ParsedSlide,
 } from '../model';
 import { mediaRef } from '../model';
+import { LegacyFontUse } from '../legacy-fonts';
 import { readRtf } from '../rtf/rtf';
 import { mediaKindOf } from '../scan';
 import { arrayField, field, parseXml, type XmlNode } from '../xml';
@@ -126,6 +127,8 @@ interface Context {
   media: ParsedMediaRef[];
   mediaIndex: Map<string, number>;
   losses: Losses;
+  /** Legacy (non-Unicode) Gujarati and Hindi fonts in the text. */
+  legacy: LegacyFontUse;
 }
 
 function addMedia(ctx: Context, source: string | undefined, fallback: ParsedMediaRef['kind']): number | null {
@@ -187,7 +190,7 @@ function textElement(ctx: Context, node: XmlNode, id: string, frame: Rect): Slid
   let color = '#ffffff';
   if (rtfNode && rtfNode.text.trim() !== '') {
     const rtf = readRtf(Buffer.from(rtfNode.text.trim(), 'base64'));
-    runs = withDetectedLangs(rtf.runs);
+    runs = withDetectedLangs(ctx.legacy.apply(rtf.runs));
     text = rtf.text;
     align = rtf.align ?? align;
     lineHeight = rtf.lineHeight ?? lineHeight;
@@ -408,6 +411,7 @@ function presentationOf(root: XmlNode, filePath: string): ParsedPresentation {
     media: [],
     mediaIndex: new Map(),
     losses: new Losses(),
+    legacy: new LegacyFontUse(),
   };
   const docBackground = a['drawingBackgroundColor'] === 'true' ? pp6Color(a['backgroundColor']) : null;
   let slideIndex = 0;
@@ -463,7 +467,7 @@ function presentationOf(root: XmlNode, filePath: string): ParsedPresentation {
   let notes = notesText(a['notes']);
   if (ccli.length > 0)
     notes = `${notes}${notes ? '\n\n' : ''}CCLI: ${ccli.map(([k, v]) => `${k} ${v ?? ''}`).join('; ')}`;
-  issues.push(...ctx.losses.issues());
+  issues.push(...ctx.losses.issues(), ...ctx.legacy.issues());
   return {
     name: nameFromFile(filePath),
     ...(root.name === 'RVTemplateDocument' ? { library: TEMPLATES_LIBRARY } : {}),
@@ -540,7 +544,14 @@ function playlistOf(ctx: Context, node: XmlNode, losses: Losses): ParsedPlaylist
 }
 
 function playlistDocOf(root: XmlNode, filePath: string): ParsedPlaylistDoc {
-  const ctx: Context = { width: 0, height: 0, media: [], mediaIndex: new Map(), losses: new Losses() };
+  const ctx: Context = {
+    width: 0,
+    height: 0,
+    media: [],
+    mediaIndex: new Map(),
+    losses: new Losses(),
+    legacy: new LegacyFontUse(),
+  };
   const rootNode = field(root, 'rootNode');
   const top = rootNode ? playlistOf(ctx, rootNode, ctx.losses) : null;
   // The root node itself is not shown in the app: its children are the top level.

@@ -148,6 +148,28 @@ describe('parsePp7: presentations', () => {
     expect(p.issues.map((i) => i.code)).toEqual(expect.arrayContaining(['background-media', 'slide-cues']));
   });
 
+  it('keeps text typed in a legacy Hindi font as typed, and names the font in the report', () => {
+    const p = presentation(
+      pp7Presentation({
+        uuid: 'LEGACY',
+        groups: [
+          {
+            name: 'V',
+            uuid: 'g',
+            slides: [
+              { id: 'a', text: [{ rtf: cocoaRtf([['uewuk', 72, [255, 255, 255]]], 'qc', 'Kruti Dev 010') }] },
+            ],
+          },
+        ],
+      }),
+    );
+    const t = p.groups[0]?.slides[0]?.elements[0] as TextElement;
+    expect(t.runs?.[0]).toMatchObject({ text: 'uewuk', font: 'Kruti Dev 010', legacy: true, lang: null });
+    expect(p.issues.find((i) => i.code === 'legacy-font')?.message).toMatch(
+      /^Text in the legacy Hindi font “Kruti Dev 010”/u,
+    );
+  });
+
   it('treats every slide as enabled in files that never mark slides enabled', () => {
     const p = presentation(
       pp7Presentation({

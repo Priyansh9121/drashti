@@ -23,6 +23,7 @@ import type {
 } from '../model';
 import { mediaRef } from '../model';
 import { type Descriptor, decodeMessage, type Message } from '../protobuf';
+import { LegacyFontUse } from '../legacy-fonts';
 import { readRtf } from '../rtf/rtf';
 import { mediaKindOf } from '../scan';
 import descriptorJson from './pp7-descriptor.json';
@@ -144,6 +145,8 @@ interface Context {
   media: ParsedMediaRef[];
   mediaIndex: Map<string, number>;
   losses: Losses;
+  /** Legacy (non-Unicode) Gujarati and Hindi fonts in the text. */
+  legacy: LegacyFontUse;
   width: number;
   height: number;
 }
@@ -235,7 +238,7 @@ function elementsOf(ctx: Context, wrapper: Message, id: string): SlideElement[] 
   }
   if (!rtfBytes) return out;
   const rtf = readRtf(rtfBytes);
-  const runs = withDetectedLangs(rtf.runs);
+  const runs = withDetectedLangs(ctx.legacy.apply(rtf.runs));
   for (const feature of rtf.unsupported) {
     ctx.losses.add(
       `rtf-${feature.replace(/\s+/gu, '-')}`,
@@ -408,7 +411,13 @@ function presentationOf(bytes: Uint8Array, filePath: string): ParsedPresentation
       )?.['base_slide'],
     ),
   );
-  const ctx: Context = { media: [], mediaIndex: new Map(), losses: new Losses(), ...sizeOf(baseSlides) };
+  const ctx: Context = {
+    media: [],
+    mediaIndex: new Map(),
+    losses: new Losses(),
+    legacy: new LegacyFontUse(),
+    ...sizeOf(baseSlides),
+  };
   const usesEnabled = cues.some((c) => c['isEnabled'] === true);
   let index = 0;
   const used = new Set<string>();
@@ -471,7 +480,7 @@ function presentationOf(bytes: Uint8Array, filePath: string): ParsedPresentation
     groups,
     arrangements,
     media: ctx.media,
-    issues: [...ctx.losses.issues(), ...unknownIssue(stats.unknown)],
+    issues: [...ctx.losses.issues(), ...ctx.legacy.issues(), ...unknownIssue(stats.unknown)],
   };
 }
 
@@ -483,6 +492,7 @@ function templateOf(bytes: Uint8Array, filePath: string): ParsedPresentation {
     media: [],
     mediaIndex: new Map(),
     losses: new Losses(),
+    legacy: new LegacyFontUse(),
     ...sizeOf(slides.map((s) => msg(s['base_slide']))),
   };
   const parsed: ParsedSlide[] = slides.map((s, i) => {
@@ -517,6 +527,7 @@ function templateOf(bytes: Uint8Array, filePath: string): ParsedPresentation {
         fix: null,
       },
       ...ctx.losses.issues(),
+      ...ctx.legacy.issues(),
       ...unknownIssue(stats.unknown),
     ],
   };
@@ -572,7 +583,14 @@ function playlistOf(ctx: Context, p: Message): ParsedPlaylist {
 function playlistDocOf(bytes: Uint8Array, filePath: string): ParsedPlaylistDoc {
   const stats = { unknown: 0 };
   const d = decodeMessage(bytes, 'rv.data.PlaylistDocument', descriptor, stats);
-  const ctx: Context = { media: [], mediaIndex: new Map(), losses: new Losses(), width: 0, height: 0 };
+  const ctx: Context = {
+    media: [],
+    mediaIndex: new Map(),
+    losses: new Losses(),
+    legacy: new LegacyFontUse(),
+    width: 0,
+    height: 0,
+  };
   const root = msg(d['root_node']);
   const top = root ? playlistOf(ctx, root) : null;
   // The root is not shown in the app: its children are the top level.
