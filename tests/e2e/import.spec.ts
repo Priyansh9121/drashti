@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ELDHistogram } from 'node:perf_hooks';
 import type { OutputGlobals, PageGlobals } from './helpers';
 import { launchApp } from './helpers';
 
@@ -69,6 +70,16 @@ test('a big import runs in the background: slides keep reaching the output withi
   const output = await outputPage(app);
   await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
 
+  const loopDelay = () =>
+    app.evaluate(() => {
+      const h = (globalThis as unknown as { drashtiDiagnostics: { loopDelay: ELDHistogram } })
+        .drashtiDiagnostics.loopDelay;
+      const out = { p99: Math.round(h.percentile(99) / 1e6), max: Math.round(h.max / 1e6) };
+      h.reset();
+      return out;
+    });
+  await loopDelay();
+
   // Change slides every 40 ms: first with nothing else going on, then all through the import.
   const running = win.evaluate(async (folder) => {
     const d = (globalThis as PageGlobals).drashti;
@@ -127,6 +138,7 @@ test('a big import runs in the background: slides keep reaching the output withi
     if (!sawWorker) await new Promise((resolve) => setTimeout(resolve, 50));
   }
   const run = await running;
+  const mainLoop = await loopDelay();
   expect(sawWorker, 'the import worker appears as its own utility process').toBe(true);
   // ...and exits when the run is over.
   await expect
@@ -160,7 +172,7 @@ test('a big import runs in the background: slides keep reaching the output withi
   const during = run.samples.filter((s) => s.during).map(latency);
   const line = (label: string, v: number[]) =>
     `${label}: n=${v.length} median ${percentile(v, 0.5)} ms, p90 ${percentile(v, 0.9)} ms, worst ${Math.max(...v)} ms`;
-  const summary = `import of ${SONGS} files took ${run.importMs} ms; ${line('idle', before)}; ${line('importing', during)}`;
+  const summary = `import of ${SONGS} files took ${run.importMs} ms; ${line('idle', before)}; ${line('importing', during)}; main event loop delay p99 ${mainLoop.p99} ms, max ${mainLoop.max} ms`;
   console.log(summary);
   test.info().annotations.push({ type: 'slide change to painted frame', description: summary });
 
@@ -191,6 +203,9 @@ test('a big import runs in the background: slides keep reaching the output withi
     .getByTestId('presentation-list')
     .getByRole('button', { name: /Placeholder Song 007/ })
     .click();
+  await expect(win.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toHaveText(
+    'Placeholder Song 007',
+  );
   await win.getByTestId('slide-thumb').nth(0).click();
   await expect(output.locator('[data-run][data-lang="gu"]')).toHaveText('નમૂનાની ટેક 7');
   await expect(output.locator('[data-run][data-lang="translit"]')).toHaveText('Namūnānī ṭek 7');
@@ -200,6 +215,7 @@ test('a big import runs in the background: slides keep reaching the output withi
     (folder) => (globalThis as PageGlobals).drashti.library.importPaths([folder]),
     dir,
   );
+  expect(again.ok, JSON.stringify(again)).toBe(true);
   expect(again.ok && again.run.totals).toMatchObject({ skipped: SONGS, imported: 0 });
 
   // A changed file waits for a choice; replacing keeps the presentation and updates its slides.
@@ -209,17 +225,22 @@ test('a big import runs in the background: slides keep reaching the output withi
     (file) => (globalThis as PageGlobals).drashti.library.importPaths([file]),
     changedFile,
   );
+  expect(asked.ok, JSON.stringify(asked)).toBe(true);
   expect(asked.ok && asked.run.totals).toMatchObject({ conflicts: 1 });
   const replaced = await win.evaluate(
     (file) =>
       (globalThis as PageGlobals).drashti.library.importPaths([file], { decisions: { [file]: 'replace' } }),
     changedFile,
   );
+  expect(replaced.ok, JSON.stringify(replaced)).toBe(true);
   expect(replaced.ok && replaced.run.totals).toMatchObject({ replaced: 1, presentations: 1, slides: 1 });
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /Placeholder Song 001/ })
     .click();
+  await expect(win.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toHaveText(
+    'Placeholder Song 001',
+  );
   await expect(win.getByTestId('slide-thumb')).toHaveCount(1);
 
   await app.close();

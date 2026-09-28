@@ -65,7 +65,6 @@ function setup(overrides: Partial<ImportServiceDeps> = {}) {
     },
     ...mocks,
     log: () => undefined,
-    exitGraceMs: 5,
     ...overrides,
   };
   return { service: new ImportService(deps), mocks, workers };
@@ -79,6 +78,7 @@ describe('ImportService', () => {
     expect(w?.sent).toEqual([
       {
         type: 'start',
+        job: 'import',
         runId: w?.runId,
         paths: ['/lyrics'],
         options: { onConflict: 'skip' },
@@ -111,8 +111,8 @@ describe('ImportService', () => {
     expect(mocks.onWrote).toHaveBeenCalledWith({ presentationId: 'p1', replaced: false });
     expect(mocks.onFinished).toHaveBeenCalledWith(summary(w?.runId ?? ''));
     expect(service.busy).toBe(false);
-    // A worker that does not exit by itself is stopped.
-    await vi.waitFor(() => expect(w?.killed).toBe(true));
+    // The result is the worker's last message: it is stopped then (it never exits by itself first).
+    expect(w?.killed).toBe(true);
   });
 
   it('runs one import at a time, in order', async () => {
@@ -126,6 +126,16 @@ describe('ImportService', () => {
     expect(workers[1]?.sent[0]).toMatchObject({ type: 'start', paths: ['/b'] });
     workers[1]?.emit({ type: 'failed', runId: workers[1].runId, message: 'disk on fire' });
     await expect(second).resolves.toEqual({ ok: false, message: 'disk on fire' });
+  });
+
+  it('does not count the worker stopping after its result as a failure', async () => {
+    const { service, mocks, workers } = setup();
+    const done = service.start(['/a']);
+    const w = workers[0];
+    w?.emit({ type: 'finished', run: summary(w.runId) });
+    w?.exit(0);
+    await expect(done).resolves.toMatchObject({ ok: true });
+    expect(mocks.failRun).not.toHaveBeenCalled();
   });
 
   it('records a run as failed when its worker dies', async () => {

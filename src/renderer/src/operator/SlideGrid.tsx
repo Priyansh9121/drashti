@@ -54,27 +54,36 @@ const Thumb = memo(function Thumb({
 
 export function SlideGrid() {
   const doc = useLibrary((s) => s.doc);
+  const selectedId = useLibrary((s) => s.selectedId);
   const live = useEngine((s) => s.state?.live);
   const slideShown = useEngine((s) => s.state?.layers.slide !== null);
   if (!doc) return <div className="flex items-center justify-center text-muted">Choose a presentation</div>;
   const liveIndex = live?.presentationId === doc.id && slideShown ? live.slideIndex : null;
+  // Until the newly selected presentation arrives, the old slides cannot be clicked:
+  // a quick click must never put the previous presentation's slide live.
+  const stale = doc.id !== selectedId;
   return (
     <section
       aria-label={`Slides of ${doc.name}`}
-      className="min-h-0 overflow-y-auto p-4"
+      aria-busy={stale ? 'true' : undefined}
+      inert={stale}
+      className={`min-h-0 overflow-y-auto p-4 transition-opacity ${stale ? 'opacity-40' : ''}`}
       data-testid="slide-grid"
+      data-presentation-id={doc.id}
     >
       <h2 className="mb-3 text-lg font-semibold">{doc.name}</h2>
       {doc.groups.map((g) => (
         <div key={g.id} className="mb-5">
-          <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-muted">
-            <span
-              className="h-3 w-3 rounded-sm"
-              style={{ background: g.color ?? '#4b5563' }}
-              aria-hidden="true"
-            />
-            {g.name}
-          </h3>
+          {g.name !== '' && (
+            <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-muted">
+              <span
+                className="h-3 w-3 rounded-sm"
+                style={{ background: g.color ?? '#4b5563' }}
+                aria-hidden="true"
+              />
+              {g.name}
+            </h3>
+          )}
           <ul className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
             {g.slides.map((s) => (
               <Thumb key={s.id} presentationId={doc.id} info={s} live={s.index === liveIndex} />

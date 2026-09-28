@@ -16,7 +16,8 @@ import type { Db } from '../db/database';
 import { addToTotals, ImportRepo, type NewImportItem } from '../db/imports';
 import { type NewPresentation, PresentationRepo } from '../db/presentations';
 import { parseLyricsText } from './formats/text';
-import { formatBytes, type MediaStore } from './media-store';
+import { formatBytes } from '../../shared/format';
+import type { MediaStore } from './media-store';
 import type { ParsedPresentation } from './model';
 import { slideCount } from './model';
 import { extOf, type ScannedFile, scanPaths } from './scan';
@@ -232,7 +233,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         outcome: 'failed',
         name: parsed.name,
         target: null,
-        message: 'Nothing to import: the file has no text.',
+        message: parsed.issues.find((i) => i.severity === 'error')?.message ?? 'The file has no text.',
         issues: parsed.issues,
       });
       return;
@@ -396,7 +397,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         name: ext ? `${label} files` : 'Files with no extension',
         target: null,
         counts: NO_COUNTS,
-        message: `${paths.length} file(s) (${label}) were not imported: Drashti does not read this type. For example: ${examples.join(', ')}${paths.length > examples.length ? ', …' : ''}.`,
+        message: `${paths.length === 1 ? '1 file' : `${paths.length.toLocaleString('en')} files`} (${label}) not imported: Drashti does not read this type. ${paths.length === 1 ? 'File' : 'For example'}: ${examples.join(', ')}${paths.length > examples.length ? ', …' : ''}.`,
         issues: [],
       },
       paths.length,

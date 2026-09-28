@@ -2,7 +2,7 @@ import type { AppInfo } from './app-info';
 import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
 import type { ImportOptions, ImportProgress, ImportReport, ImportResult, ImportRunSummary } from './import';
-import type { PresentationDoc, PresentationSummary } from './library';
+import type { PresentationDoc, PresentationSummary, RemoveResult } from './library';
 import type { CoverOptions, OutputContext, ScreenPatch, ScreensResult, ScreensSnapshot } from './screens';
 
 /**
@@ -12,6 +12,8 @@ import type { CoverOptions, OutputContext, ScreenPatch, ScreensResult, ScreensSn
 export const IPC = {
   app: {
     getInfo: 'app:get-info',
+    /** main -> operator: Edit > Undo was chosen (the page decides what to undo). */
+    undo: 'app:undo',
   },
   engine: {
     /** Start receiving engine messages in this window; returns a snapshot. */
@@ -31,6 +33,12 @@ export const IPC = {
     cancelImport: 'library:cancel-import',
     listImportRuns: 'library:list-import-runs',
     getImportReport: 'library:get-import-report',
+    /** Show a file dialog for files or a folder to import; returns the chosen paths. */
+    pickImportPaths: 'library:pick-import-paths',
+    /** Ask for a folder, then look there for missing media. */
+    relinkMedia: 'library:relink-media',
+    removePresentations: 'library:remove-presentations',
+    restorePresentations: 'library:restore-presentations',
     /** main -> operator: how an import is going. */
     importProgress: 'library:import-progress',
     /** main -> operator: presentations were added or changed. */
@@ -71,6 +79,10 @@ export interface InvokeContract {
   [IPC.library.cancelImport]: { args: [runId: string]; result: boolean };
   [IPC.library.listImportRuns]: { args: []; result: ImportRunSummary[] };
   [IPC.library.getImportReport]: { args: [runId: string]; result: ImportReport | null };
+  [IPC.library.pickImportPaths]: { args: [kind: 'files' | 'folder']; result: string[] };
+  [IPC.library.relinkMedia]: { args: [mediaIds?: string[]]; result: ImportResult };
+  [IPC.library.removePresentations]: { args: [ids: string[]]; result: RemoveResult };
+  [IPC.library.restorePresentations]: { args: [ids: string[]]; result: RemoveResult };
   [IPC.screens.get]: { args: []; result: ScreensSnapshot };
   [IPC.screens.createGroup]: { args: [name: string]; result: ScreensResult };
   [IPC.screens.renameGroup]: { args: [groupId: string, name: string]; result: ScreensResult };
@@ -94,6 +106,7 @@ export interface EventContract {
   [IPC.engine.message]: EngineMessage;
   [IPC.library.importProgress]: ImportProgress;
   [IPC.library.changed]: { at: number };
+  [IPC.app.undo]: { at: number };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.output.context]: OutputContext;
   [IPC.output.identify]: { name: string; groupName: string };

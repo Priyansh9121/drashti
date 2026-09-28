@@ -2,7 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import type { AppInfo } from '../../../shared/app-info';
 import { describeAppInfo } from '../../../shared/app-info';
 import { connectEngine } from '../engine/engine-store';
+import { ImportReportDialog } from '../library/ImportReport';
+import { undoRemoval, watchImports } from '../library/import-store';
 import { loadLibrary, watchLibrary } from '../library/library-store';
+import { RemoveConfirm } from '../library/RemoveConfirm';
 import { ScreensPanel } from '../screens/ScreensPanel';
 import { connectScreens } from '../screens/screens-store';
 import { Button } from '../ui/Button';
@@ -14,7 +17,7 @@ import { LivePreview } from './LivePreview';
 import { PresentationList } from './PresentationList';
 import { SlideGrid } from './SlideGrid';
 import { LiveStatus, ScreensSummary } from './StatusLine';
-import { useKeymap } from './useKeymap';
+import { isTyping, useKeymap } from './useKeymap';
 
 export function App() {
   const [info, setInfo] = useState<AppInfo | null>(null);
@@ -26,8 +29,25 @@ export function App() {
     connectEngine();
     connectScreens();
     watchLibrary();
+    watchImports();
     void loadLibrary();
+    // Edit > Undo: in a text field the window undoes the typing itself; elsewhere it brings back
+    // the last removal.
+    const offUndo = window.drashti.app.onUndo(() => {
+      if (!isTyping(document.activeElement)) void undoRemoval();
+    });
+    // Files dropped anywhere but the presentation list are ignored (never opened as a page).
+    const ignoreDrop = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes('Files')) e.preventDefault();
+    };
+    window.addEventListener('dragover', ignoreDrop);
+    window.addEventListener('drop', ignoreDrop);
     void window.drashti.app.getInfo().then(setInfo);
+    return () => {
+      offUndo();
+      window.removeEventListener('dragover', ignoreDrop);
+      window.removeEventListener('drop', ignoreDrop);
+    };
   }, []);
 
   const openScreens = useCallback(() => {
@@ -51,7 +71,7 @@ export function App() {
         <Button onClick={openScreens}>Screens</Button>
       </header>
 
-      <PresentationList />
+      <PresentationList platform={platform} />
       <SlideGrid />
 
       <aside
@@ -86,6 +106,8 @@ export function App() {
         <span data-testid="app-info">{info ? describeAppInfo(info) : ''}</span>
       </footer>
 
+      <ImportReportDialog />
+      <RemoveConfirm undoKey={shortcutText('undo', platform)} />
       {screensOpen && (
         <ScreensPanel
           platform={platform}

@@ -151,6 +151,81 @@ describe('elementFromRow', () => {
     expect(elementFromRow({ ...row, props: 'null' })).toBeNull();
     expect(elementFromRow({ ...row, props: 'not json' })).toBeNull();
   });
+
+  it('stores arrangements, notes and disabled slides; a disabled slide is not shown', () => {
+    const id = repo.insert({
+      libraryId,
+      name: 'Arranged',
+      notes: 'Placeholder notes',
+      groups: [
+        {
+          name: 'Verse',
+          slides: [{ elements: [text('v', 'v')] }, { enabled: false, elements: [text('x', 'x')] }],
+        },
+        { name: 'Chorus', slides: [{ elements: [text('c', 'c')] }] },
+      ],
+      arrangements: [{ name: 'Usual', groups: [0, 1, 0, 1, 7] }],
+    });
+    expect(repo.get(id)?.groups.map((g) => g.slides.length)).toEqual([1, 1]);
+    expect(db.prepare('SELECT notes FROM presentations WHERE id = ?').get(id)).toEqual({
+      notes: 'Placeholder notes',
+    });
+    const order = db
+      .prepare(
+        `SELECT g.name FROM arrangement_groups ag JOIN slide_groups g ON g.id = ag.group_id
+          JOIN arrangements a ON a.id = ag.arrangement_id WHERE a.presentation_id = ? ORDER BY ag.position`,
+      )
+      .all(id) as { name: string }[];
+    // An index with no group behind it is left out.
+    expect(order.map((r) => r.name)).toEqual(['Verse', 'Chorus', 'Verse', 'Chorus']);
+  });
+
+  it('replaces content in place, keeping the id and name', () => {
+    const id = repo.insert({
+      libraryId,
+      name: 'Kept name',
+      groups: [{ name: 'Old', slides: [{ elements: [] }] }],
+    });
+    const replaced = repo.replace(id, {
+      libraryId,
+      name: 'Ignored',
+      groups: [{ name: 'New', slides: [{ elements: [text('n', 'new')] }, { elements: [] }] }],
+      sourceHash: 'abc',
+    });
+    expect(replaced).toBe(true);
+    const doc = repo.get(id);
+    expect(doc?.name).toBe('Kept name');
+    expect(doc?.groups.map((g) => [g.name, g.slides.length])).toEqual([['New', 2]]);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM slide_groups').get()).toEqual({ n: 1 });
+    expect(repo.replace('missing', { libraryId, name: 'x', groups: [] })).toBe(false);
+  });
+
+  it('removes presentations so they can be restored, and purges them later', () => {
+    const a = repo.insert({ libraryId, name: 'A', groups: [] });
+    const b = repo.insert({
+      libraryId,
+      name: 'B',
+      groups: [],
+      source: { kind: 'text', path: '/b.txt', ref: null, importedAt: null },
+      sourceHash: 'h',
+    });
+    expect(repo.remove([a, b, 'missing'])).toEqual([a, b]);
+    expect(repo.remove([a])).toEqual([]);
+    expect(repo.list()).toEqual([]);
+    expect(repo.get(a)).toBeNull();
+    // A removed presentation is not an earlier import: importing the file again brings it in anew.
+    expect(repo.findImported('text', null, '/b.txt')).toEqual([]);
+    expect(repo.findByHash('text', 'h')).toBeNull();
+    expect(repo.uniqueName(libraryId, 'A')).toBe('A');
+    expect(repo.replace(a, { libraryId, name: 'A', groups: [] })).toBe(false);
+
+    expect(repo.restore([a, 'missing'])).toEqual([a]);
+    expect(repo.list().map((p) => p.name)).toEqual(['A']);
+    expect(repo.purgeRemoved('2000-01-01T00:00:00Z')).toBe(0);
+    expect(repo.purgeRemoved('9999-01-01T00:00:00Z')).toBe(1);
+    expect(repo.restore([b])).toEqual([]);
+    expect(db.prepare('SELECT name FROM presentations').all()).toEqual([{ name: 'A' }]);
+  });
 });
 
 describe('DbSlideSource', () => {

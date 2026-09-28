@@ -10,6 +10,9 @@ export interface ImportSource {
   importedAt: string | null;
 }
 
+/** Removing or restoring presentations: the ids that changed. */
+export type RemoveResult = { ok: true; ids: string[] } | { ok: false; message: string };
+
 export interface PresentationSummary {
   id: string;
   name: string;

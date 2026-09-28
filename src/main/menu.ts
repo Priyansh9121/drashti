@@ -3,6 +3,8 @@ import { Menu } from 'electron';
 
 export interface MenuActions {
   reloadOperator: () => void;
+  /** Edit > Undo: the operator page decides (typing in a field, or the last removal). */
+  undo: { accelerator: string | null; run: () => void };
   /** Turns off outputs covering the operator window (the keymap's uncoverControls). */
   uncoverControls: { accelerator: string | null; run: () => void };
   /** Only when DRASHTI_DIAGNOSTICS=1: for the manual watchdog check. */
@@ -14,7 +16,26 @@ export function installMenu(actions: MenuActions): void {
   const isMac = process.platform === 'darwin';
   const template: MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: 'appMenu' } as MenuItemConstructorOptions] : []),
-    { role: 'editMenu' },
+    {
+      label: 'Edit',
+      submenu: [
+        {
+          id: 'undo',
+          label: 'Undo',
+          ...(actions.undo.accelerator ? { accelerator: actions.undo.accelerator } : {}),
+          click: actions.undo.run,
+        },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        ...(isMac ? [{ role: 'pasteAndMatchStyle' } as const] : []),
+        { role: 'delete' },
+        { type: 'separator' },
+        { role: 'selectAll' },
+      ],
+    },
     {
       label: 'View',
       submenu: [

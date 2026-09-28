@@ -98,7 +98,7 @@ describe('migrations', () => {
     old.close();
   });
 
-  it('upgrade a version 1 library to the import tables, keeping its presentations', () => {
+  it('upgrade a version 1 library to the latest schema, keeping its presentations', () => {
     const dir = mkdtempSync(join(tmpdir(), 'drashti-db-'));
     const file = join(dir, 'drashti.sqlite');
     const v1 = openDatabase(file, MIGRATIONS.slice(0, 1));
@@ -106,10 +106,10 @@ describe('migrations', () => {
     v1.prepare("INSERT INTO presentations (id, library_id, name) VALUES ('p', 'l', 'Kept')").run();
     v1.close();
     const db = openDatabase(file);
-    expect(schemaVersion(db)).toBe(2);
+    expect(schemaVersion(db)).toBe(LATEST_VERSION);
     expect(existsSync(join(dir, 'drashti.sqlite.v1.bak'))).toBe(true);
-    expect(db.prepare('SELECT name, source_hash FROM presentations').all()).toEqual([
-      { name: 'Kept', source_hash: null },
+    expect(db.prepare('SELECT name, source_hash, deleted_at FROM presentations').all()).toEqual([
+      { name: 'Kept', source_hash: null, deleted_at: null },
     ]);
     expect(tables(db)).toEqual(expect.arrayContaining(['import_runs', 'import_items', 'import_issues']));
     db.close();

@@ -4,9 +4,13 @@ import type { ImportOptions, ImportProgress, ImportRunSummary } from '../../shar
 
 export interface StartMessage {
   type: 'start';
+  /** Import files and folders, or relink missing media from a folder (paths[0]). */
+  job: 'import' | 'relink';
   runId: string;
   paths: string[];
   options: ImportOptions;
+  /** Relink: only these missing media items (default: all). */
+  mediaIds?: string[];
   /** The library database (already migrated by the main process). */
   dbFile: string;
   mediaDir: string;

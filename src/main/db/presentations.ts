@@ -127,6 +127,7 @@ export class PresentationRepo {
                 EXISTS (SELECT 1 FROM kirtans k WHERE k.presentation_id = p.id) AS is_kirtan,
                 (SELECT group_concat(t.lang) FROM kirtan_tracks t WHERE t.kirtan_id = p.id) AS tracks
            FROM presentations p JOIN libraries l ON l.id = p.library_id
+          WHERE p.deleted_at IS NULL
           ORDER BY l.position, l.name, p.name COLLATE NOCASE`,
       )
       .all() as (SourceColumns & {
@@ -154,7 +155,7 @@ export class PresentationRepo {
   get(id: string): PresentationDoc | null {
     const p = this.db
       .prepare(
-        'SELECT id, name, width, height, source_kind, source_path, source_ref, source_imported_at FROM presentations WHERE id = ?',
+        'SELECT id, name, width, height, source_kind, source_path, source_ref, source_imported_at FROM presentations WHERE id = ? AND deleted_at IS NULL',
       )
       .get(id) as (SourceColumns & { id: string; name: string; width: number; height: number }) | undefined;
     if (!p) return null;
@@ -279,7 +280,7 @@ export class PresentationRepo {
         .prepare(
           `UPDATE presentations SET width = ?, height = ?, notes = ?, source_kind = ?, source_path = ?, source_ref = ?,
              source_imported_at = ?, source_hash = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-           WHERE id = ?`,
+           WHERE id = ? AND deleted_at IS NULL`,
         )
         .run(
           input.width ?? 1920,
@@ -389,20 +390,20 @@ export class PresentationRepo {
   }
 
   /**
-   * Earlier imports of a source: by the file's own id when it has one,
-   * otherwise by path. Newest first.
+   * Earlier imports of a source that are still in the library: by the
+   * file's own id when it has one, otherwise by path. Newest first.
    */
   findImported(kind: ImportSource['kind'], ref: string | null, path: string): ImportedMatch[] {
     const rows = (
       ref
         ? this.db
             .prepare(
-              'SELECT id, name, source_path, source_hash FROM presentations WHERE source_kind = ? AND source_ref = ? ORDER BY created_at DESC, rowid DESC',
+              'SELECT id, name, source_path, source_hash FROM presentations WHERE source_kind = ? AND source_ref = ? AND deleted_at IS NULL ORDER BY created_at DESC, rowid DESC',
             )
             .all(kind, ref)
         : this.db
             .prepare(
-              'SELECT id, name, source_path, source_hash FROM presentations WHERE source_kind = ? AND source_path = ? AND source_ref IS NULL ORDER BY created_at DESC, rowid DESC',
+              'SELECT id, name, source_path, source_hash FROM presentations WHERE source_kind = ? AND source_path = ? AND source_ref IS NULL AND deleted_at IS NULL ORDER BY created_at DESC, rowid DESC',
             )
             .all(kind, path)
     ) as { id: string; name: string; source_path: string | null; source_hash: string | null }[];
@@ -418,7 +419,7 @@ export class PresentationRepo {
   findByHash(kind: ImportSource['kind'], hash: string): ImportedMatch | null {
     const r = this.db
       .prepare(
-        'SELECT id, name, source_path, source_hash FROM presentations WHERE source_kind = ? AND source_hash = ? LIMIT 1',
+        'SELECT id, name, source_path, source_hash FROM presentations WHERE source_kind = ? AND source_hash = ? AND deleted_at IS NULL LIMIT 1',
       )
       .get(kind, hash) as
       { id: string; name: string; source_path: string | null; source_hash: string | null } | undefined;
@@ -430,7 +431,9 @@ export class PresentationRepo {
     const taken = new Set(
       (
         this.db
-          .prepare('SELECT name FROM presentations WHERE library_id = ? AND (name = ? OR name LIKE ?)')
+          .prepare(
+            'SELECT name FROM presentations WHERE library_id = ? AND deleted_at IS NULL AND (name = ? OR name LIKE ?)',
+          )
           .all(libraryId, name, `${name} (%)`) as { name: string }[]
       ).map((r) => r.name),
     );
@@ -439,6 +442,37 @@ export class PresentationRepo {
       const candidate = `${name} (${n})`;
       if (!taken.has(candidate)) return candidate;
     }
+  }
+
+  /** Remove presentations; Undo (restore) can bring them back until they are purged. Returns those removed. */
+  remove(ids: readonly string[]): string[] {
+    const stmt = this.db.prepare(
+      "UPDATE presentations SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ? AND deleted_at IS NULL",
+    );
+    const removed: string[] = [];
+    this.db.transaction(() => {
+      for (const id of ids) if (stmt.run(id).changes > 0) removed.push(id);
+    })();
+    return removed;
+  }
+
+  /** Bring removed presentations back. Returns those restored. */
+  restore(ids: readonly string[]): string[] {
+    const stmt = this.db.prepare(
+      'UPDATE presentations SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL',
+    );
+    const restored: string[] = [];
+    this.db.transaction(() => {
+      for (const id of ids) if (stmt.run(id).changes > 0) restored.push(id);
+    })();
+    return restored;
+  }
+
+  /** Delete for good what was removed before `before` (an ISO time). Returns how many. */
+  purgeRemoved(before: string): number {
+    return this.db
+      .prepare('DELETE FROM presentations WHERE deleted_at IS NOT NULL AND deleted_at < ?')
+      .run(before).changes;
   }
 }
 
