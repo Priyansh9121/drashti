@@ -54,7 +54,13 @@ The Electron binary downloads the first time something needs it (for example `pn
 | `pnpm test:audit` | Tests for the audit kit in `tools/audit/`.                                                                                   |
 | `pnpm package`    | Build installers into `release/`: `.dmg` and `.zip` on macOS, `.exe` on Windows. They are unsigned for now.                  |
 
-CI (`.github/workflows/ci.yml`) runs install, typecheck, lint, unit tests, the end-to-end tests (including the smoke test) and packaging on `macos-latest` and `windows-latest`, and uploads the installers. `.github/workflows/audit-kit.yml` tests the audit scripts on both OSes, including under Windows PowerShell 5.1.
+CI runs on GitHub Actions in the private `drashti` repository. `.github/workflows/ci.yml` runs typecheck, lint and unit tests on Ubuntu for every push. Pull requests, pushes to `main` and manual runs also get unit tests, the end-to-end tests (including the smoke test) and packaging on `macos-latest` and `windows-latest`, and keep the installers for 7 days. macOS minutes count ten times and Windows minutes twice on a private repository, which is why those jobs don't run on every push. A manual run can pick one OS:
+
+```bash
+gh workflow run CI --ref <branch> -f os=windows   # or os=macos, os=both
+```
+
+`.github/workflows/audit-kit.yml` tests the audit scripts on both OSes, including under Windows PowerShell 5.1, when they change on `main` or in a pull request, or when started by hand.
 
 ### Switches
 
@@ -157,4 +163,4 @@ Electron only supports its latest three major versions with security fixes, so g
 
 **Unsigned installers.** macOS Gatekeeper and Windows SmartScreen will warn when the installers are first opened. Signing belongs with internal distribution (PLAN.md section 4).
 
-**Windows is untested on real hardware.** `docs/windows-checks.md` lists the hand checks for the parallel run. The Windows build, the end-to-end tests and the Windows audit script only run in CI, which needs a GitHub remote. The Windows audit script has been parse-checked, compiled as C# 5 and run under PowerShell 7 on macOS against fixtures, but not yet on Windows PowerShell 5.1.
+**Windows is untested on real hardware.** `docs/windows-checks.md` lists the hand checks for the parallel run. The Windows build, the end-to-end tests and the Windows audit script run in CI on `windows-latest`, and all of them passed there on the first run, including the audit script under Windows PowerShell 5.1. A CI runner has one virtual display and no ProPresenter, so none of this has met a real Windows PC with real screens yet.
