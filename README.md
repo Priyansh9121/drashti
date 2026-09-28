@@ -127,6 +127,7 @@ Imports run in a separate worker process (an Electron utility process, `src/main
 - **Importing again.** A file already imported with the same content is skipped, even from another folder. A changed file is not touched until the operator chooses **replace** (same presentation, new slides; its name and playlists stay) or **keep both** (a second presentation, for example "Song (2)").
 - **Media.** Files are copied into the media folder, stored once per sha256 whatever they are called. Drashti checks free space first and always leaves 2 GB free for the show. Missing media is looked for by its original path, then by the same name next to the imported file or in a bundle or collected folder, then anywhere in the imported folders. Anything still missing is kept as a missing item, ready to relink from a folder the operator picks.
 - **Reports.** Every run, each file's outcome and each issue (with its fix) are stored in the library database.
+- **RTF.** Slide text in both presentation formats is RTF. The reader (`src/main/import/rtf/`) keeps paragraphs and line breaks, and per run the font, size, colour, bold, italic and letter spacing, plus each paragraph's alignment. It reads `\uN` and `\'hh` escapes in the right code page. Formatting Drashti cannot show yet (outlines, underline, text backgrounds and so on) is listed in the report. On this Mac's own libraries it read all 586 RTF texts without an error.
 
 ## How it fits together
 

@@ -34,6 +34,7 @@ function Runs({ el, runs }: { el: TextElement; runs: TextRun[] }) {
               color: run.color,
               fontWeight: run.weight,
               fontStyle: run.italic ? 'italic' : undefined,
+              letterSpacing: run.letterSpacing,
             }}
           >
             {run.text}

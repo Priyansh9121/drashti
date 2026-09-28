@@ -36,6 +36,7 @@ export const textRunSchema: z.ZodType<TextRun> = z.object({
   color: hexColorSchema.optional(),
   weight: z.number().int().min(100).max(900).optional(),
   italic: z.boolean().optional(),
+  letterSpacing: num.min(-500).max(500).optional(),
   lang: langSchema.nullable().optional(),
   legacy: z.boolean().optional(),
 });
