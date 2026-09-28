@@ -21,12 +21,13 @@ export const rtfUnicode = (text: string) =>
 export function cocoaRtf(
   lines: [string, number, [number, number, number]][],
   align: 'qc' | 'ql' | 'qr' = 'qc',
+  font = 'Helvetica',
 ): string {
   const colors = lines.map(([, , [r, g, b]]) => `\\red${r}\\green${g}\\blue${b};`).join('');
   const body = lines
     .map(([text, size], i) => `\\f0\\fs${size * 2} \\cf${i + 1} ${rtfUnicode(text)}`)
     .join('\\\n');
-  return `{\\rtf1\\ansi\\ansicpg1252\\cocoartf2639\n{\\fonttbl\\f0\\fswiss\\fcharset0 Helvetica;}\n{\\colortbl;${colors}}\n{\\*\\expandedcolortbl;;}\n\\pard\\pardirnatural\\${align}\\partightenfactor0\n\n${body}}`;
+  return `{\\rtf1\\ansi\\ansicpg1252\\cocoartf2639\n{\\fonttbl\\f0\\fswiss\\fcharset0 ${font};}\n{\\colortbl;${colors}}\n{\\*\\expandedcolortbl;;}\n\\pard\\pardirnatural\\${align}\\partightenfactor0\n\n${body}}`;
 }
 
 const esc = (s: string) => s.replace(/&/gu, '&amp;').replace(/"/gu, '&quot;').replace(/</gu, '&lt;');

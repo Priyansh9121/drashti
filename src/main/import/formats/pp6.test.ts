@@ -167,6 +167,37 @@ describe('parsePp6: presentations', () => {
     expect(p.media.map((m) => m.kind)).toEqual(['video', 'audio', 'image']);
   });
 
+  it('keeps text typed in a legacy Gujarati font as typed, in its font, and names the font in the report', () => {
+    const p = presentation(
+      pp6Presentation({
+        uuid: 'LEGACY',
+        groups: [
+          {
+            name: 'Verse',
+            slides: [{ text: [{ rtf: cocoaRtf([['nmUnO pHelI', 80, [255, 255, 255]]], 'qc', 'Gopika') }] }],
+          },
+        ],
+      }),
+    );
+    const t = p.groups[0]?.slides[0]?.elements[0] as TextElement;
+    expect(t.runs).toEqual([
+      {
+        text: 'nmUnO pHelI',
+        font: 'Gopika',
+        size: 80,
+        weight: 400,
+        color: '#ffffff',
+        legacy: true,
+        lang: null,
+      },
+    ]);
+    expect(t.lang).toBeNull();
+    expect(p.issues.find((i) => i.code === 'legacy-font')).toMatchObject({
+      severity: 'warning',
+      fix: { kind: 'convert-font', font: 'Gopika' },
+    });
+  });
+
   it('reports what does not come across, counted', () => {
     const codes = presentation(xml).issues.map((i) => [i.code, i.severity]);
     expect(codes).toEqual(
