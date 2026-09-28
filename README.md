@@ -84,6 +84,7 @@ Every shortcut is defined in one file, `src/renderer/src/operator/keymap.ts`. Th
 - The main process watches every window. A crashed window is reloaded (after about 0.1 s, then with back-off, giving up after 5 crashes in a minute). A window that stays unresponsive for 5 seconds is restarted. A reloaded window picks up the live state at once.
 - A crashed _output_ is black for a moment (well under a second here) until the watchdog reloads it, and then shows the live slide again.
 - Closing the operator window while screens are showing asks first, because quitting blacks out every screen.
+- While any output is showing, Drashti keeps the displays from sleeping or dimming (a 'prevent-display-sleep' power blocker, which also keeps the screen saver away). It lets go when no output is showing.
 - Not covered yet: a crash of the main process itself ends the app. ProPresenter stays installed as the practised fallback until cutover (PLAN.md section 5.1).
 
 **Manual check.** Start Drashti with diagnostics turned on:

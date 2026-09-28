@@ -1,5 +1,5 @@
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
-import { app, dialog, globalShortcut, screen as electronScreen, session } from 'electron';
+import { app, dialog, globalShortcut, powerSaveBlocker, screen as electronScreen, session } from 'electron';
 import { join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
 import { IPC } from '../shared/ipc';
@@ -21,6 +21,7 @@ import { createOutputWindow, listDisplays, watchDisplays } from './outputs/elect
 import { placeOperator } from './outputs/operator-guard';
 import { OutputManager } from './outputs/output-manager';
 import { ScreensService } from './outputs/screens-service';
+import { SleepGuard } from './outputs/sleep-guard';
 import { IpcTransport } from './transport/ipc-transport';
 import { createOperatorWindow } from './windows/operator-window';
 import { RendererWatchdog, shouldConfirmQuit } from './watchdog';
@@ -43,8 +44,12 @@ const watchdog = new RendererWatchdog((e) => {
   if (e.kind === 'crashed' || e.kind === 'hung' || e.kind === 'gave-up') log.warn(text);
   else log.info(text);
 });
+// Screens never sleep or dim while an output is showing.
+const sleepGuard = new SleepGuard(powerSaveBlocker, (held) => {
+  log.info(held ? 'Display sleep is blocked while outputs show' : 'Display sleep allowed again');
+});
 // Readable from the main process in end-to-end tests.
-(globalThis as { drashtiDiagnostics?: unknown }).drashtiDiagnostics = { watchdog };
+(globalThis as { drashtiDiagnostics?: unknown }).drashtiDiagnostics = { watchdog, sleepGuard };
 let quitConfirmed = false;
 
 let operatorWindow: BrowserWindow | null = null;
@@ -151,6 +156,7 @@ function start(): void {
         if (context && !win.isDestroyed()) win.webContents.send(IPC.output.context, context);
       }
       guardOperator();
+      sleepGuard.update(manager.status().filter((st) => st.state === 'showing').length);
     },
   });
   outputs = manager;
@@ -391,6 +397,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
+    sleepGuard.release();
     outputs?.closeAll();
     db?.close();
     db = null;
