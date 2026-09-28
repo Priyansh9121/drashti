@@ -8,6 +8,7 @@ function display(id: number, label: string, w: number, h: number, x = 0, y = 0):
     id,
     label,
     bounds: { x, y, width: w, height: h },
+    workArea: { x, y, width: w, height: h },
     scaleFactor: 1,
     pixelWidth: w,
     pixelHeight: h,

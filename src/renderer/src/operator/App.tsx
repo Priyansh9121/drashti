@@ -7,8 +7,8 @@ import { ScreensPanel } from '../screens/ScreensPanel';
 import { connectScreens } from '../screens/screens-store';
 import { Button } from '../ui/Button';
 import { runAction, useNotice } from './actions';
-import type { OperatorAction } from './keymap';
-import { KEYMAP, shortcutText } from './keymap';
+import type { OperatorAction } from '../../../shared/keymap';
+import { KEYMAP, shortcutText } from '../../../shared/keymap';
 import { LiveControls } from './LiveControls';
 import { LivePreview } from './LivePreview';
 import { PresentationList } from './PresentationList';
@@ -72,7 +72,9 @@ export function App() {
 
       <footer className="col-span-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line bg-panel px-4 py-1.5 text-xs text-muted">
         {KEYMAP.filter((b) =>
-          ['next', 'previous', 'clearAll', 'clearSlide', 'toggleBlackout'].includes(b.action),
+          ['next', 'previous', 'clearAll', 'clearSlide', 'toggleBlackout', 'uncoverControls'].includes(
+            b.action,
+          ),
         ).map((b) => (
           <span key={b.action}>
             <kbd className="rounded border border-line px-1">{shortcutText(b.action, platform)}</kbd>{' '}
@@ -85,6 +87,7 @@ export function App() {
 
       {screensOpen && (
         <ScreensPanel
+          platform={platform}
           onClose={() => {
             setScreensOpen(false);
           }}

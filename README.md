@@ -74,6 +74,8 @@ If you start Drashti from inside another Electron app's process (for example an 
 2. Pick a presentation on the left, then click a slide, or press Space or the right arrow, to put it on the screens.
 3. Use the clear buttons (or F1 to F7) and **Black-out** (B) on the right.
 
+**Keeping the controls reachable.** Before an output goes on the display the operator window is on, Drashti asks, because the output would cover the controls. If an output ends up over the operator window anyway (a display unplugged or rearranged), the operator window moves to a free display when there is one. **Cmd+Shift+U** (macOS) or **Ctrl+Shift+U** (Windows), "Uncover the controls", turns off any output covering the operator window. It also works when Drashti isn't the active app, and it's in the Window menu.
+
 Every shortcut is defined in one file, `src/renderer/src/operator/keymap.ts`. The current keys are provisional and will be changed to match the ones the operators use in ProPresenter once the setup checklist is back.
 
 ## What keeps the screens up (watchdog)

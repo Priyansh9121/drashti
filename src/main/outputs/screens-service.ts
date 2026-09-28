@@ -1,5 +1,18 @@
-import type { DisplayInfo, ScreenPatch, ScreensResult, ScreensSnapshot } from '../../shared/screens';
-import { displayIdSchema, idSchema, nameSchema, screenPatchSchema } from '../../shared/screens-schema';
+import { matchDisplays } from '../../shared/display-match';
+import type {
+  CoverOptions,
+  DisplayInfo,
+  ScreenPatch,
+  ScreensResult,
+  ScreensSnapshot,
+} from '../../shared/screens';
+import {
+  coverOptionsSchema,
+  displayIdSchema,
+  idSchema,
+  nameSchema,
+  screenPatchSchema,
+} from '../../shared/screens-schema';
 import type { ScreenRepo } from '../db/screens';
 import type { OutputManager } from './output-manager';
 
@@ -12,7 +25,22 @@ export class ScreensService {
     private readonly repo: ScreenRepo,
     private readonly outputs: OutputManager,
     private readonly listDisplays: () => DisplayInfo[],
+    /** The display the operator window is on (null when outputs cannot cover it, e.g. windowed outputs). */
+    private readonly operatorDisplayId: () => number | null = () => null,
   ) {}
+
+  /** An output on this display would cover the operator window, and the operator has not agreed. */
+  private needsCoverConsent(displayId: number | null | undefined, rawOptions: unknown): ScreensResult | null {
+    if (displayId === null || displayId === undefined || displayId !== this.operatorDisplayId()) return null;
+    const options = coverOptionsSchema.safeParse(rawOptions ?? {});
+    const agreed: CoverOptions = options.success ? options.data : {};
+    if (agreed.coverOperator) return null;
+    return {
+      ok: false,
+      confirm: 'covers-operator',
+      message: 'The Drashti controls are on this display. An output here would cover them.',
+    };
+  }
 
   snapshot(): ScreensSnapshot {
     return { displays: this.listDisplays(), groups: this.repo.groups(), status: this.outputs.status() };
@@ -48,7 +76,7 @@ export class ScreensService {
     return this.done();
   }
 
-  assignDisplay(rawGroupId: unknown, rawDisplayId: unknown): ScreensResult {
+  assignDisplay(rawGroupId: unknown, rawDisplayId: unknown, rawOptions?: unknown): ScreensResult {
     const groupId = idSchema.safeParse(rawGroupId);
     const displayId = displayIdSchema.safeParse(rawDisplayId);
     if (!groupId.success || !displayId.success) return this.fail('Choose a group and a display.');
@@ -61,20 +89,50 @@ export class ScreensService {
       const name = this.repo.screen(user.screenId)?.name ?? 'another screen';
       return this.fail(`That display is already used by "${name}".`);
     }
+    const consent = this.needsCoverConsent(display.id, rawOptions);
+    if (consent) return consent;
     const count = this.repo.screens().length;
     this.repo.addScreen(groupId.data, display.label || `Screen ${count + 1}`, display.key);
     return this.done();
   }
 
-  updateScreen(rawId: unknown, rawPatch: unknown): ScreensResult {
+  updateScreen(rawId: unknown, rawPatch: unknown, rawOptions?: unknown): ScreensResult {
     const id = idSchema.safeParse(rawId);
     const patch = screenPatchSchema.safeParse(rawPatch);
     if (!id.success) return this.fail('That screen no longer exists.');
     if (!patch.success)
       return this.fail('Canvas sizes are whole numbers from 16 to 16384; names need 1 to 80 characters.');
     const clean: ScreenPatch = patch.data;
+    const current = this.repo.screen(id.data);
+    if (!current) return this.fail('That screen no longer exists.');
+    if (clean.enabled === true && !current.enabled && current.displayKey) {
+      // Turning a screen back on: where would its output open?
+      const displayId = matchDisplays(
+        [{ screenId: current.id, key: current.displayKey }],
+        this.listDisplays(),
+      ).get(current.id);
+      const consent = this.needsCoverConsent(displayId, rawOptions);
+      if (consent) return consent;
+    }
     if (!this.repo.updateScreen(id.data, clean)) return this.fail('That screen no longer exists.');
     return this.done();
+  }
+
+  /**
+   * Turn off every output showing on the operator window's display, so the
+   * controls can be reached again. They stay off (saved) until switched on.
+   */
+  uncoverOperator(): ScreensResult & { turnedOff?: string[] } {
+    const operatorDisplay = this.operatorDisplayId();
+    const covering = this.outputs
+      .status()
+      .filter((s) => s.state === 'showing' && s.displayId !== null && s.displayId === operatorDisplay);
+    const turnedOff: string[] = [];
+    for (const s of covering) {
+      if (this.repo.updateScreen(s.screenId, { enabled: false }))
+        turnedOff.push(this.repo.screen(s.screenId)?.name ?? s.screenId);
+    }
+    return { ...this.done(), turnedOff };
   }
 
   removeScreen(rawId: unknown): ScreensResult {

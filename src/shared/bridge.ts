@@ -2,7 +2,7 @@ import type { AppInfo } from './app-info';
 import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
 import type { PresentationDoc, PresentationSummary } from './library';
-import type { OutputContext, ScreenPatch, ScreensResult, ScreensSnapshot } from './screens';
+import type { CoverOptions, OutputContext, ScreenPatch, ScreensResult, ScreensSnapshot } from './screens';
 
 /**
  * The API the preload script exposes to every renderer as `window.drashti`.
@@ -37,11 +37,14 @@ export interface DrashtiBridge {
     createGroup(name: string): Promise<ScreensResult>;
     renameGroup(groupId: string, name: string): Promise<ScreensResult>;
     deleteGroup(groupId: string): Promise<ScreensResult>;
-    assignDisplay(groupId: string, displayId: number): Promise<ScreensResult>;
-    updateScreen(screenId: string, patch: ScreenPatch): Promise<ScreensResult>;
+    /** May answer `confirm: 'covers-operator'`: ask the operator, then repeat with { coverOperator: true }. */
+    assignDisplay(groupId: string, displayId: number, options?: CoverOptions): Promise<ScreensResult>;
+    updateScreen(screenId: string, patch: ScreenPatch, options?: CoverOptions): Promise<ScreensResult>;
     removeScreen(screenId: string): Promise<ScreensResult>;
     /** Show each screen's name on its output for a few seconds. */
     identify(): Promise<null>;
+    /** Turn off any output covering the operator window. */
+    uncoverOperator(): Promise<ScreensResult>;
   };
   /** For output windows. */
   output: {

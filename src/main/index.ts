@@ -1,8 +1,9 @@
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
-import { app, dialog, session } from 'electron';
+import { app, dialog, globalShortcut, screen as electronScreen, session } from 'electron';
 import { join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
 import { IPC } from '../shared/ipc';
+import { acceleratorFor } from '../shared/keymap';
 import { idSchema } from '../shared/model-schema';
 import type { OutputContext } from '../shared/screens';
 import type { Db } from './db/database';
@@ -17,6 +18,7 @@ import { log } from './log';
 import { installMenu } from './menu';
 import { createdGroupId, runWatchdogSelfTest } from './selftest';
 import { createOutputWindow, listDisplays, watchDisplays } from './outputs/electron-outputs';
+import { placeOperator } from './outputs/operator-guard';
 import { OutputManager } from './outputs/output-manager';
 import { ScreensService } from './outputs/screens-service';
 import { IpcTransport } from './transport/ipc-transport';
@@ -148,10 +150,56 @@ function start(): void {
         const context = contextFor(screenId);
         if (context && !win.isDestroyed()) win.webContents.send(IPC.output.context, context);
       }
+      guardOperator();
     },
   });
   outputs = manager;
-  const screens = new ScreensService(screenRepo, manager, listDisplays);
+  /** The display the operator window is on. Windowed (development) outputs never cover it. */
+  const operatorDisplayId = (): number | null =>
+    windowedOutputs || !operatorWindow || operatorWindow.isDestroyed()
+      ? null
+      : electronScreen.getDisplayMatching(operatorWindow.getBounds()).id;
+  const screens = new ScreensService(screenRepo, manager, listDisplays, operatorDisplayId);
+
+  // ---- keeping the operator's controls reachable ----------------------------
+  const uncoverAccelerator = acceleratorFor('uncoverControls');
+  let uncoverRegistered = false;
+  const uncover = () => {
+    const result = screens.uncoverOperator();
+    const names = result.turnedOff ?? [];
+    log.info(`Uncover the controls: turned off ${names.length > 0 ? names.join(', ') : 'nothing'}`);
+    if (operatorWindow && !operatorWindow.isDestroyed()) {
+      operatorWindow.show();
+      operatorWindow.focus();
+    }
+  };
+  /** Register the uncover shortcut system-wide only while an output covers the operator window. */
+  const setUncoverShortcut = (covered: boolean) => {
+    if (!uncoverAccelerator || covered === uncoverRegistered) return;
+    if (covered) {
+      uncoverRegistered = globalShortcut.register(uncoverAccelerator, uncover);
+      if (!uncoverRegistered) log.warn(`Could not register ${uncoverAccelerator}; another app is using it.`);
+    } else {
+      globalShortcut.unregister(uncoverAccelerator);
+      uncoverRegistered = false;
+    }
+  };
+  /** Move the operator window off an output onto a free display, if there is one. */
+  const guardOperator = () => {
+    if (windowedOutputs || !operatorWindow || operatorWindow.isDestroyed()) return;
+    const showing = new Set(
+      manager
+        .status()
+        .flatMap((st) => (st.state === 'showing' && st.displayId !== null ? [st.displayId] : [])),
+    );
+    const target = placeOperator(operatorWindow.getBounds(), listDisplays(), showing);
+    if (target) {
+      log.info('The operator window was under an output; moving it to a free display.');
+      operatorWindow.setBounds(target);
+    }
+    const here = operatorDisplayId();
+    setUncoverShortcut(here !== null && showing.has(here));
+  };
 
   // ---- IPC ----------------------------------------------------------------
   handle(IPC.app.getInfo, () => appInfo());
@@ -172,12 +220,17 @@ function start(): void {
     fromOperator(e) ? screens.renameGroup(id, name) : notAllowed,
   );
   handle(IPC.screens.deleteGroup, (e, id) => (fromOperator(e) ? screens.deleteGroup(id) : notAllowed));
-  handle(IPC.screens.assignDisplay, (e, groupId, displayId) =>
-    fromOperator(e) ? screens.assignDisplay(groupId, displayId) : notAllowed,
+  handle(IPC.screens.assignDisplay, (e, groupId, displayId, options) =>
+    fromOperator(e) ? screens.assignDisplay(groupId, displayId, options) : notAllowed,
   );
-  handle(IPC.screens.updateScreen, (e, id, patch) =>
-    fromOperator(e) ? screens.updateScreen(id, patch) : notAllowed,
+  handle(IPC.screens.updateScreen, (e, id, patch, options) =>
+    fromOperator(e) ? screens.updateScreen(id, patch, options) : notAllowed,
   );
+  handle(IPC.screens.uncoverOperator, (e) => {
+    if (!fromOperator(e)) return notAllowed;
+    uncover();
+    return { ok: true as const, snapshot: screens.snapshot() };
+  });
   handle(IPC.screens.removeScreen, (e, id) => (fromOperator(e) ? screens.removeScreen(id) : notAllowed));
   handle(IPC.screens.identify, (e) => {
     if (!fromOperator(e)) return null;
@@ -218,6 +271,11 @@ function start(): void {
 
   operatorWindow = createOperatorWindow();
   watchdog.watch(operatorWindow.webContents, 'operator');
+  let moveTimer: NodeJS.Timeout | null = null;
+  operatorWindow.on('moved', () => {
+    if (moveTimer) clearTimeout(moveTimer);
+    moveTimer = setTimeout(guardOperator, 250);
+  });
   operatorWindow.on('close', (event) => {
     if (!confirmQuit()) event.preventDefault();
   });
@@ -243,7 +301,7 @@ function start(): void {
         const created = screens.createGroup('Watchdog self-test');
         const groupId = createdGroupId(created, 'Watchdog self-test');
         const display = listDisplays()[0];
-        if (groupId && display) screens.assignDisplay(groupId, display.id);
+        if (groupId && display) screens.assignDisplay(groupId, display.id, { coverOperator: true });
         await new Promise((resolve) => setTimeout(resolve, 300));
         return () => {
           if (groupId) screens.deleteGroup(groupId);
@@ -255,6 +313,7 @@ function start(): void {
     reloadOperator: () => {
       operatorWindow?.webContents.reload();
     },
+    uncoverControls: { accelerator: uncoverAccelerator, run: uncover },
     diagnostics: diagnostics
       ? {
           crashOperator: () => {
@@ -331,6 +390,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on('will-quit', () => {
+    globalShortcut.unregisterAll();
     outputs?.closeAll();
     db?.close();
     db = null;

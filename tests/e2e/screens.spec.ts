@@ -2,7 +2,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import Database from 'better-sqlite3';
 import { join } from 'node:path';
-import { launchApp } from './helpers';
+import { launchApp, useDisplay } from './helpers';
 
 async function outputPage(app: ElectronApplication): Promise<Page> {
   const existing = app.windows().find((w) => w.url().includes('output.html'));
@@ -24,7 +24,7 @@ test('screen groups: assign a display, open an output, restore it after a restar
   await win.getByLabel('New group name').fill('Main Hall');
   await win.getByRole('button', { name: 'Add group' }).click();
   await expect(win.getByTestId('screen-group')).toHaveCount(1);
-  await displayRow.getByRole('button', { name: 'Use this display' }).click();
+  await useDisplay(win, displayRow);
   await expect(win.getByTestId('screen-state')).toContainText('Showing');
 
   // An output window opens on that display, in its own renderer process.

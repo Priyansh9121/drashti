@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actionFor, KEYMAP, keyMatches, shortcutText } from './keymap';
+import { acceleratorFor, actionFor, KEYMAP, keyMatches, shortcutText, toAccelerator } from './keymap';
 
 const press = (
   key: string,
@@ -60,5 +60,19 @@ describe('keymap', () => {
     expect(shortcutText('toggleBlackout', 'darwin')).toBe('B');
     expect(shortcutText('openScreens', 'darwin')).toBe('⌘⇧S');
     expect(shortcutText('openScreens', 'win32')).toBe('Ctrl+Shift+S');
+  });
+
+  it('has an uncover shortcut that also works outside the app', () => {
+    const b = KEYMAP.find((x) => x.action === 'uncoverControls');
+    expect(b?.global).toBe(true);
+    expect(actionFor(press('u', { metaKey: true, shiftKey: true }), 'darwin')).toBe('uncoverControls');
+    expect(actionFor(press('U', { ctrlKey: true, shiftKey: true }), 'win32')).toBe('uncoverControls');
+    expect(acceleratorFor('uncoverControls')).toBe('CommandOrControl+Shift+U');
+  });
+
+  it('turns bindings into Electron accelerators', () => {
+    expect(toAccelerator('Mod+Shift+S')).toBe('CommandOrControl+Shift+S');
+    expect(toAccelerator('F2')).toBe('F2');
+    expect(acceleratorFor('next')).toBe('ArrowRight');
   });
 });

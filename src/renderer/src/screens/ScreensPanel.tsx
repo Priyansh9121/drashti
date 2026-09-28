@@ -7,9 +7,10 @@ import type {
   ScreenState,
   ScalingMode,
 } from '../../../shared/screens';
+import { shortcutText } from '../../../shared/keymap';
 import { CANVAS_PRESETS, SCALING_MODES } from '../../../shared/screens';
 import { Button } from '../ui/Button';
-import { connectScreens, screensAction, useScreens } from './screens-store';
+import { cancelCover, connectScreens, screensAction, useScreens } from './screens-store';
 
 const stateText: Record<ScreenState, string> = {
   showing: 'Showing',
@@ -41,6 +42,7 @@ function DisplayRow({
     <li
       className="flex flex-wrap items-center gap-3 rounded-md border border-line bg-panel-2 px-3 py-2"
       data-testid="display-row"
+      data-display-id={display.id}
     >
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium">{describeDisplay(display)}</div>
@@ -74,7 +76,9 @@ function DisplayRow({
           </select>
           <Button
             tone="primary"
-            onClick={() => void screensAction(() => bridge().assignDisplay(target, display.id))}
+            onClick={() =>
+              void screensAction((consent) => bridge().assignDisplay(target, display.id, consent))
+            }
           >
             Use this display
           </Button>
@@ -134,7 +138,7 @@ function ScreenRow({
   displays: DisplayInfo[];
 }) {
   const update = (patch: Parameters<ReturnType<typeof bridge>['updateScreen']>[1]) =>
-    void screensAction(() => bridge().updateScreen(screen.id, patch));
+    void screensAction((consent) => bridge().updateScreen(screen.id, patch, consent));
   const preset = CANVAS_PRESETS.find(
     (p) => p.width === screen.canvasWidth && p.height === screen.canvasHeight,
   );
@@ -272,7 +276,50 @@ function GroupCard({
   );
 }
 
-export function ScreensPanel({ onClose }: { onClose: () => void }) {
+/** "Cover the controls?" - shown before an output goes on the display the operator window is on. */
+function CoverConfirm({ platform }: { platform: string }) {
+  const pending = useScreens((s) => s.pendingCover);
+  if (!pending) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="cover-title"
+      aria-describedby="cover-text"
+      data-testid="cover-confirm"
+    >
+      <div className="max-w-md space-y-4 rounded-lg border border-amber-600 bg-panel p-5 shadow-2xl">
+        <h3 id="cover-title" className="text-lg font-semibold">
+          Cover the Drashti controls?
+        </h3>
+        <div id="cover-text" className="space-y-2 text-sm text-muted">
+          <p>
+            {pending.message} It will cover them completely: you will not be able to see or click the controls
+            on this display while it shows.
+          </p>
+          <p>
+            To get the controls back, press{' '}
+            <kbd className="rounded border border-line px-1 text-white">
+              {shortcutText('uncoverControls', platform)}
+            </kbd>{' '}
+            (Uncover the controls). It works even while Drashti is covered, and turns that output off.
+          </p>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button autoFocus onClick={cancelCover}>
+            Cancel
+          </Button>
+          <Button tone="danger" onClick={pending.proceed}>
+            Cover the controls
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ScreensPanel({ onClose, platform }: { onClose: () => void; platform: string }) {
   const { snapshot, error, busy } = useScreens();
   const [newGroup, setNewGroup] = useState('');
   useEffect(() => {
@@ -357,6 +404,7 @@ export function ScreensPanel({ onClose }: { onClose: () => void }) {
           </section>
         </div>
       </div>
+      <CoverConfirm platform={platform} />
     </div>
   );
 }

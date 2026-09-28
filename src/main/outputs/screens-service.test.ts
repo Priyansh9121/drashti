@@ -9,6 +9,7 @@ const hall: DisplayInfo = {
   id: 2,
   label: 'Hall TV',
   bounds: { x: 1440, y: 0, width: 1920, height: 1080 },
+  workArea: { x: 1440, y: 0, width: 1920, height: 1080 },
   scaleFactor: 1,
   pixelWidth: 1920,
   pixelHeight: 1080,
@@ -22,11 +23,13 @@ const hall: DisplayInfo = {
 let service: ScreensService;
 let repo: ScreenRepo;
 let windows: number;
+let operatorDisplay: number | null;
 
 beforeEach(() => {
   const db = openDatabase(':memory:');
   repo = new ScreenRepo(db);
   windows = 0;
+  operatorDisplay = null;
   const outputs = new OutputManager({
     listDisplays: () => [hall],
     screens: () => repo.screens(),
@@ -41,7 +44,12 @@ beforeEach(() => {
     }),
     onChange: () => undefined,
   });
-  service = new ScreensService(repo, outputs, () => [hall]);
+  service = new ScreensService(
+    repo,
+    outputs,
+    () => [hall],
+    () => operatorDisplay,
+  );
 });
 
 describe('ScreensService', () => {
@@ -116,5 +124,53 @@ describe('ScreensService', () => {
     expect(service.deleteGroup(groupId).ok).toBe(true);
     expect(service.snapshot().groups).toEqual([]);
     expect(service.deleteGroup(groupId)).toMatchObject({ ok: false });
+  });
+
+  describe('the display the operator window is on', () => {
+    beforeEach(() => {
+      operatorDisplay = 2;
+      service.createGroup('Hall');
+    });
+
+    it('asks before putting an output there, and changes nothing until agreed', () => {
+      const groupId = repo.groups()[0]?.id;
+      const asked = service.assignDisplay(groupId, 2);
+      expect(asked).toMatchObject({ ok: false, confirm: 'covers-operator' });
+      expect(repo.screens()).toEqual([]);
+      expect(windows).toBe(0);
+      expect(service.assignDisplay(groupId, 2, { coverOperator: false })).toMatchObject({
+        confirm: 'covers-operator',
+      });
+      expect(service.assignDisplay(groupId, 2, { coverOperator: true })).toMatchObject({ ok: true });
+      expect(windows).toBe(1);
+    });
+
+    it('turns covering outputs off with uncoverOperator, and asks again before they come back on', () => {
+      const groupId = repo.groups()[0]?.id;
+      service.assignDisplay(groupId, 2, { coverOperator: true });
+      const screenId = repo.screens()[0]?.id ?? '';
+      const uncovered = service.uncoverOperator();
+      expect(uncovered).toMatchObject({ ok: true, turnedOff: ['Hall TV'] });
+      expect(repo.screen(screenId)?.enabled).toBe(false);
+      expect(service.snapshot().status[0]?.state).toBe('disabled');
+
+      expect(service.updateScreen(screenId, { enabled: true })).toMatchObject({ confirm: 'covers-operator' });
+      expect(repo.screen(screenId)?.enabled).toBe(false);
+      expect(service.updateScreen(screenId, { enabled: true }, { coverOperator: true })).toMatchObject({
+        ok: true,
+      });
+      expect(repo.screen(screenId)?.enabled).toBe(true);
+    });
+
+    it('does not ask for other changes or other displays', () => {
+      const groupId = repo.groups()[0]?.id;
+      service.assignDisplay(groupId, 2, { coverOperator: true });
+      const screenId = repo.screens()[0]?.id ?? '';
+      expect(service.updateScreen(screenId, { canvasWidth: 1280 })).toMatchObject({ ok: true });
+      operatorDisplay = 7;
+      expect(service.uncoverOperator()).toMatchObject({ ok: true, turnedOff: [] });
+      expect(service.updateScreen(screenId, { enabled: false })).toMatchObject({ ok: true });
+      expect(service.updateScreen(screenId, { enabled: true })).toMatchObject({ ok: true });
+    });
   });
 });

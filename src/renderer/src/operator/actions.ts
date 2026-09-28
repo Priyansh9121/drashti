@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { EngineCommand } from '../../../shared/engine/commands';
 import { useEngine } from '../engine/engine-store';
 import { useLibrary } from '../library/library-store';
-import type { OperatorAction } from './keymap';
+import type { OperatorAction } from '../../../shared/keymap';
 
 /** The last problem to show the operator (for example "Slide 4 of 3 does not exist"). */
 export const useNotice = create<{ text: string | null }>(() => ({ text: null }));
@@ -52,6 +52,9 @@ export async function runAction(action: OperatorAction, ui: { openScreens: () =>
       return dispatch({ type: 'toggleBlackout' });
     case 'openScreens':
       ui.openScreens();
+      return;
+    case 'uncoverControls':
+      await window.drashti.screens.uncoverOperator();
       return;
   }
 }

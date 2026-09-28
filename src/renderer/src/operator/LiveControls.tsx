@@ -2,8 +2,8 @@ import type { LayerName } from '../../../shared/engine/state';
 import { isLayerEmpty } from '../../../shared/engine/state';
 import { useEngine } from '../engine/engine-store';
 import { Button } from '../ui/Button';
-import type { OperatorAction } from './keymap';
-import { shortcutText } from './keymap';
+import type { OperatorAction } from '../../../shared/keymap';
+import { shortcutText } from '../../../shared/keymap';
 
 const clears: { action: OperatorAction; layer: LayerName; label: string }[] = [
   { action: 'clearSlide', layer: 'slide', label: 'Slide' },

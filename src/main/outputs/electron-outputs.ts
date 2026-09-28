@@ -14,6 +14,7 @@ export function toDisplayInfo(d: Display, primaryId: number): DisplayInfo {
     id: d.id,
     label,
     bounds: { ...d.bounds },
+    workArea: { ...d.workArea },
     scaleFactor: d.scaleFactor,
     pixelWidth,
     pixelHeight,
