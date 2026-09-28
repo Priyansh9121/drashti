@@ -131,6 +131,7 @@ The library is `drashti.sqlite` in Electron's userData folder: `~/Library/Applic
 | `src/renderer/src/screens/`, `library/`, `engine/`, `ui/` | Screens panel, library and engine stores, small UI parts.                                                                        |
 | `tests/e2e/`                                              | Playwright tests against the built app. Unit tests sit next to the code as `*.test.ts`.                                          |
 | `tools/audit/`                                            | The read-only audit kit for the two ProPresenter machines. See `tools/audit/README.md`.                                          |
+| `docs/`                                                   | Hand checks, starting with `docs/windows-checks.md` for the Windows PC during the parallel run.                                  |
 | `LICENSES/`                                               | Licences for bundled fonts (shipped inside the app).                                                                             |
 
 ## Security model
@@ -156,4 +157,4 @@ Electron only supports its latest three major versions with security fixes, so g
 
 **Unsigned installers.** macOS Gatekeeper and Windows SmartScreen will warn when the installers are first opened. Signing belongs with internal distribution (PLAN.md section 4).
 
-**Windows is untested on real hardware.** The Windows build, the end-to-end tests and the Windows audit script only run in CI, which needs a GitHub remote. The Windows audit script has been parse-checked, compiled as C# 5 and run under PowerShell 7 on macOS against fixtures, but not yet on Windows PowerShell 5.1.
+**Windows is untested on real hardware.** `docs/windows-checks.md` lists the hand checks for the parallel run. The Windows build, the end-to-end tests and the Windows audit script only run in CI, which needs a GitHub remote. The Windows audit script has been parse-checked, compiled as C# 5 and run under PowerShell 7 on macOS against fixtures, but not yet on Windows PowerShell 5.1.
