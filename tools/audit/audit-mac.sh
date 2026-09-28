@@ -20,7 +20,11 @@ export LC_ALL=C
 PATH="/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 export PATH
 
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.0.1"
+# For the self-tests only: a folder that stands in for / when looking in the
+# machine-wide places (/Library/Application Support, /Users/Shared), so a test
+# can pretend to be a Mac with no ProPresenter data at all. Empty on real runs.
+SYS_ROOT="${DRASHTI_AUDIT_SYSTEM_ROOT:-}"
 SCHEMA="drashti-audit/1"
 MEDIA_EXT_RE='^(mp4|m4v|mov|qt|avi|wmv|mkv|mpg|mpeg|mts|m2ts|ts|webm|flv|3gp|mxf|dv|jpg|jpeg|png|gif|bmp|tif|tiff|heic|webp|psd|mp3|wav|aif|aiff|m4a|aac|flac|ogg|wma|caf)$'
 PP_DOC_RE='\.(pro6|pro5|pro4|pro6pl|pro6x|pro6plx|pro6template|pro|probundle|proplaylist)$'
@@ -720,8 +724,9 @@ JXA
 flat_get() { awk -F'\t' -v p="$2" '$1 == p { print $3; exit }' "$1"; }
 sp_flat() { system_profiler -xml "$1" 2>/dev/null | awk -f "$W/plist.awk"; }
 jstr() { printf '%s' "$1" | awk -f "$W/lib.awk" -f "$W/jstr.awk"; }
-tsv_json() { awk -f "$W/lib.awk" -f "$W/tsv2json.awk" -v SPEC="$2" "$1"; }
-tsv_md() { awk -f "$W/lib.awk" -f "$W/tsv2md.awk" -v HEAD="$2" -v COLS="$3" -v MAX="${4:-0}" "$1"; }
+# A table file that was never written counts as empty (a Mac with no ProPresenter data has none).
+tsv_json() { local f="$1"; [ -f "$f" ] || f=/dev/null; awk -f "$W/lib.awk" -f "$W/tsv2json.awk" -v SPEC="$2" "$f"; }
+tsv_md() { local f="$1"; [ -f "$f" ] || f=/dev/null; awk -f "$W/lib.awk" -f "$W/tsv2md.awk" -v HEAD="$2" -v COLS="$3" -v MAX="${4:-0}" "$f"; }
 lower() { printf '%s' "$1" | tr 'A-Z' 'a-z'; }
 human() { awk -v b="${1:-0}" 'BEGIN { split("B KB MB GB TB", u, " "); i = 1; while (b >= 1024 && i < 5) { b /= 1024; i++ } if (i == 1) printf "%d %s", b, u[i]; else printf "%.1f %s", b, u[i] }'; }
 
@@ -892,7 +897,7 @@ kind_of() {
 }
 is_generic_dir() {
   case "$1" in
-    "$HOME"|"$HOME/Desktop"|"$HOME/Documents"|"$HOME/Downloads"|"$HOME/Movies"|"$HOME/Pictures"|"$HOME/Music"|/|/Users|/Users/Shared) return 0 ;;
+    "$HOME"|"$HOME/Desktop"|"$HOME/Documents"|"$HOME/Downloads"|"$HOME/Movies"|"$HOME/Pictures"|"$HOME/Music"|/|/Users|/Users/Shared|"$SYS_ROOT/Users/Shared") return 0 ;;
     /Volumes/*/*) return 1 ;;
     /Volumes/*) return 0 ;;
   esac
@@ -927,10 +932,10 @@ section_locations() {
   while IFS= read -r f; do add_loc "$f" configuration "preferences file"; done < "$W/prefs_files.txt"
   # b) well-known folders
   for d in "$HOME"/Documents/*ProPresenter* "$HOME"/Documents/*Renewed* \
-           "$HOME/Library/Application Support/RenewedVision" "/Library/Application Support/RenewedVision" \
+           "$HOME/Library/Application Support/RenewedVision" "$SYS_ROOT/Library/Application Support/RenewedVision" \
            "$HOME"/Library/Application\ Support/*ProPresenter* \
            "$HOME"/Movies/*ProPresenter* "$HOME"/Pictures/*ProPresenter* "$HOME"/Music/*ProPresenter* \
-           /Users/Shared/*Renewed* /Users/Shared/*ProPresenter*; do
+           "$SYS_ROOT"/Users/Shared/*Renewed* "$SYS_ROOT"/Users/Shared/*ProPresenter*; do
     [ -e "$d" ] || continue
     excluded_path "$d" && continue
     add_loc "$d" "$(kind_of "$d")" "default location"
@@ -940,7 +945,7 @@ section_locations() {
     if [ -d "$r" ]; then add_loc "$(cd "$r" && pwd -P)" "$(kind_of "$r")" "search root"; else err search-root "Not a folder: $r"; fi
   done
   # c) search for ProPresenter documents
-  find "$HOME/Documents" "$HOME/Desktop" /Users/Shared -maxdepth 6 -type f 2>/dev/null > "$W/search_all.txt"
+  find "$HOME/Documents" "$HOME/Desktop" "$SYS_ROOT/Users/Shared" -maxdepth 6 -type f 2>/dev/null > "$W/search_all.txt"
   grep -i -E '\.(pro6|pro5|pro4|pro6pl|pro6x|pro6plx|pro6template|probundle|proplaylist)$' "$W/search_all.txt" >> "$W/pp_hits.txt"
   grep -i -E '\.pro$' "$W/search_all.txt" | grep -i -E 'propresenter|renewed ?vision' >> "$W/pp_hits.txt"
   if [ "$USE_SPOTLIGHT" = 1 ]; then
@@ -986,6 +991,7 @@ section_inventory() {
       stat -f "$i%t%z%t%N" "$p" 2>/dev/null >> "$W/files.tsv"
     fi
   done < "$W/locations.tsv"
+  : > "$W/loc_stats.tsv"; : > "$W/ext_stats.tsv"; : > "$W/loc_subs.tsv"
   awk -F'\t' -v MEDIA="$MEDIA_EXT_RE" '
     NR == FNR { loc[FNR] = $1; kind[FNR] = $2; via[FNR] = $3; nl = FNR; next }
     {
