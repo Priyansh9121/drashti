@@ -193,6 +193,26 @@ describe('runImport', () => {
     expect(names(t.db)).toEqual(['Song 1', 'Song 2']);
   });
 
+  it('keeps the files it finished when a run fails partway, and leaves no transaction open', async () => {
+    const t = setup();
+    for (let i = 1; i <= 3; i++) t.write(`Song ${i}.txt`, `Placeholder ${i}\n`);
+    let reports = 0;
+    await expect(
+      t.run(
+        [t.source],
+        {},
+        {
+          onProgress: (p) => {
+            if (p.phase === 'importing' && p.current === 'Song 2.txt' && ++reports === 1)
+              throw new Error('boom');
+          },
+        },
+      ),
+    ).rejects.toThrow('boom');
+    expect(t.db.inTransaction).toBe(false);
+    expect(names(t.db)).toEqual(['Song 1']);
+  });
+
   it('never imports from folders it is told to skip', async () => {
     const t = setup();
     t.write('own/Song.txt', 'Placeholder\n');
