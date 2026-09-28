@@ -14,6 +14,12 @@ test("an output on the operator's display needs consent, and Uncover gets the co
   const openOutputs = () => app.windows().filter((w) => !w.isClosed() && isOutput(w.url())).length;
   const shortcutRegistered = () =>
     app.evaluate(({ globalShortcut }) => globalShortcut.isRegistered('CommandOrControl+Shift+U'));
+  const sleepBlocked = () =>
+    app.evaluate(
+      () =>
+        (globalThis as unknown as { drashtiDiagnostics: { sleepGuard: { held: boolean } } })
+          .drashtiDiagnostics.sleepGuard.held,
+    );
 
   await op.getByRole('button', { name: 'Screens', exact: true }).click();
   await op.getByLabel('New group name').fill('Main Hall');
@@ -30,6 +36,7 @@ test("an output on the operator's display needs consent, and Uncover gets the co
   await expect(confirm).toHaveCount(0);
   await expect(op.getByTestId('screen-row')).toHaveCount(0);
   expect(openOutputs()).toBe(0);
+  expect(await sleepBlocked()).toBe(false);
 
   // Agreeing opens the output over the controls; the uncover shortcut is now registered system-wide.
   await row.getByRole('button', { name: 'Use this display' }).click();
@@ -37,12 +44,15 @@ test("an output on the operator's display needs consent, and Uncover gets the co
   await app.waitForEvent('window', { predicate: (w) => isOutput(w.url()) });
   await expect(op.getByTestId('screen-state')).toContainText('Showing');
   await expect.poll(shortcutRegistered).toBe(true);
+  // While an output shows, the display may not sleep.
+  await expect.poll(sleepBlocked).toBe(true);
 
   // The uncover key turns that output off, and it stays off.
   await op.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+U' : 'Control+Shift+U');
   await expect(op.getByTestId('screen-state')).toHaveText('Off');
   await expect.poll(openOutputs).toBe(0);
   await expect.poll(shortcutRegistered).toBe(false);
+  await expect.poll(sleepBlocked).toBe(false);
 
   // Switching it back on asks again.
   // The box stays unticked until the operator agrees.
