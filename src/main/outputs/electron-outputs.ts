@@ -105,7 +105,13 @@ export function createOutputWindow(
       });
   if (!options.windowed) {
     win.setAlwaysOnTop(true, 'screen-saver');
-    if (process.platform === 'darwin') win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    if (process.platform === 'darwin') {
+      // Stay visible when someone switches Spaces on the output's display. The window joins every
+      // Space of its own display only, so it never moves to another display. skipTransformProcessType
+      // matters: without it Electron hides the app's Dock icon (and with it the menu bar) and briefly
+      // hides the operator window every time an output opens.
+      win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
+    }
     win.setBounds(b);
   }
   win.once('ready-to-show', () => {

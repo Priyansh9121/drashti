@@ -46,6 +46,10 @@ test("an output on the operator's display needs consent, and Uncover gets the co
   await expect.poll(shortcutRegistered).toBe(true);
   // While an output shows, the display may not sleep.
   await expect.poll(sleepBlocked).toBe(true);
+  // macOS: opening an output must not hide Drashti's Dock icon (and with it the menu bar).
+  if (process.platform === 'darwin') {
+    expect(await app.evaluate(({ app: electronApp }) => electronApp.dock?.isVisible())).toBe(true);
+  }
 
   // The uncover key turns that output off, and it stays off.
   await op.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+U' : 'Control+Shift+U');
