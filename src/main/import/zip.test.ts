@@ -1,6 +1,6 @@
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { makeZip } from './testing/zip-writer';
 import { entryPath, extractZip, listZip, ZipError } from './zip';
@@ -63,7 +63,7 @@ describe('ZIP archives', () => {
     expect(entryPath('/root', 'a/../../b')).toBeNull();
     expect(entryPath('/root', '/etc/passwd')).toBeNull();
     expect(entryPath('/root', 'C:\\x')).toBeNull();
-    expect(entryPath('/root', 'a\\b.txt')).toBe(join('/root', 'a', 'b.txt'));
+    expect(entryPath('/root', 'a\\b.txt')).toBe(resolve('/root', 'a', 'b.txt'));
   });
 
   it('refuses archives too big to extract, and files that are not archives', async () => {

@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { MediaElement, ShapeElement, TextElement } from '../../../shared/model';
 import { cocoaRtf, pp6Playlist, pp6Presentation, pp6Template } from '../testing/pp6-fixtures';
@@ -135,7 +136,11 @@ describe('parsePp6: presentations', () => {
       media: 0,
       props: { media: 'video', fit: 'fill', loop: true },
     });
-    expect(p.media[0]).toEqual({ originalPath: 'file:///Media/Loops/Blue%20Loop.mov', kind: 'video' });
+    // (On Windows the URL also names the drive.)
+    expect(p.media[0]).toEqual({
+      originalPath: pathToFileURL('/Media/Loops/Blue Loop.mov').href,
+      kind: 'video',
+    });
   });
 
   it('keeps images placed on a slide as media elements, shapes as shapes, and audio as a cue', () => {
