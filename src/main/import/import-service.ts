@@ -130,8 +130,11 @@ export class ImportService {
           this.deps.onWrote({ presentationId: m.presentationId, replaced: m.replaced });
           break;
         case 'finished':
-          this.deps.log('info', `Import ${job.runId} ${m.run.status}: ${JSON.stringify(m.run.totals)}`);
-          settle({ ok: true, run: m.run }, m.run);
+          this.deps.log(
+            'info',
+            `Import ${job.runId} ${m.run.status}: ${JSON.stringify(m.run.totals)}${m.timings ? `; ms ${JSON.stringify(m.timings)}` : ''}`,
+          );
+          settle({ ok: true, run: m.run, ...(m.timings ? { timings: m.timings } : {}) }, m.run);
           break;
         case 'failed':
           this.deps.log('warn', `Import ${job.runId} failed: ${m.message}`);

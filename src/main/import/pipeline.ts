@@ -4,6 +4,7 @@ import { basename } from 'node:path';
 import type {
   ConflictChoice,
   ImportCounts,
+  ImportTimings,
   ImportOptions,
   ImportProgress,
   ImportRunStatus,
@@ -46,6 +47,8 @@ export interface PipelineContext {
   /** After each presentation is committed. */
   onWrote?: (wrote: { presentationId: string; replaced: boolean }) => void;
   isCancelled?: () => boolean;
+  /** Filled in with where the time went. */
+  timings?: ImportTimings;
   /** Least time between progress reports (default 100 ms). */
   progressEveryMs?: number;
 }
@@ -114,6 +117,14 @@ export function toNewPresentation(
 const FORMAT_LABEL: Record<'pp6' | 'pp7', string> = { pp6: '.pro6', pp7: '.pro' };
 
 export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary> {
+  const runStarted = performance.now();
+  const timings = ctx.timings;
+  /** Add the time since `from` to a phase; returns now. */
+  const time = (phase: Exclude<keyof ImportTimings, 'total'>, from: number): number => {
+    const now = performance.now();
+    if (timings) timings[phase] += now - from;
+    return now;
+  };
   const imports = new ImportRepo(ctx.db);
   const presentations = new PresentationRepo(ctx.db);
   const totals = emptyTotals();
@@ -168,12 +179,15 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       });
       return;
     }
+    let t = performance.now();
     const bytes = await readFile(file.path);
     const hash = sha256(bytes);
+    t = time('read', t);
     const earlier = presentations.findImported('text', null, file.path);
     const same =
       earlier.find((e) => e.sourceHash === hash) ??
       (earlier.length === 0 ? presentations.findByHash('text', hash) : null);
+    time('lookup', t);
     if (same) {
       record({
         ...base,
@@ -225,8 +239,10 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       choice = decided;
     }
 
+    t = performance.now();
     const parsed = parseLyricsText(bytes, file.path);
     dropInvalidElements(parsed);
+    t = time('parse', t);
     if (slideCount(parsed) === 0) {
       record({
         ...base,
@@ -279,11 +295,14 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         result: { presentationId: id, replaced: false },
       };
     });
+    time('write', t);
     ctx.onWrote?.(wrote);
   };
 
   const importMedia = async (file: ScannedFile) => {
+    const started = performance.now();
     const result = await ctx.media.importFile(file.path, { kind: 'media', path: file.path });
+    time('media', started);
     const base = { sourcePath: file.path, format: 'media' as const };
     if (result.outcome === 'failed') {
       record({
@@ -310,7 +329,9 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
 
   imports.startRun(ctx.runId, ctx.paths, ctx.options);
   progress('scanning', 0, 0, null, true);
+  const scanStarted = performance.now();
   const scan = await scanPaths(ctx.paths, { skip: ctx.skipDir });
+  time('scan', scanStarted);
   for (const m of scan.missing) {
     record({
       sourcePath: m.path,
@@ -411,6 +432,11 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         ? `Stopped after ${total.toLocaleString('en')} files. Import the rest in smaller parts.`
         : null;
   imports.finishRun(ctx.runId, status, totals, message);
+  if (timings) {
+    for (const key of Object.keys(timings) as (keyof ImportTimings)[])
+      timings[key] = Math.round(timings[key]);
+    timings.total = Math.round(performance.now() - runStarted);
+  }
   progress('finished', done, total, null, true);
   const summary = imports.summary(ctx.runId);
   if (!summary) throw new Error('The import run disappeared from the library.');

@@ -172,7 +172,7 @@ test('a big import runs in the background: slides keep reaching the output withi
   const during = run.samples.filter((s) => s.during).map(latency);
   const line = (label: string, v: number[]) =>
     `${label}: n=${v.length} median ${percentile(v, 0.5)} ms, p90 ${percentile(v, 0.9)} ms, worst ${Math.max(...v)} ms`;
-  const summary = `import of ${SONGS} files took ${run.importMs} ms; ${line('idle', before)}; ${line('importing', during)}; main event loop delay p99 ${mainLoop.p99} ms, max ${mainLoop.max} ms`;
+  const summary = `import of ${SONGS} files took ${run.importMs} ms (${JSON.stringify(run.result.timings)}); ${line('idle', before)}; ${line('importing', during)}; main event loop delay p99 ${mainLoop.p99} ms, max ${mainLoop.max} ms`;
   console.log(summary);
   test.info().annotations.push({ type: 'slide change to painted frame', description: summary });
 

@@ -1,4 +1,4 @@
-import type { ImportOptions, ImportProgress, ImportRunSummary } from '../../shared/import';
+import type { ImportOptions, ImportProgress, ImportRunSummary, ImportTimings } from '../../shared/import';
 
 /* Messages between the main process and the import worker (a utility process). */
 
@@ -30,5 +30,5 @@ export type ToWorker = StartMessage | CancelMessage;
 export type FromWorker =
   | { type: 'progress'; progress: ImportProgress }
   | { type: 'wrote'; runId: string; presentationId: string; replaced: boolean }
-  | { type: 'finished'; run: ImportRunSummary }
+  | { type: 'finished'; run: ImportRunSummary; timings?: ImportTimings }
   | { type: 'failed'; runId: string; message: string };
