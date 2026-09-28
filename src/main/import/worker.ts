@@ -19,9 +19,11 @@ import type { FromWorker, StartMessage, ToWorker } from './protocol';
 
 const port = process.parentPort;
 
-// Below normal priority: when the computer is busy, the show's processes (main, outputs) come first.
+// The lowest priority: whenever the computer is busy, the show's processes (main, outputs, the
+// GPU process) come first, and the import uses what is left. On a 3-core CI Mac, below-normal
+// priority still let a CPU-bound import delay output frames now and then.
 try {
-  setPriority(constants.priority.PRIORITY_BELOW_NORMAL);
+  setPriority(constants.priority.PRIORITY_LOW);
 } catch {
   // Not allowed on this system: run at normal priority.
 }
