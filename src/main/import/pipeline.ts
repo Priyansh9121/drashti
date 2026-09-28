@@ -895,94 +895,100 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
 
   // ---- the run ---------------------------------------------------------------------
 
-  imports.startRun(ctx.runId, ctx.paths, ctx.options);
-  progress('scanning', 0, 0, null, true);
-  const scanStarted = performance.now();
-  const scan = await scanPaths(ctx.paths, { skip: ctx.skipDir });
-  time('scan', scanStarted);
-  const top: Omit<Where, 'sourcePath' | 'nearby'> = {
-    mediaByName: scan.mediaByName,
-    docsByName: docsIndex(scan.files),
-  };
-  for (const m of scan.missing) {
-    record({
-      sourcePath: m.path,
-      format: 'unknown',
-      outcome: 'failed',
-      name: basename(m.path),
-      target: null,
-      counts: NO_COUNTS,
-      message: m.message,
-      issues: [
-        {
-          severity: 'error',
-          code: 'not-found',
-          message: `${m.path}: ${m.message}`,
-          fix: { kind: 'import-again', sourcePath: m.path },
-        },
-      ],
-    });
-  }
-
-  const files = sortForImport(scan.files);
-  const total = files.length;
-  let done = 0;
-  let status: ImportRunStatus = 'done';
-  progress('importing', 0, total, null, true);
-  for (const file of files) {
-    if (ctx.isCancelled?.()) {
-      status = 'cancelled';
-      break;
-    }
-    progress('importing', done, total, basename(file.path));
-    const where: Where = { ...top, sourcePath: file.path, nearby: [dirname(file.path)] };
-    // A playlist may have imported this presentation already, for its own sake.
-    if (written.byPath.has(normalizePath(file.path))) {
-      done++;
-      continue;
-    }
-    try {
-      await importOne(file, where);
-    } catch (error) {
-      failed(where, file.format, basename(file.path), `Could not import this file: ${errorText(error)}`);
-    }
-    done++;
-    maybeCommit();
-  }
-
-  // Files Drashti does not read: one line per type, never dropped silently.
-  for (const [ext, paths] of unknown) {
-    const label = ext ? `.${ext}` : 'no extension';
-    const examples = paths.slice(0, 5).map((p) => basename(p.split(BUNDLE_SEP).pop() ?? p));
-    record(
-      {
-        sourcePath: paths[0] ?? '',
+  try {
+    imports.startRun(ctx.runId, ctx.paths, ctx.options);
+    progress('scanning', 0, 0, null, true);
+    const scanStarted = performance.now();
+    const scan = await scanPaths(ctx.paths, { skip: ctx.skipDir });
+    time('scan', scanStarted);
+    const top: Omit<Where, 'sourcePath' | 'nearby'> = {
+      mediaByName: scan.mediaByName,
+      docsByName: docsIndex(scan.files),
+    };
+    for (const m of scan.missing) {
+      record({
+        sourcePath: m.path,
         format: 'unknown',
-        outcome: 'unsupported',
-        name: ext ? `${label} files` : 'Files with no extension',
+        outcome: 'failed',
+        name: basename(m.path),
         target: null,
         counts: NO_COUNTS,
-        message: `${paths.length === 1 ? '1 file' : `${paths.length.toLocaleString('en')} files`} (${label}) not imported: Drashti does not read this type. ${paths.length === 1 ? 'File' : 'For example'}: ${examples.join(', ')}${paths.length > examples.length ? ', …' : ''}.`,
-        issues: [],
-      },
-      paths.length,
-    );
-  }
-  commit();
+        message: m.message,
+        issues: [
+          {
+            severity: 'error',
+            code: 'not-found',
+            message: `${m.path}: ${m.message}`,
+            fix: { kind: 'import-again', sourcePath: m.path },
+          },
+        ],
+      });
+    }
 
-  const message =
-    status === 'cancelled'
-      ? `Cancelled after ${done} of ${total} files.`
-      : scan.truncated
-        ? `Stopped after ${total.toLocaleString('en')} files. Import the rest in smaller parts.`
-        : null;
-  imports.finishRun(ctx.runId, status, totals, message);
-  if (timings) {
-    for (const key of Object.keys(timings) as (keyof ImportTimings)[])
-      timings[key] = Math.round(timings[key]);
-    timings.total = Math.round(performance.now() - runStarted);
+    const files = sortForImport(scan.files);
+    const total = files.length;
+    let done = 0;
+    let status: ImportRunStatus = 'done';
+    progress('importing', 0, total, null, true);
+    for (const file of files) {
+      if (ctx.isCancelled?.()) {
+        status = 'cancelled';
+        break;
+      }
+      progress('importing', done, total, basename(file.path));
+      const where: Where = { ...top, sourcePath: file.path, nearby: [dirname(file.path)] };
+      // A playlist may have imported this presentation already, for its own sake.
+      if (written.byPath.has(normalizePath(file.path))) {
+        done++;
+        continue;
+      }
+      try {
+        await importOne(file, where);
+      } catch (error) {
+        failed(where, file.format, basename(file.path), `Could not import this file: ${errorText(error)}`);
+      }
+      done++;
+      maybeCommit();
+    }
+
+    // Files Drashti does not read: one line per type, never dropped silently.
+    for (const [ext, paths] of unknown) {
+      const label = ext ? `.${ext}` : 'no extension';
+      const examples = paths.slice(0, 5).map((p) => basename(p.split(BUNDLE_SEP).pop() ?? p));
+      record(
+        {
+          sourcePath: paths[0] ?? '',
+          format: 'unknown',
+          outcome: 'unsupported',
+          name: ext ? `${label} files` : 'Files with no extension',
+          target: null,
+          counts: NO_COUNTS,
+          message: `${paths.length === 1 ? '1 file' : `${paths.length.toLocaleString('en')} files`} (${label}) not imported: Drashti does not read this type. ${paths.length === 1 ? 'File' : 'For example'}: ${examples.join(', ')}${paths.length > examples.length ? ', …' : ''}.`,
+          issues: [],
+        },
+        paths.length,
+      );
+    }
+    commit();
+
+    const message =
+      status === 'cancelled'
+        ? `Cancelled after ${done} of ${total} files.`
+        : scan.truncated
+          ? `Stopped after ${total.toLocaleString('en')} files. Import the rest in smaller parts.`
+          : null;
+    imports.finishRun(ctx.runId, status, totals, message);
+    if (timings) {
+      for (const key of Object.keys(timings) as (keyof ImportTimings)[])
+        timings[key] = Math.round(timings[key]);
+      timings.total = Math.round(performance.now() - runStarted);
+    }
+    progress('finished', done, total, null, true);
+  } finally {
+    // Whatever happens, never leave a group of writes open: files written so far are whole
+    // (each is its own savepoint), so they are kept.
+    if (batch.isOpen) commit();
   }
-  progress('finished', done, total, null, true);
   const summary = imports.summary(ctx.runId);
   if (!summary) throw new Error('The import run disappeared from the library.');
   return summary;
