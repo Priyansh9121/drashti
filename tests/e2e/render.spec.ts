@@ -150,6 +150,56 @@ test('the test slide renders all four languages with the bundled fonts, shaped c
   await output.screenshot({ path: testInfo.outputPath('output-test-slide.png') });
   await win.screenshot({ path: testInfo.outputPath('operator.png') });
 
+  // Styled runs: one text box on the kirtan slide holds a large Gujarati line and a smaller italic
+  // transliteration line, each in its own bundled font.
+  const kirtanId = await win.evaluate(async () => {
+    const list = await (globalThis as PageGlobals).drashti.library.listPresentations();
+    return list.find((p) => p.name === 'Sample kirtan (placeholder)')?.id ?? '';
+  });
+  await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({
+        type: 'goLive',
+        presentationId: id,
+        slideIndex: 0,
+      }),
+    kirtanId,
+  );
+  const guRun = output.locator('[data-run][data-lang="gu"]');
+  const trRun = output.locator('[data-run][data-lang="translit"]');
+  await expect(guRun).toHaveText('નમૂનાની પહેલી પંક્તિ');
+  await expect(trRun).toHaveText('Namūnānī pahelī paṅkti');
+  const runStyles = await output.evaluate(() =>
+    ['gu', 'translit'].map((lang) => {
+      const el = document.querySelector(`[data-run][data-lang="${lang}"]`);
+      const cs = el ? getComputedStyle(el) : null;
+      return { size: cs?.fontSize, style: cs?.fontStyle, weight: cs?.fontWeight };
+    }),
+  );
+  expect(runStyles).toEqual([
+    { size: '92px', style: 'normal', weight: '600' },
+    { size: '60px', style: 'italic', weight: '400' },
+  ]);
+  const runFonts: string[][] = [];
+  for (const selector of ['[data-run][data-lang="gu"]', '[data-run][data-lang="translit"]']) {
+    const { nodeId } = await cdp.send('DOM.querySelector', {
+      nodeId: (await cdp.send('DOM.getDocument', { depth: -1 })).root.nodeId,
+      selector,
+    });
+    runFonts.push((await cdp.send('CSS.getPlatformFontsForNode', { nodeId })).fonts.map((f) => f.familyName));
+  }
+  expect(runFonts[0]).toEqual(face('Noto Sans Gujarati'));
+  expect(runFonts[1]).toEqual(face('Noto Sans'));
+  await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({
+        type: 'goLive',
+        presentationId: id,
+        slideIndex: 0,
+      }),
+    presentationId,
+  );
+
   // Each screen has its own canvas: change it and the output redraws at that size.
   await win.evaluate(
     (id) =>
