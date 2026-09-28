@@ -71,6 +71,15 @@ export interface NewSlide {
   /** Disabled slides are kept but skipped in the show (ProPresenter can disable slides). */
   enabled?: boolean;
   elements: SlideElement[];
+  /** What else happens when the slide goes live (see migration 4). */
+  cues?: NewSlideCue[];
+}
+
+export interface NewSlideCue {
+  kind: 'background' | 'audio' | 'media' | 'clear' | 'message' | 'timer' | 'other';
+  label: string;
+  mediaId: string | null;
+  props?: Record<string, unknown>;
 }
 
 export interface NewPresentation {
@@ -315,6 +324,9 @@ export class PresentationRepo {
     const insertElement = db.prepare(
       'INSERT INTO elements (id, slide_id, position, kind, x, y, width, height, props) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
+    const insertCue = db.prepare(
+      'INSERT INTO slide_cues (id, slide_id, position, kind, label, media_id, props) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    );
     const slideIds: string[] = [];
     const groupIds: string[] = [];
     input.groups.forEach((group, gi) => {
@@ -345,6 +357,17 @@ export class PresentationRepo {
             frame.width,
             frame.height,
             JSON.stringify(props),
+          );
+        });
+        slide.cues?.forEach((cue, ci) => {
+          insertCue.run(
+            randomUUID(),
+            slideId,
+            ci,
+            cue.kind,
+            cue.label,
+            cue.mediaId,
+            JSON.stringify(cue.props ?? {}),
           );
         });
       });
@@ -424,6 +447,32 @@ export class PresentationRepo {
       .get(kind, hash) as
       { id: string; name: string; source_path: string | null; source_hash: string | null } | undefined;
     return r ? { id: r.id, name: r.name, sourcePath: r.source_path, sourceHash: r.source_hash } : null;
+  }
+
+  /**
+   * The newest presentation still in the library that was imported from this
+   * file: by its exact path, or else by its file name from any folder (a
+   * playlist names files by their path on the machine it was made on).
+   */
+  findBySourceFile(kind: ImportSource['kind'], path: string): string | null {
+    const exact = this.db
+      .prepare(
+        'SELECT id FROM presentations WHERE source_kind = ? AND source_path = ? AND deleted_at IS NULL ORDER BY created_at DESC, rowid DESC LIMIT 1',
+      )
+      .get(kind, path) as { id: string } | undefined;
+    if (exact) return exact.id;
+    const name = path.split(/[\\/]/u).pop() ?? '';
+    if (name === '') return null;
+    const escaped = name.replace(/[\\%_]/gu, (c) => `\\${c}`);
+    const byName = this.db
+      .prepare(
+        `SELECT id FROM presentations WHERE source_kind = ? AND deleted_at IS NULL
+           AND (source_path LIKE ? ESCAPE '\\' OR source_path LIKE ? ESCAPE '\\' OR source_path = ?)
+         ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+      )
+      // The LIKE escape character is a backslash, so a literal backslash is doubled in the pattern.
+      .get(kind, `%/${escaped}`, `%\\\\${escaped}`, name) as { id: string } | undefined;
+    return byName?.id ?? null;
   }
 
   /** `name`, or `name (2)`, `name (3)`... whichever is free in the library. */

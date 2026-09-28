@@ -1,4 +1,5 @@
 import { statSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,8 +37,9 @@ const defaultIsFile = (path: string): boolean => {
 };
 
 /**
- * The local path a reference names: file URLs are decoded; Windows paths
- * stay as they are (they only exist on Windows).
+ * The local path a reference names: file URLs and percent-encoded paths
+ * (as playlists store them) are decoded, and ~ means this computer's home
+ * folder. Windows paths stay as they are (they only exist on Windows).
  */
 export function pathFromReference(reference: string): string {
   const ref = reference.trim();
@@ -46,10 +48,19 @@ export function pathFromReference(reference: string): string {
       return fileURLToPath(ref);
     } catch {
       // A Windows file URL on macOS (file:///C:/...): keep its path part.
-      return decodeURIComponent(ref.replace(/^file:\/*/iu, ''));
+      return safeDecode(ref.replace(/^file:\/*/iu, ''));
     }
   }
-  return ref;
+  const decoded = /%[0-9A-Fa-f]{2}/u.test(ref) ? safeDecode(ref) : ref;
+  return decoded.startsWith('~/') ? join(homedir(), decoded.slice(2)) : decoded;
+}
+
+function safeDecode(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
 }
 
 /** The file name at the end of a path, whichever separator it uses. */

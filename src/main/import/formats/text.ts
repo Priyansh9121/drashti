@@ -74,7 +74,7 @@ function slideFromLines(lines: string[], issues: ImportIssue[]): ParsedSlide {
     style: LYRICS_STYLE,
   };
   if (runs.length > 1) element.runs = runs;
-  return { label: '', notes: '', background: null, enabled: true, elements: [element], media: null };
+  return { label: '', notes: '', background: null, enabled: true, elements: [element], cues: [] };
 }
 
 /** The file name without its folder or extension, as a presentation name. */

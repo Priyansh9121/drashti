@@ -84,7 +84,10 @@ function ShapeView({ el }: { el: ShapeElement }) {
 }
 
 export function ElementView({ el }: { el: SlideElement }) {
-  return el.kind === 'text' ? <TextView el={el} /> : <ShapeView el={el} />;
+  if (el.kind === 'text') return <TextView el={el} />;
+  if (el.kind === 'shape') return <ShapeView el={el} />;
+  // Images and videos are imported but not drawn until media playback lands.
+  return null;
 }
 
 /** One slide at its design size. Parents scale it with Placed. */

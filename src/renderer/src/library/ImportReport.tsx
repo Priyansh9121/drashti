@@ -7,6 +7,7 @@ import { Button } from '../ui/Button';
 import { plural } from '../ui/text';
 import {
   closeReport,
+  fileToImport,
   importPaths,
   openReport,
   relinkMedia,
@@ -28,9 +29,9 @@ function openPresentation(id: string) {
   void selectPresentation(id);
 }
 
-function tryAgain(path: string) {
+function tryAgain(sourcePath: string) {
   closeReport();
-  void importPaths([path]);
+  void importPaths([fileToImport(sourcePath)]);
 }
 
 /** The buttons that fix an item, from its issues and outcome. */
@@ -211,6 +212,10 @@ export function ImportReportDialog() {
     report.status === 'cancelled' && 'Cancelled',
   ].filter(Boolean);
   const conflictPaths = conflicts.map((i) => i.sourcePath);
+  const missingMedia = items.reduce(
+    (n, i) => n + i.issues.filter((x) => x.fix?.kind === 'relink-media').length,
+    0,
+  );
   const conflictButtons = (paths: string[], suffix = '') =>
     (['replace', 'keep-both', 'skip'] as const).map((choice) => (
       <Button
@@ -273,6 +278,20 @@ export function ImportReportDialog() {
             {cameAcross.length > 0 ? `Came across: ${cameAcross.join(' · ')}.` : 'Nothing new came across.'}{' '}
             {outcomes.length > 0 && <span className="text-muted">{outcomes.join(' · ')}.</span>}
           </p>
+          {missingMedia > 0 && (
+            <div
+              className="flex items-center gap-3 rounded-md border border-amber-800 bg-amber-950/40 px-3 py-2 text-sm"
+              data-testid="missing-media"
+            >
+              <span className="flex-1">
+                {plural(missingMedia, 'media file')} could not be found. Pick a folder to look in, and Drashti
+                relinks every missing file it finds there by name.
+              </span>
+              <Button className="px-2 py-0.5 text-xs" onClick={() => void relinkMedia()}>
+                Find missing media…
+              </Button>
+            </div>
+          )}
           <Section
             title="Changed since they were imported"
             items={conflicts}

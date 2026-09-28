@@ -20,7 +20,16 @@ const hexColor = hexColorSchema;
 const rect = rectSchema;
 const slideElement = slideElementSchema;
 
-const background: z.ZodType<BackgroundLayer> = z.object({ kind: z.literal('color'), color: hexColor });
+const background: z.ZodType<BackgroundLayer> = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('color'), color: hexColor }),
+  z.object({
+    kind: z.literal('media'),
+    mediaId: id,
+    media: z.enum(['image', 'video']),
+    fit: z.enum(['fit', 'fill', 'stretch']),
+    loop: z.boolean(),
+  }),
+]);
 const audio: z.ZodType<AudioLayer> = z.object({ id, title: z.string().max(300), mediaId: id.nullable() });
 const prop: z.ZodType<PropItem> = z.object({
   id,

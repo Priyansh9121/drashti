@@ -78,12 +78,14 @@ describe('runImport', () => {
     });
     expect(names(t.db)).toEqual(['Song A', 'Song B']);
     expect(report?.items.map((i) => [i.format, i.outcome, i.name])).toEqual([
+      // Presentations first (playlists will name them), then media, then files it does not read.
       ['pp6', 'unsupported', 'Old Song.pro6'],
       ['text', 'imported', 'Song A'],
-      ['media', 'imported', 'Loop.mp4'],
       ['text', 'imported', 'Song B'],
+      ['media', 'imported', 'Loop.mp4'],
       ['unknown', 'unsupported', '.docx files'],
     ]);
+    expect(report?.items[0]?.message).toBe('Not a presentation or playlist (it holds xml).');
     expect(report?.items.at(-1)?.message).toBe(
       '2 files (.docx) not imported: Drashti does not read this type. For example: Order of service.docx, Other.docx.',
     );
