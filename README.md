@@ -80,7 +80,7 @@ gh workflow run CI --ref <branch> -f os=windows   # or os=macos, os=both
 
 If you start Drashti from inside another Electron app's process (for example an editor extension), make sure `ELECTRON_RUN_AS_NODE` is not set in that environment. When it's set, Electron starts as plain Node. The end-to-end tests clear it automatically.
 
-## Running a show (Phase 0)
+## Running a show
 
 1. Open **Screens**, add a group (for example "Main Hall"), and press **Use this display** next to each display that feeds the audience. Set the canvas size and scaling if a screen needs something other than 1920 × 1080 fit. **Identify screens** shows each screen's name on it. The setup is saved and comes back on the next start. If a display is missing at startup, its screen says "Display not connected" and opens by itself when the display returns.
 2. Pick a presentation on the left, then click a slide, or press Space or the right arrow, to put it on the screens.
@@ -191,5 +191,11 @@ The OS versions of the PP6 Mac and the PP7 PC are unknown until the audit runs. 
 Electron only supports its latest three major versions with security fixes, so going back further than 42 means running an unsupported Electron.
 
 **Unsigned installers.** macOS Gatekeeper and Windows SmartScreen will warn when the installers are first opened. Signing belongs with internal distribution (PLAN.md section 4).
+
+**The importers have not met the mandir's files yet.** They are checked against synthetic files and against this Mac's small ProPresenter 6 and 7 libraries, where every file imports. The `.probundle` and `.proplaylist` layouts follow the community documentation and are not confirmed with real exports. `migration-samples/` will settle both.
+
+**Imported media does not show yet.** Slide backgrounds (background cues), images and videos placed on slides, and audio cues are all imported and kept, but nothing draws or plays them until media playback is built. Until then an imported show with video backgrounds shows its text on black.
+
+**Disk writes on Windows.** On the Windows CI runner each database commit took about 320 ms (almost certainly real-time antivirus scanning, which the mandir PC probably has too). Imports now write in groups, so this costs seconds instead of minutes. An operator's own change during an import (removing a presentation, changing a screen) can wait up to about a quarter of a second for the current group. Slide changes never write to the database.
 
 **Windows is untested on real hardware.** `docs/windows-checks.md` lists the hand checks for the parallel run. The Windows build, the end-to-end tests and the Windows audit script run in CI on `windows-latest`, and all of them passed there on the first run, including the audit script under Windows PowerShell 5.1. A CI runner has one virtual display and no ProPresenter, so none of this has met a real Windows PC with real screens yet.
