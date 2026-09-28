@@ -2,6 +2,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { constants, createReadStream, statfsSync } from 'node:fs';
 import { copyFile, mkdir, rename, rm, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
+import { formatBytes } from '../../shared/format';
 import type { ImportIssue } from '../../shared/import';
 import type { ImportSource } from '../../shared/library';
 import type { Db } from '../db/database';
@@ -45,17 +46,6 @@ export async function sha256File(path: string): Promise<{ sha256: string; bytes:
     bytes += buf.length;
   }
   return { sha256: hash.digest('hex'), bytes };
-}
-
-export function formatBytes(n: number): string {
-  const units = ['bytes', 'KB', 'MB', 'GB', 'TB'];
-  let v = n;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return i === 0 ? `${v} bytes` : `${v.toFixed(1)} ${units[i]}`;
 }
 
 export class MediaStore {

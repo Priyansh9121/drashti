@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { contextBridge, ipcRenderer, type IpcRendererEvent, webUtils } from 'electron';
 import type { DrashtiBridge } from '../shared/bridge';
 import type { EventChannel, EventContract, InvokeArgs, InvokeChannel, InvokeResult } from '../shared/ipc';
 import { IPC } from '../shared/ipc';
@@ -22,6 +22,13 @@ function on<C extends EventChannel>(channel: C, listener: (payload: EventContrac
 const bridge: DrashtiBridge = {
   app: {
     getInfo: () => invoke(IPC.app.getInfo),
+    onUndo: (listener) =>
+      on(IPC.app.undo, () => {
+        listener();
+      }),
+  },
+  files: {
+    pathFor: (file) => webUtils.getPathForFile(file),
   },
   engine: {
     onMessage: (listener) => on(IPC.engine.message, listener),
@@ -41,6 +48,10 @@ const bridge: DrashtiBridge = {
     onImportProgress: (listener) => on(IPC.library.importProgress, listener),
     listImportRuns: () => invoke(IPC.library.listImportRuns),
     getImportReport: (runId) => invoke(IPC.library.getImportReport, runId),
+    pickImportPaths: (kind) => invoke(IPC.library.pickImportPaths, kind),
+    relinkMedia: (mediaIds) => invoke(IPC.library.relinkMedia, mediaIds),
+    removePresentations: (ids) => invoke(IPC.library.removePresentations, ids),
+    restorePresentations: (ids) => invoke(IPC.library.restorePresentations, ids),
   },
   screens: {
     get: () => invoke(IPC.screens.get),

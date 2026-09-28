@@ -2,7 +2,7 @@ import type { AppInfo } from './app-info';
 import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
 import type { ImportOptions, ImportProgress, ImportReport, ImportResult, ImportRunSummary } from './import';
-import type { PresentationDoc, PresentationSummary } from './library';
+import type { PresentationDoc, PresentationSummary, RemoveResult } from './library';
 import type { CoverOptions, OutputContext, ScreenPatch, ScreensResult, ScreensSnapshot } from './screens';
 
 /**
@@ -13,6 +13,13 @@ import type { CoverOptions, OutputContext, ScreenPatch, ScreensResult, ScreensSn
 export interface DrashtiBridge {
   app: {
     getInfo(): Promise<AppInfo>;
+    /** Edit > Undo was chosen (operator window). */
+    onUndo(listener: () => void): () => void;
+  };
+  /** Files dropped on a page. */
+  files: {
+    /** The path of a file or folder dropped from the desktop ('' for other files). */
+    pathFor(file: File): string;
   };
   engine: {
     /**
@@ -41,6 +48,13 @@ export interface DrashtiBridge {
     onImportProgress(listener: (progress: ImportProgress) => void): () => void;
     listImportRuns(): Promise<ImportRunSummary[]>;
     getImportReport(runId: string): Promise<ImportReport | null>;
+    /** Ask for files or a folder to import (a system dialog); [] when cancelled. */
+    pickImportPaths(kind: 'files' | 'folder'): Promise<string[]>;
+    /** Ask for a folder and look there for missing media (all, or just these). */
+    relinkMedia(mediaIds?: string[]): Promise<ImportResult>;
+    /** Remove presentations; restorePresentations brings them back (Undo). */
+    removePresentations(ids: string[]): Promise<RemoveResult>;
+    restorePresentations(ids: string[]): Promise<RemoveResult>;
   };
   /** Screen setup (operator window only). */
   screens: {

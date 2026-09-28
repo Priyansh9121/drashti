@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
 import type { OperatorAction } from '../../../shared/keymap';
-import { actionFor } from '../../../shared/keymap';
+import { actionFor, PAGE_KEYMAP } from '../../../shared/keymap';
 
-function isTyping(target: EventTarget | null): boolean {
+export function isTyping(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
 }
@@ -19,7 +19,7 @@ export function useKeymap(platform: string, run: (action: OperatorAction) => voi
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.repeat || event.isComposing || isTyping(event.target)) return;
-      const action = actionFor(event, platform);
+      const action = actionFor(event, platform, PAGE_KEYMAP);
       if (!action) return;
       const dialogOpen = document.querySelector('[aria-modal="true"]') !== null;
       if (dialogOpen && action !== 'openScreens' && action !== 'uncoverControls') return;

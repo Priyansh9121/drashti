@@ -18,7 +18,7 @@ export interface WorkerProcess {
 
 export interface ImportServiceDeps {
   spawn(): WorkerProcess;
-  worker: Omit<StartMessage, 'type' | 'runId' | 'paths' | 'options'>;
+  worker: Omit<StartMessage, 'type' | 'job' | 'runId' | 'paths' | 'options' | 'mediaIds'>;
   onProgress(progress: ImportProgress): void;
   onWrote(wrote: { presentationId: string; replaced: boolean }): void;
   /** After every run, with its summary when it finished. */
@@ -26,14 +26,14 @@ export interface ImportServiceDeps {
   /** Record a run as failed (its worker died or could not start). */
   failRun(runId: string, paths: string[], message: string): void;
   log(level: 'info' | 'warn', message: string): void;
-  /** How long a finished worker may take to exit before it is stopped. */
-  exitGraceMs?: number;
 }
 
 interface Job {
+  job: 'import' | 'relink';
   runId: string;
   paths: string[];
   options: ImportOptions;
+  mediaIds?: string[];
   resolve(result: ImportResult): void;
 }
 
@@ -54,8 +54,17 @@ export class ImportService {
 
   /** Import files and folders. Resolves when the run has ended. */
   start(paths: string[], options: ImportOptions = {}): Promise<ImportResult> {
+    return this.enqueue({ job: 'import', paths, options });
+  }
+
+  /** Look for missing media in a folder (all missing items, or just these). */
+  relink(folder: string, mediaIds?: string[]): Promise<ImportResult> {
+    return this.enqueue({ job: 'relink', paths: [folder], options: {}, mediaIds });
+  }
+
+  private enqueue(work: Omit<Job, 'runId' | 'resolve'>): Promise<ImportResult> {
     return new Promise((resolve) => {
-      const job: Job = { runId: randomUUID(), paths, options, resolve };
+      const job: Job = { ...work, runId: randomUUID(), resolve };
       this.queue.push(job);
       this.deps.onProgress({ runId: job.runId, phase: 'queued', done: 0, total: 0, current: null });
       this.next();
@@ -102,19 +111,14 @@ export class ImportService {
     const active = { job, worker };
     this.active = active;
     let settled = false;
-    let exited = false;
     const settle = (result: ImportResult, run: ImportRunSummary | null) => {
       if (settled) return;
       settled = true;
       if (this.active === active) this.active = null;
+      // The result is the worker's last message (it has closed the library by then): stop it.
+      worker.kill();
       job.resolve(result);
       this.deps.onFinished(run);
-      // The worker exits by itself; stop it if it does not.
-      if (!exited) {
-        setTimeout(() => {
-          if (!exited) worker.kill();
-        }, this.deps.exitGraceMs ?? 10_000).unref();
-      }
       this.next();
     };
     worker.onMessage((m) => {
@@ -136,7 +140,6 @@ export class ImportService {
       }
     });
     worker.onExit((code) => {
-      exited = true;
       if (settled) return;
       const message = `The import stopped unexpectedly (exit code ${code}).`;
       this.deps.log('warn', message);
@@ -145,9 +148,11 @@ export class ImportService {
     });
     worker.postMessage({
       type: 'start',
+      job: job.job,
       runId: job.runId,
       paths: job.paths,
       options: job.options,
+      ...(job.mediaIds ? { mediaIds: job.mediaIds } : {}),
       ...this.deps.worker,
     });
   }

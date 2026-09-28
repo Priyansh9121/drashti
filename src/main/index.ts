@@ -1,6 +1,7 @@
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import { app, dialog, globalShortcut, powerSaveBlocker, screen as electronScreen, session } from 'electron';
 import { mkdirSync } from 'node:fs';
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
 import type { ImportResult } from '../shared/import';
@@ -8,6 +9,7 @@ import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/i
 import { type EventChannel, type EventContract, IPC } from '../shared/ipc';
 import { acceleratorFor } from '../shared/keymap';
 import { idSchema } from '../shared/model-schema';
+import { z } from 'zod';
 import type { OutputContext } from '../shared/screens';
 import type { Db } from './db/database';
 import { LATEST_VERSION, openDatabase } from './db/database';
@@ -54,8 +56,11 @@ const watchdog = new RendererWatchdog((e) => {
 const sleepGuard = new SleepGuard(powerSaveBlocker, (held) => {
   log.info(held ? 'Display sleep is blocked while outputs show' : 'Display sleep allowed again');
 });
+// How long the main process's event loop stalls: everything the show does passes through it.
+const loopDelay = monitorEventLoopDelay({ resolution: 10 });
+loopDelay.enable();
 // Readable from the main process in end-to-end tests.
-(globalThis as { drashtiDiagnostics?: unknown }).drashtiDiagnostics = { watchdog, sleepGuard };
+(globalThis as { drashtiDiagnostics?: unknown }).drashtiDiagnostics = { watchdog, sleepGuard, loopDelay };
 let quitConfirmed = false;
 
 let operatorWindow: BrowserWindow | null = null;
@@ -95,6 +100,32 @@ function openLibrary(): Db | null {
 }
 
 const fromOperator = (event: IpcMainInvokeEvent) => event.sender.id === operatorWindow?.webContents.id;
+const idListSchema = z.array(idSchema).min(1).max(10_000);
+/** What the Import files dialog offers (lyrics, the two presentation formats, media). */
+const IMPORTABLE_EXTENSIONS = [
+  'txt',
+  'pro6',
+  'pro6x',
+  'pro6pl',
+  'pro6plx',
+  'pro6template',
+  'pro',
+  'probundle',
+  'proplaylist',
+  'jpg',
+  'jpeg',
+  'png',
+  'gif',
+  'heic',
+  'webp',
+  'mp4',
+  'm4v',
+  'mov',
+  'mp3',
+  'wav',
+  'm4a',
+  'aiff',
+];
 const notAllowed = { ok: false as const, message: 'Only the operator window can change the screens.' };
 
 function start(): void {
@@ -109,6 +140,9 @@ function start(): void {
   const slides = new DbSlideSource(presentations);
   const screenRepo = new ScreenRepo(db);
   const importRepo = new ImportRepo(db);
+  // Removed presentations can be restored for 30 days.
+  const purged = presentations.purgeRemoved(new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString());
+  if (purged > 0) log.info(`Purged ${purged} presentation(s) removed more than 30 days ago`);
 
   const transport = new IpcTransport((error, target) => {
     log.warn(`Could not send an engine message to window ${target.id}`, error);
@@ -295,6 +329,56 @@ function start(): void {
     return fromOperator(e) && parsed.success ? imports.cancel(parsed.data) : false;
   });
   handle(IPC.library.listImportRuns, () => importRepo.listRuns());
+  handle(IPC.library.pickImportPaths, async (e, kind) => {
+    if (!fromOperator(e) || !operatorWindow) return [];
+    const folder = kind === 'folder';
+    const picked = await dialog.showOpenDialog(operatorWindow, {
+      title: folder ? 'Import a folder' : 'Import files',
+      buttonLabel: 'Import',
+      properties: folder ? ['openDirectory'] : ['openFile', 'multiSelections'],
+      ...(folder
+        ? {}
+        : {
+            filters: [
+              { name: 'Lyrics, presentations and media', extensions: IMPORTABLE_EXTENSIONS },
+              { name: 'All files', extensions: ['*'] },
+            ],
+          }),
+    });
+    return picked.canceled ? [] : picked.filePaths;
+  });
+  handle(IPC.library.relinkMedia, async (e, ids) => {
+    const parsed = idListSchema.optional().safeParse(ids);
+    if (!fromOperator(e) || !operatorWindow || !parsed.success) {
+      return { ok: false as const, message: 'Only the operator window can relink media.' };
+    }
+    const picked = await dialog.showOpenDialog(operatorWindow, {
+      title: 'Find missing media',
+      buttonLabel: 'Look here',
+      properties: ['openDirectory'],
+    });
+    const folder = picked.filePaths[0];
+    if (picked.canceled || !folder) return { ok: false as const, message: 'No folder was chosen.' };
+    return imports.relink(folder, parsed.data);
+  });
+  handle(IPC.library.removePresentations, (e, ids) => {
+    const parsed = idListSchema.safeParse(ids);
+    if (!fromOperator(e) || !parsed.success) return { ok: false as const, message: 'Nothing was removed.' };
+    const removed = presentations.remove(parsed.data);
+    for (const id of removed) slides.invalidate(id);
+    log.info(`Removed ${removed.length} presentation(s)`);
+    libraryChanged(true);
+    return { ok: true as const, ids: removed };
+  });
+  handle(IPC.library.restorePresentations, (e, ids) => {
+    const parsed = idListSchema.safeParse(ids);
+    if (!fromOperator(e) || !parsed.success) return { ok: false as const, message: 'Nothing was restored.' };
+    const restored = presentations.restore(parsed.data);
+    for (const id of restored) slides.invalidate(id);
+    log.info(`Restored ${restored.length} presentation(s)`);
+    libraryChanged(true);
+    return { ok: true as const, ids: restored };
+  });
   handle(IPC.library.getImportReport, (_e, runId) => {
     const parsed = runIdSchema.safeParse(runId);
     return parsed.success ? importRepo.report(parsed.data) : null;
@@ -397,6 +481,15 @@ function start(): void {
   installMenu({
     reloadOperator: () => {
       operatorWindow?.webContents.reload();
+    },
+    undo: {
+      accelerator: acceleratorFor('undo'),
+      run: () => {
+        // Undo typing in a text field (as the standard Edit menu would); the page ignores the
+        // message then, and otherwise undoes the last removal.
+        operatorWindow?.webContents.undo();
+        sendToOperator(IPC.app.undo, { at: Date.now() });
+      },
     },
     uncoverControls: { accelerator: uncoverAccelerator, run: uncover },
     diagnostics: diagnostics

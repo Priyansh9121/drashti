@@ -18,9 +18,10 @@ Phase 0 (foundations) is in place:
 Phase 1 has started:
 
 - text boxes hold **styled runs** (font, size, colour, weight and language per run);
-- the **import pipeline** runs in a background worker process: plain-text lyrics and media files so far, with re-import rules, a media folder that stores each file once, and a report kept for every import.
+- the **import pipeline** runs in a background worker process: plain-text lyrics and media files so far, with re-import rules, a media folder that stores each file once, and a report kept for every import;
+- **importing from the operator window**: drag files or folders onto the presentation list, or use **Import…**; progress, then a migration report with a fix for each item; removing presentations with Delete, and Undo.
 
-Next: drag-and-drop and the import report in the operator window, then the ProPresenter 6 and 7 importers, built against the audit results and the files in `migration-samples/`.
+Next: the ProPresenter 6 and 7 importers, built against the audit results and the files in `migration-samples/`.
 
 ## Setup
 
@@ -85,9 +86,13 @@ If you start Drashti from inside another Electron app's process (for example an 
 2. Pick a presentation on the left, then click a slide, or press Space or the right arrow, to put it on the screens.
 3. Use the clear buttons (or F1 to F7) and **Black-out** (B) on the right.
 
+**Importing.** Drag files or folders onto the presentation list, or use **Import…** above it (files, or a whole folder). Progress shows under the list, with **Cancel**. When the import ends, the report opens, unless a slide is live (then **Report** under the list opens it). The report shows what came across and lists each problem with its fix: **Replace**, **Keep both** or **Skip** for a file that changed since it was imported, **Try again**, **Find…** for missing media, and **Open** to check an imported presentation. Earlier reports stay available from the report's list of earlier imports.
+
+**Removing.** Select presentations in the list (Cmd/Ctrl-click adds one, Shift-click a range) and press **Delete** or **Backspace**. Drashti asks first, and warns when one of them is live, whose slide then stays up until it changes. **Undo** under the list, or **Edit > Undo** (Cmd/Ctrl+Z), brings them back. Removed presentations are deleted for good after 30 days.
+
 **Keeping the controls reachable.** Before an output goes on the display the operator window is on, Drashti asks, because the output would cover the controls. If an output ends up over the operator window anyway (a display unplugged or rearranged), the operator window moves to a free display when there is one. **Cmd+Shift+U** (macOS) or **Ctrl+Shift+U** (Windows), "Uncover the controls", turns off any output covering the operator window. It also works when Drashti isn't the active app, and it's in the Window menu.
 
-Every shortcut is defined in one file, `src/renderer/src/operator/keymap.ts`. The current keys are provisional and will be changed to match the ones the operators use in ProPresenter once the setup checklist is back.
+Every shortcut is defined in one file, `src/shared/keymap.ts`. The current keys are provisional and will be changed to match the ones the operators use in ProPresenter once the setup checklist is back.
 
 ## What keeps the screens up (watchdog)
 
@@ -115,7 +120,7 @@ The same self-test runs headless in the end-to-end tests (`tests/e2e/watchdog.sp
 
 ## Importing
 
-Imports run in a separate worker process (an Electron utility process, `src/main/import/`), one run at a time. The main process only passes messages along, so slides keep going live during a big import. The end-to-end test imports 400 generated presentations while changing slides every 40 ms. It checks that each change still reaches the output within a frame, and that the import really ran in its own process.
+Imports run in a separate worker process (an Electron utility process, `src/main/import/`), one run at a time, at below-normal priority so the show's processes come first when the computer is busy. The main process only passes messages along, so slides keep going live during a big import. The end-to-end test imports 400 generated presentations while changing slides every 40 ms. It checks that each change still reaches the output within a frame, and that the import really ran in its own process.
 
 - **Formats so far.** Plain-text lyrics (`.txt`): a blank line starts a new slide, and a line like `[Verse 1]` or `[Chorus]` starts a group. A header repeated with no text after it repeats that group, which gives the presentation an arrangement. Each line gets the language of its script. Image, video and audio files go into the media library. Other files are listed in the report, one line per file type, and never dropped silently.
 - **One transaction per presentation.** Each file is parsed into an intermediate model with no database access. The presentation and its report line are then written together, so a failure never leaves half a presentation behind.

@@ -84,7 +84,9 @@ describe('runImport', () => {
       ['text', 'imported', 'Song B'],
       ['unknown', 'unsupported', '.docx files'],
     ]);
-    expect(report?.items.at(-1)?.message).toMatch(/^2 file\(s\) \(\.docx\) were not imported/u);
+    expect(report?.items.at(-1)?.message).toBe(
+      '2 files (.docx) not imported: Drashti does not read this type. For example: Order of service.docx, Other.docx.',
+    );
     // Nothing in the report names the other product.
     expect(JSON.stringify(report)).not.toMatch(/propresenter/iu);
 

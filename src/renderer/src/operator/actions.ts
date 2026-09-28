@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { EngineCommand } from '../../../shared/engine/commands';
 import { useEngine } from '../engine/engine-store';
+import { requestRemoval, undoRemoval } from '../library/import-store';
 import { useLibrary } from '../library/library-store';
 import type { OperatorAction } from '../../../shared/keymap';
 
@@ -55,6 +56,12 @@ export async function runAction(action: OperatorAction, ui: { openScreens: () =>
       return;
     case 'uncoverControls':
       await window.drashti.screens.uncoverOperator();
+      return;
+    case 'removeSelected':
+      requestRemoval();
+      return;
+    case 'undo':
+      await undoRemoval();
       return;
   }
 }

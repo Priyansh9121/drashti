@@ -1,10 +1,13 @@
 import Database from 'better-sqlite3';
+import type { ImportProgress } from '../../shared/import';
+import { constants, setPriority } from 'node:os';
 import { sep } from 'node:path';
 import type { Db } from '../db/database';
 import { ImportRepo } from '../db/imports';
 import { schemaVersion } from '../db/migrate';
 import { MediaStore } from './media-store';
 import { runImport } from './pipeline';
+import { runRelink } from './relink';
 import type { FromWorker, StartMessage, ToWorker } from './protocol';
 
 /*
@@ -15,6 +18,13 @@ import type { FromWorker, StartMessage, ToWorker } from './protocol';
  */
 
 const port = process.parentPort;
+
+// Below normal priority: when the computer is busy, the show's processes (main, outputs) come first.
+try {
+  setPriority(constants.priority.PRIORITY_BELOW_NORMAL);
+} catch {
+  // Not allowed on this system: run at normal priority.
+}
 const cancelled = new Set<string>();
 const post = (message: FromWorker) => {
   port.postMessage(message);
@@ -39,38 +49,46 @@ function openLibrary(file: string, expected: number): Db {
 
 async function start(message: StartMessage): Promise<void> {
   let db: Db | null = null;
+  let result: FromWorker;
   try {
     db = openLibrary(message.dbFile, message.schemaVersion);
     const inside = message.userDataDir + sep;
-    const run = await runImport({
+    const common = {
       db,
       media: new MediaStore(db, { dir: message.mediaDir }),
       runId: message.runId,
-      paths: message.paths,
-      options: message.options,
-      skipDir: (dir) => dir === message.userDataDir || dir.startsWith(inside),
-      onProgress: (progress) => {
+      skipDir: (dir: string) => dir === message.userDataDir || dir.startsWith(inside),
+      onProgress: (progress: ImportProgress) => {
         post({ type: 'progress', progress });
       },
-      onWrote: (wrote) => {
-        post({ type: 'wrote', runId: message.runId, ...wrote });
-      },
       isCancelled: () => cancelled.has(message.runId),
-    });
-    post({ type: 'finished', run });
+    };
+    const run =
+      message.job === 'relink'
+        ? await runRelink({ ...common, folder: message.paths[0] ?? '', mediaIds: message.mediaIds })
+        : await runImport({
+            ...common,
+            paths: message.paths,
+            options: message.options,
+            onWrote: (wrote) => {
+              post({ type: 'wrote', runId: message.runId, ...wrote });
+            },
+          });
+    result = { type: 'finished', run };
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error);
     try {
       if (db) new ImportRepo(db).failRun(message.runId, message.paths, text);
     } catch {
-      // The main process marks the run failed when this process exits.
+      // The main process marks the run failed when this process stops.
     }
-    post({ type: 'failed', runId: message.runId, message: text });
+    result = { type: 'failed', runId: message.runId, message: text };
   } finally {
     db?.close();
-    // One run per process: exit so the next run starts clean.
-    setImmediate(() => process.exit(0));
   }
+  // The result is the last message. The main process stops this process once it has it: exiting
+  // here could reach the main process before the message does.
+  post(result);
 }
 
 port.on('message', (event) => {
