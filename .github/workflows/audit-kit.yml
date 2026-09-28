@@ -1,11 +1,18 @@
 name: Audit kit
 
+# macOS and Windows runners only when the audit kit changes on main, in pull
+# requests, or when started by hand (private-repo minutes).
 on:
   push:
+    branches: [main]
     paths: ['tools/audit/**', '.github/workflows/audit-kit.yml']
   pull_request:
     paths: ['tools/audit/**', '.github/workflows/audit-kit.yml']
   workflow_dispatch:
+
+concurrency:
+  group: audit-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
