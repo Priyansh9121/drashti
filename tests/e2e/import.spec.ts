@@ -70,15 +70,34 @@ test('a big import runs in the background: slides keep reaching the output withi
   const output = await outputPage(app);
   await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
 
-  const loopDelay = () =>
+  /** Main-process health since the last call: event-loop stalls, slowest IPC handlers, longest GC pause. */
+  const mainHealth = () =>
     app.evaluate(() => {
-      const h = (globalThis as unknown as { drashtiDiagnostics: { loopDelay: ELDHistogram } })
-        .drashtiDiagnostics.loopDelay;
-      const out = { p99: Math.round(h.percentile(99) / 1e6), max: Math.round(h.max / 1e6) };
-      h.reset();
+      const d = (
+        globalThis as unknown as {
+          drashtiDiagnostics: {
+            loopDelay: ELDHistogram;
+            handlerTimes: Map<string, number>;
+            gc: { max: number };
+          };
+        }
+      ).drashtiDiagnostics;
+      const slowest = [...d.handlerTimes.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([channel, ms]) => `${channel} ${Math.round(ms)}`);
+      const out = {
+        p99: Math.round(d.loopDelay.percentile(99) / 1e6),
+        max: Math.round(d.loopDelay.max / 1e6),
+        slowest,
+        gc: Math.round(d.gc.max),
+      };
+      d.loopDelay.reset();
+      d.handlerTimes.clear();
+      d.gc.max = 0;
       return out;
     });
-  await loopDelay();
+  await mainHealth();
 
   // Change slides every 40 ms: first with nothing else going on, then all through the import.
   const running = win.evaluate(async (folder) => {
@@ -138,7 +157,7 @@ test('a big import runs in the background: slides keep reaching the output withi
     if (!sawWorker) await new Promise((resolve) => setTimeout(resolve, 50));
   }
   const run = await running;
-  const mainLoop = await loopDelay();
+  const mainLoop = await mainHealth();
   expect(sawWorker, 'the import worker appears as its own utility process').toBe(true);
   // ...and exits when the run is over.
   await expect
@@ -172,7 +191,7 @@ test('a big import runs in the background: slides keep reaching the output withi
   const during = run.samples.filter((s) => s.during).map(latency);
   const line = (label: string, v: number[]) =>
     `${label}: n=${v.length} median ${percentile(v, 0.5)} ms, p90 ${percentile(v, 0.9)} ms, worst ${Math.max(...v)} ms`;
-  const summary = `import of ${SONGS} files took ${run.importMs} ms (${JSON.stringify(run.result.timings)}); ${line('idle', before)}; ${line('importing', during)}; main event loop delay p99 ${mainLoop.p99} ms, max ${mainLoop.max} ms`;
+  const summary = `import of ${SONGS} files took ${run.importMs} ms (${JSON.stringify(run.result.timings)}); ${line('idle', before)}; ${line('importing', during)}; main event loop delay p99 ${mainLoop.p99} ms, max ${mainLoop.max} ms; slowest handlers (ms) ${mainLoop.slowest.join(', ')}; longest GC ${mainLoop.gc} ms`;
   console.log(summary);
   test.info().annotations.push({ type: 'slide change to painted frame', description: summary });
 

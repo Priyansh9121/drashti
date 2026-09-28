@@ -1,7 +1,7 @@
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import { app, dialog, globalShortcut, powerSaveBlocker, screen as electronScreen, session } from 'electron';
 import { mkdirSync } from 'node:fs';
-import { monitorEventLoopDelay } from 'node:perf_hooks';
+import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
 import type { ImportResult } from '../shared/import';
@@ -19,7 +19,7 @@ import { ScreenRepo } from './db/screens';
 import { seedPlaceholders } from './db/seed';
 import { ShowEngine } from './engine/show-engine';
 import { runEngineCommand } from './ipc/engine-ipc';
-import { handle } from './ipc/handle';
+import { handle, handlerTimes } from './ipc/handle';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
 import { log } from './log';
@@ -59,8 +59,19 @@ const sleepGuard = new SleepGuard(powerSaveBlocker, (held) => {
 // How long the main process's event loop stalls: everything the show does passes through it.
 const loopDelay = monitorEventLoopDelay({ resolution: 10 });
 loopDelay.enable();
+// The longest garbage-collection pause in the main process.
+const gc = { max: 0 };
+new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) gc.max = Math.max(gc.max, entry.duration);
+}).observe({ entryTypes: ['gc'] });
 // Readable from the main process in end-to-end tests.
-(globalThis as { drashtiDiagnostics?: unknown }).drashtiDiagnostics = { watchdog, sleepGuard, loopDelay };
+(globalThis as { drashtiDiagnostics?: unknown }).drashtiDiagnostics = {
+  watchdog,
+  sleepGuard,
+  loopDelay,
+  handlerTimes,
+  gc,
+};
 let quitConfirmed = false;
 
 let operatorWindow: BrowserWindow | null = null;
