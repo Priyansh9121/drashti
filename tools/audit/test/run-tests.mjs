@@ -246,7 +246,9 @@ if (process.argv.includes('--full')) {
     const dir = onlyDir(out);
     const j = JSON.parse(readFileSync(join(dir, 'audit.json'), 'utf8'));
     check(`${run.tag}: OS version recorded`, !!(j.machine.osVersion || j.machine.osName), JSON.stringify(j.machine));
-    check(`${run.tag}: at least one GPU`, j.gpus.length > 0, JSON.stringify(j.gpus));
+    // GitHub's macOS runners are virtual machines with no GPU passthrough: there the report must say so instead.
+    const noGpuExplained = j.machine.virtualMachine === true && j.errors.some((e) => /no GPU/.test(e.message));
+    check(`${run.tag}: at least one GPU (or a virtual machine that says it has none)`, j.gpus.length > 0 || noGpuExplained, JSON.stringify({ gpus: j.gpus, vm: j.machine.virtualMachine }));
     check(`${run.tag}: at least one active screen with a size`, j.activeScreens.some((s) => s.pixelWidth > 0 && s.pixelHeight > 0), JSON.stringify(j.activeScreens));
     console.log(`INFO  ${run.tag}: ${((Date.now() - t0) / 1000).toFixed(1)}s, ${j.activeScreens.length} screen(s), ${j.audioDevices.length} audio device(s), ${j.errors.length} problem(s)`);
     for (const e of j.errors) console.log(`INFO    problem: ${e.section}: ${e.message}`);

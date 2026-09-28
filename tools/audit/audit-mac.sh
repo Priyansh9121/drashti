@@ -757,6 +757,8 @@ section_machine() {
   ok=no
   case "$major" in ''|*[!0-9]*) ok=unknown ;; *) [ "$major" -ge 13 ] && ok=yes ;; esac
   mkv electron44Supported "$ok" b
+  # 1 inside a virtual machine (macOS 11 and later); a VM may list no GPU at all.
+  case "$(sysctl -n kern.hv_vmm_present 2>/dev/null)" in 1) mkv virtualMachine yes b ;; 0) mkv virtualMachine no b ;; *) mkv virtualMachine unknown b ;; esac
   if [ "$SKIP_SYSTEM" = 0 ]; then
     if sp_flat SPHardwareDataType > "$W/hw.flat" && [ -s "$W/hw.flat" ]; then
       mkv modelName "$(flat_get "$W/hw.flat" 0/_items/0/machine_name)"
@@ -781,6 +783,10 @@ section_displays() {
   if sp_flat SPDisplaysDataType > "$W/disp.flat" && [ -s "$W/disp.flat" ]; then
     awk -f "$W/sp_gpus.awk" "$W/disp.flat" > "$W/gpus.tsv"
     awk -f "$W/sp_displays.awk" "$W/disp.flat" > "$W/displays.tsv"
+    if [ ! -s "$W/gpus.tsv" ]; then
+      if [ "$(mget virtualMachine)" = yes ]; then err displays "system_profiler lists no GPU (normal in a virtual machine)"
+      else err displays "system_profiler lists no GPU"; fi
+    fi
   else
     err displays "system_profiler SPDisplaysDataType returned nothing"
   fi
@@ -1304,6 +1310,7 @@ write_md() {
       no) printf -- '- **Drashti (Electron 44) support:** NO. Electron 44 needs macOS 13 Ventura or later. See the README for options.\n' ;;
       *) printf -- '- **Drashti (Electron 44) support:** unknown\n' ;;
     esac
+    [ "$(mget virtualMachine)" = yes ] && printf -- '- **Virtual machine:** yes, so graphics and display details may be missing\n'
     printf -- '- **Displays:** %s connected, %s active\n' "$(wc -l < "$W/displays.tsv" | tr -d ' ')" "$(wc -l < "$W/screens.tsv" | tr -d ' ')"
     if [ -s "$W/pp_installs.tsv" ]; then
       printf -- '- **ProPresenter:** %s\n' "$(awk -F'\t' '{ printf "%s%s %s", (NR > 1 ? "; " : ""), $1, $2 }' "$W/pp_installs.tsv")"
