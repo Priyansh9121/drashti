@@ -25,6 +25,8 @@ export interface DisplayInfo {
   label: string;
   /** Position and size in device-independent pixels (what windows use). */
   bounds: { x: number; y: number; width: number; height: number };
+  /** The part not taken by the menu bar, Dock or taskbar. */
+  workArea: { x: number; y: number; width: number; height: number };
   scaleFactor: number;
   /** Physical resolution. */
   pixelWidth: number;
@@ -76,7 +78,19 @@ export interface ScreensSnapshot {
   status: ScreenStatus[];
 }
 
-export type ScreensResult = { ok: true; snapshot: ScreensSnapshot } | { ok: false; message: string };
+export type ScreensResult =
+  | { ok: true; snapshot: ScreensSnapshot }
+  /**
+   * `confirm` means nothing was changed yet: the operator must agree first,
+   * then repeat the request with the matching option (for example coverOperator).
+   */
+  | { ok: false; message: string; confirm?: 'covers-operator' };
+
+/** Options for requests that can cover the operator window. */
+export interface CoverOptions {
+  /** The operator agreed that an output may cover the display the controls are on. */
+  coverOperator?: boolean;
+}
 
 /** Changes the operator can make to a screen. */
 export interface ScreenPatch {

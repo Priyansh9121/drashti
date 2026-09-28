@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { TEST_LINES } from '../../src/main/db/seed';
-import { launchApp } from './helpers';
+import { launchApp, useDisplay } from './helpers';
 
 /*
  * Smoke test (runs on macOS and Windows in CI): launch the app, give the
@@ -15,8 +15,9 @@ test('smoke: launch, go live on slide 1, the output window shows it', async () =
   await operator.getByRole('button', { name: 'Screens', exact: true }).click();
   await operator.getByLabel('New group name').fill('Main Hall');
   await operator.getByRole('button', { name: 'Add group' }).click();
-  await operator.getByTestId('display-row').first().getByRole('button', { name: 'Use this display' }).click();
-  const output = await app.waitForEvent('window', { predicate: (w) => w.url().includes('output.html') });
+  const outputOpened = app.waitForEvent('window', { predicate: (w) => w.url().includes('output.html') });
+  await useDisplay(operator);
+  const output = await outputOpened;
   await operator.getByRole('button', { name: 'Close screens' }).click();
 
   await operator

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import type { OperatorAction } from './keymap';
-import { actionFor } from './keymap';
+import type { OperatorAction } from '../../../shared/keymap';
+import { actionFor } from '../../../shared/keymap';
 
 function isTyping(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -22,7 +22,7 @@ export function useKeymap(platform: string, run: (action: OperatorAction) => voi
       const action = actionFor(event, platform);
       if (!action) return;
       const dialogOpen = document.querySelector('[aria-modal="true"]') !== null;
-      if (dialogOpen && action !== 'openScreens') return;
+      if (dialogOpen && action !== 'openScreens' && action !== 'uncoverControls') return;
       event.preventDefault();
       runRef.current(action);
     };

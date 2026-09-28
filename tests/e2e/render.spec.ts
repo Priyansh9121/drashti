@@ -18,7 +18,8 @@ async function setUpOneScreen(win: Page): Promise<string> {
     if (!created.ok) throw new Error(created.message);
     const groupId = created.snapshot.groups[0]?.id ?? '';
     const displayId = created.snapshot.displays[0]?.id ?? -1;
-    const assigned = await d.screens.assignDisplay(groupId, displayId);
+    // The first display may hold the operator window; a test needs the output anyway.
+    const assigned = await d.screens.assignDisplay(groupId, displayId, { coverOperator: true });
     if (!assigned.ok) throw new Error(assigned.message);
     return assigned.snapshot.groups[0]?.screens[0]?.id ?? '';
   });

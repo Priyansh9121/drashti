@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { idSchema } from './model-schema';
-import type { ScreenPatch } from './screens';
+import type { CoverOptions, ScreenPatch } from './screens';
 import { SCALING_MODES } from './screens';
 
 /* Validation for screen-setup requests, which arrive over IPC. Main process only. */
@@ -20,3 +20,7 @@ export const screenPatchSchema: z.ZodType<ScreenPatch> = z
 
 export const displayIdSchema = z.number().int().nonnegative();
 export { idSchema };
+
+export const coverOptionsSchema: z.ZodType<CoverOptions> = z.object({
+  coverOperator: z.boolean().optional(),
+});

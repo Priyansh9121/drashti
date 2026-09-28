@@ -17,6 +17,7 @@ async function oneScreen(win: Page): Promise<void> {
     const assigned = await d.screens.assignDisplay(
       created.snapshot.groups[0]?.id ?? '',
       created.snapshot.displays[0]?.id ?? -1,
+      { coverOperator: true },
     );
     if (!assigned.ok) throw new Error(assigned.message);
   });

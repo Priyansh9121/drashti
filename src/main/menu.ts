@@ -3,6 +3,8 @@ import { Menu } from 'electron';
 
 export interface MenuActions {
   reloadOperator: () => void;
+  /** Turns off outputs covering the operator window (the keymap's uncoverControls). */
+  uncoverControls: { accelerator: string | null; run: () => void };
   /** Only when DRASHTI_DIAGNOSTICS=1: for the manual watchdog check. */
   diagnostics: { crashOperator: () => void; crashOutputs: () => void; runSelfTest: () => void } | null;
 }
@@ -25,7 +27,25 @@ export function installMenu(actions: MenuActions): void {
         { role: 'togglefullscreen' },
       ],
     },
-    { role: 'windowMenu' },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        { type: 'separator' },
+        {
+          id: 'uncover-controls',
+          label: 'Uncover the Controls',
+          ...(actions.uncoverControls.accelerator
+            ? { accelerator: actions.uncoverControls.accelerator }
+            : {}),
+          click: actions.uncoverControls.run,
+        },
+        ...(isMac
+          ? [{ type: 'separator' } as const, { role: 'front' } as const]
+          : [{ role: 'close' } as const]),
+      ],
+    },
   ];
   if (actions.diagnostics) {
     const d = actions.diagnostics;

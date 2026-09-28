@@ -85,6 +85,7 @@ test('reloading the operator window (Cmd/Ctrl+R) leaves the output page untouche
     await d.screens.assignDisplay(
       created.snapshot.groups[0]?.id ?? '',
       created.snapshot.displays[0]?.id ?? -1,
+      { coverOperator: true },
     );
   });
   const output = await app.waitForEvent('window', { predicate: (w) => w.url().includes('output.html') });

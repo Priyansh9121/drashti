@@ -39,10 +39,12 @@ const bridge: DrashtiBridge = {
     createGroup: (name) => invoke(IPC.screens.createGroup, name),
     renameGroup: (groupId, name) => invoke(IPC.screens.renameGroup, groupId, name),
     deleteGroup: (groupId) => invoke(IPC.screens.deleteGroup, groupId),
-    assignDisplay: (groupId, displayId) => invoke(IPC.screens.assignDisplay, groupId, displayId),
-    updateScreen: (screenId, patch) => invoke(IPC.screens.updateScreen, screenId, patch),
+    assignDisplay: (groupId, displayId, options) =>
+      invoke(IPC.screens.assignDisplay, groupId, displayId, options),
+    updateScreen: (screenId, patch, options) => invoke(IPC.screens.updateScreen, screenId, patch, options),
     removeScreen: (screenId) => invoke(IPC.screens.removeScreen, screenId),
     identify: () => invoke(IPC.screens.identify),
+    uncoverOperator: () => invoke(IPC.screens.uncoverOperator),
   },
   output: {
     getContext: () => invoke(IPC.output.getContext),

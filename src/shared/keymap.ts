@@ -8,6 +8,10 @@
  *
  * Key names are KeyboardEvent.key values, except "Space". Letters match
  * either case. "Mod+" means Cmd on macOS and Ctrl on Windows.
+ *
+ * Bindings marked `global` also work when Drashti is not the active app
+ * (the main process registers them while they are needed), so they still
+ * work when an output window covers the operator window.
  */
 export type OperatorAction =
   | 'next'
@@ -20,13 +24,16 @@ export type OperatorAction =
   | 'clearAudio'
   | 'clearMasks'
   | 'toggleBlackout'
-  | 'openScreens';
+  | 'openScreens'
+  | 'uncoverControls';
 
 export interface KeyBinding {
   action: OperatorAction;
   keys: readonly string[];
   /** Short name for buttons and the shortcut legend. */
   label: string;
+  /** Also registered system-wide by the main process while it is needed. */
+  global?: boolean;
 }
 
 export const KEYMAP: readonly KeyBinding[] = [
@@ -41,6 +48,9 @@ export const KEYMAP: readonly KeyBinding[] = [
   { action: 'clearMasks', keys: ['F7'], label: 'Clear masks' },
   { action: 'toggleBlackout', keys: ['B', '.'], label: 'Black-out' },
   { action: 'openScreens', keys: ['Mod+Shift+S'], label: 'Screens' },
+  // Turns off any output covering the operator window. Not Ctrl+Shift+Esc (Windows Task Manager)
+  // and not plain Esc (too easy to press by accident when a single screen is covered on purpose).
+  { action: 'uncoverControls', keys: ['Mod+Shift+U'], label: 'Uncover the controls', global: true },
 ];
 
 export interface KeyInput {
@@ -97,4 +107,21 @@ export function shortcutText(
   const name = arrows[key] ?? key;
   if (platform === 'darwin') return `${mod ? '⌘' : ''}${alt ? '⌥' : ''}${shift ? '⇧' : ''}${name}`;
   return [mod ? 'Ctrl' : '', alt ? 'Alt' : '', shift ? 'Shift' : '', name].filter(Boolean).join('+');
+}
+
+/** Electron accelerator for a binding key, e.g. "Mod+Shift+U" -> "CommandOrControl+Shift+U". */
+export function toAccelerator(binding: string): string {
+  return binding
+    .split('+')
+    .map((part) => (part === 'Mod' ? 'CommandOrControl' : part === 'Space' ? 'Space' : part))
+    .join('+');
+}
+
+/** The first key of an action as an Electron accelerator. */
+export function acceleratorFor(
+  action: OperatorAction,
+  keymap: readonly KeyBinding[] = KEYMAP,
+): string | null {
+  const first = keymap.find((b) => b.action === action)?.keys[0];
+  return first ? toAccelerator(first) : null;
 }

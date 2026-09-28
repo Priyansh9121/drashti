@@ -2,7 +2,7 @@ import type { AppInfo } from './app-info';
 import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
 import type { PresentationDoc, PresentationSummary } from './library';
-import type { OutputContext, ScreenPatch, ScreensResult, ScreensSnapshot } from './screens';
+import type { CoverOptions, OutputContext, ScreenPatch, ScreensResult, ScreensSnapshot } from './screens';
 
 /**
  * IPC channel names. This is the only place channel strings are written;
@@ -35,6 +35,7 @@ export const IPC = {
     updateScreen: 'screens:update-screen',
     removeScreen: 'screens:remove-screen',
     identify: 'screens:identify',
+    uncoverOperator: 'screens:uncover-operator',
     /** main -> operator: the screen setup or display list changed. */
     changed: 'screens:changed',
   },
@@ -60,10 +61,17 @@ export interface InvokeContract {
   [IPC.screens.createGroup]: { args: [name: string]; result: ScreensResult };
   [IPC.screens.renameGroup]: { args: [groupId: string, name: string]; result: ScreensResult };
   [IPC.screens.deleteGroup]: { args: [groupId: string]; result: ScreensResult };
-  [IPC.screens.assignDisplay]: { args: [groupId: string, displayId: number]; result: ScreensResult };
-  [IPC.screens.updateScreen]: { args: [screenId: string, patch: ScreenPatch]; result: ScreensResult };
+  [IPC.screens.assignDisplay]: {
+    args: [groupId: string, displayId: number, options?: CoverOptions];
+    result: ScreensResult;
+  };
+  [IPC.screens.updateScreen]: {
+    args: [screenId: string, patch: ScreenPatch, options?: CoverOptions];
+    result: ScreensResult;
+  };
   [IPC.screens.removeScreen]: { args: [screenId: string]; result: ScreensResult };
   [IPC.screens.identify]: { args: []; result: null };
+  [IPC.screens.uncoverOperator]: { args: []; result: ScreensResult };
   [IPC.output.getContext]: { args: []; result: OutputContext | null };
 }
 

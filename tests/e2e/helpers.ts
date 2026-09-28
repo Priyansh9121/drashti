@@ -1,4 +1,5 @@
-import { _electron as electron, type ElectronApplication } from '@playwright/test';
+import type { ElectronApplication, Page } from '@playwright/test';
+import { _electron as electron, expect } from '@playwright/test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -31,4 +32,17 @@ export async function launchApp(
     env: appEnv({ DRASHTI_USER_DATA_DIR: userData, DRASHTI_NO_QUIT_CONFIRM: '1', ...extraEnv }),
   });
   return { app, userData };
+}
+
+/**
+ * Press "Use this display" on a display row. If that display holds the
+ * operator window, Drashti asks first; agree, as a test needs the output.
+ */
+export async function useDisplay(page: Page, row = page.getByTestId('display-row').first()): Promise<void> {
+  await row.getByRole('button', { name: 'Use this display' }).click();
+  const confirm = page.getByTestId('cover-confirm');
+  const added = page.getByTestId('screen-row').first();
+  await expect(confirm.or(added)).toBeVisible();
+  if (await confirm.isVisible()) await confirm.getByRole('button', { name: 'Cover the controls' }).click();
+  await expect(added).toBeVisible();
 }
