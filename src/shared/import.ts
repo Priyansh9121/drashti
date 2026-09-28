@@ -128,7 +128,9 @@ export interface ImportTimings {
   read: number;
   lookup: number;
   parse: number;
+  /** Writing rows, and committing them (the part that waits for the disk). */
   write: number;
+  commit: number;
   media: number;
   total: number;
 }
