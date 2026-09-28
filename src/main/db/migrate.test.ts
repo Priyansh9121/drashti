@@ -72,10 +72,10 @@ describe('migrations', () => {
     const db = openDatabase(':memory:');
     const broken = [
       ...MIGRATIONS,
-      { version: 2, name: 'broken', up: 'CREATE TABLE half_done (x); THIS IS NOT SQL;' },
+      { version: LATEST_VERSION + 1, name: 'broken', up: 'CREATE TABLE half_done (x); THIS IS NOT SQL;' },
     ];
     expect(() => migrate(db, broken)).toThrow();
-    expect(schemaVersion(db)).toBe(1);
+    expect(schemaVersion(db)).toBe(LATEST_VERSION);
     expect(tables(db)).not.toContain('half_done');
     db.close();
   });
@@ -84,14 +84,34 @@ describe('migrations', () => {
     const dir = mkdtempSync(join(tmpdir(), 'drashti-db-'));
     const file = join(dir, 'drashti.sqlite');
     openDatabase(file).close();
-    const next = [...MIGRATIONS, { version: 2, name: 'test', up: 'CREATE TABLE later (x TEXT);' }];
+    const next = [
+      ...MIGRATIONS,
+      { version: LATEST_VERSION + 1, name: 'test', up: 'CREATE TABLE later (x TEXT);' },
+    ];
     const db = openDatabase(file, next);
-    expect(schemaVersion(db)).toBe(2);
+    expect(schemaVersion(db)).toBe(LATEST_VERSION + 1);
     db.close();
-    const backup = join(dir, 'drashti.sqlite.v1.bak');
+    const backup = join(dir, `drashti.sqlite.v${LATEST_VERSION}.bak`);
     expect(existsSync(backup)).toBe(true);
     const old = new Database(backup, { readonly: true });
-    expect(schemaVersion(old)).toBe(1);
+    expect(schemaVersion(old)).toBe(LATEST_VERSION);
     old.close();
+  });
+
+  it('upgrade a version 1 library to the import tables, keeping its presentations', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-db-'));
+    const file = join(dir, 'drashti.sqlite');
+    const v1 = openDatabase(file, MIGRATIONS.slice(0, 1));
+    v1.prepare("INSERT INTO libraries (id, name) VALUES ('l', 'Default')").run();
+    v1.prepare("INSERT INTO presentations (id, library_id, name) VALUES ('p', 'l', 'Kept')").run();
+    v1.close();
+    const db = openDatabase(file);
+    expect(schemaVersion(db)).toBe(2);
+    expect(existsSync(join(dir, 'drashti.sqlite.v1.bak'))).toBe(true);
+    expect(db.prepare('SELECT name, source_hash FROM presentations').all()).toEqual([
+      { name: 'Kept', source_hash: null },
+    ]);
+    expect(tables(db)).toEqual(expect.arrayContaining(['import_runs', 'import_items', 'import_issues']));
+    db.close();
   });
 });

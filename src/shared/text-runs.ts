@@ -70,16 +70,27 @@ export function withDetectedLangs(runs: readonly TextRun[]): TextRun[] {
   });
 }
 
-/** The element's main language: the language of most of its letters. */
+/**
+ * The element's main language. Gujarati or Hindi whenever the box has any:
+ * Latin text beside them is nearly always their transliteration or
+ * translation. Otherwise the language with the most letters.
+ */
 export function mainLang(runs: readonly TextRun[]): Lang | null {
   const letters = new Map<Lang, number>();
   for (const run of runs) {
     const lang = run.lang ?? (run.legacy ? null : detectLang(run.text));
     if (!lang) continue;
-    letters.set(lang, (letters.get(lang) ?? 0) + run.text.replace(/\s/gu, '').length);
+    // Base letters only: vowel signs and viramas are combining marks.
+    letters.set(lang, (letters.get(lang) ?? 0) + run.text.replace(/[\s\p{M}]/gu, '').length);
   }
-  let best: Lang | null = null;
-  let most = 0;
-  for (const [lang, n] of letters) if (n > most) [best, most] = [lang, n];
-  return best;
+  const most = (langs: Lang[]): Lang | null => {
+    let best: Lang | null = null;
+    let count = 0;
+    for (const lang of langs) {
+      const n = letters.get(lang) ?? 0;
+      if (n > count) [best, count] = [lang, n];
+    }
+    return best;
+  };
+  return most(['gu', 'hi']) ?? most(['translit', 'en']);
 }

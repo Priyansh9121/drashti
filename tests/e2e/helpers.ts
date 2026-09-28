@@ -8,6 +8,11 @@ import type { DrashtiBridge } from '../../src/shared/bridge';
 /** Globals inside our pages, for code passed to page.evaluate(). */
 export type PageGlobals = typeof globalThis & { drashti: DrashtiBridge };
 
+/** Globals inside an output window: its history of painted engine revisions. */
+export type OutputGlobals = typeof globalThis & {
+  drashtiPaintLog?: { rev: number; sentAt: number; paintedAt: number }[];
+};
+
 /**
  * Environment for the app under test. ELECTRON_RUN_AS_NODE is removed because
  * some parents (for example VS Code's extension host) set it, and it would

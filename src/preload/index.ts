@@ -32,6 +32,15 @@ const bridge: DrashtiBridge = {
   library: {
     listPresentations: () => invoke(IPC.library.listPresentations),
     getPresentation: (id) => invoke(IPC.library.getPresentation, id),
+    onChanged: (listener) =>
+      on(IPC.library.changed, () => {
+        listener();
+      }),
+    importPaths: (paths, options) => invoke(IPC.library.importPaths, paths, options),
+    cancelImport: (runId) => invoke(IPC.library.cancelImport, runId),
+    onImportProgress: (listener) => on(IPC.library.importProgress, listener),
+    listImportRuns: () => invoke(IPC.library.listImportRuns),
+    getImportReport: (runId) => invoke(IPC.library.getImportReport, runId),
   },
   screens: {
     get: () => invoke(IPC.screens.get),

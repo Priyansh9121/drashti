@@ -23,3 +23,17 @@ export async function loadLibrary(): Promise<void> {
   const first = presentations[0];
   if (!selectedId && first) await selectPresentation(first.id);
 }
+
+let watching = false;
+
+/** Reload the list (and the open presentation, which an import may have replaced) when the library changes. */
+export function watchLibrary(): void {
+  if (watching) return;
+  watching = true;
+  window.drashti.library.onChanged(() => {
+    void loadLibrary().then(async () => {
+      const { selectedId } = useLibrary.getState();
+      if (selectedId) await selectPresentation(selectedId);
+    });
+  });
+}
