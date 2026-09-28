@@ -59,4 +59,15 @@ export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion(
     cornerRadius: num.nonnegative(),
     opacity: num.min(0).max(1),
   }),
+  ...(['image', 'video'] as const).map((kind) =>
+    z.object({
+      id: idSchema,
+      kind: z.literal(kind),
+      frame: rectSchema,
+      mediaId: idSchema,
+      fit: z.enum(['fit', 'fill', 'stretch']),
+      loop: z.boolean().optional(),
+      opacity: num.min(0).max(1).optional(),
+    }),
+  ),
 ]);

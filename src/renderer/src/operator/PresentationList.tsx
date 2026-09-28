@@ -188,6 +188,7 @@ export function PresentationList({ platform }: { platform: string }) {
   const [dropProblem, setDropProblem] = useState<string | null>(null);
   const depth = useRef(0);
   const markedSet = new Set(marked);
+  const libraries = new Set(presentations.map((p) => p.libraryName)).size;
 
   const hasFiles = (e: DragEvent) => e.dataTransfer.types.includes('Files');
   const onDragEnter = (e: DragEvent) => {
@@ -243,11 +244,21 @@ export function PresentationList({ platform }: { platform: string }) {
         data-testid="presentation-list"
         onKeyDown={onKeyDown}
       >
-        {presentations.map((p) => {
+        {presentations.map((p, i) => {
           const selected = p.id === selectedId;
           const isMarked = markedSet.has(p.id);
+          // A heading where a library starts, when there is more than one (templates stay apart).
+          const heading = libraries > 1 && p.libraryName !== presentations[i - 1]?.libraryName;
           return (
             <li key={p.id}>
+              {heading && (
+                <h3
+                  data-testid="library-heading"
+                  className="px-1 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted"
+                >
+                  {p.libraryName}
+                </h3>
+              )}
               <button
                 type="button"
                 aria-current={selected ? 'true' : undefined}

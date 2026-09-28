@@ -7,6 +7,27 @@ import type { SlideElement } from '../../shared/model';
  * presentation per transaction. Element ids here are local to the slide.
  */
 
+/**
+ * Until the pipeline has found and stored the media, image and video
+ * elements point at ParsedPresentation.media by index: mediaId is
+ * `media-ref:<index>`.
+ */
+export const MEDIA_REF = 'media-ref:';
+export const mediaRef = (index: number): string => `${MEDIA_REF}${index}`;
+
+/**
+ * Something that happens when the slide goes live. A 'background' cue puts an
+ * image or video on the background layer (props: media, fit, loop); others
+ * play audio, a video, clear a layer, show a message...
+ */
+export interface ParsedCue {
+  kind: 'background' | 'audio' | 'media' | 'clear' | 'message' | 'timer' | 'other';
+  label: string;
+  /** Index into the presentation's media, when the cue plays a file. */
+  media: number | null;
+  props: Record<string, unknown>;
+}
+
 export interface ParsedSlide {
   label: string;
   notes: string;
@@ -14,8 +35,7 @@ export interface ParsedSlide {
   background: string | null;
   enabled: boolean;
   elements: SlideElement[];
-  /** Index into ParsedPresentation.media: the slide's background media cue. */
-  media: number | null;
+  cues: ParsedCue[];
 }
 
 export interface ParsedGroup {
@@ -37,8 +57,35 @@ export interface ParsedMediaRef {
   kind: 'image' | 'video' | 'audio';
 }
 
+export type ParsedPlaylistItem =
+  /** A presentation, found by its path in the source (or its own id). */
+  | { kind: 'presentation'; name: string; path: string | null; ref: string | null }
+  | { kind: 'media'; name: string; media: number }
+  | { kind: 'header'; name: string; color: string | null }
+  | { kind: 'placeholder'; name: string; hint: string | null };
+
+export interface ParsedPlaylist {
+  name: string;
+  isFolder: boolean;
+  ref: string | null;
+  items: ParsedPlaylistItem[];
+  children: ParsedPlaylist[];
+}
+
+export interface ParsedPlaylistDoc {
+  name: string;
+  playlists: ParsedPlaylist[];
+  media: ParsedMediaRef[];
+  issues: ImportIssue[];
+}
+
 export interface ParsedPresentation {
   name: string;
+  /**
+   * The library it belongs in, when not the usual one: templates go to
+   * "Templates", apart from the presentations and kirtans.
+   */
+  library?: string;
   /** The presentation's own id inside the source file (a ProPresenter UUID), if it has one. */
   ref: string | null;
   width: number;

@@ -1,8 +1,9 @@
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { copyFileSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import type { PageGlobals } from './helpers';
 import { launchApp } from './helpers';
 
@@ -166,5 +167,84 @@ test('drag lyrics onto the library, read the report, go live, remove and undo, i
     async () => (await (globalThis as PageGlobals).drashti.library.listImportRuns()).length,
   );
   expect(runs).toBe(4);
+  await app.close();
+});
+
+test('drag a .pro6 presentation in: its text goes live, and missing media is found from the report', async () => {
+  const work = mkdtempSync(join(tmpdir(), 'drashti-pp6-drop-'));
+  const hymn = join(work, 'Placeholder Hymn.pro6');
+  writeFileSync(
+    hymn,
+    pp6Presentation({
+      uuid: 'E2E-HYMN',
+      groups: [
+        {
+          name: 'Verse 1',
+          slides: [
+            {
+              background: { path: '/Volumes/OldMac/Loops/Blue Loop.mov', kind: 'video', loop: true },
+              text: [
+                {
+                  rtf: cocoaRtf([
+                    ['નમૂનાની પહેલી પંક્તિ', 80, [255, 255, 255]],
+                    ['Namūnānī pahelī paṅkti', 50, [255, 204, 0]],
+                  ]),
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  const found = join(work, 'found media');
+  mkdirSync(found);
+  writeFileSync(join(found, 'Blue Loop.mov'), 'placeholder video bytes');
+
+  const { app } = await launchApp();
+  const win = await app.firstWindow();
+  await expect(win.getByTestId('presentation-list').getByRole('button')).toHaveCount(2);
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const created = await d.screens.createGroup('Main Hall');
+    if (!created.ok) throw new Error(created.message);
+    await d.screens.assignDisplay(
+      created.snapshot.groups[0]?.id ?? '',
+      created.snapshot.displays[0]?.id ?? -1,
+      {
+        coverOperator: true,
+      },
+    );
+  });
+  const output = await outputPage(app);
+  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+
+  await dropFiles(win, win.getByTestId('library-drop'), [hymn]);
+  const report = win.getByTestId('import-report');
+  await expect(report.getByTestId('report-summary')).toContainText(
+    'Came across: 1 presentation · 1 group · 1 slide',
+  );
+  await expect(report.getByTestId('missing-media')).toContainText('1 media file could not be found');
+
+  // "Find missing media…" asks for a folder (answered here by the test) and relinks by name.
+  await app.evaluate(({ dialog }, folder) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
+  }, found);
+  await report.getByRole('button', { name: 'Find missing media…' }).click();
+  await expect(report.getByTestId('report-item')).toHaveAttribute('data-outcome', 'imported');
+  await expect(report.getByTestId('report-item')).toContainText('Relinked to');
+  await report.getByRole('button', { name: 'Close' }).click();
+
+  // Its text goes live like any other presentation's.
+  await win
+    .getByTestId('presentation-list')
+    .getByRole('button', { name: /Placeholder Hymn/ })
+    .click();
+  await expect(win.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toHaveText(
+    'Placeholder Hymn',
+  );
+  await win.getByTestId('slide-thumb').first().click();
+  await expect(output.locator('[data-run][data-lang="gu"]')).toHaveText('નમૂનાની પહેલી પંક્તિ');
+  await expect(output.locator('[data-run][data-lang="translit"]')).toHaveText('Namūnānī pahelī paṅkti');
   await app.close();
 });

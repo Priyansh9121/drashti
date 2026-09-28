@@ -79,7 +79,23 @@ export interface ShapeElement {
   opacity: number;
 }
 
-export type SlideElement = TextElement | ShapeElement;
+/**
+ * An image or video on a slide: a background (the whole slide) or a smaller
+ * element. It points at a media library item. Imported now; drawn once media
+ * playback lands (until then renderers leave it out).
+ */
+export interface MediaElement {
+  id: string;
+  kind: 'image' | 'video';
+  frame: Rect;
+  mediaId: string;
+  fit: 'fit' | 'fill' | 'stretch';
+  /** Videos: start again at the end. */
+  loop?: boolean;
+  opacity?: number;
+}
+
+export type SlideElement = TextElement | ShapeElement | MediaElement;
 
 /** A slide resolved for display: everything a renderer needs, nothing more. */
 export interface RenderSlide {

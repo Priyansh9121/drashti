@@ -7,6 +7,7 @@ import type { ImportIssue } from '../../shared/import';
 import type { ImportSource } from '../../shared/library';
 import type { Db } from '../db/database';
 import type { MediaKind } from './scan';
+import { fileNameOf } from './media-resolver';
 import { extOf, mediaKindOf } from './scan';
 
 /*
@@ -29,6 +30,16 @@ export type MediaImportResult =
   | { outcome: 'failed'; issue: ImportIssue };
 
 type MediaSource = Pick<ImportSource, 'kind'> & { path: string; ref?: string | null };
+
+/** A file whose bytes are in the media folder, before it has a library row. */
+export interface StagedMedia {
+  kind: MediaKind;
+  name: string;
+  /** Path inside the media folder. */
+  rel: string;
+  sha256: string;
+  bytes: number;
+}
 
 const GiB = 1024 ** 3;
 
@@ -76,14 +87,10 @@ export class MediaStore {
 
   /**
    * Put a file's bytes into the media folder (once per sha256), checking
-   * free space first. Never touches the original. No library rows.
+   * free space first. Never touches the original. No library rows (see
+   * addStaged), so it never runs inside a group of database writes.
    */
-  private async store(
-    path: string,
-  ): Promise<
-    | { ok: true; kind: MediaKind; name: string; rel: string; sha256: string; bytes: number }
-    | { ok: false; issue: ImportIssue }
-  > {
+  async stage(path: string): Promise<{ ok: true; staged: StagedMedia } | { ok: false; issue: ImportIssue }> {
     const kind = mediaKindOf(path);
     const name = basename(path);
     if (!kind) {
@@ -149,7 +156,7 @@ export class MediaStore {
         };
       }
     }
-    return { ok: true, kind, name, rel, ...hashed };
+    return { ok: true, staged: { kind, name, rel, ...hashed } };
   }
 
   /**
@@ -157,15 +164,24 @@ export class MediaStore {
    * bytes are in the library already (then that item is returned, 'skipped').
    */
   async importFile(path: string, source: MediaSource): Promise<MediaImportResult> {
-    const stored = await this.store(path);
-    if (!stored.ok) return { outcome: 'failed', issue: stored.issue };
-    const existing = this.bySha(stored.sha256);
+    const stage = await this.stage(path);
+    if (!stage.ok) return { outcome: 'failed', issue: stage.issue };
+    return this.addStaged(stage.staged, source);
+  }
+
+  /**
+   * The library row for staged bytes: the item that already has them
+   * ('skipped'), or a new one ('imported'). Only database work, so it can run
+   * inside a group of writes.
+   */
+  addStaged(staged: StagedMedia, source: MediaSource): Extract<MediaImportResult, { mediaId: string }> {
+    const existing = this.bySha(staged.sha256);
     if (existing) {
       return {
         outcome: 'skipped',
         mediaId: existing.id,
-        sha256: stored.sha256,
-        bytes: stored.bytes,
+        sha256: staged.sha256,
+        bytes: staged.bytes,
         name: existing.name,
       };
     }
@@ -177,11 +193,11 @@ export class MediaStore {
       )
       .run(
         id,
-        stored.kind,
-        stored.name,
-        stored.rel,
-        stored.sha256,
-        stored.bytes,
+        staged.kind,
+        staged.name,
+        staged.rel,
+        staged.sha256,
+        staged.bytes,
         source.kind,
         source.path,
         source.ref ?? null,
@@ -190,9 +206,9 @@ export class MediaStore {
     return {
       outcome: 'imported',
       mediaId: id,
-      sha256: stored.sha256,
-      bytes: stored.bytes,
-      name: stored.name,
+      sha256: staged.sha256,
+      bytes: staged.bytes,
+      name: staged.name,
     };
   }
 
@@ -206,7 +222,7 @@ export class MediaStore {
       .get(originalPath, source.kind) as { id: string } | undefined;
     if (found) return found.id;
     const id = randomUUID();
-    const name = originalPath.split(/[\\/]/u).pop() ?? originalPath;
+    const name = fileNameOf(originalPath) || originalPath;
     this.db
       .prepare(
         `INSERT INTO media (id, kind, name, path, missing, source_kind, source_path, source_ref, source_imported_at)
@@ -250,8 +266,9 @@ export class MediaStore {
         },
       };
     }
-    const stored = await this.store(path);
-    if (!stored.ok) return { outcome: 'failed', issue: stored.issue };
+    const stage = await this.stage(path);
+    if (!stage.ok) return { outcome: 'failed', issue: stage.issue };
+    const stored = stage.staged;
     const existing = this.bySha(stored.sha256);
     if (existing) {
       this.db.transaction(() => {

@@ -22,6 +22,7 @@ export function repointMedia(db: Db, fromId: string, toId: string): void {
     `UPDATE elements SET props = json_set(props, '$.mediaId', ?)
       WHERE kind IN ('image', 'video') AND json_extract(props, '$.mediaId') = ?`,
   ).run(toId, fromId);
+  db.prepare('UPDATE slide_cues SET media_id = ? WHERE media_id = ?').run(toId, fromId);
 }
 
 export interface RelinkContext {

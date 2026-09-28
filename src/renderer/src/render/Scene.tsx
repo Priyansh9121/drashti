@@ -87,10 +87,18 @@ export const Scene = memo(function Scene({
         background: '#000000',
       }}
     >
-      {layers.background && (
+      {layers.background?.kind === 'color' && (
         <div
           data-layer="background"
           style={{ position: 'absolute', inset: 0, background: layers.background.color }}
+        />
+      )}
+      {layers.background?.kind === 'media' && (
+        // Media playback is not built yet: the layer is marked, and draws nothing.
+        <div
+          data-layer="background"
+          data-media-id={layers.background.mediaId}
+          style={{ position: 'absolute', inset: 0 }}
         />
       )}
       {slide && (

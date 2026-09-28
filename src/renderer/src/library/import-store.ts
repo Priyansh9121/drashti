@@ -98,10 +98,17 @@ export async function importWithDialog(kind: 'files' | 'folder'): Promise<void> 
   await importPaths(paths);
 }
 
+/**
+ * The file to import for a report item: the file itself, or the bundle it was
+ * in ("bundle.pro6x!/inner/Song.pro6" is imported by importing the bundle).
+ */
+export const fileToImport = (sourcePath: string): string => sourcePath.split('!/')[0] ?? sourcePath;
+
 /** Answer "replace or keep both?" for changed files. */
-export async function resolveConflicts(paths: string[], choice: ConflictChoice): Promise<void> {
+export async function resolveConflicts(sourcePaths: string[], choice: ConflictChoice): Promise<void> {
   closeReport();
-  await importPaths(paths, { decisions: Object.fromEntries(paths.map((p) => [p, choice])) });
+  const files = [...new Set(sourcePaths.map(fileToImport))];
+  await importPaths(files, { decisions: Object.fromEntries(sourcePaths.map((p) => [p, choice])) });
 }
 
 /** Look for missing media in a folder the operator picks. */

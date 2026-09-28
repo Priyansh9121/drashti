@@ -40,10 +40,21 @@ export interface AudioLayer {
   mediaId: string | null;
 }
 
-export interface BackgroundLayer {
-  kind: 'color';
-  color: string;
-}
+/**
+ * What the background layer shows: a colour, or an image or video from the
+ * media library. A slide's background cue sets it (PLAN.md 4.3); it stays up
+ * on later slides until something replaces or clears it, so a video keeps
+ * playing across slides instead of restarting.
+ */
+export type BackgroundLayer =
+  | { kind: 'color'; color: string }
+  | {
+      kind: 'media';
+      mediaId: string;
+      media: 'image' | 'video';
+      fit: 'fit' | 'fill' | 'stretch';
+      loop: boolean;
+    };
 
 export interface PropItem {
   id: string;

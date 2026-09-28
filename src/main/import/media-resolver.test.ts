@@ -1,3 +1,4 @@
+import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -16,6 +17,11 @@ describe('media references', () => {
     expect(fileNameOf('C:\\Media\\Loop.mov')).toBe('Loop.mov');
     expect(fileNameOf('file:///C:/Media/Loop%20Two.mov')).toBe('Loop Two.mov');
     expect(fileNameOf('/Volumes/USB/bg.jpg')).toBe('bg.jpg');
+    expect(pathFromReference('/Users/op/Documents/Placeholder%20Hymn.pro6')).toBe(
+      '/Users/op/Documents/Placeholder Hymn.pro6',
+    );
+    expect(pathFromReference('/odd/100%.txt')).toBe('/odd/100%.txt');
+    expect(pathFromReference('~/Documents/a.pro6')).toBe(join(homedir(), 'Documents/a.pro6'));
   });
 });
 
