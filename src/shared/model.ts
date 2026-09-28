@@ -46,6 +46,8 @@ export interface TextRun {
   color?: string;
   weight?: number;
   italic?: boolean;
+  /** Extra space between letters, in slide pixels (negative is tighter). */
+  letterSpacing?: number;
   /** Language of this run; when a source gives none it is detected from the script. */
   lang?: Lang | null;
   /**
