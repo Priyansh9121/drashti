@@ -689,6 +689,11 @@ function start(): void {
         }
       : null,
   });
+  /** The self-tests end on purpose: a clean quit, so the next start does not put their slides back. */
+  const exitSelfTest = (code: number) => {
+    liveWriter.markClean();
+    app.exit(code);
+  };
   if (perfTest) {
     operatorWindow.webContents.once('did-finish-load', () => {
       void runPerformanceTest({
@@ -701,7 +706,7 @@ function start(): void {
       }).then(
         (result) => {
           process.stdout.write(`DRASHTI_PERFTEST_RESULT ${JSON.stringify(result)}\n`);
-          app.exit(result.passed ? 0 : 1);
+          exitSelfTest(result.passed ? 0 : 1);
         },
         (error: unknown) => {
           const result = {
@@ -710,7 +715,7 @@ function start(): void {
             summary: '',
           };
           process.stdout.write(`DRASHTI_PERFTEST_RESULT ${JSON.stringify(result)}\n`);
-          app.exit(1);
+          exitSelfTest(1);
         },
       );
     });
@@ -720,7 +725,7 @@ function start(): void {
       void runSelfTest().then(
         (result) => {
           process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
-          app.exit(result.passed ? 0 : 1);
+          exitSelfTest(result.passed ? 0 : 1);
         },
         (error: unknown) => {
           const result = {
@@ -728,7 +733,7 @@ function start(): void {
             checks: [{ name: 'self-test ran', ok: false, detail: String(error) }],
           };
           process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
-          app.exit(1);
+          exitSelfTest(1);
         },
       );
     });
