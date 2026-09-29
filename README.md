@@ -54,6 +54,7 @@ The Electron binary downloads the first time something needs it (for example `pn
 | `pnpm build`      | Build main, preload and renderer into `out/`.                                                                                |
 | `pnpm test`       | Unit tests (Vitest), run inside Electron's own Node so they use the exact Node, V8 and native-module ABI the app ships with. |
 | `pnpm test:e2e`   | Build, then run every Playwright test against the real app.                                                                  |
+| `pnpm test:perf`  | Build, then run the performance check (by hand only; see "Performance check").                                               |
 | `pnpm test:smoke` | Build, then run only the smoke test: launch, go live on slide 1, check the output window shows it.                           |
 | `pnpm lint`       | ESLint (type-aware) and a Prettier check.                                                                                    |
 | `pnpm typecheck`  | TypeScript for the Node side, the web side and the end-to-end tests.                                                         |
@@ -71,16 +72,17 @@ gh workflow run CI --ref <branch> -f os=windows   # or os=macos, os=both
 
 ### Switches
 
-| Environment variable               | Effect                                                                                                          |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `DRASHTI_USER_DATA_DIR=<dir>`      | Use this folder for the library and settings (tests use a fresh one each run).                                  |
-| `DRASHTI_WINDOWED_OUTPUTS=1`       | Development only: outputs open as normal windows, to try them on a computer with one screen.                    |
-| `DRASHTI_EXTRA_DISPLAYS=<n>`       | With windowed outputs: up to 4 pretend displays (copies of the main one), to try several outputs on one screen. |
-| `DRASHTI_DIAGNOSTICS=1`            | Adds a Diagnostics menu with the watchdog self-test and crash buttons.                                          |
-| `DRASHTI_SELFTEST=watchdog`        | Runs the watchdog self-test headless, prints the result and exits (used by the tests).                          |
-| `DRASHTI_NO_QUIT_CONFIRM=1`        | Skips the "Quit Drashti?" question (used by the tests).                                                         |
-| `DRASHTI_LOG_PERMISSIONS=1`        | Logs every permission a page checks or asks for (to see why a sound output cannot be chosen).                   |
-| `DRASHTI_TEST_MEDIA_DELAY_MS=<ms>` | Tests only: media answers this late (up to 5 s), as from a slow disk.                                           |
+| Environment variable               | Effect                                                                                                             |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `DRASHTI_USER_DATA_DIR=<dir>`      | Use this folder for the library and settings (tests use a fresh one each run).                                     |
+| `DRASHTI_WINDOWED_OUTPUTS=1`       | Development only: outputs open as normal windows, to try them on a computer with one screen.                       |
+| `DRASHTI_EXTRA_DISPLAYS=<n>`       | With windowed outputs: up to 4 pretend displays (copies of the main one), to try several outputs on one screen.    |
+| `DRASHTI_DIAGNOSTICS=1`            | Adds a Diagnostics menu with the watchdog self-test and crash buttons.                                             |
+| `DRASHTI_SELFTEST=watchdog`        | Runs the watchdog self-test headless, prints the result and exits (used by the tests).                             |
+| `DRASHTI_SELFTEST=performance`     | Runs the performance check headless in a throwaway library, prints the result and exits (see "Performance check"). |
+| `DRASHTI_NO_QUIT_CONFIRM=1`        | Skips the "Quit Drashti?" question (used by the tests).                                                            |
+| `DRASHTI_LOG_PERMISSIONS=1`        | Logs every permission a page checks or asks for (to see why a sound output cannot be chosen).                      |
+| `DRASHTI_TEST_MEDIA_DELAY_MS=<ms>` | Tests only: media answers this late (up to 5 s), as from a slow disk.                                              |
 
 If you start Drashti from inside another Electron app's process (for example an editor extension), make sure `ELECTRON_RUN_AS_NODE` is not set in that environment. When it's set, Electron starts as plain Node. The end-to-end tests clear it automatically.
 
@@ -130,6 +132,31 @@ Then set up a screen, put a slide live, and choose **Diagnostics > Run Watchdog 
 
 The same self-test runs headless in the end-to-end tests (`tests/e2e/watchdog.spec.ts`), because Playwright cannot stay attached to a renderer that crashes.
 
+## Performance check
+
+Slide changes must keep reaching the screens within a frame while a big import runs. CI checks everything about that except the timing itself (`tests/e2e/import.spec.ts`: the import runs in its own process, every slide change reaches the output), because CI's virtual machines stall now and then and timing limits there were flaky. The timing limits live in the app's own performance self-test, run by hand:
+
+- **On the mandir's machines**, with the installed app. Close Drashti first. It covers the first display for about half a minute, imports 400 generated placeholder lyrics files into a throwaway library (never the real one) while changing slides every 40 ms, and prints one line.
+
+  ```bash
+  # macOS
+  DRASHTI_SELFTEST=performance /Applications/Drashti.app/Contents/MacOS/Drashti | grep DRASHTI_PERFTEST_RESULT
+  ```
+
+  ```powershell
+  # Windows, PowerShell (the usual install folder; otherwise see docs/windows-checks.md, check 7.1)
+  $env:DRASHTI_SELFTEST = 'performance'
+  Start-Process -Wait -NoNewWindow "$env:LOCALAPPDATA\Programs\drashti\Drashti.exe" -RedirectStandardOutput "$env:TEMP\drashti-perf.txt"
+  Select-String DRASHTI_PERFTEST_RESULT "$env:TEMP\drashti-perf.txt"
+  ```
+
+  The line is JSON: `passed`, each check with its figure, and a `summary` with every timing. It passes when, during the import, half the slide changes reach a painted frame within 17 ms (one frame at 60 Hz), 9 in 10 within 34 ms, and no more than 2% take over 100 ms. Keep the line with the parallel-run notes.
+
+- **From the source**: `pnpm test:perf` runs the same self-test and prints each check.
+- **On CI's machines**, by hand: the **Performance** workflow (Actions, then Performance, then Run workflow), for comparing one change with another.
+
+On the dev Mac: 400 files in about 1.1 s, with slide changes during the import at a median of 3 to 4 ms and at worst 19 ms.
+
 ## Importing
 
 Imports run in a separate worker process (an Electron utility process, `src/main/import/`), one run at a time, at the lowest process priority so the show's processes always come first when the computer is busy. The main process only passes messages along, so slides keep going live during a big import. The end-to-end test imports 400 generated presentations while changing slides every 40 ms. It checks that each change still reaches the output within a frame, and that the import really ran in its own process.
@@ -161,29 +188,30 @@ The library is `drashti.sqlite` in Electron's userData folder: `~/Library/Applic
 
 ## Folder layout
 
-| Path                                                      | What lives there                                                                                                                 |
-| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main/engine/`                                        | Show engine: reducer, commands to actions, slide source.                                                                         |
-| `src/main/db/`                                            | SQLite: migrations, presentations and screens repositories, seed.                                                                |
-| `src/main/outputs/`                                       | Displays, output windows, the output manager and the screens service.                                                            |
-| `src/main/import/`                                        | Importers: the pipeline, the worker process, file formats, the media folder and relinking.                                       |
-| `src/main/media/`                                         | Serving library media to the windows (`drashti-media://`), and still frames for thumbnails.                                      |
-| `src/main/audio/`                                         | The sound output choice (remembered in the library's settings).                                                                  |
-| `src/main/transport/`, `src/main/ipc/`                    | IPC transport for engine messages; IPC handler helpers.                                                                          |
-| `src/main/windows/`                                       | Operator window, security and web preferences.                                                                                   |
-| `src/main/watchdog.ts`, `selftest.ts`, `menu.ts`          | Watchdog, its self-test, the application menu.                                                                                   |
-| `src/preload/`                                            | The preload script: the typed `window.drashti` bridge and nothing else.                                                          |
-| `src/shared/`                                             | Code for every process: model and IPC contracts, engine state and protocol, scaling, display matching. No Node, DOM or Electron. |
-| `src/renderer/src/operator/`                              | Operator UI. The single keymap it uses is `src/shared/keymap.ts` (the menu and global shortcuts use it too).                     |
-| `src/renderer/src/output/`                                | Output window page.                                                                                                              |
-| `src/renderer/src/audio/`                                 | The audio player page: the one place Drashti makes sound.                                                                        |
-| `src/renderer/src/render/`                                | The shared renderer and bundled fonts.                                                                                           |
-| `src/renderer/src/screens/`, `library/`, `engine/`, `ui/` | Screens panel, library and engine stores, small UI parts.                                                                        |
-| `tests/e2e/`                                              | Playwright tests against the built app. Unit tests sit next to the code as `*.test.ts`.                                          |
-| `tools/audit/`                                            | The read-only audit kit for the two ProPresenter machines. See `tools/audit/README.md`.                                          |
-| `docs/`                                                   | Hand checks, starting with `docs/windows-checks.md` for the Windows PC during the parallel run.                                  |
-| `third_party/`                                            | Vendored third-party files with their licences (the ProPresenter 7 protobuf definitions).                                        |
-| `LICENSES/`                                               | Licences shipped inside the app: the bundled fonts, and the MIT notice for the protobuf definitions.                             |
+| Path                                                            | What lives there                                                                                                                 |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main/engine/`                                              | Show engine: reducer, commands to actions, slide source.                                                                         |
+| `src/main/db/`                                                  | SQLite: migrations, presentations and screens repositories, seed.                                                                |
+| `src/main/outputs/`                                             | Displays, output windows, the output manager and the screens service.                                                            |
+| `src/main/import/`                                              | Importers: the pipeline, the worker process, file formats, the media folder and relinking.                                       |
+| `src/main/media/`                                               | Serving library media to the windows (`drashti-media://`), and still frames for thumbnails.                                      |
+| `src/main/audio/`                                               | The sound output choice (remembered in the library's settings).                                                                  |
+| `src/main/transport/`, `src/main/ipc/`                          | IPC transport for engine messages; IPC handler helpers.                                                                          |
+| `src/main/windows/`                                             | Operator window, security and web preferences.                                                                                   |
+| `src/main/watchdog.ts`, `selftest.ts`, `perftest.ts`, `menu.ts` | Watchdog, its self-test, the performance self-test, the application menu.                                                        |
+| `src/preload/`                                                  | The preload script: the typed `window.drashti` bridge and nothing else.                                                          |
+| `src/shared/`                                                   | Code for every process: model and IPC contracts, engine state and protocol, scaling, display matching. No Node, DOM or Electron. |
+| `src/renderer/src/operator/`                                    | Operator UI. The single keymap it uses is `src/shared/keymap.ts` (the menu and global shortcuts use it too).                     |
+| `src/renderer/src/output/`                                      | Output window page.                                                                                                              |
+| `src/renderer/src/audio/`                                       | The audio player page: the one place Drashti makes sound.                                                                        |
+| `src/renderer/src/render/`                                      | The shared renderer and bundled fonts.                                                                                           |
+| `src/renderer/src/screens/`, `library/`, `engine/`, `ui/`       | Screens panel, library and engine stores, small UI parts.                                                                        |
+| `tests/e2e/`                                                    | Playwright tests against the built app. Unit tests sit next to the code as `*.test.ts`.                                          |
+| `tests/perf/`                                                   | The performance check, run by hand (`pnpm test:perf`), never in CI.                                                              |
+| `tools/audit/`                                                  | The read-only audit kit for the two ProPresenter machines. See `tools/audit/README.md`.                                          |
+| `docs/`                                                         | Hand checks, starting with `docs/windows-checks.md` for the Windows PC during the parallel run.                                  |
+| `third_party/`                                                  | Vendored third-party files with their licences (the ProPresenter 7 protobuf definitions).                                        |
+| `LICENSES/`                                                     | Licences shipped inside the app: the bundled fonts, and the MIT notice for the protobuf definitions.                             |
 
 ## Security model
 

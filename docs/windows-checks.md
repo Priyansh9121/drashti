@@ -71,11 +71,18 @@ Do these if the displays have different scale settings, or set one to 125% for t
 | 6.4 | Uninstall Drashti (Settings, then Apps).                                | It uninstalls. The library in `%APPDATA%\Drashti` stays, so a reinstall keeps it.                                                                                                    |        |
 | 6.5 | Check the Defender history (Windows Security, then Protection history). | Nothing blocked or quarantined.                                                                                                                                                      |        |
 
-## 7. Fallback drill
+## 7. Performance
+
+| #   | Check                                                                                                                                                                                                                                                                                                                                          | Expected                                                                                                                             | Result |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------ |
+| 7.1 | Close Drashti. Open PowerShell and run the three lines under "Performance check" in the README (if Drashti was installed elsewhere than `%LOCALAPPDATA%\Programs\drashti`, right-click its Start menu entry, choose "Open file location" and use that path). It covers the first display for about half a minute and uses a throwaway library. | One line starting `DRASHTI_PERFTEST_RESULT` with `"passed":true`. Copy the whole line into the notes: its `summary` has the timings. |        |
+| 7.2 | Run it again while a video plays in another app on the same PC.                                                                                                                                                                                                                                                                                | Still `"passed":true`.                                                                                                               |        |
+
+## 8. Fallback drill
 
 | #   | Check                                         | Expected                                               | Result |
 | --- | --------------------------------------------- | ------------------------------------------------------ | ------ |
-| 7.1 | Quit Drashti and start ProPresenter. Time it. | ProPresenter's outputs return in under a minute.       |        |
-| 7.2 | Quit Drashti while outputs are showing.       | Drashti asks first, because the screens will go black. |        |
+| 8.1 | Quit Drashti and start ProPresenter. Time it. | ProPresenter's outputs return in under a minute.       |        |
+| 8.2 | Quit Drashti while outputs are showing.       | Drashti asks first, because the screens will go black. |        |
 
 Report failures with the step number, what you saw, and a photo of the screen if possible.

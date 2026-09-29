@@ -8,7 +8,8 @@ import {
   screen as electronScreen,
   session,
 } from 'electron';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
@@ -40,6 +41,7 @@ import { LiveStateWriter, toRestore } from './recovery/live-state';
 import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES } from './media/media-protocol';
 import { saveStill } from './media/stills';
 import { installMenu } from './menu';
+import { runPerformanceTest } from './perftest';
 import { createdGroupId, runWatchdogSelfTest } from './selftest';
 import {
   createOutputWindow,
@@ -57,9 +59,14 @@ import { createOperatorWindow } from './windows/operator-window';
 import { RendererWatchdog, shouldConfirmQuit } from './watchdog';
 import { applySessionSecurity, secureWebContents } from './windows/security';
 
+// Headless self-tests: run one, print the result, exit (see README). The performance test
+// imports a few hundred placeholder files, so it gets a throwaway data folder of its own.
+const selfTest = process.env['DRASHTI_SELFTEST'] === 'watchdog';
+const perfTest = process.env['DRASHTI_SELFTEST'] === 'performance';
 // Tests (and multiple installs) can point Drashti at its own data folder.
 const userDataOverride = process.env['DRASHTI_USER_DATA_DIR'];
 if (userDataOverride) app.setPath('userData', userDataOverride);
+else if (perfTest) app.setPath('userData', mkdtempSync(join(tmpdir(), 'drashti-perf-')));
 // Development only: outputs as normal windows, for machines with one screen,
 // optionally with pretend extra displays to try several outputs.
 const windowedOutputs = process.env['DRASHTI_WINDOWED_OUTPUTS'] === '1';
@@ -68,8 +75,6 @@ if (windowedOutputs) setExtraDisplays(Number(process.env['DRASHTI_EXTRA_DISPLAYS
 const diagnostics = process.env['DRASHTI_DIAGNOSTICS'] === '1';
 // Automated tests cannot answer the quit confirmation.
 const noQuitConfirm = process.env['DRASHTI_NO_QUIT_CONFIRM'] === '1';
-// Headless watchdog self-test: run it, print the result, exit (see README).
-const selfTest = process.env['DRASHTI_SELFTEST'] === 'watchdog';
 // Log every permission a page checks or asks for (diagnosing sound output choice).
 const logPermissions = process.env['DRASHTI_LOG_PERMISSIONS'] === '1';
 // Tests only: answer media requests late, as a slow disk would.
@@ -627,18 +632,21 @@ function start(): void {
       dispatch: (command) => engine.dispatch(command),
       engineRev: () => engine.rev,
       firstPresentationId: () => presentations.list()[0]?.id ?? null,
-      ensureOutput: async () => {
-        if (showingCount() > 0) return () => undefined;
-        const created = screens.createGroup('Watchdog self-test');
-        const groupId = createdGroupId(created, 'Watchdog self-test');
-        const display = listDisplays()[0];
-        if (groupId && display) screens.assignDisplay(groupId, display.id, { coverOperator: true });
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        return () => {
-          if (groupId) screens.deleteGroup(groupId);
-        };
-      },
+      ensureOutput: () => ensureTestOutput('Watchdog self-test'),
     });
+
+  /** For the self-tests: an output on the first display, if none is showing; returns an undo function. */
+  const ensureTestOutput = async (name: string) => {
+    if (showingCount() > 0) return () => undefined;
+    const created = screens.createGroup(name);
+    const groupId = createdGroupId(created, name);
+    const display = listDisplays()[0];
+    if (groupId && display) screens.assignDisplay(groupId, display.id, { coverOperator: true });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return () => {
+      if (groupId) screens.deleteGroup(groupId);
+    };
+  };
 
   installMenu({
     reloadOperator: () => {
@@ -681,6 +689,32 @@ function start(): void {
         }
       : null,
   });
+  if (perfTest) {
+    operatorWindow.webContents.once('did-finish-load', () => {
+      void runPerformanceTest({
+        operator: () => (operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : null),
+        outputs: () => [...outputWindows.values()].filter((w) => !w.isDestroyed()),
+        ensureOutput: () => ensureTestOutput('Performance test'),
+        workerRunning: () =>
+          app.getAppMetrics().some((m) => m.type === 'Utility' && m.name === 'Drashti import'),
+        diagnostics: { loopDelay, handlerTimes, gc },
+      }).then(
+        (result) => {
+          process.stdout.write(`DRASHTI_PERFTEST_RESULT ${JSON.stringify(result)}\n`);
+          app.exit(result.passed ? 0 : 1);
+        },
+        (error: unknown) => {
+          const result = {
+            passed: false,
+            checks: [{ name: 'the test ran', ok: false, detail: String(error) }],
+            summary: '',
+          };
+          process.stdout.write(`DRASHTI_PERFTEST_RESULT ${JSON.stringify(result)}\n`);
+          app.exit(1);
+        },
+      );
+    });
+  }
   if (selfTest) {
     operatorWindow.webContents.once('did-finish-load', () => {
       void runSelfTest().then(
