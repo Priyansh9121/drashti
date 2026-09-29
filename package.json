@@ -24,7 +24,8 @@
     "test:audit": "node tools/audit/test/run-tests.mjs",
     "package": "electron-vite build && electron-builder --publish never",
     "package:dir": "electron-vite build && electron-builder --dir --publish never",
-    "test:smoke": "electron-vite build && playwright test tests/e2e/smoke.spec.ts"
+    "test:smoke": "electron-vite build && playwright test tests/e2e/smoke.spec.ts",
+    "test:perf": "electron-vite build && playwright test -c playwright.perf.config.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3"
