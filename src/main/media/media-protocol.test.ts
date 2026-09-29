@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mediaUrl } from '../../shared/media';
+import { mediaUrl, playbackPosition } from '../../shared/media';
 import type { MediaFileRow, MediaProtocolDeps } from './media-protocol';
 import { handleMediaRequest, isInside, mediaIdOf, parseRange } from './media-protocol';
 
@@ -178,5 +178,18 @@ describe('media URLs and ranges', () => {
     expect(parseRange('bytes=10-', 10)).toBe('unsatisfiable');
     expect(parseRange('bytes=-', 10)).toBeNull();
     expect(parseRange(' bytes=2-3 ', 10)).toEqual({ start: 2, end: 3 });
+  });
+});
+
+describe('playback position', () => {
+  it('follows the clock from the start time, wrapping when looping and stopping at the end otherwise', () => {
+    expect(playbackPosition({ startedAt: 1000, loop: true }, 4, 1000)).toBe(0);
+    expect(playbackPosition({ startedAt: 1000, loop: true }, 4, 3500)).toBe(2.5);
+    expect(playbackPosition({ startedAt: 1000, loop: true }, 4, 11_500)).toBe(2.5);
+    expect(playbackPosition({ startedAt: 1000, loop: false }, 4, 11_500)).toBe(4);
+    // A clock slightly behind the start time, and files without a known length, start from the top.
+    expect(playbackPosition({ startedAt: 1000, loop: true }, 4, 990)).toBe(0);
+    expect(playbackPosition({ startedAt: 1000, loop: true }, Infinity, 5000)).toBe(0);
+    expect(playbackPosition({ startedAt: 1000, loop: true }, NaN, 5000)).toBe(0);
   });
 });

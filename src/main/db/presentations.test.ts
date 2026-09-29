@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { TextElement } from '../../shared/model';
 import { type Db, openDatabase } from './database';
-import { DbSlideSource, elementFromRow, PresentationRepo } from './presentations';
+import { cueFromRow, DbSlideSource, elementFromRow, PresentationRepo } from './presentations';
 
 let db: Db;
 let repo: PresentationRepo;
@@ -247,5 +247,105 @@ describe('DbSlideSource', () => {
     expect(source.slideCount(id)).toBe(2);
     source.invalidate(id);
     expect(source.slideCount(id)).toBeNull();
+  });
+});
+
+describe('slide cues', () => {
+  const addMedia = (id: string, kind: string, name: string, missing = false) =>
+    db
+      .prepare('INSERT INTO media (id, kind, name, path, missing) VALUES (?, ?, ?, ?, ?)')
+      .run(id, kind, name, missing ? '' : `ab/${id}`, missing ? 1 : 0);
+
+  it('loads background cues with their media, and leaves out cues Drashti does not run yet', () => {
+    addMedia('m-video', 'video', 'Placeholder clouds.mp4');
+    addMedia('m-gone', 'image', 'Placeholder gone.jpg', true);
+    addMedia('m-audio', 'audio', 'Placeholder tone.mp3');
+    const id = repo.insert({
+      libraryId,
+      name: 'Cues',
+      groups: [
+        {
+          name: 'A',
+          slides: [
+            {
+              elements: [],
+              cues: [
+                {
+                  kind: 'background',
+                  label: 'Clouds',
+                  mediaId: 'm-video',
+                  props: { media: 'video', fit: 'fill', loop: true },
+                },
+              ],
+            },
+            {
+              elements: [],
+              cues: [
+                { kind: 'background', label: '', mediaId: 'm-gone', props: { fit: 'stretch' } },
+                { kind: 'audio', label: 'Tone', mediaId: 'm-audio', props: { volume: 0.5 } },
+              ],
+            },
+            {
+              elements: [],
+              cues: [
+                { kind: 'background', label: 'Not a picture', mediaId: 'm-audio', props: {} },
+                { kind: 'clear', label: 'Clear', mediaId: null, props: {} },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const slides = repo.get(id)?.groups[0]?.slides ?? [];
+    expect(slides.map((s) => s.cues)).toEqual([
+      [
+        {
+          kind: 'background',
+          label: 'Clouds',
+          name: 'Placeholder clouds.mp4',
+          missing: false,
+          background: { kind: 'media', mediaId: 'm-video', media: 'video', fit: 'fill', loop: true },
+        },
+      ],
+      [
+        {
+          kind: 'background',
+          label: '',
+          name: 'Placeholder gone.jpg',
+          missing: true,
+          background: { kind: 'media', mediaId: 'm-gone', media: 'image', fit: 'stretch', loop: false },
+        },
+      ],
+      [],
+    ]);
+    // The engine sees the same cues, by slide index.
+    const source = new DbSlideSource(repo);
+    expect(source.cues(id, 0)).toEqual(slides[0]?.cues);
+    expect(source.cues(id, 9)).toEqual([]);
+    expect(source.cues('nobody', 0)).toEqual([]);
+  });
+
+  it('reads cue settings defensively', () => {
+    const row = {
+      slide_id: 's',
+      kind: 'background',
+      label: '',
+      props: 'not json',
+      media_id: 'm',
+      media_name: 'x.mp4',
+      media_kind: 'video',
+      media_missing: 0,
+    };
+    expect(cueFromRow(row)).toMatchObject({ background: { fit: 'fit', loop: false } });
+    expect(cueFromRow({ ...row, props: '{"fit":"zoom","loop":"yes"}' })).toMatchObject({
+      background: { fit: 'fit', loop: false },
+    });
+    expect(cueFromRow({ ...row, media_kind: 'image', props: '{"loop":true}' })).toMatchObject({
+      background: { media: 'image', loop: false },
+    });
+    // A cue whose media item is gone, or that is not a background, does not run.
+    expect(cueFromRow({ ...row, media_id: null })).toBeNull();
+    expect(cueFromRow({ ...row, media_kind: null })).toBeNull();
+    expect(cueFromRow({ ...row, kind: 'message' })).toBeNull();
   });
 });

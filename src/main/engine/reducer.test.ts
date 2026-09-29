@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { type EngineState, initialEngineState, LAYER_NAMES, type LayerName } from '../../shared/engine/state';
+import {
+  ENGINE_STATE_VERSION,
+  type EngineState,
+  initialEngineState,
+  LAYER_NAMES,
+  type LayerName,
+} from '../../shared/engine/state';
 import type { EngineAction } from './actions';
 import { reduce } from './reducer';
 import { deepFreeze, textSlide } from './testing';
@@ -34,7 +40,7 @@ function fullState(): EngineState {
 describe('reduce', () => {
   it('starts empty', () => {
     const s = initialEngineState();
-    expect(s.version).toBe(1);
+    expect(s.version).toBe(ENGINE_STATE_VERSION);
     expect(s.live).toEqual({ presentationId: null, slideIndex: null, slideCount: 0 });
     for (const layer of LAYER_NAMES)
       expect(s.layers[layer] === null || Array.isArray(s.layers[layer])).toBe(true);

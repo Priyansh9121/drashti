@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EngineMessage } from '../../shared/engine/protocol';
-import { initialEngineState } from '../../shared/engine/state';
+import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import { IPC } from '../../shared/ipc';
 import { IpcTransport, type MessageTarget } from './ipc-transport';
 
@@ -32,7 +32,7 @@ class FakeTarget implements MessageTarget {
 
 const message: EngineMessage = {
   kind: 'snapshot',
-  version: 1,
+  version: ENGINE_STATE_VERSION,
   rev: 0,
   state: initialEngineState(),
   sentAt: 0,

@@ -57,6 +57,11 @@ const diagnostics = process.env['DRASHTI_DIAGNOSTICS'] === '1';
 const noQuitConfirm = process.env['DRASHTI_NO_QUIT_CONFIRM'] === '1';
 // Headless watchdog self-test: run it, print the result, exit (see README).
 const selfTest = process.env['DRASHTI_SELFTEST'] === 'watchdog';
+// Tests only: answer media requests late, as a slow disk would.
+const mediaDelayMs = Math.min(
+  5000,
+  Math.max(0, Number(process.env['DRASHTI_TEST_MEDIA_DELAY_MS'] ?? 0) || 0),
+);
 
 // Library media reaches the sandboxed windows only through drashti-media:// (see media/media-protocol.ts).
 // Schemes must be registered before the app is ready.
@@ -180,15 +185,16 @@ function start(): void {
   const mediaDir = join(userDataDir, 'Media');
   mkdirSync(mediaDir, { recursive: true });
   const media = new MediaRepo(db);
-  protocol.handle(MEDIA_SCHEME, (request) =>
-    handleMediaRequest(request, {
+  protocol.handle(MEDIA_SCHEME, async (request) => {
+    if (mediaDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, mediaDelayMs));
+    return handleMediaRequest(request, {
       mediaDir,
       lookup: (id) => media.file(id),
       warn: (message) => {
         log.warn(message);
       },
-    }),
-  );
+    });
+  });
 
   // ---- outputs ----------------------------------------------------------
   const outputWindows = new Map<string, BrowserWindow>();

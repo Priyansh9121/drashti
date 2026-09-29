@@ -1,3 +1,4 @@
+import type { MediaBackground } from './engine/state';
 import type { Lang, RenderSlide } from './model';
 
 /** Where an imported item came from, so imports can be re-run and traced. */
@@ -25,6 +26,24 @@ export interface PresentationSummary {
   source: ImportSource | null;
 }
 
+/**
+ * A slide's background image or video (PLAN.md 4.3): when the slide goes
+ * live it goes on the background layer, and stays there on later slides
+ * without a background of their own.
+ */
+export interface BackgroundCue {
+  kind: 'background';
+  label: string;
+  /** The media file's name, for the operator. */
+  name: string;
+  /** The file was not found at import; it shows once it is relinked. */
+  missing: boolean;
+  background: MediaBackground;
+}
+
+/** What a slide does on the other layers when it goes live. Cues Drashti does not run yet stay in the library. */
+export type SlideCue = BackgroundCue;
+
 export interface SlideInfo {
   id: string;
   /** Position in the presentation's slide order (what the engine calls slideIndex). */
@@ -32,6 +51,7 @@ export interface SlideInfo {
   label: string;
   notes: string;
   slide: RenderSlide;
+  cues: SlideCue[];
 }
 
 export interface GroupInfo {

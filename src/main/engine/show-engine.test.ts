@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { EngineCommand } from '../../shared/engine/commands';
 import { EngineMirror } from '../../shared/engine/mirror';
 import type { EnginePatchMessage } from '../../shared/engine/protocol';
-import { LAYER_NAMES } from '../../shared/engine/state';
+import type { MediaBackground } from '../../shared/engine/state';
+import { ENGINE_STATE_VERSION, LAYER_NAMES } from '../../shared/engine/state';
+import type { SlideCue } from '../../shared/library';
 import { ShowEngine } from './show-engine';
 import { makeSource, RecordingTransport, textSlide } from './testing';
 
@@ -24,7 +26,7 @@ describe('ShowEngine', () => {
   it('starts at revision 0 with an empty snapshot', () => {
     const { engine, transport } = setup();
     const snap = engine.snapshot();
-    expect(snap).toMatchObject({ kind: 'snapshot', version: 1, rev: 0 });
+    expect(snap).toMatchObject({ kind: 'snapshot', version: ENGINE_STATE_VERSION, rev: 0 });
     expect(snap.state.layers.slide).toBeNull();
     expect(transport.messages).toHaveLength(0);
   });
@@ -36,7 +38,7 @@ describe('ShowEngine', () => {
       expect(engine.current.live).toEqual({ presentationId: 'p1', slideIndex: 1, slideCount: 3 });
       expect(engine.current.layers.slide?.slide).toEqual(textSlide('p1s2', 'Two'));
       const patch = transport.last as EnginePatchMessage;
-      expect(patch).toMatchObject({ kind: 'patch', version: 1, baseRev: 0, rev: 1 });
+      expect(patch).toMatchObject({ kind: 'patch', version: ENGINE_STATE_VERSION, baseRev: 0, rev: 1 });
       expect(patch.ops.map((o) => o.path.join('.')).sort()).toEqual(['layers.slide', 'live']);
       expect(patch.ops.find((o) => o.path[0] === 'live')?.value).toEqual(engine.current.live);
     });
@@ -182,6 +184,142 @@ describe('ShowEngine', () => {
       });
       expect(engine.current.live.presentationId).toBe('p1');
       expect(transport.messages).toHaveLength(count + 1);
+    });
+  });
+
+  describe('background cues (PLAN.md 4.3)', () => {
+    const video = (mediaId: string, extra: Partial<MediaBackground> = {}): MediaBackground => ({
+      kind: 'media',
+      mediaId,
+      media: 'video',
+      fit: 'fill',
+      loop: true,
+      ...extra,
+    });
+    const cue = (background: MediaBackground): SlideCue => ({
+      kind: 'background',
+      label: '',
+      name: `${background.mediaId}.mp4`,
+      missing: false,
+      background,
+    });
+
+    /** bg: 0 video A, 1 text only, 2 video A again (drawn to fit), 3 image B, 4 text only. The clock moves on 1 s per command. */
+    function withBackgrounds() {
+      const source = makeSource();
+      const transport = new RecordingTransport();
+      const clock = { now: 1000 };
+      const engine = new ShowEngine(source, transport, () => clock.now);
+      const s = {
+        source,
+        transport,
+        engine: {
+          get current() {
+            return engine.current;
+          },
+          dispatch(command: EngineCommand) {
+            clock.now += 1000;
+            return engine.dispatch(command);
+          },
+        },
+      };
+      s.source.set(
+        'bg',
+        ['a', 'b', 'c', 'd', 'e'].map((n) => textSlide(`bg-${n}`, n)),
+        [
+          [cue(video('A'))],
+          [],
+          [cue(video('A', { fit: 'fit' }))],
+          [cue({ kind: 'media', mediaId: 'B', media: 'image', fit: 'fit', loop: false })],
+          [],
+        ],
+      );
+      return s;
+    }
+
+    it('puts a slide background on the background layer, with its start time, in the same patch as the slide', () => {
+      const { engine, transport } = withBackgrounds();
+      engine.dispatch(goLive('bg', 0));
+      expect(engine.current.layers.background).toEqual({ ...video('A'), startedAt: 2000 });
+      const patch = transport.last as EnginePatchMessage;
+      expect(patch.ops.map((o) => o.path.join('.')).sort()).toEqual([
+        'layers.background',
+        'layers.slide',
+        'live',
+      ]);
+    });
+
+    it('keeps the background (and its start time) through slides without one of their own', () => {
+      const { engine, transport } = withBackgrounds();
+      engine.dispatch(goLive('bg', 0));
+      const background = engine.current.layers.background;
+      engine.dispatch({ type: 'next' });
+      expect(engine.current.layers.background).toBe(background);
+      const patch = transport.last as EnginePatchMessage;
+      expect(patch.ops.some((o) => o.path[1] === 'background')).toBe(false);
+      // Another presentation's text slide keeps it too.
+      engine.dispatch(goLive('p1', 2));
+      expect(engine.current.layers.background).toBe(background);
+    });
+
+    it('lets the same file carry on instead of restarting, even when it is drawn differently', () => {
+      const { engine } = withBackgrounds();
+      engine.dispatch(goLive('bg', 0));
+      engine.dispatch({ type: 'next' });
+      engine.dispatch({ type: 'next' });
+      expect(engine.current.layers.background).toEqual({ ...video('A', { fit: 'fit' }), startedAt: 2000 });
+      // Going live on its first slide again changes nothing but the fit: still the same playback.
+      engine.dispatch(goLive('bg', 0));
+      expect(engine.current.layers.background).toEqual({ ...video('A'), startedAt: 2000 });
+    });
+
+    it('replaces the background when a slide brings a different file', () => {
+      const { engine } = withBackgrounds();
+      engine.dispatch(goLive('bg', 0));
+      engine.dispatch(goLive('bg', 3));
+      expect(engine.current.layers.background).toEqual({
+        kind: 'media',
+        mediaId: 'B',
+        media: 'image',
+        fit: 'fit',
+        loop: false,
+        startedAt: 3000,
+      });
+    });
+
+    it('Clear background removes it and leaves the text; it comes back only from a slide that has it', () => {
+      const { engine } = withBackgrounds();
+      engine.dispatch(goLive('bg', 0));
+      const slide = engine.current.layers.slide;
+      engine.dispatch({ type: 'clearLayer', layer: 'background' });
+      expect(engine.current.layers.background).toBeNull();
+      expect(engine.current.layers.slide).toBe(slide);
+      engine.dispatch({ type: 'next' });
+      expect(engine.current.layers.background).toBeNull();
+      // A slide with the background starts it again, from the beginning.
+      engine.dispatch({ type: 'next' });
+      expect(engine.current.layers.background).toMatchObject({ mediaId: 'A', startedAt: 5000 });
+    });
+
+    it('never changes the background when the slide cannot go live', () => {
+      const { engine } = withBackgrounds();
+      engine.dispatch(goLive('bg', 3));
+      const background = engine.current.layers.background;
+      expect(engine.dispatch(goLive('bg', 9))).toMatchObject({ ok: false });
+      engine.dispatch(goLive('bg', 4));
+      expect(engine.dispatch({ type: 'next' })).toMatchObject({ ok: true, changed: false });
+      expect(engine.current.layers.background).toBe(background);
+    });
+
+    it('treats a background the operator sets the same way: the same file carries on, a colour replaces it', () => {
+      const { engine } = withBackgrounds();
+      engine.dispatch(goLive('bg', 0));
+      engine.dispatch({ type: 'setBackground', background: video('A', { loop: false }) });
+      expect(engine.current.layers.background).toEqual({ ...video('A', { loop: false }), startedAt: 2000 });
+      engine.dispatch({ type: 'setBackground', background: { kind: 'color', color: '#101010' } });
+      expect(engine.current.layers.background).toEqual({ kind: 'color', color: '#101010' });
+      engine.dispatch({ type: 'setBackground', background: video('A') });
+      expect(engine.current.layers.background).toMatchObject({ mediaId: 'A', startedAt: 5000 });
     });
   });
 

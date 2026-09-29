@@ -51,3 +51,46 @@ export async function useDisplay(page: Page, row = page.getByTestId('display-row
   if (await confirm.isVisible()) await confirm.getByRole('button', { name: 'Cover the controls' }).click();
   await expect(added).toBeVisible();
 }
+
+/** The first output window's page, waiting for it to open. */
+export async function outputPage(app: ElectronApplication): Promise<Page> {
+  const existing = app.windows().find((w) => w.url().includes('output.html'));
+  if (existing) return existing;
+  return app.waitForEvent('window', { predicate: (w) => w.url().includes('output.html') });
+}
+
+/** Every open output window's page. */
+export function outputPages(app: ElectronApplication): Page[] {
+  return app.windows().filter((w) => w.url().includes('output.html'));
+}
+
+/**
+ * Create a screen group on a display through the bridge (covering the
+ * operator window if it is there; a test needs the output). Returns the new screen's id.
+ */
+export async function setUpScreen(win: Page, name = 'Main Hall', displayIndex = 0): Promise<string> {
+  return win.evaluate(
+    async ({ name, displayIndex }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const created = await d.screens.createGroup(name);
+      if (!created.ok) throw new Error(created.message);
+      const group = created.snapshot.groups.find((g) => g.name === name);
+      const displayId = created.snapshot.displays[displayIndex]?.id ?? -1;
+      const assigned = await d.screens.assignDisplay(group?.id ?? '', displayId, { coverOperator: true });
+      if (!assigned.ok) throw new Error(assigned.message);
+      return assigned.snapshot.groups.find((g) => g.name === name)?.screens[0]?.id ?? '';
+    },
+    { name, displayIndex },
+  );
+}
+
+/** Import files through the bridge and return the report's targets (library ids), in the order given. */
+export async function importAndGetIds(win: Page, files: string[]): Promise<string[]> {
+  return win.evaluate(async (paths) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const result = await d.library.importPaths(paths);
+    if (!result.ok) throw new Error(result.message);
+    const report = await d.library.getImportReport(result.run.id);
+    return paths.map((p) => report?.items.find((i) => i.sourcePath === p)?.target?.id ?? '');
+  }, files);
+}

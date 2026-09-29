@@ -7,7 +7,7 @@ import type { Rect, RenderSlide, SlideElement } from '../model';
  *
  * Bump ENGINE_STATE_VERSION whenever the shape changes incompatibly.
  */
-export const ENGINE_STATE_VERSION = 1;
+export const ENGINE_STATE_VERSION = 2;
 
 export type LayerName = 'audio' | 'background' | 'slide' | 'props' | 'messages' | 'masks';
 
@@ -40,21 +40,36 @@ export interface AudioLayer {
   mediaId: string | null;
 }
 
+export type MediaFit = 'fit' | 'fill' | 'stretch';
+
+/** An image or video for the background layer, as a slide cue or the operator asks for it. */
+export interface MediaBackground {
+  kind: 'media';
+  mediaId: string;
+  media: 'image' | 'video';
+  fit: MediaFit;
+  /** A video loops, or plays once and holds its last frame. */
+  loop: boolean;
+}
+
+/** What a command or cue asks the background layer to show. */
+export type BackgroundChoice = { kind: 'color'; color: string } | MediaBackground;
+
 /**
  * What the background layer shows: a colour, or an image or video from the
  * media library. A slide's background cue sets it (PLAN.md 4.3); it stays up
- * on later slides until something replaces or clears it, so a video keeps
- * playing across slides instead of restarting.
+ * on later slides until something replaces or clears it.
  */
 export type BackgroundLayer =
   | { kind: 'color'; color: string }
-  | {
-      kind: 'media';
-      mediaId: string;
-      media: 'image' | 'video';
-      fit: 'fit' | 'fill' | 'stretch';
-      loop: boolean;
-    };
+  | (MediaBackground & {
+      /**
+       * When playback started (ms since the epoch, main-process clock). The
+       * same file on a later slide keeps it, so the video carries on instead
+       * of restarting; a window that joins late starts from this point.
+       */
+      startedAt: number;
+    });
 
 export interface PropItem {
   id: string;
