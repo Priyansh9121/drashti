@@ -110,6 +110,8 @@ describe('library search', () => {
     expect(names('new placeholder')).toEqual(['Placeholder Changing']);
     repo.remove([id]);
     expect(names('new placeholder')).toEqual([]);
+    // A removed presentation is out of the full-text index (so ranking never needs to skip it).
+    expect((db.prepare('SELECT COUNT(*) AS n FROM search_fts').get() as { n: number }).n).toBe(3);
     repo.restore([id]);
     expect(names('new placeholder')).toEqual(['Placeholder Changing']);
     // Purged for good: its index entry goes with it.

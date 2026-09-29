@@ -22,7 +22,7 @@ Phase 1 has started:
 - **importing from the operator window**: drag files or folders onto the presentation list, or use **Import…**; progress, then a migration report with a fix for each item; removing presentations with Delete, and Undo;
 - **arrangements** set the order a presentation plays in (a repeated chorus shows and plays each time), chosen per presentation or per playlist item;
 - **playlists** in the operator window: imported ones with their folders, headers, media and placeholders, and the operator's own, built by dragging from the library;
-- **search** as you type, by title and slide text in English, Gujarati, Hindi and transliteration, ignoring Latin accents (about 9 ms a query at 5,000 presentations); text in legacy fonts is left out, and the results say so;
+- **search** as you type, by title and slide text in English, Gujarati, Hindi and transliteration, ignoring Latin accents (about 3 to 4 ms a query at 5,000 presentations); text in legacy fonts is left out, and the results say so;
 - **messages**: templates with fields ("Car {plate} please move", or a live timer), filled in and shown on the audience screens, several at once;
 - **timers**: countdowns, count-ups, countdowns to a time of day and clocks, started, paused, reset and edited by the operator, shown on the audience screens and the stage; only start, pause and reset are sent, and each window works out the time;
 - a **stage screen** for the performers: current and next text, notes, the clock and a stage-only message, in large text;
@@ -181,7 +181,7 @@ Slide changes must keep reaching the screens within a frame while a big import r
 
 On the dev Mac: 400 files in about 1.1 s, with slide changes during the import at a median of 3 to 4 ms and at worst 19 ms.
 
-Two budgets for the main process are ordinary unit tests at 5,000 generated placeholder presentations, compared by their median so a stall does not fail them: the library list under 20 ms (`src/main/db/library-list.test.ts`, about 2 ms on the dev Mac) and a search query under 15 ms (`src/main/db/search-budget.test.ts`: every keystroke of a typed query and a few others, about 9 ms median and 12 ms at worst on the dev Mac; building the index for all 5,000 takes about 0.7 s, done once when a library made by an older version first opens).
+Two budgets for the main process are ordinary unit tests at 5,000 generated placeholder presentations, compared by their median so a stall does not fail them: the library list under 20 ms (`src/main/db/library-list.test.ts`, about 2 ms on the dev Mac) and a search query under 15 ms (`src/main/db/search-budget.test.ts`: every keystroke of a typed query and a few others, with 9 in 10 under 30 ms; about 3 to 4 ms median on the dev Mac, about twice that on CI's machines; building the index for all 5,000 takes about 1 s, done once when a library made by an older version first opens).
 
 ## Importing
 

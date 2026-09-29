@@ -1,6 +1,7 @@
 import type { SearchHit, SearchResult } from '../../shared/search';
 import { ftsQuery, matchesAll, SEARCH_LIMIT, searchWords } from '../../shared/search';
 import type { TextRun } from '../../shared/model';
+import type { Statement } from 'better-sqlite3';
 import type { Db } from './database';
 
 /** Bump to rebuild every library's index at the next start (when what is indexed changes). */
@@ -51,26 +52,35 @@ function textOf(elements: { slide_id: string; props: string }[]): {
 export class SearchIndex {
   constructor(private readonly db: Db) {}
 
+  private readonly statements = new Map<string, Statement>();
+
+  /** Prepared once: search runs on every keystroke. */
+  private stmt(sql: string): Statement {
+    let s = this.statements.get(sql);
+    if (!s) {
+      s = this.db.prepare(sql);
+      this.statements.set(sql, s);
+    }
+    return s;
+  }
+
   /** Index one presentation again from what is stored. */
   update(presentationId: string): void {
-    const db = this.db;
-    const p = db.prepare('SELECT name FROM presentations WHERE id = ?').get(presentationId) as
-      { name: string } | undefined;
+    const p = this.stmt('SELECT name, deleted_at FROM presentations WHERE id = ?').get(presentationId) as
+      { name: string; deleted_at: string | null } | undefined;
     if (!p) return;
-    const elements = db
-      .prepare(
-        `SELECT s.id AS slide_id, e.props AS props
+    const elements = this.stmt(
+      `SELECT s.id AS slide_id, e.props AS props
            FROM slide_groups g JOIN slides s ON s.group_id = g.id JOIN elements e ON e.slide_id = s.id
           WHERE g.presentation_id = ? AND e.kind = 'text' AND s.enabled = 1
           ORDER BY g.position, s.position, e.position`,
-      )
-      .all(presentationId) as { slide_id: string; props: string }[];
+    ).all(presentationId) as { slide_id: string; props: string }[];
     const { lines, legacyRuns } = textOf(elements);
     // Kirtan language lines, when they are not on the slides already.
     const seen = new Set(lines.map(([, line]) => line));
-    const kirtanLines = db
-      .prepare('SELECT slide_id, text FROM kirtan_track_lines WHERE kirtan_id = ? ORDER BY lang')
-      .all(presentationId) as { slide_id: string; text: string }[];
+    const kirtanLines = this.stmt(
+      'SELECT slide_id, text FROM kirtan_track_lines WHERE kirtan_id = ? ORDER BY lang',
+    ).all(presentationId) as { slide_id: string; text: string }[];
     for (const { slide_id: slideId, text } of kirtanLines)
       for (const line of text.split(/\r?\n/).map((l) => l.trim()))
         if (line !== '' && !seen.has(line)) {
@@ -79,26 +89,36 @@ export class SearchIndex {
         }
     const body = lines.map(([, line]) => searchWords(line).join(' ')).join('\n');
     const title = searchWords(p.name).join(' ');
-    const existing = db
-      .prepare('SELECT id FROM search_docs WHERE presentation_id = ?')
-      .get(presentationId) as { id: number } | undefined;
+    const existing = this.stmt('SELECT id FROM search_docs WHERE presentation_id = ?').get(presentationId) as
+      { id: number } | undefined;
     let row: number;
     if (existing) {
       row = existing.id;
-      db.prepare('DELETE FROM search_fts WHERE rowid = ?').run(row);
-      db.prepare('UPDATE search_docs SET lines = ?, legacy_runs = ? WHERE id = ?').run(
+      this.stmt('DELETE FROM search_fts WHERE rowid = ?').run(row);
+      this.stmt('UPDATE search_docs SET lines = ?, legacy_runs = ? WHERE id = ?').run(
         JSON.stringify(lines),
         legacyRuns,
         row,
       );
     } else {
       row = Number(
-        db
-          .prepare('INSERT INTO search_docs (presentation_id, lines, legacy_runs) VALUES (?, ?, ?)')
-          .run(presentationId, JSON.stringify(lines), legacyRuns).lastInsertRowid,
+        this.stmt('INSERT INTO search_docs (presentation_id, lines, legacy_runs) VALUES (?, ?, ?)').run(
+          presentationId,
+          JSON.stringify(lines),
+          legacyRuns,
+        ).lastInsertRowid,
       );
     }
-    db.prepare('INSERT INTO search_fts (rowid, title, body) VALUES (?, ?, ?)').run(row, title, body);
+    // A removed presentation keeps its lines (Undo brings it back) but is not searched.
+    if (p.deleted_at === null)
+      this.stmt('INSERT INTO search_fts (rowid, title, body) VALUES (?, ?, ?)').run(row, title, body);
+  }
+
+  /** A presentation was removed: it is no longer found (restoring it indexes it again). */
+  drop(presentationId: string): void {
+    this.stmt(
+      'DELETE FROM search_fts WHERE rowid = (SELECT id FROM search_docs WHERE presentation_id = ?)',
+    ).run(presentationId);
   }
 
   /** Rebuild the whole index when it was built by another version (or never). Returns whether it did. */
@@ -127,29 +147,38 @@ export class SearchIndex {
   /** Presentations whose title or text has every word typed, best first. */
   search(input: string, limit = SEARCH_LIMIT): SearchResult {
     const legacyCount = (
-      this.db
-        .prepare(
-          `SELECT COUNT(*) AS n FROM search_docs d JOIN presentations p ON p.id = d.presentation_id
-            WHERE d.legacy_runs > 0 AND p.deleted_at IS NULL`,
-        )
-        .get() as { n: number }
+      this.stmt(
+        `SELECT COUNT(*) AS n FROM search_docs d INDEXED BY search_docs_legacy
+           JOIN presentations p ON p.id = d.presentation_id
+          WHERE d.legacy_runs > 0 AND p.deleted_at IS NULL`,
+      ).get() as { n: number }
     ).n;
     const query = ftsQuery(input);
     if (!query) return { query: input, hits: [], more: false, legacyCount };
-    const rows = this.db
-      .prepare(
-        `SELECT p.id, p.name, l.name AS library_name, d.lines
-           FROM search_fts f
-           JOIN search_docs d ON d.id = f.rowid
-           JOIN presentations p ON p.id = d.presentation_id AND p.deleted_at IS NULL
-           JOIN libraries l ON l.id = p.library_id
-          WHERE search_fts MATCH ?
-          ORDER BY bm25(search_fts, 10.0, 1.0), p.name
-          LIMIT ?`,
+    // Every match is ranked, so the index alone does it (removed presentations are not in it)...
+    const ranked = this.stmt(
+      `SELECT rowid FROM search_fts WHERE search_fts MATCH ?
+        ORDER BY bm25(search_fts, 10.0, 1.0), rowid LIMIT ?`,
+    )
+      .pluck()
+      .all(query, limit + 1) as number[];
+    // ...then the names and lines of those shown, to say where each matched.
+    const docOf = this.stmt(
+      `SELECT p.id, p.name, l.name AS library_name, d.lines
+         FROM search_docs d
+         JOIN presentations p ON p.id = d.presentation_id AND p.deleted_at IS NULL
+         JOIN libraries l ON l.id = p.library_id
+        WHERE d.id = ?`,
+    );
+    const rows = ranked
+      .slice(0, limit)
+      .map(
+        (doc) =>
+          docOf.get(doc) as { id: string; name: string; library_name: string; lines: string } | undefined,
       )
-      .all(query, limit + 1) as { id: string; name: string; library_name: string; lines: string }[];
+      .filter((r) => r !== undefined);
     const words = searchWords(input);
-    const hits = rows.slice(0, limit).map((r): SearchHit => {
+    const hits = rows.map((r): SearchHit => {
       const base = { presentationId: r.id, name: r.name, libraryName: r.library_name };
       if (matchesAll(words, searchWords(r.name))) return { ...base, match: { kind: 'title' } };
       const lines = JSON.parse(r.lines) as [string, string][];
@@ -160,14 +189,15 @@ export class SearchIndex {
         ? { ...base, match: { kind: 'text', line: found[1], slideId: found[0] } }
         : { ...base, match: { kind: 'title' } };
     });
-    return { query: input, hits, more: rows.length > limit, legacyCount };
+    return { query: input, hits, more: ranked.length > limit, legacyCount };
   }
 
   /** Presentations with text search cannot read yet, by name. */
   legacyPresentations(): { id: string; name: string }[] {
     return this.db
       .prepare(
-        `SELECT p.id, p.name FROM search_docs d JOIN presentations p ON p.id = d.presentation_id
+        `SELECT p.id, p.name FROM search_docs d INDEXED BY search_docs_legacy
+           JOIN presentations p ON p.id = d.presentation_id
           WHERE d.legacy_runs > 0 AND p.deleted_at IS NULL ORDER BY p.name COLLATE NOCASE`,
       )
       .all() as { id: string; name: string }[];
