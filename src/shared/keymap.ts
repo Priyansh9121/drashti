@@ -16,6 +16,8 @@
 export type OperatorAction =
   | 'next'
   | 'previous'
+  | 'nextItem'
+  | 'previousItem'
   | 'clearAll'
   | 'clearSlide'
   | 'clearBackground'
@@ -48,6 +50,9 @@ export interface KeyBinding {
 export const KEYMAP: readonly KeyBinding[] = [
   { action: 'next', keys: ['ArrowRight', 'ArrowDown', 'Space', 'PageDown'], label: 'Next slide' },
   { action: 'previous', keys: ['ArrowLeft', 'ArrowUp', 'PageUp'], label: 'Previous slide' },
+  // The first slide of the next or previous playlist item (headers and placeholders are stepped over).
+  { action: 'nextItem', keys: ['Shift+ArrowRight', 'Shift+ArrowDown'], label: 'Next item' },
+  { action: 'previousItem', keys: ['Shift+ArrowLeft', 'Shift+ArrowUp'], label: 'Previous item' },
   { action: 'clearAll', keys: ['F1'], label: 'Clear all' },
   { action: 'clearSlide', keys: ['F2'], label: 'Clear slide' },
   { action: 'clearBackground', keys: ['F3'], label: 'Clear background' },

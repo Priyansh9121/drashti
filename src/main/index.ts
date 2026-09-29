@@ -214,7 +214,7 @@ function start(): void {
   const transport = new IpcTransport((error, target) => {
     log.warn(`Could not send an engine message to window ${target.id}`, error);
   });
-  const engine = new ShowEngine(slides, transport);
+  const engine = new ShowEngine(slides, transport, Date.now, { items: (id) => playlists.playItems(id) });
 
   // ---- media ----------------------------------------------------------------
   const userDataDir = app.getPath('userData');
@@ -424,6 +424,8 @@ function start(): void {
       libraryChanged();
     },
     onFinished: () => {
+      // An import can change what comes next (a replaced presentation, a filled playlist).
+      engine.refreshNext();
       libraryChanged(true);
     },
     failRun: (runId, paths, message) => {
@@ -464,6 +466,9 @@ function start(): void {
     repo: playlists,
     fromOperator,
     changed: () => {
+      // A live item's order may have changed, and what comes next may be different.
+      engine.reorderLive();
+      engine.refreshNext();
       sendToOperator(IPC.playlists.changed, { at: Date.now() });
     },
   });
@@ -523,6 +528,7 @@ function start(): void {
     slides.invalidate(pid.data);
     // If it is live, Next follows the new order from the slide on screen.
     engine.reorderLive(pid.data);
+    engine.refreshNext();
     return { ok: true as const };
   });
   handle(IPC.library.removePresentations, (e, ids) => {
@@ -530,6 +536,7 @@ function start(): void {
     if (!fromOperator(e) || !parsed.success) return { ok: false as const, message: 'Nothing was removed.' };
     const removed = presentations.remove(parsed.data);
     for (const id of removed) slides.invalidate(id);
+    engine.refreshNext();
     log.info(`Removed ${removed.length} presentation(s)`);
     libraryChanged(true);
     return { ok: true as const, ids: removed };
@@ -539,6 +546,7 @@ function start(): void {
     if (!fromOperator(e) || !parsed.success) return { ok: false as const, message: 'Nothing was restored.' };
     const restored = presentations.restore(parsed.data);
     for (const id of restored) slides.invalidate(id);
+    engine.refreshNext();
     log.info(`Restored ${restored.length} presentation(s)`);
     libraryChanged(true);
     return { ok: true as const, ids: restored };

@@ -17,6 +17,7 @@ const show = (index: number, text = `Slide ${index + 1}`, at = 1000 + index): En
   slideCount: 3,
   slide: textSlide(`s${index}`, text),
   arrangementId: null,
+  playlist: null,
   notes: '',
   at,
 });
@@ -47,7 +48,13 @@ describe('reduce', () => {
   it('starts empty', () => {
     const s = initialEngineState();
     expect(s.version).toBe(ENGINE_STATE_VERSION);
-    expect(s.live).toEqual({ presentationId: null, slideIndex: null, slideCount: 0, arrangementId: null });
+    expect(s.live).toEqual({
+      presentationId: null,
+      slideIndex: null,
+      slideCount: 0,
+      arrangementId: null,
+      playlist: null,
+    });
     for (const layer of LAYER_NAMES)
       expect(s.layers[layer] === null || Array.isArray(s.layers[layer])).toBe(true);
     expect(s.blackout).toBe(false);
@@ -56,7 +63,13 @@ describe('reduce', () => {
   describe('slide/show', () => {
     it('sets the cursor and the slide layer', () => {
       const s = reduce(deepFreeze(initialEngineState()), show(0));
-      expect(s.live).toEqual({ presentationId: 'p1', slideIndex: 0, slideCount: 3, arrangementId: null });
+      expect(s.live).toEqual({
+        presentationId: 'p1',
+        slideIndex: 0,
+        slideCount: 3,
+        arrangementId: null,
+        playlist: null,
+      });
       expect(s.layers.slide?.slideIndex).toBe(0);
       expect(s.layers.slide?.slide.id).toBe('s0');
     });
@@ -113,7 +126,13 @@ describe('reduce', () => {
 
     it('keeps the cursor when the slide is cleared', () => {
       const next = reduce(fullState(), { type: 'layer/clear', layer: 'slide' });
-      expect(next.live).toEqual({ presentationId: 'p1', slideIndex: 1, slideCount: 3, arrangementId: null });
+      expect(next.live).toEqual({
+        presentationId: 'p1',
+        slideIndex: 1,
+        slideCount: 3,
+        arrangementId: null,
+        playlist: null,
+      });
     });
   });
 

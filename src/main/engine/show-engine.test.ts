@@ -5,6 +5,7 @@ import type { EnginePatchMessage } from '../../shared/engine/protocol';
 import type { MediaBackground } from '../../shared/engine/state';
 import { ENGINE_STATE_VERSION, LAYER_NAMES } from '../../shared/engine/state';
 import type { SlideCue } from '../../shared/library';
+import { MemoryPlaylistSource } from './playlist-source';
 import { ShowEngine } from './show-engine';
 import { makeSource, RecordingTransport, textSlide } from './testing';
 
@@ -40,12 +41,15 @@ describe('ShowEngine', () => {
         slideIndex: 1,
         slideCount: 3,
         arrangementId: null,
+        playlist: null,
       });
       expect(engine.current.layers.slide?.slide).toEqual(textSlide('p1s2', 'Two'));
       const patch = transport.last as EnginePatchMessage;
       expect(patch).toMatchObject({ kind: 'patch', version: ENGINE_STATE_VERSION, baseRev: 0, rev: 1 });
-      expect(patch.ops.map((o) => o.path.join('.')).sort()).toEqual(['layers.slide', 'live']);
+      // What Next shows comes in the same patch.
+      expect(patch.ops.map((o) => o.path.join('.')).sort()).toEqual(['layers.slide', 'live', 'next']);
       expect(patch.ops.find((o) => o.path[0] === 'live')?.value).toEqual(engine.current.live);
+      expect(engine.current.next).toMatchObject({ kind: 'slide', presentationId: 'p1', slideIndex: 2 });
     });
 
     it('rejects an unknown presentation without broadcasting', () => {
@@ -77,6 +81,7 @@ describe('ShowEngine', () => {
         slideIndex: 0,
         slideCount: 1,
         arrangementId: null,
+        playlist: null,
       });
     });
   });
@@ -128,6 +133,7 @@ describe('ShowEngine', () => {
         slideIndex: 0,
         slideCount: 1,
         arrangementId: null,
+        playlist: null,
       });
     });
 
@@ -343,6 +349,7 @@ describe('ShowEngine', () => {
         'layers.background',
         'layers.slide',
         'live',
+        'next',
       ]);
     });
 
@@ -489,6 +496,238 @@ describe('ShowEngine', () => {
       expect(engine.current.layers.slide).toBe(slide);
       dispatch(goLive('au', 2));
       expect(engine.current.layers.audio).toMatchObject({ mediaId: 'A', startedAt: 4000 });
+    });
+  });
+
+  describe('playlists (running a sabha)', () => {
+    /**
+     * "song" plays verse, chorus, verse two, chorus (its own arrangement);
+     * the playlist steps over a header, a placeholder and a removed
+     * presentation, and has a picture and a sound between the songs.
+     */
+    function sabha() {
+      const source = makeSource();
+      source.set(
+        'song',
+        [textSlide('v1', 'Verse'), textSlide('ch', 'Chorus'), textSlide('v2', 'Verse two')],
+        [],
+        { arrangements: { usual: [0, 1, 2, 1] }, selected: 'usual' },
+      );
+      const playlists = new MemoryPlaylistSource();
+      playlists.set('sunday', [
+        { id: 'h1', kind: 'skip', why: 'A header has nothing to show' },
+        { id: 'i-song', kind: 'presentation', presentationId: 'song', arrangementId: undefined },
+        { id: 'ph', kind: 'skip', why: '“Missing Song” was not found at import' },
+        { id: 'i-pic', kind: 'media', mediaId: 'pic', media: 'image', label: 'Welcome.png' },
+        { id: 'i-dhun', kind: 'media', mediaId: 'dhun', media: 'audio', label: 'Dhun.mp3' },
+        { id: 'gone', kind: 'skip', why: '“Old Song” is no longer in the library' },
+        { id: 'i-p1', kind: 'presentation', presentationId: 'p1', arrangementId: undefined },
+        { id: 'i-song-all', kind: 'presentation', presentationId: 'song', arrangementId: null },
+      ]);
+      const transport = new RecordingTransport();
+      let clock = 1000;
+      const engine = new ShowEngine(source, transport, () => ++clock, playlists);
+      return { engine, source, playlists, transport };
+    }
+    const text = (engine: ShowEngine) => {
+      const el = engine.current.layers.slide?.slide.elements[0];
+      return el?.kind === 'text' ? el.text : null;
+    };
+    const at = (engine: ShowEngine) => engine.current.live.playlist?.itemId ?? null;
+
+    it('plays the items in order: the arrangement, then on past headers and placeholders, pictures and sounds', () => {
+      const { engine } = sabha();
+      expect(engine.dispatch({ type: 'playItem', playlistId: 'sunday', itemId: 'i-song' })).toMatchObject({
+        ok: true,
+      });
+      const seen: string[] = [`${at(engine)}:${text(engine)}`];
+      for (let i = 0; i < 9; i++) {
+        engine.dispatch({ type: 'next' });
+        const { slide, background, audio } = engine.current.layers;
+        seen.push(
+          `${at(engine)}:${slide ? text(engine) : '-'}${background?.kind === 'media' ? ` bg=${background.mediaId}` : ''}${audio ? ` ♪${audio.mediaId}` : ''}`,
+        );
+      }
+      expect(seen).toEqual([
+        'i-song:Verse',
+        'i-song:Chorus',
+        'i-song:Verse two',
+        'i-song:Chorus',
+        // A picture takes the slide off and goes on the background.
+        'i-pic:- bg=pic',
+        // A sound leaves the picture up.
+        'i-dhun:- bg=pic ♪dhun',
+        // The next presentation: its first slide (the removed one is stepped over).
+        'i-p1:One bg=pic ♪dhun',
+        'i-p1:Two bg=pic ♪dhun',
+        'i-p1:Three bg=pic ♪dhun',
+        // The same song again, as this item asks: every slide in order.
+        'i-song-all:Verse bg=pic ♪dhun',
+      ]);
+      expect(engine.current.live).toMatchObject({
+        presentationId: 'song',
+        arrangementId: null,
+        slideCount: 3,
+      });
+      engine.dispatch({ type: 'next' });
+      engine.dispatch({ type: 'next' });
+      // The end of the playlist: Next stays put.
+      const last = engine.rev;
+      engine.dispatch({ type: 'next' });
+      expect([at(engine), text(engine), engine.rev]).toEqual(['i-song-all', 'Verse two', last]);
+    });
+
+    it("goes back to the previous item's last slide, stepping over what cannot play", () => {
+      const { engine } = sabha();
+      engine.dispatch({ type: 'playItem', playlistId: 'sunday', itemId: 'i-p1' });
+      engine.dispatch({ type: 'previous' });
+      expect(engine.current.live).toMatchObject({ presentationId: null, playlist: { itemId: 'i-dhun' } });
+      engine.dispatch({ type: 'previous' });
+      expect(at(engine)).toBe('i-pic');
+      engine.dispatch({ type: 'previous' });
+      // The song's last slide in its own order: the second chorus.
+      expect(engine.current.live).toMatchObject({ playlist: { itemId: 'i-song' }, slideIndex: 3 });
+      expect(text(engine)).toBe('Chorus');
+      engine.dispatch({ type: 'previous' });
+      expect(text(engine)).toBe('Verse two');
+    });
+
+    it('says what comes next, across items', () => {
+      const { engine } = sabha();
+      engine.dispatch({ type: 'playItem', playlistId: 'sunday', itemId: 'i-song' });
+      expect(engine.current.next).toMatchObject({
+        kind: 'slide',
+        presentationId: 'song',
+        slideIndex: 1,
+        itemId: null,
+      });
+      engine.dispatch({
+        type: 'goLive',
+        presentationId: 'song',
+        slideIndex: 3,
+        playlist: { playlistId: 'sunday', itemId: 'i-song' },
+      });
+      expect(engine.current.next).toEqual({
+        kind: 'media',
+        itemId: 'i-pic',
+        mediaId: 'pic',
+        media: 'image',
+        label: 'Welcome.png',
+      });
+      engine.dispatch({ type: 'next' });
+      engine.dispatch({ type: 'next' });
+      expect(engine.current.next).toMatchObject({
+        kind: 'slide',
+        presentationId: 'p1',
+        slideIndex: 0,
+        itemId: 'i-p1',
+      });
+      engine.dispatch({ type: 'playItem', playlistId: 'sunday', itemId: 'i-song-all' });
+      engine.dispatch({
+        type: 'goLive',
+        presentationId: 'song',
+        slideIndex: 2,
+        arrangementId: null,
+        playlist: { playlistId: 'sunday', itemId: 'i-song-all' },
+      });
+      expect(engine.current.next).toBeNull();
+    });
+
+    it('jumps a whole item with next item and previous item', () => {
+      const { engine } = sabha();
+      expect(engine.dispatch({ type: 'nextItem' })).toMatchObject({ ok: false, error: 'nothing-live' });
+      engine.dispatch({ type: 'playItem', playlistId: 'sunday', itemId: 'i-song' });
+      engine.dispatch({ type: 'next' });
+      engine.dispatch({ type: 'nextItem' });
+      expect(at(engine)).toBe('i-pic');
+      engine.dispatch({ type: 'nextItem' });
+      engine.dispatch({ type: 'nextItem' });
+      expect([at(engine), text(engine)]).toEqual(['i-p1', 'One']);
+      engine.dispatch({ type: 'previousItem' });
+      expect(at(engine)).toBe('i-dhun');
+      engine.dispatch({ type: 'previousItem' });
+      engine.dispatch({ type: 'previousItem' });
+      // Its first slide, not its last.
+      expect([at(engine), text(engine)]).toEqual(['i-song', 'Verse']);
+    });
+
+    it('refuses items with nothing to play, saying why', () => {
+      const { engine, transport } = sabha();
+      expect(engine.dispatch({ type: 'playItem', playlistId: 'sunday', itemId: 'ph' })).toEqual({
+        ok: false,
+        error: 'not-playable',
+        message: '“Missing Song” was not found at import',
+      });
+      expect(engine.dispatch({ type: 'playItem', playlistId: 'sunday', itemId: 'nope' })).toMatchObject({
+        ok: false,
+        error: 'unknown-item',
+      });
+      expect(engine.dispatch({ type: 'playItem', playlistId: 'other', itemId: 'i-song' })).toMatchObject({
+        ok: false,
+        error: 'unknown-item',
+      });
+      expect(transport.messages).toHaveLength(0);
+    });
+
+    it('plays a slide from the library when the item named is not that presentation', () => {
+      const { engine } = sabha();
+      engine.dispatch({
+        type: 'goLive',
+        presentationId: 'p2',
+        slideIndex: 0,
+        playlist: { playlistId: 'sunday', itemId: 'i-song' },
+      });
+      expect(engine.current.live).toMatchObject({ presentationId: 'p2', playlist: null });
+      // At its end Next stays put, as in the library.
+      expect(engine.dispatch({ type: 'next' })).toMatchObject({ ok: true, changed: false });
+    });
+
+    it("follows a change of the live item's order, and of the playlist", () => {
+      const { engine, playlists } = sabha();
+      engine.dispatch({ type: 'playItem', playlistId: 'sunday', itemId: 'i-song' });
+      engine.dispatch({ type: 'next' });
+      engine.dispatch({ type: 'next' });
+      expect(engine.current.live).toMatchObject({ slideIndex: 2, slideCount: 4, arrangementId: 'usual' });
+      // The operator sets the item to every slide in order: Verse two stays up, now slide 3 of 3.
+      const items = playlists.items('sunday') ?? [];
+      playlists.set(
+        'sunday',
+        items.map((i) => (i.id === 'i-song' ? { ...i, arrangementId: null } : i)),
+      );
+      engine.reorderLive();
+      expect(engine.current.live).toMatchObject({ slideIndex: 2, slideCount: 3, arrangementId: null });
+      expect(engine.current.next).toMatchObject({ kind: 'media', itemId: 'i-pic' });
+      // The picture is taken out of the playlist: what comes next follows.
+      playlists.set(
+        'sunday',
+        (playlists.items('sunday') ?? []).filter((i) => i.id !== 'i-pic'),
+      );
+      engine.refreshNext();
+      expect(engine.current.next).toMatchObject({ kind: 'media', itemId: 'i-dhun' });
+    });
+
+    it('comes back after a restart at the same item, so Next carries on into the next one', () => {
+      const { engine } = sabha();
+      engine.restore({
+        slide: { presentationId: 'song', slideIndex: 3, arrangementId: 'usual' },
+        playlist: { playlistId: 'sunday', itemId: 'i-song' },
+        background: null,
+        blackout: false,
+      });
+      expect(engine.current.live).toMatchObject({ slideIndex: 3, playlist: { itemId: 'i-song' } });
+      engine.dispatch({ type: 'next' });
+      expect(at(engine)).toBe('i-pic');
+      // On a picture or sound item there is no slide: the cursor alone comes back.
+      const again = sabha().engine;
+      again.restore({
+        slide: null,
+        playlist: { playlistId: 'sunday', itemId: 'i-dhun' },
+        background: null,
+        blackout: false,
+      });
+      expect(again.current.live).toMatchObject({ presentationId: null, playlist: { itemId: 'i-dhun' } });
+      again.dispatch({ type: 'next' });
+      expect([at(again), text(again)]).toEqual(['i-p1', 'One']);
     });
   });
 

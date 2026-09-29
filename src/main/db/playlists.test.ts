@@ -154,6 +154,39 @@ describe('playlists the operator edits', () => {
     expect(playlists.restore([other])).toEqual([]);
   });
 
+  it('hands the show engine what each item plays, and why the others are stepped over', () => {
+    const id = playlists.create('Ravi Sabha', null, false) ?? '';
+    const [header, own, all, arranged, gone, video, old] = playlists.addItems(id, null, [
+      { kind: 'header', label: 'Opening' },
+      { kind: 'presentation', presentationId: hymn },
+      { kind: 'presentation', presentationId: hymn },
+      { kind: 'presentation', presentationId: hymn },
+      { kind: 'presentation', presentationId: dhun },
+      { kind: 'media', mediaId: 'loop' },
+      { kind: 'media', mediaId: 'prores' },
+    ]);
+    const usual = presentations.get(hymn)?.arrangements[0]?.id ?? '';
+    playlists.setItemOrder(all ?? '', { mode: 'all' });
+    playlists.setItemOrder(arranged ?? '', { mode: 'arrangement', arrangementId: usual });
+    presentations.remove([dhun]);
+    expect(playlists.playItems(id)).toEqual([
+      { id: header, kind: 'skip', why: 'A header has nothing to show' },
+      { id: own, kind: 'presentation', presentationId: hymn, arrangementId: undefined },
+      { id: all, kind: 'presentation', presentationId: hymn, arrangementId: null },
+      { id: arranged, kind: 'presentation', presentationId: hymn, arrangementId: usual },
+      { id: gone, kind: 'skip', why: '“Placeholder Dhun” is no longer in the library' },
+      { id: video, kind: 'media', mediaId: 'loop', media: 'video', label: 'Placeholder loop.mp4' },
+      {
+        id: old,
+        kind: 'skip',
+        why: 'Drashti cannot play “Placeholder old.mov” (ProRes 422 video (QuickTime))',
+      },
+    ]);
+    // A removed playlist plays nothing.
+    playlists.remove([id]);
+    expect(playlists.playItems(id)).toBeNull();
+  });
+
   it('fills a placeholder with a presentation, and renames headers only', () => {
     const id = playlists.create('Ravi Sabha', null, false) ?? '';
     db.prepare(

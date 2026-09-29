@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { EngineCommand } from '../../../shared/engine/commands';
+import type { PlaylistCursor } from '../../../shared/engine/state';
 import { useEngine } from '../engine/engine-store';
 import { requestRemoval } from '../library/import-store';
 import { undoRemoval } from '../library/undo';
@@ -15,13 +16,23 @@ export async function dispatch(command: EngineCommand): Promise<void> {
   useNotice.setState({ text: result.ok ? null : result.message });
 }
 
-/** Go live at a position in an order (an arrangement, or null for every slide in order). */
+/**
+ * Go live at a position in an order (an arrangement, or null for every slide
+ * in order), from a playlist item when one is given, so Next carries on into
+ * the next item.
+ */
 export function goLive(
   presentationId: string,
   slideIndex: number,
   arrangementId: string | null,
+  playlist: PlaylistCursor | null = null,
 ): Promise<void> {
-  return dispatch({ type: 'goLive', presentationId, slideIndex, arrangementId });
+  return dispatch({ type: 'goLive', presentationId, slideIndex, arrangementId, playlist });
+}
+
+/** Start a playlist item: a presentation at its first slide, or a picture, video or sound. */
+export function playItem(playlistId: string, itemId: string): Promise<void> {
+  return dispatch({ type: 'playItem', playlistId, itemId });
 }
 
 /** Choose the order a presentation plays in; the slide grid follows it. */
@@ -33,23 +44,35 @@ export async function chooseArrangement(presentationId: string, arrangementId: s
 }
 
 /**
- * What a shortcut or button does. The arrow keys work on the selected
- * presentation: if it is not live yet, Next starts it at its first slide.
+ * What a shortcut or button does. The arrow keys work on what the slide grid
+ * shows: a playlist item or a presentation. If it is not live yet, Next
+ * starts it (a presentation at its first slide); once it is live, Next and
+ * Previous go along it, and on into the next or previous playlist item.
  */
 export async function runAction(action: OperatorAction, ui: { openScreens: () => void }): Promise<void> {
   const live = useEngine.getState().state?.live;
-  const { selectedId, doc } = useLibrary.getState();
-  const selectedIsLive = live?.presentationId != null && live.presentationId === selectedId;
+  const { selectedId, doc, item } = useLibrary.getState();
+  const somethingLive = live?.presentationId != null || live?.playlist != null;
+  const itemIsLive =
+    item !== null && live?.playlist?.playlistId === item.playlistId && live.playlist.itemId === item.id;
+  const selectedIsLive = item === null && live?.presentationId != null && live.presentationId === selectedId;
   switch (action) {
     case 'next':
-      if (selectedIsLive) return dispatch({ type: 'next' });
-      if (selectedId && doc?.id === selectedId && doc.groups.some((g) => g.slides.length > 0))
+      if (itemIsLive || selectedIsLive) return dispatch({ type: 'next' });
+      if (item && (item.kind === 'media' || (item.kind === 'presentation' && item.presentationName !== null)))
+        return playItem(item.playlistId, item.id);
+      if (!item && selectedId && doc?.id === selectedId && doc.groups.some((g) => g.slides.length > 0))
         return goLive(selectedId, 0, playOrder(doc, doc.selectedArrangementId).arrangementId);
-      if (live?.presentationId) return dispatch({ type: 'next' });
+      if (somethingLive) return dispatch({ type: 'next' });
       return;
     case 'previous':
-      if (selectedIsLive || (!selectedId && live?.presentationId)) return dispatch({ type: 'previous' });
+      if (itemIsLive || selectedIsLive || (!item && !selectedId && somethingLive))
+        return dispatch({ type: 'previous' });
       return;
+    case 'nextItem':
+      return dispatch({ type: 'nextItem' });
+    case 'previousItem':
+      return dispatch({ type: 'previousItem' });
     case 'clearAll':
       return dispatch({ type: 'clearAll' });
     case 'clearSlide':

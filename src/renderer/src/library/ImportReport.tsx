@@ -14,7 +14,7 @@ import {
   resolveConflicts,
   useImports,
 } from './import-store';
-import { selectPresentation, useLibrary } from './library-store';
+import { leaveItem, selectPresentation, useLibrary } from './library-store';
 
 /*
  * The migration report (PLAN.md 4.4): what came across, what did not, and a
@@ -25,6 +25,7 @@ const WRITTEN = new Set(['imported', 'replaced', 'kept-both']);
 
 function openPresentation(id: string) {
   closeReport();
+  leaveItem();
   useLibrary.setState({ marked: [id], anchorId: id });
   void selectPresentation(id);
 }

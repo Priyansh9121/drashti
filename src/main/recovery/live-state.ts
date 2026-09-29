@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { rename, rm, writeFile } from 'node:fs/promises';
 import { z } from 'zod';
-import type { BackgroundLayer, EngineState } from '../../shared/engine/state';
+import type { BackgroundLayer, EngineState, PlaylistCursor } from '../../shared/engine/state';
 import { ENGINE_STATE_VERSION } from '../../shared/engine/state';
 import { hexColorSchema, idSchema } from '../../shared/model-schema';
 
@@ -26,6 +26,8 @@ export interface SavedLive {
   savedAt: string;
   /** The slide on screen (not just the cursor: a cleared slide is not put back), in the order it was played in. */
   slide: { presentationId: string; slideIndex: number; arrangementId: string | null } | null;
+  /** The playlist item being played, so Next carries on after the restart. */
+  playlist: PlaylistCursor | null;
   background: BackgroundLayer | null;
   blackout: boolean;
 }
@@ -55,6 +57,8 @@ const savedSchema = z.object({
       arrangementId: idSchema.nullable().default(null),
     })
     .nullable(),
+  // Files saved before playlists could be played have none.
+  playlist: z.object({ playlistId: idSchema, itemId: idSchema }).nullable().default(null),
   // Checked below, only when the engine version matches.
   background: z.unknown(),
   blackout: z.boolean(),
@@ -75,6 +79,7 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
           arrangementId: state.live.arrangementId,
         }
       : null,
+    playlist: state.live.playlist,
     background: state.layers.background,
     blackout: state.blackout,
   };
@@ -108,7 +113,7 @@ export function toRestore(files: RecoveryFiles): SavedLive | null {
   const s = saved.data;
   const parsed = backgroundSchema.nullable().safeParse(s.background);
   const background = s.engineVersion === ENGINE_STATE_VERSION && parsed.success ? parsed.data : null;
-  if (!s.slide && !background && !s.blackout) return null;
+  if (!s.slide && !s.playlist && !background && !s.blackout) return null;
   return { ...s, version: 1, background };
 }
 

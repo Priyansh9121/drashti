@@ -149,14 +149,15 @@ test('slide backgrounds play on the background layer of a real output', async ()
   expect(await playedOver(output, loopId, 500)).toBeGreaterThan(0.3);
   await expect(output.locator('[data-layer="background"] video')).toHaveCount(1);
 
-  // A different video: the old one stays on screen until the new one has its first frame.
+  // A different background: the old one stays on screen until the new one is ready. Jump to one
+  // the output has not loaded ahead (it loads the next slide's; this is two slides on).
   const frames = await watchBackgroundFrames(output);
-  await go(3);
-  await expect(backgroundOf(output, onceId)).toHaveAttribute('data-state', 'ready');
+  await go(4);
+  await expect(backgroundOf(output, stillId)).toHaveAttribute('data-state', 'ready');
   await expect(backgroundOf(output, loopId)).toHaveCount(0);
   const seen = await frames();
-  // Every frame shows exactly one picture: the old video until the new one is ready, then the new one.
-  const firstNew = seen.indexOf(onceId);
+  // Every frame shows exactly one picture: the old video until the new picture is ready, then the new one.
+  const firstNew = seen.indexOf(stillId);
   expect(seen[0], seen.join(' ')).toBe(loopId);
   // The new file took at least 300 ms to arrive: the old one was up for all of those frames.
   expect(firstNew, seen.join(' ')).toBeGreaterThan(10);
@@ -165,10 +166,13 @@ test('slide backgrounds play on the background layer of a real output', async ()
     seen.join(' '),
   ).toBe(true);
   expect(
-    seen.slice(firstNew).every((f) => f === onceId),
+    seen.slice(firstNew).every((f) => f === stillId),
     seen.join(' '),
   ).toBe(true);
 
+  await go(3);
+  await expect(backgroundOf(output, onceId)).toHaveAttribute('data-state', 'ready');
+  await expect(backgroundOf(output, stillId)).toHaveCount(0);
   // This one plays once and holds its last frame.
   await expect
     .poll(() => backgroundOf(output, onceId).evaluate((v: HTMLVideoElement) => v.ended), { timeout: 8000 })

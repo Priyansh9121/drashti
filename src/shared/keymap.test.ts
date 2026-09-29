@@ -31,6 +31,15 @@ describe('keymap', () => {
       expect(actionFor(press(key), 'win32')).toBe('previous');
   });
 
+  it('jumps playlist items with Shift and an arrow key', () => {
+    expect(actionFor(press('ArrowRight', { shiftKey: true }), 'darwin')).toBe('nextItem');
+    expect(actionFor(press('ArrowDown', { shiftKey: true }), 'win32')).toBe('nextItem');
+    expect(actionFor(press('ArrowLeft', { shiftKey: true }), 'darwin')).toBe('previousItem');
+    expect(actionFor(press('ArrowUp', { shiftKey: true }), 'win32')).toBe('previousItem');
+    expect(shortcutText('nextItem', 'darwin')).toBe('⇧→');
+    expect(shortcutText('previousItem', 'win32')).toBe('Shift+←');
+  });
+
   it('maps the clear keys and black-out', () => {
     expect(actionFor(press('F1'), 'darwin')).toBe('clearAll');
     expect(actionFor(press('F2'), 'darwin')).toBe('clearSlide');

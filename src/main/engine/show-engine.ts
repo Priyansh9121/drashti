@@ -9,18 +9,28 @@ import {
   ENGINE_STATE_VERSION,
   type EngineState,
   initialEngineState,
+  type LiveCursor,
+  type PlaylistCursor,
+  type UpNext,
 } from '../../shared/engine/state';
 import type { EngineTransport } from '../../shared/engine/transport';
-import type { EngineAction } from './actions';
-import { reduce } from './reducer';
+import type { BackgroundCue } from '../../shared/library';
 import { remapPosition } from '../../shared/order';
+import type { EngineAction } from './actions';
+import { NO_PLAYLISTS, type PlayItem, type PlaylistSource } from './playlist-source';
+import { reduce, sameData } from './reducer';
 import type { PlayedSlide, PlayOrder, SlideSource } from './slide-source';
 
 type Resolved = { ok: true; actions: EngineAction[] } | Extract<CommandResult, { ok: false }>;
+type MediaItem = Extract<PlayItem, { kind: 'media' }>;
+
+const NO_CHANGE: Resolved = { ok: true, actions: [] };
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
 export interface RestoreRequest {
   slide: { presentationId: string; slideIndex: number; arrangementId?: string | null } | null;
+  /** The playlist item that was playing, so Next carries on from it. */
+  playlist?: PlaylistCursor | null;
   background: BackgroundLayer | null;
   blackout: boolean;
 }
@@ -38,6 +48,7 @@ export class ShowEngine {
     private readonly source: SlideSource,
     private readonly transport: EngineTransport,
     private readonly now: () => number = Date.now,
+    private readonly playlists: PlaylistSource = NO_PLAYLISTS,
   ) {}
 
   get current(): EngineState {
@@ -75,20 +86,28 @@ export class ShowEngine {
   /**
    * Put back what was live before an unexpected stop: the slide (without
    * running its cues again, so a background cleared since stays cleared),
-   * the background as it was (a video carries on from where it would be
-   * now), and black-out. A slide that no longer exists is left out.
+   * the playlist item it was played from, the background as it was (a video
+   * carries on from where it would be now), and black-out. A slide or item
+   * that no longer exists is left out.
    */
   restore(request: RestoreRequest): { slide: boolean; background: boolean; blackout: boolean } {
     const actions: EngineAction[] = [];
     let slide = false;
+    const playlist = request.playlist ? this.checkItem(request.playlist) : null;
     if (request.slide) {
       const { presentationId, slideIndex, arrangementId } = request.slide;
       const order = this.source.order(presentationId, arrangementId);
       const found = order?.slides[slideIndex];
       if (order && found) {
-        actions.push(this.showAction(presentationId, slideIndex, order, found));
+        const from =
+          playlist?.item.kind === 'presentation' && playlist.item.presentationId === presentationId;
+        actions.push(
+          this.showAction(presentationId, slideIndex, order, found, from ? playlist.cursor : null),
+        );
         slide = true;
       }
+    } else if (playlist?.item.kind === 'media') {
+      actions.push({ type: 'live/item', playlist: playlist.cursor });
     }
     if (request.background) actions.push({ type: 'background/set', background: request.background });
     if (request.blackout) actions.push({ type: 'blackout/set', on: true });
@@ -97,17 +116,18 @@ export class ShowEngine {
   }
 
   /**
-   * The operator changed a presentation's order (its selected arrangement).
-   * If it is live, the live position follows the new order, with the same
-   * slide on screen: Next then carries on in the new order.
+   * The live presentation's order changed (its own arrangement, or the
+   * playlist item's). The live position follows the new order, with the same
+   * slide on screen: Next then carries on in the new order. Leave out the
+   * presentation to check whatever is live.
    */
-  reorderLive(presentationId: string): CommandResult {
+  reorderLive(presentationId?: string): CommandResult {
     const live = this.state.live;
-    if (live.presentationId !== presentationId || live.slideIndex === null)
-      return { ok: true, changed: false, rev: this.revision };
-    const before = this.source.order(presentationId, live.arrangementId);
-    const after = this.source.order(presentationId);
-    if (!before || !after) return { ok: true, changed: false, rev: this.revision };
+    if (live.presentationId === null || live.slideIndex === null) return this.unchanged();
+    if (presentationId !== undefined && live.presentationId !== presentationId) return this.unchanged();
+    const before = this.source.order(live.presentationId, live.arrangementId);
+    const after = this.source.order(live.presentationId, this.itemArrangement(live));
+    if (!before || !after) return this.unchanged();
     const slideIndex = remapPosition(
       before.slides.map((s) => ({ slide: s })),
       after.slides.map((s) => ({ slide: s })),
@@ -118,11 +138,41 @@ export class ShowEngine {
     ]);
   }
 
+  /** A playlist or presentation changed: what comes next may be different now. */
+  refreshNext(): CommandResult {
+    return this.apply([{ type: 'next/set', next: this.upNext(this.state.live) }]);
+  }
+
+  private unchanged(): CommandResult {
+    return { ok: true, changed: false, rev: this.revision };
+  }
+
+  /** The order the live presentation plays in by its playlist item (undefined: the presentation's own). */
+  private itemArrangement(live: LiveCursor): string | null | undefined {
+    const found = live.playlist ? this.checkItem(live.playlist) : null;
+    return found?.item.kind === 'presentation' && found.item.presentationId === live.presentationId
+      ? found.item.arrangementId
+      : undefined;
+  }
+
+  /** A playlist item that exists, with its neighbours. */
+  private checkItem(
+    cursor: PlaylistCursor,
+  ): { cursor: PlaylistCursor; item: PlayItem; items: readonly PlayItem[]; index: number } | null {
+    const items = this.playlists.items(cursor.playlistId);
+    const index = items?.findIndex((i) => i.id === cursor.itemId) ?? -1;
+    const item = items?.[index];
+    return items && item
+      ? { cursor: { playlistId: cursor.playlistId, itemId: item.id }, item, items, index }
+      : null;
+  }
+
   private showAction(
     presentationId: string,
     slideIndex: number,
     order: PlayOrder,
     played: PlayedSlide,
+    playlist: PlaylistCursor | null,
   ): EngineAction {
     return {
       type: 'slide/show',
@@ -130,13 +180,19 @@ export class ShowEngine {
       slideIndex,
       slideCount: order.slides.length,
       arrangementId: order.arrangementId,
+      playlist,
       slide: played.slide,
       notes: played.notes,
       at: this.now(),
     };
   }
 
-  private showSlide(presentationId: string, slideIndex: number, arrangementId?: string | null): Resolved {
+  private showSlide(
+    presentationId: string,
+    slideIndex: number,
+    arrangementId: string | null | undefined,
+    playlist: PlaylistCursor | null,
+  ): Resolved {
     const order = this.source.order(presentationId, arrangementId);
     if (!order)
       return { ok: false, error: 'unknown-presentation', message: `No presentation ${presentationId}` };
@@ -148,7 +204,7 @@ export class ShowEngine {
         message: `Slide ${slideIndex + 1} of ${order.slides.length} does not exist`,
       };
     }
-    const actions: EngineAction[] = [this.showAction(presentationId, slideIndex, order, played)];
+    const actions: EngineAction[] = [this.showAction(presentationId, slideIndex, order, played, playlist)];
     // The slide's background and sound go on their layers; a slide without them leaves those layers as they are.
     for (const cue of played.cues) {
       if (cue.kind === 'background') {
@@ -162,6 +218,77 @@ export class ShowEngine {
       }
     }
     return { ok: true, actions };
+  }
+
+  /**
+   * A picture or video item goes on the background layer and takes the
+   * slide off (it is what the audience should see); a sound goes on the
+   * audio layer and leaves the picture as it is.
+   */
+  private showMedia(cursor: PlaylistCursor, item: MediaItem): Resolved {
+    const cue: EngineAction = { type: 'live/item', playlist: cursor };
+    if (item.media === 'audio') {
+      const { mediaId, label } = item;
+      return {
+        ok: true,
+        actions: [
+          cue,
+          {
+            type: 'audio/set',
+            audio: this.audioLayer({ id: mediaId, title: label, mediaId, volume: 1, loop: false }),
+          },
+        ],
+      };
+    }
+    const background = this.backgroundLayer({
+      kind: 'media',
+      mediaId: item.mediaId,
+      media: item.media,
+      fit: 'fit',
+      loop: false,
+    });
+    return {
+      ok: true,
+      actions: [cue, { type: 'layer/clear', layer: 'slide' }, { type: 'background/set', background }],
+    };
+  }
+
+  /** Start a playlist item at its first or last slide. Null when it has nothing to play. */
+  private startItem(playlistId: string, item: PlayItem, from: 'first' | 'last'): Resolved | null {
+    const cursor = { playlistId, itemId: item.id };
+    if (item.kind === 'media') return this.showMedia(cursor, item);
+    if (item.kind === 'skip') return null;
+    const order = this.source.order(item.presentationId, item.arrangementId);
+    if (!order || order.slides.length === 0) return null;
+    const index = from === 'first' ? 0 : order.slides.length - 1;
+    return this.showSlide(item.presentationId, index, order.arrangementId, cursor);
+  }
+
+  /** The next (or previous) item that can play, stepping over headers, placeholders and anything gone. */
+  private stepItem(cursor: PlaylistCursor, delta: 1 | -1, from: 'first' | 'last'): Resolved {
+    const at = this.checkItem(cursor);
+    if (!at) return NO_CHANGE;
+    for (let i = at.index + delta; i >= 0 && i < at.items.length; i += delta) {
+      const item = at.items[i];
+      const started = item ? this.startItem(cursor.playlistId, item, from) : null;
+      if (started) return started;
+    }
+    return NO_CHANGE;
+  }
+
+  private playItem(playlistId: string, itemId: string): Resolved {
+    const found = this.checkItem({ playlistId, itemId });
+    if (!found) return { ok: false, error: 'unknown-item', message: 'That playlist item no longer exists' };
+    const { item } = found;
+    const started = this.startItem(playlistId, item, 'first');
+    if (started) return started;
+    const message =
+      item.kind === 'skip'
+        ? item.why
+        : item.kind === 'presentation'
+          ? 'That presentation has no slides'
+          : 'That item cannot play';
+    return { ok: false, error: 'not-playable', message };
   }
 
   /** The audio layer for a choice: as with backgrounds, the file already playing carries on. */
@@ -183,35 +310,101 @@ export class ShowEngine {
   }
 
   /**
-   * Next / previous: one slide along the live presentation. At either end
-   * nothing changes, so Next never repeats a slide. After the slide layer is
-   * cleared the cursor stays put, so Next shows the following slide.
+   * Next / previous: one slide along the live presentation. At either end,
+   * a presentation played from a playlist goes on to the next item's first
+   * slide (or back to the previous item's last), stepping over headers and
+   * placeholders; otherwise nothing changes, so Next never repeats a slide.
+   * After the slide layer is cleared the cursor stays put, so Next shows the
+   * following slide.
    */
   private step(delta: 1 | -1): Resolved {
-    const { presentationId, slideIndex, arrangementId } = this.state.live;
-    if (presentationId === null || slideIndex === null) {
-      return { ok: false, error: 'nothing-live', message: 'Nothing is live yet' };
+    const { presentationId, slideIndex, arrangementId, playlist } = this.state.live;
+    if (presentationId !== null && slideIndex !== null) {
+      // Along the order being played: a repeated chorus comes up again.
+      const order = this.source.order(presentationId, arrangementId);
+      if (!order && !playlist)
+        return { ok: false, error: 'unknown-presentation', message: `No presentation ${presentationId}` };
+      if (order) {
+        const count = order.slides.length;
+        let target = slideIndex + delta;
+        // If the presentation got shorter underneath us, Previous goes to its last slide.
+        if (delta < 0 && target >= count) target = count - 1;
+        if (target >= 0 && target < count)
+          return this.showSlide(presentationId, target, order.arrangementId, playlist);
+      }
     }
-    // Along the order being played: a repeated chorus comes up again.
-    const order = this.source.order(presentationId, arrangementId);
-    if (!order)
-      return { ok: false, error: 'unknown-presentation', message: `No presentation ${presentationId}` };
-    const count = order.slides.length;
-    let target = slideIndex + delta;
-    // If the presentation got shorter underneath us, Previous goes to its last slide.
-    if (delta < 0 && target >= count) target = count - 1;
-    if (target < 0 || target >= count) return { ok: true, actions: [] };
-    return this.showSlide(presentationId, target, order.arrangementId);
+    if (playlist) return this.stepItem(playlist, delta, delta > 0 ? 'first' : 'last');
+    if (presentationId === null) return { ok: false, error: 'nothing-live', message: 'Nothing is live yet' };
+    return NO_CHANGE;
+  }
+
+  /** What Next will show from here. */
+  private upNext(live: LiveCursor): UpNext | null {
+    if (live.presentationId !== null && live.slideIndex !== null) {
+      const order = this.source.order(live.presentationId, live.arrangementId);
+      const following = order?.slides[live.slideIndex + 1];
+      if (following) return this.slideUpNext(live.presentationId, live.slideIndex + 1, following, null);
+    }
+    const at = live.playlist ? this.checkItem(live.playlist) : null;
+    if (!at) return null;
+    for (const item of at.items.slice(at.index + 1)) {
+      if (item.kind === 'media')
+        return {
+          kind: 'media',
+          itemId: item.id,
+          mediaId: item.mediaId,
+          media: item.media,
+          label: item.label,
+        };
+      if (item.kind === 'presentation') {
+        const first = this.source.order(item.presentationId, item.arrangementId)?.slides[0];
+        if (first) return this.slideUpNext(item.presentationId, 0, first, item.id);
+      }
+    }
+    return null;
+  }
+
+  private slideUpNext(
+    presentationId: string,
+    slideIndex: number,
+    played: PlayedSlide,
+    itemId: string | null,
+  ): UpNext {
+    const cue = played.cues.find((c): c is BackgroundCue => c.kind === 'background');
+    return {
+      kind: 'slide',
+      presentationId,
+      slideIndex,
+      slide: played.slide,
+      background: cue?.unplayable === null && !cue.missing ? cue.background : null,
+      itemId,
+    };
   }
 
   private resolve(command: EngineCommand): Resolved {
     switch (command.type) {
-      case 'goLive':
-        return this.showSlide(command.presentationId, command.slideIndex, command.arrangementId);
+      case 'goLive': {
+        // Played from a playlist item: only when the item is that presentation, so Next knows where to go.
+        const found = command.playlist ? this.checkItem(command.playlist) : null;
+        const playlist =
+          found?.item.kind === 'presentation' && found.item.presentationId === command.presentationId
+            ? found.cursor
+            : null;
+        return this.showSlide(command.presentationId, command.slideIndex, command.arrangementId, playlist);
+      }
+      case 'playItem':
+        return this.playItem(command.playlistId, command.itemId);
       case 'next':
         return this.step(1);
       case 'previous':
         return this.step(-1);
+      case 'nextItem':
+      case 'previousItem': {
+        const { playlist } = this.state.live;
+        if (!playlist)
+          return { ok: false, error: 'nothing-live', message: 'Nothing is playing from a playlist' };
+        return this.stepItem(playlist, command.type === 'nextItem' ? 1 : -1, 'first');
+      }
       case 'clearLayer':
         return { ok: true, actions: [{ type: 'layer/clear', layer: command.layer }] };
       case 'clearAll':
@@ -242,8 +435,13 @@ export class ShowEngine {
 
   private apply(actions: readonly EngineAction[]): CommandResult {
     const prev = this.state;
-    const next = actions.reduce(reduce, prev);
-    if (next === prev) return { ok: true, changed: false, rev: this.revision };
+    let next = actions.reduce(reduce, prev);
+    // A new position has a new slide after it.
+    if (next.live !== prev.live) {
+      const upNext = this.upNext(next.live);
+      if (!sameData(next.next, upNext)) next = reduce(next, { type: 'next/set', next: upNext });
+    }
+    if (next === prev) return this.unchanged();
     const ops = diffState(prev, next);
     this.state = next;
     const baseRev = this.revision;

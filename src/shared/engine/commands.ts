@@ -45,6 +45,8 @@ const prop: z.ZodType<PropItem> = z.object({
 const message: z.ZodType<MessageItem> = z.object({ id, text: z.string().min(1).max(500) });
 const mask: z.ZodType<MaskLayer> = z.object({ id, name: z.string().max(200), visible: rect });
 
+const playlistCursor = z.object({ playlistId: id, itemId: id });
+
 export const engineCommandSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('goLive'),
@@ -53,9 +55,16 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
     slideIndex: z.number().int().min(0).max(100_000),
     /** The order: an arrangement, null for every slide in order, left out for the presentation's own choice. */
     arrangementId: id.nullable().optional(),
+    /** The playlist item it is played from, so Next carries on into the next item. */
+    playlist: playlistCursor.nullable().optional(),
   }),
+  /** Start a playlist item: a presentation at its first slide, or a picture, video or sound. */
+  z.object({ type: z.literal('playItem'), playlistId: id, itemId: id }),
   z.object({ type: z.literal('next') }),
   z.object({ type: z.literal('previous') }),
+  /** The first slide of the next (or previous) playlist item that can play. */
+  z.object({ type: z.literal('nextItem') }),
+  z.object({ type: z.literal('previousItem') }),
   z.object({ type: z.literal('clearLayer'), layer: z.enum(LAYER_NAMES) }),
   z.object({ type: z.literal('clearAll') }),
   z.object({ type: z.literal('setBlackout'), on: z.boolean() }),
@@ -73,7 +82,13 @@ export type EngineCommand = z.infer<typeof engineCommandSchema>;
 export type EngineCommandType = EngineCommand['type'];
 
 export type EngineErrorCode =
-  'invalid-command' | 'forbidden' | 'unknown-presentation' | 'slide-out-of-range' | 'nothing-live';
+  | 'invalid-command'
+  | 'forbidden'
+  | 'unknown-presentation'
+  | 'slide-out-of-range'
+  | 'nothing-live'
+  | 'unknown-item'
+  | 'not-playable';
 
 export type CommandResult =
   { ok: true; changed: boolean; rev: number } | { ok: false; error: EngineErrorCode; message: string };

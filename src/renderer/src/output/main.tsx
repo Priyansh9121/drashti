@@ -7,6 +7,7 @@ import { preloadFonts } from '../render/fonts';
 import { PlacedInParent } from '../render/Placed';
 import { Scene } from '../render/Scene';
 import { connectOutput, useOutput } from './output-store';
+import { Preloader } from './Preloader';
 
 function IdentifyOverlay() {
   const identify = useOutput((s) => s.identify);
@@ -89,6 +90,7 @@ function Output() {
           <Scene state={state} canvas={canvas} scaling={scaling} />
         </PlacedInParent>
       )}
+      {state && <Preloader next={state.next} />}
       <IdentifyOverlay />
     </div>
   );

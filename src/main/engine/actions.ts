@@ -5,7 +5,9 @@ import type {
   LayerName,
   MaskLayer,
   MessageItem,
+  PlaylistCursor,
   PropItem,
+  UpNext,
 } from '../../shared/engine/state';
 
 /**
@@ -20,6 +22,8 @@ export type EngineAction =
       slideIndex: number;
       slideCount: number;
       arrangementId: string | null;
+      /** The playlist item it is played from, if any. */
+      playlist: PlaylistCursor | null;
       slide: RenderSlide;
       notes: string;
       /** The time, for the slide layer's shownAt. */
@@ -27,6 +31,9 @@ export type EngineAction =
     }
   /** The live position moves (the order changed) while the same slide stays on screen. */
   | { type: 'live/move'; slideIndex: number; slideCount: number; arrangementId: string | null }
+  /** The cursor moves to a playlist item that is not a presentation (a picture, video or sound). */
+  | { type: 'live/item'; playlist: PlaylistCursor }
+  | { type: 'next/set'; next: UpNext | null }
   | { type: 'layer/clear'; layer: LayerName }
   | { type: 'layers/clearAll' }
   | { type: 'blackout/set'; on: boolean }
