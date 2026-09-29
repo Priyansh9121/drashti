@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { launchApp } from './helpers';
+import { launchApp, operatorPage } from './helpers';
 
 /*
  * Playwright cannot stay attached to a renderer that crashes and reloads,
@@ -87,7 +87,7 @@ test('watchdog self-test: operator crash and reload never touch the output or th
 
 test('reloading the operator window (Cmd/Ctrl+R) leaves the output page untouched', async () => {
   const { app } = await launchApp();
-  const operator = await app.firstWindow();
+  const operator = await operatorPage(app);
   await expect(operator.getByTestId('presentation-list').getByRole('button')).toHaveCount(2);
   // Listen first: the output window can open before the call below returns.
   const outputOpened = app.waitForEvent('window', { predicate: (w) => w.url().includes('output.html') });

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import type { PageGlobals } from './helpers';
-import { dropFiles, launchApp } from './helpers';
+import { dropFiles, launchApp, operatorPage } from './helpers';
 
 /*
  * Importing from the operator window: drag files onto the presentation
@@ -27,7 +27,7 @@ test('drag lyrics onto the library, read the report, go live, remove and undo, i
   copyFileSync(join(FIXTURES, 'Placeholder Song One.txt'), songOne);
 
   const { app } = await launchApp();
-  const win = await app.firstWindow();
+  const win = await operatorPage(app);
   const list = win.getByTestId('presentation-list');
   await expect(list.getByRole('button')).toHaveCount(2);
   await win.evaluate(async () => {
@@ -173,7 +173,7 @@ test('drag a .pro6 presentation in: its text goes live, and missing media is fou
   writeFileSync(join(found, 'Blue Loop.mov'), 'placeholder video bytes');
 
   const { app } = await launchApp();
-  const win = await app.firstWindow();
+  const win = await operatorPage(app);
   await expect(win.getByTestId('presentation-list').getByRole('button')).toHaveCount(2);
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, outputPage, setUpScreen } from './helpers';
+import { importAndGetIds, launchApp, operatorPage, outputPage, setUpScreen } from './helpers';
 import { makeTestImage, makeTestVideo } from './test-media';
 
 /*
@@ -77,7 +77,7 @@ async function watchBackgroundFrames(page: Page): Promise<() => Promise<string[]
 test('slide backgrounds play on the background layer of a real output', async () => {
   // Media answers 300 ms late, as from a slow disk, so every change of background takes a while.
   const { app } = await launchApp({ DRASHTI_TEST_MEDIA_DELAY_MS: '300' });
-  const win = await app.firstWindow();
+  const win = await operatorPage(app);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-bg-'));
   // Media first, while nothing covers the operator window (it records in real time).
   const loop = await makeTestVideo(win, join(dir, 'Placeholder loop.webm'), { seconds: 4, hue: 210 });
@@ -198,7 +198,7 @@ test('slide backgrounds play on the background layer of a real output', async ()
 
 test('images and videos placed on slides draw on the outputs; thumbnails show still frames and never play', async () => {
   const { app, userData } = await launchApp();
-  const win = await app.firstWindow();
+  const win = await operatorPage(app);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-elements-'));
   const clip = await makeTestVideo(win, join(dir, 'Placeholder clip.webm'), { seconds: 3, hue: 280 });
   const logo = await makeTestImage(win, join(dir, 'Placeholder logo.png'), {

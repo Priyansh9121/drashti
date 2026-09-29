@@ -25,7 +25,7 @@ const line = (text: string) => ({ rtf: cocoaRtf([[text, 80, [255, 255, 255]]]) }
 
 test('after a crash the same slide, background and black-out come back; after a clean quit nothing is live', async () => {
   const first = await launchApp();
-  const win = await first.app.firstWindow();
+  const win = await operatorPage(first.app);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-recovery-'));
   const still = await makeTestImage(win, join(dir, 'Placeholder backdrop.png'), { width: 160, height: 90 });
   const show = join(dir, 'Placeholder Recovery.pro6');

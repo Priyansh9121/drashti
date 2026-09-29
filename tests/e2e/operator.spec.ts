@@ -1,7 +1,7 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
-import { launchApp } from './helpers';
+import { launchApp, operatorPage } from './helpers';
 
 async function outputPage(app: ElectronApplication): Promise<Page> {
   const existing = app.windows().find((w) => w.url().includes('output.html'));
@@ -28,7 +28,7 @@ const engineRev = (win: Page) =>
 
 test('operator: pick a presentation, go live by click and keyboard, clear layers, black-out', async () => {
   const { app } = await launchApp();
-  const win = await app.firstWindow();
+  const win = await operatorPage(app);
   const list = win.getByTestId('presentation-list');
   await expect(list.getByRole('button')).toHaveCount(2);
   await oneScreen(win);

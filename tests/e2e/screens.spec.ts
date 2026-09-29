@@ -13,7 +13,7 @@ async function outputPage(app: ElectronApplication): Promise<Page> {
 test('screen groups: assign a display, open an output, restore it after a restart', async () => {
   const first = await launchApp();
   let app = first.app;
-  const win = await app.firstWindow();
+  const win = await operatorPage(app);
 
   // Displays are listed with the resolution and refresh rate the OS reports.
   await win.getByRole('button', { name: 'Screens', exact: true }).click();

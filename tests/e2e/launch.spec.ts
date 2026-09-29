@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { launchApp, type PageGlobals } from './helpers';
+import { launchApp, operatorPage, type PageGlobals } from './helpers';
 
 test('opens a sandboxed, context-isolated operator window', async () => {
   const { app } = await launchApp();
-  const win = await app.firstWindow();
+  const win = await operatorPage(app);
   await expect(win).toHaveTitle('Drashti');
   await expect(win.getByTestId('app-info')).toContainText('Electron');
 
@@ -39,7 +39,7 @@ test('opens a sandboxed, context-isolated operator window', async () => {
 
 test('the operator window reaches the show engine through the typed bridge', async () => {
   const { app } = await launchApp();
-  const win = await app.firstWindow();
+  const win = await operatorPage(app);
   await expect(win.getByTestId('live-text')).toHaveText('Nothing live');
 
   const result = await win.evaluate(() =>

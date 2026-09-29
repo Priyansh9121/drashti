@@ -2,14 +2,14 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { dropFiles, importAndGetIds, launchApp } from './helpers';
+import { dropFiles, importAndGetIds, launchApp, operatorPage } from './helpers';
 import { makeTestImage, makeTestVideo } from './test-media';
 
 const NOBODY = '00000000-0000-0000-0000-000000000000';
 
 test('library media reaches the windows by id only, with byte ranges, and nothing else is served', async () => {
   const { app } = await launchApp();
-  const win = await app.firstWindow();
+  const win = await operatorPage(app);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-media-'));
   const image = await makeTestImage(win, join(dir, 'Placeholder image.png'), { width: 64, height: 36 });
   const video = await makeTestVideo(win, join(dir, 'Placeholder video.webm'), { seconds: 2 });
@@ -103,7 +103,7 @@ test('library media reaches the windows by id only, with byte ranges, and nothin
 
 test('media Drashti cannot play is found at import and listed in the report with what to do', async () => {
   const { app } = await launchApp();
-  const win = await app.firstWindow();
+  const win = await operatorPage(app);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-unplayable-'));
   const image = await makeTestImage(win, join(dir, 'Placeholder picture.png'));
   // An AVI file's header (no video in it): Chromium never plays AVI.
