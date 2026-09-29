@@ -14,7 +14,15 @@ import type {
  * stay a pure function.
  */
 export type EngineAction =
-  | { type: 'slide/show'; presentationId: string; slideIndex: number; slideCount: number; slide: RenderSlide }
+  | {
+      type: 'slide/show';
+      presentationId: string;
+      slideIndex: number;
+      slideCount: number;
+      slide: RenderSlide;
+      /** The time, for the slide layer's shownAt. */
+      at: number;
+    }
   | { type: 'layer/clear'; layer: LayerName }
   | { type: 'layers/clearAll' }
   | { type: 'blackout/set'; on: boolean }

@@ -32,6 +32,11 @@ export interface SlideLayer {
   presentationId: string;
   slideIndex: number;
   slide: RenderSlide;
+  /**
+   * When this slide went live (ms since the epoch, main-process clock):
+   * videos placed on it play from here, in step on every window.
+   */
+  shownAt: number;
 }
 
 export interface AudioLayer {

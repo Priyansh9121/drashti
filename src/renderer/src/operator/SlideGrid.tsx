@@ -1,10 +1,33 @@
 import { memo, useEffect, useRef } from 'react';
-import type { SlideInfo } from '../../../shared/library';
+import type { BackgroundCue, SlideInfo } from '../../../shared/library';
+import { mediaUrl } from '../../../shared/media';
 import { useEngine } from '../engine/engine-store';
 import { useLibrary } from '../library/library-store';
+import { OBJECT_FIT } from '../render/media-style';
 import { PlacedInParent } from '../render/Placed';
-import { SlideView } from '../render/SlideView';
+import { SlideView, VideoStill } from '../render/SlideView';
 import { goLive } from './actions';
+
+/** The slide's own background (its background cue), behind its thumbnail: the image, or a video's still frame. */
+function CueBackground({ cue }: { cue: BackgroundCue }) {
+  const { mediaId, media, fit } = cue.background;
+  const style = {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    objectFit: OBJECT_FIT[fit],
+  } as const;
+  return (
+    <span data-testid="thumb-background" data-media-id={mediaId} title={cue.name} className="contents">
+      {media === 'image' ? (
+        <img src={mediaUrl(mediaId)} alt="" draggable={false} style={style} />
+      ) : (
+        <VideoStill mediaId={mediaId} style={style} />
+      )}
+    </span>
+  );
+}
 
 const Thumb = memo(function Thumb({
   presentationId,
@@ -19,6 +42,7 @@ const Thumb = memo(function Thumb({
   useEffect(() => {
     if (live) ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [live]);
+  const background = info.cues.find((c): c is BackgroundCue => c.kind === 'background');
   return (
     <li>
       <button
@@ -33,13 +57,12 @@ const Thumb = memo(function Thumb({
           live ? 'border-live' : 'border-line hover:border-muted'
         }`}
       >
-        <PlacedInParent
-          content={info.slide}
-          mode="fit"
-          className="pointer-events-none relative aspect-video w-full"
-        >
-          <SlideView slide={info.slide} />
-        </PlacedInParent>
+        <span className="pointer-events-none relative block aspect-video w-full">
+          {background && <CueBackground cue={background} />}
+          <PlacedInParent content={info.slide} mode="fit" className="absolute inset-0">
+            <SlideView slide={info.slide} media="still" />
+          </PlacedInParent>
+        </span>
         <span
           className={`flex items-center gap-2 px-2 py-1 text-xs ${live ? 'bg-live text-white' : 'bg-panel-2 text-muted'}`}
         >

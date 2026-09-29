@@ -79,6 +79,7 @@ export const Scene = memo(function Scene({
 }) {
   const { layers } = state;
   const slide = layers.slide?.slide;
+  const shownAt = layers.slide?.shownAt;
   return (
     <div
       data-testid="scene"
@@ -101,7 +102,7 @@ export const Scene = memo(function Scene({
       {slide && (
         <div data-layer="slide" style={{ position: 'absolute', inset: 0 }}>
           <Placed content={slide} box={canvas} mode={scaling}>
-            <SlideView slide={slide} />
+            <SlideView slide={slide} startedAt={shownAt} />
           </Placed>
         </div>
       )}

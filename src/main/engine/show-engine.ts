@@ -66,12 +66,13 @@ export class ShowEngine {
       };
     }
     const actions: EngineAction[] = [
-      { type: 'slide/show', presentationId, slideIndex, slideCount: count, slide },
+      { type: 'slide/show', presentationId, slideIndex, slideCount: count, slide, at: this.now() },
     ];
     // The slide's background goes on the background layer; a slide without one leaves it as it is.
-    // (Background cues are the only kind the engine runs so far.)
     for (const cue of this.source.cues(presentationId, slideIndex)) {
-      actions.push({ type: 'background/set', background: this.backgroundLayer(cue.background) });
+      if (cue.kind === 'background') {
+        actions.push({ type: 'background/set', background: this.backgroundLayer(cue.background) });
+      }
     }
     return { ok: true, actions };
   }

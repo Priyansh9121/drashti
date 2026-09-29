@@ -1,6 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
@@ -109,7 +109,10 @@ test('slide backgrounds play on the background layer of a real output', async ()
   const [presentationId = ''] = await importAndGetIds(win, [show]);
   const cueMedia = await win.evaluate(async (id) => {
     const doc = await (globalThis as PageGlobals).drashti.library.getPresentation(id);
-    return (doc?.groups[0]?.slides ?? []).map((s) => s.cues[0]?.background.mediaId ?? '');
+    return (doc?.groups[0]?.slides ?? []).map((s) => {
+      for (const cue of s.cues) if (cue.kind === 'background') return cue.background.mediaId;
+      return '';
+    });
   }, presentationId);
   const [loopId = '', none, again, onceId = '', stillId = '', goneId = ''] = cueMedia;
   expect(none).toBe('');
@@ -189,6 +192,99 @@ test('slide backgrounds play on the background layer of a real output', async ()
   await expect(slideText).toContainText('Placeholder line six');
   await expect(win.getByTestId('background-failed')).toBeVisible();
   await expect(output.getByTestId('background-failed')).toHaveCount(0);
+
+  await app.close();
+});
+
+test('images and videos placed on slides draw on the outputs; thumbnails show still frames and never play', async () => {
+  const { app, userData } = await launchApp();
+  const win = await app.firstWindow();
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-elements-'));
+  const clip = await makeTestVideo(win, join(dir, 'Placeholder clip.webm'), { seconds: 3, hue: 280 });
+  const logo = await makeTestImage(win, join(dir, 'Placeholder logo.png'), {
+    width: 120,
+    height: 60,
+    color: '#c62828',
+  });
+  const show = join(dir, 'Placeholder Elements.pro6');
+  writeFileSync(
+    show,
+    pp6Presentation({
+      uuid: 'E2E-ELEMENTS',
+      groups: [
+        {
+          name: 'Verse',
+          slides: [
+            { image: { path: logo, rect: [60, 60, 600, 300] }, text: [line('Placeholder with a logo')] },
+            {
+              video: { path: clip, rect: [960, 60, 800, 450], loop: true },
+              text: [line('Placeholder with a clip')],
+            },
+            {
+              background: { path: clip, kind: 'video', loop: true },
+              text: [line('Placeholder over the clip')],
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  const [presentationId = ''] = await importAndGetIds(win, [show]);
+  const list = win.getByTestId('presentation-list');
+  await list.getByRole('button', { name: /Placeholder Elements/ }).click();
+  const grid = win.getByTestId('slide-grid');
+  await expect(grid.getByRole('heading', { level: 2 })).toHaveText('Placeholder Elements');
+  const thumbs = grid.getByTestId('slide-thumb');
+  const loaded = (scope: Locator) =>
+    scope.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0);
+
+  // The logo draws itself; the video (on slide 2, and as slide 3's background) shows a still frame.
+  await expect.poll(() => loaded(thumbs.nth(0).locator('img[data-media-id]'))).toBe(true);
+  await expect.poll(() => loaded(thumbs.nth(1).locator('img[data-still]'))).toBe(true);
+  await expect.poll(() => loaded(thumbs.nth(2).getByTestId('thumb-background').locator('img'))).toBe(true);
+  await expect(grid.locator('video')).toHaveCount(0);
+  // One still for the one video file, kept in the media folder.
+  expect(readdirSync(join(userData, 'Media', 'stills'))).toHaveLength(1);
+
+  // After a reload the still comes straight from the media folder: nothing is made again.
+  await win.reload();
+  await list.getByRole('button', { name: /Placeholder Elements/ }).click();
+  await expect.poll(() => loaded(thumbs.nth(1).locator('img[data-still="0"]'))).toBe(true);
+  await expect(grid.locator('video')).toHaveCount(0);
+
+  await setUpScreen(win);
+  const output = await outputPage(app);
+  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  const go = (slideIndex: number) =>
+    win.evaluate(
+      ({ presentationId, slideIndex }) =>
+        (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'goLive', presentationId, slideIndex }),
+      { presentationId, slideIndex },
+    );
+
+  // On the output and in the live preview, the logo is drawn where the slide puts it.
+  await go(0);
+  const slideLayer = output.locator('[data-layer="slide"]');
+  await expect(slideLayer).toContainText('Placeholder with a logo');
+  await expect.poll(() => loaded(slideLayer.locator('img[data-element]'))).toBe(true);
+  await expect
+    .poll(() => loaded(win.getByTestId('live-preview').locator('[data-layer="slide"] img[data-element]')))
+    .toBe(true);
+
+  // The clip plays on the output, muted, looping as the slide says.
+  await go(1);
+  const video = slideLayer.locator('video[data-element]');
+  await expect(video).toHaveCount(1);
+  await expect
+    .poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA))
+    .toBe(true);
+  const played = await video.evaluate(async (v: HTMLVideoElement) => {
+    const before = v.currentTime;
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return { delta: v.currentTime - before, muted: v.muted, loop: v.loop };
+  });
+  expect(played.delta).toBeGreaterThan(0.2);
+  expect(played).toMatchObject({ muted: true, loop: true });
 
   await app.close();
 });

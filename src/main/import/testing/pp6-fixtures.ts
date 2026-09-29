@@ -47,6 +47,7 @@ export interface Pp6SlideSpec {
   background?: { path: string; kind: 'image' | 'video'; loop?: boolean; scale?: number };
   text?: Pp6TextBox[];
   image?: { path: string; rect: [number, number, number, number] };
+  video?: { path: string; rect: [number, number, number, number]; loop?: boolean };
   shape?: { fill: string; rect: [number, number, number, number] };
   audio?: string;
   transition?: boolean;
@@ -73,6 +74,12 @@ function slide(s: Pp6SlideSpec, i: number): string {
     const [x, y, w, h] = s.image.rect;
     elements.push(
       `<RVImageElement displayName="Image" UUID="I-${i}" typeID="0" displayDelay="0" locked="false" persistent="0" fromTemplate="false" opacity="1" source="${esc(fileUrl(s.image.path))}" bezelRadius="0" rotation="0" drawingFill="false" drawingShadow="false" drawingStroke="false" fillColor="1 1 1 1" scaleBehavior="0" flippedHorizontally="false" flippedVertically="false" format="JPEG image"><RVRect3D rvXMLIvarName="position">{${x} ${y} 0 ${w} ${h}}</RVRect3D></RVImageElement>`,
+    );
+  }
+  if (s.video) {
+    const [x, y, w, h] = s.video.rect;
+    elements.push(
+      `<RVVideoElement displayName="Video" UUID="VE-${i}" typeID="0" displayDelay="0" locked="false" persistent="0" fromTemplate="false" opacity="1" source="${esc(fileUrl(s.video.path))}" bezelRadius="0" rotation="0" drawingFill="false" drawingShadow="false" drawingStroke="false" fillColor="1 1 1 1" scaleBehavior="0" playbackBehavior="${s.video.loop ? 1 : 0}" flippedHorizontally="false" flippedVertically="false"><RVRect3D rvXMLIvarName="position">{${x} ${y} 0 ${w} ${h}}</RVRect3D></RVVideoElement>`,
     );
   }
   if (s.shape) {

@@ -16,7 +16,7 @@ import type { ImportResult } from '../shared/import';
 import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/import-schema';
 import { type EventChannel, type EventContract, IPC } from '../shared/ipc';
 import { acceleratorFor } from '../shared/keymap';
-import { MEDIA_SCHEME } from '../shared/media';
+import { MEDIA_ID_PATTERN, MEDIA_SCHEME } from '../shared/media';
 import { idSchema } from '../shared/model-schema';
 import { z } from 'zod';
 import type { OutputContext } from '../shared/screens';
@@ -34,6 +34,7 @@ import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
 import { log } from './log';
 import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES } from './media/media-protocol';
+import { saveStill } from './media/stills';
 import { installMenu } from './menu';
 import { createdGroupId, runWatchdogSelfTest } from './selftest';
 import { createOutputWindow, listDisplays, watchDisplays } from './outputs/electron-outputs';
@@ -426,6 +427,14 @@ function start(): void {
   handle(IPC.library.getImportReport, (_e, runId) => {
     const parsed = runIdSchema.safeParse(runId);
     return parsed.success ? importRepo.report(parsed.data) : null;
+  });
+  handle(IPC.media.saveStill, async (e, mediaId, jpeg) => {
+    if (!fromOperator(e) || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId)) {
+      return { ok: false as const, message: 'Only the operator window can keep still frames.' };
+    }
+    const file = media.file(mediaId);
+    if (!file?.sha256 || file.missing) return { ok: false as const, message: 'That media item has no file.' };
+    return saveStill(mediaDir, file.sha256, jpeg);
   });
   handle(IPC.screens.get, () => screens.snapshot());
   handle(IPC.screens.createGroup, (e, name) => (fromOperator(e) ? screens.createGroup(name) : notAllowed));
