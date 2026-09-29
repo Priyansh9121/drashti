@@ -35,13 +35,14 @@ function upsert<T extends { id: string }>(items: T[], item: T): T[] | null {
 export function reduce(state: EngineState, action: EngineAction): EngineState {
   switch (action.type) {
     case 'slide/show': {
-      const { presentationId, slideIndex, slideCount, arrangementId, slide, notes, at } = action;
+      const { presentationId, slideIndex, slideCount, arrangementId, playlist, slide, notes, at } = action;
       const live = state.live;
       const sameCursor =
         live.presentationId === presentationId &&
         live.slideIndex === slideIndex &&
         live.slideCount === slideCount &&
-        live.arrangementId === arrangementId;
+        live.arrangementId === arrangementId &&
+        sameData(live.playlist, playlist);
       const current = state.layers.slide;
       const samePlace =
         current !== null && current.presentationId === presentationId && current.slideIndex === slideIndex;
@@ -51,7 +52,7 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       const shownAt = samePlace ? current.shownAt : at;
       return {
         ...state,
-        live: sameCursor ? live : { presentationId, slideIndex, slideCount, arrangementId },
+        live: sameCursor ? live : { presentationId, slideIndex, slideCount, arrangementId, playlist },
         layers: sameSlide
           ? state.layers
           : { ...state.layers, slide: { presentationId, slideIndex, slide, shownAt, notes } },
@@ -76,6 +77,22 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
             : state.layers,
       };
     }
+    case 'live/item': {
+      const live = state.live;
+      if (live.presentationId === null && sameData(live.playlist, action.playlist)) return state;
+      return {
+        ...state,
+        live: {
+          presentationId: null,
+          slideIndex: null,
+          slideCount: 0,
+          arrangementId: null,
+          playlist: action.playlist,
+        },
+      };
+    }
+    case 'next/set':
+      return sameData(state.next, action.next) ? state : { ...state, next: action.next };
     case 'layer/clear':
       return clearLayer(state, action.layer);
     case 'layers/clearAll':

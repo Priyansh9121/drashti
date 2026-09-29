@@ -28,7 +28,7 @@ function live(
   const slideIndex = patch.slideIndex === undefined ? 2 : patch.slideIndex;
   return {
     ...s,
-    live: { presentationId: 'p1', slideIndex: 2, slideCount: 5, arrangementId: null },
+    live: { presentationId: 'p1', slideIndex: 2, slideCount: 5, arrangementId: null, playlist: null },
     blackout: patch.blackout ?? false,
     layers: {
       ...s.layers,
@@ -63,10 +63,37 @@ describe('restart recovery', () => {
       engineVersion: ENGINE_STATE_VERSION,
       savedAt: '1970-01-01T00:00:00.000Z',
       slide: { presentationId: 'p1', slideIndex: 2, arrangementId: null },
+      playlist: null,
       background,
       blackout: true,
     });
     expect(savedFrom(live({ slideIndex: null }), 'run-1').slide).toBeNull();
+  });
+
+  it('keeps the playlist item being played, even with nothing else on screen', async () => {
+    const playlist = { playlistId: 'sunday', itemId: 'item-3' };
+    const state = live({ slideIndex: null, withBackground: false });
+    const onItem = { ...state, live: { ...state.live, presentationId: null, slideIndex: null, playlist } };
+    expect(savedFrom(onItem, 'run-1').playlist).toEqual(playlist);
+    const writer = new LiveStateWriter(files, { throttleMs: 10 });
+    await saved(writer, onItem);
+    expect(toRestore(files)).toMatchObject({ slide: null, playlist, background: null });
+  });
+
+  it('reads files saved before playlists could be played', () => {
+    writeFileSync(
+      files.state,
+      JSON.stringify({
+        version: 1,
+        session: 'old-run',
+        engineVersion: 3,
+        savedAt: '2026-09-01T10:00:00.000Z',
+        slide: { presentationId: 'p1', slideIndex: 1, arrangementId: null },
+        background: null,
+        blackout: false,
+      }),
+    );
+    expect(toRestore(files)).toMatchObject({ slide: { slideIndex: 1 }, playlist: null });
   });
 
   it('puts back what was live after an unexpected stop', async () => {

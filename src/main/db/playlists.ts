@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { ImportSource } from '../../shared/library';
 import type { ItemOrder, NewItem, PlaylistItemInfo, PlaylistNode } from '../../shared/playlists';
+import type { PlayItem } from '../engine/playlist-source';
 import type { Db } from './database';
 
 const NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
@@ -293,6 +294,43 @@ export class PlaylistRepo {
         )
         .all(playlistId) as ItemRow[]
     ).map(itemInfo);
+  }
+
+  /** A playlist's items as the show engine plays them, or null if the playlist does not exist (or was removed). */
+  playItems(playlistId: string): PlayItem[] | null {
+    if (!this.isOpenPlaylist(playlistId, false)) return null;
+    return this.itemsOf(playlistId).map((item): PlayItem => {
+      switch (item.kind) {
+        case 'presentation':
+          if (item.presentationName === null)
+            return { id: item.id, kind: 'skip', why: `“${item.label}” is no longer in the library` };
+          return {
+            id: item.id,
+            kind: 'presentation',
+            presentationId: item.presentationId,
+            arrangementId:
+              item.order.mode === 'presentation'
+                ? undefined
+                : item.order.mode === 'all'
+                  ? null
+                  : item.order.arrangementId,
+          };
+        case 'media':
+          if (item.missing)
+            return { id: item.id, kind: 'skip', why: `The file for “${item.label}” is missing` };
+          if (item.unplayable !== null)
+            return {
+              id: item.id,
+              kind: 'skip',
+              why: `Drashti cannot play “${item.label}” (${item.unplayable})`,
+            };
+          return { id: item.id, kind: 'media', mediaId: item.mediaId, media: item.media, label: item.label };
+        case 'header':
+          return { id: item.id, kind: 'skip', why: 'A header has nothing to show' };
+        case 'placeholder':
+          return { id: item.id, kind: 'skip', why: `“${item.label}” was not found at import` };
+      }
+    });
   }
 
   private isOpenPlaylist(id: string, folder: boolean): boolean {

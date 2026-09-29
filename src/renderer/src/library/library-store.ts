@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import type { PresentationDoc, PresentationSummary } from '../../../shared/library';
-import type { MediaSummary } from '../../../shared/playlists';
+import type { MediaSummary, PlaylistItemInfo } from '../../../shared/playlists';
+
+/** A playlist item, with the playlist it is in. */
+export type ShownItem = PlaylistItemInfo & { playlistId: string };
 
 interface LibraryView {
   presentations: PresentationSummary[];
@@ -11,6 +14,12 @@ interface LibraryView {
   marked: string[];
   /** Where a Shift-click range starts. */
   anchorId: string | null;
+  /**
+   * The playlist item the slide grid shows, when the operator picked one in
+   * a playlist (its order can differ from the presentation's); null when
+   * the grid shows the presentation picked in the library.
+   */
+  item: ShownItem | null;
 }
 
 export const useLibrary = create<LibraryView>(() => ({
@@ -19,7 +28,20 @@ export const useLibrary = create<LibraryView>(() => ({
   doc: null,
   marked: [],
   anchorId: null,
+  item: null,
 }));
+
+/** Show a playlist item in the slide grid: a presentation item's slides, or the item itself. */
+export async function showItem(item: ShownItem): Promise<void> {
+  useLibrary.setState({ item });
+  if (item.kind === 'presentation' && item.presentationName !== null)
+    await selectPresentation(item.presentationId);
+}
+
+/** Back to the library's own selection (the grid no longer shows a playlist item). */
+export function leaveItem(): void {
+  if (useLibrary.getState().item) useLibrary.setState({ item: null });
+}
 
 export async function selectPresentation(id: string): Promise<void> {
   useLibrary.setState((s) => ({
@@ -37,6 +59,7 @@ export async function selectPresentation(id: string): Promise<void> {
  * Cmd/Ctrl adds or takes one away; Shift marks the range from the last click.
  */
 export function clickPresentation(id: string, mods: { toggle: boolean; range: boolean }): void {
+  leaveItem();
   const { presentations, marked, anchorId } = useLibrary.getState();
   if (mods.range && anchorId) {
     const ids = presentations.map((p) => p.id);

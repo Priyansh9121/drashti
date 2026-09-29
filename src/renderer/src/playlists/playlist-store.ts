@@ -1,6 +1,14 @@
 import { create } from 'zustand';
-import type { NewItem, PlaylistItemInfo, PlaylistNode, PlaylistResult } from '../../../shared/playlists';
-import { useLibrary } from '../library/library-store';
+import type { PlaylistCursor } from '../../../shared/engine/state';
+import type {
+  ItemOrder,
+  NewItem,
+  PlaylistItemInfo,
+  PlaylistNode,
+  PlaylistResult,
+} from '../../../shared/playlists';
+import { useEngine } from '../engine/engine-store';
+import { leaveItem, showItem, useLibrary } from '../library/library-store';
 import { describeSome, pushRemoval } from '../library/undo';
 
 /*
@@ -75,6 +83,14 @@ export async function loadItems(): Promise<void> {
     marked: s.marked.filter((id) => ids.has(id)),
     anchorId: s.anchorId && ids.has(s.anchorId) ? s.anchorId : null,
   }));
+  // The item in the slide grid follows its changes (a new order, a filled placeholder); gone, the grid lets it go.
+  const shown = useLibrary.getState().item;
+  if (shown?.playlistId === openId) {
+    const now = items.find((i) => i.id === shown.id);
+    const { playlistId: _, ...before } = shown;
+    if (!now) leaveItem();
+    else if (JSON.stringify(now) !== JSON.stringify(before)) await showItem({ ...now, playlistId: openId });
+  }
 }
 
 async function reload(): Promise<void> {
@@ -92,6 +108,40 @@ export function watchPlaylists(): void {
   useLibrary.subscribe((s, before) => {
     if (s.presentations !== before.presentations) void reload();
   });
+  // Follow the show: when Next moves on to another item, the grid shows it, if it was showing the
+  // item that was live. After a restart the playlist being played opens by itself.
+  useEngine.subscribe((s, before) => {
+    const now = s.state?.live.playlist ?? null;
+    const was = before.state?.live.playlist ?? null;
+    if (!now || (was?.playlistId === now.playlistId && was.itemId === now.itemId)) return;
+    const shown = useLibrary.getState().item;
+    const following =
+      shown !== null && was !== null && shown.playlistId === was.playlistId && shown.id === was.itemId;
+    const firstLook = before.state === null && shown === null;
+    if (following || firstLook) void followItem(now);
+  });
+}
+
+/** Open the playlist being played and show its live item. */
+async function followItem(cursor: PlaylistCursor): Promise<void> {
+  if (usePlaylists.getState().openId !== cursor.playlistId) await openPlaylist(cursor.playlistId);
+  const item = usePlaylists.getState().items.find((i) => i.id === cursor.itemId);
+  if (!item) return;
+  usePlaylists.setState({ marked: [item.id], anchorId: item.id });
+  await showItem({ ...item, playlistId: cursor.playlistId });
+}
+
+/** A plain click on an item: mark it and show it in the slide grid. */
+export async function pickItem(item: PlaylistItemInfo): Promise<void> {
+  const { openId } = usePlaylists.getState();
+  if (!openId) return;
+  clickItem(item.id, { toggle: false, range: false });
+  await showItem({ ...item, playlistId: openId });
+}
+
+/** The order a presentation item plays in (its own arrangement, or the presentation's). */
+export async function setItemOrder(itemId: string, order: ItemOrder): Promise<void> {
+  if (settled(await api().setItemOrder(itemId, order))) await loadItems();
 }
 
 // ---- the tree ------------------------------------------------------------------

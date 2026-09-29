@@ -18,6 +18,7 @@ import type { OperatorAction } from '../../../shared/keymap';
 import { KEYMAP, shortcutText } from '../../../shared/keymap';
 import { LiveControls } from './LiveControls';
 import { LivePreview } from './LivePreview';
+import { NextPreview } from './NextPreview';
 import { PresentationList } from './PresentationList';
 import { SlideGrid } from './SlideGrid';
 import { SoundWarning } from '../screens/SoundOutput';
@@ -94,6 +95,7 @@ export function App() {
       >
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">On the screens now</h2>
         <LivePreview />
+        <NextPreview />
         {notice && (
           <p
             role="alert"

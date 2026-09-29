@@ -7,7 +7,7 @@ import type { Rect, RenderSlide, SlideElement } from '../model';
  *
  * Bump ENGINE_STATE_VERSION whenever the shape changes incompatibly.
  */
-export const ENGINE_STATE_VERSION = 3;
+export const ENGINE_STATE_VERSION = 4;
 
 export type LayerName = 'audio' | 'background' | 'slide' | 'props' | 'messages' | 'masks';
 
@@ -21,7 +21,17 @@ export const LAYER_NAMES = [
   'masks',
 ] as const satisfies readonly LayerName[];
 
-/** Where the operator is: the live presentation and slide, even while the slide layer is cleared. */
+/** A playlist item being played. */
+export interface PlaylistCursor {
+  playlistId: string;
+  itemId: string;
+}
+
+/**
+ * Where the operator is: the live presentation and slide, even while the
+ * slide layer is cleared, and the playlist item it came from. On a media
+ * item there is no presentation, only the item.
+ */
 export interface LiveCursor {
   presentationId: string | null;
   /** Position in the playing order (an arrangement can show a slide more than once). */
@@ -29,6 +39,8 @@ export interface LiveCursor {
   slideCount: number;
   /** The arrangement being played, or null for every slide in order. */
   arrangementId: string | null;
+  /** The playlist item being played, or null when playing from the library. */
+  playlist: PlaylistCursor | null;
 }
 
 export interface SlideLayer {
@@ -122,12 +134,33 @@ export interface Layers {
   masks: MaskLayer | null;
 }
 
+/**
+ * What Next will show: the next slide (in this presentation, or the first of
+ * the next playlist item) or the next media item. The operator window shows
+ * it beside the live picture, and every output loads its images and videos
+ * ahead of time.
+ */
+export type UpNext =
+  | {
+      kind: 'slide';
+      presentationId: string;
+      slideIndex: number;
+      slide: RenderSlide;
+      /** The background its cue puts up, if it has one that can play. */
+      background: MediaBackground | null;
+      /** The playlist item it starts, when it is in the next item. */
+      itemId: string | null;
+    }
+  | { kind: 'media'; itemId: string; mediaId: string; media: 'image' | 'video' | 'audio'; label: string };
+
 export interface EngineState {
   version: typeof ENGINE_STATE_VERSION;
   live: LiveCursor;
   layers: Layers;
   /** Output-wide black-out. Independent of the layers, so turning it off restores the picture. */
   blackout: boolean;
+  /** What Next will show, or null when nothing follows. */
+  next: UpNext | null;
 }
 
 export function emptyLayers(): Layers {
@@ -137,9 +170,10 @@ export function emptyLayers(): Layers {
 export function initialEngineState(): EngineState {
   return {
     version: ENGINE_STATE_VERSION,
-    live: { presentationId: null, slideIndex: null, slideCount: 0, arrangementId: null },
+    live: { presentationId: null, slideIndex: null, slideCount: 0, arrangementId: null, playlist: null },
     layers: emptyLayers(),
     blackout: false,
+    next: null,
   };
 }
 

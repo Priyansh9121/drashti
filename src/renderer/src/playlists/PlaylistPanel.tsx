@@ -2,7 +2,8 @@ import { useMemo, useRef, useState } from 'react';
 import type { DragEvent, KeyboardEvent, MouseEvent } from 'react';
 import { actionFor, LIBRARY_KEYMAP } from '../../../shared/keymap';
 import type { NewItem, PlaylistItemInfo, PlaylistNode } from '../../../shared/playlists';
-import { selectPresentation } from '../library/library-store';
+import { useEngine } from '../engine/engine-store';
+import { leaveItem, selectPresentation, useLibrary } from '../library/library-store';
 import { mediaKindLabel, mediaProblem } from '../library/MediaList';
 import { Button } from '../ui/Button';
 import type { MenuEntry, MenuPlace } from '../ui/Menu';
@@ -19,6 +20,7 @@ import {
   markedItems,
   moveItems,
   openPlaylist,
+  pickItem,
   removeMarkedItems,
   renameHeader,
   renameNode,
@@ -357,7 +359,13 @@ function itemMenu(item: PlaylistItemInfo): MenuEntry[] {
   if (item.kind === 'header') return [{ label: 'Rename…', onSelect: () => startRenaming(item.id) }, remove];
   if (item.kind === 'presentation' && item.presentationName !== null)
     return [
-      { label: 'Show in the library', onSelect: () => void selectPresentation(item.presentationId) },
+      {
+        label: 'Show in the library',
+        onSelect: () => {
+          leaveItem();
+          void selectPresentation(item.presentationId);
+        },
+      },
       remove,
     ];
   return [remove];
@@ -371,6 +379,10 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
   const [spot, setSpot] = useState<DropSpot | null>(null);
   const [menu, setMenu] = useState<{ at: MenuPlace; item: PlaylistItemInfo } | null>(null);
   const markedSet = new Set(marked);
+  const liveItem = useEngine((s) =>
+    s.state?.live.playlist?.playlistId === openId ? s.state.live.playlist.itemId : null,
+  );
+  const shownItem = useLibrary((s) => (s.item?.playlistId === openId ? s.item.id : null));
 
   const spotFor = (e: DragEvent): DropSpot => {
     const row = (e.target as HTMLElement).closest<HTMLElement>('[data-item-index]');
@@ -468,6 +480,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
       >
         {items.map((item, index) => {
           const isMarked = markedSet.has(item.id);
+          const isLive = liveItem === item.id;
           const line =
             lineAt === index
               ? 'shadow-[0_-2px_0_0_var(--color-accent)]'
@@ -503,7 +516,9 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                 data-kind={item.kind}
                 data-item-id={item.id}
                 data-marked={isMarked ? 'true' : undefined}
+                data-live={isLive ? 'true' : undefined}
                 aria-pressed={isMarked}
+                aria-current={shownItem === item.id ? 'true' : undefined}
                 aria-label={
                   item.kind === 'placeholder'
                     ? `Not found: ${item.label}. Drag a presentation here to replace it.`
@@ -511,14 +526,9 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                 }
                 onClick={(e) => {
                   const mods = { toggle: platform === 'darwin' ? e.metaKey : e.ctrlKey, range: e.shiftKey };
-                  clickItem(item.id, mods);
-                  if (
-                    !mods.toggle &&
-                    !mods.range &&
-                    item.kind === 'presentation' &&
-                    item.presentationName !== null
-                  )
-                    void selectPresentation(item.presentationId);
+                  // A plain click shows the item in the slide grid; with Cmd/Ctrl or Shift it only marks.
+                  if (mods.toggle || mods.range) clickItem(item.id, mods);
+                  else void pickItem(item);
                 }}
                 onDoubleClick={() => {
                   if (item.kind === 'header') startRenaming(item.id);
@@ -552,7 +562,14 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                       : 'hover:bg-panel-2'
                 }`}
               >
-                <ItemBody item={item} />
+                <span className="flex items-start gap-2">
+                  {isLive && (
+                    <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-live" aria-label="Live" />
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <ItemBody item={item} />
+                  </span>
+                </span>
               </button>
             </li>
           );

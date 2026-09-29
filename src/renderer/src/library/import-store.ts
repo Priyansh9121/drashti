@@ -8,7 +8,7 @@ import type {
   ImportRunSummary,
 } from '../../../shared/import';
 import { useEngine } from '../engine/engine-store';
-import { loadLibrary, selectPresentation, useLibrary } from './library-store';
+import { leaveItem, loadLibrary, selectPresentation, useLibrary } from './library-store';
 import { describeSome, pushRemoval } from './undo';
 
 /*
@@ -160,6 +160,7 @@ async function restorePresentations(ids: string[]): Promise<void> {
   await loadLibrary();
   const first = result.ok ? result.ids[0] : undefined;
   if (first) {
+    leaveItem();
     useLibrary.setState({ marked: result.ok ? result.ids : [], anchorId: first });
     await selectPresentation(first);
   }
