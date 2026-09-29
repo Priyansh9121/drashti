@@ -1,5 +1,6 @@
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { _electron as electron, expect } from '@playwright/test';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -52,6 +53,49 @@ export async function useDisplay(page: Page, row = page.getByTestId('display-row
   await expect(added).toBeVisible();
 }
 
+/**
+ * The operator window's page, found by its page rather than by window order:
+ * after a restart the outputs can open first.
+ */
+export async function operatorPage(app: ElectronApplication): Promise<Page> {
+  const isOperator = (p: Page) => p.url().includes('index.html');
+  const existing = app.windows().find(isOperator);
+  if (existing) return existing;
+  return app.waitForEvent('window', { predicate: isOperator });
+}
+
+/** Stop the app dead, as a crash or power cut would: the whole process tree, with no chance to quit cleanly. */
+export async function killApp(app: ElectronApplication): Promise<void> {
+  const child = app.process();
+  const exited = new Promise<void>((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) resolve();
+    else child.once('exit', () => resolve());
+  });
+  if (process.platform === 'win32' && child.pid)
+    spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F']);
+  else child.kill('SIGKILL');
+  await exited;
+}
+
+/**
+ * Start the app again on the same data folder. A killed instance can take a
+ * moment to let go of the single-instance lock (slow Windows machines), and
+ * a second instance started before then quits at once: try a few times.
+ */
+export async function relaunchApp(
+  userDataDir: string,
+  extraEnv: Record<string, string> = {},
+): ReturnType<typeof launchApp> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await launchApp(extraEnv, userDataDir);
+    } catch (error) {
+      if (attempt >= 5) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+}
+
 /** The first output window's page, waiting for it to open. */
 export async function outputPage(app: ElectronApplication): Promise<Page> {
   const existing = app.windows().find((w) => w.url().includes('output.html'));
@@ -93,4 +137,33 @@ export async function importAndGetIds(win: Page, files: string[]): Promise<strin
     const report = await d.library.getImportReport(result.run.id);
     return paths.map((p) => report?.items.find((i) => i.sourcePath === p)?.target?.id ?? '');
   }, files);
+}
+
+/**
+ * Drop files from disk onto an element, as a drag from the desktop does. A file
+ * input gives the page File objects backed by the real files, so the preload
+ * can tell their paths; they are then dropped with a DataTransfer.
+ */
+export async function dropFiles(page: Page, target: Locator, paths: string[]): Promise<void> {
+  await page.evaluate(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.id = 'e2e-drop-source';
+    input.style.display = 'none';
+    document.body.appendChild(input);
+  });
+  await page.setInputFiles('#e2e-drop-source', paths);
+  const dataTransfer = await page.evaluateHandle(() => {
+    const input = document.getElementById('e2e-drop-source') as HTMLInputElement;
+    const dt = new DataTransfer();
+    for (const file of Array.from(input.files ?? [])) dt.items.add(file);
+    input.remove();
+    return dt;
+  });
+  await target.dispatchEvent('dragenter', { dataTransfer });
+  await target.dispatchEvent('dragover', { dataTransfer });
+  await expect(page.getByTestId('drop-overlay')).toBeVisible();
+  await target.dispatchEvent('drop', { dataTransfer });
+  await expect(page.getByTestId('drop-overlay')).toHaveCount(0);
 }

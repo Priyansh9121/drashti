@@ -2,7 +2,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import Database from 'better-sqlite3';
 import { join } from 'node:path';
-import { launchApp, useDisplay } from './helpers';
+import { launchApp, operatorPage, useDisplay } from './helpers';
 
 async function outputPage(app: ElectronApplication): Promise<Page> {
   const existing = app.windows().find((w) => w.url().includes('output.html'));
@@ -64,7 +64,7 @@ test('screen groups: assign a display, open an output, restore it after a restar
   app = second.app;
   const out2 = await outputPage(app);
   await expect(out2.getByTestId('output-root')).toHaveAttribute('data-screen', /.+/);
-  const win2 = await app.firstWindow();
+  const win2 = await operatorPage(app);
   await win2.getByRole('button', { name: 'Screens', exact: true }).click();
   await expect(win2.getByLabel('Canvas width')).toHaveValue('1536');
   await expect(win2.getByTestId('screen-state')).toContainText('Showing');
@@ -87,7 +87,7 @@ test('screen groups: assign a display, open an output, restore it after a restar
 
   const third = await launchApp({}, first.userData);
   app = third.app;
-  const win3 = await app.firstWindow();
+  const win3 = await operatorPage(app);
   await win3.getByRole('button', { name: 'Screens', exact: true }).click();
   await expect(win3.getByTestId('screen-state')).toHaveText('Display not connected');
   expect(app.windows().some((w) => w.url().includes('output.html'))).toBe(false);

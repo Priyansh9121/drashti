@@ -8,6 +8,8 @@ import type { ImportSource } from '../../shared/library';
 import type { Db } from '../db/database';
 import type { MediaKind } from './scan';
 import { fileNameOf } from './media-resolver';
+import type { MediaProbe } from './probe';
+import { probeMedia } from './probe';
 import { extOf, mediaKindOf } from './scan';
 
 /*
@@ -26,7 +28,15 @@ export interface MediaStoreOptions {
 }
 
 export type MediaImportResult =
-  | { outcome: 'imported' | 'skipped'; mediaId: string; sha256: string; bytes: number; name: string }
+  | {
+      outcome: 'imported' | 'skipped';
+      mediaId: string;
+      sha256: string;
+      bytes: number;
+      name: string;
+      /** What the file really is, and whether it plays. */
+      probe: MediaProbe;
+    }
   | { outcome: 'failed'; issue: ImportIssue };
 
 type MediaSource = Pick<ImportSource, 'kind'> & { path: string; ref?: string | null };
@@ -39,9 +49,15 @@ export interface StagedMedia {
   rel: string;
   sha256: string;
   bytes: number;
+  /** What it really is, and whether Drashti can play it. */
+  probe: MediaProbe;
 }
 
 const GiB = 1024 ** 3;
+
+/** The media.playable column: 1, 0, or NULL when not sure. */
+const playableValue = (probe: MediaProbe): number | null =>
+  probe.playable === null ? null : probe.playable ? 1 : 0;
 
 export function diskFreeBytes(dir: string): number {
   const s = statfsSync(dir);
@@ -156,7 +172,8 @@ export class MediaStore {
         };
       }
     }
-    return { ok: true, staged: { kind, name, rel, ...hashed } };
+    const probe = await probeMedia(target);
+    return { ok: true, staged: { kind, name, rel, ...hashed, probe } };
   }
 
   /**
@@ -177,19 +194,24 @@ export class MediaStore {
   addStaged(staged: StagedMedia, source: MediaSource): Extract<MediaImportResult, { mediaId: string }> {
     const existing = this.bySha(staged.sha256);
     if (existing) {
+      // Imported before playability was known: record it now.
+      this.db
+        .prepare('UPDATE media SET playable = ?, format = ? WHERE id = ? AND playable IS NULL')
+        .run(playableValue(staged.probe), staged.probe.format, existing.id);
       return {
         outcome: 'skipped',
         mediaId: existing.id,
         sha256: staged.sha256,
         bytes: staged.bytes,
         name: existing.name,
+        probe: staged.probe,
       };
     }
     const id = randomUUID();
     this.db
       .prepare(
-        `INSERT INTO media (id, kind, name, path, sha256, bytes, source_kind, source_path, source_ref, source_imported_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO media (id, kind, name, path, sha256, bytes, playable, format, source_kind, source_path, source_ref, source_imported_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -198,6 +220,8 @@ export class MediaStore {
         staged.rel,
         staged.sha256,
         staged.bytes,
+        playableValue(staged.probe),
+        staged.probe.format,
         source.kind,
         source.path,
         source.ref ?? null,
@@ -209,6 +233,7 @@ export class MediaStore {
       sha256: staged.sha256,
       bytes: staged.bytes,
       name: staged.name,
+      probe: staged.probe,
     };
   }
 
@@ -281,13 +306,28 @@ export class MediaStore {
         sha256: stored.sha256,
         bytes: stored.bytes,
         name: existing.name,
+        probe: stored.probe,
       };
     }
     this.db
       .prepare(
-        "UPDATE media SET path = ?, sha256 = ?, bytes = ?, missing = 0, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+        "UPDATE media SET path = ?, sha256 = ?, bytes = ?, missing = 0, playable = ?, format = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
       )
-      .run(stored.rel, stored.sha256, stored.bytes, mediaId);
-    return { outcome: 'imported', mediaId, sha256: stored.sha256, bytes: stored.bytes, name: stored.name };
+      .run(
+        stored.rel,
+        stored.sha256,
+        stored.bytes,
+        playableValue(stored.probe),
+        stored.probe.format,
+        mediaId,
+      );
+    return {
+      outcome: 'imported',
+      mediaId,
+      sha256: stored.sha256,
+      bytes: stored.bytes,
+      name: stored.name,
+      probe: stored.probe,
+    };
   }
 }

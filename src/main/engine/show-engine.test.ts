@@ -201,6 +201,7 @@ describe('ShowEngine', () => {
       label: '',
       name: `${background.mediaId}.mp4`,
       missing: false,
+      unplayable: null,
       background,
     });
 
@@ -329,6 +330,7 @@ describe('ShowEngine', () => {
       label: `Placeholder ${mediaId}`,
       name: `${mediaId}.mp3`,
       missing: false,
+      unplayable: null,
       mediaId,
       volume: 0.8,
       loop: true,
@@ -416,6 +418,7 @@ describe('ShowEngine', () => {
               label: '',
               name: 'x',
               missing: false,
+              unplayable: null,
               background: { ...background, mediaId: 'other' },
             },
           ],

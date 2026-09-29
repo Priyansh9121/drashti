@@ -1,11 +1,11 @@
-import type { ElectronApplication, Locator, Page } from '@playwright/test';
+import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import type { PageGlobals } from './helpers';
-import { launchApp } from './helpers';
+import { dropFiles, launchApp } from './helpers';
 
 /*
  * Importing from the operator window: drag files onto the presentation
@@ -19,35 +19,6 @@ async function outputPage(app: ElectronApplication): Promise<Page> {
   const existing = app.windows().find((w) => w.url().includes('output.html'));
   if (existing) return existing;
   return app.waitForEvent('window', { predicate: (w) => w.url().includes('output.html') });
-}
-
-/**
- * Drop files from disk onto an element, as a drag from the desktop does. A file
- * input gives the page File objects backed by the real files, so the preload
- * can tell their paths; they are then dropped with a DataTransfer.
- */
-async function dropFiles(page: Page, target: Locator, paths: string[]): Promise<void> {
-  await page.evaluate(() => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.id = 'e2e-drop-source';
-    input.style.display = 'none';
-    document.body.appendChild(input);
-  });
-  await page.setInputFiles('#e2e-drop-source', paths);
-  const dataTransfer = await page.evaluateHandle(() => {
-    const input = document.getElementById('e2e-drop-source') as HTMLInputElement;
-    const dt = new DataTransfer();
-    for (const file of Array.from(input.files ?? [])) dt.items.add(file);
-    input.remove();
-    return dt;
-  });
-  await target.dispatchEvent('dragenter', { dataTransfer });
-  await target.dispatchEvent('dragover', { dataTransfer });
-  await expect(page.getByTestId('drop-overlay')).toBeVisible();
-  await target.dispatchEvent('drop', { dataTransfer });
-  await expect(page.getByTestId('drop-overlay')).toHaveCount(0);
 }
 
 test('drag lyrics onto the library, read the report, go live, remove and undo, import with the button', async () => {

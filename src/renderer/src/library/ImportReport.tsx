@@ -40,8 +40,10 @@ function Fixes({ item }: { item: ImportItemReport }) {
   const seen = new Set<string>();
   for (const issue of item.issues) {
     const fix = issue.fix;
-    if (!fix || seen.has(fix.kind)) continue;
-    seen.add(fix.kind);
+    // One of each kind of fix (and each piece of advice).
+    const key = fix?.kind === 'convert-media' ? `${fix.kind}:${fix.advice}` : fix?.kind;
+    if (!fix || !key || seen.has(key)) continue;
+    seen.add(key);
     switch (fix.kind) {
       case 'relink-media':
         out.push(
@@ -87,6 +89,13 @@ function Fixes({ item }: { item: ImportItemReport }) {
         out.push(
           <span key="font" className="text-muted">
             No converter for {fix.font} yet: it shows in its own font.
+          </span>,
+        );
+        break;
+      case 'convert-media':
+        out.push(
+          <span key={key} className="text-muted">
+            {fix.advice}
           </span>,
         );
         break;

@@ -57,6 +57,8 @@ export interface CueRow {
   media_name: string | null;
   media_kind: string | null;
   media_missing: number | null;
+  media_playable?: number | null;
+  media_format?: string | null;
 }
 
 const FITS: readonly string[] = ['fit', 'fill', 'stretch'] satisfies MediaFit[];
@@ -79,6 +81,8 @@ export function cueFromRow(row: CueRow): SlideCue | null {
   if (!row.media_id) return null;
   const media = row.media_kind;
   const props = propsOf(row);
+  const unplayable =
+    row.media_playable === 0 ? (row.media_format ?? 'a kind of file Drashti cannot play') : null;
   if (row.kind === 'audio') {
     // A video file's sound plays too.
     if (media !== 'audio' && media !== 'video') return null;
@@ -89,6 +93,7 @@ export function cueFromRow(row: CueRow): SlideCue | null {
       label: row.label,
       name: row.media_name ?? '',
       missing: row.media_missing === 1,
+      unplayable,
       mediaId: row.media_id,
       volume: Math.min(1, Math.max(0, volume)),
       loop: props['loop'] === true,
@@ -102,6 +107,7 @@ export function cueFromRow(row: CueRow): SlideCue | null {
     label: row.label,
     name: row.media_name ?? '',
     missing: row.media_missing === 1,
+    unplayable,
     background: {
       kind: 'media',
       mediaId: row.media_id,
@@ -274,7 +280,8 @@ export class PresentationRepo {
     const cueRows = this.db
       .prepare(
         `SELECT c.slide_id, c.kind, c.label, c.props, c.media_id,
-                m.name AS media_name, m.kind AS media_kind, m.missing AS media_missing
+                m.name AS media_name, m.kind AS media_kind, m.missing AS media_missing,
+                m.playable AS media_playable, m.format AS media_format
            FROM slide_cues c JOIN slides s ON s.id = c.slide_id JOIN slide_groups g ON g.id = s.group_id
            LEFT JOIN media m ON m.id = c.media_id
           WHERE g.presentation_id = ?
