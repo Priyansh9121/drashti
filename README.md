@@ -153,7 +153,7 @@ Slide changes must keep reaching the screens within a frame while a big import r
   Select-String DRASHTI_PERFTEST_RESULT "$env:TEMP\drashti-perf.txt"
   ```
 
-  The line is JSON: `passed`, each check with its figure, and a `summary` with every timing. It passes when, during the import, half the slide changes reach a painted frame within 17 ms (one frame at 60 Hz), 9 in 10 within 34 ms, and no more than 2% take over 100 ms. Keep the line with the parallel-run notes.
+  The line is JSON: `passed`, each check with its figure, and a `summary` with every timing. It passes when, during the import, half the slide changes reach a painted frame within 17 ms (one frame at 60 Hz), 9 in 10 within 34 ms, and no more than 2% take over 100 ms. Run it twice and keep the second line with the parallel-run notes: the first run after installing can be slow while the system checks the new app (on the dev Mac the first run of a fresh build failed, and the next two passed easily).
 
 - **From the source**: `pnpm test:perf` runs the same self-test and prints each check.
 - **On CI's machines**, by hand: the **Performance** workflow (Actions, then Performance, then Run workflow), for comparing one change with another.
