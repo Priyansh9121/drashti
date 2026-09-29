@@ -1,13 +1,39 @@
 import { memo } from 'react';
 import type { EngineState, MaskLayer, MessageItem } from '../../../shared/engine/state';
+import type { TimerState } from '../../../shared/timers';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { BackgroundMedia } from './BackgroundMedia';
 import { LANG_FONT_STACK } from './fonts';
 import { Placed } from './Placed';
 import { ElementView, SlideView } from './SlideView';
+import { TimerText } from './TimerText';
 
-function MessageBanner({ messages, canvas }: { messages: MessageItem[]; canvas: Size }) {
+/** A message's words and live timers. */
+function MessageText({ message, timers }: { message: MessageItem; timers: readonly TimerState[] }) {
+  if (!message.parts) return <>{message.text}</>;
+  return (
+    <>
+      {message.parts.map((part, i) =>
+        part.kind === 'text' ? (
+          <span key={i}>{part.text}</span>
+        ) : (
+          <TimerText key={i} timer={timers.find((t) => t.id === part.timerId)} />
+        ),
+      )}
+    </>
+  );
+}
+
+function MessageBanner({
+  messages,
+  timers,
+  canvas,
+}: {
+  messages: MessageItem[];
+  timers: readonly TimerState[];
+  canvas: Size;
+}) {
   const size = Math.round(canvas.height * 0.045);
   return (
     <div
@@ -26,7 +52,12 @@ function MessageBanner({ messages, canvas }: { messages: MessageItem[]; canvas: 
         textAlign: 'center',
       }}
     >
-      {messages.map((m) => m.text).join('   ·   ')}
+      {messages.map((m, i) => (
+        <span key={m.id} data-message={m.id}>
+          {i > 0 && '   ·   '}
+          <MessageText message={m} timers={timers} />
+        </span>
+      ))}
     </div>
   );
 }
@@ -113,7 +144,9 @@ export const Scene = memo(function Scene({
           ))}
         </div>
       ))}
-      {layers.messages.length > 0 && <MessageBanner messages={layers.messages} canvas={canvas} />}
+      {layers.messages.length > 0 && (
+        <MessageBanner messages={layers.messages} timers={state.timers} canvas={canvas} />
+      )}
       {layers.masks && <Mask mask={layers.masks} canvas={canvas} />}
       {state.blackout && (
         <div

@@ -93,5 +93,16 @@ test('a stage screen follows Next with the current and next text, notes, clock a
   await control.getByRole('button', { name: 'Clear' }).click();
   await expect(view.getByTestId('stage-message')).toHaveCount(0);
 
+  // A running timer shows on the stage too.
+  const timers = win.getByTestId('timers');
+  await timers.getByRole('button', { name: '+ Timer' }).click();
+  const form = timers.getByTestId('timer-form');
+  await form.getByRole('textbox', { name: 'Timer name' }).fill('Placeholder talk');
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(view.getByTestId('stage-timer')).toHaveCount(0);
+  await timers.getByRole('button', { name: 'Start' }).click();
+  await expect(view.getByTestId('stage-timer')).toContainText('Placeholder talk');
+  await expect(view.getByTestId('stage-timer')).toContainText(/4:5\d/);
+
   await app.close();
 });

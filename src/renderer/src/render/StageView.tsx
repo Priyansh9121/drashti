@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
 import type { EngineState } from '../../../shared/engine/state';
 import type { RenderSlide, TextElement } from '../../../shared/model';
 import { fontFamilyFor, HTML_LANG } from './fonts';
+import { TimerText } from './TimerText';
+import { useNow } from './useNow';
 
 /*
  * The stage screen (PLAN.md 4.3): what the performers need, in large text
@@ -12,20 +13,6 @@ import { fontFamilyFor, HTML_LANG } from './fonts';
  */
 
 const kindName = { image: 'Picture', video: 'Video', audio: 'Sound' } as const;
-
-/** The time now, redrawn every second. */
-export function useNow(everyMs = 1000): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => {
-      setNow(Date.now());
-    }, everyMs);
-    return () => {
-      clearInterval(t);
-    };
-  }, [everyMs]);
-  return now;
-}
 
 const textElements = (slide: RenderSlide) =>
   slide.elements.filter((e): e is TextElement => e.kind === 'text' && e.text.trim() !== '');
@@ -167,6 +154,23 @@ export function StageView({ state }: { state: EngineState }) {
           >
             {clock}
           </div>
+          {state.timers
+            .filter((t) => t.kind !== 'clock' && (t.startedAt !== null || t.elapsedMs > 0))
+            .map((t) => (
+              <div
+                key={t.id}
+                data-testid="stage-timer"
+                style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: 24 }}
+              >
+                <span style={{ fontSize: 36, color: '#8b93a3', overflowWrap: 'anywhere' }}>
+                  {t.name}
+                  {t.startedAt === null ? ' (paused)' : ''}
+                </span>
+                <span style={{ fontSize: 96, fontWeight: 700, lineHeight: 1, color: '#fde68a' }}>
+                  <TimerText timer={t} />
+                </span>
+              </div>
+            ))}
           <p style={label}>NEXT</p>
           <div data-testid="stage-next" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
             {next?.kind === 'slide' ? (

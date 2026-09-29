@@ -42,7 +42,15 @@ const prop: z.ZodType<PropItem> = z.object({
   name: z.string().max(200),
   elements: z.array(slideElement).max(50),
 });
-const message: z.ZodType<MessageItem> = z.object({ id, text: z.string().min(1).max(500) });
+const messagePart = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('text'), text: z.string().max(500) }),
+  z.object({ kind: z.literal('timer'), timerId: id }),
+]);
+const message: z.ZodType<MessageItem> = z.object({
+  id,
+  text: z.string().min(1).max(500),
+  parts: z.array(messagePart).max(40).optional(),
+});
 const mask: z.ZodType<MaskLayer> = z.object({ id, name: z.string().max(200), visible: rect });
 
 const playlistCursor = z.object({ playlistId: id, itemId: id });
@@ -76,6 +84,10 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('showMessage'), message }),
   z.object({ type: z.literal('hideMessage'), messageId: id }),
   z.object({ type: z.literal('setMask'), mask }),
+  /** Timers: only these three change what the windows count from. */
+  z.object({ type: z.literal('startTimer'), timerId: id }),
+  z.object({ type: z.literal('pauseTimer'), timerId: id }),
+  z.object({ type: z.literal('resetTimer'), timerId: id }),
   /** A message on stage screens only, for the performers. */
   z.object({ type: z.literal('setStageMessage'), text: z.string().trim().min(1).max(300) }),
   z.object({ type: z.literal('clearStageMessage') }),
@@ -91,7 +103,8 @@ export type EngineErrorCode =
   | 'slide-out-of-range'
   | 'nothing-live'
   | 'unknown-item'
-  | 'not-playable';
+  | 'not-playable'
+  | 'unknown-timer';
 
 export type CommandResult =
   { ok: true; changed: boolean; rev: number } | { ok: false; error: EngineErrorCode; message: string };

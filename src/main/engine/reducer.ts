@@ -95,6 +95,21 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       return sameData(state.next, action.next) ? state : { ...state, next: action.next };
     case 'stage/message':
       return state.stageMessage === action.text ? state : { ...state, stageMessage: action.text };
+    case 'timers/define': {
+      const runs = new Map(state.timers.map((t) => [t.id, t]));
+      const timers = action.timers.map((d) => {
+        const was = runs.get(d.id);
+        return { ...d, startedAt: was?.startedAt ?? null, elapsedMs: was?.elapsedMs ?? 0 };
+      });
+      return sameData(state.timers, timers) ? state : { ...state, timers };
+    }
+    case 'timer/run': {
+      const { timerId, run } = action;
+      const current = state.timers.find((t) => t.id === timerId);
+      if (!current || (current.startedAt === run.startedAt && current.elapsedMs === run.elapsedMs))
+        return state;
+      return { ...state, timers: state.timers.map((t) => (t.id === timerId ? { ...t, ...run } : t)) };
+    }
     case 'layer/clear':
       return clearLayer(state, action.layer);
     case 'layers/clearAll':

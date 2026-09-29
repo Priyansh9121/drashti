@@ -24,6 +24,7 @@ import { SlideGrid } from './SlideGrid';
 import { SoundWarning } from '../screens/SoundOutput';
 import { RecoveryBanner } from './RecoveryBanner';
 import { StageMessageControl } from './StageControls';
+import { TimersPanel } from './TimersPanel';
 import { LiveStatus, ScreensSummary } from './StatusLine';
 import { isTyping, useKeymap } from './useKeymap';
 
@@ -107,6 +108,7 @@ export function App() {
         )}
         <LiveControls platform={platform} run={run} />
         <StageMessageControl />
+        <TimersPanel />
       </aside>
 
       <footer className="col-span-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line bg-panel px-4 py-1.5 text-xs text-muted">
