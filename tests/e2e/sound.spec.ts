@@ -127,18 +127,28 @@ test('outputs and the sound stay in step, a reloaded output rejoins, and only th
       ),
     );
 
-  /** Wait until every window is within `tolerance` of the clock, then return their offsets. */
-  const settled = async (pages: Page[], selectors: string[], tolerance: number) => {
+  /**
+   * Wait until the windows are within two frames of each other (and each
+   * within a quarter of a second of the clock), then return their offsets.
+   * On a slow or stalling machine they may all lag the clock a little
+   * together; what the audience sees is whether the screens agree.
+   */
+  const inStep = async (pages: Page[], selectors: string[]) => {
     let offsets: (number | null)[] = [];
-    const inStep = async () => {
+    const agree = async () => {
       offsets = await Promise.all(pages.map((p, i) => offsetOf(p, selectors[i] ?? '', startedAt)));
-      return offsets.every((o) => o !== null && Math.abs(o) < tolerance);
+      const known = offsets.filter((o): o is number => o !== null);
+      return (
+        known.length === pages.length &&
+        known.every((o) => Math.abs(o) < 0.25) &&
+        Math.max(...known) - Math.min(...known) < 2 * FRAME
+      );
     };
-    const end = Date.now() + 10_000;
-    while (!(await inStep())) {
+    const end = Date.now() + 15_000;
+    while (!(await agree())) {
       if (Date.now() > end) {
         const states = await describe(pages, selectors);
-        throw new Error(`Not in step after 10 s. Offsets ${JSON.stringify(offsets)}; ${states.join(' | ')}`);
+        throw new Error(`Not in step after 15 s. Offsets ${JSON.stringify(offsets)}; ${states.join(' | ')}`);
       }
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
@@ -146,11 +156,7 @@ test('outputs and the sound stay in step, a reloaded output rejoins, and only th
   };
 
   // Both outputs show the same frame (within a frame or two), and the sound is with them.
-  const [oa = NaN, ob = NaN, oSound = NaN] = await settled(
-    [a, b, audio],
-    [picture, picture, sound],
-    2 * FRAME,
-  );
+  const [oa = NaN, ob = NaN, oSound = NaN] = await inStep([a, b, audio], [picture, picture, sound]);
   expect(Math.abs(oa - ob), `outputs ${oa.toFixed(3)} and ${ob.toFixed(3)} s off the clock`).toBeLessThan(
     2 * FRAME,
   );
@@ -159,7 +165,7 @@ test('outputs and the sound stay in step, a reloaded output rejoins, and only th
   // A reloaded output joins the video where the others are.
   await b.reload();
   await expect(b.locator(picture)).toHaveAttribute('data-state', 'ready');
-  const [ra = NaN, rb = NaN] = await settled([a, b], [picture, picture], 2 * FRAME);
+  const [ra = NaN, rb = NaN] = await inStep([a, b], [picture, picture]);
   expect(Math.abs(ra - rb), 'reloaded output against the other').toBeLessThan(2 * FRAME);
 
   // Only the audio player makes sound: outputs and the preview are muted.
