@@ -3,6 +3,7 @@ import { up as core } from './migrations/001-core';
 import { up as imports } from './migrations/002-imports';
 import { up as removal } from './migrations/003-removal';
 import { up as slideCues } from './migrations/004-slide-cues';
+import { up as list } from './migrations/005-list';
 
 export interface Migration {
   version: number;
@@ -16,6 +17,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 2, name: 'imports', up: imports },
   { version: 3, name: 'removal', up: removal },
   { version: 4, name: 'slide cues', up: slideCues },
+  { version: 5, name: 'cheap library list', up: list },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

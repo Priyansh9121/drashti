@@ -207,8 +207,10 @@ test('a big import runs in the background: slides keep reaching the output withi
     Math.max(1, Math.floor(during.length * 0.02)),
   );
 
-  // The operator's library shows everything, and the report was kept.
-  await expect(win.getByTestId('presentation-list').getByRole('button')).toHaveCount(SONGS + 2);
+  // The operator's library lists everything, drawing only the rows in view, and the report was kept.
+  const list = win.getByTestId('presentation-list');
+  await expect(list).toHaveAttribute('data-count', String(SONGS + 2));
+  expect(await list.getByRole('button').count()).toBeLessThan(60);
   const runId = run.result.run.id;
   const stored = await win.evaluate(async (id) => {
     const d = (globalThis as PageGlobals).drashti;
