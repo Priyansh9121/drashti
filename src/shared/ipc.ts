@@ -3,6 +3,7 @@ import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
 import type { ImportOptions, ImportProgress, ImportReport, ImportResult, ImportRunSummary } from './import';
 import type { PresentationDoc, PresentationSummary, RemoveResult } from './library';
+import type { SaveStillResult } from './media';
 import type { CoverOptions, OutputContext, ScreenPatch, ScreensResult, ScreensSnapshot } from './screens';
 
 /**
@@ -44,6 +45,10 @@ export const IPC = {
     /** main -> operator: presentations were added or changed. */
     changed: 'library:changed',
   },
+  media: {
+    /** Keep a still frame the operator window made (operator window only). */
+    saveStill: 'media:save-still',
+  },
   screens: {
     get: 'screens:get',
     createGroup: 'screens:create-group',
@@ -83,6 +88,7 @@ export interface InvokeContract {
   [IPC.library.relinkMedia]: { args: [mediaIds?: string[]]; result: ImportResult };
   [IPC.library.removePresentations]: { args: [ids: string[]]; result: RemoveResult };
   [IPC.library.restorePresentations]: { args: [ids: string[]]; result: RemoveResult };
+  [IPC.media.saveStill]: { args: [mediaId: string, jpeg: Uint8Array]; result: SaveStillResult };
   [IPC.screens.get]: { args: []; result: ScreensSnapshot };
   [IPC.screens.createGroup]: { args: [name: string]; result: ScreensResult };
   [IPC.screens.renameGroup]: { args: [groupId: string, name: string]; result: ScreensResult };

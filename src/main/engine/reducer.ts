@@ -35,23 +35,25 @@ function upsert<T extends { id: string }>(items: T[], item: T): T[] | null {
 export function reduce(state: EngineState, action: EngineAction): EngineState {
   switch (action.type) {
     case 'slide/show': {
-      const { presentationId, slideIndex, slideCount, slide } = action;
+      const { presentationId, slideIndex, slideCount, slide, at } = action;
       const live = state.live;
       const sameCursor =
         live.presentationId === presentationId &&
         live.slideIndex === slideIndex &&
         live.slideCount === slideCount;
       const current = state.layers.slide;
-      const sameSlide =
-        current !== null &&
-        current.presentationId === presentationId &&
-        current.slideIndex === slideIndex &&
-        sameData(current.slide, slide);
+      const samePlace =
+        current !== null && current.presentationId === presentationId && current.slideIndex === slideIndex;
+      const sameSlide = samePlace && sameData(current.slide, slide);
       if (sameCursor && sameSlide) return state;
+      // New content for the live slide (an edit or a re-import) keeps its time, so its videos carry on.
+      const shownAt = samePlace ? current.shownAt : at;
       return {
         ...state,
         live: sameCursor ? live : { presentationId, slideIndex, slideCount },
-        layers: sameSlide ? state.layers : { ...state.layers, slide: { presentationId, slideIndex, slide } },
+        layers: sameSlide
+          ? state.layers
+          : { ...state.layers, slide: { presentationId, slideIndex, slide, shownAt } },
       };
     }
     case 'layer/clear':

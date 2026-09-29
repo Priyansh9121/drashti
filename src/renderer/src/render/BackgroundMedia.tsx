@@ -1,13 +1,9 @@
 import { type Dispatch, useEffect, useReducer, useRef, useState } from 'react';
 import type { BackgroundLayer, MediaFit } from '../../../shared/engine/state';
-import { mediaUrl, playbackPosition } from '../../../shared/media';
+import { mediaUrl } from '../../../shared/media';
 import { NO_SLOTS, type Slot, type SlotEvent, slotsReducer } from './background-slots';
-
-const OBJECT_FIT: Record<MediaFit, 'contain' | 'cover' | 'fill'> = {
-  fit: 'contain',
-  fill: 'cover',
-  stretch: 'fill',
-};
+import { OBJECT_FIT } from './media-style';
+import { startPlayback } from './playback';
 
 function style(fit: MediaFit, visible: boolean) {
   return {
@@ -20,11 +16,7 @@ function style(fit: MediaFit, visible: boolean) {
   } as const;
 }
 
-/**
- * A background video. Muted: sound comes from one place, never from every
- * screen. It starts where the playback is now (so a window that opens late
- * joins in step), and says it is ready once that frame is decoded.
- */
+/** A background video: it says it is ready once its first frame (at the right point) is decoded. */
 function VideoSlot({
   slot,
   visible,
@@ -40,44 +32,16 @@ function VideoSlot({
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
-    let settled = false;
-    const ready = () => {
-      if (settled) return;
-      settled = true;
-      dispatch({ type: 'ready', key });
-    };
-    const failed = () => {
-      settled = true;
-      dispatch({ type: 'failed', key });
-    };
-    const whenFrame = () => {
-      if (v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) ready();
-      else v.addEventListener('loadeddata', ready, { once: true });
-    };
-    const onMetadata = () => {
-      // v.loop is the latest setting (the same playback can change it while the file loads).
-      const at = playbackPosition({ startedAt, loop: v.loop }, v.duration, Date.now());
-      const finished = !v.loop && at >= v.duration;
-      if (at > 0.05) {
-        v.addEventListener('seeked', whenFrame, { once: true });
-        v.currentTime = at;
-      } else whenFrame();
-      // A video that has already played to its end holds its last frame.
-      if (!finished) void v.play().catch(() => undefined);
-    };
-    v.muted = true;
-    v.addEventListener('loadedmetadata', onMetadata, { once: true });
-    v.addEventListener('error', failed);
-    v.src = mediaUrl(mediaId);
-    return () => {
-      v.removeEventListener('loadedmetadata', onMetadata);
-      v.removeEventListener('error', failed);
-      v.removeEventListener('loadeddata', ready);
-      v.removeEventListener('seeked', whenFrame);
-      // Let go of the file and the decoder now, not when the element is collected.
-      v.removeAttribute('src');
-      v.load();
-    };
+    return startPlayback(v, {
+      mediaId,
+      startedAt,
+      onFrame: () => {
+        dispatch({ type: 'ready', key });
+      },
+      onError: () => {
+        dispatch({ type: 'failed', key });
+      },
+    });
   }, [key, mediaId, startedAt, dispatch]);
 
   return (

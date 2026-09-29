@@ -41,8 +41,22 @@ export interface BackgroundCue {
   background: MediaBackground;
 }
 
+/** A slide's sound: when the slide goes live it plays on the audio layer. */
+export interface AudioCue {
+  kind: 'audio';
+  label: string;
+  /** The media file's name, for the operator. */
+  name: string;
+  /** The file was not found at import; it plays once it is relinked. */
+  missing: boolean;
+  mediaId: string;
+  /** 0 to 1. */
+  volume: number;
+  loop: boolean;
+}
+
 /** What a slide does on the other layers when it goes live. Cues Drashti does not run yet stay in the library. */
-export type SlideCue = BackgroundCue;
+export type SlideCue = BackgroundCue | AudioCue;
 
 export interface SlideInfo {
   id: string;

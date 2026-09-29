@@ -10,12 +10,13 @@ import type { EngineAction } from './actions';
 import { reduce } from './reducer';
 import { deepFreeze, textSlide } from './testing';
 
-const show = (index: number, text = `Slide ${index + 1}`): EngineAction => ({
+const show = (index: number, text = `Slide ${index + 1}`, at = 1000 + index): EngineAction => ({
   type: 'slide/show',
   presentationId: 'p1',
   slideIndex: index,
   slideCount: 3,
   slide: textSlide(`s${index}`, text),
+  at,
 });
 
 /** A state with every layer populated. */
@@ -62,9 +63,22 @@ describe('reduce', () => {
 
     it('updates only the slide layer when the content of the live slide changed', () => {
       const s = deepFreeze(reduce(initialEngineState(), show(0)));
-      const next = reduce(s, show(0, 'Edited'));
+      const next = reduce(s, show(0, 'Edited', 5000));
       expect(next.live).toBe(s.live);
       expect(next.layers.slide?.slide.elements[0]).toMatchObject({ text: 'Edited' });
+      // Still the same slide on screen: its videos carry on.
+      expect(next.layers.slide?.shownAt).toBe(1000);
+    });
+
+    it('records when each slide went live, again after the slide layer was cleared', () => {
+      let s = reduce(initialEngineState(), show(0, undefined, 1000));
+      expect(s.layers.slide?.shownAt).toBe(1000);
+      s = reduce(s, show(1, undefined, 2000));
+      expect(s.layers.slide?.shownAt).toBe(2000);
+      s = reduce(s, show(1, undefined, 3000));
+      expect(s.layers.slide?.shownAt).toBe(2000);
+      s = reduce(reduce(s, { type: 'layer/clear', layer: 'slide' }), show(1, undefined, 4000));
+      expect(s.layers.slide?.shownAt).toBe(4000);
     });
 
     it('leaves the other layers untouched', () => {

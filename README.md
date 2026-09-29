@@ -91,6 +91,8 @@ If you start Drashti from inside another Electron app's process (for example an 
 
 **Backgrounds.** A slide with a background image or video puts it on the background layer when it goes live. It stays up on later slides without a background of their own. A later slide with the same file lets it carry on playing; a different file replaces it, and the old picture stays until the new one has its first frame, so the screens never flash black. **Clear background** (F3) removes it and leaves the text. Videos loop, or play once and hold their last frame, as the slide says. A window that opens late (or the live preview after a reload) starts the video where the others are. If a file cannot play, the screens show no background and the live preview says so.
 
+**Images and videos on slides** draw on the outputs and in the live preview where the slide places them; a video plays from when its slide goes live. Slide thumbnails show images, and a still frame for each video (with the slide's background behind its text): thumbnails never play video. Drashti makes a video's still frame the first time a thumbnail needs it and keeps it in the media folder.
+
 **Removing.** Select presentations in the list (Cmd/Ctrl-click adds one, Shift-click a range) and press **Delete** or **Backspace**. Drashti asks first, and warns when one of them is live, whose slide then stays up until it changes. **Undo** under the list, or **Edit > Undo** (Cmd/Ctrl+Z), brings them back. Removed presentations are deleted for good after 30 days.
 
 **Keeping the controls reachable.** Before an output goes on the display the operator window is on, Drashti asks, because the output would cover the controls. If an output ends up over the operator window anyway (a display unplugged or rearranged), the operator window moves to a free display when there is one. **Cmd+Shift+U** (macOS) or **Ctrl+Shift+U** (Windows), "Uncover the controls", turns off any output covering the operator window. It also works when Drashti isn't the active app, and it's in the Window menu.
@@ -147,7 +149,7 @@ Imports run in a separate worker process (an Electron utility process, `src/main
 
 ## Where data lives
 
-The library is `drashti.sqlite` in Electron's userData folder: `~/Library/Application Support/Drashti/` on macOS and `%APPDATA%\Drashti\` on Windows. Imported media is in the `Media` folder next to it. Real ProPresenter data from the mandir machines belongs in `migration-samples/` at the workspace root, outside this repository, and is never committed.
+The library is `drashti.sqlite` in Electron's userData folder: `~/Library/Application Support/Drashti/` on macOS and `%APPDATA%\Drashti\` on Windows. Imported media is in the `Media` folder next to it (each file once, named by its sha256), with the video thumbnails' still frames in `Media/stills/`. Real ProPresenter data from the mandir machines belongs in `migration-samples/` at the workspace root, outside this repository, and is never committed.
 
 ## Folder layout
 
@@ -198,7 +200,7 @@ Electron only supports its latest three major versions with security fixes, so g
 
 **The importers have not met the mandir's files yet.** They are checked against synthetic files and against this Mac's small ProPresenter 6 and 7 libraries, where every file imports. The `.probundle` and `.proplaylist` layouts follow the community documentation and are not confirmed with real exports. `migration-samples/` will settle both.
 
-**Imported media does not all show yet.** Slide backgrounds play (above). Images and videos placed on slides, and sound (slide audio cues and the sound of videos), are imported and kept but not drawn or played yet; background videos are silent until then.
+**No sound yet.** Backgrounds and images and videos on slides show, but videos are silent and slide audio cues do not play until the audio player is built. Images on a slide load when the slide goes live, so a large picture can appear a frame or two after the text.
 
 **Disk writes on Windows.** On the Windows CI runner each database commit took about 320 ms (almost certainly real-time antivirus scanning, which the mandir PC probably has too). Imports now write in groups, so this costs seconds instead of minutes. An operator's own change during an import (removing a presentation, changing a screen) can wait up to about a quarter of a second for the current group. Slide changes never write to the database.
 

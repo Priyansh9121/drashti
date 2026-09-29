@@ -53,6 +53,9 @@ const bridge: DrashtiBridge = {
     removePresentations: (ids) => invoke(IPC.library.removePresentations, ids),
     restorePresentations: (ids) => invoke(IPC.library.restorePresentations, ids),
   },
+  media: {
+    saveStill: (mediaId, jpeg) => invoke(IPC.media.saveStill, mediaId, jpeg),
+  },
   screens: {
     get: () => invoke(IPC.screens.get),
     onChanged: (listener) => on(IPC.screens.changed, listener),

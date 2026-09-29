@@ -3,6 +3,7 @@ import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
 import type { ImportOptions, ImportProgress, ImportReport, ImportResult, ImportRunSummary } from './import';
 import type { PresentationDoc, PresentationSummary, RemoveResult } from './library';
+import type { SaveStillResult } from './media';
 import type { CoverOptions, OutputContext, ScreenPatch, ScreensResult, ScreensSnapshot } from './screens';
 
 /**
@@ -55,6 +56,13 @@ export interface DrashtiBridge {
     /** Remove presentations; restorePresentations brings them back (Undo). */
     removePresentations(ids: string[]): Promise<RemoveResult>;
     restorePresentations(ids: string[]): Promise<RemoveResult>;
+  };
+  media: {
+    /**
+     * Keep a still frame (a JPEG drawn from the file) for a media item's
+     * thumbnails, so it is made only once (operator window only).
+     */
+    saveStill(mediaId: string, jpeg: Uint8Array): Promise<SaveStillResult>;
   };
   /** Screen setup (operator window only). */
   screens: {

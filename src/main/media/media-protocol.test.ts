@@ -2,15 +2,17 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mediaUrl, playbackPosition } from '../../shared/media';
+import { mediaUrl, playbackPosition, stillUrl } from '../../shared/media';
 import type { MediaFileRow, MediaProtocolDeps } from './media-protocol';
-import { handleMediaRequest, isInside, mediaIdOf, parseRange } from './media-protocol';
+import { handleMediaRequest, isInside, mediaRequestOf, parseRange, stillPath } from './media-protocol';
 
 let root: string;
 let deps: MediaProtocolDeps & { warnings: string[] };
 /** File symlinks need extra rights on Windows; junctions (folder links) do not. */
 let fileLinks = true;
 const BYTES = Uint8Array.from({ length: 100 }, (_, i) => i);
+const SHA = 'ab'.repeat(32);
+const STILL = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 0xff, 0xd9]);
 
 beforeAll(() => {
   // Not through realpath: on macOS the temp folder is behind a link (/var -> /private/var), as on some machines the media folder may be.
@@ -20,6 +22,8 @@ beforeAll(() => {
   for (const dir of [join(mediaDir, 'ab'), join(mediaDir, 'cd'), join(mediaDir, 'ef', 'folder.mp4'), outside])
     mkdirSync(dir, { recursive: true });
   writeFileSync(join(mediaDir, 'ab', 'image.png'), BYTES);
+  mkdirSync(join(mediaDir, 'stills'));
+  writeFileSync(join(mediaDir, stillPath(SHA)), STILL);
   writeFileSync(join(mediaDir, 'cd', 'empty.mp4'), new Uint8Array());
   writeFileSync(join(outside, 'secret.txt'), 'not media');
   symlinkSync(outside, join(mediaDir, 'gh'), 'junction');
@@ -28,17 +32,24 @@ beforeAll(() => {
   } catch {
     fileLinks = false;
   }
+  const row = (path: string, missing = false, sha256: string | null = null): MediaFileRow => ({
+    path,
+    missing,
+    sha256,
+  });
   const rows: Record<string, MediaFileRow> = {
-    image: { path: 'ab/image.png', missing: false },
-    empty: { path: 'cd/empty.mp4', missing: false },
-    folder: { path: 'ef/folder.mp4', missing: false },
-    missing: { path: '', missing: true },
-    stale: { path: 'ab/image.png', missing: true },
-    absolute: { path: join(outside, 'secret.txt'), missing: false },
-    climb: { path: '../outside/secret.txt', missing: false },
-    junction: { path: 'gh/secret.txt', missing: false },
-    link: { path: 'ab/link.png', missing: false },
-    gone: { path: 'ij/deleted.png', missing: false },
+    image: row('ab/image.png', false, SHA),
+    empty: row('cd/empty.mp4'),
+    folder: row('ef/folder.mp4'),
+    missing: row('', true),
+    stale: row('ab/image.png', true, SHA),
+    absolute: row(join(outside, 'secret.txt')),
+    climb: row('../outside/secret.txt'),
+    junction: row('gh/secret.txt'),
+    link: row('ab/link.png'),
+    gone: row('ij/deleted.png'),
+    noStill: row('ab/image.png', false, 'cd'.repeat(32)),
+    badSha: row('ab/image.png', false, '../../outside/secret'),
   };
   const warnings: string[] = [];
   deps = {
@@ -64,7 +75,18 @@ describe('drashti-media:// requests', () => {
     expect(res.headers.get('Content-Length')).toBe('100');
     expect(res.headers.get('Accept-Ranges')).toBe('bytes');
     expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
     expect(await bytesOf(res)).toEqual(BYTES);
+  });
+
+  it("serves an item's still frame once one has been made, and nothing else as a still", async () => {
+    const res = await get(stillUrl('image', 3));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toBe('image/jpeg');
+    expect(await bytesOf(res)).toEqual(STILL);
+    for (const id of ['noStill', 'badSha', 'empty', 'missing', 'stale', 'nobody']) {
+      expect((await get(stillUrl(id))).status, id).toBe(404);
+    }
   });
 
   it('serves byte ranges, which video seeking needs', async () => {
@@ -151,14 +173,15 @@ describe('drashti-media:// requests', () => {
 
 describe('media URLs and ranges', () => {
   it('reads the id from URLs Drashti makes, and nothing else', () => {
-    expect(mediaIdOf(mediaUrl('0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0'))).toBe(
-      '0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0',
-    );
-    expect(mediaIdOf('drashti-media://media/abc?v=2')).toBe('abc');
-    expect(mediaIdOf('drashti-media://media/a.b')).toBeNull();
-    expect(mediaIdOf('drashti-media://media/a%20b')).toBeNull();
-    expect(mediaIdOf('https://media/abc')).toBeNull();
-    expect(mediaIdOf('not a url')).toBeNull();
+    const id = '0b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0';
+    expect(mediaRequestOf(mediaUrl(id))).toEqual({ what: 'media', mediaId: id });
+    expect(mediaRequestOf(stillUrl(id, 2))).toEqual({ what: 'still', mediaId: id });
+    expect(mediaRequestOf('drashti-media://media/abc?v=2')).toEqual({ what: 'media', mediaId: 'abc' });
+    expect(mediaRequestOf('drashti-media://media/a.b')).toBeNull();
+    expect(mediaRequestOf('drashti-media://media/a%20b')).toBeNull();
+    expect(mediaRequestOf('drashti-media://thumbs/abc')).toBeNull();
+    expect(mediaRequestOf('https://media/abc')).toBeNull();
+    expect(mediaRequestOf('not a url')).toBeNull();
   });
 
   it('knows what is inside a folder', () => {

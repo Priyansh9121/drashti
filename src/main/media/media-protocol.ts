@@ -7,8 +7,9 @@ import { extOf } from '../import/scan';
 
 /*
  * The main-process side of drashti-media://. A window asks for
- * drashti-media://media/<id>; the library says which file that is, and the
- * file is streamed with byte ranges, so video can seek. Whatever the library
+ * drashti-media://media/<id> (the file) or drashti-media://still/<id> (its
+ * still frame, for thumbnails); the library says which file that is, and it
+ * is streamed with byte ranges, so video can seek. Whatever the library
  * says, nothing outside the media folder is served: every refusal is a 404.
  */
 
@@ -17,6 +18,13 @@ export interface MediaFileRow {
   /** Relative to the media folder ('' while the file is missing). */
   path: string;
   missing: boolean;
+  /** The file's sha256, which names its still frame; null while missing. */
+  sha256: string | null;
+}
+
+/** Where a media item's still frame is kept, relative to the media folder. */
+export function stillPath(sha256: string): string {
+  return `stills/${sha256}.jpg`;
 }
 
 export interface MediaProtocolDeps {
@@ -27,12 +35,18 @@ export interface MediaProtocolDeps {
   warn?: (message: string) => void;
 }
 
-/** How Chromium must treat the scheme: like https for loading, streamable for video. */
+/**
+ * How Chromium must treat the scheme: like https for loading, streamable for
+ * video, and with CORS, so the operator window can draw a video frame on a
+ * canvas and read it back to make a still. Only Drashti's own pages can
+ * reach the scheme (windows cannot navigate or load anything else).
+ */
 export const MEDIA_SCHEME_PRIVILEGES = {
   standard: true,
   secure: true,
   supportFetchAPI: true,
   stream: true,
+  corsEnabled: true,
 } as const;
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -82,17 +96,23 @@ export function isInside(dir: string, file: string): boolean {
   return rel !== '' && !isAbsolute(rel) && rel.split(sep)[0] !== '..';
 }
 
-/** The media id a drashti-media:// URL asks for, or null if it is not one Drashti makes. */
-export function mediaIdOf(url: string): string | null {
+export interface MediaRequest {
+  what: 'media' | 'still';
+  mediaId: string;
+}
+
+/** What a drashti-media:// URL asks for, or null if it is not a URL Drashti makes. */
+export function mediaRequestOf(url: string): MediaRequest | null {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
     return null;
   }
-  if (parsed.protocol !== `${MEDIA_SCHEME}:` || parsed.hostname !== 'media') return null;
-  const id = parsed.pathname.slice(1);
-  return MEDIA_ID_PATTERN.test(id) ? id : null;
+  const what = parsed.hostname;
+  if (parsed.protocol !== `${MEDIA_SCHEME}:` || (what !== 'media' && what !== 'still')) return null;
+  const mediaId = parsed.pathname.slice(1);
+  return MEDIA_ID_PATTERN.test(mediaId) ? { what, mediaId } : null;
 }
 
 export interface ByteRange {
@@ -130,13 +150,20 @@ function refused(status: 404 | 405): Response {
   return new Response(null, { status, headers });
 }
 
-/** The file for a media id, if it is a regular file inside the media folder. */
+const SHA256 = /^[0-9a-f]{64}$/;
+
+/** The file a request asks for, if it is a regular file inside the media folder. */
 async function fileFor(
-  mediaId: string,
+  { what, mediaId }: MediaRequest,
   deps: MediaProtocolDeps,
 ): Promise<{ path: string; size: number } | null> {
-  const row = deps.lookup(mediaId);
-  if (!row || row.missing || row.path === '') return null;
+  const found = deps.lookup(mediaId);
+  if (!found || found.missing) return null;
+  let row: { path: string };
+  if (what === 'media') row = found;
+  else if (found.sha256 && SHA256.test(found.sha256)) row = { path: stillPath(found.sha256) };
+  else return null;
+  if (row.path === '') return null;
   // Library paths are relative to the media folder; anything else was not written by Drashti.
   if (isAbsolute(row.path)) {
     deps.warn?.(`Media ${mediaId} points outside the media folder; not served.`);
@@ -161,14 +188,16 @@ async function fileFor(
 /** Answer one drashti-media:// request. */
 export async function handleMediaRequest(request: Request, deps: MediaProtocolDeps): Promise<Response> {
   if (request.method !== 'GET' && request.method !== 'HEAD') return refused(405);
-  const mediaId = mediaIdOf(request.url);
-  const file = mediaId === null ? null : await fileFor(mediaId, deps);
+  const asked = mediaRequestOf(request.url);
+  const file = asked === null ? null : await fileFor(asked, deps);
   if (!file) return refused(404);
 
   const headers = new Headers({
     'Content-Type': contentTypeOf(file.path),
     'Accept-Ranges': 'bytes',
     'X-Content-Type-Options': 'nosniff',
+    // Readable by Drashti's own pages (the only ones that can load the scheme), for making stills.
+    'Access-Control-Allow-Origin': '*',
   });
   const range = parseRange(request.headers.get('Range'), file.size);
   if (range === 'unsatisfiable') {
