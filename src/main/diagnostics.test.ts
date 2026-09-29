@@ -52,7 +52,7 @@ function setup() {
       { at: '2026-09-29T10:00:01.000Z', window: 'output "Main Hall"', kind: 'crashed', reason: 'oom' },
     ],
     logFiles: [logFile],
-    now: new Date('2026-09-29T10:05:00.000Z'),
+    now: new Date(2026, 8, 29, 10, 5),
   };
   return { db, dir, input };
 }
@@ -77,6 +77,7 @@ describe('diagnostics', () => {
       'Log: [library name] opened',
     );
     const file = saveDiagnostics(dir, input);
+    // Named in local time (the date was made from local parts), like the backup folders.
     expect(file).toBe(join(dir, 'Drashti diagnostics 2026-09-29 10-05.txt'));
     const saved = readFileSync(file, 'utf8');
     expect(saved).not.toContain('Secret Kirtan');

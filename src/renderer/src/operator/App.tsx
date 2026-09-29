@@ -16,7 +16,7 @@ import { loadTree, watchPlaylists } from '../playlists/playlist-store';
 import { ScreensPanel } from '../screens/ScreensPanel';
 import { connectScreens } from '../screens/screens-store';
 import { Button } from '../ui/Button';
-import { runAction, useNotice } from './actions';
+import { runAction, useNotice, useTaskProgress } from './actions';
 import type { OperatorAction } from '../../../shared/keymap';
 import { KEYMAP, shortcutText } from '../../../shared/keymap';
 import { LiveControls } from './LiveControls';
@@ -37,6 +37,7 @@ export function App() {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [screensOpen, setScreensOpen] = useState(false);
   const notice = useNotice((s) => s.text);
+  const progress = useTaskProgress((s) => s.progress);
   const platform = info?.platform ?? 'darwin';
 
   useEffect(() => {
@@ -56,6 +57,13 @@ export function App() {
     const offNotice = window.drashti.app.onNotice((text) => {
       useNotice.setState({ text });
     });
+    const offProgress = window.drashti.app.onProgress((next) => {
+      useTaskProgress.setState({ progress: next });
+    });
+    // How a restore went, told once as the page opens.
+    void window.drashti.app.startNotice().then((text) => {
+      if (text) useNotice.setState({ text });
+    });
     // Files dropped anywhere but the presentation list are ignored (never opened as a page).
     const ignoreDrop = (e: DragEvent) => {
       if (e.dataTransfer?.types.includes('Files')) e.preventDefault();
@@ -66,6 +74,7 @@ export function App() {
     return () => {
       offUndo();
       offNotice();
+      offProgress();
       window.removeEventListener('dragover', ignoreDrop);
       window.removeEventListener('drop', ignoreDrop);
     };
@@ -109,6 +118,21 @@ export function App() {
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">On the screens now</h2>
         <LivePreview />
         <NextPreview />
+        {progress && (
+          <div
+            role="status"
+            data-testid="task-progress"
+            className="space-y-1 rounded-md border border-line px-3 py-2 text-xs"
+          >
+            <div className="truncate">{progress.label}</div>
+            <div className="h-1 overflow-hidden rounded bg-line">
+              <div
+                className="h-full bg-accent transition-[width]"
+                style={{ width: `${String(Math.round(progress.fraction * 100))}%` }}
+              />
+            </div>
+          </div>
+        )}
         {notice && (
           <p
             role="alert"

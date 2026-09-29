@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { cpus, release, totalmem } from 'node:os';
 import { join } from 'node:path';
 import type { AudioOutputStatus } from '../shared/audio';
+import { fileStamp } from '../shared/format';
 import type { DisplayInfo, ScreensSnapshot } from '../shared/screens';
 import type { Db } from './db/database';
 import { ImportRepo } from './db/imports';
@@ -165,8 +166,7 @@ export function diagnosticsText(input: DiagnosticsInput): string {
 
 /** Write the file to `dir` (the Desktop), names blanked out; returns its path. */
 export function saveDiagnostics(dir: string, input: DiagnosticsInput): string {
-  const stamp = input.now.toISOString().slice(0, 16).replace('T', ' ').replace(':', '-');
-  const file = join(dir, `Drashti diagnostics ${stamp}.txt`);
+  const file = join(dir, `Drashti diagnostics ${fileStamp(input.now)}.txt`);
   const text = scrub(redactNames(diagnosticsText(input), libraryNames(input.db)));
   writeFileSync(file, text, 'utf8');
   return file;

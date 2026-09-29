@@ -1,4 +1,4 @@
-import type { AppInfo } from './app-info';
+import type { AppInfo, TaskProgress } from './app-info';
 import type { AudioDevice, AudioOutputState, AudioOutputStatus } from './audio';
 import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
@@ -51,6 +51,10 @@ export interface DrashtiBridge {
     /** What was put back on the screens after Drashti stopped unexpectedly, until dismissed. */
     recovery(): Promise<RecoveryNotice | null>;
     dismissRecovery(): Promise<null>;
+    /** Something to tell the operator as the page opens (how a restore went); null after the first ask. */
+    startNotice(): Promise<string | null>;
+    /** A long task's progress (a backup), or null when it has ended. */
+    onProgress(listener: (progress: TaskProgress | null) => void): () => void;
   };
   /** Files dropped on a page. */
   files: {

@@ -1,4 +1,4 @@
-import type { AppInfo } from './app-info';
+import type { AppInfo, TaskProgress } from './app-info';
 import type { AudioDevice, AudioOutputState, AudioOutputStatus } from './audio';
 import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
@@ -51,6 +51,10 @@ export const IPC = {
     recovery: 'app:recovery',
     /** The operator has read the recovery notice. */
     dismissRecovery: 'app:dismiss-recovery',
+    /** Something to tell the operator as the page opens (how a restore went), once. */
+    startNotice: 'app:start-notice',
+    /** main -> operator: a long task's progress, or null when it has ended. */
+    progress: 'app:progress',
   },
   engine: {
     /** Start receiving engine messages in this window; returns a snapshot. */
@@ -181,6 +185,7 @@ export interface InvokeContract {
   [IPC.app.getInfo]: { args: []; result: AppInfo };
   [IPC.app.recovery]: { args: []; result: RecoveryNotice | null };
   [IPC.app.dismissRecovery]: { args: []; result: null };
+  [IPC.app.startNotice]: { args: []; result: string | null };
   [IPC.engine.subscribe]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.snapshot]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.command]: { args: [command: EngineCommand]; result: CommandResult };
@@ -276,6 +281,7 @@ export interface EventContract {
   [IPC.playlists.changed]: { at: number };
   [IPC.app.undo]: { at: number };
   [IPC.app.notice]: { text: string };
+  [IPC.app.progress]: { progress: TaskProgress | null };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.output.context]: OutputContext;
   [IPC.output.identify]: { name: string; groupName: string };
