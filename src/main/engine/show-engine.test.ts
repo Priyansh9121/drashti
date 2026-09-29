@@ -858,13 +858,67 @@ describe('ShowEngine', () => {
         background,
         blackout: true,
       });
-      expect(put).toEqual({ slide: true, background: true, blackout: true });
+      expect(put).toMatchObject({ slide: true, background: true, blackout: true, audio: false, props: 0 });
       expect(engine.current.layers.slide?.slide).toEqual(textSlide('c1', 'One'));
       // The saved background, with its start time; not the slide's own cue.
       expect(engine.current.layers.background).toEqual(background);
       expect(engine.current.blackout).toBe(true);
       expect(transport.messages).toHaveLength(1);
       expect(seen).toEqual([0]);
+    });
+
+    it('puts back the sound, props, messages, the stage message and timers, carrying on from their start', () => {
+      const transport = new RecordingTransport();
+      const clock = 50_000;
+      const engine = new ShowEngine(makeSource(), transport, () => clock);
+      engine.setTimers([
+        {
+          id: 't1',
+          name: 'Placeholder',
+          kind: 'countdown',
+          durationMs: 300_000,
+          targetTime: null,
+          allowsOverrun: false,
+        },
+      ]);
+      const audio = {
+        id: 'a',
+        title: 'Placeholder tune',
+        mediaId: 'tune',
+        volume: 0.8,
+        loop: true,
+        startedAt: 12_345,
+      };
+      const put = engine.restore({
+        slide: null,
+        background: null,
+        blackout: false,
+        audio,
+        props: [{ id: 'p', name: 'Placeholder logo', elements: [] }],
+        messages: [{ id: 'm', text: 'Placeholder message' }],
+        stageMessage: 'Placeholder: slow down',
+        timers: [
+          { id: 't1', startedAt: 40_000, elapsedMs: 5_000 },
+          { id: 'gone', startedAt: 1, elapsedMs: 0 },
+        ],
+      });
+      expect(put).toEqual({
+        slide: false,
+        background: false,
+        blackout: false,
+        audio: true,
+        props: 1,
+        messages: 1,
+        stageMessage: true,
+        timers: 1,
+      });
+      // The sound and the timer keep their start times: they carry on, not start over.
+      expect(engine.current.layers.audio).toEqual(audio);
+      expect(engine.current.timers[0]).toMatchObject({ startedAt: 40_000, elapsedMs: 5_000 });
+      expect(engine.current.layers.props.map((p) => p.id)).toEqual(['p']);
+      expect(engine.current.layers.messages.map((m) => m.text)).toEqual(['Placeholder message']);
+      expect(engine.current.stageMessage).toBe('Placeholder: slow down');
+      expect(transport.messages).toHaveLength(2);
     });
 
     it('leaves out a slide that is no longer there', () => {
@@ -875,7 +929,7 @@ describe('ShowEngine', () => {
           background: null,
           blackout: false,
         }),
-      ).toEqual({ slide: false, background: false, blackout: false });
+      ).toMatchObject({ slide: false, background: false, blackout: false });
       expect(
         engine.restore({ slide: { presentationId: 'p2', slideIndex: 5 }, background, blackout: false }).slide,
       ).toBe(false);

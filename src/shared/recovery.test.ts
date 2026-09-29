@@ -26,6 +26,14 @@ describe('the recovery notice', () => {
     );
   });
 
+  it('names the sound, props, messages, the stage message and timers', () => {
+    expect(
+      recoveryText({ ...notice, audio: true, props: 2, messages: 1, stageMessage: true, timers: 3 }),
+    ).toBe(
+      'Drashti stopped unexpectedly and has put back what was live: the sound, 2 props, a message, the stage message and 3 timers.',
+    );
+  });
+
   it('says when the live slide could not go back', () => {
     expect(recoveryText({ ...notice, slideGone: true, blackout: true })).toBe(
       'Drashti stopped unexpectedly and has put back what was live: black-out. The slide that was live is no longer in the library.',
