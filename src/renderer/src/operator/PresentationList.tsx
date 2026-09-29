@@ -22,6 +22,7 @@ import {
   useSearch,
 } from '../library/library-store';
 import { SearchResults } from '../library/SearchResults';
+import { newFromWords } from '../library/words-store';
 import { MediaList } from '../library/MediaList';
 import { startDrag } from '../playlists/drag';
 import { Button } from '../ui/Button';
@@ -204,7 +205,7 @@ export function describeRun(run: {
 function SearchBox() {
   const query = useSearch((s) => s.query);
   return (
-    <div className="px-2 pb-2">
+    <div className="flex gap-1 px-2 pb-2">
       <input
         type="search"
         id="library-search"
@@ -225,8 +226,15 @@ function SearchBox() {
             if (first) openHit(first);
           }
         }}
-        className="w-full rounded-md border border-line bg-ink px-2 py-1 text-sm text-white placeholder:text-muted focus-visible:outline-2 focus-visible:outline-accent"
+        className="min-w-0 flex-1 rounded-md border border-line bg-ink px-2 py-1 text-sm text-white placeholder:text-muted focus-visible:outline-2 focus-visible:outline-accent"
       />
+      <Button
+        className="px-2 py-1 text-xs"
+        title="A new presentation from pasted words"
+        onClick={newFromWords}
+      >
+        New…
+      </Button>
     </div>
   );
 }

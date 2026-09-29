@@ -7,6 +7,7 @@ import { watchImports } from '../library/import-store';
 import { loadLibrary, watchLibrary } from '../library/library-store';
 import { RemoveConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
 import { UndoBar } from '../library/UndoBar';
+import { WordsEditor } from '../library/WordsEditor';
 import { undoRemoval } from '../library/undo';
 import { PlaylistPanel } from '../playlists/PlaylistPanel';
 import { loadTree, watchPlaylists } from '../playlists/playlist-store';
@@ -131,6 +132,7 @@ export function App() {
       <ImportReportDialog />
       <RemoveConfirm undoKey={shortcutText('undo', platform)} />
       <RemovePlaylistConfirm undoKey={shortcutText('undo', platform)} />
+      <WordsEditor platform={platform} />
       {screensOpen && (
         <ScreensPanel
           platform={platform}

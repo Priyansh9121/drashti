@@ -11,6 +11,8 @@ import { setItemOrder } from '../playlists/playlist-store';
 import { MediaStill } from '../render/MediaStill';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
+import { editWords } from '../library/words-store';
+import { Button } from '../ui/Button';
 import { chooseArrangement, goLive, playItem } from './actions';
 
 /** The slide's own background (its background cue), behind its thumbnail: the image, or a video's still frame. */
@@ -303,6 +305,9 @@ function PresentationGrid({ item }: { item: (ShownItem & { kind: 'presentation' 
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <h2 className="flex-1 text-lg font-semibold">{doc.name}</h2>
         {item ? <ItemOrderPicker doc={doc} item={item} /> : <ArrangementPicker doc={doc} />}
+        <Button className="px-2 py-1 text-xs" onClick={() => void editWords(doc.id, doc.name)}>
+          Edit words
+        </Button>
       </div>
       {sectionsOf(order.slides).map(({ key, first, slides }) => (
         <div key={key} className="mb-5" data-testid="slide-group" data-group={first.group.name}>
