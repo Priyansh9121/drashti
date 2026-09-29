@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mediaUrl, playbackPosition, stillUrl } from '../../shared/media';
+import { mediaUrl, playbackCorrection, playbackOffset, playbackPosition, stillUrl } from '../../shared/media';
 import type { MediaFileRow, MediaProtocolDeps } from './media-protocol';
 import { handleMediaRequest, isInside, mediaRequestOf, parseRange, stillPath } from './media-protocol';
 
@@ -214,5 +214,26 @@ describe('playback position', () => {
     expect(playbackPosition({ startedAt: 1000, loop: true }, 4, 990)).toBe(0);
     expect(playbackPosition({ startedAt: 1000, loop: true }, Infinity, 5000)).toBe(0);
     expect(playbackPosition({ startedAt: 1000, loop: true }, NaN, 5000)).toBe(0);
+  });
+});
+
+describe('keeping playback in step', () => {
+  it('measures how far a file is from the clock, the short way round a loop', () => {
+    expect(playbackOffset(2.1, 2, 4, true)).toBeCloseTo(0.1);
+    expect(playbackOffset(1.9, 2, 4, true)).toBeCloseTo(-0.1);
+    expect(playbackOffset(3.9, 0.1, 4, true)).toBeCloseTo(-0.2);
+    expect(playbackOffset(0.1, 3.9, 4, true)).toBeCloseTo(0.2);
+    expect(playbackOffset(0.1, 3.9, 4, false)).toBeCloseTo(-3.8);
+    expect(playbackOffset(1, 2, Infinity, true)).toBe(-1);
+  });
+
+  it('jumps when far out, nudges the speed when a little out, and leaves it alone in step', () => {
+    expect(playbackCorrection(0.8)).toEqual({ seek: true });
+    expect(playbackCorrection(-0.6)).toEqual({ seek: true });
+    expect(playbackCorrection(0.005)).toEqual({ seek: false, rate: 1 });
+    expect(playbackCorrection(0.02)).toEqual({ seek: false, rate: 0.96 });
+    expect(playbackCorrection(-0.02)).toEqual({ seek: false, rate: 1.04 });
+    expect(playbackCorrection(0.3)).toEqual({ seek: false, rate: 0.95 });
+    expect(playbackCorrection(-0.3, 0.02)).toEqual({ seek: false, rate: 1.02 });
   });
 });

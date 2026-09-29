@@ -25,6 +25,7 @@ export interface SelfTestResult {
 
 export interface SelfTestContext {
   operator: () => BrowserWindow | null;
+  audioPlayer: () => BrowserWindow | null;
   outputs: () => BrowserWindow[];
   watchdog: RendererWatchdog;
   dispatch: (command: EngineCommand) => { ok: boolean };
@@ -82,6 +83,9 @@ const operatorReady = async (ctx: SelfTestContext) => {
   return js<boolean>(op, `document.querySelectorAll('[data-testid="presentation-list"] button').length > 0`);
 };
 
+/** The engine revision the audio player follows ('' while it is loading). */
+const audioRev = (win: BrowserWindow) => js<string>(win, `document.body.dataset.rev ?? ''`);
+
 const reloads = (ctx: SelfTestContext, window: string) =>
   ctx.watchdog.events.filter((e) => e.window === window && e.kind === 'reloaded').length;
 
@@ -120,6 +124,11 @@ export async function runWatchdogSelfTest(ctx: SelfTestContext): Promise<SelfTes
     const before = await frameOf(output);
     const loadedAt = await js<number>(output, 'performance.timeOrigin');
     check('the output shows something', before.bright > 50, `${before.bright} bright pixels`);
+    const audio = ctx.audioPlayer();
+    const audioFollows = await waitFor(async () => audio !== null && (await audioRev(audio)) === rev1);
+    check('the audio player follows the show', audioFollows, `revision ${rev1}`);
+    const audioPid = audio?.webContents.getOSProcessId();
+    const audioLoadedAt = audio ? await js<number>(audio, 'performance.timeOrigin') : 0;
 
     // 1. Crash the operator window's renderer.
     const operatorReloadsBefore = reloads(ctx, 'operator');
@@ -142,6 +151,12 @@ export async function runWatchdogSelfTest(ctx: SelfTestContext): Promise<SelfTes
       after.hash === before.hash &&
         after.pid === before.pid &&
         (await js<number>(output, 'performance.timeOrigin')) === loadedAt,
+    );
+    check(
+      'the audio player (and its sound) was never touched',
+      audio !== null &&
+        audio.webContents.getOSProcessId() === audioPid &&
+        (await js<number>(audio, 'performance.timeOrigin')) === audioLoadedAt,
     );
 
     // 2. The show carries on from the recovered operator window (a real key press).
@@ -185,6 +200,21 @@ export async function runWatchdogSelfTest(ctx: SelfTestContext): Promise<SelfTes
       back && restored.hash === next.hash && restored.pid !== next.pid,
       `frame ${restored.hash === next.hash ? 'matches' : 'differs'}, new process ${restored.pid !== next.pid ? 'yes' : 'no'}`,
     );
+
+    // 5. Crash the audio player: the watchdog reloads it and it follows the show again.
+    if (audio) {
+      const audioReloadsBefore = reloads(ctx, 'audio player');
+      audio.webContents.forcefullyCrashRenderer();
+      check(
+        'the watchdog reloads a crashed audio player',
+        await waitFor(() => reloads(ctx, 'audio player') > audioReloadsBefore),
+      );
+      check(
+        'the reloaded audio player follows the show again',
+        (await waitFor(async () => (await audioRev(audio)) === String(ctx.engineRev()))) &&
+          audio.webContents.getOSProcessId() !== audioPid,
+      );
+    }
     return { passed: checks.every((c) => c.ok), checks };
   } finally {
     ctx.dispatch({ type: 'clearAll' });

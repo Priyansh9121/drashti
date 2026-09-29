@@ -1,4 +1,5 @@
 import type { AppInfo } from './app-info';
+import type { AudioDevice, AudioOutputState, AudioOutputStatus } from './audio';
 import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
 import type { ImportOptions, ImportProgress, ImportReport, ImportResult, ImportRunSummary } from './import';
@@ -49,6 +50,18 @@ export const IPC = {
     /** Keep a still frame the operator window made (operator window only). */
     saveStill: 'media:save-still',
   },
+  audio: {
+    /** The sound output: the operator's choice, the outputs found, and where sound plays. */
+    getOutput: 'audio:get-output',
+    /** Choose the sound output, null for the system default (operator window only). */
+    setOutput: 'audio:set-output',
+    /** The audio player tells what outputs it sees and where it plays (audio player only). */
+    reportDevices: 'audio:report-devices',
+    /** main -> audio player: the operator chose another output. */
+    chosen: 'audio:chosen',
+    /** main -> operator: the sound output status changed. */
+    status: 'audio:status',
+  },
   screens: {
     get: 'screens:get',
     createGroup: 'screens:create-group',
@@ -89,6 +102,9 @@ export interface InvokeContract {
   [IPC.library.removePresentations]: { args: [ids: string[]]; result: RemoveResult };
   [IPC.library.restorePresentations]: { args: [ids: string[]]; result: RemoveResult };
   [IPC.media.saveStill]: { args: [mediaId: string, jpeg: Uint8Array]; result: SaveStillResult };
+  [IPC.audio.getOutput]: { args: []; result: AudioOutputStatus };
+  [IPC.audio.setOutput]: { args: [device: AudioDevice | null]; result: AudioOutputStatus };
+  [IPC.audio.reportDevices]: { args: [devices: AudioDevice[], state: AudioOutputState]; result: null };
   [IPC.screens.get]: { args: []; result: ScreensSnapshot };
   [IPC.screens.createGroup]: { args: [name: string]; result: ScreensResult };
   [IPC.screens.renameGroup]: { args: [groupId: string, name: string]; result: ScreensResult };
@@ -116,6 +132,8 @@ export interface EventContract {
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.output.context]: OutputContext;
   [IPC.output.identify]: { name: string; groupName: string };
+  [IPC.audio.chosen]: { device: AudioDevice | null };
+  [IPC.audio.status]: AudioOutputStatus;
 }
 
 export type InvokeChannel = keyof InvokeContract;

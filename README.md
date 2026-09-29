@@ -19,7 +19,8 @@ Phase 1 has started:
 
 - text boxes hold **styled runs** (font, size, colour, weight and language per run);
 - the **import pipeline** runs in a background worker process: plain-text lyrics, ProPresenter 6 and 7 presentations, templates and themes, playlists and bundles, and media files, with re-import rules, a media folder that stores each file once, and a report kept for every import;
-- **importing from the operator window**: drag files or folders onto the presentation list, or use **Import…**; progress, then a migration report with a fix for each item; removing presentations with Delete, and Undo.
+- **importing from the operator window**: drag files or folders onto the presentation list, or use **Import…**; progress, then a migration report with a fix for each item; removing presentations with Delete, and Undo;
+- **media playback**: library media reaches the windows by id only (`drashti-media://`); slide backgrounds play on the background layer; images and videos on slides draw everywhere, with still frames for video thumbnails; every screen shows the same frame of a video, and one audio player makes all the sound, on the output chosen in settings.
 
 Next: checking both importers against the mandir's own files in `migration-samples/` once the audit has collected them, and the first conversion tables for legacy fonts.
 
@@ -70,14 +71,16 @@ gh workflow run CI --ref <branch> -f os=windows   # or os=macos, os=both
 
 ### Switches
 
-| Environment variable               | Effect                                                                                       |
-| ---------------------------------- | -------------------------------------------------------------------------------------------- |
-| `DRASHTI_USER_DATA_DIR=<dir>`      | Use this folder for the library and settings (tests use a fresh one each run).               |
-| `DRASHTI_WINDOWED_OUTPUTS=1`       | Development only: outputs open as normal windows, to try them on a computer with one screen. |
-| `DRASHTI_DIAGNOSTICS=1`            | Adds a Diagnostics menu with the watchdog self-test and crash buttons.                       |
-| `DRASHTI_SELFTEST=watchdog`        | Runs the watchdog self-test headless, prints the result and exits (used by the tests).       |
-| `DRASHTI_NO_QUIT_CONFIRM=1`        | Skips the "Quit Drashti?" question (used by the tests).                                      |
-| `DRASHTI_TEST_MEDIA_DELAY_MS=<ms>` | Tests only: media answers this late (up to 5 s), as from a slow disk.                        |
+| Environment variable               | Effect                                                                                                          |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `DRASHTI_USER_DATA_DIR=<dir>`      | Use this folder for the library and settings (tests use a fresh one each run).                                  |
+| `DRASHTI_WINDOWED_OUTPUTS=1`       | Development only: outputs open as normal windows, to try them on a computer with one screen.                    |
+| `DRASHTI_EXTRA_DISPLAYS=<n>`       | With windowed outputs: up to 4 pretend displays (copies of the main one), to try several outputs on one screen. |
+| `DRASHTI_DIAGNOSTICS=1`            | Adds a Diagnostics menu with the watchdog self-test and crash buttons.                                          |
+| `DRASHTI_SELFTEST=watchdog`        | Runs the watchdog self-test headless, prints the result and exits (used by the tests).                          |
+| `DRASHTI_NO_QUIT_CONFIRM=1`        | Skips the "Quit Drashti?" question (used by the tests).                                                         |
+| `DRASHTI_LOG_PERMISSIONS=1`        | Logs every permission a page checks or asks for (to see why a sound output cannot be chosen).                   |
+| `DRASHTI_TEST_MEDIA_DELAY_MS=<ms>` | Tests only: media answers this late (up to 5 s), as from a slow disk.                                           |
 
 If you start Drashti from inside another Electron app's process (for example an editor extension), make sure `ELECTRON_RUN_AS_NODE` is not set in that environment. When it's set, Electron starts as plain Node. The end-to-end tests clear it automatically.
 
@@ -93,6 +96,8 @@ If you start Drashti from inside another Electron app's process (for example an 
 
 **Images and videos on slides** draw on the outputs and in the live preview where the slide places them; a video plays from when its slide goes live. Slide thumbnails show images, and a still frame for each video (with the slide's background behind its text): thumbnails never play video. Drashti makes a video's still frame the first time a thumbnail needs it and keeps it in the media folder.
 
+**Sound.** One hidden audio player plays every sound: the sound of the background video and of videos on the live slide, each in step with the picture. The screens and the live preview are always silent. Choose where the sound goes (usually the mixer) under **Screens > Sound output**; Drashti remembers the choice. If that output is not connected when Drashti starts (or goes away during a show), sound plays on the system default and a warning stays in the header until it is back. Every screen showing the same video shows the same frame: all windows follow one clock and correct any drift (by playing a few percent faster or slower, or jumping when far out), and a screen that opens late or reloads joins where the others are.
+
 **Removing.** Select presentations in the list (Cmd/Ctrl-click adds one, Shift-click a range) and press **Delete** or **Backspace**. Drashti asks first, and warns when one of them is live, whose slide then stays up until it changes. **Undo** under the list, or **Edit > Undo** (Cmd/Ctrl+Z), brings them back. Removed presentations are deleted for good after 30 days.
 
 **Keeping the controls reachable.** Before an output goes on the display the operator window is on, Drashti asks, because the output would cover the controls. If an output ends up over the operator window anyway (a display unplugged or rearranged), the operator window moves to a free display when there is one. **Cmd+Shift+U** (macOS) or **Ctrl+Shift+U** (Windows), "Uncover the controls", turns off any output covering the operator window. It also works when Drashti isn't the active app, and it's in the Window menu.
@@ -104,6 +109,7 @@ Every shortcut is defined in one file, `src/shared/keymap.ts`. The current keys 
 - Every output window is its own renderer process with its own copy of the show state. The operator window crashing, hanging or reloading cannot change what the screens show: they keep their last frame.
 - The main process watches every window. A crashed window is reloaded (after about 0.1 s, then with back-off, giving up after 5 crashes in a minute). A window that stays unresponsive for 5 seconds is restarted. A reloaded window picks up the live state at once.
 - A crashed _output_ is black for a moment (well under a second here) until the watchdog reloads it, and then shows the live slide again.
+- Sound comes from one hidden **audio player** window, a renderer process of its own that the watchdog also watches. The operator window crashing or reloading never touches it, so the sound carries on. If the audio player itself crashes, it is reloaded and rejoins every sound at the right point.
 - Closing the operator window while screens are showing asks first, because quitting blacks out every screen.
 - While any output is showing, Drashti keeps the displays from sleeping or dimming (a 'prevent-display-sleep' power blocker, which also keeps the screen saver away). It lets go when no output is showing.
 - Not covered yet: a crash of the main process itself ends the app. ProPresenter stays installed as the practised fallback until cutover (PLAN.md section 5.1).
@@ -119,7 +125,7 @@ DRASHTI_DIAGNOSTICS=1 /Applications/Drashti.app/Contents/MacOS/Drashti   # macOS
 $env:DRASHTI_DIAGNOSTICS=1; pnpm dev                                     # Windows, from the source
 ```
 
-Then set up a screen, put a slide live, and choose **Diagnostics > Run Watchdog Self-Test**. It crashes and reloads the operator window and one output, then reports each check. Everything should say PASS. You can also try **Diagnostics > Crash the Operator Window** or **View > Reload Operator Window** (Cmd/Ctrl+R) yourself and watch the screens keep their picture.
+Then set up a screen, put a slide live, and choose **Diagnostics > Run Watchdog Self-Test**. It crashes and reloads the operator window, one output and the audio player, then reports each check. Everything should say PASS. You can also try **Diagnostics > Crash the Operator Window** or **View > Reload Operator Window** (Cmd/Ctrl+R) yourself and watch the screens keep their picture.
 
 The same self-test runs headless in the end-to-end tests (`tests/e2e/watchdog.spec.ts`), because Playwright cannot stay attached to a renderer that crashes.
 
@@ -159,7 +165,8 @@ The library is `drashti.sqlite` in Electron's userData folder: `~/Library/Applic
 | `src/main/db/`                                            | SQLite: migrations, presentations and screens repositories, seed.                                                                |
 | `src/main/outputs/`                                       | Displays, output windows, the output manager and the screens service.                                                            |
 | `src/main/import/`                                        | Importers: the pipeline, the worker process, file formats, the media folder and relinking.                                       |
-| `src/main/media/`                                         | Serving library media to the windows (`drashti-media://`).                                                                       |
+| `src/main/media/`                                         | Serving library media to the windows (`drashti-media://`), and still frames for thumbnails.                                      |
+| `src/main/audio/`                                         | The sound output choice (remembered in the library's settings).                                                                  |
 | `src/main/transport/`, `src/main/ipc/`                    | IPC transport for engine messages; IPC handler helpers.                                                                          |
 | `src/main/windows/`                                       | Operator window, security and web preferences.                                                                                   |
 | `src/main/watchdog.ts`, `selftest.ts`, `menu.ts`          | Watchdog, its self-test, the application menu.                                                                                   |
@@ -167,6 +174,7 @@ The library is `drashti.sqlite` in Electron's userData folder: `~/Library/Applic
 | `src/shared/`                                             | Code for every process: model and IPC contracts, engine state and protocol, scaling, display matching. No Node, DOM or Electron. |
 | `src/renderer/src/operator/`                              | Operator UI. The single keymap it uses is `src/shared/keymap.ts` (the menu and global shortcuts use it too).                     |
 | `src/renderer/src/output/`                                | Output window page.                                                                                                              |
+| `src/renderer/src/audio/`                                 | The audio player page: the one place Drashti makes sound.                                                                        |
 | `src/renderer/src/render/`                                | The shared renderer and bundled fonts.                                                                                           |
 | `src/renderer/src/screens/`, `library/`, `engine/`, `ui/` | Screens panel, library and engine stores, small UI parts.                                                                        |
 | `tests/e2e/`                                              | Playwright tests against the built app. Unit tests sit next to the code as `*.test.ts`.                                          |
@@ -177,7 +185,7 @@ The library is `drashti.sqlite` in Electron's userData folder: `~/Library/Applic
 
 ## Security model
 
-Every window runs with `contextIsolation: true`, `nodeIntegration: false` and `sandbox: true`, and the OS reports the renderers as sandboxed. The preload script exposes one typed object, `window.drashti`. The main process refuses IPC from pages that are not the app's own, validates every argument, and only lets the operator window control the show or change screens. Pages cannot open pop-ups, attach `<webview>`s, navigate away, or get any permission (camera, notifications and so on). The HTML pages carry a strict Content Security Policy (`script-src 'self'`, local fonts only). Pages never see file paths: they load library media by id from `drashti-media://media/<id>`, which the main process answers only with files inside the media folder (streamed in byte ranges, so video can seek; anything else is a 404), and the policy allows that scheme for images and media only, not for `fetch`. Lint rules stop renderer and shared code from importing Electron, Node or main-process modules.
+Every window runs with `contextIsolation: true`, `nodeIntegration: false` and `sandbox: true`, and the OS reports the renderers as sandboxed. The preload script exposes one typed object, `window.drashti`. The main process refuses IPC from pages that are not the app's own, validates every argument, and only lets the operator window control the show or change screens. Pages cannot open pop-ups, attach `<webview>`s, navigate away, or get any permission (camera, microphone, notifications and so on), with one exception: the audio player may see the sound outputs and play on one ('speaker-selection', which shows output devices only, never microphones). It has a session of its own and the grant is tied to its window and page. It starts after the operator window, because when it was created first, Chromium 152 sometimes handed the operator window the audio player's list of outputs without asking (the end-to-end test checks that the operator window and outputs see none). The HTML pages carry a strict Content Security Policy (`script-src 'self'`, local fonts only). Pages never see file paths: they load library media by id from `drashti-media://media/<id>`, which the main process answers only with files inside the media folder (streamed in byte ranges, so video can seek; anything else is a 404), and the policy allows that scheme for images and media only, not for `fetch`. Lint rules stop renderer and shared code from importing Electron, Node or main-process modules.
 
 ## Open risks
 
@@ -200,7 +208,9 @@ Electron only supports its latest three major versions with security fixes, so g
 
 **The importers have not met the mandir's files yet.** They are checked against synthetic files and against this Mac's small ProPresenter 6 and 7 libraries, where every file imports. The `.probundle` and `.proplaylist` layouts follow the community documentation and are not confirmed with real exports. `migration-samples/` will settle both.
 
-**No sound yet.** Backgrounds and images and videos on slides show, but videos are silent and slide audio cues do not play until the audio player is built. Images on a slide load when the slide goes live, so a large picture can appear a frame or two after the text.
+**Slide audio cues do not play yet.** Videos' sound plays through the audio player; audio cues on slides are imported and kept but not played until the audio layer is built. Images on a slide load when the slide goes live, so a large picture can appear a frame or two after the text.
+
+**Sound and picture latency.** Sound and pictures follow the same clock, but the sound output (especially over HDMI or Bluetooth) and the displays each add their own delay. On the mandir's mixer this should be checked by eye and ear; an adjustable sound delay can be added if it is noticeable.
 
 **Disk writes on Windows.** On the Windows CI runner each database commit took about 320 ms (almost certainly real-time antivirus scanning, which the mandir PC probably has too). Imports now write in groups, so this costs seconds instead of minutes. An operator's own change during an import (removing a presentation, changing a screen) can wait up to about a quarter of a second for the current group. Slide changes never write to the database.
 

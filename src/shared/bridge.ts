@@ -1,4 +1,5 @@
 import type { AppInfo } from './app-info';
+import type { AudioDevice, AudioOutputState, AudioOutputStatus } from './audio';
 import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
 import type { ImportOptions, ImportProgress, ImportReport, ImportResult, ImportRunSummary } from './import';
@@ -63,6 +64,17 @@ export interface DrashtiBridge {
      * thumbnails, so it is made only once (operator window only).
      */
     saveStill(mediaId: string, jpeg: Uint8Array): Promise<SaveStillResult>;
+  };
+  /** Where sound plays. */
+  audio: {
+    getOutput(): Promise<AudioOutputStatus>;
+    /** Choose the sound output; null for the system default (operator window only). */
+    setOutput(device: AudioDevice | null): Promise<AudioOutputStatus>;
+    onStatus(listener: (status: AudioOutputStatus) => void): () => void;
+    /** Audio player only: the outputs it sees, and where it is playing. */
+    reportDevices(devices: AudioDevice[], state: AudioOutputState): Promise<null>;
+    /** Audio player only: the operator chose another output. */
+    onChosen(listener: (device: AudioDevice | null) => void): () => void;
   };
   /** Screen setup (operator window only). */
   screens: {

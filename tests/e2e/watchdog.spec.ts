@@ -48,7 +48,7 @@ function runSelfTest(): Promise<{ code: number | null; result: SelfTestResult | 
   });
 }
 
-test('watchdog self-test: operator crash and reload never touch the output; crashed windows come back', async () => {
+test('watchdog self-test: operator crash and reload never touch the output or the sound; crashed windows come back', async () => {
   const { code, result, log } = await runSelfTest();
   expect(result, log.slice(-3000)).not.toBeNull();
   for (const c of result?.checks ?? []) expect.soft(c.ok, `${c.name} ${c.detail}`).toBe(true);
@@ -56,15 +56,19 @@ test('watchdog self-test: operator crash and reload never touch the output; cras
     'an output window is open',
     'the first slide reaches the output',
     'the output shows something',
+    'the audio player follows the show',
     'while the operator is crashed, the output keeps the same frame',
     'the watchdog reloads the operator window',
     'the reloaded operator window works',
     'the output was never reloaded or redrawn',
+    'the audio player (and its sound) was never touched',
     'Next in the recovered operator window updates the output',
     'while the operator reloads, the output keeps the same frame',
     'the operator window comes back after a reload',
     'the watchdog reloads a crashed output',
     'the reloaded output shows the live slide again',
+    'the watchdog reloads a crashed audio player',
+    'the reloaded audio player follows the show again',
   ]);
   expect(result?.passed).toBe(true);
   expect(code).toBe(0);

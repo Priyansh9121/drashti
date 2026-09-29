@@ -24,6 +24,7 @@ import type { Db } from './db/database';
 import { LATEST_VERSION, openDatabase } from './db/database';
 import { ImportRepo } from './db/imports';
 import { MediaRepo } from './db/media';
+import { SettingsRepo } from './db/settings';
 import { DbSlideSource, PresentationRepo } from './db/presentations';
 import { ScreenRepo } from './db/screens';
 import { seedPlaceholders } from './db/seed';
@@ -32,17 +33,24 @@ import { runEngineCommand } from './ipc/engine-ipc';
 import { handle, handlerTimes } from './ipc/handle';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
+import { AudioOutput } from './audio/audio-output';
 import { log } from './log';
 import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES } from './media/media-protocol';
 import { saveStill } from './media/stills';
 import { installMenu } from './menu';
 import { createdGroupId, runWatchdogSelfTest } from './selftest';
-import { createOutputWindow, listDisplays, watchDisplays } from './outputs/electron-outputs';
+import {
+  createOutputWindow,
+  listDisplays,
+  setExtraDisplays,
+  watchDisplays,
+} from './outputs/electron-outputs';
 import { placeOperator } from './outputs/operator-guard';
 import { OutputManager } from './outputs/output-manager';
 import { ScreensService } from './outputs/screens-service';
 import { SleepGuard } from './outputs/sleep-guard';
 import { IpcTransport } from './transport/ipc-transport';
+import { AUDIO_PARTITION, createAudioWindow } from './windows/audio-window';
 import { createOperatorWindow } from './windows/operator-window';
 import { RendererWatchdog, shouldConfirmQuit } from './watchdog';
 import { applySessionSecurity, secureWebContents } from './windows/security';
@@ -50,14 +58,18 @@ import { applySessionSecurity, secureWebContents } from './windows/security';
 // Tests (and multiple installs) can point Drashti at its own data folder.
 const userDataOverride = process.env['DRASHTI_USER_DATA_DIR'];
 if (userDataOverride) app.setPath('userData', userDataOverride);
-// Development only: outputs as normal windows, for machines with one screen.
+// Development only: outputs as normal windows, for machines with one screen,
+// optionally with pretend extra displays to try several outputs.
 const windowedOutputs = process.env['DRASHTI_WINDOWED_OUTPUTS'] === '1';
+if (windowedOutputs) setExtraDisplays(Number(process.env['DRASHTI_EXTRA_DISPLAYS'] ?? 0) || 0);
 // A Diagnostics menu for the manual watchdog check (see README).
 const diagnostics = process.env['DRASHTI_DIAGNOSTICS'] === '1';
 // Automated tests cannot answer the quit confirmation.
 const noQuitConfirm = process.env['DRASHTI_NO_QUIT_CONFIRM'] === '1';
 // Headless watchdog self-test: run it, print the result, exit (see README).
 const selfTest = process.env['DRASHTI_SELFTEST'] === 'watchdog';
+// Log every permission a page checks or asks for (diagnosing sound output choice).
+const logPermissions = process.env['DRASHTI_LOG_PERMISSIONS'] === '1';
 // Tests only: answer media requests late, as a slow disk would.
 const mediaDelayMs = Math.min(
   5000,
@@ -96,6 +108,7 @@ new PerformanceObserver((list) => {
 let quitConfirmed = false;
 
 let operatorWindow: BrowserWindow | null = null;
+let audioWindow: BrowserWindow | null = null;
 let db: Db | null = null;
 let outputs: OutputManager | null = null;
 let importer: ImportService | null = null;
@@ -161,7 +174,17 @@ const IMPORTABLE_EXTENSIONS = [
 const notAllowed = { ok: false as const, message: 'Only the operator window can change the screens.' };
 
 function start(): void {
-  applySessionSecurity(session.defaultSession);
+  const permissionLog = logPermissions
+    ? (line: string) => {
+        log.info(line);
+      }
+    : undefined;
+  applySessionSecurity(session.defaultSession, { log: permissionLog });
+  const audioSession = session.fromPartition(AUDIO_PARTITION);
+  applySessionSecurity(audioSession, {
+    isAudioPlayer: (contents) => contents !== null && contents.id === audioWindow?.webContents.id,
+    log: permissionLog,
+  });
 
   db = openLibrary();
   if (!db) {
@@ -186,7 +209,7 @@ function start(): void {
   const mediaDir = join(userDataDir, 'Media');
   mkdirSync(mediaDir, { recursive: true });
   const media = new MediaRepo(db);
-  protocol.handle(MEDIA_SCHEME, async (request) => {
+  const serveMedia = async (request: Request) => {
     if (mediaDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, mediaDelayMs));
     return handleMediaRequest(request, {
       mediaDir,
@@ -195,7 +218,10 @@ function start(): void {
         log.warn(message);
       },
     });
-  });
+  };
+  // Every window's session: the default one, and the audio player's own.
+  protocol.handle(MEDIA_SCHEME, serveMedia);
+  audioSession.protocol.handle(MEDIA_SCHEME, serveMedia);
 
   // ---- outputs ----------------------------------------------------------
   const outputWindows = new Map<string, BrowserWindow>();
@@ -303,6 +329,26 @@ function start(): void {
   const sendToOperator = <C extends EventChannel>(channel: C, payload: EventContract[C]) => {
     if (operatorWindow && !operatorWindow.isDestroyed()) operatorWindow.webContents.send(channel, payload);
   };
+  // ---- sound ----------------------------------------------------------------
+  const settings = new SettingsRepo(db);
+  const audioOutput = new AudioOutput({
+    load: () => settings.get('audioOutput'),
+    save: (device) => {
+      settings.set('audioOutput', device);
+    },
+    chosen: (device) => {
+      if (audioWindow && !audioWindow.isDestroyed())
+        audioWindow.webContents.send(IPC.audio.chosen, { device });
+    },
+    status: (status) => {
+      sendToOperator(IPC.audio.status, status);
+    },
+    log: (message) => {
+      log.info(message);
+    },
+  });
+  const fromAudioPlayer = (event: IpcMainInvokeEvent) => event.sender.id === audioWindow?.webContents.id;
+
   // The operator's library list refreshes at most once a second during an import.
   let changedTimer: NodeJS.Timeout | null = null;
   let lastChanged = 0;
@@ -436,6 +482,14 @@ function start(): void {
     if (!file?.sha256 || file.missing) return { ok: false as const, message: 'That media item has no file.' };
     return saveStill(mediaDir, file.sha256, jpeg);
   });
+  handle(IPC.audio.getOutput, () => audioOutput.status);
+  handle(IPC.audio.setOutput, (e, device) =>
+    fromOperator(e) ? audioOutput.choose(device) : audioOutput.status,
+  );
+  handle(IPC.audio.reportDevices, (e, devices, state) => {
+    if (fromAudioPlayer(e)) audioOutput.report(devices, state);
+    return null;
+  });
   handle(IPC.screens.get, () => screens.snapshot());
   handle(IPC.screens.createGroup, (e, name) => (fromOperator(e) ? screens.createGroup(name) : notAllowed));
   handle(IPC.screens.renameGroup, (e, id, name) =>
@@ -493,6 +547,17 @@ function start(): void {
 
   operatorWindow = createOperatorWindow();
   watchdog.watch(operatorWindow.webContents, 'operator');
+  // The audio player once the operator window has loaded (or after 5 s whatever happens). Created
+  // first, Chromium 152 can hand the operator window the audio player's list of sound outputs.
+  let audioStarted = false;
+  const startAudioPlayer = () => {
+    if (audioStarted) return;
+    audioStarted = true;
+    audioWindow = createAudioWindow();
+    watchdog.watch(audioWindow.webContents, 'audio player');
+  };
+  operatorWindow.webContents.once('did-finish-load', startAudioPlayer);
+  setTimeout(startAudioPlayer, 5000);
   let moveTimer: NodeJS.Timeout | null = null;
   operatorWindow.on('moved', () => {
     if (moveTimer) clearTimeout(moveTimer);
@@ -513,6 +578,7 @@ function start(): void {
   const runSelfTest = () =>
     runWatchdogSelfTest({
       operator: () => (operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : null),
+      audioPlayer: () => (audioWindow && !audioWindow.isDestroyed() ? audioWindow : null),
       outputs: () => [...outputWindows.values()].filter((w) => !w.isDestroyed()),
       watchdog,
       dispatch: (command) => engine.dispatch(command),

@@ -16,6 +16,7 @@ import { LiveControls } from './LiveControls';
 import { LivePreview } from './LivePreview';
 import { PresentationList } from './PresentationList';
 import { SlideGrid } from './SlideGrid';
+import { SoundWarning } from '../screens/SoundOutput';
 import { LiveStatus, ScreensSummary } from './StatusLine';
 import { isTyping, useKeymap } from './useKeymap';
 
@@ -67,6 +68,7 @@ export function App() {
         <h1 className="text-lg font-semibold tracking-wide">Drashti</h1>
         <LiveStatus />
         <span className="flex-1" />
+        <SoundWarning onOpen={openScreens} />
         <ScreensSummary onOpen={openScreens} />
         <Button onClick={openScreens}>Screens</Button>
       </header>

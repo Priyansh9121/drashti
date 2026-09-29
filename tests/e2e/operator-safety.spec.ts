@@ -8,7 +8,7 @@ test("an output on the operator's display needs consent, and Uncover gets the co
   const op = await app.firstWindow();
   await expect(op.getByTestId('presentation-list').getByRole('button')).toHaveCount(2);
   const operatorDisplay = await app.evaluate(({ BrowserWindow, screen }) => {
-    const win = BrowserWindow.getAllWindows()[0];
+    const win = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('index.html'));
     return win ? screen.getDisplayMatching(win.getBounds()).id : -1;
   });
   const openOutputs = () => app.windows().filter((w) => !w.isClosed() && isOutput(w.url())).length;
