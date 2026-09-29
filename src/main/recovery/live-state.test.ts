@@ -66,6 +66,11 @@ describe('restart recovery', () => {
       playlist: null,
       background,
       blackout: true,
+      audio: null,
+      props: [],
+      messages: [],
+      stageMessage: null,
+      timers: [],
     });
     expect(savedFrom(live({ slideIndex: null }), 'run-1').slide).toBeNull();
   });
@@ -78,6 +83,80 @@ describe('restart recovery', () => {
     const writer = new LiveStateWriter(files, { throttleMs: 10 });
     await saved(writer, onItem);
     expect(toRestore(files)).toMatchObject({ slide: null, playlist, background: null });
+  });
+
+  it('keeps the sound, props, messages, the stage message and timers that ran', async () => {
+    const state = live({ slideIndex: null, withBackground: false });
+    const audio = { id: 'a', title: 'Placeholder', mediaId: 'tune', volume: 1, loop: false, startedAt: 99 };
+    const show: EngineState = {
+      ...state,
+      layers: {
+        ...state.layers,
+        audio,
+        props: [{ id: 'p', name: 'Placeholder logo', elements: [] }],
+        messages: [{ id: 'm', text: 'Placeholder message', parts: [{ kind: 'timer', timerId: 't1' }] }],
+      },
+      stageMessage: 'Placeholder stage',
+      timers: [
+        {
+          id: 't1',
+          name: 'A',
+          kind: 'countdown',
+          durationMs: 1000,
+          targetTime: null,
+          allowsOverrun: false,
+          startedAt: 5,
+          elapsedMs: 0,
+        },
+        {
+          id: 't2',
+          name: 'B',
+          kind: 'countup',
+          durationMs: 0,
+          targetTime: null,
+          allowsOverrun: false,
+          startedAt: null,
+          elapsedMs: 0,
+        },
+      ],
+    };
+    const writer = new LiveStateWriter(files, { throttleMs: 10 });
+    await saved(writer, show);
+    expect(toRestore(files)).toMatchObject({
+      slide: null,
+      audio,
+      props: [{ id: 'p' }],
+      messages: [{ id: 'm' }],
+      stageMessage: 'Placeholder stage',
+      // Only timers that ran: t2 was never started.
+      timers: [{ id: 't1', startedAt: 5, elapsedMs: 0 }],
+    });
+  });
+
+  it('leaves out the layers saved by another engine version', () => {
+    writeFileSync(
+      files.state,
+      JSON.stringify({
+        version: 1,
+        session: 'other-version',
+        engineVersion: ENGINE_STATE_VERSION - 1,
+        savedAt: '2026-09-01T10:00:00.000Z',
+        slide: { presentationId: 'p1', slideIndex: 1, arrangementId: null },
+        background: null,
+        blackout: false,
+        audio: { id: 'a', title: '', mediaId: 'x', volume: 1, loop: false, startedAt: 1 },
+        props: [{ id: 'p', name: '', elements: [] }],
+        stageMessage: 'Kept?',
+        timers: [{ id: 't', startedAt: 1, elapsedMs: 0 }],
+      }),
+    );
+    expect(toRestore(files)).toMatchObject({
+      slide: { slideIndex: 1 },
+      audio: null,
+      props: [],
+      stageMessage: null,
+      timers: [],
+    });
   });
 
   it('reads files saved before playlists could be played', () => {

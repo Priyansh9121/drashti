@@ -13,7 +13,7 @@ import {
   relaunchApp,
   setUpScreen,
 } from './helpers';
-import { makeTestImage } from './test-media';
+import { makeTestImage, makeTestVideo } from './test-media';
 
 /*
  * Restart recovery: after an unexpected stop, the next start puts the same
@@ -94,4 +94,84 @@ test('after a crash the same slide, background and black-out come back; after a 
   expect(await win3.evaluate(() => (globalThis as PageGlobals).drashti.app.recovery())).toBeNull();
   await expect(win3.getByTestId('recovery-notice')).toHaveCount(0);
   await third.app.close();
+});
+
+test('after a crash a running timer, a message and the sound come back, carrying on where they were', async () => {
+  const first = await launchApp();
+  const win = await operatorPage(first.app);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-recovery-show-'));
+  const tune = await makeTestVideo(win, join(dir, 'Placeholder tune.webm'), {
+    seconds: 3,
+    tone: 300,
+    width: 64,
+    height: 36,
+  });
+  const [tuneId = ''] = await importAndGetIds(win, [tune]);
+  await setUpScreen(win);
+  await outputPage(first.app);
+  // A countdown, running; a message with it in; the tune on the audio layer.
+  const started = await win.evaluate(async (mediaId) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const made = await d.timers.create({
+      name: 'Placeholder start',
+      kind: 'countdown',
+      durationMs: 300_000,
+      targetTime: null,
+      allowsOverrun: false,
+    });
+    if (!made.ok) throw new Error(made.message);
+    await d.engine.dispatch({ type: 'startTimer', timerId: made.id });
+    await d.engine.dispatch({
+      type: 'showMessage',
+      message: {
+        id: 'placeholder-message',
+        text: 'Placeholder sabha starts in [timer]',
+        parts: [
+          { kind: 'text', text: 'Placeholder sabha starts in ' },
+          { kind: 'timer', timerId: made.id },
+        ],
+      },
+    });
+    await d.engine.dispatch({
+      type: 'playAudio',
+      audio: { id: 'placeholder-tune', title: 'Placeholder tune', mediaId, volume: 1, loop: true },
+    });
+    const s = (await d.engine.snapshot()).state;
+    return { timer: s.timers[0]?.startedAt ?? 0, audio: s.layers.audio?.startedAt ?? 0 };
+  }, tuneId);
+  // Saved (within a quarter of a second), then stopped dead.
+  const stateFile = join(first.userData, 'live-state.json');
+  await expect
+    .poll(() => {
+      if (!existsSync(stateFile)) return null;
+      const saved = JSON.parse(readFileSync(stateFile, 'utf8')) as {
+        messages?: unknown[];
+        timers?: unknown[];
+      };
+      return [saved.messages?.length, saved.timers?.length];
+    })
+    .toEqual([1, 1]);
+  await killApp(first.app);
+
+  const second = await relaunchApp(first.userData);
+  const win2 = await operatorPage(second.app);
+  const output = await outputPage(second.app);
+  // The message is back, with the timer counting on from where it started (below 5:00 now).
+  const banner = output.locator('[data-layer="messages"]');
+  await expect(banner).toContainText('Placeholder sabha starts in 4:');
+  const back = await win2.evaluate(async () => {
+    const s = (await (globalThis as PageGlobals).drashti.engine.snapshot()).state;
+    return { timer: s.timers[0]?.startedAt ?? -1, audio: s.layers.audio?.startedAt ?? -1 };
+  });
+  expect(back).toEqual(started);
+  // The sound plays again in the audio player, from where it would be now.
+  await expect.poll(() => second.app.windows().some((w) => w.url().includes('audio.html'))).toBe(true);
+  const audio = second.app.windows().find((w) => w.url().includes('audio.html'));
+  await expect
+    .poll(() =>
+      audio?.locator('audio[data-key]').evaluate((el: HTMLAudioElement) => !el.paused && el.currentTime > 0),
+    )
+    .toBe(true);
+  await expect(win2.getByTestId('recovery-notice')).toContainText('the sound, a message and a timer');
+  await second.app.close();
 });

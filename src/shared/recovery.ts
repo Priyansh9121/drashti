@@ -8,6 +8,13 @@ export interface RecoveryNotice {
   slideGone: boolean;
   background: boolean;
   blackout: boolean;
+  /** The sound, carrying on. */
+  audio?: boolean;
+  props?: number;
+  messages?: number;
+  stageMessage?: boolean;
+  /** Timers, running or paused. */
+  timers?: number;
 }
 
 function joinParts(parts: string[]): string {
@@ -20,6 +27,14 @@ export function recoveryText(notice: RecoveryNotice): string {
   const parts: string[] = [];
   if (notice.slide) parts.push(`"${notice.slide.presentationName}", slide ${notice.slide.slideNumber}`);
   if (notice.background) parts.push('the background');
+  if (notice.audio) parts.push('the sound');
+  const count = (n: number | undefined, one: string, many: string) => {
+    if (n && n > 0) parts.push(n === 1 ? one : `${n} ${many}`);
+  };
+  count(notice.props, 'a prop', 'props');
+  count(notice.messages, 'a message', 'messages');
+  if (notice.stageMessage) parts.push('the stage message');
+  count(notice.timers, 'a timer', 'timers');
   if (notice.blackout) parts.push('black-out');
   const put =
     parts.length > 0

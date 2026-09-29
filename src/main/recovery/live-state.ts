@@ -2,7 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { rename, rm, writeFile } from 'node:fs/promises';
 import { z } from 'zod';
-import type { BackgroundLayer, EngineState, PlaylistCursor } from '../../shared/engine/state';
+import { audioChoiceSchema, messageSchema, propSchema } from '../../shared/engine/commands';
+import type {
+  AudioLayer,
+  BackgroundLayer,
+  EngineState,
+  MessageItem,
+  PlaylistCursor,
+  PropItem,
+} from '../../shared/engine/state';
 import { ENGINE_STATE_VERSION } from '../../shared/engine/state';
 import { hexColorSchema, idSchema } from '../../shared/model-schema';
 
@@ -30,6 +38,13 @@ export interface SavedLive {
   playlist: PlaylistCursor | null;
   background: BackgroundLayer | null;
   blackout: boolean;
+  /** The sound playing, with when it started: it carries on from there. */
+  audio: AudioLayer | null;
+  props: PropItem[];
+  messages: MessageItem[];
+  stageMessage: string | null;
+  /** Timers that were running or paused (their definitions are in the library). */
+  timers: { id: string; startedAt: number | null; elapsedMs: number }[];
 }
 
 const backgroundSchema: z.ZodType<BackgroundLayer> = z.discriminatedUnion('kind', [
@@ -62,7 +77,17 @@ const savedSchema = z.object({
   // Checked below, only when the engine version matches.
   background: z.unknown(),
   blackout: z.boolean(),
+  // Files saved before these were kept have none.
+  audio: z.unknown().default(null),
+  props: z.unknown().default([]),
+  messages: z.unknown().default([]),
+  stageMessage: z.string().max(300).nullable().default(null),
+  timers: z
+    .array(z.object({ id: idSchema, startedAt: z.number().nullable(), elapsedMs: z.number().min(0) }))
+    .max(200)
+    .default([]),
 });
+const audioLayerSchema = z.intersection(audioChoiceSchema, z.object({ startedAt: z.number() }));
 const markSchema = z.object({ session: z.string().min(1).max(64) });
 
 export function savedFrom(state: EngineState, session: string, now = new Date()): SavedLive {
@@ -82,6 +107,13 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
     playlist: state.live.playlist,
     background: state.layers.background,
     blackout: state.blackout,
+    audio: state.layers.audio,
+    props: state.layers.props,
+    messages: state.layers.messages,
+    stageMessage: state.stageMessage,
+    timers: state.timers
+      .filter((t) => t.startedAt !== null || t.elapsedMs > 0)
+      .map(({ id, startedAt, elapsedMs }) => ({ id, startedAt, elapsedMs })),
   };
 }
 
@@ -111,10 +143,32 @@ export function toRestore(files: RecoveryFiles): SavedLive | null {
   const mark = markSchema.safeParse(readJson(files.cleanMark));
   if (mark.success && mark.data.session === saved.data.session) return null;
   const s = saved.data;
-  const parsed = backgroundSchema.nullable().safeParse(s.background);
-  const background = s.engineVersion === ENGINE_STATE_VERSION && parsed.success ? parsed.data : null;
-  if (!s.slide && !s.playlist && !background && !s.blackout) return null;
-  return { ...s, version: 1, background };
+  // The layers' shapes belong to one engine version: from another, only the slide and cursors come back.
+  const same = s.engineVersion === ENGINE_STATE_VERSION;
+  const layer = <T>(schema: z.ZodType<T>, value: unknown, none: T): T => {
+    if (!same) return none;
+    const parsed = schema.safeParse(value);
+    return parsed.success ? parsed.data : none;
+  };
+  const background = layer(backgroundSchema.nullable(), s.background, null);
+  const audio = layer(audioLayerSchema.nullable(), s.audio, null);
+  const props = layer(z.array(propSchema).max(50), s.props, []);
+  const messages = layer(z.array(messageSchema).max(50), s.messages, []);
+  const timers = same ? s.timers : [];
+  const stageMessage = same ? s.stageMessage : null;
+  const anything = [
+    s.slide !== null,
+    s.playlist !== null,
+    background !== null,
+    s.blackout,
+    audio !== null,
+    props.length > 0,
+    messages.length > 0,
+    stageMessage !== null,
+    timers.length > 0,
+  ].some(Boolean);
+  if (!anything) return null;
+  return { ...s, version: 1, background, audio, props, messages, stageMessage, timers };
 }
 
 export interface LiveStateWriterOptions {

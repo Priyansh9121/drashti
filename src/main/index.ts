@@ -390,6 +390,11 @@ function start(): void {
       slideGone: saved.slide !== null && !put.slide,
       background: put.background,
       blackout: put.blackout,
+      audio: put.audio,
+      props: put.props,
+      messages: put.messages,
+      stageMessage: put.stageMessage,
+      timers: put.timers,
     };
     log.warn(recoveryText(recovery));
   }

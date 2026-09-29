@@ -30,14 +30,14 @@ const background: z.ZodType<BackgroundChoice> = z.discriminatedUnion('kind', [
     loop: z.boolean(),
   }),
 ]);
-const audio: z.ZodType<AudioChoice> = z.object({
+export const audioChoiceSchema: z.ZodType<AudioChoice> = z.object({
   id,
   title: z.string().max(300),
   mediaId: id.nullable(),
   volume: z.number().min(0).max(1),
   loop: z.boolean(),
 });
-const prop: z.ZodType<PropItem> = z.object({
+export const propSchema: z.ZodType<PropItem> = z.object({
   id,
   name: z.string().max(200),
   elements: z.array(slideElement).max(50),
@@ -48,7 +48,7 @@ const messagePart = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('text'), text: z.string().max(500) }),
   z.object({ kind: z.literal('timer'), timerId: id }),
 ]);
-const message: z.ZodType<MessageItem> = z.object({
+export const messageSchema: z.ZodType<MessageItem> = z.object({
   id,
   text: z.string().min(1).max(500),
   parts: z.array(messagePart).max(40).optional(),
@@ -80,10 +80,10 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('setBlackout'), on: z.boolean() }),
   z.object({ type: z.literal('toggleBlackout') }),
   z.object({ type: z.literal('setBackground'), background }),
-  z.object({ type: z.literal('playAudio'), audio }),
-  z.object({ type: z.literal('showProp'), prop }),
+  z.object({ type: z.literal('playAudio'), audio: audioChoiceSchema }),
+  z.object({ type: z.literal('showProp'), prop: propSchema }),
   z.object({ type: z.literal('hideProp'), propId: id }),
-  z.object({ type: z.literal('showMessage'), message }),
+  z.object({ type: z.literal('showMessage'), message: messageSchema }),
   z.object({ type: z.literal('hideMessage'), messageId: id }),
   z.object({ type: z.literal('setMask'), mask }),
   /** Timers: only these three change what the windows count from. */

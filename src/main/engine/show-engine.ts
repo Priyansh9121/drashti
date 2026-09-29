@@ -10,7 +10,9 @@ import {
   type EngineState,
   initialEngineState,
   type LiveCursor,
+  type MessageItem,
   type PlaylistCursor,
+  type PropItem,
   type UpNext,
 } from '../../shared/engine/state';
 import type { EngineTransport } from '../../shared/engine/transport';
@@ -34,6 +36,25 @@ export interface RestoreRequest {
   playlist?: PlaylistCursor | null;
   background: BackgroundLayer | null;
   blackout: boolean;
+  /** The sound, with when it started: it carries on from where it would be now. */
+  audio?: AudioLayer | null;
+  props?: readonly PropItem[];
+  messages?: readonly MessageItem[];
+  stageMessage?: string | null;
+  /** Timer runs: a running timer carries on from its start time, a paused one keeps its count. */
+  timers?: readonly { id: string; startedAt: number | null; elapsedMs: number }[];
+}
+
+/** What restart recovery put back. */
+export interface Restored {
+  slide: boolean;
+  background: boolean;
+  blackout: boolean;
+  audio: boolean;
+  props: number;
+  messages: number;
+  stageMessage: boolean;
+  timers: number;
 }
 
 /**
@@ -91,7 +112,7 @@ export class ShowEngine {
    * carries on from where it would be now), and black-out. A slide or item
    * that no longer exists is left out.
    */
-  restore(request: RestoreRequest): { slide: boolean; background: boolean; blackout: boolean } {
+  restore(request: RestoreRequest): Restored {
     const actions: EngineAction[] = [];
     let slide = false;
     const playlist = request.playlist ? this.checkItem(request.playlist) : null;
@@ -112,8 +133,33 @@ export class ShowEngine {
     }
     if (request.background) actions.push({ type: 'background/set', background: request.background });
     if (request.blackout) actions.push({ type: 'blackout/set', on: true });
+    // The sound keeps its start time, so it carries on where it would be now, as a video does.
+    if (request.audio) actions.push({ type: 'audio/set', audio: request.audio });
+    for (const prop of request.props ?? []) actions.push({ type: 'prop/show', prop });
+    for (const message of request.messages ?? []) actions.push({ type: 'message/show', message });
+    if (request.stageMessage) actions.push({ type: 'stage/message', text: request.stageMessage });
+    // Timers that still exist: running ones count on from their start, paused ones keep their count.
+    let timers = 0;
+    for (const t of request.timers ?? []) {
+      if (!this.state.timers.some((x) => x.id === t.id)) continue;
+      actions.push({
+        type: 'timer/run',
+        timerId: t.id,
+        run: { startedAt: t.startedAt, elapsedMs: t.elapsedMs },
+      });
+      timers++;
+    }
     this.apply(actions);
-    return { slide, background: request.background !== null, blackout: request.blackout };
+    return {
+      slide,
+      background: request.background !== null,
+      blackout: request.blackout,
+      audio: Boolean(request.audio),
+      props: request.props?.length ?? 0,
+      messages: request.messages?.length ?? 0,
+      stageMessage: Boolean(request.stageMessage),
+      timers,
+    };
   }
 
   /**
