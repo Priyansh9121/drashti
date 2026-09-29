@@ -114,18 +114,34 @@ test('outputs and the sound stay in step, a reloaded output rejoins, and only th
   for (const out of [a, b]) await expect(out.locator(picture)).toHaveAttribute('data-state', 'ready');
   await expect(audio.locator(sound)).toHaveCount(1);
 
+  /** How each window's media element is doing, for a failure message. */
+  const describe = (pages: Page[], selectors: string[]) =>
+    Promise.all(
+      pages.map((p, i) =>
+        p.evaluate((selector) => {
+          const v = document.querySelector<HTMLMediaElement>(selector);
+          return v
+            ? `t=${v.currentTime.toFixed(2)} d=${v.duration.toFixed(2)} paused=${v.paused} ready=${v.readyState} rate=${v.playbackRate}`
+            : 'missing';
+        }, selectors[i] ?? ''),
+      ),
+    );
+
   /** Wait until every window is within `tolerance` of the clock, then return their offsets. */
   const settled = async (pages: Page[], selectors: string[], tolerance: number) => {
     let offsets: (number | null)[] = [];
-    await expect
-      .poll(
-        async () => {
-          offsets = await Promise.all(pages.map((p, i) => offsetOf(p, selectors[i] ?? '', startedAt)));
-          return offsets.every((o) => o !== null && Math.abs(o) < tolerance);
-        },
-        { timeout: 10_000, intervals: [250] },
-      )
-      .toBe(true);
+    const inStep = async () => {
+      offsets = await Promise.all(pages.map((p, i) => offsetOf(p, selectors[i] ?? '', startedAt)));
+      return offsets.every((o) => o !== null && Math.abs(o) < tolerance);
+    };
+    const end = Date.now() + 10_000;
+    while (!(await inStep())) {
+      if (Date.now() > end) {
+        const states = await describe(pages, selectors);
+        throw new Error(`Not in step after 10 s. Offsets ${JSON.stringify(offsets)}; ${states.join(' | ')}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
     return offsets as number[];
   };
 
@@ -269,4 +285,78 @@ test('only the audio player may see sound outputs; the choice is remembered, and
   const audio2 = await audioPage(again.app);
   await expect.poll(() => audio2.evaluate(() => document.body.dataset['output'])).toBe('missing');
   await again.app.close();
+});
+
+test("an audio cue plays on the audio layer with the cue's volume and looping; Clear audio stops it", async () => {
+  const { app } = await launchApp();
+  const win = await app.firstWindow();
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-cue-'));
+  const tune = await makeTestVideo(win, join(dir, 'Placeholder tune.webm'), {
+    seconds: 2,
+    tone: 330,
+    width: 64,
+    height: 36,
+  });
+  const show = join(dir, 'Placeholder Dhun.pro6');
+  writeFileSync(
+    show,
+    pp6Presentation({
+      uuid: 'E2E-DHUN',
+      groups: [
+        {
+          name: 'Verse',
+          // The audio cue in these files plays at 0.8 volume and loops.
+          slides: [
+            { audio: tune, text: [line('Placeholder dhun one')] },
+            { text: [line('Placeholder dhun two')] },
+          ],
+        },
+      ],
+    }),
+  );
+  await importAndGetIds(win, [show]);
+  const audio = await audioPage(app);
+  await win
+    .getByTestId('presentation-list')
+    .getByRole('button', { name: /Placeholder Dhun/ })
+    .click();
+  await expect(win.getByTestId('slide-thumb').nth(0).getByTestId('thumb-audio')).toHaveText(
+    '♪ Placeholder audio',
+  );
+  await expect(win.getByTestId('slide-thumb').nth(1).getByTestId('thumb-audio')).toHaveCount(0);
+
+  await win.getByTestId('slide-thumb').nth(0).click();
+  const cue = audio.locator('audio[data-key^="audio:"]');
+  await expect(cue).toHaveCount(1);
+  await expect
+    .poll(() =>
+      cue.evaluate((el: HTMLAudioElement) => ({
+        playing: !el.paused,
+        volume: el.volume,
+        loop: el.loop,
+        muted: el.muted,
+      })),
+    )
+    .toEqual({ playing: true, volume: 0.8, loop: true, muted: false });
+  await expect(win.getByTestId('audio-status')).toHaveText('♪ Placeholder audio');
+  const key = await cue.getAttribute('data-key');
+
+  // A slide without sound leaves it playing: the same playback, past the end of the 2 s file (it loops).
+  await win.keyboard.press('ArrowRight');
+  await expect(win.getByTestId('live-text')).toContainText('slide 2 of 2');
+  await expect(cue).toHaveAttribute('data-key', key ?? '');
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+  expect(await cue.evaluate((el: HTMLAudioElement) => !el.paused)).toBe(true);
+  expect(await soundingIn(win)).toBe(0);
+
+  // Clear audio (F6) stops it; the slide stays up.
+  await win.keyboard.press('F6');
+  await expect(cue).toHaveCount(0);
+  await expect(win.getByTestId('audio-status')).toHaveCount(0);
+  const layers = await win.evaluate(
+    async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers,
+  );
+  expect(layers.audio).toBeNull();
+  expect(layers.slide?.slideIndex).toBe(1);
+  await app.close();
 });

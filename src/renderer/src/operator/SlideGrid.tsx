@@ -43,6 +43,7 @@ const Thumb = memo(function Thumb({
     if (live) ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [live]);
   const background = info.cues.find((c): c is BackgroundCue => c.kind === 'background');
+  const sound = info.cues.find((c) => c.kind === 'audio');
   return (
     <li>
       <button
@@ -68,6 +69,11 @@ const Thumb = memo(function Thumb({
         >
           <span className="font-semibold">{info.index + 1}</span>
           <span className="truncate">{info.label}</span>
+          {sound && (
+            <span className="truncate" data-testid="thumb-audio" title={`Plays ${sound.name}`}>
+              {`♪ ${sound.label || sound.name}`}
+            </span>
+          )}
           {live && <span className="ml-auto font-bold tracking-wide">LIVE</span>}
         </span>
       </button>

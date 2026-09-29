@@ -278,7 +278,23 @@ function cuesOf(ctx: Context, actions: Message[]): ParsedCue[] {
     if (media) {
       const element = msg(media['element']);
       if (media['audio'] || element?.['audio']) {
-        cues.push({ kind: 'audio', label, media: addMedia(ctx, element, 'audio'), props: {} });
+        // Volume on the file's audio properties; looping on the cue (1 loops; 2 and 3, a count or a time, loop until cleared).
+        const volume = num(msg(msg(element?.['audio'])?.['audio'])?.['volume'], 1);
+        const behavior = num(msg(media['audio'])?.['playback_behavior']);
+        if (behavior === 2 || behavior === 3) {
+          ctx.losses.add(
+            'audio-loop-count',
+            'An audio cue that loops a set number of times, or for a set time, loops until it is cleared.',
+            '{n} audio cues that loop a set number of times, or for a set time, loop until they are cleared.',
+            'info',
+          );
+        }
+        cues.push({
+          kind: 'audio',
+          label,
+          media: addMedia(ctx, element, 'audio'),
+          props: { volume: Math.min(1, Math.max(0, volume)), loop: behavior >= 1 && behavior <= 3 },
+        });
         continue;
       }
       const kind: 'image' | 'video' = media['video'] || element?.['video'] ? 'video' : 'image';
@@ -320,11 +336,11 @@ function cuesOf(ctx: Context, actions: Message[]): ParsedCue[] {
       });
   }
   for (const cue of cues) {
-    if (cue.kind === 'background') continue;
+    if (cue.kind === 'background' || cue.kind === 'audio') continue;
     ctx.losses.add(
       'slide-cues',
-      'A slide cue (audio, a clear, a message...) came across but does not run yet.',
-      '{n} slide cues (audio, clears, messages...) came across but do not run yet.',
+      'A slide cue (a clear, a message, a timer...) came across but does not run yet.',
+      '{n} slide cues (clears, messages, timers...) came across but do not run yet.',
       'info',
     );
   }

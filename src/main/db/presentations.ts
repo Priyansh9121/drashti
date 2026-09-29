@@ -60,21 +60,40 @@ export interface CueRow {
 
 const FITS: readonly string[] = ['fit', 'fill', 'stretch'] satisfies MediaFit[];
 
+function propsOf(row: CueRow): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(row.props);
+    if (parsed && typeof parsed === 'object') return parsed as Record<string, unknown>;
+  } catch {
+    // Keep the defaults.
+  }
+  return {};
+}
+
 /**
  * A stored cue as the engine runs it; null for kinds Drashti does not run
  * yet, and for cues whose media item is gone.
  */
 export function cueFromRow(row: CueRow): SlideCue | null {
-  if (row.kind !== 'background' || !row.media_id) return null;
+  if (!row.media_id) return null;
   const media = row.media_kind;
-  if (media !== 'image' && media !== 'video') return null;
-  let props: Record<string, unknown> = {};
-  try {
-    const parsed: unknown = JSON.parse(row.props);
-    if (parsed && typeof parsed === 'object') props = parsed as Record<string, unknown>;
-  } catch {
-    // Keep the defaults.
+  const props = propsOf(row);
+  if (row.kind === 'audio') {
+    // A video file's sound plays too.
+    if (media !== 'audio' && media !== 'video') return null;
+    const volume =
+      typeof props['volume'] === 'number' && Number.isFinite(props['volume']) ? props['volume'] : 1;
+    return {
+      kind: 'audio',
+      label: row.label,
+      name: row.media_name ?? '',
+      missing: row.media_missing === 1,
+      mediaId: row.media_id,
+      volume: Math.min(1, Math.max(0, volume)),
+      loop: props['loop'] === true,
+    };
   }
+  if (row.kind !== 'background' || (media !== 'image' && media !== 'video')) return null;
   const fit =
     typeof props['fit'] === 'string' && FITS.includes(props['fit']) ? (props['fit'] as MediaFit) : 'fit';
   return {

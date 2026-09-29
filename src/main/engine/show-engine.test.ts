@@ -141,7 +141,7 @@ describe('ShowEngine', () => {
       const s = setup();
       const commands: EngineCommand[] = [
         goLive('p1', 0),
-        { type: 'playAudio', audio: { id: 'a', title: 'Dhun', mediaId: null } },
+        { type: 'playAudio', audio: { id: 'a', title: 'Dhun', mediaId: null, volume: 1, loop: false } },
         { type: 'setBackground', background: { kind: 'color', color: '#202020' } },
         { type: 'showProp', prop: { id: 'logo', name: 'Logo', elements: [] } },
         { type: 'showMessage', message: { id: 'm', text: 'Welcome' } },
@@ -323,6 +323,77 @@ describe('ShowEngine', () => {
     });
   });
 
+  describe('audio cues', () => {
+    const tone = (mediaId: string, extra: Partial<Extract<SlideCue, { kind: 'audio' }>> = {}): SlideCue => ({
+      kind: 'audio',
+      label: `Placeholder ${mediaId}`,
+      name: `${mediaId}.mp3`,
+      missing: false,
+      mediaId,
+      volume: 0.8,
+      loop: true,
+      ...extra,
+    });
+
+    /** au: 0 tone A, 1 no sound, 2 tone A again (quieter), 3 tone B once. The clock moves on 1 s per command. */
+    function withAudio() {
+      const source = makeSource();
+      const clock = { now: 1000 };
+      const engine = new ShowEngine(source, new RecordingTransport(), () => clock.now);
+      source.set(
+        'au',
+        ['a', 'b', 'c', 'd'].map((n) => textSlide(`au-${n}`, n)),
+        [[tone('A')], [], [tone('A', { volume: 0.3 })], [tone('B', { loop: false, label: '' })]],
+      );
+      const dispatch = (command: EngineCommand) => {
+        clock.now += 1000;
+        return engine.dispatch(command);
+      };
+      return { engine, dispatch };
+    }
+
+    it('plays on the audio layer with the cue volume and looping, and stays through slides without sound', () => {
+      const { engine, dispatch } = withAudio();
+      dispatch(goLive('au', 0));
+      expect(engine.current.layers.audio).toEqual({
+        id: 'A',
+        title: 'Placeholder A',
+        mediaId: 'A',
+        volume: 0.8,
+        loop: true,
+        startedAt: 2000,
+      });
+      dispatch({ type: 'next' });
+      expect(engine.current.layers.audio).toMatchObject({ mediaId: 'A', startedAt: 2000 });
+    });
+
+    it('lets the same file carry on (with the new volume), and a different file replace it', () => {
+      const { engine, dispatch } = withAudio();
+      dispatch(goLive('au', 0));
+      dispatch(goLive('au', 2));
+      expect(engine.current.layers.audio).toMatchObject({ mediaId: 'A', volume: 0.3, startedAt: 2000 });
+      dispatch(goLive('au', 3));
+      // No label: the file name is the title.
+      expect(engine.current.layers.audio).toMatchObject({
+        mediaId: 'B',
+        title: 'B.mp3',
+        loop: false,
+        startedAt: 4000,
+      });
+    });
+
+    it('Clear audio stops it and leaves everything else; the next cue starts it again', () => {
+      const { engine, dispatch } = withAudio();
+      dispatch(goLive('au', 0));
+      const slide = engine.current.layers.slide;
+      dispatch({ type: 'clearLayer', layer: 'audio' });
+      expect(engine.current.layers.audio).toBeNull();
+      expect(engine.current.layers.slide).toBe(slide);
+      dispatch(goLive('au', 2));
+      expect(engine.current.layers.audio).toMatchObject({ mediaId: 'A', startedAt: 4000 });
+    });
+  });
+
   describe('black-out', () => {
     it('toggles and sets without touching layers', () => {
       const { engine } = setup();
@@ -395,7 +466,10 @@ describe('ShowEngine', () => {
         { type: 'hideMessage', messageId: `m${rand(3)}` },
         { type: 'showProp', prop: { id: `p${rand(2)}`, name: 'P', elements: [] } },
         { type: 'hideProp', propId: `p${rand(2)}` },
-        { type: 'playAudio', audio: { id: 'a', title: `T${rand(2)}`, mediaId: null } },
+        {
+          type: 'playAudio',
+          audio: { id: 'a', title: `T${rand(2)}`, mediaId: null, volume: 1, loop: false },
+        },
         {
           type: 'setMask',
           mask: { id: 'k', name: 'k', visible: { x: rand(5), y: 0, width: 10, height: 10 } },

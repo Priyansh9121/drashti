@@ -2,6 +2,8 @@ import type { CommandResult, EngineCommand } from '../../shared/engine/commands'
 import { diffState } from '../../shared/engine/patch';
 import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
 import {
+  type AudioChoice,
+  type AudioLayer,
   type BackgroundChoice,
   type BackgroundLayer,
   ENGINE_STATE_VERSION,
@@ -68,13 +70,26 @@ export class ShowEngine {
     const actions: EngineAction[] = [
       { type: 'slide/show', presentationId, slideIndex, slideCount: count, slide, at: this.now() },
     ];
-    // The slide's background goes on the background layer; a slide without one leaves it as it is.
+    // The slide's background and sound go on their layers; a slide without them leaves those layers as they are.
     for (const cue of this.source.cues(presentationId, slideIndex)) {
       if (cue.kind === 'background') {
         actions.push({ type: 'background/set', background: this.backgroundLayer(cue.background) });
+      } else {
+        const { mediaId, volume, loop } = cue;
+        actions.push({
+          type: 'audio/set',
+          audio: this.audioLayer({ id: mediaId, title: cue.label || cue.name, mediaId, volume, loop }),
+        });
       }
     }
     return { ok: true, actions };
+  }
+
+  /** The audio layer for a choice: as with backgrounds, the file already playing carries on. */
+  private audioLayer(choice: AudioChoice): AudioLayer {
+    const current = this.state.layers.audio;
+    const same = choice.mediaId !== null && current?.mediaId === choice.mediaId;
+    return { ...choice, startedAt: same ? current.startedAt : this.now() };
   }
 
   /**
@@ -130,7 +145,7 @@ export class ShowEngine {
           actions: [{ type: 'background/set', background: this.backgroundLayer(command.background) }],
         };
       case 'playAudio':
-        return { ok: true, actions: [{ type: 'audio/set', audio: command.audio }] };
+        return { ok: true, actions: [{ type: 'audio/set', audio: this.audioLayer(command.audio) }] };
       case 'showProp':
         return { ok: true, actions: [{ type: 'prop/show', prop: command.prop }] };
       case 'hideProp':

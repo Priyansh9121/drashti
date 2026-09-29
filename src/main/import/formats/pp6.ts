@@ -363,11 +363,12 @@ function slideOf(ctx: Context, node: XmlNode, docBackground: string | null, inde
   });
   const otherCues = arrayField(node, 'cues').map((c) => cueOf(ctx, c));
   cues.push(...otherCues);
-  if (otherCues.length > 0) {
+  for (const cue of otherCues) {
+    if (cue.kind === 'audio') continue;
     ctx.losses.add(
       'slide-cues',
-      'A slide cue (audio, a clear, a message...) came across but does not run yet.',
-      '{n} slide cues (audio, clears, messages...) came across but do not run yet.',
+      'A slide cue (a clear, a message, a timer...) came across but does not run yet.',
+      '{n} slide cues (clears, messages, timers...) came across but do not run yet.',
       'info',
     );
   }

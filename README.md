@@ -20,7 +20,7 @@ Phase 1 has started:
 - text boxes hold **styled runs** (font, size, colour, weight and language per run);
 - the **import pipeline** runs in a background worker process: plain-text lyrics, ProPresenter 6 and 7 presentations, templates and themes, playlists and bundles, and media files, with re-import rules, a media folder that stores each file once, and a report kept for every import;
 - **importing from the operator window**: drag files or folders onto the presentation list, or use **Import…**; progress, then a migration report with a fix for each item; removing presentations with Delete, and Undo;
-- **media playback**: library media reaches the windows by id only (`drashti-media://`); slide backgrounds play on the background layer; images and videos on slides draw everywhere, with still frames for video thumbnails; every screen shows the same frame of a video, and one audio player makes all the sound, on the output chosen in settings.
+- **media playback**: library media reaches the windows by id only (`drashti-media://`); slide backgrounds play on the background layer and audio cues on the audio layer; images and videos on slides draw everywhere, with still frames for video thumbnails; every screen shows the same frame of a video, and one audio player makes all the sound, on the output chosen in settings.
 
 Next: checking both importers against the mandir's own files in `migration-samples/` once the audit has collected them, and the first conversion tables for legacy fonts.
 
@@ -96,7 +96,7 @@ If you start Drashti from inside another Electron app's process (for example an 
 
 **Images and videos on slides** draw on the outputs and in the live preview where the slide places them; a video plays from when its slide goes live. Slide thumbnails show images, and a still frame for each video (with the slide's background behind its text): thumbnails never play video. Drashti makes a video's still frame the first time a thumbnail needs it and keeps it in the media folder.
 
-**Sound.** One hidden audio player plays every sound: the sound of the background video and of videos on the live slide, each in step with the picture. The screens and the live preview are always silent. Choose where the sound goes (usually the mixer) under **Screens > Sound output**; Drashti remembers the choice. If that output is not connected when Drashti starts (or goes away during a show), sound plays on the system default and a warning stays in the header until it is back. Every screen showing the same video shows the same frame: all windows follow one clock and correct any drift (by playing a few percent faster or slower, or jumping when far out), and a screen that opens late or reloads joins where the others are.
+**Sound.** One hidden audio player plays every sound: a slide's audio cue (on the audio layer, at the cue's volume, looping or not as the cue says, and carrying on through later slides until **Clear audio** (F6) or another sound replaces it), and the sound of the background video and of videos on the live slide, each in step with the picture. The header shows what is on the audio layer, and slide thumbnails mark the slides that start a sound. The screens and the live preview are always silent. Choose where the sound goes (usually the mixer) under **Screens > Sound output**; Drashti remembers the choice. If that output is not connected when Drashti starts (or goes away during a show), sound plays on the system default and a warning stays in the header until it is back. Every screen showing the same video shows the same frame: all windows follow one clock and correct any drift (by playing a few percent faster or slower, or jumping when far out), and a screen that opens late or reloads joins where the others are.
 
 **Removing.** Select presentations in the list (Cmd/Ctrl-click adds one, Shift-click a range) and press **Delete** or **Backspace**. Drashti asks first, and warns when one of them is live, whose slide then stays up until it changes. **Undo** under the list, or **Edit > Undo** (Cmd/Ctrl+Z), brings them back. Removed presentations are deleted for good after 30 days.
 
@@ -208,7 +208,7 @@ Electron only supports its latest three major versions with security fixes, so g
 
 **The importers have not met the mandir's files yet.** They are checked against synthetic files and against this Mac's small ProPresenter 6 and 7 libraries, where every file imports. The `.probundle` and `.proplaylist` layouts follow the community documentation and are not confirmed with real exports. `migration-samples/` will settle both.
 
-**Slide audio cues do not play yet.** Videos' sound plays through the audio player; audio cues on slides are imported and kept but not played until the audio layer is built. Images on a slide load when the slide goes live, so a large picture can appear a frame or two after the text.
+**Images on a slide load when the slide goes live**, so a large picture can appear a frame or two after the text. Audio cues that loop a set number of times, or for a set time, loop until cleared.
 
 **Sound and picture latency.** Sound and pictures follow the same clock, but the sound output (especially over HDMI or Bluetooth) and the displays each add their own delay. On the mandir's mixer this should be checked by eye and ear; an adjustable sound delay can be added if it is noticeable.
 

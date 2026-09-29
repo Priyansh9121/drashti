@@ -39,10 +39,24 @@ export interface SlideLayer {
   shownAt: number;
 }
 
-export interface AudioLayer {
+/** A sound for the audio layer, as a slide's audio cue or the operator asks for it. */
+export interface AudioChoice {
   id: string;
   title: string;
   mediaId: string | null;
+  /** 0 to 1. */
+  volume: number;
+  /** Plays again from the start at the end, until cleared; otherwise plays once. */
+  loop: boolean;
+}
+
+/**
+ * What the audio layer plays. It stays on later slides until something
+ * replaces or clears it; the same file on a later slide carries on.
+ */
+export interface AudioLayer extends AudioChoice {
+  /** When it started (ms since the epoch, main-process clock), so the sound stays where it is. */
+  startedAt: number;
 }
 
 export type MediaFit = 'fit' | 'fill' | 'stretch';

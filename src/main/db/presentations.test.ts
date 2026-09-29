@@ -256,7 +256,7 @@ describe('slide cues', () => {
       .prepare('INSERT INTO media (id, kind, name, path, missing) VALUES (?, ?, ?, ?, ?)')
       .run(id, kind, name, missing ? '' : `ab/${id}`, missing ? 1 : 0);
 
-  it('loads background cues with their media, and leaves out cues Drashti does not run yet', () => {
+  it('loads background and audio cues with their media, and leaves out cues Drashti does not run yet', () => {
     addMedia('m-video', 'video', 'Placeholder clouds.mp4');
     addMedia('m-gone', 'image', 'Placeholder gone.jpg', true);
     addMedia('m-audio', 'audio', 'Placeholder tone.mp3');
@@ -315,6 +315,15 @@ describe('slide cues', () => {
           missing: true,
           background: { kind: 'media', mediaId: 'm-gone', media: 'image', fit: 'stretch', loop: false },
         },
+        {
+          kind: 'audio',
+          label: 'Tone',
+          name: 'Placeholder tone.mp3',
+          missing: false,
+          mediaId: 'm-audio',
+          volume: 0.5,
+          loop: false,
+        },
       ],
       [],
     ]);
@@ -343,9 +352,19 @@ describe('slide cues', () => {
     expect(cueFromRow({ ...row, media_kind: 'image', props: '{"loop":true}' })).toMatchObject({
       background: { media: 'image', loop: false },
     });
-    // A cue whose media item is gone, or that is not a background, does not run.
+    // A cue whose media item is gone, or of a kind Drashti does not run yet, does not run.
     expect(cueFromRow({ ...row, media_id: null })).toBeNull();
     expect(cueFromRow({ ...row, media_kind: null })).toBeNull();
     expect(cueFromRow({ ...row, kind: 'message' })).toBeNull();
+    // Audio: a sound file or a video's sound; volume kept between 0 and 1.
+    const audio = { ...row, kind: 'audio', media_kind: 'audio' };
+    expect(cueFromRow({ ...audio, props: '{"volume":0.4,"loop":true}' })).toMatchObject({
+      volume: 0.4,
+      loop: true,
+    });
+    expect(cueFromRow({ ...audio, props: '{"volume":3}' })).toMatchObject({ volume: 1, loop: false });
+    expect(cueFromRow({ ...audio, props: '{"volume":"loud"}' })).toMatchObject({ volume: 1 });
+    expect(cueFromRow({ ...audio, media_kind: 'video' })).toMatchObject({ kind: 'audio' });
+    expect(cueFromRow({ ...audio, media_kind: 'image' })).toBeNull();
   });
 });
