@@ -33,6 +33,7 @@ Phase 1 has started:
 - **media playback**: library media reaches the windows by id only (`drashti-media://`); slide backgrounds play on the background layer and audio cues on the audio layer; images and videos on slides draw everywhere, with still frames for video thumbnails; every screen shows the same frame of a video, and one audio player makes all the sound, on the output chosen in settings;
 - **media Drashti cannot play** (ProRes, AVI, HEIC and the like) is found at import, marked, and listed in the report with what to do;
 - a rotating **log file** in the data folder, and **Help > Save Diagnostics…** for one file to send after a problem, with no library content;
+- **backing up and restoring the library** (File menu): a consistent copy of the library, with the media if wanted, in a folder the operator picks; a restore checks the backup, asks once, keeps the current library under `Backups/` and restarts with nothing live;
 - **restart recovery** of the whole show: after an unexpected stop the slide, background, black-out and place in the playlist come back by themselves, with the sound, props, messages, the stage message and running or paused timers (the sound and timers carry on from where they would be);
 - a **library list** that stays cheap at any size (about 2 ms at 5,000 presentations), and a **performance check** to run by hand on the real machines.
 
@@ -97,6 +98,7 @@ gh workflow run CI --ref <branch> -f os=windows   # or os=macos, os=both
 | `DRASHTI_NO_QUIT_CONFIRM=1`        | Skips the "Quit Drashti?" question (used by the tests).                                                            |
 | `DRASHTI_LOG_PERMISSIONS=1`        | Logs every permission a page checks or asks for (to see why a sound output cannot be chosen).                      |
 | `DRASHTI_TEST_MEDIA_DELAY_MS=<ms>` | Tests only: media answers this late (up to 5 s), as from a slow disk.                                              |
+| `DRASHTI_TEST_NO_RELAUNCH=1`       | Tests only: after Restore Library…, quit instead of restarting (the test starts Drashti again itself).             |
 
 If you start Drashti from inside another Electron app's process (for example an editor extension), make sure `ELECTRON_RUN_AS_NODE` is not set in that environment. When it's set, Electron starts as plain Node. The end-to-end tests clear it automatically.
 
@@ -224,7 +226,21 @@ Imports run in a separate worker process (an Electron utility process, `src/main
 
 ## Where data lives
 
-The library is `drashti.sqlite` in Electron's userData folder: `~/Library/Application Support/Drashti/` on macOS and `%APPDATA%\Drashti\` on Windows. Imported media is in the `Media` folder next to it (each file once, named by its sha256), with the video thumbnails' still frames in `Media/stills/`. `live-state.json` holds what is live, for restart recovery, and `live-state.clean` marks a clean quit. `logs/drashti.log` is the log (versions at each start, errors, watchdog events, imports, display and sound-device changes), rotated at about 2 MB into `drashti.1.log` to `drashti.4.log`. Log lines carry counts and ids, never presentation names, slide text or file paths (the home folder is written as `~`). The audio player keeps its own browser data under `Partitions/drashti-audio`. Real ProPresenter data from the mandir machines belongs in `migration-samples/` at the workspace root, outside this repository, and is never committed.
+The library is `drashti.sqlite` in Electron's userData folder: `~/Library/Application Support/Drashti/` on macOS and `%APPDATA%\Drashti\` on Windows. Imported media is in the `Media` folder next to it (each file once, named by its sha256), with the video thumbnails' still frames in `Media/stills/`. `live-state.json` holds what is live, for restart recovery, and `live-state.clean` marks a clean quit. `logs/drashti.log` is the log (versions at each start, errors, watchdog events, imports, display and sound-device changes), rotated at about 2 MB into `drashti.1.log` to `drashti.4.log`. Log lines carry counts and ids, never presentation names, slide text or file paths (the home folder is written as `~`). The audio player keeps its own browser data under `Partitions/drashti-audio`. `Backups/` holds the library from before each restore (`Before restore <date>`), and `restore-request.json` is a restore asked for, carried out at the next start. Real ProPresenter data from the mandir machines belongs in `migration-samples/` at the workspace root, outside this repository, and is never committed.
+
+## Backing up and restoring
+
+**File > Back Up Library…** asks for a folder (a drive other than the computer's own is best), then whether to include the media, saying how much there is. It makes a new folder there, `Drashti backup <date> <time>` (in the computer's own time, as the diagnostics file is named), holding:
+
+- `drashti.sqlite`, the library, copied with SQLite's online backup, so it is whole even while a show runs;
+- `Media/`, if the media was included (a long copy shows a progress bar under the live preview, and on the Dock or taskbar icon);
+- `backup.json`, the Drashti version, schema and time. It is written last: a folder without it is a backup that did not finish, and a backup that fails is removed.
+
+Drashti checks there is room first, keeping 2 GB free when the backup goes on its own disk, and refuses a folder inside its own data folder. The operator is told where the backup went.
+
+**File > Restore Library…** asks for a backup folder and checks it: a finished backup, from this Drashti or an older one. Then it asks once, saying what will happen and that the screens go black while Drashti restarts. At the restart, before the library opens, the backup is copied in beside the current library, the current library (and its media, when the backup brings its own) is kept in `Backups/Before restore <date> <time>`, and only then is the backup swapped in, so a failure on the way leaves the library as it was. The restart quits cleanly without the usual question, so the restored library starts with nothing live, and the operator is told which backup came back and where the old library is. The kept folder is a finished backup itself, so a restore can be undone with Restore Library… too. A backup without media leaves the media folder as it is.
+
+The code is in `src/main/library/backup.ts` (the work) and `backup-ui.ts` (the questions). The end-to-end test runs a backup, changes the library, restores and starts again, with the quit question switched on. It quits instead of restarting, because a copy of Drashti started by the restart would wait for Playwright; the restart itself (`app.relaunch()`) was checked on the dev Mac with a small Electron script.
 
 ## Folder layout
 
@@ -233,7 +249,7 @@ The library is `drashti.sqlite` in Electron's userData folder: `~/Library/Applic
 | `src/main/engine/`                                              | Show engine: reducer, commands to actions, slide source.                                                                         |
 | `src/main/db/`                                                  | SQLite: migrations, presentations, playlists, media, search index and screens repositories, seed.                                |
 | `src/main/playlists/`                                           | The playlist requests from the operator window, checked and applied.                                                             |
-| `src/main/library/`                                             | Editing presentations: words as plain text and back, themes, kept copies for Undo.                                               |
+| `src/main/library/`                                             | Editing presentations (words as plain text and back, themes, kept copies for Undo), and backing up and restoring the library.    |
 | `src/renderer/src/themes/`                                      | The Themes panel.                                                                                                                |
 | `src/main/outputs/`                                             | Displays, output windows, the output manager and the screens service.                                                            |
 | `src/main/import/`                                              | Importers: the pipeline, the worker process, file formats, the media folder and relinking.                                       |

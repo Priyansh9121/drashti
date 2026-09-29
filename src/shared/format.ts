@@ -9,3 +9,13 @@ export function formatBytes(n: number): string {
   }
   return i === 0 ? `${v} bytes` : `${v.toFixed(1)} ${units[i] ?? ''}`;
 }
+
+/**
+ * A date and time for names people see (backup folders, the diagnostics
+ * file), in the computer's own time zone: "2026-09-29 18-30". No colons,
+ * which Windows file names cannot hold.
+ */
+export function fileStamp(date: Date): string {
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `${String(date.getFullYear())}-${two(date.getMonth() + 1)}-${two(date.getDate())} ${two(date.getHours())}-${two(date.getMinutes())}`;
+}

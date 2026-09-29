@@ -1,3 +1,10 @@
+/** A long task's progress, for the operator (a backup copying the media). */
+export interface TaskProgress {
+  label: string;
+  /** From 0 to 1. */
+  fraction: number;
+}
+
 export interface AppInfo {
   name: string;
   version: string;

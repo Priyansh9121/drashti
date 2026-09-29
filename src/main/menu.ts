@@ -9,15 +9,25 @@ export interface MenuActions {
   uncoverControls: { accelerator: string | null; run: () => void };
   /** Help > Save diagnostics: one file on the Desktop to send after a problem. */
   saveDiagnostics: () => void;
+  /** File > Back Up Library… and Restore Library…. */
+  backUpLibrary: () => void;
+  restoreLibrary: () => void;
   /** Only when DRASHTI_DIAGNOSTICS=1: for the manual watchdog check. */
   diagnostics: { crashOperator: () => void; crashOutputs: () => void; runSelfTest: () => void } | null;
 }
 
-/** A small application menu: standard edit keys, reload, and optional diagnostics. */
+/** A small application menu: backups, standard edit keys, reload, and optional diagnostics. */
 export function installMenu(actions: MenuActions): void {
   const isMac = process.platform === 'darwin';
   const template: MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: 'appMenu' } as MenuItemConstructorOptions] : []),
+    {
+      label: 'File',
+      submenu: [
+        { id: 'backup-library', label: 'Back Up Library…', click: actions.backUpLibrary },
+        { id: 'restore-library', label: 'Restore Library…', click: actions.restoreLibrary },
+      ],
+    },
     {
       label: 'Edit',
       submenu: [

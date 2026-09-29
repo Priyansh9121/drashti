@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { TaskProgress } from '../../../shared/app-info';
 import type { EngineCommand } from '../../../shared/engine/commands';
 import type { PlaylistCursor } from '../../../shared/engine/state';
 import { useEngine } from '../engine/engine-store';
@@ -10,6 +11,9 @@ import type { OperatorAction } from '../../../shared/keymap';
 
 /** The last problem to show the operator (for example "Slide 4 of 3 does not exist"). */
 export const useNotice = create<{ text: string | null }>(() => ({ text: null }));
+
+/** A long task's progress (a backup copying the media), or null. */
+export const useTaskProgress = create<{ progress: TaskProgress | null }>(() => ({ progress: null }));
 
 export async function dispatch(command: EngineCommand): Promise<void> {
   const result = await window.drashti.engine.dispatch(command);

@@ -56,6 +56,9 @@ import { saveStill } from './media/stills';
 import { installMenu } from './menu';
 import { runPerformanceTest } from './perftest';
 import { registerPlaylistIpc } from './playlists/playlist-ipc';
+import { applyPendingRestore } from './library/backup';
+import type { BackupUi } from './library/backup-ui';
+import { backUp, restore } from './library/backup-ui';
 import { Revisions } from './library/revisions';
 import { applyTheme, themeLook } from './library/themes';
 import { registerThemesIpc } from './library/themes-ipc';
@@ -104,6 +107,8 @@ if (windowedOutputs) setExtraDisplays(Number(process.env['DRASHTI_EXTRA_DISPLAYS
 const diagnostics = process.env['DRASHTI_DIAGNOSTICS'] === '1';
 // Automated tests cannot answer the quit confirmation.
 const noQuitConfirm = process.env['DRASHTI_NO_QUIT_CONFIRM'] === '1';
+// Tests only: after Restore Library… just quit (the test starts Drashti again itself).
+const noRelaunch = process.env['DRASHTI_TEST_NO_RELAUNCH'] === '1';
 // Log every permission a page checks or asks for (diagnosing sound output choice).
 const logPermissions = process.env['DRASHTI_LOG_PERMISSIONS'] === '1';
 // Tests only: answer media requests late, as a slow disk would.
@@ -189,6 +194,30 @@ function openLibrary(): Db | null {
   }
 }
 
+/** Carry out a restore asked for before the restart, if there is one (ids and counts only in the log). */
+function pendingRestore(): ReturnType<typeof applyPendingRestore> {
+  try {
+    const outcome = applyPendingRestore(app.getPath('userData'), {
+      schema: LATEST_VERSION,
+      app: app.getVersion(),
+      now: new Date(),
+    });
+    if (outcome.restored)
+      log.info(`Library restored from a backup (${outcome.media ? 'with' : 'without'} media)`);
+    else if (outcome.code) log.warn(`A restore was asked for and not done (${outcome.code})`);
+    return outcome;
+  } catch (error) {
+    // The code only: the error's message can hold a path.
+    const code = error instanceof Error && 'code' in error ? String(error.code) : 'error';
+    log.error(`The restore stopped unexpectedly (${code})`);
+    return {
+      restored: false,
+      code: 'copy-failed',
+      message: 'The library was not restored: something went wrong (see the log). The library is as it was.',
+    };
+  }
+}
+
 const fromOperator = (event: IpcMainInvokeEvent) => event.sender.id === operatorWindow?.webContents.id;
 const idListSchema = z.array(idSchema).min(1).max(10_000);
 /** What the Import files dialog offers (lyrics, the two presentation formats, media). */
@@ -231,6 +260,11 @@ function start(): void {
     log: permissionLog,
   });
 
+  // A restore asked for before a restart is done first, before the library opens.
+  const restored = pendingRestore();
+  let startNotice = restored.restored
+    ? `Library restored from “${restored.from}”. The library from before is kept in Drashti’s data folder, in Backups/${restored.keptIn}.`
+    : restored.message;
   db = openLibrary();
   if (!db) {
     app.quit();
@@ -399,7 +433,8 @@ function start(): void {
     liveWriter.update(state);
   });
   let recovery: RecoveryNotice | null = null;
-  const saved = toRestore(recoveryFiles);
+  // A restored library starts with nothing live (the saved state belongs to the library before it).
+  const saved = restored.restored ? null : toRestore(recoveryFiles);
   if (saved) {
     const put = engine.restore(saved);
     const name = put.slide && saved.slide ? presentations.get(saved.slide.presentationId)?.name : undefined;
@@ -514,6 +549,12 @@ function start(): void {
   // ---- IPC ----------------------------------------------------------------
   handle(IPC.app.getInfo, () => appInfo());
   handle(IPC.app.recovery, () => recovery);
+  handle(IPC.app.startNotice, (e) => {
+    if (!fromOperator(e)) return null;
+    const text = startNotice;
+    startNotice = null;
+    return text;
+  });
   handle(IPC.app.dismissRecovery, (e) => {
     if (fromOperator(e)) recovery = null;
     return null;
@@ -863,7 +904,46 @@ function start(): void {
     };
   };
 
+  const backupUi: BackupUi = {
+    parent: () => (operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : null),
+    db: libraryDb,
+    userData: userDataDir,
+    mediaDir,
+    version: app.getVersion(),
+    schema: LATEST_VERSION,
+    notice: (text) => {
+      sendToOperator(IPC.app.notice, { text });
+    },
+    progress: (progress) => {
+      sendToOperator(IPC.app.progress, { progress });
+      if (operatorWindow && !operatorWindow.isDestroyed())
+        operatorWindow.setProgressBar(progress ? progress.fraction : -1);
+    },
+    restart: () => {
+      // A clean quit, so the next start (with the restored library) puts nothing back on the
+      // screens; and the operator has already agreed to the screens going black.
+      liveWriter.markClean();
+      quitConfirmed = true;
+      if (!noRelaunch) app.relaunch();
+      app.quit();
+    },
+    log: {
+      info: (message) => {
+        log.info(message);
+      },
+      warn: (message) => {
+        log.warn(message);
+      },
+    },
+  };
+
   installMenu({
+    backUpLibrary: () => {
+      void backUp(backupUi);
+    },
+    restoreLibrary: () => {
+      void restore(backupUi);
+    },
     reloadOperator: () => {
       operatorWindow?.webContents.reload();
     },

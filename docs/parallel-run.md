@@ -74,6 +74,8 @@ Importing a folder again later skips what did not change. For a presentation tha
 
 Write down the numbers the report shows (presentations, playlists, media, problems) in your notes.
 
+Once the import is done, **back up the library** to a USB drive: choose **File**, then **Back Up Library…** (on Windows, press **Alt** first to show the menu bar), pick the drive, and keep **Include the media** ticked. Drashti says where the backup went. Do it again after any evening you change the library. If the library ever needs to go back to a backup, **File**, then **Restore Library…** asks first, keeps the current library as well, and restarts Drashti (the screens go black for a moment), so never do it during a sabha.
+
 ---
 
 ## 4. Set up the screens and the sound
@@ -130,7 +132,7 @@ The plan's order for real use (PLAN.md, section 5.1) is: a smaller weekday or Ba
 
 If anything goes wrong (a screen went black, something froze, Drashti closed by itself), as soon as you can:
 
-1. In Drashti, choose **Help**, then **Save Diagnostics…**.
+1. In Drashti, choose **Help**, then **Save Diagnostics…** (on Windows, press **Alt** first to show the menu bar).
 2. A file called "Drashti diagnostics" with the date and time appears on the **Desktop**. The live controls say where it went.
 3. Send that file to whoever looks after Drashti, with the time it happened and what you saw.
 
