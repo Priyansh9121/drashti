@@ -671,7 +671,11 @@ export class PresentationRepo {
     );
     const removed: string[] = [];
     this.db.transaction(() => {
-      for (const id of ids) if (stmt.run(id).changes > 0) removed.push(id);
+      for (const id of ids)
+        if (stmt.run(id).changes > 0) {
+          removed.push(id);
+          this.search.drop(id);
+        }
     })();
     return removed;
   }
@@ -683,7 +687,11 @@ export class PresentationRepo {
     );
     const restored: string[] = [];
     this.db.transaction(() => {
-      for (const id of ids) if (stmt.run(id).changes > 0) restored.push(id);
+      for (const id of ids)
+        if (stmt.run(id).changes > 0) {
+          restored.push(id);
+          this.search.update(id);
+        }
     })();
     return restored;
   }

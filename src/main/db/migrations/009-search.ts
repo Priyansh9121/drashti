@@ -16,6 +16,8 @@ CREATE TABLE search_docs (
   lines TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(lines)),
   legacy_runs INTEGER NOT NULL DEFAULT 0
 );
+-- Counting presentations with legacy text must not read every row.
+CREATE INDEX search_docs_legacy ON search_docs(presentation_id) WHERE legacy_runs > 0;
 CREATE VIRTUAL TABLE search_fts USING fts5(title, body, tokenize = 'ascii', prefix = '2 3');
 CREATE TRIGGER search_docs_gone AFTER DELETE ON search_docs BEGIN
   DELETE FROM search_fts WHERE rowid = old.id;
