@@ -97,7 +97,21 @@ describe('parsePp7: presentations', () => {
       ['Chorus', '#ff0000', ['']],
       ['', null, ['Not in a group']],
     ]);
-    expect(p.arrangements).toEqual([{ name: 'Usual', groups: [0, 1, 0] }]);
+    expect(p.arrangements).toEqual([{ name: 'Usual', groups: [0, 1, 0], ref: 'arr-0' }]);
+    expect(p.selectedArrangement).toBeNull();
+    const chosen = presentation(
+      pp7Presentation({
+        uuid: 'P7-S',
+        name: 'Placeholder chosen',
+        groups: [{ name: 'Verse', uuid: 'G-V', slides: [{ id: 's1' }] }],
+        arrangements: [
+          { name: 'One', groups: ['G-V'] },
+          { name: 'Two', groups: ['G-V', 'G-V'] },
+        ],
+        selectedArrangement: 1,
+      }),
+    );
+    expect(chosen.selectedArrangement).toBe(1);
     expect(p.groups[0]?.slides[0]?.notes).toBe('Placeholder note');
     expect(p.groups[1]?.slides[0]?.enabled).toBe(false);
     expect(p.groups[0]?.slides[0]?.enabled).toBe(true);
@@ -257,6 +271,7 @@ describe('parsePp7: themes and playlists', () => {
                 { header: 'Opening' },
                 {
                   presentation: '/Users/op/Documents/ProPresenter/Libraries/Default/Placeholder Hymn.pro',
+                  arrangement: 0,
                   name: 'Placeholder Hymn',
                 },
                 { media: '/Media/Loops/Blue Loop.mov', name: 'Loop' },
@@ -281,6 +296,7 @@ describe('parsePp7: themes and playlists', () => {
         name: 'Placeholder Hymn',
         path: pathToFileURL('/Users/op/Documents/ProPresenter/Libraries/Default/Placeholder Hymn.pro').href,
         ref: null,
+        arrangementRef: 'arr-0',
       },
       { kind: 'media', name: 'Loop', media: 0 },
     ]);

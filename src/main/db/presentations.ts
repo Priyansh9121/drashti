@@ -2,6 +2,7 @@ import type { Statement } from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import type { MediaFit } from '../../shared/engine/state';
 import type {
+  ArrangementInfo,
   GroupInfo,
   ImportSource,
   PresentationDoc,
@@ -11,7 +12,8 @@ import type {
 } from '../../shared/library';
 import { type Lang, LANGS, type RenderSlide, type SlideElement } from '../../shared/model';
 import { slideElementSchema } from '../../shared/model-schema';
-import type { SlideSource } from '../engine/slide-source';
+import type { PlayOrder, SlideSource } from '../engine/slide-source';
+import { playOrder } from '../../shared/order';
 import type { Db } from './database';
 
 interface SourceColumns {
@@ -162,8 +164,10 @@ export interface NewPresentation {
   height?: number;
   notes?: string;
   groups: { name: string; color?: string | null; slides: NewSlide[] }[];
-  /** Named orders of groups, as indexes into `groups` (repeats allowed). */
-  arrangements?: { name: string; groups: number[] }[];
+  /** Named orders of groups, as indexes into `groups` (repeats allowed); ref: its id in the source file. */
+  arrangements?: { name: string; groups: number[]; ref?: string | null }[];
+  /** The arrangement it plays in (an index into `arrangements`), or null/left out for every slide. */
+  selectedArrangement?: number | null;
   /** Optional kirtan metadata and per-slide language lines (slide order across groups). */
   kirtan?: {
     category?: string | null;
@@ -240,10 +244,34 @@ export class PresentationRepo {
   get(id: string): PresentationDoc | null {
     const p = this.db
       .prepare(
-        'SELECT id, name, width, height, source_kind, source_path, source_ref, source_imported_at FROM presentations WHERE id = ? AND deleted_at IS NULL',
+        'SELECT id, name, width, height, selected_arrangement_id, source_kind, source_path, source_ref, source_imported_at FROM presentations WHERE id = ? AND deleted_at IS NULL',
       )
-      .get(id) as (SourceColumns & { id: string; name: string; width: number; height: number }) | undefined;
+      .get(id) as
+      | (SourceColumns & {
+          id: string;
+          name: string;
+          width: number;
+          height: number;
+          selected_arrangement_id: string | null;
+        })
+      | undefined;
     if (!p) return null;
+    const arrangements: ArrangementInfo[] = [];
+    for (const row of this.db
+      .prepare(
+        `SELECT a.id, a.name, ag.group_id FROM arrangements a
+           LEFT JOIN arrangement_groups ag ON ag.arrangement_id = a.id
+          WHERE a.presentation_id = ?
+          ORDER BY a.position, a.rowid, ag.position`,
+      )
+      .all(id) as { id: string; name: string; group_id: string | null }[]) {
+      let a = arrangements.at(-1);
+      if (a?.id !== row.id) {
+        a = { id: row.id, name: row.name, groupIds: [] };
+        arrangements.push(a);
+      }
+      if (row.group_id) a.groupIds.push(row.group_id);
+    }
     const groups = this.db
       .prepare('SELECT id, name, color FROM slide_groups WHERE presentation_id = ? ORDER BY position, rowid')
       .all(id) as { id: string; name: string; color: string | null }[];
@@ -346,9 +374,26 @@ export class PresentationRepo {
       width: p.width,
       height: p.height,
       groups: [...groupInfos.values()],
+      arrangements,
+      selectedArrangementId: p.selected_arrangement_id,
       kirtan,
       source: toSource(p),
     };
+  }
+
+  /** Choose the order a presentation plays in: one of its arrangements, or null for every slide. */
+  setSelectedArrangement(presentationId: string, arrangementId: string | null): boolean {
+    if (arrangementId !== null) {
+      const own = this.db
+        .prepare('SELECT 1 FROM arrangements WHERE id = ? AND presentation_id = ?')
+        .get(arrangementId, presentationId);
+      if (!own) return false;
+    }
+    return (
+      this.db
+        .prepare('UPDATE presentations SET selected_arrangement_id = ? WHERE id = ? AND deleted_at IS NULL')
+        .run(arrangementId, presentationId).changes === 1
+    );
   }
 
   /** Insert a whole presentation in one transaction; returns its id. */
@@ -477,20 +522,26 @@ export class PresentationRepo {
     });
     if (input.arrangements?.length) {
       const insertArrangement = db.prepare(
-        'INSERT INTO arrangements (id, presentation_id, name) VALUES (?, ?, ?)',
+        'INSERT INTO arrangements (id, presentation_id, name, position, source_ref) VALUES (?, ?, ?, ?, ?)',
       );
       const insertEntry = db.prepare(
         'INSERT INTO arrangement_groups (arrangement_id, position, group_id) VALUES (?, ?, ?)',
       );
-      for (const arrangement of input.arrangements) {
+      input.arrangements.forEach((arrangement, ai) => {
         const arrangementId = randomUUID();
-        insertArrangement.run(arrangementId, id, arrangement.name);
+        insertArrangement.run(arrangementId, id, arrangement.name, ai, arrangement.ref ?? null);
         let position = 0;
         for (const index of arrangement.groups) {
           const groupId = groupIds[index];
           if (groupId) insertEntry.run(arrangementId, position++, groupId);
         }
-      }
+        if (input.selectedArrangement === ai) {
+          db.prepare('UPDATE presentations SET selected_arrangement_id = ? WHERE id = ?').run(
+            arrangementId,
+            id,
+          );
+        }
+      });
     }
     if (input.kirtan) {
       const k = input.kirtan;
@@ -641,7 +692,7 @@ export class PresentationRepo {
 
 /** The engine's view of the library: slides in order, cached per presentation. */
 export class DbSlideSource implements SlideSource {
-  private readonly cache = new Map<string, { slides: RenderSlide[]; cues: SlideCue[][] } | null>();
+  private readonly cache = new Map<string, PresentationDoc | null>();
 
   constructor(private readonly repo: PresentationRepo) {}
 
@@ -651,27 +702,23 @@ export class DbSlideSource implements SlideSource {
     else this.cache.clear();
   }
 
-  private load(presentationId: string): { slides: RenderSlide[]; cues: SlideCue[][] } | null {
-    if (!this.cache.has(presentationId)) {
-      const doc = this.repo.get(presentationId);
-      const infos = doc ? doc.groups.flatMap((g) => g.slides) : null;
-      this.cache.set(
-        presentationId,
-        infos ? { slides: infos.map((s) => s.slide), cues: infos.map((s) => s.cues) } : null,
-      );
-    }
+  private doc(presentationId: string): PresentationDoc | null {
+    if (!this.cache.has(presentationId)) this.cache.set(presentationId, this.repo.get(presentationId));
     return this.cache.get(presentationId) ?? null;
   }
 
-  slideCount(presentationId: string): number | null {
-    return this.load(presentationId)?.slides.length ?? null;
-  }
-
-  slide(presentationId: string, index: number): RenderSlide | null {
-    return this.load(presentationId)?.slides[index] ?? null;
-  }
-
-  cues(presentationId: string, index: number): readonly SlideCue[] {
-    return this.load(presentationId)?.cues[index] ?? [];
+  order(presentationId: string, arrangementId?: string | null): PlayOrder | null {
+    const doc = this.doc(presentationId);
+    if (!doc) return null;
+    const played = playOrder(doc, arrangementId === undefined ? doc.selectedArrangementId : arrangementId);
+    return {
+      arrangementId: played.arrangementId,
+      slides: played.slides.map((o) => ({
+        id: o.slide.id,
+        slide: o.slide.slide,
+        cues: o.slide.cues,
+        notes: o.slide.notes,
+      })),
+    };
   }
 }

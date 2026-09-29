@@ -48,6 +48,8 @@ export interface ParsedArrangement {
   name: string;
   /** Indexes into ParsedPresentation.groups, in playing order (repeats allowed). */
   groups: number[];
+  /** Its id in the source file, so a playlist item that names it can be matched. */
+  ref: string | null;
 }
 
 /** A media file a presentation uses, as the source file names it. */
@@ -58,8 +60,17 @@ export interface ParsedMediaRef {
 }
 
 export type ParsedPlaylistItem =
-  /** A presentation, found by its path in the source (or its own id). */
-  | { kind: 'presentation'; name: string; path: string | null; ref: string | null }
+  /**
+   * A presentation, found by its path in the source (or its own id), and
+   * the arrangement the item plays it in (its id in the source), if it names one.
+   */
+  | {
+      kind: 'presentation';
+      name: string;
+      path: string | null;
+      ref: string | null;
+      arrangementRef: string | null;
+    }
   | { kind: 'media'; name: string; media: number }
   | { kind: 'header'; name: string; color: string | null }
   | { kind: 'placeholder'; name: string; hint: string | null };
@@ -93,6 +104,8 @@ export interface ParsedPresentation {
   notes: string;
   groups: ParsedGroup[];
   arrangements: ParsedArrangement[];
+  /** The arrangement it plays in (an index into `arrangements`), or null for every slide in order. */
+  selectedArrangement: number | null;
   media: ParsedMediaRef[];
   /** Things that did not come across, or came across changed. */
   issues: ImportIssue[];

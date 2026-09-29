@@ -35,7 +35,12 @@ describe('ShowEngine', () => {
     it('shows the slide and broadcasts one patch', () => {
       const { engine, transport } = setup();
       expect(engine.dispatch(goLive('p1', 1))).toEqual({ ok: true, changed: true, rev: 1 });
-      expect(engine.current.live).toEqual({ presentationId: 'p1', slideIndex: 1, slideCount: 3 });
+      expect(engine.current.live).toEqual({
+        presentationId: 'p1',
+        slideIndex: 1,
+        slideCount: 3,
+        arrangementId: null,
+      });
       expect(engine.current.layers.slide?.slide).toEqual(textSlide('p1s2', 'Two'));
       const patch = transport.last as EnginePatchMessage;
       expect(patch).toMatchObject({ kind: 'patch', version: ENGINE_STATE_VERSION, baseRev: 0, rev: 1 });
@@ -67,7 +72,12 @@ describe('ShowEngine', () => {
       const { engine } = setup();
       engine.dispatch(goLive('p1', 2));
       engine.dispatch(goLive('p2', 0));
-      expect(engine.current.live).toEqual({ presentationId: 'p2', slideIndex: 0, slideCount: 1 });
+      expect(engine.current.live).toEqual({
+        presentationId: 'p2',
+        slideIndex: 0,
+        slideCount: 1,
+        arrangementId: null,
+      });
     });
   });
 
@@ -113,7 +123,12 @@ describe('ShowEngine', () => {
       source.set('p1', [textSlide('a', 'A')]);
       expect(engine.dispatch({ type: 'next' })).toMatchObject({ ok: true, changed: false });
       engine.dispatch({ type: 'previous' });
-      expect(engine.current.live).toEqual({ presentationId: 'p1', slideIndex: 0, slideCount: 1 });
+      expect(engine.current.live).toEqual({
+        presentationId: 'p1',
+        slideIndex: 0,
+        slideCount: 1,
+        arrangementId: null,
+      });
     });
 
     it('report a presentation that was deleted', () => {
@@ -184,6 +199,87 @@ describe('ShowEngine', () => {
       });
       expect(engine.current.live.presentationId).toBe('p1');
       expect(transport.messages).toHaveLength(count + 1);
+    });
+  });
+
+  describe('arrangements (the order slides play in)', () => {
+    /** Slides: 0 verse, 1 chorus, 2 verse two. "usual" repeats the chorus; the presentation is set to "usual". */
+    function arranged() {
+      const s = setup();
+      s.source.set(
+        'song',
+        [textSlide('v1', 'Verse'), textSlide('ch', 'Chorus'), textSlide('v2', 'Verse two')],
+        [],
+        { arrangements: { usual: [0, 1, 2, 1], short: [1] }, selected: 'usual' },
+      );
+      return s;
+    }
+    const texts = (engine: ShowEngine) => {
+      const el = engine.current.layers.slide?.slide.elements[0];
+      return el?.kind === 'text' ? el.text : '';
+    };
+
+    it("plays the presentation's own order, the repeated chorus included, when none is named", () => {
+      const { engine } = arranged();
+      engine.dispatch(goLive('song', 0));
+      expect(engine.current.live).toMatchObject({ slideCount: 4, arrangementId: 'usual' });
+      const seen = [texts(engine)];
+      for (let i = 0; i < 4; i++) {
+        engine.dispatch({ type: 'next' });
+        seen.push(texts(engine));
+      }
+      // The last Next stays put.
+      expect(seen).toEqual(['Verse', 'Chorus', 'Verse two', 'Chorus', 'Chorus']);
+      engine.dispatch({ type: 'previous' });
+      expect([texts(engine), engine.current.live.slideIndex]).toEqual(['Verse two', 2]);
+    });
+
+    it('plays the order it is given: another arrangement, or every slide', () => {
+      const { engine } = arranged();
+      engine.dispatch({ type: 'goLive', presentationId: 'song', slideIndex: 0, arrangementId: null });
+      expect(engine.current.live).toMatchObject({ slideCount: 3, arrangementId: null });
+      engine.dispatch({ type: 'goLive', presentationId: 'song', slideIndex: 0, arrangementId: 'short' });
+      expect([texts(engine), engine.current.live.slideCount]).toEqual(['Chorus', 1]);
+      // An arrangement it does not have: every slide.
+      engine.dispatch({ type: 'goLive', presentationId: 'song', slideIndex: 2, arrangementId: 'gone' });
+      expect(engine.current.live).toMatchObject({ slideIndex: 2, slideCount: 3, arrangementId: null });
+    });
+
+    it('keeps the slide on screen when the operator changes the order, and Next follows the new one', () => {
+      const { engine, source, transport } = arranged();
+      engine.dispatch(goLive('song', 3)); // the second chorus
+      const shownAt = engine.current.layers.slide?.shownAt;
+      source.set(
+        'song',
+        [textSlide('v1', 'Verse'), textSlide('ch', 'Chorus'), textSlide('v2', 'Verse two')],
+        [],
+        {
+          arrangements: { usual: [0, 1, 2, 1], short: [1] },
+          selected: null,
+        },
+      );
+      const before = transport.messages.length;
+      engine.reorderLive('song');
+      expect(engine.current.live).toMatchObject({ slideIndex: 1, slideCount: 3, arrangementId: null });
+      // Same slide, same playback: only the position moved.
+      expect(engine.current.layers.slide?.shownAt).toBe(shownAt);
+      expect(transport.messages).toHaveLength(before + 1);
+      engine.dispatch({ type: 'next' });
+      expect(texts(engine)).toBe('Verse two');
+      // Another presentation's change does nothing.
+      expect(engine.reorderLive('other')).toMatchObject({ changed: false });
+    });
+
+    it('comes back after a restart in the order it was played', () => {
+      const { engine } = arranged();
+      engine.restore({
+        slide: { presentationId: 'song', slideIndex: 3, arrangementId: 'usual' },
+        background: null,
+        blackout: false,
+      });
+      expect([texts(engine), engine.current.live.arrangementId]).toEqual(['Chorus', 'usual']);
+      engine.dispatch({ type: 'previous' });
+      expect(texts(engine)).toBe('Verse two');
     });
   });
 

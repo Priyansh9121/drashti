@@ -123,6 +123,8 @@ export interface Pp6DocSpec {
   height?: number;
   groups: { name: string; color?: string; uuid?: string; slides: Pp6SlideSpec[] }[];
   arrangements?: { name: string; groups: string[] }[];
+  /** The arrangement it is set to play in (an index into `arrangements`). */
+  selectedArrangement?: number;
   ccliTitle?: string;
 }
 
@@ -141,7 +143,7 @@ export function pp6Presentation(spec: Pp6DocSpec): string {
     )
     .join('');
   return (
-    `<?xml version="1.0" encoding="utf-8"?>\n<RVPresentationDocument CCLIArtistCredits="" CCLIAuthor="" CCLICopyrightYear="" CCLIDisplay="false" CCLIPublisher="" CCLISongNumber="" CCLISongTitle="${esc(spec.ccliTitle ?? '')}" backgroundColor="0 0 0 1" buildNumber="100991749" category="Presentation" chordChartPath="" docType="0" drawingBackgroundColor="false" height="${spec.height ?? 1080}" lastDateUsed="2026-01-01T00:00:00+00:00" notes="" os="1" resourcesDirectory="" selectedArrangementID="" usedCount="0" uuid="${spec.uuid ?? 'DOC-1'}" versionNumber="600" width="${spec.width ?? 1920}">` +
+    `<?xml version="1.0" encoding="utf-8"?>\n<RVPresentationDocument CCLIArtistCredits="" CCLIAuthor="" CCLICopyrightYear="" CCLIDisplay="false" CCLIPublisher="" CCLISongNumber="" CCLISongTitle="${esc(spec.ccliTitle ?? '')}" backgroundColor="0 0 0 1" buildNumber="100991749" category="Presentation" chordChartPath="" docType="0" drawingBackgroundColor="false" height="${spec.height ?? 1080}" lastDateUsed="2026-01-01T00:00:00+00:00" notes="" os="1" resourcesDirectory="" selectedArrangementID="${spec.selectedArrangement === undefined ? '' : `AR-${spec.selectedArrangement}`}" usedCount="0" uuid="${spec.uuid ?? 'DOC-1'}" versionNumber="600" width="${spec.width ?? 1920}">` +
     `<RVTimeline timeOffset="0" duration="0" selectedMediaTrackIndex="0" loop="false" rvXMLIvarName="timeline"><array rvXMLIvarName="timeCues"/><array rvXMLIvarName="mediaTracks"/></RVTimeline>` +
     `<array rvXMLIvarName="groups">${groups}</array><array rvXMLIvarName="arrangements">${arrangements}</array></RVPresentationDocument>`
   );
@@ -153,7 +155,8 @@ export function pp6Template(slides: Pp6SlideSpec[]): string {
 }
 
 export type Pp6PlaylistEntry =
-  | { document: string; name: string }
+  /** arrangement: which of the document's arrangements the item plays (an index). */
+  | { document: string; name: string; arrangement?: number }
   | { header: string }
   | { media: string; name: string }
   | { other: string };
@@ -164,7 +167,8 @@ export function pp6Playlist(
 ): string {
   const entry = (e: Pp6PlaylistEntry, i: number) => {
     if ('document' in e) {
-      return `<RVDocumentCue UUID="DC-${i}" displayName="${esc(e.name)}" filePath="${esc(encodeURI(e.document))}" selectedArrangementID="" actionType="0" enabled="false" timeStamp="0" delayTime="0"/>`;
+      const arrangement = e.arrangement === undefined ? '' : `AR-${e.arrangement}`;
+      return `<RVDocumentCue UUID="DC-${i}" displayName="${esc(e.name)}" filePath="${esc(encodeURI(e.document))}" selectedArrangementID="${arrangement}" actionType="0" enabled="false" timeStamp="0" delayTime="0"/>`;
     }
     if ('header' in e)
       return `<RVHeaderCue UUID="H-${i}" displayName="${esc(e.header)}" actionType="0" enabled="true" color="1 0.5 0 1"/>`;

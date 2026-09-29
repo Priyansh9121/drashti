@@ -119,6 +119,8 @@ export interface Pp7DocSpec {
   /** Slides no group names. */
   loose?: Pp7SlideSpec[];
   arrangements?: { name: string; groups: string[] }[];
+  /** The arrangement it is set to play in (an index into `arrangements`). */
+  selectedArrangement?: number;
   ccliTitle?: string;
   /** Leave out isEnabled everywhere (as a version without the field would). */
   noEnabledFlags?: boolean;
@@ -148,6 +150,9 @@ export function pp7Presentation(spec: Pp7DocSpec): Uint8Array {
         name: a.name,
         group_identifiers: a.groups.map(id),
       })),
+      ...(spec.selectedArrangement === undefined
+        ? {}
+        : { selected_arrangement: id(`arr-${spec.selectedArrangement}`) }),
       ...(spec.ccliTitle ? { ccli: { song_title: spec.ccliTitle } } : {}),
       ...(spec.unknown ? { $unknown: spec.unknown } : {}),
     },
@@ -174,7 +179,10 @@ export function pp7Theme(slides: { name: string; rtf: string }[]): Uint8Array {
 }
 
 export type Pp7PlaylistEntry =
-  { header: string } | { presentation: string; name: string } | { media: string; name: string };
+  | { header: string }
+  /** arrangement: which of the presentation's arrangements the item plays (an index). */
+  | { presentation: string; name: string; arrangement?: number }
+  | { media: string; name: string };
 
 export function pp7Playlists(
   folders: { name: string; playlists: { name: string; entries: Pp7PlaylistEntry[] }[] }[],
@@ -183,7 +191,14 @@ export function pp7Playlists(
   const item = (e: Pp7PlaylistEntry, i: number) => {
     if ('header' in e) return { uuid: id(`h-${i}`), name: e.header, header: { color: rgba([1, 0.5, 0, 1]) } };
     if ('presentation' in e)
-      return { uuid: id(`p-${i}`), name: e.name, presentation: { document_path: fileUrl(e.presentation) } };
+      return {
+        uuid: id(`p-${i}`),
+        name: e.name,
+        presentation: {
+          document_path: fileUrl(e.presentation),
+          ...(e.arrangement === undefined ? {} : { arrangement: id(`arr-${e.arrangement}`) }),
+        },
+      };
     return {
       uuid: id(`m-${i}`),
       name: e.name,

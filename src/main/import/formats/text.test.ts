@@ -45,7 +45,9 @@ describe('parseLyricsText', () => {
   it('turns a repeated header with no text into an arrangement', () => {
     const p = parse('[Verse 1]\nV1\n\n[Chorus]\nC\n\n[Verse 2]\nV2\n\n[Chorus]\n\n[chorus]\n');
     expect(p.groups.map((g) => g.name)).toEqual(['Verse 1', 'Chorus', 'Verse 2']);
-    expect(p.arrangements).toEqual([{ name: 'As written', groups: [0, 1, 2, 1, 1] }]);
+    expect(p.arrangements).toEqual([{ name: 'As written', groups: [0, 1, 2, 1, 1], ref: null }]);
+    // As written is how it is sung: it is the arrangement played.
+    expect(p.selectedArrangement).toBe(0);
   });
 
   it('leaves out a header with no text that repeats nothing, and says so', () => {

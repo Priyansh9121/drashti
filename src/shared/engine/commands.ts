@@ -49,7 +49,10 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('goLive'),
     presentationId: id,
+    /** Position in the playing order. */
     slideIndex: z.number().int().min(0).max(100_000),
+    /** The order: an arrangement, null for every slide in order, left out for the presentation's own choice. */
+    arrangementId: id.nullable().optional(),
   }),
   z.object({ type: z.literal('next') }),
   z.object({ type: z.literal('previous') }),

@@ -28,14 +28,14 @@ function live(
   const slideIndex = patch.slideIndex === undefined ? 2 : patch.slideIndex;
   return {
     ...s,
-    live: { presentationId: 'p1', slideIndex: 2, slideCount: 5 },
+    live: { presentationId: 'p1', slideIndex: 2, slideCount: 5, arrangementId: null },
     blackout: patch.blackout ?? false,
     layers: {
       ...s.layers,
       slide:
         slideIndex === null
           ? null
-          : { presentationId: 'p1', slideIndex, slide: textSlide('s', 'x'), shownAt: 5 },
+          : { presentationId: 'p1', slideIndex, slide: textSlide('s', 'x'), shownAt: 5, notes: '' },
       background: patch.withBackground === false ? null : background,
     },
   };
@@ -62,7 +62,7 @@ describe('restart recovery', () => {
       session: 'run-1',
       engineVersion: ENGINE_STATE_VERSION,
       savedAt: '1970-01-01T00:00:00.000Z',
-      slide: { presentationId: 'p1', slideIndex: 2 },
+      slide: { presentationId: 'p1', slideIndex: 2, arrangementId: null },
       background,
       blackout: true,
     });
@@ -93,7 +93,7 @@ describe('restart recovery', () => {
     // A later run that stops unexpectedly is not covered by the earlier mark.
     const next = new LiveStateWriter(files, { throttleMs: 10 });
     await saved(next, live({ slideIndex: 4 }));
-    expect(toRestore(files)?.slide).toEqual({ presentationId: 'p1', slideIndex: 4 });
+    expect(toRestore(files)?.slide).toEqual({ presentationId: 'p1', slideIndex: 4, arrangementId: null });
   });
 
   it('writes a run of changes once, whole, and leaves no partial files', async () => {

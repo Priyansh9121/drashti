@@ -35,25 +35,45 @@ function upsert<T extends { id: string }>(items: T[], item: T): T[] | null {
 export function reduce(state: EngineState, action: EngineAction): EngineState {
   switch (action.type) {
     case 'slide/show': {
-      const { presentationId, slideIndex, slideCount, slide, at } = action;
+      const { presentationId, slideIndex, slideCount, arrangementId, slide, notes, at } = action;
       const live = state.live;
       const sameCursor =
         live.presentationId === presentationId &&
         live.slideIndex === slideIndex &&
-        live.slideCount === slideCount;
+        live.slideCount === slideCount &&
+        live.arrangementId === arrangementId;
       const current = state.layers.slide;
       const samePlace =
         current !== null && current.presentationId === presentationId && current.slideIndex === slideIndex;
-      const sameSlide = samePlace && sameData(current.slide, slide);
+      const sameSlide = samePlace && current.notes === notes && sameData(current.slide, slide);
       if (sameCursor && sameSlide) return state;
       // New content for the live slide (an edit or a re-import) keeps its time, so its videos carry on.
       const shownAt = samePlace ? current.shownAt : at;
       return {
         ...state,
-        live: sameCursor ? live : { presentationId, slideIndex, slideCount },
+        live: sameCursor ? live : { presentationId, slideIndex, slideCount, arrangementId },
         layers: sameSlide
           ? state.layers
-          : { ...state.layers, slide: { presentationId, slideIndex, slide, shownAt } },
+          : { ...state.layers, slide: { presentationId, slideIndex, slide, shownAt, notes } },
+      };
+    }
+    case 'live/move': {
+      const { slideIndex, slideCount, arrangementId } = action;
+      const live = state.live;
+      if (
+        live.slideIndex === slideIndex &&
+        live.slideCount === slideCount &&
+        live.arrangementId === arrangementId
+      )
+        return state;
+      const slide = state.layers.slide;
+      return {
+        ...state,
+        live: { ...live, slideIndex, slideCount, arrangementId },
+        layers:
+          slide?.presentationId === live.presentationId && slide.slideIndex !== slideIndex
+            ? { ...state.layers, slide: { ...slide, slideIndex } }
+            : state.layers,
       };
     }
     case 'layer/clear':

@@ -1,12 +1,13 @@
-import { memo, useEffect, useRef } from 'react';
-import type { BackgroundCue, SlideInfo } from '../../../shared/library';
+import { memo, useEffect, useMemo, useRef } from 'react';
+import type { BackgroundCue, PresentationDoc, SlideInfo } from '../../../shared/library';
+import { type OrderedSlide, playOrder } from '../../../shared/order';
 import { mediaUrl } from '../../../shared/media';
 import { useEngine } from '../engine/engine-store';
 import { useLibrary } from '../library/library-store';
 import { OBJECT_FIT } from '../render/media-style';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView, VideoStill } from '../render/SlideView';
-import { goLive } from './actions';
+import { chooseArrangement, goLive } from './actions';
 
 /** The slide's own background (its background cue), behind its thumbnail: the image, or a video's still frame. */
 function CueBackground({ cue }: { cue: BackgroundCue }) {
@@ -40,10 +41,16 @@ function CueBackground({ cue }: { cue: BackgroundCue }) {
 
 const Thumb = memo(function Thumb({
   presentationId,
+  arrangementId,
+  position,
   info,
   live,
 }: {
   presentationId: string;
+  /** The order this grid shows, which going live from here plays. */
+  arrangementId: string | null;
+  /** Position in that order. */
+  position: number;
   info: SlideInfo;
   live: boolean;
 }) {
@@ -59,10 +66,11 @@ const Thumb = memo(function Thumb({
         ref={ref}
         type="button"
         data-testid="slide-thumb"
-        data-index={info.index}
+        data-index={position}
+        data-slide-id={info.id}
         aria-current={live ? 'true' : undefined}
-        aria-label={`Slide ${info.index + 1}${info.label ? `: ${info.label}` : ''}${live ? ' (live)' : ''}`}
-        onClick={() => void goLive(presentationId, info.index)}
+        aria-label={`Slide ${position + 1}${info.label ? `: ${info.label}` : ''}${live ? ' (live)' : ''}`}
+        onClick={() => void goLive(presentationId, position, arrangementId)}
         className={`group w-full overflow-hidden rounded-md border-2 bg-black text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
           live ? 'border-live' : 'border-line hover:border-muted'
         }`}
@@ -76,7 +84,7 @@ const Thumb = memo(function Thumb({
         <span
           className={`flex items-center gap-2 px-2 py-1 text-xs ${live ? 'bg-live text-white' : 'bg-panel-2 text-muted'}`}
         >
-          <span className="font-semibold">{info.index + 1}</span>
+          <span className="font-semibold">{position + 1}</span>
           <span className="truncate">{info.label}</span>
           {sound && (
             <span className="truncate" data-testid="thumb-audio" title={`Plays ${sound.name}`}>
@@ -90,13 +98,61 @@ const Thumb = memo(function Thumb({
   );
 });
 
+/** Choose the order the presentation plays in: one of its arrangements, or every slide. */
+function ArrangementPicker({ doc }: { doc: PresentationDoc }) {
+  if (doc.arrangements.length === 0) return null;
+  return (
+    <label className="flex items-center gap-2 text-xs text-muted">
+      Arrangement
+      <select
+        aria-label="Arrangement"
+        data-testid="arrangement"
+        className="rounded-md border border-line bg-panel px-2 py-1 text-sm text-white"
+        value={doc.selectedArrangementId ?? ''}
+        onChange={(e) => {
+          void chooseArrangement(doc.id, e.target.value === '' ? null : e.target.value);
+        }}
+      >
+        <option value="">All slides in order</option>
+        {doc.arrangements.map((a) => (
+          <option key={a.id} value={a.id}>
+            {a.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/** The slides in playing order, in one section each time a group comes up (a repeated chorus appears again). */
+function sectionsOf(
+  order: readonly OrderedSlide[],
+): { key: string; first: OrderedSlide; slides: OrderedSlide[] }[] {
+  const sections: { key: string; first: OrderedSlide; slides: OrderedSlide[] }[] = [];
+  for (const o of order) {
+    const key = `${o.group.id}:${o.occurrence}`;
+    const last = sections.at(-1);
+    if (last?.key === key) last.slides.push(o);
+    else sections.push({ key, first: o, slides: [o] });
+  }
+  return sections;
+}
+
 export function SlideGrid() {
   const doc = useLibrary((s) => s.doc);
   const selectedId = useLibrary((s) => s.selectedId);
   const live = useEngine((s) => s.state?.live);
-  const slideShown = useEngine((s) => s.state?.layers.slide !== null);
-  if (!doc) return <div className="flex items-center justify-center text-muted">Choose a presentation</div>;
-  const liveIndex = live?.presentationId === doc.id && slideShown ? live.slideIndex : null;
+  const liveSlideId = useEngine((s) => s.state?.layers.slide?.slide.id ?? null);
+  const order = useMemo(() => (doc ? playOrder(doc, doc.selectedArrangementId) : null), [doc]);
+  if (!doc || !order)
+    return <div className="flex items-center justify-center text-muted">Choose a presentation</div>;
+  const liveHere = live?.presentationId === doc.id && liveSlideId !== null;
+  // The live slide: by its position when this is the order being played, else wherever that slide appears.
+  const isLive = (o: OrderedSlide) =>
+    liveHere &&
+    (live.arrangementId === order.arrangementId
+      ? o.position === live.slideIndex
+      : o.slide.id === liveSlideId);
   // Until the newly selected presentation arrives, the old slides cannot be clicked:
   // a quick click must never put the previous presentation's slide live.
   const stale = doc.id !== selectedId;
@@ -109,22 +165,32 @@ export function SlideGrid() {
       data-testid="slide-grid"
       data-presentation-id={doc.id}
     >
-      <h2 className="mb-3 text-lg font-semibold">{doc.name}</h2>
-      {doc.groups.map((g) => (
-        <div key={g.id} className="mb-5">
-          {g.name !== '' && (
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <h2 className="flex-1 text-lg font-semibold">{doc.name}</h2>
+        <ArrangementPicker doc={doc} />
+      </div>
+      {sectionsOf(order.slides).map(({ key, first, slides }) => (
+        <div key={key} className="mb-5" data-testid="slide-group" data-group={first.group.name}>
+          {first.group.name !== '' && (
             <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-muted">
               <span
                 className="h-3 w-3 rounded-sm"
-                style={{ background: g.color ?? '#4b5563' }}
+                style={{ background: first.group.color ?? '#4b5563' }}
                 aria-hidden="true"
               />
-              {g.name}
+              {first.group.name}
             </h3>
           )}
           <ul className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
-            {g.slides.map((s) => (
-              <Thumb key={s.id} presentationId={doc.id} info={s} live={s.index === liveIndex} />
+            {slides.map((o) => (
+              <Thumb
+                key={o.position}
+                presentationId={doc.id}
+                arrangementId={order.arrangementId}
+                position={o.position}
+                info={o.slide}
+                live={isLive(o)}
+              />
             ))}
           </ul>
         </div>

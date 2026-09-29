@@ -7,7 +7,7 @@ import type { Rect, RenderSlide, SlideElement } from '../model';
  *
  * Bump ENGINE_STATE_VERSION whenever the shape changes incompatibly.
  */
-export const ENGINE_STATE_VERSION = 2;
+export const ENGINE_STATE_VERSION = 3;
 
 export type LayerName = 'audio' | 'background' | 'slide' | 'props' | 'messages' | 'masks';
 
@@ -24,8 +24,11 @@ export const LAYER_NAMES = [
 /** Where the operator is: the live presentation and slide, even while the slide layer is cleared. */
 export interface LiveCursor {
   presentationId: string | null;
+  /** Position in the playing order (an arrangement can show a slide more than once). */
   slideIndex: number | null;
   slideCount: number;
+  /** The arrangement being played, or null for every slide in order. */
+  arrangementId: string | null;
 }
 
 export interface SlideLayer {
@@ -37,6 +40,8 @@ export interface SlideLayer {
    * videos placed on it play from here, in step on every window.
    */
   shownAt: number;
+  /** The slide's notes, for the stage screen. */
+  notes: string;
 }
 
 /** A sound for the audio layer, as a slide's audio cue or the operator asks for it. */
@@ -132,7 +137,7 @@ export function emptyLayers(): Layers {
 export function initialEngineState(): EngineState {
   return {
     version: ENGINE_STATE_VERSION,
-    live: { presentationId: null, slideIndex: null, slideCount: 0 },
+    live: { presentationId: null, slideIndex: null, slideCount: 0, arrangementId: null },
     layers: emptyLayers(),
     blackout: false,
   };

@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import type { EngineCommand } from '../../../shared/engine/commands';
 import { useEngine } from '../engine/engine-store';
 import { requestRemoval, undoRemoval } from '../library/import-store';
-import { useLibrary } from '../library/library-store';
+import { selectPresentation, useLibrary } from '../library/library-store';
+import { playOrder } from '../../../shared/order';
 import type { OperatorAction } from '../../../shared/keymap';
 
 /** The last problem to show the operator (for example "Slide 4 of 3 does not exist"). */
@@ -13,8 +14,21 @@ export async function dispatch(command: EngineCommand): Promise<void> {
   useNotice.setState({ text: result.ok ? null : result.message });
 }
 
-export function goLive(presentationId: string, slideIndex: number): Promise<void> {
-  return dispatch({ type: 'goLive', presentationId, slideIndex });
+/** Go live at a position in an order (an arrangement, or null for every slide in order). */
+export function goLive(
+  presentationId: string,
+  slideIndex: number,
+  arrangementId: string | null,
+): Promise<void> {
+  return dispatch({ type: 'goLive', presentationId, slideIndex, arrangementId });
+}
+
+/** Choose the order a presentation plays in; the slide grid follows it. */
+export async function chooseArrangement(presentationId: string, arrangementId: string | null): Promise<void> {
+  const result = await window.drashti.library.setArrangement(presentationId, arrangementId);
+  useNotice.setState({ text: result.ok ? null : result.message });
+  if (result.ok && useLibrary.getState().selectedId === presentationId)
+    await selectPresentation(presentationId);
 }
 
 /**
@@ -29,7 +43,7 @@ export async function runAction(action: OperatorAction, ui: { openScreens: () =>
     case 'next':
       if (selectedIsLive) return dispatch({ type: 'next' });
       if (selectedId && doc?.id === selectedId && doc.groups.some((g) => g.slides.length > 0))
-        return goLive(selectedId, 0);
+        return goLive(selectedId, 0, playOrder(doc, doc.selectedArrangementId).arrangementId);
       if (live?.presentationId) return dispatch({ type: 'next' });
       return;
     case 'previous':

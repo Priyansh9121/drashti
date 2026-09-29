@@ -58,6 +58,11 @@ export interface DrashtiBridge {
     pickImportPaths(kind: 'files' | 'folder'): Promise<string[]>;
     /** Ask for a folder and look there for missing media (all, or just these). */
     relinkMedia(mediaIds?: string[]): Promise<ImportResult>;
+    /** Choose the order a presentation plays in: an arrangement, or null for every slide (operator window only). */
+    setArrangement(
+      presentationId: string,
+      arrangementId: string | null,
+    ): Promise<{ ok: true } | { ok: false; message: string }>;
     /** Remove presentations; restorePresentations brings them back (Undo). */
     removePresentations(ids: string[]): Promise<RemoveResult>;
     restorePresentations(ids: string[]): Promise<RemoveResult>;

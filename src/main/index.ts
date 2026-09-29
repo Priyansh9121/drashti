@@ -500,6 +500,18 @@ function start(): void {
     if (picked.canceled || !folder) return { ok: false as const, message: 'No folder was chosen.' };
     return imports.relink(folder, parsed.data);
   });
+  handle(IPC.library.setArrangement, (e, presentationId, arrangementId) => {
+    const pid = idSchema.safeParse(presentationId);
+    const aid = idSchema.nullable().safeParse(arrangementId);
+    if (!fromOperator(e) || !pid.success || !aid.success)
+      return { ok: false as const, message: 'Only the operator window can choose an arrangement.' };
+    if (!presentations.setSelectedArrangement(pid.data, aid.data))
+      return { ok: false as const, message: 'That arrangement is not part of this presentation.' };
+    slides.invalidate(pid.data);
+    // If it is live, Next follows the new order from the slide on screen.
+    engine.reorderLive(pid.data);
+    return { ok: true as const };
+  });
   handle(IPC.library.removePresentations, (e, ids) => {
     const parsed = idListSchema.safeParse(ids);
     if (!fromOperator(e) || !parsed.success) return { ok: false as const, message: 'Nothing was removed.' };

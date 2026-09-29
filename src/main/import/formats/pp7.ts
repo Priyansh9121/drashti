@@ -460,7 +460,11 @@ function presentationOf(bytes: Uint8Array, filePath: string): ParsedPresentation
     groups: list(a['group_identifiers'])
       .map((g) => groupIds.get(str(g['string'])))
       .filter((i): i is number => i !== undefined),
+    ref: uuid(a['uuid']),
   }));
+  // The arrangement the presentation was set to play in.
+  const selectedRef = uuid(p['selected_arrangement']);
+  const selected = selectedRef ? arrangements.findIndex((x) => x.ref === selectedRef) : -1;
   const ccli = msg(p['ccli']);
   const ccliParts = [
     ['SongTitle', str(ccli?.['song_title'])],
@@ -489,6 +493,7 @@ function presentationOf(bytes: Uint8Array, filePath: string): ParsedPresentation
     notes,
     groups,
     arrangements,
+    selectedArrangement: selected >= 0 ? selected : null,
     media: ctx.media,
     issues: [...ctx.losses.issues(), ...ctx.legacy.issues(), ...unknownIssue(stats.unknown)],
   };
@@ -527,6 +532,7 @@ function templateOf(bytes: Uint8Array, filePath: string): ParsedPresentation {
     notes: '',
     groups: [{ name: 'Template', color: null, slides: parsed }],
     arrangements: [],
+    selectedArrangement: null,
     media: ctx.media,
     issues: [
       {
@@ -559,6 +565,7 @@ function playlistOf(ctx: Context, p: Message): ParsedPlaylist {
         name: name || (path ? nameFromFile(path) : 'Presentation'),
         path,
         ref: null,
+        arrangementRef: uuid(presentation['arrangement']),
       });
     } else if (cue) {
       const media = list(cue['actions'])

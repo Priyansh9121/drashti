@@ -239,14 +239,14 @@ describe('DbSlideSource', () => {
       ],
     });
     const source = new DbSlideSource(repo);
-    expect(source.slideCount(id)).toBe(2);
-    expect(source.slide(id, 1)?.elements[0]).toMatchObject({ text: 'b' });
-    expect(source.slide(id, 2)).toBeNull();
-    expect(source.slideCount('missing')).toBeNull();
+    expect(source.order(id)?.slides).toHaveLength(2);
+    expect(source.order(id)?.slides[1]?.slide.elements[0]).toMatchObject({ text: 'b' });
+    expect(source.order(id)?.slides[2]).toBeUndefined();
+    expect(source.order('missing')).toBeNull();
     db.prepare('DELETE FROM presentations WHERE id = ?').run(id);
-    expect(source.slideCount(id)).toBe(2);
+    expect(source.order(id)?.slides).toHaveLength(2);
     source.invalidate(id);
-    expect(source.slideCount(id)).toBeNull();
+    expect(source.order(id)).toBeNull();
   });
 });
 
@@ -330,11 +330,11 @@ describe('slide cues', () => {
       ],
       [],
     ]);
-    // The engine sees the same cues, by slide index.
+    // The engine sees the same cues, by slide position.
     const source = new DbSlideSource(repo);
-    expect(source.cues(id, 0)).toEqual(slides[0]?.cues);
-    expect(source.cues(id, 9)).toEqual([]);
-    expect(source.cues('nobody', 0)).toEqual([]);
+    expect(source.order(id)?.slides[0]?.cues).toEqual(slides[0]?.cues);
+    expect(source.order(id)?.slides[9]).toBeUndefined();
+    expect(source.order('nobody')).toBeNull();
   });
 
   it('reads cue settings defensively', () => {

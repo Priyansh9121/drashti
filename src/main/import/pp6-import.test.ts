@@ -7,7 +7,7 @@ import type { ImportOptions } from '../../shared/import';
 import { openDatabase } from '../db/database';
 import { ImportRepo } from '../db/imports';
 import { PlaylistRepo } from '../db/playlists';
-import { PresentationRepo } from '../db/presentations';
+import { DbSlideSource, PresentationRepo } from '../db/presentations';
 import { MediaStore } from './media-store';
 import { BUNDLE_SEP, runImport } from './pipeline';
 import { cocoaRtf, pp6Playlist, pp6Presentation, pp6Template } from './testing/pp6-fixtures';
@@ -211,6 +211,65 @@ describe('importing ProPresenter 6 files', () => {
     expect(t.playlists.list().map((p) => [p.name, p.itemCount])).toEqual([
       ['Services', 0],
       ['Sunday', 1],
+    ]);
+  });
+
+  it('keeps the arrangement a presentation plays in, and the one a playlist item names', async () => {
+    const t = setup();
+    const verse = { text: [{ rtf: cocoaRtf([['Placeholder verse', 72, [255, 255, 255]]]) }] };
+    const chorus = { text: [{ rtf: cocoaRtf([['Placeholder chorus', 72, [255, 255, 255]]]) }] };
+    t.write(
+      'Placeholder Arranged.pro6',
+      pp6Presentation({
+        uuid: 'ARRANGED',
+        groups: [
+          { name: 'Verse', uuid: 'G-V', slides: [verse, verse] },
+          { name: 'Chorus', uuid: 'G-C', slides: [chorus] },
+        ],
+        arrangements: [
+          { name: 'Usual', groups: ['G-V', 'G-C', 'G-V', 'G-C'] },
+          { name: 'Short', groups: ['G-C', 'G-V'] },
+        ],
+        selectedArrangement: 1,
+      }),
+    );
+    t.write(
+      'Default.pro6pl',
+      pp6Playlist([
+        {
+          name: 'Sunday',
+          entries: [
+            {
+              document: '/Users/mandir/Documents/ProPresenter6/Placeholder Arranged.pro6',
+              name: 'Arranged',
+              arrangement: 0,
+            },
+            { document: '/Users/mandir/Documents/ProPresenter6/Placeholder Arranged.pro6', name: 'As set' },
+          ],
+        },
+      ]),
+    );
+    await t.run([t.source]);
+    const id = t.presentations.list().find((p) => p.name === 'Placeholder Arranged')?.id ?? '';
+    const doc = t.presentations.get(id);
+    const [usual, short] = doc?.arrangements ?? [];
+    expect(doc?.arrangements.map((a) => a.name)).toEqual(['Usual', 'Short']);
+    expect(doc?.selectedArrangementId).toBe(short?.id);
+    // Its own order plays Short; the Usual arrangement repeats the verse and chorus.
+    const source = new DbSlideSource(t.presentations);
+    expect(source.order(id)?.slides.map((s) => s.slide.elements.length)).toHaveLength(3);
+    expect(source.order(id, usual?.id ?? null)?.slides).toHaveLength(6);
+    expect(source.order(id, null)?.slides).toHaveLength(3);
+    // The first playlist item names the Usual arrangement; the second follows the presentation.
+    expect(
+      t.db
+        .prepare(
+          "SELECT label, order_mode, arrangement_id FROM playlist_items WHERE kind = 'presentation' ORDER BY position",
+        )
+        .all(),
+    ).toEqual([
+      { label: 'Arranged', order_mode: 'arrangement', arrangement_id: usual?.id },
+      { label: 'As set', order_mode: 'presentation', arrangement_id: null },
     ]);
   });
 
