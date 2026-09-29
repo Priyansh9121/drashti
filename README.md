@@ -154,6 +154,7 @@ The library is `drashti.sqlite` in Electron's userData folder: `~/Library/Applic
 | `src/main/db/`                                            | SQLite: migrations, presentations and screens repositories, seed.                                                                |
 | `src/main/outputs/`                                       | Displays, output windows, the output manager and the screens service.                                                            |
 | `src/main/import/`                                        | Importers: the pipeline, the worker process, file formats, the media folder and relinking.                                       |
+| `src/main/media/`                                         | Serving library media to the windows (`drashti-media://`).                                                                       |
 | `src/main/transport/`, `src/main/ipc/`                    | IPC transport for engine messages; IPC handler helpers.                                                                          |
 | `src/main/windows/`                                       | Operator window, security and web preferences.                                                                                   |
 | `src/main/watchdog.ts`, `selftest.ts`, `menu.ts`          | Watchdog, its self-test, the application menu.                                                                                   |
@@ -171,7 +172,7 @@ The library is `drashti.sqlite` in Electron's userData folder: `~/Library/Applic
 
 ## Security model
 
-Every window runs with `contextIsolation: true`, `nodeIntegration: false` and `sandbox: true`, and the OS reports the renderers as sandboxed. The preload script exposes one typed object, `window.drashti`. The main process refuses IPC from pages that are not the app's own, validates every argument, and only lets the operator window control the show or change screens. Pages cannot open pop-ups, attach `<webview>`s, navigate away, or get any permission (camera, notifications and so on). The HTML pages carry a strict Content Security Policy (`script-src 'self'`, local fonts only). Lint rules stop renderer and shared code from importing Electron, Node or main-process modules.
+Every window runs with `contextIsolation: true`, `nodeIntegration: false` and `sandbox: true`, and the OS reports the renderers as sandboxed. The preload script exposes one typed object, `window.drashti`. The main process refuses IPC from pages that are not the app's own, validates every argument, and only lets the operator window control the show or change screens. Pages cannot open pop-ups, attach `<webview>`s, navigate away, or get any permission (camera, notifications and so on). The HTML pages carry a strict Content Security Policy (`script-src 'self'`, local fonts only). Pages never see file paths: they load library media by id from `drashti-media://media/<id>`, which the main process answers only with files inside the media folder (streamed in byte ranges, so video can seek; anything else is a 404), and the policy allows that scheme for images and media only, not for `fetch`. Lint rules stop renderer and shared code from importing Electron, Node or main-process modules.
 
 ## Open risks
 
