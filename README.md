@@ -20,9 +20,12 @@ Phase 1 has started:
 - text boxes hold **styled runs** (font, size, colour, weight and language per run);
 - the **import pipeline** runs in a background worker process: plain-text lyrics, ProPresenter 6 and 7 presentations, templates and themes, playlists and bundles, and media files, with re-import rules, a media folder that stores each file once, and a report kept for every import;
 - **importing from the operator window**: drag files or folders onto the presentation list, or use **Import…**; progress, then a migration report with a fix for each item; removing presentations with Delete, and Undo;
-- **media playback**: library media reaches the windows by id only (`drashti-media://`); slide backgrounds play on the background layer and audio cues on the audio layer; images and videos on slides draw everywhere, with still frames for video thumbnails; every screen shows the same frame of a video, and one audio player makes all the sound, on the output chosen in settings.
+- **media playback**: library media reaches the windows by id only (`drashti-media://`); slide backgrounds play on the background layer and audio cues on the audio layer; images and videos on slides draw everywhere, with still frames for video thumbnails; every screen shows the same frame of a video, and one audio player makes all the sound, on the output chosen in settings;
+- **media Drashti cannot play** (ProRes, AVI, HEIC and the like) is found at import, marked, and listed in the report with what to do;
+- **restart recovery**: after an unexpected stop the same slide, background and black-out come back by themselves;
+- a **library list** that stays cheap at any size (about 2 ms at 5,000 presentations), and a **performance check** to run by hand on the real machines.
 
-Next: checking both importers against the mandir's own files in `migration-samples/` once the audit has collected them, and the first conversion tables for legacy fonts.
+Next: playlists and running a sabha from them; checking both importers against the mandir's own files in `migration-samples/` once the audit has collected them, and the first conversion tables for legacy fonts.
 
 ## Setup
 

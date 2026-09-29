@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { spawn } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,14 +19,16 @@ interface SelfTestResult {
   checks: { name: string; ok: boolean; detail: string }[];
 }
 
-function runSelfTest(): Promise<{ code: number | null; result: SelfTestResult | null; log: string }> {
+function runSelfTest(
+  userData: string,
+): Promise<{ code: number | null; result: SelfTestResult | null; log: string }> {
   // Playwright runs these files as CommonJS; the electron package's main export is the binary's path.
   const electron = createRequire(__filename)('electron') as string;
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env))
     if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') env[k] = v;
   Object.assign(env, {
-    DRASHTI_USER_DATA_DIR: mkdtempSync(join(tmpdir(), 'drashti-selftest-')),
+    DRASHTI_USER_DATA_DIR: userData,
     DRASHTI_SELFTEST: 'watchdog',
     DRASHTI_NO_QUIT_CONFIRM: '1',
   });
@@ -49,7 +51,8 @@ function runSelfTest(): Promise<{ code: number | null; result: SelfTestResult | 
 }
 
 test('watchdog self-test: operator crash and reload never touch the output or the sound; crashed windows come back', async () => {
-  const { code, result, log } = await runSelfTest();
+  const userData = mkdtempSync(join(tmpdir(), 'drashti-selftest-'));
+  const { code, result, log } = await runSelfTest(userData);
   expect(result, log.slice(-3000)).not.toBeNull();
   for (const c of result?.checks ?? []) expect.soft(c.ok, `${c.name} ${c.detail}`).toBe(true);
   expect(result?.checks.map((c) => c.name)).toEqual([
@@ -72,6 +75,10 @@ test('watchdog self-test: operator crash and reload never touch the output or th
   ]);
   expect(result?.passed).toBe(true);
   expect(code).toBe(0);
+  // The self-test ends on purpose: marked as a clean quit, so the next start puts nothing back.
+  const mark = JSON.parse(readFileSync(join(userData, 'live-state.clean'), 'utf8')) as { session: string };
+  const saved = JSON.parse(readFileSync(join(userData, 'live-state.json'), 'utf8')) as { session: string };
+  expect(mark.session).toBe(saved.session);
   test.info().annotations.push({
     type: 'self-test',
     description: (result?.checks ?? []).map((c) => `${c.ok ? 'PASS' : 'FAIL'} ${c.name}`).join('; '),
