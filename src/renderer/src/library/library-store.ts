@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { PresentationDoc, PresentationSummary } from '../../../shared/library';
 import type { MediaSummary, PlaylistItemInfo } from '../../../shared/playlists';
+import type { SearchHit, SearchResult } from '../../../shared/search';
 
 /** A playlist item, with the playlist it is in. */
 export type ShownItem = PlaylistItemInfo & { playlistId: string };
@@ -20,6 +21,8 @@ interface LibraryView {
    * the grid shows the presentation picked in the library.
    */
   item: ShownItem | null;
+  /** A slide to bring into view in the grid (a search found it). */
+  focusSlideId: string | null;
 }
 
 export const useLibrary = create<LibraryView>(() => ({
@@ -29,6 +32,7 @@ export const useLibrary = create<LibraryView>(() => ({
   marked: [],
   anchorId: null,
   item: null,
+  focusSlideId: null,
 }));
 
 /** Show a playlist item in the slide grid: a presentation item's slides, or the item itself. */
@@ -60,6 +64,7 @@ export async function selectPresentation(id: string): Promise<void> {
  */
 export function clickPresentation(id: string, mods: { toggle: boolean; range: boolean }): void {
   leaveItem();
+  useLibrary.setState({ focusSlideId: null });
   const { presentations, marked, anchorId } = useLibrary.getState();
   if (mods.range && anchorId) {
     const ids = presentations.map((p) => p.id);
@@ -99,6 +104,57 @@ export async function loadLibrary(): Promise<void> {
   const first = presentations[0];
   if (first) await selectPresentation(first.id);
   else useLibrary.setState({ selectedId: null, doc: null, marked: [] });
+}
+
+// ---- search ---------------------------------------------------------------------
+
+interface SearchView {
+  query: string;
+  result: SearchResult | null;
+  /** Presentations search cannot read yet, once the operator asks to see them. */
+  legacy: { id: string; name: string }[] | null;
+}
+
+export const useSearch = create<SearchView>(() => ({ query: '', result: null, legacy: null }));
+
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function runSearch(): Promise<void> {
+  const { query } = useSearch.getState();
+  if (query.trim() === '') {
+    useSearch.setState({ result: null });
+    return;
+  }
+  const result = await window.drashti.library.search(query);
+  // Only the answer to what is in the box now.
+  if (useSearch.getState().query === result.query) useSearch.setState({ result });
+}
+
+/** What the operator typed: results follow as they type (a short pause first, so a fast typist sends one query). */
+export function setSearch(query: string): void {
+  useSearch.setState({ query });
+  if (searchTimer) clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => void runSearch(), query.trim() === '' ? 0 : 60);
+}
+
+export function clearSearch(): void {
+  setSearch('');
+  useSearch.setState({ legacy: null });
+}
+
+export async function showLegacy(): Promise<void> {
+  const legacy = await window.drashti.library.legacyPresentations();
+  useSearch.setState({ legacy });
+}
+
+export function hideLegacy(): void {
+  useSearch.setState({ legacy: null });
+}
+
+/** Open a search result: its presentation, with the slide that matched brought into view. */
+export function openHit(hit: SearchHit): void {
+  clickPresentation(hit.presentationId, { toggle: false, range: false });
+  useLibrary.setState({ focusSlideId: hit.match.kind === 'text' ? hit.match.slideId : null });
 }
 
 // ---- media ----------------------------------------------------------------------
@@ -154,5 +210,7 @@ export function watchLibrary(): void {
       if (selectedId) await selectPresentation(selectedId);
     });
     if (useMedia.getState().loaded) void loadMedia();
+    // New or changed presentations show up in the results too.
+    if (useSearch.getState().query.trim() !== '') void runSearch();
   });
 }

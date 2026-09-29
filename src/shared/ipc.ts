@@ -14,6 +14,7 @@ import type {
   PlaylistNode,
   PlaylistResult,
 } from './playlists';
+import type { SearchResult } from './search';
 import type { CoverOptions, OutputContext, ScreenPatch, ScreensResult, ScreensSnapshot } from './screens';
 
 /**
@@ -43,6 +44,8 @@ export const IPC = {
   library: {
     listPresentations: 'library:list-presentations',
     listMedia: 'library:list-media',
+    search: 'library:search',
+    legacyPresentations: 'library:legacy-presentations',
     getPresentation: 'library:get-presentation',
     /** Import files and folders (operator window only). */
     importPaths: 'library:import-paths',
@@ -129,6 +132,8 @@ export interface InvokeContract {
   [IPC.engine.command]: { args: [command: EngineCommand]; result: CommandResult };
   [IPC.library.listPresentations]: { args: []; result: PresentationSummary[] };
   [IPC.library.listMedia]: { args: []; result: MediaSummary[] };
+  [IPC.library.search]: { args: [query: string]; result: SearchResult };
+  [IPC.library.legacyPresentations]: { args: []; result: { id: string; name: string }[] };
   [IPC.playlists.tree]: { args: []; result: PlaylistNode[] };
   [IPC.playlists.items]: { args: [playlistId: string]; result: PlaylistItemInfo[] };
   [IPC.playlists.create]: {

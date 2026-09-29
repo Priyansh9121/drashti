@@ -98,6 +98,14 @@ export async function runAction(action: OperatorAction, ui: { openScreens: () =>
     case 'removeSelected':
       requestRemoval();
       return;
+    case 'findInLibrary': {
+      const box = document.getElementById('library-search');
+      if (box instanceof HTMLInputElement) {
+        box.focus();
+        box.select();
+      }
+      return;
+    }
     case 'undo':
       await undoRemoval();
       return;

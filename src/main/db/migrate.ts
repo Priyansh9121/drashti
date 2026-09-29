@@ -7,6 +7,7 @@ import { up as list } from './migrations/005-list';
 import { up as playable } from './migrations/006-playable';
 import { up as arrangements } from './migrations/007-arrangements';
 import { up as playlistEdits } from './migrations/008-playlists';
+import { up as search } from './migrations/009-search';
 
 export interface Migration {
   version: number;
@@ -24,6 +25,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 6, name: 'playable media', up: playable },
   { version: 7, name: 'arrangements set the order', up: arrangements },
   { version: 8, name: 'playlists the operator edits', up: playlistEdits },
+  { version: 9, name: 'search', up: search },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

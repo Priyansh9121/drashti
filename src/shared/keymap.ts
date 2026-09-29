@@ -29,6 +29,7 @@ export type OperatorAction =
   | 'openScreens'
   | 'uncoverControls'
   | 'removeSelected'
+  | 'findInLibrary'
   | 'undo';
 
 export interface KeyBinding {
@@ -67,6 +68,7 @@ export const KEYMAP: readonly KeyBinding[] = [
   { action: 'uncoverControls', keys: ['Mod+Shift+U'], label: 'Uncover the controls', global: true },
   // Removing presentations or playlists asks first; Undo brings back any removal.
   { action: 'removeSelected', keys: ['Delete', 'Backspace'], label: 'Remove', scope: 'library' },
+  { action: 'findInLibrary', keys: ['Mod+F'], label: 'Search' },
   { action: 'undo', keys: ['Mod+Z'], label: 'Undo', menuOnly: true },
 ];
 

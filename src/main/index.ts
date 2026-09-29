@@ -27,6 +27,7 @@ import { LATEST_VERSION, openDatabase } from './db/database';
 import { ImportRepo } from './db/imports';
 import { MediaRepo } from './db/media';
 import { PlaylistRepo } from './db/playlists';
+import { SearchIndex } from './db/search';
 import { SettingsRepo } from './db/settings';
 import { DbSlideSource, PresentationRepo } from './db/presentations';
 import { ScreenRepo } from './db/screens';
@@ -205,6 +206,11 @@ function start(): void {
   const screenRepo = new ScreenRepo(db);
   const importRepo = new ImportRepo(db);
   const playlists = new PlaylistRepo(db);
+  // The search index is kept as presentations are written; a library indexed by an older version is redone once.
+  const search = new SearchIndex(db);
+  const indexStart = performance.now();
+  if (search.rebuildIfStale())
+    log.info(`Search index built in ${Math.round(performance.now() - indexStart)} ms`);
   // Removed presentations can be restored for 30 days.
   const purged = presentations.purgeRemoved(new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString());
   if (purged > 0) log.info(`Purged ${purged} presentation(s) removed more than 30 days ago`);
@@ -462,6 +468,10 @@ function start(): void {
   handle(IPC.engine.command, (event, command) => runEngineCommand(engine, command, fromOperator(event)));
   handle(IPC.library.listPresentations, () => presentations.list());
   handle(IPC.library.listMedia, () => media.list());
+  handle(IPC.library.search, (_e, query) =>
+    search.search(typeof query === 'string' ? query.slice(0, 200) : ''),
+  );
+  handle(IPC.library.legacyPresentations, () => search.legacyPresentations());
   registerPlaylistIpc({
     repo: playlists,
     fromOperator,
