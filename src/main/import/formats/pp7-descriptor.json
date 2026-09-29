@@ -1,6 +1,11 @@
 {
   "source": "greyshirtguy/ProPresenter7-Proto @ bf6325d (autogen-proto, ProPresenter 21.4), MIT",
-  "roots": ["rv.data.Presentation", "rv.data.PlaylistDocument", "rv.data.Template.Document"],
+  "roots": [
+    "rv.data.Presentation",
+    "rv.data.PlaylistDocument",
+    "rv.data.Template.Document",
+    "rv.data.PropDocument"
+  ],
   "messages": {
     "rv.data.Presentation": {
       "1": { "name": "application_info", "kind": "message", "type": "rv.data.ApplicationInfo" },
@@ -51,6 +56,17 @@
     "rv.data.Template.Document": {
       "1": { "name": "application_info", "kind": "message", "type": "rv.data.ApplicationInfo" },
       "3": { "name": "slides", "kind": "message", "type": "rv.data.Template.Slide", "repeated": true }
+    },
+    "rv.data.PropDocument": {
+      "1": { "name": "application_info", "kind": "message", "type": "rv.data.ApplicationInfo" },
+      "2": { "name": "cues", "kind": "message", "type": "rv.data.Cue", "repeated": true },
+      "3": { "name": "transition", "kind": "message", "type": "rv.data.Transition" },
+      "4": {
+        "name": "prop_collections",
+        "kind": "message",
+        "type": "rv.data.PropDocument.PropCollection",
+        "repeated": true
+      }
     },
     "rv.data.ApplicationInfo": {
       "1": { "name": "platform", "kind": "enum", "type": "rv.data.ApplicationInfo.Platform" },
@@ -192,6 +208,18 @@
       "1": { "name": "base_slide", "kind": "message", "type": "rv.data.Slide" },
       "2": { "name": "name", "kind": "scalar", "type": "string" },
       "3": { "name": "actions", "kind": "message", "type": "rv.data.Action", "repeated": true }
+    },
+    "rv.data.PropDocument.PropCollection": {
+      "1": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" },
+      "2": { "name": "name", "kind": "scalar", "type": "string" },
+      "3": {
+        "name": "items",
+        "kind": "message",
+        "type": "rv.data.PropDocument.PropCollection.Item",
+        "repeated": true
+      },
+      "4": { "name": "single_prop_enabled", "kind": "scalar", "type": "bool" },
+      "5": { "name": "cues", "kind": "message", "type": "rv.data.Cue", "repeated": true }
     },
     "rv.data.Version": {
       "1": { "name": "major_version", "kind": "scalar", "type": "uint32" },
@@ -360,6 +388,9 @@
       "5": { "name": "background_color", "kind": "message", "type": "rv.data.Color" },
       "6": { "name": "size", "kind": "message", "type": "rv.data.Graphics.Size" },
       "7": { "name": "uuid", "kind": "message", "type": "rv.data.UUID" }
+    },
+    "rv.data.PropDocument.PropCollection.Item": {
+      "1": { "name": "prop_cue_uuid", "kind": "message", "type": "rv.data.UUID" }
     },
     "rv.data.Graphics.Gradient.ColorStop": {
       "1": { "name": "color", "kind": "message", "type": "rv.data.Color" },

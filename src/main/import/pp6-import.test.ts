@@ -333,7 +333,7 @@ describe('importing ProPresenter 6 files', () => {
     expect(t.presentations.list().map((p) => p.name)).toEqual(['A', 'C']);
   });
 
-  it('says plainly what the older app’s support files are', async () => {
+  it('says plainly what the older app’s support files are, and imports its props', async () => {
     const t = setup();
     t.write('Props.pro6', hymn({ uuid: 'P' }));
     t.write('Messages.xml', '<array/>');
@@ -341,11 +341,8 @@ describe('importing ProPresenter 6 files', () => {
     const { report } = await t.run([t.source]);
     expect(report?.items.map((i) => [i.name, i.outcome, i.message])).toEqual([
       ['CCLIData.txt', 'unsupported', 'CCLI reporting data, not lyrics: not imported.'],
-      [
-        'Props.pro6',
-        'unsupported',
-        'Props come in a later version of Drashti; set them up again from the audit.',
-      ],
+      // Props are imported now, one per slide (the logo's file is missing, and can be found later).
+      ['Props.pro6', 'imported', '3 props: show them from Props, under the live picture.'],
       ['Messages.xml', 'unsupported', 'Messages are set up again in Drashti (see the audit report).'],
     ]);
   });

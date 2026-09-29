@@ -84,6 +84,11 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
+  props: {
+    list: () => invoke(IPC.props.list),
+    save: (propId, fields) => invoke(IPC.props.save, propId, fields),
+    remove: (propId) => invoke(IPC.props.remove, propId),
+  },
   themes: {
     list: () => invoke(IPC.themes.list),
     save: (themeId, fields) => invoke(IPC.themes.save, themeId, fields),

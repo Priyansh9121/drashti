@@ -137,13 +137,25 @@ export const Scene = memo(function Scene({
           </Placed>
         </div>
       )}
-      {layers.props.map((prop) => (
-        <div key={prop.id} data-layer="props" style={{ position: 'absolute', inset: 0 }}>
-          {prop.elements.map((el) => (
-            <ElementView key={el.id} el={el} />
-          ))}
-        </div>
-      ))}
+      {layers.props.map((prop) => {
+        const size = { width: prop.width ?? 1920, height: prop.height ?? 1080 };
+        return (
+          <div
+            key={prop.id}
+            data-layer="props"
+            data-prop={prop.id}
+            style={{ position: 'absolute', inset: 0 }}
+          >
+            <Placed content={size} box={canvas} mode={scaling}>
+              <div style={{ position: 'relative', width: size.width, height: size.height }}>
+                {prop.elements.map((el) => (
+                  <ElementView key={el.id} el={el} />
+                ))}
+              </div>
+            </Placed>
+          </div>
+        );
+      })}
       {layers.messages.length > 0 && (
         <MessageBanner messages={layers.messages} timers={state.timers} canvas={canvas} />
       )}

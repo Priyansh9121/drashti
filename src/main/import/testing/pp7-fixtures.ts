@@ -178,6 +178,35 @@ export function pp7Theme(slides: { name: string; rtf: string }[]): Uint8Array {
   );
 }
 
+/** A Configuration/Props file: each prop is a cue showing one prop slide. */
+export function pp7Props(props: { id: string; name: string; slide: Pp7SlideSpec }[]): Uint8Array {
+  return encodeMessage(
+    {
+      cues: props.map((p) => ({
+        uuid: id(p.id),
+        name: p.name,
+        actions: [
+          {
+            uuid: id(`${p.id}-action`),
+            type: 11,
+            slide: {
+              prop: {
+                base_slide: {
+                  uuid: id(`${p.id}-slide`),
+                  size: { width: 1920, height: 1080 },
+                  elements: elements(p.slide),
+                },
+              },
+            },
+          },
+        ],
+      })),
+    },
+    'rv.data.PropDocument',
+    d,
+  );
+}
+
 export type Pp7PlaylistEntry =
   | { header: string }
   /** arrangement: which of the presentation's arrangements the item plays (an index). */

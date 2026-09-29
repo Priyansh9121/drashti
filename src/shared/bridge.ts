@@ -23,6 +23,7 @@ import type {
   PlaylistResult,
 } from './playlists';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
+import type { PropFields, PropInfo, PropResult } from './props';
 import type { SearchResult } from './search';
 import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes';
 import type { TimerFields, TimerResult } from './timers';
@@ -128,6 +129,13 @@ export interface DrashtiBridge {
     setItemOrder(itemId: string, order: ItemOrder): Promise<PlaylistResult>;
     renameHeader(itemId: string, label: string): Promise<PlaylistResult>;
     onChanged(listener: () => void): () => void;
+  };
+  /** Props: a logo or a fixed line over whatever slide is live. Showing one goes through the engine. */
+  props: {
+    list(): Promise<PropInfo[]>;
+    /** Make a prop (no id) or change one. */
+    save(propId: string | null, fields: PropFields): Promise<PropResult>;
+    remove(propId: string): Promise<PropResult>;
   };
   /** Themes: how presentations' words look, per language, and what is behind them. */
   themes: {

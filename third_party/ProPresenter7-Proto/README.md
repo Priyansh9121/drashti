@@ -1,12 +1,12 @@
 # ProPresenter7-Proto (third-party, MIT)
 
-Unofficial, reverse-engineered Protocol Buffers definitions for the ProPresenter 7 file formats, by greyshirtguy. Drashti's ProPresenter 7 importer reads `.pro` presentations, playlists and themes with them.
+Unofficial, reverse-engineered Protocol Buffers definitions for the ProPresenter 7 file formats, by greyshirtguy. Drashti's ProPresenter 7 importer reads `.pro` presentations, playlists, themes and props with them.
 
 - **Source:** https://github.com/greyshirtguy/ProPresenter7-Proto
 - **Commit:** `bf6325d243897a6c64dde46eec803ec29f5f8569` (12 August 2026), folder `autogen-proto/`
 - **Version:** that folder follows ProPresenter releases; at this commit it matches ProPresenter 21.4 (build 352583705). Field numbers are stable across versions, so it also reads the 18.4 files it is tested against.
 - **Licence:** MIT, see `LICENSE` (checked on 28 September 2026 before use).
-- **Files:** only the 36 definitions that `presentation.proto`, `propresenter.proto` (playlists) and `template.proto` (themes) need, in `proto/`, unchanged. `google/protobuf/descriptor.proto`, which `customOptions.proto` imports, is not copied: the generator takes it from the `protobufjs` package.
+- **Files:** only the 37 definitions that `presentation.proto`, `propresenter.proto` (playlists), `template.proto` (themes) and `propDocument.proto` (props, added 29 September 2026 from the same commit) need, in `proto/`, unchanged. `google/protobuf/descriptor.proto`, which `customOptions.proto` imports, is not copied: the generator takes it from the `protobufjs` package.
 
 ## How Drashti uses them
 

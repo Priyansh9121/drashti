@@ -111,6 +111,40 @@ export interface ParsedPresentation {
   issues: ImportIssue[];
 }
 
+/** A prop as the source file has it: a logo or a fixed line, drawn over whatever slide is live. */
+export interface ParsedProp {
+  name: string;
+  /** Its id in the source file. */
+  ref: string | null;
+  /** Placed on a canvas of the props' size; media as MEDIA_REF references into `media`. */
+  elements: ParsedSlide['elements'];
+}
+
+/** The props in a props file (ProPresenter 6 Props.pro6, ProPresenter 7 Configuration/Props). */
+export interface ParsedProps {
+  width: number;
+  height: number;
+  props: ParsedProp[];
+  media: ParsedMediaRef[];
+  issues: ImportIssue[];
+}
+
+/** A ProPresenter 6 Props.pro6 is a presentation document: each slide is a prop, named by its label. */
+export function propsFromPresentation(p: ParsedPresentation): ParsedProps {
+  const slides = p.groups.flatMap((g) => g.slides);
+  return {
+    width: p.width,
+    height: p.height,
+    props: slides.map((s, i) => ({
+      name: s.label.trim() || `Prop ${i + 1}`,
+      ref: null,
+      elements: s.elements,
+    })),
+    media: p.media,
+    issues: p.issues.filter((issue) => issue.severity !== 'info'),
+  };
+}
+
 export function slideCount(p: ParsedPresentation): number {
   return p.groups.reduce((n, g) => n + g.slides.length, 0);
 }
