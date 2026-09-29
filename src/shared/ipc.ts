@@ -14,6 +14,7 @@ import type {
   PlaylistNode,
   PlaylistResult,
 } from './playlists';
+import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { SearchResult } from './search';
 import type { TimerFields, TimerResult } from './timers';
 import type {
@@ -107,6 +108,13 @@ export const IPC = {
     /** main -> operator: playlists changed. */
     changed: 'playlists:changed',
   },
+  /** Message templates; changing them is for the operator window only. */
+  messages: {
+    list: 'messages:list',
+    create: 'messages:create',
+    update: 'messages:update',
+    remove: 'messages:remove',
+  },
   /** Changing timers (operator window only); what they count comes with the engine state. */
   timers: {
     create: 'timers:create',
@@ -188,6 +196,13 @@ export interface InvokeContract {
   [IPC.audio.getOutput]: { args: []; result: AudioOutputStatus };
   [IPC.audio.setOutput]: { args: [device: AudioDevice | null]; result: AudioOutputStatus };
   [IPC.audio.reportDevices]: { args: [devices: AudioDevice[], state: AudioOutputState]; result: null };
+  [IPC.messages.list]: { args: []; result: MessageTemplate[] };
+  [IPC.messages.create]: { args: [template: MessageTemplateFields]; result: MessageResult };
+  [IPC.messages.update]: {
+    args: [templateId: string, template: MessageTemplateFields];
+    result: MessageResult;
+  };
+  [IPC.messages.remove]: { args: [templateId: string]; result: MessageResult };
   [IPC.timers.create]: { args: [fields: TimerFields]; result: TimerResult };
   [IPC.timers.update]: { args: [timerId: string, fields: TimerFields]; result: TimerResult };
   [IPC.timers.remove]: { args: [timerId: string]; result: TimerResult };

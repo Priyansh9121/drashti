@@ -80,6 +80,12 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
+  messages: {
+    list: () => invoke(IPC.messages.list),
+    create: (template) => invoke(IPC.messages.create, template),
+    update: (templateId, template) => invoke(IPC.messages.update, templateId, template),
+    remove: (templateId) => invoke(IPC.messages.remove, templateId),
+  },
   timers: {
     create: (fields) => invoke(IPC.timers.create, fields),
     update: (timerId, fields) => invoke(IPC.timers.update, timerId, fields),

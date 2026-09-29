@@ -14,6 +14,7 @@ import type {
   PlaylistNode,
   PlaylistResult,
 } from './playlists';
+import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { SearchResult } from './search';
 import type { TimerFields, TimerResult } from './timers';
 import type {
@@ -110,6 +111,13 @@ export interface DrashtiBridge {
     setItemOrder(itemId: string, order: ItemOrder): Promise<PlaylistResult>;
     renameHeader(itemId: string, label: string): Promise<PlaylistResult>;
     onChanged(listener: () => void): () => void;
+  };
+  /** Message templates ("Car {plate} please move"). Showing one goes through the engine. */
+  messages: {
+    list(): Promise<MessageTemplate[]>;
+    create(template: MessageTemplateFields): Promise<MessageResult>;
+    update(templateId: string, template: MessageTemplateFields): Promise<MessageResult>;
+    remove(templateId: string): Promise<MessageResult>;
   };
   /** Making and editing timers (operator window only). Starting and pausing go through the engine. */
   timers: {

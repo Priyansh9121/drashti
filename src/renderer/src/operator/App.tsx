@@ -25,6 +25,7 @@ import { SoundWarning } from '../screens/SoundOutput';
 import { RecoveryBanner } from './RecoveryBanner';
 import { StageMessageControl } from './StageControls';
 import { TimersPanel } from './TimersPanel';
+import { MessagesPanel } from './MessagesPanel';
 import { LiveStatus, ScreensSummary } from './StatusLine';
 import { isTyping, useKeymap } from './useKeymap';
 
@@ -108,6 +109,7 @@ export function App() {
         )}
         <LiveControls platform={platform} run={run} />
         <StageMessageControl />
+        <MessagesPanel />
         <TimersPanel />
       </aside>
 
