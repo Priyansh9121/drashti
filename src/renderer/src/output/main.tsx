@@ -6,6 +6,7 @@ import { connectEngine, useEngine } from '../engine/engine-store';
 import { preloadFonts } from '../render/fonts';
 import { PlacedInParent } from '../render/Placed';
 import { Scene } from '../render/Scene';
+import { StageView } from '../render/StageView';
 import { connectOutput, useOutput } from './output-store';
 import { Preloader } from './Preloader';
 
@@ -76,6 +77,7 @@ function Output() {
     });
   }, []);
   const canvas = { width: context?.canvasWidth ?? 1920, height: context?.canvasHeight ?? 1080 };
+  const stage = context?.role === 'stage';
   const scaling = context?.scaling ?? 'fit';
   return (
     <div
@@ -83,14 +85,16 @@ function Output() {
       className="relative h-full w-full bg-black"
       data-testid="output-root"
       data-screen={context?.screenId ?? ''}
+      data-role={context?.role ?? 'audience'}
       data-fonts={fontsReady ? 'ready' : 'loading'}
     >
       {state && fontsReady && (
         <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
-          <Scene state={state} canvas={canvas} scaling={scaling} />
+          {stage ? <StageView state={state} /> : <Scene state={state} canvas={canvas} scaling={scaling} />}
         </PlacedInParent>
       )}
-      {state && <Preloader next={state.next} />}
+      {/* Stage screens show no pictures, so they load none ahead. */}
+      {state && !stage && <Preloader next={state.next} />}
       <IdentifyOverlay />
     </div>
   );

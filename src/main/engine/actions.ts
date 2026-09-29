@@ -34,6 +34,7 @@ export type EngineAction =
   /** The cursor moves to a playlist item that is not a presentation (a picture, video or sound). */
   | { type: 'live/item'; playlist: PlaylistCursor }
   | { type: 'next/set'; next: UpNext | null }
+  | { type: 'stage/message'; text: string | null }
   | { type: 'layer/clear'; layer: LayerName }
   | { type: 'layers/clearAll' }
   | { type: 'blackout/set'; on: boolean }

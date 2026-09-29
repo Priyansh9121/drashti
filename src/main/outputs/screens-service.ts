@@ -1,4 +1,6 @@
+import { z } from 'zod';
 import { matchDisplays } from '../../shared/display-match';
+import { GROUP_ROLES } from '../../shared/screens';
 import type {
   CoverOptions,
   DisplayInfo,
@@ -67,6 +69,16 @@ export class ScreensService {
     const name = nameSchema.safeParse(rawName);
     if (!id.success || !name.success) return this.fail('Give the group a name (up to 80 characters).');
     if (!this.repo.renameGroup(id.data, name.data)) return this.fail('That group no longer exists.');
+    return this.done();
+  }
+
+  /** Audience screens show the picture; stage screens show the performers' view. */
+  setGroupRole(rawId: unknown, rawRole: unknown): ScreensResult {
+    const id = idSchema.safeParse(rawId);
+    const role = z.enum(GROUP_ROLES).safeParse(rawRole);
+    if (!id.success || !role.success)
+      return this.fail('A group shows the audience picture or the stage view.');
+    if (!this.repo.setGroupRole(id.data, role.data)) return this.fail('That group no longer exists.');
     return this.done();
   }
 

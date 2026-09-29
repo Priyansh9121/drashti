@@ -3,6 +3,8 @@ export type ScalingMode = 'fit' | 'fill' | 'stretch';
 export const SCALING_MODES = ['fit', 'fill', 'stretch'] as const satisfies readonly ScalingMode[];
 
 export type ScreenRole = 'audience' | 'stage' | 'stream' | 'other';
+/** The roles a group can be given today (streaming and others come later). */
+export const GROUP_ROLES = ['audience', 'stage'] as const satisfies readonly ScreenRole[];
 
 /**
  * Enough about an OS display to find it again after a restart. Display ids
@@ -106,6 +108,8 @@ export interface OutputContext {
   screenId: string;
   screenName: string;
   groupName: string;
+  /** What the screen shows: the audience picture, or the performers' stage view. */
+  role: ScreenRole;
   canvasWidth: number;
   canvasHeight: number;
   scaling: ScalingMode;

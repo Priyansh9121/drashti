@@ -15,7 +15,14 @@ import type {
   PlaylistResult,
 } from './playlists';
 import type { SearchResult } from './search';
-import type { CoverOptions, OutputContext, ScreenPatch, ScreensResult, ScreensSnapshot } from './screens';
+import type {
+  CoverOptions,
+  OutputContext,
+  ScreenPatch,
+  ScreenRole,
+  ScreensResult,
+  ScreensSnapshot,
+} from './screens';
 
 /**
  * The API the preload script exposes to every renderer as `window.drashti`.
@@ -127,6 +134,8 @@ export interface DrashtiBridge {
     onChanged(listener: (snapshot: ScreensSnapshot) => void): () => void;
     createGroup(name: string): Promise<ScreensResult>;
     renameGroup(groupId: string, name: string): Promise<ScreensResult>;
+    /** Audience screens show the picture; stage screens show the performers' view. */
+    setGroupRole(groupId: string, role: ScreenRole): Promise<ScreensResult>;
     deleteGroup(groupId: string): Promise<ScreensResult>;
     /** May answer `confirm: 'covers-operator'`: ask the operator, then repeat with { coverOperator: true }. */
     assignDisplay(groupId: string, displayId: number, options?: CoverOptions): Promise<ScreensResult>;

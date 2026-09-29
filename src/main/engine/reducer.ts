@@ -93,6 +93,8 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
     }
     case 'next/set':
       return sameData(state.next, action.next) ? state : { ...state, next: action.next };
+    case 'stage/message':
+      return state.stageMessage === action.text ? state : { ...state, stageMessage: action.text };
     case 'layer/clear':
       return clearLayer(state, action.layer);
     case 'layers/clearAll':

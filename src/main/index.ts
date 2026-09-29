@@ -252,6 +252,7 @@ function start(): void {
       screenId: s.id,
       screenName: s.name,
       groupName: screenRepo.groupName(s.groupId) ?? '',
+      role: screenRepo.groupRole(s.groupId) ?? 'audience',
       canvasWidth: s.canvasWidth,
       canvasHeight: s.canvasHeight,
       scaling: s.scaling,
@@ -583,6 +584,9 @@ function start(): void {
   });
   handle(IPC.screens.get, () => screens.snapshot());
   handle(IPC.screens.createGroup, (e, name) => (fromOperator(e) ? screens.createGroup(name) : notAllowed));
+  handle(IPC.screens.setGroupRole, (e, id, role) =>
+    fromOperator(e) ? screens.setGroupRole(id, role) : notAllowed,
+  );
   handle(IPC.screens.renameGroup, (e, id, name) =>
     fromOperator(e) ? screens.renameGroup(id, name) : notAllowed,
   );

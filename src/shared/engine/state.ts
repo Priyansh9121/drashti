@@ -161,6 +161,8 @@ export interface EngineState {
   blackout: boolean;
   /** What Next will show, or null when nothing follows. */
   next: UpNext | null;
+  /** A message for the performers on stage screens; the audience never sees it. */
+  stageMessage: string | null;
 }
 
 export function emptyLayers(): Layers {
@@ -174,6 +176,7 @@ export function initialEngineState(): EngineState {
     layers: emptyLayers(),
     blackout: false,
     next: null,
+    stageMessage: null,
   };
 }
 

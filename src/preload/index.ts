@@ -98,6 +98,7 @@ const bridge: DrashtiBridge = {
     onChanged: (listener) => on(IPC.screens.changed, listener),
     createGroup: (name) => invoke(IPC.screens.createGroup, name),
     renameGroup: (groupId, name) => invoke(IPC.screens.renameGroup, groupId, name),
+    setGroupRole: (groupId, role) => invoke(IPC.screens.setGroupRole, groupId, role),
     deleteGroup: (groupId) => invoke(IPC.screens.deleteGroup, groupId),
     assignDisplay: (groupId, displayId, options) =>
       invoke(IPC.screens.assignDisplay, groupId, displayId, options),

@@ -115,6 +115,16 @@ describe('ScreensService', () => {
     });
   });
 
+  it('gives a group the audience or the stage role', () => {
+    service.createGroup('Stage');
+    const groupId = repo.groups()[0]?.id;
+    expect(repo.groups()[0]?.role).toBe('audience');
+    expect(service.setGroupRole(groupId, 'stage').ok).toBe(true);
+    expect(repo.groups()[0]?.role).toBe('stage');
+    expect(service.setGroupRole(groupId, 'stream')).toMatchObject({ ok: false });
+    expect(service.setGroupRole('gone', 'audience')).toMatchObject({ ok: false });
+  });
+
   it('renames and deletes groups, and removes screens', () => {
     service.createGroup('A');
     const groupId = repo.groups()[0]?.id;
