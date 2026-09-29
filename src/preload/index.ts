@@ -26,6 +26,10 @@ const bridge: DrashtiBridge = {
       on(IPC.app.undo, () => {
         listener();
       }),
+    onNotice: (listener) =>
+      on(IPC.app.notice, ({ text }) => {
+        listener(text);
+      }),
     recovery: () => invoke(IPC.app.recovery),
     dismissRecovery: () => invoke(IPC.app.dismissRecovery),
   },

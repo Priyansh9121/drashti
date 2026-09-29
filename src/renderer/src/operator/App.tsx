@@ -52,6 +52,10 @@ export function App() {
     const offUndo = window.drashti.app.onUndo(() => {
       if (!isTyping(document.activeElement)) void undoRemoval();
     });
+    // Things the main process tells the operator (for example where diagnostics were saved).
+    const offNotice = window.drashti.app.onNotice((text) => {
+      useNotice.setState({ text });
+    });
     // Files dropped anywhere but the presentation list are ignored (never opened as a page).
     const ignoreDrop = (e: DragEvent) => {
       if (e.dataTransfer?.types.includes('Files')) e.preventDefault();
@@ -61,6 +65,7 @@ export function App() {
     void window.drashti.app.getInfo().then(setInfo);
     return () => {
       offUndo();
+      offNotice();
       window.removeEventListener('dragover', ignoreDrop);
       window.removeEventListener('drop', ignoreDrop);
     };

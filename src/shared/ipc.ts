@@ -45,6 +45,8 @@ export const IPC = {
     getInfo: 'app:get-info',
     /** main -> operator: Edit > Undo was chosen (the page decides what to undo). */
     undo: 'app:undo',
+    /** main -> operator: something to tell the operator (for example where diagnostics were saved). */
+    notice: 'app:notice',
     /** What was put back on the screens after an unexpected stop, or null. */
     recovery: 'app:recovery',
     /** The operator has read the recovery notice. */
@@ -273,6 +275,7 @@ export interface EventContract {
   [IPC.library.changed]: { at: number };
   [IPC.playlists.changed]: { at: number };
   [IPC.app.undo]: { at: number };
+  [IPC.app.notice]: { text: string };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.output.context]: OutputContext;
   [IPC.output.identify]: { name: string; groupName: string };

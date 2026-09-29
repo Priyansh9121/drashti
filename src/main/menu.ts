@@ -7,6 +7,8 @@ export interface MenuActions {
   undo: { accelerator: string | null; run: () => void };
   /** Turns off outputs covering the operator window (the keymap's uncoverControls). */
   uncoverControls: { accelerator: string | null; run: () => void };
+  /** Help > Save diagnostics: one file on the Desktop to send after a problem. */
+  saveDiagnostics: () => void;
   /** Only when DRASHTI_DIAGNOSTICS=1: for the manual watchdog check. */
   diagnostics: { crashOperator: () => void; crashOutputs: () => void; runSelfTest: () => void } | null;
 }
@@ -68,6 +70,10 @@ export function installMenu(actions: MenuActions): void {
       ],
     },
   ];
+  template.push({
+    role: 'help',
+    submenu: [{ id: 'save-diagnostics', label: 'Save Diagnostics…', click: actions.saveDiagnostics }],
+  });
   if (actions.diagnostics) {
     const d = actions.diagnostics;
     template.push({
