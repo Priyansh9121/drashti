@@ -50,6 +50,8 @@ export interface Pp6SlideSpec {
   video?: { path: string; rect: [number, number, number, number]; loop?: boolean };
   shape?: { fill: string; rect: [number, number, number, number] };
   audio?: string;
+  /** A Clear cue (clears a layer), which Drashti does not run yet. */
+  clear?: boolean;
   transition?: boolean;
 }
 
@@ -88,9 +90,13 @@ function slide(s: Pp6SlideSpec, i: number): string {
       `<RVShapeElement displayName="Shape" UUID="S-${i}" typeID="0" displayDelay="0" locked="false" persistent="0" fromTemplate="false" opacity="1" source="" bezelRadius="12" rotation="0" drawingFill="true" drawingShadow="false" drawingStroke="false" fillColor="${s.shape.fill}"><RVRect3D rvXMLIvarName="position">{${x} ${y} 0 ${w} ${h}}</RVRect3D></RVShapeElement>`,
     );
   }
-  const cues = s.audio
-    ? `<array rvXMLIvarName="cues"><RVAudioCue UUID="A-${i}" displayName="Placeholder audio" actionType="0" enabled="true" timeStamp="0" delayTime="0"><RVAudioElement rvXMLIvarName="element" source="${esc(fileUrl(s.audio))}" volume="0.8" playRate="1" loopBehavior="1" audioType="0" inPoint="0" outPoint="0" displayName="audio"/></RVAudioCue></array>`
-    : '<array rvXMLIvarName="cues"/>';
+  const audioCue = s.audio
+    ? `<RVAudioCue UUID="A-${i}" displayName="Placeholder audio" actionType="0" enabled="true" timeStamp="0" delayTime="0"><RVAudioElement rvXMLIvarName="element" source="${esc(fileUrl(s.audio))}" volume="0.8" playRate="1" loopBehavior="1" audioType="0" inPoint="0" outPoint="0" displayName="audio"/></RVAudioCue>`
+    : '';
+  const clearCue = s.clear
+    ? `<RVClearCue UUID="C-${i}" displayName="Clear" actionType="2" enabled="true" timeStamp="0" delayTime="0"/>`
+    : '';
+  const cues = `<array rvXMLIvarName="cues">${audioCue}${clearCue}</array>`;
   const background = s.background
     ? `<RVMediaCue UUID="M-${i}" displayName="Background ${i}" actionType="0" alignment="4" behavior="2" dateAdded="" delayTime="0" enabled="true" nextCueUUID="" tags="" timeStamp="0" rvXMLIvarName="backgroundMediaCue">` +
       (s.background.kind === 'video'

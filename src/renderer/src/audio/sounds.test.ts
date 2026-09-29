@@ -55,6 +55,19 @@ describe('the sounds the show makes', () => {
     ]);
   });
 
+  it('plays the audio layer with its volume and looping', () => {
+    expect(
+      soundsOf(
+        state({ audio: { id: 'x', title: 'Dhun', mediaId: 'dhun', volume: 0.4, loop: true, startedAt: 9 } }),
+      ),
+    ).toEqual([{ key: 'audio:dhun@9', mediaId: 'dhun', startedAt: 9, loop: true, volume: 0.4 }]);
+    expect(
+      soundsOf(
+        state({ audio: { id: 'x', title: 'Silent', mediaId: null, volume: 1, loop: false, startedAt: 9 } }),
+      ),
+    ).toEqual([]);
+  });
+
   it('makes no sound for images, and keeps sound through black-out', () => {
     expect(
       soundsOf(

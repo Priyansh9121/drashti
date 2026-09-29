@@ -41,7 +41,7 @@ const doc = () =>
             audio: '/Media/Audio/Placeholder Tune.mp3',
             notesRtf: cocoaRtf([['Placeholder note', 20, [0, 0, 0]]]),
           },
-          { id: 'c2', text: [{ rtf: cocoaRtf([['Second slide', 72, [255, 255, 255]]], 'ql') }] },
+          { id: 'c2', text: [{ rtf: cocoaRtf([['Second slide', 72, [255, 255, 255]]], 'ql') }], clear: true },
         ],
       },
       {
@@ -135,7 +135,7 @@ describe('parsePp7: presentations', () => {
         media: 0,
         props: { media: 'video', fit: 'fill', loop: true },
       },
-      { kind: 'audio', label: 'Placeholder audio', media: 1, props: {} },
+      { kind: 'audio', label: 'Placeholder audio', media: 1, props: { volume: 1, loop: false } },
     ]);
     const logo = p.groups[1]?.slides[0]?.elements[0];
     expect(logo).toMatchObject<Partial<MediaElement>>({ kind: 'image', mediaId: 'media-ref:2', fit: 'fit' });
@@ -145,8 +145,35 @@ describe('parsePp7: presentations', () => {
       ['audio', url('/Media/Audio/Placeholder Tune.mp3')],
       ['image', url('/Media/Pictures/Placeholder Logo.png')],
     ]);
-    expect(p.issues.map((i) => i.code)).toContain('slide-cues');
+    // Only the clear cue does not run yet.
+    expect(p.issues.find((i) => i.code === 'slide-cues')?.message).toBe(
+      'A slide cue (a clear, a message, a timer...) came across but does not run yet.',
+    );
     expect(p.issues.map((i) => i.code)).not.toContain('background-media');
+  });
+
+  it("keeps an audio cue's volume and looping", () => {
+    const p = presentation(
+      pp7Presentation({
+        uuid: 'P7-AUDIO',
+        name: 'Placeholder Dhun',
+        groups: [
+          {
+            name: 'Verse',
+            uuid: 'G-A',
+            slides: [
+              { id: 'a1', audio: { path: '/Media/Audio/Placeholder Dhun.mp3', volume: 0.6, loop: true } },
+              { id: 'a2', audio: { path: '/Media/Audio/Placeholder Dhun.mp3', volume: 7 } },
+            ],
+          },
+        ],
+      }),
+    );
+    expect(p.groups[0]?.slides.map((s) => s.cues[0]?.props)).toEqual([
+      { volume: 0.6, loop: true },
+      { volume: 1, loop: false },
+    ]);
+    expect(p.issues.map((i) => i.code)).not.toContain('slide-cues');
   });
 
   it('keeps text typed in a legacy Hindi font as typed, and names the font in the report', () => {

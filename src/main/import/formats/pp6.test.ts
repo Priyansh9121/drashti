@@ -52,7 +52,10 @@ describe('parsePp6: presentations', () => {
             audio: '/Media/Audio/Placeholder Tune.mp3',
             transition: true,
           },
-          { text: [{ rtf: cocoaRtf([['Second slide', 72, [255, 255, 255]]], 'ql'), outline: true }] },
+          {
+            text: [{ rtf: cocoaRtf([['Second slide', 72, [255, 255, 255]]], 'ql'), outline: true }],
+            clear: true,
+          },
         ],
       },
       {
@@ -207,8 +210,11 @@ describe('parsePp6: presentations', () => {
         ['text-outline', 'warning'],
       ]),
     );
-    // Backgrounds come across whole (as background cues), so they are not reported.
+    // Backgrounds and audio run (as cues), so only the clear cue is reported, once.
     expect(codes.map(([code]) => code)).not.toContain('background-media');
+    expect(presentation(xml).issues.find((i) => i.code === 'slide-cues')?.message).toBe(
+      'A slide cue (a clear, a message, a timer...) came across but does not run yet.',
+    );
     // Nothing in a report names the other product.
     expect(JSON.stringify(presentation(xml).issues)).not.toMatch(/propresenter/iu);
   });

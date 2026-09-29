@@ -12,12 +12,23 @@ export interface Sound {
 }
 
 /**
- * Every sound the show should be making now: the background video's sound,
- * and the sound of videos on the live slide, each from when it started (so
- * it is in step with the pictures). Black-out hides pictures, not sound.
+ * Every sound the show should be making now: the audio layer, the
+ * background video's sound, and the sound of videos on the live slide, each
+ * from when it started (so it is in step with the pictures). Black-out
+ * hides pictures, not sound.
  */
 export function soundsOf(state: EngineState): Sound[] {
   const sounds: Sound[] = [];
+  const audio = state.layers.audio;
+  if (audio?.mediaId) {
+    sounds.push({
+      key: `audio:${audio.mediaId}@${audio.startedAt}`,
+      mediaId: audio.mediaId,
+      startedAt: audio.startedAt,
+      loop: audio.loop,
+      volume: audio.volume,
+    });
+  }
   const bg = state.layers.background;
   if (bg?.kind === 'media' && bg.media === 'video') {
     sounds.push({

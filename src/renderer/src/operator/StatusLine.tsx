@@ -9,6 +9,7 @@ export function LiveStatus() {
   const live = useEngine((s) => s.state?.live);
   const slideShown = useEngine((s) => s.state?.layers.slide !== null);
   const blackout = useEngine((s) => s.state?.blackout ?? false);
+  const audio = useEngine((s) => s.state?.layers.audio?.title ?? null);
   const name = useLibrary((s) => s.presentations.find((p) => p.id === live?.presentationId)?.name);
   let text = 'Nothing live';
   if (live?.presentationId && live.slideIndex !== null) {
@@ -23,6 +24,11 @@ export function LiveStatus() {
       <span data-testid="live-text">{text}</span>
       {blackout && (
         <span className="rounded bg-live px-2 py-0.5 text-xs font-bold text-white">BLACK-OUT</span>
+      )}
+      {audio !== null && (
+        <span className="truncate text-xs text-muted" data-testid="audio-status" title="On the audio layer">
+          {`♪ ${audio || 'Audio'}`}
+        </span>
       )}
     </p>
   );

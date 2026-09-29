@@ -24,7 +24,10 @@ function fullState(): EngineState {
   let s = initialEngineState();
   const actions: EngineAction[] = [
     show(1),
-    { type: 'audio/set', audio: { id: 'a1', title: 'Dhun', mediaId: null } },
+    {
+      type: 'audio/set',
+      audio: { id: 'a1', title: 'Dhun', mediaId: null, volume: 1, loop: false, startedAt: 1 },
+    },
     { type: 'background/set', background: { kind: 'color', color: '#112233' } },
     { type: 'prop/show', prop: { id: 'logo', name: 'Logo', elements: [] } },
     { type: 'message/show', message: { id: 'm1', text: 'Car please move' } },
@@ -156,7 +159,7 @@ describe('reduce', () => {
 
   describe('single-value layers', () => {
     const background = { kind: 'color', color: '#abcdef' } as const;
-    const audio = { id: 'a', title: 'Arti', mediaId: 'm' };
+    const audio = { id: 'a', title: 'Arti', mediaId: 'm', volume: 0.5, loop: true, startedAt: 7 };
     const mask = { id: 'k', name: 'k', visible: { x: 0, y: 0, width: 1, height: 1 } };
     const cases: [string, EngineAction, (s: EngineState) => unknown, unknown][] = [
       ['background', { type: 'background/set', background }, (s) => s.layers.background, background],

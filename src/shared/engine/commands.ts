@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { hexColorSchema, idSchema, rectSchema, slideElementSchema } from '../model-schema';
 import {
-  type AudioLayer,
+  type AudioChoice,
   type BackgroundChoice,
   LAYER_NAMES,
   type MaskLayer,
@@ -30,7 +30,13 @@ const background: z.ZodType<BackgroundChoice> = z.discriminatedUnion('kind', [
     loop: z.boolean(),
   }),
 ]);
-const audio: z.ZodType<AudioLayer> = z.object({ id, title: z.string().max(300), mediaId: id.nullable() });
+const audio: z.ZodType<AudioChoice> = z.object({
+  id,
+  title: z.string().max(300),
+  mediaId: id.nullable(),
+  volume: z.number().min(0).max(1),
+  loop: z.boolean(),
+});
 const prop: z.ZodType<PropItem> = z.object({
   id,
   name: z.string().max(200),

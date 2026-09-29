@@ -12,7 +12,7 @@ describe('parseEngineCommand', () => {
       { type: 'setBlackout', on: true },
       { type: 'toggleBlackout' },
       { type: 'setBackground', background: { kind: 'color', color: '#0a0B0c' } },
-      { type: 'playAudio', audio: { id: 'a', title: 'Dhun', mediaId: null } },
+      { type: 'playAudio', audio: { id: 'a', title: 'Dhun', mediaId: null, volume: 1, loop: false } },
       {
         type: 'showProp',
         prop: {

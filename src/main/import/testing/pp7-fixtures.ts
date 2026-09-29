@@ -26,7 +26,9 @@ export interface Pp7SlideSpec {
   text?: { rtf: string; rect?: number[]; fill?: number[]; vertical?: 0 | 1 | 2 }[];
   image?: { path: string; rect: number[] };
   background?: { path: string; kind: 'image' | 'video'; loop?: boolean };
-  audio?: string;
+  audio?: string | { path: string; volume?: number; loop?: boolean };
+  /** A Clear cue (clears a layer), which Drashti does not run yet. */
+  clear?: boolean;
   notesRtf?: string;
 }
 
@@ -88,12 +90,21 @@ function actions(s: Pp7SlideSpec, width: number, height: number) {
       },
     });
   }
+  if (s.clear) list.push({ uuid: id(`${s.id}-clear`), name: 'Clear', clear: { target_layer: 0 } });
   if (s.audio) {
+    const audio = typeof s.audio === 'string' ? { path: s.audio } : s.audio;
     list.push({
       uuid: id(`${s.id}-audio`),
       name: 'Placeholder audio',
       type: 2,
-      media: { layer_type: 1, element: { url: fileUrl(s.audio), audio: {} }, audio: {} },
+      media: {
+        layer_type: 1,
+        element: {
+          url: fileUrl(audio.path),
+          audio: audio.volume === undefined ? {} : { audio: { volume: audio.volume } },
+        },
+        audio: audio.loop ? { playback_behavior: 1 } : {},
+      },
     });
   }
   return list;
