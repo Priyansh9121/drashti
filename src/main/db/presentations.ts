@@ -1,3 +1,4 @@
+import type { Statement } from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import type { MediaFit } from '../../shared/engine/state';
 import type {
@@ -177,7 +178,19 @@ export interface ImportedMatch {
   sourceHash: string | null;
 }
 
+interface ListRow {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+  slide_count: number;
+  kirtan_tracks: string | null;
+}
+
 export class PresentationRepo {
+  private librariesStmt: Statement<[], { id: string; name: string }> | null = null;
+  private listStmt: Statement<[string], ListRow> | null = null;
+
   /** Elements that failed validation on the last get(), for diagnostics. */
   skippedElements: string[] = [];
 
@@ -192,39 +205,30 @@ export class PresentationRepo {
     return id;
   }
 
+  /**
+   * Every presentation, for the library list, library by library. Cheap at
+   * any size: slide counts and kirtan languages are kept on the presentation
+   * (migration 5), and an index gives each library's presentations in order.
+   */
   list(): PresentationSummary[] {
-    const rows = this.db
-      .prepare(
-        `SELECT p.id, p.name, p.width, p.height, l.name AS library_name,
-                p.source_kind, p.source_path, p.source_ref, p.source_imported_at,
-                (SELECT COUNT(*) FROM slides s JOIN slide_groups g ON g.id = s.group_id
-                  WHERE g.presentation_id = p.id AND s.enabled = 1) AS slide_count,
-                EXISTS (SELECT 1 FROM kirtans k WHERE k.presentation_id = p.id) AS is_kirtan,
-                (SELECT group_concat(t.lang) FROM kirtan_tracks t WHERE t.kirtan_id = p.id) AS tracks
-           FROM presentations p JOIN libraries l ON l.id = p.library_id
-          WHERE p.deleted_at IS NULL
-          ORDER BY l.position, l.name, p.name COLLATE NOCASE`,
-      )
-      .all() as (SourceColumns & {
-      id: string;
-      name: string;
-      width: number;
-      height: number;
-      library_name: string;
-      slide_count: number;
-      is_kirtan: number;
-      tracks: string | null;
-    })[];
-    return rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      libraryName: r.library_name,
-      slideCount: r.slide_count,
-      width: r.width,
-      height: r.height,
-      kirtanTracks: r.is_kirtan ? toLangs(r.tracks) : null,
-      source: toSource(r),
-    }));
+    this.librariesStmt ??= this.db.prepare('SELECT id, name FROM libraries ORDER BY position, name');
+    this.listStmt ??= this.db.prepare(
+      `SELECT id, name, width, height, slide_count, kirtan_tracks FROM presentations
+        WHERE library_id = ? AND deleted_at IS NULL
+        ORDER BY name COLLATE NOCASE`,
+    );
+    const list = this.listStmt;
+    return this.librariesStmt.all().flatMap((library) =>
+      list.all(library.id).map((r) => ({
+        id: r.id,
+        name: r.name,
+        libraryName: library.name,
+        slideCount: r.slide_count,
+        width: r.width,
+        height: r.height,
+        kirtanTracks: r.kirtan_tracks === null ? null : toLangs(r.kirtan_tracks),
+      })),
+    );
   }
 
   get(id: string): PresentationDoc | null {
@@ -502,6 +506,17 @@ export class PresentationRepo {
         }
       });
     }
+    // What the library list shows, kept here so the list never has to count (migration 5).
+    const slideCount = input.groups.reduce(
+      (n, g) => n + g.slides.filter((sl) => sl.enabled !== false).length,
+      0,
+    );
+    const tracks = input.kirtan ? input.kirtan.tracks.join(',') : null;
+    db.prepare('UPDATE presentations SET slide_count = ?, kirtan_tracks = ? WHERE id = ?').run(
+      slideCount,
+      tracks,
+      id,
+    );
   }
 
   /**

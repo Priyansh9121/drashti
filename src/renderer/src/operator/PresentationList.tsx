@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent, KeyboardEvent } from 'react';
+import type { PresentationSummary } from '../../../shared/library';
 import { actionFor, LIBRARY_KEYMAP, shortcutText } from '../../../shared/keymap';
 import { LANGS } from '../../../shared/model';
 import { useEngine } from '../engine/engine-store';
@@ -16,8 +17,65 @@ import {
 import { clickPresentation, useLibrary } from '../library/library-store';
 import { Button } from '../ui/Button';
 import { plural } from '../ui/text';
+import { layoutRows, scrollToShow, visibleRows } from '../ui/virtual';
 
 const trackLabel = { en: 'EN', gu: 'GU', hi: 'HI', translit: 'TR' } as const;
+
+/** Rows in the list: a presentation, or a heading where a library starts. Fixed heights, so only rows in view are drawn. */
+type Row = { kind: 'heading'; library: string } | { kind: 'item'; p: PresentationSummary; index: number };
+const ITEM_HEIGHT = 60;
+const HEADING_HEIGHT = 30;
+/** Drawn beyond the visible part of the list, so scrolling never shows a gap. */
+const MARGIN = 600;
+
+const PresentationRow = memo(function PresentationRow({
+  p,
+  selected,
+  marked,
+  live,
+  platform,
+}: {
+  p: PresentationSummary;
+  selected: boolean;
+  marked: boolean;
+  live: boolean;
+  platform: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-current={selected ? 'true' : undefined}
+      data-marked={marked ? 'true' : undefined}
+      onClick={(e) => {
+        clickPresentation(p.id, {
+          toggle: platform === 'darwin' ? e.metaKey : e.ctrlKey,
+          range: e.shiftKey,
+        });
+      }}
+      className={`h-full w-full rounded-md px-3 py-2 text-left transition focus-visible:outline-2 focus-visible:outline-accent ${
+        selected
+          ? 'bg-panel-2 ring-1 ring-accent'
+          : marked
+            ? 'bg-panel-2 ring-1 ring-line'
+            : 'hover:bg-panel-2'
+      }`}
+    >
+      <span className="flex items-center gap-2">
+        {live && <span className="h-2 w-2 shrink-0 rounded-full bg-live" aria-label="Live" />}
+        <span className="truncate text-sm font-medium">{p.name}</span>
+      </span>
+      <span className="mt-0.5 flex items-center gap-1 text-xs text-muted">
+        {p.slideCount} {p.slideCount === 1 ? 'slide' : 'slides'}
+        {p.kirtanTracks &&
+          LANGS.filter((l) => p.kirtanTracks?.includes(l)).map((l) => (
+            <span key={l} className="rounded border border-line px-1 text-[10px]">
+              {trackLabel[l]}
+            </span>
+          ))}
+      </span>
+    </button>
+  );
+});
 
 function ImportMenu() {
   const [open, setOpen] = useState(false);
@@ -188,7 +246,53 @@ export function PresentationList({ platform }: { platform: string }) {
   const [dropProblem, setDropProblem] = useState<string | null>(null);
   const depth = useRef(0);
   const markedSet = new Set(marked);
-  const libraries = new Set(presentations.map((p) => p.libraryName)).size;
+  const listRef = useRef<HTMLUListElement>(null);
+  const [view, setView] = useState({ top: 0, height: 800 });
+
+  // A heading where a library starts, when there is more than one (templates stay apart).
+  const rows = useMemo(() => {
+    const out: Row[] = [];
+    const many = new Set(presentations.map((p) => p.libraryName)).size > 1;
+    presentations.forEach((p, index) => {
+      if (many && p.libraryName !== presentations[index - 1]?.libraryName) {
+        out.push({ kind: 'heading', library: p.libraryName });
+      }
+      out.push({ kind: 'item', p, index });
+    });
+    return out;
+  }, [presentations]);
+  const heights = useMemo(
+    () => rows.map((r) => (r.kind === 'heading' ? HEADING_HEIGHT : ITEM_HEIGHT)),
+    [rows],
+  );
+  const layout = useMemo(() => layoutRows(heights), [heights]);
+  const { start, end } = visibleRows(layout, view.top, view.height, MARGIN);
+
+  useEffect(() => {
+    const ul = listRef.current;
+    if (!ul) return;
+    const observer = new ResizeObserver(() => {
+      setView({ top: ul.scrollTop, height: ul.clientHeight });
+    });
+    observer.observe(ul);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  // Bring a newly selected presentation into view (for example one opened from the import report).
+  const latest = useRef({ rows, layout, heights });
+  useEffect(() => {
+    latest.current = { rows, layout, heights };
+  });
+  useEffect(() => {
+    const ul = listRef.current;
+    if (!ul || !selectedId) return;
+    const { rows: now, layout: at, heights: sizes } = latest.current;
+    const index = now.findIndex((r) => r.kind === 'item' && r.p.id === selectedId);
+    const to = scrollToShow(at, sizes, index, ul.scrollTop, ul.clientHeight);
+    if (to !== null) ul.scrollTop = to;
+  }, [selectedId]);
 
   const hasFiles = (e: DragEvent) => e.dataTransfer.types.includes('Files');
   const onDragEnter = (e: DragEvent) => {
@@ -240,62 +344,56 @@ export function PresentationList({ platform }: { platform: string }) {
         <ImportMenu />
       </div>
       <ul
-        className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3"
+        ref={listRef}
+        className="relative min-h-0 flex-1 overflow-y-auto"
         data-testid="presentation-list"
+        data-count={presentations.length}
         onKeyDown={onKeyDown}
+        onScroll={(e) => {
+          setView({ top: e.currentTarget.scrollTop, height: e.currentTarget.clientHeight });
+        }}
       >
-        {presentations.map((p, i) => {
-          const selected = p.id === selectedId;
-          const isMarked = markedSet.has(p.id);
-          // A heading where a library starts, when there is more than one (templates stay apart).
-          const heading = libraries > 1 && p.libraryName !== presentations[i - 1]?.libraryName;
-          return (
-            <li key={p.id}>
-              {heading && (
+        {rows.slice(start, end).map((row, k) => {
+          const i = start + k;
+          const place = {
+            position: 'absolute',
+            top: layout.offsets[i],
+            left: 8,
+            right: 8,
+            height: heights[i],
+          } as const;
+          if (row.kind === 'heading') {
+            return (
+              <li key={`library:${row.library}`} style={place}>
                 <h3
                   data-testid="library-heading"
-                  className="px-1 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted"
+                  className="px-1 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted"
                 >
-                  {p.libraryName}
+                  {row.library}
                 </h3>
-              )}
-              <button
-                type="button"
-                aria-current={selected ? 'true' : undefined}
-                data-marked={isMarked ? 'true' : undefined}
-                onClick={(e) => {
-                  clickPresentation(p.id, {
-                    toggle: platform === 'darwin' ? e.metaKey : e.ctrlKey,
-                    range: e.shiftKey,
-                  });
-                }}
-                className={`w-full rounded-md px-3 py-2 text-left transition focus-visible:outline-2 focus-visible:outline-accent ${
-                  selected
-                    ? 'bg-panel-2 ring-1 ring-accent'
-                    : isMarked
-                      ? 'bg-panel-2 ring-1 ring-line'
-                      : 'hover:bg-panel-2'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  {p.id === liveId && (
-                    <span className="h-2 w-2 shrink-0 rounded-full bg-live" aria-label="Live" />
-                  )}
-                  <span className="truncate text-sm font-medium">{p.name}</span>
-                </span>
-                <span className="mt-0.5 flex items-center gap-1 text-xs text-muted">
-                  {p.slideCount} {p.slideCount === 1 ? 'slide' : 'slides'}
-                  {p.kirtanTracks &&
-                    LANGS.filter((l) => p.kirtanTracks?.includes(l)).map((l) => (
-                      <span key={l} className="rounded border border-line px-1 text-[10px]">
-                        {trackLabel[l]}
-                      </span>
-                    ))}
-                </span>
-              </button>
+              </li>
+            );
+          }
+          const { p } = row;
+          return (
+            <li
+              key={p.id}
+              style={{ ...place, paddingBottom: 4 }}
+              aria-setsize={presentations.length}
+              aria-posinset={row.index + 1}
+            >
+              <PresentationRow
+                p={p}
+                selected={p.id === selectedId}
+                marked={markedSet.has(p.id)}
+                live={p.id === liveId}
+                platform={platform}
+              />
             </li>
           );
         })}
+        {/* Gives the list its full height (and some room at the end), so it scrolls. */}
+        <li aria-hidden="true" style={{ position: 'absolute', top: layout.total, height: 12, width: 1 }} />
       </ul>
       {dropProblem && <p className="px-3 pb-2 text-xs text-amber-200">{dropProblem}</p>}
       <ImportStatus platform={platform} />

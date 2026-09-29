@@ -14,6 +14,7 @@ export interface ImportSource {
 /** Removing or restoring presentations: the ids that changed. */
 export type RemoveResult = { ok: true; ids: string[] } | { ok: false; message: string };
 
+/** A presentation as the library list shows it: kept small, the list can hold thousands. */
 export interface PresentationSummary {
   id: string;
   name: string;
@@ -23,7 +24,6 @@ export interface PresentationSummary {
   height: number;
   /** Language tracks, when the presentation is a kirtan. */
   kirtanTracks: Lang[] | null;
-  source: ImportSource | null;
 }
 
 /**

@@ -349,7 +349,7 @@ function start(): void {
   });
   const fromAudioPlayer = (event: IpcMainInvokeEvent) => event.sender.id === audioWindow?.webContents.id;
 
-  // The operator's library list refreshes at most once a second during an import.
+  // The operator's library list refreshes at most every 2 s during an import, and at once afterwards.
   let changedTimer: NodeJS.Timeout | null = null;
   let lastChanged = 0;
   const libraryChanged = (now = false) => {
@@ -362,7 +362,7 @@ function start(): void {
       if (changedTimer) clearTimeout(changedTimer);
       send();
     } else {
-      changedTimer ??= setTimeout(send, Math.max(0, lastChanged + 1000 - Date.now()));
+      changedTimer ??= setTimeout(send, Math.max(0, lastChanged + 2000 - Date.now()));
     }
   };
   const imports = new ImportService({

@@ -25,7 +25,7 @@ describe('seedPlaceholders', () => {
       ['hi', TEST_LINES.hi],
       ['translit', TEST_LINES.translit],
     ]);
-    expect(test?.source).toMatchObject({ kind: 'drashti', ref: 'seed:language-test' });
+    expect(test && repo.get(test.id)?.source).toMatchObject({ kind: 'drashti', ref: 'seed:language-test' });
   });
 
   it('gives the sample kirtan all four language tracks on every slide', () => {
