@@ -56,6 +56,16 @@ const bridge: DrashtiBridge = {
   media: {
     saveStill: (mediaId, jpeg) => invoke(IPC.media.saveStill, mediaId, jpeg),
   },
+  audio: {
+    getOutput: () => invoke(IPC.audio.getOutput),
+    setOutput: (device) => invoke(IPC.audio.setOutput, device),
+    onStatus: (listener) => on(IPC.audio.status, listener),
+    reportDevices: (devices, state) => invoke(IPC.audio.reportDevices, devices, state),
+    onChosen: (listener) =>
+      on(IPC.audio.chosen, (payload) => {
+        listener(payload.device);
+      }),
+  },
   screens: {
     get: () => invoke(IPC.screens.get),
     onChanged: (listener) => on(IPC.screens.changed, listener),

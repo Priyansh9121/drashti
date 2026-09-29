@@ -11,6 +11,7 @@ import { shortcutText } from '../../../shared/keymap';
 import { CANVAS_PRESETS, SCALING_MODES } from '../../../shared/screens';
 import { Button } from '../ui/Button';
 import { cancelCover, connectScreens, screensAction, useScreens } from './screens-store';
+import { SoundOutput } from './SoundOutput';
 
 const stateText: Record<ScreenState, string> = {
   showing: 'Showing',
@@ -358,6 +359,7 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
               {error}
             </p>
           )}
+          <SoundOutput />
           <section className="space-y-2">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">Connected displays</h3>
             <p className="text-xs text-muted">

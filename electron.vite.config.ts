@@ -47,6 +47,7 @@ export default defineConfig({
         input: {
           index: resolve('src/renderer/index.html'),
           output: resolve('src/renderer/output.html'),
+          audio: resolve('src/renderer/audio.html'),
         },
       },
     },

@@ -1,7 +1,7 @@
 import { app, type BrowserWindow } from 'electron';
 import { join } from 'node:path';
 
-export type RendererPage = 'index' | 'output';
+export type RendererPage = 'index' | 'output' | 'audio';
 
 export const rendererDir = (): string => join(__dirname, '../renderer');
 export const devServerUrl = (): string | undefined =>

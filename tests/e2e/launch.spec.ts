@@ -21,12 +21,18 @@ test('opens a sandboxed, context-isolated operator window', async () => {
     ipcRenderer: 'undefined',
   });
 
-  // The OS reports the renderer process as sandboxed (macOS and Windows).
-  const sandboxed = await app.evaluate(({ app: electronApp, BrowserWindow }) => {
-    const pid = BrowserWindow.getAllWindows()[0]?.webContents.getOSProcessId();
-    return electronApp.getAppMetrics().find((m) => m.pid === pid)?.sandboxed;
-  });
-  if (process.platform === 'darwin' || process.platform === 'win32') expect(sandboxed).toBe(true);
+  // The OS reports every window's renderer process as sandboxed (macOS and Windows): the operator
+  // window and the hidden audio player.
+  await expect.poll(() => app.windows().some((w) => w.url().includes('audio.html'))).toBe(true);
+  const sandboxed = await app.evaluate(({ app: electronApp, BrowserWindow }) =>
+    BrowserWindow.getAllWindows().map((w) => ({
+      page: w.webContents.getURL().split('/').pop(),
+      sandboxed: electronApp.getAppMetrics().find((m) => m.pid === w.webContents.getOSProcessId())?.sandboxed,
+    })),
+  );
+  expect(sandboxed.map((w) => w.page).sort()).toEqual(['audio.html', 'index.html']);
+  if (process.platform === 'darwin' || process.platform === 'win32')
+    for (const w of sandboxed) expect(w, w.page).toMatchObject({ sandboxed: true });
 
   await app.close();
 });

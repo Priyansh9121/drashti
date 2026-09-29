@@ -26,9 +26,45 @@ export function toDisplayInfo(d: Display, primaryId: number): DisplayInfo {
   };
 }
 
+let extraDisplays = 0;
+
+/**
+ * Development and tests only, with windowed outputs: pretend there are `n`
+ * more displays, copies of the primary one, so several outputs can be tried
+ * on a computer with one screen.
+ */
+export function setExtraDisplays(n: number): void {
+  extraDisplays = Math.max(0, Math.min(4, Math.floor(n)));
+}
+
+/** The first id given to an extra (pretend) display. */
+export const EXTRA_DISPLAY_ID = 900_000_000;
+
 export function listDisplays(): DisplayInfo[] {
   const primaryId = screen.getPrimaryDisplay().id;
-  return screen.getAllDisplays().map((d) => toDisplayInfo(d, primaryId));
+  const real = screen.getAllDisplays().map((d) => toDisplayInfo(d, primaryId));
+  const primary = real.find((d) => d.primary);
+  if (!primary || extraDisplays === 0) return real;
+  const extra = Array.from({ length: extraDisplays }, (_, i): DisplayInfo => {
+    const id = EXTRA_DISPLAY_ID + i;
+    const label = `Extra display ${i + 1}`;
+    // Shifted a little, so windowed outputs on "different" displays do not sit exactly on top of each other.
+    const bounds = {
+      ...primary.bounds,
+      x: primary.bounds.x + 60 * (i + 1),
+      y: primary.bounds.y + 60 * (i + 1),
+    };
+    return {
+      ...primary,
+      id,
+      label,
+      bounds,
+      primary: false,
+      internal: false,
+      key: { ...primary.key, id, label, x: bounds.x, y: bounds.y, internal: false },
+    };
+  });
+  return [...real, ...extra];
 }
 
 /** Call `onChange` (debounced) when displays are added, removed or change mode. */

@@ -41,4 +41,30 @@ export function playbackPosition(
   return playback.loop ? elapsed % duration : Math.min(elapsed, duration);
 }
 
+/**
+ * How far a playing file is from where the shared clock says it should be,
+ * in seconds (+ ahead, - behind). Across a loop's end, 3.9 s and 0.1 s of a
+ * 4 s file are 0.2 s apart, not 3.8 s.
+ */
+export function playbackOffset(current: number, expected: number, duration: number, loop: boolean): number {
+  const d = current - expected;
+  if (!loop || !Number.isFinite(duration) || duration <= 0) return d;
+  return ((((d + duration / 2) % duration) + duration) % duration) - duration / 2;
+}
+
+export type PlaybackCorrection = { seek: true } | { seek: false; rate: number };
+
+/**
+ * How to bring a playing file back in step. Far out (a stall, a reload):
+ * jump to the right place. A little out: play slightly faster or slower
+ * until it is back, which nobody sees (and, within a few percent, nobody
+ * hears). In step: normal speed.
+ */
+export function playbackCorrection(offset: number, maxRateChange = 0.05): PlaybackCorrection {
+  if (Math.abs(offset) > 0.5) return { seek: true };
+  if (Math.abs(offset) < 0.012) return { seek: false, rate: 1 };
+  const change = Math.max(-maxRateChange, Math.min(maxRateChange, -offset * 2));
+  return { seek: false, rate: 1 + change };
+}
+
 export type SaveStillResult = { ok: true } | { ok: false; message: string };
