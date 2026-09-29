@@ -3,7 +3,15 @@ import type { AudioDevice, AudioOutputState, AudioOutputStatus } from './audio';
 import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
 import type { ImportOptions, ImportProgress, ImportReport, ImportResult, ImportRunSummary } from './import';
-import type { PresentationDoc, PresentationSummary, RemoveResult } from './library';
+import type {
+  NewFromWordsResult,
+  PresentationDoc,
+  PresentationSummary,
+  RemoveResult,
+  RevisionResult,
+  SaveWordsResult,
+  WordsResult,
+} from './library';
 import type { RecoveryNotice } from './recovery';
 import type { SaveStillResult } from './media';
 import type {
@@ -64,6 +72,14 @@ export interface DrashtiBridge {
     listMedia(): Promise<MediaSummary[]>;
     /** Presentations by title and slide text, best first. */
     search(query: string): Promise<SearchResult>;
+    /** A presentation's words as plain text, for the words editor. */
+    words(presentationId: string): Promise<WordsResult>;
+    /** Put edited words back; slides that are still there keep their look and cues. */
+    saveWords(presentationId: string, text: string): Promise<SaveWordsResult>;
+    /** A new presentation from pasted words, in the default look. */
+    newFromWords(name: string, text: string): Promise<NewFromWordsResult>;
+    /** Undo a change to a presentation's content: write back the copy kept before it. */
+    restoreRevision(revisionId: string): Promise<RevisionResult>;
     /** Presentations with slide text in legacy fonts, which search cannot read yet. */
     legacyPresentations(): Promise<{ id: string; name: string }[]>;
     getPresentation(id: string): Promise<PresentationDoc | null>;

@@ -2,26 +2,15 @@ import type { ImportIssue } from '../../../shared/import';
 import type { TextElement, TextRun, TextStyle } from '../../../shared/model';
 import { mainLang, mergeRuns, withDetectedLangs } from '../../../shared/text-runs';
 import { decodeText } from '../decode';
+import { parseLyrics } from '../../../shared/lyrics';
 import type { ParsedArrangement, ParsedGroup, ParsedPresentation, ParsedSlide } from '../model';
 
 /*
- * Plain-text lyrics:
- *
- *   [Verse 1]            a line in square brackets starts a group
- *   first line
- *   second line          lines together make one slide
- *                        a blank line starts the next slide
- *   third line
- *
- *   [Chorus]
- *   ...
- *   [Verse 1]            a header again with no text after it repeats that
- *                        group: the presentation gets an arrangement
- *
- * Text before the first header goes into a group with no name.
+ * Plain-text lyrics (the format is in src/shared/lyrics.ts): [Verse 1]
+ * lines start groups, blank lines split slides, and a header again with no
+ * words repeats that group, so the presentation gets an arrangement.
  */
 
-const HEADER = /^\[([^\]\n]{1,80})\]$/u;
 /** Longest slide text kept (the model's limit for one text element). */
 const MAX_SLIDE_CHARS = 20_000;
 const MAX_SLIDES = 2_000;
@@ -87,84 +76,32 @@ export function nameFromFile(fileName: string): string {
 export function parseLyricsText(bytes: Uint8Array, fileName: string): ParsedPresentation {
   const decoded = decodeText(bytes);
   const issues: ImportIssue[] = [...decoded.issues];
-  const lines = decoded.text
-    .replace(/\r\n?/gu, '\n')
-    .split('\n')
-    .map((l) => l.replace(/\t/gu, ' ').trim());
-
-  /** Groups as written, one per header (plus a leading unnamed one if needed). */
-  const written: ParsedGroup[] = [];
-  let current: ParsedGroup | null = null;
-  let pending: string[] = [];
-  let slides = 0;
-  let dropped = 0;
-
-  const flush = () => {
-    if (pending.length === 0) return;
-    if (!current) {
-      current = { name: '', color: null, slides: [] };
-      written.push(current);
-    }
-    if (slides < MAX_SLIDES) {
-      current.slides.push(slideFromLines(pending, issues));
-      slides++;
-    } else {
-      dropped++;
-    }
-    pending = [];
-  };
-
-  for (const line of lines) {
-    const header = HEADER.exec(line);
-    if (header) {
-      flush();
-      const name = (header[1] ?? '').trim();
-      current = { name, color: groupColor(name), slides: [] };
-      written.push(current);
-    } else if (line === '') {
-      flush();
-    } else {
-      pending.push(line);
-    }
-  }
-  flush();
-  if (dropped > 0) {
+  const parsed = parseLyrics(decoded.text, MAX_SLIDES);
+  if (parsed.droppedSlides > 0) {
     issues.push({
       severity: 'warning',
       code: 'too-many-slides',
-      message: `Only the first ${MAX_SLIDES.toLocaleString('en')} slides were imported; ${dropped} more were left out.`,
+      message: `Only the first ${MAX_SLIDES.toLocaleString('en')} slides were imported; ${parsed.droppedSlides} more were left out.`,
       fix: null,
     });
   }
-
-  // A header with no text repeats the earlier group of that name; the rest are left out.
-  const groups: ParsedGroup[] = [];
-  const order: number[] = [];
-  const byName = new Map<string, number>();
-  let repeats = false;
-  for (const g of written) {
-    const key = g.name.toLocaleLowerCase('en');
-    if (g.slides.length > 0) {
-      groups.push(g);
-      order.push(groups.length - 1);
-      if (!byName.has(key)) byName.set(key, groups.length - 1);
-      continue;
-    }
-    const earlier = byName.get(key);
-    if (earlier !== undefined) {
-      order.push(earlier);
-      repeats = true;
-    } else {
-      issues.push({
-        severity: 'info',
-        code: 'empty-group',
-        message: `The group [${g.name}] has no text, so it was left out.`,
-        fix: null,
-      });
-    }
+  for (const name of parsed.emptyGroups) {
+    issues.push({
+      severity: 'info',
+      code: 'empty-group',
+      message: `The group [${name}] has no text, so it was left out.`,
+      fix: null,
+    });
   }
+  const groups: ParsedGroup[] = parsed.groups.map((g) => ({
+    name: g.name,
+    color: groupColor(g.name),
+    slides: g.slides.map((lines) => slideFromLines(lines, issues)),
+  }));
   // The song as written (with its repeats) is how it is sung: that arrangement is the one played.
-  const arrangements: ParsedArrangement[] = repeats ? [{ name: 'As written', groups: order, ref: null }] : [];
+  const arrangements: ParsedArrangement[] = parsed.repeats
+    ? [{ name: 'As written', groups: parsed.order, ref: null }]
+    : [];
 
   if (groups.length === 0) {
     issues.push({
@@ -182,7 +119,7 @@ export function parseLyricsText(bytes: Uint8Array, fileName: string): ParsedPres
     notes: '',
     groups,
     arrangements,
-    selectedArrangement: repeats ? 0 : null,
+    selectedArrangement: parsed.repeats ? 0 : null,
     media: [],
     issues,
   };

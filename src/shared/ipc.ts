@@ -3,7 +3,15 @@ import type { AudioDevice, AudioOutputState, AudioOutputStatus } from './audio';
 import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
 import type { ImportOptions, ImportProgress, ImportReport, ImportResult, ImportRunSummary } from './import';
-import type { PresentationDoc, PresentationSummary, RemoveResult } from './library';
+import type {
+  NewFromWordsResult,
+  PresentationDoc,
+  PresentationSummary,
+  RemoveResult,
+  RevisionResult,
+  SaveWordsResult,
+  WordsResult,
+} from './library';
 import type { RecoveryNotice } from './recovery';
 import type { SaveStillResult } from './media';
 import type {
@@ -54,6 +62,11 @@ export const IPC = {
     listPresentations: 'library:list-presentations',
     listMedia: 'library:list-media',
     search: 'library:search',
+    words: 'library:words',
+    /** The rest change presentations (operator window only). */
+    saveWords: 'library:save-words',
+    newFromWords: 'library:new-from-words',
+    restoreRevision: 'library:restore-revision',
     legacyPresentations: 'library:legacy-presentations',
     getPresentation: 'library:get-presentation',
     /** Import files and folders (operator window only). */
@@ -156,6 +169,10 @@ export interface InvokeContract {
   [IPC.library.listPresentations]: { args: []; result: PresentationSummary[] };
   [IPC.library.listMedia]: { args: []; result: MediaSummary[] };
   [IPC.library.search]: { args: [query: string]; result: SearchResult };
+  [IPC.library.words]: { args: [presentationId: string]; result: WordsResult };
+  [IPC.library.saveWords]: { args: [presentationId: string, text: string]; result: SaveWordsResult };
+  [IPC.library.newFromWords]: { args: [name: string, text: string]; result: NewFromWordsResult };
+  [IPC.library.restoreRevision]: { args: [revisionId: string]; result: RevisionResult };
   [IPC.library.legacyPresentations]: { args: []; result: { id: string; name: string }[] };
   [IPC.playlists.tree]: { args: []; result: PlaylistNode[] };
   [IPC.playlists.items]: { args: [playlistId: string]; result: PlaylistItemInfo[] };
