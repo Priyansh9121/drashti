@@ -1,6 +1,7 @@
 import type { AudioDevice } from '../../../shared/audio';
 import { resolveOutput } from '../../../shared/audio';
 import type { EngineState } from '../../../shared/engine/state';
+import { SOUND_LIMITS } from '../../../shared/media';
 import { connectEngine, useEngine } from '../engine/engine-store';
 import { startPlayback } from '../render/playback';
 import { soundsOf } from './sounds';
@@ -44,12 +45,12 @@ function play(state: EngineState | null): void {
     el.dataset['mediaId'] = sound.mediaId;
     document.body.append(el);
     void el.setSinkId(sinkId).catch(() => undefined);
-    // Sound may change speed less than pictures do before anyone would hear it.
+    // Sound jumps later, and changes speed less, than pictures do: a skip or a pitch change is heard.
     const stop = startPlayback(el, {
       mediaId: sound.mediaId,
       startedAt: sound.startedAt,
       audible: true,
-      maxRateChange: 0.02,
+      limits: SOUND_LIMITS,
     });
     players.set(sound.key, { el, stop });
   }
