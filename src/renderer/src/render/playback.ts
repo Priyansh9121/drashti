@@ -1,4 +1,11 @@
-import { mediaUrl, playbackCorrection, playbackOffset, playbackPosition } from '../../../shared/media';
+import type { CorrectionLimits } from '../../../shared/media';
+import {
+  mediaUrl,
+  PICTURE_LIMITS,
+  playbackCorrection,
+  playbackOffset,
+  playbackPosition,
+} from '../../../shared/media';
 
 export interface PlaybackOptions {
   mediaId: string;
@@ -10,8 +17,8 @@ export interface PlaybackOptions {
   onError?: () => void;
   /** Sound: the audio player plays it; every other window keeps media muted (the default). */
   audible?: boolean;
-  /** How much the speed may change to catch up (default 5%; less for sound). */
-  maxRateChange?: number;
+  /** When to jump, and how much the speed may change to catch up (pictures by default). */
+  limits?: CorrectionLimits;
 }
 
 /** How often a playing file is checked against the shared clock. */
@@ -26,7 +33,18 @@ const CHECK_MS = 250;
  * lets go of the file.
  */
 export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): () => void {
-  const { mediaId, startedAt, onFrame, onError, audible = false, maxRateChange } = options;
+  const { mediaId, startedAt, onFrame, onError, audible = false, limits = PICTURE_LIMITS } = options;
+  // How long the last jump took to land: the next one aims that far ahead, so it lands in step.
+  let seekLead = 0;
+  let seekFrom = 0;
+  const jump = (to: number) => {
+    seekFrom = performance.now();
+    v.currentTime = to + seekLead;
+  };
+  const landed = () => {
+    if (seekFrom > 0) seekLead = Math.min(0.5, (performance.now() - seekFrom) / 1000);
+    seekFrom = 0;
+  };
   let framed = false;
   const expected = () => playbackPosition({ startedAt, loop: v.loop }, v.duration, Date.now());
   const frame = () => {
@@ -55,16 +73,15 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): ()
     const at = expected();
     if (!v.loop && at >= v.duration) return;
     if (v.paused && !v.ended) void v.play().catch(() => undefined);
-    const correction = playbackCorrection(
-      playbackOffset(v.currentTime, at, v.duration, v.loop),
-      maxRateChange,
-    );
-    if (correction.seek) v.currentTime = at;
+    const correction = playbackCorrection(playbackOffset(v.currentTime, at, v.duration, v.loop), limits);
+    // Aiming ahead past the end of a looping file wraps round to its start.
+    if (correction.seek) jump(v.loop ? ((at + seekLead) % v.duration) - seekLead : at);
     else if (v.playbackRate !== correction.rate) v.playbackRate = correction.rate;
   };
   v.muted = !audible;
   v.addEventListener('loadedmetadata', onMetadata, { once: true });
   v.addEventListener('error', failed);
+  v.addEventListener('seeked', landed);
   const timer = setInterval(check, CHECK_MS);
   v.src = mediaUrl(mediaId);
   return () => {
@@ -73,6 +90,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): ()
     v.removeEventListener('error', failed);
     v.removeEventListener('loadeddata', frame);
     v.removeEventListener('seeked', whenFrame);
+    v.removeEventListener('seeked', landed);
     // Let go of the file and the decoder now, not when the element is collected.
     v.pause();
     v.removeAttribute('src');

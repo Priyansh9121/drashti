@@ -54,16 +54,30 @@ export function playbackOffset(current: number, expected: number, duration: numb
 
 export type PlaybackCorrection = { seek: true } | { seek: false; rate: number };
 
+export interface CorrectionLimits {
+  /** Further out than this (seconds), jump. */
+  jumpOver: number;
+  /** The most the speed may change to catch up (0.05 is 5%). */
+  maxRateChange: number;
+}
+
+/** Pictures jump sooner and change speed more than sound, where a skip or a pitch change is heard. */
+export const PICTURE_LIMITS: CorrectionLimits = { jumpOver: 0.25, maxRateChange: 0.05 };
+export const SOUND_LIMITS: CorrectionLimits = { jumpOver: 0.5, maxRateChange: 0.02 };
+
 /**
  * How to bring a playing file back in step. Far out (a stall, a reload):
  * jump to the right place. A little out: play slightly faster or slower
  * until it is back, which nobody sees (and, within a few percent, nobody
  * hears). In step: normal speed.
  */
-export function playbackCorrection(offset: number, maxRateChange = 0.05): PlaybackCorrection {
-  if (Math.abs(offset) > 0.5) return { seek: true };
+export function playbackCorrection(
+  offset: number,
+  limits: CorrectionLimits = PICTURE_LIMITS,
+): PlaybackCorrection {
+  if (Math.abs(offset) > limits.jumpOver) return { seek: true };
   if (Math.abs(offset) < 0.012) return { seek: false, rate: 1 };
-  const change = Math.max(-maxRateChange, Math.min(maxRateChange, -offset * 2));
+  const change = Math.max(-limits.maxRateChange, Math.min(limits.maxRateChange, -offset * 2));
   return { seek: false, rate: 1 + change };
 }
 

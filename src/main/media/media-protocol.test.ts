@@ -2,7 +2,14 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mediaUrl, playbackCorrection, playbackOffset, playbackPosition, stillUrl } from '../../shared/media';
+import {
+  mediaUrl,
+  playbackCorrection,
+  playbackOffset,
+  playbackPosition,
+  SOUND_LIMITS,
+  stillUrl,
+} from '../../shared/media';
 import type { MediaFileRow, MediaProtocolDeps } from './media-protocol';
 import { handleMediaRequest, isInside, mediaRequestOf, parseRange, stillPath } from './media-protocol';
 
@@ -228,12 +235,14 @@ describe('keeping playback in step', () => {
   });
 
   it('jumps when far out, nudges the speed when a little out, and leaves it alone in step', () => {
-    expect(playbackCorrection(0.8)).toEqual({ seek: true });
+    expect(playbackCorrection(0.3)).toEqual({ seek: true });
     expect(playbackCorrection(-0.6)).toEqual({ seek: true });
     expect(playbackCorrection(0.005)).toEqual({ seek: false, rate: 1 });
     expect(playbackCorrection(0.02)).toEqual({ seek: false, rate: 0.96 });
     expect(playbackCorrection(-0.02)).toEqual({ seek: false, rate: 1.04 });
-    expect(playbackCorrection(0.3)).toEqual({ seek: false, rate: 0.95 });
-    expect(playbackCorrection(-0.3, 0.02)).toEqual({ seek: false, rate: 1.02 });
+    expect(playbackCorrection(0.2)).toEqual({ seek: false, rate: 0.95 });
+    // Sound: jumps later, and changes speed less.
+    expect(playbackCorrection(-0.3, SOUND_LIMITS)).toEqual({ seek: false, rate: 1.02 });
+    expect(playbackCorrection(-0.6, SOUND_LIMITS)).toEqual({ seek: true });
   });
 });
