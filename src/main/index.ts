@@ -1,5 +1,13 @@
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
-import { app, dialog, globalShortcut, powerSaveBlocker, screen as electronScreen, session } from 'electron';
+import {
+  app,
+  dialog,
+  globalShortcut,
+  powerSaveBlocker,
+  protocol,
+  screen as electronScreen,
+  session,
+} from 'electron';
 import { mkdirSync } from 'node:fs';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { isAbsolute, join } from 'node:path';
@@ -8,12 +16,14 @@ import type { ImportResult } from '../shared/import';
 import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/import-schema';
 import { type EventChannel, type EventContract, IPC } from '../shared/ipc';
 import { acceleratorFor } from '../shared/keymap';
+import { MEDIA_SCHEME } from '../shared/media';
 import { idSchema } from '../shared/model-schema';
 import { z } from 'zod';
 import type { OutputContext } from '../shared/screens';
 import type { Db } from './db/database';
 import { LATEST_VERSION, openDatabase } from './db/database';
 import { ImportRepo } from './db/imports';
+import { MediaRepo } from './db/media';
 import { DbSlideSource, PresentationRepo } from './db/presentations';
 import { ScreenRepo } from './db/screens';
 import { seedPlaceholders } from './db/seed';
@@ -23,6 +33,7 @@ import { handle, handlerTimes } from './ipc/handle';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
 import { log } from './log';
+import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES } from './media/media-protocol';
 import { installMenu } from './menu';
 import { createdGroupId, runWatchdogSelfTest } from './selftest';
 import { createOutputWindow, listDisplays, watchDisplays } from './outputs/electron-outputs';
@@ -46,6 +57,10 @@ const diagnostics = process.env['DRASHTI_DIAGNOSTICS'] === '1';
 const noQuitConfirm = process.env['DRASHTI_NO_QUIT_CONFIRM'] === '1';
 // Headless watchdog self-test: run it, print the result, exit (see README).
 const selfTest = process.env['DRASHTI_SELFTEST'] === 'watchdog';
+
+// Library media reaches the sandboxed windows only through drashti-media:// (see media/media-protocol.ts).
+// Schemes must be registered before the app is ready.
+protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { ...MEDIA_SCHEME_PRIVILEGES } }]);
 
 const watchdog = new RendererWatchdog((e) => {
   const text = `Watchdog: ${e.window} ${e.kind}${e.reason ? ` (${e.reason})` : ''}`;
@@ -160,6 +175,21 @@ function start(): void {
   });
   const engine = new ShowEngine(slides, transport);
 
+  // ---- media ----------------------------------------------------------------
+  const userDataDir = app.getPath('userData');
+  const mediaDir = join(userDataDir, 'Media');
+  mkdirSync(mediaDir, { recursive: true });
+  const media = new MediaRepo(db);
+  protocol.handle(MEDIA_SCHEME, (request) =>
+    handleMediaRequest(request, {
+      mediaDir,
+      lookup: (id) => media.file(id),
+      warn: (message) => {
+        log.warn(message);
+      },
+    }),
+  );
+
   // ---- outputs ----------------------------------------------------------
   const outputWindows = new Map<string, BrowserWindow>();
   const contextFor = (screenId: string): OutputContext | null => {
@@ -263,9 +293,6 @@ function start(): void {
   };
 
   // ---- imports ----------------------------------------------------------------
-  const userDataDir = app.getPath('userData');
-  const mediaDir = join(userDataDir, 'Media');
-  mkdirSync(mediaDir, { recursive: true });
   const sendToOperator = <C extends EventChannel>(channel: C, payload: EventContract[C]) => {
     if (operatorWindow && !operatorWindow.isDestroyed()) operatorWindow.webContents.send(channel, payload);
   };
