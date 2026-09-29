@@ -258,6 +258,22 @@ function GroupCard({
             else setName(group.name);
           }}
         />
+        <label className="flex items-center gap-2 text-xs text-muted">
+          Shows
+          <select
+            aria-label="What the group shows"
+            data-testid="group-role"
+            className="rounded-md border border-line bg-panel px-2 py-1 text-sm text-white"
+            value={group.role === 'stage' ? 'stage' : 'audience'}
+            onChange={(e) => {
+              const role = e.target.value === 'stage' ? 'stage' : 'audience';
+              void screensAction(() => bridge().setGroupRole(group.id, role));
+            }}
+          >
+            <option value="audience">The audience picture</option>
+            <option value="stage">The stage view (performers)</option>
+          </select>
+        </label>
         <Button tone="danger" onClick={() => void screensAction(() => bridge().deleteGroup(group.id))}>
           Delete group
         </Button>

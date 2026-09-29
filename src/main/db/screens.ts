@@ -89,6 +89,19 @@ export class ScreenRepo {
     return row?.name ?? null;
   }
 
+  groupRole(id: string): ScreenRole | null {
+    const row = this.db.prepare('SELECT role FROM screen_groups WHERE id = ?').get(id) as
+      { role: ScreenRole } | undefined;
+    return row?.role ?? null;
+  }
+
+  setGroupRole(id: string, role: ScreenRole): boolean {
+    return (
+      this.db.prepare(`UPDATE screen_groups SET role = ?, updated_at = ${NOW} WHERE id = ?`).run(role, id)
+        .changes > 0
+    );
+  }
+
   createGroup(name: string, role: ScreenRole = 'audience'): string {
     const id = randomUUID();
     this.db

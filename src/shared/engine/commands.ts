@@ -76,6 +76,9 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('showMessage'), message }),
   z.object({ type: z.literal('hideMessage'), messageId: id }),
   z.object({ type: z.literal('setMask'), mask }),
+  /** A message on stage screens only, for the performers. */
+  z.object({ type: z.literal('setStageMessage'), text: z.string().trim().min(1).max(300) }),
+  z.object({ type: z.literal('clearStageMessage') }),
 ]);
 
 export type EngineCommand = z.infer<typeof engineCommandSchema>;

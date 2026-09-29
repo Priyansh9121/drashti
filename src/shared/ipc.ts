@@ -15,7 +15,14 @@ import type {
   PlaylistResult,
 } from './playlists';
 import type { SearchResult } from './search';
-import type { CoverOptions, OutputContext, ScreenPatch, ScreensResult, ScreensSnapshot } from './screens';
+import type {
+  CoverOptions,
+  OutputContext,
+  ScreenPatch,
+  ScreenRole,
+  ScreensResult,
+  ScreensSnapshot,
+} from './screens';
 
 /**
  * IPC channel names. This is the only place channel strings are written;
@@ -103,6 +110,7 @@ export const IPC = {
     get: 'screens:get',
     createGroup: 'screens:create-group',
     renameGroup: 'screens:rename-group',
+    setGroupRole: 'screens:set-group-role',
     deleteGroup: 'screens:delete-group',
     assignDisplay: 'screens:assign-display',
     updateScreen: 'screens:update-screen',
@@ -176,6 +184,7 @@ export interface InvokeContract {
   [IPC.screens.get]: { args: []; result: ScreensSnapshot };
   [IPC.screens.createGroup]: { args: [name: string]; result: ScreensResult };
   [IPC.screens.renameGroup]: { args: [groupId: string, name: string]; result: ScreensResult };
+  [IPC.screens.setGroupRole]: { args: [groupId: string, role: ScreenRole]; result: ScreensResult };
   [IPC.screens.deleteGroup]: { args: [groupId: string]; result: ScreensResult };
   [IPC.screens.assignDisplay]: {
     args: [groupId: string, displayId: number, options?: CoverOptions];

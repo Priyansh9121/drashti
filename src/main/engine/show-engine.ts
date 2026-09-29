@@ -430,6 +430,10 @@ export class ShowEngine {
         return { ok: true, actions: [{ type: 'message/hide', messageId: command.messageId }] };
       case 'setMask':
         return { ok: true, actions: [{ type: 'mask/set', mask: command.mask }] };
+      case 'setStageMessage':
+        return { ok: true, actions: [{ type: 'stage/message', text: command.text }] };
+      case 'clearStageMessage':
+        return { ok: true, actions: [{ type: 'stage/message', text: null }] };
     }
   }
 

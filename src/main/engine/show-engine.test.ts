@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EngineCommand } from '../../shared/engine/commands';
+import { parseEngineCommand } from '../../shared/engine/commands';
 import { EngineMirror } from '../../shared/engine/mirror';
 import type { EnginePatchMessage } from '../../shared/engine/protocol';
 import type { MediaBackground } from '../../shared/engine/state';
@@ -816,6 +817,17 @@ describe('ShowEngine', () => {
       engine.dispatch({ type: 'hideMessage', messageId: 'm' });
       expect(engine.current.layers.props).toEqual([]);
       expect(engine.current.layers.messages).toEqual([]);
+    });
+
+    it('keeps a stage message apart from the layers: Clear all leaves it', () => {
+      const { engine } = setup();
+      engine.dispatch({ type: 'setStageMessage', text: 'Placeholder: two minutes left' });
+      expect(engine.current.stageMessage).toBe('Placeholder: two minutes left');
+      engine.dispatch({ type: 'clearAll' });
+      expect(engine.current.stageMessage).toBe('Placeholder: two minutes left');
+      engine.dispatch({ type: 'clearStageMessage' });
+      expect(engine.current.stageMessage).toBeNull();
+      expect(parseEngineCommand({ type: 'setStageMessage', text: '   ' }).ok).toBe(false);
     });
   });
 
