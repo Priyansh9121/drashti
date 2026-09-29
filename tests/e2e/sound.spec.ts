@@ -68,7 +68,7 @@ const soundingIn = (page: Page) =>
 test('outputs and the sound stay in step, a reloaded output rejoins, and only the audio player makes sound', async () => {
   // Two outputs on a one-screen machine: windowed, with one pretend extra display.
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' });
-  const win = await app.firstWindow();
+  const win = await operatorPage(app);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-sound-'));
   const clip = await makeTestVideo(win, join(dir, 'Placeholder tone.webm'), {
     seconds: 4,
@@ -210,7 +210,7 @@ test('outputs and the sound stay in step, a reloaded output rejoins, and only th
 
 test('only the audio player may see sound outputs; the choice is remembered, and a missing one falls back', async () => {
   const { app, userData } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1' });
-  const win = await app.firstWindow();
+  const win = await operatorPage(app);
   const audio = await audioPage(app);
   const outputsSeenBy = (page: Page) =>
     page.evaluate(async () =>
@@ -303,7 +303,7 @@ test('only the audio player may see sound outputs; the choice is remembered, and
 
 test("an audio cue plays on the audio layer with the cue's volume and looping; Clear audio stops it", async () => {
   const { app } = await launchApp();
-  const win = await app.firstWindow();
+  const win = await operatorPage(app);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-cue-'));
   const tune = await makeTestVideo(win, join(dir, 'Placeholder tune.webm'), {
     seconds: 2,

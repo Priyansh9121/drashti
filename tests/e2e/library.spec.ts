@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { launchApp, type PageGlobals } from './helpers';
+import { launchApp, operatorPage, type PageGlobals } from './helpers';
 
 test('a new install has the placeholder presentations in a database in userData', async () => {
   const { app, userData } = await launchApp();
-  const win = await app.firstWindow();
+  const win = await operatorPage(app);
   await expect(win.getByTestId('presentation-list').getByRole('button')).toHaveCount(2);
   expect(existsSync(join(userData, 'drashti.sqlite'))).toBe(true);
 

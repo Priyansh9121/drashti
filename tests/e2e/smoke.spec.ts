@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { TEST_LINES } from '../../src/main/db/seed';
-import { launchApp, useDisplay } from './helpers';
+import { launchApp, operatorPage, useDisplay } from './helpers';
 
 /*
  * Smoke test (runs on macOS and Windows in CI): launch the app, give the
@@ -9,7 +9,7 @@ import { launchApp, useDisplay } from './helpers';
  */
 test('smoke: launch, go live on slide 1, the output window shows it', async () => {
   const { app } = await launchApp();
-  const operator = await app.firstWindow();
+  const operator = await operatorPage(app);
   await expect(operator).toHaveTitle('Drashti');
 
   await operator.getByRole('button', { name: 'Screens', exact: true }).click();

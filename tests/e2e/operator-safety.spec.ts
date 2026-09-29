@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
-import { launchApp } from './helpers';
+import { launchApp, operatorPage } from './helpers';
 
 const isOutput = (url: string) => url.includes('output.html');
 
 test("an output on the operator's display needs consent, and Uncover gets the controls back", async () => {
   const { app } = await launchApp();
-  const op = await app.firstWindow();
+  const op = await operatorPage(app);
   await expect(op.getByTestId('presentation-list').getByRole('button')).toHaveCount(2);
   const operatorDisplay = await app.evaluate(({ BrowserWindow, screen }) => {
     const win = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('index.html'));

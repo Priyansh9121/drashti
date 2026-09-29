@@ -2,7 +2,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { TEST_LINES } from '../../src/main/db/seed';
 import type { PageGlobals } from './helpers';
-import { launchApp } from './helpers';
+import { launchApp, operatorPage } from './helpers';
 
 async function outputPage(app: ElectronApplication): Promise<Page> {
   const existing = app.windows().find((w) => w.url().includes('output.html'));
@@ -28,7 +28,7 @@ async function setUpOneScreen(win: Page): Promise<string> {
 test('the test slide renders all four languages with the bundled fonts, shaped correctly', async () => {
   const testInfo = test.info();
   const { app } = await launchApp();
-  const win = await app.firstWindow();
+  const win = await operatorPage(app);
   await expect(win.getByTestId('presentation-list').getByRole('button')).toHaveCount(2);
   const screenId = await setUpOneScreen(win);
   const output = await outputPage(app);
