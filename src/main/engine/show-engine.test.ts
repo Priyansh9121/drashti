@@ -732,6 +732,55 @@ describe('ShowEngine', () => {
     });
   });
 
+  describe('timers', () => {
+    const countdown = {
+      id: 't1',
+      name: 'Placeholder countdown',
+      kind: 'countdown' as const,
+      durationMs: 300_000,
+      targetTime: null,
+      allowsOverrun: false,
+    };
+
+    it('sends start, pause and reset only; the time is worked out from them', () => {
+      const transport = new RecordingTransport();
+      let clock = 10_000;
+      const engine = new ShowEngine(makeSource(), transport, () => clock);
+      engine.setTimers([countdown]);
+      expect(engine.current.timers).toEqual([{ ...countdown, startedAt: null, elapsedMs: 0 }]);
+      engine.dispatch({ type: 'startTimer', timerId: 't1' });
+      expect(engine.current.timers[0]).toMatchObject({ startedAt: 10_000, elapsedMs: 0 });
+      const sent = transport.messages.length;
+      // Time passes: nothing is sent.
+      clock = 70_000;
+      expect(transport.messages).toHaveLength(sent);
+      // Starting again changes nothing; a pause keeps what was counted.
+      expect(engine.dispatch({ type: 'startTimer', timerId: 't1' })).toMatchObject({ changed: false });
+      engine.dispatch({ type: 'pauseTimer', timerId: 't1' });
+      expect(engine.current.timers[0]).toMatchObject({ startedAt: null, elapsedMs: 60_000 });
+      clock = 100_000;
+      engine.dispatch({ type: 'startTimer', timerId: 't1' });
+      expect(engine.current.timers[0]).toMatchObject({ startedAt: 100_000, elapsedMs: 60_000 });
+      engine.dispatch({ type: 'resetTimer', timerId: 't1' });
+      expect(engine.current.timers[0]).toMatchObject({ startedAt: null, elapsedMs: 0 });
+      expect(engine.dispatch({ type: 'startTimer', timerId: 'gone' })).toMatchObject({
+        ok: false,
+        error: 'unknown-timer',
+      });
+    });
+
+    it('keeps a running timer running when timers are edited, and drops removed ones', () => {
+      const clock = 5_000;
+      const engine = new ShowEngine(makeSource(), new RecordingTransport(), () => clock);
+      engine.setTimers([countdown, { ...countdown, id: 't2', name: 'Other' }]);
+      engine.dispatch({ type: 'startTimer', timerId: 't1' });
+      engine.setTimers([{ ...countdown, name: 'Renamed', durationMs: 600_000 }]);
+      expect(engine.current.timers).toEqual([
+        { ...countdown, name: 'Renamed', durationMs: 600_000, startedAt: 5_000, elapsedMs: 0 },
+      ]);
+    });
+  });
+
   describe('restart recovery', () => {
     const background = {
       kind: 'media',

@@ -15,6 +15,7 @@ import {
 } from '../../shared/engine/state';
 import type { EngineTransport } from '../../shared/engine/transport';
 import type { BackgroundCue } from '../../shared/library';
+import { elapsedAt, type TimerDefinition, type TimerRun } from '../../shared/timers';
 import { remapPosition } from '../../shared/order';
 import type { EngineAction } from './actions';
 import { NO_PLAYLISTS, type PlayItem, type PlaylistSource } from './playlist-source';
@@ -136,6 +137,25 @@ export class ShowEngine {
     return this.apply([
       { type: 'live/move', slideIndex, slideCount: after.slides.length, arrangementId: after.arrangementId },
     ]);
+  }
+
+  /** The timers as the library defines them (at startup, and after the operator edits one). */
+  setTimers(timers: readonly TimerDefinition[]): CommandResult {
+    return this.apply([{ type: 'timers/define', timers }]);
+  }
+
+  /** Start, pause or reset a timer: the only changes the windows need to count by themselves. */
+  private runTimer(timerId: string, how: 'start' | 'pause' | 'reset'): Resolved {
+    const t = this.state.timers.find((x) => x.id === timerId);
+    if (!t) return { ok: false, error: 'unknown-timer', message: 'That timer no longer exists' };
+    const now = this.now();
+    const run: TimerRun =
+      how === 'start'
+        ? { startedAt: t.startedAt ?? now, elapsedMs: t.elapsedMs }
+        : how === 'pause'
+          ? { startedAt: null, elapsedMs: elapsedAt(t, now) }
+          : { startedAt: null, elapsedMs: 0 };
+    return { ok: true, actions: [{ type: 'timer/run', timerId, run }] };
   }
 
   /** A playlist or presentation changed: what comes next may be different now. */
@@ -430,6 +450,12 @@ export class ShowEngine {
         return { ok: true, actions: [{ type: 'message/hide', messageId: command.messageId }] };
       case 'setMask':
         return { ok: true, actions: [{ type: 'mask/set', mask: command.mask }] };
+      case 'startTimer':
+        return this.runTimer(command.timerId, 'start');
+      case 'pauseTimer':
+        return this.runTimer(command.timerId, 'pause');
+      case 'resetTimer':
+        return this.runTimer(command.timerId, 'reset');
       case 'setStageMessage':
         return { ok: true, actions: [{ type: 'stage/message', text: command.text }] };
       case 'clearStageMessage':

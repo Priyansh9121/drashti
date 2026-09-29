@@ -15,6 +15,7 @@ import type {
   PlaylistResult,
 } from './playlists';
 import type { SearchResult } from './search';
+import type { TimerFields, TimerResult } from './timers';
 import type {
   CoverOptions,
   OutputContext,
@@ -109,6 +110,12 @@ export interface DrashtiBridge {
     setItemOrder(itemId: string, order: ItemOrder): Promise<PlaylistResult>;
     renameHeader(itemId: string, label: string): Promise<PlaylistResult>;
     onChanged(listener: () => void): () => void;
+  };
+  /** Making and editing timers (operator window only). Starting and pausing go through the engine. */
+  timers: {
+    create(fields: TimerFields): Promise<TimerResult>;
+    update(timerId: string, fields: TimerFields): Promise<TimerResult>;
+    remove(timerId: string): Promise<TimerResult>;
   };
   media: {
     /**

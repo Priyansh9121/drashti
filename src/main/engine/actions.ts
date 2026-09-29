@@ -1,4 +1,5 @@
 import type { RenderSlide } from '../../shared/model';
+import type { TimerDefinition, TimerRun } from '../../shared/timers';
 import type {
   AudioLayer,
   BackgroundLayer,
@@ -35,6 +36,9 @@ export type EngineAction =
   | { type: 'live/item'; playlist: PlaylistCursor }
   | { type: 'next/set'; next: UpNext | null }
   | { type: 'stage/message'; text: string | null }
+  /** The timers as defined in the library; each keeps its run (start time, counted time). */
+  | { type: 'timers/define'; timers: readonly TimerDefinition[] }
+  | { type: 'timer/run'; timerId: string; run: TimerRun }
   | { type: 'layer/clear'; layer: LayerName }
   | { type: 'layers/clearAll' }
   | { type: 'blackout/set'; on: boolean }

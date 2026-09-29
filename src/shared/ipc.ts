@@ -15,6 +15,7 @@ import type {
   PlaylistResult,
 } from './playlists';
 import type { SearchResult } from './search';
+import type { TimerFields, TimerResult } from './timers';
 import type {
   CoverOptions,
   OutputContext,
@@ -106,6 +107,12 @@ export const IPC = {
     /** main -> operator: playlists changed. */
     changed: 'playlists:changed',
   },
+  /** Changing timers (operator window only); what they count comes with the engine state. */
+  timers: {
+    create: 'timers:create',
+    update: 'timers:update',
+    remove: 'timers:remove',
+  },
   screens: {
     get: 'screens:get',
     createGroup: 'screens:create-group',
@@ -181,6 +188,9 @@ export interface InvokeContract {
   [IPC.audio.getOutput]: { args: []; result: AudioOutputStatus };
   [IPC.audio.setOutput]: { args: [device: AudioDevice | null]; result: AudioOutputStatus };
   [IPC.audio.reportDevices]: { args: [devices: AudioDevice[], state: AudioOutputState]; result: null };
+  [IPC.timers.create]: { args: [fields: TimerFields]; result: TimerResult };
+  [IPC.timers.update]: { args: [timerId: string, fields: TimerFields]; result: TimerResult };
+  [IPC.timers.remove]: { args: [timerId: string]; result: TimerResult };
   [IPC.screens.get]: { args: []; result: ScreensSnapshot };
   [IPC.screens.createGroup]: { args: [name: string]; result: ScreensResult };
   [IPC.screens.renameGroup]: { args: [groupId: string, name: string]; result: ScreensResult };

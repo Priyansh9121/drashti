@@ -21,6 +21,8 @@ import { MEDIA_ID_PATTERN, MEDIA_SCHEME } from '../shared/media';
 import { idSchema } from '../shared/model-schema';
 import { z } from 'zod';
 import type { OutputContext } from '../shared/screens';
+import type { TimerResult } from '../shared/timers';
+import { timerFieldsSchema } from '../shared/timers';
 import { type RecoveryNotice, recoveryText } from '../shared/recovery';
 import type { Db } from './db/database';
 import { LATEST_VERSION, openDatabase } from './db/database';
@@ -28,6 +30,7 @@ import { ImportRepo } from './db/imports';
 import { MediaRepo } from './db/media';
 import { PlaylistRepo } from './db/playlists';
 import { SearchIndex } from './db/search';
+import { TimerRepo } from './db/timers';
 import { SettingsRepo } from './db/settings';
 import { DbSlideSource, PresentationRepo } from './db/presentations';
 import { ScreenRepo } from './db/screens';
@@ -221,6 +224,8 @@ function start(): void {
     log.warn(`Could not send an engine message to window ${target.id}`, error);
   });
   const engine = new ShowEngine(slides, transport, Date.now, { items: (id) => playlists.playItems(id) });
+  const timers = new TimerRepo(db);
+  engine.setTimers(timers.list());
 
   // ---- media ----------------------------------------------------------------
   const userDataDir = app.getPath('userData');
@@ -473,6 +478,41 @@ function start(): void {
     search.search(typeof query === 'string' ? query.slice(0, 200) : ''),
   );
   handle(IPC.library.legacyPresentations, () => search.legacyPresentations());
+  // Timers: made and edited here, started and paused through the engine.
+  const timerChange = (e: IpcMainInvokeEvent, run: () => TimerResult): TimerResult => {
+    if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can change timers.' };
+    const result = run();
+    if (result.ok) engine.setTimers(timers.list());
+    return result;
+  };
+  const badTimer: TimerResult = {
+    ok: false,
+    message: 'A timer needs a name, and a length or a time of day (HH:MM).',
+  };
+  handle(IPC.timers.create, (e, fields) =>
+    timerChange(e, () => {
+      const f = timerFieldsSchema.safeParse(fields);
+      return f.success ? { ok: true, id: timers.create(f.data) } : badTimer;
+    }),
+  );
+  handle(IPC.timers.update, (e, timerId, fields) =>
+    timerChange(e, () => {
+      const id = idSchema.safeParse(timerId);
+      const f = timerFieldsSchema.safeParse(fields);
+      if (!id.success || !f.success) return badTimer;
+      return timers.update(id.data, f.data)
+        ? { ok: true, id: id.data }
+        : { ok: false, message: 'That timer no longer exists.' };
+    }),
+  );
+  handle(IPC.timers.remove, (e, timerId) =>
+    timerChange(e, () => {
+      const id = idSchema.safeParse(timerId);
+      return id.success && timers.remove(id.data)
+        ? { ok: true, id: id.data }
+        : { ok: false, message: 'That timer no longer exists.' };
+    }),
+  );
   registerPlaylistIpc({
     repo: playlists,
     fromOperator,

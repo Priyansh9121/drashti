@@ -1,4 +1,5 @@
 import type { Rect, RenderSlide, SlideElement } from '../model';
+import type { TimerState } from '../timers';
 
 /**
  * Show engine state. The main process owns it; every renderer (and, later,
@@ -113,9 +114,15 @@ export interface PropItem {
   elements: SlideElement[];
 }
 
+/** Part of a message: words, or a timer shown live (each window works out its time). */
+export type MessagePart = { kind: 'text'; text: string } | { kind: 'timer'; timerId: string };
+
 export interface MessageItem {
   id: string;
+  /** The message as plain text (a timer as its name in brackets). */
   text: string;
+  /** When given, what is drawn: its words and live timers. */
+  parts?: MessagePart[];
 }
 
 /** A mask leaves `visible` showing and blacks out the rest of the canvas. Units: canvas pixels. */
@@ -163,6 +170,8 @@ export interface EngineState {
   next: UpNext | null;
   /** A message for the performers on stage screens; the audience never sees it. */
   stageMessage: string | null;
+  /** Every timer, with when it was started: windows work out the time themselves. */
+  timers: TimerState[];
 }
 
 export function emptyLayers(): Layers {
@@ -177,6 +186,7 @@ export function initialEngineState(): EngineState {
     blackout: false,
     next: null,
     stageMessage: null,
+    timers: [],
   };
 }
 
