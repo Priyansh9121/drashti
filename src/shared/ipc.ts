@@ -6,6 +6,14 @@ import type { ImportOptions, ImportProgress, ImportReport, ImportResult, ImportR
 import type { PresentationDoc, PresentationSummary, RemoveResult } from './library';
 import type { RecoveryNotice } from './recovery';
 import type { SaveStillResult } from './media';
+import type {
+  ItemOrder,
+  MediaSummary,
+  NewItem,
+  PlaylistItemInfo,
+  PlaylistNode,
+  PlaylistResult,
+} from './playlists';
 import type { CoverOptions, OutputContext, ScreenPatch, ScreensResult, ScreensSnapshot } from './screens';
 
 /**
@@ -34,6 +42,7 @@ export const IPC = {
   },
   library: {
     listPresentations: 'library:list-presentations',
+    listMedia: 'library:list-media',
     getPresentation: 'library:get-presentation',
     /** Import files and folders (operator window only). */
     importPaths: 'library:import-paths',
@@ -69,6 +78,24 @@ export const IPC = {
     /** main -> operator: the sound output status changed. */
     status: 'audio:status',
   },
+  playlists: {
+    tree: 'playlists:tree',
+    items: 'playlists:items',
+    /** The rest change playlists (operator window only). */
+    create: 'playlists:create',
+    rename: 'playlists:rename',
+    remove: 'playlists:remove',
+    restore: 'playlists:restore',
+    addItems: 'playlists:add-items',
+    moveItems: 'playlists:move-items',
+    removeItems: 'playlists:remove-items',
+    restoreItems: 'playlists:restore-items',
+    fillPlaceholder: 'playlists:fill-placeholder',
+    setItemOrder: 'playlists:set-item-order',
+    renameHeader: 'playlists:rename-header',
+    /** main -> operator: playlists changed. */
+    changed: 'playlists:changed',
+  },
   screens: {
     get: 'screens:get',
     createGroup: 'screens:create-group',
@@ -101,6 +128,29 @@ export interface InvokeContract {
   [IPC.engine.snapshot]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.command]: { args: [command: EngineCommand]; result: CommandResult };
   [IPC.library.listPresentations]: { args: []; result: PresentationSummary[] };
+  [IPC.library.listMedia]: { args: []; result: MediaSummary[] };
+  [IPC.playlists.tree]: { args: []; result: PlaylistNode[] };
+  [IPC.playlists.items]: { args: [playlistId: string]; result: PlaylistItemInfo[] };
+  [IPC.playlists.create]: {
+    args: [name: string, parentId: string | null, isFolder: boolean];
+    result: PlaylistResult;
+  };
+  [IPC.playlists.rename]: { args: [playlistId: string, name: string]; result: PlaylistResult };
+  [IPC.playlists.remove]: { args: [ids: string[]]; result: PlaylistResult };
+  [IPC.playlists.restore]: { args: [ids: string[]]; result: PlaylistResult };
+  [IPC.playlists.addItems]: {
+    args: [playlistId: string, at: number | null, items: NewItem[]];
+    result: PlaylistResult;
+  };
+  [IPC.playlists.moveItems]: {
+    args: [playlistId: string, ids: string[], to: number];
+    result: PlaylistResult;
+  };
+  [IPC.playlists.removeItems]: { args: [ids: string[]]; result: PlaylistResult };
+  [IPC.playlists.restoreItems]: { args: [ids: string[]]; result: PlaylistResult };
+  [IPC.playlists.fillPlaceholder]: { args: [itemId: string, presentationId: string]; result: PlaylistResult };
+  [IPC.playlists.setItemOrder]: { args: [itemId: string, order: ItemOrder]; result: PlaylistResult };
+  [IPC.playlists.renameHeader]: { args: [itemId: string, label: string]; result: PlaylistResult };
   [IPC.library.getPresentation]: { args: [id: string]; result: PresentationDoc | null };
   [IPC.library.importPaths]: { args: [paths: string[], options?: ImportOptions]; result: ImportResult };
   [IPC.library.cancelImport]: { args: [runId: string]; result: boolean };
@@ -141,6 +191,7 @@ export interface EventContract {
   [IPC.engine.message]: EngineMessage;
   [IPC.library.importProgress]: ImportProgress;
   [IPC.library.changed]: { at: number };
+  [IPC.playlists.changed]: { at: number };
   [IPC.app.undo]: { at: number };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.output.context]: OutputContext;

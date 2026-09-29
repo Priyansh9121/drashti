@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent, KeyboardEvent } from 'react';
 import type { PresentationSummary } from '../../../shared/library';
-import { actionFor, LIBRARY_KEYMAP, shortcutText } from '../../../shared/keymap';
+import { actionFor, LIBRARY_KEYMAP } from '../../../shared/keymap';
 import { LANGS } from '../../../shared/model';
 import { useEngine } from '../engine/engine-store';
 import {
@@ -11,11 +11,13 @@ import {
   importWithDialog,
   openReport,
   requestRemoval,
-  undoRemoval,
   useImports,
 } from '../library/import-store';
 import { clickPresentation, useLibrary } from '../library/library-store';
+import { MediaList } from '../library/MediaList';
+import { startDrag } from '../playlists/drag';
 import { Button } from '../ui/Button';
+import { MenuButton } from '../ui/Menu';
 import { plural } from '../ui/text';
 import { layoutRows, scrollToShow, visibleRows } from '../ui/virtual';
 
@@ -44,6 +46,7 @@ const PresentationRow = memo(function PresentationRow({
   return (
     <button
       type="button"
+      draggable
       aria-current={selected ? 'true' : undefined}
       data-marked={marked ? 'true' : undefined}
       onClick={(e) => {
@@ -51,6 +54,14 @@ const PresentationRow = memo(function PresentationRow({
           toggle: platform === 'darwin' ? e.metaKey : e.ctrlKey,
           range: e.shiftKey,
         });
+      }}
+      onDragStart={(e) => {
+        // Drags the marked presentations when this is one of them, else just this one.
+        const { marked: now, presentations } = useLibrary.getState();
+        const ids = now.includes(p.id)
+          ? presentations.filter((x) => now.includes(x.id)).map((x) => x.id)
+          : [p.id];
+        startDrag(e, 'presentations', ids);
       }}
       className={`h-full w-full rounded-md px-3 py-2 text-left transition focus-visible:outline-2 focus-visible:outline-accent ${
         selected
@@ -78,70 +89,27 @@ const PresentationRow = memo(function PresentationRow({
 });
 
 function ImportMenu() {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const outside = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const escape = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('mousedown', outside);
-    document.addEventListener('keydown', escape);
-    return () => {
-      document.removeEventListener('mousedown', outside);
-      document.removeEventListener('keydown', escape);
-    };
-  }, [open]);
-  const choose = (kind: 'files' | 'folder') => {
-    setOpen(false);
-    void importWithDialog(kind);
-  };
-  const item =
-    'block w-full rounded px-3 py-1.5 text-left text-sm hover:bg-line focus-visible:outline-2 focus-visible:outline-accent';
   return (
-    <div className="relative" ref={ref}>
-      <Button
-        tone="ghost"
-        className="px-2 py-1 text-xs"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => {
-          setOpen((o) => !o);
-        }}
-      >
-        Import…
-      </Button>
-      {open && (
-        <div
-          role="menu"
-          aria-label="Import"
-          className="absolute right-0 z-30 mt-1 w-44 rounded-md border border-line bg-panel-2 p-1 shadow-xl"
-        >
-          <button type="button" role="menuitem" className={item} onClick={() => choose('files')}>
-            Files…
-          </button>
-          <button type="button" role="menuitem" className={item} onClick={() => choose('folder')}>
-            A folder…
-          </button>
-        </div>
-      )}
-    </div>
+    <MenuButton
+      label="Import"
+      entries={[
+        { label: 'Files…', onSelect: () => void importWithDialog('files') },
+        { label: 'A folder…', onSelect: () => void importWithDialog('folder') },
+      ]}
+    >
+      Import…
+    </MenuButton>
   );
 }
 
-/** Progress while importing, what happened afterwards, and Undo after a removal. */
-function ImportStatus({ platform }: { platform: string }) {
+/** Progress while importing, and what happened afterwards. */
+function ImportStatus() {
   const runs = useImports((s) => s.runs);
   const finished = useImports((s) => s.finished);
   const error = useImports((s) => s.error);
-  const undoStack = useImports((s) => s.undoStack);
   const list = Object.values(runs);
   const active = list.find((r) => r.phase !== 'queued') ?? list[0];
   const waiting = list.length - (active ? 1 : 0);
-  const lastRemoval = undoStack.at(-1);
 
   return (
     <div
@@ -197,19 +165,6 @@ function ImportStatus({ platform }: { platform: string }) {
           </div>
         </div>
       )}
-      {lastRemoval && (
-        <div data-testid="undo-removal" className="flex items-center gap-2">
-          <span className="min-w-0 flex-1 truncate">
-            Removed{' '}
-            {lastRemoval.names.length === 1
-              ? `“${lastRemoval.names[0] ?? ''}”`
-              : plural(lastRemoval.ids.length, 'presentation')}
-          </span>
-          <Button className="px-2 py-0.5 text-xs" onClick={() => void undoRemoval()}>
-            Undo <kbd className="ml-1 text-muted">{shortcutText('undo', platform)}</kbd>
-          </Button>
-        </div>
-      )}
     </div>
   );
 }
@@ -248,6 +203,7 @@ export function PresentationList({ platform }: { platform: string }) {
   const markedSet = new Set(marked);
   const listRef = useRef<HTMLUListElement>(null);
   const [view, setView] = useState({ top: 0, height: 800 });
+  const [tab, setTab] = useState<'presentations' | 'media'>('presentations');
 
   // A heading where a library starts, when there is more than one (templates stay apart).
   const rows = useMemo(() => {
@@ -278,7 +234,7 @@ export function PresentationList({ platform }: { platform: string }) {
     return () => {
       observer.disconnect();
     };
-  }, []);
+  }, [tab]);
 
   // Bring a newly selected presentation into view (for example one opened from the import report).
   const latest = useRef({ rows, layout, heights });
@@ -287,12 +243,12 @@ export function PresentationList({ platform }: { platform: string }) {
   });
   useEffect(() => {
     const ul = listRef.current;
-    if (!ul || !selectedId) return;
+    if (!ul || !selectedId || tab !== 'presentations') return;
     const { rows: now, layout: at, heights: sizes } = latest.current;
     const index = now.findIndex((r) => r.kind === 'item' && r.p.id === selectedId);
     const to = scrollToShow(at, sizes, index, ul.scrollTop, ul.clientHeight);
     if (to !== null) ul.scrollTop = to;
-  }, [selectedId]);
+  }, [selectedId, tab]);
 
   const hasFiles = (e: DragEvent) => e.dataTransfer.types.includes('Files');
   const onDragEnter = (e: DragEvent) => {
@@ -331,72 +287,94 @@ export function PresentationList({ platform }: { platform: string }) {
 
   return (
     <nav
-      aria-label="Presentations"
-      className="relative flex min-h-0 flex-col border-r border-line bg-panel"
+      aria-label="Library"
+      className="relative flex min-h-0 flex-[1_1_55%] flex-col"
       data-testid="library-drop"
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      <div className="flex items-center gap-2 px-4 pt-3 pb-2">
-        <h2 className="flex-1 text-xs font-semibold uppercase tracking-wide text-muted">Presentations</h2>
+      <div className="flex items-center gap-1 px-2 pt-3 pb-2">
+        <div role="tablist" aria-label="Library" className="flex flex-1 gap-1">
+          {(['presentations', 'media'] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="tab"
+              aria-selected={tab === t}
+              data-testid={`library-tab-${t}`}
+              onClick={() => {
+                setTab(t);
+              }}
+              className={`rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-wide focus-visible:outline-2 focus-visible:outline-accent ${
+                tab === t ? 'bg-panel-2 text-white' : 'text-muted hover:text-white'
+              }`}
+            >
+              {t === 'presentations' ? 'Presentations' : 'Media'}
+            </button>
+          ))}
+        </div>
         <ImportMenu />
       </div>
-      <ul
-        ref={listRef}
-        className="relative min-h-0 flex-1 overflow-y-auto"
-        data-testid="presentation-list"
-        data-count={presentations.length}
-        onKeyDown={onKeyDown}
-        onScroll={(e) => {
-          setView({ top: e.currentTarget.scrollTop, height: e.currentTarget.clientHeight });
-        }}
-      >
-        {rows.slice(start, end).map((row, k) => {
-          const i = start + k;
-          const place = {
-            position: 'absolute',
-            top: layout.offsets[i],
-            left: 8,
-            right: 8,
-            height: heights[i],
-          } as const;
-          if (row.kind === 'heading') {
+      {tab === 'media' ? (
+        <MediaList platform={platform} />
+      ) : (
+        <ul
+          ref={listRef}
+          className="relative min-h-0 flex-1 overflow-y-auto"
+          data-testid="presentation-list"
+          data-count={presentations.length}
+          onKeyDown={onKeyDown}
+          onScroll={(e) => {
+            setView({ top: e.currentTarget.scrollTop, height: e.currentTarget.clientHeight });
+          }}
+        >
+          {rows.slice(start, end).map((row, k) => {
+            const i = start + k;
+            const place = {
+              position: 'absolute',
+              top: layout.offsets[i],
+              left: 8,
+              right: 8,
+              height: heights[i],
+            } as const;
+            if (row.kind === 'heading') {
+              return (
+                <li key={`library:${row.library}`} style={place}>
+                  <h3
+                    data-testid="library-heading"
+                    className="px-1 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted"
+                  >
+                    {row.library}
+                  </h3>
+                </li>
+              );
+            }
+            const { p } = row;
             return (
-              <li key={`library:${row.library}`} style={place}>
-                <h3
-                  data-testid="library-heading"
-                  className="px-1 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted"
-                >
-                  {row.library}
-                </h3>
+              <li
+                key={p.id}
+                style={{ ...place, paddingBottom: 4 }}
+                aria-setsize={presentations.length}
+                aria-posinset={row.index + 1}
+              >
+                <PresentationRow
+                  p={p}
+                  selected={p.id === selectedId}
+                  marked={markedSet.has(p.id)}
+                  live={p.id === liveId}
+                  platform={platform}
+                />
               </li>
             );
-          }
-          const { p } = row;
-          return (
-            <li
-              key={p.id}
-              style={{ ...place, paddingBottom: 4 }}
-              aria-setsize={presentations.length}
-              aria-posinset={row.index + 1}
-            >
-              <PresentationRow
-                p={p}
-                selected={p.id === selectedId}
-                marked={markedSet.has(p.id)}
-                live={p.id === liveId}
-                platform={platform}
-              />
-            </li>
-          );
-        })}
-        {/* Gives the list its full height (and some room at the end), so it scrolls. */}
-        <li aria-hidden="true" style={{ position: 'absolute', top: layout.total, height: 12, width: 1 }} />
-      </ul>
+          })}
+          {/* Gives the list its full height (and some room at the end), so it scrolls. */}
+          <li aria-hidden="true" style={{ position: 'absolute', top: layout.total, height: 12, width: 1 }} />
+        </ul>
+      )}
       {dropProblem && <p className="px-3 pb-2 text-xs text-amber-200">{dropProblem}</p>}
-      <ImportStatus platform={platform} />
+      <ImportStatus />
       {dropping && (
         <div
           data-testid="drop-overlay"

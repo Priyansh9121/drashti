@@ -36,7 +36,7 @@ export interface KeyBinding {
   label: string;
   /** Also registered system-wide by the main process while it is needed. */
   global?: boolean;
-  /** Only while the presentation list has the keyboard focus. */
+  /** Only while a list (presentations, playlists, a playlist's items) has the keyboard focus. */
   scope?: 'library';
   /**
    * Handled by the application menu, not by the page: text fields keep
@@ -60,14 +60,14 @@ export const KEYMAP: readonly KeyBinding[] = [
   // Turns off any output covering the operator window. Not Ctrl+Shift+Esc (Windows Task Manager)
   // and not plain Esc (too easy to press by accident when a single screen is covered on purpose).
   { action: 'uncoverControls', keys: ['Mod+Shift+U'], label: 'Uncover the controls', global: true },
-  // Removing asks first, and Undo brings the presentations back.
+  // Removing presentations or playlists asks first; Undo brings back any removal.
   { action: 'removeSelected', keys: ['Delete', 'Backspace'], label: 'Remove', scope: 'library' },
   { action: 'undo', keys: ['Mod+Z'], label: 'Undo', menuOnly: true },
 ];
 
 /** Keys the page listens for everywhere (not scoped to a list, not owned by the menu). */
 export const PAGE_KEYMAP: readonly KeyBinding[] = KEYMAP.filter((b) => !b.scope && !b.menuOnly);
-/** Keys that only work while the presentation list has the focus. */
+/** Keys that only work while a list has the focus. */
 export const LIBRARY_KEYMAP: readonly KeyBinding[] = KEYMAP.filter((b) => b.scope === 'library');
 
 export interface KeyInput {

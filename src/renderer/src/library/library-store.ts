@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { PresentationDoc, PresentationSummary } from '../../../shared/library';
+import type { MediaSummary } from '../../../shared/playlists';
 
 interface LibraryView {
   presentations: PresentationSummary[];
@@ -77,6 +78,47 @@ export async function loadLibrary(): Promise<void> {
   else useLibrary.setState({ selectedId: null, doc: null, marked: [] });
 }
 
+// ---- media ----------------------------------------------------------------------
+
+interface MediaView {
+  media: MediaSummary[];
+  /** Loaded once the operator first looks at the media list. */
+  loaded: boolean;
+  /** Media marked for dragging into a playlist. */
+  marked: string[];
+  anchorId: string | null;
+}
+
+export const useMedia = create<MediaView>(() => ({ media: [], loaded: false, marked: [], anchorId: null }));
+
+export async function loadMedia(): Promise<void> {
+  const media = await window.drashti.library.listMedia();
+  const ids = new Set(media.map((m) => m.id));
+  useMedia.setState((s) => ({ media, loaded: true, marked: s.marked.filter((id) => ids.has(id)) }));
+}
+
+/** A click in the media list, marking like the presentation list. */
+export function clickMedia(id: string, mods: { toggle: boolean; range: boolean }): void {
+  const { media, marked, anchorId } = useMedia.getState();
+  if (mods.range && anchorId) {
+    const ids = media.map((m) => m.id);
+    const from = ids.indexOf(anchorId);
+    const to = ids.indexOf(id);
+    if (from >= 0 && to >= 0) {
+      useMedia.setState({ marked: ids.slice(Math.min(from, to), Math.max(from, to) + 1) });
+      return;
+    }
+  }
+  if (mods.toggle) {
+    const set = new Set(marked);
+    if (set.has(id)) set.delete(id);
+    else set.add(id);
+    useMedia.setState({ marked: [...set], anchorId: id });
+    return;
+  }
+  useMedia.setState({ marked: [id], anchorId: id });
+}
+
 let watching = false;
 
 /** Reload the list (and the open presentation, which an import may have replaced) when the library changes. */
@@ -88,5 +130,6 @@ export function watchLibrary(): void {
       const { selectedId } = useLibrary.getState();
       if (selectedId) await selectPresentation(selectedId);
     });
+    if (useMedia.getState().loaded) void loadMedia();
   });
 }

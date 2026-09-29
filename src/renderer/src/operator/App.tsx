@@ -3,9 +3,13 @@ import type { AppInfo } from '../../../shared/app-info';
 import { describeAppInfo } from '../../../shared/app-info';
 import { connectEngine } from '../engine/engine-store';
 import { ImportReportDialog } from '../library/ImportReport';
-import { undoRemoval, watchImports } from '../library/import-store';
+import { watchImports } from '../library/import-store';
 import { loadLibrary, watchLibrary } from '../library/library-store';
-import { RemoveConfirm } from '../library/RemoveConfirm';
+import { RemoveConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
+import { UndoBar } from '../library/UndoBar';
+import { undoRemoval } from '../library/undo';
+import { PlaylistPanel } from '../playlists/PlaylistPanel';
+import { loadTree, watchPlaylists } from '../playlists/playlist-store';
 import { ScreensPanel } from '../screens/ScreensPanel';
 import { connectScreens } from '../screens/screens-store';
 import { Button } from '../ui/Button';
@@ -32,7 +36,9 @@ export function App() {
     connectScreens();
     watchLibrary();
     watchImports();
+    watchPlaylists();
     void loadLibrary();
+    void loadTree();
     // Edit > Undo: in a text field the window undoes the typing itself; elsewhere it brings back
     // the last removal.
     const offUndo = window.drashti.app.onUndo(() => {
@@ -64,7 +70,7 @@ export function App() {
   useKeymap(platform, run);
 
   return (
-    <main className="grid h-full grid-cols-[260px_minmax(0,1fr)_420px] grid-rows-[auto_minmax(0,1fr)_auto]">
+    <main className="grid h-full grid-cols-[280px_minmax(0,1fr)_420px] grid-rows-[auto_minmax(0,1fr)_auto]">
       <header className="col-span-3 flex items-center gap-4 border-b border-line bg-panel px-4 py-2">
         <h1 className="text-lg font-semibold tracking-wide">Drashti</h1>
         <LiveStatus />
@@ -75,7 +81,11 @@ export function App() {
       </header>
 
       <RecoveryBanner />
-      <PresentationList platform={platform} />
+      <div className="flex min-h-0 flex-col border-r border-line bg-panel">
+        <PlaylistPanel platform={platform} />
+        <PresentationList platform={platform} />
+        <UndoBar platform={platform} />
+      </div>
       <SlideGrid />
 
       <aside
@@ -112,6 +122,7 @@ export function App() {
 
       <ImportReportDialog />
       <RemoveConfirm undoKey={shortcutText('undo', platform)} />
+      <RemovePlaylistConfirm undoKey={shortcutText('undo', platform)} />
       {screensOpen && (
         <ScreensPanel
           platform={platform}

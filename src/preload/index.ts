@@ -40,6 +40,7 @@ const bridge: DrashtiBridge = {
   },
   library: {
     listPresentations: () => invoke(IPC.library.listPresentations),
+    listMedia: () => invoke(IPC.library.listMedia),
     getPresentation: (id) => invoke(IPC.library.getPresentation, id),
     onChanged: (listener) =>
       on(IPC.library.changed, () => {
@@ -56,6 +57,26 @@ const bridge: DrashtiBridge = {
       invoke(IPC.library.setArrangement, presentationId, arrangementId),
     removePresentations: (ids) => invoke(IPC.library.removePresentations, ids),
     restorePresentations: (ids) => invoke(IPC.library.restorePresentations, ids),
+  },
+  playlists: {
+    tree: () => invoke(IPC.playlists.tree),
+    items: (playlistId) => invoke(IPC.playlists.items, playlistId),
+    create: (name, parentId, isFolder) => invoke(IPC.playlists.create, name, parentId, isFolder),
+    rename: (playlistId, name) => invoke(IPC.playlists.rename, playlistId, name),
+    remove: (ids) => invoke(IPC.playlists.remove, ids),
+    restore: (ids) => invoke(IPC.playlists.restore, ids),
+    addItems: (playlistId, at, items) => invoke(IPC.playlists.addItems, playlistId, at, items),
+    moveItems: (playlistId, ids, to) => invoke(IPC.playlists.moveItems, playlistId, ids, to),
+    removeItems: (ids) => invoke(IPC.playlists.removeItems, ids),
+    restoreItems: (ids) => invoke(IPC.playlists.restoreItems, ids),
+    fillPlaceholder: (itemId, presentationId) =>
+      invoke(IPC.playlists.fillPlaceholder, itemId, presentationId),
+    setItemOrder: (itemId, order) => invoke(IPC.playlists.setItemOrder, itemId, order),
+    renameHeader: (itemId, label) => invoke(IPC.playlists.renameHeader, itemId, label),
+    onChanged: (listener) =>
+      on(IPC.playlists.changed, () => {
+        listener();
+      }),
   },
   media: {
     saveStill: (mediaId, jpeg) => invoke(IPC.media.saveStill, mediaId, jpeg),
