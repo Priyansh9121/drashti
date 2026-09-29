@@ -732,6 +732,48 @@ describe('ShowEngine', () => {
     });
   });
 
+  describe('a presentation edited while it is live', () => {
+    it('shows the new words at once, keeps a slide that moved, and leaves a slide that went', () => {
+      const { engine, source } = setup();
+      engine.dispatch(goLive('p1', 1));
+      // The words of slide 2 change: the screens show them at once.
+      source.set('p1', [
+        textSlide('p1s1', 'One'),
+        textSlide('p1s2', 'Two, fixed'),
+        textSlide('p1s3', 'Three'),
+      ]);
+      engine.refreshLive('p1');
+      const shown = engine.current.layers.slide?.slide.elements[0];
+      expect(shown?.kind === 'text' && shown.text).toBe('Two, fixed');
+      expect(engine.current.live.slideIndex).toBe(1);
+      // A slide added before it: it stays on screen, now at position 3.
+      source.set('p1', [
+        textSlide('new', 'New'),
+        textSlide('p1s1', 'One'),
+        textSlide('p1s2', 'Two'),
+        textSlide('p1s3', 'Three'),
+      ]);
+      engine.refreshLive('p1');
+      expect(engine.current.live).toMatchObject({ slideIndex: 2, slideCount: 4 });
+      expect(engine.current.next).toMatchObject({ kind: 'slide', slideIndex: 3 });
+      // The live slide is removed: the picture stays up and the cursor stays in range.
+      source.set('p1', [textSlide('p1s1', 'One')]);
+      engine.refreshLive('p1');
+      expect(engine.current.layers.slide?.slide.id).toBe('p1s2');
+      expect(engine.current.live).toMatchObject({ slideIndex: 0, slideCount: 1 });
+    });
+
+    it('leaves a cleared slide layer cleared', () => {
+      const { engine, source } = setup();
+      engine.dispatch(goLive('p1', 2));
+      engine.dispatch({ type: 'clearLayer', layer: 'slide' });
+      source.set('p1', [textSlide('p1s3', 'Three')]);
+      engine.refreshLive('p1');
+      expect(engine.current.layers.slide).toBeNull();
+      expect(engine.current.live).toMatchObject({ slideIndex: 0, slideCount: 1 });
+    });
+  });
+
   describe('timers', () => {
     const countdown = {
       id: 't1',

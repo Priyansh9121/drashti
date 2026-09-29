@@ -51,6 +51,9 @@ import { saveStill } from './media/stills';
 import { installMenu } from './menu';
 import { runPerformanceTest } from './perftest';
 import { registerPlaylistIpc } from './playlists/playlist-ipc';
+import { Revisions } from './library/revisions';
+import { plainLook } from './library/words';
+import { registerWordsIpc } from './library/words-ipc';
 import { createdGroupId, runWatchdogSelfTest } from './selftest';
 import {
   createOutputWindow,
@@ -477,6 +480,20 @@ function start(): void {
   handle(IPC.engine.command, (event, command) => runEngineCommand(engine, command, fromOperator(event)));
   handle(IPC.library.listPresentations, () => presentations.list());
   handle(IPC.library.listMedia, () => media.list());
+  // The words editor: edited words go back into the slides; Undo writes the kept copy back.
+  registerWordsIpc({
+    presentations,
+    revisions: new Revisions(),
+    fromOperator,
+    lookFor: (_themeId, size) => plainLook(size.width, size.height),
+    changed: (ids) => {
+      for (const id of ids) {
+        slides.invalidate(id);
+        engine.refreshLive(id);
+      }
+      libraryChanged(true);
+    },
+  });
   handle(IPC.library.search, (_e, query) =>
     search.search(typeof query === 'string' ? query.slice(0, 200) : ''),
   );

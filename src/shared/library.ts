@@ -104,3 +104,23 @@ export interface PresentationDoc {
   } | null;
   source: ImportSource | null;
 }
+
+/** A presentation's words as plain text (the lyrics format), for the words editor. */
+export type WordsResult =
+  | {
+      ok: true;
+      text: string;
+      /** Fonts of text typed in legacy fonts: such a presentation cannot be edited as plain text yet. */
+      legacyFonts: string[];
+    }
+  | { ok: false; message: string };
+
+/** Saving edited words: how the slides changed, and the revision Undo brings back. */
+export type SaveWordsResult =
+  | { ok: true; revisionId: string; kept: number; changed: number; added: number; removed: number }
+  | { ok: false; message: string };
+
+export type NewFromWordsResult = { ok: true; id: string } | { ok: false; message: string };
+
+/** Undo of a change to a presentation's content (words, theme): the earlier copy written back. */
+export type RevisionResult = { ok: true; presentationId: string } | { ok: false; message: string };

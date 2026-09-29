@@ -15,6 +15,8 @@ import { slideElementSchema } from '../../shared/model-schema';
 import type { PlayOrder, SlideSource } from '../engine/slide-source';
 import { playOrder } from '../../shared/order';
 import type { Db } from './database';
+import type { ContentRows } from './content';
+import { readContent, writeContent } from './content';
 import { SearchIndex } from './search';
 
 interface SourceColumns {
@@ -383,6 +385,19 @@ export class PresentationRepo {
       kirtan,
       source: toSource(p),
     };
+  }
+
+  /** A presentation's content as stored, ids and all (see content.ts); null if it is gone. */
+  content(id: string): ContentRows | null {
+    return readContent(this.db, id);
+  }
+
+  /** Put content back (edited words, a theme, Undo), search index included, in one transaction. */
+  setContent(rows: ContentRows): void {
+    this.db.transaction(() => {
+      writeContent(this.db, rows);
+      this.search.update(rows.presentationId);
+    })();
   }
 
   /** Choose the order a presentation plays in: one of its arrangements, or null for every slide. */

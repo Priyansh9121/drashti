@@ -158,6 +158,47 @@ export class ShowEngine {
     return { ok: true, actions: [{ type: 'timer/run', timerId, run }] };
   }
 
+  /**
+   * A presentation's slides changed (its words were edited, a theme was
+   * applied). If it is live, the slide on the screens shows its new content
+   * at once, at its place in the new order; a slide that is gone stays up
+   * until the operator moves on.
+   */
+  refreshLive(presentationId: string): CommandResult {
+    const live = this.state.live;
+    const order =
+      live.presentationId === presentationId && live.slideIndex !== null
+        ? this.source.order(presentationId, live.arrangementId)
+        : null;
+    if (!order || live.slideIndex === null) return this.refreshNext();
+    const shown = this.state.layers.slide;
+    const slideId = shown?.presentationId === presentationId ? shown.slide.id : null;
+    // The same slide, nearest to where it was (a repeated chorus comes more than once).
+    let index = -1;
+    order.slides.forEach((s, i) => {
+      if (
+        s.id === slideId &&
+        (index < 0 || Math.abs(i - (live.slideIndex ?? 0)) < Math.abs(index - (live.slideIndex ?? 0)))
+      )
+        index = i;
+    });
+    const played = order.slides[index];
+    if (!shown || !played) {
+      const slideIndex = index >= 0 ? index : Math.min(live.slideIndex, Math.max(0, order.slides.length - 1));
+      this.apply([
+        {
+          type: 'live/move',
+          slideIndex,
+          slideCount: order.slides.length,
+          arrangementId: order.arrangementId,
+        },
+      ]);
+    } else {
+      this.apply([this.showAction(presentationId, index, order, played, live.playlist)]);
+    }
+    return this.refreshNext();
+  }
+
   /** A playlist or presentation changed: what comes next may be different now. */
   refreshNext(): CommandResult {
     return this.apply([{ type: 'next/set', next: this.upNext(this.state.live) }]);
