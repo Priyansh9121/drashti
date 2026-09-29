@@ -4,6 +4,7 @@ import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
 import type { ImportOptions, ImportProgress, ImportReport, ImportResult, ImportRunSummary } from './import';
 import type { PresentationDoc, PresentationSummary, RemoveResult } from './library';
+import type { RecoveryNotice } from './recovery';
 import type { SaveStillResult } from './media';
 import type { CoverOptions, OutputContext, ScreenPatch, ScreensResult, ScreensSnapshot } from './screens';
 
@@ -17,6 +18,9 @@ export interface DrashtiBridge {
     getInfo(): Promise<AppInfo>;
     /** Edit > Undo was chosen (operator window). */
     onUndo(listener: () => void): () => void;
+    /** What was put back on the screens after Drashti stopped unexpectedly, until dismissed. */
+    recovery(): Promise<RecoveryNotice | null>;
+    dismissRecovery(): Promise<null>;
   };
   /** Files dropped on a page. */
   files: {

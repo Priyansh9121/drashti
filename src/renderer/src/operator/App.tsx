@@ -17,6 +17,7 @@ import { LivePreview } from './LivePreview';
 import { PresentationList } from './PresentationList';
 import { SlideGrid } from './SlideGrid';
 import { SoundWarning } from '../screens/SoundOutput';
+import { RecoveryBanner } from './RecoveryBanner';
 import { LiveStatus, ScreensSummary } from './StatusLine';
 import { isTyping, useKeymap } from './useKeymap';
 
@@ -73,6 +74,7 @@ export function App() {
         <Button onClick={openScreens}>Screens</Button>
       </header>
 
+      <RecoveryBanner />
       <PresentationList platform={platform} />
       <SlideGrid />
 

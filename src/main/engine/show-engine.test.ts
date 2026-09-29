@@ -394,6 +394,66 @@ describe('ShowEngine', () => {
     });
   });
 
+  describe('restart recovery', () => {
+    const background = {
+      kind: 'media',
+      mediaId: 'clouds',
+      media: 'video',
+      fit: 'fill',
+      loop: true,
+      startedAt: 42,
+    } as const;
+
+    it('puts back the slide (without its cues), the background as it was, and black-out, in one patch', () => {
+      const { engine, source, transport } = setup();
+      source.set(
+        'cued',
+        [textSlide('c1', 'One')],
+        [
+          [
+            {
+              kind: 'background',
+              label: '',
+              name: 'x',
+              missing: false,
+              background: { ...background, mediaId: 'other' },
+            },
+          ],
+        ],
+      );
+      const seen: number[] = [];
+      engine.onChange((state) => seen.push(state.layers.slide?.slideIndex ?? -1));
+      const put = engine.restore({
+        slide: { presentationId: 'cued', slideIndex: 0 },
+        background,
+        blackout: true,
+      });
+      expect(put).toEqual({ slide: true, background: true, blackout: true });
+      expect(engine.current.layers.slide?.slide).toEqual(textSlide('c1', 'One'));
+      // The saved background, with its start time; not the slide's own cue.
+      expect(engine.current.layers.background).toEqual(background);
+      expect(engine.current.blackout).toBe(true);
+      expect(transport.messages).toHaveLength(1);
+      expect(seen).toEqual([0]);
+    });
+
+    it('leaves out a slide that is no longer there', () => {
+      const { engine } = setup();
+      expect(
+        engine.restore({
+          slide: { presentationId: 'gone', slideIndex: 0 },
+          background: null,
+          blackout: false,
+        }),
+      ).toEqual({ slide: false, background: false, blackout: false });
+      expect(
+        engine.restore({ slide: { presentationId: 'p2', slideIndex: 5 }, background, blackout: false }).slide,
+      ).toBe(false);
+      expect(engine.current.layers.slide).toBeNull();
+      expect(engine.current.layers.background).toEqual(background);
+    });
+  });
+
   describe('black-out', () => {
     it('toggles and sets without touching layers', () => {
       const { engine } = setup();
