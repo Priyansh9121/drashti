@@ -13,7 +13,15 @@ import {
   requestRemoval,
   useImports,
 } from '../library/import-store';
-import { clickPresentation, useLibrary } from '../library/library-store';
+import {
+  clearSearch,
+  clickPresentation,
+  openHit,
+  setSearch,
+  useLibrary,
+  useSearch,
+} from '../library/library-store';
+import { SearchResults } from '../library/SearchResults';
 import { MediaList } from '../library/MediaList';
 import { startDrag } from '../playlists/drag';
 import { Button } from '../ui/Button';
@@ -192,6 +200,37 @@ export function describeRun(run: {
   return parts.length > 0 ? parts.join(' · ') : 'Nothing to import';
 }
 
+/** Search titles and slide text; Esc empties the box, Enter opens the first result. */
+function SearchBox() {
+  const query = useSearch((s) => s.query);
+  return (
+    <div className="px-2 pb-2">
+      <input
+        type="search"
+        id="library-search"
+        data-testid="library-search"
+        aria-label="Search presentations"
+        placeholder="Search titles and words…"
+        value={query}
+        spellCheck={false}
+        onChange={(e) => {
+          setSearch(e.target.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            clearSearch();
+          } else if (e.key === 'Enter') {
+            const first = useSearch.getState().result?.hits[0];
+            if (first) openHit(first);
+          }
+        }}
+        className="w-full rounded-md border border-line bg-ink px-2 py-1 text-sm text-white placeholder:text-muted focus-visible:outline-2 focus-visible:outline-accent"
+      />
+    </div>
+  );
+}
+
 export function PresentationList({ platform }: { platform: string }) {
   const presentations = useLibrary((s) => s.presentations);
   const selectedId = useLibrary((s) => s.selectedId);
@@ -204,6 +243,7 @@ export function PresentationList({ platform }: { platform: string }) {
   const listRef = useRef<HTMLUListElement>(null);
   const [view, setView] = useState({ top: 0, height: 800 });
   const [tab, setTab] = useState<'presentations' | 'media'>('presentations');
+  const searching = useSearch((s) => s.query.trim() !== '');
 
   // A heading where a library starts, when there is more than one (templates stay apart).
   const rows = useMemo(() => {
@@ -234,7 +274,7 @@ export function PresentationList({ platform }: { platform: string }) {
     return () => {
       observer.disconnect();
     };
-  }, [tab]);
+  }, [tab, searching]);
 
   // Bring a newly selected presentation into view (for example one opened from the import report).
   const latest = useRef({ rows, layout, heights });
@@ -243,12 +283,12 @@ export function PresentationList({ platform }: { platform: string }) {
   });
   useEffect(() => {
     const ul = listRef.current;
-    if (!ul || !selectedId || tab !== 'presentations') return;
+    if (!ul || !selectedId || tab !== 'presentations' || searching) return;
     const { rows: now, layout: at, heights: sizes } = latest.current;
     const index = now.findIndex((r) => r.kind === 'item' && r.p.id === selectedId);
     const to = scrollToShow(at, sizes, index, ul.scrollTop, ul.clientHeight);
     if (to !== null) ul.scrollTop = to;
-  }, [selectedId, tab]);
+  }, [selectedId, tab, searching]);
 
   const hasFiles = (e: DragEvent) => e.dataTransfer.types.includes('Files');
   const onDragEnter = (e: DragEvent) => {
@@ -317,7 +357,10 @@ export function PresentationList({ platform }: { platform: string }) {
         </div>
         <ImportMenu />
       </div>
-      {tab === 'media' ? (
+      <SearchBox />
+      {searching ? (
+        <SearchResults />
+      ) : tab === 'media' ? (
         <MediaList platform={platform} />
       ) : (
         <ul

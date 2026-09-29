@@ -39,6 +39,7 @@ const Thumb = memo(function Thumb({
   position,
   info,
   live,
+  found,
 }: {
   presentationId: string;
   /** The order this grid shows, which going live from here plays. */
@@ -49,11 +50,16 @@ const Thumb = memo(function Thumb({
   position: number;
   info: SlideInfo;
   live: boolean;
+  /** A search found this slide: bring it into view and mark it. */
+  found: boolean;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (live) ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [live]);
+  useEffect(() => {
+    if (found) ref.current?.scrollIntoView({ block: 'center' });
+  }, [found]);
   const background = info.cues.find((c): c is BackgroundCue => c.kind === 'background');
   const sound = info.cues.find((c) => c.kind === 'audio');
   return (
@@ -64,11 +70,12 @@ const Thumb = memo(function Thumb({
         data-testid="slide-thumb"
         data-index={position}
         data-slide-id={info.id}
+        data-found={found ? 'true' : undefined}
         aria-current={live ? 'true' : undefined}
         aria-label={`Slide ${position + 1}${info.label ? `: ${info.label}` : ''}${live ? ' (live)' : ''}`}
         onClick={() => void goLive(presentationId, position, arrangementId, playlist)}
         className={`group w-full overflow-hidden rounded-md border-2 bg-black text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
-          live ? 'border-live' : 'border-line hover:border-muted'
+          live ? 'border-live' : found ? 'border-accent' : 'border-line hover:border-muted'
         }`}
       >
         <span className="pointer-events-none relative block aspect-video w-full">
@@ -258,6 +265,7 @@ function PresentationGrid({ item }: { item: (ShownItem & { kind: 'presentation' 
   const selectedId = useLibrary((s) => s.selectedId);
   const live = useEngine((s) => s.state?.live);
   const liveSlideId = useEngine((s) => s.state?.layers.slide?.slide.id ?? null);
+  const focusSlideId = useLibrary((s) => s.focusSlideId);
   const order = useMemo(
     () =>
       doc
@@ -278,6 +286,8 @@ function PresentationGrid({ item }: { item: (ShownItem & { kind: 'presentation' 
     (live.arrangementId === order.arrangementId
       ? o.position === live.slideIndex
       : o.slide.id === liveSlideId);
+  // The slide a search found (its first place in the order).
+  const found = order.slides.find((o) => o.slide.id === focusSlideId)?.position ?? -1;
   // Until the newly selected presentation arrives, the old slides cannot be clicked:
   // a quick click must never put the previous presentation's slide live.
   const stale = doc.id !== selectedId || (item !== null && item.presentationId !== doc.id);
@@ -316,6 +326,7 @@ function PresentationGrid({ item }: { item: (ShownItem & { kind: 'presentation' 
                 position={o.position}
                 info={o.slide}
                 live={isLive(o)}
+                found={o.position === found}
               />
             ))}
           </ul>

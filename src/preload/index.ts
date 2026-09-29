@@ -41,6 +41,8 @@ const bridge: DrashtiBridge = {
   library: {
     listPresentations: () => invoke(IPC.library.listPresentations),
     listMedia: () => invoke(IPC.library.listMedia),
+    search: (query) => invoke(IPC.library.search, query),
+    legacyPresentations: () => invoke(IPC.library.legacyPresentations),
     getPresentation: (id) => invoke(IPC.library.getPresentation, id),
     onChanged: (listener) =>
       on(IPC.library.changed, () => {

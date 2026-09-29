@@ -14,6 +14,7 @@ import type {
   PlaylistNode,
   PlaylistResult,
 } from './playlists';
+import type { SearchResult } from './search';
 import type { CoverOptions, OutputContext, ScreenPatch, ScreensResult, ScreensSnapshot } from './screens';
 
 /**
@@ -52,6 +53,10 @@ export interface DrashtiBridge {
     listPresentations(): Promise<PresentationSummary[]>;
     /** Every media item, for the library's media list. */
     listMedia(): Promise<MediaSummary[]>;
+    /** Presentations by title and slide text, best first. */
+    search(query: string): Promise<SearchResult>;
+    /** Presentations with slide text in legacy fonts, which search cannot read yet. */
+    legacyPresentations(): Promise<{ id: string; name: string }[]>;
     getPresentation(id: string): Promise<PresentationDoc | null>;
     /** Presentations were added or changed (for example by an import). */
     onChanged(listener: () => void): () => void;

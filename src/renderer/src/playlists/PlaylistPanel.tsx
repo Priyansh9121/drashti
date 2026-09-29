@@ -164,6 +164,11 @@ function PlaylistTree({ platform }: { platform: string }) {
         data-testid="playlist-tree"
         className="min-h-0 flex-1 overflow-y-auto px-2 pb-2"
       >
+        {tree.length === 0 && (
+          <li className="px-2 py-1 text-xs text-muted">
+            No playlists yet. Make one with New, or import a playlist file.
+          </li>
+        )}
         {rows.map(({ node, depth }) => {
           const open = node.isFolder && !closed.includes(node.id);
           const indent = { paddingLeft: 8 + depth * 14 };
@@ -261,11 +266,6 @@ function PlaylistTree({ platform }: { platform: string }) {
           );
         })}
       </ul>
-      {tree.length === 0 && (
-        <p className="px-4 pb-3 text-xs text-muted">
-          No playlists yet. Make one with New, or import a playlist file.
-        </p>
-      )}
       {menu && (
         <Menu
           at={menu.at}

@@ -15,6 +15,7 @@ import { slideElementSchema } from '../../shared/model-schema';
 import type { PlayOrder, SlideSource } from '../engine/slide-source';
 import { playOrder } from '../../shared/order';
 import type { Db } from './database';
+import { SearchIndex } from './search';
 
 interface SourceColumns {
   source_kind: ImportSource['kind'] | null;
@@ -203,8 +204,11 @@ export class PresentationRepo {
 
   /** Elements that failed validation on the last get(), for diagnostics. */
   skippedElements: string[] = [];
+  private readonly search: SearchIndex;
 
-  constructor(private readonly db: Db) {}
+  constructor(private readonly db: Db) {
+    this.search = new SearchIndex(db);
+  }
 
   ensureLibrary(name: string): string {
     const found = this.db.prepare('SELECT id FROM libraries WHERE name = ?').get(name) as
@@ -575,6 +579,8 @@ export class PresentationRepo {
       tracks,
       id,
     );
+    // Searchable as soon as it is written (same transaction).
+    this.search.update(id);
   }
 
   /**
