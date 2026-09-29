@@ -20,6 +20,7 @@ import { MEDIA_ID_PATTERN, MEDIA_SCHEME } from '../shared/media';
 import { idSchema } from '../shared/model-schema';
 import { z } from 'zod';
 import type { OutputContext } from '../shared/screens';
+import { type RecoveryNotice, recoveryText } from '../shared/recovery';
 import type { Db } from './db/database';
 import { LATEST_VERSION, openDatabase } from './db/database';
 import { ImportRepo } from './db/imports';
@@ -35,6 +36,7 @@ import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
 import { AudioOutput } from './audio/audio-output';
 import { log } from './log';
+import { LiveStateWriter, toRestore } from './recovery/live-state';
 import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES } from './media/media-protocol';
 import { saveStill } from './media/stills';
 import { installMenu } from './menu';
@@ -325,6 +327,42 @@ function start(): void {
     setUncoverShortcut(here !== null && showing.has(here));
   };
 
+  // ---- restart recovery --------------------------------------------------------
+  // What is live is saved as it changes; after an unexpected stop it goes back on the screens.
+  const recoveryFiles = {
+    state: join(userDataDir, 'live-state.json'),
+    cleanMark: join(userDataDir, 'live-state.clean'),
+  };
+  const liveWriter = new LiveStateWriter(recoveryFiles, {
+    log: (message) => {
+      log.warn(message);
+    },
+  });
+  engine.onChange((state) => {
+    liveWriter.update(state);
+  });
+  let recovery: RecoveryNotice | null = null;
+  const saved = toRestore(recoveryFiles);
+  if (saved) {
+    const put = engine.restore(saved);
+    const name = put.slide && saved.slide ? presentations.get(saved.slide.presentationId)?.name : undefined;
+    recovery = {
+      savedAt: saved.savedAt,
+      slide:
+        saved.slide && put.slide
+          ? { presentationName: name ?? '', slideNumber: saved.slide.slideIndex + 1 }
+          : null,
+      slideGone: saved.slide !== null && !put.slide,
+      background: put.background,
+      blackout: put.blackout,
+    };
+    log.warn(recoveryText(recovery));
+  }
+  // Only a quit on purpose is clean (not a crash, and not the self-test's exit).
+  app.on('will-quit', () => {
+    liveWriter.markClean();
+  });
+
   // ---- imports ----------------------------------------------------------------
   const sendToOperator = <C extends EventChannel>(channel: C, payload: EventContract[C]) => {
     if (operatorWindow && !operatorWindow.isDestroyed()) operatorWindow.webContents.send(channel, payload);
@@ -399,6 +437,11 @@ function start(): void {
 
   // ---- IPC ----------------------------------------------------------------
   handle(IPC.app.getInfo, () => appInfo());
+  handle(IPC.app.recovery, () => recovery);
+  handle(IPC.app.dismissRecovery, (e) => {
+    if (fromOperator(e)) recovery = null;
+    return null;
+  });
   handle(IPC.engine.subscribe, (event) => {
     transport.add(event.sender);
     return engine.snapshot();

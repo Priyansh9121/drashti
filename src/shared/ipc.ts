@@ -4,6 +4,7 @@ import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
 import type { ImportOptions, ImportProgress, ImportReport, ImportResult, ImportRunSummary } from './import';
 import type { PresentationDoc, PresentationSummary, RemoveResult } from './library';
+import type { RecoveryNotice } from './recovery';
 import type { SaveStillResult } from './media';
 import type { CoverOptions, OutputContext, ScreenPatch, ScreensResult, ScreensSnapshot } from './screens';
 
@@ -16,6 +17,10 @@ export const IPC = {
     getInfo: 'app:get-info',
     /** main -> operator: Edit > Undo was chosen (the page decides what to undo). */
     undo: 'app:undo',
+    /** What was put back on the screens after an unexpected stop, or null. */
+    recovery: 'app:recovery',
+    /** The operator has read the recovery notice. */
+    dismissRecovery: 'app:dismiss-recovery',
   },
   engine: {
     /** Start receiving engine messages in this window; returns a snapshot. */
@@ -88,6 +93,8 @@ export const IPC = {
 /** Request/response channels: arguments and result for each. */
 export interface InvokeContract {
   [IPC.app.getInfo]: { args: []; result: AppInfo };
+  [IPC.app.recovery]: { args: []; result: RecoveryNotice | null };
+  [IPC.app.dismissRecovery]: { args: []; result: null };
   [IPC.engine.subscribe]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.snapshot]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.command]: { args: [command: EngineCommand]; result: CommandResult };

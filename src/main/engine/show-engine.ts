@@ -21,9 +21,17 @@ type Resolved = { ok: true; actions: EngineAction[] } | Extract<CommandResult, {
  * The show engine. It owns the live state, turns commands into actions,
  * and sends every change as a versioned patch through the transport.
  */
+/** What restart recovery puts back (see recovery/live-state.ts). */
+export interface RestoreRequest {
+  slide: { presentationId: string; slideIndex: number } | null;
+  background: BackgroundLayer | null;
+  blackout: boolean;
+}
+
 export class ShowEngine {
   private state: EngineState = initialEngineState();
   private revision = 0;
+  private readonly listeners = new Set<(state: EngineState) => void>();
 
   constructor(
     private readonly source: SlideSource,
@@ -53,6 +61,46 @@ export class ShowEngine {
     const resolved = this.resolve(command);
     if (!resolved.ok) return resolved;
     return this.apply(resolved.actions);
+  }
+
+  /** Called after every change, once the change has been sent to the windows. */
+  onChange(listener: (state: EngineState) => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  /**
+   * Put back what was live before an unexpected stop: the slide (without
+   * running its cues again, so a background cleared since stays cleared),
+   * the background as it was (a video carries on from where it would be
+   * now), and black-out. A slide that no longer exists is left out.
+   */
+  restore(request: RestoreRequest): { slide: boolean; background: boolean; blackout: boolean } {
+    const actions: EngineAction[] = [];
+    let slide = false;
+    if (request.slide) {
+      const { presentationId, slideIndex } = request.slide;
+      const count = this.source.slideCount(presentationId);
+      const found =
+        count !== null && slideIndex < count ? this.source.slide(presentationId, slideIndex) : null;
+      if (count !== null && found) {
+        actions.push({
+          type: 'slide/show',
+          presentationId,
+          slideIndex,
+          slideCount: count,
+          slide: found,
+          at: this.now(),
+        });
+        slide = true;
+      }
+    }
+    if (request.background) actions.push({ type: 'background/set', background: request.background });
+    if (request.blackout) actions.push({ type: 'blackout/set', on: true });
+    this.apply(actions);
+    return { slide, background: request.background !== null, blackout: request.blackout };
   }
 
   private showSlide(presentationId: string, slideIndex: number): Resolved {
@@ -175,6 +223,7 @@ export class ShowEngine {
       ops,
       sentAt: this.now(),
     });
+    for (const listener of this.listeners) listener(next);
     return { ok: true, changed: true, rev: this.revision };
   }
 }

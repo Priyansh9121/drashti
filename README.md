@@ -112,7 +112,8 @@ Every shortcut is defined in one file, `src/shared/keymap.ts`. The current keys 
 - Sound comes from one hidden **audio player** window, a renderer process of its own that the watchdog also watches. The operator window crashing or reloading never touches it, so the sound carries on. If the audio player itself crashes, it is reloaded and rejoins every sound at the right point.
 - Closing the operator window while screens are showing asks first, because quitting blacks out every screen.
 - While any output is showing, Drashti keeps the displays from sleeping or dimming (a 'prevent-display-sleep' power blocker, which also keeps the screen saver away). It lets go when no output is showing.
-- Not covered yet: a crash of the main process itself ends the app. ProPresenter stays installed as the practised fallback until cutover (PLAN.md section 5.1).
+- **Restart recovery.** What is live (the slide on the screens, the background and black-out) is saved to a small file as it changes, in the background and a quarter of a second at most after the change, never in the way of a slide change. If Drashti itself stops unexpectedly (a crash of the main process, a power cut), the next start opens the screens, puts the same slide, background and black-out back by itself (a background video carries on from where it would be by then) and tells the operator what it put back. After a clean quit it starts with nothing live. Audio, props and messages are not put back.
+- A crash of the main process still blacks out the screens until Drashti is started again. ProPresenter stays installed as the practised fallback until cutover (PLAN.md section 5.1).
 
 **Manual check.** Start Drashti with diagnostics turned on:
 
@@ -155,7 +156,7 @@ Imports run in a separate worker process (an Electron utility process, `src/main
 
 ## Where data lives
 
-The library is `drashti.sqlite` in Electron's userData folder: `~/Library/Application Support/Drashti/` on macOS and `%APPDATA%\Drashti\` on Windows. Imported media is in the `Media` folder next to it (each file once, named by its sha256), with the video thumbnails' still frames in `Media/stills/`. Real ProPresenter data from the mandir machines belongs in `migration-samples/` at the workspace root, outside this repository, and is never committed.
+The library is `drashti.sqlite` in Electron's userData folder: `~/Library/Application Support/Drashti/` on macOS and `%APPDATA%\Drashti\` on Windows. Imported media is in the `Media` folder next to it (each file once, named by its sha256), with the video thumbnails' still frames in `Media/stills/`. `live-state.json` holds what is live, for restart recovery, and `live-state.clean` marks a clean quit. The audio player keeps its own browser data under `Partitions/drashti-audio`. Real ProPresenter data from the mandir machines belongs in `migration-samples/` at the workspace root, outside this repository, and is never committed.
 
 ## Folder layout
 

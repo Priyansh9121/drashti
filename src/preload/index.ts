@@ -26,6 +26,8 @@ const bridge: DrashtiBridge = {
       on(IPC.app.undo, () => {
         listener();
       }),
+    recovery: () => invoke(IPC.app.recovery),
+    dismissRecovery: () => invoke(IPC.app.dismissRecovery),
   },
   files: {
     pathFor: (file) => webUtils.getPathForFile(file),
