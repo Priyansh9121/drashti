@@ -13,21 +13,22 @@ import {
 import type { EngineTransport } from '../../shared/engine/transport';
 import type { EngineAction } from './actions';
 import { reduce } from './reducer';
-import type { SlideSource } from './slide-source';
+import { remapPosition } from '../../shared/order';
+import type { PlayedSlide, PlayOrder, SlideSource } from './slide-source';
 
 type Resolved = { ok: true; actions: EngineAction[] } | Extract<CommandResult, { ok: false }>;
+
+/** What restart recovery puts back (see recovery/live-state.ts). */
+export interface RestoreRequest {
+  slide: { presentationId: string; slideIndex: number; arrangementId?: string | null } | null;
+  background: BackgroundLayer | null;
+  blackout: boolean;
+}
 
 /**
  * The show engine. It owns the live state, turns commands into actions,
  * and sends every change as a versioned patch through the transport.
  */
-/** What restart recovery puts back (see recovery/live-state.ts). */
-export interface RestoreRequest {
-  slide: { presentationId: string; slideIndex: number } | null;
-  background: BackgroundLayer | null;
-  blackout: boolean;
-}
-
 export class ShowEngine {
   private state: EngineState = initialEngineState();
   private revision = 0;
@@ -81,19 +82,11 @@ export class ShowEngine {
     const actions: EngineAction[] = [];
     let slide = false;
     if (request.slide) {
-      const { presentationId, slideIndex } = request.slide;
-      const count = this.source.slideCount(presentationId);
-      const found =
-        count !== null && slideIndex < count ? this.source.slide(presentationId, slideIndex) : null;
-      if (count !== null && found) {
-        actions.push({
-          type: 'slide/show',
-          presentationId,
-          slideIndex,
-          slideCount: count,
-          slide: found,
-          at: this.now(),
-        });
+      const { presentationId, slideIndex, arrangementId } = request.slide;
+      const order = this.source.order(presentationId, arrangementId);
+      const found = order?.slides[slideIndex];
+      if (order && found) {
+        actions.push(this.showAction(presentationId, slideIndex, order, found));
         slide = true;
       }
     }
@@ -103,23 +96,61 @@ export class ShowEngine {
     return { slide, background: request.background !== null, blackout: request.blackout };
   }
 
-  private showSlide(presentationId: string, slideIndex: number): Resolved {
-    const count = this.source.slideCount(presentationId);
-    if (count === null)
+  /**
+   * The operator changed a presentation's order (its selected arrangement).
+   * If it is live, the live position follows the new order, with the same
+   * slide on screen: Next then carries on in the new order.
+   */
+  reorderLive(presentationId: string): CommandResult {
+    const live = this.state.live;
+    if (live.presentationId !== presentationId || live.slideIndex === null)
+      return { ok: true, changed: false, rev: this.revision };
+    const before = this.source.order(presentationId, live.arrangementId);
+    const after = this.source.order(presentationId);
+    if (!before || !after) return { ok: true, changed: false, rev: this.revision };
+    const slideIndex = remapPosition(
+      before.slides.map((s) => ({ slide: s })),
+      after.slides.map((s) => ({ slide: s })),
+      live.slideIndex,
+    );
+    return this.apply([
+      { type: 'live/move', slideIndex, slideCount: after.slides.length, arrangementId: after.arrangementId },
+    ]);
+  }
+
+  private showAction(
+    presentationId: string,
+    slideIndex: number,
+    order: PlayOrder,
+    played: PlayedSlide,
+  ): EngineAction {
+    return {
+      type: 'slide/show',
+      presentationId,
+      slideIndex,
+      slideCount: order.slides.length,
+      arrangementId: order.arrangementId,
+      slide: played.slide,
+      notes: played.notes,
+      at: this.now(),
+    };
+  }
+
+  private showSlide(presentationId: string, slideIndex: number, arrangementId?: string | null): Resolved {
+    const order = this.source.order(presentationId, arrangementId);
+    if (!order)
       return { ok: false, error: 'unknown-presentation', message: `No presentation ${presentationId}` };
-    const slide = slideIndex < count ? this.source.slide(presentationId, slideIndex) : null;
-    if (!slide) {
+    const played = order.slides[slideIndex];
+    if (!played) {
       return {
         ok: false,
         error: 'slide-out-of-range',
-        message: `Slide ${slideIndex + 1} of ${count} does not exist`,
+        message: `Slide ${slideIndex + 1} of ${order.slides.length} does not exist`,
       };
     }
-    const actions: EngineAction[] = [
-      { type: 'slide/show', presentationId, slideIndex, slideCount: count, slide, at: this.now() },
-    ];
+    const actions: EngineAction[] = [this.showAction(presentationId, slideIndex, order, played)];
     // The slide's background and sound go on their layers; a slide without them leaves those layers as they are.
-    for (const cue of this.source.cues(presentationId, slideIndex)) {
+    for (const cue of played.cues) {
       if (cue.kind === 'background') {
         actions.push({ type: 'background/set', background: this.backgroundLayer(cue.background) });
       } else {
@@ -157,24 +188,26 @@ export class ShowEngine {
    * cleared the cursor stays put, so Next shows the following slide.
    */
   private step(delta: 1 | -1): Resolved {
-    const { presentationId, slideIndex } = this.state.live;
+    const { presentationId, slideIndex, arrangementId } = this.state.live;
     if (presentationId === null || slideIndex === null) {
       return { ok: false, error: 'nothing-live', message: 'Nothing is live yet' };
     }
-    const count = this.source.slideCount(presentationId);
-    if (count === null)
+    // Along the order being played: a repeated chorus comes up again.
+    const order = this.source.order(presentationId, arrangementId);
+    if (!order)
       return { ok: false, error: 'unknown-presentation', message: `No presentation ${presentationId}` };
+    const count = order.slides.length;
     let target = slideIndex + delta;
     // If the presentation got shorter underneath us, Previous goes to its last slide.
     if (delta < 0 && target >= count) target = count - 1;
     if (target < 0 || target >= count) return { ok: true, actions: [] };
-    return this.showSlide(presentationId, target);
+    return this.showSlide(presentationId, target, order.arrangementId);
   }
 
   private resolve(command: EngineCommand): Resolved {
     switch (command.type) {
       case 'goLive':
-        return this.showSlide(command.presentationId, command.slideIndex);
+        return this.showSlide(command.presentationId, command.slideIndex, command.arrangementId);
       case 'next':
         return this.step(1);
       case 'previous':

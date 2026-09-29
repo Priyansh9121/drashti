@@ -9,7 +9,8 @@ import type { Db } from './database';
  */
 
 export type NewPlaylistItem =
-  | { kind: 'presentation'; presentationId: string; label: string }
+  /** arrangementRef: the source file's id of the arrangement the item plays its presentation in. */
+  | { kind: 'presentation'; presentationId: string; label: string; arrangementRef?: string | null }
   | { kind: 'media'; mediaId: string; label: string }
   | { kind: 'header'; label: string; color: string | null }
   | { kind: 'placeholder'; label: string; hint: string | null };
@@ -72,8 +73,12 @@ export class PlaylistRepo {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const insertItem = this.db.prepare(
-      `INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, media_id, label, color, hint)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, media_id, label, color, hint, arrangement_id, order_mode)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    // The arrangement a playlist item names, found by its id in the source file.
+    const arrangementByRef = this.db.prepare(
+      'SELECT id FROM arrangements WHERE presentation_id = ? AND source_ref = ? ORDER BY position LIMIT 1',
     );
     const top = (
       this.db
@@ -99,6 +104,10 @@ export class PlaylistRepo {
       counts.playlists++;
       if (parentId === null) counts.ids.push(id);
       list.items.forEach((item, i) => {
+        const arrangement =
+          item.kind === 'presentation' && item.arrangementRef
+            ? (arrangementByRef.get(item.presentationId, item.arrangementRef) as { id: string } | undefined)
+            : undefined;
         insertItem.run(
           randomUUID(),
           id,
@@ -109,6 +118,8 @@ export class PlaylistRepo {
           item.label,
           item.kind === 'header' ? item.color : null,
           item.kind === 'placeholder' ? item.hint : null,
+          arrangement?.id ?? null,
+          arrangement ? 'arrangement' : 'presentation',
         );
         counts.items++;
       });

@@ -24,6 +24,7 @@ describe('the sounds the show makes', () => {
           presentationId: 'p',
           slideIndex: 2,
           shownAt: 5000,
+          notes: '',
           slide: {
             id: 's',
             width: 1920,
@@ -51,7 +52,7 @@ describe('the sounds the show makes', () => {
     );
     expect(sounds).toEqual([
       { key: 'background:bg@1000', mediaId: 'bg', startedAt: 1000, loop: true, volume: 1 },
-      { key: 'slide:p/2/v1@5000', mediaId: 'clip', startedAt: 5000, loop: false, volume: 1 },
+      { key: 'slide:s/v1@5000', mediaId: 'clip', startedAt: 5000, loop: false, volume: 1 },
     ]);
   });
 

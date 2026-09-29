@@ -1,42 +1,75 @@
 import type { SlideCue } from '../../shared/library';
 import type { RenderSlide } from '../../shared/model';
 
+/** One slide as the engine plays it. */
+export interface PlayedSlide {
+  /** The slide's id: the same slide comes up more than once when an arrangement repeats its group. */
+  id: string;
+  slide: RenderSlide;
+  cues: readonly SlideCue[];
+  notes: string;
+}
+
+/** A presentation's slides in playing order (PLAN.md 4.3, arrangements). */
+export interface PlayOrder {
+  /** The arrangement they follow, or null for every slide in order. */
+  arrangementId: string | null;
+  slides: readonly PlayedSlide[];
+}
+
 /** Where the engine looks up slides. Backed by SQLite in the app, by memory in tests. */
 export interface SlideSource {
-  /** Number of slides in the presentation (in its current order), or null if it does not exist. */
-  slideCount(presentationId: string): number | null;
-  /** The slide at `index`, or null when the presentation or index does not exist. */
-  slide(presentationId: string, index: number): RenderSlide | null;
-  /** What the slide at `index` does on the other layers when it goes live. */
-  cues(presentationId: string, index: number): readonly SlideCue[];
+  /**
+   * A presentation's slides in playing order, or null if it does not exist:
+   * its selected order when `arrangementId` is left out, every slide in
+   * order for null, or that arrangement's order (every slide, if the
+   * presentation has no such arrangement).
+   */
+  order(presentationId: string, arrangementId?: string | null): PlayOrder | null;
+}
+
+interface MemoryEntry {
+  slides: PlayedSlide[];
+  /** Arrangements as lists of slide indexes (tests do not need groups). */
+  arrangements: Map<string, number[]>;
+  selected: string | null;
 }
 
 /** A SlideSource over an in-memory map. */
 export class MemorySlideSource implements SlideSource {
-  private readonly slideCues = new Map<string, SlideCue[][]>();
+  private readonly entries = new Map<string, MemoryEntry>();
 
-  constructor(private readonly presentations: Map<string, RenderSlide[]> = new Map()) {}
-
-  /** `cues[i]` are slide i's cues. */
-  set(presentationId: string, slides: RenderSlide[], cues: SlideCue[][] = []): void {
-    this.presentations.set(presentationId, slides);
-    this.slideCues.set(presentationId, cues);
+  /** `cues[i]` and `notes[i]` belong to slide i; an arrangement lists slide indexes. */
+  set(
+    presentationId: string,
+    slides: RenderSlide[],
+    cues: SlideCue[][] = [],
+    options: { arrangements?: Record<string, number[]>; selected?: string | null; notes?: string[] } = {},
+  ): void {
+    this.entries.set(presentationId, {
+      slides: slides.map((slide, i) => ({
+        id: slide.id,
+        slide,
+        cues: cues[i] ?? [],
+        notes: options.notes?.[i] ?? '',
+      })),
+      arrangements: new Map(Object.entries(options.arrangements ?? {})),
+      selected: options.selected ?? null,
+    });
   }
 
   delete(presentationId: string): void {
-    this.presentations.delete(presentationId);
-    this.slideCues.delete(presentationId);
+    this.entries.delete(presentationId);
   }
 
-  slideCount(presentationId: string): number | null {
-    return this.presentations.get(presentationId)?.length ?? null;
-  }
-
-  slide(presentationId: string, index: number): RenderSlide | null {
-    return this.presentations.get(presentationId)?.[index] ?? null;
-  }
-
-  cues(presentationId: string, index: number): readonly SlideCue[] {
-    return this.slideCues.get(presentationId)?.[index] ?? [];
+  order(presentationId: string, arrangementId?: string | null): PlayOrder | null {
+    const entry = this.entries.get(presentationId);
+    if (!entry) return null;
+    const wanted = arrangementId === undefined ? entry.selected : arrangementId;
+    const indexes = wanted === null ? undefined : entry.arrangements.get(wanted);
+    const slides = indexes?.flatMap((i) => (entry.slides[i] ? [entry.slides[i]] : [])) ?? [];
+    return slides.length > 0 && wanted !== null
+      ? { arrangementId: wanted, slides }
+      : { arrangementId: null, slides: entry.slides };
   }
 }

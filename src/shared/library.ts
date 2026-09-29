@@ -79,12 +79,22 @@ export interface GroupInfo {
   slides: SlideInfo[];
 }
 
+/** A named order of a presentation's groups (repeats allowed): verse, chorus, verse, chorus... */
+export interface ArrangementInfo {
+  id: string;
+  name: string;
+  groupIds: string[];
+}
+
 export interface PresentationDoc {
   id: string;
   name: string;
   width: number;
   height: number;
   groups: GroupInfo[];
+  arrangements: ArrangementInfo[];
+  /** The order it plays in when nothing says otherwise: an arrangement, or null for all slides in order. */
+  selectedArrangementId: string | null;
   kirtan: {
     category: string | null;
     kavi: string | null;

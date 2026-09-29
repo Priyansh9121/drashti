@@ -44,6 +44,8 @@ export const IPC = {
     pickImportPaths: 'library:pick-import-paths',
     /** Ask for a folder, then look there for missing media. */
     relinkMedia: 'library:relink-media',
+    /** Choose the order a presentation plays in (operator window only). */
+    setArrangement: 'library:set-arrangement',
     removePresentations: 'library:remove-presentations',
     restorePresentations: 'library:restore-presentations',
     /** main -> operator: how an import is going. */
@@ -106,6 +108,10 @@ export interface InvokeContract {
   [IPC.library.getImportReport]: { args: [runId: string]; result: ImportReport | null };
   [IPC.library.pickImportPaths]: { args: [kind: 'files' | 'folder']; result: string[] };
   [IPC.library.relinkMedia]: { args: [mediaIds?: string[]]; result: ImportResult };
+  [IPC.library.setArrangement]: {
+    args: [presentationId: string, arrangementId: string | null];
+    result: { ok: true } | { ok: false; message: string };
+  };
   [IPC.library.removePresentations]: { args: [ids: string[]]; result: RemoveResult };
   [IPC.library.restorePresentations]: { args: [ids: string[]]; result: RemoveResult };
   [IPC.media.saveStill]: { args: [mediaId: string, jpeg: Uint8Array]; result: SaveStillResult };

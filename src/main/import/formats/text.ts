@@ -163,7 +163,8 @@ export function parseLyricsText(bytes: Uint8Array, fileName: string): ParsedPres
       });
     }
   }
-  const arrangements: ParsedArrangement[] = repeats ? [{ name: 'As written', groups: order }] : [];
+  // The song as written (with its repeats) is how it is sung: that arrangement is the one played.
+  const arrangements: ParsedArrangement[] = repeats ? [{ name: 'As written', groups: order, ref: null }] : [];
 
   if (groups.length === 0) {
     issues.push({
@@ -181,6 +182,7 @@ export function parseLyricsText(bytes: Uint8Array, fileName: string): ParsedPres
     notes: '',
     groups,
     arrangements,
+    selectedArrangement: repeats ? 0 : null,
     media: [],
     issues,
   };

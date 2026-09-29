@@ -199,6 +199,7 @@ export function toNewPresentation(
       })),
     })),
     arrangements: parsed.arrangements,
+    selectedArrangement: parsed.selectedArrangement,
     source,
     sourceHash: hash,
   };
@@ -614,7 +615,12 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
               case 'presentation': {
                 const id = resolved.get(item) ?? null;
                 return id
-                  ? { kind: 'presentation', presentationId: id, label: item.name }
+                  ? {
+                      kind: 'presentation',
+                      presentationId: id,
+                      label: item.name,
+                      arrangementRef: item.arrangementRef,
+                    }
                   : {
                       kind: 'placeholder',
                       label: item.name,

@@ -19,10 +19,14 @@ export type EngineAction =
       presentationId: string;
       slideIndex: number;
       slideCount: number;
+      arrangementId: string | null;
       slide: RenderSlide;
+      notes: string;
       /** The time, for the slide layer's shownAt. */
       at: number;
     }
+  /** The live position moves (the order changed) while the same slide stays on screen. */
+  | { type: 'live/move'; slideIndex: number; slideCount: number; arrangementId: string | null }
   | { type: 'layer/clear'; layer: LayerName }
   | { type: 'layers/clearAll' }
   | { type: 'blackout/set'; on: boolean }

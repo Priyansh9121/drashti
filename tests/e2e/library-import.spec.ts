@@ -64,8 +64,9 @@ test('drag lyrics onto the library, read the report, go live, remove and undo, i
   await expect(win.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toHaveText(
     'Placeholder Song One',
   );
+  // As written: verse 1 (two slides), the chorus, verse 1 again.
   const thumbs = win.getByTestId('slide-thumb');
-  await expect(thumbs).toHaveCount(3);
+  await expect(thumbs).toHaveCount(5);
   await thumbs.first().click();
   await expect(output.locator('[data-element]')).toContainText('Placeholder song one, first line');
   await thumbs.nth(2).click();
@@ -98,7 +99,7 @@ test('drag lyrics onto the library, read the report, go live, remove and undo, i
   await expect(win.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toHaveText(
     'Placeholder Song One',
   );
-  await expect(thumbs).toHaveCount(3);
+  await expect(thumbs).toHaveCount(5);
   await expect(win.getByTestId('undo-removal')).toHaveCount(0);
 
   // Edit > Undo does the same (the menu owns Cmd/Ctrl+Z, so text fields keep their own undo).

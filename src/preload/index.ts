@@ -52,6 +52,8 @@ const bridge: DrashtiBridge = {
     getImportReport: (runId) => invoke(IPC.library.getImportReport, runId),
     pickImportPaths: (kind) => invoke(IPC.library.pickImportPaths, kind),
     relinkMedia: (mediaIds) => invoke(IPC.library.relinkMedia, mediaIds),
+    setArrangement: (presentationId, arrangementId) =>
+      invoke(IPC.library.setArrangement, presentationId, arrangementId),
     removePresentations: (ids) => invoke(IPC.library.removePresentations, ids),
     restorePresentations: (ids) => invoke(IPC.library.restorePresentations, ids),
   },

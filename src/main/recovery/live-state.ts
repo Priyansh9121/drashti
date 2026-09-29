@@ -24,8 +24,8 @@ export interface SavedLive {
   /** The engine state version the background was saved with; another version is not restored. */
   engineVersion: number;
   savedAt: string;
-  /** The slide on screen (not just the cursor: a cleared slide is not put back). */
-  slide: { presentationId: string; slideIndex: number } | null;
+  /** The slide on screen (not just the cursor: a cleared slide is not put back), in the order it was played in. */
+  slide: { presentationId: string; slideIndex: number; arrangementId: string | null } | null;
   background: BackgroundLayer | null;
   blackout: boolean;
 }
@@ -47,7 +47,14 @@ const savedSchema = z.object({
   session: z.string().min(1).max(64),
   engineVersion: z.number(),
   savedAt: z.string(),
-  slide: z.object({ presentationId: idSchema, slideIndex: z.number().int().min(0) }).nullable(),
+  slide: z
+    .object({
+      presentationId: idSchema,
+      slideIndex: z.number().int().min(0),
+      // Files saved before arrangements played every slide in order.
+      arrangementId: idSchema.nullable().default(null),
+    })
+    .nullable(),
   // Checked below, only when the engine version matches.
   background: z.unknown(),
   blackout: z.boolean(),
@@ -61,7 +68,13 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
     session,
     engineVersion: ENGINE_STATE_VERSION,
     savedAt: now.toISOString(),
-    slide: slide ? { presentationId: slide.presentationId, slideIndex: slide.slideIndex } : null,
+    slide: slide
+      ? {
+          presentationId: slide.presentationId,
+          slideIndex: slide.slideIndex,
+          arrangementId: state.live.arrangementId,
+        }
+      : null,
     background: state.layers.background,
     blackout: state.blackout,
   };

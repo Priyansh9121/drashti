@@ -84,7 +84,19 @@ describe('parsePp6: presentations', () => {
       ['Verse 1', '#0000ff', 2],
       ['Chorus', '#ff0000', 1],
     ]);
-    expect(p.arrangements).toEqual([{ name: 'Usual', groups: [0, 1, 0] }]);
+    expect(p.arrangements).toEqual([{ name: 'Usual', groups: [0, 1, 0], ref: 'AR-0' }]);
+    // Not set to play in an arrangement: every slide in order.
+    expect(p.selectedArrangement).toBeNull();
+    const chosen = pp6Presentation({
+      uuid: 'DOC-S',
+      groups: [{ name: 'Verse', uuid: 'G-V', slides: [{}] }],
+      arrangements: [
+        { name: 'One', groups: ['G-V'] },
+        { name: 'Two', groups: ['G-V', 'G-V'] },
+      ],
+      selectedArrangement: 1,
+    });
+    expect(presentation(chosen).selectedArrangement).toBe(1);
     const first = p.groups[0]?.slides[0];
     expect([first?.label, first?.notes, first?.enabled]).toEqual(['Opening', 'Placeholder note', true]);
     expect(p.groups[1]?.slides[0]?.enabled).toBe(false);
@@ -243,6 +255,7 @@ describe('parsePp6: templates and playlists', () => {
               {
                 document: '/Users/op/Documents/ProPresenter6/Placeholder Hymn.pro6',
                 name: 'Placeholder Hymn',
+                arrangement: 1,
               },
               { media: '/Media/Loops/Blue Loop.mov', name: 'Loop' },
               { other: 'RVTimerCue' },
@@ -271,6 +284,7 @@ describe('parsePp6: templates and playlists', () => {
         name: 'Placeholder Hymn',
         path: '/Users/op/Documents/ProPresenter6/Placeholder Hymn.pro6',
         ref: null,
+        arrangementRef: 'AR-1',
       },
       { kind: 'media', name: 'Loop', media: 0 },
       { kind: 'placeholder', name: 'Something else', hint: 'RVTimerCue' },

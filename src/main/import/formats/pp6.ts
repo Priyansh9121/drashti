@@ -46,6 +46,10 @@ export type Pp6Parsed =
   | { kind: 'playlist'; playlist: ParsedPlaylistDoc }
   | { kind: 'other'; root: string };
 
+/** An attribute's value, or null when it is missing or empty. */
+const nonEmpty = (value: string | undefined): string | null =>
+  value === undefined || value === '' ? null : value;
+
 /** "r g b a" (0-1 each) as #rrggbb, or #rrggbbaa when not opaque; null when transparent or unreadable. */
 export function pp6Color(value: string | undefined): string | null {
   if (!value) return null;
@@ -438,7 +442,11 @@ function presentationOf(root: XmlNode, filePath: string): ParsedPresentation {
       groups: arrayField(n, 'groupIDs')
         .map((id) => groupIds.get(id.text.trim()))
         .filter((i): i is number => i !== undefined),
+      ref: nonEmpty(n.attrs['uuid']),
     }));
+  // The arrangement the presentation was set to play in.
+  const selectedRef = a['selectedArrangementID'] ?? '';
+  const selected = selectedRef ? arrangements.findIndex((x) => x.ref === selectedRef) : -1;
   const issues: ImportIssue[] = [];
   if (root.name === 'RVTemplateDocument') {
     issues.push({
@@ -472,6 +480,7 @@ function presentationOf(root: XmlNode, filePath: string): ParsedPresentation {
     notes,
     groups,
     arrangements,
+    selectedArrangement: selected >= 0 ? selected : null,
     media: ctx.media,
     issues,
   };
@@ -494,6 +503,7 @@ function playlistOf(ctx: Context, node: XmlNode, losses: Losses): ParsedPlaylist
           name: name || (path ? nameFromFile(path) : 'Presentation'),
           path,
           ref: null,
+          arrangementRef: nonEmpty(a['selectedArrangementID']),
         });
         break;
       }

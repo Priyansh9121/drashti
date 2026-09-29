@@ -44,7 +44,8 @@ export function soundsOf(state: EngineState): Sound[] {
     for (const el of slide.slide.elements) {
       if (el.kind !== 'video') continue;
       sounds.push({
-        key: `slide:${slide.presentationId}/${slide.slideIndex}/${el.id}@${slide.shownAt}`,
+        // By the slide's id, not its position: a new order for the live slide keeps its sound going.
+        key: `slide:${slide.slide.id}/${el.id}@${slide.shownAt}`,
         mediaId: el.mediaId,
         startedAt: slide.shownAt,
         loop: el.loop ?? false,
