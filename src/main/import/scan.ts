@@ -35,6 +35,8 @@ export function formatOf(path: string): ImportFormat {
   if (PP7.has(ext)) return 'pp7';
   // ProPresenter 7 keeps themes and playlists in files without an extension.
   if (ext === '' && (basename(path) === 'Theme' || basename(dirname(path)) === 'Playlists')) return 'pp7';
+  // ...and props in Configuration/Props.
+  if (ext === '' && basename(path) === 'Props' && basename(dirname(path)) === 'Configuration') return 'pp7';
   return 'unknown';
 }
 

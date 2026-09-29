@@ -41,6 +41,8 @@ const prop: z.ZodType<PropItem> = z.object({
   id,
   name: z.string().max(200),
   elements: z.array(slideElement).max(50),
+  width: z.number().int().min(16).max(16384).optional(),
+  height: z.number().int().min(16).max(16384).optional(),
 });
 const messagePart = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('text'), text: z.string().max(500) }),

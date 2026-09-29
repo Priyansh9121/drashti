@@ -17,13 +17,20 @@ const protoDir = join(app, 'third_party', 'ProPresenter7-Proto', 'proto');
 const out = join(app, 'src', 'main', 'import', 'formats', 'pp7-descriptor.json');
 const protobufDir = dirname(createRequire(import.meta.url).resolve('protobufjs/package.json'));
 
-/** The documents Drashti imports: presentations, playlists (and media/audio bins), themes. */
-const ROOTS = ['rv.data.Presentation', 'rv.data.PlaylistDocument', 'rv.data.Template.Document'];
+/** The documents Drashti imports: presentations, playlists (and media/audio bins), themes, props. */
+const ROOTS = [
+  'rv.data.Presentation',
+  'rv.data.PlaylistDocument',
+  'rv.data.Template.Document',
+  'rv.data.PropDocument',
+];
 
 const root = new protobuf.Root();
 root.resolvePath = (_origin, target) =>
   target.startsWith('google/protobuf/') ? join(protobufDir, target) : join(protoDir, target);
-root.loadSync(['presentation.proto', 'propresenter.proto', 'template.proto'], { keepCase: true });
+root.loadSync(['presentation.proto', 'propresenter.proto', 'template.proto', 'propDocument.proto'], {
+  keepCase: true,
+});
 root.resolveAll();
 
 const typeName = (t) => t.fullName.replace(/^\./u, '');

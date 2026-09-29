@@ -19,6 +19,7 @@ import type {
   ParsedPlaylistDoc,
   ParsedPlaylistItem,
   ParsedPresentation,
+  ParsedProps,
   ParsedSlide,
 } from '../model';
 import { mediaRef } from '../model';
@@ -44,11 +45,12 @@ import { nameFromFile } from './text';
 
 const descriptor = descriptorJson as Descriptor;
 
-export type Pp7Kind = 'presentation' | 'playlist' | 'template';
+export type Pp7Kind = 'presentation' | 'playlist' | 'template' | 'props';
 
 export type Pp7Parsed =
   | { kind: 'presentation'; presentation: ParsedPresentation }
-  | { kind: 'playlist'; playlist: ParsedPlaylistDoc };
+  | { kind: 'playlist'; playlist: ParsedPlaylistDoc }
+  | { kind: 'props'; props: ParsedProps };
 
 // ---- small readers over decoded messages -------------------------------------------
 
@@ -621,9 +623,43 @@ function playlistDocOf(bytes: Uint8Array, filePath: string): ParsedPlaylistDoc {
   };
 }
 
+/** Props (Configuration/Props): each cue shows one prop slide, drawn over whatever slide is live. */
+function propsDocOf(bytes: Uint8Array): ParsedProps {
+  const stats = { unknown: 0 };
+  const d = decodeMessage(bytes, 'rv.data.PropDocument', descriptor, stats);
+  const cues = list(d['cues']);
+  const baseOf = (cue: Message) =>
+    msg(
+      msg(msg(list(cue['actions']).find((a) => msg(msg(a['slide'])?.['prop']))?.['slide'])?.['prop'])?.[
+        'base_slide'
+      ],
+    );
+  const ctx: Context = {
+    media: [],
+    mediaIndex: new Map(),
+    losses: new Losses(),
+    legacy: new LegacyFontUse(),
+    ...sizeOf(cues.map(baseOf)),
+  };
+  const props = cues.flatMap((cue, i) => {
+    const base = baseOf(cue);
+    if (!base) return [];
+    const elements = list(base['elements']).flatMap((w, n) => elementsOf(ctx, w, `p${i}-e${n}`));
+    return [{ name: str(cue['name']).trim() || `Prop ${i + 1}`, ref: uuid(cue['uuid']), elements }];
+  });
+  return {
+    width: ctx.width,
+    height: ctx.height,
+    props,
+    media: ctx.media,
+    issues: [...ctx.losses.issues(), ...ctx.legacy.issues(), ...unknownIssue(stats.unknown)],
+  };
+}
+
 /** Parse a PP7 file of a known kind. Throws ProtobufError when the bytes are not that kind of file. */
 export function parsePp7(bytes: Uint8Array, filePath: string, kind: Pp7Kind): Pp7Parsed {
   if (kind === 'playlist') return { kind: 'playlist', playlist: playlistDocOf(bytes, filePath) };
+  if (kind === 'props') return { kind: 'props', props: propsDocOf(bytes) };
   return {
     kind: 'presentation',
     presentation: kind === 'template' ? templateOf(bytes, filePath) : presentationOf(bytes, filePath),
@@ -635,6 +671,7 @@ export function pp7KindOf(path: string): Pp7Kind | null {
   const name = basename(path);
   if (/\.pro$/iu.test(name)) return 'presentation';
   if (name === 'Theme') return 'template';
+  if (name === 'Props' && basename(dirname(path)) === 'Configuration') return 'props';
   if (!name.includes('.') && basename(dirname(path)) === 'Playlists') return 'playlist';
   return null;
 }

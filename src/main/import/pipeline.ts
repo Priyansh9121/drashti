@@ -28,8 +28,15 @@ import { parsePp7, type Pp7Kind, pp7KindOf } from './formats/pp7';
 import { parseLyricsText } from './formats/text';
 import { diskFreeBytes, type MediaStore, type StagedMedia } from './media-store';
 import { fileNameOf, pathFromReference, resolveMedia } from './media-resolver';
-import type { ParsedMediaRef, ParsedPlaylist, ParsedPlaylistDoc, ParsedPresentation } from './model';
-import { MEDIA_REF, slideCount } from './model';
+import type {
+  ParsedMediaRef,
+  ParsedPlaylist,
+  ParsedPlaylistDoc,
+  ParsedPresentation,
+  ParsedProps,
+} from './model';
+import { MEDIA_REF, propsFromPresentation, slideCount } from './model';
+import { PropRepo } from '../db/props';
 import { unplayableIssue } from './probe';
 import { extOf, formatOf, type ScannedFile, scanPaths } from './scan';
 import { extractZip } from './zip';
@@ -94,10 +101,6 @@ interface Where {
 
 /** Files that come with the older app but are not presentations: said plainly in the report. */
 const SUPPORT_FILES: Record<string, { format: ImportFormat; message: string }> = {
-  'props.pro6': {
-    format: 'pp6',
-    message: 'Props come in a later version of Drashti; set them up again from the audit.',
-  },
   'mask.pro6': {
     format: 'pp6',
     message: 'Masks come in a later version of Drashti; set them up again from the audit.',
@@ -666,6 +669,74 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     );
   };
 
+  /** Props from a props file: each one kept in the library, replacing those from the same file before. */
+  const importProps = async (where: Where, kind: 'pp6' | 'pp7', parsed: ParsedProps) => {
+    const name = basename(where.sourcePath);
+    const staged = await stageMedia(parsed.media, where);
+    const at = position++;
+    batch.write(
+      () => {
+        const started = performance.now();
+        const media = storeMedia(staged, kind);
+        let dropped = 0;
+        const props = parsed.props.map((p) => ({
+          name: p.name,
+          ref: p.ref,
+          width: parsed.width,
+          height: parsed.height,
+          elements: p.elements.flatMap((e): SlideElement[] => {
+            let el: SlideElement | null = e;
+            if (e.kind === 'image' || e.kind === 'video') {
+              const id = e.mediaId.startsWith(MEDIA_REF)
+                ? media.ids[Number(e.mediaId.slice(MEDIA_REF.length))]
+                : null;
+              el = id ? { ...e, mediaId: id } : null;
+            }
+            if (!el || !slideElementSchema.safeParse(el).success) {
+              dropped++;
+              return [];
+            }
+            return [el];
+          }),
+        }));
+        const kept = props.filter((p) => p.elements.length > 0);
+        const ids = new PropRepo(ctx.db).replaceImported(kind, where.sourcePath, kept);
+        const issues = [...parsed.issues, ...media.issues];
+        if (dropped > 0)
+          issues.push({
+            severity: 'warning',
+            code: 'invalid-element',
+            message: `${dropped} prop element(s) could not be read and were left out.`,
+            fix: null,
+          });
+        const item: NewImportItem = {
+          sourcePath: where.sourcePath,
+          format: kind,
+          outcome: 'imported',
+          name,
+          target: null,
+          counts: { ...NO_COUNTS, media: media.count },
+          message:
+            ids.length > 0
+              ? `${ids.length} prop${ids.length === 1 ? '' : 's'}: show them from Props, under the live picture.`
+              : 'No props with anything on them.',
+          issues,
+        };
+        imports.addItem(ctx.runId, at, item);
+        time('write', started);
+        return item;
+      },
+      {
+        committed: (item) => {
+          addToTotals(totals, item);
+        },
+        failed: (error) => {
+          failed(where, kind, name, `Could not write these props: ${errorText(error)}`, [], at);
+        },
+      },
+    );
+  };
+
   // ---- one file ---------------------------------------------------------------------
 
   const importPp6 = async (file: ScannedFile, where: Where) => {
@@ -690,7 +761,9 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       return;
     }
     time('parse', t);
-    if (parsed.kind === 'presentation')
+    if (parsed.kind === 'presentation' && basename(file.path).toLowerCase() === 'props.pro6')
+      await importProps(where, 'pp6', propsFromPresentation(parsed.presentation));
+    else if (parsed.kind === 'presentation')
       await importPresentation(file, where, 'pp6', hash, parsed.presentation);
     else if (parsed.kind === 'playlist') await importPlaylist(where, 'pp6', hash, parsed.playlist);
     else {
@@ -711,6 +784,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     presentation: '.pro file',
     playlist: 'playlist file',
     template: 'theme',
+    props: 'props file',
   };
 
   const importPp7 = async (file: ScannedFile, where: Where, kind: Pp7Kind | null) => {
@@ -755,6 +829,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     time('parse', t);
     if (parsed.kind === 'presentation')
       await importPresentation(file, where, 'pp7', hash, parsed.presentation);
+    else if (parsed.kind === 'props') await importProps(where, 'pp7', parsed.props);
     else await importPlaylist(where, 'pp7', hash, parsed.playlist);
   };
 
@@ -863,7 +938,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     const support =
       SUPPORT_FILES[name] ??
       (SUPPORT_EXTENSIONS[ext] ? { format: 'unknown' as const, message: SUPPORT_EXTENSIONS[ext] } : null) ??
-      (ext === '' && basename(dirname(file.path)) === 'Configuration'
+      (ext === '' && basename(dirname(file.path)) === 'Configuration' && basename(file.path) !== 'Props'
         ? { format: 'pp7' as const, message: 'Settings are set up again in Drashti (see the audit report).' }
         : null);
     if (support) {

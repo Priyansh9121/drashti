@@ -22,6 +22,8 @@ import { idSchema } from '../shared/model-schema';
 import { z } from 'zod';
 import type { OutputContext } from '../shared/screens';
 import type { MessageResult } from '../shared/messages';
+import type { PropResult } from '../shared/props';
+import { propFieldsSchema } from '../shared/props';
 import { messageTemplateSchema } from '../shared/messages';
 import type { TimerResult } from '../shared/timers';
 import { timerFieldsSchema } from '../shared/timers';
@@ -34,6 +36,7 @@ import { PlaylistRepo } from './db/playlists';
 import { SearchIndex } from './db/search';
 import { TimerRepo } from './db/timers';
 import { ThemeRepo } from './db/themes';
+import { PropRepo } from './db/props';
 import { MessageRepo } from './db/messages';
 import { SettingsRepo } from './db/settings';
 import { DbSlideSource, PresentationRepo } from './db/presentations';
@@ -506,6 +509,27 @@ function start(): void {
     },
   });
   registerThemesIpc({ themes, presentations, revisions, fromOperator, changed: contentChanged });
+  // Props: kept here; showing one goes through the engine.
+  const props = new PropRepo(db);
+  handle(IPC.props.list, () => props.list());
+  handle(IPC.props.save, (e, propId, fields): PropResult => {
+    if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can change props.' };
+    const f = propFieldsSchema.safeParse(fields);
+    if (!f.success) return { ok: false, message: 'A prop needs a name and something to show.' };
+    if (propId === null) return { ok: true, id: props.create(f.data) };
+    const id = idSchema.safeParse(propId);
+    return id.success && props.update(id.data, f.data)
+      ? { ok: true, id: id.data }
+      : { ok: false, message: 'That prop no longer exists.' };
+  });
+  handle(IPC.props.remove, (e, propId): PropResult => {
+    if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can change props.' };
+    const id = idSchema.safeParse(propId);
+    if (!id.success || !props.remove(id.data)) return { ok: false, message: 'That prop no longer exists.' };
+    // A prop that is up comes down with it.
+    engine.dispatch({ type: 'hideProp', propId: id.data });
+    return { ok: true, id: id.data };
+  });
   handle(IPC.library.search, (_e, query) =>
     search.search(typeof query === 'string' ? query.slice(0, 200) : ''),
   );

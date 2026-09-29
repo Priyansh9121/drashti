@@ -112,6 +112,9 @@ export interface PropItem {
   id: string;
   name: string;
   elements: SlideElement[];
+  /** The canvas its elements are placed on (1920 x 1080 when left out); screens scale it as they do slides. */
+  width?: number;
+  height?: number;
 }
 
 /** Part of a message: words, or a timer shown live (each window works out its time). */

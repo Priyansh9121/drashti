@@ -23,6 +23,7 @@ import type {
   PlaylistResult,
 } from './playlists';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
+import type { PropFields, PropInfo, PropResult } from './props';
 import type { SearchResult } from './search';
 import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes';
 import type { TimerFields, TimerResult } from './timers';
@@ -121,6 +122,12 @@ export const IPC = {
     renameHeader: 'playlists:rename-header',
     /** main -> operator: playlists changed. */
     changed: 'playlists:changed',
+  },
+  /** Props; changing them is for the operator window only (showing one goes through the engine). */
+  props: {
+    list: 'props:list',
+    save: 'props:save',
+    remove: 'props:remove',
   },
   /** Themes; changing and applying them is for the operator window only. */
   themes: {
@@ -222,6 +229,9 @@ export interface InvokeContract {
   [IPC.audio.getOutput]: { args: []; result: AudioOutputStatus };
   [IPC.audio.setOutput]: { args: [device: AudioDevice | null]; result: AudioOutputStatus };
   [IPC.audio.reportDevices]: { args: [devices: AudioDevice[], state: AudioOutputState]; result: null };
+  [IPC.props.list]: { args: []; result: PropInfo[] };
+  [IPC.props.save]: { args: [propId: string | null, fields: PropFields]; result: PropResult };
+  [IPC.props.remove]: { args: [propId: string]; result: PropResult };
   [IPC.themes.list]: { args: []; result: { themes: Theme[]; defaultId: string } };
   [IPC.themes.save]: { args: [themeId: string | null, fields: ThemeFields]; result: ThemeResult };
   [IPC.themes.remove]: { args: [themeId: string]; result: ThemeResult };
