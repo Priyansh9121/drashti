@@ -34,7 +34,7 @@ async function drag(page: Page, source: Locator, target: Locator, where: 'top' |
   await page.mouse.up();
 }
 
-/** Each item as "kind:label". */
+/** Each item as "kind:label" (poll it: the list updates after a drop's round trip to the main process). */
 const labels = (items: Locator) =>
   items.evaluateAll((els) =>
     els.map(
@@ -83,11 +83,9 @@ test('playlists: imported ones with their placeholders, and building one by drag
   await expect(node('Sunday').getByTestId('node-placeholders')).toHaveText('1 missing');
   await node('Sunday').click();
   await expect(panel.getByTestId('playlist-title')).toHaveText('Sunday');
-  expect(await labels(items)).toEqual([
-    'header:Opening',
-    'presentation:Placeholder Song One',
-    'placeholder:Not Here',
-  ]);
+  await expect
+    .poll(() => labels(items))
+    .toEqual(['header:Opening', 'presentation:Placeholder Song One', 'placeholder:Not Here']);
 
   // Dropping a presentation on the placeholder puts it there.
   await drag(
@@ -132,11 +130,13 @@ test('playlists: imported ones with their placeholders, and building one by drag
   const media = win.getByTestId('media-item').filter({ hasText: 'Placeholder Picture' });
   await expect(media).toContainText('Picture');
   await drag(win, media, items.last(), 'bottom');
-  expect(await labels(items)).toEqual([
-    'presentation:Placeholder Song Two',
-    'presentation:Placeholder Song One',
-    'media:Placeholder Picture.png',
-  ]);
+  await expect
+    .poll(() => labels(items))
+    .toEqual([
+      'presentation:Placeholder Song Two',
+      'presentation:Placeholder Song One',
+      'media:Placeholder Picture.png',
+    ]);
 
   // A header, named in place, then dragged to the top.
   await panel.getByRole('button', { name: 'Playlist actions' }).click();
@@ -146,12 +146,14 @@ test('playlists: imported ones with their placeholders, and building one by drag
   await rename.press('Enter');
   await expect(items.last().locator('[data-label]')).toHaveText('Placeholder Dhun');
   await drag(win, items.last(), items.first(), 'top');
-  expect(await labels(items)).toEqual([
-    'header:Placeholder Dhun',
-    'presentation:Placeholder Song Two',
-    'presentation:Placeholder Song One',
-    'media:Placeholder Picture.png',
-  ]);
+  await expect
+    .poll(() => labels(items))
+    .toEqual([
+      'header:Placeholder Dhun',
+      'presentation:Placeholder Song Two',
+      'presentation:Placeholder Song One',
+      'media:Placeholder Picture.png',
+    ]);
 
   // Removing an item: Delete, then Undo puts it back where it was.
   await items.nth(2).click();
