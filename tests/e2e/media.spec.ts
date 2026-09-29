@@ -1,24 +1,11 @@
-import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { PageGlobals } from './helpers';
-import { launchApp } from './helpers';
+import { importAndGetIds, launchApp } from './helpers';
 import { makeTestImage, makeTestVideo } from './test-media';
 
 const NOBODY = '00000000-0000-0000-0000-000000000000';
-
-/** Import files through the bridge; returns the media ids they became, in order. */
-async function importMedia(win: Page, files: string[]): Promise<string[]> {
-  return win.evaluate(async (paths) => {
-    const d = (globalThis as PageGlobals).drashti;
-    const result = await d.library.importPaths(paths);
-    if (!result.ok) throw new Error(result.message);
-    const report = await d.library.getImportReport(result.run.id);
-    return paths.map((p) => report?.items.find((i) => i.sourcePath === p)?.target?.id ?? '');
-  }, files);
-}
 
 test('library media reaches the windows by id only, with byte ranges, and nothing else is served', async () => {
   const { app } = await launchApp();
@@ -26,7 +13,7 @@ test('library media reaches the windows by id only, with byte ranges, and nothin
   const dir = mkdtempSync(join(tmpdir(), 'drashti-media-'));
   const image = await makeTestImage(win, join(dir, 'Placeholder image.png'), { width: 64, height: 36 });
   const video = await makeTestVideo(win, join(dir, 'Placeholder video.webm'), { seconds: 2 });
-  const [imageId = '', videoId = ''] = await importMedia(win, [image, video]);
+  const [imageId = '', videoId = ''] = await importAndGetIds(win, [image, video]);
   expect(imageId).not.toBe('');
   expect(videoId).not.toBe('');
 

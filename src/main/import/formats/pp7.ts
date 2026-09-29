@@ -292,12 +292,6 @@ function cuesOf(ctx: Context, actions: Message[]): ParsedCue[] {
           media: index,
           props: { media: kind, fit: scaleOf(element), loop },
         });
-        ctx.losses.add(
-          'background-media',
-          'A slide background (image or video) came across as a background cue; it shows once media playback is built.',
-          '{n} slide backgrounds (images and videos) came across as background cues; they show once media playback is built.',
-          'info',
-        );
       } else {
         cues.push({
           kind: 'media',

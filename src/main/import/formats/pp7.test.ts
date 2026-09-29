@@ -145,7 +145,8 @@ describe('parsePp7: presentations', () => {
       ['audio', url('/Media/Audio/Placeholder Tune.mp3')],
       ['image', url('/Media/Pictures/Placeholder Logo.png')],
     ]);
-    expect(p.issues.map((i) => i.code)).toEqual(expect.arrayContaining(['background-media', 'slide-cues']));
+    expect(p.issues.map((i) => i.code)).toContain('slide-cues');
+    expect(p.issues.map((i) => i.code)).not.toContain('background-media');
   });
 
   it('keeps text typed in a legacy Hindi font as typed, and names the font in the report', () => {

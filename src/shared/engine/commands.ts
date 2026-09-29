@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { hexColorSchema, idSchema, rectSchema, slideElementSchema } from '../model-schema';
 import {
   type AudioLayer,
-  type BackgroundLayer,
+  type BackgroundChoice,
   LAYER_NAMES,
   type MaskLayer,
   type MessageItem,
@@ -20,7 +20,7 @@ const hexColor = hexColorSchema;
 const rect = rectSchema;
 const slideElement = slideElementSchema;
 
-const background: z.ZodType<BackgroundLayer> = z.discriminatedUnion('kind', [
+const background: z.ZodType<BackgroundChoice> = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('color'), color: hexColor }),
   z.object({
     kind: z.literal('media'),

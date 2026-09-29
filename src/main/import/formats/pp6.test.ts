@@ -202,12 +202,13 @@ describe('parsePp6: presentations', () => {
     const codes = presentation(xml).issues.map((i) => [i.code, i.severity]);
     expect(codes).toEqual(
       expect.arrayContaining([
-        ['background-media', 'info'],
         ['slide-cues', 'info'],
         ['transition', 'info'],
         ['text-outline', 'warning'],
       ]),
     );
+    // Backgrounds come across whole (as background cues), so they are not reported.
+    expect(codes.map(([code]) => code)).not.toContain('background-media');
     // Nothing in a report names the other product.
     expect(JSON.stringify(presentation(xml).issues)).not.toMatch(/propresenter/iu);
   });

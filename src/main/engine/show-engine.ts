@@ -1,7 +1,13 @@
 import type { CommandResult, EngineCommand } from '../../shared/engine/commands';
 import { diffState } from '../../shared/engine/patch';
 import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
-import { ENGINE_STATE_VERSION, type EngineState, initialEngineState } from '../../shared/engine/state';
+import {
+  type BackgroundChoice,
+  type BackgroundLayer,
+  ENGINE_STATE_VERSION,
+  type EngineState,
+  initialEngineState,
+} from '../../shared/engine/state';
 import type { EngineTransport } from '../../shared/engine/transport';
 import type { EngineAction } from './actions';
 import { reduce } from './reducer';
@@ -59,10 +65,26 @@ export class ShowEngine {
         message: `Slide ${slideIndex + 1} of ${count} does not exist`,
       };
     }
-    return {
-      ok: true,
-      actions: [{ type: 'slide/show', presentationId, slideIndex, slideCount: count, slide }],
-    };
+    const actions: EngineAction[] = [
+      { type: 'slide/show', presentationId, slideIndex, slideCount: count, slide },
+    ];
+    // The slide's background goes on the background layer; a slide without one leaves it as it is.
+    // (Background cues are the only kind the engine runs so far.)
+    for (const cue of this.source.cues(presentationId, slideIndex)) {
+      actions.push({ type: 'background/set', background: this.backgroundLayer(cue.background) });
+    }
+    return { ok: true, actions };
+  }
+
+  /**
+   * The background layer for a choice. The file already on the layer keeps
+   * its start time, so it carries on playing instead of restarting.
+   */
+  private backgroundLayer(choice: BackgroundChoice): BackgroundLayer {
+    if (choice.kind === 'color') return choice;
+    const current = this.state.layers.background;
+    const same = current?.kind === 'media' && current.mediaId === choice.mediaId;
+    return { ...choice, startedAt: same ? current.startedAt : this.now() };
   }
 
   /**
@@ -102,7 +124,10 @@ export class ShowEngine {
       case 'toggleBlackout':
         return { ok: true, actions: [{ type: 'blackout/set', on: !this.state.blackout }] };
       case 'setBackground':
-        return { ok: true, actions: [{ type: 'background/set', background: command.background }] };
+        return {
+          ok: true,
+          actions: [{ type: 'background/set', background: this.backgroundLayer(command.background) }],
+        };
       case 'playAudio':
         return { ok: true, actions: [{ type: 'audio/set', audio: command.audio }] };
       case 'showProp':

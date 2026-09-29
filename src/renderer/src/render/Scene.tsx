@@ -2,6 +2,7 @@ import { memo } from 'react';
 import type { EngineState, MaskLayer, MessageItem } from '../../../shared/engine/state';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
+import { BackgroundMedia } from './BackgroundMedia';
 import { LANG_FONT_STACK } from './fonts';
 import { Placed } from './Placed';
 import { ElementView, SlideView } from './SlideView';
@@ -62,16 +63,19 @@ function Mask({ mask, canvas }: { mask: MaskLayer; canvas: Size }) {
 /**
  * Everything one screen shows, drawn on that screen's canvas (in canvas
  * pixels). Bottom to top: background, slide, props, messages, masks, black-out.
- * The operator preview and every output use this same component.
+ * The operator preview and every output use this same component; the preview
+ * sets `annotate` to mark problems the audience never sees.
  */
 export const Scene = memo(function Scene({
   state,
   canvas,
   scaling,
+  annotate = false,
 }: {
   state: EngineState;
   canvas: Size;
   scaling: ScalingMode;
+  annotate?: boolean;
 }) {
   const { layers } = state;
   const slide = layers.slide?.slide;
@@ -93,14 +97,7 @@ export const Scene = memo(function Scene({
           style={{ position: 'absolute', inset: 0, background: layers.background.color }}
         />
       )}
-      {layers.background?.kind === 'media' && (
-        // Media playback is not built yet: the layer is marked, and draws nothing.
-        <div
-          data-layer="background"
-          data-media-id={layers.background.mediaId}
-          style={{ position: 'absolute', inset: 0 }}
-        />
-      )}
+      <BackgroundMedia layer={layers.background} annotate={annotate} />
       {slide && (
         <div data-layer="slide" style={{ position: 'absolute', inset: 0 }}>
           <Placed content={slide} box={canvas} mode={scaling}>

@@ -356,12 +356,6 @@ function slideOf(ctx: Context, node: XmlNode, docBackground: string | null, inde
           loop: media === 'video' && backgroundElement.attrs['playbackBehavior'] === '1',
         },
       });
-      ctx.losses.add(
-        'background-media',
-        'A slide background (image or video) came across as a background cue; it shows once media playback is built.',
-        '{n} slide backgrounds (images and videos) came across as background cues; they show once media playback is built.',
-        'info',
-      );
     }
   }
   arrayField(node, 'displayElements').forEach((child, i) => {

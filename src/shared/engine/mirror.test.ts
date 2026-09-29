@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { EngineMirror } from './mirror';
 import type { EnginePatchMessage, EngineSnapshotMessage } from './protocol';
-import { initialEngineState } from './state';
+import { ENGINE_STATE_VERSION, initialEngineState } from './state';
 
 const snapshot = (rev: number, blackout = false): EngineSnapshotMessage => ({
   kind: 'snapshot',
-  version: 1,
+  version: ENGINE_STATE_VERSION,
   rev,
   state: { ...initialEngineState(), blackout },
   sentAt: 0,
 });
 const patch = (baseRev: number, rev: number, blackout: boolean): EnginePatchMessage => ({
   kind: 'patch',
-  version: 1,
+  version: ENGINE_STATE_VERSION,
   baseRev,
   rev,
   ops: [{ path: ['blackout'], value: blackout }],
@@ -60,7 +60,7 @@ describe('EngineMirror', () => {
 
   it('refuses a different state version', () => {
     const m = new EngineMirror();
-    const future: EngineSnapshotMessage = { ...snapshot(1), version: 2 };
+    const future: EngineSnapshotMessage = { ...snapshot(1), version: ENGINE_STATE_VERSION + 1 };
     expect(m.apply(future)).toBe('incompatible');
     expect(m.state).toBeNull();
   });

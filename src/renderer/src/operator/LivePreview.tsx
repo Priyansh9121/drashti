@@ -20,7 +20,7 @@ export function LivePreview() {
   return (
     <div className="overflow-hidden rounded-lg border border-line bg-black" data-testid="live-preview">
       <PlacedInParent content={canvas} mode="fit" className="relative aspect-video w-full">
-        {state && <Scene state={state} canvas={canvas} scaling={scaling} />}
+        {state && <Scene state={state} canvas={canvas} scaling={scaling} annotate />}
       </PlacedInParent>
     </div>
   );

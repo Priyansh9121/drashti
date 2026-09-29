@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import type { MediaFit } from '../../shared/engine/state';
 import type {
   GroupInfo,
   ImportSource,
   PresentationDoc,
   PresentationSummary,
+  SlideCue,
   SlideInfo,
 } from '../../shared/library';
 import { type Lang, LANGS, type RenderSlide, type SlideElement } from '../../shared/model';
@@ -43,6 +45,51 @@ interface ElementRow {
   width: number;
   height: number;
   props: string;
+}
+
+export interface CueRow {
+  slide_id: string;
+  kind: string;
+  label: string;
+  props: string;
+  media_id: string | null;
+  media_name: string | null;
+  media_kind: string | null;
+  media_missing: number | null;
+}
+
+const FITS: readonly string[] = ['fit', 'fill', 'stretch'] satisfies MediaFit[];
+
+/**
+ * A stored cue as the engine runs it; null for kinds Drashti does not run
+ * yet, and for cues whose media item is gone.
+ */
+export function cueFromRow(row: CueRow): SlideCue | null {
+  if (row.kind !== 'background' || !row.media_id) return null;
+  const media = row.media_kind;
+  if (media !== 'image' && media !== 'video') return null;
+  let props: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = JSON.parse(row.props);
+    if (parsed && typeof parsed === 'object') props = parsed as Record<string, unknown>;
+  } catch {
+    // Keep the defaults.
+  }
+  const fit =
+    typeof props['fit'] === 'string' && FITS.includes(props['fit']) ? (props['fit'] as MediaFit) : 'fit';
+  return {
+    kind: 'background',
+    label: row.label,
+    name: row.media_name ?? '',
+    missing: row.media_missing === 1,
+    background: {
+      kind: 'media',
+      mediaId: row.media_id,
+      media,
+      fit,
+      loop: media === 'video' && props['loop'] === true,
+    },
+  };
 }
 
 /** Turn a stored element into a render element; null when it is invalid or not drawable yet. */
@@ -201,6 +248,25 @@ export class PresentationRepo {
       bySlide.set(row.slide_id, list);
     }
 
+    const cueRows = this.db
+      .prepare(
+        `SELECT c.slide_id, c.kind, c.label, c.props, c.media_id,
+                m.name AS media_name, m.kind AS media_kind, m.missing AS media_missing
+           FROM slide_cues c JOIN slides s ON s.id = c.slide_id JOIN slide_groups g ON g.id = s.group_id
+           LEFT JOIN media m ON m.id = c.media_id
+          WHERE g.presentation_id = ?
+          ORDER BY c.slide_id, c.position`,
+      )
+      .all(id) as CueRow[];
+    const cuesBySlide = new Map<string, SlideCue[]>();
+    for (const row of cueRows) {
+      const cue = cueFromRow(row);
+      if (!cue) continue;
+      const list = cuesBySlide.get(row.slide_id) ?? [];
+      list.push(cue);
+      cuesBySlide.set(row.slide_id, list);
+    }
+
     const groupInfos = new Map<string, GroupInfo>(
       groups.map((g) => [g.id, { id: g.id, name: g.name, color: g.color, slides: [] }]),
     );
@@ -212,7 +278,14 @@ export class PresentationRepo {
         background: s.background,
         elements: bySlide.get(s.id) ?? [],
       };
-      const info: SlideInfo = { id: s.id, index, label: s.label, notes: s.notes, slide };
+      const info: SlideInfo = {
+        id: s.id,
+        index,
+        label: s.label,
+        notes: s.notes,
+        slide,
+        cues: cuesBySlide.get(s.id) ?? [],
+      };
       groupInfos.get(s.group_id)?.slides.push(info);
     });
 
@@ -527,7 +600,7 @@ export class PresentationRepo {
 
 /** The engine's view of the library: slides in order, cached per presentation. */
 export class DbSlideSource implements SlideSource {
-  private readonly cache = new Map<string, RenderSlide[] | null>();
+  private readonly cache = new Map<string, { slides: RenderSlide[]; cues: SlideCue[][] } | null>();
 
   constructor(private readonly repo: PresentationRepo) {}
 
@@ -537,19 +610,27 @@ export class DbSlideSource implements SlideSource {
     else this.cache.clear();
   }
 
-  private slides(presentationId: string): RenderSlide[] | null {
+  private load(presentationId: string): { slides: RenderSlide[]; cues: SlideCue[][] } | null {
     if (!this.cache.has(presentationId)) {
       const doc = this.repo.get(presentationId);
-      this.cache.set(presentationId, doc ? doc.groups.flatMap((g) => g.slides.map((s) => s.slide)) : null);
+      const infos = doc ? doc.groups.flatMap((g) => g.slides) : null;
+      this.cache.set(
+        presentationId,
+        infos ? { slides: infos.map((s) => s.slide), cues: infos.map((s) => s.cues) } : null,
+      );
     }
     return this.cache.get(presentationId) ?? null;
   }
 
   slideCount(presentationId: string): number | null {
-    return this.slides(presentationId)?.length ?? null;
+    return this.load(presentationId)?.slides.length ?? null;
   }
 
   slide(presentationId: string, index: number): RenderSlide | null {
-    return this.slides(presentationId)?.[index] ?? null;
+    return this.load(presentationId)?.slides[index] ?? null;
+  }
+
+  cues(presentationId: string, index: number): readonly SlideCue[] {
+    return this.load(presentationId)?.cues[index] ?? [];
   }
 }
