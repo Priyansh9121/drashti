@@ -4,7 +4,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, outputPage, setUpScreen } from './helpers';
+import {
+  importAndGetIds,
+  killApp,
+  launchApp,
+  operatorPage,
+  outputPage,
+  relaunchApp,
+  setUpScreen,
+} from './helpers';
 import { makeTestImage } from './test-media';
 
 /*
@@ -57,15 +65,11 @@ test('after a crash the same slide, background and black-out come back; after a 
       return [saved.slide?.slideIndex, saved.blackout];
     })
     .toEqual([1, true]);
-  first.app.process().kill('SIGKILL');
-  await new Promise<void>((resolve) => {
-    if (first.app.process().exitCode !== null) resolve();
-    else first.app.process().once('exit', () => resolve());
-  });
+  await killApp(first.app);
 
   // The next start puts it all back by itself, and says so.
-  const second = await launchApp({}, first.userData);
-  const win2 = await second.app.firstWindow();
+  const second = await relaunchApp(first.userData);
+  const win2 = await operatorPage(second.app);
   const output = await outputPage(second.app);
   await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder recovery two');
   await expect(output.locator('[data-layer="background"] img')).toHaveAttribute('data-state', 'ready');
@@ -79,8 +83,8 @@ test('after a crash the same slide, background and black-out come back; after a 
 
   // A clean quit: the next start has nothing live, and nothing to say.
   await second.app.close();
-  const third = await launchApp({}, first.userData);
-  const win3 = await third.app.firstWindow();
+  const third = await relaunchApp(first.userData);
+  const win3 = await operatorPage(third.app);
   await expect(win3.getByTestId('presentation-list').getByRole('button').first()).toBeVisible();
   const layers = await win3.evaluate(async () => {
     const s = (await (globalThis as PageGlobals).drashti.engine.snapshot()).state;

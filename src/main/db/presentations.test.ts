@@ -304,6 +304,7 @@ describe('slide cues', () => {
           label: 'Clouds',
           name: 'Placeholder clouds.mp4',
           missing: false,
+          unplayable: null,
           background: { kind: 'media', mediaId: 'm-video', media: 'video', fit: 'fill', loop: true },
         },
       ],
@@ -313,6 +314,7 @@ describe('slide cues', () => {
           label: '',
           name: 'Placeholder gone.jpg',
           missing: true,
+          unplayable: null,
           background: { kind: 'media', mediaId: 'm-gone', media: 'image', fit: 'stretch', loop: false },
         },
         {
@@ -320,6 +322,7 @@ describe('slide cues', () => {
           label: 'Tone',
           name: 'Placeholder tone.mp3',
           missing: false,
+          unplayable: null,
           mediaId: 'm-audio',
           volume: 0.5,
           loop: false,
@@ -366,5 +369,14 @@ describe('slide cues', () => {
     expect(cueFromRow({ ...audio, props: '{"volume":"loud"}' })).toMatchObject({ volume: 1 });
     expect(cueFromRow({ ...audio, media_kind: 'video' })).toMatchObject({ kind: 'audio' });
     expect(cueFromRow({ ...audio, media_kind: 'image' })).toBeNull();
+    // Media found at import to be unplayable says what it is.
+    expect(
+      cueFromRow({ ...row, media_playable: 0, media_format: 'ProRes 422 video (QuickTime)' }),
+    ).toMatchObject({
+      unplayable: 'ProRes 422 video (QuickTime)',
+    });
+    expect(cueFromRow({ ...row, media_playable: 1, media_format: 'H.264 video (MP4)' })).toMatchObject({
+      unplayable: null,
+    });
   });
 });

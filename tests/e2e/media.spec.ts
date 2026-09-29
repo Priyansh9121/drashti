@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { importAndGetIds, launchApp } from './helpers';
+import { dropFiles, importAndGetIds, launchApp } from './helpers';
 import { makeTestImage, makeTestVideo } from './test-media';
 
 const NOBODY = '00000000-0000-0000-0000-000000000000';
@@ -98,5 +98,28 @@ test('library media reaches the windows by id only, with byte ranges, and nothin
   );
   expect(answers).toEqual({ whole: 200, range: [206, 'bytes 0-99'], unknown: 404, path: 404, post: 405 });
 
+  await app.close();
+});
+
+test('media Drashti cannot play is found at import and listed in the report with what to do', async () => {
+  const { app } = await launchApp();
+  const win = await app.firstWindow();
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-unplayable-'));
+  const image = await makeTestImage(win, join(dir, 'Placeholder picture.png'));
+  // An AVI file's header (no video in it): Chromium never plays AVI.
+  const avi = join(dir, 'Placeholder clip.avi');
+  writeFileSync(
+    avi,
+    Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('AVI '), Buffer.alloc(64)]),
+  );
+  await dropFiles(win, win.getByTestId('library-drop'), [image, avi]);
+  const report = win.getByTestId('import-report');
+  await expect(report).toBeVisible();
+  // Items with notes are listed on their own first.
+  const clip = report.getByTestId('report-item').filter({ hasText: 'Placeholder clip.avi' }).first();
+  await expect(clip).toContainText('Drashti cannot play Placeholder clip.avi yet: AVI video.');
+  await expect(clip).toContainText('Export it again as an H.264 MP4');
+  const picture = report.getByTestId('report-item').filter({ hasText: 'Placeholder picture.png' }).first();
+  await expect(picture).not.toContainText('cannot play');
   await app.close();
 });

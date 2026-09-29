@@ -5,7 +5,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, outputPage, outputPages, setUpScreen } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  operatorPage,
+  outputPage,
+  outputPages,
+  relaunchApp,
+  setUpScreen,
+} from './helpers';
 import { makeTestVideo } from './test-media';
 
 /*
@@ -283,8 +291,8 @@ test('only the audio player may see sound outputs; the choice is remembered, and
   await app.close();
 
   // After a restart the choice is remembered, and still missing: the operator sees it at once.
-  const again = await launchApp({}, userData);
-  const win2 = await again.app.firstWindow();
+  const again = await relaunchApp(userData);
+  const win2 = await operatorPage(again.app);
   const status = await win2.evaluate(() => (globalThis as PageGlobals).drashti.audio.getOutput());
   expect(status.chosen).toEqual({ id: 'placeholder-mixer-id', label: 'Placeholder Mixer' });
   await expect(win2.getByTestId('sound-warning')).toBeVisible();

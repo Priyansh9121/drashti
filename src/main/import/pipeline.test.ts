@@ -10,6 +10,7 @@ import { ImportRepo } from '../db/imports';
 import { PresentationRepo } from '../db/presentations';
 import { MediaStore } from './media-store';
 import { MAX_TEXT_BYTES, runImport } from './pipeline';
+import { cocoaRtf, pp6Presentation } from './testing/pp6-fixtures';
 
 const SONG_A = '[Verse 1]\nPlaceholder line one\nPlaceholder line two\n\n[Chorus]\nPlaceholder chorus\n';
 const SONG_B = '[Verse]\nOther placeholder\n\nSecond slide\n\nThird slide\n';
@@ -102,6 +103,79 @@ describe('runImport', () => {
     expect(progress[0]?.phase).toBe('scanning');
     expect(progress.at(-1)).toMatchObject({ phase: 'finished', done: 6, total: 6 });
     expect(new ImportRepo(t.db).listRuns().map((r) => r.id)).toEqual([summary.id]);
+  });
+
+  it('finds media that cannot play, marks it in the library, and says what to do', async () => {
+    const t = setup();
+    // Headers only: an AVI file, a PNG, and a ProRes QuickTime movie a slide uses as its background.
+    t.write(
+      'media/Old clip.avi',
+      Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('AVI '), Buffer.alloc(32)]),
+    );
+    t.write('media/Logo.png', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]));
+    const u32 = (n: number) => {
+      const b = Buffer.alloc(4);
+      b.writeUInt32BE(n);
+      return b;
+    };
+    const box = (type: string, ...parts: Buffer[]) => {
+      const body = Buffer.concat(parts);
+      return Buffer.concat([u32(body.length + 8), Buffer.from(type, 'latin1'), body]);
+    };
+    const prores = Buffer.concat([
+      box('ftyp', Buffer.from('qt  '), u32(0)),
+      box(
+        'moov',
+        box(
+          'trak',
+          box(
+            'mdia',
+            box('hdlr', u32(0), u32(0), Buffer.from('vide'), Buffer.alloc(12)),
+            box('minf', box('stbl', box('stsd', u32(0), u32(1), box('apch', Buffer.alloc(16))))),
+          ),
+        ),
+      ),
+    ]);
+    t.write('media/Blue Loop.mov', prores);
+    t.write(
+      'Placeholder Hymn.pro6',
+      pp6Presentation({
+        uuid: 'HYMN-P',
+        groups: [
+          {
+            name: 'Verse',
+            slides: [
+              {
+                background: { path: '/Volumes/Old/Blue Loop.mov', kind: 'video', loop: true },
+                text: [{ rtf: cocoaRtf([['Placeholder line', 72, [255, 255, 255]]]) }],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const { report } = await t.run([t.source]);
+    const item = (name: string) => report?.items.find((i) => i.name === name);
+    const [avi] = item('Old clip.avi')?.issues ?? [];
+    expect(avi).toMatchObject({
+      severity: 'warning',
+      code: 'unplayable-media',
+      message:
+        'Drashti cannot play Old clip.avi yet: AVI video. Converting files inside Drashti comes in a later version.',
+      fix: { kind: 'convert-media' },
+    });
+    expect(avi?.fix?.kind === 'convert-media' && avi.fix.advice).toMatch(/H\.264 MP4/);
+    expect(item('Old clip.avi')?.issues).toHaveLength(1);
+    expect(item('Logo.png')?.issues).toEqual([]);
+    expect(item('Placeholder Hymn')?.issues.find((i) => i.code === 'unplayable-media')?.message).toBe(
+      'Drashti cannot play Blue Loop.mov yet: ProRes 422 HQ video (QuickTime). Converting files inside Drashti comes in a later version.',
+    );
+    // Marked in the library.
+    expect(t.db.prepare('SELECT name, playable, format FROM media ORDER BY name').all()).toEqual([
+      { name: 'Blue Loop.mov', playable: 0, format: 'ProRes 422 HQ video (QuickTime)' },
+      { name: 'Logo.png', playable: 1, format: 'PNG picture' },
+      { name: 'Old clip.avi', playable: 0, format: 'AVI video' },
+    ]);
   });
 
   it('skips files that are already in the library, unchanged, even from another folder', async () => {

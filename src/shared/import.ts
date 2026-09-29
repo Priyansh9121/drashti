@@ -43,7 +43,9 @@ export type IssueFix =
   | { kind: 'choose'; sourcePath: string }
   | { kind: 'import-again'; sourcePath: string }
   | { kind: 'free-space'; neededBytes: number }
-  | { kind: 'convert-font'; font: string };
+  | { kind: 'convert-font'; font: string }
+  /** A file Drashti cannot play yet: what to do until it converts files itself (Phase 2). */
+  | { kind: 'convert-media'; mediaId: string; advice: string };
 
 export interface ImportIssue {
   severity: IssueSeverity;

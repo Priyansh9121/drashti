@@ -30,6 +30,7 @@ import { diskFreeBytes, type MediaStore, type StagedMedia } from './media-store'
 import { fileNameOf, pathFromReference, resolveMedia } from './media-resolver';
 import type { ParsedMediaRef, ParsedPlaylist, ParsedPlaylistDoc, ParsedPresentation } from './model';
 import { MEDIA_REF, slideCount } from './model';
+import { unplayableIssue } from './probe';
 import { extOf, formatOf, type ScannedFile, scanPaths } from './scan';
 import { extractZip } from './zip';
 
@@ -326,7 +327,10 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     for (const s of staged) {
       const source = { kind, path: s.ref.originalPath };
       if (s.staged) {
-        ids.push(ctx.media.addStaged(s.staged, source).mediaId);
+        const stored = ctx.media.addStaged(s.staged, source);
+        ids.push(stored.mediaId);
+        if (stored.probe.playable === false)
+          issues.push(unplayableIssue(s.staged.name, stored.probe, stored.mediaId));
         continue;
       }
       const id = ctx.media.addMissing(s.ref.originalPath, s.ref.kind, source);
@@ -768,7 +772,10 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           target: { kind: 'media', id: result.mediaId },
           counts: result.outcome === 'imported' ? { ...NO_COUNTS, media: 1 } : NO_COUNTS,
           message: result.outcome === 'skipped' ? `Already in the media library as “${result.name}”.` : null,
-          issues: [],
+          issues:
+            result.probe.playable === false
+              ? [unplayableIssue(basename(file.path), result.probe, result.mediaId)]
+              : [],
         };
         imports.addItem(ctx.runId, at, item);
         return item;

@@ -67,6 +67,20 @@ describe.skipIf(!enabled)("this computer's own libraries (counts only)", () => {
       media: t.media,
       missingMedia: (db.prepare('SELECT COUNT(*) AS n FROM media WHERE missing = 1').get() as { n: number })
         .n,
+      // Whether each file plays, by kind of file (formats only, never names).
+      playable: Object.fromEntries(
+        (
+          db
+            .prepare(
+              `SELECT COALESCE(playable, 'unsure') AS p, format, COUNT(*) AS n FROM media
+                WHERE missing = 0 GROUP BY p, format ORDER BY n DESC`,
+            )
+            .all() as { p: number | string; format: string | null; n: number }[]
+        ).map((r) => [
+          `${r.p === 1 ? 'plays' : r.p === 0 ? 'CANNOT PLAY' : 'unsure'}: ${r.format ?? '?'}`,
+          r.n,
+        ]),
+      ),
       failed: t.failed,
       unsupported: t.unsupported,
       byOutcome,

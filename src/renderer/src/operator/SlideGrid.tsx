@@ -25,6 +25,15 @@ function CueBackground({ cue }: { cue: BackgroundCue }) {
       ) : (
         <VideoStill mediaId={mediaId} style={style} />
       )}
+      {cue.unplayable !== null && (
+        <span
+          data-testid="thumb-unplayable"
+          title={`${cue.name}: ${cue.unplayable}. Drashti cannot play it yet; see the import report.`}
+          className="absolute top-1 left-1 rounded bg-amber-700/90 px-1.5 py-0.5 text-[10px] font-semibold text-white"
+        >
+          Can&apos;t play
+        </span>
+      )}
     </span>
   );
 }

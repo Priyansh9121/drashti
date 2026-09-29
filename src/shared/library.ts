@@ -38,6 +38,8 @@ export interface BackgroundCue {
   name: string;
   /** The file was not found at import; it shows once it is relinked. */
   missing: boolean;
+  /** What the file is, when Drashti cannot play it (ProRes, HEIC...); null when it plays or is not known. */
+  unplayable: string | null;
   background: MediaBackground;
 }
 
@@ -49,6 +51,8 @@ export interface AudioCue {
   name: string;
   /** The file was not found at import; it plays once it is relinked. */
   missing: boolean;
+  /** What the file is, when Drashti cannot play it; null when it plays or is not known. */
+  unplayable: string | null;
   mediaId: string;
   /** 0 to 1. */
   volume: number;
