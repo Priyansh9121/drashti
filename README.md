@@ -138,6 +138,8 @@ If you start Drashti from inside another Electron app's process (for example an 
 
 **Keeping the controls reachable.** Before an output goes on the display the operator window is on, Drashti asks, because the output would cover the controls. If an output ends up over the operator window anyway (a display unplugged or rearranged), the operator window moves to a free display when there is one. **Cmd+Shift+U** (macOS) or **Ctrl+Shift+U** (Windows), "Uncover the controls", turns off any output covering the operator window. It also works when Drashti isn't the active app, and it's in the Window menu.
 
+**Trying Drashti at the mandir.** `docs/parallel-run.md` is the volunteers' guide to the parallel run: checking the Mac's macOS version, installing the builds from CI, importing the ProPresenter library, setting up screens and sound, running a sabha from a playlist, falling back to ProPresenter, saving diagnostics, the performance check and the Windows checks, and a card of the keys.
+
 Every shortcut is defined in one file, `src/shared/keymap.ts`. The current keys are provisional and will be changed to match the ones the operators use in ProPresenter once the setup checklist is back.
 
 ## What keeps the screens up (watchdog)
@@ -251,7 +253,7 @@ The library is `drashti.sqlite` in Electron's userData folder: `~/Library/Applic
 | `tests/e2e/`                                                    | Playwright tests against the built app. Unit tests sit next to the code as `*.test.ts`.                                          |
 | `tests/perf/`                                                   | The performance check, run by hand (`pnpm test:perf`), never in CI.                                                              |
 | `tools/audit/`                                                  | The read-only audit kit for the two ProPresenter machines. See `tools/audit/README.md`.                                          |
-| `docs/`                                                         | Hand checks, starting with `docs/windows-checks.md` for the Windows PC during the parallel run.                                  |
+| `docs/`                                                         | For the parallel run: the volunteers' guide `docs/parallel-run.md`, and `docs/windows-checks.md` for the Windows PC.             |
 | `third_party/`                                                  | Vendored third-party files with their licences (the ProPresenter 7 protobuf definitions).                                        |
 | `LICENSES/`                                                     | Licences shipped inside the app: the bundled fonts, and the MIT notice for the protobuf definitions.                             |
 
