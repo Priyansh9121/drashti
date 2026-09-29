@@ -46,6 +46,8 @@ export interface DrashtiBridge {
     getInfo(): Promise<AppInfo>;
     /** Edit > Undo was chosen (operator window). */
     onUndo(listener: () => void): () => void;
+    /** Something to tell the operator, from the main process. */
+    onNotice(listener: (text: string) => void): () => void;
     /** What was put back on the screens after Drashti stopped unexpectedly, until dismissed. */
     recovery(): Promise<RecoveryNotice | null>;
     dismissRecovery(): Promise<null>;

@@ -9,9 +9,9 @@ import {
   session,
 } from 'electron';
 import { mkdirSync, mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { release as osRelease, tmpdir } from 'node:os';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
-import { isAbsolute, join } from 'node:path';
+import { basename, isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
 import type { ImportResult } from '../shared/import';
 import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/import-schema';
@@ -27,7 +27,7 @@ import { propFieldsSchema } from '../shared/props';
 import { messageTemplateSchema } from '../shared/messages';
 import type { TimerResult } from '../shared/timers';
 import { timerFieldsSchema } from '../shared/timers';
-import { type RecoveryNotice, recoveryText } from '../shared/recovery';
+import type { RecoveryNotice } from '../shared/recovery';
 import type { Db } from './db/database';
 import { LATEST_VERSION, openDatabase } from './db/database';
 import { ImportRepo } from './db/imports';
@@ -48,7 +48,8 @@ import { handle, handlerTimes } from './ipc/handle';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
 import { AudioOutput } from './audio/audio-output';
-import { log } from './log';
+import { saveDiagnostics } from './diagnostics';
+import { log, logFiles, startLogFile } from './log';
 import { LiveStateWriter, toRestore } from './recovery/live-state';
 import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES } from './media/media-protocol';
 import { saveStill } from './media/stills';
@@ -84,6 +85,17 @@ const perfTest = process.env['DRASHTI_SELFTEST'] === 'performance';
 const userDataOverride = process.env['DRASHTI_USER_DATA_DIR'];
 if (userDataOverride) app.setPath('userData', userDataOverride);
 else if (perfTest) app.setPath('userData', mkdtempSync(join(tmpdir(), 'drashti-perf-')));
+// The log goes to a rotating file in the data folder too (see log.ts), from the start.
+startLogFile(join(app.getPath('userData'), 'logs'));
+log.info(
+  `Drashti ${app.getVersion()} (Electron ${process.versions.electron}, Chrome ${process.versions.chrome}, Node ${process.versions.node}) on ${process.platform} ${osRelease()} ${process.arch}`,
+);
+process.on('uncaughtException', (error) => {
+  log.error('Uncaught exception in the main process', error);
+});
+process.on('unhandledRejection', (reason) => {
+  log.error('Unhandled promise rejection in the main process', reason);
+});
 // Development only: outputs as normal windows, for machines with one screen,
 // optionally with pretend extra displays to try several outputs.
 const windowedOutputs = process.env['DRASHTI_WINDOWED_OUTPUTS'] === '1';
@@ -104,7 +116,16 @@ const mediaDelayMs = Math.min(
 // Schemes must be registered before the app is ready.
 protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { ...MEDIA_SCHEME_PRIVILEGES } }]);
 
+/** The watchdog's recent events, for diagnostics. */
+const watchdogHistory: { at: string; window: string; kind: string; reason: string | null }[] = [];
 const watchdog = new RendererWatchdog((e) => {
+  watchdogHistory.push({
+    at: new Date().toISOString(),
+    window: e.window,
+    kind: e.kind,
+    reason: e.reason ?? null,
+  });
+  if (watchdogHistory.length > 200) watchdogHistory.splice(0, watchdogHistory.length - 200);
   const text = `Watchdog: ${e.window} ${e.kind}${e.reason ? ` (${e.reason})` : ''}`;
   if (e.kind === 'crashed' || e.kind === 'hung' || e.kind === 'gave-up') log.warn(text);
   else log.info(text);
@@ -156,10 +177,10 @@ function openLibrary(): Db | null {
   try {
     const opened = openDatabase(file);
     if (seedPlaceholders(opened)) log.info('Added the placeholder presentations');
-    log.info(`Library: ${file}`);
+    log.info(`Library opened (schema ${LATEST_VERSION})`);
     return opened;
   } catch (error) {
-    log.error(`Could not open the library at ${file}`, error);
+    log.error('Could not open the library', error);
     dialog.showErrorBox(
       'Drashti cannot open its library',
       `${error instanceof Error ? error.message : String(error)}\n\nFile: ${file}`,
@@ -215,6 +236,7 @@ function start(): void {
     app.quit();
     return;
   }
+  const libraryDb: Db = db;
   const presentations = new PresentationRepo(db);
   const slides = new DbSlideSource(presentations);
   const screenRepo = new ScreenRepo(db);
@@ -396,7 +418,19 @@ function start(): void {
       stageMessage: put.stageMessage,
       timers: put.timers,
     };
-    log.warn(recoveryText(recovery));
+    // Ids and counts only in the log (the notice itself names the presentation).
+    const { slide: slideBack, ...alsoBack } = put;
+    log.warn(
+      `Recovery after an unexpected stop: ${JSON.stringify({
+        slide:
+          saved.slide && slideBack
+            ? { presentationId: saved.slide.presentationId, slideIndex: saved.slide.slideIndex }
+            : null,
+        slideGone: recovery.slideGone,
+        playlistItem: saved.playlist?.itemId ?? null,
+        ...alsoBack,
+      })}`,
+    );
   }
   // Only a quit on purpose is clean (not a crash, and not the self-test's exit).
   app.on('will-quit', () => {
@@ -843,6 +877,27 @@ function start(): void {
       },
     },
     uncoverControls: { accelerator: uncoverAccelerator, run: uncover },
+    saveDiagnostics: () => {
+      try {
+        const file = saveDiagnostics(app.getPath('desktop'), {
+          app: appInfo(),
+          displays: listDisplays(),
+          screens: screens.snapshot(),
+          sound: audioOutput.status,
+          db: libraryDb,
+          watchdog: watchdogHistory,
+          logFiles: logFiles(),
+          now: new Date(),
+        });
+        log.info('Diagnostics saved to the Desktop');
+        sendToOperator(IPC.app.notice, { text: `Diagnostics saved on the Desktop: ${basename(file)}` });
+      } catch (error) {
+        log.error('Could not save diagnostics', error);
+        sendToOperator(IPC.app.notice, {
+          text: 'Could not save diagnostics: see the log in the data folder.',
+        });
+      }
+    },
     diagnostics: diagnostics
       ? {
           crashOperator: () => {
