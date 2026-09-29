@@ -21,6 +21,8 @@ import { MEDIA_ID_PATTERN, MEDIA_SCHEME } from '../shared/media';
 import { idSchema } from '../shared/model-schema';
 import { z } from 'zod';
 import type { OutputContext } from '../shared/screens';
+import type { MessageResult } from '../shared/messages';
+import { messageTemplateSchema } from '../shared/messages';
 import type { TimerResult } from '../shared/timers';
 import { timerFieldsSchema } from '../shared/timers';
 import { type RecoveryNotice, recoveryText } from '../shared/recovery';
@@ -31,6 +33,7 @@ import { MediaRepo } from './db/media';
 import { PlaylistRepo } from './db/playlists';
 import { SearchIndex } from './db/search';
 import { TimerRepo } from './db/timers';
+import { MessageRepo } from './db/messages';
 import { SettingsRepo } from './db/settings';
 import { DbSlideSource, PresentationRepo } from './db/presentations';
 import { ScreenRepo } from './db/screens';
@@ -478,6 +481,39 @@ function start(): void {
     search.search(typeof query === 'string' ? query.slice(0, 200) : ''),
   );
   handle(IPC.library.legacyPresentations, () => search.legacyPresentations());
+  // Message templates: kept here; showing one goes through the engine.
+  const messageTemplates = new MessageRepo(db);
+  const badMessage: MessageResult = {
+    ok: false,
+    message: 'A message needs a name and some words (up to 300).',
+  };
+  const messageChange = (e: IpcMainInvokeEvent, run: () => MessageResult): MessageResult =>
+    fromOperator(e) ? run() : { ok: false, message: 'Only the operator window can change messages.' };
+  handle(IPC.messages.list, () => messageTemplates.list());
+  handle(IPC.messages.create, (e, template) =>
+    messageChange(e, () => {
+      const t = messageTemplateSchema.safeParse(template);
+      return t.success ? { ok: true, id: messageTemplates.create(t.data) } : badMessage;
+    }),
+  );
+  handle(IPC.messages.update, (e, templateId, template) =>
+    messageChange(e, () => {
+      const id = idSchema.safeParse(templateId);
+      const t = messageTemplateSchema.safeParse(template);
+      if (!id.success || !t.success) return badMessage;
+      return messageTemplates.update(id.data, t.data)
+        ? { ok: true, id: id.data }
+        : { ok: false, message: 'That message no longer exists.' };
+    }),
+  );
+  handle(IPC.messages.remove, (e, templateId) =>
+    messageChange(e, () => {
+      const id = idSchema.safeParse(templateId);
+      return id.success && messageTemplates.remove(id.data)
+        ? { ok: true, id: id.data }
+        : { ok: false, message: 'That message no longer exists.' };
+    }),
+  );
   // Timers: made and edited here, started and paused through the engine.
   const timerChange = (e: IpcMainInvokeEvent, run: () => TimerResult): TimerResult => {
     if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can change timers.' };
