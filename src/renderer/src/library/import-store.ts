@@ -9,6 +9,7 @@ import type {
 } from '../../../shared/import';
 import { useEngine } from '../engine/engine-store';
 import { loadLibrary, selectPresentation, useLibrary } from './library-store';
+import { describeSome, pushRemoval } from './undo';
 
 /*
  * Imports, their reports, and removing presentations with Undo, as the
@@ -30,8 +31,6 @@ interface ImportView {
   report: ImportReport | null;
   /** Presentations waiting for the operator to confirm removing them. */
   confirmRemove: (Removal & { live: boolean }) | null;
-  /** Removals Undo can bring back, newest last. */
-  undoStack: Removal[];
 }
 
 export const useImports = create<ImportView>(() => ({
@@ -40,7 +39,6 @@ export const useImports = create<ImportView>(() => ({
   error: null,
   report: null,
   confirmRemove: null,
-  undoStack: [],
 }));
 
 let watching = false;
@@ -147,22 +145,22 @@ export async function confirmRemoval(): Promise<void> {
   useImports.setState({ confirmRemove: null });
   const result = await window.drashti.library.removePresentations(pending.ids);
   if (result.ok && result.ids.length > 0) {
-    useImports.setState((s) => ({ undoStack: [...s.undoStack, { ids: result.ids, names: pending.names }] }));
+    const ids = result.ids;
+    pushRemoval({
+      text: `Removed ${describeSome(pending.names, ids.length, 'presentation')}`,
+      restore: () => restorePresentations(ids),
+    });
   }
   await loadLibrary();
 }
 
-/** Bring back the last removal. False when there is nothing to undo. */
-export async function undoRemoval(): Promise<boolean> {
-  const last = useImports.getState().undoStack.at(-1);
-  if (!last) return false;
-  useImports.setState((s) => ({ undoStack: s.undoStack.slice(0, -1) }));
-  const result = await window.drashti.library.restorePresentations(last.ids);
+/** Undo for a removal: bring the presentations back and select them. */
+async function restorePresentations(ids: string[]): Promise<void> {
+  const result = await window.drashti.library.restorePresentations(ids);
   await loadLibrary();
   const first = result.ok ? result.ids[0] : undefined;
   if (first) {
     useLibrary.setState({ marked: result.ok ? result.ids : [], anchorId: first });
     await selectPresentation(first);
   }
-  return true;
 }

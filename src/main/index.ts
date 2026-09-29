@@ -26,6 +26,7 @@ import type { Db } from './db/database';
 import { LATEST_VERSION, openDatabase } from './db/database';
 import { ImportRepo } from './db/imports';
 import { MediaRepo } from './db/media';
+import { PlaylistRepo } from './db/playlists';
 import { SettingsRepo } from './db/settings';
 import { DbSlideSource, PresentationRepo } from './db/presentations';
 import { ScreenRepo } from './db/screens';
@@ -42,6 +43,7 @@ import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES } from './media/media-proto
 import { saveStill } from './media/stills';
 import { installMenu } from './menu';
 import { runPerformanceTest } from './perftest';
+import { registerPlaylistIpc } from './playlists/playlist-ipc';
 import { createdGroupId, runWatchdogSelfTest } from './selftest';
 import {
   createOutputWindow,
@@ -202,9 +204,12 @@ function start(): void {
   const slides = new DbSlideSource(presentations);
   const screenRepo = new ScreenRepo(db);
   const importRepo = new ImportRepo(db);
+  const playlists = new PlaylistRepo(db);
   // Removed presentations can be restored for 30 days.
   const purged = presentations.purgeRemoved(new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString());
   if (purged > 0) log.info(`Purged ${purged} presentation(s) removed more than 30 days ago`);
+  const purgedLists = playlists.purgeRemoved(new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString());
+  if (purgedLists > 0) log.info(`Purged ${purgedLists} playlist(s) or item(s) removed more than 30 days ago`);
 
   const transport = new IpcTransport((error, target) => {
     log.warn(`Could not send an engine message to window ${target.id}`, error);
@@ -454,6 +459,14 @@ function start(): void {
   handle(IPC.engine.snapshot, () => engine.snapshot());
   handle(IPC.engine.command, (event, command) => runEngineCommand(engine, command, fromOperator(event)));
   handle(IPC.library.listPresentations, () => presentations.list());
+  handle(IPC.library.listMedia, () => media.list());
+  registerPlaylistIpc({
+    repo: playlists,
+    fromOperator,
+    changed: () => {
+      sendToOperator(IPC.playlists.changed, { at: Date.now() });
+    },
+  });
   handle(IPC.library.getPresentation, (_event, id) => {
     const parsed = idSchema.safeParse(id);
     return parsed.success ? presentations.get(parsed.data) : null;

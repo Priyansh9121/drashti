@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import type { EngineCommand } from '../../../shared/engine/commands';
 import { useEngine } from '../engine/engine-store';
-import { requestRemoval, undoRemoval } from '../library/import-store';
+import { requestRemoval } from '../library/import-store';
+import { undoRemoval } from '../library/undo';
 import { selectPresentation, useLibrary } from '../library/library-store';
 import { playOrder } from '../../../shared/order';
 import type { OperatorAction } from '../../../shared/keymap';

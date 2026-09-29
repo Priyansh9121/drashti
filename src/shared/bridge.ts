@@ -6,6 +6,14 @@ import type { ImportOptions, ImportProgress, ImportReport, ImportResult, ImportR
 import type { PresentationDoc, PresentationSummary, RemoveResult } from './library';
 import type { RecoveryNotice } from './recovery';
 import type { SaveStillResult } from './media';
+import type {
+  ItemOrder,
+  MediaSummary,
+  NewItem,
+  PlaylistItemInfo,
+  PlaylistNode,
+  PlaylistResult,
+} from './playlists';
 import type { CoverOptions, OutputContext, ScreenPatch, ScreensResult, ScreensSnapshot } from './screens';
 
 /**
@@ -42,6 +50,8 @@ export interface DrashtiBridge {
   };
   library: {
     listPresentations(): Promise<PresentationSummary[]>;
+    /** Every media item, for the library's media list. */
+    listMedia(): Promise<MediaSummary[]>;
     getPresentation(id: string): Promise<PresentationDoc | null>;
     /** Presentations were added or changed (for example by an import). */
     onChanged(listener: () => void): () => void;
@@ -66,6 +76,27 @@ export interface DrashtiBridge {
     /** Remove presentations; restorePresentations brings them back (Undo). */
     removePresentations(ids: string[]): Promise<RemoveResult>;
     restorePresentations(ids: string[]): Promise<RemoveResult>;
+  };
+  /** Playlists and folders; changing them is for the operator window only. */
+  playlists: {
+    tree(): Promise<PlaylistNode[]>;
+    items(playlistId: string): Promise<PlaylistItemInfo[]>;
+    create(name: string, parentId: string | null, isFolder: boolean): Promise<PlaylistResult>;
+    rename(playlistId: string, name: string): Promise<PlaylistResult>;
+    /** Remove playlists or folders (with what they hold); restore brings them back (Undo). */
+    remove(ids: string[]): Promise<PlaylistResult>;
+    restore(ids: string[]): Promise<PlaylistResult>;
+    /** Add at a position, or at the end when it is null. */
+    addItems(playlistId: string, at: number | null, items: NewItem[]): Promise<PlaylistResult>;
+    /** Move items so the first lands at `to` among the others. */
+    moveItems(playlistId: string, ids: string[], to: number): Promise<PlaylistResult>;
+    removeItems(ids: string[]): Promise<PlaylistResult>;
+    restoreItems(ids: string[]): Promise<PlaylistResult>;
+    /** Put a presentation where the import left a placeholder. */
+    fillPlaceholder(itemId: string, presentationId: string): Promise<PlaylistResult>;
+    setItemOrder(itemId: string, order: ItemOrder): Promise<PlaylistResult>;
+    renameHeader(itemId: string, label: string): Promise<PlaylistResult>;
+    onChanged(listener: () => void): () => void;
   };
   media: {
     /**
