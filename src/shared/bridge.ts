@@ -24,6 +24,7 @@ import type {
 } from './playlists';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { SearchResult } from './search';
+import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes';
 import type { TimerFields, TimerResult } from './timers';
 import type {
   CoverOptions,
@@ -127,6 +128,18 @@ export interface DrashtiBridge {
     setItemOrder(itemId: string, order: ItemOrder): Promise<PlaylistResult>;
     renameHeader(itemId: string, label: string): Promise<PlaylistResult>;
     onChanged(listener: () => void): () => void;
+  };
+  /** Themes: how presentations' words look, per language, and what is behind them. */
+  themes: {
+    list(): Promise<{ themes: Theme[]; defaultId: string }>;
+    /** Make a theme (no id) or change one. */
+    save(themeId: string | null, fields: ThemeFields): Promise<ThemeResult>;
+    /** Remove a theme; the default one stays. */
+    remove(themeId: string): Promise<ThemeResult>;
+    /** Apply a theme to presentations: their styles change, never their words; one Undo brings them back. */
+    apply(themeId: string, presentationIds: string[]): Promise<ApplyThemeResult>;
+    /** A theme from a presentation's first text box (an imported template). */
+    fromPresentation(presentationId: string): Promise<ThemeResult>;
   };
   /** Message templates ("Car {plate} please move"). Showing one goes through the engine. */
   messages: {

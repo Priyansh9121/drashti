@@ -13,7 +13,8 @@ import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
 import { editWords } from '../library/words-store';
 import { Button } from '../ui/Button';
-import { chooseArrangement, goLive, playItem } from './actions';
+import { themeFromPresentation } from '../themes/themes-store';
+import { chooseArrangement, goLive, playItem, useNotice } from './actions';
 
 /** The slide's own background (its background cue), behind its thumbnail: the image, or a video's still frame. */
 function CueBackground({ cue }: { cue: BackgroundCue }) {
@@ -268,6 +269,9 @@ function PresentationGrid({ item }: { item: (ShownItem & { kind: 'presentation' 
   const live = useEngine((s) => s.state?.live);
   const liveSlideId = useEngine((s) => s.state?.layers.slide?.slide.id ?? null);
   const focusSlideId = useLibrary((s) => s.focusSlideId);
+  const isTemplate = useLibrary(
+    (s) => s.presentations.find((p) => p.id === doc?.id)?.libraryName === 'Templates',
+  );
   const order = useMemo(
     () =>
       doc
@@ -305,6 +309,19 @@ function PresentationGrid({ item }: { item: (ShownItem & { kind: 'presentation' 
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <h2 className="flex-1 text-lg font-semibold">{doc.name}</h2>
         {item ? <ItemOrderPicker doc={doc} item={item} /> : <ArrangementPicker doc={doc} />}
+        {isTemplate && (
+          <Button
+            className="px-2 py-1 text-xs"
+            title="A theme from this template's first text box"
+            onClick={() => {
+              void themeFromPresentation(doc.id).then((problem) => {
+                useNotice.setState({ text: problem });
+              });
+            }}
+          >
+            Make a theme from this
+          </Button>
+        )}
         <Button className="px-2 py-1 text-xs" onClick={() => void editWords(doc.id, doc.name)}>
           Edit words
         </Button>

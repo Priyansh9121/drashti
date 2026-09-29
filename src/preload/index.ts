@@ -84,6 +84,13 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
+  themes: {
+    list: () => invoke(IPC.themes.list),
+    save: (themeId, fields) => invoke(IPC.themes.save, themeId, fields),
+    remove: (themeId) => invoke(IPC.themes.remove, themeId),
+    apply: (themeId, presentationIds) => invoke(IPC.themes.apply, themeId, presentationIds),
+    fromPresentation: (presentationId) => invoke(IPC.themes.fromPresentation, presentationId),
+  },
   messages: {
     list: () => invoke(IPC.messages.list),
     create: (template) => invoke(IPC.messages.create, template),

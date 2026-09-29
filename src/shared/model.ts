@@ -48,6 +48,8 @@ export interface TextRun {
   italic?: boolean;
   /** Extra space between letters, in slide pixels (negative is tighter). */
   letterSpacing?: number;
+  /** A drop shadow behind this run's letters; when unset, the element's style decides. */
+  shadow?: boolean;
   /** Language of this run; when a source gives none it is detected from the script. */
   lang?: Lang | null;
   /**

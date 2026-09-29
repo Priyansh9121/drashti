@@ -22,6 +22,8 @@ export interface WordsIpcDeps {
   lookFor: (themeId: string | null, size: { width: number; height: number }) => NewSlideLook;
   /** A presentation's content changed: refresh caches, the live slide and the operator's list. */
   changed: (presentationIds: string[]) => void;
+  /** A presentation was just made in Drashti: give it the default theme (backgrounds included). */
+  styleNew: (presentationId: string) => void;
 }
 
 const wordsSchema = z.string().max(200_000);
@@ -34,6 +36,7 @@ export function registerWordsIpc({
   fromOperator,
   lookFor,
   changed,
+  styleNew,
 }: WordsIpcDeps): void {
   handle(IPC.library.words, (_e, presentationId): WordsResult => {
     const id = idSchema.safeParse(presentationId);
@@ -82,6 +85,7 @@ export function registerWordsIpc({
     );
     if (!input) return { ok: false, message: 'Paste or type the words first.' };
     const id = presentations.insert(input);
+    styleNew(id);
     changed([id]);
     return { ok: true, id };
   });
