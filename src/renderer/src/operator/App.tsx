@@ -8,6 +8,8 @@ import { loadLibrary, watchLibrary } from '../library/library-store';
 import { RemoveConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
 import { UndoBar } from '../library/UndoBar';
 import { WordsEditor } from '../library/WordsEditor';
+import { ThemesPanel } from '../themes/ThemesPanel';
+import { openThemes } from '../themes/themes-store';
 import { undoRemoval } from '../library/undo';
 import { PlaylistPanel } from '../playlists/PlaylistPanel';
 import { loadTree, watchPlaylists } from '../playlists/playlist-store';
@@ -82,6 +84,7 @@ export function App() {
         <span className="flex-1" />
         <SoundWarning onOpen={openScreens} />
         <ScreensSummary onOpen={openScreens} />
+        <Button onClick={() => openThemes()}>Themes</Button>
         <Button onClick={openScreens}>Screens</Button>
       </header>
 
@@ -133,6 +136,7 @@ export function App() {
       <RemoveConfirm undoKey={shortcutText('undo', platform)} />
       <RemovePlaylistConfirm undoKey={shortcutText('undo', platform)} />
       <WordsEditor platform={platform} />
+      <ThemesPanel />
       {screensOpen && (
         <ScreensPanel
           platform={platform}

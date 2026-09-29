@@ -5,7 +5,7 @@ import type { Lang, Rect, TextElement, TextRun, TextStyle } from '../../shared/m
 import { detectLang, mainLang, mergeRuns, withDetectedLangs } from '../../shared/text-runs';
 import type { ArrangementEntryRow, ContentRows, CueRow, ElementRow, GroupRow, SlideRow } from '../db/content';
 import type { NewPresentation } from '../db/presentations';
-import { groupColor, LYRICS_STYLE } from '../import/formats/text';
+import { groupColor } from '../import/formats/text';
 
 /*
  * A presentation's words as plain text (the lyrics format of
@@ -106,21 +106,6 @@ export function lookText(lines: readonly string[], look: NewSlideLook): TextProp
   const props: TextProps = { text: lines.join('\n'), lang: mainLang(runs), style: look.style };
   if (runs.length > 1 || runs.some((r) => Object.keys(r).length > 2)) props.runs = runs;
   return props;
-}
-
-/** The look of slides made in Drashti before any theme: the lyrics style, the box a little in from the edges. */
-export function plainLook(width: number, height: number): NewSlideLook {
-  return {
-    frame: {
-      x: Math.round(width * 0.05),
-      y: Math.round(height * 0.0889),
-      width: Math.round(width * 0.9),
-      height: Math.round(height * 0.8222),
-    },
-    style: LYRICS_STYLE,
-    langs: {},
-    background: null,
-  };
 }
 
 /** A new presentation from pasted words, in the theme's look. Null when there are no words. */

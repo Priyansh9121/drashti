@@ -33,6 +33,7 @@ import { MediaRepo } from './db/media';
 import { PlaylistRepo } from './db/playlists';
 import { SearchIndex } from './db/search';
 import { TimerRepo } from './db/timers';
+import { ThemeRepo } from './db/themes';
 import { MessageRepo } from './db/messages';
 import { SettingsRepo } from './db/settings';
 import { DbSlideSource, PresentationRepo } from './db/presentations';
@@ -52,7 +53,8 @@ import { installMenu } from './menu';
 import { runPerformanceTest } from './perftest';
 import { registerPlaylistIpc } from './playlists/playlist-ipc';
 import { Revisions } from './library/revisions';
-import { plainLook } from './library/words';
+import { applyTheme, themeLook } from './library/themes';
+import { registerThemesIpc } from './library/themes-ipc';
 import { registerWordsIpc } from './library/words-ipc';
 import { createdGroupId, runWatchdogSelfTest } from './selftest';
 import {
@@ -215,6 +217,8 @@ function start(): void {
   const screenRepo = new ScreenRepo(db);
   const importRepo = new ImportRepo(db);
   const playlists = new PlaylistRepo(db);
+  const themes = new ThemeRepo(db);
+  themes.defaultId();
   // The search index is kept as presentations are written; a library indexed by an older version is redone once.
   const search = new SearchIndex(db);
   const indexStart = performance.now();
@@ -480,20 +484,28 @@ function start(): void {
   handle(IPC.engine.command, (event, command) => runEngineCommand(engine, command, fromOperator(event)));
   handle(IPC.library.listPresentations, () => presentations.list());
   handle(IPC.library.listMedia, () => media.list());
-  // The words editor: edited words go back into the slides; Undo writes the kept copy back.
+  // The words editor and themes: edited words and applied themes go back into the slides; Undo
+  // writes the kept copy back.
+  const revisions = new Revisions();
+  const contentChanged = (ids: string[]) => {
+    for (const id of ids) {
+      slides.invalidate(id);
+      engine.refreshLive(id);
+    }
+    libraryChanged(true);
+  };
   registerWordsIpc({
     presentations,
-    revisions: new Revisions(),
+    revisions,
     fromOperator,
-    lookFor: (_themeId, size) => plainLook(size.width, size.height),
-    changed: (ids) => {
-      for (const id of ids) {
-        slides.invalidate(id);
-        engine.refreshLive(id);
-      }
-      libraryChanged(true);
+    lookFor: (themeId, size) => themeLook(themes.themeOrDefault(themeId), size.width, size.height),
+    changed: contentChanged,
+    styleNew: (id) => {
+      const rows = presentations.content(id);
+      if (rows) presentations.setContent(applyTheme(rows, themes.themeOrDefault(null)));
     },
   });
+  registerThemesIpc({ themes, presentations, revisions, fromOperator, changed: contentChanged });
   handle(IPC.library.search, (_e, query) =>
     search.search(typeof query === 'string' ? query.slice(0, 200) : ''),
   );

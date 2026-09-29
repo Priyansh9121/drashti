@@ -24,6 +24,7 @@ import type {
 } from './playlists';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { SearchResult } from './search';
+import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes';
 import type { TimerFields, TimerResult } from './timers';
 import type {
   CoverOptions,
@@ -121,6 +122,14 @@ export const IPC = {
     /** main -> operator: playlists changed. */
     changed: 'playlists:changed',
   },
+  /** Themes; changing and applying them is for the operator window only. */
+  themes: {
+    list: 'themes:list',
+    save: 'themes:save',
+    remove: 'themes:remove',
+    apply: 'themes:apply',
+    fromPresentation: 'themes:from-presentation',
+  },
   /** Message templates; changing them is for the operator window only. */
   messages: {
     list: 'messages:list',
@@ -213,6 +222,11 @@ export interface InvokeContract {
   [IPC.audio.getOutput]: { args: []; result: AudioOutputStatus };
   [IPC.audio.setOutput]: { args: [device: AudioDevice | null]; result: AudioOutputStatus };
   [IPC.audio.reportDevices]: { args: [devices: AudioDevice[], state: AudioOutputState]; result: null };
+  [IPC.themes.list]: { args: []; result: { themes: Theme[]; defaultId: string } };
+  [IPC.themes.save]: { args: [themeId: string | null, fields: ThemeFields]; result: ThemeResult };
+  [IPC.themes.remove]: { args: [themeId: string]; result: ThemeResult };
+  [IPC.themes.apply]: { args: [themeId: string, presentationIds: string[]]; result: ApplyThemeResult };
+  [IPC.themes.fromPresentation]: { args: [presentationId: string]; result: ThemeResult };
   [IPC.messages.list]: { args: []; result: MessageTemplate[] };
   [IPC.messages.create]: { args: [template: MessageTemplateFields]; result: MessageResult };
   [IPC.messages.update]: {

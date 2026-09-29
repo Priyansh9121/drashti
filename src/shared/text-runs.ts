@@ -43,6 +43,7 @@ const sameStyle = (a: TextRun, b: TextRun) =>
   a.weight === b.weight &&
   a.italic === b.italic &&
   a.letterSpacing === b.letterSpacing &&
+  a.shadow === b.shadow &&
   a.lang === b.lang &&
   a.legacy === b.legacy;
 

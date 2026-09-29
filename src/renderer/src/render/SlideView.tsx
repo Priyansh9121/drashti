@@ -21,6 +21,8 @@ import { requestStill, useStill } from './stills';
 export type MediaMode = 'live' | 'still';
 
 const justify = { top: 'flex-start', middle: 'center', bottom: 'flex-end' } as const;
+/** The drop shadow behind text that asks for one. */
+const TEXT_SHADOW = '0 0.06em 0.18em rgba(0, 0, 0, 0.85)';
 
 function frameStyle(el: SlideElement): CSSProperties {
   return {
@@ -52,6 +54,7 @@ function Runs({ el, runs }: { el: TextElement; runs: TextRun[] }) {
               fontWeight: run.weight,
               fontStyle: run.italic ? 'italic' : undefined,
               letterSpacing: run.letterSpacing,
+              textShadow: run.shadow === undefined ? undefined : run.shadow ? TEXT_SHADOW : 'none',
             }}
           >
             {run.text}
@@ -83,7 +86,7 @@ function TextView({ el }: { el: TextElement }) {
         whiteSpace: 'pre-wrap',
         overflowWrap: 'anywhere',
         fontKerning: 'normal',
-        textShadow: s.shadow ? '0 0.06em 0.18em rgba(0, 0, 0, 0.85)' : undefined,
+        textShadow: s.shadow ? TEXT_SHADOW : undefined,
       }}
     >
       {el.runs && el.runs.length > 0 ? <Runs el={el} runs={el.runs} /> : el.text}
