@@ -1,9 +1,9 @@
 name: CI
 
-# Private-repo Actions minutes: macOS counts 10x and Windows 2x, so the cheap
-# checks run on Ubuntu for every push, and the end-to-end and packaging jobs
-# run on macOS and Windows only for pushes to main, pull requests and manual
-# runs. A manual run can target one OS.
+# The repository is public, so standard runners are free: the end-to-end and
+# packaging jobs run on macOS and Windows for every push to phase1 and main,
+# pull requests and manual runs (a manual run can target one OS). Pushes to
+# other branches get the Ubuntu checks and the secret scan only.
 on:
   push:
   pull_request:
@@ -60,7 +60,7 @@ jobs:
     if: >-
       github.event_name == 'pull_request' ||
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/phase1'))
     strategy:
       fail-fast: false
       matrix:

@@ -87,7 +87,7 @@ The Electron binary downloads the first time something needs it (for example `pn
 | `pnpm hooks`       | Turn on the git hooks in `.githooks/` for this clone (the secret scan before each push). Run once after cloning.             |
 | `pnpm package`     | Build installers into `release/`: `.dmg` and `.zip` on macOS, `.exe` on Windows. They are unsigned for now.                  |
 
-CI runs on GitHub Actions in the private `drashti` repository. `.github/workflows/ci.yml` runs typecheck, lint and unit tests on Ubuntu for every push. Pull requests, pushes to `main` and manual runs also get unit tests, the end-to-end tests (including the smoke test) and packaging on `macos-latest` and `windows-latest`, and keep the installers for 7 days. macOS minutes count ten times and Windows minutes twice on a private repository, which is why those jobs don't run on every push. A manual run can pick one OS:
+CI runs on GitHub Actions in the public `drashti` repository, where standard runners are free. `.github/workflows/ci.yml` runs typecheck, lint and unit tests on Ubuntu for every push. Every push to `phase1` or `main`, pull requests and manual runs also get unit tests, the end-to-end tests (including the smoke test) and packaging on `macos-latest` and `windows-latest`, and keep the installers for 7 days. A push cancels the run still going on the same branch, so the last push's run is the one that counts. A manual run can pick one OS:
 
 ```bash
 gh workflow run CI --ref <branch> -f os=windows   # or os=macos, os=both
