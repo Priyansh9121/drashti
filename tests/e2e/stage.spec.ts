@@ -95,7 +95,7 @@ test('a stage screen follows Next with the current and next text, notes, clock a
 
   // A running timer shows on the stage too.
   const timers = win.getByTestId('timers');
-  await timers.getByRole('button', { name: '+ Timer' }).click();
+  await timers.getByRole('button', { name: 'New timer' }).click();
   const form = timers.getByTestId('timer-form');
   await form.getByRole('textbox', { name: 'Timer name' }).fill('Placeholder talk');
   await form.getByRole('button', { name: 'Save' }).click();

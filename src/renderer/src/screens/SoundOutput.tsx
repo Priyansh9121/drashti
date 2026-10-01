@@ -1,13 +1,27 @@
 import { useEffect } from 'react';
+import { Select } from '../ui/Field';
+import { Notice } from '../ui/Notice';
+import { SectionTitle } from '../ui/Panel';
+import { Loading } from '../ui/States';
 import { chooseOutput, connectSound, useSound } from './sound-store';
 
-/** Where Drashti's sound goes (usually the mixer): the one audio player plays everything there. */
+/**
+ * Where Drashti's sound goes (usually the mixer): the one audio player plays
+ * everything there. The status bar says where it goes, and warns while the
+ * chosen output is not connected.
+ */
 export function SoundOutput() {
   const status = useSound((s) => s.status);
   useEffect(() => {
     connectSound();
   }, []);
-  if (!status) return null;
+  if (!status)
+    return (
+      <section className="space-y-2" data-testid="sound-output">
+        <SectionTitle>Sound output</SectionTitle>
+        <Loading label="Looking for sound outputs…" />
+      </section>
+    );
   const { chosen, devices, state, checked } = status;
   // "Default - ..." is the same as the system default below.
   const listed = devices.filter((d) => d.id !== 'default');
@@ -15,12 +29,12 @@ export function SoundOutput() {
   const value = chosen ? (listed.find((d) => d.label === chosen.label)?.id ?? chosen.id) : '';
   return (
     <section className="space-y-2" data-testid="sound-output">
-      <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">Sound output</h3>
+      <SectionTitle>Sound output</SectionTitle>
       <label className="flex items-center gap-2 text-sm">
-        <span className="text-muted">Play sound on</span>
-        <select
+        <span className="shrink-0 text-muted">Play sound on</span>
+        <Select
           aria-label="Sound output"
-          className="min-w-64 rounded-md border border-line bg-panel px-2 py-1 text-sm text-white"
+          className="min-w-64"
           value={value}
           onChange={(e) => {
             const id = e.target.value;
@@ -36,40 +50,18 @@ export function SoundOutput() {
               {d.label}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
       {!checked && <p className="text-xs text-muted">Looking for sound outputs…</p>}
       {missing && (
-        <p
-          role="alert"
-          className="rounded-md border border-amber-600 bg-amber-900/60 px-3 py-2 text-sm text-amber-100"
-        >
+        <Notice tone="warning">
           {`"${chosen.label}" is not connected. Sound is playing on the system default until it is back.`}
-        </p>
+        </Notice>
       )}
       <p className="text-xs text-muted">
         Only this output makes sound: the screens are silent, and videos&apos; sound plays here in step with
         them.
       </p>
     </section>
-  );
-}
-
-/** A warning in the header while the chosen sound output is missing. */
-export function SoundWarning({ onOpen }: { onOpen: () => void }) {
-  const status = useSound((s) => s.status);
-  useEffect(() => {
-    connectSound();
-  }, []);
-  if (status?.state !== 'missing' || !status.chosen) return null;
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      data-testid="sound-warning"
-      className="rounded-md bg-amber-900/60 px-2 py-1 text-xs text-amber-100"
-    >
-      {`Sound output "${status.chosen.label}" not connected`}
-    </button>
   );
 }

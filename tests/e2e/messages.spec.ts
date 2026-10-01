@@ -16,7 +16,7 @@ test('a message with a field goes up on the screens, next to another, and comes 
   const panel = win.getByTestId('messages');
 
   // A template with a field.
-  await panel.getByRole('button', { name: '+ Message' }).click();
+  await panel.getByRole('button', { name: 'New message' }).click();
   const form = panel.getByTestId('message-form');
   await form.getByRole('textbox', { name: 'Message name' }).fill('Placeholder parking');
   await form.getByRole('textbox', { name: 'Message words' }).fill('Car {plate} please move');
@@ -35,10 +35,10 @@ test('a message with a field goes up on the screens, next to another, and comes 
 
   // A second message, with a timer in it: both are up at once.
   const timers = win.getByTestId('timers');
-  await timers.getByRole('button', { name: '+ Timer' }).click();
+  await timers.getByRole('button', { name: 'New timer' }).click();
   await timers.getByRole('textbox', { name: 'Timer name' }).fill('Placeholder start');
   await timers.getByRole('button', { name: 'Save' }).click();
-  await panel.getByRole('button', { name: '+ Message' }).click();
+  await panel.getByRole('button', { name: 'New message' }).click();
   await form.getByRole('textbox', { name: 'Message name' }).fill('Placeholder start time');
   await form.getByRole('textbox', { name: 'Message words' }).fill('Sabha starts in {time}');
   await form

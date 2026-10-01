@@ -8,7 +8,15 @@ import { pushRemoval } from '../library/undo';
 import { MediaStill } from '../render/MediaStill';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
+import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
+import { Dialog } from '../ui/Dialog';
+import { ColorInput, Field, NumberInput, Select, TextInput } from '../ui/Field';
+import { Palette, Plus, Trash2 } from '../ui/icons';
+import { ListRow } from '../ui/ListRow';
+import { Notice } from '../ui/Notice';
+import { SectionTitle } from '../ui/Panel';
+import { EmptyState, Loading } from '../ui/States';
 import { plural } from '../ui/text';
 import { closeThemes, useThemesPanel } from './themes-store';
 
@@ -19,9 +27,6 @@ const SAMPLE: Record<Lang, string> = {
   hi: 'नमूना पंक्ति',
   en: 'Placeholder line',
 };
-
-const field =
-  'rounded-md border border-line bg-ink px-2 py-1 text-sm text-white focus-visible:outline-2 focus-visible:outline-accent';
 
 /** A slide showing a line in each language under the theme. */
 function previewSlide(t: ThemeFields): RenderSlide {
@@ -132,20 +137,23 @@ function ThemeEditor({
   const pictures = media.filter((m) => m.kind !== 'audio' && !m.missing && m.unplayable === null);
 
   return (
-    <div className="space-y-4" data-testid="theme-editor">
-      <label className="flex items-center gap-2 text-sm">
-        <span className="w-16 text-muted">Name</span>
-        <input
+    <div className="space-y-5" data-testid="theme-editor">
+      <Field label="Name" layout="inline">
+        <TextInput
           aria-label="Theme name"
-          className={`${field} flex-1`}
+          className="flex-1"
           value={draft.name}
           maxLength={80}
           onChange={(e) => {
             setDraft((d) => ({ ...d, name: e.target.value }));
           }}
         />
-      </label>
-      <div className="overflow-hidden rounded-md border border-line bg-black">
+      </Field>
+      <div
+        className="overflow-hidden rounded-lg border border-line-strong bg-black"
+        data-a11y-picture
+        aria-hidden="true"
+      >
         <PlacedInParent
           content={{ width: 1920, height: 1080 }}
           mode="fit"
@@ -157,116 +165,112 @@ function ThemeEditor({
           </span>
         </PlacedInParent>
       </div>
-      <table className="w-full text-sm" data-testid="theme-langs">
-        <thead className="text-left text-xs text-muted">
-          <tr>
-            <th className="py-1 font-normal">Language</th>
-            <th className="font-normal">Font</th>
-            <th className="font-normal">Size</th>
-            <th className="font-normal">Weight</th>
-            <th className="font-normal">Colour</th>
-            <th className="font-normal">Shadow</th>
-          </tr>
-        </thead>
-        <tbody>
-          {LANGS.map((lang) => {
-            const s = draft.langs[lang];
-            const name = LANG_NAMES[lang];
-            return (
-              <tr key={lang} data-lang={lang}>
-                <td className="py-1 pr-2">{name}</td>
-                <td className="pr-2">
-                  <input
-                    aria-label={`${name} font`}
-                    placeholder="Bundled font"
-                    className={`${field} w-full`}
-                    value={s.font ?? ''}
-                    onChange={(e) => {
-                      setLang(lang, { font: e.target.value.trim() === '' ? null : e.target.value });
-                    }}
-                  />
-                </td>
-                <td className="pr-2">
-                  <input
-                    aria-label={`${name} size`}
-                    type="number"
-                    min={8}
-                    max={600}
-                    className={`${field} w-20`}
-                    value={s.size}
-                    onChange={(e) => {
-                      setLang(lang, { size: Number(e.target.value) || s.size });
-                    }}
-                  />
-                </td>
-                <td className="pr-2">
-                  <select
-                    aria-label={`${name} weight`}
-                    className={field}
-                    value={s.weight}
-                    onChange={(e) => {
-                      setLang(lang, { weight: Number(e.target.value) });
-                    }}
-                  >
-                    <option value={400}>Regular</option>
-                    <option value={500}>Medium</option>
-                    <option value={700}>Bold</option>
-                  </select>
-                </td>
-                <td className="pr-2">
-                  <input
-                    aria-label={`${name} colour`}
-                    type="color"
-                    className="h-8 w-12 rounded border border-line bg-ink"
-                    value={s.color}
-                    onChange={(e) => {
-                      setLang(lang, { color: e.target.value });
-                    }}
-                  />
-                </td>
-                <td>
-                  <input
-                    aria-label={`${name} shadow`}
-                    type="checkbox"
-                    checked={s.shadow}
-                    onChange={(e) => {
-                      setLang(lang, { shadow: e.target.checked });
-                    }}
-                  />
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <section className="space-y-2">
+        <SectionTitle>Each language</SectionTitle>
+        <table className="w-full text-sm" data-testid="theme-langs">
+          <thead className="text-left text-xs text-muted">
+            <tr>
+              <th className="py-1 font-medium">Language</th>
+              <th className="font-medium">Font</th>
+              <th className="font-medium">Size</th>
+              <th className="font-medium">Weight</th>
+              <th className="font-medium">Colour</th>
+              <th className="font-medium">Shadow</th>
+            </tr>
+          </thead>
+          <tbody>
+            {LANGS.map((lang) => {
+              const st = draft.langs[lang];
+              const name = LANG_NAMES[lang];
+              return (
+                <tr key={lang} data-lang={lang}>
+                  <td className="py-1 pr-2 font-medium">{name}</td>
+                  <td className="pr-2">
+                    <TextInput
+                      aria-label={`${name} font`}
+                      placeholder="Bundled font"
+                      className="w-full"
+                      value={st.font ?? ''}
+                      onChange={(e) => {
+                        setLang(lang, { font: e.target.value.trim() === '' ? null : e.target.value });
+                      }}
+                    />
+                  </td>
+                  <td className="pr-2">
+                    <NumberInput
+                      aria-label={`${name} size`}
+                      min={8}
+                      max={600}
+                      value={st.size}
+                      onChange={(e) => {
+                        setLang(lang, { size: Number(e.target.value) || st.size });
+                      }}
+                    />
+                  </td>
+                  <td className="pr-2">
+                    <Select
+                      aria-label={`${name} weight`}
+                      value={st.weight}
+                      onChange={(e) => {
+                        setLang(lang, { weight: Number(e.target.value) });
+                      }}
+                    >
+                      <option value={400}>Regular</option>
+                      <option value={500}>Medium</option>
+                      <option value={700}>Bold</option>
+                    </Select>
+                  </td>
+                  <td className="pr-2">
+                    <ColorInput
+                      aria-label={`${name} colour`}
+                      value={st.color}
+                      onChange={(e) => {
+                        setLang(lang, { color: e.target.value });
+                      }}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      aria-label={`${name} shadow`}
+                      type="checkbox"
+                      className="h-4 w-4 accent-accent-strong"
+                      checked={st.shadow}
+                      onChange={(e) => {
+                        setLang(lang, { shadow: e.target.checked });
+                      }}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </section>
       <fieldset className="space-y-2 text-sm">
-        <legend className="text-xs font-semibold uppercase tracking-wide text-muted">
-          Text box (the first on each slide)
+        <legend className="mb-2">
+          <SectionTitle>Text box (the first on each slide)</SectionTitle>
         </legend>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3">
           {(['x', 'y', 'width', 'height'] as const).map((k) => (
-            <label key={k} className="flex items-center gap-1 text-xs text-muted">
+            <label key={k} className="flex items-center gap-1.5 text-xs text-muted">
               {k === 'x' ? 'From left' : k === 'y' ? 'From top' : k === 'width' ? 'Width' : 'Height'}
-              <input
+              <NumberInput
                 aria-label={`Box ${k}`}
-                type="number"
                 min={0}
                 max={100}
                 step={0.5}
-                className={`${field} w-20`}
+                unit="%"
                 value={percent(draft.box[k])}
                 onChange={(e) => {
                   setBox({ [k]: Math.min(1, Math.max(0, Number(e.target.value) / 100)) });
                 }}
               />
-              %
             </label>
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <select
+          <Select
             aria-label="Alignment"
-            className={field}
             value={draft.box.align}
             onChange={(e) => {
               setBox({ align: e.target.value as ThemeFields['box']['align'] });
@@ -275,10 +279,9 @@ function ThemeEditor({
             <option value="left">Left</option>
             <option value="center">Centre</option>
             <option value="right">Right</option>
-          </select>
-          <select
+          </Select>
+          <Select
             aria-label="Vertical alignment"
-            className={field}
             value={draft.box.verticalAlign}
             onChange={(e) => {
               setBox({ verticalAlign: e.target.value as ThemeFields['box']['verticalAlign'] });
@@ -287,16 +290,14 @@ function ThemeEditor({
             <option value="top">Top</option>
             <option value="middle">Middle</option>
             <option value="bottom">Bottom</option>
-          </select>
-          <label className="flex items-center gap-1 text-xs text-muted">
+          </Select>
+          <label className="flex items-center gap-1.5 text-xs text-muted">
             Line spacing
-            <input
+            <NumberInput
               aria-label="Line spacing"
-              type="number"
               min={0.6}
               max={3}
               step={0.05}
-              className={`${field} w-20`}
               value={draft.box.lineHeight}
               onChange={(e) => {
                 setBox({ lineHeight: Number(e.target.value) || draft.box.lineHeight });
@@ -306,10 +307,11 @@ function ThemeEditor({
         </div>
       </fieldset>
       <fieldset className="flex flex-wrap items-center gap-2 text-sm">
-        <legend className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Background</legend>
-        <select
+        <legend className="mb-2">
+          <SectionTitle>Background</SectionTitle>
+        </legend>
+        <Select
           aria-label="Background"
-          className={field}
           value={bg.kind}
           onChange={(e) => {
             const kind = e.target.value;
@@ -336,12 +338,10 @@ function ThemeEditor({
           <option value="media" disabled={pictures.length === 0}>
             A picture or video
           </option>
-        </select>
+        </Select>
         {bg.kind === 'color' && (
-          <input
+          <ColorInput
             aria-label="Background colour"
-            type="color"
-            className="h-8 w-12 rounded border border-line bg-ink"
             value={bg.color}
             onChange={(e) => {
               setDraft((d) => ({ ...d, background: { kind: 'color', color: e.target.value } }));
@@ -349,12 +349,12 @@ function ThemeEditor({
           />
         )}
         {bg.kind === 'media' && (
-          <select
+          <Select
             aria-label="Background picture or video"
-            className={`${field} max-w-64`}
+            className="max-w-64"
             value={bg.mediaId}
             onChange={(e) => {
-              const m = pictures.find((p) => p.id === e.target.value);
+              const m = pictures.find((pic) => pic.id === e.target.value);
               if (m)
                 setDraft((d) => ({
                   ...d,
@@ -367,29 +367,30 @@ function ThemeEditor({
                 {m.name}
               </option>
             ))}
-          </select>
+          </Select>
         )}
       </fieldset>
-      {problem && (
-        <p role="alert" className="text-sm text-amber-200">
-          {problem}
-        </p>
+      {problem && <Notice tone="danger">{problem}</Notice>}
+      {note && (
+        <Notice tone="success" role="status">
+          {note}
+        </Notice>
       )}
-      {note && <p className="text-sm text-emerald-200">{note}</p>}
       <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
-        <Button tone="primary" disabled={!changed} onClick={() => void save()}>
+        <Button variant="primary" disabled={!changed} onClick={() => void save()}>
           Save
         </Button>
         <Button disabled={targets.length === 0} onClick={() => void apply()}>
           Apply to {targets.length === 0 ? 'presentations' : plural(targets.length, 'presentation')}
         </Button>
-        <span className="flex-1 text-xs text-muted">
+        <span className="min-w-48 flex-1 text-xs text-muted">
           Applies to the presentations marked in the library (Cmd/Ctrl-click to mark more). Words stay as they
           are; Undo puts the look back.
         </span>
         {!isDefault && (
           <Button
-            tone="danger"
+            variant="danger"
+            icon={Trash2}
             onClick={() => {
               void window.drashti.themes.remove(theme.id).then((r) => {
                 if (r.ok) onRemoved();
@@ -412,7 +413,7 @@ export function ThemesPanel() {
 }
 
 function Panel({ initial }: { initial: string | null }) {
-  const [themes, setThemes] = useState<Theme[]>([]);
+  const [themes, setThemes] = useState<Theme[] | null>(null);
   const [defaultId, setDefaultId] = useState<string | null>(null);
   const [chosen, setChosen] = useState<string | null>(initial);
   const show = (list: { themes: Theme[]; defaultId: string }, pick?: string) => {
@@ -428,57 +429,54 @@ function Panel({ initial }: { initial: string | null }) {
       show(list);
     });
   }, []);
-  const theme = themes.find((t) => t.id === chosen) ?? null;
+  const theme = themes?.find((t) => t.id === chosen) ?? null;
   const make = async () => {
-    const base = themes.find((t) => t.id === defaultId) ?? { ...DEFAULT_THEME };
+    const base = themes?.find((t) => t.id === defaultId) ?? { ...DEFAULT_THEME };
     const { id: _id, ...fields } = base as Theme;
     const result = await window.drashti.themes.save(null, { ...fields, name: 'New theme' });
     if (result.ok) await reload(result.id);
   };
   return (
-    <div
-      className="fixed inset-0 z-40 flex justify-end bg-black/50"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Themes"
+    <Dialog
+      title="Themes"
+      placement="right"
+      size="xl"
+      onClose={closeThemes}
+      closeLabel="Close themes"
+      panelTestId="themes-panel"
+      bodyClassName="flex min-h-0 p-0"
+      headerActions={
+        <Button icon={Plus} onClick={() => void make()}>
+          New theme
+        </Button>
+      }
     >
-      <div
-        className="flex h-full w-full max-w-4xl flex-col border-l border-line bg-panel shadow-2xl"
-        data-testid="themes-panel"
-      >
-        <header className="flex items-center gap-2 border-b border-line px-4 py-3">
-          <h2 className="flex-1 text-lg font-semibold">Themes</h2>
-          <Button onClick={() => void make()}>+ New theme</Button>
-          <Button tone="ghost" onClick={closeThemes} aria-label="Close themes">
-            Close
-          </Button>
-        </header>
-        <div className="flex min-h-0 flex-1">
+      {themes === null ? (
+        <Loading label="Loading the themes…" className="flex-1" />
+      ) : (
+        <>
           <ul
             className="w-56 shrink-0 space-y-1 overflow-y-auto border-r border-line p-2"
             aria-label="Themes"
           >
             {themes.map((t) => (
               <li key={t.id}>
-                <button
-                  type="button"
+                <ListRow
                   data-testid="theme-item"
                   aria-current={t.id === chosen ? 'true' : undefined}
+                  selected={t.id === chosen}
+                  density="compact"
+                  title={t.name}
+                  trailing={t.id === defaultId ? <Badge tone="info">Default</Badge> : undefined}
                   onClick={() => {
                     setChosen(t.id);
                   }}
-                  className={`w-full truncate rounded-md px-3 py-2 text-left text-sm ${
-                    t.id === chosen ? 'bg-panel-2 ring-1 ring-accent' : 'hover:bg-panel-2'
-                  }`}
-                >
-                  {t.name}
-                  {t.id === defaultId && <span className="ml-1 text-xs text-muted">(default)</span>}
-                </button>
+                />
               </li>
             ))}
           </ul>
-          <div className="min-w-0 flex-1 overflow-y-auto p-4">
-            {theme && (
+          <div className="min-w-0 flex-1 overflow-y-auto p-5">
+            {theme ? (
               <ThemeEditor
                 key={theme.id}
                 theme={theme}
@@ -486,10 +484,14 @@ function Panel({ initial }: { initial: string | null }) {
                 onSaved={(id) => void reload(id)}
                 onRemoved={() => void reload()}
               />
+            ) : (
+              <EmptyState icon={Palette} title="No theme chosen">
+                Pick a theme on the left, or make a new one.
+              </EmptyState>
             )}
           </div>
-        </div>
-      </div>
-    </div>
+        </>
+      )}
+    </Dialog>
   );
 }

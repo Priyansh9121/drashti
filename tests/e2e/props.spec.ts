@@ -26,12 +26,12 @@ test('props stay up over changing slides, and come down when hidden', async () =
   const panel = win.getByTestId('props');
 
   // A line of words along the bottom.
-  await panel.getByRole('button', { name: '+ Prop' }).click();
+  await panel.getByRole('button', { name: 'New prop' }).click();
   const form = panel.getByTestId('prop-form');
   await form.getByRole('textbox', { name: 'Prop words' }).fill('Placeholder Mandir Name');
   await form.getByRole('button', { name: 'Save' }).click();
   // And the picture in a corner.
-  await panel.getByRole('button', { name: '+ Prop' }).click();
+  await panel.getByRole('button', { name: 'New prop' }).click();
   await form.getByRole('radio', { name: 'Picture or video' }).check();
   await expect(form.getByRole('combobox', { name: 'Prop picture', exact: true })).toHaveValue(/.+/);
   await form.getByRole('button', { name: 'Save' }).click();

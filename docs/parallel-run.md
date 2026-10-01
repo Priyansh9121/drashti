@@ -63,7 +63,7 @@ Drashti copies presentations, playlists, props and media from ProPresenter's fol
 
 You can also use **Import…**, above the list, then **A folder…**.
 
-While it imports, a progress bar shows under the list, and you can keep using Drashti. When it finishes, the **report** opens. Read it:
+While it imports, a progress bar shows in the status bar along the bottom, and you can keep using Drashti. When it finishes, the **report** opens. Read it:
 
 - It says what came across (presentations, slides, playlists, media).
 - **Missing media**: files ProPresenter pointed at that were not found. Press **Find…** and choose the folder where those files are, and Drashti finds them by name.
@@ -103,7 +103,7 @@ Replay last week's sabha from its imported playlist, from start to end, as the o
 4. **Shift+→** jumps to the start of the next item; **Shift+←** goes back to the start of the previous one.
 5. Pictures and videos in the playlist go up as the background; songs and sounds play through the mixer.
 6. Under the live picture, **Next** shows what comes next.
-7. Try the other controls a sabha uses: **Black-out** (B), the clear keys (F1 to F7), a **timer** ("Sabha starts in 5:00"), a **message** (for example "Car {plate} please move"), a **prop** (the mandir's logo), and a **stage message** if there is a stage display.
+7. Try the other controls a sabha uses: **Black-out** (B), the clear buttons along the bottom (F1 to F7; each is lit while its layer is on the screens), a **timer** ("Sabha starts in 5:00"), a **message** (for example "Car {plate} please move"), a **prop** (the mandir's logo), and a **stage message** if there is a stage display.
 8. Compare with ProPresenter as you go. Things to look at:
    - Do the words look the same: size, font, line breaks, Gujarati and Hindi letters?
    - Are the backgrounds and videos the same, and do they start and loop the same way?

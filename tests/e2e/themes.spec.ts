@@ -39,7 +39,7 @@ test('a theme with a bigger Gujarati line and a smaller transliteration, applied
   // A new theme: Gujarati 120, transliteration 40.
   await win.getByRole('button', { name: 'Themes', exact: true }).click();
   const panel = win.getByTestId('themes-panel');
-  await panel.getByRole('button', { name: '+ New theme' }).click();
+  await panel.getByRole('button', { name: 'New theme' }).click();
   const themeEditor = panel.getByTestId('theme-editor');
   await expect(themeEditor.getByRole('textbox', { name: 'Theme name' })).toHaveValue('New theme');
   await themeEditor.getByRole('textbox', { name: 'Theme name' }).fill('Placeholder big Gujarati');

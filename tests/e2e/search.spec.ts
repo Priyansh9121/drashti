@@ -96,7 +96,7 @@ test('search finds titles and slide text in English, Gujarati, Hindi and transli
 
   // Legacy-font text is not searched, and the results say so.
   await search.fill('rkk');
-  await expect(results).toContainText('Nothing found.');
+  await expect(results).toContainText('Nothing found');
   const legacy = results.getByTestId('search-legacy');
   await expect(legacy).toContainText('1 presentation has slide text in a legacy Gujarati or Hindi font');
   await legacy.getByRole('button', { name: 'Show them' }).click();

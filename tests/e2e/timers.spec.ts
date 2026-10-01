@@ -27,7 +27,7 @@ test('a countdown on the audience screens stays in step on two windows, with no 
 
   // Make a countdown in the operator window, start it, and show it on the screens.
   const timers = win.getByTestId('timers');
-  await timers.getByRole('button', { name: '+ Timer' }).click();
+  await timers.getByRole('button', { name: 'New timer' }).click();
   const form = timers.getByTestId('timer-form');
   await form.getByRole('textbox', { name: 'Timer name' }).fill('Placeholder sabha starts in');
   await form.getByRole('textbox', { name: 'Length' }).fill('5:00');

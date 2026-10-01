@@ -5,13 +5,16 @@ import { formatDuration, parseDuration, TIMER_KIND_NAMES, TIMER_KINDS } from '..
 import { useEngine } from '../engine/engine-store';
 import { TimerText } from '../render/TimerText';
 import { Button } from '../ui/Button';
+import { Select, TextInput } from '../ui/Field';
+import { Checkbox } from '../ui/Toggle';
+import { Plus, Timer } from '../ui/icons';
+import { Panel } from '../ui/Panel';
+import { EmptyState } from '../ui/States';
+import { Truncate } from '../ui/Truncate';
 import { dispatch, useNotice } from './actions';
 
 const NO_TIMERS: TimerState[] = [];
 const NO_MESSAGES: MessageItem[] = [];
-const field =
-  'rounded-md border border-line bg-ink px-2 py-1 text-sm text-white focus-visible:outline-2 focus-visible:outline-accent';
-const small = 'px-2 py-0.5 text-xs';
 
 /** The message that puts a timer on the audience screens: its name, then its time. */
 const timerMessage = (t: TimerState): MessageItem => ({
@@ -52,23 +55,23 @@ function TimerForm({ initial, onDone }: { initial: TimerState | null; onDone: ()
   return (
     <form
       data-testid="timer-form"
-      className="space-y-2 rounded-md border border-accent/60 bg-panel-2 p-2"
+      className="space-y-2 rounded-lg border border-accent/60 bg-panel-2 p-2.5"
       onSubmit={(e) => {
         e.preventDefault();
         void save();
       }}
     >
-      <input
+      <TextInput
         aria-label="Timer name"
-        className={`${field} w-full`}
+        className="w-full"
         value={name}
         maxLength={80}
         onChange={(e) => setName(e.target.value)}
       />
       <div className="flex flex-wrap items-center gap-2">
-        <select
+        <Select
           aria-label="Kind of timer"
-          className={field}
+
           value={kind}
           onChange={(e) => setKind(e.target.value as TimerKind)}
         >
@@ -77,44 +80,51 @@ function TimerForm({ initial, onDone }: { initial: TimerState | null; onDone: ()
               {TIMER_KIND_NAMES[k]}
             </option>
           ))}
-        </select>
+        </Select>
         {kind === 'countdown' && (
-          <input
+          <TextInput
             aria-label="Length"
-            className={`${field} w-24`}
+            className="w-24"
             value={length}
             onChange={(e) => setLength(e.target.value)}
             placeholder="5:00"
           />
         )}
         {kind === 'countdown_to_time' && (
-          <input
+          <TextInput
             aria-label="Time of day"
             type="time"
-            className={field}
+
             value={at}
             onChange={(e) => setAt(e.target.value)}
           />
         )}
       </div>
       {(kind === 'countdown' || kind === 'countdown_to_time') && (
-        <label className="flex items-center gap-2 text-xs text-muted">
-          <input type="checkbox" checked={overrun} onChange={(e) => setOverrun(e.target.checked)} />
-          Keep counting below zero
-        </label>
+        <Checkbox
+          label="Keep counting below zero"
+          className="text-xs"
+          checked={overrun}
+          onChange={(e) => setOverrun(e.target.checked)}
+        />
       )}
-      {problem && <p className="text-xs text-amber-200">{problem}</p>}
+      {problem && (
+        <p role="alert" className="text-xs text-warning-fg">
+          {problem}
+        </p>
+      )}
       <div className="flex gap-2">
-        <Button type="submit" tone="primary" className={small}>
+        <Button type="submit" variant="primary" size="sm">
           Save
         </Button>
-        <Button className={small} onClick={onDone}>
+        <Button size="sm" onClick={onDone}>
           Cancel
         </Button>
         {initial && (
           <Button
-            tone="danger"
-            className={`${small} ml-auto`}
+            variant="danger"
+            size="sm"
+            className="ml-auto"
             onClick={() => {
               void window.drashti.timers.remove(initial.id).then((r) => {
                 if (r.ok) onDone();
@@ -138,41 +148,42 @@ function TimerRow({ t, shown, onEdit }: { t: TimerState; shown: boolean; onEdit:
       data-testid="timer-row"
       data-timer-id={t.id}
       data-running={running ? 'true' : undefined}
-      className="rounded-md border border-line bg-panel-2 px-2 py-1.5"
+      className="rounded-md border border-line bg-panel-2 px-2.5 py-2"
     >
       <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-sm" title={TIMER_KIND_NAMES[t.kind]}>
-          {t.name}
+        <span className="min-w-0 flex-1">
+          <Truncate text={t.name} className="text-sm font-medium" />
+          <span className="block text-xs text-muted">{TIMER_KIND_NAMES[t.kind]}</span>
         </span>
-        <span className="text-lg font-semibold" data-testid="timer-value">
+        <span className="text-lg font-bold tabular-nums" data-testid="timer-value">
           <TimerText timer={t} />
         </span>
       </div>
       <div className="mt-1 flex flex-wrap gap-1">
         {running ? (
           <Button
-            className={small}
+            size="sm"
             onClick={() => void dispatch({ type: counts ? 'pauseTimer' : 'resetTimer', timerId: t.id })}
           >
             {counts ? 'Pause' : 'Stop'}
           </Button>
         ) : (
           <Button
-            tone="primary"
-            className={small}
+            variant="primary"
+            size="sm"
             onClick={() => void dispatch({ type: 'startTimer', timerId: t.id })}
           >
             Start
           </Button>
         )}
         {counts && (
-          <Button className={small} onClick={() => void dispatch({ type: 'resetTimer', timerId: t.id })}>
+          <Button size="sm" onClick={() => void dispatch({ type: 'resetTimer', timerId: t.id })}>
             Reset
           </Button>
         )}
         <Button
-          tone={shown ? 'live' : 'default'}
-          className={small}
+          variant={shown ? 'live' : 'secondary'}
+          size="sm"
           onClick={() =>
             void dispatch(
               shown
@@ -183,7 +194,7 @@ function TimerRow({ t, shown, onEdit }: { t: TimerState; shown: boolean; onEdit:
         >
           {shown ? 'Take off the screens' : 'Show on the screens'}
         </Button>
-        <Button tone="ghost" className={small} onClick={onEdit}>
+        <Button variant="ghost" size="sm" onClick={onEdit}>
           Edit
         </Button>
       </div>
@@ -201,13 +212,19 @@ export function TimersPanel() {
     useNotice.setState({ text: null });
   };
   return (
-    <section aria-label="Timers" data-testid="timers" className="space-y-2">
-      <div className="flex items-center">
-        <h2 className="flex-1 text-xs font-semibold uppercase tracking-wide text-muted">Timers</h2>
-        <Button tone="ghost" className={small} onClick={() => setEditing('new')}>
-          + Timer
+    <Panel
+      title="Timers"
+      icon={Timer}
+      collapsible
+      remember="timers"
+      data-testid="timers"
+      bodyClassName="space-y-2 px-3 pb-3"
+      actions={
+        <Button variant="ghost" size="sm" icon={Plus} onClick={() => setEditing('new')}>
+          New timer
         </Button>
-      </div>
+      }
+    >
       {editing === 'new' && <TimerForm initial={null} onDone={done} />}
       <ul className="space-y-1.5">
         {timers.map((t) =>
@@ -226,10 +243,10 @@ export function TimersPanel() {
         )}
       </ul>
       {timers.length === 0 && editing !== 'new' && (
-        <p className="text-xs text-muted">
-          No timers yet. A countdown can show on the screens, for example “Sabha starts in 5:00”.
-        </p>
+        <EmptyState icon={Timer} title="No timers yet" compact>
+          A countdown can show on the screens, for example “Sabha starts in 5:00”.
+        </EmptyState>
       )}
-    </section>
+    </Panel>
   );
 }

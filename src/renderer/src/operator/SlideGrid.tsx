@@ -12,9 +12,20 @@ import { MediaStill } from '../render/MediaStill';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
 import { editWords } from '../library/words-store';
+import { Badge, MissingBadge, UnplayableBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
+import { cx } from '../ui/cx';
+import { Field, Select, Slider } from '../ui/Field';
+import { LayoutGrid, Music, Palette, Pencil, Presentation } from '../ui/icons';
+import { usePersistentState } from '../ui/persist';
+import { EmptyState, Loading } from '../ui/States';
+import { Truncate } from '../ui/Truncate';
 import { themeFromPresentation } from '../themes/themes-store';
 import { chooseArrangement, goLive, playItem, useNotice } from './actions';
+
+/** Thumbnail widths the operator can choose (px). */
+const THUMB = { initial: 220, min: 140, max: 400 };
+const isThumbSize = (v: unknown): v is number => typeof v === 'number' && v >= THUMB.min && v <= THUMB.max;
 
 /** The slide's own background (its background cue), behind its thumbnail: the image, or a video's still frame. */
 function CueBackground({ cue }: { cue: BackgroundCue }) {
@@ -26,9 +37,9 @@ function CueBackground({ cue }: { cue: BackgroundCue }) {
         <span
           data-testid="thumb-unplayable"
           title={`${cue.name}: ${cue.unplayable}. Drashti cannot play it yet; see the import report.`}
-          className="absolute top-1 left-1 rounded bg-amber-700/90 px-1.5 py-0.5 text-[10px] font-semibold text-white"
+          className="absolute top-1 left-1"
         >
-          Can&apos;t play
+          <UnplayableBadge />
         </span>
       )}
     </span>
@@ -43,6 +54,7 @@ const Thumb = memo(function Thumb({
   info,
   live,
   found,
+  groupColor,
 }: {
   presentationId: string;
   /** The order this grid shows, which going live from here plays. */
@@ -55,6 +67,8 @@ const Thumb = memo(function Thumb({
   live: boolean;
   /** A search found this slide: bring it into view and mark it. */
   found: boolean;
+  /** Its group's colour, as a strip beside its number. */
+  groupColor: string | null;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -77,27 +91,42 @@ const Thumb = memo(function Thumb({
         aria-current={live ? 'true' : undefined}
         aria-label={`Slide ${position + 1}${info.label ? `: ${info.label}` : ''}${live ? ' (live)' : ''}`}
         onClick={() => void goLive(presentationId, position, arrangementId, playlist)}
-        className={`group w-full overflow-hidden rounded-md border-2 bg-black text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
-          live ? 'border-live' : found ? 'border-accent' : 'border-line hover:border-muted'
-        }`}
+        className={cx(
+          'group w-full overflow-hidden rounded-lg border-2 bg-black text-left transition-colors',
+          live ? 'border-live' : found ? 'border-accent' : 'border-line hover:border-field',
+        )}
       >
-        <span className="pointer-events-none relative block aspect-video w-full">
+        <span className="pointer-events-none relative block aspect-video w-full" data-a11y-picture>
           {background && <CueBackground cue={background} />}
           <PlacedInParent content={info.slide} mode="fit" className="absolute inset-0">
             <SlideView slide={info.slide} media="still" />
           </PlacedInParent>
         </span>
         <span
-          className={`flex items-center gap-2 px-2 py-1 text-xs ${live ? 'bg-live text-white' : 'bg-panel-2 text-muted'}`}
+          className={cx(
+            'flex h-7 items-center gap-2 pr-2 text-xs',
+            live ? 'bg-live text-white' : 'bg-panel-2 text-muted',
+          )}
         >
-          <span className="font-semibold">{position + 1}</span>
-          <span className="truncate">{info.label}</span>
+          <span
+            aria-hidden="true"
+            className="h-full w-1.5 shrink-0"
+            style={{ background: groupColor ?? 'transparent' }}
+          />
+          <span className="font-bold tabular-nums">{position + 1}</span>
+          {info.label && <Truncate text={info.label} className="min-w-0 flex-1" />}
+          {!info.label && <span className="flex-1" />}
           {sound && (
-            <span className="truncate" data-testid="thumb-audio" title={`Plays ${sound.name}`}>
-              {`♪ ${sound.label || sound.name}`}
+            <span
+              className="flex min-w-0 items-center gap-1"
+              data-testid="thumb-audio"
+              title={`Plays ${sound.name}`}
+            >
+              <Music size={12} aria-hidden="true" className="shrink-0" />
+              <span className="truncate">{sound.label || sound.name}</span>
             </span>
           )}
-          {live && <span className="ml-auto font-bold tracking-wide">LIVE</span>}
+          {live && <span className="font-bold tracking-wide">LIVE</span>}
         </span>
       </button>
     </li>
@@ -108,12 +137,10 @@ const Thumb = memo(function Thumb({
 function ArrangementPicker({ doc }: { doc: PresentationDoc }) {
   if (doc.arrangements.length === 0) return null;
   return (
-    <label className="flex items-center gap-2 text-xs text-muted">
-      Arrangement
-      <select
-        aria-label="Arrangement"
+    <Field label="Arrangement" layout="inline">
+      <Select
         data-testid="arrangement"
-        className="rounded-md border border-line bg-panel px-2 py-1 text-sm text-white"
+        className="max-w-48"
         value={doc.selectedArrangementId ?? ''}
         onChange={(e) => {
           void chooseArrangement(doc.id, e.target.value === '' ? null : e.target.value);
@@ -125,8 +152,8 @@ function ArrangementPicker({ doc }: { doc: PresentationDoc }) {
             {a.name}
           </option>
         ))}
-      </select>
-    </label>
+      </Select>
+    </Field>
   );
 }
 
@@ -144,12 +171,10 @@ function ItemOrderPicker({
   if (doc.arrangements.length === 0) return null;
   const own = doc.arrangements.find((a) => a.id === doc.selectedArrangementId)?.name ?? 'all slides in order';
   return (
-    <label className="flex items-center gap-2 text-xs text-muted">
-      Arrangement
-      <select
-        aria-label="Arrangement"
+    <Field label="Arrangement" layout="inline">
+      <Select
         data-testid="arrangement"
-        className="rounded-md border border-line bg-panel px-2 py-1 text-sm text-white"
+        className="max-w-52"
         value={orderValue(item.order)}
         onChange={(e) => {
           const v = e.target.value;
@@ -168,8 +193,8 @@ function ItemOrderPicker({
             {a.name}
           </option>
         ))}
-      </select>
-    </label>
+      </Select>
+    </Field>
   );
 }
 
@@ -184,53 +209,78 @@ function itemArrangement(item: ShownItem & { kind: 'presentation' }, doc: Presen
 function ItemView({ item }: { item: ShownItem }) {
   const live = useEngine((s) => s.state?.live.playlist);
   const isLive = live?.playlistId === item.playlistId && live.itemId === item.id;
-  const note = (text: string) => (
-    <section className="flex items-center justify-center p-8 text-center text-muted" data-testid="item-view">
-      <p className="max-w-md">{text}</p>
+  const note = (title: string, text: string) => (
+    <section
+      className="flex flex-1 items-center justify-center"
+      data-testid="item-view"
+      aria-label={item.label}
+    >
+      <EmptyState icon={Presentation} title={title}>
+        {text}
+      </EmptyState>
     </section>
   );
   switch (item.kind) {
     case 'header':
-      return note(`“${item.label}” is a header. Next steps over it to the item after.`);
+      return note(item.label, `“${item.label}” is a header. Next steps over it to the item after.`);
     case 'placeholder':
       return note(
+        'Not found at import',
         `“${item.label}” was not found when the playlist was imported. Drag a presentation onto it in the playlist to put one there.`,
       );
     case 'presentation':
-      return note(`“${item.label}” is no longer in the library. Undo its removal, or remove the item.`);
+      return note(
+        'No longer in the library',
+        `“${item.label}” is no longer in the library. Undo its removal, or remove the item.`,
+      );
     case 'media': {
       const problem = mediaProblem(item);
       return (
-        <section className="min-h-0 overflow-y-auto p-4" data-testid="item-view" aria-label={item.label}>
-          <h2 className="mb-3 text-lg font-semibold">{item.label}</h2>
+        <section
+          className="min-h-0 flex-1 overflow-y-auto p-4"
+          data-testid="item-view"
+          aria-label={item.label}
+        >
+          <div className="mb-3 flex items-center gap-2">
+            <h2 className="min-w-0 text-lg font-bold">
+              <Truncate text={item.label} />
+            </h2>
+            <Badge>{mediaKindLabel[item.media]}</Badge>
+            {item.missing ? <MissingBadge /> : problem && <UnplayableBadge />}
+          </div>
           <button
             type="button"
             data-testid="item-media"
             aria-current={isLive ? 'true' : undefined}
             aria-label={`${mediaKindLabel[item.media]}: ${item.label}${isLive ? ' (live)' : ''}`}
             onClick={() => void playItem(item.playlistId, item.id)}
-            className={`w-full max-w-xl overflow-hidden rounded-md border-2 bg-black text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
-              isLive ? 'border-live' : 'border-line hover:border-muted'
-            }`}
+            className={cx(
+              'w-full max-w-xl overflow-hidden rounded-lg border-2 bg-black text-left transition-colors',
+              isLive ? 'border-live' : 'border-line hover:border-field',
+            )}
           >
-            <span className="pointer-events-none relative flex aspect-video w-full items-center justify-center">
+            <span
+              className="pointer-events-none relative flex aspect-video w-full items-center justify-center"
+              data-a11y-picture
+            >
               {item.media === 'audio' ? (
-                <span className="text-4xl text-muted" aria-hidden="true">
-                  ♪
-                </span>
+                <Music size={48} aria-hidden="true" className="text-muted" />
               ) : (
                 !item.missing && <MediaStill mediaId={item.mediaId} media={item.media} />
               )}
             </span>
             <span
-              className={`flex items-center gap-2 px-2 py-1 text-xs ${isLive ? 'bg-live text-white' : 'bg-panel-2 text-muted'}`}
+              className={cx(
+                'flex h-7 items-center gap-2 px-2 text-xs',
+                isLive ? 'bg-live text-white' : 'bg-panel-2 text-muted',
+              )}
             >
               {mediaKindLabel[item.media]}
-              {problem && <span className="text-amber-300">{problem}</span>}
+              {problem && <span>{problem}</span>}
               {isLive && <span className="ml-auto font-bold tracking-wide">LIVE</span>}
             </span>
           </button>
-          <p className="mt-2 text-xs text-muted">
+          <p className="mt-2 text-sm text-muted">
             {item.media === 'audio'
               ? 'Plays on the audio layer; the picture stays as it is.'
               : 'Goes up as the background, and takes the slide off.'}
@@ -283,8 +333,15 @@ function PresentationGrid({ item }: { item: (ShownItem & { kind: 'presentation' 
     [doc, item],
   );
   const playlist = useMemo(() => (item ? { playlistId: item.playlistId, itemId: item.id } : null), [item]);
+  const [thumb, setThumb] = usePersistentState('slides.thumb', THUMB.initial, isThumbSize);
   if (!doc || !order)
-    return <div className="flex items-center justify-center text-muted">Choose a presentation</div>;
+    return selectedId && !doc ? (
+      <Loading label="Opening the presentation…" className="flex-1" />
+    ) : (
+      <EmptyState icon={Presentation} title="Choose a presentation" className="flex-1">
+        Pick one in the library, or an item in a playlist, to see its slides here.
+      </EmptyState>
+    );
   const liveHere = live?.presentationId === doc.id && liveSlideId !== null;
   // The live slide: by its position when this is the order being played, else wherever that slide appears.
   const isLive = (o: OrderedSlide) =>
@@ -302,16 +359,19 @@ function PresentationGrid({ item }: { item: (ShownItem & { kind: 'presentation' 
       aria-label={`Slides of ${doc.name}`}
       aria-busy={stale ? 'true' : undefined}
       inert={stale}
-      className={`min-h-0 overflow-y-auto p-4 transition-opacity ${stale ? 'opacity-40' : ''}`}
+      className={cx('flex min-h-0 flex-1 flex-col transition-opacity', stale && 'opacity-40')}
       data-testid="slide-grid"
       data-presentation-id={doc.id}
     >
-      <div className="mb-3 flex flex-wrap items-center gap-3">
-        <h2 className="flex-1 text-lg font-semibold">{doc.name}</h2>
+      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line bg-panel px-4 py-2">
+        <h2 className="min-w-48 flex-[1_1_12rem] text-base font-bold">
+          <Truncate text={doc.name} />
+        </h2>
         {item ? <ItemOrderPicker doc={doc} item={item} /> : <ArrangementPicker doc={doc} />}
         {isTemplate && (
           <Button
-            className="px-2 py-1 text-xs"
+            size="sm"
+            icon={Palette}
             title="A theme from this template's first text box"
             onClick={() => {
               void themeFromPresentation(doc.id).then((problem) => {
@@ -322,38 +382,62 @@ function PresentationGrid({ item }: { item: (ShownItem & { kind: 'presentation' 
             Make a theme from this
           </Button>
         )}
-        <Button className="px-2 py-1 text-xs" onClick={() => void editWords(doc.id, doc.name)}>
+        <Button size="sm" icon={Pencil} onClick={() => void editWords(doc.id, doc.name)}>
           Edit words
         </Button>
+        <LayoutGrid size={15} aria-hidden="true" className="shrink-0 text-muted" />
+        <Slider
+          aria-label="Thumbnail size"
+          value={thumb}
+          min={THUMB.min}
+          max={THUMB.max}
+          step={20}
+          format={(v) => `${v}`}
+          className="w-28"
+          onChange={(e) => {
+            setThumb(Number(e.target.value));
+          }}
+        />
       </div>
-      {sectionsOf(order.slides).map(({ key, first, slides }) => (
-        <div key={key} className="mb-5" data-testid="slide-group" data-group={first.group.name}>
-          {first.group.name !== '' && (
-            <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-muted">
-              <span
-                className="h-3 w-3 rounded-sm"
-                style={{ background: first.group.color ?? '#4b5563' }}
-                aria-hidden="true"
-              />
-              {first.group.name}
-            </h3>
-          )}
-          <ul className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
-            {slides.map((o) => (
-              <Thumb
-                key={o.position}
-                presentationId={doc.id}
-                arrangementId={order.arrangementId}
-                playlist={playlist}
-                position={o.position}
-                info={o.slide}
-                live={isLive(o)}
-                found={o.position === found}
-              />
-            ))}
-          </ul>
-        </div>
-      ))}
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-6">
+        {order.slides.length === 0 && (
+          <EmptyState icon={Presentation} title="No slides yet">
+            Use Edit words to write its words, and each blank line starts a slide.
+          </EmptyState>
+        )}
+        {sectionsOf(order.slides).map(({ key, first, slides }) => (
+          <div key={key} className="mb-5" data-testid="slide-group" data-group={first.group.name}>
+            {first.group.name !== '' && (
+              <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-fg">
+                <span
+                  className="h-3.5 w-3.5 shrink-0 rounded-sm border border-line-strong"
+                  style={{ background: first.group.color ?? 'transparent' }}
+                  aria-hidden="true"
+                />
+                {first.group.name}
+              </h3>
+            )}
+            <ul
+              className="grid gap-3"
+              style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${thumb}px, 1fr))` }}
+            >
+              {slides.map((o) => (
+                <Thumb
+                  key={o.position}
+                  presentationId={doc.id}
+                  arrangementId={order.arrangementId}
+                  playlist={playlist}
+                  position={o.position}
+                  info={o.slide}
+                  live={isLive(o)}
+                  found={o.position === found}
+                  groupColor={o.group.color}
+                />
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

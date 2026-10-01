@@ -1,6 +1,12 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { MediaSummary } from '../../../shared/playlists';
 import { startDrag } from '../playlists/drag';
+import { MissingBadge, UnplayableBadge } from '../ui/Badge';
+import type { Icon } from '../ui/icons';
+import { Film, Image, Music } from '../ui/icons';
+import { rowClass } from '../ui/ListRow';
+import { EmptyState } from '../ui/States';
+import { Truncate } from '../ui/Truncate';
 import { layoutRows, visibleRows } from '../ui/virtual';
 import { clickMedia, loadMedia, useMedia } from './library-store';
 
@@ -8,6 +14,11 @@ const ROW_HEIGHT = 48;
 const MARGIN = 600;
 
 export const mediaKindLabel = { image: 'Picture', video: 'Video', audio: 'Audio' } as const;
+export const mediaKindIcon: Record<keyof typeof mediaKindLabel, Icon> = {
+  image: Image,
+  video: Film,
+  audio: Music,
+};
 
 /** What is wrong with a media file, if anything. */
 export function mediaProblem(m: { missing: boolean; unplayable: string | null }): string | null {
@@ -26,6 +37,7 @@ const MediaRow = memo(function MediaRow({
   platform: string;
 }) {
   const problem = mediaProblem(m);
+  const KindIcon = mediaKindIcon[m.kind];
   return (
     <button
       type="button"
@@ -43,15 +55,14 @@ const MediaRow = memo(function MediaRow({
         if (!now.includes(m.id)) clickMedia(m.id, { toggle: false, range: false });
         startDrag(e, 'media', ids);
       }}
-      className={`h-full w-full rounded-md px-3 py-1.5 text-left transition focus-visible:outline-2 focus-visible:outline-accent ${
-        marked ? 'bg-panel-2 ring-1 ring-accent' : 'hover:bg-panel-2'
-      }`}
+      className={`${rowClass({ marked })} flex h-full items-center gap-2 px-2.5`}
     >
-      <span className="block truncate text-sm">{m.name}</span>
-      <span className="flex items-center gap-2 text-xs text-muted">
-        {mediaKindLabel[m.kind]}
-        {problem && <span className="text-amber-300">{problem}</span>}
+      <KindIcon size={16} aria-hidden="true" className="shrink-0 text-muted" />
+      <span className="min-w-0 flex-1">
+        <Truncate text={m.name} className="text-sm" />
+        <span className="block text-xs text-muted">{mediaKindLabel[m.kind]}</span>
       </span>
+      {m.missing ? <MissingBadge /> : problem && <UnplayableBadge title={m.unplayable ?? undefined} />}
     </button>
   );
 });
@@ -83,7 +94,7 @@ export function MediaList({ platform }: { platform: string }) {
   }, []);
 
   return (
-    <>
+    <div className="relative flex min-h-0 flex-1 flex-col">
       <ul
         ref={listRef}
         className="relative min-h-0 flex-1 overflow-y-auto"
@@ -110,10 +121,10 @@ export function MediaList({ platform }: { platform: string }) {
         <li aria-hidden="true" style={{ position: 'absolute', top: layout.total, height: 12, width: 1 }} />
       </ul>
       {loaded && media.length === 0 && (
-        <p className="px-4 pb-3 text-xs text-muted">
-          No media yet. Import pictures, videos or sound, or presentations that use them.
-        </p>
+        <EmptyState icon={Image} title="No media yet" compact className="absolute inset-x-0 top-0">
+          Import pictures, videos or sound, or presentations that use them.
+        </EmptyState>
       )}
-    </>
+    </div>
   );
 }
