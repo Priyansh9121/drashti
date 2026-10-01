@@ -72,13 +72,23 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('playItem'), playlistId: id, itemId: id }),
   z.object({ type: z.literal('next') }),
   z.object({ type: z.literal('previous') }),
+  /**
+   * Back: undoes the last Next exactly (the slide, background and sound as
+   * they were) while nothing else has changed since; otherwise Previous.
+   */
+  z.object({ type: z.literal('back') }),
   /** The first slide of the next (or previous) playlist item that can play. */
   z.object({ type: z.literal('nextItem') }),
   z.object({ type: z.literal('previousItem') }),
   z.object({ type: z.literal('clearLayer'), layer: z.enum(LAYER_NAMES) }),
   z.object({ type: z.literal('clearAll') }),
+  /** Put back what Clear all took down, while nothing else has gone up since. */
+  z.object({ type: z.literal('putBack') }),
   z.object({ type: z.literal('setBlackout'), on: z.boolean() }),
   z.object({ type: z.literal('toggleBlackout') }),
+  /** The logo instead of the picture on the audience screens; hideLogo brings the picture back. */
+  z.object({ type: z.literal('showLogo'), prop: propSchema }),
+  z.object({ type: z.literal('hideLogo') }),
   z.object({ type: z.literal('setBackground'), background }),
   z.object({ type: z.literal('playAudio'), audio: audioChoiceSchema }),
   z.object({ type: z.literal('showProp'), prop: propSchema }),
@@ -106,7 +116,8 @@ export type EngineErrorCode =
   | 'nothing-live'
   | 'unknown-item'
   | 'not-playable'
-  | 'unknown-timer';
+  | 'unknown-timer'
+  | 'nothing-to-put-back';
 
 export type CommandResult =
   { ok: true; changed: boolean; rev: number } | { ok: false; error: EngineErrorCode; message: string };

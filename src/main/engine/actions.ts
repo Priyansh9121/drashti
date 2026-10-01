@@ -4,6 +4,8 @@ import type {
   AudioLayer,
   BackgroundLayer,
   LayerName,
+  Layers,
+  LiveCursor,
   MaskLayer,
   MessageItem,
   PlaylistCursor,
@@ -42,6 +44,9 @@ export type EngineAction =
   | { type: 'layer/clear'; layer: LayerName }
   | { type: 'layers/clearAll' }
   | { type: 'blackout/set'; on: boolean }
+  | { type: 'logo/set'; prop: PropItem | null }
+  /** Put the layers (and the live position) back exactly as they were: Put it back, and Back. */
+  | { type: 'show/put'; live: LiveCursor; layers: Layers }
   | { type: 'background/set'; background: BackgroundLayer }
   | { type: 'audio/set'; audio: AudioLayer }
   | { type: 'prop/show'; prop: PropItem }

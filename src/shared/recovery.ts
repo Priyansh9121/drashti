@@ -8,6 +8,8 @@ export interface RecoveryNotice {
   slideGone: boolean;
   background: boolean;
   blackout: boolean;
+  /** The logo, shown instead of the picture. */
+  logo?: boolean;
   /** The sound, carrying on. */
   audio?: boolean;
   props?: number;
@@ -35,6 +37,7 @@ export function recoveryText(notice: RecoveryNotice): string {
   count(notice.messages, 'a message', 'messages');
   if (notice.stageMessage) parts.push('the stage message');
   count(notice.timers, 'a timer', 'timers');
+  if (notice.logo) parts.push('the logo');
   if (notice.blackout) parts.push('black-out');
   const put =
     parts.length > 0

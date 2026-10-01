@@ -473,6 +473,7 @@ function start(): void {
       slideGone: saved.slide !== null && !put.slide,
       background: put.background,
       blackout: put.blackout,
+      logo: put.logo,
       audio: put.audio,
       props: put.props,
       messages: put.messages,

@@ -38,6 +38,8 @@ export interface SavedLive {
   playlist: PlaylistCursor | null;
   background: BackgroundLayer | null;
   blackout: boolean;
+  /** The logo shown instead of the picture (Simple Mode's Logo). */
+  logo: PropItem | null;
   /** The sound playing, with when it started: it carries on from there. */
   audio: AudioLayer | null;
   props: PropItem[];
@@ -78,6 +80,7 @@ const savedSchema = z.object({
   background: z.unknown(),
   blackout: z.boolean(),
   // Files saved before these were kept have none.
+  logo: z.unknown().default(null),
   audio: z.unknown().default(null),
   props: z.unknown().default([]),
   messages: z.unknown().default([]),
@@ -107,6 +110,7 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
     playlist: state.live.playlist,
     background: state.layers.background,
     blackout: state.blackout,
+    logo: state.logo,
     audio: state.layers.audio,
     props: state.layers.props,
     messages: state.layers.messages,
@@ -152,6 +156,7 @@ export function toRestore(files: RecoveryFiles): SavedLive | null {
   };
   const background = layer(backgroundSchema.nullable(), s.background, null);
   const audio = layer(audioLayerSchema.nullable(), s.audio, null);
+  const logo = layer(propSchema.nullable(), s.logo, null);
   const props = layer(z.array(propSchema).max(50), s.props, []);
   const messages = layer(z.array(messageSchema).max(50), s.messages, []);
   const timers = same ? s.timers : [];
@@ -161,6 +166,7 @@ export function toRestore(files: RecoveryFiles): SavedLive | null {
     s.playlist !== null,
     background !== null,
     s.blackout,
+    logo !== null,
     audio !== null,
     props.length > 0,
     messages.length > 0,
@@ -168,7 +174,7 @@ export function toRestore(files: RecoveryFiles): SavedLive | null {
     timers.length > 0,
   ].some(Boolean);
   if (!anything) return null;
-  return { ...s, version: 1, background, audio, props, messages, stageMessage, timers };
+  return { ...s, version: 1, background, logo, audio, props, messages, stageMessage, timers };
 }
 
 export interface LiveStateWriterOptions {
