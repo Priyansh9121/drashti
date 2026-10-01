@@ -1,26 +1,33 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Button } from './Button';
+import type { ButtonSize, ButtonVariant } from './Button';
+import { Button, IconButton } from './Button';
+import { cx } from './cx';
+import type { Icon } from './icons';
+import { Kbd } from './Kbd';
 
 /*
  * Small menus: one under a button, or one at the pointer (right-click).
- * They close on a choice, a click elsewhere, or Esc.
+ * They close on a choice, a click elsewhere, or Esc. The arrow keys, Home
+ * and End move through the choices.
  */
 
 export interface MenuEntry {
   label: string;
   onSelect: () => void;
   danger?: boolean;
+  icon?: Icon;
+  disabled?: boolean;
+  kbd?: string;
+  /** A line above this entry, starting a new group. */
+  separatorBefore?: boolean;
 }
 
 export interface MenuPlace {
   x: number;
   y: number;
 }
-
-const itemClass =
-  'block w-full rounded px-3 py-1.5 text-left text-sm hover:bg-line focus-visible:bg-line focus-visible:outline-none';
 
 /** A menu at a point on the screen, kept inside the window. */
 export function Menu({
@@ -48,7 +55,7 @@ export function Menu({
       x: Math.max(4, Math.min(at.x, window.innerWidth - box.width - 4)),
       y: Math.max(4, Math.min(at.y, window.innerHeight - box.height - 4)),
     });
-    ref.current?.querySelector('button')?.focus();
+    ref.current?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
   }, [at]);
 
   useEffect(() => {
@@ -75,11 +82,20 @@ export function Menu({
   }, []);
 
   const move = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    e.preventDefault();
-    const buttons = [...(ref.current?.querySelectorAll('button') ?? [])];
+    const buttons = [...(ref.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? [])];
+    if (buttons.length === 0) return;
     const i = buttons.indexOf(document.activeElement as HTMLButtonElement);
-    const next = e.key === 'ArrowDown' ? (i + 1) % buttons.length : (i - 1 + buttons.length) % buttons.length;
+    let next: number;
+    if (e.key === 'ArrowDown') next = (i + 1) % buttons.length;
+    else if (e.key === 'ArrowUp') next = (i - 1 + buttons.length) % buttons.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = buttons.length - 1;
+    else if (e.key === 'Tab') {
+      // Tab leaves the menu, as a click elsewhere would.
+      close.current();
+      return;
+    } else return;
+    e.preventDefault();
     buttons[next]?.focus();
   };
 
@@ -90,22 +106,35 @@ export function Menu({
       aria-label={label}
       onKeyDown={move}
       style={{ position: 'fixed', left: place.x, top: place.y }}
-      className="z-50 min-w-44 rounded-md border border-line bg-panel-2 p-1 shadow-xl"
+      className="z-50 min-w-48 rounded-lg border border-line-strong bg-panel-2 p-1 shadow-overlay"
     >
-      {entries.map((entry) => (
-        <button
-          key={entry.label}
-          type="button"
-          role="menuitem"
-          className={`${itemClass} ${entry.danger ? 'text-red-300' : ''}`}
-          onClick={() => {
-            onClose();
-            entry.onSelect();
-          }}
-        >
-          {entry.label}
-        </button>
-      ))}
+      {entries.map((entry) => {
+        const IconShape = entry.icon;
+        return (
+          <Fragment key={entry.label}>
+            {entry.separatorBefore && <div role="separator" className="my-1 h-px bg-line" />}
+            <button
+              type="button"
+              role="menuitem"
+              disabled={entry.disabled}
+              className={cx(
+                'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-panel-3 focus-visible:bg-panel-3 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40',
+                entry.danger ? 'text-danger' : 'text-fg',
+              )}
+              onClick={() => {
+                onClose();
+                entry.onSelect();
+              }}
+            >
+              <span className="flex w-4 shrink-0 justify-center">
+                {IconShape && <IconShape size={15} aria-hidden="true" />}
+              </span>
+              <span className="flex-1">{entry.label}</span>
+              {entry.kbd && <Kbd className="text-muted">{entry.kbd}</Kbd>}
+            </button>
+          </Fragment>
+        );
+      })}
     </div>,
     document.body,
   );
@@ -120,42 +149,52 @@ export function menuPlace(e: ReactMouseEvent): MenuPlace {
   return { x: e.clientX, y: e.clientY };
 }
 
-/** A button that opens a menu under it. */
+/** A button that opens a menu under it: with words, or (icon and no words) an icon button. */
 export function MenuButton({
   label,
   entries,
   children,
+  icon,
+  variant = 'ghost',
+  size = 'sm',
   className = '',
   title,
 }: {
   /** The menu's name, for screen readers. */
   label: string;
   entries: readonly MenuEntry[];
-  children: ReactNode;
+  children?: ReactNode;
+  icon?: Icon;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
   className?: string;
+  /** The button's label when it is only an icon (and its tooltip). */
   title?: string;
 }) {
   const [at, setAt] = useState<MenuPlace | null>(null);
+  const toggle = (e: ReactMouseEvent<HTMLButtonElement>) => {
+    if (at) {
+      setAt(null);
+      return;
+    }
+    const box = e.currentTarget.getBoundingClientRect();
+    setAt({ x: box.right - 192, y: box.bottom + 4 });
+  };
+  const common = {
+    'aria-haspopup': 'menu' as const,
+    'aria-expanded': at !== null,
+    onClick: toggle,
+    className,
+  };
   return (
     <>
-      <Button
-        tone="ghost"
-        className={`px-2 py-1 text-xs ${className}`}
-        aria-haspopup="menu"
-        aria-expanded={at !== null}
-        aria-label={title}
-        title={title}
-        onClick={(e) => {
-          if (at) {
-            setAt(null);
-            return;
-          }
-          const box = e.currentTarget.getBoundingClientRect();
-          setAt({ x: box.right - 176, y: box.bottom + 4 });
-        }}
-      >
-        {children}
-      </Button>
+      {icon && children === undefined ? (
+        <IconButton icon={icon} label={title ?? label} variant={variant} size={size} {...common} />
+      ) : (
+        <Button variant={variant} size={size} icon={icon} aria-label={title} title={title} {...common}>
+          {children}
+        </Button>
+      )}
       {at && (
         <Menu
           at={at}

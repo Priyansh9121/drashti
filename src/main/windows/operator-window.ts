@@ -10,7 +10,7 @@ export function createOperatorWindow(): BrowserWindow {
     minHeight: 640,
     show: false,
     title: 'Drashti',
-    backgroundColor: '#0f1115',
+    backgroundColor: '#0b0d11',
     // Windows: keep the menu bar out of a volunteer's way (Alt shows it).
     autoHideMenuBar: true,
     webPreferences: secureWebPreferences(),
