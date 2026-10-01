@@ -39,6 +39,14 @@ Phase 1 has started:
 
 Next: checking both importers against the mandir's own files in `migration-samples/` once the audit has collected them (and setting the shortcuts from the setup checklist), and the first conversion tables for legacy fonts.
 
+## The repository is public
+
+`Priyansh9121/drashti` is public: everything pushed, and every CI log, can be read by anyone. So:
+
+- **No secrets, no real content.** No keys, stream keys or passwords; no real kirtan or scripture text; nothing from the mandir's library or a computer's ProPresenter libraries. Tests and screenshots use placeholder text and generated media, and test output about real libraries is counts only. `.gitignore` blocks `.env`, `.mcp.json` and `migration-samples/` as a safety net.
+- **Commits use the GitHub noreply address.**
+- **Three checks catch a secret:** GitHub secret scanning with push protection (turned on 1 Oct 2026), a gitleaks scan of the whole history before each push (`.githooks/pre-push`; run `pnpm hooks` once in a new clone), and the same scan in CI. gitleaks has no allowlist: nothing in the history needs one.
+
 ## Setup
 
 You need **Node.js 22.12 or later** and **pnpm 12**. Nothing else: better-sqlite3 ships prebuilt Node-API binaries, so no compiler is needed on either OS.
@@ -63,25 +71,29 @@ The Electron binary downloads the first time something needs it (for example `pn
 
 ## Commands
 
-| Command           | What it does                                                                                                                 |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm dev`        | Run the app with hot reload.                                                                                                 |
-| `pnpm build`      | Build main, preload and renderer into `out/`.                                                                                |
-| `pnpm test`       | Unit tests (Vitest), run inside Electron's own Node so they use the exact Node, V8 and native-module ABI the app ships with. |
-| `pnpm test:e2e`   | Build, then run every Playwright test against the real app.                                                                  |
-| `pnpm test:perf`  | Build, then run the performance check (by hand only; see "Performance check").                                               |
-| `pnpm test:smoke` | Build, then run only the smoke test: launch, go live on slide 1, check the output window shows it.                           |
-| `pnpm lint`       | ESLint (type-aware) and a Prettier check.                                                                                    |
-| `pnpm typecheck`  | TypeScript for the Node side, the web side and the end-to-end tests.                                                         |
-| `pnpm format`     | Format everything with Prettier.                                                                                             |
-| `pnpm test:audit` | Tests for the audit kit in `tools/audit/`.                                                                                   |
-| `pnpm package`    | Build installers into `release/`: `.dmg` and `.zip` on macOS, `.exe` on Windows. They are unsigned for now.                  |
+| Command            | What it does                                                                                                                 |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm dev`         | Run the app with hot reload.                                                                                                 |
+| `pnpm build`       | Build main, preload and renderer into `out/`.                                                                                |
+| `pnpm test`        | Unit tests (Vitest), run inside Electron's own Node so they use the exact Node, V8 and native-module ABI the app ships with. |
+| `pnpm test:e2e`    | Build, then run every Playwright test against the real app.                                                                  |
+| `pnpm test:perf`   | Build, then run the performance check (by hand only; see "Performance check").                                               |
+| `pnpm test:smoke`  | Build, then run only the smoke test: launch, go live on slide 1, check the output window shows it.                           |
+| `pnpm lint`        | ESLint (type-aware) and a Prettier check.                                                                                    |
+| `pnpm typecheck`   | TypeScript for the Node side, the web side and the end-to-end tests.                                                         |
+| `pnpm format`      | Format everything with Prettier.                                                                                             |
+| `pnpm test:audit`  | Tests for the audit kit in `tools/audit/`.                                                                                   |
+| `pnpm secret-scan` | Scan the whole git history for secrets (gitleaks, findings redacted). Runs before every push and in CI.                      |
+| `pnpm hooks`       | Turn on the git hooks in `.githooks/` for this clone (the secret scan before each push). Run once after cloning.             |
+| `pnpm package`     | Build installers into `release/`: `.dmg` and `.zip` on macOS, `.exe` on Windows. They are unsigned for now.                  |
 
 CI runs on GitHub Actions in the private `drashti` repository. `.github/workflows/ci.yml` runs typecheck, lint and unit tests on Ubuntu for every push. Pull requests, pushes to `main` and manual runs also get unit tests, the end-to-end tests (including the smoke test) and packaging on `macos-latest` and `windows-latest`, and keep the installers for 7 days. macOS minutes count ten times and Windows minutes twice on a private repository, which is why those jobs don't run on every push. A manual run can pick one OS:
 
 ```bash
 gh workflow run CI --ref <branch> -f os=windows   # or os=macos, os=both
 ```
+
+A **secret scan** job runs on every push and pull request: `scripts/secret-scan.mjs` downloads one pinned gitleaks release (its sha256 is written in the script and checked before use), proves on a throwaway repository that a planted token is found and printed redacted, then scans every commit of every branch with `--redact` and fails the run on any finding. The end-to-end jobs wait for it.
 
 `.github/workflows/audit-kit.yml` tests the audit scripts on both OSes, including under Windows PowerShell 5.1, when they change on `main` or in a pull request, or when started by hand.
 

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Scan the whole history for secrets before anything leaves this computer. The repository is
+# public, so a pushed secret is public before CI sees it. Turn on with: pnpm hooks
+exec node "$(git rev-parse --show-toplevel)/scripts/secret-scan.mjs"
