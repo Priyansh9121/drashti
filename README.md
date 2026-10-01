@@ -41,7 +41,7 @@ Phase 1 has started:
 - **restart recovery** of the whole show: after an unexpected stop the slide, background, black-out and place in the playlist come back by themselves, with the sound, props, messages, the stage message and running or paused timers (the sound and timers carry on from where they would be);
 - a **library list** that stays cheap at any size (about 2 ms at 5,000 presentations), and a **performance check** to run by hand on the real machines.
 
-Next: checking both importers against the mandir's own files in `migration-samples/` once the audit has collected them (and setting the shortcuts from the setup checklist), and the first conversion tables for legacy fonts.
+Next (PLAN.md section 5.2): Session 7 is the slide editor (text boxes, shapes, pictures and video on slides, text styling with shadow and outline, slide notes, per-slide transitions, auto-advance). The importers meet the mandir's own files, and the keys become the operators' own, at the mandir setup after the features are finished.
 
 ## The repository is public
 
