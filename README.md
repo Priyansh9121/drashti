@@ -238,6 +238,17 @@ Imports run in a separate worker process (an Electron utility process, `src/main
 - **This Mac's own libraries.** `src/main/import/real-libraries.test.ts` imports the ProPresenter libraries of the computer running the tests into a temporary library, and prints counts only. It runs when the libraries exist and never in CI. On the dev Mac, ProPresenter 6: 78 files, 17 presentations (16 of them templates), 127 slides, 6 playlists, 198 media files, 0 failures. ProPresenter 7: 32 files, 13 presentations (12 of them themes), 120 slides, 3 playlists, 0 failures.
 - **RTF.** Slide text in both presentation formats is RTF. The reader (`src/main/import/rtf/`) keeps paragraphs and line breaks, and per run the font, size, colour, bold, italic and letter spacing, plus each paragraph's alignment. It reads `\uN` and `\'hh` escapes in the right code page. Formatting Drashti cannot show yet (outlines, underline, text backgrounds and so on) is listed in the report. On this Mac's own libraries it read all 586 RTF texts without an error.
 
+## Screenshots
+
+With placeholder content only, from `tests/e2e/screenshots.spec.ts` (`pnpm build`, then `DRASHTI_SCREENSHOTS=1 pnpm exec playwright test tests/e2e/screenshots.spec.ts`):
+
+- [The operator window at 1920 × 1080](docs/screenshots/operator-1920x1080.png) and [at 1280 × 720](docs/screenshots/operator-1280x720.png)
+- [Simple Mode at 1280 × 720](docs/screenshots/simple-mode-1280x720.png), and [after Clear all, with Put it back](docs/screenshots/simple-mode-put-it-back.png)
+- [Edit words](docs/screenshots/edit-words.png), [Themes](docs/screenshots/themes.png) and [Screens](docs/screenshots/screens.png)
+- [The component gallery](docs/screenshots/component-gallery.png)
+
+![The operator window](docs/screenshots/operator-1920x1080.png)
+
 ## The design system
 
 The operator UI is built from one set of tokens and shared components. The rules are in `docs/design.md`, the tokens in `src/renderer/src/styles/app.css` (Tailwind 4 `@theme`), and the components in `src/renderer/src/ui/`.
