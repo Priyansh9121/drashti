@@ -23,6 +23,21 @@ permissions:
   contents: read
 
 jobs:
+  secrets:
+    name: Secret scan (gitleaks, whole history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Every commit of every branch and tag, not just the one being built.
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      # The pinned gitleaks finds a planted token and prints it redacted, then the real scan.
+      - run: node scripts/secret-scan.mjs --self-check
+      - run: node scripts/secret-scan.mjs
+
   checks:
     name: Typecheck, lint, unit tests (Ubuntu)
     runs-on: ubuntu-latest
@@ -41,7 +56,7 @@ jobs:
 
   app:
     name: End-to-end and installers (${{ matrix.os }})
-    needs: checks
+    needs: [secrets, checks]
     if: >-
       github.event_name == 'pull_request' ||
       github.event_name == 'workflow_dispatch' ||
