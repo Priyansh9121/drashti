@@ -8,6 +8,8 @@ import { undoRemoval } from '../library/undo';
 import { selectPresentation, useLibrary } from '../library/library-store';
 import { playOrder } from '../../../shared/order';
 import type { OperatorAction } from '../../../shared/keymap';
+// logo-store uses dispatch from here; both only call each other when an action runs.
+import { toggleLogo } from './logo-store';
 
 /** The last problem to show the operator (for example "Slide 4 of 3 does not exist"). */
 export const useNotice = create<{ text: string | null }>(() => ({ text: null }));
@@ -93,6 +95,8 @@ export async function runAction(action: OperatorAction, ui: { openScreens: () =>
       return dispatch({ type: 'clearLayer', layer: 'masks' });
     case 'toggleBlackout':
       return dispatch({ type: 'toggleBlackout' });
+    case 'toggleLogo':
+      return toggleLogo();
     case 'openScreens':
       ui.openScreens();
       return;
@@ -113,5 +117,30 @@ export async function runAction(action: OperatorAction, ui: { openScreens: () =>
     case 'undo':
       await undoRemoval();
       return;
+  }
+}
+
+/**
+ * What a key does in Simple Mode. The arrow keys run the open playlist:
+ * Next starts it when nothing is live; Back undoes the last Next exactly.
+ * Undo puts back what Clear all took down. Nothing that changes the library,
+ * the screens or the sound has a key here.
+ */
+export async function runSimpleAction(action: OperatorAction, start: () => Promise<void>): Promise<void> {
+  const live = useEngine.getState().state?.live;
+  const somethingLive = live?.presentationId != null || live?.playlist != null;
+  switch (action) {
+    case 'next':
+      return somethingLive ? dispatch({ type: 'next' }) : start();
+    case 'previous':
+      return dispatch({ type: 'back' });
+    case 'undo':
+      return dispatch({ type: 'putBack' });
+    case 'openScreens':
+    case 'findInLibrary':
+    case 'removeSelected':
+      return;
+    default:
+      return runAction(action, { openScreens: () => undefined });
   }
 }

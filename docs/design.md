@@ -115,3 +115,14 @@ There are three columns between a header and a footer:
 - **Along the bottom:** the layer clears and black-out. Under them is the status bar: screens connected, the sound output, import progress and notices.
 
 The columns are resized with `Splitter`s and the sizes are remembered on the computer (`ui/persist.ts`). Everything fits at 1280 × 720 with nothing cut off or overlapping. Simple Mode is one screen with big buttons, and fits at 1280 × 720 too.
+
+## 10. Simple Mode
+
+Simple Mode (`src/renderer/src/simple/`) is for a volunteer who has never used Drashti:
+
+- **One screen, nothing to find.** The playlist sits on the left with its headers. In the middle are what's live and what's next. The big buttons run along the bottom: Back, Next (the biggest, `primary`), Black out, Logo, and Clear all. After Clear all, that button turns into **Put it back** (`warning`).
+- **Big targets.** The buttons are `xl` and `xxl` (64 and 96 px high), playlist rows are at least 56 px, and text is at least 16 px except the key hints.
+- **States in words.** Black out and Logo use the `live` variant when on, and their words change ("Black out is on", "Logo is on"). The live playlist row has a LiveBadge.
+- **Nothing that changes anything.** No editing, removing, importing, themes, screens, sound or backups. Don't add a control here that changes the library or the setup. The main process refuses those requests in Simple Mode anyway (`src/main/simple-mode.ts`).
+- **Undo comes first.** Back undoes the last Next exactly, and Put it back undoes Clear all. Every new action in Simple Mode needs a way to undo it, in one press.
+- It fits 1280 × 720 with nothing scrolling (`tests/e2e/simple-mode.spec.ts`).

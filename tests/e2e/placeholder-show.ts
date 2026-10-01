@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
 import { importAndGetIds } from './helpers';
-import { makeTestImage } from './test-media';
+import { makeTestImage, makeTestVideo } from './test-media';
 
 /*
  * A small placeholder sabha for the UI tests, Simple Mode and the
@@ -18,18 +18,24 @@ export const KIRTAN = 'Placeholder Kirtan';
 export const PICTURE = 'Placeholder backdrop';
 export const PLAYLIST = 'Placeholder Ravi Sabha';
 export const LOGO = 'Placeholder Mandir Logo';
+export const VIDEO = 'Placeholder clip';
 
 export interface PlaceholderShow {
   playlistId: string;
   welcomeId: string;
   kirtanId: string;
   pictureMediaId: string;
+  /** With `video`: a short generated video, the item after the kirtan. */
+  videoMediaId: string | null;
   logoPropId: string;
   /** The kirtan's slides in playing order: chorus, verse 1, chorus, verse 2, chorus. */
   kirtanOrder: string[];
 }
 
-export async function setUpPlaceholderShow(win: Page): Promise<PlaceholderShow> {
+export async function setUpPlaceholderShow(
+  win: Page,
+  options: { video?: boolean } = {},
+): Promise<PlaceholderShow> {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-show-'));
   const welcome = join(dir, `${WELCOME}.txt`);
   writeFileSync(welcome, 'Placeholder welcome to the sabha\nનમૂના સ્વાગત\n');
@@ -59,12 +65,21 @@ export async function setUpPlaceholderShow(win: Page): Promise<PlaceholderShow> 
     height: 180,
     color: '#1d4e89',
   });
-  const [welcomeId = '', kirtanId = ''] = await importAndGetIds(win, [welcome, kirtan, picture]);
+  const video = options.video
+    ? await makeTestVideo(win, join(dir, `${VIDEO}.webm`), { seconds: 2, width: 320, height: 180, hue: 30 })
+    : null;
+  const [welcomeId = '', kirtanId = ''] = await importAndGetIds(win, [
+    welcome,
+    kirtan,
+    picture,
+    ...(video ? [video] : []),
+  ]);
   return win.evaluate(
-    async ({ welcomeId, kirtanId, names }) => {
+    async ({ welcomeId, kirtanId, names, withVideo }) => {
       const d = (globalThis as PageGlobals).drashti;
       const media = await d.library.listMedia();
       const pictureMediaId = media.find((m) => m.name.startsWith(names.picture))?.id ?? '';
+      const videoMediaId = withVideo ? (media.find((m) => m.name.startsWith(names.video))?.id ?? '') : null;
       const made = await d.playlists.create(names.playlist, null, false);
       if (!made.ok) throw new Error(made.message);
       const playlistId = made.ids[0] ?? '';
@@ -73,6 +88,7 @@ export async function setUpPlaceholderShow(win: Page): Promise<PlaceholderShow> 
         { kind: 'presentation', presentationId: welcomeId },
         { kind: 'header', label: 'Kirtan' },
         { kind: 'presentation', presentationId: kirtanId },
+        ...(videoMediaId ? [{ kind: 'media' as const, mediaId: videoMediaId }] : []),
         { kind: 'media', mediaId: pictureMediaId },
       ]);
       if (!added.ok) throw new Error(added.message);
@@ -119,12 +135,21 @@ export async function setUpPlaceholderShow(win: Page): Promise<PlaceholderShow> 
       const arrangement = doc?.arrangements.find((a) => a.id === doc.selectedArrangementId);
       const byGroup = new Map(doc?.groups.map((g) => [g.id, g.slides.map((sl) => sl.id)]) ?? []);
       const kirtanOrder = (arrangement?.groupIds ?? []).flatMap((g) => byGroup.get(g) ?? []);
-      return { playlistId, welcomeId, kirtanId, pictureMediaId, logoPropId: logo.id, kirtanOrder };
+      return {
+        playlistId,
+        welcomeId,
+        kirtanId,
+        pictureMediaId,
+        videoMediaId,
+        logoPropId: logo.id,
+        kirtanOrder,
+      };
     },
     {
       welcomeId,
       kirtanId,
-      names: { picture: PICTURE, playlist: PLAYLIST, logo: LOGO },
+      names: { picture: PICTURE, playlist: PLAYLIST, logo: LOGO, video: VIDEO },
+      withVideo: Boolean(video),
     },
   );
 }

@@ -3,10 +3,22 @@ import { isLayerEmpty } from '../../../shared/engine/state';
 import type { OperatorAction } from '../../../shared/keymap';
 import { shortcutText } from '../../../shared/keymap';
 import { useEngine } from '../engine/engine-store';
+import { dispatch } from './actions';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import type { Icon } from '../ui/icons';
-import { Eraser, Image, Layers, MessageSquare, Music, Sticker, Square, Type } from '../ui/icons';
+import {
+  Eraser,
+  Image,
+  Layers,
+  MessageSquare,
+  Music,
+  RotateCcw,
+  Stamp,
+  Sticker,
+  Square,
+  Type,
+} from '../ui/icons';
 import { Kbd } from '../ui/Kbd';
 
 /*
@@ -28,6 +40,8 @@ const clears: { action: OperatorAction; layer: LayerName; label: string; icon: I
 export function LayerBar({ platform, run }: { platform: string; run: (action: OperatorAction) => void }) {
   const layers = useEngine((s) => s.state?.layers);
   const blackout = useEngine((s) => s.state?.blackout ?? false);
+  const logo = useEngine((s) => s.state?.logo ?? null);
+  const canPutBack = useEngine((s) => s.state?.canPutBack ?? false);
   const anything = layers ? clears.some((c) => !isLayerEmpty(layers, c.layer)) : false;
   return (
     <div
@@ -46,6 +60,17 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
       >
         Clear all
       </Button>
+      {canPutBack && (
+        <Button
+          variant="warning"
+          size="lg"
+          icon={RotateCcw}
+          data-testid="put-back"
+          onClick={() => void dispatch({ type: 'putBack' })}
+        >
+          Put it back
+        </Button>
+      )}
       <div role="group" aria-label="Clear one layer" className="flex items-center gap-1.5">
         {clears.map((c) => {
           const on = layers ? !isLayerEmpty(layers, c.layer) : false;
@@ -78,6 +103,19 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
         })}
       </div>
       <span className="flex-1" />
+      <Button
+        variant={logo ? 'live' : 'secondary'}
+        size="lg"
+        icon={Stamp}
+        aria-pressed={logo !== null}
+        kbd={shortcutText('toggleLogo', platform)}
+        onClick={() => {
+          run('toggleLogo');
+        }}
+        data-testid="logo-button"
+      >
+        {logo ? 'Logo is on' : 'Logo'}
+      </Button>
       <Button
         variant={blackout ? 'live' : 'secondary'}
         size="lg"

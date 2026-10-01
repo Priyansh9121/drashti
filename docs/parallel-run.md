@@ -114,6 +114,21 @@ Write down anything different, with the time.
 
 To fix words on a slide, use **Edit words** above the slides. Saving can be undone with **Undo** (Cmd+Z or Ctrl+Z).
 
+### Simple Mode, for a volunteer
+
+Simple Mode is one screen with big buttons, for running a sabha from its playlist without being able to change anything by mistake. Try it on one of these evenings, ideally with a volunteer who has not used Drashti before.
+
+1. In Pro Mode, mark the mandir's logo once: under the live picture, in **Props**, press the stamp button beside the logo's prop (**Use … as the logo**). The **Logo** button shows that prop instead of the picture.
+2. Press **Simple Mode** in the header (or **View**, then **Switch to Simple Mode**; on Windows press **Alt** first).
+3. Pick the playlist at the top left if it is not already open. Its items are listed below, with headers.
+4. **Next** (or →, Space, Page Down, or a presentation clicker) starts the playlist and goes through it. **Back** (←, Page Up) undoes the last Next exactly: after one Next too many, the screens are as they were.
+5. **Black out** (B or .) and **Logo** (L) cover the picture, and pressing them again brings back exactly what was there. The stage screens keep showing the words.
+6. **Clear all** (F1) takes everything down; straight after it, **Put it back** (or Cmd+Z, Ctrl+Z on Windows) brings it all back.
+7. Nothing in Simple Mode can import, edit, remove, or change themes, screens, the sound, or backups. Drashti remembers Simple Mode, and comes back in it after a restart.
+8. To leave it: **View**, then **Switch to Pro Mode…**, type **pro**, and press **Switch to Pro Mode**. Volunteers should not need to.
+
+Write down anything the volunteer found hard, with what they were trying to do.
+
 ---
 
 ## 6. Falling back to ProPresenter
@@ -174,10 +189,11 @@ On the Mac, **Cmd** is the ⌘ key; on Windows, use **Ctrl** instead. These keys
 | Key                                            | What it does                                                                                     |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | **Space**, **→**, **↓** or **Page Down**       | Next slide (on into the next playlist item at the end)                                           |
-| **←**, **↑** or **Page Up**                    | Previous slide                                                                                   |
+| **←**, **↑** or **Page Up**                    | Previous slide (in Simple Mode, Back: undoes the last Next exactly)                              |
 | **Shift+→** or **Shift+↓**                     | Next playlist item                                                                               |
 | **Shift+←** or **Shift+↑**                     | Previous playlist item                                                                           |
 | **B** or **.**                                 | Black-out on or off                                                                              |
+| **L**                                          | The logo instead of the picture, and back                                                        |
 | **F1**                                         | Clear all                                                                                        |
 | **F2**                                         | Clear the slide (the background stays)                                                           |
 | **F3**                                         | Clear the background                                                                             |
@@ -187,7 +203,7 @@ On the Mac, **Cmd** is the ⌘ key; on Windows, use **Ctrl** instead. These keys
 | **F7**                                         | Clear masks                                                                                      |
 | **Cmd+F** / **Ctrl+F**                         | Search the library                                                                               |
 | **Delete** or **Backspace** (in a list)        | Remove the marked presentations, playlists or items (asks first for presentations and playlists) |
-| **Cmd+Z** / **Ctrl+Z**                         | Undo the last removal, words edit or theme                                                       |
+| **Cmd+Z** / **Ctrl+Z**                         | Undo the last removal, words edit or theme (in Simple Mode: put back what Clear all took down)   |
 | **Cmd+Enter** / **Ctrl+Enter** (editing words) | Save the words                                                                                   |
 | **Cmd+Shift+S** / **Ctrl+Shift+S**             | Open Screens                                                                                     |
 | **Cmd+Shift+U** / **Ctrl+Shift+U**             | Uncover the controls (works from anywhere)                                                       |
