@@ -81,8 +81,13 @@ jobs:
         run: pnpm test
       - name: End-to-end tests (Playwright + Electron)
         run: pnpm test:e2e
+      # Playwright cannot follow app.relaunch(): back up, restore and restart for real.
+      - name: Restart after a restore (built app)
+        run: node scripts/check-relaunch.mjs
       - name: Package installers
         run: pnpm exec electron-builder --publish never
+      - name: Restart after a restore (packaged app)
+        run: node scripts/check-relaunch.mjs --packaged
       - name: Upload installers
         uses: actions/upload-artifact@v7
         with:

@@ -56,13 +56,14 @@ import { saveStill } from './media/stills';
 import { installMenu } from './menu';
 import { runPerformanceTest } from './perftest';
 import { registerPlaylistIpc } from './playlists/playlist-ipc';
-import { applyPendingRestore, rollBackRestore } from './library/backup';
+import { applyPendingRestore, backupLibrary, requestRestore, rollBackRestore } from './library/backup';
 import type { BackupUi } from './library/backup-ui';
 import { backUp, restore } from './library/backup-ui';
 import { Revisions } from './library/revisions';
 import { applyTheme, themeLook } from './library/themes';
 import { registerThemesIpc } from './library/themes-ipc';
 import { registerWordsIpc } from './library/words-ipc';
+import { runRelaunchSelfTest } from './relaunch-selftest';
 import { createdGroupId, runWatchdogSelfTest } from './selftest';
 import {
   createOutputWindow,
@@ -84,6 +85,8 @@ import { applySessionSecurity, secureWebContents } from './windows/security';
 // imports a few hundred placeholder files, so it gets a throwaway data folder of its own.
 const selfTest = process.env['DRASHTI_SELFTEST'] === 'watchdog';
 const perfTest = process.env['DRASHTI_SELFTEST'] === 'performance';
+// The restart after a restore, for real (scripts/check-relaunch.mjs; see relaunch-selftest.ts).
+const relaunchTest = process.env['DRASHTI_SELFTEST'] === 'restore-relaunch';
 // Tests (and multiple installs) can point Drashti at its own data folder.
 const userDataOverride = process.env['DRASHTI_USER_DATA_DIR'];
 if (userDataOverride) app.setPath('userData', userDataOverride);
@@ -1056,6 +1059,41 @@ function start(): void {
           exitSelfTest(1);
         },
       );
+    });
+  }
+  const relaunchWorkDir = process.env['DRASHTI_SELFTEST_DIR'];
+  if (relaunchTest && relaunchWorkDir) {
+    operatorWindow.webContents.once('did-finish-load', () => {
+      void runRelaunchSelfTest({
+        userData: userDataDir,
+        workDir: relaunchWorkDir,
+        restored,
+        names: () => presentations.list().map((p) => p.name),
+        backUp: async (into) =>
+          (
+            await backupLibrary(libraryDb, into, {
+              mediaDir: null,
+              app: app.getVersion(),
+              schema: LATEST_VERSION,
+              now: new Date(),
+            })
+          ).folder,
+        change: () => {
+          presentations.insert({
+            libraryId: presentations.ensureLibrary('Default'),
+            name: 'Placeholder added after the backup',
+            groups: [{ name: '', slides: [{ elements: [] }] }],
+          });
+        },
+        requestRestore: (from) => {
+          requestRestore(userDataDir, from);
+        },
+        restart: backupUi.restart,
+        exit: exitSelfTest,
+      }).catch((error: unknown) => {
+        log.error('The restore-relaunch self-test stopped', error);
+        exitSelfTest(1);
+      });
     });
   }
   if (selfTest) {
