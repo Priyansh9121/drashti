@@ -48,6 +48,8 @@ export default defineConfig({
           index: resolve('src/renderer/index.html'),
           output: resolve('src/renderer/output.html'),
           audio: resolve('src/renderer/audio.html'),
+          // The component gallery, for development (Diagnostics > Component Gallery).
+          gallery: resolve('src/renderer/gallery.html'),
         },
       },
     },

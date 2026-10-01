@@ -77,6 +77,7 @@ import { ScreensService } from './outputs/screens-service';
 import { SleepGuard } from './outputs/sleep-guard';
 import { IpcTransport } from './transport/ipc-transport';
 import { AUDIO_PARTITION, createAudioWindow } from './windows/audio-window';
+import { openGalleryWindow } from './windows/gallery-window';
 import { createOperatorWindow } from './windows/operator-window';
 import { RendererWatchdog, shouldConfirmQuit } from './watchdog';
 import { applySessionSecurity, secureWebContents } from './windows/security';
@@ -1011,6 +1012,9 @@ function start(): void {
           crashOutputs: () => {
             for (const w of outputWindows.values())
               if (!w.isDestroyed()) w.webContents.forcefullyCrashRenderer();
+          },
+          openGallery: () => {
+            openGalleryWindow();
           },
           runSelfTest: () => {
             void runSelfTest().then((result) => {
