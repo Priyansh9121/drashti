@@ -56,7 +56,7 @@ import { saveStill } from './media/stills';
 import { installMenu } from './menu';
 import { runPerformanceTest } from './perftest';
 import { registerPlaylistIpc } from './playlists/playlist-ipc';
-import { applyPendingRestore } from './library/backup';
+import { applyPendingRestore, rollBackRestore } from './library/backup';
 import type { BackupUi } from './library/backup-ui';
 import { backUp, restore } from './library/backup-ui';
 import { Revisions } from './library/revisions';
@@ -177,21 +177,28 @@ function appInfo(): AppInfo {
 
 const libraryFile = () => join(app.getPath('userData'), 'drashti.sqlite');
 
-function openLibrary(): Db | null {
-  const file = libraryFile();
+function openLibrary(): { db: Db } | { error: unknown } {
   try {
-    const opened = openDatabase(file);
-    if (seedPlaceholders(opened)) log.info('Added the placeholder presentations');
+    const opened = openDatabase(libraryFile());
+    try {
+      if (seedPlaceholders(opened)) log.info('Added the placeholder presentations');
+    } catch (error) {
+      opened.close();
+      throw error;
+    }
     log.info(`Library opened (schema ${LATEST_VERSION})`);
-    return opened;
+    return { db: opened };
   } catch (error) {
     log.error('Could not open the library', error);
-    dialog.showErrorBox(
-      'Drashti cannot open its library',
-      `${error instanceof Error ? error.message : String(error)}\n\nFile: ${file}`,
-    );
-    return null;
+    return { error };
   }
+}
+
+function cannotOpenLibrary(error: unknown, before = ''): void {
+  dialog.showErrorBox(
+    'Drashti cannot open its library',
+    `${before}${error instanceof Error ? error.message : String(error)}\n\nFile: ${libraryFile()}`,
+  );
 }
 
 /** Carry out a restore asked for before the restart, if there is one (ids and counts only in the log). */
@@ -265,11 +272,26 @@ function start(): void {
   let startNotice = restored.restored
     ? `Library restored from “${restored.from}”. The library from before is kept in Drashti’s data folder, in Backups/${restored.keptIn}.`
     : restored.message;
-  db = openLibrary();
-  if (!db) {
+  let opened = openLibrary();
+  if ('error' in opened && restored.restored) {
+    // The restored library will not open: put back the one from before the restore, and say so.
+    log.error('The restored library cannot be opened; putting back the library from before the restore');
+    const back = rollBackRestore(app.getPath('userData'), restored.keptIn, { now: new Date() });
+    if (!back.ok) {
+      cannotOpenLibrary(opened.error, `${back.message}\n\n`);
+      app.quit();
+      return;
+    }
+    log.info('The library from before the restore is back');
+    opened = openLibrary();
+    startNotice = `The backup “${restored.from}” could not be opened after the restore, so Drashti put back the library from before it. The backup itself is unchanged; the copy that failed is in Drashti’s data folder, in Backups/${back.failedIn}.`;
+  }
+  if ('error' in opened) {
+    cannotOpenLibrary(opened.error);
     app.quit();
     return;
   }
+  db = opened.db;
   const libraryDb: Db = db;
   const presentations = new PresentationRepo(db);
   const slides = new DbSlideSource(presentations);

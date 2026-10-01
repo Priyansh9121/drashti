@@ -7,6 +7,7 @@ import {
   createWriteStream,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -52,6 +53,19 @@ const noteSchema: z.ZodType<BackupNote> = z.object({
   createdAt: z.string(),
   media: z.boolean(),
 });
+
+/**
+ * The copies openDatabase keeps before upgrading a library (drashti.sqlite.v<N>.bak). They
+ * belong to the library beside them, and one already there stops the next upgrade making
+ * its own, so they move with their library.
+ */
+function upgradeCopies(dir: string): string[] {
+  try {
+    return readdirSync(dir).filter((name) => /^drashti\.sqlite\.v\d+\.bak$/u.test(name));
+  } catch {
+    return [];
+  }
+}
 
 const noteText = (note: BackupNote) => `${JSON.stringify(note, null, 2)}\n`;
 
@@ -312,6 +326,12 @@ export function applyPendingRestore(
         renameSync(mediaDir, incomingMedia);
       });
     }
+    for (const name of upgradeCopies(userData)) {
+      renameSync(join(userData, name), join(keptIn, name));
+      undo.push(() => {
+        renameSync(join(keptIn, name), join(userData, name));
+      });
+    }
     for (const suffix of ['-wal', '-shm']) rmSync(`${current}${suffix}`, { force: true });
     undo.push(() => {
       for (const suffix of ['-wal', '-shm'])
@@ -343,6 +363,50 @@ export function applyPendingRestore(
     }),
   );
   return { restored: true, from: basename(from), keptIn: basename(keptIn), media: check.media };
+}
+
+export type RollBackOutcome = { ok: true; failedIn: string } | { ok: false; message: string };
+
+/**
+ * After a restore whose library will not open: put back the library (and the
+ * media, when the restore swapped it) kept in Backups/<keptIn>. The restored
+ * copy that failed goes to Backups/Failed restore <date>, for diagnosis; the
+ * backup it came from is untouched. The kept folder stays a finished backup.
+ */
+export function rollBackRestore(userData: string, keptIn: string, options: { now: Date }): RollBackOutcome {
+  const backups = join(userData, 'Backups');
+  const kept = join(backups, keptIn);
+  const current = join(userData, LIBRARY_FILE);
+  const mediaDir = join(userData, MEDIA);
+  if (!existsSync(join(kept, LIBRARY_FILE)))
+    return { ok: false, message: `The library from before the restore is not in Backups/${keptIn}.` };
+  const failedIn = freshFolder(backups, `Failed restore ${fileStamp(options.now)}`);
+  try {
+    mkdirSync(failedIn, { recursive: true });
+    for (const suffix of ['', '-wal', '-shm'])
+      if (existsSync(`${current}${suffix}`))
+        renameSync(`${current}${suffix}`, join(failedIn, `${LIBRARY_FILE}${suffix}`));
+    // Upgrade copies made while trying to open the restored library go with it; the old ones come back.
+    for (const name of upgradeCopies(userData)) renameSync(join(userData, name), join(failedIn, name));
+    for (const name of upgradeCopies(kept)) renameSync(join(kept, name), join(userData, name));
+    if (existsSync(join(kept, MEDIA))) {
+      if (existsSync(mediaDir)) renameSync(mediaDir, join(failedIn, MEDIA));
+      renameSync(join(kept, MEDIA), mediaDir);
+    }
+    // Copied, not moved: the kept folder stays a backup of the library from before.
+    for (const suffix of ['', '-wal', '-shm'])
+      if (existsSync(join(kept, `${LIBRARY_FILE}${suffix}`)))
+        copyFileSync(join(kept, `${LIBRARY_FILE}${suffix}`), `${current}${suffix}`);
+    const note = noteSchema.safeParse(JSON.parse(readFileSync(join(kept, NOTE), 'utf8')));
+    if (note.success)
+      writeFileSync(join(kept, NOTE), noteText({ ...note.data, media: existsSync(join(kept, MEDIA)) }));
+  } catch (error) {
+    return {
+      ok: false,
+      message: `The library from before the restore could not be put back (${reason(error)}). It is kept in Backups/${keptIn} in Drashti's data folder.`,
+    };
+  }
+  return { ok: true, failedIn: basename(failedIn) };
 }
 
 /** Whether two paths are on the same disk (so a backup there takes room from the library's own disk). */
