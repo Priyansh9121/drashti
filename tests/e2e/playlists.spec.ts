@@ -25,11 +25,17 @@ const song = (uuid: string, text: string) =>
 async function drag(page: Page, source: Locator, target: Locator, where: 'top' | 'middle' | 'bottom') {
   await source.hover();
   const from = await source.boundingBox();
-  const box = await target.boundingBox();
-  if (!from || !box) throw new Error('the drag source or drop target is not visible');
-  const y = box.y + (where === 'top' ? 3 : where === 'bottom' ? box.height - 3 : box.height / 2);
+  if (!from) throw new Error('the drag source is not visible');
   await page.mouse.down();
   await page.mouse.move(from.x + from.width / 2 + 8, from.y + from.height / 2 + 8);
+  // Measured once the drag is under way, with the target in view: on a small screen the list
+  // can scroll as the source comes into view, leaving the target partly hidden.
+  await target.evaluate((el) => {
+    el.scrollIntoView({ block: 'nearest' });
+  });
+  const box = await target.boundingBox();
+  if (!box) throw new Error('the drop target is not visible');
+  const y = box.y + (where === 'top' ? 3 : where === 'bottom' ? box.height - 3 : box.height / 2);
   await page.mouse.move(box.x + box.width / 2, y, { steps: 5 });
   await page.mouse.up();
 }
@@ -46,6 +52,8 @@ const labels = (items: Locator) =>
 test('playlists: imported ones with their placeholders, and building one by dragging from the library', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
+  // A small operator display (as on CI's machines): the lists scroll while dragging.
+  await win.setViewportSize({ width: 1024, height: 600 });
   const dir = mkdtempSync(join(tmpdir(), 'drashti-playlists-'));
   const one = join(dir, 'Placeholder Song One.pro6');
   const two = join(dir, 'Placeholder Song Two.pro6');
