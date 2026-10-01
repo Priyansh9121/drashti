@@ -26,6 +26,7 @@ export type OperatorAction =
   | 'clearAudio'
   | 'clearMasks'
   | 'toggleBlackout'
+  | 'toggleLogo'
   | 'openScreens'
   | 'uncoverControls'
   | 'removeSelected'
@@ -62,11 +63,14 @@ export const KEYMAP: readonly KeyBinding[] = [
   { action: 'clearAudio', keys: ['F6'], label: 'Clear audio' },
   { action: 'clearMasks', keys: ['F7'], label: 'Clear masks' },
   { action: 'toggleBlackout', keys: ['B', '.'], label: 'Black-out' },
+  // The logo instead of the picture, and back (the prop marked as the logo in Pro Mode).
+  { action: 'toggleLogo', keys: ['L'], label: 'Logo' },
   { action: 'openScreens', keys: ['Mod+Shift+S'], label: 'Screens' },
   // Turns off any output covering the operator window. Not Ctrl+Shift+Esc (Windows Task Manager)
   // and not plain Esc (too easy to press by accident when a single screen is covered on purpose).
   { action: 'uncoverControls', keys: ['Mod+Shift+U'], label: 'Uncover the controls', global: true },
-  // Removing presentations or playlists asks first; Undo brings back any removal.
+  // Removing presentations or playlists asks first; Undo brings back any removal. In Simple Mode,
+  // which removes nothing, Undo puts back what Clear all took down.
   { action: 'removeSelected', keys: ['Delete', 'Backspace'], label: 'Remove', scope: 'library' },
   { action: 'findInLibrary', keys: ['Mod+F'], label: 'Search' },
   { action: 'undo', keys: ['Mod+Z'], label: 'Undo', menuOnly: true },
@@ -76,6 +80,11 @@ export const KEYMAP: readonly KeyBinding[] = [
 export const PAGE_KEYMAP: readonly KeyBinding[] = KEYMAP.filter((b) => !b.scope && !b.menuOnly);
 /** Keys that only work while a list has the focus. */
 export const LIBRARY_KEYMAP: readonly KeyBinding[] = KEYMAP.filter((b) => b.scope === 'library');
+/**
+ * Keys Simple Mode listens for: the page's keys and Undo (which puts back what Clear all took
+ * down). The Edit menu still owns Undo's key, and tells the page when it is chosen.
+ */
+export const SIMPLE_KEYMAP: readonly KeyBinding[] = KEYMAP.filter((b) => !b.scope);
 
 export interface KeyInput {
   key: string;

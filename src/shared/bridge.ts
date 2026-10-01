@@ -12,6 +12,7 @@ import type {
   SaveWordsResult,
   WordsResult,
 } from './library';
+import type { ModeResult, OperatorMode } from './mode';
 import type { RecoveryNotice } from './recovery';
 import type { SaveStillResult } from './media';
 import type {
@@ -55,6 +56,13 @@ export interface DrashtiBridge {
     startNotice(): Promise<string | null>;
     /** A long task's progress (a backup), or null when it has ended. */
     onProgress(listener: (progress: TaskProgress | null) => void): () => void;
+    /** Simple Mode or Pro Mode. */
+    getMode(): Promise<OperatorMode>;
+    /** Into Simple Mode at once; back to Pro Mode only with the word typed (operator window only). */
+    setMode(mode: OperatorMode, word?: string): Promise<ModeResult>;
+    onModeChanged(listener: (mode: OperatorMode) => void): () => void;
+    /** View > Switch to Pro Mode… was chosen: ask for the word. */
+    onAskLeaveSimple(listener: () => void): () => void;
   };
   /** Files dropped on a page. */
   files: {
@@ -142,6 +150,10 @@ export interface DrashtiBridge {
     /** Make a prop (no id) or change one. */
     save(propId: string | null, fields: PropFields): Promise<PropResult>;
     remove(propId: string): Promise<PropResult>;
+    /** The prop marked as the logo, or null. */
+    getLogo(): Promise<string | null>;
+    /** Mark a prop as the logo (null: none) (operator window, Pro Mode). */
+    setLogo(propId: string | null): Promise<PropResult>;
   };
   /** Themes: how presentations' words look, per language, and what is behind them. */
   themes: {

@@ -11,6 +11,17 @@ import { devServerUrl, rendererDir } from '../windows/renderer';
  */
 export const handlerTimes = new Map<string, number>();
 
+/** While `locked()` is true, these channels answer their refusal instead of running (Simple Mode). */
+let lock: { locked: () => boolean; refusals: ReadonlyMap<string, () => unknown> } | null = null;
+
+/** Refuse the listed channels while `locked()` says so; each answers what its refusal gives. */
+export function lockChannels(
+  locked: () => boolean,
+  refusals: ReadonlyMap<InvokeChannel, () => unknown>,
+): void {
+  lock = { locked, refusals };
+}
+
 function note(channel: string, started: number): void {
   const ms = performance.now() - started;
   if (ms > (handlerTimes.get(channel) ?? 0)) handlerTimes.set(channel, ms);
@@ -30,6 +41,8 @@ export function handle<C extends InvokeChannel>(
     if (!isAppUrl(url, { devServerUrl: devServerUrl(), rendererDir: rendererDir() })) {
       throw new Error(`Refused ${channel} from ${url || 'an unknown frame'}`);
     }
+    const refusal = lock?.locked() ? lock.refusals.get(channel) : undefined;
+    if (refusal) return refusal();
     const started = performance.now();
     const result = handler(event, ...args);
     // Time the synchronous part: that is what blocks the main process.

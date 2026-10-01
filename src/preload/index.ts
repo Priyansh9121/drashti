@@ -37,6 +37,16 @@ const bridge: DrashtiBridge = {
       on(IPC.app.progress, ({ progress }) => {
         listener(progress);
       }),
+    getMode: () => invoke(IPC.app.getMode),
+    setMode: (mode, word) => invoke(IPC.app.setMode, mode, word),
+    onModeChanged: (listener) =>
+      on(IPC.app.modeChanged, ({ mode }) => {
+        listener(mode);
+      }),
+    onAskLeaveSimple: (listener) =>
+      on(IPC.app.askLeaveSimple, () => {
+        listener();
+      }),
   },
   files: {
     pathFor: (file) => webUtils.getPathForFile(file),
@@ -97,6 +107,8 @@ const bridge: DrashtiBridge = {
     list: () => invoke(IPC.props.list),
     save: (propId, fields) => invoke(IPC.props.save, propId, fields),
     remove: (propId) => invoke(IPC.props.remove, propId),
+    getLogo: () => invoke(IPC.props.getLogo),
+    setLogo: (propId) => invoke(IPC.props.setLogo, propId),
   },
   themes: {
     list: () => invoke(IPC.themes.list),

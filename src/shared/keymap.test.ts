@@ -40,6 +40,11 @@ describe('keymap', () => {
     expect(shortcutText('previousItem', 'win32')).toBe('Shift+←');
   });
 
+  it('shows and hides the logo with L', () => {
+    expect(actionFor(press('l'), 'darwin')).toBe('toggleLogo');
+    expect(actionFor(press('L', { shiftKey: true }), 'win32')).toBe('toggleLogo');
+  });
+
   it('maps the clear keys and black-out', () => {
     expect(actionFor(press('F1'), 'darwin')).toBe('clearAll');
     expect(actionFor(press('F2'), 'darwin')).toBe('clearSlide');

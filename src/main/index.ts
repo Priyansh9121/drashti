@@ -28,6 +28,8 @@ import { messageTemplateSchema } from '../shared/messages';
 import type { TimerResult } from '../shared/timers';
 import { timerFieldsSchema } from '../shared/timers';
 import type { RecoveryNotice } from '../shared/recovery';
+import type { ModeResult, OperatorMode } from '../shared/mode';
+import { isLeaveWord, isOperatorMode } from '../shared/mode';
 import type { Db } from './db/database';
 import { LATEST_VERSION, openDatabase } from './db/database';
 import { ImportRepo } from './db/imports';
@@ -44,7 +46,7 @@ import { ScreenRepo } from './db/screens';
 import { seedPlaceholders } from './db/seed';
 import { ShowEngine } from './engine/show-engine';
 import { runEngineCommand } from './ipc/engine-ipc';
-import { handle, handlerTimes } from './ipc/handle';
+import { handle, handlerTimes, lockChannels } from './ipc/handle';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
 import { AudioOutput } from './audio/audio-output';
@@ -65,6 +67,7 @@ import { registerThemesIpc } from './library/themes-ipc';
 import { registerWordsIpc } from './library/words-ipc';
 import { runRelaunchSelfTest } from './relaunch-selftest';
 import { createdGroupId, runWatchdogSelfTest } from './selftest';
+import { simpleModeRefusals } from './simple-mode';
 import {
   createOutputWindow,
   listDisplays,
@@ -523,6 +526,40 @@ function start(): void {
   });
   const fromAudioPlayer = (event: IpcMainInvokeEvent) => event.sender.id === audioWindow?.webContents.id;
 
+  // ---- Simple Mode ----------------------------------------------------------------
+  // Remembered in the library's settings, so Drashti (and restart recovery) comes back in it.
+  const savedMode = settings.get('operatorMode');
+  let mode: OperatorMode = isOperatorMode(savedMode) ? savedMode : 'pro';
+  if (mode === 'simple') log.info('Starting in Simple Mode');
+  // While it is on, every request that would change the library, screens or sound is refused here.
+  lockChannels(
+    () => mode === 'simple',
+    simpleModeRefusals(() => audioOutput.status),
+  );
+  let rebuildMenu: () => void = () => undefined;
+  const setMode = (next: OperatorMode) => {
+    if (next === mode) return;
+    mode = next;
+    settings.set('operatorMode', next);
+    log.info(next === 'simple' ? 'Switched to Simple Mode' : 'Switched to Pro Mode');
+    rebuildMenu();
+    sendToOperator(IPC.app.modeChanged, { mode: next });
+  };
+  handle(IPC.app.getMode, () => mode);
+  handle(IPC.app.setMode, (e, wanted, word): ModeResult => {
+    if (!fromOperator(e) || !isOperatorMode(wanted))
+      return { ok: false, message: 'Only the operator window can switch the mode.' };
+    // Leaving Simple Mode takes the word, typed on purpose.
+    if (mode === 'simple' && wanted === 'pro' && !(typeof word === 'string' && isLeaveWord(word)))
+      return { ok: false, message: 'Type pro to switch to Pro Mode.' };
+    setMode(wanted);
+    return { ok: true, mode };
+  });
+  const switchMode = () => {
+    if (mode === 'pro') setMode('simple');
+    else sendToOperator(IPC.app.askLeaveSimple, { at: Date.now() });
+  };
+
   // The operator's library list refreshes at most every 2 s during an import, and at once afterwards.
   let changedTimer: NodeJS.Timeout | null = null;
   let lastChanged = 0;
@@ -633,8 +670,27 @@ function start(): void {
     if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can change props.' };
     const id = idSchema.safeParse(propId);
     if (!id.success || !props.remove(id.data)) return { ok: false, message: 'That prop no longer exists.' };
-    // A prop that is up comes down with it.
+    // A prop that is up comes down with it, and the logo with it when it was the logo.
     engine.dispatch({ type: 'hideProp', propId: id.data });
+    if (settings.get('logoPropId') === id.data) settings.set('logoPropId', null);
+    if (engine.current.logo?.id === id.data) engine.dispatch({ type: 'hideLogo' });
+    return { ok: true, id: id.data };
+  });
+  // The prop the admin marked as the logo, for Simple Mode's Logo button.
+  handle(IPC.props.getLogo, () => {
+    const id = settings.get('logoPropId');
+    return typeof id === 'string' && props.list().some((p) => p.id === id) ? id : null;
+  });
+  handle(IPC.props.setLogo, (e, propId): PropResult => {
+    if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can choose the logo.' };
+    if (propId === null) {
+      settings.set('logoPropId', null);
+      return { ok: true, id: '' };
+    }
+    const id = idSchema.safeParse(propId);
+    if (!id.success || !props.list().some((p) => p.id === id.data))
+      return { ok: false, message: 'That prop no longer exists.' };
+    settings.set('logoPropId', id.data);
     return { ok: true, id: id.data };
   });
   handle(IPC.library.search, (_e, query) =>
@@ -964,12 +1020,17 @@ function start(): void {
     },
   };
 
-  installMenu({
+  rebuildMenu = () => {
+    installMenu(menuActions());
+  };
+  const menuActions = (): Parameters<typeof installMenu>[0] => ({
+    mode,
+    switchMode,
     backUpLibrary: () => {
-      void backUp(backupUi);
+      if (mode === 'pro') void backUp(backupUi);
     },
     restoreLibrary: () => {
-      void restore(backupUi);
+      if (mode === 'pro') void restore(backupUi);
     },
     reloadOperator: () => {
       operatorWindow?.webContents.reload();
@@ -1035,6 +1096,7 @@ function start(): void {
         }
       : null,
   });
+  rebuildMenu();
   /** The self-tests end on purpose: a clean quit, so the next start does not put their slides back. */
   const exitSelfTest = (code: number) => {
     liveWriter.markClean();
