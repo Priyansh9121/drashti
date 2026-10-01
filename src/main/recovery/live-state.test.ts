@@ -66,6 +66,7 @@ describe('restart recovery', () => {
       playlist: null,
       background,
       blackout: true,
+      logo: null,
       audio: null,
       props: [],
       messages: [],

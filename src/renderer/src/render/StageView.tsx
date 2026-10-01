@@ -110,7 +110,14 @@ export function StageView({ state }: { state: EngineState }) {
       )}
       <div style={{ display: 'flex', gap: 48, flex: 1, minHeight: 0 }}>
         <section style={{ flex: 3, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <p style={label}>NOW{state.blackout ? ' · AUDIENCE SCREENS BLACK' : ''}</p>
+          <p style={label}>
+            NOW
+            {state.blackout
+              ? ' · AUDIENCE SCREENS BLACK'
+              : state.logo
+                ? ' · LOGO ON THE AUDIENCE SCREENS'
+                : ''}
+          </p>
           <div data-testid="stage-current" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
             {slide ? (
               <StageText slide={slide.slide} size={sizeFor(slide.slide, 92)} />

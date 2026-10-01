@@ -906,6 +906,7 @@ describe('ShowEngine', () => {
         slide: false,
         background: false,
         blackout: false,
+        logo: false,
         audio: true,
         props: 1,
         messages: 1,

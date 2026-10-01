@@ -8,7 +8,7 @@ import type { TimerState } from '../timers';
  *
  * Bump ENGINE_STATE_VERSION whenever the shape changes incompatibly.
  */
-export const ENGINE_STATE_VERSION = 4;
+export const ENGINE_STATE_VERSION = 5;
 
 export type LayerName = 'audio' | 'background' | 'slide' | 'props' | 'messages' | 'masks';
 
@@ -169,6 +169,15 @@ export interface EngineState {
   layers: Layers;
   /** Output-wide black-out. Independent of the layers, so turning it off restores the picture. */
   blackout: boolean;
+  /**
+   * The logo on the audience screens instead of the picture (Simple Mode's
+   * Logo), or null. Like black-out it covers the layers without clearing
+   * them, so taking it down brings back exactly what was there; black-out
+   * covers it in turn. Stage screens ignore it.
+   */
+  logo: PropItem | null;
+  /** What Clear all took down can be put back: nothing else has gone up since. */
+  canPutBack: boolean;
   /** What Next will show, or null when nothing follows. */
   next: UpNext | null;
   /** A message for the performers on stage screens; the audience never sees it. */
@@ -187,6 +196,8 @@ export function initialEngineState(): EngineState {
     live: { presentationId: null, slideIndex: null, slideCount: 0, arrangementId: null, playlist: null },
     layers: emptyLayers(),
     blackout: false,
+    logo: null,
+    canPutBack: false,
     next: null,
     stageMessage: null,
     timers: [],

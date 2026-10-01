@@ -116,6 +116,13 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       return LAYER_NAMES.reduce<EngineState>((s, layer) => clearLayer(s, layer), state);
     case 'blackout/set':
       return state.blackout === action.on ? state : { ...state, blackout: action.on };
+    case 'logo/set':
+      if (action.prop === null) return state.logo === null ? state : { ...state, logo: null };
+      return sameData(state.logo, action.prop) ? state : { ...state, logo: action.prop };
+    case 'show/put':
+      return state.live === action.live && state.layers === action.layers
+        ? state
+        : { ...state, live: action.live, layers: action.layers };
     case 'background/set':
       return sameData(state.layers.background, action.background)
         ? state

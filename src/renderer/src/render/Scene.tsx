@@ -160,6 +160,33 @@ export const Scene = memo(function Scene({
         <MessageBanner messages={layers.messages} timers={state.timers} canvas={canvas} />
       )}
       {layers.masks && <Mask mask={layers.masks} canvas={canvas} />}
+      {state.logo && (
+        // The logo instead of the picture: drawn over the layers, which carry on underneath, so
+        // taking it down brings back exactly what was there. Black-out covers it in turn.
+        <div
+          data-layer="logo"
+          data-testid="logo"
+          style={{ position: 'absolute', inset: 0, background: '#000000' }}
+        >
+          <Placed
+            content={{ width: state.logo.width ?? 1920, height: state.logo.height ?? 1080 }}
+            box={canvas}
+            mode={scaling}
+          >
+            <div
+              style={{
+                position: 'relative',
+                width: state.logo.width ?? 1920,
+                height: state.logo.height ?? 1080,
+              }}
+            >
+              {state.logo.elements.map((el) => (
+                <ElementView key={el.id} el={el} />
+              ))}
+            </div>
+          </Placed>
+        </div>
+      )}
       {state.blackout && (
         <div
           data-layer="blackout"

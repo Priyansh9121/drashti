@@ -1,4 +1,4 @@
-import type { CommandResult, EngineCommand } from '../../shared/engine/commands';
+import type { CommandResult, EngineCommand, EngineCommandType } from '../../shared/engine/commands';
 import { diffState } from '../../shared/engine/patch';
 import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
 import {
@@ -9,6 +9,7 @@ import {
   ENGINE_STATE_VERSION,
   type EngineState,
   initialEngineState,
+  type Layers,
   type LiveCursor,
   type MessageItem,
   type PlaylistCursor,
@@ -36,6 +37,8 @@ export interface RestoreRequest {
   playlist?: PlaylistCursor | null;
   background: BackgroundLayer | null;
   blackout: boolean;
+  /** The logo shown instead of the picture (Simple Mode's Logo). */
+  logo?: PropItem | null;
   /** The sound, with when it started: it carries on from where it would be now. */
   audio?: AudioLayer | null;
   props?: readonly PropItem[];
@@ -50,6 +53,7 @@ export interface Restored {
   slide: boolean;
   background: boolean;
   blackout: boolean;
+  logo: boolean;
   audio: boolean;
   props: number;
   messages: number;
@@ -61,10 +65,26 @@ export interface Restored {
  * The show engine. It owns the live state, turns commands into actions,
  * and sends every change as a versioned patch through the transport.
  */
+/** What a Next changed, so Back can undo it exactly while nothing else has changed. */
+interface Step {
+  live: LiveCursor;
+  layers: Layers;
+  /** The position and layers the Next left: still these, or Back cannot undo it. */
+  toLive: LiveCursor;
+  toLayers: Layers;
+}
+
+/** How many Nexts Back can undo, one after another. */
+const MAX_STEPS = 50;
+
 export class ShowEngine {
   private state: EngineState = initialEngineState();
   private revision = 0;
   private readonly listeners = new Set<(state: EngineState) => void>();
+  /** What Clear all took down (from), while the layers are still what it left (to). */
+  private cleared: { from: Layers; to: Layers } | null = null;
+  /** The Nexts Back can undo, latest last. */
+  private steps: Step[] = [];
 
   constructor(
     private readonly source: SlideSource,
@@ -94,7 +114,7 @@ export class ShowEngine {
   dispatch(command: EngineCommand): CommandResult {
     const resolved = this.resolve(command);
     if (!resolved.ok) return resolved;
-    return this.apply(resolved.actions);
+    return this.apply(resolved.actions, command.type);
   }
 
   /** Called after every change, once the change has been sent to the windows. */
@@ -133,6 +153,7 @@ export class ShowEngine {
     }
     if (request.background) actions.push({ type: 'background/set', background: request.background });
     if (request.blackout) actions.push({ type: 'blackout/set', on: true });
+    if (request.logo) actions.push({ type: 'logo/set', prop: request.logo });
     // The sound keeps its start time, so it carries on where it would be now, as a video does.
     if (request.audio) actions.push({ type: 'audio/set', audio: request.audio });
     for (const prop of request.props ?? []) actions.push({ type: 'prop/show', prop });
@@ -154,6 +175,7 @@ export class ShowEngine {
       slide,
       background: request.background !== null,
       blackout: request.blackout,
+      logo: Boolean(request.logo),
       audio: Boolean(request.audio),
       props: request.props?.length ?? 0,
       messages: request.messages?.length ?? 0,
@@ -505,6 +527,16 @@ export class ShowEngine {
         return this.step(1);
       case 'previous':
         return this.step(-1);
+      case 'back': {
+        // Undo the last Next exactly, while what it left is still on the screens.
+        const last = this.steps.at(-1);
+        if (last?.toLive === this.state.live && last.toLayers === this.state.layers) {
+          this.steps.pop();
+          return { ok: true, actions: [{ type: 'show/put', live: last.live, layers: last.layers }] };
+        }
+        this.steps = [];
+        return this.step(-1);
+      }
       case 'nextItem':
       case 'previousItem': {
         const { playlist } = this.state.live;
@@ -516,10 +548,24 @@ export class ShowEngine {
         return { ok: true, actions: [{ type: 'layer/clear', layer: command.layer }] };
       case 'clearAll':
         return { ok: true, actions: [{ type: 'layers/clearAll' }] };
+      case 'putBack': {
+        const cleared = this.cleared;
+        if (cleared?.to !== this.state.layers)
+          return {
+            ok: false,
+            error: 'nothing-to-put-back',
+            message: 'There is nothing to put back: something else has gone up since Clear all.',
+          };
+        return { ok: true, actions: [{ type: 'show/put', live: this.state.live, layers: cleared.from }] };
+      }
       case 'setBlackout':
         return { ok: true, actions: [{ type: 'blackout/set', on: command.on }] };
       case 'toggleBlackout':
         return { ok: true, actions: [{ type: 'blackout/set', on: !this.state.blackout }] };
+      case 'showLogo':
+        return { ok: true, actions: [{ type: 'logo/set', prop: command.prop }] };
+      case 'hideLogo':
+        return { ok: true, actions: [{ type: 'logo/set', prop: null }] };
       case 'setBackground':
         return {
           ok: true,
@@ -550,7 +596,30 @@ export class ShowEngine {
     }
   }
 
-  private apply(actions: readonly EngineAction[]): CommandResult {
+  /**
+   * Keep what Put it back and Back can undo. Clear all remembers what it took
+   * down; each Next remembers what was there before it. Anything else that
+   * changes the layers or the position forgets them (black-out, the logo,
+   * timers and the stage message do not).
+   */
+  private keepUndo(prev: EngineState, next: EngineState, cause: EngineCommandType | null): EngineState {
+    if (cause === 'clearAll') {
+      if (next.layers !== prev.layers) this.cleared = { from: prev.layers, to: next.layers };
+    } else if (this.cleared && next.layers !== this.cleared.to) {
+      this.cleared = null;
+    }
+    const moved = next.layers !== prev.layers || next.live !== prev.live;
+    if ((cause === 'next' || cause === 'nextItem') && moved) {
+      this.steps.push({ live: prev.live, layers: prev.layers, toLive: next.live, toLayers: next.layers });
+      if (this.steps.length > MAX_STEPS) this.steps.shift();
+    } else if (cause !== 'back' && moved) {
+      this.steps = [];
+    }
+    const canPutBack = this.cleared !== null;
+    return next.canPutBack === canPutBack ? next : { ...next, canPutBack };
+  }
+
+  private apply(actions: readonly EngineAction[], cause: EngineCommandType | null = null): CommandResult {
     const prev = this.state;
     let next = actions.reduce(reduce, prev);
     // A new position has a new slide after it.
@@ -558,6 +627,7 @@ export class ShowEngine {
       const upNext = this.upNext(next.live);
       if (!sameData(next.next, upNext)) next = reduce(next, { type: 'next/set', next: upNext });
     }
+    next = this.keepUndo(prev, next, cause);
     if (next === prev) return this.unchanged();
     const ops = diffState(prev, next);
     this.state = next;
