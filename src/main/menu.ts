@@ -13,7 +13,12 @@ export interface MenuActions {
   backUpLibrary: () => void;
   restoreLibrary: () => void;
   /** Only when DRASHTI_DIAGNOSTICS=1: for the manual watchdog check. */
-  diagnostics: { crashOperator: () => void; crashOutputs: () => void; runSelfTest: () => void } | null;
+  diagnostics: {
+    crashOperator: () => void;
+    crashOutputs: () => void;
+    runSelfTest: () => void;
+    openGallery: () => void;
+  } | null;
 }
 
 /** A small application menu: backups, standard edit keys, reload, and optional diagnostics. */
@@ -94,6 +99,7 @@ export function installMenu(actions: MenuActions): void {
         { label: 'Crash the Operator Window (watchdog test)', click: d.crashOperator },
         { label: 'Crash the Output Windows (watchdog test)', click: d.crashOutputs },
         { type: 'separator' },
+        { id: 'component-gallery', label: 'Component Gallery', click: d.openGallery },
         { role: 'toggleDevTools' },
       ],
     });

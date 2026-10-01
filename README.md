@@ -234,6 +234,16 @@ Imports run in a separate worker process (an Electron utility process, `src/main
 - **This Mac's own libraries.** `src/main/import/real-libraries.test.ts` imports the ProPresenter libraries of the computer running the tests into a temporary library, and prints counts only. It runs when the libraries exist and never in CI. On the dev Mac, ProPresenter 6: 78 files, 17 presentations (16 of them templates), 127 slides, 6 playlists, 198 media files, 0 failures. ProPresenter 7: 32 files, 13 presentations (12 of them themes), 120 slides, 3 playlists, 0 failures.
 - **RTF.** Slide text in both presentation formats is RTF. The reader (`src/main/import/rtf/`) keeps paragraphs and line breaks, and per run the font, size, colour, bold, italic and letter spacing, plus each paragraph's alignment. It reads `\uN` and `\'hh` escapes in the right code page. Formatting Drashti cannot show yet (outlines, underline, text backgrounds and so on) is listed in the report. On this Mac's own libraries it read all 586 RTF texts without an error.
 
+## The design system
+
+The operator UI is built from one set of tokens and shared components. The rules are in `docs/design.md`, the tokens in `src/renderer/src/styles/app.css` (Tailwind 4 `@theme`), and the components in `src/renderer/src/ui/`.
+
+- **Dark by default**, for dim halls. Colours are named for their job (`panel`, `muted`, `live`, `warning`), and every text colour meets 4.5:1.
+- **"Live" looks the same everywhere:** one colour (`live`) and always a label (LIVE, BLACK-OUT, ON SCREENS), never colour alone.
+- **The UI font is the bundled Noto Sans with its Gujarati and Devanagari companions**, so names in all three scripts look right offline.
+- **Icons are Lucide** (ISC licence, `LICENSES/icons/`), imported only through `src/renderer/src/ui/icons.ts`.
+- **The component gallery** shows every component in each state: start Drashti with `DRASHTI_DIAGNOSTICS=1` and choose **Diagnostics > Component Gallery**, or open `/gallery.html` under `pnpm dev`. `tests/e2e/design.spec.ts` runs axe-core on it (no serious or critical findings), and `DRASHTI_GALLERY_SHOTS=<folder>` with that test saves a picture of each section.
+
 ## How it fits together
 
 - **Show engine** (`src/main/engine/`). The main process owns the state: the live presentation and slide, the six layers (audio, background, slide, props, messages, masks) and black-out. Commands from the operator are validated (zod), resolved against the library, and applied by a pure reducer. Every change goes out as a patch with a revision number through `EngineTransport` (`src/shared/engine/transport.ts`). Windows keep an `EngineMirror` and ask for a snapshot if they miss a revision. Phase 3's remote Drashti Nodes will be another transport.
@@ -263,34 +273,36 @@ The code is in `src/main/library/backup.ts` (the work) and `backup-ui.ts` (the q
 
 ## Folder layout
 
-| Path                                                            | What lives there                                                                                                                 |
-| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main/engine/`                                              | Show engine: reducer, commands to actions, slide source.                                                                         |
-| `src/main/db/`                                                  | SQLite: migrations, presentations, playlists, media, search index and screens repositories, seed.                                |
-| `src/main/playlists/`                                           | The playlist requests from the operator window, checked and applied.                                                             |
-| `src/main/library/`                                             | Editing presentations (words as plain text and back, themes, kept copies for Undo), and backing up and restoring the library.    |
-| `src/renderer/src/themes/`                                      | The Themes panel.                                                                                                                |
-| `src/main/outputs/`                                             | Displays, output windows, the output manager and the screens service.                                                            |
-| `src/main/import/`                                              | Importers: the pipeline, the worker process, file formats, the media folder and relinking.                                       |
-| `src/main/media/`                                               | Serving library media to the windows (`drashti-media://`), and still frames for thumbnails.                                      |
-| `src/main/audio/`                                               | The sound output choice (remembered in the library's settings).                                                                  |
-| `src/main/transport/`, `src/main/ipc/`                          | IPC transport for engine messages; IPC handler helpers.                                                                          |
-| `src/main/windows/`                                             | Operator window, security and web preferences.                                                                                   |
-| `src/main/watchdog.ts`, `selftest.ts`, `perftest.ts`, `menu.ts` | Watchdog, its self-test, the performance self-test, the application menu.                                                        |
-| `src/preload/`                                                  | The preload script: the typed `window.drashti` bridge and nothing else.                                                          |
-| `src/shared/`                                                   | Code for every process: model and IPC contracts, engine state and protocol, scaling, display matching. No Node, DOM or Electron. |
-| `src/renderer/src/operator/`                                    | Operator UI. The single keymap it uses is `src/shared/keymap.ts` (the menu and global shortcuts use it too).                     |
-| `src/renderer/src/output/`                                      | Output window page.                                                                                                              |
-| `src/renderer/src/audio/`                                       | The audio player page: the one place Drashti makes sound.                                                                        |
-| `src/renderer/src/render/`                                      | The shared renderer and bundled fonts.                                                                                           |
-| `src/renderer/src/playlists/`                                   | The playlist panel: the list of playlists, a playlist's items, dragging.                                                         |
-| `src/renderer/src/screens/`, `library/`, `engine/`, `ui/`       | Screens panel, library and engine stores, Undo, small UI parts (buttons, menus, long lists).                                     |
-| `tests/e2e/`                                                    | Playwright tests against the built app. Unit tests sit next to the code as `*.test.ts`.                                          |
-| `tests/perf/`                                                   | The performance check, run by hand (`pnpm test:perf`), never in CI.                                                              |
-| `tools/audit/`                                                  | The read-only audit kit for the two ProPresenter machines. See `tools/audit/README.md`.                                          |
-| `docs/`                                                         | For the parallel run: the volunteers' guide `docs/parallel-run.md`, and `docs/windows-checks.md` for the Windows PC.             |
-| `third_party/`                                                  | Vendored third-party files with their licences (the ProPresenter 7 protobuf definitions).                                        |
-| `LICENSES/`                                                     | Licences shipped inside the app: the bundled fonts, and the MIT notice for the protobuf definitions.                             |
+| Path                                                            | What lives there                                                                                                                      |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main/engine/`                                              | Show engine: reducer, commands to actions, slide source.                                                                              |
+| `src/main/db/`                                                  | SQLite: migrations, presentations, playlists, media, search index and screens repositories, seed.                                     |
+| `src/main/playlists/`                                           | The playlist requests from the operator window, checked and applied.                                                                  |
+| `src/main/library/`                                             | Editing presentations (words as plain text and back, themes, kept copies for Undo), and backing up and restoring the library.         |
+| `src/renderer/src/themes/`                                      | The Themes panel.                                                                                                                     |
+| `src/main/outputs/`                                             | Displays, output windows, the output manager and the screens service.                                                                 |
+| `src/main/import/`                                              | Importers: the pipeline, the worker process, file formats, the media folder and relinking.                                            |
+| `src/main/media/`                                               | Serving library media to the windows (`drashti-media://`), and still frames for thumbnails.                                           |
+| `src/main/audio/`                                               | The sound output choice (remembered in the library's settings).                                                                       |
+| `src/main/transport/`, `src/main/ipc/`                          | IPC transport for engine messages; IPC handler helpers.                                                                               |
+| `src/main/windows/`                                             | Operator window, security and web preferences.                                                                                        |
+| `src/main/watchdog.ts`, `selftest.ts`, `perftest.ts`, `menu.ts` | Watchdog, its self-test, the performance self-test, the application menu.                                                             |
+| `src/preload/`                                                  | The preload script: the typed `window.drashti` bridge and nothing else.                                                               |
+| `src/shared/`                                                   | Code for every process: model and IPC contracts, engine state and protocol, scaling, display matching. No Node, DOM or Electron.      |
+| `src/renderer/src/operator/`                                    | Operator UI. The single keymap it uses is `src/shared/keymap.ts` (the menu and global shortcuts use it too).                          |
+| `src/renderer/src/output/`                                      | Output window page.                                                                                                                   |
+| `src/renderer/src/audio/`                                       | The audio player page: the one place Drashti makes sound.                                                                             |
+| `src/renderer/src/render/`                                      | The shared renderer and bundled fonts.                                                                                                |
+| `src/renderer/src/playlists/`                                   | The playlist panel: the list of playlists, a playlist's items, dragging.                                                              |
+| `src/renderer/src/screens/`, `library/`, `engine/`              | Screens panel, library and engine stores, Undo.                                                                                       |
+| `src/renderer/src/ui/`                                          | The design system's shared components (buttons, dialogs, rows, fields, badges, splitters…) and the one icon module (`icons.ts`).      |
+| `src/renderer/src/gallery/`, `src/renderer/gallery.html`        | The component gallery, for development (Diagnostics > Component Gallery).                                                             |
+| `tests/e2e/`                                                    | Playwright tests against the built app. Unit tests sit next to the code as `*.test.ts`.                                               |
+| `tests/perf/`                                                   | The performance check, run by hand (`pnpm test:perf`), never in CI.                                                                   |
+| `tools/audit/`                                                  | The read-only audit kit for the two ProPresenter machines. See `tools/audit/README.md`.                                               |
+| `docs/`                                                         | The design rules (`docs/design.md`); for the parallel run, the volunteers' guide `docs/parallel-run.md` and `docs/windows-checks.md`. |
+| `third_party/`                                                  | Vendored third-party files with their licences (the ProPresenter 7 protobuf definitions).                                             |
+| `LICENSES/`                                                     | Licences shipped inside the app: the bundled fonts, the Lucide icons, and the MIT notice for the protobuf definitions.                |
 
 ## Security model
 
