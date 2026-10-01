@@ -335,7 +335,7 @@ test("an audio cue plays on the audio layer with the cue's volume and looping; C
     .getByRole('button', { name: /Placeholder Dhun/ })
     .click();
   await expect(win.getByTestId('slide-thumb').nth(0).getByTestId('thumb-audio')).toHaveText(
-    '♪ Placeholder audio',
+    'Placeholder audio',
   );
   await expect(win.getByTestId('slide-thumb').nth(1).getByTestId('thumb-audio')).toHaveCount(0);
 
@@ -352,7 +352,7 @@ test("an audio cue plays on the audio layer with the cue's volume and looping; C
       })),
     )
     .toEqual({ playing: true, volume: 0.8, loop: true, muted: false });
-  await expect(win.getByTestId('audio-status')).toHaveText('♪ Placeholder audio');
+  await expect(win.getByTestId('audio-status')).toHaveText('Placeholder audio');
   const key = await cue.getAttribute('data-key');
 
   // A slide without sound leaves it playing: the same playback, past the end of the 2 s file (it loops).

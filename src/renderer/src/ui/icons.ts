@@ -56,6 +56,7 @@ export {
   Presentation,
   Redo2,
   RotateCcw,
+  ScanEye,
   Search,
   Settings,
   SkipBack,

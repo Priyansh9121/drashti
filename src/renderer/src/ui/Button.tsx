@@ -48,16 +48,6 @@ export function buttonClass(variant: ButtonVariant = 'secondary', size: ButtonSi
   return cx(base, variants[variant], sizes[size]);
 }
 
-/** Before Session 6 buttons took a `tone` and sized themselves with classes; kept while panels move over. */
-type LegacyTone = 'default' | 'primary' | 'danger' | 'live' | 'ghost';
-const legacyVariant: Record<LegacyTone, ButtonVariant> = {
-  default: 'secondary',
-  primary: 'primary',
-  danger: 'danger',
-  live: 'live',
-  ghost: 'ghost',
-};
-
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
@@ -67,39 +57,24 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   iconEnd?: Icon;
   /** The keyboard shortcut, shown as a key hint after the words. */
   kbd?: string;
-  /** The old way (until every panel uses variant and size). */
-  tone?: LegacyTone;
   ref?: Ref<HTMLButtonElement>;
   children?: ReactNode;
 }
 
 export function Button({
-  variant,
-  size,
+  variant = 'secondary',
+  size = 'md',
   icon: IconBefore,
   iconEnd: IconAfter,
   kbd,
-  tone,
   className,
   children,
   type = 'button',
   ...props
 }: ButtonProps) {
-  const legacy = tone !== undefined && variant === undefined && size === undefined;
-  const v = variant ?? legacyVariant[tone ?? 'default'];
-  const s = size ?? 'md';
-  const iconPx = iconSizes[s];
+  const iconPx = iconSizes[size];
   return (
-    <button
-      type={type}
-      className={cx(
-        base,
-        variants[v],
-        legacy ? 'gap-1.5 rounded-md px-3 py-1.5 text-sm' : sizes[s],
-        className,
-      )}
-      {...props}
-    >
+    <button type={type} className={cx(base, variants[variant], sizes[size], className)} {...props}>
       {IconBefore && <IconBefore size={iconPx} aria-hidden="true" className="shrink-0" />}
       {children}
       {IconAfter && <IconAfter size={iconPx} aria-hidden="true" className="shrink-0" />}

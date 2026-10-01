@@ -1,11 +1,16 @@
+import type { ScreenStatus } from '../../../shared/screens';
 import { useEngine } from '../engine/engine-store';
 import { useLibrary } from '../library/library-store';
 import { usePlaylists } from '../playlists/playlist-store';
-import type { ScreenStatus } from '../../../shared/screens';
 import { useScreens } from '../screens/screens-store';
+import { Badge, LiveBadge } from '../ui/Badge';
+import { cx } from '../ui/cx';
+import { Monitor, MonitorOff, Music } from '../ui/icons';
+import { Truncate } from '../ui/Truncate';
 
 const NO_STATUS: ScreenStatus[] = [];
 
+/** What is on the screens, in words: the header says it at all times. */
 export function LiveStatus() {
   const live = useEngine((s) => s.state?.live);
   const slideShown = useEngine((s) => s.state?.layers.slide !== null);
@@ -20,22 +25,24 @@ export function LiveStatus() {
   } else if (live?.playlist) {
     text = `Live: ${itemLabel ?? 'playlist item'}`;
   }
+  const onAir =
+    Boolean(live?.presentationId && slideShown) || Boolean(live?.playlist && !live.presentationId);
   return (
-    <p className="flex items-center gap-2 text-sm" data-testid="live-status" aria-live="polite">
-      <span
-        className={`h-2.5 w-2.5 rounded-full ${live?.presentationId && slideShown ? 'bg-live' : 'bg-line'}`}
-        aria-hidden="true"
-      />
-      <span data-testid="live-text">{text}</span>
-      {blackout && (
-        <span className="rounded bg-live px-2 py-0.5 text-xs font-bold text-white">BLACK-OUT</span>
-      )}
+    <div className="flex min-w-0 items-center gap-2 text-sm" data-testid="live-status" aria-live="polite">
+      {onAir ? <LiveBadge /> : <Badge>Off</Badge>}
+      <Truncate text={text} className={cx('font-medium', !onAir && 'text-muted')} data-testid="live-text" />
+      {blackout && <Badge tone="live">Black-out</Badge>}
       {audio !== null && (
-        <span className="truncate text-xs text-muted" data-testid="audio-status" title="On the audio layer">
-          {`♪ ${audio || 'Audio'}`}
+        <span
+          className="flex min-w-0 items-center gap-1 text-xs text-muted"
+          data-testid="audio-status"
+          title="On the audio layer"
+        >
+          <Music size={13} aria-hidden="true" className="shrink-0" />
+          <Truncate text={audio || 'Audio'} />
         </span>
       )}
-    </p>
+    </div>
   );
 }
 
@@ -49,13 +56,19 @@ export function ScreensSummary({ onOpen }: { onOpen: () => void }) {
     status.length === 0
       ? 'No screens set up'
       : `${showing} ${showing === 1 ? 'screen' : 'screens'} showing${missing ? ` · ${missing} display${missing === 1 ? '' : 's'} not connected` : ''}`;
+  const IconShape = missing ? MonitorOff : Monitor;
   return (
     <button
       type="button"
       onClick={onOpen}
-      className={`rounded-md px-2 py-1 text-xs ${missing ? 'bg-amber-900/60 text-amber-100' : 'text-muted hover:text-white'}`}
+      title="Open the screens"
+      className={cx(
+        'flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5',
+        missing ? 'bg-warning-bg text-warning-fg' : 'text-muted hover:text-fg',
+      )}
       data-testid="screens-summary"
     >
+      <IconShape size={13} aria-hidden="true" />
       {text}
     </button>
   );

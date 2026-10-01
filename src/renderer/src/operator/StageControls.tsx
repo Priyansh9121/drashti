@@ -1,15 +1,50 @@
 import { useState } from 'react';
 import { useEngine } from '../engine/engine-store';
+import { PlacedInParent } from '../render/Placed';
+import { StageView } from '../render/StageView';
+import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
+import { TextInput } from '../ui/Field';
+import { Tv } from '../ui/icons';
+import { Panel } from '../ui/Panel';
+import { Truncate } from '../ui/Truncate';
 import { dispatch } from './actions';
 
-/** A message for the performers, on stage screens only: the audience never sees it. */
+/** What the stage screens show the performers, small. */
+function StagePreview() {
+  const state = useEngine((s) => s.state);
+  return (
+    <div
+      className="relative aspect-video w-3/5 overflow-hidden rounded-md border border-line-strong bg-black"
+      data-testid="stage-preview"
+      data-a11y-picture
+      aria-hidden="true"
+    >
+      {state && (
+        <PlacedInParent content={{ width: 1920, height: 1080 }} mode="fit" className="absolute inset-0">
+          <div className="relative h-[1080px] w-[1920px]">
+            <StageView state={state} />
+          </div>
+        </PlacedInParent>
+      )}
+    </div>
+  );
+}
+
+/** The stage screen: what the performers see, and a message for them only (the audience never sees it). */
 export function StageMessageControl() {
   const shown = useEngine((s) => s.state?.stageMessage ?? null);
   const [text, setText] = useState('');
   return (
-    <section aria-label="Stage message" className="space-y-2" data-testid="stage-message-control">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Stage message</h2>
+    <Panel
+      title="Stage screen"
+      icon={Tv}
+      collapsible
+      remember="stage"
+      bodyClassName="space-y-2 px-3 pb-3"
+      data-testid="stage-message-control"
+    >
+      <StagePreview />
       <form
         className="flex gap-2"
         onSubmit={(e) => {
@@ -17,7 +52,7 @@ export function StageMessageControl() {
           if (text.trim() !== '') void dispatch({ type: 'setStageMessage', text });
         }}
       >
-        <input
+        <TextInput
           aria-label="Message for the stage"
           placeholder="Seen on stage screens only"
           value={text}
@@ -25,26 +60,21 @@ export function StageMessageControl() {
           onChange={(e) => {
             setText(e.target.value);
           }}
-          className="min-w-0 flex-1 rounded-md border border-line bg-ink px-2 py-1 text-sm text-white placeholder:text-muted focus-visible:outline-2 focus-visible:outline-accent"
+          className="flex-1"
         />
         <Button type="submit" disabled={text.trim() === ''}>
           Show
         </Button>
       </form>
       {shown !== null && (
-        <div className="flex items-center gap-2 rounded-md border border-accent/60 bg-accent/10 px-2 py-1 text-sm">
-          <span className="min-w-0 flex-1 truncate" data-testid="stage-message-shown" title={shown}>
-            On stage: {shown}
-          </span>
-          <Button
-            tone="ghost"
-            className="px-2 py-0.5 text-xs"
-            onClick={() => void dispatch({ type: 'clearStageMessage' })}
-          >
+        <div className="flex items-center gap-2 rounded-md border border-warning/60 bg-warning-bg px-2 py-1 text-sm text-warning-fg">
+          <Badge tone="warning">On stage</Badge>
+          <Truncate text={shown} className="flex-1" data-testid="stage-message-shown" />
+          <Button variant="ghost" size="sm" onClick={() => void dispatch({ type: 'clearStageMessage' })}>
             Clear
           </Button>
         </div>
       )}
-    </section>
+    </Panel>
   );
 }

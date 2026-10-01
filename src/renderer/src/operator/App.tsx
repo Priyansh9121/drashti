@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AppInfo } from '../../../shared/app-info';
-import { describeAppInfo } from '../../../shared/app-info';
 import { connectEngine } from '../engine/engine-store';
 import { ImportReportDialog } from '../library/ImportReport';
 import { watchImports } from '../library/import-store';
@@ -9,37 +8,31 @@ import { RemoveConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
 import { UndoBar } from '../library/UndoBar';
 import { WordsEditor } from '../library/WordsEditor';
 import { ThemesPanel } from '../themes/ThemesPanel';
-import { openThemes } from '../themes/themes-store';
 import { undoRemoval } from '../library/undo';
 import { PlaylistPanel } from '../playlists/PlaylistPanel';
 import { loadTree, watchPlaylists } from '../playlists/playlist-store';
 import { ScreensPanel } from '../screens/ScreensPanel';
 import { connectScreens } from '../screens/screens-store';
-import { Button } from '../ui/Button';
 import { runAction, useNotice, useTaskProgress } from './actions';
 import type { OperatorAction } from '../../../shared/keymap';
-import { KEYMAP, shortcutText } from '../../../shared/keymap';
-import { LiveControls } from './LiveControls';
+import { shortcutText } from '../../../shared/keymap';
+import { Header } from './Header';
+import { LayerBar } from './LayerBar';
+import { Columns, LeftColumn } from './Layout';
 import { LivePreview } from './LivePreview';
 import { NextPreview } from './NextPreview';
 import { PresentationList } from './PresentationList';
 import { SlideGrid } from './SlideGrid';
-import { SoundWarning } from '../screens/SoundOutput';
 import { RecoveryBanner } from './RecoveryBanner';
 import { StageMessageControl } from './StageControls';
+import { NoticeArea, StatusBar } from './StatusBar';
 import { TimersPanel } from './TimersPanel';
 import { MessagesPanel } from './MessagesPanel';
 import { PropsPanel } from './PropsPanel';
-import { LiveStatus, ScreensSummary } from './StatusLine';
 import { isTyping, useKeymap } from './useKeymap';
 
-export function App() {
-  const [info, setInfo] = useState<AppInfo | null>(null);
-  const [screensOpen, setScreensOpen] = useState(false);
-  const notice = useNotice((s) => s.text);
-  const progress = useTaskProgress((s) => s.progress);
-  const platform = info?.platform ?? 'darwin';
-
+/** Everything that keeps the window up to date, connected once as it opens. */
+function useConnections(setInfo: (info: AppInfo) => void): void {
   useEffect(() => {
     connectEngine();
     connectScreens();
@@ -78,7 +71,14 @@ export function App() {
       window.removeEventListener('dragover', ignoreDrop);
       window.removeEventListener('drop', ignoreDrop);
     };
-  }, []);
+  }, [setInfo]);
+}
+
+export function App() {
+  const [info, setInfo] = useState<AppInfo | null>(null);
+  const [screensOpen, setScreensOpen] = useState(false);
+  const platform = info?.platform ?? 'darwin';
+  useConnections(setInfo);
 
   const openScreens = useCallback(() => {
     setScreensOpen(true);
@@ -92,76 +92,38 @@ export function App() {
   useKeymap(platform, run);
 
   return (
-    <main className="grid h-full grid-cols-[280px_minmax(0,1fr)_420px] grid-rows-[auto_minmax(0,1fr)_auto]">
-      <header className="col-span-3 flex items-center gap-4 border-b border-line bg-panel px-4 py-2">
-        <h1 className="text-lg font-semibold tracking-wide">Drashti</h1>
-        <LiveStatus />
-        <span className="flex-1" />
-        <SoundWarning onOpen={openScreens} />
-        <ScreensSummary onOpen={openScreens} />
-        <Button onClick={() => openThemes()}>Themes</Button>
-        <Button onClick={openScreens}>Screens</Button>
-      </header>
-
+    <div className="flex h-full min-h-0 flex-col">
+      <Header platform={platform} onOpenScreens={openScreens} />
       <RecoveryBanner />
-      <div className="flex min-h-0 flex-col border-r border-line bg-panel">
-        <PlaylistPanel platform={platform} />
-        <PresentationList platform={platform} />
-        <UndoBar platform={platform} />
-      </div>
-      <SlideGrid />
-
-      <aside
-        className="flex min-h-0 flex-col gap-4 overflow-y-auto border-l border-line bg-panel p-4"
-        aria-label="Live"
-      >
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">On the screens now</h2>
-        <LivePreview />
-        <NextPreview />
-        {progress && (
-          <div
-            role="status"
-            data-testid="task-progress"
-            className="space-y-1 rounded-md border border-line px-3 py-2 text-xs"
-          >
-            <div className="truncate">{progress.label}</div>
-            <div className="h-1 overflow-hidden rounded bg-line">
-              <div
-                className="h-full bg-accent transition-[width]"
-                style={{ width: `${String(Math.round(progress.fraction * 100))}%` }}
-              />
+      <Columns
+        left={
+          <LeftColumn
+            top={<PlaylistPanel platform={platform} />}
+            bottom={<PresentationList platform={platform} />}
+            foot={<UndoBar platform={platform} />}
+          />
+        }
+        middle={
+          <main aria-label="Slides" className="flex min-h-0 flex-1 flex-col">
+            <SlideGrid />
+          </main>
+        }
+        right={
+          <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
+            <LivePreview />
+            <NextPreview />
+            <div className="mt-3 divide-y divide-line border-t border-line">
+              <StageMessageControl />
+              <PropsPanel />
+              <MessagesPanel />
+              <TimersPanel />
             </div>
-          </div>
-        )}
-        {notice && (
-          <p
-            role="alert"
-            className="rounded-md border border-amber-700 bg-amber-950/60 px-3 py-2 text-sm text-amber-100"
-          >
-            {notice}
-          </p>
-        )}
-        <LiveControls platform={platform} run={run} />
-        <StageMessageControl />
-        <PropsPanel />
-        <MessagesPanel />
-        <TimersPanel />
-      </aside>
-
-      <footer className="col-span-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line bg-panel px-4 py-1.5 text-xs text-muted">
-        {KEYMAP.filter((b) =>
-          ['next', 'previous', 'clearAll', 'clearSlide', 'toggleBlackout', 'uncoverControls'].includes(
-            b.action,
-          ),
-        ).map((b) => (
-          <span key={b.action}>
-            <kbd className="rounded border border-line px-1">{shortcutText(b.action, platform)}</kbd>{' '}
-            {b.label}
-          </span>
-        ))}
-        <span className="flex-1" />
-        <span data-testid="app-info">{info ? describeAppInfo(info) : ''}</span>
-      </footer>
+          </aside>
+        }
+      />
+      <LayerBar platform={platform} run={run} />
+      <StatusBar info={info} onOpenScreens={openScreens} />
+      <NoticeArea />
 
       <ImportReportDialog />
       <RemoveConfirm undoKey={shortcutText('undo', platform)} />
@@ -176,6 +138,6 @@ export function App() {
           }}
         />
       )}
-    </main>
+    </div>
   );
 }

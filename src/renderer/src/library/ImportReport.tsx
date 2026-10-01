@@ -2,9 +2,14 @@ import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { formatBytes } from '../../../shared/format';
 import type { ConflictChoice, ImportItemReport, ImportRunSummary } from '../../../shared/import';
-import { describeRun } from '../operator/PresentationList';
+import { describeRun } from '../operator/StatusBar';
 import { Button } from '../ui/Button';
+import { Dialog } from '../ui/Dialog';
+import { Select } from '../ui/Field';
+import { ChevronRight, FolderOpen } from '../ui/icons';
+import { Notice } from '../ui/Notice';
 import { plural } from '../ui/text';
+import { Truncate } from '../ui/Truncate';
 import {
   closeReport,
   fileToImport,
@@ -48,18 +53,14 @@ function Fixes({ item }: { item: ImportItemReport }) {
     switch (fix.kind) {
       case 'relink-media':
         out.push(
-          <Button
-            key="relink"
-            className="px-2 py-0.5 text-xs"
-            onClick={() => void relinkMedia([fix.mediaId])}
-          >
+          <Button key="relink" size="sm" onClick={() => void relinkMedia([fix.mediaId])}>
             Find…
           </Button>,
         );
         break;
       case 'import-again':
         out.push(
-          <Button key="again" className="px-2 py-0.5 text-xs" onClick={() => tryAgain(fix.sourcePath)}>
+          <Button key="again" size="sm" onClick={() => tryAgain(fix.sourcePath)}>
             Try again
           </Button>,
         );
@@ -69,7 +70,7 @@ function Fixes({ item }: { item: ImportItemReport }) {
           <span key="space" className="text-muted">
             Free up at least {formatBytes(fix.neededBytes)}, then
           </span>,
-          <Button key="again" className="px-2 py-0.5 text-xs" onClick={() => tryAgain(item.sourcePath)}>
+          <Button key="again" size="sm" onClick={() => tryAgain(item.sourcePath)}>
             Try again
           </Button>,
         );
@@ -77,11 +78,7 @@ function Fixes({ item }: { item: ImportItemReport }) {
         break;
       case 'open-presentation':
         out.push(
-          <Button
-            key="open"
-            className="px-2 py-0.5 text-xs"
-            onClick={() => openPresentation(fix.presentationId)}
-          >
+          <Button key="open" size="sm" onClick={() => openPresentation(fix.presentationId)}>
             Open
           </Button>,
         );
@@ -107,14 +104,14 @@ function Fixes({ item }: { item: ImportItemReport }) {
   const target = item.target;
   if (target?.kind === 'presentation' && !seen.has('open-presentation') && item.outcome !== 'conflict') {
     out.push(
-      <Button key="open" className="px-2 py-0.5 text-xs" onClick={() => openPresentation(target.id)}>
+      <Button key="open" size="sm" onClick={() => openPresentation(target.id)}>
         Open
       </Button>,
     );
   }
   if (item.outcome === 'failed' && !seen.has('import-again') && item.format !== 'unknown') {
     out.push(
-      <Button key="again" className="px-2 py-0.5 text-xs" onClick={() => tryAgain(item.sourcePath)}>
+      <Button key="again" size="sm" onClick={() => tryAgain(item.sourcePath)}>
         Try again
       </Button>,
     );
@@ -127,20 +124,18 @@ function Row({ item, children }: { item: ImportItemReport; children?: ReactNode 
     <li
       data-testid="report-item"
       data-outcome={item.outcome}
-      className="rounded-md bg-panel-2 px-3 py-2 text-sm"
+      className="rounded-md border border-line bg-panel-2 px-3 py-2 text-sm"
     >
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <div className="truncate font-medium" title={item.sourcePath}>
-            {item.name ?? item.sourcePath}
-          </div>
+          <Truncate text={item.name ?? item.sourcePath} className="font-medium" />
           {item.message && <div className="text-xs text-muted">{item.message}</div>}
           {item.issues
             .filter((i) => i.message !== item.message)
             .map((issue, n) => (
               <div
                 key={n}
-                className={`text-xs ${issue.severity === 'error' ? 'text-red-300' : issue.severity === 'warning' ? 'text-amber-200' : 'text-muted'}`}
+                className={`text-xs ${issue.severity === 'error' ? 'text-danger-fg' : issue.severity === 'warning' ? 'text-warning-fg' : 'text-muted'}`}
               >
                 {issue.message}
               </div>
@@ -167,8 +162,13 @@ function Section({
 }) {
   if (items.length === 0) return null;
   return (
-    <details open={open} className="space-y-2" data-testid="report-section">
-      <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
+    <details open={open} className="group space-y-2" data-testid="report-section">
+      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md text-sm font-bold">
+        <ChevronRight
+          size={16}
+          aria-hidden="true"
+          className="shrink-0 transition-transform group-open:rotate-90"
+        />
         <span className="flex-1">
           {title} ({items.length.toLocaleString('en')})
         </span>
@@ -230,8 +230,8 @@ export function ImportReportDialog() {
     (['replace', 'keep-both', 'skip'] as const).map((choice) => (
       <Button
         key={choice}
-        tone={choice === 'replace' ? 'primary' : 'default'}
-        className="px-2 py-0.5 text-xs"
+        variant={choice === 'replace' ? 'primary' : 'secondary'}
+        size="sm"
         onClick={(e) => {
           e.preventDefault();
           void resolveConflicts(paths, choice);
@@ -243,86 +243,74 @@ export function ImportReportDialog() {
     ));
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-6"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="report-title"
-      data-testid="import-report"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') closeReport();
-      }}
+    <Dialog
+      title="Import report"
+      subtitle={
+        <>
+          {new Date(report.startedAt).toLocaleString()} ·{' '}
+          {report.status === 'done' ? 'finished' : report.status}
+          {report.message ? ` · ${report.message}` : ''}
+        </>
+      }
+      size="lg"
+      onClose={closeReport}
+      testId="import-report"
+      bodyClassName="space-y-4"
+      headerActions={
+        runs.length > 1 && (
+          <Select
+            aria-label="Earlier imports"
+            className="max-w-56"
+            value={report.id}
+            onChange={(e) => void openReport(e.target.value)}
+          >
+            {runs.map((r) => (
+              <option key={r.id} value={r.id}>
+                {new Date(r.startedAt).toLocaleString()} · {describeRun(r)}
+              </option>
+            ))}
+          </Select>
+        )
+      }
     >
-      <div className="flex max-h-full w-full max-w-3xl flex-col rounded-lg border border-line bg-panel shadow-2xl">
-        <header className="flex items-center gap-3 border-b border-line px-5 py-3">
-          <div className="min-w-0 flex-1">
-            <h2 id="report-title" className="text-lg font-semibold">
-              Import report
-            </h2>
-            <p className="text-xs text-muted">
-              {new Date(report.startedAt).toLocaleString()} ·{' '}
-              {report.status === 'done' ? 'finished' : report.status}
-              {report.message ? ` · ${report.message}` : ''}
-            </p>
-          </div>
-          {runs.length > 1 && (
-            <select
-              aria-label="Earlier imports"
-              className="max-w-56 rounded-md border border-line bg-panel-2 px-2 py-1 text-xs"
-              value={report.id}
-              onChange={(e) => void openReport(e.target.value)}
-            >
-              {runs.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {new Date(r.startedAt).toLocaleString()} · {describeRun(r)}
-                </option>
-              ))}
-            </select>
-          )}
-          <Button autoFocus onClick={closeReport}>
-            Close
-          </Button>
-        </header>
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-          <p className="text-sm" data-testid="report-summary">
-            {cameAcross.length > 0 ? `Came across: ${cameAcross.join(' · ')}.` : 'Nothing new came across.'}{' '}
-            {outcomes.length > 0 && <span className="text-muted">{outcomes.join(' · ')}.</span>}
-          </p>
-          {missingMedia > 0 && (
-            <div
-              className="flex items-center gap-3 rounded-md border border-amber-800 bg-amber-950/40 px-3 py-2 text-sm"
-              data-testid="missing-media"
-            >
-              <span className="flex-1">
-                {plural(missingMedia, 'media file')} could not be found. Pick a folder to look in, and Drashti
-                relinks every missing file it finds there by name.
-              </span>
-              <Button className="px-2 py-0.5 text-xs" onClick={() => void relinkMedia()}>
-                Find missing media…
-              </Button>
-            </div>
-          )}
-          <Section
-            title="Changed since they were imported"
-            items={conflicts}
-            actions={
-              conflicts.length > 1 ? (
-                <span className="flex gap-1">{conflictButtons(conflictPaths, ' for all')}</span>
-              ) : null
-            }
-            render={(item) => (
-              <Row key={item.id} item={item}>
-                <span className="flex shrink-0 gap-1">{conflictButtons([item.sourcePath])}</span>
-              </Row>
-            )}
-          />
-          <Section title="Problems" items={problems} />
-          <Section title="Imported with notes" items={withNotes} />
-          <Section title="Not imported" items={unsupported} />
-          <Section title="Imported" items={written} open={written.length <= 20} />
-          <Section title="Already in the library" items={skipped} open={false} />
-        </div>
-      </div>
-    </div>
+      <p className="text-sm" data-testid="report-summary">
+        {cameAcross.length > 0 ? `Came across: ${cameAcross.join(' · ')}.` : 'Nothing new came across.'}{' '}
+        {outcomes.length > 0 && <span className="text-muted">{outcomes.join(' · ')}.</span>}
+      </p>
+      {missingMedia > 0 && (
+        <Notice
+          tone="warning"
+          role="none"
+          data-testid="missing-media"
+          actions={
+            <Button size="sm" icon={FolderOpen} onClick={() => void relinkMedia()}>
+              Find missing media…
+            </Button>
+          }
+        >
+          {plural(missingMedia, 'media file')} could not be found. Pick a folder to look in, and Drashti
+          relinks every missing file it finds there by name.
+        </Notice>
+      )}
+      <Section
+        title="Changed since they were imported"
+        items={conflicts}
+        actions={
+          conflicts.length > 1 ? (
+            <span className="flex gap-1">{conflictButtons(conflictPaths, ' for all')}</span>
+          ) : null
+        }
+        render={(item) => (
+          <Row key={item.id} item={item}>
+            <span className="flex shrink-0 gap-1">{conflictButtons([item.sourcePath])}</span>
+          </Row>
+        )}
+      />
+      <Section title="Problems" items={problems} />
+      <Section title="Imported with notes" items={withNotes} />
+      <Section title="Not imported" items={unsupported} />
+      <Section title="Imported" items={written} open={written.length <= 20} />
+      <Section title="Already in the library" items={skipped} open={false} />
+    </Dialog>
   );
 }

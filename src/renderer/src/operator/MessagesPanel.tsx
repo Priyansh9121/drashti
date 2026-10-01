@@ -4,14 +4,17 @@ import type { MessageField, MessageTemplate } from '../../../shared/messages';
 import { fieldOf, fillMessage, messageItemId, templateFields } from '../../../shared/messages';
 import type { TimerState } from '../../../shared/timers';
 import { useEngine } from '../engine/engine-store';
+import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
+import { Select, TextInput } from '../ui/Field';
+import { MessageSquare, Plus } from '../ui/icons';
+import { Panel } from '../ui/Panel';
+import { EmptyState, Loading } from '../ui/States';
+import { Truncate } from '../ui/Truncate';
 import { dispatch } from './actions';
 
 const NO_MESSAGES: MessageItem[] = [];
 const NO_TIMERS: TimerState[] = [];
-const field =
-  'rounded-md border border-line bg-ink px-2 py-1 text-sm text-white placeholder:text-muted focus-visible:outline-2 focus-visible:outline-accent';
-const small = 'px-2 py-0.5 text-xs';
 
 function TemplateForm({
   initial,
@@ -40,24 +43,24 @@ function TemplateForm({
   return (
     <form
       data-testid="message-form"
-      className="space-y-2 rounded-md border border-accent/60 bg-panel-2 p-2"
+      className="space-y-2 rounded-lg border border-accent/60 bg-panel-2 p-2.5"
       onSubmit={(e) => {
         e.preventDefault();
         void save();
       }}
     >
-      <input
+      <TextInput
         aria-label="Message name"
         placeholder="Name, for example Car parking"
-        className={`${field} w-full`}
+        className="w-full"
         value={name}
         maxLength={80}
         onChange={(e) => setName(e.target.value)}
       />
-      <input
+      <TextInput
         aria-label="Message words"
         placeholder="Car {plate} please move"
-        className={`${field} w-full`}
+        className="w-full"
         value={template}
         maxLength={300}
         onChange={(e) => setTemplate(e.target.value)}
@@ -68,9 +71,9 @@ function TemplateForm({
       {names.map((n) => (
         <label key={n} className="flex items-center gap-2 text-xs text-muted">
           <span className="min-w-0 flex-1 truncate">{`{${n}}`}</span>
-          <select
+          <Select
             aria-label={`How {${n}} is filled`}
-            className={field}
+
             value={fieldOf({ fields }, n).kind === 'timer' ? (fields[n] as { timerId: string }).timerId : ''}
             onChange={(e) => {
               const timerId = e.target.value;
@@ -86,21 +89,26 @@ function TemplateForm({
                 Timer: {t.name}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
       ))}
-      {problem && <p className="text-xs text-amber-200">{problem}</p>}
+      {problem && (
+        <p role="alert" className="text-xs text-warning-fg">
+          {problem}
+        </p>
+      )}
       <div className="flex gap-2">
-        <Button type="submit" tone="primary" className={small} disabled={template.trim() === ''}>
+        <Button type="submit" variant="primary" size="sm" disabled={template.trim() === ''}>
           Save
         </Button>
-        <Button className={small} onClick={() => onDone(false)}>
+        <Button size="sm" onClick={() => onDone(false)}>
           Cancel
         </Button>
         {initial && (
           <Button
-            tone="danger"
-            className={`${small} ml-auto`}
+            variant="danger"
+            size="sm"
+            className="ml-auto"
             onClick={() => {
               void window.drashti.messages.remove(initial.id).then((r) => {
                 if (r.ok) onDone(true);
@@ -143,15 +151,13 @@ function TemplateRow({
     <li
       data-testid="message-row"
       data-shown={shown ? 'true' : undefined}
-      className="space-y-1.5 rounded-md border border-line bg-panel-2 px-2 py-1.5"
+      className="space-y-1.5 rounded-md border border-line bg-panel-2 px-2.5 py-2"
     >
       <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-sm" title={t.template}>
-          {t.name}
-        </span>
-        {shown && <span className="rounded bg-live px-1.5 text-[10px] font-bold text-white">ON SCREENS</span>}
+        <Truncate text={t.name} className="flex-1 text-sm font-medium" />
+        {shown && <Badge tone="live">On screens</Badge>}
       </div>
-      <p className="truncate text-xs text-muted">{t.template}</p>
+      <Truncate text={t.template} className="text-xs text-muted" />
       {names.map((n) => {
         const f = fieldOf(t, n);
         return f.kind === 'timer' ? (
@@ -159,11 +165,11 @@ function TemplateRow({
             {`{${n}}`}: timer “{timers.find((x) => x.id === f.timerId)?.name ?? 'removed'}”
           </p>
         ) : (
-          <input
+          <TextInput
             key={n}
             aria-label={n}
             placeholder={n}
-            className={`${field} w-full`}
+            className="w-full"
             value={values[n] ?? ''}
             maxLength={120}
             onChange={(e) => setValues((v) => ({ ...v, [n]: e.target.value }))}
@@ -173,20 +179,24 @@ function TemplateRow({
           />
         );
       })}
-      {problem && <p className="text-xs text-amber-200">{problem}</p>}
+      {problem && (
+        <p role="alert" className="text-xs text-warning-fg">
+          {problem}
+        </p>
+      )}
       <div className="flex flex-wrap gap-1">
-        <Button tone="primary" className={small} onClick={show}>
+        <Button variant="primary" size="sm" onClick={show}>
           {shown ? 'Update' : 'Show'}
         </Button>
         {shown && (
           <Button
-            className={small}
+            size="sm"
             onClick={() => void dispatch({ type: 'hideMessage', messageId: messageItemId(t.id) })}
           >
             Take off
           </Button>
         )}
-        <Button tone="ghost" className={small} onClick={onEdit}>
+        <Button variant="ghost" size="sm" onClick={onEdit}>
           Edit
         </Button>
       </div>
@@ -196,7 +206,7 @@ function TemplateRow({
 
 /** Message templates with fields: fill in, show on the audience screens (several at once), take off. */
 export function MessagesPanel() {
-  const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [templates, setTemplates] = useState<MessageTemplate[] | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const messages = useEngine((s) => s.state?.layers.messages) ?? NO_MESSAGES;
   const timers = useEngine((s) => s.state?.timers) ?? NO_TIMERS;
@@ -209,16 +219,23 @@ export function MessagesPanel() {
     if (changed) reload();
   };
   return (
-    <section aria-label="Messages" data-testid="messages" className="space-y-2">
-      <div className="flex items-center">
-        <h2 className="flex-1 text-xs font-semibold uppercase tracking-wide text-muted">Messages</h2>
-        <Button tone="ghost" className={small} onClick={() => setEditing('new')}>
-          + Message
+    <Panel
+      title="Messages"
+      icon={MessageSquare}
+      collapsible
+      remember="messages"
+      data-testid="messages"
+      bodyClassName="space-y-2 px-3 pb-3"
+      actions={
+        <Button variant="ghost" size="sm" icon={Plus} onClick={() => setEditing('new')}>
+          New message
         </Button>
-      </div>
+      }
+    >
       {editing === 'new' && <TemplateForm initial={null} timers={timers} onDone={done} />}
+      {templates === null && <Loading label="Loading the messages…" />}
       <ul className="space-y-1.5">
-        {templates.map((t) =>
+        {(templates ?? []).map((t) =>
           editing === t.id ? (
             <li key={t.id}>
               <TemplateForm initial={t} timers={timers} onDone={done} />
@@ -234,9 +251,11 @@ export function MessagesPanel() {
           ),
         )}
       </ul>
-      {templates.length === 0 && editing !== 'new' && (
-        <p className="text-xs text-muted">No messages yet. For example: Car {'{plate}'} please move.</p>
+      {templates?.length === 0 && editing !== 'new' && (
+        <EmptyState icon={MessageSquare} title="No messages yet" compact>
+          For example: Car {'{plate}'} please move.
+        </EmptyState>
       )}
-    </section>
+    </Panel>
   );
 }

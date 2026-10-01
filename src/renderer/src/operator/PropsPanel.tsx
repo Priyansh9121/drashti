@@ -5,7 +5,12 @@ import type { PropInfo } from '../../../shared/props';
 import { detectLang } from '../../../shared/text-runs';
 import { useEngine } from '../engine/engine-store';
 import { loadMedia, useMedia } from '../library/library-store';
-import { Button } from '../ui/Button';
+import { Button, IconButton } from '../ui/Button';
+import { ColorInput, NumberInput, Select, TextInput } from '../ui/Field';
+import { Plus, Sticker, Trash2 } from '../ui/icons';
+import { Panel } from '../ui/Panel';
+import { EmptyState, Loading } from '../ui/States';
+import { Truncate } from '../ui/Truncate';
 import { dispatch } from './actions';
 
 /*
@@ -15,9 +20,6 @@ import { dispatch } from './actions';
  */
 
 const NO_PROPS: PropItem[] = [];
-const field =
-  'rounded-md border border-line bg-ink px-2 py-1 text-sm text-white placeholder:text-muted focus-visible:outline-2 focus-visible:outline-accent';
-const small = 'px-2 py-0.5 text-xs';
 const W = 1920;
 const H = 1080;
 const MARGIN = 40;
@@ -108,73 +110,70 @@ function NewProp({ onDone }: { onDone: (made: boolean) => void }) {
   return (
     <form
       data-testid="prop-form"
-      className="space-y-2 rounded-md border border-accent/60 bg-panel-2 p-2"
+      className="space-y-2 rounded-lg border border-accent/60 bg-panel-2 p-2.5"
       onSubmit={(e) => {
         e.preventDefault();
         void save();
       }}
     >
-      <div className="flex gap-3 text-sm" role="radiogroup" aria-label="Kind of prop">
+      <div className="flex gap-4 text-sm" role="radiogroup" aria-label="Kind of prop">
         {(['text', 'picture'] as const).map((k) => (
-          <label key={k} className="flex items-center gap-1">
-            <input type="radio" name="prop-kind" checked={kind === k} onChange={() => setKind(k)} />
+          <label key={k} className="flex items-center gap-1.5">
+            <input
+              type="radio"
+              name="prop-kind"
+              className="accent-accent-strong"
+              checked={kind === k}
+              onChange={() => setKind(k)}
+            />
             {k === 'text' ? 'Words' : 'Picture or video'}
           </label>
         ))}
       </div>
       {kind === 'text' ? (
         <>
-          <input
+          <TextInput
             aria-label="Prop words"
             placeholder="For example the mandir's name"
-            className={`${field} w-full`}
+            className="w-full"
             value={text}
             maxLength={200}
             onChange={(e) => setText(e.target.value)}
           />
           <div className="flex flex-wrap items-center gap-2">
-            <input
+            <NumberInput
               aria-label="Prop size"
-              type="number"
               min={16}
               max={200}
-              className={`${field} w-20`}
+              unit="px"
               value={size}
               onChange={(e) => setSize(Number(e.target.value) || size)}
             />
-            <input
-              aria-label="Prop colour"
-              type="color"
-              className="h-8 w-12 rounded border border-line bg-ink"
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-            />
-            <select
+            <ColorInput aria-label="Prop colour" value={color} onChange={(e) => setColor(e.target.value)} />
+            <Select
               aria-label="Prop place"
-              className={field}
               value={where}
               onChange={(e) => setWhere(e.target.value as 'top' | 'bottom')}
             >
               <option value="top">Along the top</option>
               <option value="bottom">Along the bottom</option>
-            </select>
-            <select
+            </Select>
+            <Select
               aria-label="Prop alignment"
-              className={field}
               value={align}
               onChange={(e) => setAlign(e.target.value as 'left' | 'center' | 'right')}
             >
               <option value="left">Left</option>
               <option value="center">Centre</option>
               <option value="right">Right</option>
-            </select>
+            </Select>
           </div>
         </>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <select
+          <Select
             aria-label="Prop picture"
-            className={`${field} max-w-full`}
+            className="max-w-full"
             value={picked?.id ?? ''}
             onChange={(e) => setMediaId(e.target.value)}
           >
@@ -184,10 +183,9 @@ function NewProp({ onDone }: { onDone: (made: boolean) => void }) {
                 {m.name}
               </option>
             ))}
-          </select>
-          <select
+          </Select>
+          <Select
             aria-label="Prop corner"
-            className={field}
             value={corner}
             onChange={(e) => setCorner(e.target.value as Corner)}
           >
@@ -195,25 +193,28 @@ function NewProp({ onDone }: { onDone: (made: boolean) => void }) {
             <option value="top-right">Top right</option>
             <option value="bottom-left">Bottom left</option>
             <option value="bottom-right">Bottom right</option>
-          </select>
-          <select
+          </Select>
+          <Select
             aria-label="Prop picture size"
-            className={field}
             value={scale}
             onChange={(e) => setScale(e.target.value as keyof typeof SIZES)}
           >
             <option value="small">Small</option>
             <option value="medium">Medium</option>
             <option value="large">Large</option>
-          </select>
+          </Select>
         </div>
       )}
-      {problem && <p className="text-xs text-amber-200">{problem}</p>}
+      {problem && (
+        <p role="alert" className="text-xs text-warning-fg">
+          {problem}
+        </p>
+      )}
       <div className="flex gap-2">
-        <Button type="submit" tone="primary" className={small}>
+        <Button type="submit" variant="primary" size="sm">
           Save
         </Button>
-        <Button className={small} onClick={() => onDone(false)}>
+        <Button size="sm" onClick={() => onDone(false)}>
           Cancel
         </Button>
       </div>
@@ -223,7 +224,7 @@ function NewProp({ onDone }: { onDone: (made: boolean) => void }) {
 
 /** The library's props: show and hide them over whatever slide is live, make new ones, delete. */
 export function PropsPanel() {
-  const [props, setProps] = useState<PropInfo[]>([]);
+  const [props, setProps] = useState<PropInfo[] | null>(null);
   const [making, setMaking] = useState(false);
   const shown = useEngine((s) => s.state?.layers.props) ?? NO_PROPS;
   const reload = () => {
@@ -235,13 +236,19 @@ export function PropsPanel() {
     return window.drashti.library.onChanged(reload);
   }, []);
   return (
-    <section aria-label="Props" data-testid="props" className="space-y-2">
-      <div className="flex items-center">
-        <h2 className="flex-1 text-xs font-semibold uppercase tracking-wide text-muted">Props</h2>
-        <Button tone="ghost" className={small} onClick={() => setMaking(true)}>
-          + Prop
+    <Panel
+      title="Props"
+      icon={Sticker}
+      collapsible
+      remember="props"
+      data-testid="props"
+      bodyClassName="space-y-2 px-3 pb-3"
+      actions={
+        <Button variant="ghost" size="sm" icon={Plus} onClick={() => setMaking(true)}>
+          New prop
         </Button>
-      </div>
+      }
+    >
       {making && (
         <NewProp
           onDone={(made) => {
@@ -250,25 +257,21 @@ export function PropsPanel() {
           }}
         />
       )}
+      {props === null && <Loading label="Loading the props…" />}
       <ul className="space-y-1">
-        {props.map((p) => {
+        {(props ?? []).map((p) => {
           const up = shown.some((s) => s.id === p.id);
           return (
             <li
               key={p.id}
               data-testid="prop-row"
               data-shown={up ? 'true' : undefined}
-              className="flex items-center gap-2 rounded-md border border-line bg-panel-2 px-2 py-1"
+              className="flex items-center gap-2 rounded-md border border-line bg-panel-2 py-1 pr-1 pl-2.5"
             >
-              <span
-                className="min-w-0 flex-1 truncate text-sm"
-                title={p.imported ? `${p.name} (imported)` : p.name}
-              >
-                {p.name}
-              </span>
+              <Truncate text={p.imported ? `${p.name} (imported)` : p.name} className="flex-1 text-sm" />
               <Button
-                tone={up ? 'live' : 'default'}
-                className={small}
+                variant={up ? 'live' : 'secondary'}
+                size="sm"
                 onClick={() =>
                   void dispatch(
                     up
@@ -288,25 +291,23 @@ export function PropsPanel() {
               >
                 {up ? 'Hide' : 'Show'}
               </Button>
-              <Button
-                tone="ghost"
-                className={small}
-                aria-label={`Delete ${p.name}`}
+              <IconButton
+                icon={Trash2}
+                size="sm"
+                label={`Delete ${p.name}`}
                 onClick={() => {
                   void window.drashti.props.remove(p.id).then(reload);
                 }}
-              >
-                ×
-              </Button>
+              />
             </li>
           );
         })}
       </ul>
-      {props.length === 0 && !making && (
-        <p className="text-xs text-muted">
-          No props yet: a logo, or a line such as the mandir&apos;s name, over every slide.
-        </p>
+      {props?.length === 0 && !making && (
+        <EmptyState icon={Sticker} title="No props yet" compact>
+          A logo, or a line such as the mandir&apos;s name, over every slide.
+        </EmptyState>
       )}
-    </section>
+    </Panel>
   );
 }
