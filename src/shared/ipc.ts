@@ -12,6 +12,7 @@ import type {
   SaveWordsResult,
   WordsResult,
 } from './library';
+import type { ModeResult, OperatorMode } from './mode';
 import type { RecoveryNotice } from './recovery';
 import type { SaveStillResult } from './media';
 import type {
@@ -55,6 +56,14 @@ export const IPC = {
     startNotice: 'app:start-notice',
     /** main -> operator: a long task's progress, or null when it has ended. */
     progress: 'app:progress',
+    /** Simple Mode or Pro Mode. */
+    getMode: 'app:get-mode',
+    /** Switch: into Simple Mode at once; out of it only with the word typed (operator window only). */
+    setMode: 'app:set-mode',
+    /** main -> operator: the mode changed. */
+    modeChanged: 'app:mode-changed',
+    /** main -> operator: View > Switch to Pro Mode… was chosen; ask for the word. */
+    askLeaveSimple: 'app:ask-leave-simple',
   },
   engine: {
     /** Start receiving engine messages in this window; returns a snapshot. */
@@ -134,6 +143,9 @@ export const IPC = {
     list: 'props:list',
     save: 'props:save',
     remove: 'props:remove',
+    /** The prop marked as the logo (Simple Mode's Logo button), or null. */
+    getLogo: 'props:get-logo',
+    setLogo: 'props:set-logo',
   },
   /** Themes; changing and applying them is for the operator window only. */
   themes: {
@@ -186,6 +198,8 @@ export interface InvokeContract {
   [IPC.app.recovery]: { args: []; result: RecoveryNotice | null };
   [IPC.app.dismissRecovery]: { args: []; result: null };
   [IPC.app.startNotice]: { args: []; result: string | null };
+  [IPC.app.getMode]: { args: []; result: OperatorMode };
+  [IPC.app.setMode]: { args: [mode: OperatorMode, word?: string]; result: ModeResult };
   [IPC.engine.subscribe]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.snapshot]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.command]: { args: [command: EngineCommand]; result: CommandResult };
@@ -239,6 +253,8 @@ export interface InvokeContract {
   [IPC.props.list]: { args: []; result: PropInfo[] };
   [IPC.props.save]: { args: [propId: string | null, fields: PropFields]; result: PropResult };
   [IPC.props.remove]: { args: [propId: string]; result: PropResult };
+  [IPC.props.getLogo]: { args: []; result: string | null };
+  [IPC.props.setLogo]: { args: [propId: string | null]; result: PropResult };
   [IPC.themes.list]: { args: []; result: { themes: Theme[]; defaultId: string } };
   [IPC.themes.save]: { args: [themeId: string | null, fields: ThemeFields]; result: ThemeResult };
   [IPC.themes.remove]: { args: [themeId: string]; result: ThemeResult };
@@ -282,6 +298,8 @@ export interface EventContract {
   [IPC.app.undo]: { at: number };
   [IPC.app.notice]: { text: string };
   [IPC.app.progress]: { progress: TaskProgress | null };
+  [IPC.app.modeChanged]: { mode: OperatorMode };
+  [IPC.app.askLeaveSimple]: { at: number };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.output.context]: OutputContext;
   [IPC.output.identify]: { name: string; groupName: string };

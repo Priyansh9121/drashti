@@ -1,7 +1,12 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import { Menu } from 'electron';
+import type { OperatorMode } from '../shared/mode';
 
 export interface MenuActions {
+  /** Simple Mode leaves out backup and restore, and offers the way back to Pro Mode. */
+  mode: OperatorMode;
+  /** View > Switch to Simple Mode, or Switch to Pro Mode… (which asks for the word in the window). */
+  switchMode: () => void;
   reloadOperator: () => void;
   /** Edit > Undo: the operator page decides (typing in a field, or the last removal). */
   undo: { accelerator: string | null; run: () => void };
@@ -21,18 +26,27 @@ export interface MenuActions {
   } | null;
 }
 
-/** A small application menu: backups, standard edit keys, reload, and optional diagnostics. */
+/**
+ * A small application menu: backups, standard edit keys, reload, the mode,
+ * and optional diagnostics. Built again when the mode changes.
+ */
 export function installMenu(actions: MenuActions): void {
   const isMac = process.platform === 'darwin';
+  const simple = actions.mode === 'simple';
   const template: MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: 'appMenu' } as MenuItemConstructorOptions] : []),
-    {
-      label: 'File',
-      submenu: [
-        { id: 'backup-library', label: 'Back Up Library…', click: actions.backUpLibrary },
-        { id: 'restore-library', label: 'Restore Library…', click: actions.restoreLibrary },
-      ],
-    },
+    // Simple Mode cannot back up or restore the library.
+    ...(simple
+      ? []
+      : [
+          {
+            label: 'File',
+            submenu: [
+              { id: 'backup-library', label: 'Back Up Library…', click: actions.backUpLibrary },
+              { id: 'restore-library', label: 'Restore Library…', click: actions.restoreLibrary },
+            ],
+          } as MenuItemConstructorOptions,
+        ]),
     {
       label: 'Edit',
       submenu: [
@@ -56,6 +70,12 @@ export function installMenu(actions: MenuActions): void {
     {
       label: 'View',
       submenu: [
+        {
+          id: 'switch-mode',
+          label: simple ? 'Switch to Pro Mode…' : 'Switch to Simple Mode',
+          click: actions.switchMode,
+        },
+        { type: 'separator' },
         {
           label: 'Reload Operator Window',
           accelerator: 'CmdOrCtrl+R',
