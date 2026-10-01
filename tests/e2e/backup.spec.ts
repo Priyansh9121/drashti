@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import Database from 'better-sqlite3';
 import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -121,5 +122,68 @@ test('a backup brings the library back as it was, keeping the one before', async
   expect(readdirSync(join(first.userData, 'Backups', kept[0] ?? '')).sort()).toEqual(
     expect.arrayContaining(['Media', 'backup.json', 'drashti.sqlite']),
   );
+  await second.app.close();
+});
+
+test('a restored library that will not open is put back by itself, and the operator is told', async () => {
+  const first = await launchApp({ DRASHTI_TEST_NO_RELAUNCH: '1' });
+  const win = await operatorPage(first.app);
+  const names = (page: typeof win) =>
+    page.evaluate(async () =>
+      (await (globalThis as PageGlobals).drashti.library.listPresentations()).map((p) => p.name).sort(),
+    );
+  await win.evaluate(async () => {
+    const added = await (globalThis as PageGlobals).drashti.library.newFromWords(
+      'Placeholder Before Restore',
+      'Placeholder line',
+    );
+    if (!added.ok) throw new Error(added.message);
+  });
+  const before = await names(win);
+
+  // A backup of the library only.
+  const backups = mkdtempSync(join(tmpdir(), 'drashti-backups-e2e-'));
+  await first.app.evaluate(({ dialog }, into) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [into] });
+    dialog.showMessageBox = () => Promise.resolve({ response: 0, checkboxChecked: false });
+  }, backups);
+  await first.app.evaluate(({ Menu }) => {
+    Menu.getApplicationMenu()?.getMenuItemById('backup-library')?.click();
+  });
+  await expect(win.getByRole('alert').filter({ hasText: 'Library backed up to' })).toBeVisible();
+  const [backup = ''] = readdirSync(backups);
+
+  // Broken in a way the check before a restore cannot see: its schema version reads fine,
+  // but a table Drashti needs when it opens the library is gone.
+  const broken = new Database(join(backups, backup, 'drashti.sqlite'));
+  broken.exec('DROP TABLE app_meta');
+  broken.close();
+
+  await first.app.evaluate(
+    ({ dialog }, from) => {
+      dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [from] });
+      dialog.showMessageBox = () => Promise.resolve({ response: 0, checkboxChecked: false });
+    },
+    join(backups, backup),
+  );
+  const closed = first.app.waitForEvent('close', { timeout: 30_000 });
+  await first.app.evaluate(({ Menu }) => {
+    Menu.getApplicationMenu()?.getMenuItemById('restore-library')?.click();
+  });
+  await closed;
+
+  // The next start: the restored library fails to open, the one from before is back, and a word about it.
+  const second = await relaunchApp(first.userData);
+  const win2 = await operatorPage(second.app);
+  await expect(
+    win2
+      .getByRole('alert')
+      .filter({ hasText: `The backup “${backup}” could not be opened after the restore` }),
+  ).toContainText('Drashti put back the library from before it');
+  expect(await names(win2)).toEqual(before);
+  const kept = readdirSync(join(first.userData, 'Backups')).sort();
+  expect(kept).toHaveLength(2);
+  expect(kept[0]).toMatch(/^Before restore /u);
+  expect(kept[1]).toMatch(/^Failed restore /u);
   await second.app.close();
 });
