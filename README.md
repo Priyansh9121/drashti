@@ -97,6 +97,8 @@ gh workflow run CI --ref <branch> -f os=windows   # or os=macos, os=both
 
 A **secret scan** job runs on every push and pull request: `scripts/secret-scan.mjs` downloads one pinned gitleaks release (its sha256 is written in the script and checked before use), proves on a throwaway repository that a planted token is found and printed redacted, then scans every commit of every branch with `--redact` and fails the run on any finding. The end-to-end jobs wait for it.
 
+Each unit or end-to-end run keeps its temporary files in one folder, `drashti-run-<process id>-…` in the system's temporary folder (`scripts/temp-root.mjs`; TMPDIR, TEMP and TMP point into it for the tests and the apps they start), and removes it at the end. A run that crashed leaves its folder behind; the next run clears it, and any loose `drashti-*` folders over an hour old.
+
 `.github/workflows/audit-kit.yml` tests the audit scripts on both OSes, including under Windows PowerShell 5.1, when they change on `main` or in a pull request, or when started by hand.
 
 ### Switches
