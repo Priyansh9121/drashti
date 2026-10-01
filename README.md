@@ -103,18 +103,19 @@ Each unit or end-to-end run keeps its temporary files in one folder, `drashti-ru
 
 ### Switches
 
-| Environment variable               | Effect                                                                                                             |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `DRASHTI_USER_DATA_DIR=<dir>`      | Use this folder for the library and settings (tests use a fresh one each run).                                     |
-| `DRASHTI_WINDOWED_OUTPUTS=1`       | Development only: outputs open as normal windows, to try them on a computer with one screen.                       |
-| `DRASHTI_EXTRA_DISPLAYS=<n>`       | With windowed outputs: up to 4 pretend displays (copies of the main one), to try several outputs on one screen.    |
-| `DRASHTI_DIAGNOSTICS=1`            | Adds a Diagnostics menu with the watchdog self-test and crash buttons.                                             |
-| `DRASHTI_SELFTEST=watchdog`        | Runs the watchdog self-test headless, prints the result and exits (used by the tests).                             |
-| `DRASHTI_SELFTEST=performance`     | Runs the performance check headless in a throwaway library, prints the result and exits (see "Performance check"). |
-| `DRASHTI_NO_QUIT_CONFIRM=1`        | Skips the "Quit Drashti?" question (used by the tests).                                                            |
-| `DRASHTI_LOG_PERMISSIONS=1`        | Logs every permission a page checks or asks for (to see why a sound output cannot be chosen).                      |
-| `DRASHTI_TEST_MEDIA_DELAY_MS=<ms>` | Tests only: media answers this late (up to 5 s), as from a slow disk.                                              |
-| `DRASHTI_TEST_NO_RELAUNCH=1`       | Tests only: after Restore Library…, quit instead of restarting (the test starts Drashti again itself).             |
+| Environment variable                | Effect                                                                                                                                                                                |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DRASHTI_USER_DATA_DIR=<dir>`       | Use this folder for the library and settings (tests use a fresh one each run).                                                                                                        |
+| `DRASHTI_WINDOWED_OUTPUTS=1`        | Development only: outputs open as normal windows, to try them on a computer with one screen.                                                                                          |
+| `DRASHTI_EXTRA_DISPLAYS=<n>`        | With windowed outputs: up to 4 pretend displays (copies of the main one), to try several outputs on one screen.                                                                       |
+| `DRASHTI_DIAGNOSTICS=1`             | Adds a Diagnostics menu with the watchdog self-test and crash buttons.                                                                                                                |
+| `DRASHTI_SELFTEST=watchdog`         | Runs the watchdog self-test headless, prints the result and exits (used by the tests).                                                                                                |
+| `DRASHTI_SELFTEST=performance`      | Runs the performance check headless in a throwaway library, prints the result and exits (see "Performance check").                                                                    |
+| `DRASHTI_SELFTEST=restore-relaunch` | Backs up, asks for a restore and restarts for real, then the new copy checks the library and writes `result.json` into `DRASHTI_SELFTEST_DIR` (used by `scripts/check-relaunch.mjs`). |
+| `DRASHTI_NO_QUIT_CONFIRM=1`         | Skips the "Quit Drashti?" question (used by the tests).                                                                                                                               |
+| `DRASHTI_LOG_PERMISSIONS=1`         | Logs every permission a page checks or asks for (to see why a sound output cannot be chosen).                                                                                         |
+| `DRASHTI_TEST_MEDIA_DELAY_MS=<ms>`  | Tests only: media answers this late (up to 5 s), as from a slow disk.                                                                                                                 |
+| `DRASHTI_TEST_NO_RELAUNCH=1`        | Tests only: after Restore Library…, quit instead of restarting (the test starts Drashti again itself).                                                                                |
 
 If you start Drashti from inside another Electron app's process (for example an editor extension), make sure `ELECTRON_RUN_AS_NODE` is not set in that environment. When it's set, Electron starts as plain Node. The end-to-end tests clear it automatically.
 
@@ -258,7 +259,7 @@ Drashti checks there is room first, keeping 2 GB free when the backup goes on it
 
 If the restored library will not open (a backup damaged in a way the check cannot see, or one whose upgrade fails), Drashti puts the library from before back by itself, with its media and upgrade copies, opens that, and tells the operator. The restored copy that failed goes to `Backups/Failed restore <date> <time>` for whoever looks into it; the backup it came from is not touched.
 
-The code is in `src/main/library/backup.ts` (the work) and `backup-ui.ts` (the questions). The end-to-end test runs a backup, changes the library, restores and starts again, with the quit question switched on. It quits instead of restarting, because a copy of Drashti started by the restart would wait for Playwright; the restart itself (`app.relaunch()`) was checked on the dev Mac with a small Electron script.
+The code is in `src/main/library/backup.ts` (the work) and `backup-ui.ts` (the questions). The end-to-end test runs a backup, changes the library, restores and starts again, with the quit question switched on. It quits instead of restarting, because a copy of Drashti started by the restart would wait for Playwright. The restart itself is checked by `node scripts/check-relaunch.mjs` (`--packaged` for the app in `release/`), which CI runs on macOS and Windows for the built and the packaged app: Drashti starts with `DRASHTI_SELFTEST=restore-relaunch`, backs up, changes the library, asks for a restore and restarts with `app.relaunch()`, and the copy that starts again checks it is a new process, that the restore was done, and that the library is the backup's.
 
 ## Folder layout
 
