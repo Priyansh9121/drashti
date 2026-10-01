@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { OperatorAction } from '../../../shared/keymap';
+import type { KeyBinding, OperatorAction } from '../../../shared/keymap';
 import { actionFor, PAGE_KEYMAP } from '../../../shared/keymap';
 
 export function isTyping(target: EventTarget | null): boolean {
@@ -11,7 +11,11 @@ export function isTyping(target: EventTarget | null): boolean {
  * Run operator actions from the keyboard. Ignores key repeats (a held key
  * never skips slides), typing in fields, and anything while a dialog is open.
  */
-export function useKeymap(platform: string, run: (action: OperatorAction) => void): void {
+export function useKeymap(
+  platform: string,
+  run: (action: OperatorAction) => void,
+  keymap: readonly KeyBinding[] = PAGE_KEYMAP,
+): void {
   const runRef = useRef(run);
   useEffect(() => {
     runRef.current = run;
@@ -19,7 +23,7 @@ export function useKeymap(platform: string, run: (action: OperatorAction) => voi
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.repeat || event.isComposing || isTyping(event.target)) return;
-      const action = actionFor(event, platform, PAGE_KEYMAP);
+      const action = actionFor(event, platform, keymap);
       if (!action) return;
       const dialogOpen = document.querySelector('[aria-modal="true"]') !== null;
       if (dialogOpen && action !== 'openScreens' && action !== 'uncoverControls') return;
@@ -30,5 +34,5 @@ export function useKeymap(platform: string, run: (action: OperatorAction) => voi
     return () => {
       window.removeEventListener('keydown', onKey);
     };
-  }, [platform]);
+  }, [platform, keymap]);
 }

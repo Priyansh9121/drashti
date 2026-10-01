@@ -438,9 +438,13 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
   const [spot, setSpot] = useState<DropSpot | null>(null);
   const [menu, setMenu] = useState<{ at: MenuPlace; item: PlaylistItemInfo } | null>(null);
   const markedSet = new Set(marked);
-  const liveItem = useEngine((s) =>
-    s.state?.live.playlist?.playlistId === openId ? s.state.live.playlist.itemId : null,
-  );
+  // The item on the screens now: the playlist's place, while something of it is up (not after Clear all).
+  const liveItem = useEngine((s) => {
+    const st = s.state;
+    if (st?.live.playlist?.playlistId !== openId) return null;
+    const up = st.layers.slide !== null || st.layers.background !== null || st.layers.audio !== null;
+    return up ? st.live.playlist.itemId : null;
+  });
   const shownItem = useLibrary((s) => (s.item?.playlistId === openId ? s.item.id : null));
 
   const spotFor = (e: DragEvent): DropSpot => {

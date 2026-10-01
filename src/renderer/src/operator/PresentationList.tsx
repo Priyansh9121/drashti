@@ -145,7 +145,8 @@ export function PresentationList({ platform }: { platform: string }) {
   const presentations = useLibrary((s) => s.presentations);
   const selectedId = useLibrary((s) => s.selectedId);
   const marked = useLibrary((s) => s.marked);
-  const liveId = useEngine((s) => s.state?.live.presentationId ?? null);
+  // On the screens now: its slide is up (not just the place it was, after a clear).
+  const liveId = useEngine((s) => s.state?.layers.slide?.presentationId ?? null);
   const [dropping, setDropping] = useState(false);
   const [dropProblem, setDropProblem] = useState<string | null>(null);
   const depth = useRef(0);

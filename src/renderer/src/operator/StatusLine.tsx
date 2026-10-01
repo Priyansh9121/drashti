@@ -47,7 +47,7 @@ export function LiveStatus() {
 }
 
 /** "2 screens showing · 1 display not connected", so a volunteer notices a dead output. */
-export function ScreensSummary({ onOpen }: { onOpen: () => void }) {
+export function ScreensSummary({ onOpen }: { onOpen: (() => void) | null }) {
   // Select the stored array itself: a new [] per call would re-render forever.
   const status = useScreens((s) => s.snapshot?.status) ?? NO_STATUS;
   const showing = status.filter((s) => s.state === 'showing').length;
@@ -57,6 +57,20 @@ export function ScreensSummary({ onOpen }: { onOpen: () => void }) {
       ? 'No screens set up'
       : `${showing} ${showing === 1 ? 'screen' : 'screens'} showing${missing ? ` · ${missing} display${missing === 1 ? '' : 's'} not connected` : ''}`;
   const IconShape = missing ? MonitorOff : Monitor;
+  // In Simple Mode the screens cannot be opened: the same words, not a button.
+  if (!onOpen)
+    return (
+      <span
+        className={cx(
+          'flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5',
+          missing ? 'bg-warning-bg text-warning-fg' : 'text-muted',
+        )}
+        data-testid="screens-summary"
+      >
+        <IconShape size={13} aria-hidden="true" />
+        {text}
+      </span>
+    );
   return (
     <button
       type="button"

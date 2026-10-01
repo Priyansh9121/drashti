@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import type { PropItem } from '../../../shared/engine/state';
 import type { SlideElement } from '../../../shared/model';
-import type { PropInfo } from '../../../shared/props';
 import { detectLang } from '../../../shared/text-runs';
 import { useEngine } from '../engine/engine-store';
 import { loadMedia, useMedia } from '../library/library-store';
 import { Button, IconButton } from '../ui/Button';
 import { ColorInput, NumberInput, Select, TextInput } from '../ui/Field';
-import { Plus, Sticker, Trash2 } from '../ui/icons';
+import { Badge } from '../ui/Badge';
+import { Plus, Stamp, Sticker, Trash2 } from '../ui/icons';
+import { loadProps, markLogo, useLogo } from './logo-store';
 import { Panel } from '../ui/Panel';
 import { EmptyState, Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
@@ -224,17 +225,13 @@ function NewProp({ onDone }: { onDone: (made: boolean) => void }) {
 
 /** The library's props: show and hide them over whatever slide is live, make new ones, delete. */
 export function PropsPanel() {
-  const [props, setProps] = useState<PropInfo[] | null>(null);
+  const props = useLogo((s) => s.props);
+  const logoId = useLogo((s) => s.logoId);
   const [making, setMaking] = useState(false);
   const shown = useEngine((s) => s.state?.layers.props) ?? NO_PROPS;
   const reload = () => {
-    void window.drashti.props.list().then(setProps);
+    void loadProps();
   };
-  useEffect(() => {
-    reload();
-    // Props can arrive with an import.
-    return window.drashti.library.onChanged(reload);
-  }, []);
   return (
     <Panel
       title="Props"
@@ -269,6 +266,20 @@ export function PropsPanel() {
               className="flex items-center gap-2 rounded-md border border-line bg-panel-2 py-1 pr-1 pl-2.5"
             >
               <Truncate text={p.imported ? `${p.name} (imported)` : p.name} className="flex-1 text-sm" />
+              {p.id === logoId && <Badge tone="info">Logo</Badge>}
+              <IconButton
+                icon={Stamp}
+                size="sm"
+                variant={p.id === logoId ? 'secondary' : 'ghost'}
+                label={
+                  p.id === logoId
+                    ? `${p.name} is the logo (choose again to unmark)`
+                    : `Use ${p.name} as the logo`
+                }
+                aria-pressed={p.id === logoId}
+                data-testid="use-as-logo"
+                onClick={() => void markLogo(p.id === logoId ? null : p.id)}
+              />
               <Button
                 variant={up ? 'live' : 'secondary'}
                 size="sm"

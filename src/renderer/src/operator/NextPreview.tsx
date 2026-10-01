@@ -8,7 +8,7 @@ import { SlideView } from '../render/SlideView';
 import { Music } from '../ui/icons';
 
 /** What Next will put up: the next slide (with its background), or the next picture, video or sound. */
-export function NextPreview() {
+export function NextPreview({ stacked = false }: { stacked?: boolean }) {
   const next = useEngine((s) => s.state?.next ?? null);
   const name = useLibrary((s) =>
     next?.kind === 'slide' ? s.presentations.find((p) => p.id === next.presentationId)?.name : undefined,
@@ -20,15 +20,24 @@ export function NextPreview() {
   if (next?.kind === 'slide')
     caption = `${itemLabel ?? name ?? 'Presentation'}, slide ${next.slideIndex + 1}${next.itemId ? ' (next item)' : ''}`;
   if (next?.kind === 'media') caption = `${mediaKindLabel[next.media]}: ${next.label}`;
+  const heading = (
+    <h2
+      id="next-preview-title"
+      className={`text-2xs font-bold tracking-wider text-muted uppercase ${stacked ? 'flex h-6 items-center' : ''}`}
+    >
+      Next
+    </h2>
+  );
   return (
     <section
       aria-labelledby="next-preview-title"
-      className="flex items-start gap-3 px-3 pt-3"
+      className={stacked ? 'space-y-2 px-3 pt-3' : 'flex items-start gap-3 px-3 pt-3'}
       data-testid="next-preview"
       data-kind={next?.kind ?? 'none'}
     >
+      {stacked && heading}
       <div
-        className="relative aspect-video w-[45%] shrink-0 overflow-hidden rounded-md border border-line-strong bg-black"
+        className={`relative aspect-video shrink-0 overflow-hidden rounded-md border border-line-strong bg-black ${stacked ? 'w-full' : 'w-[45%]'}`}
         data-a11y-picture
         aria-hidden="true"
       >
@@ -56,9 +65,7 @@ export function NextPreview() {
           ))}
       </div>
       <div className="min-w-0 pt-0.5 text-xs">
-        <h2 id="next-preview-title" className="text-2xs font-bold tracking-wider text-muted uppercase">
-          Next
-        </h2>
+        {!stacked && heading}
         <p className="mt-1 break-words text-sm text-fg" data-testid="next-caption">
           {caption}
         </p>

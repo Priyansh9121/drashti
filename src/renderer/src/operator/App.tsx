@@ -30,6 +30,9 @@ import { TimersPanel } from './TimersPanel';
 import { MessagesPanel } from './MessagesPanel';
 import { PropsPanel } from './PropsPanel';
 import { isTyping, useKeymap } from './useKeymap';
+import { watchProps } from './logo-store';
+import { connectMode, useMode } from './mode-store';
+import { SimpleApp } from '../simple/SimpleApp';
 
 /** Everything that keeps the window up to date, connected once as it opens. */
 function useConnections(setInfo: (info: AppInfo) => void): void {
@@ -39,12 +42,16 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     watchLibrary();
     watchImports();
     watchPlaylists();
+    watchProps();
+    connectMode();
     void loadLibrary();
     void loadTree();
     // Edit > Undo: in a text field the window undoes the typing itself; elsewhere it brings back
-    // the last removal.
+    // the last removal, or in Simple Mode (which removes nothing) puts back what Clear all took down.
     const offUndo = window.drashti.app.onUndo(() => {
-      if (!isTyping(document.activeElement)) void undoRemoval();
+      if (isTyping(document.activeElement)) return;
+      if (useMode.getState().mode === 'simple') void window.drashti.engine.dispatch({ type: 'putBack' });
+      else void undoRemoval();
     });
     // Things the main process tells the operator (for example where diagnostics were saved).
     const offNotice = window.drashti.app.onNotice((text) => {
@@ -76,9 +83,15 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
 
 export function App() {
   const [info, setInfo] = useState<AppInfo | null>(null);
+  const mode = useMode((s) => s.mode);
+  useConnections(setInfo);
+  if (mode === null) return null;
+  return mode === 'simple' ? <SimpleApp info={info} /> : <ProApp info={info} />;
+}
+
+function ProApp({ info }: { info: AppInfo | null }) {
   const [screensOpen, setScreensOpen] = useState(false);
   const platform = info?.platform ?? 'darwin';
-  useConnections(setInfo);
 
   const openScreens = useCallback(() => {
     setScreensOpen(true);

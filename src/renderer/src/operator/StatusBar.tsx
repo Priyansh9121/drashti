@@ -18,7 +18,7 @@ import { ScreensSummary } from './StatusLine';
  */
 
 /** Where the sound goes; a warning while the chosen output is not connected. */
-function SoundStatus({ onOpen }: { onOpen: () => void }) {
+function SoundStatus({ onOpen }: { onOpen: (() => void) | null }) {
   const status = useSound((s) => s.status);
   useEffect(() => {
     connectSound();
@@ -29,7 +29,8 @@ function SoundStatus({ onOpen }: { onOpen: () => void }) {
     return (
       <button
         type="button"
-        onClick={onOpen}
+        onClick={onOpen ?? undefined}
+        disabled={!onOpen}
         data-testid="sound-warning"
         className="flex min-w-0 items-center gap-1.5 rounded-sm bg-warning-bg px-1.5 py-0.5 text-warning-fg"
       >
@@ -40,8 +41,9 @@ function SoundStatus({ onOpen }: { onOpen: () => void }) {
   return (
     <button
       type="button"
-      onClick={onOpen}
-      title="Choose the sound output in Screens"
+      onClick={onOpen ?? undefined}
+      disabled={!onOpen}
+      title={onOpen ? 'Choose the sound output in Screens' : undefined}
       className="flex min-w-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-muted hover:text-fg"
       data-testid="sound-status"
     >
@@ -140,7 +142,14 @@ function TaskStatus() {
   );
 }
 
-export function StatusBar({ info, onOpenScreens }: { info: AppInfo | null; onOpenScreens: () => void }) {
+export function StatusBar({
+  info,
+  onOpenScreens,
+}: {
+  info: AppInfo | null;
+  /** Null in Simple Mode, where the screens cannot be opened. */
+  onOpenScreens: (() => void) | null;
+}) {
   return (
     <footer
       className="flex h-7 shrink-0 items-center gap-3 border-t border-line bg-ink px-2 text-xs text-muted"

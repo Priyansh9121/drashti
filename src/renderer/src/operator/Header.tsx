@@ -2,7 +2,8 @@ import type { ReactNode } from 'react';
 import { shortcutText } from '../../../shared/keymap';
 import { openThemes } from '../themes/themes-store';
 import { Button } from '../ui/Button';
-import { Monitor, Palette } from '../ui/icons';
+import { LayoutGrid, Monitor, Palette } from '../ui/icons';
+import { enterSimpleMode } from './mode-store';
 import { Tooltip } from '../ui/Tooltip';
 import { LiveStatus } from './StatusLine';
 
@@ -33,6 +34,14 @@ export function Header({
         <Tooltip content="Screens and sound" kbd={shortcutText('openScreens', platform)} side="bottom">
           <Button variant="secondary" icon={Monitor} onClick={onOpenScreens}>
             Screens
+          </Button>
+        </Tooltip>
+        <Tooltip
+          content="One screen with big buttons, for volunteers. Nothing can be changed there."
+          side="bottom"
+        >
+          <Button variant="ghost" icon={LayoutGrid} onClick={() => void enterSimpleMode()}>
+            Simple Mode
           </Button>
         </Tooltip>
         {extra}
