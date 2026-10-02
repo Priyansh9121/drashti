@@ -118,6 +118,11 @@ const bridge: DrashtiBridge = {
       invoke(IPC.playlists.fillPlaceholder, itemId, presentationId),
     setItemOrder: (itemId, order) => invoke(IPC.playlists.setItemOrder, itemId, order),
     renameHeader: (itemId, label) => invoke(IPC.playlists.renameHeader, itemId, label),
+    templates: () => invoke(IPC.playlists.templates),
+    saveAsTemplate: (playlistId, request) => invoke(IPC.playlists.saveAsTemplate, playlistId, request),
+    newFromTemplate: (templateId, name, parentId) =>
+      invoke(IPC.playlists.newFromTemplate, templateId, name, parentId),
+    addSlot: (playlistId, at, slot) => invoke(IPC.playlists.addSlot, playlistId, at, slot),
     onChanged: (listener) =>
       on(IPC.playlists.changed, () => {
         listener();

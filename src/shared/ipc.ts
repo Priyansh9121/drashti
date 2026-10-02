@@ -34,6 +34,7 @@ import type {
   PlaylistItemInfo,
   PlaylistNode,
   PlaylistResult,
+  TemplateRequest,
 } from './playlists';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { PropFields, PropInfo, PropResult } from './props';
@@ -170,6 +171,12 @@ export const IPC = {
     fillPlaceholder: 'playlists:fill-placeholder',
     setItemOrder: 'playlists:set-item-order',
     renameHeader: 'playlists:rename-header',
+    /** Sabha templates: kept apart from the playlists, never run themselves. */
+    templates: 'playlists:templates',
+    saveAsTemplate: 'playlists:save-as-template',
+    newFromTemplate: 'playlists:new-from-template',
+    /** A slot: a place for a presentation, filled each time (a placeholder with a category). */
+    addSlot: 'playlists:add-slot',
     /** main -> operator: playlists changed. */
     changed: 'playlists:changed',
   },
@@ -272,6 +279,19 @@ export interface InvokeContract {
   [IPC.playlists.fillPlaceholder]: { args: [itemId: string, presentationId: string]; result: PlaylistResult };
   [IPC.playlists.setItemOrder]: { args: [itemId: string, order: ItemOrder]; result: PlaylistResult };
   [IPC.playlists.renameHeader]: { args: [itemId: string, label: string]; result: PlaylistResult };
+  [IPC.playlists.templates]: { args: []; result: PlaylistNode[] };
+  [IPC.playlists.saveAsTemplate]: {
+    args: [playlistId: string, request: TemplateRequest];
+    result: PlaylistResult;
+  };
+  [IPC.playlists.newFromTemplate]: {
+    args: [templateId: string, name: string, parentId: string | null];
+    result: PlaylistResult;
+  };
+  [IPC.playlists.addSlot]: {
+    args: [playlistId: string, at: number | null, slot: { label: string; category: string | null }];
+    result: PlaylistResult;
+  };
   [IPC.library.getPresentation]: { args: [id: string]; result: PresentationDoc | null };
   [IPC.library.slidesForEdit]: { args: [presentationId: string]; result: EditSlidesResult };
   [IPC.library.saveSlides]: {

@@ -1,5 +1,6 @@
 import type { Lang, TextElement, TextStyle } from '../../shared/model';
 import type { Db } from './database';
+import { PlaylistRepo } from './playlists';
 import { PresentationRepo } from './presentations';
 
 /*
@@ -155,6 +156,72 @@ export function seedPlaceholders(db: Db): boolean {
       source: { kind: 'drashti', path: null, ref: 'seed:sample-kirtan', importedAt: null },
     });
     db.prepare('INSERT INTO app_meta (key, value) VALUES (?, ?)').run(SEED_KEY, new Date().toISOString());
+  })();
+  return true;
+}
+
+export const TEMPLATES_KEY = 'seed.example-templates';
+
+type TemplateStep = { header: string } | { slot: string; category: string | null };
+
+/**
+ * Starting points for the mandir's own running orders (PLAN.md 3), named
+ * as examples: the real orders come from the operators at the mandir setup.
+ * Headers and slots only, since no presentation is the mandir's yet.
+ */
+export const EXAMPLE_TEMPLATES: { name: string; steps: TemplateStep[] }[] = [
+  {
+    name: 'Example: Ravi Sabha',
+    steps: [
+      { header: 'Opening' },
+      { slot: 'Dhun', category: 'Dhun' },
+      { slot: 'Prarthana', category: 'Prarthana' },
+      { header: 'Kirtans' },
+      { slot: 'Kirtan', category: 'Kirtan' },
+      { slot: 'Kirtan', category: 'Kirtan' },
+      { slot: 'Kirtan', category: 'Kirtan' },
+      { header: 'Pravachan' },
+      { slot: 'Pravachan title', category: null },
+      { header: 'Announcements' },
+      { slot: 'Announcements', category: null },
+      { header: 'Arti' },
+      { slot: 'Arti', category: 'Arti' },
+      { slot: 'Closing', category: null },
+    ],
+  },
+  {
+    name: 'Example: Bal/Kishore Sabha',
+    steps: [
+      { header: 'Opening' },
+      { slot: 'Dhun', category: 'Dhun' },
+      { slot: 'Prarthana', category: 'Prarthana' },
+      { header: 'Kirtans' },
+      { slot: 'Bal sabha kirtan', category: 'Bal sabha' },
+      { slot: 'Kishore sabha kirtan', category: 'Kishore sabha' },
+      { header: 'Activity' },
+      { slot: 'Story or quiz title', category: null },
+      { header: 'Arti' },
+      { slot: 'Arti', category: 'Arti' },
+    ],
+  },
+];
+
+/** Add the example templates once per library. Returns false when they were added before (even if since deleted). */
+export function seedTemplates(db: Db): boolean {
+  if (db.prepare('SELECT 1 FROM app_meta WHERE key = ?').get(TEMPLATES_KEY)) return false;
+  const repo = new PlaylistRepo(db);
+  db.transaction(() => {
+    for (const t of EXAMPLE_TEMPLATES) {
+      const id = repo.create(t.name, null, false, true);
+      if (!id) continue;
+      for (const step of t.steps)
+        if ('header' in step) repo.addItems(id, null, [{ kind: 'header', label: step.header }]);
+        else repo.addSlot(id, null, step.slot, step.category);
+    }
+    db.prepare('INSERT INTO app_meta (key, value) VALUES (?, ?)').run(
+      TEMPLATES_KEY,
+      new Date().toISOString(),
+    );
   })();
   return true;
 }

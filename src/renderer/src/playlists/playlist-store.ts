@@ -17,7 +17,10 @@ import { describeSome, pushRemoval } from '../library/undo';
  */
 
 interface PlaylistView {
+  /** The week's playlists, or the sabha templates (kept apart, never run). */
+  view: 'playlists' | 'templates';
   tree: PlaylistNode[];
+  templates: PlaylistNode[];
   /** Folders shut in the tree. */
   closed: string[];
   /** The playlist or folder the tree's actions apply to. */
@@ -31,13 +34,21 @@ interface PlaylistView {
   /** The playlist, folder or header being renamed in place. */
   renaming: string | null;
   /** Playlists or folders waiting for the operator to confirm removing them. */
-  confirmRemove: { ids: string[]; name: string; folder: boolean; inside: number } | null;
+  confirmRemove: { ids: string[]; name: string; folder: boolean; template: boolean; inside: number } | null;
   /** The last problem, until the next change works. */
   problem: string | null;
+  /** The playlist being saved as a template (its dialog is open). */
+  savingTemplate: string | null;
+  /** The Add a slot dialog is open. */
+  addingSlot: boolean;
+  /** The slot (or import placeholder) being filled: its dialog is open. */
+  filling: Extract<PlaylistItemInfo, { kind: 'placeholder' }> | null;
 }
 
 export const usePlaylists = create<PlaylistView>(() => ({
+  view: 'playlists',
   tree: [],
+  templates: [],
   closed: [],
   selectedNodeId: null,
   openId: null,
@@ -47,7 +58,20 @@ export const usePlaylists = create<PlaylistView>(() => ({
   renaming: null,
   confirmRemove: null,
   problem: null,
+  savingTemplate: null,
+  addingSlot: false,
+  filling: null,
 }));
+
+/** A playlist, folder or template by its id. */
+export function nodeOf(id: string | null): PlaylistNode | undefined {
+  if (id === null) return undefined;
+  const { tree, templates } = usePlaylists.getState();
+  return tree.find((n) => n.id === id) ?? templates.find((n) => n.id === id);
+}
+
+/** Whether the open playlist is a template (its items are never shown on the screens from here). */
+export const templateOpen = (s: PlaylistView): boolean => s.templates.some((t) => t.id === s.openId);
 
 const api = () => window.drashti.playlists;
 
@@ -58,11 +82,12 @@ function settled(result: PlaylistResult): result is { ok: true; ids: string[] } 
 }
 
 export async function loadTree(): Promise<void> {
-  const tree = await api().tree();
-  const ids = new Set(tree.map((n) => n.id));
+  const [tree, templates] = await Promise.all([api().tree(), api().templates()]);
+  const ids = new Set([...tree, ...templates].map((n) => n.id));
   const { openId, selectedNodeId } = usePlaylists.getState();
   usePlaylists.setState({
     tree,
+    templates,
     openId: openId && ids.has(openId) ? openId : null,
     selectedNodeId: selectedNodeId && ids.has(selectedNodeId) ? selectedNodeId : null,
   });
@@ -133,10 +158,72 @@ async function followItem(cursor: PlaylistCursor): Promise<void> {
 
 /** A plain click on an item: mark it and show it in the slide grid. */
 export async function pickItem(item: PlaylistItemInfo): Promise<void> {
-  const { openId } = usePlaylists.getState();
+  const state = usePlaylists.getState();
+  const { openId } = state;
   if (!openId) return;
   clickItem(item.id, { toggle: false, range: false });
+  // A template's items are never put up from here: it only makes playlists.
+  if (templateOpen(state)) return;
+  // A slot to fill: choose what goes there.
+  if (item.kind === 'placeholder') {
+    usePlaylists.setState({ filling: item });
+    return;
+  }
   await showItem({ ...item, playlistId: openId });
+}
+
+export function setView(view: PlaylistView['view']): void {
+  usePlaylists.setState({ view, openId: null, items: [], marked: [], anchorId: null, renaming: null });
+}
+
+/** Save a playlist as a template, with these items as slots; then show the template. */
+export async function saveAsTemplate(playlistId: string, name: string, slots: string[]): Promise<boolean> {
+  const result = await api().saveAsTemplate(playlistId, { name, slots });
+  if (!settled(result)) return false;
+  usePlaylists.setState({ savingTemplate: null });
+  const [id] = result.ids;
+  setView('templates');
+  await loadTree();
+  if (id) await openPlaylist(id);
+  return true;
+}
+
+/** A new playlist from a template, named for the operator to change straight away, and open. */
+export async function newFromTemplate(templateId: string): Promise<void> {
+  const template = nodeOf(templateId);
+  if (!template) return;
+  const day = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const name = `${template.name.replace(/^Example:\s*/u, '')} ${day}`;
+  const parentId = usePlaylists.getState().view === 'playlists' ? newParent() : null;
+  const result = await api().newFromTemplate(templateId, name, parentId);
+  if (!settled(result)) return;
+  const [id] = result.ids;
+  setView('playlists');
+  await loadTree();
+  if (!id) return;
+  await openPlaylist(id);
+  usePlaylists.setState({ renaming: id });
+}
+
+/** A slot after the marked items (or at the end) of the open playlist or template. */
+export async function addSlot(label: string, category: string | null): Promise<boolean> {
+  const { openId, items, marked } = usePlaylists.getState();
+  if (!openId) return false;
+  const last = items.findLastIndex((i) => marked.includes(i.id));
+  const result = await api().addSlot(openId, last >= 0 ? last + 1 : null, { label, category });
+  if (!settled(result)) return false;
+  usePlaylists.setState({ addingSlot: false });
+  await reload();
+  usePlaylists.setState({ marked: result.ids, anchorId: result.ids[0] ?? null });
+  return true;
+}
+
+/** Fill the slot being filled with a presentation. */
+export async function fillSlot(presentationId: string): Promise<void> {
+  const slot = usePlaylists.getState().filling;
+  if (!slot) return;
+  usePlaylists.setState({ filling: null });
+  await fillPlaceholder(slot.id, [presentationId]);
 }
 
 /** The order a presentation item plays in (its own arrangement, or the presentation's). */
@@ -198,7 +285,7 @@ export function stopRenaming(): void {
 
 export async function renameNode(id: string, name: string): Promise<void> {
   stopRenaming();
-  const node = usePlaylists.getState().tree.find((n) => n.id === id);
+  const node = nodeOf(id);
   if (!node || name.trim() === '' || name.trim() === node.name) return;
   if (settled(await api().rename(id, name))) await loadTree();
 }
@@ -220,13 +307,14 @@ function inside(tree: readonly PlaylistNode[], id: string): PlaylistNode[] {
 /** Ask before removing a playlist or a folder (with what it holds). */
 export function requestRemoveNode(id: string): void {
   const { tree } = usePlaylists.getState();
-  const node = tree.find((n) => n.id === id);
+  const node = nodeOf(id);
   if (!node) return;
   usePlaylists.setState({
     confirmRemove: {
       ids: [id],
       name: node.name,
       folder: node.isFolder,
+      template: node.template,
       inside: inside(tree, id).filter((n) => !n.isFolder).length,
     },
   });
@@ -244,7 +332,7 @@ export async function confirmRemoveNode(): Promise<void> {
   if (!settled(result) || result.ids.length === 0) return;
   const removed = result.ids;
   pushRemoval({
-    text: `Removed ${pending.folder ? 'folder' : 'playlist'} “${pending.name}”`,
+    text: `Removed ${pending.folder ? 'folder' : pending.template ? 'template' : 'playlist'} “${pending.name}”`,
     restore: async () => {
       await api().restore(removed);
       await loadTree();
@@ -322,13 +410,13 @@ export async function moveItems(ids: string[], at: number): Promise<void> {
 
 /** Remove the marked items; Undo brings them back where they were. */
 export async function removeMarkedItems(): Promise<void> {
-  const { openId, tree } = usePlaylists.getState();
+  const { openId } = usePlaylists.getState();
   const items = markedItems();
   if (!openId || items.length === 0) return;
   const result = await api().removeItems(items.map((i) => i.id));
   if (!settled(result) || result.ids.length === 0) return;
   const removed = result.ids;
-  const playlist = tree.find((n) => n.id === openId)?.name ?? 'the playlist';
+  const playlist = nodeOf(openId)?.name ?? 'the playlist';
   pushRemoval({
     text: `Removed ${describeSome(
       items.map((i) => i.label),

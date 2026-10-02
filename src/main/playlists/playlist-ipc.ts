@@ -8,6 +8,8 @@ import {
   playlistIdSchema,
   playlistNameSchema,
   positionSchema,
+  slotSchema,
+  templateRequestSchema,
 } from '../../shared/playlists';
 import type { PlaylistRepo } from '../db/playlists';
 import { handle } from '../ipc/handle';
@@ -136,6 +138,40 @@ export function registerPlaylistIpc({ repo, fromOperator, changed }: PlaylistIpc
       return repo.renameHeader(item.data, n.data)
         ? { ok: true, ids: [item.data] }
         : failed('That header no longer exists.');
+    }),
+  );
+
+  handle(IPC.playlists.templates, () => repo.tree(true));
+  handle(IPC.playlists.saveAsTemplate, (e, playlistId, request) =>
+    change(e, () => {
+      const id = playlistIdSchema.safeParse(playlistId);
+      const r = templateRequestSchema.safeParse(request);
+      if (!id.success || !r.success) return failed('A template needs a name (1 to 200 characters).');
+      if (repo.isTemplate(id.data)) return failed('That is a template already.');
+      const made = repo.saveAsTemplate(id.data, r.data.name, r.data.slots);
+      return made ? { ok: true, ids: [made] } : failed('That playlist no longer exists.');
+    }),
+  );
+  handle(IPC.playlists.newFromTemplate, (e, templateId, name, parentId) =>
+    change(e, () => {
+      const id = playlistIdSchema.safeParse(templateId);
+      const n = playlistNameSchema.safeParse(name);
+      const parent = playlistIdSchema.nullable().safeParse(parentId);
+      if (!id.success || !n.success || !parent.success)
+        return failed('A playlist needs a name (1 to 200 characters).');
+      const made = repo.newFromTemplate(id.data, n.data, parent.data);
+      return made ? { ok: true, ids: [made] } : failed('That template, or the folder, no longer exists.');
+    }),
+  );
+  handle(IPC.playlists.addSlot, (e, playlistId, at, slot) =>
+    change(e, () => {
+      const id = playlistIdSchema.safeParse(playlistId);
+      const where = positionSchema.nullable().safeParse(at);
+      const s = slotSchema.safeParse(slot);
+      if (!id.success || !where.success || !s.success)
+        return failed('A slot needs a name (1 to 200 characters).');
+      const made = repo.addSlot(id.data, where.data, s.data.label, s.data.category);
+      return made ? { ok: true, ids: [made] } : failed('That playlist no longer exists.');
     }),
   );
 }

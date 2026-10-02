@@ -44,7 +44,7 @@ import { MessageRepo } from './db/messages';
 import { SettingsRepo } from './db/settings';
 import { DbSlideSource, PresentationRepo } from './db/presentations';
 import { ScreenRepo } from './db/screens';
-import { seedPlaceholders } from './db/seed';
+import { seedPlaceholders, seedTemplates } from './db/seed';
 import { ShowEngine } from './engine/show-engine';
 import { runEngineCommand } from './ipc/engine-ipc';
 import { handle, handlerTimes, lockChannels } from './ipc/handle';
@@ -192,6 +192,7 @@ function openLibrary(): { db: Db } | { error: unknown } {
     const opened = openDatabase(libraryFile());
     try {
       if (seedPlaceholders(opened)) log.info('Added the placeholder presentations');
+      if (seedTemplates(opened)) log.info('Added the example sabha templates');
     } catch (error) {
       opened.close();
       throw error;

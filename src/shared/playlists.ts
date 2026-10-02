@@ -17,6 +17,8 @@ export interface PlaylistNode {
   placeholders: number;
   /** Came from an import (importing the same file again replaces it). */
   imported: boolean;
+  /** A sabha template: a running order to make playlists from, never run itself. */
+  template: boolean;
 }
 
 /** The order a playlist item plays its presentation in. */
@@ -51,8 +53,12 @@ export type PlaylistItemInfo =
       unplayable: string | null;
     }
   | { id: string; kind: 'header'; label: string; color: string | null }
-  /** Something the import could not find: a presentation can be dropped on it. */
-  | { id: string; kind: 'placeholder'; label: string; hint: string | null };
+  /**
+   * A place for a presentation: a slot from a template (with the category
+   * its search starts at, if any), or something the import could not find
+   * (with a hint: the file it named). Fill it by choosing or dropping one.
+   */
+  | { id: string; kind: 'placeholder'; label: string; hint: string | null; category: string | null };
 
 /** What can be added to a playlist. */
 export type NewItem =
@@ -71,6 +77,13 @@ export interface MediaSummary {
 
 export type PlaylistResult = { ok: true; ids: string[] } | { ok: false; message: string };
 
+/** Saving a playlist as a template: its name, and which items become slots (filled each week). */
+export interface TemplateRequest {
+  name: string;
+  /** Items of the playlist that become slots; the rest stay as they are. */
+  slots: string[];
+}
+
 // ---- checks for requests arriving over IPC ----------------------------------------
 
 const id = z.string().min(1).max(128);
@@ -88,6 +101,12 @@ export const newItemsSchema: z.ZodType<NewItem[]> = z
   .min(1)
   .max(500);
 export const positionSchema = z.number().int().min(0).max(100_000);
+export const templateRequestSchema: z.ZodType<TemplateRequest> = z
+  .object({ name: z.string().trim().min(1).max(200), slots: z.array(id).max(1000) })
+  .strict();
+export const slotSchema = z
+  .object({ label: z.string().trim().min(1).max(200), category: z.string().trim().min(1).max(60).nullable() })
+  .strict();
 export const itemOrderSchema: z.ZodType<ItemOrder> = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('presentation') }).strict(),
   z.object({ mode: z.literal('all') }).strict(),

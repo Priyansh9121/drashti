@@ -34,6 +34,7 @@ import type {
   PlaylistItemInfo,
   PlaylistNode,
   PlaylistResult,
+  TemplateRequest,
 } from './playlists';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { PropFields, PropInfo, PropResult } from './props';
@@ -199,6 +200,18 @@ export interface DrashtiBridge {
     fillPlaceholder(itemId: string, presentationId: string): Promise<PlaylistResult>;
     setItemOrder(itemId: string, order: ItemOrder): Promise<PlaylistResult>;
     renameHeader(itemId: string, label: string): Promise<PlaylistResult>;
+    /** The sabha templates, kept apart from the playlists. */
+    templates(): Promise<PlaylistNode[]>;
+    /** A template from a playlist; the items named become slots. */
+    saveAsTemplate(playlistId: string, request: TemplateRequest): Promise<PlaylistResult>;
+    /** A new playlist from a template, in a folder or at the top level, its slots ready to fill. */
+    newFromTemplate(templateId: string, name: string, parentId: string | null): Promise<PlaylistResult>;
+    /** A slot, at a position or the end. */
+    addSlot(
+      playlistId: string,
+      at: number | null,
+      slot: { label: string; category: string | null },
+    ): Promise<PlaylistResult>;
     onChanged(listener: () => void): () => void;
   };
   /** Props: a logo or a fixed line over whatever slide is live. Showing one goes through the engine. */

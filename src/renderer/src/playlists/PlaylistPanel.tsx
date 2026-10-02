@@ -6,10 +6,11 @@ import { useEngine } from '../engine/engine-store';
 import { leaveItem, selectPresentation, useLibrary } from '../library/library-store';
 import { mediaKindIcon, mediaKindLabel, mediaProblem } from '../library/MediaList';
 import { Badge, LiveBadge, MissingBadge, UnplayableBadge } from '../ui/Badge';
-import { IconButton } from '../ui/Button';
+import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import {
   AlertTriangle,
+  BookTemplate,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -20,6 +21,7 @@ import {
   MoreHorizontal,
   Pencil,
   Presentation,
+  SquareDashed,
   Trash2,
 } from '../ui/icons';
 import { controlClass } from '../ui/Field';
@@ -28,8 +30,10 @@ import { Menu, MenuButton, menuPlace } from '../ui/Menu';
 import { Notice } from '../ui/Notice';
 import { rowClass } from '../ui/ListRow';
 import { EmptyState } from '../ui/States';
+import { TabPanel, Tabs } from '../ui/Tabs';
 import { Truncate } from '../ui/Truncate';
 import { dragKind, droppedIds, startDrag } from './drag';
+import { AddSlotDialog, FillSlotDialog, SaveTemplateDialog } from './TemplateDialogs';
 import {
   addHeader,
   addItems,
@@ -40,6 +44,7 @@ import {
   fillPlaceholder,
   markedItems,
   moveItems,
+  newFromTemplate,
   openPlaylist,
   pickItem,
   removeMarkedItems,
@@ -47,8 +52,10 @@ import {
   renameNode,
   requestRemoveNode,
   selectNode,
+  setView,
   startRenaming,
   stopRenaming,
+  templateOpen,
   toggleFolder,
   usePlaylists,
 } from './playlist-store';
@@ -122,6 +129,19 @@ const isRemoveKey = (e: KeyboardEvent, platform: string) =>
 
 function nodeMenu(node: PlaylistNode): MenuEntry[] {
   const rename = { label: 'Rename…', icon: Pencil, onSelect: () => startRenaming(node.id) };
+  if (node.template)
+    return [
+      { label: 'Open', icon: BookTemplate, onSelect: () => void openPlaylist(node.id) },
+      { label: 'New playlist from this', icon: ListPlus, onSelect: () => void newFromTemplate(node.id) },
+      rename,
+      {
+        label: 'Remove…',
+        icon: Trash2,
+        danger: true,
+        separatorBefore: true,
+        onSelect: () => requestRemoveNode(node.id),
+      },
+    ];
   const remove = {
     label: 'Remove…',
     icon: Trash2,
@@ -174,10 +194,7 @@ function PlaylistTree({ platform }: { platform: string }) {
   return (
     <>
       <div className="flex h-11 shrink-0 items-center gap-1 px-3">
-        <h2 className="flex flex-1 items-center gap-1.5 text-2xs font-bold tracking-wider text-muted uppercase">
-          <ListMusic size={14} aria-hidden="true" />
-          Playlists
-        </h2>
+        <ViewTabs />
         <MenuButton
           label="New"
           title="New playlist or folder"
@@ -188,121 +205,209 @@ function PlaylistTree({ platform }: { platform: string }) {
           ]}
         />
       </div>
-      {/* An empty tree is no tree: the note stands on its own until there are playlists. */}
-      {tree.length === 0 && (
-        <div data-testid="playlist-tree" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-          <EmptyState icon={ListMusic} title="No playlists yet" compact>
-            Make one with the New button above, or import a playlist file.
-          </EmptyState>
-        </div>
-      )}
-      <ul
-        role="tree"
-        aria-label="Playlists"
-        data-testid={tree.length > 0 ? 'playlist-tree' : undefined}
-        hidden={tree.length === 0}
-        className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2"
-      >
-        {rows.map(({ node, depth }) => {
-          const open = node.isFolder && !closed.includes(node.id);
-          const indent = { paddingLeft: 8 + depth * 14 };
-          if (renaming === node.id)
+      <TabPanel group="playlist-view" id="playlists" className="flex min-h-0 flex-1 flex-col">
+        {/* An empty tree is no tree: the note stands on its own until there are playlists. */}
+        {tree.length === 0 && (
+          <div data-testid="playlist-tree" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+            <EmptyState icon={ListMusic} title="No playlists yet" compact>
+              Make one with the New button above, or import a playlist file.
+            </EmptyState>
+          </div>
+        )}
+        <ul
+          role="tree"
+          aria-label="Playlists"
+          data-testid={tree.length > 0 ? 'playlist-tree' : undefined}
+          hidden={tree.length === 0}
+          className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2"
+        >
+          {rows.map(({ node, depth }) => {
+            const open = node.isFolder && !closed.includes(node.id);
+            const indent = { paddingLeft: 8 + depth * 14 };
+            if (renaming === node.id)
+              return (
+                <li key={node.id} role="none" className="py-0.5" style={indent}>
+                  <RenameField
+                    value={node.name}
+                    label={node.isFolder ? 'Folder name' : 'Playlist name'}
+                    onDone={(name) => {
+                      if (name === null) stopRenaming();
+                      else void renameNode(node.id, name);
+                    }}
+                  />
+                </li>
+              );
             return (
-              <li key={node.id} role="none" className="py-0.5" style={indent}>
-                <RenameField
-                  value={node.name}
-                  label={node.isFolder ? 'Folder name' : 'Playlist name'}
-                  onDone={(name) => {
-                    if (name === null) stopRenaming();
-                    else void renameNode(node.id, name);
+              <li key={node.id} role="none" className="group relative flex items-center">
+                <button
+                  type="button"
+                  role="treeitem"
+                  data-testid="playlist-node"
+                  data-kind={node.isFolder ? 'folder' : 'playlist'}
+                  data-node-id={node.id}
+                  aria-level={depth + 1}
+                  aria-expanded={node.isFolder ? open : undefined}
+                  aria-selected={selectedNodeId === node.id}
+                  style={indent}
+                  onClick={() => {
+                    if (node.isFolder) toggleFolder(node.id);
+                    else void openPlaylist(node.id);
                   }}
-                />
+                  onContextMenu={(e) => {
+                    openMenu(e, node);
+                  }}
+                  onKeyDown={(e) => {
+                    if (!isRemoveKey(e, platform)) return;
+                    e.preventDefault();
+                    requestRemoveNode(node.id);
+                  }}
+                  onDragOver={(e) => {
+                    if (node.isFolder || !fromLibrary(e)) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                    setDropOn(node.id);
+                  }}
+                  onDragLeave={() => {
+                    setDropOn(null);
+                  }}
+                  onDrop={(e) => {
+                    setDropOn(null);
+                    if (node.isFolder || !fromLibrary(e)) return;
+                    e.preventDefault();
+                    void addItems(node.id, null, droppedItems(e));
+                  }}
+                  className={cx(
+                    rowClass({ selected: selectedNodeId === node.id, dropTarget: dropOn === node.id }),
+                    'flex min-h-8 min-w-0 items-center gap-1.5 py-1 pr-9 text-sm',
+                  )}
+                >
+                  <span aria-hidden="true" className="flex w-4 shrink-0 justify-center text-muted">
+                    {node.isFolder ? open ? <ChevronDown size={14} /> : <ChevronRight size={14} /> : null}
+                  </span>
+                  <span aria-hidden="true" className="shrink-0 text-muted">
+                    {node.isFolder ? <Folder size={15} /> : <ListMusic size={15} />}
+                  </span>
+                  <Truncate text={node.name} className={cx('flex-1', node.isFolder && 'font-medium')} />
+                  {node.placeholders > 0 && (
+                    <Badge
+                      tone="warning"
+                      data-testid="node-placeholders"
+                      title={`${node.placeholders} item(s) not found at import`}
+                    >
+                      {node.placeholders} missing
+                    </Badge>
+                  )}
+                  {!node.isFolder && (
+                    <span className="shrink-0 text-xs text-muted tabular-nums">{node.itemCount}</span>
+                  )}
+                </button>
+                {/* For the mouse: the keyboard opens the same menu on the playlist itself (Shift+F10 or
+                  the Menu key), since a tree may hold only its items. */}
+                <span className="absolute right-1 opacity-0 group-hover:opacity-100" aria-hidden="true">
+                  <IconButton
+                    icon={MoreHorizontal}
+                    label={`More for ${node.name}`}
+                    size="sm"
+                    tabIndex={-1}
+                    aria-haspopup="menu"
+                    onClick={(e) => {
+                      selectNode(node.id);
+                      const box = e.currentTarget.getBoundingClientRect();
+                      setMenu({ at: { x: box.left, y: box.bottom + 2 }, node });
+                    }}
+                  />
+                </span>
               </li>
             );
-          return (
-            <li key={node.id} role="none" className="group relative flex items-center">
-              <button
-                type="button"
-                role="treeitem"
-                data-testid="playlist-node"
-                data-kind={node.isFolder ? 'folder' : 'playlist'}
-                data-node-id={node.id}
-                aria-level={depth + 1}
-                aria-expanded={node.isFolder ? open : undefined}
-                aria-selected={selectedNodeId === node.id}
-                style={indent}
-                onClick={() => {
-                  if (node.isFolder) toggleFolder(node.id);
-                  else void openPlaylist(node.id);
-                }}
-                onContextMenu={(e) => {
-                  openMenu(e, node);
-                }}
-                onKeyDown={(e) => {
-                  if (!isRemoveKey(e, platform)) return;
-                  e.preventDefault();
-                  requestRemoveNode(node.id);
-                }}
-                onDragOver={(e) => {
-                  if (node.isFolder || !fromLibrary(e)) return;
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'copy';
-                  setDropOn(node.id);
-                }}
-                onDragLeave={() => {
-                  setDropOn(null);
-                }}
-                onDrop={(e) => {
-                  setDropOn(null);
-                  if (node.isFolder || !fromLibrary(e)) return;
-                  e.preventDefault();
-                  void addItems(node.id, null, droppedItems(e));
-                }}
-                className={cx(
-                  rowClass({ selected: selectedNodeId === node.id, dropTarget: dropOn === node.id }),
-                  'flex min-h-8 min-w-0 items-center gap-1.5 py-1 pr-9 text-sm',
-                )}
-              >
-                <span aria-hidden="true" className="flex w-4 shrink-0 justify-center text-muted">
-                  {node.isFolder ? open ? <ChevronDown size={14} /> : <ChevronRight size={14} /> : null}
-                </span>
-                <span aria-hidden="true" className="shrink-0 text-muted">
-                  {node.isFolder ? <Folder size={15} /> : <ListMusic size={15} />}
-                </span>
-                <Truncate text={node.name} className={cx('flex-1', node.isFolder && 'font-medium')} />
-                {node.placeholders > 0 && (
-                  <Badge
-                    tone="warning"
-                    data-testid="node-placeholders"
-                    title={`${node.placeholders} item(s) not found at import`}
-                  >
-                    {node.placeholders} missing
-                  </Badge>
-                )}
-                {!node.isFolder && (
-                  <span className="shrink-0 text-xs text-muted tabular-nums">{node.itemCount}</span>
-                )}
-              </button>
-              {/* For the mouse: the keyboard opens the same menu on the playlist itself (Shift+F10 or
-                  the Menu key), since a tree may hold only its items. */}
-              <span className="absolute right-1 opacity-0 group-hover:opacity-100" aria-hidden="true">
-                <IconButton
-                  icon={MoreHorizontal}
-                  label={`More for ${node.name}`}
-                  size="sm"
-                  tabIndex={-1}
-                  aria-haspopup="menu"
-                  onClick={(e) => {
-                    selectNode(node.id);
-                    const box = e.currentTarget.getBoundingClientRect();
-                    setMenu({ at: { x: box.left, y: box.bottom + 2 }, node });
+          })}
+        </ul>
+      </TabPanel>
+      {menu && (
+        <Menu
+          at={menu.at}
+          label={menu.node.name}
+          entries={nodeMenu(menu.node)}
+          onClose={() => {
+            setMenu(null);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/** The week's playlists, or the sabha templates (kept apart, so a template is never run by mistake). */
+function ViewTabs() {
+  const view = usePlaylists((s) => s.view);
+  return (
+    <Tabs
+      group="playlist-view"
+      label="Playlists or templates"
+      size="sm"
+      className="min-w-0 flex-1"
+      value={view}
+      onChange={setView}
+      items={[
+        { id: 'playlists', label: 'Playlists', icon: ListMusic },
+        { id: 'templates', label: 'Templates', icon: BookTemplate },
+      ]}
+    />
+  );
+}
+
+/** The sabha templates: running orders to make playlists from. */
+function TemplateList() {
+  const templates = usePlaylists((s) => s.templates);
+  const [menu, setMenu] = useState<{ at: MenuPlace; node: PlaylistNode } | null>(null);
+  return (
+    <>
+      <div className="flex h-11 shrink-0 items-center gap-1 px-3">
+        <ViewTabs />
+      </div>
+      <TabPanel group="playlist-view" id="templates" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+        <p className="px-1 pb-2 text-xs text-muted">
+          A template is a running order with slots to fill. Make the week’s playlist from one; a template
+          itself never goes on the screens.
+        </p>
+        {templates.length === 0 ? (
+          <EmptyState icon={BookTemplate} title="No templates yet" compact>
+            Open a playlist and choose Save as template in its menu.
+          </EmptyState>
+        ) : (
+          <ul className="space-y-1" aria-label="Templates" data-testid="template-list">
+            {templates.map((t) => (
+              <li key={t.id} className="flex items-center gap-1">
+                <button
+                  type="button"
+                  data-testid="template-node"
+                  className={cx(
+                    rowClass({}),
+                    'flex min-h-9 min-w-0 flex-1 items-center gap-1.5 px-2 text-sm',
+                  )}
+                  onClick={() => void openPlaylist(t.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setMenu({ at: menuPlace(e), node: t });
                   }}
-                />
-              </span>
-            </li>
-          );
-        })}
-      </ul>
+                >
+                  <BookTemplate size={15} aria-hidden="true" className="shrink-0 text-muted" />
+                  <Truncate text={t.name} className="flex-1" />
+                  <span className="shrink-0 text-xs text-muted tabular-nums">{t.itemCount}</span>
+                </button>
+                <Button
+                  size="sm"
+                  icon={ListPlus}
+                  data-testid="new-from-template"
+                  aria-label={`New playlist from ${t.name}`}
+                  onClick={() => void newFromTemplate(t.id)}
+                >
+                  Use
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </TabPanel>
       {menu && (
         <Menu
           at={menu.at}
@@ -387,6 +492,20 @@ function ItemBody({ item, live }: { item: PlaylistItemInfo; live: boolean }) {
       );
     }
     case 'placeholder':
+      if (item.hint === null)
+        return (
+          <span className="flex items-center gap-2">
+            <SquareDashed size={15} aria-hidden="true" className="shrink-0 text-muted" />
+            <span className="min-w-0 flex-1">
+              <span data-label title={item.label} className="block truncate text-sm">
+                {item.label}
+              </span>
+              <span className="block truncate text-xs text-muted">
+                A slot{item.category ? ` · ${item.category}` : ''} · choose what goes here
+              </span>
+            </span>
+          </span>
+        );
       return (
         <span className="flex items-center gap-2">
           <AlertTriangle size={15} aria-hidden="true" className="shrink-0 text-warning" />
@@ -433,7 +552,10 @@ function itemMenu(item: PlaylistItemInfo): MenuEntry[] {
 }
 
 function PlaylistItems({ platform, openId }: { platform: string; openId: string }) {
-  const node = usePlaylists((s) => s.tree.find((n) => n.id === openId));
+  const node = usePlaylists(
+    (s) => s.tree.find((n) => n.id === openId) ?? s.templates.find((n) => n.id === openId),
+  );
+  const isTemplate = usePlaylists(templateOpen);
   const items = usePlaylists((s) => s.items);
   const marked = usePlaylists((s) => s.marked);
   const renaming = usePlaylists((s) => s.renaming);
@@ -523,9 +645,39 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
           icon={MoreHorizontal}
           entries={[
             { label: 'Add a header', icon: ListPlus, onSelect: () => void addHeader() },
-            { label: 'Rename playlist…', icon: Pencil, onSelect: () => startRenaming(openId) },
             {
-              label: 'Remove playlist…',
+              label: 'Add a slot…',
+              icon: SquareDashed,
+              onSelect: () => {
+                usePlaylists.setState({ addingSlot: true });
+              },
+            },
+            ...(isTemplate
+              ? [
+                  {
+                    label: 'New playlist from this',
+                    icon: ListPlus,
+                    separatorBefore: true,
+                    onSelect: () => void newFromTemplate(openId),
+                  },
+                ]
+              : [
+                  {
+                    label: 'Save as template…',
+                    icon: BookTemplate,
+                    separatorBefore: true,
+                    onSelect: () => {
+                      usePlaylists.setState({ savingTemplate: openId });
+                    },
+                  },
+                ]),
+            {
+              label: isTemplate ? 'Rename template…' : 'Rename playlist…',
+              icon: Pencil,
+              onSelect: () => startRenaming(openId),
+            },
+            {
+              label: isTemplate ? 'Remove template…' : 'Remove playlist…',
               icon: Trash2,
               danger: true,
               separatorBefore: true,
@@ -534,6 +686,21 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
           ]}
         />
       </div>
+      {isTemplate && (
+        <Notice
+          tone="info"
+          compact
+          className="mx-2 mb-2"
+          data-testid="template-banner"
+          actions={
+            <Button size="sm" icon={ListPlus} onClick={() => void newFromTemplate(openId)}>
+              New playlist from this
+            </Button>
+          }
+        >
+          A template: make a playlist from it to run a sabha. It never goes on the screens itself.
+        </Notice>
+      )}
       <ul
         aria-label={`Items in ${node?.name ?? 'the playlist'}`}
         data-testid="playlist-items"
@@ -568,7 +735,12 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                 />
               </li>
             );
-          const look = item.kind === 'placeholder' ? 'border-dashed border-warning/70! bg-warning-bg/60' : '';
+          const look =
+            item.kind !== 'placeholder'
+              ? ''
+              : item.hint === null
+                ? 'border-dashed border-line-strong!'
+                : 'border-dashed border-warning/70! bg-warning-bg/60';
           return (
             <li key={item.id} data-item-index={index} className={`rounded-md ${line}`}>
               <button
@@ -582,9 +754,11 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                 aria-pressed={isMarked}
                 aria-current={shownItem === item.id ? 'true' : undefined}
                 aria-label={
-                  item.kind === 'placeholder'
-                    ? `Not found: ${item.label}. Drag a presentation here to replace it.`
-                    : undefined
+                  item.kind !== 'placeholder'
+                    ? undefined
+                    : item.hint === null
+                      ? `Slot: ${item.label}${item.category ? ` (${item.category})` : ''}. Press to choose what goes here.`
+                      : `Not found: ${item.label}. Drag a presentation here to replace it.`
                 }
                 onClick={(e) => {
                   const mods = { toggle: platform === 'darwin' ? e.metaKey : e.ctrlKey, range: e.shiftKey };
@@ -657,10 +831,20 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
 
 export function PlaylistPanel({ platform }: { platform: string }) {
   const openId = usePlaylists((s) => s.openId);
+  const view = usePlaylists((s) => s.view);
   const problem = usePlaylists((s) => s.problem);
   return (
     <section aria-label="Playlists" data-testid="playlists" className="flex min-h-0 flex-1 flex-col">
-      {openId ? <PlaylistItems platform={platform} openId={openId} /> : <PlaylistTree platform={platform} />}
+      {openId ? (
+        <PlaylistItems platform={platform} openId={openId} />
+      ) : view === 'templates' ? (
+        <TemplateList />
+      ) : (
+        <PlaylistTree platform={platform} />
+      )}
+      <SaveTemplateDialog />
+      <AddSlotDialog />
+      <FillSlotDialog />
       {problem && (
         <Notice tone="warning" compact className="mx-2 mb-2" onDismiss={dismissProblem}>
           {problem}

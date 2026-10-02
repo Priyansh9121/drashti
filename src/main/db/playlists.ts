@@ -12,6 +12,7 @@ interface ItemRow {
   label: string;
   color: string | null;
   hint: string | null;
+  category: string | null;
   presentation_id: string | null;
   media_id: string | null;
   order_mode: 'presentation' | 'arrangement' | 'all';
@@ -57,9 +58,22 @@ function itemInfo(r: ItemRow): PlaylistItemInfo {
     case 'header':
       return { id: r.id, kind: 'header', label: r.label, color: r.color };
     case 'placeholder':
-      return { id: r.id, kind: 'placeholder', label: r.label, hint: r.hint };
+      return { id: r.id, kind: 'placeholder', label: r.label, hint: r.hint, category: r.category };
   }
 }
+
+/** An item copied into a template, or from one into a new playlist. */
+type CopyItem =
+  | { kind: 'header'; label: string; color: string | null }
+  | {
+      kind: 'presentation';
+      presentationId: string;
+      label: string;
+      orderMode: string;
+      arrangementId: string | null;
+    }
+  | { kind: 'media'; mediaId: string; label: string }
+  | { kind: 'placeholder'; label: string; hint: string | null; category: string | null };
 
 /*
  * Playlists and folders of playlists: imported ones (replaced as a whole
@@ -237,17 +251,20 @@ export class PlaylistRepo {
 
   // ---- the operator's editing -----------------------------------------------------
 
-  /** Every playlist and folder not removed, each parent before its children, in order. */
-  tree(): PlaylistNode[] {
+  /**
+   * Every playlist and folder not removed, each parent before its children,
+   * in order; or (templates) the sabha templates, kept apart from them.
+   */
+  tree(templates = false): PlaylistNode[] {
     const rows = this.db
       .prepare(
         `SELECT p.id, p.name, p.is_folder, p.parent_id, p.source_kind,
                 (SELECT COUNT(*) FROM playlist_items i WHERE i.playlist_id = p.id AND i.deleted_at IS NULL) AS item_count,
                 (SELECT COUNT(*) FROM playlist_items i
                   WHERE i.playlist_id = p.id AND i.deleted_at IS NULL AND i.kind = 'placeholder') AS placeholders
-           FROM playlists p WHERE p.deleted_at IS NULL ORDER BY p.position, p.rowid`,
+           FROM playlists p WHERE p.deleted_at IS NULL AND p.is_template = ? ORDER BY p.position, p.rowid`,
       )
-      .all() as {
+      .all(templates ? 1 : 0) as {
       id: string;
       name: string;
       is_folder: number;
@@ -269,6 +286,7 @@ export class PlaylistRepo {
           itemCount: r.item_count,
           placeholders: r.placeholders,
           imported: r.source_kind !== null,
+          template: templates,
         });
         if (r.is_folder === 1) walk(r.id);
       }
@@ -282,7 +300,7 @@ export class PlaylistRepo {
     return (
       this.db
         .prepare(
-          `SELECT i.id, i.kind, i.label, i.color, i.hint, i.presentation_id, i.media_id, i.order_mode, i.arrangement_id,
+          `SELECT i.id, i.kind, i.label, i.color, i.hint, i.category, i.presentation_id, i.media_id, i.order_mode, i.arrangement_id,
                   p.name AS presentation_name, p.deleted_at AS presentation_deleted, a.name AS arrangement_name,
                   m.kind AS media_kind, m.missing AS media_missing, m.playable AS media_playable, m.format AS media_format
              FROM playlist_items i
@@ -298,7 +316,8 @@ export class PlaylistRepo {
 
   /** A playlist's items as the show engine plays them, or null if the playlist does not exist (or was removed). */
   playItems(playlistId: string): PlayItem[] | null {
-    if (!this.isOpenPlaylist(playlistId, false)) return null;
+    // A template is never run: only playlists made from it are.
+    if (!this.isOpenPlaylist(playlistId, false) || this.isTemplate(playlistId)) return null;
     return this.itemsOf(playlistId).map((item): PlayItem => {
       switch (item.kind) {
         case 'presentation':
@@ -328,9 +347,23 @@ export class PlaylistRepo {
         case 'header':
           return { id: item.id, kind: 'skip', why: 'A header has nothing to show' };
         case 'placeholder':
-          return { id: item.id, kind: 'skip', why: `“${item.label}” was not found at import` };
+          return {
+            id: item.id,
+            kind: 'skip',
+            why:
+              item.hint === null
+                ? `“${item.label}” is not filled in yet`
+                : `“${item.label}” was not found at import`,
+          };
       }
     });
+  }
+
+  /** Whether a playlist is a sabha template. */
+  isTemplate(id: string): boolean {
+    const row = this.db.prepare('SELECT is_template FROM playlists WHERE id = ?').get(id) as
+      { is_template: number } | undefined;
+    return row?.is_template === 1;
   }
 
   private isOpenPlaylist(id: string, folder: boolean): boolean {
@@ -340,9 +373,13 @@ export class PlaylistRepo {
     return row?.is_folder === (folder ? 1 : 0);
   }
 
-  /** A new playlist or folder, last in its folder (or at the top level). Null if that folder is gone. */
-  create(name: string, parentId: string | null, isFolder: boolean): string | null {
-    if (parentId !== null && !this.isOpenPlaylist(parentId, true)) return null;
+  /**
+   * A new playlist or folder, last in its folder (or at the top level); or
+   * a template (always at the top level, apart from the playlists). Null if
+   * that folder is gone.
+   */
+  create(name: string, parentId: string | null, isFolder: boolean, template = false): string | null {
+    if (parentId !== null && (template || !this.isOpenPlaylist(parentId, true))) return null;
     const id = randomUUID();
     this.db.transaction(() => {
       const next = (
@@ -353,10 +390,160 @@ export class PlaylistRepo {
           .get(parentId) as { next: number }
       ).next;
       this.db
-        .prepare('INSERT INTO playlists (id, parent_id, name, is_folder, position) VALUES (?, ?, ?, ?, ?)')
-        .run(id, parentId, name, isFolder ? 1 : 0, next);
+        .prepare(
+          'INSERT INTO playlists (id, parent_id, name, is_folder, position, is_template) VALUES (?, ?, ?, ?, ?, ?)',
+        )
+        .run(id, parentId, name, isFolder && !template ? 1 : 0, next, template ? 1 : 0);
     })();
     return id;
+  }
+
+  /** Copy items into a playlist at its end (headers, presentations, media and slots), in one go. */
+  private copyItems(to: string, items: readonly CopyItem[]): void {
+    const insert = this.db.prepare(
+      `INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, media_id, label, color, hint, category, order_mode, arrangement_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    const start = this.order(to).length;
+    items.forEach((item, i) => {
+      insert.run(
+        randomUUID(),
+        to,
+        start + i,
+        item.kind,
+        item.kind === 'presentation' ? item.presentationId : null,
+        item.kind === 'media' ? item.mediaId : null,
+        item.label,
+        item.kind === 'header' ? item.color : null,
+        item.kind === 'placeholder' ? item.hint : null,
+        item.kind === 'placeholder' ? item.category : null,
+        item.kind === 'presentation' ? item.orderMode : 'presentation',
+        item.kind === 'presentation' ? item.arrangementId : null,
+      );
+    });
+  }
+
+  /** A playlist's items as stored, for copying. */
+  private storedItems(playlistId: string) {
+    return this.db
+      .prepare(
+        `SELECT i.id, i.kind, i.label, i.color, i.hint, i.category, i.presentation_id, i.media_id, i.order_mode, i.arrangement_id,
+                k.category AS kirtan_category, p.deleted_at AS presentation_deleted
+           FROM playlist_items i
+           LEFT JOIN presentations p ON p.id = i.presentation_id
+           LEFT JOIN kirtans k ON k.presentation_id = i.presentation_id
+          WHERE i.playlist_id = ? AND i.deleted_at IS NULL ORDER BY i.position, i.rowid`,
+      )
+      .all(playlistId) as {
+      id: string;
+      kind: 'presentation' | 'media' | 'header' | 'placeholder';
+      label: string;
+      color: string | null;
+      hint: string | null;
+      category: string | null;
+      presentation_id: string | null;
+      media_id: string | null;
+      order_mode: string;
+      arrangement_id: string | null;
+      kirtan_category: string | null;
+      presentation_deleted: string | null;
+    }[];
+  }
+
+  /**
+   * A new template from a playlist: its headers, media and presentations as
+   * they are, except the items named as slots, which become slots named
+   * after the kirtan's category (else the item), with that category for the
+   * search. Placeholders stay slots. Null if the playlist is gone.
+   */
+  saveAsTemplate(playlistId: string, name: string, slots: readonly string[]): string | null {
+    if (!this.isOpenPlaylist(playlistId, false)) return null;
+    return this.db.transaction(() => {
+      const id = this.create(name, null, false, true);
+      if (!id) return null;
+      const slot = new Set(slots);
+      this.copyItems(
+        id,
+        this.storedItems(playlistId).flatMap((r): CopyItem[] => {
+          if (r.kind === 'header') return [{ kind: 'header', label: r.label, color: r.color }];
+          if (r.kind === 'media' && r.media_id)
+            return [{ kind: 'media', mediaId: r.media_id, label: r.label }];
+          if (r.kind === 'placeholder' || (r.kind === 'presentation' && slot.has(r.id)))
+            return [
+              {
+                kind: 'placeholder',
+                label: r.kind === 'placeholder' ? r.label : (r.kirtan_category ?? r.label),
+                hint: null,
+                category: r.kind === 'placeholder' ? r.category : r.kirtan_category,
+              },
+            ];
+          if (r.kind === 'presentation' && r.presentation_id && r.presentation_deleted === null)
+            return [
+              {
+                kind: 'presentation',
+                presentationId: r.presentation_id,
+                label: r.label,
+                orderMode: r.order_mode,
+                arrangementId: r.arrangement_id,
+              },
+            ];
+          return [];
+        }),
+      );
+      return id;
+    })();
+  }
+
+  /**
+   * A new playlist from a template, in this folder (or at the top level):
+   * every item of the template, with its slots ready to fill. Null if the
+   * template or the folder is gone.
+   */
+  newFromTemplate(templateId: string, name: string, parentId: string | null): string | null {
+    if (!this.isTemplate(templateId) || !this.isOpenPlaylist(templateId, false)) return null;
+    return this.db.transaction(() => {
+      const id = this.create(name, parentId, false);
+      if (!id) return null;
+      this.copyItems(
+        id,
+        this.storedItems(templateId).flatMap((r): CopyItem[] => {
+          if (r.kind === 'header') return [{ kind: 'header', label: r.label, color: r.color }];
+          if (r.kind === 'media' && r.media_id)
+            return [{ kind: 'media', mediaId: r.media_id, label: r.label }];
+          if (r.kind === 'placeholder')
+            return [{ kind: 'placeholder', label: r.label, hint: null, category: r.category }];
+          if (r.presentation_id && r.presentation_deleted === null)
+            return [
+              {
+                kind: 'presentation',
+                presentationId: r.presentation_id,
+                label: r.label,
+                orderMode: r.order_mode,
+                arrangementId: r.arrangement_id,
+              },
+            ];
+          return [];
+        }),
+      );
+      return id;
+    })();
+  }
+
+  /** A slot (a place to fill each time) in a playlist or template, at a position or the end. */
+  addSlot(playlistId: string, at: number | null, label: string, category: string | null): string | null {
+    if (!this.isOpenPlaylist(playlistId, false)) return null;
+    return this.db.transaction(() => {
+      const id = randomUUID();
+      this.db
+        .prepare(
+          "INSERT INTO playlist_items (id, playlist_id, position, kind, label, category) VALUES (?, ?, 0, 'placeholder', ?, ?)",
+        )
+        .run(id, playlistId, label, category);
+      const current = this.order(playlistId).filter((x) => x !== id);
+      const where = at === null ? current.length : Math.max(0, Math.min(at, current.length));
+      this.renumber([...current.slice(0, where), id, ...current.slice(where)]);
+      return id;
+    })();
   }
 
   rename(id: string, name: string): boolean {
@@ -502,7 +689,7 @@ export class PlaylistRepo {
     return (
       this.db
         .prepare(
-          `UPDATE playlist_items SET kind = 'presentation', presentation_id = ?, label = ?, hint = NULL,
+          `UPDATE playlist_items SET kind = 'presentation', presentation_id = ?, label = ?, hint = NULL, category = NULL,
                   order_mode = 'presentation', arrangement_id = NULL
             WHERE id = ? AND kind = 'placeholder' AND deleted_at IS NULL`,
         )
