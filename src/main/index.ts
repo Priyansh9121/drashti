@@ -685,6 +685,7 @@ function start(): void {
     lookFor: (themeId, size) => themeLook(themes.themeOrDefault(themeId), size.width, size.height),
     changed: contentChanged,
     mediaExists: (mediaId) => media.file(mediaId) !== null,
+    settings,
   });
   registerThemesIpc({
     themes,

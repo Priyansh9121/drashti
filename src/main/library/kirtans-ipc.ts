@@ -1,14 +1,18 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { IPC } from '../../shared/ipc';
-import type { KirtanResult, TracksResult } from '../../shared/kirtans';
+import type { KirtanResult, MakeTranslitResult, TracksResult } from '../../shared/kirtans';
 import { cleanDetails, kirtanDetailsSchema, trackEditsSchema } from '../../shared/kirtans';
 import { idSchema } from '../../shared/model-schema';
 import type { SlideLook } from '../../shared/slide-edit';
+import { TRANSLIT_STYLES, type TranslitStyle } from '../../shared/translit';
+import { z } from 'zod';
+import type { SettingsRepo } from '../db/settings';
 import { kirtanLangs } from '../db/content';
 import type { PresentationRepo } from '../db/presentations';
 import { handle } from '../ipc/handle';
 import type { Revisions } from './revisions';
 import { applyTrackEdits, detailsOf, trackSlidesOf, withDetails } from './tracks';
+import { planTransliteration } from './make-translit';
 
 /*
  * The kirtan requests: anyone of Drashti's pages may read a kirtan's words
@@ -27,6 +31,16 @@ export interface KirtansIpcDeps {
   changed: (presentationIds: string[]) => void;
   /** Is there a media item with this id (a kirtan's recording)? */
   mediaExists: (mediaId: string) => boolean;
+  settings: SettingsRepo;
+}
+
+const TRANSLIT_STYLE = 'translitStyle';
+const styleSchema = z.enum(TRANSLIT_STYLES);
+
+/** How transliteration is made: plain letters until the operator chooses accent marks. */
+export function translitStyle(settings: SettingsRepo): TranslitStyle {
+  const stored = styleSchema.safeParse(settings.get(TRANSLIT_STYLE));
+  return stored.success ? stored.data : 'plain';
 }
 
 const onlyOperator = { ok: false as const, message: 'Only the operator window can change kirtans.' };
@@ -39,6 +53,7 @@ export function registerKirtansIpc({
   lookFor,
   changed,
   mediaExists,
+  settings,
 }: KirtansIpcDeps): void {
   handle(IPC.kirtans.tracks, (_e, presentationId): TracksResult => {
     const id = idSchema.safeParse(presentationId);
@@ -86,5 +101,62 @@ export function registerKirtansIpc({
     const revisionId = revisions.keep([before]);
     changed([id.data]);
     return { ok: true, revisionId, changed: 0 };
+  });
+
+  handle(IPC.kirtans.getTranslitStyle, () => translitStyle(settings));
+
+  handle(IPC.kirtans.setTranslitStyle, (e, style) => {
+    if (!fromOperator(e)) return onlyOperator;
+    const parsed = styleSchema.safeParse(style);
+    if (!parsed.success) return { ok: false as const, message: 'That is not a transliteration style.' };
+    settings.set(TRANSLIT_STYLE, parsed.data);
+    return { ok: true as const, style: parsed.data };
+  });
+
+  handle(IPC.kirtans.makeTransliteration, (e, presentationId, style, manual): MakeTranslitResult => {
+    if (!fromOperator(e)) return onlyOperator;
+    const id = idSchema.safeParse(presentationId);
+    const s = styleSchema.safeParse(style);
+    const m = z.enum(['ask', 'keep', 'replace']).safeParse(manual);
+    if (!id.success || !s.success || !m.success)
+      return { ok: false, message: 'The transliteration cannot be made like that.' };
+    const before = presentations.content(id.data);
+    if (!before) return gone;
+    if (!before.kirtan) return { ok: false, message: 'Only a kirtan has a transliteration track.' };
+    settings.set(TRANSLIT_STYLE, s.data);
+    const plan = planTransliteration(before, s.data, m.data === 'replace');
+    // Lines changed by hand are never replaced without asking first.
+    if (m.data === 'ask' && plan.manual.length > 0)
+      return {
+        ok: false,
+        message: 'Some transliteration lines were changed by hand.',
+        ask: {
+          count: plan.manual.length,
+          examples: plan.manual.slice(0, 3).map(({ number, now, made }) => ({ number, now, made })),
+        },
+      };
+    const replaced = m.data === 'replace' ? plan.manual.length : 0;
+    const counts = {
+      added: plan.added,
+      renewed: plan.renewed,
+      same: plan.same,
+      kept: plan.manual.length - replaced,
+      replaced,
+      noSource: plan.noSource,
+    };
+    const { rows } = applyTrackEdits(before, plan.edits, lookFor(before.themeId, before));
+    const after = { ...rows, autoLines: plan.autoLines };
+    const sameMarks =
+      JSON.stringify(
+        [...before.autoLines].sort((a, b) => (a.slide_id + a.lang).localeCompare(b.slide_id + b.lang)),
+      ) ===
+      JSON.stringify(
+        [...plan.autoLines].sort((a, b) => (a.slide_id + a.lang).localeCompare(b.slide_id + b.lang)),
+      );
+    if (plan.edits.length === 0 && sameMarks) return { ok: true, revisionId: null, ...counts };
+    presentations.setContent(after);
+    const revisionId = revisions.keep([before]);
+    changed([id.data]);
+    return { ok: true, revisionId, ...counts };
   });
 }

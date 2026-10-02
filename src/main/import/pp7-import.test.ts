@@ -73,6 +73,40 @@ function setup() {
 }
 
 describe('importing ProPresenter 7 kirtans', () => {
+  it('tells plain transliteration in a box of its own from English, by reading it', async () => {
+    const t = setup();
+    const white: [number, number, number] = [255, 255, 255];
+    const rect = (y: number) => [100, y, 1720, 150];
+    t.write(
+      'Libraries/Default/Placeholder Boxes.pro',
+      pp7Presentation({
+        uuid: 'P7-BOXES',
+        name: 'Placeholder Boxes',
+        groups: [
+          {
+            name: 'Verse',
+            uuid: 'G-B',
+            slides: [
+              {
+                id: 'b1',
+                text: [
+                  { rtf: cocoaRtf([['ઘર અને મંદિર', 72, white]]), rect: rect(200) },
+                  { rtf: cocoaRtf([['Ghar ane mandir', 60, white]]), rect: rect(400) },
+                  { rtf: cocoaRtf([['Home and temple', 50, white]]), rect: rect(600) },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const { report } = await t.run([t.source]);
+    const item = report?.items.find((i) => i.format === 'pp7');
+    const doc = t.presentations.get(item?.target?.id ?? '');
+    expect(doc?.kirtan?.tracks).toEqual(['en', 'gu', 'translit']);
+    expect(item?.issues.find((i) => i.code === 'kirtan')?.message).toContain('Transliteration (every slide)');
+  });
+
   it('fills the kavi from the artist field, and leaves legacy-font text in no language', async () => {
     const t = setup();
     const white: [number, number, number] = [255, 255, 255];

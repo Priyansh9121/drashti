@@ -113,6 +113,8 @@ export interface TrackSlide {
   lines: Partial<Record<Lang, string[]>>;
   /** Words typed in a legacy font are on it: shown as they are, not in any track. */
   legacy: boolean;
+  /** Languages whose lines here Drashti made (transliteration), still as it made them. */
+  made: Lang[];
 }
 
 export type TracksResult =
@@ -144,6 +146,30 @@ export const trackEditsSchema = z
   )
   .min(1)
   .max(10_000);
+
+/** What to do with transliteration lines the operator changed, when making the track again. */
+export type ManualLines = 'ask' | 'keep' | 'replace';
+
+export type MakeTranslitResult =
+  | {
+      ok: true;
+      /** Null when nothing changed. */
+      revisionId: string | null;
+      /** Filled in where a slide had none; made again; already right; the operator's kept; replaced. */
+      added: number;
+      renewed: number;
+      same: number;
+      kept: number;
+      replaced: number;
+      /** Slides with no Gujarati or Hindi words to make it from. */
+      noSource: number;
+    }
+  | {
+      ok: false;
+      message: string;
+      /** Nothing changed: these lines were changed by hand; ask whether to keep them or replace them. */
+      ask?: { count: number; examples: { number: number; now: string; made: string }[] };
+    };
 
 /** A change to a kirtan: the revision Undo brings back (null when nothing changed), and how many slides changed. */
 export type KirtanResult =

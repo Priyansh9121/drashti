@@ -43,6 +43,8 @@ function TrackCell({ slide, lang, showName }: { slide: TrackSlide; lang: Lang; s
   const value = typed ?? cellText(slide, lang);
   const missing = value.trim() === '';
   const lines = Math.max(1, value.split('\n').length);
+  // Made by Drashti (transliteration), and not changed here yet: typing makes it the operator's own.
+  const made = slide.made.includes(lang) && (typed === undefined || typed === cellText(slide, lang));
   return (
     <label className="flex min-w-0 flex-col gap-1" data-testid="track-cell" data-lang={lang}>
       {showName && (
@@ -75,6 +77,11 @@ function TrackCell({ slide, lang, showName }: { slide: TrackSlide; lang: Lang; s
           missing && 'border-dashed border-warning/70 bg-warning-bg/30',
         )}
       />
+      {made && (
+        <span className="text-2xs text-muted" data-testid="track-made">
+          Made by Drashti: change it and it is yours
+        </span>
+      )}
     </label>
   );
 }
