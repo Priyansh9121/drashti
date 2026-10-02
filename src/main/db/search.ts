@@ -1,4 +1,5 @@
-import type { SearchHit, SearchResult } from '../../shared/search';
+import { occasionsFrom } from '../../shared/kirtans';
+import type { KirtanField, SearchHit, SearchResult } from '../../shared/search';
 import { ftsQuery, matchesAll, SEARCH_LIMIT, searchWords } from '../../shared/search';
 import type { TextRun } from '../../shared/model';
 import type { Statement } from 'better-sqlite3';
@@ -6,9 +7,10 @@ import type { Db } from './database';
 
 /**
  * Bump to rebuild every library's index at the next start (when what is
- * indexed changes). 2: kirtan lines are only in the slides' words (migration 11).
+ * indexed changes). 2: kirtan lines are only in the slides' words
+ * (migration 11). 3: a kirtan's details (migration 13).
  */
-export const SEARCH_VERSION = 2;
+export const SEARCH_VERSION = 3;
 const VERSION_KEY = 'search.version';
 
 interface TextProps {
@@ -81,6 +83,9 @@ export class SearchIndex {
     const { lines, legacyRuns } = textOf(elements);
     const body = lines.map(([, line]) => searchWords(line).join(' ')).join('\n');
     const title = searchWords(p.name).join(' ');
+    const details = this.detailsOf(presentationId)
+      .map(([, value]) => searchWords(value).join(' '))
+      .join('\n');
     const existing = this.stmt('SELECT id FROM search_docs WHERE presentation_id = ?').get(presentationId) as
       { id: number } | undefined;
     let row: number;
@@ -103,7 +108,26 @@ export class SearchIndex {
     }
     // A removed presentation keeps its lines (Undo brings it back) but is not searched.
     if (p.deleted_at === null)
-      this.stmt('INSERT INTO search_fts (rowid, title, body) VALUES (?, ?, ?)').run(row, title, body);
+      this.stmt('INSERT INTO search_fts (rowid, title, body, details) VALUES (?, ?, ?, ?)').run(
+        row,
+        title,
+        body,
+        details,
+      );
+  }
+
+  /** A kirtan's details search reads (none for other presentations). */
+  private detailsOf(presentationId: string): [KirtanField, string][] {
+    const k = this.stmt('SELECT category, kavi, raag, occasions FROM kirtans WHERE presentation_id = ?').get(
+      presentationId,
+    ) as { category: string | null; kavi: string | null; raag: string | null; occasions: string } | undefined;
+    if (!k) return [];
+    const out: [KirtanField, string][] = [];
+    if (k.kavi) out.push(['kavi', k.kavi]);
+    if (k.raag) out.push(['raag', k.raag]);
+    if (k.category) out.push(['category', k.category]);
+    for (const o of occasionsFrom(k.occasions)) out.push(['occasion', o]);
+    return out;
   }
 
   /** A presentation was removed: it is no longer found (restoring it indexes it again). */
@@ -150,7 +174,7 @@ export class SearchIndex {
     // Every match is ranked, so the index alone does it (removed presentations are not in it)...
     const ranked = this.stmt(
       `SELECT rowid FROM search_fts WHERE search_fts MATCH ?
-        ORDER BY bm25(search_fts, 10.0, 1.0), rowid LIMIT ?`,
+        ORDER BY bm25(search_fts, 10.0, 1.0, 4.0), rowid LIMIT ?`,
     )
       .pluck()
       .all(query, limit + 1) as number[];
@@ -173,6 +197,9 @@ export class SearchIndex {
     const hits = rows.map((r): SearchHit => {
       const base = { presentationId: r.id, name: r.name, libraryName: r.library_name };
       if (matchesAll(words, searchWords(r.name))) return { ...base, match: { kind: 'title' } };
+      // A kirtan's kavi or raag (or category, or an occasion) with every word typed.
+      const detail = this.detailsOf(r.id).find(([, value]) => matchesAll(words, searchWords(value)));
+      if (detail) return { ...base, match: { kind: 'detail', field: detail[0], value: detail[1] } };
       const lines = JSON.parse(r.lines) as [string, string][];
       const found =
         lines.find(([, line]) => matchesAll(words, searchWords(line))) ??

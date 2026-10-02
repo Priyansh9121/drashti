@@ -32,6 +32,8 @@ export interface PresentationSummary {
   height: number;
   /** Language tracks, when the presentation is a kirtan. */
   kirtanTracks: Lang[] | null;
+  /** A kirtan's details, to filter the library by; null for other presentations. */
+  kirtan: { category: string | null; kavi: string | null; raag: string | null; occasions: string[] } | null;
 }
 
 /**

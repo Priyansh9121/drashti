@@ -135,6 +135,9 @@ export const IPC = {
     /** Plain or with accent marks: the app's choice for making transliteration. */
     getTranslitStyle: 'kirtans:get-translit-style',
     setTranslitStyle: 'kirtans:set-translit-style',
+    /** The categories a kirtan can have: Drashti's, and any added. */
+    categories: 'kirtans:categories',
+    addCategory: 'kirtans:add-category',
   },
   media: {
     /** Keep a still frame the operator window made (operator window only). */
@@ -303,6 +306,11 @@ export interface InvokeContract {
     result: MakeTranslitResult;
   };
   [IPC.kirtans.getTranslitStyle]: { args: []; result: TranslitStyle };
+  [IPC.kirtans.categories]: { args: []; result: string[] };
+  [IPC.kirtans.addCategory]: {
+    args: [name: string];
+    result: { ok: true; categories: string[] } | { ok: false; message: string };
+  };
   [IPC.kirtans.setTranslitStyle]: {
     args: [style: TranslitStyle];
     result: { ok: true; style: TranslitStyle } | { ok: false; message: string };

@@ -210,6 +210,12 @@ interface ListRow {
   height: number;
   slide_count: number;
   kirtan_tracks: string | null;
+  /** Set when it is a kirtan (its id), with its details. */
+  kirtan: string | null;
+  category: string | null;
+  kavi: string | null;
+  raag: string | null;
+  occasions: string | null;
 }
 
 export class PresentationRepo {
@@ -241,9 +247,11 @@ export class PresentationRepo {
   list(): PresentationSummary[] {
     this.librariesStmt ??= this.db.prepare('SELECT id, name FROM libraries ORDER BY position, name');
     this.listStmt ??= this.db.prepare(
-      `SELECT id, name, width, height, slide_count, kirtan_tracks FROM presentations
-        WHERE library_id = ? AND deleted_at IS NULL
-        ORDER BY name COLLATE NOCASE`,
+      `SELECT p.id, p.name, p.width, p.height, p.slide_count, p.kirtan_tracks,
+              k.presentation_id AS kirtan, k.category, k.kavi, k.raag, k.occasions
+         FROM presentations p LEFT JOIN kirtans k ON k.presentation_id = p.id
+        WHERE p.library_id = ? AND p.deleted_at IS NULL
+        ORDER BY p.name COLLATE NOCASE`,
     );
     const list = this.listStmt;
     return this.librariesStmt.all().flatMap((library) =>
@@ -255,6 +263,10 @@ export class PresentationRepo {
         width: r.width,
         height: r.height,
         kirtanTracks: r.kirtan_tracks === null ? null : toLangs(r.kirtan_tracks),
+        kirtan:
+          r.kirtan === null
+            ? null
+            : { category: r.category, kavi: r.kavi, raag: r.raag, occasions: occasionsFrom(r.occasions) },
       })),
     );
   }

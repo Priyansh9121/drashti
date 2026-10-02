@@ -12,8 +12,9 @@ import { Languages } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { Loading } from '../ui/States';
-import { closeKirtan, makeKirtan, notKirtan, useKirtan } from './kirtan-store';
+import { closeKirtan, draftChanged, makeKirtan, notKirtan, saveDraft, useKirtan } from './kirtan-store';
 import { MakeTransliteration } from './MakeTransliteration';
+import { KirtanDetailsForm } from './KirtanDetailsForm';
 
 /** Each language: on how many of the slides that play it has words. */
 function TrackSummary({ doc }: { doc: PresentationDoc }) {
@@ -64,6 +65,7 @@ export function KirtanDialog() {
   const open = useKirtan((s) => s.open);
   const saving = useKirtan((s) => s.saving);
   const problem = useKirtan((s) => s.problem);
+  const changed = useKirtan(draftChanged);
   const doc = useLibrary((s) => (s.doc?.id === open?.presentationId ? s.doc : null));
   if (!open) return null;
   const kirtan = doc?.kirtan ?? null;
@@ -96,8 +98,17 @@ export function KirtanDialog() {
             >
               Edit words by language
             </Button>
-            <Button variant="primary" onClick={closeKirtan}>
-              Done
+            <Button
+              variant="primary"
+              disabled={saving}
+              data-testid="kirtan-done"
+              onClick={() =>
+                void saveDraft().then((ok) => {
+                  if (ok) closeKirtan();
+                })
+              }
+            >
+              {changed ? 'Save' : 'Done'}
             </Button>
           </>
         ) : (
@@ -127,6 +138,7 @@ export function KirtanDialog() {
           </p>
         </section>
       ) : null}
+      {doc && kirtan && <KirtanDetailsForm doc={doc} />}
       {doc && kirtan && <MakeTransliteration doc={doc} />}
       {!doc || kirtan ? null : (
         <div className="space-y-2 text-sm">

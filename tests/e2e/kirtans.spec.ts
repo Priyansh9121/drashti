@@ -4,7 +4,8 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { dropFiles, launchApp, operatorPage, outputPage, setUpScreen } from './helpers';
+import { dropFiles, importAndGetIds, launchApp, operatorPage, outputPage, setUpScreen } from './helpers';
+import { makeTestVideo } from './test-media';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
 
@@ -294,6 +295,105 @@ test('make transliteration: lines made by Drashti, a line changed by hand kept o
   await expect.poll(async () => (await tracks(win, id))?.[0]?.translit).toEqual(['Ghar ne mandir']);
   await win.getByTestId('kirtan-button').click();
   await expect(section.getByTestId('translit-style-iso')).toBeChecked();
+  await app.close();
+});
+
+test('kirtan details: a new category, kavi, raag, occasions and a recording; the library filters by them; search finds kavi and raag', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-details-'));
+  const clip = await makeTestVideo(win, join(dir, 'Placeholder recording.webm'), {
+    seconds: 1,
+    width: 160,
+    height: 90,
+    hue: 30,
+  });
+  await importAndGetIds(win, [clip]);
+  // A second kirtan, so the filters have something to leave out.
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const made = await d.library.newFromWords('Placeholder Other Kirtan', '[Verse]\nઘર\n');
+    if (!made.ok) throw new Error(made.message);
+    await d.kirtans.setDetails(made.id, {
+      category: 'Dhun',
+      kavi: 'Placeholder Kavi Two',
+      raag: null,
+      occasions: [],
+      audioMediaId: null,
+    });
+  });
+
+  const id = await open(win, KIRTAN);
+  await win.getByTestId('kirtan-button').click();
+  const dialog = win.getByTestId('kirtan-dialog');
+  const details = dialog.getByTestId('kirtan-details');
+  // A category of the mandir's own, added to the list for every kirtan.
+  await details.getByTestId('add-category').click();
+  await details.getByTestId('new-category').fill('Placeholder Category');
+  await details.getByRole('button', { name: 'Add', exact: true }).first().click();
+  await expect(details.getByTestId('kirtan-category')).toHaveValue('Placeholder Category');
+  await details.getByTestId('kirtan-kavi').fill('Placeholder Kavi One');
+  await details.getByTestId('kirtan-raag').fill('Placeholder Raag');
+  for (const o of ['Diwali', 'Placeholder Day']) {
+    await details.getByTestId('kirtan-occasion').fill(o);
+    await details.getByTestId('kirtan-occasion').press('Enter');
+  }
+  await expect(details.getByTestId('kirtan-occasions').getByRole('listitem')).toHaveText([
+    'Diwali',
+    'Placeholder Day',
+  ]);
+  await details.getByTestId('choose-recording').click();
+  await win
+    .getByTestId('media-picker')
+    .getByRole('button', { name: /Placeholder recording/ })
+    .click();
+  await expect(details.getByTestId('kirtan-recording')).toContainText('Placeholder recording');
+  await expectNoSeriousA11yIssues(win, 'the kirtan details');
+  await dialog.getByTestId('kirtan-done').click();
+  await expect(dialog).toHaveCount(0);
+  const saved = await win.evaluate(
+    async (pid) => (await (globalThis as PageGlobals).drashti.library.getPresentation(pid))?.kirtan,
+    id,
+  );
+  expect(saved).toMatchObject({
+    category: 'Placeholder Category',
+    kavi: 'Placeholder Kavi One',
+    raag: 'Placeholder Raag',
+    occasions: ['Diwali', 'Placeholder Day'],
+  });
+  expect(saved?.audioMediaId).toBeTruthy();
+  expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.kirtans.categories())).toContain(
+    'Placeholder Category',
+  );
+
+  // The library filters by them.
+  const list = win.getByTestId('presentation-list');
+  const rows = () => list.getByRole('button').evaluateAll((els) => els.map((e) => e.textContent));
+  await win.getByTestId('filter-button').click();
+  const filters = win.getByTestId('kirtan-filters');
+  await filters.getByTestId('filter-category').selectOption('Placeholder Category');
+  await expect(win.getByTestId('filter-count')).toContainText('1 kirtan with these details');
+  await expect(list.getByRole('button', { name: /Sample kirtan/ })).toBeVisible();
+  await expect(list.getByRole('button', { name: /Placeholder Other Kirtan/ })).toHaveCount(0);
+  await filters.getByTestId('filter-category').selectOption('');
+  await filters.getByTestId('filter-kavi').selectOption('Placeholder Kavi Two');
+  await expect(list.getByRole('button', { name: /Placeholder Other Kirtan/ })).toBeVisible();
+  await expect(list.getByRole('button', { name: /Sample kirtan/ })).toHaveCount(0);
+  await filters.getByTestId('filter-kavi').selectOption('');
+  await filters.getByTestId('filter-occasion').selectOption('Diwali');
+  await expect(win.getByTestId('filter-count')).toContainText('1 kirtan');
+  await expectNoSeriousA11yIssues(win, 'the library filters');
+  await filters.getByRole('button', { name: 'Clear filters' }).click();
+  await expect.poll(async () => (await rows()).length).toBeGreaterThanOrEqual(3);
+
+  // Search finds kirtans by kavi and by raag, and says where.
+  const search = win.getByTestId('library-search');
+  await search.fill('kavi one');
+  const hits = win.getByTestId('search-hit');
+  await expect(hits).toHaveCount(1);
+  await expect(hits.first().getByTestId('search-detail')).toHaveText('Kavi: Placeholder Kavi One');
+  await search.fill('placeholder raag');
+  await expect(hits.first().getByTestId('search-detail')).toHaveText('Raag: Placeholder Raag');
   await app.close();
 });
 

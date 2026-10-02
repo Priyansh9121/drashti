@@ -136,10 +136,13 @@ describe('stored slide counts', () => {
       file,
       MIGRATIONS.filter((m) => m.version <= 10),
     );
-    expect(new PresentationRepo(upgraded).list().map((p) => [p.name, p.slideCount, p.kirtanTracks])).toEqual([
-      ['Empty kirtan', 0, []],
-      ['Older kirtan', 2, ['gu', 'translit']],
-      ['Older talk', 1, null],
+    // What migration 5 stored (migration 11 works the languages out from the words instead).
+    expect(
+      upgraded.prepare('SELECT name, slide_count, kirtan_tracks FROM presentations ORDER BY name').all(),
+    ).toEqual([
+      { name: 'Empty kirtan', slide_count: 0, kirtan_tracks: '' },
+      { name: 'Older kirtan', slide_count: 2, kirtan_tracks: 'gu,translit' },
+      { name: 'Older talk', slide_count: 1, kirtan_tracks: null },
     ]);
     upgraded.close();
   });

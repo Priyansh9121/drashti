@@ -173,6 +173,9 @@ export interface DrashtiBridge {
       manual: ManualLines,
     ): Promise<MakeTranslitResult>;
     getTranslitStyle(): Promise<TranslitStyle>;
+    /** The categories a kirtan can have: Drashti's, those added, and any a kirtan in the library has. */
+    categories(): Promise<string[]>;
+    addCategory(name: string): Promise<{ ok: true; categories: string[] } | { ok: false; message: string }>;
     setTranslitStyle(
       style: TranslitStyle,
     ): Promise<{ ok: true; style: TranslitStyle } | { ok: false; message: string }>;

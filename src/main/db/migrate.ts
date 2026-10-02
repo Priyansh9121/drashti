@@ -11,6 +11,7 @@ import { up as search } from './migrations/009-search';
 import { up as slideEditor } from './migrations/010-slide-editor';
 import { before as kirtanLibraryData, up as kirtanLibrary } from './migrations/011-kirtan-library';
 import { up as screenLanguages } from './migrations/012-screen-languages';
+import { up as searchDetails } from './migrations/013-search-details';
 
 export interface Migration {
   version: number;
@@ -34,6 +35,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 10, name: 'the slide editor', up: slideEditor },
   { version: 11, name: 'the kirtan library', up: kirtanLibrary, before: kirtanLibraryData },
   { version: 12, name: 'languages per screen group', up: screenLanguages },
+  { version: 13, name: 'search by kirtan details', up: searchDetails },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

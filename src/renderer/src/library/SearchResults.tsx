@@ -10,6 +10,9 @@ import { Notice } from '../ui/Notice';
 import { EmptyState } from '../ui/States';
 import { plural } from '../ui/text';
 
+/** A kirtan's details, as search results name them. */
+const FIELD_NAMES = { kavi: 'Kavi', raag: 'Raag', category: 'Category', occasion: 'Occasion' } as const;
+
 /** A line with the words the operator typed marked, as it is written (accents and all). */
 function Marked({ line, query }: { line: string; query: string }) {
   const wanted = searchWords(query);
@@ -49,6 +52,11 @@ function HitRow({ hit, query, selected }: { hit: SearchHit; query: string; selec
       {hit.match.kind === 'text' && (
         <span className="block truncate text-xs text-muted" data-testid="search-line">
           <Marked line={hit.match.line} query={query} />
+        </span>
+      )}
+      {hit.match.kind === 'detail' && (
+        <span className="block truncate text-xs text-muted" data-testid="search-detail">
+          {FIELD_NAMES[hit.match.field]}: <Marked line={hit.match.value} query={query} />
         </span>
       )}
       <span className="block text-2xs tracking-wider text-muted uppercase">{hit.libraryName}</span>
