@@ -72,6 +72,46 @@ test('the operator window and its panels', async () => {
   await app.close();
 });
 
+/** Click a point on the slide in the slide editor (slide pixels). */
+async function clickSlide(win: Page, x: number, y: number) {
+  const canvas = win.getByTestId('editor-canvas');
+  const box = await canvas.boundingBox();
+  const scale = Number(await canvas.getAttribute('data-scale'));
+  if (box) await win.mouse.click(box.x + x * scale, box.y + y * scale);
+}
+
+test('the slide editor', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1600, height: 900 });
+  await running(win);
+  await win.getByTestId('edit-slides').click();
+  const editor = win.getByTestId('slide-editor');
+  await expect(editor.getByTestId('editor-canvas')).toBeVisible();
+  // A band behind the words, to show a shape.
+  await editor.getByTestId('add-shape').click();
+  await win.getByRole('menuitem', { name: 'Rounded rectangle' }).click();
+  await editor.getByTestId('field-y').fill('380');
+  await editor.getByTestId('field-height').fill('320');
+  await editor.getByTestId('field-width').fill('1400');
+  await editor.getByTestId('field-x').fill('260');
+  await editor.getByTestId('field-opacity').fill('60');
+  await editor.getByRole('button', { name: 'Send to the back' }).click();
+  // The words selected: their handles, and the inspector's words section.
+  await clickSlide(win, 960, 420);
+  await expect(editor.getByTestId('inspector-text')).toBeVisible();
+  await shot(win, 'slide-editor');
+  await win.keyboard.press('Escape');
+  await expect(editor.getByTestId('slide-panel')).toBeVisible();
+  await shot(win, 'slide-editor-slide');
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await clickSlide(win, 960, 420);
+  await shot(win, 'slide-editor-1280x720');
+  await editor.getByRole('button', { name: 'Cancel' }).click();
+  await win.getByTestId('discard-confirm').getByRole('button', { name: 'Throw them away' }).click();
+  await app.close();
+});
+
 test('Simple Mode', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
