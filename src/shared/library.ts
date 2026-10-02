@@ -1,4 +1,5 @@
 import type { MediaBackground } from './engine/state';
+import type { KirtanInfo } from './kirtans';
 import type { Lang, RenderSlide, Transition } from './model';
 
 /** Where an imported item came from, so imports can be re-run and traced. */
@@ -110,13 +111,8 @@ export interface PresentationDoc {
   transition: Transition | null;
   /** Auto-advance goes from the last slide back to the first (otherwise it stops there). */
   loop: boolean;
-  kirtan: {
-    category: string | null;
-    kavi: string | null;
-    tracks: Lang[];
-    /** Per slide id, the line in each language track. */
-    lines: Record<string, Partial<Record<Lang, string>>>;
-  } | null;
+  /** Its kirtan details and languages, or null when it is not a kirtan. */
+  kirtan: KirtanInfo | null;
   source: ImportSource | null;
 }
 

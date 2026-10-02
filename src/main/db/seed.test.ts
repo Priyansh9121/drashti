@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { openDatabase } from './database';
 import { PresentationRepo } from './presentations';
+import { slideLines } from '../../shared/tracks';
 import { KIRTAN_PRESENTATION_NAME, seedPlaceholders, TEST_LINES, TEST_PRESENTATION_NAME } from './seed';
 
 describe('seedPlaceholders', () => {
@@ -37,8 +38,11 @@ describe('seedPlaceholders', () => {
     const doc = summary && repo.get(summary.id);
     const slides = doc?.groups.flatMap((g) => g.slides) ?? [];
     expect(slides).toHaveLength(3);
+    // The tracks are the slides' own words, one line in each language.
     for (const s of slides)
-      expect(Object.keys(doc?.kirtan?.lines[s.id] ?? {}).sort()).toEqual(['en', 'gu', 'hi', 'translit']);
+      expect(Object.keys(slideLines(s.slide.elements).lines).sort()).toEqual(['en', 'gu', 'hi', 'translit']);
+    expect(doc?.kirtan).toMatchObject({ category: 'Kirtan', tracks: ['en', 'gu', 'hi', 'translit'] });
+    expect(slides.every((s) => s.slide.kirtan === true)).toBe(true);
   });
 
   it('does not come back after the operator deletes the placeholders', () => {

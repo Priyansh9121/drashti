@@ -9,11 +9,14 @@ import { up as arrangements } from './migrations/007-arrangements';
 import { up as playlistEdits } from './migrations/008-playlists';
 import { up as search } from './migrations/009-search';
 import { up as slideEditor } from './migrations/010-slide-editor';
+import { before as kirtanLibraryData, up as kirtanLibrary } from './migrations/011-kirtan-library';
 
 export interface Migration {
   version: number;
   name: string;
   up: string;
+  /** Data that must be moved in code before `up` runs (same transaction). */
+  before?: (db: Database.Database) => void;
 }
 
 /** All migrations, oldest first. Never edit a released one; add a new one. */
@@ -28,6 +31,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 8, name: 'playlists the operator edits', up: playlistEdits },
   { version: 9, name: 'search', up: search },
   { version: 10, name: 'the slide editor', up: slideEditor },
+  { version: 11, name: 'the kirtan library', up: kirtanLibrary, before: kirtanLibraryData },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));
@@ -54,6 +58,7 @@ export function migrate(
   const pending = migrations.filter((m) => m.version > from).sort((a, b) => a.version - b.version);
   for (const m of pending) {
     db.transaction(() => {
+      m.before?.(db);
       db.exec(m.up);
       db.pragma(`user_version = ${m.version}`);
     })();

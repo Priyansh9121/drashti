@@ -10,8 +10,11 @@ import type {
   SlideCue,
   SlideInfo,
 } from '../../shared/library';
+import type { KirtanDetails } from '../../shared/kirtans';
+import { occasionsFrom } from '../../shared/kirtans';
 import { type Lang, LANGS, type RenderSlide, type SlideElement, type Transition } from '../../shared/model';
 import { slideElementSchema } from '../../shared/model-schema';
+import { langsOf } from '../../shared/tracks';
 import type { PlayOrder, SlideSource } from '../engine/slide-source';
 import { playOrder } from '../../shared/order';
 import type { Db } from './database';
@@ -182,13 +185,11 @@ export interface NewPresentation {
   transition?: Transition | null;
   /** Auto-advance loops from the last slide to the first. */
   loop?: boolean;
-  /** Optional kirtan metadata and per-slide language lines (slide order across groups). */
-  kirtan?: {
-    category?: string | null;
-    kavi?: string | null;
-    tracks: Lang[];
-    lines: Partial<Record<Lang, string>>[];
-  };
+  /**
+   * Makes it a kirtan, with these details. Its tracks are the languages of
+   * its slides' words: nothing else to give.
+   */
+  kirtan?: Partial<KirtanDetails>;
   source?: ImportSource | null;
   /** sha256 of the source file, to recognise a re-import. */
   sourceHash?: string | null;
@@ -377,24 +378,31 @@ export class PresentationRepo {
     });
 
     const kirtanRow = this.db
-      .prepare('SELECT category, kavi FROM kirtans WHERE presentation_id = ?')
-      .get(id) as { category: string | null; kavi: string | null } | undefined;
+      .prepare(
+        'SELECT category, kavi, raag, occasions, audio_media_id FROM kirtans WHERE presentation_id = ?',
+      )
+      .get(id) as
+      | {
+          category: string | null;
+          kavi: string | null;
+          raag: string | null;
+          occasions: string;
+          audio_media_id: string | null;
+        }
+      | undefined;
+    const groupList = [...groupInfos.values()];
     let kirtan: PresentationDoc['kirtan'] = null;
     if (kirtanRow) {
-      const trackRows = this.db.prepare('SELECT lang FROM kirtan_tracks WHERE kirtan_id = ?').all(id) as {
-        lang: Lang;
-      }[];
-      const lineRows = this.db
-        .prepare('SELECT slide_id, lang, text FROM kirtan_track_lines WHERE kirtan_id = ?')
-        .all(id) as { slide_id: string; lang: Lang; text: string }[];
-      const lines: Record<string, Partial<Record<Lang, string>>> = {};
-      for (const l of lineRows) (lines[l.slide_id] ??= {})[l.lang] = l.text;
       kirtan = {
         category: kirtanRow.category,
         kavi: kirtanRow.kavi,
-        tracks: toLangs(trackRows.map((t) => t.lang).join(',')),
-        lines,
+        raag: kirtanRow.raag,
+        occasions: occasionsFrom(kirtanRow.occasions),
+        audioMediaId: kirtanRow.audio_media_id,
+        tracks: langsOf(groupList.flatMap((g) => g.slides.flatMap((s) => s.slide.elements))),
       };
+      // Each screen shows a kirtan's slides in its own languages.
+      for (const g of groupList) for (const s of g.slides) s.slide.kirtan = true;
     }
 
     return {
@@ -402,7 +410,7 @@ export class PresentationRepo {
       name: p.name,
       width: p.width,
       height: p.height,
-      groups: [...groupInfos.values()],
+      groups: groupList,
       arrangements,
       selectedArrangementId: p.selected_arrangement_id,
       transition: transitionFromJson(p.transition),
@@ -525,7 +533,6 @@ export class PresentationRepo {
     const insertCue = db.prepare(
       'INSERT INTO slide_cues (id, slide_id, position, kind, label, media_id, props) VALUES (?, ?, ?, ?, ?, ?, ?)',
     );
-    const slideIds: string[] = [];
     const groupIds: string[] = [];
     input.groups.forEach((group, gi) => {
       const groupId = randomUUID();
@@ -533,7 +540,6 @@ export class PresentationRepo {
       insertGroup.run(groupId, id, group.name, group.color ?? null, gi);
       group.slides.forEach((slide, si) => {
         const slideId = randomUUID();
-        slideIds.push(slideId);
         insertSlide.run(
           slideId,
           groupId,
@@ -598,31 +604,25 @@ export class PresentationRepo {
     }
     if (input.kirtan) {
       const k = input.kirtan;
-      db.prepare('INSERT INTO kirtans (presentation_id, category, kavi) VALUES (?, ?, ?)').run(
+      db.prepare(
+        'INSERT INTO kirtans (presentation_id, category, kavi, raag, occasions, audio_media_id) VALUES (?, ?, ?, ?, ?, ?)',
+      ).run(
         id,
         k.category ?? null,
         k.kavi ?? null,
+        k.raag ?? null,
+        JSON.stringify(k.occasions ?? []),
+        k.audioMediaId ?? null,
       );
-      const insertTrack = db.prepare('INSERT INTO kirtan_tracks (kirtan_id, lang) VALUES (?, ?)');
-      for (const lang of k.tracks) insertTrack.run(id, lang);
-      const insertLine = db.prepare(
-        'INSERT INTO kirtan_track_lines (kirtan_id, lang, slide_id, text) VALUES (?, ?, ?, ?)',
-      );
-      k.lines.forEach((perLang, i) => {
-        const slideId = slideIds[i];
-        if (!slideId) return;
-        for (const lang of k.tracks) {
-          const text = perLang[lang];
-          if (text !== undefined) insertLine.run(id, lang, slideId, text);
-        }
-      });
     }
     // What the library list shows, kept here so the list never has to count (migration 5).
     const slideCount = input.groups.reduce(
       (n, g) => n + g.slides.filter((sl) => sl.enabled !== false).length,
       0,
     );
-    const tracks = input.kirtan ? input.kirtan.tracks.join(',') : null;
+    const tracks = input.kirtan
+      ? langsOf(input.groups.flatMap((g) => g.slides.flatMap((sl) => sl.elements))).join(',')
+      : null;
     db.prepare('UPDATE presentations SET slide_count = ?, kirtan_tracks = ? WHERE id = ?').run(
       slideCount,
       tracks,

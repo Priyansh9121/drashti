@@ -165,5 +165,6 @@ function slideRows(slide: ThemeSlide): ContentRows {
     arrangements: [],
     arrangementEntries: [],
     kirtan: null,
+    autoLines: [],
   };
 }

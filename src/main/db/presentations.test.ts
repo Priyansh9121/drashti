@@ -93,8 +93,10 @@ describe('PresentationRepo', () => {
     repo.insert({
       libraryId,
       name: 'A kirtan',
-      groups: [{ name: 'G', slides: [{ elements: [] }] }],
-      kirtan: { tracks: ['translit', 'gu'], lines: [{ gu: 'એક', translit: 'ek' }] },
+      groups: [
+        { name: 'G', slides: [{ elements: [text('gu', 'એક'), { ...text('tr', 'ek'), lang: 'translit' }] }] },
+      ],
+      kirtan: { category: 'Kirtan' },
     });
     const list = repo.list();
     expect(list.map((p) => [p.name, p.slideCount, p.kirtanTracks])).toEqual([
@@ -103,24 +105,34 @@ describe('PresentationRepo', () => {
     ]);
   });
 
-  it('returns kirtan lines per slide and language', () => {
+  it('returns a kirtan’s details, and its tracks from its words', () => {
     const id = repo.insert({
       libraryId,
       name: 'K',
-      groups: [{ name: 'G', slides: [{ elements: [] }, { elements: [] }] }],
-      kirtan: {
-        category: 'dhun',
-        kavi: 'Placeholder',
-        tracks: ['en', 'gu', 'hi', 'translit'],
-        lines: [{ en: 'one', gu: 'એક' }, { hi: 'दो' }],
-      },
+      groups: [
+        {
+          name: 'G',
+          slides: [
+            { elements: [{ ...text('en', 'one'), lang: 'en' }, text('gu', 'એક')] },
+            { elements: [{ ...text('hi', 'दो'), lang: 'hi' }] },
+          ],
+        },
+      ],
+      kirtan: { category: 'Dhun', kavi: 'Placeholder Kavi', raag: 'Placeholder Raag', occasions: ['Diwali'] },
     });
     const doc = repo.get(id);
-    const [s1, s2] = doc?.groups[0]?.slides ?? [];
-    expect(doc?.kirtan?.tracks).toEqual(['en', 'gu', 'hi', 'translit']);
-    expect(doc?.kirtan?.category).toBe('dhun');
-    expect(s1 && doc?.kirtan?.lines[s1.id]).toEqual({ en: 'one', gu: 'એક' });
-    expect(s2 && doc?.kirtan?.lines[s2.id]).toEqual({ hi: 'दो' });
+    expect(doc?.kirtan).toEqual({
+      category: 'Dhun',
+      kavi: 'Placeholder Kavi',
+      raag: 'Placeholder Raag',
+      occasions: ['Diwali'],
+      audioMediaId: null,
+      tracks: ['en', 'gu', 'hi'],
+    });
+    // Its slides are marked, so each screen shows them in its own languages; other slides are not.
+    expect(doc?.groups[0]?.slides.map((s) => s.slide.kirtan)).toEqual([true, true]);
+    const plain = repo.insert({ libraryId, name: 'P', groups: [{ name: 'G', slides: [{ elements: [] }] }] });
+    expect(repo.get(plain)?.groups[0]?.slides[0]?.slide.kirtan).toBeUndefined();
   });
 
   it('skips stored elements that are invalid, and reports them', () => {

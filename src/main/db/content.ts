@@ -1,14 +1,15 @@
-import type { Transition } from '../../shared/model';
+import type { TextRun, Transition } from '../../shared/model';
 import { transitionSchema } from '../../shared/model-schema';
+import { type BoxWords, langsOfBoxes } from '../../shared/tracks';
 import type { Db } from './database';
 
 /*
  * A presentation's content exactly as stored, row by row with every id:
- * groups, slides (disabled ones too), elements, cues, arrangements and
- * kirtan lines. Editing the words or applying a theme reads it, changes
- * what it must, and writes it back; the ids stay, so arrangements, the live
- * slide and playlists still point at the same things, and Undo writes the
- * earlier copy back.
+ * groups, slides (disabled ones too), elements, cues, arrangements, the
+ * kirtan details and the transliteration lines Drashti made. Editing the
+ * words or applying a theme reads it, changes what it must, and writes it
+ * back; the ids stay, so arrangements, the live slide and playlists still
+ * point at the same things, and Undo writes the earlier copy back.
  */
 
 export interface GroupRow {
@@ -79,17 +80,25 @@ export interface ContentRows {
   cues: CueRow[];
   arrangements: ArrangementRow[];
   arrangementEntries: ArrangementEntryRow[];
+  /** The kirtan details, or null when it is not a kirtan (its words are in the slides either way). */
   kirtan: {
     row: {
       category: string | null;
       kavi: string | null;
       raag: string | null;
-      occasion: string | null;
-      audio_url: string | null;
+      /** JSON: a list of occasions. */
+      occasions: string;
+      audio_media_id: string | null;
     };
-    tracks: { lang: string; origin: string }[];
-    lines: { lang: string; slide_id: string; text: string }[];
   } | null;
+  /** Lines Drashti made (transliteration), as it made them: see migration 11. */
+  autoLines: AutoLineRow[];
+}
+
+export interface AutoLineRow {
+  slide_id: string;
+  lang: string;
+  text: string;
 }
 
 /** A presentation's content as stored (null if it does not exist or was removed). */
@@ -147,22 +156,15 @@ export function readContent(db: Db, presentationId: string): ContentRows | null 
     )
     .all(presentationId) as ArrangementEntryRow[];
   const kirtanRow = db
-    .prepare('SELECT category, kavi, raag, occasion, audio_url FROM kirtans WHERE presentation_id = ?')
+    .prepare('SELECT category, kavi, raag, occasions, audio_media_id FROM kirtans WHERE presentation_id = ?')
     .get(presentationId) as NonNullable<ContentRows['kirtan']>['row'] | undefined;
-  const kirtan = kirtanRow
-    ? {
-        row: kirtanRow,
-        tracks: db
-          .prepare('SELECT lang, origin FROM kirtan_tracks WHERE kirtan_id = ?')
-          .all(presentationId) as {
-          lang: string;
-          origin: string;
-        }[],
-        lines: db
-          .prepare('SELECT lang, slide_id, text FROM kirtan_track_lines WHERE kirtan_id = ?')
-          .all(presentationId) as { lang: string; slide_id: string; text: string }[],
-      }
-    : null;
+  const autoLines = db
+    .prepare(
+      `SELECT a.slide_id, a.lang, a.text FROM kirtan_auto_lines a
+         JOIN slides s ON s.id = a.slide_id JOIN slide_groups g ON g.id = s.group_id
+        WHERE g.presentation_id = ? ORDER BY a.slide_id, a.lang`,
+    )
+    .all(presentationId) as AutoLineRow[];
   return {
     presentationId,
     width: p.width,
@@ -177,7 +179,8 @@ export function readContent(db: Db, presentationId: string): ContentRows | null 
     cues,
     arrangements,
     arrangementEntries,
-    kirtan,
+    kirtan: kirtanRow ? { row: kirtanRow } : null,
+    autoLines,
   };
 }
 
@@ -232,27 +235,42 @@ export function writeContent(db: Db, rows: ContentRows): void {
   if (rows.kirtan) {
     const k = rows.kirtan.row;
     db.prepare(
-      'INSERT INTO kirtans (presentation_id, category, kavi, raag, occasion, audio_url) VALUES (?, ?, ?, ?, ?, ?)',
-    ).run(id, k.category, k.kavi, k.raag, k.occasion, k.audio_url);
-    const track = db.prepare('INSERT INTO kirtan_tracks (kirtan_id, lang, origin) VALUES (?, ?, ?)');
-    for (const t of rows.kirtan.tracks) track.run(id, t.lang, t.origin);
-    const slideIds = new Set(rows.slides.map((s) => s.id));
-    const line = db.prepare(
-      'INSERT INTO kirtan_track_lines (kirtan_id, lang, slide_id, text) VALUES (?, ?, ?, ?)',
-    );
-    for (const l of rows.kirtan.lines) if (slideIds.has(l.slide_id)) line.run(id, l.lang, l.slide_id, l.text);
+      'INSERT INTO kirtans (presentation_id, category, kavi, raag, occasions, audio_media_id) VALUES (?, ?, ?, ?, ?, ?)',
+    ).run(id, k.category, k.kavi, k.raag, k.occasions, k.audio_media_id);
   }
+  const slideIds = new Set(rows.slides.map((s) => s.id));
+  const auto = db.prepare('INSERT INTO kirtan_auto_lines (slide_id, lang, text) VALUES (?, ?, ?)');
+  for (const a of rows.autoLines) if (slideIds.has(a.slide_id)) auto.run(a.slide_id, a.lang, a.text);
   const arrangementIds = new Set(rows.arrangements.map((a) => a.id));
   const selected =
     rows.selectedArrangementId !== null && arrangementIds.has(rows.selectedArrangementId)
       ? rows.selectedArrangementId
       : null;
   const slideCount = rows.slides.filter((s) => s.enabled === 1).length;
-  const tracks = rows.kirtan ? rows.kirtan.tracks.map((t) => t.lang).join(',') : null;
+  const tracks = rows.kirtan ? langsOfRows(rows.elements).join(',') : null;
   db.prepare(
     `UPDATE presentations SET selected_arrangement_id = ?, theme_id = ?, transition = ?, loop = ?, slide_count = ?,
        kirtan_tracks = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
   ).run(selected, rows.themeId, rows.transition, rows.loop, slideCount, tracks, id);
+}
+
+/** The languages these elements have words in (text boxes only; their props as stored). */
+export function langsOfRows(elements: readonly ElementRow[]): string[] {
+  const boxes: BoxWords[] = [];
+  for (const e of elements) {
+    if (e.kind !== 'text') continue;
+    try {
+      const p = JSON.parse(e.props) as { text?: unknown; lang?: unknown; runs?: unknown };
+      if (typeof p.text !== 'string') continue;
+      const lang = typeof p.lang === 'string' ? (p.lang as BoxWords['lang']) : null;
+      boxes.push(
+        Array.isArray(p.runs) ? { text: p.text, lang, runs: p.runs as TextRun[] } : { text: p.text, lang },
+      );
+    } catch {
+      // Unreadable: no words to count.
+    }
+  }
+  return langsOfBoxes(boxes);
 }
 
 /** A transition as stored (JSON), or null when there is none or it cannot be read. */
