@@ -29,9 +29,10 @@ const enabled = !process.env['CI'] && present.length + present7.length > 0;
 
 describe.skipIf(!enabled)("this computer's own libraries (counts only)", () => {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-real-'));
+  // Hundreds of copied media files: on a busy disk removing them can take longer than a hook's usual 10 s.
   afterAll(() => {
     rmSync(dir, { recursive: true, force: true });
-  });
+  }, 120_000);
 
   /** Import some folders into a fresh temporary library and print what happened, as counts. */
   const importCounts = async (label: string, paths: string[]) => {
