@@ -21,6 +21,7 @@ import { EmptyState, Loading } from '../ui/States';
 import { Checkbox } from '../ui/Toggle';
 import { Truncate } from '../ui/Truncate';
 import { cancelCover, connectScreens, screensAction, useScreens } from './screens-store';
+import { LanguagePicker } from './LanguagePicker';
 import { SoundOutput } from './SoundOutput';
 
 const stateText: Record<ScreenState, string> = {
@@ -292,6 +293,13 @@ function GroupCard({
         >
           Delete group
         </Button>
+      </div>
+      <div className="rounded-lg border border-line bg-panel px-3 py-2.5">
+        <LanguagePicker
+          label="A kirtan’s languages on these screens"
+          value={group.languages}
+          onChange={(next) => void screensAction(() => bridge().setGroupLanguages(group.id, next))}
+        />
       </div>
       {group.screens.length === 0 ? (
         <p className="px-2 text-sm text-muted">

@@ -714,6 +714,25 @@ function TextSection({ el, slideId, editing }: { el: TextElement; slideId: strin
             applyBox({ shrinkToFit: on });
           }}
         />
+        <Toggle
+          label="On every screen, whatever its languages"
+          checked={el.everyScreen === true}
+          data-testid="field-every-screen"
+          onChange={(on) => {
+            const now = useEditor.getState().doc;
+            if (!now) return;
+            commit(
+              mapElements(now, slideId, [el.id], (e) => {
+                if (e.kind !== 'text') return e;
+                const { everyScreen: _was, ...rest } = e;
+                return on ? { ...rest, everyScreen: true } : rest;
+              }),
+            );
+          }}
+        />
+        <p className="text-xs text-faint">
+          For a title or a footer on a kirtan’s slide: screens set to show only some languages still show it.
+        </p>
       </div>
     </Section>
   );

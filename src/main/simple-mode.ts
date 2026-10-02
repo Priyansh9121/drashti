@@ -55,6 +55,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.screens.createGroup,
   IPC.screens.renameGroup,
   IPC.screens.setGroupRole,
+  IPC.screens.setGroupLanguages,
   IPC.screens.deleteGroup,
   IPC.screens.assignDisplay,
   IPC.screens.updateScreen,

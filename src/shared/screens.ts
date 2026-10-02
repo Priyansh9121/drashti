@@ -1,3 +1,5 @@
+import type { Lang } from './model';
+
 /** How a screen's canvas is scaled into its output window. */
 export type ScalingMode = 'fit' | 'fill' | 'stretch';
 export const SCALING_MODES = ['fit', 'fill', 'stretch'] as const satisfies readonly ScalingMode[];
@@ -55,6 +57,11 @@ export interface ScreenGroupConfig {
   id: string;
   name: string;
   role: ScreenRole;
+  /**
+   * The languages its screens show of a kirtan's slides, in this order;
+   * null for every language, in each slide's own order.
+   */
+  languages: Lang[] | null;
   screens: ScreenConfig[];
 }
 
@@ -110,6 +117,8 @@ export interface OutputContext {
   groupName: string;
   /** What the screen shows: the audience picture, or the performers' stage view. */
   role: ScreenRole;
+  /** Its group's languages for a kirtan's slides, in order; null for all of them. */
+  languages: Lang[] | null;
   canvasWidth: number;
   canvasHeight: number;
   scaling: ScalingMode;

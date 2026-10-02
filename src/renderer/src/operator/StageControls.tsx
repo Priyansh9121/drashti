@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useEngine } from '../engine/engine-store';
 import { PlacedInParent } from '../render/Placed';
 import { StageView } from '../render/StageView';
+import { useFirstGroupLanguages } from '../screens/screens-store';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { TextInput } from '../ui/Field';
@@ -13,6 +14,7 @@ import { dispatch } from './actions';
 /** What the stage screens show the performers, small. */
 function StagePreview() {
   const state = useEngine((s) => s.state);
+  const shownAs = useFirstGroupLanguages('stage');
   return (
     <div
       className="relative aspect-video w-3/5 overflow-hidden rounded-md border border-line-strong bg-black"
@@ -23,7 +25,7 @@ function StagePreview() {
       {state && (
         <PlacedInParent content={{ width: 1920, height: 1080 }} mode="fit" className="absolute inset-0">
           <div className="relative h-[1080px] w-[1920px]">
-            <StageView state={state} />
+            <StageView state={state} languages={shownAs?.languages ?? null} />
           </div>
         </PlacedInParent>
       )}

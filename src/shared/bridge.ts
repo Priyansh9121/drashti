@@ -15,7 +15,7 @@ import type {
 } from './library';
 import type { KirtanDetails, KirtanResult, TrackEdit, TracksResult } from './kirtans';
 import type { ModeResult, OperatorMode } from './mode';
-import type { Transition } from './model';
+import type { Lang, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
 import type { SaveStillResult } from './media';
@@ -240,6 +240,8 @@ export interface DrashtiBridge {
     renameGroup(groupId: string, name: string): Promise<ScreensResult>;
     /** Audience screens show the picture; stage screens show the performers' view. */
     setGroupRole(groupId: string, role: ScreenRole): Promise<ScreensResult>;
+    /** The languages a group shows of a kirtan's slides, in this order; null for all, in each slide's order. */
+    setGroupLanguages(groupId: string, languages: Lang[] | null): Promise<ScreensResult>;
     deleteGroup(groupId: string): Promise<ScreensResult>;
     /** May answer `confirm: 'covers-operator'`: ask the operator, then repeat with { coverOperator: true }. */
     assignDisplay(groupId: string, displayId: number, options?: CoverOptions): Promise<ScreensResult>;

@@ -3,7 +3,8 @@ import { useEngine } from '../engine/engine-store';
 import { preloadFonts } from '../render/fonts';
 import { PlacedInParent } from '../render/Placed';
 import { Scene } from '../render/Scene';
-import { useScreens } from '../screens/screens-store';
+import { useFirstGroupLanguages, useScreens } from '../screens/screens-store';
+import { LANG_NAMES } from '../../../shared/themes';
 import { Badge, LiveBadge } from '../ui/Badge';
 import { cx } from '../ui/cx';
 import { Timer } from '../ui/icons';
@@ -13,9 +14,12 @@ import { useNow } from '../render/useNow';
  * What the audience sees, drawn by the same Scene component the outputs use,
  * on the canvas of the first screen (1920 x 1080 when none is set up). The
  * picture is for the eyes; the header and the window's title say it in words.
+ * A kirtan's slide shows the languages of the first audience group, and
+ * says so under the picture (each group can show its own).
  */
 export function LivePreview() {
   const state = useEngine((s) => s.state);
+  const shownAs = useFirstGroupLanguages('audience');
   const first = useScreens((s) => s.snapshot?.groups.flatMap((g) => g.screens)[0]);
   useEffect(() => {
     void preloadFonts();
@@ -44,9 +48,22 @@ export function LivePreview() {
         aria-hidden="true"
       >
         <PlacedInParent content={canvas} mode="fit" className="relative aspect-video w-full">
-          {state && <Scene state={state} canvas={canvas} scaling={scaling} annotate />}
+          {state && (
+            <Scene
+              state={state}
+              canvas={canvas}
+              scaling={scaling}
+              annotate
+              languages={shownAs?.languages ?? null}
+            />
+          )}
         </PlacedInParent>
       </div>
+      {shownAs && state?.layers.slide?.slide.kirtan && (
+        <p className="text-xs text-muted" data-testid="preview-languages">
+          As “{shownAs.name}” shows it: {shownAs.languages.map((l) => LANG_NAMES[l]).join(', ')}
+        </p>
+      )}
       {state?.autoAdvance && <TimeLeft count={state.autoAdvance} />}
     </section>
   );

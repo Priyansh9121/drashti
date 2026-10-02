@@ -15,7 +15,7 @@ import type {
 } from './library';
 import type { KirtanDetails, KirtanResult, TrackEdit, TracksResult } from './kirtans';
 import type { ModeResult, OperatorMode } from './mode';
-import type { Transition } from './model';
+import type { Lang, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
 import type { SaveStillResult } from './media';
@@ -194,6 +194,8 @@ export const IPC = {
     createGroup: 'screens:create-group',
     renameGroup: 'screens:rename-group',
     setGroupRole: 'screens:set-group-role',
+    /** The languages a group shows of a kirtan's slides, in order (null: all). */
+    setGroupLanguages: 'screens:set-group-languages',
     deleteGroup: 'screens:delete-group',
     assignDisplay: 'screens:assign-display',
     updateScreen: 'screens:update-screen',
@@ -312,6 +314,10 @@ export interface InvokeContract {
   [IPC.screens.createGroup]: { args: [name: string]; result: ScreensResult };
   [IPC.screens.renameGroup]: { args: [groupId: string, name: string]; result: ScreensResult };
   [IPC.screens.setGroupRole]: { args: [groupId: string, role: ScreenRole]; result: ScreensResult };
+  [IPC.screens.setGroupLanguages]: {
+    args: [groupId: string, languages: Lang[] | null];
+    result: ScreensResult;
+  };
   [IPC.screens.deleteGroup]: { args: [groupId: string]; result: ScreensResult };
   [IPC.screens.assignDisplay]: {
     args: [groupId: string, displayId: number, options?: CoverOptions];

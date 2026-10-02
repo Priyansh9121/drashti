@@ -125,6 +125,22 @@ describe('ScreensService', () => {
     expect(service.setGroupRole('gone', 'audience')).toMatchObject({ ok: false });
   });
 
+  it('sets the languages a group shows of a kirtan, in order, or all of them', () => {
+    service.createGroup('Hall');
+    const groupId = repo.groups()[0]?.id;
+    expect(repo.groups()[0]?.languages).toBeNull();
+    expect(service.setGroupLanguages(groupId, ['translit', 'gu']).ok).toBe(true);
+    expect(repo.groups()[0]?.languages).toEqual(['translit', 'gu']);
+    expect(repo.groupLanguages(groupId ?? '')).toEqual(['translit', 'gu']);
+    // None, twice the same, or an unknown language: refused, and the choice stays.
+    for (const bad of [[], ['gu', 'gu'], ['fr'], ['en', 'gu', 'hi', 'translit', 'en'], 'gu'])
+      expect(service.setGroupLanguages(groupId, bad)).toMatchObject({ ok: false });
+    expect(repo.groups()[0]?.languages).toEqual(['translit', 'gu']);
+    expect(service.setGroupLanguages(groupId, null).ok).toBe(true);
+    expect(repo.groups()[0]?.languages).toBeNull();
+    expect(service.setGroupLanguages('gone', ['gu'])).toMatchObject({ ok: false });
+  });
+
   it('renames and deletes groups, and removes screens', () => {
     service.createGroup('A');
     const groupId = repo.groups()[0]?.id;

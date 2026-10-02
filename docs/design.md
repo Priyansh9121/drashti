@@ -138,3 +138,11 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **Typing in place** shows a dashed `accent` outline round the box; the words keep their look while typed.
 - Questions use the usual alert dialogs: "Throw away the changes?" (Keep editing has the focus) and "Save over the other change?".
 - It fits at 1280 × 720 with nothing cut off, and axe finds nothing serious, also while typing (`tests/e2e/editor.spec.ts`).
+
+## 12. Kirtans and their languages
+
+- **Missing is a state, not a blank.** In Edit words, By language, a slide with nothing in a language shows that field with a dashed `warning` border, a `warning` tint and a **Missing** badge by the language's name (the field's own label says "(missing)" for screen readers). An empty field is never shown as if it were a line with no words.
+- **A kirtan's languages are named, never flagged by colour alone.** Track names are the words Gujarati, Hindi, English and Transliteration (`LANG_NAMES`); short tags (GU, HI, EN, TR) appear only as badges on library rows.
+- **Choosing a screen's languages** (`screens/LanguagePicker.tsx`): two radio buttons, "All, in each slide's order" and "Only these, in this order"; then one row per language with a tick box and, when ticked, Earlier and Later arrows (icon buttons with those words as labels). The last language ticked cannot be unticked. The same picker goes in Screens and the setup wizard.
+- **Previews say whose languages they show.** The live and next previews draw a kirtan's slide in the first audience group's languages, and under the live picture a line says so ("As “Hall” shows it: Gujarati, Transliteration"); thumbnails always show every language.
+- Both the Kirtan dialog and Edit words, By language, fit at 1280 × 720, with each field at least 180 px wide when all four languages are side by side (`tests/e2e/kirtans.spec.ts`).

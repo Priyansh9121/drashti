@@ -5,11 +5,15 @@ import { usePlaylists } from '../playlists/playlist-store';
 import { MediaStill } from '../render/MediaStill';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
+import { useFirstGroupLanguages } from '../screens/screens-store';
+import { languageView } from '../../../shared/language-view';
 import { Music } from '../ui/icons';
 
 /** What Next will put up: the next slide (with its background), or the next picture, video or sound. */
 export function NextPreview({ stacked = false }: { stacked?: boolean }) {
   const next = useEngine((s) => s.state?.next ?? null);
+  // As the live preview: a kirtan's slide in the first audience group's languages.
+  const shownAs = useFirstGroupLanguages('audience');
   const name = useLibrary((s) =>
     next?.kind === 'slide' ? s.presentations.find((p) => p.id === next.presentationId)?.name : undefined,
   );
@@ -51,7 +55,7 @@ export function NextPreview({ stacked = false }: { stacked?: boolean }) {
               />
             )}
             <PlacedInParent content={next.slide} mode="fit" className="absolute inset-0">
-              <SlideView slide={next.slide} media="still" />
+              <SlideView slide={languageView(next.slide, shownAs?.languages ?? null)} media="still" />
             </PlacedInParent>
           </>
         )}

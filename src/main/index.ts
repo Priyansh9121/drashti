@@ -369,6 +369,7 @@ function start(): void {
       screenName: s.name,
       groupName: screenRepo.groupName(s.groupId) ?? '',
       role: screenRepo.groupRole(s.groupId) ?? 'audience',
+      languages: screenRepo.groupLanguages(s.groupId),
       canvasWidth: s.canvasWidth,
       canvasHeight: s.canvasHeight,
       scaling: s.scaling,
@@ -927,6 +928,9 @@ function start(): void {
   handle(IPC.screens.createGroup, (e, name) => (fromOperator(e) ? screens.createGroup(name) : notAllowed));
   handle(IPC.screens.setGroupRole, (e, id, role) =>
     fromOperator(e) ? screens.setGroupRole(id, role) : notAllowed,
+  );
+  handle(IPC.screens.setGroupLanguages, (e, id, languages) =>
+    fromOperator(e) ? screens.setGroupLanguages(id, languages) : notAllowed,
   );
   handle(IPC.screens.renameGroup, (e, id, name) =>
     fromOperator(e) ? screens.renameGroup(id, name) : notAllowed,

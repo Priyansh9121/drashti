@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { SlideLayer } from '../../../shared/engine/state';
+import { languageView } from '../../../shared/language-view';
+import type { Lang } from '../../../shared/model';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { Placed } from './Placed';
@@ -69,10 +71,13 @@ export function SlideLayerView({
   layer,
   canvas,
   scaling,
+  languages = null,
 }: {
   layer: SlideLayer | null;
   canvas: Size;
   scaling: ScalingMode;
+  /** The languages this screen shows of a kirtan's slides (language-view.ts); null for all. */
+  languages?: readonly Lang[] | null;
 }) {
   // A screen that comes along later shows the slide as it is (no fade).
   const [showing, setShowing] = useState<Showing>(() => ({ on: layer, off: null, fade: null }));
@@ -168,7 +173,7 @@ export function SlideLayerView({
             }}
           >
             <Placed content={l.slide} box={canvas} mode={scaling}>
-              <SlideView slide={l.slide} startedAt={l.shownAt} />
+              <SlideView slide={languageView(l.slide, languages)} startedAt={l.shownAt} />
             </Placed>
           </div>
         );

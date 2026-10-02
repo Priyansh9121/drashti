@@ -8,6 +8,8 @@ import type {
   ScreenPatch,
   ScreenRole,
 } from '../../shared/screens';
+import type { Lang } from '../../shared/model';
+import { groupLanguagesSchema } from '../../shared/screens-schema';
 import type { Db } from './database';
 
 const displayKeySchema: z.ZodType<DisplayKey> = z.object({
@@ -35,6 +37,17 @@ function parseKey(json: string | null): DisplayKey | null {
   if (!json) return null;
   try {
     const parsed = displayKeySchema.safeParse(JSON.parse(json));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A group's languages as stored; anything unreadable shows them all. */
+function parseLangs(json: string | null): Lang[] | null {
+  if (!json) return null;
+  try {
+    const parsed = groupLanguagesSchema.safeParse(JSON.parse(json));
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
@@ -77,10 +90,29 @@ export class ScreenRepo {
 
   groups(): ScreenGroupConfig[] {
     const groups = this.db
-      .prepare('SELECT id, name, role FROM screen_groups ORDER BY position, rowid')
-      .all() as { id: string; name: string; role: ScreenRole }[];
+      .prepare('SELECT id, name, role, languages FROM screen_groups ORDER BY position, rowid')
+      .all() as { id: string; name: string; role: ScreenRole; languages: string | null }[];
     const screens = this.screens();
-    return groups.map((g) => ({ ...g, screens: screens.filter((s) => s.groupId === g.id) }));
+    return groups.map((g) => ({
+      ...g,
+      languages: parseLangs(g.languages),
+      screens: screens.filter((s) => s.groupId === g.id),
+    }));
+  }
+
+  /** The languages a group shows, in order; null for all of them. */
+  groupLanguages(id: string): Lang[] | null {
+    const row = this.db.prepare('SELECT languages FROM screen_groups WHERE id = ?').get(id) as
+      { languages: string | null } | undefined;
+    return parseLangs(row?.languages ?? null);
+  }
+
+  setGroupLanguages(id: string, languages: readonly Lang[] | null): boolean {
+    return (
+      this.db
+        .prepare(`UPDATE screen_groups SET languages = ?, updated_at = ${NOW} WHERE id = ?`)
+        .run(languages ? JSON.stringify(languages) : null, id).changes > 0
+    );
   }
 
   groupName(id: string): string | null {

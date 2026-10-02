@@ -86,11 +86,16 @@ function Output() {
       data-testid="output-root"
       data-screen={context?.screenId ?? ''}
       data-role={context?.role ?? 'audience'}
+      data-languages={context?.languages?.join(',') ?? 'all'}
       data-fonts={fontsReady ? 'ready' : 'loading'}
     >
       {state && fontsReady && (
         <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
-          {stage ? <StageView state={state} /> : <Scene state={state} canvas={canvas} scaling={scaling} />}
+          {stage ? (
+            <StageView state={state} languages={context.languages} />
+          ) : (
+            <Scene state={state} canvas={canvas} scaling={scaling} languages={context?.languages ?? null} />
+          )}
         </PlacedInParent>
       )}
       {/* Stage screens show no pictures, so they load none ahead. */}

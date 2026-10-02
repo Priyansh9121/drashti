@@ -87,7 +87,7 @@ export function editDocOf(rows: ContentRows, name: string): { doc: EditDoc; unre
 
 /** The keys of an element's stored data that Drashti knows, per kind (the rest are kept as they are). */
 const KNOWN: Record<SlideElement['kind'], ReadonlySet<string>> = {
-  text: new Set(['text', 'lang', 'style', 'runs', 'opacity']),
+  text: new Set(['text', 'lang', 'style', 'runs', 'opacity', 'everyScreen']),
   shape: new Set(['shape', 'fill', 'cornerRadius', 'opacity', 'outline']),
   image: new Set(['mediaId', 'fit', 'loop', 'opacity', 'volume']),
   video: new Set(['mediaId', 'fit', 'loop', 'opacity', 'volume']),
