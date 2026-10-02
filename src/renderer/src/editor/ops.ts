@@ -146,8 +146,9 @@ export function newTextBox(look: SlideLook): TextElement {
 export type ShapeChoice = 'rectangle' | 'rounded' | 'ellipse' | 'line';
 
 /**
- * A new shape in the middle of the slide: a dark see-through box (behind
- * words), a rounded one or an ellipse; a line in the theme's text colour.
+ * A new shape in the middle of the slide, in a colour that shows on any
+ * slide (blue, as verses are): a box, a rounded one or an ellipse; a line in
+ * the theme's text colour.
  */
 export function newShape(
   choice: ShapeChoice,
@@ -168,8 +169,7 @@ export function newShape(
   return {
     ...base,
     ...(choice === 'ellipse' ? { shape: 'ellipse' as const } : { shape: 'rectangle' as const }),
-    fill: '#000000',
-    opacity: 0.6,
+    fill: '#3e63dd',
     cornerRadius: choice === 'rounded' ? Math.round(Math.min(width, height) * 0.12) : 0,
   };
 }

@@ -43,7 +43,7 @@ Phase 1 has started:
 - **transitions** (a cut, or a dissolve on every screen at once, with the background a slide brings) and **auto-advance** (slides moving on by themselves, looping or not, with the time left shown);
 - a **library list** that stays cheap at any size (about 2 ms at 5,000 presentations), and a **performance check** to run by hand on the real machines.
 
-Next (PLAN.md section 5.2): Session 7 is the slide editor (text boxes, shapes, pictures and video on slides, text styling with shadow and outline, slide notes, per-slide transitions, auto-advance). The importers meet the mandir's own files, and the keys become the operators' own, at the mandir setup after the features are finished.
+Next (PLAN.md section 5.2): Session 8 is the kirtan library (language tracks, which tracks each screen shows, auto-transliteration, categories and kavi, raag and occasion details; sabha templates; the setup wizard). The importers meet the mandir's own files, and the keys become the operators' own, at the mandir setup after the features are finished.
 
 ## The repository is public
 
@@ -126,7 +126,7 @@ If you start Drashti from inside another Electron app's process (for example an 
 ## Running a show
 
 1. Open **Screens**, add a group (for example "Main Hall"), and press **Use this display** next to each display that feeds the audience. Set the canvas size and scaling if a screen needs something other than 1920 × 1080 fit. **Identify screens** shows each screen's name on it. The setup is saved and comes back on the next start. If a display is missing at startup, its screen says "Display not connected" and opens by itself when the display returns.
-2. Pick a presentation on the left, then click a slide, or press Space or the right arrow, to put it on the screens.
+2. Pick a presentation on the left, then click a slide, or press Space or the right arrow, to put it on the screens. The slides fill the middle in play order, flowing on from one group to the next; each has its group's colour beside its number, and the first slide each time a group comes up carries the group's name. The slider above them sets their size (Drashti remembers it).
 3. Use the clear buttons along the bottom (or F1 to F7) and **Black-out** (B) at their right. A layer's clear is lit, with a dot, while that layer has something on the screens.
 
 **Simple Mode.** **Simple Mode** in the header (or **View > Switch to Simple Mode**) turns the window into one screen with big buttons for a volunteer: the playlist on the left (pick it at the top), what is on the screens and what comes next, and **Back**, **Next**, **Black out**, **Logo** and **Clear all** along the bottom. The keys keep working, including a presentation clicker's (Page Down and Up, B or .), and Next starts the playlist when nothing is live. **Back** undoes the last Next exactly (one Next too many into a video takes the video down again), as long as nothing else changed in between; otherwise it is Previous. **Black out** and **Logo** cover the picture without clearing it, so pressing them again brings back exactly what was there, and the stage screens keep working. Straight after **Clear all**, **Put it back** (or Cmd/Ctrl+Z) brings everything back, with videos and sound carrying on. Nothing in Simple Mode can change the library, playlists, props, messages, timers, themes, the screens or the sound, and Back Up and Restore leave the File menu: the window does not offer them, and the main process refuses them too (`src/main/simple-mode.ts`). Drashti remembers the mode, so it starts, and comes back after a crash, in Simple Mode. Leaving takes a deliberate step: **View > Switch to Pro Mode…** (on Windows press Alt for the menu bar), then type **pro**. **Logo** shows the prop marked as the logo in Pro Mode (Props, the stamp button), on black, instead of the picture; **L** does the same in both modes, and Pro Mode has **Logo** and, after Clear all, **Put it back** beside the layer clears.
@@ -262,6 +262,7 @@ With placeholder content only, from `tests/e2e/screenshots.spec.ts` (`pnpm build
 - [The operator window at 1920 × 1080](docs/screenshots/operator-1920x1080.png) and [at 1280 × 720](docs/screenshots/operator-1280x720.png)
 - [Simple Mode at 1280 × 720](docs/screenshots/simple-mode-1280x720.png), and [after Clear all, with Put it back](docs/screenshots/simple-mode-put-it-back.png)
 - [Edit words](docs/screenshots/edit-words.png), [Themes](docs/screenshots/themes.png) and [Screens](docs/screenshots/screens.png)
+- [The slide editor](docs/screenshots/slide-editor.png), [with nothing selected (the slide's own settings)](docs/screenshots/slide-editor-slide.png) and [at 1280 × 720](docs/screenshots/slide-editor-1280x720.png)
 - [The component gallery](docs/screenshots/component-gallery.png)
 
 ![The operator window](docs/screenshots/operator-1920x1080.png)

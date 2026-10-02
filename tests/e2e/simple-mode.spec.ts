@@ -185,6 +185,13 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
           return d.library.saveSlides(welcomeId, { ...opened.doc, loop: true }, opened.stamp, true);
         })(),
         transition: await d.library.setDefaultTransition({ kind: 'dissolve', durationMs: 500 }),
+        themeFromSlide: await d.themes.fromSlide('Placeholder theme', {
+          width: 1920,
+          height: 1080,
+          background: null,
+          elements: [],
+          cues: [],
+        }),
         import: await d.library.importPaths(['/placeholder.txt']),
         playlist: await d.playlists.create('Placeholder new', null, false),
         prop: await d.props.remove(logoId),
@@ -209,6 +216,7 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
     words: no,
     slides: no,
     transition: no,
+    themeFromSlide: no,
     import: no,
     playlist: no,
     prop: no,
