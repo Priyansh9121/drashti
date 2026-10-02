@@ -23,8 +23,11 @@ import { Truncate } from '../ui/Truncate';
 import { themeFromPresentation } from '../themes/themes-store';
 import { chooseArrangement, goLive, playItem, useNotice } from './actions';
 
-/** Thumbnail widths the operator can choose (px). */
-const THUMB = { initial: 220, min: 140, max: 400 };
+/**
+ * Thumbnail widths the operator can choose (px). The default fits three slides
+ * a row at 1280 x 720 and six at 1920 x 1080 with the columns at their usual widths.
+ */
+export const THUMB = { initial: 170, min: 120, max: 400 };
 const isThumbSize = (v: unknown): v is number => typeof v === 'number' && v >= THUMB.min && v <= THUMB.max;
 
 /** The slide's own background (its background cue), behind its thumbnail: the image, or a video's still frame. */
@@ -54,7 +57,8 @@ const Thumb = memo(function Thumb({
   info,
   live,
   found,
-  groupColor,
+  group,
+  firstOfRun,
 }: {
   presentationId: string;
   /** The order this grid shows, which going live from here plays. */
@@ -67,8 +71,10 @@ const Thumb = memo(function Thumb({
   live: boolean;
   /** A search found this slide: bring it into view and mark it. */
   found: boolean;
-  /** Its group's colour, as a strip beside its number. */
-  groupColor: string | null;
+  /** Its group: the colour is a strip beside every slide's number, the name is on the first of each run. */
+  group: OrderedSlide['group'];
+  /** The first slide each time its group comes up (a chorus sung again starts a new run). */
+  firstOfRun: boolean;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -89,7 +95,7 @@ const Thumb = memo(function Thumb({
         data-slide-id={info.id}
         data-found={found ? 'true' : undefined}
         aria-current={live ? 'true' : undefined}
-        aria-label={`Slide ${position + 1}${info.label ? `: ${info.label}` : ''}${live ? ' (live)' : ''}`}
+        aria-label={`Slide ${position + 1}${group.name ? `, ${group.name}` : ''}${info.label ? `: ${info.label}` : ''}${live ? ' (live)' : ''}`}
         onClick={() => void goLive(presentationId, position, arrangementId, playlist)}
         className={cx(
           'group w-full overflow-hidden rounded-lg border-2 bg-black text-left transition-colors',
@@ -110,12 +116,24 @@ const Thumb = memo(function Thumb({
         >
           <span
             aria-hidden="true"
-            className="h-full w-1.5 shrink-0"
-            style={{ background: groupColor ?? 'transparent' }}
+            data-testid="group-color"
+            className="h-full w-2 shrink-0"
+            style={{ background: group.color ?? 'transparent' }}
           />
           <span className="font-bold tabular-nums">{position + 1}</span>
-          {info.label && <Truncate text={info.label} className="min-w-0 flex-1" />}
-          {!info.label && <span className="flex-1" />}
+          {firstOfRun ? (
+            <span
+              data-testid="slide-group"
+              data-group={group.name}
+              className={cx('min-w-0 flex-1 font-bold', live ? 'text-white' : 'text-fg')}
+            >
+              <Truncate text={[group.name, info.label].filter((t) => t !== '').join(' · ')} />
+            </span>
+          ) : info.label ? (
+            <Truncate text={info.label} className="min-w-0 flex-1" />
+          ) : (
+            <span className="flex-1" />
+          )}
           {sound && (
             <span
               className="flex min-w-0 items-center gap-1"
@@ -291,20 +309,6 @@ function ItemView({ item }: { item: ShownItem }) {
   }
 }
 
-/** The slides in playing order, in one section each time a group comes up (a repeated chorus appears again). */
-function sectionsOf(
-  order: readonly OrderedSlide[],
-): { key: string; first: OrderedSlide; slides: OrderedSlide[] }[] {
-  const sections: { key: string; first: OrderedSlide; slides: OrderedSlide[] }[] = [];
-  for (const o of order) {
-    const key = `${o.group.id}:${o.occurrence}`;
-    const last = sections.at(-1);
-    if (last?.key === key) last.slides.push(o);
-    else sections.push({ key, first: o, slides: [o] });
-  }
-  return sections;
-}
-
 export function SlideGrid() {
   const item = useLibrary((s) => s.item);
   if (item && (item.kind !== 'presentation' || item.presentationName === null))
@@ -391,7 +395,7 @@ function PresentationGrid({ item }: { item: (ShownItem & { kind: 'presentation' 
           value={thumb}
           min={THUMB.min}
           max={THUMB.max}
-          step={20}
+          step={10}
           format={(v) => `${v}`}
           className="w-28"
           onChange={(e) => {
@@ -405,23 +409,16 @@ function PresentationGrid({ item }: { item: (ShownItem & { kind: 'presentation' 
             Use Edit words to write its words, and each blank line starts a slide.
           </EmptyState>
         )}
-        {sectionsOf(order.slides).map(({ key, first, slides }) => (
-          <div key={key} className="mb-5" data-testid="slide-group" data-group={first.group.name}>
-            {first.group.name !== '' && (
-              <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-fg">
-                <span
-                  className="h-3.5 w-3.5 shrink-0 rounded-sm border border-line-strong"
-                  style={{ background: first.group.color ?? 'transparent' }}
-                  aria-hidden="true"
-                />
-                {first.group.name}
-              </h3>
-            )}
-            <ul
-              className="grid gap-3"
-              style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${thumb}px, 1fr))` }}
-            >
-              {slides.map((o) => (
+        {order.slides.length > 0 && (
+          // Every slide in play order, wrapping across the width: a chorus sung again shows again.
+          <ul
+            data-testid="slide-list"
+            className="grid gap-3"
+            style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${thumb}px, 1fr))` }}
+          >
+            {order.slides.map((o, i) => {
+              const before = order.slides[i - 1];
+              return (
                 <Thumb
                   key={o.position}
                   presentationId={doc.id}
@@ -431,12 +428,13 @@ function PresentationGrid({ item }: { item: (ShownItem & { kind: 'presentation' 
                   info={o.slide}
                   live={isLive(o)}
                   found={o.position === found}
-                  groupColor={o.group.color}
+                  group={o.group}
+                  firstOfRun={before?.group.id !== o.group.id || before.occurrence !== o.occurrence}
                 />
-              ))}
-            </ul>
-          </div>
-        ))}
+              );
+            })}
+          </ul>
+        )}
       </div>
     </section>
   );

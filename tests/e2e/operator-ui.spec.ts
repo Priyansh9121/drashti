@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { dropFiles, launchApp, operatorPage, relaunchApp } from './helpers';
+import { dropFiles, importAndGetIds, launchApp, operatorPage, relaunchApp } from './helpers';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -14,6 +14,79 @@ import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
  * 1280 x 720 and 1920 x 1080, and the columns resize from the keyboard and
  * keep their size.
  */
+
+/** A placeholder kirtan whose groups have one, two, three and four slides. */
+const GROUPS_KIRTAN = 'Placeholder Groups Kirtan';
+const GROUPS = [
+  ['Verse 1', 1],
+  ['Chorus', 2],
+  ['Verse 2', 3],
+  ['Bridge', 4],
+] as const;
+
+async function importGroupsKirtan(win: Page): Promise<void> {
+  const file = join(mkdtempSync(join(tmpdir(), 'drashti-groups-')), `${GROUPS_KIRTAN}.txt`);
+  const lines = GROUPS.flatMap(([name, slides]) => [
+    `[${name}]`,
+    ...Array.from({ length: slides }, (_, i) => [`Placeholder ${name} line ${i + 1}`, '']).flat(),
+  ]);
+  writeFileSync(file, lines.join('\n'));
+  await importAndGetIds(win, [file]);
+}
+
+/** Show the groups kirtan's slides. */
+async function openGroupsKirtan(win: Page): Promise<void> {
+  await win
+    .getByTestId('presentation-list')
+    .getByRole('button', { name: new RegExp(GROUPS_KIRTAN) })
+    .click();
+  await expect(win.getByTestId('slide-thumb')).toHaveCount(10);
+}
+
+/** How many thumbnails each row of the slide grid holds, top to bottom. */
+async function gridRows(win: Page): Promise<number[]> {
+  return win.getByTestId('slide-thumb').evaluateAll((els) => {
+    const rows = new Map<number, number>();
+    for (const el of els) {
+      const top = Math.round(el.getBoundingClientRect().top);
+      rows.set(top, (rows.get(top) ?? 0) + 1);
+    }
+    return [...rows.values()];
+  });
+}
+
+/**
+ * The slides flow on from one group to the next in one grid: every row but
+ * the last is full, however few slides a group has, and each group's name
+ * and colour mark where it starts.
+ */
+async function expectContinuousGrid(win: Page, atLeast: number, what: string): Promise<number> {
+  await expect(win.getByTestId('slide-list')).toHaveCount(1);
+  const rows = await gridRows(win);
+  const perRow = rows[0] ?? 0;
+  expect(perRow, `${what}: slides in a row`).toBeGreaterThanOrEqual(atLeast);
+  expect(
+    rows.slice(0, -1).every((n) => n === perRow),
+    `${what}: rows ${rows.join(', ')}`,
+  ).toBe(true);
+  expect(rows.length, `${what}: rows ${rows.join(', ')}`).toBe(Math.ceil(10 / perRow));
+  const markers = win.getByTestId('slide-thumb').filter({ has: win.getByTestId('slide-group') });
+  expect(await markers.evaluateAll((els) => els.map((e) => Number(e.getAttribute('data-index'))))).toEqual([
+    0, 1, 3, 6,
+  ]);
+  expect(
+    await win.getByTestId('slide-group').evaluateAll((els) => els.map((e) => e.getAttribute('data-group'))),
+  ).toEqual(GROUPS.map(([name]) => name));
+  // Each slide's colour strip is its group's colour (verse blue, chorus red, bridge purple).
+  const strips = await win
+    .getByTestId('group-color')
+    .evaluateAll((els) => els.map((e) => getComputedStyle(e).backgroundColor));
+  const verse = 'rgb(62, 99, 221)';
+  const chorus = 'rgb(229, 72, 77)';
+  const bridge = 'rgb(142, 78, 198)';
+  expect(strips).toEqual([verse, chorus, chorus, verse, verse, verse, bridge, bridge, bridge, bridge]);
+  return perRow;
+}
 
 /** Open the placeholder playlist and put the kirtan's second slide live. */
 async function showRunning(win: Page) {
@@ -157,6 +230,11 @@ for (const [width, height] of [
     await showRunning(win);
     // A message on the screens and a sound would light more of the bar; the slide is enough here.
     await expectLaidOut(win, `the operator window at ${width} x ${height}`);
+    // At the usual thumbnail size the slides fill the width: three a row at 1280 x 720, five at 1920 x 1080.
+    await importGroupsKirtan(win);
+    await openGroupsKirtan(win);
+    await expectContinuousGrid(win, width === 1280 ? 3 : 5, `the slides at ${width} x ${height}`);
+    await expectLaidOut(win, `the groups kirtan at ${width} x ${height}`);
     // With a dialog open too.
     await win.getByRole('button', { name: 'Screens', exact: true }).click();
     const sheet = win.getByRole('dialog', { name: 'Screens' });
@@ -172,10 +250,32 @@ for (const [width, height] of [
   });
 }
 
-test('the columns resize from the keyboard, and keep their size after a restart', async () => {
+test('the columns and the thumbnail size change from the keyboard, and are kept after a restart', async () => {
   const first = await launchApp();
   const win = await operatorPage(first.app);
   await win.setViewportSize({ width: 1600, height: 900 });
+  await importGroupsKirtan(win);
+  await openGroupsKirtan(win);
+  const usual = await expectContinuousGrid(win, 3, 'the usual size');
+  const size = win.getByRole('slider', { name: 'Thumbnail size' });
+  await expect(size).toHaveValue('170');
+  await size.focus();
+  await win.keyboard.press('End');
+  await expect(size).toHaveValue('400');
+  // Bigger thumbnails, fewer in a row, still flowing on from group to group.
+  const big = await expectContinuousGrid(win, 1, 'the biggest size');
+  expect(big).toBeLessThan(usual);
+  const thumbWidth = () =>
+    win
+      .getByTestId('slide-thumb')
+      .first()
+      .evaluate((el) => el.getBoundingClientRect().width);
+  expect(await thumbWidth()).toBeGreaterThanOrEqual(400);
+  await win.keyboard.press('Home');
+  await expect(size).toHaveValue('120');
+  expect(await expectContinuousGrid(win, usual + 1, 'the smallest size')).toBeGreaterThan(usual);
+  for (let i = 0; i < 10; i++) await win.keyboard.press('ArrowRight');
+  await expect(size).toHaveValue('220');
   const library = win.getByRole('separator', { name: 'Resize the library and playlists' });
   const live = win.getByRole('separator', { name: 'Resize the live column' });
   await library.focus();
@@ -202,6 +302,13 @@ test('the columns resize from the keyboard, and keep their size after a restart'
   const second = await relaunchApp(first.userData);
   const win2 = await operatorPage(second.app);
   await win2.setViewportSize({ width: 1600, height: 900 });
+  await openGroupsKirtan(win2);
+  await expect(win2.getByRole('slider', { name: 'Thumbnail size' })).toHaveValue('220');
+  const kept = await win2
+    .getByTestId('slide-thumb')
+    .first()
+    .evaluate((el) => el.getBoundingClientRect().width);
+  expect(kept).toBeGreaterThanOrEqual(220);
   await expect(win2.getByRole('separator', { name: 'Resize the library and playlists' })).toHaveAttribute(
     'aria-valuenow',
     '364',
