@@ -70,7 +70,11 @@ async function openEditor(win: Page, name: string | RegExp): Promise<Locator> {
   return editor;
 }
 
-/** Select the words between two offsets of the first piece of text being typed in (as a mouse drag would). */
+/**
+ * Select the words between two offsets of the first piece of text being typed in (as a mouse drag
+ * would). The editor reads a selection when the page says it changed; the page's own word for that
+ * came too late on a macOS CI runner, so it is said here at once, as the browser would.
+ */
 async function selectTyped(win: Page, start: number, end: number): Promise<void> {
   await win.evaluate(
     ({ start, end }) => {
@@ -79,6 +83,7 @@ async function selectTyped(win: Page, start: number, end: number): Promise<void>
       const text = walker?.nextNode();
       if (!text) throw new Error('nothing typed');
       document.getSelection()?.setBaseAndExtent(text, start, text, end);
+      document.dispatchEvent(new Event('selectionchange'));
     },
     { start, end },
   );
