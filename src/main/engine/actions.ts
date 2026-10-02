@@ -1,4 +1,4 @@
-import type { RenderSlide } from '../../shared/model';
+import type { RenderSlide, Transition } from '../../shared/model';
 import type { TimerDefinition, TimerRun } from '../../shared/timers';
 import type {
   AudioLayer,
@@ -31,6 +31,8 @@ export type EngineAction =
       notes: string;
       /** The time, for the slide layer's shownAt. */
       at: number;
+      /** How it comes on (a dissolve); left out for a cut. Kept when the same slide is shown again. */
+      transition?: Transition;
     }
   /** The live position moves (the order changed) while the same slide stays on screen. */
   | { type: 'live/move'; slideIndex: number; slideCount: number; arrangementId: string | null }

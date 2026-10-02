@@ -6,7 +6,8 @@ import type { ScalingMode } from '../../../shared/screens';
 import { BackgroundMedia } from './BackgroundMedia';
 import { LANG_FONT_STACK } from './fonts';
 import { Placed } from './Placed';
-import { ElementView, SlideView } from './SlideView';
+import { SlideLayerView } from './SlideLayerView';
+import { ElementView } from './SlideView';
 import { TimerText } from './TimerText';
 
 /** A message's words and live timers. */
@@ -109,8 +110,6 @@ export const Scene = memo(function Scene({
   annotate?: boolean;
 }) {
   const { layers } = state;
-  const slide = layers.slide?.slide;
-  const shownAt = layers.slide?.shownAt;
   return (
     <div
       data-testid="scene"
@@ -130,13 +129,7 @@ export const Scene = memo(function Scene({
         />
       )}
       <BackgroundMedia layer={layers.background} annotate={annotate} />
-      {slide && (
-        <div data-layer="slide" style={{ position: 'absolute', inset: 0 }}>
-          <Placed content={slide} box={canvas} mode={scaling}>
-            <SlideView slide={slide} startedAt={shownAt} />
-          </Placed>
-        </div>
-      )}
+      <SlideLayerView layer={layers.slide} canvas={canvas} scaling={scaling} />
       {layers.props.map((prop) => {
         const size = { width: prop.width ?? 1920, height: prop.height ?? 1080 };
         return (

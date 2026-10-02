@@ -1,7 +1,7 @@
-import { type Dispatch, useEffect, useReducer, useRef, useState } from 'react';
+import { type Dispatch, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
 import type { BackgroundLayer, MediaFit } from '../../../shared/engine/state';
 import { mediaUrl } from '../../../shared/media';
-import { NO_SLOTS, type Slot, type SlotEvent, slotsReducer } from './background-slots';
+import { NO_SLOTS, type Slot, type SlotEvent, type Slots, slotsReducer } from './background-slots';
 import { OBJECT_FIT } from './media-style';
 import { startPlayback } from './playback';
 
@@ -36,7 +36,7 @@ function VideoSlot({
       mediaId,
       startedAt,
       onFrame: () => {
-        dispatch({ type: 'ready', key });
+        dispatch({ type: 'ready', key, at: Date.now() });
       },
       onError: () => {
         dispatch({ type: 'failed', key });
@@ -79,7 +79,7 @@ function ImageSlot({
     img.src = mediaUrl(mediaId);
     img.decode().then(
       () => {
-        if (live) dispatch({ type: 'ready', key });
+        if (live) dispatch({ type: 'ready', key, at: Date.now() });
       },
       () => {
         if (live) dispatch({ type: 'failed', key });
@@ -102,6 +102,46 @@ function ImageSlot({
   );
 }
 
+/** Set the dissolve's opacities on a background's pictures: the old one out, the new one in. */
+function setFade(root: HTMLElement | null, start: number | null, ms: number): number {
+  const p = start === null ? 1 : Math.min(1, Math.max(0, (Date.now() - start) / ms));
+  for (const el of root?.querySelectorAll<HTMLElement>('[data-bg-fade]') ?? [])
+    el.style.opacity = String(el.dataset['bgFade'] === 'out' ? 1 - p : p);
+  return p;
+}
+
+/**
+ * Run a background's dissolve, frame by frame, from the clock every screen
+ * shares. The opacities are set straight on the elements, after every
+ * render too (so a render never puts them back).
+ */
+function useFade(
+  root: React.RefObject<HTMLDivElement | null>,
+  slots: Slots,
+  dispatch: Dispatch<SlotEvent>,
+): void {
+  const start = slots.fade?.start ?? null;
+  const ms = slots.fade?.ms ?? 0;
+  useLayoutEffect(() => {
+    setFade(root.current, start, ms);
+  });
+  useEffect(() => {
+    if (start === null) return;
+    let frame = 0;
+    const tick = () => {
+      if (setFade(root.current, start, ms) >= 1) {
+        dispatch({ type: 'faded', start });
+        return;
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [root, start, ms, dispatch]);
+}
+
 /**
  * The background layer's image or video. Changing it never flashes black:
  * the old picture stays until the new one has its first frame. Clearing it is
@@ -121,16 +161,41 @@ export function BackgroundMedia({
     setSeen(layer);
     dispatch({ type: 'layer', layer });
   }
-  const list = [slots.shown, slots.incoming].filter((s): s is Slot => s !== null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useFade(rootRef, slots, dispatch);
+  const list = [slots.leaving, slots.shown, slots.incoming].filter((s): s is Slot => s !== null);
   if (list.length === 0) return null;
+  const fading = slots.fade !== null;
   return (
-    <div data-layer="background" data-kind="media" style={{ position: 'absolute', inset: 0 }}>
+    <div
+      ref={rootRef}
+      data-layer="background"
+      data-kind="media"
+      data-fading={fading ? 'true' : undefined}
+      data-fade-start={slots.fade?.start ?? undefined}
+      // The old and new pictures blend with each other only.
+      style={{ position: 'absolute', inset: 0, isolation: fading ? 'isolate' : undefined }}
+    >
       {list.map((slot) => {
-        const visible = slot === slots.shown && slot.state === 'ready';
-        return slot.layer.media === 'video' ? (
-          <VideoSlot key={slot.key} slot={slot} visible={visible} dispatch={dispatch} />
-        ) : (
-          <ImageSlot key={slot.key} slot={slot} visible={visible} dispatch={dispatch} />
+        const visible = (slot === slots.shown || slot === slots.leaving) && slot.state === 'ready';
+        const element =
+          slot.layer.media === 'video' ? (
+            <VideoSlot slot={slot} visible={visible} dispatch={dispatch} />
+          ) : (
+            <ImageSlot slot={slot} visible={visible} dispatch={dispatch} />
+          );
+        return (
+          <div
+            key={slot.key}
+            data-bg-fade={slot === slots.leaving ? 'out' : slot === slots.shown && fading ? 'in' : undefined}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              mixBlendMode: fading && slot === slots.shown && slots.leaving ? 'plus-lighter' : undefined,
+            }}
+          >
+            {element}
+          </div>
         );
       })}
       {annotate && slots.shown?.state === 'failed' && (

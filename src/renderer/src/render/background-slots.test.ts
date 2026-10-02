@@ -85,7 +85,59 @@ describe('background slots', () => {
     );
     expect(onScreen(s)).toBeNull();
     s = slotsReducer(s, { type: 'layer', layer: c });
-    expect(s).toEqual({ shown: null, incoming: { key: slotKey(c), layer: c, state: 'loading' } });
+    expect(s).toEqual({
+      shown: null,
+      incoming: { key: slotKey(c), layer: c, state: 'loading' },
+      leaving: null,
+      fade: null,
+    });
+  });
+
+  it('dissolves a background a dissolving slide brings, from when the slide began or when it is ready', () => {
+    const faded = video('F', 100, { fade: { at: 100, durationMs: 1000 } });
+    let s = run(
+      { type: 'layer', layer: a },
+      { type: 'ready', key: slotKey(a) },
+      { type: 'layer', layer: faded },
+    );
+    // Ready straight away: from the slide's own start, so every screen is at the same point.
+    s = slotsReducer(s, { type: 'ready', key: slotKey(faded), at: 90 });
+    expect(s).toMatchObject({
+      shown: { key: slotKey(faded) },
+      leaving: { key: slotKey(a) },
+      fade: { start: 100, ms: 1000 },
+    });
+    // Done: the old picture goes.
+    s = slotsReducer(s, { type: 'faded', start: 100 });
+    expect(s).toMatchObject({ shown: { key: slotKey(faded) }, leaving: null, fade: null });
+    // Ready late: from then; too late (after the slide's fade): no dissolve at all.
+    const late = run(
+      { type: 'layer', layer: a },
+      { type: 'ready', key: slotKey(a) },
+      { type: 'layer', layer: faded },
+    );
+    expect(slotsReducer(late, { type: 'ready', key: slotKey(faded), at: 600 }).fade).toEqual({
+      start: 600,
+      ms: 1000,
+    });
+    expect(slotsReducer(late, { type: 'ready', key: slotKey(faded), at: 2000 })).toMatchObject({
+      leaving: null,
+      fade: null,
+    });
+    // Another background while dissolving: the dissolve ends where it is.
+    s = run(
+      { type: 'layer', layer: a },
+      { type: 'ready', key: slotKey(a) },
+      { type: 'layer', layer: faded },
+      { type: 'ready', key: slotKey(faded), at: 100 },
+      { type: 'layer', layer: b },
+    );
+    expect(s).toMatchObject({
+      shown: { key: slotKey(faded) },
+      incoming: { key: slotKey(b) },
+      leaving: null,
+      fade: null,
+    });
   });
 
   it('treats the same file started again as a new playback', () => {

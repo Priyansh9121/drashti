@@ -781,7 +781,11 @@ export class DbSlideSource implements SlideSource {
         slide: o.slide.slide,
         cues: o.slide.cues,
         notes: o.slide.notes,
+        transition: o.slide.transition,
+        autoAdvanceMs: o.slide.autoAdvanceMs,
       })),
+      transition: doc.transition,
+      loop: doc.loop,
     };
   }
 }

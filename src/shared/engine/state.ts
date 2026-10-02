@@ -1,4 +1,4 @@
-import type { Rect, RenderSlide, SlideElement } from '../model';
+import type { Rect, RenderSlide, SlideElement, Transition } from '../model';
 import type { TimerState } from '../timers';
 
 /**
@@ -55,6 +55,11 @@ export interface SlideLayer {
   shownAt: number;
   /** The slide's notes, for the stage screen. */
   notes: string;
+  /**
+   * How it came on: a dissolve from the slide before, from shownAt for its
+   * duration (outputs that join later show it finished). Left out for a cut.
+   */
+  transition?: Transition;
 }
 
 /** A sound for the audio layer, as a slide's audio cue or the operator asks for it. */
@@ -106,6 +111,8 @@ export type BackgroundLayer =
        * of restarting; a window that joins late starts from this point.
        */
       startedAt: number;
+      /** It came on dissolving from the background before, with its slide: from `at` for `durationMs`. */
+      fade?: { at: number; durationMs: number };
     });
 
 export interface PropItem {
