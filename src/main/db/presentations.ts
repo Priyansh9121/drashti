@@ -10,13 +10,13 @@ import type {
   SlideCue,
   SlideInfo,
 } from '../../shared/library';
-import { type Lang, LANGS, type RenderSlide, type SlideElement } from '../../shared/model';
+import { type Lang, LANGS, type RenderSlide, type SlideElement, type Transition } from '../../shared/model';
 import { slideElementSchema } from '../../shared/model-schema';
 import type { PlayOrder, SlideSource } from '../engine/slide-source';
 import { playOrder } from '../../shared/order';
 import type { Db } from './database';
 import type { ContentRows } from './content';
-import { readContent, writeContent } from './content';
+import { readContent, transitionFromJson, transitionToJson, writeContent } from './content';
 import { SearchIndex } from './search';
 
 interface SourceColumns {
@@ -50,6 +50,8 @@ interface ElementRow {
   y: number;
   width: number;
   height: number;
+  /** Degrees clockwise (its own column, never in props). */
+  rotation?: number;
   props: string;
 }
 
@@ -137,6 +139,7 @@ export function elementFromRow(row: ElementRow): SlideElement | null {
     id: row.id,
     kind: row.kind,
     frame: { x: row.x, y: row.y, width: row.width, height: row.height },
+    ...(row.rotation ? { rotation: row.rotation } : {}),
   };
   const parsed = slideElementSchema.safeParse(candidate);
   return parsed.success ? parsed.data : null;
@@ -151,6 +154,10 @@ export interface NewSlide {
   elements: SlideElement[];
   /** What else happens when the slide goes live (see migration 4). */
   cues?: NewSlideCue[];
+  /** Its own transition; left out or null for the presentation's. */
+  transition?: Transition | null;
+  /** Moves on by itself after this long; left out or null to wait for the operator. */
+  autoAdvanceMs?: number | null;
 }
 
 export interface NewSlideCue {
@@ -171,6 +178,10 @@ export interface NewPresentation {
   arrangements?: { name: string; groups: number[]; ref?: string | null }[];
   /** The arrangement it plays in (an index into `arrangements`), or null/left out for every slide. */
   selectedArrangement?: number | null;
+  /** The transition for slides without their own; left out or null for the app's default. */
+  transition?: Transition | null;
+  /** Auto-advance loops from the last slide to the first. */
+  loop?: boolean;
   /** Optional kirtan metadata and per-slide language lines (slide order across groups). */
   kirtan?: {
     category?: string | null;
@@ -250,7 +261,7 @@ export class PresentationRepo {
   get(id: string): PresentationDoc | null {
     const p = this.db
       .prepare(
-        'SELECT id, name, width, height, selected_arrangement_id, source_kind, source_path, source_ref, source_imported_at FROM presentations WHERE id = ? AND deleted_at IS NULL',
+        'SELECT id, name, width, height, selected_arrangement_id, transition, loop, source_kind, source_path, source_ref, source_imported_at FROM presentations WHERE id = ? AND deleted_at IS NULL',
       )
       .get(id) as
       | (SourceColumns & {
@@ -259,6 +270,8 @@ export class PresentationRepo {
           width: number;
           height: number;
           selected_arrangement_id: string | null;
+          transition: string | null;
+          loop: number;
         })
       | undefined;
     if (!p) return null;
@@ -283,15 +296,23 @@ export class PresentationRepo {
       .all(id) as { id: string; name: string; color: string | null }[];
     const slides = this.db
       .prepare(
-        `SELECT s.id, s.group_id, s.label, s.notes, s.background
+        `SELECT s.id, s.group_id, s.label, s.notes, s.background, s.transition, s.auto_advance_ms
            FROM slides s JOIN slide_groups g ON g.id = s.group_id
           WHERE g.presentation_id = ? AND s.enabled = 1
           ORDER BY g.position, g.rowid, s.position, s.rowid`,
       )
-      .all(id) as { id: string; group_id: string; label: string; notes: string; background: string | null }[];
+      .all(id) as {
+      id: string;
+      group_id: string;
+      label: string;
+      notes: string;
+      background: string | null;
+      transition: string | null;
+      auto_advance_ms: number | null;
+    }[];
     const elements = this.db
       .prepare(
-        `SELECT e.id, e.slide_id, e.kind, e.x, e.y, e.width, e.height, e.props
+        `SELECT e.id, e.slide_id, e.kind, e.x, e.y, e.width, e.height, e.rotation, e.props
            FROM elements e JOIN slides s ON s.id = e.slide_id JOIN slide_groups g ON g.id = s.group_id
           WHERE g.presentation_id = ?
           ORDER BY e.slide_id, e.position, e.rowid`,
@@ -349,6 +370,8 @@ export class PresentationRepo {
         notes: s.notes,
         slide,
         cues: cuesBySlide.get(s.id) ?? [],
+        transition: transitionFromJson(s.transition),
+        autoAdvanceMs: s.auto_advance_ms,
       };
       groupInfos.get(s.group_id)?.slides.push(info);
     });
@@ -382,6 +405,8 @@ export class PresentationRepo {
       groups: [...groupInfos.values()],
       arrangements,
       selectedArrangementId: p.selected_arrangement_id,
+      transition: transitionFromJson(p.transition),
+      loop: p.loop === 1,
       kirtan,
       source: toSource(p),
     };
@@ -422,8 +447,8 @@ export class PresentationRepo {
       const s = input.source ?? null;
       this.db
         .prepare(
-          `INSERT INTO presentations (id, library_id, name, width, height, notes, source_kind, source_path, source_ref, source_imported_at, source_hash)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO presentations (id, library_id, name, width, height, notes, transition, loop, source_kind, source_path, source_ref, source_imported_at, source_hash)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           id,
@@ -432,6 +457,8 @@ export class PresentationRepo {
           input.width ?? 1920,
           input.height ?? 1080,
           input.notes ?? '',
+          transitionToJson(input.transition),
+          input.loop ? 1 : 0,
           s?.kind ?? null,
           s?.path ?? null,
           s?.ref ?? null,
@@ -454,14 +481,17 @@ export class PresentationRepo {
       const s = input.source ?? null;
       const changed = this.db
         .prepare(
-          `UPDATE presentations SET width = ?, height = ?, notes = ?, source_kind = ?, source_path = ?, source_ref = ?,
-             source_imported_at = ?, source_hash = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+          `UPDATE presentations SET width = ?, height = ?, notes = ?, transition = ?, loop = ?, source_kind = ?,
+             source_path = ?, source_ref = ?, source_imported_at = ?, source_hash = ?,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
            WHERE id = ? AND deleted_at IS NULL`,
         )
         .run(
           input.width ?? 1920,
           input.height ?? 1080,
           input.notes ?? '',
+          transitionToJson(input.transition),
+          input.loop ? 1 : 0,
           s?.kind ?? null,
           s?.path ?? null,
           s?.ref ?? null,
@@ -486,10 +516,11 @@ export class PresentationRepo {
       'INSERT INTO slide_groups (id, presentation_id, name, color, position) VALUES (?, ?, ?, ?, ?)',
     );
     const insertSlide = db.prepare(
-      'INSERT INTO slides (id, group_id, position, label, notes, background, enabled) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      `INSERT INTO slides (id, group_id, position, label, notes, background, transition, auto_advance_ms, enabled)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const insertElement = db.prepare(
-      'INSERT INTO elements (id, slide_id, position, kind, x, y, width, height, props) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO elements (id, slide_id, position, kind, x, y, width, height, rotation, props) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
     const insertCue = db.prepare(
       'INSERT INTO slide_cues (id, slide_id, position, kind, label, media_id, props) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -510,10 +541,12 @@ export class PresentationRepo {
           slide.label ?? '',
           slide.notes ?? '',
           slide.background ?? null,
+          transitionToJson(slide.transition),
+          slide.autoAdvanceMs ?? null,
           slide.enabled === false ? 0 : 1,
         );
         slide.elements.forEach((element, ei) => {
-          const { id: _id, kind, frame, ...props } = element;
+          const { id: _id, kind, frame, rotation, ...props } = element;
           insertElement.run(
             randomUUID(),
             slideId,
@@ -523,6 +556,7 @@ export class PresentationRepo {
             frame.y,
             frame.width,
             frame.height,
+            rotation ?? 0,
             JSON.stringify(props),
           );
         });

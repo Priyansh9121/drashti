@@ -45,6 +45,23 @@ describe('the sounds the show makes', () => {
                 mediaId: 'logo',
                 fit: 'fit',
               },
+              // Quieter, and one whose sound is turned right down.
+              {
+                id: 'v2',
+                kind: 'video',
+                frame: { x: 0, y: 0, width: 10, height: 10 },
+                mediaId: 'quiet',
+                fit: 'fit',
+                volume: 0.25,
+              },
+              {
+                id: 'v3',
+                kind: 'video',
+                frame: { x: 0, y: 0, width: 10, height: 10 },
+                mediaId: 'silent',
+                fit: 'fit',
+                volume: 0,
+              },
             ],
           },
         },
@@ -53,6 +70,7 @@ describe('the sounds the show makes', () => {
     expect(sounds).toEqual([
       { key: 'background:bg@1000', mediaId: 'bg', startedAt: 1000, loop: true, volume: 1 },
       { key: 'slide:s/v1@5000', mediaId: 'clip', startedAt: 5000, loop: false, volume: 1 },
+      { key: 'slide:s/v2@5000', mediaId: 'quiet', startedAt: 5000, loop: false, volume: 0.25 },
     ]);
   });
 
