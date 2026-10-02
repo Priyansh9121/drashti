@@ -9,6 +9,7 @@ import { Scene } from '../render/Scene';
 import { StageView } from '../render/StageView';
 import { connectOutput, useOutput } from './output-store';
 import { Preloader } from './Preloader';
+import { DisplayNumber, TestCard } from './SetupCards';
 
 function IdentifyOverlay() {
   const identify = useOutput((s) => s.identify);
@@ -100,6 +101,7 @@ function Output() {
       )}
       {/* Stage screens show no pictures, so they load none ahead. */}
       {state && !stage && <Preloader next={state.next} />}
+      {context && fontsReady && <TestCard context={context} />}
       <IdentifyOverlay />
     </div>
   );
@@ -107,8 +109,14 @@ function Output() {
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');
+// The setup wizard's Identify: only a display's number across it, for a few seconds (no show).
+const identify = new URLSearchParams(location.search).get('identify');
 createRoot(root).render(
   <StrictMode>
-    <Output />
+    {identify ? (
+      <DisplayNumber number={identify} label={new URLSearchParams(location.search).get('label') ?? ''} />
+    ) : (
+      <Output />
+    )}
   </StrictMode>,
 );

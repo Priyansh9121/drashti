@@ -167,3 +167,48 @@ export function createOutputWindow(
   };
   return { window: win, handle };
 }
+
+/**
+ * For a few seconds, a display's number and name across it: the setup
+ * wizard's Identify, before any output is assigned. Never on the display
+ * the operator window is on (the caller leaves it out). It does not take
+ * keyboard focus, and closes by itself.
+ */
+export function showDisplayNumber(
+  display: DisplayInfo,
+  number: number,
+  options: OutputWindowOptions & { forMs: number },
+): BrowserWindow {
+  const b = display.bounds;
+  const win = new BrowserWindow({
+    ...(options.windowed
+      ? {
+          x: b.x + 80,
+          y: b.y + 80,
+          width: Math.min(640, b.width - 160),
+          height: Math.min(360, b.height - 160),
+        }
+      : {
+          ...b,
+          frame: false,
+          resizable: false,
+          movable: false,
+          focusable: false,
+          skipTaskbar: true,
+          hasShadow: false,
+        }),
+    show: false,
+    title: `Drashti display ${number}`,
+    backgroundColor: '#000000',
+    webPreferences: secureWebPreferences(),
+  });
+  if (!options.windowed) win.setAlwaysOnTop(true, 'screen-saver');
+  win.once('ready-to-show', () => {
+    win.showInactive();
+  });
+  void loadPage(win, 'output', { identify: String(number), label: display.label || `Display ${number}` });
+  setTimeout(() => {
+    if (!win.isDestroyed()) win.destroy();
+  }, options.forMs);
+  return win;
+}

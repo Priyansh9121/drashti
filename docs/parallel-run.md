@@ -80,6 +80,15 @@ Once the import is done, **back up the library** to a USB drive: choose **File**
 
 ## 4. Set up the screens and the sound
 
+The first time Drashti starts, the **setup wizard** opens by itself (later, it is in **View > Set Up Screens…**; on Windows press Alt for the menu bar, or use **Setup wizard** in Screens). It takes a minute and changes nothing until **Finish**:
+
+- **Screens**: **Show each display's number on it** puts a big number on every display for a few seconds (not on the one the controls are on), so you can see which output feeds which screens. For each display choose **The audience picture**, **The stage view (performers)** or **Not used**, and the languages a kirtan shows on it (for example Gujarati then transliteration in the hall, Gujarati only on the stage).
+- **Sound**: choose the output that goes to the mixer, and **Play a test tone** to hear it.
+- **Theme**: the look new presentations start with.
+- **Finish**: everything is set at once, and every screen shows a test slide for a few seconds, in its own languages. If an output would cover the controls, Drashti asks first.
+
+Each step has **Skip this step**, which keeps things as they are. To set up by hand instead, or to change a screen's size later:
+
 1. Click **Screens** (top right).
 2. Under **Screen groups**, type a name such as "Main Hall" and click **Add group**.
 3. Under **Connected displays**, find each display that feeds the hall's screens and click **Use this display** next to it. If one of them is the display the Drashti controls are on, Drashti asks first, because the output would cover the controls.

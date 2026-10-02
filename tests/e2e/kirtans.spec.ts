@@ -418,5 +418,10 @@ for (const [width, height] of [
       .locator('textarea')
       .evaluateAll((els) => Math.min(...els.map((e) => e.getBoundingClientRect().width)));
     expect(narrowest).toBeGreaterThan(180);
+    await editor.getByRole('button', { name: 'Cancel' }).click();
+    // The library's filters, open, in the left column.
+    await win.getByTestId('filter-button').click();
+    await expectFits(win.getByTestId('kirtan-filters'), `the library filters at ${width} x ${height}`);
+    await expectNoSeriousA11yIssues(win, `the library filters at ${width} x ${height}`);
     await app.close();
   });

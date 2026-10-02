@@ -27,7 +27,11 @@ function appEnv(extra: Record<string, string>): Record<string, string> {
   return { ...env, ...extra };
 }
 
-/** Launch the built app (out/), with a fresh data folder unless one is given (to test restarts). */
+/**
+ * Launch the built app (out/), with a fresh data folder unless one is given (to test restarts).
+ * The setup wizard, which opens by itself on a first start, stays shut unless a test asks for it
+ * (DRASHTI_TEST_NO_WIZARD: '0').
+ */
 export async function launchApp(
   extraEnv: Record<string, string> = {},
   userDataDir?: string,
@@ -35,7 +39,12 @@ export async function launchApp(
   const userData = userDataDir ?? mkdtempSync(join(tmpdir(), 'drashti-e2e-'));
   const app = await electron.launch({
     args: ['.'],
-    env: appEnv({ DRASHTI_USER_DATA_DIR: userData, DRASHTI_NO_QUIT_CONFIRM: '1', ...extraEnv }),
+    env: appEnv({
+      DRASHTI_USER_DATA_DIR: userData,
+      DRASHTI_NO_QUIT_CONFIRM: '1',
+      DRASHTI_TEST_NO_WIZARD: '1',
+      ...extraEnv,
+    }),
   });
   return { app, userData };
 }
@@ -105,16 +114,19 @@ export async function relaunchApp(
   }
 }
 
+/** An output window's page (not the setup wizard's display numbers, which use the same page). */
+const isOutput = (w: Page) => w.url().includes('output.html') && !w.url().includes('identify=');
+
 /** The first output window's page, waiting for it to open. */
 export async function outputPage(app: ElectronApplication): Promise<Page> {
-  const existing = app.windows().find((w) => w.url().includes('output.html'));
+  const existing = app.windows().find(isOutput);
   if (existing) return existing;
-  return app.waitForEvent('window', { predicate: (w) => w.url().includes('output.html') });
+  return app.waitForEvent('window', { predicate: isOutput });
 }
 
 /** Every open output window's page. */
 export function outputPages(app: ElectronApplication): Page[] {
-  return app.windows().filter((w) => w.url().includes('output.html'));
+  return app.windows().filter(isOutput);
 }
 
 /**

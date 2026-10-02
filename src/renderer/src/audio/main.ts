@@ -90,6 +90,43 @@ window.drashti.audio.onChosen((device) => {
   chosen = device;
   void findOutputs();
 });
+// The setup wizard's test tone: a short, soft beep on the output being tried (nothing is chosen yet).
+window.drashti.audio.onTestTone((deviceId) => {
+  void playTestTone(deviceId);
+});
+
+async function playTestTone(deviceId: string): Promise<void> {
+  const ctx = new AudioContext();
+  // Through an audio element, which can play on any output (as every sound here does).
+  const out = ctx.createMediaStreamDestination();
+  const el = new Audio();
+  try {
+    await ctx.resume();
+    el.srcObject = out.stream;
+    await el.setSinkId(deviceId);
+    const tone = ctx.createOscillator();
+    const level = ctx.createGain();
+    tone.frequency.value = 440;
+    level.gain.setValueAtTime(0, ctx.currentTime);
+    level.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.05);
+    level.gain.setValueAtTime(0.2, ctx.currentTime + 0.7);
+    level.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.8);
+    tone.connect(level).connect(out);
+    await el.play();
+    tone.start();
+    tone.stop(ctx.currentTime + 0.8);
+    // For tests and diagnostics: where the last test tone played.
+    document.body.dataset['testTone'] = deviceId === '' ? 'default' : deviceId;
+    await new Promise((resolve) => setTimeout(resolve, 900));
+  } catch {
+    document.body.dataset['testTone'] = 'failed';
+  } finally {
+    el.pause();
+    el.srcObject = null;
+    await ctx.close();
+  }
+}
+
 navigator.mediaDevices.addEventListener('devicechange', () => {
   void findOutputs();
 });

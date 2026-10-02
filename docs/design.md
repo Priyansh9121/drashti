@@ -146,3 +146,11 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **Choosing a screen's languages** (`screens/LanguagePicker.tsx`): two radio buttons, "All, in each slide's order" and "Only these, in this order"; then one row per language with a tick box and, when ticked, Earlier and Later arrows (icon buttons with those words as labels). The last language ticked cannot be unticked. The same picker goes in Screens and the setup wizard.
 - **Previews say whose languages they show.** The live and next previews draw a kirtan's slide in the first audience group's languages, and under the live picture a line says so ("As “Hall” shows it: Gujarati, Transliteration"); thumbnails always show every language.
 - Both the Kirtan dialog and Edit words, By language, fit at 1280 × 720, with each field at least 180 px wide when all four languages are side by side (`tests/e2e/kirtans.spec.ts`).
+
+## 13. Templates and the setup wizard
+
+- **Templates live apart.** The playlist column has two tabs, Playlists and Templates. A template opened shows an `info` notice saying it never goes on the screens, with **New playlist from this**; its items are never put in the slide grid.
+- **Slots are dashed, quiet rows**: a dashed `line-strong` border, the slot's name, and "A slot · its category · choose what goes here". An import's placeholder keeps the dashed `warning` look: one is a place to fill, the other a problem.
+- **The wizard is a dialog of steps**: the step names with numbers along the top (the current one bold, `aria-current="step"`), one step at a time, **Back** on the left, **Skip this step** and **Next** (primary) on the right, **Finish** on the last step after a summary in words. Anything it would change is said before Finish, and nothing changes until then.
+- **Outputs are numbered the same everywhere**: the wizard's rows, and the big number Identify puts across each display. The display the controls are on carries a `warning` badge, and choosing an output there says Finish will ask first.
+- Both fit at 1280 × 720 (`tests/e2e/templates.spec.ts`, `tests/e2e/setup.spec.ts`).

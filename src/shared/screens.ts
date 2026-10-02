@@ -119,6 +119,8 @@ export interface OutputContext {
   role: ScreenRole;
   /** Its group's languages for a kirtan's slides, in order; null for all of them. */
   languages: Lang[] | null;
+  /** Until when (ms since the epoch) it shows the setup wizard's test slide; null for none. */
+  testCardUntil: number | null;
   canvasWidth: number;
   canvasHeight: number;
   scaling: ScalingMode;

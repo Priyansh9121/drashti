@@ -29,6 +29,9 @@ import { messageTemplateSchema } from '../shared/messages';
 import type { TimerResult } from '../shared/timers';
 import { timerFieldsSchema } from '../shared/timers';
 import type { RecoveryNotice } from '../shared/recovery';
+import { audioDeviceSchema } from '../shared/audio';
+import type { SetupResult } from '../shared/setup';
+import { setupPlanSchema, TEST_CARD_MS } from '../shared/setup';
 import type { ModeResult, OperatorMode } from '../shared/mode';
 import { isLeaveWord, isOperatorMode } from '../shared/mode';
 import type { Db } from './db/database';
@@ -75,6 +78,7 @@ import {
   createOutputWindow,
   listDisplays,
   setExtraDisplays,
+  showDisplayNumber,
   watchDisplays,
 } from './outputs/electron-outputs';
 import { placeOperator } from './outputs/operator-guard';
@@ -360,6 +364,8 @@ function start(): void {
 
   // ---- outputs ----------------------------------------------------------
   const outputWindows = new Map<string, BrowserWindow>();
+  /** Until when the setup wizard's test slide shows on every output (ms since the epoch). */
+  let testCardUntil = 0;
   const contextFor = (screenId: string): OutputContext | null => {
     const s = screenRepo.screen(screenId);
     if (!s) return null;
@@ -371,6 +377,7 @@ function start(): void {
       groupName: screenRepo.groupName(s.groupId) ?? '',
       role: screenRepo.groupRole(s.groupId) ?? 'audience',
       languages: screenRepo.groupLanguages(s.groupId),
+      testCardUntil: testCardUntil > Date.now() ? testCardUntil : null,
       canvasWidth: s.canvasWidth,
       canvasHeight: s.canvasHeight,
       scaling: s.scaling,
@@ -963,6 +970,67 @@ function start(): void {
     }
     return null;
   });
+  // ---- the setup wizard ----------------------------------------------------------
+  // Tests start with it closed, unless a test is about it; the self-tests never open it (a dialog
+  // would take the show's keys).
+  const wizardOff =
+    process.env['DRASHTI_TEST_NO_WIZARD'] === '1' || process.env['DRASHTI_SELFTEST'] !== undefined;
+  handle(IPC.setup.state, () => ({
+    firstRun: mode === 'pro' && !wizardOff && settings.get('setupWizard') === undefined,
+    operatorDisplayId: operatorDisplayId(),
+  }));
+  handle(IPC.setup.setSeen, (e) => {
+    if (fromOperator(e)) settings.set('setupWizard', new Date().toISOString());
+    return null;
+  });
+  handle(IPC.setup.identifyDisplays, (e) => {
+    if (!fromOperator(e)) return { shown: 0 };
+    const here = operatorDisplayId();
+    const shown = listDisplays()
+      .map((d, i) => ({ d, n: i + 1 }))
+      .filter(({ d }) => d.id !== here);
+    for (const { d, n } of shown) showDisplayNumber(d, n, { windowed: windowedOutputs, forMs: 5000 });
+    log.info(`Setup: showed the numbers of ${shown.length} display(s)`);
+    return { shown: shown.length };
+  });
+  handle(IPC.setup.testTone, (e, device) => {
+    const parsed = audioDeviceSchema.nullable().safeParse(device ?? null);
+    if (!fromOperator(e) || !parsed.success || !audioWindow || audioWindow.isDestroyed())
+      return { ok: false };
+    audioWindow.webContents.send(IPC.audio.testTone, { deviceId: parsed.data?.id ?? '' });
+    return { ok: true };
+  });
+  handle(IPC.setup.finish, (e, rawPlan, options): SetupResult => {
+    if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can set up the screens.' };
+    const plan = setupPlanSchema.safeParse(rawPlan);
+    if (!plan.success) return { ok: false, message: 'That setup cannot be applied.' };
+    const { outputs, sound, themeId } = plan.data;
+    if (themeId !== null && !themes.get(themeId))
+      return { ok: false, message: 'That theme is no longer there.' };
+    // The screens first: covering the operator's display asks before anything changes.
+    if (outputs) {
+      const applied = screens.applySetup(outputs, options);
+      if (!applied.ok) return applied;
+    }
+    if (sound !== 'skip') audioOutput.choose(sound);
+    if (themeId !== null) {
+      themes.setDefault(themeId);
+      listChanged('themes');
+    }
+    settings.set('setupWizard', new Date().toISOString());
+    // A test slide on every screen, in its own languages, for a few seconds; the show is untouched.
+    testCardUntil = Date.now() + TEST_CARD_MS;
+    for (const [screenId, win] of outputWindows) {
+      const context = contextFor(screenId);
+      if (context && !win.isDestroyed()) win.webContents.send(IPC.output.context, context);
+    }
+    log.info(
+      `Setup finished: ${outputs ? `${outputs.length} display(s) set` : 'screens kept'}; sound ${sound === 'skip' ? 'kept' : 'chosen'}; theme ${themeId === null ? 'kept' : 'chosen'}`,
+    );
+    const snapshot = screens.snapshot();
+    return { ok: true, snapshot, tested: snapshot.status.filter((st) => st.state === 'showing').length };
+  });
+
   handle(IPC.output.getContext, (event) => {
     const screenId = manager.screenIdFor(event.sender.id);
     return screenId ? contextFor(screenId) : null;
@@ -1081,6 +1149,9 @@ function start(): void {
   const menuActions = (): Parameters<typeof installMenu>[0] => ({
     mode,
     switchMode,
+    setUpScreens: () => {
+      if (mode === 'pro') sendToOperator(IPC.setup.open, { at: Date.now() });
+    },
     backUpLibrary: () => {
       if (mode === 'pro') void backUp(backupUi);
     },

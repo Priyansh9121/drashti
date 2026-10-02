@@ -26,6 +26,7 @@ import type { ModeResult, OperatorMode } from './mode';
 import type { Lang, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
+import type { SetupPlan, SetupResult, SetupState } from './setup';
 import type { SaveStillResult } from './media';
 import type {
   ItemOrder,
@@ -269,6 +270,18 @@ export interface DrashtiBridge {
     reportDevices(devices: AudioDevice[], state: AudioOutputState): Promise<null>;
     /** Audio player only: the operator chose another output. */
     onChosen(listener: (device: AudioDevice | null) => void): () => void;
+    /** Audio player only: play a short test tone on this output ('' for the system default). */
+    onTestTone(listener: (deviceId: string) => void): () => void;
+  };
+  /** The setup wizard (operator window only; never in Simple Mode). */
+  setup: {
+    state(): Promise<SetupState>;
+    setSeen(): Promise<null>;
+    identifyDisplays(): Promise<{ shown: number }>;
+    testTone(device: AudioDevice | null): Promise<{ ok: boolean }>;
+    finish(plan: SetupPlan, options?: CoverOptions): Promise<SetupResult>;
+    /** View > Set Up Screens… was chosen. */
+    onOpen(listener: () => void): () => void;
   };
   /** Screen setup (operator window only). */
   screens: {

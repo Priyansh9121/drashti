@@ -206,6 +206,17 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
         screens: await d.screens.createGroup('Placeholder group'),
         sound: (await d.audio.setOutput({ id: 'x', label: 'Placeholder' })).chosen === sound.chosen,
         names: (await d.library.listPresentations()).length,
+        // Session 8: kirtans, screens' languages, templates and the setup wizard.
+        tracks: await d.kirtans.saveTracks(welcomeId, [{ slideId: 'x', lang: 'en', lines: ['x'] }]),
+        kirtan: await d.kirtans.setDetails(welcomeId, null),
+        translit: await d.kirtans.makeTransliteration(welcomeId, 'plain', 'replace'),
+        translitStyle: await d.kirtans.setTranslitStyle('iso'),
+        category: await d.kirtans.addCategory('Placeholder category'),
+        languages: await d.screens.setGroupLanguages('x', ['gu']),
+        template: await d.playlists.saveAsTemplate('x', { name: 'Placeholder', slots: [] }),
+        fromTemplate: await d.playlists.newFromTemplate('x', 'Placeholder', null),
+        slot: await d.playlists.addSlot('x', null, { label: 'Placeholder', category: null }),
+        setup: await d.setup.finish({ outputs: [], sound: 'skip', themeId: null }),
       };
     },
     { welcomeId: show.welcomeId, logoId: show.logoPropId },
@@ -224,6 +235,16 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
     theme: no,
     screens: no,
     sound: true,
+    tracks: no,
+    kirtan: no,
+    translit: no,
+    translitStyle: no,
+    category: no,
+    languages: no,
+    template: no,
+    fromTemplate: no,
+    slot: no,
+    setup: no,
   });
 
   // A forced stop: Drashti comes back in Simple Mode, with the show put back.

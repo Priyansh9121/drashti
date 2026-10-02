@@ -192,6 +192,15 @@ export class ScreenRepo {
       .run(key ? JSON.stringify(key) : null, id);
   }
 
+  /** Move a screen to another group (its settings stay), switched on. */
+  moveScreen(id: string, groupId: string): boolean {
+    return (
+      this.db
+        .prepare(`UPDATE screens SET group_id = ?, enabled = 1, updated_at = ${NOW} WHERE id = ?`)
+        .run(groupId, id).changes > 0
+    );
+  }
+
   removeScreen(id: string): boolean {
     return this.db.prepare('DELETE FROM screens WHERE id = ?').run(id).changes > 0;
   }
