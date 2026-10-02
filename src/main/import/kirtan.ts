@@ -2,8 +2,38 @@ import type { ImportIssue } from '../../shared/import';
 import type { KirtanDetails } from '../../shared/kirtans';
 import { type Lang, LANGS } from '../../shared/model';
 import { LANG_NAMES } from '../../shared/themes';
-import { slideLines } from '../../shared/tracks';
+import type { SlideElement } from '../../shared/model';
+import { readsLike } from '../../shared/translit';
+import { boxLines, slideLines, withLines } from '../../shared/tracks';
 import type { ParsedPresentation } from './model';
+
+/**
+ * A slide's English lines that read like one of its Gujarati or Hindi lines
+ * are its transliteration (plain transliteration has no accent marks to
+ * tell it by): for a kirtan laid out a box per language, where the box
+ * alone cannot tell. Lines from files have no language of their own, so
+ * every English line here was only a guess.
+ */
+export function readLatinLines(elements: readonly SlideElement[]): SlideElement[] {
+  const { lines } = slideLines(elements);
+  const indic = [...(lines.gu ?? []), ...(lines.hi ?? [])];
+  if (indic.length === 0 || !lines.en) return [...elements];
+  return elements.map((el) => {
+    if (el.kind !== 'text') return el;
+    const mine = boxLines(el);
+    const next = mine.map((line) => {
+      const text = line.runs.map((r) => r.text).join('');
+      if (line.lang !== 'en' || !indic.some((l) => readsLike(text, l))) return line;
+      return {
+        ...line,
+        lang: 'translit' as const,
+        runs: line.runs.map((r) => ({ ...r, lang: 'translit' as const })),
+      };
+    });
+    const changed = next.some((line, i) => line !== mine[i]);
+    return changed ? withLines(el, next) : el;
+  });
+}
 
 /*
  * Whether an imported presentation is a kirtan, and what the report says
@@ -23,8 +53,11 @@ export interface ImportedKirtan {
 const list = (items: string[]) =>
   items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items.at(-1) ?? ''}`;
 
-export function importedKirtan(parsed: ParsedPresentation): ImportedKirtan | null {
-  const slides = parsed.groups.flatMap((g) => g.slides).filter((s) => s.enabled);
+export function importedKirtan(
+  kavi: ParsedPresentation['kavi'],
+  groups: readonly { slides: readonly { enabled?: boolean; elements: readonly SlideElement[] }[] }[],
+): ImportedKirtan | null {
+  const slides = groups.flatMap((g) => g.slides).filter((s) => s.enabled !== false);
   const per = new Map<Lang, number>();
   let worded = 0;
   let mixed = 0;
@@ -37,7 +70,6 @@ export function importedKirtan(parsed: ParsedPresentation): ImportedKirtan | nul
     for (const lang of read.order) per.set(lang, (per.get(lang) ?? 0) + 1);
     if (read.order.length >= 2 && read.order.some((l) => l === 'gu' || l === 'hi')) mixed++;
   }
-  const kavi = parsed.kavi ?? null;
   if (!kavi && (mixed === 0 || mixed * 2 < worded)) return null;
   const tracks = LANGS.filter((l) => per.has(l)).map((l) => {
     const n = per.get(l) ?? 0;

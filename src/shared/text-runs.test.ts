@@ -110,3 +110,19 @@ describe('run schema', () => {
     expect(textRunSchema.safeParse({ text: 'a', lang: 'fr' }).success).toBe(false);
   });
 });
+
+describe('plain transliteration beside its words', () => {
+  /* Common words only. */
+  it('is told from English by reading like a Gujarati or Hindi line in the same box', () => {
+    const runs = withDetectedLangs([{ text: 'ઘર અને મંદિર\nGhar ne mandir\nHome and temple' }]);
+    expect(runs.map((r) => [r.lang, r.text.trim()])).toEqual([
+      ['gu', 'ઘર અને મંદિર'],
+      ['translit', 'Ghar ne mandir'],
+      ['en', 'Home and temple'],
+    ]);
+    expect(withDetectedLangs([{ text: 'भजन और आरती\nBhajan aur aarti' }]).map((r) => r.lang)).toEqual([
+      'hi',
+      'translit',
+    ]);
+  });
+});

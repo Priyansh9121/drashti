@@ -168,6 +168,9 @@ export function firstLook(slides: readonly (readonly SlideElement[])[], lang: La
   return null;
 }
 
+/** The usual order of a kirtan's languages on a slide: the words, their Roman reading, then the meaning. */
+export const USUAL_ORDER: readonly Lang[] = ['gu', 'hi', 'translit', 'en'];
+
 /** What setLangLines needs to know beyond the slide. */
 export interface LineContext {
   /** The presentation's order of languages (trackOrder): where a language new to the slide goes. */
@@ -263,10 +266,9 @@ export function setLangLines(
     });
   } else if (want.length > 0) {
     const added = want.map((t) => newLine(t, lang, ctx.look));
-    const rank = (l: Lang) => {
-      const at = ctx.order.indexOf(l);
-      return at >= 0 ? at : ctx.order.length + LANGS.indexOf(l);
-    };
+    // The presentation's order, with languages it has nowhere yet in their usual places.
+    const order = trackOrder([ctx.order, USUAL_ORDER]);
+    const rank = (l: Lang) => order.indexOf(l);
     const mine = rank(lang);
     const hasWords = (b: (typeof boxes)[number]) => b.lines.some((l) => l.lang !== null);
     const emptied = boxes.find((b) => b.el.lang === lang && !b.lines.some((l) => lineText(l).trim() !== ''));

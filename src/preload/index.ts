@@ -96,6 +96,10 @@ const bridge: DrashtiBridge = {
     tracks: (presentationId) => invoke(IPC.kirtans.tracks, presentationId),
     saveTracks: (presentationId, edits) => invoke(IPC.kirtans.saveTracks, presentationId, edits),
     setDetails: (presentationId, details) => invoke(IPC.kirtans.setDetails, presentationId, details),
+    makeTransliteration: (presentationId, style, manual) =>
+      invoke(IPC.kirtans.makeTransliteration, presentationId, style, manual),
+    getTranslitStyle: () => invoke(IPC.kirtans.getTranslitStyle),
+    setTranslitStyle: (style) => invoke(IPC.kirtans.setTranslitStyle, style),
   },
   playlists: {
     tree: () => invoke(IPC.playlists.tree),

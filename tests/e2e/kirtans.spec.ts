@@ -222,6 +222,81 @@ test('lyrics with lines in two scripts come in as a kirtan, and the editor calls
   await app.close();
 });
 
+test('make transliteration: lines made by Drashti, a line changed by hand kept or replaced on asking, Undo', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  // A kirtan of common words, with no transliteration yet.
+  const id = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const made = await d.library.newFromWords(
+      'Placeholder Words Kirtan',
+      '[Verse]\nઘર અને મંદિર\n\nભજન અને આરતી\n',
+    );
+    if (!made.ok) throw new Error(made.message);
+    const kirtan = await d.kirtans.setDetails(made.id, {
+      category: 'Kirtan',
+      kavi: null,
+      raag: null,
+      occasions: [],
+      audioMediaId: null,
+    });
+    if (!kirtan.ok) throw new Error(kirtan.message);
+    return made.id;
+  });
+  await open(win, 'Placeholder Words Kirtan');
+  await win.getByTestId('kirtan-button').click();
+  const dialog = win.getByTestId('kirtan-dialog');
+  const section = dialog.getByTestId('make-transliteration');
+  await expect(section.getByTestId('translit-style-plain')).toBeChecked();
+  await section.getByTestId('make-translit').click();
+  await expect(section.getByTestId('translit-result')).toHaveText('Transliteration made: 2 lines filled in.');
+  expect((await tracks(win, id))?.map((l) => l.translit)).toEqual([['Ghar ane mandir'], ['Bhajan ane arti']]);
+  await dialog.getByRole('button', { name: 'Done' }).click();
+
+  // Marked as made by Drashti in Edit words; the first changed by hand becomes the operator's own.
+  let editor = await openByLanguage(win);
+  await editor.getByTestId('words-lang-tab-translit').click();
+  await expect(editor.getByTestId('track-made')).toHaveCount(2);
+  await editor.getByTestId('track-cell').first().locator('textarea').fill('Ghar ne mandir');
+  await editor.getByRole('button', { name: 'Save' }).click();
+  await expect(editor).toHaveCount(0);
+  editor = await openByLanguage(win);
+  await editor.getByTestId('words-lang-tab-translit').click();
+  await expect(editor.getByTestId('track-made')).toHaveCount(1);
+  await editor.getByRole('button', { name: 'Cancel' }).click();
+
+  // Made again with accent marks: it asks about the line changed by hand; kept, the other is made again.
+  await win.getByTestId('kirtan-button').click();
+  await section.getByTestId('translit-style-iso').check();
+  await section.getByTestId('make-translit').click();
+  const ask = win.getByTestId('translit-ask');
+  await expect(ask).toContainText('1 transliteration line was changed by hand.');
+  await expect(ask).toContainText('Slide 1: “Ghar ne mandir” (Drashti would make “Ghar anē maṁdir”)');
+  await expectNoSeriousA11yIssues(win, 'the question about lines changed by hand');
+  await ask.getByRole('button', { name: 'Keep my lines' }).click();
+  await expect(section.getByTestId('translit-result')).toHaveText(
+    'Transliteration made: 1 line made again, 1 line you changed kept as they are.',
+  );
+  expect((await tracks(win, id))?.map((l) => l.translit)).toEqual([['Ghar ne mandir'], ['Bhajan anē ārtī']]);
+
+  // Asked again and told to replace it, the changed line is made too.
+  await section.getByTestId('make-translit').click();
+  await ask.getByRole('button', { name: 'Replace them' }).click();
+  await expect(section.getByTestId('translit-result')).toContainText('1 changed line replaced');
+  expect((await tracks(win, id))?.map((l) => l.translit)).toEqual([['Ghar anē maṁdir'], ['Bhajan anē ārtī']]);
+  await expectNoSeriousA11yIssues(win, 'the Kirtan dialog with its transliteration');
+  await dialog.getByRole('button', { name: 'Done' }).click();
+
+  // Undo puts back the line changed by hand; the style chosen is remembered.
+  const undo = win.getByTestId('undo-removal');
+  await expect(undo).toContainText('Made the transliteration of “Placeholder Words Kirtan”');
+  await undo.getByRole('button', { name: /Undo/ }).click();
+  await expect.poll(async () => (await tracks(win, id))?.[0]?.translit).toEqual(['Ghar ne mandir']);
+  await win.getByTestId('kirtan-button').click();
+  await expect(section.getByTestId('translit-style-iso')).toBeChecked();
+  await app.close();
+});
+
 for (const [width, height] of [
   [1280, 720],
   [1920, 1080],

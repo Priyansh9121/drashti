@@ -13,7 +13,15 @@ import type {
   SaveWordsResult,
   WordsResult,
 } from './library';
-import type { KirtanDetails, KirtanResult, TrackEdit, TracksResult } from './kirtans';
+import type {
+  KirtanDetails,
+  KirtanResult,
+  MakeTranslitResult,
+  ManualLines,
+  TrackEdit,
+  TracksResult,
+} from './kirtans';
+import type { TranslitStyle } from './translit';
 import type { ModeResult, OperatorMode } from './mode';
 import type { Lang, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
@@ -154,6 +162,20 @@ export interface DrashtiBridge {
     saveTracks(presentationId: string, edits: TrackEdit[]): Promise<KirtanResult>;
     /** Make it a kirtan with these details, or (null) not a kirtan; its words stay as they are. */
     setDetails(presentationId: string, details: KirtanDetails | null): Promise<KirtanResult>;
+    /**
+     * Fill its transliteration track from its Gujarati (or Hindi) lines, in
+     * this style. Lines changed by hand: 'ask' changes nothing and asks
+     * (when there are any), 'keep' leaves them, 'replace' makes them again.
+     */
+    makeTransliteration(
+      presentationId: string,
+      style: TranslitStyle,
+      manual: ManualLines,
+    ): Promise<MakeTranslitResult>;
+    getTranslitStyle(): Promise<TranslitStyle>;
+    setTranslitStyle(
+      style: TranslitStyle,
+    ): Promise<{ ok: true; style: TranslitStyle } | { ok: false; message: string }>;
   };
   /** Playlists and folders; changing them is for the operator window only. */
   playlists: {

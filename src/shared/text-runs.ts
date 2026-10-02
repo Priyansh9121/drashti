@@ -1,4 +1,5 @@
 import type { Lang, TextRun } from './model';
+import { readsLike } from './translit';
 
 /*
  * Helpers for styled text runs: joining, tidying, and telling a run's
@@ -112,11 +113,21 @@ export function cutAtLines(runs: readonly TextRun[]): TextRun[] {
  */
 export function withDetectedLangs(runs: readonly TextRun[]): TextRun[] {
   if (!runs.some((r) => r.lang === undefined && !r.legacy)) return [...runs];
+  // The box's Gujarati and Hindi lines: a Latin line that reads like one of them is its transliteration.
+  const indic = runsText(runs)
+    .split('\n')
+    .filter((l) => {
+      const s = scriptOf(l);
+      return s === 'gu' || s === 'hi';
+    });
   return mergeRuns(
     runs.flatMap((run) => {
       if (run.lang !== undefined || run.legacy) return [run];
       const pieces = cutAtLines([run]);
-      const langs = pieces.map((p) => detectLang(p.text));
+      const langs = pieces.map((p) => {
+        const lang = detectLang(p.text);
+        return lang === 'en' && indic.some((l) => readsLike(p.text, l)) ? 'translit' : lang;
+      });
       return pieces.map((piece, i) => {
         // A piece without letters (a blank line) goes with its neighbour in the same run.
         const lang =

@@ -1,12 +1,10 @@
 import { useId } from 'react';
 import type { Lang } from '../../../shared/model';
 import { LANG_NAMES } from '../../../shared/themes';
+import { USUAL_ORDER } from '../../../shared/tracks';
 import { IconButton } from '../ui/Button';
 import { ArrowDown, ArrowUp } from '../ui/icons';
 import { Checkbox } from '../ui/Toggle';
-
-/** The order a group starts from when it chooses its own languages: the usual order on a kirtan's slide. */
-export const USUAL_ORDER: readonly Lang[] = ['gu', 'hi', 'translit', 'en'];
 
 /**
  * Which languages a screen group shows of a kirtan's slides, and in what

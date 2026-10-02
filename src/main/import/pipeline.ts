@@ -22,7 +22,7 @@ import type { Db } from '../db/database';
 import { addToTotals, ImportRepo, type NewImportItem } from '../db/imports';
 import { type NewPlaylist, type NewPlaylistItem, PlaylistRepo } from '../db/playlists';
 import { type NewPresentation, PresentationRepo } from '../db/presentations';
-import { importedKirtan } from './kirtan';
+import { importedKirtan, readLatinLines } from './kirtan';
 import { BatchWriter } from './batch';
 import { parsePp6 } from './formats/pp6';
 import { parsePp7, type Pp7Kind, pp7KindOf } from './formats/pp7';
@@ -449,9 +449,11 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         const media = storeMedia(staged, kind);
         const libraryId = presentations.ensureLibrary(parsed.library ?? ctx.libraryName ?? 'Default');
         const { input, dropped } = toNewPresentation(parsed, libraryId, source, hash, media.ids);
+        // A kirtan laid out a box per language: its plain transliteration is told from English by reading.
+        for (const g of input.groups) for (const sl of g.slides) sl.elements = readLatinLines(sl.elements);
         const issues = [...parsed.issues, ...media.issues];
         // A kirtan: from its author field, or its lines in Gujarati or Hindi with another language.
-        const kirtan = importedKirtan(parsed);
+        const kirtan = importedKirtan(parsed.kavi ?? null, input.groups);
         // Importing it again keeps the details the operator gave it (filling in a kavi it lacked).
         const kept = choice === 'replace' && latest ? presentations.kirtanDetails(latest.id) : null;
         if (kept) input.kirtan = { ...kept, kavi: kept.kavi ?? kirtan?.details.kavi ?? null };

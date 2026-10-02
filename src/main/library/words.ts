@@ -3,7 +3,15 @@ import type { LyricsGroup } from '../../shared/lyrics';
 import { groupKey, lyricsText, parseLyrics } from '../../shared/lyrics';
 import type { Lang, TextElement, TextRun, TextStyle } from '../../shared/model';
 import type { RunLook, SlideLook } from '../../shared/slide-edit';
-import { detectLang, langOfLine, mainLang, mergeRuns, withDetectedLangs } from '../../shared/text-runs';
+import {
+  detectLang,
+  langOfLine,
+  mainLang,
+  mergeRuns,
+  scriptOf,
+  withDetectedLangs,
+} from '../../shared/text-runs';
+import { readsLike } from '../../shared/translit';
 import type { ArrangementEntryRow, ContentRows, CueRow, ElementRow, GroupRow, SlideRow } from '../db/content';
 import type { NewPresentation } from '../db/presentations';
 import { groupColor } from '../import/formats/text';
@@ -179,10 +187,16 @@ function lineLooks(p: TextProps): { look: RunLook; lang: Lang | null }[] {
 function withWords(p: TextProps, lines: readonly string[]): TextProps {
   const looks = lineLooks(p);
   const latin = (l: Lang | null | undefined) => l === 'en' || l === 'translit';
+  const indic = lines.filter((l) => {
+    const s = scriptOf(l);
+    return s === 'gu' || s === 'hi';
+  });
   const runs: TextRun[] = lines.map((line, i) => {
-    // Latin letters stay what the line in their place was (plain transliteration looks like English).
+    // Latin letters stay what the line in their place was (plain transliteration looks like English);
+    // a new Latin line that reads like a Gujarati or Hindi line of the slide is its transliteration.
     const here = looks[i]?.lang;
-    const mark = latin(here) ? here : looks.find((l) => latin(l.lang))?.lang;
+    const reads = scriptOf(line) === 'latin' && !latin(here) && indic.some((l) => readsLike(line, l));
+    const mark = reads ? 'translit' : latin(here) ? here : looks.find((l) => latin(l.lang))?.lang;
     const lang = langOfLine(mark, line) ?? detectLang(line);
     const found = looks.find((l) => l.lang === lang) ?? looks[i] ?? looks.at(-1);
     return { ...(found?.look ?? {}), lang, text: i < lines.length - 1 ? `${line}\n` : line };

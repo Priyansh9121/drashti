@@ -13,7 +13,15 @@ import type {
   SaveWordsResult,
   WordsResult,
 } from './library';
-import type { KirtanDetails, KirtanResult, TrackEdit, TracksResult } from './kirtans';
+import type {
+  KirtanDetails,
+  KirtanResult,
+  MakeTranslitResult,
+  ManualLines,
+  TrackEdit,
+  TracksResult,
+} from './kirtans';
+import type { TranslitStyle } from './translit';
 import type { ModeResult, OperatorMode } from './mode';
 import type { Lang, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
@@ -122,6 +130,11 @@ export const IPC = {
     saveTracks: 'kirtans:save-tracks',
     /** Make a presentation a kirtan with these details, or (null) not a kirtan; its words stay. */
     setDetails: 'kirtans:set-details',
+    /** Fill a kirtan's transliteration track from its Gujarati (or Hindi) lines. */
+    makeTransliteration: 'kirtans:make-transliteration',
+    /** Plain or with accent marks: the app's choice for making transliteration. */
+    getTranslitStyle: 'kirtans:get-translit-style',
+    setTranslitStyle: 'kirtans:set-translit-style',
   },
   media: {
     /** Keep a still frame the operator window made (operator window only). */
@@ -284,6 +297,15 @@ export interface InvokeContract {
   [IPC.kirtans.setDetails]: {
     args: [presentationId: string, details: KirtanDetails | null];
     result: KirtanResult;
+  };
+  [IPC.kirtans.makeTransliteration]: {
+    args: [presentationId: string, style: TranslitStyle, manual: ManualLines];
+    result: MakeTranslitResult;
+  };
+  [IPC.kirtans.getTranslitStyle]: { args: []; result: TranslitStyle };
+  [IPC.kirtans.setTranslitStyle]: {
+    args: [style: TranslitStyle];
+    result: { ok: true; style: TranslitStyle } | { ok: false; message: string };
   };
   [IPC.media.saveStill]: { args: [mediaId: string, jpeg: Uint8Array]; result: SaveStillResult };
   [IPC.audio.getOutput]: { args: []; result: AudioOutputStatus };

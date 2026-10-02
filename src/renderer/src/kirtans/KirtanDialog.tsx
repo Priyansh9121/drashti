@@ -13,6 +13,7 @@ import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { Loading } from '../ui/States';
 import { closeKirtan, makeKirtan, notKirtan, useKirtan } from './kirtan-store';
+import { MakeTransliteration } from './MakeTransliteration';
 
 /** Each language: on how many of the slides that play it has words. */
 function TrackSummary({ doc }: { doc: PresentationDoc }) {
@@ -125,7 +126,9 @@ export function KirtanDialog() {
             be typed in. Screens sets which languages each screen shows.
           </p>
         </section>
-      ) : (
+      ) : null}
+      {doc && kirtan && <MakeTransliteration doc={doc} />}
+      {!doc || kirtan ? null : (
         <div className="space-y-2 text-sm">
           <p>
             A kirtan’s words come in language tracks: Gujarati, Hindi, English (the meaning) and

@@ -41,6 +41,7 @@ const readable = (list: readonly ElementRow[] | undefined): SlideElement[] =>
 /** Every slide that plays with its words by language, and the order the slides put the languages in. */
 export function trackSlidesOf(rows: ContentRows): { slides: TrackSlide[]; order: Lang[] } {
   const elements = elementsBySlide(rows);
+  const made = new Map(rows.autoLines.map((a) => [`${a.slide_id}:${a.lang}`, a.text]));
   const read = playedSlides(rows).map(({ s, g }, i) => {
     const words = slideLines(readable(elements.get(s.id)));
     return {
@@ -52,6 +53,9 @@ export function trackSlidesOf(rows: ContentRows): { slides: TrackSlide[]; order:
         label: s.label,
         lines: words.lines,
         legacy: words.legacy,
+        made: (Object.keys(words.lines) as Lang[]).filter(
+          (l) => made.get(`${s.id}:${l}`) === (words.lines[l] ?? []).join('\n'),
+        ),
       },
       order: words.order,
     };
