@@ -115,7 +115,12 @@ function ownData(el: SlideElement): Record<string, unknown> {
  * place or turn changed, its own data is kept exactly as stored; otherwise
  * data Drashti does not know about is kept beside the new data.
  */
-function rowOf(el: SlideElement, id: string, slideId: string, old: ElementRow | undefined): ElementRow {
+export function rowOf(
+  el: SlideElement,
+  id: string,
+  slideId: string,
+  old: ElementRow | undefined,
+): ElementRow {
   const { kind, frame, rotation } = el;
   const props = ownData(el);
   const was = old ? elementFromRow(old) : null;

@@ -92,6 +92,11 @@ const bridge: DrashtiBridge = {
     removePresentations: (ids) => invoke(IPC.library.removePresentations, ids),
     restorePresentations: (ids) => invoke(IPC.library.restorePresentations, ids),
   },
+  kirtans: {
+    tracks: (presentationId) => invoke(IPC.kirtans.tracks, presentationId),
+    saveTracks: (presentationId, edits) => invoke(IPC.kirtans.saveTracks, presentationId, edits),
+    setDetails: (presentationId, details) => invoke(IPC.kirtans.setDetails, presentationId, details),
+  },
   playlists: {
     tree: () => invoke(IPC.playlists.tree),
     items: (playlistId) => invoke(IPC.playlists.items, playlistId),

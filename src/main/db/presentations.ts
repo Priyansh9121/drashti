@@ -621,7 +621,11 @@ export class PresentationRepo {
       0,
     );
     const tracks = input.kirtan
-      ? langsOf(input.groups.flatMap((g) => g.slides.flatMap((sl) => sl.elements))).join(',')
+      ? langsOf(
+          input.groups.flatMap((g) =>
+            g.slides.filter((sl) => sl.enabled !== false).flatMap((sl) => sl.elements),
+          ),
+        ).join(',')
       : null;
     db.prepare('UPDATE presentations SET slide_count = ?, kirtan_tracks = ? WHERE id = ?').run(
       slideCount,

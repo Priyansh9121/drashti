@@ -156,12 +156,12 @@ export function before(db: Database.Database): void {
     });
   }
 
-  // The library list's languages for each kirtan, from its words.
+  // The library list's languages for each kirtan, from the words of its slides that play.
   const kirtans = db.prepare('SELECT presentation_id FROM kirtans').pluck().all() as string[];
   const texts = db.prepare(
     `SELECT e.id, e.x, e.y, e.width, e.height, e.props FROM elements e
        JOIN slides s ON s.id = e.slide_id JOIN slide_groups g ON g.id = s.group_id
-      WHERE g.presentation_id = ? AND e.kind = 'text'`,
+      WHERE g.presentation_id = ? AND e.kind = 'text' AND s.enabled = 1`,
   );
   const setTracks = db.prepare('UPDATE presentations SET kirtan_tracks = ? WHERE id = ?');
   for (const id of kirtans) {

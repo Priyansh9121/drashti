@@ -13,6 +13,7 @@ import type {
   SaveWordsResult,
   WordsResult,
 } from './library';
+import type { KirtanDetails, KirtanResult, TrackEdit, TracksResult } from './kirtans';
 import type { ModeResult, OperatorMode } from './mode';
 import type { Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
@@ -114,6 +115,13 @@ export const IPC = {
     importProgress: 'library:import-progress',
     /** main -> operator: presentations, props, messages or themes were added or changed. */
     changed: 'library:changed',
+  },
+  /** Kirtans: their words by language and their details; changing them is for the operator window only. */
+  kirtans: {
+    tracks: 'kirtans:tracks',
+    saveTracks: 'kirtans:save-tracks',
+    /** Make a presentation a kirtan with these details, or (null) not a kirtan; its words stay. */
+    setDetails: 'kirtans:set-details',
   },
   media: {
     /** Keep a still frame the operator window made (operator window only). */
@@ -269,6 +277,12 @@ export interface InvokeContract {
   };
   [IPC.library.removePresentations]: { args: [ids: string[]]; result: RemoveResult };
   [IPC.library.restorePresentations]: { args: [ids: string[]]; result: RemoveResult };
+  [IPC.kirtans.tracks]: { args: [presentationId: string]; result: TracksResult };
+  [IPC.kirtans.saveTracks]: { args: [presentationId: string, edits: TrackEdit[]]; result: KirtanResult };
+  [IPC.kirtans.setDetails]: {
+    args: [presentationId: string, details: KirtanDetails | null];
+    result: KirtanResult;
+  };
   [IPC.media.saveStill]: { args: [mediaId: string, jpeg: Uint8Array]; result: SaveStillResult };
   [IPC.audio.getOutput]: { args: []; result: AudioOutputStatus };
   [IPC.audio.setOutput]: { args: [device: AudioDevice | null]; result: AudioOutputStatus };

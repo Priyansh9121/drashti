@@ -13,6 +13,7 @@ import type {
   SaveWordsResult,
   WordsResult,
 } from './library';
+import type { KirtanDetails, KirtanResult, TrackEdit, TracksResult } from './kirtans';
 import type { ModeResult, OperatorMode } from './mode';
 import type { Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
@@ -144,6 +145,15 @@ export interface DrashtiBridge {
     /** Remove presentations; restorePresentations brings them back (Undo). */
     removePresentations(ids: string[]): Promise<RemoveResult>;
     restorePresentations(ids: string[]): Promise<RemoveResult>;
+  };
+  /** Kirtans: words by language and details; changing them is for the operator window only. */
+  kirtans: {
+    /** Every slide's words by language. */
+    tracks(presentationId: string): Promise<TracksResult>;
+    /** Put changed lines back, slide by slide and language by language (one change for Undo). */
+    saveTracks(presentationId: string, edits: TrackEdit[]): Promise<KirtanResult>;
+    /** Make it a kirtan with these details, or (null) not a kirtan; its words stay as they are. */
+    setDetails(presentationId: string, details: KirtanDetails | null): Promise<KirtanResult>;
   };
   /** Playlists and folders; changing them is for the operator window only. */
   playlists: {

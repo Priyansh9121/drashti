@@ -159,6 +159,15 @@ export function trackOrder(orders: readonly (readonly Lang[])[]): Lang[] {
   return out;
 }
 
+/** How the first line in this language looks anywhere in these slides' elements; null when there is none. */
+export function firstLook(slides: readonly (readonly SlideElement[])[], lang: Lang): LineLook | null {
+  for (const elements of slides)
+    for (const el of readingOrder(elements))
+      for (const line of boxLines(el))
+        if (line.lang === lang && lineText(line).trim() !== '') return lookOf(line);
+  return null;
+}
+
 /** What setLangLines needs to know beyond the slide. */
 export interface LineContext {
   /** The presentation's order of languages (trackOrder): where a language new to the slide goes. */
@@ -170,7 +179,7 @@ export interface LineContext {
 }
 
 /** The look of a line: its first run's, without words or language. */
-function lookOf(line: BoxLine): LineLook {
+export function lookOf(line: BoxLine): LineLook {
   const first = line.runs[0];
   if (!first) return {};
   const { text: _t, lang: _l, legacy: _g, ...look } = first;
