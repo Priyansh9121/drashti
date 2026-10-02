@@ -37,7 +37,24 @@ export interface Pp6TextBox {
   rect?: [number, number, number, number];
   fill?: string;
   vertical?: 0 | 1 | 2;
-  outline?: boolean;
+  /** An outline round the box: black, 1 point; or a colour ("r g b a") and width. */
+  outline?: boolean | { color: string; width: number };
+  /** Degrees, as the file stores them. */
+  rotation?: number;
+  /** The NSShadow string ("blur|r g b a|{x, y}"), or false for none. */
+  shadow?: string | false;
+  growToFit?: boolean;
+}
+
+/** A shape: an RVShapeElement, or a path that is a rectangle, a circle or something custom. */
+export interface Pp6Shape {
+  kind: 'shape' | 'rectangle' | 'circle' | 'custom';
+  rect: [number, number, number, number];
+  fill?: string;
+  outline?: { color: string; width: number };
+  radius?: number;
+  rotation?: number;
+  shadow?: boolean;
 }
 
 export interface Pp6SlideSpec {
@@ -49,24 +66,46 @@ export interface Pp6SlideSpec {
   image?: { path: string; rect: [number, number, number, number] };
   video?: { path: string; rect: [number, number, number, number]; loop?: boolean };
   shape?: { fill: string; rect: [number, number, number, number] };
+  shapes?: Pp6Shape[];
   audio?: string;
   /** A Clear cue (clears a layer), which Drashti does not run yet. */
   clear?: boolean;
-  transition?: boolean;
+  /** true: an RVTransition of type 9 for 1 s; or its type (-1 for none of its own) and seconds. */
+  transition?: boolean | { type: number; seconds: number };
+  /** A slide timer (RVSlideTimerCue, as the community notes on the format describe it). */
+  timer?: { seconds: number; loop?: boolean };
 }
 
 const fileUrl = (path: string) => (path.startsWith('file:') ? path : pathToFileURL(path).href);
 
+const strokeOf = (outline: Pp6TextBox['outline']) => {
+  const o = typeof outline === 'object' ? outline : { color: '0 0 0 1', width: 1 };
+  return `<dictionary rvXMLIvarName="stroke"><NSColor rvXMLDictionaryKey="RVShapeElementStrokeColorKey">${o.color}</NSColor><NSNumber rvXMLDictionaryKey="RVShapeElementStrokeWidthKey" hint="float">${o.width}</NSNumber></dictionary>`;
+};
+
 function textElement(t: Pp6TextBox, i: number): string {
   const [x, y, w, h] = t.rect ?? [100, 100, 1720, 880];
+  const shadow = t.shadow ?? '2.000000|0 0 0 1|{2.8284, -2.8284}';
   return (
-    `<RVTextElement displayName="Text ${i}" UUID="T-${i}" typeID="0" displayDelay="0" locked="false" persistent="0" fromTemplate="false" opacity="1" source="" bezelRadius="0" rotation="0" drawingFill="${t.fill ? 'true' : 'false'}" drawingShadow="true" drawingStroke="${t.outline ? 'true' : 'false'}" fillColor="${t.fill ?? '0 0 0 0'}" adjustsHeightToFit="false" verticalAlignment="${t.vertical ?? 1}" revealType="0">` +
+    `<RVTextElement displayName="Text ${i}" UUID="T-${i}" typeID="0" displayDelay="0" locked="false" persistent="0" fromTemplate="false" opacity="1" source="" bezelRadius="0" rotation="${t.rotation ?? 0}" drawingFill="${t.fill ? 'true' : 'false'}" drawingShadow="${shadow ? 'true' : 'false'}" drawingStroke="${t.outline ? 'true' : 'false'}" fillColor="${t.fill ?? '0 0 0 0'}" adjustsHeightToFit="${t.growToFit ? 'true' : 'false'}" verticalAlignment="${t.vertical ?? 1}" revealType="0">` +
     `<RVRect3D rvXMLIvarName="position">{${x} ${y} 0 ${w} ${h}}</RVRect3D>` +
-    `<shadow rvXMLIvarName="shadow">2.000000|0 0 0 1|{2.8284, -2.8284}</shadow>` +
-    `<dictionary rvXMLIvarName="stroke"><NSColor rvXMLDictionaryKey="RVShapeElementStrokeColorKey">0 0 0 1</NSColor><NSNumber rvXMLDictionaryKey="RVShapeElementStrokeWidthKey" hint="float">1</NSNumber></dictionary>` +
+    `<shadow rvXMLIvarName="shadow">${shadow || '0.000000|0 0 0 0.3333333432674408|{4, -4}'}</shadow>` +
+    strokeOf(t.outline) +
     `<NSString rvXMLIvarName="RTFData">${b64(t.rtf)}</NSString>` +
     `</RVTextElement>`
   );
+}
+
+function shapeElement(sh: Pp6Shape, i: number): string {
+  const [x, y, w, h] = sh.rect;
+  const common = `UUID="SH-${i}" displayName="Shape ${i}" typeID="0" displayDelay="0" locked="false" persistent="0" fromTemplate="false" opacity="1" source="" bezelRadius="${sh.radius ?? 0}" rotation="${sh.rotation ?? 0}" drawingFill="${sh.fill ? 'true' : 'false'}" drawingShadow="${sh.shadow ? 'true' : 'false'}" drawingStroke="${sh.outline ? 'true' : 'false'}" fillColor="${sh.fill ?? '1 1 1 1'}"`;
+  const inner =
+    `<RVRect3D rvXMLIvarName="position">{${x} ${y} 0 ${w} ${h}}</RVRect3D>` +
+    `<shadow rvXMLIvarName="shadow">0.000000|0 0 0 0.3333333432674408|{4, -4}</shadow>` +
+    strokeOf(sh.outline ?? false);
+  if (sh.kind === 'shape') return `<RVShapeElement ${common}>${inner}</RVShapeElement>`;
+  const path = `isRectangle="${sh.kind === 'rectangle' ? 'true' : 'false'}" isCircle="${sh.kind === 'circle' ? 'true' : 'false'}" shouldClose="true" feather="0"`;
+  return `<RVBezierPathElement ${common} ${path}>${inner}<array rvXMLIvarName="points"/></RVBezierPathElement>`;
 }
 
 function slide(s: Pp6SlideSpec, i: number): string {
@@ -84,6 +123,7 @@ function slide(s: Pp6SlideSpec, i: number): string {
       `<RVVideoElement displayName="Video" UUID="VE-${i}" typeID="0" displayDelay="0" locked="false" persistent="0" fromTemplate="false" opacity="1" source="${esc(fileUrl(s.video.path))}" bezelRadius="0" rotation="0" drawingFill="false" drawingShadow="false" drawingStroke="false" fillColor="1 1 1 1" scaleBehavior="0" playbackBehavior="${s.video.loop ? 1 : 0}" flippedHorizontally="false" flippedVertically="false"><RVRect3D rvXMLIvarName="position">{${x} ${y} 0 ${w} ${h}}</RVRect3D></RVVideoElement>`,
     );
   }
+  s.shapes?.forEach((sh, n) => elements.push(shapeElement(sh, i * 100 + n)));
   if (s.shape) {
     const [x, y, w, h] = s.shape.rect;
     elements.push(
@@ -96,7 +136,10 @@ function slide(s: Pp6SlideSpec, i: number): string {
   const clearCue = s.clear
     ? `<RVClearCue UUID="C-${i}" displayName="Clear" actionType="2" enabled="true" timeStamp="0" delayTime="0"/>`
     : '';
-  const cues = `<array rvXMLIvarName="cues">${audioCue}${clearCue}</array>`;
+  const timerCue = s.timer
+    ? `<RVSlideTimerCue UUID="TC-${i}" displayName="Timer" actionType="0" enabled="true" timeStamp="0" delayTime="0" duration="${s.timer.seconds}" loopToBeginning="${s.timer.loop ? 'true' : 'false'}"/>`
+    : '';
+  const cues = `<array rvXMLIvarName="cues">${audioCue}${clearCue}${timerCue}</array>`;
   const background = s.background
     ? `<RVMediaCue UUID="M-${i}" displayName="Background ${i}" actionType="0" alignment="4" behavior="2" dateAdded="" delayTime="0" enabled="true" nextCueUUID="" tags="" timeStamp="0" rvXMLIvarName="backgroundMediaCue">` +
       (s.background.kind === 'video'
@@ -104,8 +147,9 @@ function slide(s: Pp6SlideSpec, i: number): string {
         : `<RVImageElement rvXMLIvarName="element" displayName="bg" UUID="I-bg-${i}" source="${esc(fileUrl(s.background.path))}" scaleBehavior="${s.background.scale ?? 1}" opacity="1" rotation="0"/>`) +
       `</RVMediaCue>`
     : '';
-  const transition = s.transition
-    ? `<RVTransition rvXMLIvarName="transitionInObject" transitionType="9" transitionDuration="1.0" motionEnabled="false"/>`
+  const t = s.transition === true ? { type: 9, seconds: 1 } : s.transition;
+  const transition = t
+    ? `<RVTransition rvXMLIvarName="transitionInObject" transitionType="${t.type}" transitionDuration="${t.seconds}" motionEnabled="false"/>`
     : '';
   return (
     `<RVDisplaySlide backgroundColor="0 0 0 0" highlightColor="" drawingBackgroundColor="false" enabled="${s.enabled === false ? 'false' : 'true'}" socialItemCount="1" UUID="SL-${i}" chordChartPath="" label="${esc(s.label ?? '')}" notes="${esc(s.notes ?? '')}">` +

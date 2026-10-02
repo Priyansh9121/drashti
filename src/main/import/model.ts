@@ -1,5 +1,5 @@
 import type { ImportIssue } from '../../shared/import';
-import type { SlideElement } from '../../shared/model';
+import type { SlideElement, Transition } from '../../shared/model';
 
 /*
  * The intermediate model every importer produces. Parsers fill it from a
@@ -36,6 +36,10 @@ export interface ParsedSlide {
   enabled: boolean;
   elements: SlideElement[];
   cues: ParsedCue[];
+  /** Its own transition, when the file gives one. */
+  transition?: Transition | null;
+  /** Moves on by itself after this long, when the file says so. */
+  autoAdvanceMs?: number | null;
 }
 
 export interface ParsedGroup {
@@ -106,6 +110,10 @@ export interface ParsedPresentation {
   arrangements: ParsedArrangement[];
   /** The arrangement it plays in (an index into `arrangements`), or null for every slide in order. */
   selectedArrangement: number | null;
+  /** The transition for slides without their own, when the file gives one. */
+  transition?: Transition | null;
+  /** Auto-advance goes from the last slide back to the first. */
+  loop?: boolean;
   media: ParsedMediaRef[];
   /** Things that did not come across, or came across changed. */
   issues: ImportIssue[];

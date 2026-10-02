@@ -36,6 +36,9 @@ export function runsText(runs: readonly TextRun[]): string {
   return runs.map((r) => r.text).join('');
 }
 
+/** Equal as data (shadows and outlines can be objects). */
+const same = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
+
 const sameStyle = (a: TextRun, b: TextRun) =>
   a.font === b.font &&
   a.size === b.size &&
@@ -43,7 +46,8 @@ const sameStyle = (a: TextRun, b: TextRun) =>
   a.weight === b.weight &&
   a.italic === b.italic &&
   a.letterSpacing === b.letterSpacing &&
-  a.shadow === b.shadow &&
+  same(a.shadow, b.shadow) &&
+  same(a.outline, b.outline) &&
   a.lang === b.lang &&
   a.legacy === b.legacy;
 

@@ -3,12 +3,17 @@ import { basename, dirname, join } from 'node:path';
 import type { ImportIssue } from '../../../shared/import';
 import type {
   MediaElement,
+  Outline,
   Rect,
+  Shadow,
   ShapeElement,
+  ShapeKind,
   SlideElement,
   TextElement,
+  Transition,
   VerticalAlign,
 } from '../../../shared/model';
+import { CUT, MAX_AUTO_ADVANCE_MS, MAX_TRANSITION_MS } from '../../../shared/model';
 import { mainLang, withDetectedLangs } from '../../../shared/text-runs';
 import type {
   ParsedArrangement,
@@ -75,6 +80,37 @@ export function pp7Color(v: unknown): string | null {
       .toString(16)
       .padStart(2, '0');
   return `#${hex(c['red'])}${hex(c['green'])}${hex(c['blue'])}${a < 1 ? hex(a) : ''}`;
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** An rv.data.Color with its alpha multiplied by `opacity`; null when it cannot be seen. */
+function colorWithOpacity(v: unknown, opacity: number): string | null {
+  const c = msg(v);
+  if (!c) return null;
+  return pp7Color({ ...c, alpha: num(c['alpha'], 0) * opacity });
+}
+
+/**
+ * An rv.data.Graphics.Shadow as a shadow in points: it falls `offset` away
+ * at `angle` degrees (counted the mathematical way, so 315 is down and to
+ * the right), blurred by `radius`. Null when it is off or cannot be seen.
+ */
+export function pp7Shadow(v: unknown): Shadow | null {
+  const sh = msg(v);
+  if (sh?.['enable'] !== true) return null;
+  // Left out means fully there (proto3 leaves out zeros, and an invisible shadow is never switched on).
+  const opacity = sh['opacity'] === undefined ? 1 : num(sh['opacity'], 1);
+  const color = colorWithOpacity(sh['color'] ?? { red: 0, green: 0, blue: 0, alpha: 1 }, opacity);
+  if (!color) return null;
+  const angle = (num(sh['angle']) * Math.PI) / 180;
+  const offset = num(sh['offset']);
+  return {
+    color,
+    blur: round2(Math.max(0, num(sh['radius']))),
+    x: round2(offset * Math.cos(angle)) || 0,
+    y: round2(-offset * Math.sin(angle)) || 0,
+  };
 }
 
 function rect(v: unknown): Rect | null {
@@ -151,7 +187,18 @@ interface Context {
   legacy: LegacyFontUse;
   width: number;
   height: number;
+  /** Slides (by their place in the file) that go back to the first slide by themselves. */
+  loopsBack: number[];
 }
+
+const newContext = (size: { width: number; height: number }): Context => ({
+  media: [],
+  mediaIndex: new Map(),
+  losses: new Losses(),
+  legacy: new LegacyFontUse(),
+  loopsBack: [],
+  ...size,
+});
 
 function addMedia(ctx: Context, media: Message | undefined, fallback: ParsedMediaRef['kind']): number | null {
   const path = urlPath(media?.['url']);
@@ -175,6 +222,7 @@ const scaleOf = (media: Message | undefined): MediaElement['fit'] => {
   return FIT[num(drawing?.['scale_behavior'])] ?? 'fit';
 };
 
+/** What a slide element becomes, turned as the file has it (degrees clockwise). */
 function elementsOf(ctx: Context, wrapper: Message, id: string): SlideElement[] {
   const e = msg(wrapper['element']);
   if (!e) return [];
@@ -187,23 +235,84 @@ function elementsOf(ctx: Context, wrapper: Message, id: string): SlideElement[] 
     );
     return [];
   }
-  const frame = rect(e['bounds']) ?? { x: 0, y: 0, width: ctx.width, height: ctx.height };
-  if (num(e['rotation']) % 360 !== 0) {
-    ctx.losses.add('rotation', 'A rotated element shows unrotated.', '{n} rotated elements show unrotated.');
+  const rotation = round2(num(e['rotation']) % 360);
+  return elementsUnturned(ctx, e, id).map((el) => {
+    const turned = round2(((el.rotation ?? 0) + rotation) % 360);
+    return turned ? { ...el, rotation: turned } : el;
+  });
+}
+
+/** The element's outline (its stroke), or null. */
+function outlineOf(ctx: Context, e: Message): Outline | null {
+  const stroke = msg(e['stroke']);
+  if (stroke?.['enable'] !== true) return null;
+  const width = num(stroke['width'], 1);
+  const color = pp7Color(stroke['color']) ?? null;
+  if (!color || width <= 0) return null;
+  if (num(stroke['style']) !== 0)
+    ctx.losses.add(
+      'dashed-outline',
+      'A dashed outline shows as a solid line.',
+      '{n} dashed outlines show as solid lines.',
+      'info',
+    );
+  return { color, width: round2(width) };
+}
+
+/**
+ * The element's shape: a rectangle (rounded: roundness is a share of its
+ * shorter side), an ellipse, or a path of two points, which is a line (its
+ * frame and turn are worked out from the points, kept within the bounds as
+ * shares of them). Null for shapes Drashti cannot draw yet.
+ */
+function shapeOf(
+  e: Message,
+  frame: Rect,
+): { kind: ShapeKind; cornerRadius: number; frame: Rect; rotation: number } | null {
+  const path = msg(e['path']);
+  const shape = msg(path?.['shape']);
+  const type = num(shape?.['type']);
+  const points = list(path?.['points']);
+  const square = (kind: ShapeKind, cornerRadius = 0) => ({ kind, cornerRadius, frame, rotation: 0 });
+  if (type === 2) return square('ellipse');
+  if (type === 11) {
+    const roundness = num(msg(shape?.['rounded_rectangle'])?.['roundness']);
+    return square('rectangle', round2(Math.max(0, roundness) * Math.min(frame.width, frame.height)));
   }
+  if (type === 1 || (type === 0 && points.length <= 4)) return square('rectangle');
+  if (type === 8 && points.length === 2 && path?.['closed'] !== true) {
+    const [a, b] = points.map((p) => {
+      const pt = msg(p['point']);
+      return { x: frame.x + num(pt?.['x']) * frame.width, y: frame.y + num(pt?.['y']) * frame.height };
+    });
+    if (!a || !b) return null;
+    const length = Math.hypot(b.x - a.x, b.y - a.y);
+    const thickness = 20;
+    return {
+      kind: 'line',
+      cornerRadius: 0,
+      frame: {
+        x: round2((a.x + b.x) / 2 - length / 2),
+        y: round2((a.y + b.y) / 2 - thickness / 2),
+        width: round2(length),
+        height: thickness,
+      },
+      rotation: round2((Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI),
+    };
+  }
+  return null;
+}
+
+/** A slide element (an rv.data.Graphics.Element) as Drashti's elements, not yet turned. */
+function elementsUnturned(ctx: Context, e: Message, id: string): SlideElement[] {
+  const frame = rect(e['bounds']) ?? { x: 0, y: 0, width: ctx.width, height: ctx.height };
   const opacity = Math.min(1, Math.max(0, num(e['opacity'], 1)));
   const fill = msg(e['fill']);
   const fillOn = fill?.['enable'] === true;
   const out: SlideElement[] = [];
   const text = msg(e['text']);
   const rtfBytes = bytesOf(text?.['rtf_data']);
-  if (msg(e['stroke'])?.['enable'] === true) {
-    ctx.losses.add(
-      'outline',
-      'An element outline is not shown yet.',
-      '{n} element outlines are not shown yet.',
-    );
-  }
+  const outline = outlineOf(ctx, e);
   // Media placed on the slide (an image or video as the element's fill).
   const fillMedia = msg(fill?.['media']);
   if (fillOn && fillMedia && !rtfBytes) {
@@ -218,25 +327,54 @@ function elementsOf(ctx: Context, wrapper: Message, id: string): SlideElement[] 
       };
       if (opacity < 1) media.opacity = opacity;
       out.push(media);
+      if (outline)
+        ctx.losses.add(
+          'media-outline',
+          'An outline round a picture or video is not shown.',
+          '{n} outlines round pictures or videos are not shown.',
+          'info',
+        );
     }
     return out;
   }
+  if (fillOn && fill['gradient'])
+    ctx.losses.add(
+      'gradient-fill',
+      'A gradient fill is not shown.',
+      '{n} gradient fills are not shown.',
+      'info',
+    );
   const fillColor = fillOn ? pp7Color(fill['color']) : null;
-  if (fillColor) {
-    const shape: ShapeElement = {
-      id: rtfBytes ? `${id}-fill` : id,
-      kind: 'shape',
-      frame,
-      fill: fillColor,
-      cornerRadius: 0,
-      opacity,
-    };
-    out.push(shape);
-  }
-  const points = list(msg(e['path'])?.['points']);
-  if (!rtfBytes && points.length > 4) {
-    ctx.losses.add('custom-shape', 'A custom shape is not imported.', '{n} custom shapes are not imported.');
-    return [];
+  // What is drawn behind the words (or the shape itself): its fill and outline, in its shape.
+  if (fillColor || outline) {
+    const kind = shapeOf(e, frame);
+    if (!kind) {
+      ctx.losses.add(
+        'custom-shape',
+        'A shape Drashti cannot draw yet (a triangle, a star, an arrow or a custom shape) was left out.',
+        '{n} shapes Drashti cannot draw yet (triangles, stars, arrows or custom shapes) were left out.',
+      );
+    } else {
+      const shape: ShapeElement = {
+        id: rtfBytes ? `${id}-fill` : id,
+        kind: 'shape',
+        frame: kind.frame,
+        fill: kind.kind === 'line' ? null : fillColor,
+        cornerRadius: kind.cornerRadius,
+        opacity,
+      };
+      if (kind.kind !== 'rectangle') shape.shape = kind.kind;
+      if (kind.rotation) shape.rotation = kind.rotation;
+      if (outline) shape.outline = outline;
+      out.push(shape);
+      if (!rtfBytes && msg(e['shadow'])?.['enable'] === true)
+        ctx.losses.add(
+          'shape-shadow',
+          'A shape’s shadow is not shown.',
+          '{n} shapes’ shadows are not shown.',
+          'info',
+        );
+    }
   }
   if (!rtfBytes) return out;
   const rtf = readRtf(rtfBytes);
@@ -262,12 +400,72 @@ function elementsOf(ctx: Context, wrapper: Message, id: string): SlideElement[] 
       align: rtf.align ?? 'center',
       verticalAlign: VERTICAL[num(text?.['vertical_alignment'])] ?? 'middle',
       lineHeight: rtf.lineHeight ?? 1.2,
-      shadow: msg(text?.['shadow'])?.['enable'] === true || msg(e['shadow'])?.['enable'] === true,
+      // The text's own shadow, else the element's (which falls behind the words).
+      shadow: pp7Shadow(text?.['shadow']) ?? pp7Shadow(e['shadow']) ?? false,
     },
   };
   if (runs.length > 0) el.runs = runs;
+  const scale = num(text?.['scale_behavior']);
+  if (scale === 2 || scale === 4) el.style.shrinkToFit = true;
+  if (scale === 3 || scale === 4)
+    ctx.losses.add(
+      'grow-text',
+      'Text that grows to fill its box shows at its set size when it is short.',
+      '{n} text boxes whose words grow to fill them show at their set size when the words are short.',
+      'info',
+    );
+  if (scale === 1)
+    ctx.losses.add(
+      'grow-to-fit',
+      'A text box that grows to fit its words shows at its set size.',
+      '{n} text boxes that grow to fit their words show at their set size.',
+      'info',
+    );
   out.push(el);
   return out;
+}
+
+/**
+ * An rv.data.Transition: a dissolve for its duration (other effects, such as
+ * pushes and wipes, dissolve too and are counted), or a cut when it is
+ * called a cut or takes no time. Null when there is none.
+ */
+function transitionOf(ctx: Context, v: unknown): Transition | null {
+  const t = msg(v);
+  if (!t) return null;
+  const ms = Math.round(num(t['duration']) * 1000);
+  const effect = msg(t['effect']);
+  const name = `${str(effect?.['name'])} ${str(effect?.['render_id'])}`.trim().toLowerCase();
+  if (ms <= 0 || /\bcut\b/u.test(name)) return CUT;
+  if (name !== '' && !/dissolve|fade|cross/u.test(name))
+    ctx.losses.add(
+      'transition-kind',
+      'A slide transition of another kind (a push, a wipe...) plays as a dissolve.',
+      '{n} slide transitions of other kinds (pushes, wipes...) play as a dissolve.',
+      'info',
+    );
+  return { kind: 'dissolve', durationMs: Math.min(MAX_TRANSITION_MS, ms) };
+}
+
+/**
+ * A cue's auto-advance: after `completion_time` seconds it goes on to the
+ * next slide (or back to the first, which is a loop on the last slide).
+ * Other ways of moving on (after a video ends, to a chosen slide) are counted.
+ */
+function autoAdvanceOf(ctx: Context, cue: Message, index: number): number | null {
+  const target = num(cue['completion_target_type']);
+  if (target === 0) return null;
+  const seconds = num(cue['completion_time']);
+  if ((target === 1 || target === 4) && num(cue['completion_action_type']) === 3 && seconds > 0) {
+    if (target === 4) ctx.loopsBack.push(index);
+    return Math.min(MAX_AUTO_ADVANCE_MS, Math.max(100, Math.round(seconds * 1000)));
+  }
+  ctx.losses.add(
+    'auto-advance-other',
+    'A slide that moves on by itself in another way (after a video ends, or to a chosen slide) waits for the operator.',
+    '{n} slides that move on by themselves in other ways (after a video ends, or to a chosen slide) wait for the operator.',
+  );
+  return null;
 }
 
 /** A cue's actions other than its slide: background media, audio, clears, messages... */
@@ -363,14 +561,6 @@ function slideOf(ctx: Context, cue: Message, index: number, usesEnabled: boolean
       '{n} slide hot keys are not imported.',
       'info',
     );
-  if (presentationSlide?.['transition']) {
-    ctx.losses.add(
-      'transition',
-      'A slide transition is not imported yet.',
-      '{n} slide transitions are not imported yet.',
-      'info',
-    );
-  }
   return {
     label: str(cue['name']),
     notes: notesRtf ? readRtf(notesRtf).text : '',
@@ -379,7 +569,20 @@ function slideOf(ctx: Context, cue: Message, index: number, usesEnabled: boolean
     enabled: usesEnabled ? cue['isEnabled'] === true : true,
     elements,
     cues: cuesOf(ctx, actions),
+    transition: transitionOf(ctx, presentationSlide?.['transition']),
+    autoAdvanceMs: autoAdvanceOf(ctx, cue, index),
   };
+}
+
+/** Whether the last slide goes back to the first (a loop); one doing so earlier cannot, and is counted. */
+function loopOf(ctx: Context, slideCount: number): boolean {
+  if (ctx.loopsBack.some((i) => i !== slideCount - 1))
+    ctx.losses.add(
+      'timer-to-first',
+      'A slide that went back to the first slide by itself goes on to the next one.',
+      '{n} slides that went back to the first slide by themselves go on to the next one.',
+    );
+  return ctx.loopsBack.includes(slideCount - 1);
 }
 
 function sizeOf(slides: (Message | undefined)[]): { width: number; height: number } {
@@ -423,13 +626,7 @@ function presentationOf(bytes: Uint8Array, filePath: string): ParsedPresentation
       )?.['base_slide'],
     ),
   );
-  const ctx: Context = {
-    media: [],
-    mediaIndex: new Map(),
-    losses: new Losses(),
-    legacy: new LegacyFontUse(),
-    ...sizeOf(baseSlides),
-  };
+  const ctx = newContext(sizeOf(baseSlides));
   const usesEnabled = cues.some((c) => c['isEnabled'] === true);
   let index = 0;
   const used = new Set<string>();
@@ -487,6 +684,8 @@ function presentationOf(bytes: Uint8Array, filePath: string): ParsedPresentation
       'info',
     );
   }
+  const transition = transitionOf(ctx, p['transition']);
+  const loop = loopOf(ctx, index);
   return {
     name: str(p['name']) || nameFromFile(filePath),
     ref: uuid(p['uuid']),
@@ -496,6 +695,8 @@ function presentationOf(bytes: Uint8Array, filePath: string): ParsedPresentation
     groups,
     arrangements,
     selectedArrangement: selected >= 0 ? selected : null,
+    transition,
+    loop,
     media: ctx.media,
     issues: [...ctx.losses.issues(), ...ctx.legacy.issues(), ...unknownIssue(stats.unknown)],
   };
@@ -505,13 +706,7 @@ function templateOf(bytes: Uint8Array, filePath: string): ParsedPresentation {
   const stats = { unknown: 0 };
   const d = decodeMessage(bytes, 'rv.data.Template.Document', descriptor, stats);
   const slides = list(d['slides']);
-  const ctx: Context = {
-    media: [],
-    mediaIndex: new Map(),
-    losses: new Losses(),
-    legacy: new LegacyFontUse(),
-    ...sizeOf(slides.map((s) => msg(s['base_slide']))),
-  };
+  const ctx = newContext(sizeOf(slides.map((s) => msg(s['base_slide']))));
   const parsed: ParsedSlide[] = slides.map((s, i) => {
     const base = msg(s['base_slide']);
     return {
@@ -602,14 +797,7 @@ function playlistOf(ctx: Context, p: Message): ParsedPlaylist {
 function playlistDocOf(bytes: Uint8Array, filePath: string): ParsedPlaylistDoc {
   const stats = { unknown: 0 };
   const d = decodeMessage(bytes, 'rv.data.PlaylistDocument', descriptor, stats);
-  const ctx: Context = {
-    media: [],
-    mediaIndex: new Map(),
-    losses: new Losses(),
-    legacy: new LegacyFontUse(),
-    width: 0,
-    height: 0,
-  };
+  const ctx = newContext({ width: 0, height: 0 });
   const root = msg(d['root_node']);
   const top = root ? playlistOf(ctx, root) : null;
   // The root is not shown in the app: its children are the top level.
@@ -634,13 +822,7 @@ function propsDocOf(bytes: Uint8Array): ParsedProps {
         'base_slide'
       ],
     );
-  const ctx: Context = {
-    media: [],
-    mediaIndex: new Map(),
-    losses: new Losses(),
-    legacy: new LegacyFontUse(),
-    ...sizeOf(cues.map(baseOf)),
-  };
+  const ctx = newContext(sizeOf(cues.map(baseOf)));
   const props = cues.flatMap((cue, i) => {
     const base = baseOf(cue);
     if (!base) return [];
