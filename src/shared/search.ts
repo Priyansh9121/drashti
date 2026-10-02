@@ -39,12 +39,18 @@ export function matchesAll(queryWords: readonly string[], textWords: readonly st
   return queryWords.every((q) => textWords.some((w) => w.startsWith(q)));
 }
 
+/** The kirtan details search reads. */
+export type KirtanField = 'kavi' | 'raag' | 'category' | 'occasion';
+
 export interface SearchHit {
   presentationId: string;
   name: string;
   libraryName: string;
-  /** Where it matched: the title, or a line of slide text as it is written. */
-  match: { kind: 'title' } | { kind: 'text'; line: string; slideId: string };
+  /** Where it matched: the title, a kirtan's detail (its kavi, raag...), or a line of slide text as it is written. */
+  match:
+    | { kind: 'title' }
+    | { kind: 'detail'; field: KirtanField; value: string }
+    | { kind: 'text'; line: string; slideId: string };
 }
 
 export interface SearchResult {

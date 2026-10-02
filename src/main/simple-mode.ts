@@ -29,6 +29,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.kirtans.setDetails,
   IPC.kirtans.makeTransliteration,
   IPC.kirtans.setTranslitStyle,
+  IPC.kirtans.addCategory,
   IPC.playlists.create,
   IPC.playlists.rename,
   IPC.playlists.remove,

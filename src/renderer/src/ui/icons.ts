@@ -57,6 +57,7 @@ export {
   Languages,
   Layers,
   LayoutGrid,
+  ListFilter,
   ListMusic,
   ListPlus,
   Loader,

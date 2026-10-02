@@ -1,7 +1,12 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { IPC } from '../../shared/ipc';
 import type { KirtanResult, MakeTranslitResult, TracksResult } from '../../shared/kirtans';
-import { cleanDetails, kirtanDetailsSchema, trackEditsSchema } from '../../shared/kirtans';
+import {
+  cleanDetails,
+  DEFAULT_CATEGORIES,
+  kirtanDetailsSchema,
+  trackEditsSchema,
+} from '../../shared/kirtans';
 import { idSchema } from '../../shared/model-schema';
 import type { SlideLook } from '../../shared/slide-edit';
 import { TRANSLIT_STYLES, type TranslitStyle } from '../../shared/translit';
@@ -35,6 +40,7 @@ export interface KirtansIpcDeps {
 }
 
 const TRANSLIT_STYLE = 'translitStyle';
+const CATEGORIES = 'kirtanCategories';
 const styleSchema = z.enum(TRANSLIT_STYLES);
 
 /** How transliteration is made: plain letters until the operator chooses accent marks. */
@@ -158,5 +164,32 @@ export function registerKirtansIpc({
     const revisionId = revisions.keep([before]);
     changed([id.data]);
     return { ok: true, revisionId, ...counts };
+  });
+
+  /** Drashti's categories, then those added, then any a kirtan has that is in neither (an import, say). */
+  const categories = (): string[] => {
+    const added = z.array(z.string()).safeParse(settings.get(CATEGORIES));
+    const used = presentations.list().flatMap((p) => (p.kirtan?.category ? [p.kirtan.category] : []));
+    const all = [...DEFAULT_CATEGORIES, ...(added.success ? added.data : []), ...used];
+    const seen = new Set<string>();
+    return all.filter((c) => {
+      const key = c.toLocaleLowerCase('en');
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
+  handle(IPC.kirtans.categories, () => categories());
+
+  handle(IPC.kirtans.addCategory, (e, name) => {
+    if (!fromOperator(e)) return onlyOperator;
+    const n = z.string().trim().min(1).max(60).safeParse(name);
+    if (!n.success) return { ok: false as const, message: 'A category needs a name (up to 60 letters).' };
+    const added = z.array(z.string()).safeParse(settings.get(CATEGORIES));
+    const list = added.success ? added.data : [];
+    if (!categories().some((c) => c.toLocaleLowerCase('en') === n.data.toLocaleLowerCase('en')))
+      settings.set(CATEGORIES, [...list, n.data]);
+    return { ok: true as const, categories: categories() };
   });
 }

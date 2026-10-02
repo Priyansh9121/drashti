@@ -145,6 +145,39 @@ describe('library search', () => {
     expect(names('ટ્રેક')).toEqual(['Placeholder Tracks']);
   });
 
+  it('finds kirtans by kavi and raag (and category and occasion), and says that is where it matched', () => {
+    const id = repo.insert({
+      libraryId: lib,
+      name: 'Placeholder Evening Kirtan',
+      groups: [{ name: 'G', slides: [{ elements: [text('Placeholder evening line')] }] }],
+      kirtan: {
+        category: 'Thal',
+        kavi: 'Placeholder Kavi Anand',
+        raag: 'Placeholder Kalyan',
+        occasions: ['Annakut'],
+      },
+    });
+    expect(index.search('kavi anand').hits).toEqual([
+      expect.objectContaining({
+        name: 'Placeholder Evening Kirtan',
+        match: { kind: 'detail', field: 'kavi', value: 'Placeholder Kavi Anand' },
+      }),
+    ]);
+    expect(index.search('kalyan').hits[0]?.match).toEqual({
+      kind: 'detail',
+      field: 'raag',
+      value: 'Placeholder Kalyan',
+    });
+    expect(names('annakut')).toEqual(['Placeholder Evening Kirtan']);
+    expect(names('thal')).toEqual(['Placeholder Evening Kirtan']);
+    // Changed details are found at once, and the old ones no longer.
+    const rows = repo.content(id);
+    if (!rows?.kirtan) throw new Error('missing');
+    repo.setContent({ ...rows, kirtan: { row: { ...rows.kirtan.row, kavi: 'Placeholder Kavi Other' } } });
+    expect(names('anand')).toEqual([]);
+    expect(names('other')).toEqual(['Placeholder Evening Kirtan']);
+  });
+
   it('is rebuilt once for a library indexed by another version', () => {
     db.prepare('DELETE FROM search_docs').run();
     db.prepare("DELETE FROM app_meta WHERE key = 'search.version'").run();

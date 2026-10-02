@@ -14,13 +14,24 @@ import {
   useSearch,
 } from '../library/library-store';
 import { SearchResults } from '../library/SearchResults';
+import { applyFilters, filtering, KirtanFilters, toggleFilters, useFilters } from '../library/KirtanFilters';
 import { newFromWords } from '../library/words-store';
 import { MediaList } from '../library/MediaList';
 import { startDrag } from '../playlists/drag';
 import { Badge, LiveBadge } from '../ui/Badge';
-import { Button } from '../ui/Button';
+import { Button, IconButton } from '../ui/Button';
 import { TextInput } from '../ui/Field';
-import { FileText, FolderOpen, Image, Import, Plus, Presentation, Search, Upload } from '../ui/icons';
+import {
+  FileText,
+  FolderOpen,
+  Image,
+  Import,
+  ListFilter,
+  Plus,
+  Presentation,
+  Search,
+  Upload,
+} from '../ui/icons';
 import { MenuButton } from '../ui/Menu';
 import { Notice } from '../ui/Notice';
 import { rowClass } from '../ui/ListRow';
@@ -107,6 +118,7 @@ function ImportMenu() {
 /** Search titles and slide text; Esc empties the box, Enter opens the first result. */
 function SearchBox() {
   const query = useSearch((s) => s.query);
+  const filtersOn = useFilters((s) => s.open || filtering(s.f));
   return (
     <div className="flex gap-1.5 px-3 pb-2">
       <span className="relative flex min-w-0 flex-1 items-center">
@@ -134,6 +146,14 @@ function SearchBox() {
           className="w-full pl-7"
         />
       </span>
+      <IconButton
+        icon={ListFilter}
+        label="Filter the kirtans by their details"
+        variant={filtersOn ? 'secondary' : 'ghost'}
+        aria-pressed={filtersOn}
+        data-testid="filter-button"
+        onClick={toggleFilters}
+      />
       <Button size="md" icon={Plus} title="A new presentation from pasted words" onClick={newFromWords}>
         New…
       </Button>
@@ -142,7 +162,10 @@ function SearchBox() {
 }
 
 export function PresentationList({ platform }: { platform: string }) {
-  const presentations = useLibrary((s) => s.presentations);
+  const all = useLibrary((s) => s.presentations);
+  const filters = useFilters((s) => s.f);
+  // While the kirtan filters are set, only the kirtans with those details.
+  const presentations = useMemo(() => applyFilters(all, filters), [all, filters]);
   const selectedId = useLibrary((s) => s.selectedId);
   const marked = useLibrary((s) => s.marked);
   // On the screens now: its slide is up (not just the place it was, after a clear).
@@ -262,11 +285,16 @@ export function PresentationList({ platform }: { platform: string }) {
         <ImportMenu />
       </div>
       <SearchBox />
+      {tab === 'presentations' && <KirtanFilters />}
       <TabPanel group="library" id={tab} className="flex min-h-0 flex-1 flex-col">
         {searching ? (
           <SearchResults />
         ) : tab === 'media' ? (
           <MediaList platform={platform} />
+        ) : presentations.length === 0 && filtering(filters) ? (
+          <EmptyState icon={ListFilter} title="No kirtan has these details" compact className="flex-1">
+            Choose Any for one of the filters above, or Clear filters.
+          </EmptyState>
         ) : presentations.length === 0 ? (
           <EmptyState icon={Upload} title="The library is empty" compact className="flex-1">
             Drag lyrics, presentations or media here, or use Import….

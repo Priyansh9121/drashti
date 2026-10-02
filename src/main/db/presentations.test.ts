@@ -103,6 +103,11 @@ describe('PresentationRepo', () => {
       ['A kirtan', 1, ['gu', 'translit']],
       ['b plain', 2, null],
     ]);
+    // A kirtan's details come with it, to filter the library by.
+    expect(list.map((p) => p.kirtan)).toEqual([
+      { category: 'Kirtan', kavi: null, raag: null, occasions: [] },
+      null,
+    ]);
   });
 
   it('returns a kirtan’s details, and its tracks from its words', () => {
