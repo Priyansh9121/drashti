@@ -3,7 +3,9 @@ import { z } from 'zod';
 import { IPC } from '../../shared/ipc';
 import { idSchema } from '../../shared/model-schema';
 import type { ApplyThemeResult, ThemeResult } from '../../shared/themes';
+import type { ThemeSlide } from '../../shared/slide-edit';
 import { themeFieldsSchema } from '../../shared/themes';
+import { themeSlideSchema } from '../../shared/slide-edit';
 import type { ContentRows } from '../db/content';
 import type { PresentationRepo } from '../db/presentations';
 import type { ThemeRepo } from '../db/themes';
@@ -98,4 +100,70 @@ export function registerThemesIpc({
     themesChanged();
     return { ok: true, id: made };
   });
+
+  handle(IPC.themes.fromSlide, (e, name, slide): ThemeResult => {
+    if (!fromOperator(e)) return onlyOperator;
+    const n = z.string().trim().min(1).max(80).safeParse(name);
+    const s = themeSlideSchema.safeParse(slide);
+    if (!n.success || !s.success) return { ok: false, message: 'A theme cannot be made from that slide.' };
+    const fields = themeFromContent(slideRows(s.data), n.data);
+    if (!fields) return { ok: false, message: 'That slide has no words to make a theme from.' };
+    const made = themes.create(fields, { kind: 'drashti', path: null });
+    themesChanged();
+    return { ok: true, id: made };
+  });
+}
+
+/** A slide as the rows of a one-slide presentation, so a theme can be made from it as from a template. */
+function slideRows(slide: ThemeSlide): ContentRows {
+  return {
+    presentationId: 'slide',
+    width: slide.width,
+    height: slide.height,
+    selectedArrangementId: null,
+    themeId: null,
+    transition: null,
+    loop: 0,
+    groups: [{ id: 'g', name: '', color: null, position: 0 }],
+    slides: [
+      {
+        id: 's',
+        group_id: 'g',
+        position: 0,
+        label: '',
+        notes: '',
+        background: slide.background,
+        transition: null,
+        auto_advance_ms: null,
+        enabled: 1,
+      },
+    ],
+    elements: slide.elements.map((el, position) => {
+      const { id, kind, frame, rotation, ...props } = el;
+      return {
+        id,
+        slide_id: 's',
+        position,
+        kind,
+        x: frame.x,
+        y: frame.y,
+        width: frame.width,
+        height: frame.height,
+        rotation: rotation ?? 0,
+        props: JSON.stringify(props),
+      };
+    }),
+    cues: slide.cues.map((c, position) => ({
+      id: c.id,
+      slide_id: 's',
+      position,
+      kind: c.kind,
+      label: c.label,
+      media_id: c.mediaId,
+      props: c.props,
+    })),
+    arrangements: [],
+    arrangementEntries: [],
+    kirtan: null,
+  };
 }

@@ -54,6 +54,7 @@ import {
   styleBox,
 } from './ops';
 import { restyle, restyleAll, selectedLook } from './runs-doc';
+import { SlidePanel } from './SlidePanel';
 import { activeText } from './TextBoxEditor';
 
 /*
@@ -210,9 +211,12 @@ export function Inspector() {
       data-testid="inspector"
     >
       {selected.length === 0 ? (
-        <p className="px-3 py-4 text-sm text-muted">
-          Choose something on the slide to change it, or add words, a shape, a picture or a video above.
-        </p>
+        <>
+          <p className="px-3 pt-3 text-xs text-faint">
+            Choose something on the slide to change it, or add words, a shape, a picture or a video above.
+          </p>
+          <SlidePanel doc={doc} slide={slide} />
+        </>
       ) : (
         <>
           <Section title={single ? 'Selected' : `${selected.length} selected`} testId="inspector-arrange">

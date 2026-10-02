@@ -15,7 +15,7 @@ import type {
 } from './library';
 import type { ModeResult, OperatorMode } from './mode';
 import type { Transition } from './model';
-import type { EditDoc, EditSlidesResult, SaveSlidesResult } from './slide-edit';
+import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
 import type { SaveStillResult } from './media';
 import type {
@@ -188,6 +188,8 @@ export interface DrashtiBridge {
     apply(themeId: string, presentationIds: string[]): Promise<ApplyThemeResult>;
     /** A theme from a presentation's first text box (an imported template). */
     fromPresentation(presentationId: string): Promise<ThemeResult>;
+    /** A theme from a slide in the slide editor, as it is there (saved or not). */
+    fromSlide(name: string, slide: ThemeSlide): Promise<ThemeResult>;
   };
   /** Message templates ("Car {plate} please move"). Showing one goes through the engine. */
   messages: {
