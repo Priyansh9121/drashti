@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { type Db, openDatabase } from './database';
 import { PlaylistRepo } from './playlists';
 import { PresentationRepo } from './presentations';
+import { EXAMPLE_TEMPLATES, seedTemplates } from './seed';
 
 let db: Db;
 let playlists: PlaylistRepo;
@@ -208,5 +209,86 @@ describe('playlists the operator edits', () => {
     expect(playlists.renameHeader(header ?? '', 'Welcome')).toBe(true);
     expect(playlists.renameHeader('ph', 'Not a header')).toBe(false);
     expect(labels(id)).toEqual(['Welcome', 'Placeholder Hymn']);
+  });
+});
+
+describe('sabha templates', () => {
+  /** A week's playlist: a header, the dhun (a kirtan), the hymn, a picture and a placeholder from an import. */
+  function week(): string {
+    const rows = presentations.content(dhun);
+    if (!rows) throw new Error('missing');
+    presentations.setContent({
+      ...rows,
+      kirtan: { row: { category: 'Dhun', kavi: null, raag: null, occasions: '[]', audio_media_id: null } },
+    });
+    const id = playlists.create('This Sunday', null, false) ?? '';
+    playlists.addItems(id, null, [
+      { kind: 'header', label: 'Opening' },
+      { kind: 'presentation', presentationId: dhun },
+      { kind: 'presentation', presentationId: hymn },
+      { kind: 'media', mediaId: 'loop' },
+    ]);
+    return id;
+  }
+
+  it('saves a playlist as a template, apart from the playlists: kept items, and slots named by category', () => {
+    const id = week();
+    const [, dhunItem] = playlists.itemsOf(id);
+    const template = playlists.saveAsTemplate(id, 'Sunday template', [dhunItem?.id ?? '']) ?? '';
+    // Kept apart: not in the playlists' tree, and listed as a template.
+    expect(playlists.tree().map((p) => p.name)).toEqual(['This Sunday']);
+    expect(playlists.tree(true).map((p) => [p.name, p.template, p.itemCount])).toEqual([
+      ['Sunday template', true, 4],
+    ]);
+    expect(playlists.itemsOf(template)).toEqual([
+      expect.objectContaining({ kind: 'header', label: 'Opening' }),
+      expect.objectContaining({ kind: 'placeholder', label: 'Dhun', hint: null, category: 'Dhun' }),
+      expect.objectContaining({ kind: 'presentation', presentationId: hymn }),
+      expect.objectContaining({ kind: 'media', mediaId: 'loop' }),
+    ]);
+    // The week's playlist is unchanged.
+    expect(labels(id)).toEqual(['Opening', 'Placeholder Dhun', 'Placeholder Hymn', 'Placeholder loop.mp4']);
+  });
+
+  it('is never run, and makes playlists with its slots ready to fill', () => {
+    const template = playlists.saveAsTemplate(week(), 'Sunday template', []) ?? '';
+    playlists.addSlot(template, 1, 'Kirtan', 'Kirtan');
+    expect(playlists.playItems(template)).toBeNull();
+    const folder = playlists.create('Sabhas', null, true) ?? '';
+    const next = playlists.newFromTemplate(template, 'Next Sunday', folder) ?? '';
+    expect(playlists.tree().map((p) => [p.name, p.parentId])).toEqual([
+      ['This Sunday', null],
+      ['Sabhas', null],
+      ['Next Sunday', folder],
+    ]);
+    const items = playlists.itemsOf(next);
+    expect(items.map((i) => [i.kind, i.label])).toEqual([
+      ['header', 'Opening'],
+      ['placeholder', 'Kirtan'],
+      ['presentation', 'Placeholder Dhun'],
+      ['presentation', 'Placeholder Hymn'],
+      ['media', 'Placeholder loop.mp4'],
+    ]);
+    // An empty slot is stepped over in the show, and filling it makes it the presentation.
+    const slot = items[1];
+    expect(playlists.playItems(next)?.[1]).toMatchObject({
+      kind: 'skip',
+      why: '“Kirtan” is not filled in yet',
+    });
+    expect(playlists.fillPlaceholder(slot?.id ?? '', hymn)).toBe(true);
+    expect(playlists.itemsOf(next)[1]).toMatchObject({ kind: 'presentation', presentationId: hymn });
+    // The template keeps its slot.
+    expect(playlists.itemsOf(template)[1]).toMatchObject({ kind: 'placeholder', label: 'Kirtan' });
+    expect(playlists.newFromTemplate(next, 'Not from a playlist', null)).toBeNull();
+  });
+
+  it('starts every library with the example templates, once', () => {
+    expect(seedTemplates(db)).toBe(true);
+    expect(seedTemplates(db)).toBe(false);
+    const made = playlists.tree(true);
+    expect(made.map((t) => t.name)).toEqual(EXAMPLE_TEMPLATES.map((t) => t.name));
+    const ravi = playlists.itemsOf(made[0]?.id ?? '');
+    expect(ravi.flatMap((i) => (i.kind === 'placeholder' ? [i.category] : []))).toContain('Arti');
+    expect(playlists.tree()).toEqual([]);
   });
 });
