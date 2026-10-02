@@ -110,6 +110,11 @@ export interface TextElement extends ElementBase {
   runs?: TextRun[];
   /** 0 to 1; left out for fully there. */
   opacity?: number;
+  /**
+   * On a kirtan's slide, every screen shows it whatever languages the
+   * screen shows (a title or a footer, not one of the tracks).
+   */
+  everyScreen?: boolean;
 }
 
 /**

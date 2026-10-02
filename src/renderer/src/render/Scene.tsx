@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import type { EngineState, MaskLayer, MessageItem } from '../../../shared/engine/state';
+import type { Lang } from '../../../shared/model';
 import type { TimerState } from '../../../shared/timers';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
@@ -103,11 +104,14 @@ export const Scene = memo(function Scene({
   canvas,
   scaling,
   annotate = false,
+  languages = null,
 }: {
   state: EngineState;
   canvas: Size;
   scaling: ScalingMode;
   annotate?: boolean;
+  /** The languages this screen shows of a kirtan's slides, in order; null for all of them. */
+  languages?: readonly Lang[] | null;
 }) {
   const { layers } = state;
   return (
@@ -129,7 +133,7 @@ export const Scene = memo(function Scene({
         />
       )}
       <BackgroundMedia layer={layers.background} annotate={annotate} />
-      <SlideLayerView layer={layers.slide} canvas={canvas} scaling={scaling} />
+      <SlideLayerView layer={layers.slide} canvas={canvas} scaling={scaling} languages={languages} />
       {layers.props.map((prop) => {
         const size = { width: prop.width ?? 1920, height: prop.height ?? 1080 };
         return (

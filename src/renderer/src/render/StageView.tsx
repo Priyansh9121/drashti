@@ -1,5 +1,6 @@
 import type { EngineState } from '../../../shared/engine/state';
-import type { RenderSlide, TextElement } from '../../../shared/model';
+import { languageView } from '../../../shared/language-view';
+import type { Lang, RenderSlide, TextElement } from '../../../shared/model';
 import { fontFamilyFor, HTML_LANG } from './fonts';
 import { TimerText } from './TimerText';
 import { useNow } from './useNow';
@@ -70,7 +71,14 @@ const label = {
   margin: 0,
 } as const;
 
-export function StageView({ state }: { state: EngineState }) {
+export function StageView({
+  state,
+  languages = null,
+}: {
+  state: EngineState;
+  /** The languages the stage screens show of a kirtan's slides, in order; null for all of them. */
+  languages?: readonly Lang[] | null;
+}) {
   const now = useNow();
   const slide = state.layers.slide;
   const next = state.next;
@@ -120,7 +128,10 @@ export function StageView({ state }: { state: EngineState }) {
           </p>
           <div data-testid="stage-current" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
             {slide ? (
-              <StageText slide={slide.slide} size={sizeFor(slide.slide, 92)} />
+              <StageText
+                slide={languageView(slide.slide, languages)}
+                size={sizeFor(languageView(slide.slide, languages), 92)}
+              />
             ) : (
               <p style={{ fontSize: 56, color: '#6b7280', margin: 0 }}>
                 {background?.kind === 'media'
@@ -181,7 +192,11 @@ export function StageView({ state }: { state: EngineState }) {
           <p style={label}>NEXT</p>
           <div data-testid="stage-next" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
             {next?.kind === 'slide' ? (
-              <StageText slide={next.slide} size={sizeFor(next.slide, 56)} dim />
+              <StageText
+                slide={languageView(next.slide, languages)}
+                size={sizeFor(languageView(next.slide, languages), 56)}
+                dim
+              />
             ) : next?.kind === 'media' ? (
               <p
                 style={{ fontSize: 48, color: '#c9ced8', margin: 0 }}

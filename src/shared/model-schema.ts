@@ -81,6 +81,7 @@ export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion(
     style: textStyleSchema,
     runs: z.array(textRunSchema).max(2000).optional(),
     opacity: num.min(0).max(1).optional(),
+    everyScreen: z.boolean().optional(),
   }),
   z.object({
     id: idSchema,

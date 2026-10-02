@@ -11,6 +11,7 @@ import type {
 import {
   coverOptionsSchema,
   displayIdSchema,
+  groupLanguagesSchema,
   idSchema,
   nameSchema,
   screenPatchSchema,
@@ -79,6 +80,17 @@ export class ScreensService {
     if (!id.success || !role.success)
       return this.fail('A group shows the audience picture or the stage view.');
     if (!this.repo.setGroupRole(id.data, role.data)) return this.fail('That group no longer exists.');
+    return this.done();
+  }
+
+  /** The languages a group shows of a kirtan's slides, in order; null for all of them. */
+  setGroupLanguages(rawId: unknown, rawLanguages: unknown): ScreensResult {
+    const id = idSchema.safeParse(rawId);
+    const languages = groupLanguagesSchema.safeParse(rawLanguages);
+    if (!id.success || !languages.success)
+      return this.fail('A group shows every language, or one to four of them, each once.');
+    if (!this.repo.setGroupLanguages(id.data, languages.data))
+      return this.fail('That group no longer exists.');
     return this.done();
   }
 

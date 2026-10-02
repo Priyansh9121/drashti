@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { CoverOptions, ScreensResult, ScreensSnapshot } from '../../../shared/screens';
+import type { Lang } from '../../../shared/model';
+import type { CoverOptions, ScreenRole, ScreensResult, ScreensSnapshot } from '../../../shared/screens';
 
 interface PendingCover {
   message: string;
@@ -21,6 +22,18 @@ export const useScreens = create<ScreensView>(() => ({
   busy: false,
   pendingCover: null,
 }));
+
+/**
+ * The languages the operator's previews show: those of the first group in
+ * this role (the live and next previews follow the first audience group,
+ * the stage preview the first stage group), with the group's name; null
+ * languages when there is none, or it shows them all.
+ */
+export function useFirstGroupLanguages(role: ScreenRole): { name: string; languages: Lang[] } | null {
+  // The group object itself: the same one until the setup changes.
+  const group = useScreens((s) => s.snapshot?.groups.find((x) => x.role === role));
+  return group?.languages ? { name: group.name, languages: group.languages } : null;
+}
 
 let started = false;
 

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { idSchema } from './model-schema';
+import { idSchema, langSchema } from './model-schema';
 import type { CoverOptions, ScreenPatch } from './screens';
 import { SCALING_MODES } from './screens';
 
@@ -24,3 +24,11 @@ export { idSchema };
 export const coverOptionsSchema: z.ZodType<CoverOptions> = z.object({
   coverOperator: z.boolean().optional(),
 });
+
+/** A group's languages: one to four, each once, in the order shown; null for all of them. */
+export const groupLanguagesSchema = z
+  .array(langSchema)
+  .min(1)
+  .max(4)
+  .refine((list) => new Set(list).size === list.length, 'a language is listed twice')
+  .nullable();
