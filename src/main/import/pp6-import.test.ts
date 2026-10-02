@@ -78,6 +78,103 @@ function setup() {
   };
 }
 
+describe('importing ProPresenter 6 kirtans', () => {
+  /* Placeholder words only. */
+  const white: [number, number, number] = [255, 255, 255];
+  const kirtan = (extra: Partial<Parameters<typeof pp6Presentation>[0]> = {}) =>
+    pp6Presentation({
+      uuid: 'KIRTAN-1',
+      ccliAuthor: 'Placeholder Kavi',
+      groups: [
+        {
+          name: 'Verse',
+          slides: [
+            {
+              // One box, one look for every line: the script of each line tells its language.
+              text: [
+                {
+                  rtf: cocoaRtf([
+                    ['નમૂનાની પંક્તિ', 72, white],
+                    ['Namūnānī pankti', 72, white],
+                    ['Placeholder meaning', 72, white],
+                  ]),
+                },
+              ],
+            },
+            {
+              text: [
+                {
+                  rtf: cocoaRtf([
+                    ['બીજી પંક્તિ', 72, white],
+                    ['Bījī pankti', 72, white],
+                  ]),
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      ...extra,
+    });
+
+  it('makes a box whose lines are in different scripts into tracks, with the kavi from the author field', async () => {
+    const t = setup();
+    t.write('Placeholder Kirtan.pro6', kirtan());
+    const { report } = await t.run([t.source]);
+    const item = report?.items.find((i) => i.format === 'pp6');
+    expect(item?.issues.find((i) => i.code === 'kirtan')?.message).toBe(
+      'A kirtan: its lines are English (1 of 2 slides), Gujarati (every slide) and Transliteration (every slide), each line’s language going by its script. Kavi “Placeholder Kavi”, from the author field.',
+    );
+    const doc = t.presentations.get(item?.target?.id ?? '');
+    expect(doc?.kirtan).toMatchObject({ kavi: 'Placeholder Kavi', tracks: ['en', 'gu', 'translit'] });
+    const first = doc?.groups[0]?.slides[0]?.slide.elements[0];
+    expect(first?.kind === 'text' ? first.runs?.map((r) => [r.lang, r.text.trim()]) : null).toEqual([
+      ['gu', 'નમૂનાની પંક્તિ'],
+      ['translit', 'Namūnānī pankti'],
+      ['en', 'Placeholder meaning'],
+    ]);
+    expect(t.presentations.list()[0]?.kirtanTracks).toEqual(['en', 'gu', 'translit']);
+  });
+
+  it('keeps the details the operator gave a kirtan when it is imported again', async () => {
+    const t = setup();
+    const file = t.write('Placeholder Kirtan.pro6', kirtan());
+    const first = await t.run([file]);
+    const id = first.report?.items[0]?.target?.id ?? '';
+    const rows = t.presentations.content(id);
+    if (!rows) throw new Error('missing');
+    t.presentations.setContent({
+      ...rows,
+      kirtan: {
+        row: {
+          category: 'Dhun',
+          kavi: 'Placeholder Kavi',
+          raag: 'Placeholder Raag',
+          occasions: '["Diwali"]',
+          audio_media_id: null,
+        },
+      },
+    });
+    t.write('Placeholder Kirtan.pro6', kirtan({ ccliAuthor: 'Another Placeholder' }));
+    await t.run([file], { onConflict: 'replace' });
+    expect(t.presentations.get(id)?.kirtan).toMatchObject({
+      category: 'Dhun',
+      kavi: 'Placeholder Kavi',
+      raag: 'Placeholder Raag',
+      occasions: ['Diwali'],
+    });
+  });
+
+  it('leaves a presentation in one language, with no author, as it is', async () => {
+    const t = setup();
+    t.write('Placeholder Hymn.pro6', hymn());
+    const { report } = await t.run([t.source]);
+    const item = report?.items.find((i) => i.format === 'pp6');
+    expect(item?.issues.some((i) => i.code === 'kirtan')).toBe(false);
+    expect(t.presentations.get(item?.target?.id ?? '')?.kirtan).toBeNull();
+  });
+});
+
 describe('importing ProPresenter 6 files', () => {
   it('imports a presentation with its media: background as a cue, placed image, missing audio kept for relinking', async () => {
     const t = setup();

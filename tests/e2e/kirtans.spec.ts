@@ -1,7 +1,10 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, outputPage, setUpScreen } from './helpers';
+import { dropFiles, launchApp, operatorPage, outputPage, setUpScreen } from './helpers';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
 
@@ -184,6 +187,38 @@ test('made a kirtan and back without losing words; a copied slide keeps its line
     'Placeholder verse, second line',
   ]);
   for (const line of same.english) expect(same.all).toContain(line ?? '');
+  await app.close();
+});
+
+test('lyrics with lines in two scripts come in as a kirtan, and the editor calls such a box “Several”', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-kirtan-'));
+  const file = join(dir, 'Placeholder Two Scripts.txt');
+  writeFileSync(file, '[Verse]\nનમૂનાની પંક્તિ\nNamūnānī pankti\n\nબીજી પંક્તિ\nBījī pankti\n');
+  await dropFiles(win, win.getByTestId('presentation-list'), [file]);
+  // The report says what was mapped.
+  const report = win.getByTestId('import-report');
+  // Under "Imported with notes" (it is listed again under "Imported").
+  await expect(report.getByTestId('report-item').first()).toContainText(
+    'A kirtan: its lines are Gujarati (every slide) and Transliteration (every slide), each line’s language going by its script.',
+  );
+  await report.getByRole('button', { name: 'Close' }).first().click();
+  const id = await open(win, 'Placeholder Two Scripts');
+  expect(await tracks(win, id)).toEqual([
+    { gu: ['નમૂનાની પંક્તિ'], translit: ['Namūnānī pankti'] },
+    { gu: ['બીજી પંક્તિ'], translit: ['Bījī pankti'] },
+  ]);
+  await expect(
+    win.getByTestId('presentation-list').getByRole('button', { name: /Placeholder Two Scripts/ }),
+  ).toContainText('GU');
+
+  // In the slide editor the box is in several languages, not one of them.
+  await win.getByTestId('edit-slides').click();
+  const editor = win.getByTestId('slide-editor');
+  await editor.getByTestId('editor-canvas').locator('[data-element]').first().click();
+  const lang = editor.getByTestId('field-lang');
+  await expect(lang.locator('option:checked')).toHaveText('Several');
   await app.close();
 });
 

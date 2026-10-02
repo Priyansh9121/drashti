@@ -241,6 +241,8 @@ export interface Pp7DocSpec {
   /** The arrangement it is set to play in (an index into `arrangements`). */
   selectedArrangement?: number;
   ccliTitle?: string;
+  ccliAuthor?: string;
+  ccliArtist?: string;
   /** Leave out isEnabled everywhere (as a version without the field would). */
   noEnabledFlags?: boolean;
   unknown?: UnknownField[];
@@ -280,7 +282,15 @@ export function pp7Presentation(spec: Pp7DocSpec): Uint8Array {
       ...(spec.selectedArrangement === undefined
         ? {}
         : { selected_arrangement: id(`arr-${spec.selectedArrangement}`) }),
-      ...(spec.ccliTitle ? { ccli: { song_title: spec.ccliTitle } } : {}),
+      ...(spec.ccliTitle || spec.ccliAuthor || spec.ccliArtist
+        ? {
+            ccli: {
+              ...(spec.ccliTitle ? { song_title: spec.ccliTitle } : {}),
+              ...(spec.ccliAuthor ? { author: spec.ccliAuthor } : {}),
+              ...(spec.ccliArtist ? { artist_credits: spec.ccliArtist } : {}),
+            },
+          }
+        : {}),
       ...(spec.unknown ? { $unknown: spec.unknown } : {}),
     },
     'rv.data.Presentation',

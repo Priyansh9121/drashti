@@ -170,6 +170,8 @@ export interface Pp6DocSpec {
   /** The arrangement it is set to play in (an index into `arrangements`). */
   selectedArrangement?: number;
   ccliTitle?: string;
+  ccliAuthor?: string;
+  ccliArtist?: string;
 }
 
 export function pp6Presentation(spec: Pp6DocSpec): string {
@@ -187,7 +189,7 @@ export function pp6Presentation(spec: Pp6DocSpec): string {
     )
     .join('');
   return (
-    `<?xml version="1.0" encoding="utf-8"?>\n<RVPresentationDocument CCLIArtistCredits="" CCLIAuthor="" CCLICopyrightYear="" CCLIDisplay="false" CCLIPublisher="" CCLISongNumber="" CCLISongTitle="${esc(spec.ccliTitle ?? '')}" backgroundColor="0 0 0 1" buildNumber="100991749" category="Presentation" chordChartPath="" docType="0" drawingBackgroundColor="false" height="${spec.height ?? 1080}" lastDateUsed="2026-01-01T00:00:00+00:00" notes="" os="1" resourcesDirectory="" selectedArrangementID="${spec.selectedArrangement === undefined ? '' : `AR-${spec.selectedArrangement}`}" usedCount="0" uuid="${spec.uuid ?? 'DOC-1'}" versionNumber="600" width="${spec.width ?? 1920}">` +
+    `<?xml version="1.0" encoding="utf-8"?>\n<RVPresentationDocument CCLIArtistCredits="${esc(spec.ccliArtist ?? '')}" CCLIAuthor="${esc(spec.ccliAuthor ?? '')}" CCLICopyrightYear="" CCLIDisplay="false" CCLIPublisher="" CCLISongNumber="" CCLISongTitle="${esc(spec.ccliTitle ?? '')}" backgroundColor="0 0 0 1" buildNumber="100991749" category="Presentation" chordChartPath="" docType="0" drawingBackgroundColor="false" height="${spec.height ?? 1080}" lastDateUsed="2026-01-01T00:00:00+00:00" notes="" os="1" resourcesDirectory="" selectedArrangementID="${spec.selectedArrangement === undefined ? '' : `AR-${spec.selectedArrangement}`}" usedCount="0" uuid="${spec.uuid ?? 'DOC-1'}" versionNumber="600" width="${spec.width ?? 1920}">` +
     `<RVTimeline timeOffset="0" duration="0" selectedMediaTrackIndex="0" loop="false" rvXMLIvarName="timeline"><array rvXMLIvarName="timeCues"/><array rvXMLIvarName="mediaTracks"/></RVTimeline>` +
     `<array rvXMLIvarName="groups">${groups}</array><array rvXMLIvarName="arrangements">${arrangements}</array></RVPresentationDocument>`
   );

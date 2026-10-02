@@ -115,6 +115,8 @@ export interface ParsedPresentation {
   /** Auto-advance goes from the last slide back to the first. */
   loop?: boolean;
   media: ParsedMediaRef[];
+  /** The poet, when the file names an author or artist: it makes the presentation a kirtan. */
+  kavi?: { name: string; from: 'author' | 'artist' } | null;
   /** Things that did not come across, or came across changed. */
   issues: ImportIssue[];
 }
