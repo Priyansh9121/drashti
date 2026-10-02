@@ -55,4 +55,6 @@ export type EngineAction =
   | { type: 'prop/hide'; propId: string }
   | { type: 'message/show'; message: MessageItem }
   | { type: 'message/hide'; messageId: string }
-  | { type: 'mask/set'; mask: MaskLayer };
+  | { type: 'mask/set'; mask: MaskLayer }
+  /** Restart recovery: the count as it was, with the time it had left. */
+  | { type: 'advance/set'; autoAdvance: { startedAt: number; durationMs: number } | null };

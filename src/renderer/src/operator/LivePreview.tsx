@@ -6,6 +6,8 @@ import { Scene } from '../render/Scene';
 import { useScreens } from '../screens/screens-store';
 import { Badge, LiveBadge } from '../ui/Badge';
 import { cx } from '../ui/cx';
+import { Timer } from '../ui/icons';
+import { useNow } from '../render/useNow';
 
 /**
  * What the audience sees, drawn by the same Scene component the outputs use,
@@ -45,6 +47,35 @@ export function LivePreview() {
           {state && <Scene state={state} canvas={canvas} scaling={scaling} annotate />}
         </PlacedInParent>
       </div>
+      {state?.autoAdvance && <TimeLeft count={state.autoAdvance} />}
     </section>
   );
 }
+
+/** The slide moves on by itself: how long it has left, in words and as a bar. */
+function TimeLeft({ count }: { count: { startedAt: number; durationMs: number } }) {
+  const now = useNow(250);
+  const left = Math.max(0, count.startedAt + count.durationMs - now);
+  const seconds = Math.ceil(left / 1000);
+  const done = Math.min(1, Math.max(0, 1 - left / count.durationMs));
+  return (
+    <div
+      role="timer"
+      data-testid="auto-advance"
+      data-left={seconds}
+      aria-label={`Moves on by itself in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}`}
+      className="space-y-1"
+    >
+      <p className="flex items-center gap-1.5 text-xs text-muted">
+        <Timer size={13} aria-hidden="true" />
+        Moves on by itself in <span className="font-bold text-fg tabular-nums">{formatSeconds(seconds)}</span>
+      </p>
+      <div className="h-1 overflow-hidden rounded-full bg-panel-3" aria-hidden="true">
+        <div className="h-full bg-accent" style={{ width: `${done * 100}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/** 0:07, 1:30. */
+const formatSeconds = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
