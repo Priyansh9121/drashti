@@ -126,6 +126,37 @@ describe('auto-advance', () => {
     expect(engine.current.autoAdvance).toEqual({ startedAt: started, durationMs: 9000 });
   });
 
+  it('counts from the very moment its slide went up, however the clock moves while it does', () => {
+    const source = new MemorySlideSource();
+    source.set('p', [textSlide('a', 'One'), textSlide('b', 'Two'), textSlide('c', 'Three')], [], {
+      autoAdvance: [4000, 5000, 6000],
+    });
+    // A clock that moves on a millisecond every time anything reads it.
+    let clock = 100_000;
+    const transport = new RecordingTransport();
+    const engine = new ShowEngine(source, transport, () => clock++, undefined, {
+      schedule: () => () => undefined,
+    });
+    const sentAt = () => {
+      const last = transport.last;
+      return last?.kind === 'patch' ? last.sentAt : null;
+    };
+    engine.dispatch({ type: 'goLive', presentationId: 'p', slideIndex: 0 });
+    const first = engine.current;
+    expect(first.autoAdvance?.startedAt).toBe(first.layers.slide?.shownAt);
+    engine.dispatch({ type: 'next' });
+    const shownAt = engine.current.layers.slide?.shownAt;
+    expect(engine.current.autoAdvance?.startedAt).toBe(shownAt);
+    expect(shownAt).toBe(sentAt());
+    // Put it back brings the slide back as it was (its videos carry on), but its count starts afresh.
+    engine.dispatch({ type: 'clearAll' });
+    clock += 30_000;
+    engine.dispatch({ type: 'putBack' });
+    expect(engine.current.layers.slide?.shownAt).toBe(shownAt);
+    expect(engine.current.autoAdvance).toEqual({ startedAt: sentAt(), durationMs: 5000 });
+    expect(engine.current.autoAdvance?.startedAt).toBeGreaterThan((shownAt ?? 0) + 30_000);
+  });
+
   it('carries on after a restart with the time it had left', () => {
     const { engine, now, pending } = setup();
     engine.restore({

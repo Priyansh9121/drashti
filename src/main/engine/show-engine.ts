@@ -98,14 +98,32 @@ export class ShowEngine {
   /** The auto-advance waiting to run, and how to cancel it. */
   private scheduled: { startedAt: number; durationMs: number } | null = null;
   private cancelScheduled: (() => void) | null = null;
+  /** The time of the change being made, read once (null between changes). */
+  private at: number | null = null;
 
   constructor(
     private readonly source: SlideSource,
     private readonly transport: EngineTransport,
-    private readonly now: () => number = Date.now,
+    private readonly clock: () => number = Date.now,
     private readonly playlists: PlaylistSource = NO_PLAYLISTS,
     private readonly options: EngineOptions = {},
   ) {}
+
+  /** Now; during a change, the one time everything it does shares (a slide and its count start together). */
+  private now(): number {
+    return this.at ?? this.clock();
+  }
+
+  /** Make one change at one time. */
+  private atOnce<T>(change: () => T): T {
+    if (this.at !== null) return change();
+    this.at = this.clock();
+    try {
+      return change();
+    } finally {
+      this.at = null;
+    }
+  }
 
   get current(): EngineState {
     return this.state;
@@ -126,9 +144,11 @@ export class ShowEngine {
   }
 
   dispatch(command: EngineCommand): CommandResult {
-    const resolved = this.resolve(command);
-    if (!resolved.ok) return resolved;
-    return this.apply(resolved.actions, command.type);
+    return this.atOnce(() => {
+      const resolved = this.resolve(command);
+      if (!resolved.ok) return resolved;
+      return this.apply(resolved.actions, command.type);
+    });
   }
 
   /** Called after every change, once the change has been sent to the windows. */
@@ -147,6 +167,10 @@ export class ShowEngine {
    * that no longer exists is left out.
    */
   restore(request: RestoreRequest): Restored {
+    return this.atOnce(() => this.restoreAt(request));
+  }
+
+  private restoreAt(request: RestoreRequest): Restored {
     const actions: EngineAction[] = [];
     let slide = false;
     const playlist = request.playlist ? this.checkItem(request.playlist) : null;
@@ -261,6 +285,10 @@ export class ShowEngine {
    * until the operator moves on.
    */
   refreshLive(presentationId: string): CommandResult {
+    return this.atOnce(() => this.refreshLiveAt(presentationId));
+  }
+
+  private refreshLiveAt(presentationId: string): CommandResult {
     const live = this.state.live;
     const order =
       live.presentationId === presentationId && live.slideIndex !== null
@@ -672,6 +700,10 @@ export class ShowEngine {
   }
 
   private apply(actions: readonly EngineAction[], cause: EngineCommandType | null = null): CommandResult {
+    return this.atOnce(() => this.applyAt(actions, cause));
+  }
+
+  private applyAt(actions: readonly EngineAction[], cause: EngineCommandType | null): CommandResult {
     const prev = this.state;
     let next = actions.reduce(reduce, prev);
     // A new position has a new slide after it.
@@ -761,17 +793,19 @@ export class ShowEngine {
 
   /** The count ran out: on to the next slide in play order, or the first when looping. */
   private advance(count: { startedAt: number; durationMs: number }): void {
-    if (!sameData(this.state.autoAdvance, count)) return;
-    const { presentationId, slideIndex, arrangementId, playlist } = this.state.live;
-    if (presentationId === null || slideIndex === null) return;
-    const order = this.source.order(presentationId, arrangementId);
-    const target = order && slideIndex + 1 < order.slides.length ? slideIndex + 1 : order?.loop ? 0 : null;
-    if (!order || target === null) {
-      this.apply([{ type: 'advance/set', autoAdvance: null }]);
-      return;
-    }
-    const shown = this.showSlide(presentationId, target, order.arrangementId, playlist);
-    if (shown.ok) this.apply(shown.actions);
+    this.atOnce(() => {
+      if (!sameData(this.state.autoAdvance, count)) return;
+      const { presentationId, slideIndex, arrangementId, playlist } = this.state.live;
+      if (presentationId === null || slideIndex === null) return;
+      const order = this.source.order(presentationId, arrangementId);
+      const target = order && slideIndex + 1 < order.slides.length ? slideIndex + 1 : order?.loop ? 0 : null;
+      if (!order || target === null) {
+        this.apply([{ type: 'advance/set', autoAdvance: null }]);
+        return;
+      }
+      const shown = this.showSlide(presentationId, target, order.arrangementId, playlist);
+      if (shown.ok) this.apply(shown.actions);
+    });
   }
 
   /** Stop waiting (the engine is going away: tests, and quitting). */
