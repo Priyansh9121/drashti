@@ -4,8 +4,11 @@ import type { TextRun } from '../../shared/model';
 import type { Statement } from 'better-sqlite3';
 import type { Db } from './database';
 
-/** Bump to rebuild every library's index at the next start (when what is indexed changes). */
-export const SEARCH_VERSION = 1;
+/**
+ * Bump to rebuild every library's index at the next start (when what is
+ * indexed changes). 2: kirtan lines are only in the slides' words (migration 11).
+ */
+export const SEARCH_VERSION = 2;
 const VERSION_KEY = 'search.version';
 
 interface TextProps {
@@ -76,17 +79,6 @@ export class SearchIndex {
           ORDER BY g.position, s.position, e.position`,
     ).all(presentationId) as { slide_id: string; props: string }[];
     const { lines, legacyRuns } = textOf(elements);
-    // Kirtan language lines, when they are not on the slides already.
-    const seen = new Set(lines.map(([, line]) => line));
-    const kirtanLines = this.stmt(
-      'SELECT slide_id, text FROM kirtan_track_lines WHERE kirtan_id = ? ORDER BY lang',
-    ).all(presentationId) as { slide_id: string; text: string }[];
-    for (const { slide_id: slideId, text } of kirtanLines)
-      for (const line of text.split(/\r?\n/).map((l) => l.trim()))
-        if (line !== '' && !seen.has(line)) {
-          seen.add(line);
-          lines.push([slideId, line]);
-        }
     const body = lines.map(([, line]) => searchWords(line).join(' ')).join('\n');
     const title = searchWords(p.name).join(' ');
     const existing = this.stmt('SELECT id FROM search_docs WHERE presentation_id = ?').get(presentationId) as

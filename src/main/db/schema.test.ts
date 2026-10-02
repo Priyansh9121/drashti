@@ -35,8 +35,11 @@ beforeEach(() => {
         ],
       },
     ],
-    kirtan: { tracks: ['gu', 'translit'], lines: [{ gu: 'એક', translit: 'ek' }] },
+    kirtan: { category: 'Kirtan', kavi: 'Placeholder Kavi', occasions: ['Diwali'] },
   });
+  db.prepare(
+    "INSERT INTO kirtan_auto_lines (slide_id, lang, text) SELECT id, 'translit', 'ek' FROM slides",
+  ).run();
 });
 
 describe('schema constraints', () => {
@@ -45,8 +48,16 @@ describe('schema constraints', () => {
 
   it.each([
     [
-      'a kirtan track in an unknown language',
-      () => db.prepare("INSERT INTO kirtan_tracks (kirtan_id, lang) VALUES (?, 'fr')").run(presentationId),
+      'a line Drashti made in an unknown language',
+      () =>
+        db
+          .prepare("INSERT INTO kirtan_auto_lines (slide_id, lang, text) VALUES (?, 'fr', 'x')")
+          .run(slideId()),
+    ],
+    [
+      'kirtan occasions that are not a list',
+      () =>
+        db.prepare("UPDATE kirtans SET occasions = 'Diwali' WHERE presentation_id = ?").run(presentationId),
     ],
     [
       'an element of unknown kind',
@@ -153,15 +164,14 @@ describe('deleting', () => {
     db.prepare(
       "INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id) VALUES ('i', 'pl', 0, 'presentation', ?)",
     ).run(presentationId);
-    expect(count('kirtan_track_lines')).toBe(2);
+    expect(count('kirtan_auto_lines')).toBe(1);
     db.prepare('DELETE FROM presentations WHERE id = ?').run(presentationId);
     for (const t of [
       'slide_groups',
       'slides',
       'elements',
       'kirtans',
-      'kirtan_tracks',
-      'kirtan_track_lines',
+      'kirtan_auto_lines',
       'playlist_items',
     ]) {
       expect(count(t), t).toBe(0);

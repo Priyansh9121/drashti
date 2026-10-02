@@ -31,6 +31,34 @@ export function detectLang(text: string): Lang | null {
   return IAST.test(text.normalize('NFC')) ? 'translit' : 'en';
 }
 
+/** The scripts Drashti tells apart: Gujarati, Devanagari (Hindi) and Latin. */
+export type Script = 'gu' | 'hi' | 'latin';
+
+/** The script most of the text's letters are in; null when it has none. */
+export function scriptOf(text: string): Script | null {
+  const gu = count(text, GUJARATI);
+  const hi = count(text, DEVANAGARI);
+  const latin = count(text, LATIN);
+  const most = Math.max(gu, hi, latin);
+  if (most === 0) return null;
+  if (gu === most) return 'gu';
+  return hi === most ? 'hi' : 'latin';
+}
+
+/**
+ * The language of a line of words. Its script decides Gujarati or Hindi
+ * whatever it was marked as; Latin letters keep what they were marked as
+ * (English or transliteration), since plain transliteration looks like
+ * English, and otherwise accent marks decide. Null for a line without letters.
+ */
+export function langOfLine(marked: Lang | null | undefined, text: string): Lang | null {
+  const script = scriptOf(text);
+  if (script === null) return null;
+  if (script !== 'latin') return script;
+  if (marked === 'en' || marked === 'translit') return marked;
+  return detectLang(text) === 'translit' ? 'translit' : 'en';
+}
+
 /** All the runs' text, joined. */
 export function runsText(runs: readonly TextRun[]): string {
   return runs.map((r) => r.text).join('');
@@ -63,17 +91,40 @@ export function mergeRuns(runs: readonly TextRun[]): TextRun[] {
   return out;
 }
 
+/** Runs cut at line ends (each piece keeps its line break), so each line can have its own language. */
+export function cutAtLines(runs: readonly TextRun[]): TextRun[] {
+  return runs.flatMap((run) => {
+    if (!run.text.includes('\n')) return [run];
+    const parts = run.text.split('\n');
+    return parts
+      .map((part, i) => ({ ...run, text: i < parts.length - 1 ? `${part}\n` : part }))
+      .filter((r) => r.text !== '');
+  });
+}
+
 /**
- * Fill in each run's language from its script where the source gave none.
- * Line breaks and punctuation-only runs keep no language (they inherit the
- * element's). Legacy-font runs are left alone: their Latin codes are not English.
+ * Fill in each run's language from its script where the source gave none,
+ * line by line: a run that goes on over a line break into another script
+ * (a Gujarati line, then its transliteration) is cut there, so each line is
+ * in its own language. Line breaks and punctuation-only runs keep no
+ * language (they inherit the element's). Legacy-font runs are left alone:
+ * their Latin codes are not English.
  */
 export function withDetectedLangs(runs: readonly TextRun[]): TextRun[] {
-  return runs.map((run) => {
-    if (run.lang !== undefined || run.legacy) return run;
-    const lang = detectLang(run.text);
-    return lang ? { ...run, lang } : run;
-  });
+  if (!runs.some((r) => r.lang === undefined && !r.legacy)) return [...runs];
+  return mergeRuns(
+    runs.flatMap((run) => {
+      if (run.lang !== undefined || run.legacy) return [run];
+      const pieces = cutAtLines([run]);
+      const langs = pieces.map((p) => detectLang(p.text));
+      return pieces.map((piece, i) => {
+        // A piece without letters (a blank line) goes with its neighbour in the same run.
+        const lang =
+          langs[i] ?? langs.slice(0, i).findLast((l) => l !== null) ?? langs.find((l) => l !== null);
+        return lang ? { ...piece, lang } : piece;
+      });
+    }),
+  );
 }
 
 /**

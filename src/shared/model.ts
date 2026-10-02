@@ -156,6 +156,11 @@ export interface RenderSlide {
   /** Solid background behind the elements, or null for transparent. */
   background: string | null;
   elements: SlideElement[];
+  /**
+   * From a kirtan: each screen shows the languages it is set to show
+   * (see language-view.ts). Left out for any other slide, shown in full.
+   */
+  kirtan?: boolean;
 }
 
 /** How a slide comes onto the screens: at once, or dissolving from the slide before. */

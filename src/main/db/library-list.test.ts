@@ -78,9 +78,41 @@ describe('stored slide counts', () => {
     repo.replace(id, {
       libraryId,
       name: 'Changing',
-      groups: [{ name: 'G', slides: [{ elements: [] }] }],
-      kirtan: { tracks: ['gu', 'en'], lines: [{ gu: 'એક', en: 'One' }] },
+      groups: [
+        {
+          name: 'G',
+          slides: [
+            {
+              elements: [
+                {
+                  id: 't',
+                  kind: 'text',
+                  frame: { x: 0, y: 0, width: 100, height: 100 },
+                  text: 'એક\nOne',
+                  lang: 'gu',
+                  style: {
+                    fontFamily: null,
+                    fontSize: 60,
+                    fontWeight: 400,
+                    color: '#ffffff',
+                    align: 'center',
+                    verticalAlign: 'middle',
+                    lineHeight: 1.2,
+                    shadow: false,
+                  },
+                  runs: [
+                    { text: 'એક\n', lang: 'gu' },
+                    { text: 'One', lang: 'en' },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      kirtan: { category: 'Kirtan' },
     });
+    // A kirtan's languages are those of its words.
     expect(repo.list()[0]).toMatchObject({ slideCount: 1, kirtanTracks: ['en', 'gu'] });
   });
 
@@ -100,7 +132,10 @@ describe('stored slide counts', () => {
       INSERT INTO kirtan_tracks (kirtan_id, lang) VALUES ('p1', 'translit'), ('p1', 'gu');
     `);
     older.close();
-    const upgraded = openDatabase(file);
+    const upgraded = openDatabase(
+      file,
+      MIGRATIONS.filter((m) => m.version <= 10),
+    );
     expect(new PresentationRepo(upgraded).list().map((p) => [p.name, p.slideCount, p.kirtanTracks])).toEqual([
       ['Empty kirtan', 0, []],
       ['Older kirtan', 2, ['gu', 'translit']],

@@ -38,25 +38,12 @@ export function placeholderPresentation(libraryId: string, n: number): NewPresen
       ],
     })),
   }));
-  const slideCount = groups.reduce((sum, g) => sum + g.slides.length, 0);
   const kirtan = n % 3 === 0;
   return {
     libraryId,
     name: `Placeholder ${kirtan ? 'Kirtan' : 'Talk'} ${String(n).padStart(5, '0')}`,
     groups,
-    ...(kirtan
-      ? {
-          kirtan: {
-            category: 'Placeholder',
-            kavi: null,
-            tracks: ['en', 'translit'] as Lang[],
-            lines: Array.from({ length: slideCount }, (_, i) => ({
-              en: `Line ${i}`,
-              translit: `Pankti ${i}`,
-            })),
-          },
-        }
-      : {}),
+    ...(kirtan ? { kirtan: { category: 'Placeholder', kavi: `Placeholder Kavi ${n % 7}` } } : {}),
     source: {
       kind: 'pp6',
       path: `/Placeholder/Library/${n}.pro6`,

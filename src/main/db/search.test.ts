@@ -120,12 +120,26 @@ describe('library search', () => {
     expect((db.prepare('SELECT COUNT(*) AS n FROM search_fts').get() as { n: number }).n).toBe(3);
   });
 
-  it('finds kirtan language lines too', () => {
+  it('finds every language track of a kirtan (they are its slides’ words)', () => {
     repo.insert({
       libraryId: lib,
       name: 'Placeholder Tracks',
-      groups: [{ name: 'G', slides: [{ elements: [] }] }],
-      kirtan: { tracks: ['gu', 'translit'], lines: [{ gu: 'ટ્રેક પંક્તિ', translit: 'Ṭrek pankti' }] },
+      groups: [
+        {
+          name: 'G',
+          slides: [
+            {
+              elements: [
+                text('ટ્રેક પંક્તિ\nṬrek pankti', [
+                  { text: 'ટ્રેક પંક્તિ\n', lang: 'gu' },
+                  { text: 'Ṭrek pankti', lang: 'translit' },
+                ]),
+              ],
+            },
+          ],
+        },
+      ],
+      kirtan: { category: 'Kirtan' },
     });
     expect(names('trek')).toEqual(['Placeholder Tracks']);
     expect(names('ટ્રેક')).toEqual(['Placeholder Tracks']);

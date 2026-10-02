@@ -49,22 +49,26 @@ function line(
 }
 
 /**
- * One text box with two styled runs: a large Gujarati line and a smaller,
- * italic transliteration line (the mix PLAN.md 4.3 describes).
+ * One text box with a styled run per language (the mix PLAN.md 4.3
+ * describes): a large Gujarati line, the same in Hindi, a smaller italic
+ * transliteration line and the meaning in English. These are the kirtan's
+ * four tracks; each screen shows the ones it is set to.
  */
 function kirtanBox(lines: Record<Lang, string>): TextElement {
+  const runs = [
+    { text: `${lines.gu}\n`, lang: 'gu' as const, size: 92, weight: 600 },
+    { text: `${lines.hi}\n`, lang: 'hi' as const, size: 80, weight: 600 },
+    { text: `${lines.translit}\n`, lang: 'translit' as const, size: 60, weight: 400, italic: true },
+    { text: lines.en, lang: 'en' as const, size: 52, weight: 400, color: '#e5e7eb' },
+  ];
   return {
     id: 'lines',
     kind: 'text',
     frame: { x: 100, y: 240, width: 1720, height: 600 },
-    text: `${lines.gu}\n${lines.translit}`,
+    text: runs.map((r) => r.text).join(''),
     lang: 'gu',
     style: style({ fontSize: 92 }),
-    runs: [
-      { text: lines.gu, lang: 'gu', size: 92, weight: 600 },
-      { text: '\n' },
-      { text: lines.translit, lang: 'translit', size: 60, weight: 400, italic: true },
-    ],
+    runs,
   };
 }
 
@@ -147,12 +151,7 @@ export function seedPlaceholders(db: Db): boolean {
         color: k.group === 'Chorus' ? '#e5484d' : '#3e63dd',
         slides: [{ background: '#000000', elements: [kirtanBox(k.lines)] }],
       })),
-      kirtan: {
-        category: 'kirtan',
-        kavi: 'Placeholder',
-        tracks: ['en', 'gu', 'hi', 'translit'],
-        lines: KIRTAN_LINES.map((k) => k.lines),
-      },
+      kirtan: { category: 'Kirtan', kavi: 'Placeholder Kavi', raag: 'Placeholder Raag' },
       source: { kind: 'drashti', path: null, ref: 'seed:sample-kirtan', importedAt: null },
     });
     db.prepare('INSERT INTO app_meta (key, value) VALUES (?, ?)').run(SEED_KEY, new Date().toISOString());
