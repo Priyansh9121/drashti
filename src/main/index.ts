@@ -14,6 +14,7 @@ import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { basename, isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
 import type { ImportResult } from '../shared/import';
+import type { LibraryChange } from '../shared/library';
 import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/import-schema';
 import { type EventChannel, type EventContract, IPC } from '../shared/ipc';
 import { acceleratorFor } from '../shared/keymap';
@@ -567,7 +568,7 @@ function start(): void {
     const send = () => {
       changedTimer = null;
       lastChanged = Date.now();
-      sendToOperator(IPC.library.changed, { at: lastChanged });
+      sendToOperator(IPC.library.changed, { at: lastChanged, what: 'presentations' });
     };
     if (now) {
       if (changedTimer) clearTimeout(changedTimer);
@@ -575,6 +576,10 @@ function start(): void {
     } else {
       changedTimer ??= setTimeout(send, Math.max(0, lastChanged + 2000 - Date.now()));
     }
+  };
+  /** Props, message templates or themes changed: the operator's lists of them reload at once. */
+  const listChanged = (what: Exclude<LibraryChange, 'presentations'>) => {
+    sendToOperator(IPC.library.changed, { at: Date.now(), what });
   };
   const imports = new ImportService({
     spawn: spawnImportWorker,
@@ -652,7 +657,16 @@ function start(): void {
       if (rows) presentations.setContent(applyTheme(rows, themes.themeOrDefault(null)));
     },
   });
-  registerThemesIpc({ themes, presentations, revisions, fromOperator, changed: contentChanged });
+  registerThemesIpc({
+    themes,
+    presentations,
+    revisions,
+    fromOperator,
+    changed: contentChanged,
+    themesChanged: () => {
+      listChanged('themes');
+    },
+  });
   // Props: kept here; showing one goes through the engine.
   const props = new PropRepo(db);
   handle(IPC.props.list, () => props.list());
@@ -660,11 +674,11 @@ function start(): void {
     if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can change props.' };
     const f = propFieldsSchema.safeParse(fields);
     if (!f.success) return { ok: false, message: 'A prop needs a name and something to show.' };
-    if (propId === null) return { ok: true, id: props.create(f.data) };
-    const id = idSchema.safeParse(propId);
-    return id.success && props.update(id.data, f.data)
-      ? { ok: true, id: id.data }
-      : { ok: false, message: 'That prop no longer exists.' };
+    const id = propId === null ? props.create(f.data) : idSchema.safeParse(propId).data;
+    if (id === undefined || (propId !== null && !props.update(id, f.data)))
+      return { ok: false, message: 'That prop no longer exists.' };
+    listChanged('props');
+    return { ok: true, id };
   });
   handle(IPC.props.remove, (e, propId): PropResult => {
     if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can change props.' };
@@ -674,6 +688,7 @@ function start(): void {
     engine.dispatch({ type: 'hideProp', propId: id.data });
     if (settings.get('logoPropId') === id.data) settings.set('logoPropId', null);
     if (engine.current.logo?.id === id.data) engine.dispatch({ type: 'hideLogo' });
+    listChanged('props');
     return { ok: true, id: id.data };
   });
   // The prop the admin marked as the logo, for Simple Mode's Logo button.
@@ -685,12 +700,14 @@ function start(): void {
     if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can choose the logo.' };
     if (propId === null) {
       settings.set('logoPropId', null);
+      listChanged('props');
       return { ok: true, id: '' };
     }
     const id = idSchema.safeParse(propId);
     if (!id.success || !props.list().some((p) => p.id === id.data))
       return { ok: false, message: 'That prop no longer exists.' };
     settings.set('logoPropId', id.data);
+    listChanged('props');
     return { ok: true, id: id.data };
   });
   handle(IPC.library.search, (_e, query) =>
@@ -703,8 +720,12 @@ function start(): void {
     ok: false,
     message: 'A message needs a name and some words (up to 300).',
   };
-  const messageChange = (e: IpcMainInvokeEvent, run: () => MessageResult): MessageResult =>
-    fromOperator(e) ? run() : { ok: false, message: 'Only the operator window can change messages.' };
+  const messageChange = (e: IpcMainInvokeEvent, run: () => MessageResult): MessageResult => {
+    if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can change messages.' };
+    const result = run();
+    if (result.ok) listChanged('messages');
+    return result;
+  };
   handle(IPC.messages.list, () => messageTemplates.list());
   handle(IPC.messages.create, (e, template) =>
     messageChange(e, () => {

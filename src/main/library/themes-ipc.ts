@@ -23,6 +23,8 @@ export interface ThemesIpcDeps {
   fromOperator: (event: IpcMainInvokeEvent) => boolean;
   /** Presentations' content changed: refresh caches, the live slide and the operator's list. */
   changed: (presentationIds: string[]) => void;
+  /** A theme was made, changed or removed: the operator's list of them reloads. */
+  themesChanged: () => void;
 }
 
 const onlyOperator = { ok: false as const, message: 'Only the operator window can change themes.' };
@@ -34,6 +36,7 @@ export function registerThemesIpc({
   revisions,
   fromOperator,
   changed,
+  themesChanged,
 }: ThemesIpcDeps): void {
   handle(IPC.themes.list, () => ({ themes: themes.list(), defaultId: themes.defaultId() }));
 
@@ -42,11 +45,14 @@ export function registerThemesIpc({
     const f = themeFieldsSchema.safeParse(fields);
     if (!f.success)
       return { ok: false, message: 'That theme is not complete: check its sizes, colours and box.' };
-    if (themeId === null) return { ok: true, id: themes.create(f.data, { kind: 'drashti', path: null }) };
-    const id = idSchema.safeParse(themeId);
-    return id.success && themes.update(id.data, f.data)
-      ? { ok: true, id: id.data }
-      : { ok: false, message: 'That theme no longer exists.' };
+    const id =
+      themeId === null
+        ? themes.create(f.data, { kind: 'drashti', path: null })
+        : idSchema.safeParse(themeId).data;
+    if (id === undefined || (themeId !== null && !themes.update(id, f.data)))
+      return { ok: false, message: 'That theme no longer exists.' };
+    themesChanged();
+    return { ok: true, id };
   });
 
   handle(IPC.themes.remove, (e, themeId): ThemeResult => {
@@ -55,9 +61,9 @@ export function registerThemesIpc({
     if (!id.success) return { ok: false, message: 'That theme no longer exists.' };
     if (id.data === themes.defaultId())
       return { ok: false, message: 'The default theme stays; change it instead.' };
-    return themes.remove(id.data)
-      ? { ok: true, id: id.data }
-      : { ok: false, message: 'That theme no longer exists.' };
+    if (!themes.remove(id.data)) return { ok: false, message: 'That theme no longer exists.' };
+    themesChanged();
+    return { ok: true, id: id.data };
   });
 
   handle(IPC.themes.apply, (e, themeId, presentationIds): ApplyThemeResult => {
@@ -88,6 +94,8 @@ export function registerThemesIpc({
     const name = rows ? presentations.list().find((p) => p.id === rows.presentationId)?.name : undefined;
     const fields = rows ? themeFromContent(rows, (name ?? 'Theme').slice(0, 80)) : null;
     if (!fields) return { ok: false, message: 'That presentation has no text box to make a theme from.' };
-    return { ok: true, id: themes.create(fields, { kind: 'drashti', path: null }) };
+    const made = themes.create(fields, { kind: 'drashti', path: null });
+    themesChanged();
+    return { ok: true, id: made };
   });
 }

@@ -4,6 +4,7 @@ import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
 import type { ImportOptions, ImportProgress, ImportReport, ImportResult, ImportRunSummary } from './import';
 import type {
+  LibraryChange,
   NewFromWordsResult,
   PresentationDoc,
   PresentationSummary,
@@ -101,7 +102,7 @@ export const IPC = {
     restorePresentations: 'library:restore-presentations',
     /** main -> operator: how an import is going. */
     importProgress: 'library:import-progress',
-    /** main -> operator: presentations were added or changed. */
+    /** main -> operator: presentations, props, messages or themes were added or changed. */
     changed: 'library:changed',
   },
   media: {
@@ -293,7 +294,7 @@ export interface InvokeContract {
 export interface EventContract {
   [IPC.engine.message]: EngineMessage;
   [IPC.library.importProgress]: ImportProgress;
-  [IPC.library.changed]: { at: number };
+  [IPC.library.changed]: { at: number; what: LibraryChange };
   [IPC.playlists.changed]: { at: number };
   [IPC.app.undo]: { at: number };
   [IPC.app.notice]: { text: string };
