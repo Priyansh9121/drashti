@@ -686,9 +686,12 @@ function presentationOf(bytes: Uint8Array, filePath: string): ParsedPresentation
   }
   const transition = transitionOf(ctx, p['transition']);
   const loop = loopOf(ctx, index);
+  const author = str(ccli?.['author']).trim();
+  const artist = str(ccli?.['artist_credits']).trim();
   return {
     name: str(p['name']) || nameFromFile(filePath),
     ref: uuid(p['uuid']),
+    kavi: author ? { name: author, from: 'author' } : artist ? { name: artist, from: 'artist' } : null,
     width: ctx.width,
     height: ctx.height,
     notes,

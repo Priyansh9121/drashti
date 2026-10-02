@@ -72,6 +72,54 @@ function setup() {
   };
 }
 
+describe('importing ProPresenter 7 kirtans', () => {
+  it('fills the kavi from the artist field, and leaves legacy-font text in no language', async () => {
+    const t = setup();
+    const white: [number, number, number] = [255, 255, 255];
+    t.write(
+      'Libraries/Default/Placeholder Kirtan.pro',
+      pp7Presentation({
+        uuid: 'P7-KIRTAN',
+        name: 'Placeholder Kirtan',
+        ccliArtist: 'Placeholder Artist Kavi',
+        groups: [
+          {
+            name: 'Verse',
+            uuid: 'G-V',
+            slides: [
+              {
+                id: 'k1',
+                text: [
+                  {
+                    rtf: cocoaRtf([
+                      ['નમૂનો', 72, white],
+                      ['Namūno', 72, white],
+                    ]),
+                  },
+                ],
+              },
+              { id: 'k2', text: [{ rtf: cocoaRtf([['nmUnO', 72, white]], 'qc', 'Gopika') }] },
+            ],
+          },
+        ],
+      }),
+    );
+    const { report } = await t.run([t.source]);
+    const item = report?.items.find((i) => i.format === 'pp7');
+    const message = item?.issues.find((i) => i.code === 'kirtan')?.message ?? '';
+    expect(message).toContain('Gujarati (every slide) and Transliteration (every slide)');
+    expect(message).toContain('Kavi “Placeholder Artist Kavi”, from the artist field.');
+    expect(message).toContain('Text in a legacy font is in no language until it can be converted.');
+    const doc = t.presentations.get(item?.target?.id ?? '');
+    expect(doc?.kirtan).toMatchObject({ kavi: 'Placeholder Artist Kavi', tracks: ['gu', 'translit'] });
+    // The legacy-font text stays exactly as typed, in its font.
+    const legacy = doc?.groups[0]?.slides[1]?.slide.elements[0];
+    expect(legacy?.kind === 'text' ? legacy.runs : null).toEqual([
+      expect.objectContaining({ text: 'nmUnO', font: 'Gopika', legacy: true, lang: null }),
+    ]);
+  });
+});
+
 describe('importing ProPresenter 7 files', () => {
   it('imports a .pro with its media: background as a cue, placed image, missing audio kept', async () => {
     const t = setup();

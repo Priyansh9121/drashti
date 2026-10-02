@@ -420,6 +420,32 @@ export class PresentationRepo {
     };
   }
 
+  /** A kirtan's details as stored; null when it is not a kirtan (or is gone). */
+  kirtanDetails(id: string): KirtanDetails | null {
+    const k = this.db
+      .prepare(
+        'SELECT category, kavi, raag, occasions, audio_media_id FROM kirtans WHERE presentation_id = ?',
+      )
+      .get(id) as
+      | {
+          category: string | null;
+          kavi: string | null;
+          raag: string | null;
+          occasions: string;
+          audio_media_id: string | null;
+        }
+      | undefined;
+    return k
+      ? {
+          category: k.category,
+          kavi: k.kavi,
+          raag: k.raag,
+          occasions: occasionsFrom(k.occasions),
+          audioMediaId: k.audio_media_id,
+        }
+      : null;
+  }
+
   /** A presentation's content as stored, ids and all (see content.ts); null if it is gone. */
   content(id: string): ContentRows | null {
     return readContent(this.db, id);

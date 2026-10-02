@@ -564,9 +564,12 @@ function presentationOf(root: XmlNode, filePath: string): ParsedPresentation {
       '{n} slides that went back to the first slide by themselves go on to the next one.',
     );
   issues.push(...ctx.losses.issues(), ...ctx.legacy.issues());
+  const author = a['CCLIAuthor']?.trim() ?? '';
+  const artist = a['CCLIArtistCredits']?.trim() ?? '';
   return {
     name: nameFromFile(filePath),
     ...(root.name === 'RVTemplateDocument' ? { library: TEMPLATES_LIBRARY } : {}),
+    kavi: author ? { name: author, from: 'author' } : artist ? { name: artist, from: 'artist' } : null,
     ref: a['uuid'] ?? null,
     width: ctx.width,
     height: ctx.height,

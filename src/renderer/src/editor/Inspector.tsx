@@ -12,6 +12,7 @@ import type {
 } from '../../../shared/model';
 import { legacyFontOf } from '../../../shared/slide-edit';
 import { LANG_NAMES } from '../../../shared/themes';
+import { boxLines } from '../../../shared/tracks';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ColorInput, Field, NumberInput, Select, Slider, TextInput } from '../ui/Field';
@@ -397,6 +398,8 @@ function PlaceSection({ el, change }: { el: SlideElement; change: Change }) {
 }
 
 const LANG_ORDER: Lang[] = ['gu', 'hi', 'en', 'translit'];
+/** The language choice for a box whose lines are in several languages. */
+const SEVERAL = 'several';
 
 /** The shadow choice: none, Drashti's soft one, or one of its own. */
 type ShadowChoice = 'none' | 'soft' | 'own';
@@ -410,6 +413,8 @@ function TextSection({ el, slideId, editing }: { el: TextElement; slideId: strin
   // What the inspector shows: the selected words' look over the box's.
   const look = active ? selectedLook(active.view.state) : {};
   const s = el.style;
+  // The whole box with lines in more than one language (a kirtan's tracks) is in several, not one of them.
+  const several = !words && new Set(boxLines(el).flatMap((l) => (l.lang ? [l.lang] : []))).size > 1;
   const shown = {
     lang: look.lang !== undefined ? look.lang : el.lang,
     font: look.font !== undefined ? look.font : s.fontFamily,
@@ -476,11 +481,17 @@ function TextSection({ el, slideId, editing }: { el: TextElement; slideId: strin
         <Select
           className="flex-1"
           data-testid="field-lang"
-          value={shown.lang ?? ''}
+          value={several ? SEVERAL : (shown.lang ?? '')}
           onChange={(e) => {
+            if (e.target.value === SEVERAL) return;
             apply({ lang: e.target.value === '' ? null : (e.target.value as Lang) });
           }}
         >
+          {several && (
+            <option value={SEVERAL} disabled>
+              Several
+            </option>
+          )}
           <option value="">From the script</option>
           {LANG_ORDER.map((l) => (
             <option key={l} value={l}>
