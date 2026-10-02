@@ -100,6 +100,8 @@ describe('restart recovery', () => {
     expect(later.leftMs).toBeLessThan(first.leftMs);
     expect(toRestore(files)?.autoAdvance?.durationMs).toBe(60_000);
     writer.markClean();
+    // A save may already be on its way: let it finish before the folder goes.
+    await writer.settle();
   });
 
   it('keeps the playlist item being played, even with nothing else on screen', async () => {
