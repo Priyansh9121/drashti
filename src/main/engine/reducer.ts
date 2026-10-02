@@ -153,6 +153,10 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       return sameData(state.layers.audio, action.audio) ? state : withLayers(state, { audio: action.audio });
     case 'mask/set':
       return sameData(state.layers.masks, action.mask) ? state : withLayers(state, { masks: action.mask });
+    case 'advance/set':
+      return sameData(state.autoAdvance, action.autoAdvance)
+        ? state
+        : { ...state, autoAdvance: action.autoAdvance };
     case 'prop/show': {
       const props = upsert(state.layers.props, action.prop);
       return props ? withLayers(state, { props }) : state;

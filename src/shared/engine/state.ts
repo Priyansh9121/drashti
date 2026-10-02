@@ -191,6 +191,11 @@ export interface EngineState {
   stageMessage: string | null;
   /** Every timer, with when it was started: windows work out the time themselves. */
   timers: TimerState[];
+  /**
+   * The slide on the screens moves on by itself: counting from startedAt
+   * (main-process clock) for durationMs. Windows show the time left.
+   */
+  autoAdvance: { startedAt: number; durationMs: number } | null;
 }
 
 export function emptyLayers(): Layers {
@@ -208,6 +213,7 @@ export function initialEngineState(): EngineState {
     next: null,
     stageMessage: null,
     timers: [],
+    autoAdvance: null,
   };
 }
 

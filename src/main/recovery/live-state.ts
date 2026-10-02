@@ -47,6 +47,11 @@ export interface SavedLive {
   stageMessage: string | null;
   /** Timers that were running or paused (their definitions are in the library). */
   timers: { id: string; startedAt: number | null; elapsedMs: number }[];
+  /**
+   * The slide was moving on by itself: how long it had left when this was
+   * saved (saved again every second while it counts), and its whole time.
+   */
+  autoAdvance: { leftMs: number; durationMs: number } | null;
 }
 
 const backgroundSchema: z.ZodType<BackgroundLayer> = z.discriminatedUnion('kind', [
@@ -89,6 +94,11 @@ const savedSchema = z.object({
     .array(z.object({ id: idSchema, startedAt: z.number().nullable(), elapsedMs: z.number().min(0) }))
     .max(200)
     .default([]),
+  // Files saved before auto-advance have none.
+  autoAdvance: z
+    .object({ leftMs: z.number().min(0), durationMs: z.number().positive() })
+    .nullable()
+    .default(null),
 });
 const audioLayerSchema = z.intersection(audioChoiceSchema, z.object({ startedAt: z.number() }));
 const markSchema = z.object({ session: z.string().min(1).max(64) });
@@ -118,6 +128,12 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
     timers: state.timers
       .filter((t) => t.startedAt !== null || t.elapsedMs > 0)
       .map(({ id, startedAt, elapsedMs }) => ({ id, startedAt, elapsedMs })),
+    autoAdvance: state.autoAdvance
+      ? {
+          leftMs: Math.max(0, state.autoAdvance.startedAt + state.autoAdvance.durationMs - now.getTime()),
+          durationMs: state.autoAdvance.durationMs,
+        }
+      : null,
   };
 }
 
@@ -180,6 +196,8 @@ export function toRestore(files: RecoveryFiles): SavedLive | null {
 export interface LiveStateWriterOptions {
   /** Wait this long after a change before writing, so a run of changes is one write. */
   throttleMs?: number;
+  /** While a slide is moving on by itself, save again this often (its time left goes down). */
+  heartbeatMs?: number;
   log?: (message: string) => void;
 }
 
@@ -193,6 +211,8 @@ export class LiveStateWriter {
   private timer: NodeJS.Timeout | null = null;
   private writing: Promise<void> = Promise.resolve();
   private readonly throttleMs: number;
+  private heartbeat: NodeJS.Timeout | null = null;
+  private latest: EngineState | null = null;
 
   constructor(
     private readonly files: RecoveryFiles,
@@ -203,6 +223,16 @@ export class LiveStateWriter {
 
   /** The live state changed. */
   update(state: EngineState): void {
+    this.latest = state;
+    // While a slide counts down, save every second, so a stop loses at most a second of its time.
+    if (state.autoAdvance && !this.heartbeat) {
+      this.heartbeat = setInterval(() => {
+        if (this.latest?.autoAdvance) this.update(this.latest);
+      }, this.options.heartbeatMs ?? 1000);
+    } else if (!state.autoAdvance && this.heartbeat) {
+      clearInterval(this.heartbeat);
+      this.heartbeat = null;
+    }
     this.pending = state;
     this.timer ??= setTimeout(() => {
       this.timer = null;
@@ -239,6 +269,8 @@ export class LiveStateWriter {
   markClean(): void {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    if (this.heartbeat) clearInterval(this.heartbeat);
+    this.heartbeat = null;
     this.pending = null;
     const partial = `${this.files.cleanMark}.${randomUUID()}.tmp`;
     try {

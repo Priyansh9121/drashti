@@ -72,8 +72,34 @@ describe('restart recovery', () => {
       messages: [],
       stageMessage: null,
       timers: [],
+      autoAdvance: null,
     });
     expect(savedFrom(live({ slideIndex: null }), 'run-1').slide).toBeNull();
+  });
+
+  it('keeps the time a slide moving on by itself had left, saved again every second while it counts', async () => {
+    const counting: EngineState = { ...live(), autoAdvance: { startedAt: 10_000, durationMs: 8000 } };
+    expect(savedFrom(counting, 'run-1', new Date(13_000)).autoAdvance).toEqual({
+      leftMs: 5000,
+      durationMs: 8000,
+    });
+    expect(savedFrom(counting, 'run-1', new Date(30_000)).autoAdvance).toEqual({
+      leftMs: 0,
+      durationMs: 8000,
+    });
+    // With no change at all, the file is written again and again while it counts.
+    const running: EngineState = { ...live(), autoAdvance: { startedAt: Date.now(), durationMs: 60_000 } };
+    const writer = new LiveStateWriter(files, { throttleMs: 5, heartbeatMs: 40 });
+    await saved(writer, running);
+    const first = (JSON.parse(readFileSync(files.state, 'utf8')) as { autoAdvance: { leftMs: number } })
+      .autoAdvance;
+    await pause(150);
+    await writer.settle();
+    const later = (JSON.parse(readFileSync(files.state, 'utf8')) as { autoAdvance: { leftMs: number } })
+      .autoAdvance;
+    expect(later.leftMs).toBeLessThan(first.leftMs);
+    expect(toRestore(files)?.autoAdvance?.durationMs).toBe(60_000);
+    writer.markClean();
   });
 
   it('keeps the playlist item being played, even with nothing else on screen', async () => {

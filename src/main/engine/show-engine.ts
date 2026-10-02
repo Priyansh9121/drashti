@@ -34,6 +34,8 @@ const NO_CHANGE: Resolved = { ok: true, actions: [] };
 export interface EngineOptions {
   /** Drashti's own default transition, for presentations without one (a setting; a cut when left out). */
   defaultTransition?: () => Transition;
+  /** Run `run` after `delayMs`; returns a way to cancel it (setTimeout when left out; tests run it by hand). */
+  schedule?: (delayMs: number, run: () => void) => () => void;
 }
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
@@ -52,6 +54,8 @@ export interface RestoreRequest {
   stageMessage?: string | null;
   /** Timer runs: a running timer carries on from its start time, a paused one keeps its count. */
   timers?: readonly { id: string; startedAt: number | null; elapsedMs: number }[];
+  /** The slide was moving on by itself: it carries on with the time it had left. */
+  autoAdvance?: { leftMs: number; durationMs: number } | null;
 }
 
 /** What restart recovery put back. */
@@ -91,6 +95,9 @@ export class ShowEngine {
   private cleared: { from: Layers; to: Layers } | null = null;
   /** The Nexts Back can undo, latest last. */
   private steps: Step[] = [];
+  /** The auto-advance waiting to run, and how to cancel it. */
+  private scheduled: { startedAt: number; durationMs: number } | null = null;
+  private cancelScheduled: (() => void) | null = null;
 
   constructor(
     private readonly source: SlideSource,
@@ -178,6 +185,20 @@ export class ShowEngine {
       timers++;
     }
     this.apply(actions);
+    // A slide that was moving on by itself carries on with the time it had left.
+    const advance = request.autoAdvance;
+    if (slide && advance && advance.leftMs >= 0 && advance.durationMs > 0) {
+      const left = Math.min(advance.leftMs, advance.durationMs);
+      this.apply([
+        {
+          type: 'advance/set',
+          autoAdvance: {
+            startedAt: this.now() - (advance.durationMs - left),
+            durationMs: advance.durationMs,
+          },
+        },
+      ]);
+    }
     return {
       slide,
       background: request.background !== null,
@@ -659,6 +680,7 @@ export class ShowEngine {
       if (!sameData(next.next, upNext)) next = reduce(next, { type: 'next/set', next: upNext });
     }
     next = this.keepUndo(prev, next, cause);
+    next = this.withAutoAdvance(prev, next);
     if (next === prev) return this.unchanged();
     const ops = diffState(prev, next);
     this.state = next;
@@ -673,6 +695,89 @@ export class ShowEngine {
       sentAt: this.now(),
     });
     for (const listener of this.listeners) listener(next);
+    this.scheduleAdvance();
     return { ok: true, changed: true, rev: this.revision };
+  }
+
+  /**
+   * Auto-advance (PLAN.md 5.2, Session 7): the slide on the screens counts
+   * down when it says so and there is somewhere to go (a slide after it,
+   * or the first again when the presentation loops). A different slide
+   * coming on (whatever the operator did) starts its own count; the slide
+   * going off stops it; the same slide with new content (an edit) keeps
+   * its start. Black-out and the logo change no slide, so they leave it.
+   */
+  private withAutoAdvance(prev: EngineState, next: EngineState): EngineState {
+    const want = this.countFor(prev, next);
+    return sameData(next.autoAdvance, want) ? next : { ...next, autoAdvance: want };
+  }
+
+  private countFor(prev: EngineState, next: EngineState): EngineState['autoAdvance'] {
+    const slide = next.layers.slide;
+    if (!slide) return null;
+    // A slide on the screens from a presentation that is not the one playing (it cannot move on).
+    if (next.live.presentationId !== slide.presentationId) return null;
+    const order = this.source.order(slide.presentationId, next.live.arrangementId);
+    const played = order?.slides[slide.slideIndex];
+    const ms = played?.autoAdvanceMs ?? null;
+    if (!order || !played || ms === null || ms <= 0) return null;
+    const goesOn =
+      slide.slideIndex + 1 < order.slides.length || (order.loop === true && order.slides.length > 1);
+    if (!goesOn) return null;
+    const before = prev.layers.slide;
+    const same =
+      before?.presentationId === slide.presentationId &&
+      before.slide.id === slide.slide.id &&
+      before.shownAt === slide.shownAt;
+    const running = next.autoAdvance;
+    return same && running
+      ? { startedAt: running.startedAt, durationMs: ms }
+      : { startedAt: this.now(), durationMs: ms };
+  }
+
+  /** Wait for the count to run out (again when it changed). */
+  private scheduleAdvance(): void {
+    const count = this.state.autoAdvance;
+    if (sameData(count, this.scheduled)) return;
+    this.cancelScheduled?.();
+    this.cancelScheduled = null;
+    this.scheduled = count;
+    if (!count) return;
+    const delay = Math.max(0, count.startedAt + count.durationMs - this.now());
+    const schedule =
+      this.options.schedule ??
+      ((ms: number, run: () => void) => {
+        const t = setTimeout(run, ms);
+        return () => {
+          clearTimeout(t);
+        };
+      });
+    this.cancelScheduled = schedule(delay, () => {
+      this.cancelScheduled = null;
+      this.scheduled = null;
+      this.advance(count);
+    });
+  }
+
+  /** The count ran out: on to the next slide in play order, or the first when looping. */
+  private advance(count: { startedAt: number; durationMs: number }): void {
+    if (!sameData(this.state.autoAdvance, count)) return;
+    const { presentationId, slideIndex, arrangementId, playlist } = this.state.live;
+    if (presentationId === null || slideIndex === null) return;
+    const order = this.source.order(presentationId, arrangementId);
+    const target = order && slideIndex + 1 < order.slides.length ? slideIndex + 1 : order?.loop ? 0 : null;
+    if (!order || target === null) {
+      this.apply([{ type: 'advance/set', autoAdvance: null }]);
+      return;
+    }
+    const shown = this.showSlide(presentationId, target, order.arrangementId, playlist);
+    if (shown.ok) this.apply(shown.actions);
+  }
+
+  /** Stop waiting (the engine is going away: tests, and quitting). */
+  dispose(): void {
+    this.cancelScheduled?.();
+    this.cancelScheduled = null;
+    this.scheduled = null;
   }
 }
