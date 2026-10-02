@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { TextElement } from '../../shared/model';
+import type { SlideElement, TextElement } from '../../shared/model';
+import { readContent, writeContent } from './content';
 import { type Db, openDatabase } from './database';
 import { cueFromRow, DbSlideSource, elementFromRow, PresentationRepo } from './presentations';
 
@@ -378,5 +379,125 @@ describe('slide cues', () => {
     expect(cueFromRow({ ...row, media_playable: 1, media_format: 'H.264 video (MP4)' })).toMatchObject({
       unplayable: null,
     });
+  });
+});
+
+describe('what the slide editor adds', () => {
+  /** Every new kind of thing an element can have, on placeholder content. */
+  const elements: SlideElement[] = [
+    {
+      ...text('words', 'Placeholder words'),
+      rotation: 12.5,
+      style: {
+        ...text('x', '').style,
+        shadow: { color: '#000000aa', blur: 8, x: 3, y: 4 },
+        outline: { color: '#ff0000', width: 2 },
+        shrinkToFit: true,
+      },
+      runs: [
+        { text: 'Placeholder ', shadow: true, outline: null },
+        {
+          text: 'words',
+          shadow: { color: '#112233', blur: 0, x: -2, y: 2 },
+          outline: { color: '#00ff00', width: 1 },
+        },
+      ],
+    },
+    {
+      id: 'oval',
+      kind: 'shape',
+      shape: 'ellipse',
+      frame: { x: 100, y: 100, width: 300, height: 200 },
+      fill: null,
+      cornerRadius: 0,
+      opacity: 0.8,
+      outline: { color: '#ffffff', width: 6 },
+    },
+    {
+      id: 'rule',
+      kind: 'shape',
+      shape: 'line',
+      frame: { x: 100, y: 600, width: 800, height: 20 },
+      rotation: -30,
+      fill: null,
+      cornerRadius: 0,
+      opacity: 1,
+      outline: { color: '#e5484d', width: 4 },
+    },
+    {
+      id: 'clip',
+      kind: 'video',
+      frame: { x: 1200, y: 100, width: 640, height: 360 },
+      rotation: 90,
+      mediaId: 'placeholder-media',
+      fit: 'fill',
+      loop: true,
+      volume: 0.4,
+    },
+  ];
+
+  it('keeps rotation, shapes, outlines, shadows, shrink-to-fit and a video’s sound', () => {
+    const id = repo.insert({
+      libraryId,
+      name: 'Placeholder look',
+      groups: [{ name: 'A', slides: [{ elements }] }],
+    });
+    const shown = repo.get(id)?.groups[0]?.slides[0]?.slide.elements ?? [];
+    expect(shown.map(({ id: _id, ...rest }) => rest)).toEqual(elements.map(({ id: _id, ...rest }) => rest));
+    // Rotation lives in its own column, never inside the element's own data.
+    const rows = db.prepare('SELECT rotation, props FROM elements ORDER BY position').all() as {
+      rotation: number;
+      props: string;
+    }[];
+    expect(rows.map((r) => r.rotation)).toEqual([12.5, 0, -30, 90]);
+    expect(rows.every((r) => !('rotation' in (JSON.parse(r.props) as object)))).toBe(true);
+  });
+
+  it('keeps each slide’s transition and auto-advance, and the presentation’s transition and loop', () => {
+    const id = repo.insert({
+      libraryId,
+      name: 'Placeholder timed',
+      transition: { kind: 'dissolve', durationMs: 800 },
+      loop: true,
+      groups: [
+        {
+          name: 'A',
+          slides: [
+            { elements: [], transition: { kind: 'cut', durationMs: 0 }, autoAdvanceMs: 5000 },
+            { elements: [], transition: { kind: 'dissolve', durationMs: 1500 } },
+            { elements: [] },
+          ],
+        },
+      ],
+    });
+    const doc = repo.get(id);
+    expect(doc).toMatchObject({ transition: { kind: 'dissolve', durationMs: 800 }, loop: true });
+    expect(doc?.groups[0]?.slides.map((sl) => [sl.transition, sl.autoAdvanceMs])).toEqual([
+      [{ kind: 'cut', durationMs: 0 }, 5000],
+      [{ kind: 'dissolve', durationMs: 1500 }, null],
+      [null, null],
+    ]);
+    // Written back as rows (the editor, Undo), nothing is lost.
+    const rows = readContent(db, id);
+    expect(rows).toMatchObject({ loop: 1, transition: '{"kind":"dissolve","durationMs":800}' });
+    if (!rows) return;
+    writeContent(db, { ...rows, loop: 0, transition: null });
+    expect(repo.get(id)).toMatchObject({ transition: null, loop: false });
+    writeContent(db, rows);
+    expect(repo.get(id)).toMatchObject({ transition: { kind: 'dissolve', durationMs: 800 }, loop: true });
+    expect(readContent(db, id)).toEqual(rows);
+  });
+
+  it('reads a transition it cannot use as none', () => {
+    const id = repo.insert({
+      libraryId,
+      name: 'Placeholder odd',
+      groups: [{ name: 'A', slides: [{ elements: [] }] }],
+    });
+    db.prepare(`UPDATE slides SET transition = '{"kind":"spin","durationMs":5}'`).run();
+    db.prepare(`UPDATE presentations SET transition = '{"kind":"dissolve","durationMs":-1}'`).run();
+    const doc = repo.get(id);
+    expect(doc?.transition).toBeNull();
+    expect(doc?.groups[0]?.slides[0]?.transition).toBeNull();
   });
 });

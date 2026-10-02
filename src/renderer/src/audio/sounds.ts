@@ -42,14 +42,15 @@ export function soundsOf(state: EngineState): Sound[] {
   const slide = state.layers.slide;
   if (slide) {
     for (const el of slide.slide.elements) {
-      if (el.kind !== 'video') continue;
+      // A video whose sound is turned right down makes none.
+      if (el.kind !== 'video' || el.volume === 0) continue;
       sounds.push({
         // By the slide's id, not its position: a new order for the live slide keeps its sound going.
         key: `slide:${slide.slide.id}/${el.id}@${slide.shownAt}`,
         mediaId: el.mediaId,
         startedAt: slide.shownAt,
         loop: el.loop ?? false,
-        volume: 1,
+        volume: el.volume ?? 1,
       });
     }
   }

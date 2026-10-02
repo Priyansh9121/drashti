@@ -18,6 +18,32 @@ export interface Rect {
 export type TextAlign = 'left' | 'center' | 'right';
 export type VerticalAlign = 'top' | 'middle' | 'bottom';
 
+/** A drop shadow, in slide pixels. */
+export interface Shadow {
+  /** "#rrggbb", or "#rrggbbaa" to see through it. */
+  color: string;
+  /** How soft it is: the blur radius. */
+  blur: number;
+  /** How far it falls to the right and down (negative: left and up). */
+  x: number;
+  y: number;
+}
+
+/** A line around letters, or along a shape's edge. */
+export interface Outline {
+  /** "#rrggbb" or "#rrggbbaa". */
+  color: string;
+  /** Thickness in slide pixels. */
+  width: number;
+}
+
+/**
+ * A text shadow: true is Drashti's own soft shadow, which grows with the
+ * text (as every slide had before Session 7); a Shadow sets its colour, blur
+ * and offset; false is none.
+ */
+export type TextShadow = boolean | Shadow;
+
 export interface TextStyle {
   /** CSS font-family list; the renderer adds the bundled Noto fonts as fallbacks. */
   fontFamily: string | null;
@@ -28,7 +54,11 @@ export interface TextStyle {
   align: TextAlign;
   verticalAlign: VerticalAlign;
   lineHeight: number;
-  shadow: boolean;
+  shadow: TextShadow;
+  /** A line around the letters; left out or null for none. */
+  outline?: Outline | null;
+  /** Make the words smaller until they fit the box (never bigger than they are set). */
+  shrinkToFit?: boolean;
 }
 
 /**
@@ -49,7 +79,9 @@ export interface TextRun {
   /** Extra space between letters, in slide pixels (negative is tighter). */
   letterSpacing?: number;
   /** A drop shadow behind this run's letters; when unset, the element's style decides. */
-  shadow?: boolean;
+  shadow?: TextShadow;
+  /** A line around this run's letters (null: none); when unset, the element's style decides. */
+  outline?: Outline | null;
   /** Language of this run; when a source gives none it is detected from the script. */
   lang?: Lang | null;
   /**
@@ -59,10 +91,16 @@ export interface TextRun {
   legacy?: boolean;
 }
 
-export interface TextElement {
+/** What every element has: its place, and how far it is turned. */
+interface ElementBase {
   id: string;
-  kind: 'text';
   frame: Rect;
+  /** Degrees clockwise, about the frame's centre; left out for none. */
+  rotation?: number;
+}
+
+export interface TextElement extends ElementBase {
+  kind: 'text';
   /** The plain text (all runs joined): for search, thumbnails and tests. */
   text: string;
   /** Main language of the text; selects shaping rules and fallback fonts. */
@@ -72,29 +110,37 @@ export interface TextElement {
   runs?: TextRun[];
 }
 
-export interface ShapeElement {
-  id: string;
+/**
+ * A rectangle (rounded when it has a corner radius), an ellipse filling its
+ * frame, or a line across the middle of its frame from the left edge to the
+ * right (turned with rotation; its outline gives its colour and thickness).
+ */
+export type ShapeKind = 'rectangle' | 'ellipse' | 'line';
+export const SHAPE_KINDS: readonly ShapeKind[] = ['rectangle', 'ellipse', 'line'];
+
+export interface ShapeElement extends ElementBase {
   kind: 'shape';
-  frame: Rect;
-  fill: string;
+  /** Left out: a rectangle (every shape before Session 7 was one). */
+  shape?: ShapeKind;
+  /** "#rrggbb" or "#rrggbbaa"; null for none (an outline only, or a line). */
+  fill: string | null;
+  /** Rectangles only: how round the corners are, in slide pixels. */
   cornerRadius: number;
   opacity: number;
+  /** A line along the edge; left out or null for none. A line's own colour and thickness. */
+  outline?: Outline | null;
 }
 
-/**
- * An image or video on a slide: a background (the whole slide) or a smaller
- * element. It points at a media library item. Imported now; drawn once media
- * playback lands (until then renderers leave it out).
- */
-export interface MediaElement {
-  id: string;
+/** An image or video on a slide, pointing at a media library item. */
+export interface MediaElement extends ElementBase {
   kind: 'image' | 'video';
-  frame: Rect;
   mediaId: string;
   fit: 'fit' | 'fill' | 'stretch';
   /** Videos: start again at the end. */
   loop?: boolean;
   opacity?: number;
+  /** Videos: how loud its sound plays (0 to 1, 0 for none); left out for full. */
+  volume?: number;
 }
 
 export type SlideElement = TextElement | ShapeElement | MediaElement;
@@ -109,3 +155,20 @@ export interface RenderSlide {
   background: string | null;
   elements: SlideElement[];
 }
+
+/** How a slide comes onto the screens: at once, or dissolving from the slide before. */
+export type TransitionKind = 'cut' | 'dissolve';
+export const TRANSITION_KINDS: readonly TransitionKind[] = ['cut', 'dissolve'];
+
+export interface Transition {
+  kind: TransitionKind;
+  /** How long a dissolve takes (0 for a cut). */
+  durationMs: number;
+}
+
+/** The transition every presentation starts with until the operator chooses another. */
+export const CUT: Transition = { kind: 'cut', durationMs: 0 };
+
+/** The longest dissolve and auto-advance Drashti keeps. */
+export const MAX_TRANSITION_MS = 10_000;
+export const MAX_AUTO_ADVANCE_MS = 24 * 60 * 60 * 1000;

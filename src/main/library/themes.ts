@@ -189,7 +189,8 @@ export function themeFromContent(rows: ContentRows, name: string): ThemeFields |
       size: Math.round(s.fontSize / scale),
       weight: s.fontWeight,
       color: s.color,
-      shadow: s.shadow,
+      // Themes keep a shadow on or off: a shadow of the box's own counts as on.
+      shadow: s.shadow !== false,
     };
     const langs = Object.fromEntries(LANGS.map((l) => [l, { ...own }])) as Record<Lang, ThemeLangStyle>;
     const seen = new Set<Lang>();
@@ -202,7 +203,7 @@ export function themeFromContent(rows: ContentRows, name: string): ThemeFields |
         size: run.size !== undefined ? Math.round(run.size / scale) : own.size,
         weight: run.weight ?? own.weight,
         color: run.color ?? own.color,
-        shadow: run.shadow ?? own.shadow,
+        shadow: run.shadow === undefined ? own.shadow : run.shadow !== false,
       };
     }
     const cue = rows.cues.find((c) => c.slide_id === slide.id && c.kind === 'background' && c.media_id);

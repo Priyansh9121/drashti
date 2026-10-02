@@ -1,3 +1,5 @@
+import type { Transition } from '../../shared/model';
+import { transitionSchema } from '../../shared/model-schema';
 import type { Db } from './database';
 
 /*
@@ -67,6 +69,10 @@ export interface ContentRows {
   height: number;
   selectedArrangementId: string | null;
   themeId: string | null;
+  /** JSON: the presentation's default transition, or null for the app's. */
+  transition: string | null;
+  /** 1: auto-advance loops from the last slide to the first. */
+  loop: number;
   groups: GroupRow[];
   slides: SlideRow[];
   elements: ElementRow[];
@@ -90,10 +96,17 @@ export interface ContentRows {
 export function readContent(db: Db, presentationId: string): ContentRows | null {
   const p = db
     .prepare(
-      'SELECT width, height, selected_arrangement_id, theme_id FROM presentations WHERE id = ? AND deleted_at IS NULL',
+      'SELECT width, height, selected_arrangement_id, theme_id, transition, loop FROM presentations WHERE id = ? AND deleted_at IS NULL',
     )
     .get(presentationId) as
-    | { width: number; height: number; selected_arrangement_id: string | null; theme_id: string | null }
+    | {
+        width: number;
+        height: number;
+        selected_arrangement_id: string | null;
+        theme_id: string | null;
+        transition: string | null;
+        loop: number;
+      }
     | undefined;
   if (!p) return null;
   const groups = db
@@ -156,6 +169,8 @@ export function readContent(db: Db, presentationId: string): ContentRows | null 
     height: p.height,
     selectedArrangementId: p.selected_arrangement_id,
     themeId: p.theme_id,
+    transition: p.transition,
+    loop: p.loop,
     groups,
     slides,
     elements,
@@ -235,7 +250,23 @@ export function writeContent(db: Db, rows: ContentRows): void {
   const slideCount = rows.slides.filter((s) => s.enabled === 1).length;
   const tracks = rows.kirtan ? rows.kirtan.tracks.map((t) => t.lang).join(',') : null;
   db.prepare(
-    `UPDATE presentations SET selected_arrangement_id = ?, theme_id = ?, slide_count = ?, kirtan_tracks = ?,
-       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
-  ).run(selected, rows.themeId, slideCount, tracks, id);
+    `UPDATE presentations SET selected_arrangement_id = ?, theme_id = ?, transition = ?, loop = ?, slide_count = ?,
+       kirtan_tracks = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+  ).run(selected, rows.themeId, rows.transition, rows.loop, slideCount, tracks, id);
+}
+
+/** A transition as stored (JSON), or null when there is none or it cannot be read. */
+export function transitionFromJson(text: string | null): Transition | null {
+  if (text === null) return null;
+  try {
+    const parsed = transitionSchema.safeParse(JSON.parse(text));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A transition as stored. */
+export function transitionToJson(transition: Transition | null | undefined): string | null {
+  return transition ? JSON.stringify({ kind: transition.kind, durationMs: transition.durationMs }) : null;
 }

@@ -9,6 +9,8 @@ const slide = (id: string, index: number) => ({
   notes: '',
   cues: [],
   slide: { id, width: 1920, height: 1080, background: null, elements: [] },
+  transition: null,
+  autoAdvanceMs: null,
 });
 const groups: GroupInfo[] = [
   { id: 'v1', name: 'Verse 1', color: null, slides: [slide('v1a', 0), slide('v1b', 1)] },

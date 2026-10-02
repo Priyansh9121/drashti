@@ -62,7 +62,10 @@ test('the test slide renders all four languages with the bundled fonts, shaped c
       const r = el.getBoundingClientRect();
       const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
       const inView = r.left >= 0 && r.top >= 0 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1;
-      return { lang, ok: r.width > innerWidth * 0.3 && r.height > 20 && inView && hit === el };
+      return {
+        lang,
+        ok: r.width > innerWidth * 0.3 && r.height > 20 && inView && hit !== null && el.contains(hit),
+      };
     }),
   );
   expect(painted).toEqual(['en', 'gu', 'hi', 'translit'].map((lang) => ({ lang, ok: true })));
@@ -208,5 +211,206 @@ test('the test slide renders all four languages with the bundled fonts, shaped c
   );
   await expect(output.getByTestId('scene')).toHaveAttribute('data-canvas', '1280x720');
   await expect(output.locator('[data-lang="gu"]')).toHaveText(TEST_LINES.gu);
+  await app.close();
+});
+
+/** The colour of each point (CSS pixels) in a page screenshot, decoded in the page itself. */
+async function pixels(page: Page, points: { x: number; y: number }[]): Promise<number[][]> {
+  const png = (await page.screenshot({ scale: 'css' })).toString('base64');
+  return page.evaluate(
+    async ({ png, points }) => {
+      // Decoded by hand: the page's security policy refuses fetch() of a data URL.
+      const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0));
+      const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return [];
+      ctx.drawImage(bitmap, 0, 0);
+      return points.map(({ x, y }) => [...ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data]);
+    },
+    { png, points },
+  );
+}
+
+const near = (rgba: number[] | undefined, rgb: [number, number, number], within = 40) =>
+  rgba !== undefined && rgb.every((c, i) => Math.abs((rgba[i] ?? -999) - c) <= within);
+
+test('an output draws shapes, outlines, shadows, rotation and shrink-to-fit', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await setUpOneScreen(win);
+  const output = await outputPage(app);
+  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  const style = {
+    fontFamily: null,
+    fontSize: 120,
+    fontWeight: 700,
+    color: '#ffffff',
+    align: 'center' as const,
+    verticalAlign: 'middle' as const,
+    lineHeight: 1.2,
+    shadow: false,
+  };
+  const long = Array.from({ length: 40 }, (_, i) => `Placeholder word ${i + 1}`).join(' ');
+  await win.evaluate(
+    async ({ style, long }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const result = await d.engine.dispatch({
+        type: 'showProp',
+        prop: {
+          id: 'placeholder-look',
+          name: 'Placeholder look',
+          width: 1920,
+          height: 1080,
+          elements: [
+            {
+              id: 'outlined',
+              kind: 'text',
+              frame: { x: 60, y: 40, width: 800, height: 200 },
+              text: 'OUTLINE',
+              lang: 'en',
+              style: { ...style, outline: { color: '#ff0000', width: 6 } },
+            },
+            {
+              id: 'shadowed',
+              kind: 'text',
+              frame: { x: 1000, y: 40, width: 800, height: 200 },
+              text: 'SHADOW',
+              lang: 'en',
+              style: { ...style, shadow: { color: '#00ff00', blur: 0, x: 14, y: 14 } },
+            },
+            {
+              id: 'turned',
+              kind: 'text',
+              frame: { x: 60, y: 400, width: 400, height: 100 },
+              rotation: 90,
+              text: 'TURNED',
+              lang: 'en',
+              style: { ...style, fontSize: 60 },
+            },
+            {
+              id: 'oval',
+              kind: 'shape',
+              shape: 'ellipse',
+              frame: { x: 600, y: 360, width: 400, height: 300 },
+              fill: '#0000ff',
+              cornerRadius: 0,
+              opacity: 1,
+              outline: { color: '#ffff00', width: 10 },
+            },
+            {
+              id: 'rule',
+              kind: 'shape',
+              shape: 'line',
+              frame: { x: 1100, y: 400, width: 700, height: 40 },
+              fill: null,
+              cornerRadius: 0,
+              opacity: 1,
+              outline: { color: '#ff00ff', width: 12 },
+            },
+            {
+              id: 'fitted',
+              kind: 'text',
+              frame: { x: 1100, y: 600, width: 700, height: 300 },
+              text: long,
+              lang: 'en',
+              style: { ...style, fontSize: 90, shrinkToFit: true },
+            },
+            {
+              id: 'overflowing',
+              kind: 'text',
+              frame: { x: 60, y: 760, width: 500, height: 100 },
+              text: long,
+              lang: 'en',
+              style: { ...style, fontSize: 40, verticalAlign: 'top' },
+            },
+          ],
+        },
+      });
+      if (!result.ok) throw new Error(result.message);
+    },
+    { style, long },
+  );
+  const el = (id: string) => output.locator(`[data-element="${id}"]`);
+  await expect(el('outlined')).toHaveText('OUTLINE');
+
+  // The styles the renderer gives each box.
+  const css = await output.evaluate(() => {
+    const cs = (id: string) => {
+      const found = document.querySelector(`[data-element="${id}"]`);
+      if (!found) throw new Error(`${id} is not on the output`);
+      return getComputedStyle(found);
+    };
+    return {
+      stroke: cs('outlined').getPropertyValue('-webkit-text-stroke-width'),
+      paintOrder: cs('outlined').getPropertyValue('paint-order'),
+      shadow: cs('shadowed').textShadow,
+      turned: cs('turned').transform,
+    };
+  });
+  expect(css).toEqual({
+    stroke: '12px',
+    // Stroke first, then the letters over it (Chromium leaves out the rest of the default order).
+    paintOrder: 'stroke',
+    shadow: 'rgb(0, 255, 0) 14px 14px 0px',
+    turned: 'matrix(0, 1, -1, 0, 0, 0)',
+  });
+
+  // Turned a quarter: its bounds on screen are tall, not wide.
+  const turned = await el('turned').boundingBox();
+  expect(turned && turned.height > turned.width * 3).toBe(true);
+
+  // Shrink-to-fit: the words are made smaller until they fit; without it they run over.
+  const fit = await output.evaluate(() => {
+    const box = (id: string) => {
+      const found = document.querySelector<HTMLElement>(`[data-element="${id}"]`);
+      if (!found) throw new Error(`${id} is not on the output`);
+      return found;
+    };
+    const words = (id: string) => {
+      const found = box(id).firstElementChild;
+      if (!(found instanceof HTMLElement)) throw new Error(`${id} has no words`);
+      return found;
+    };
+    return {
+      fit: Number(box('fitted').dataset['fit']),
+      fits: words('fitted').offsetHeight <= box('fitted').clientHeight + 1,
+      overflows: words('overflowing').offsetHeight > box('overflowing').clientHeight,
+    };
+  });
+  expect(fit.fit).toBeGreaterThan(0.1);
+  expect(fit.fit).toBeLessThan(1);
+  expect(fit).toMatchObject({ fits: true, overflows: true });
+
+  // What is painted: the outline in red round white letters, the shadow in green, the ellipse
+  // filled blue with a yellow edge (its frame's corner left black), and the magenta line.
+  const at = async (id: string) => {
+    const b = await el(id).boundingBox();
+    if (!b) throw new Error(`${id} is not on the output`);
+    return b;
+  };
+  const outlined = await at('outlined');
+  const shadowed = await at('shadowed');
+  const oval = await at('oval');
+  const rule = await at('rule');
+  const scale = oval.width / 400;
+  const scanRow = (b: { x: number; y: number; width: number; height: number }) =>
+    Array.from({ length: 120 }, (_, i) => ({ x: b.x + (b.width * i) / 120, y: b.y + b.height / 2 }));
+  const outlineRow = await pixels(output, scanRow(outlined));
+  const shadowRow = await pixels(output, scanRow(shadowed));
+  expect(outlineRow.filter((p) => near(p, [255, 0, 0], 60)).length).toBeGreaterThan(5);
+  expect(outlineRow.filter((p) => near(p, [255, 255, 255], 30)).length).toBeGreaterThan(0);
+  expect(shadowRow.filter((p) => near(p, [0, 255, 0], 60)).length).toBeGreaterThan(5);
+  const [middle, corner, edge, line] = await pixels(output, [
+    { x: oval.x + oval.width / 2, y: oval.y + oval.height / 2 },
+    { x: oval.x + 3 * scale, y: oval.y + 3 * scale },
+    { x: oval.x + oval.width / 2, y: oval.y + 1 * scale },
+    { x: rule.x + rule.width / 2, y: rule.y + rule.height / 2 },
+  ]);
+  expect(near(middle, [0, 0, 255])).toBe(true);
+  expect(near(corner, [0, 0, 0])).toBe(true);
+  expect(near(edge, [255, 255, 0], 60)).toBe(true);
+  expect(near(line, [255, 0, 255])).toBe(true);
+  await test.info().attach('output-look', { body: await output.screenshot(), contentType: 'image/png' });
   await app.close();
 });

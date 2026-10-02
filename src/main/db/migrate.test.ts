@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { openDatabase } from './database';
 import { LATEST_VERSION, migrate, MIGRATIONS, schemaVersion } from './migrate';
+import { PresentationRepo } from './presentations';
 
 const tables = (db: Database.Database) =>
   (
@@ -112,6 +113,70 @@ describe('migrations', () => {
       { name: 'Kept', source_hash: null, deleted_at: null },
     ]);
     expect(tables(db)).toEqual(expect.arrayContaining(['import_runs', 'import_items', 'import_issues']));
+    db.close();
+  });
+
+  it('upgrade a version 9 library for the slide editor, every slide looking and playing as before', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-db-'));
+    const file = join(dir, 'drashti.sqlite');
+    const v9 = openDatabase(file, MIGRATIONS.slice(0, 9));
+    v9.prepare("INSERT INTO libraries (id, name) VALUES ('l', 'Default')").run();
+    v9.prepare("INSERT INTO presentations (id, library_id, name) VALUES ('p', 'l', 'Placeholder')").run();
+    v9.prepare(
+      "INSERT INTO slide_groups (id, presentation_id, name, position) VALUES ('g', 'p', 'Verse', 0)",
+    ).run();
+    v9.prepare("INSERT INTO slides (id, group_id, position) VALUES ('s', 'g', 0)").run();
+    // A shape and a text box as Drashti stored them before Session 7.
+    const shape = JSON.stringify({ fill: '#123456', cornerRadius: 12, opacity: 0.5 });
+    const words = JSON.stringify({
+      text: 'Placeholder line',
+      lang: 'en',
+      style: {
+        fontFamily: null,
+        fontSize: 72,
+        fontWeight: 400,
+        color: '#ffffff',
+        align: 'center',
+        verticalAlign: 'middle',
+        lineHeight: 1.2,
+        shadow: true,
+      },
+      runs: [{ text: 'Placeholder line', shadow: false }],
+    });
+    const element = v9.prepare(
+      'INSERT INTO elements (id, slide_id, position, kind, x, y, width, height, props) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    );
+    element.run('e1', 's', 0, 'shape', 0, 0, 100, 50, shape);
+    element.run('e2', 's', 1, 'text', 10, 20, 300, 40, words);
+    v9.close();
+
+    const db = openDatabase(file);
+    expect(schemaVersion(db)).toBe(LATEST_VERSION);
+    expect(db.prepare("SELECT transition, loop FROM presentations WHERE id = 'p'").get()).toEqual({
+      transition: null,
+      loop: 0,
+    });
+    // The elements' own data is untouched.
+    expect(db.prepare('SELECT id, rotation, props FROM elements ORDER BY position').all()).toEqual([
+      { id: 'e1', rotation: 0, props: shape },
+      { id: 'e2', rotation: 0, props: words },
+    ]);
+    const doc = new PresentationRepo(db).get('p');
+    expect(doc).toMatchObject({ transition: null, loop: false });
+    const slide = doc?.groups[0]?.slides[0];
+    expect(slide).toMatchObject({ transition: null, autoAdvanceMs: null });
+    // Read exactly as before: nothing added (no shape kind, outline or rotation).
+    expect(slide?.slide.elements).toEqual([
+      {
+        id: 'e1',
+        kind: 'shape',
+        frame: { x: 0, y: 0, width: 100, height: 50 },
+        fill: '#123456',
+        cornerRadius: 12,
+        opacity: 0.5,
+      },
+      { id: 'e2', kind: 'text', frame: { x: 10, y: 20, width: 300, height: 40 }, ...JSON.parse(words) },
+    ]);
     db.close();
   });
 });

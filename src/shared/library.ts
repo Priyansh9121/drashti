@@ -1,5 +1,5 @@
 import type { MediaBackground } from './engine/state';
-import type { Lang, RenderSlide } from './model';
+import type { Lang, RenderSlide, Transition } from './model';
 
 /** Where an imported item came from, so imports can be re-run and traced. */
 export interface ImportSource {
@@ -77,6 +77,10 @@ export interface SlideInfo {
   notes: string;
   slide: RenderSlide;
   cues: SlideCue[];
+  /** How it comes onto the screens; null for the presentation's default. */
+  transition: Transition | null;
+  /** How long it stays up before the next slide comes on by itself; null to wait for the operator. */
+  autoAdvanceMs: number | null;
 }
 
 export interface GroupInfo {
@@ -102,6 +106,10 @@ export interface PresentationDoc {
   arrangements: ArrangementInfo[];
   /** The order it plays in when nothing says otherwise: an arrangement, or null for all slides in order. */
   selectedArrangementId: string | null;
+  /** The transition for slides without their own; null for the app's default. */
+  transition: Transition | null;
+  /** Auto-advance goes from the last slide back to the first (otherwise it stops there). */
+  loop: boolean;
   kirtan: {
     category: string | null;
     kavi: string | null;
