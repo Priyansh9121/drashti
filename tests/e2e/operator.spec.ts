@@ -2,6 +2,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
 import { launchApp, operatorPage } from './helpers';
+import { KIRTAN, setUpPlaceholderShow } from './placeholder-show';
 
 async function outputPage(app: ElectronApplication): Promise<Page> {
   const existing = app.windows().find((w) => w.url().includes('output.html'));
@@ -123,5 +124,48 @@ test('operator: pick a presentation, go live by click and keyboard, clear layers
   expect(median).toBeLessThanOrEqual(17);
   expect(worst).toBeLessThan(250);
   test.info().annotations.push({ type: 'output paint latency (ms)', description: latencies.join(', ') });
+  await app.close();
+});
+
+/** The engine's messages reach the operator window 300 ms late, as on a busy machine. */
+async function hearLate(app: ElectronApplication): Promise<void> {
+  await app.evaluate(({ BrowserWindow }) => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.webContents.getURL().includes('index.html')) continue;
+      const contents = w.webContents;
+      const send = contents.send.bind(contents);
+      contents.send = (channel: string, ...args: unknown[]) => {
+        if (channel === 'engine:message') setTimeout(() => send(channel, ...args), 300);
+        else send(channel, ...args);
+      };
+    }
+  });
+}
+
+test('Next pressed quickly goes on through what is live, even when the window hears of it late', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await setUpPlaceholderShow(win);
+  await hearLate(app);
+  // Space starts the kirtan; the arrows that follow at once go on through it, not back to its start.
+  await win.getByTestId('presentation-list').getByRole('button', { name: KIRTAN }).click();
+  await expect(win.getByTestId('slide-thumb')).toHaveCount(5);
+  await win.keyboard.press('Space');
+  await win.keyboard.press('ArrowRight');
+  await win.keyboard.press('ArrowRight');
+  await expect(win.getByTestId('live-text')).toContainText(`${KIRTAN} · slide 3 of 5`);
+  await app.close();
+});
+
+test('in Simple Mode, the first quick Next starts the playlist and the ones after it go on through it', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await setUpPlaceholderShow(win);
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+  await expect(win.getByTestId('simple-items').getByTestId('simple-item')).toHaveCount(3);
+  await hearLate(app);
+  // The welcome slide, then the kirtan's first and second slides.
+  for (let i = 0; i < 3; i++) await win.keyboard.press('ArrowRight');
+  await expect(win.getByTestId('live-text')).toContainText(`${KIRTAN} · slide 2 of 5`);
   await app.close();
 });
