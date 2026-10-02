@@ -1,4 +1,4 @@
-import type { TextRun, Transition } from '../../shared/model';
+import type { Lang, TextRun, Transition } from '../../shared/model';
 import { transitionSchema } from '../../shared/model-schema';
 import { type BoxWords, langsOfBoxes } from '../../shared/tracks';
 import type { Db } from './database';
@@ -247,15 +247,21 @@ export function writeContent(db: Db, rows: ContentRows): void {
       ? rows.selectedArrangementId
       : null;
   const slideCount = rows.slides.filter((s) => s.enabled === 1).length;
-  const tracks = rows.kirtan ? langsOfRows(rows.elements).join(',') : null;
+  const tracks = rows.kirtan ? kirtanLangs(rows).join(',') : null;
   db.prepare(
     `UPDATE presentations SET selected_arrangement_id = ?, theme_id = ?, transition = ?, loop = ?, slide_count = ?,
        kirtan_tracks = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
   ).run(selected, rows.themeId, rows.transition, rows.loop, slideCount, tracks, id);
 }
 
+/** The languages a kirtan's slides that play have words in: its tracks. */
+export function kirtanLangs(rows: ContentRows): Lang[] {
+  const played = new Set(rows.slides.filter((s) => s.enabled === 1).map((s) => s.id));
+  return langsOfRows(rows.elements.filter((e) => played.has(e.slide_id)));
+}
+
 /** The languages these elements have words in (text boxes only; their props as stored). */
-export function langsOfRows(elements: readonly ElementRow[]): string[] {
+export function langsOfRows(elements: readonly ElementRow[]): Lang[] {
   const boxes: BoxWords[] = [];
   for (const e of elements) {
     if (e.kind !== 'text') continue;

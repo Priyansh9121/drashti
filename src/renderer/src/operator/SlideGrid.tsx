@@ -18,6 +18,7 @@ import { cx } from '../ui/cx';
 import { Field, Select, Slider } from '../ui/Field';
 import { LayoutGrid, Music, Palette, Pencil, Presentation, SquarePen } from '../ui/icons';
 import { openSlideEditor } from '../editor/editor-store';
+import { openKirtan } from '../kirtans/kirtan-store';
 import { usePersistentState } from '../ui/persist';
 import { EmptyState, Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
@@ -393,6 +394,17 @@ function PresentationGrid({ item }: { item: (ShownItem & { kind: 'presentation' 
         )}
         <Button size="sm" icon={Pencil} onClick={() => void editWords(doc.id, doc.name)}>
           Edit words
+        </Button>
+        <Button
+          size="sm"
+          icon={Music}
+          data-testid="kirtan-button"
+          aria-label={doc.kirtan ? 'Kirtan: languages and details' : 'Kirtan: make it a kirtan'}
+          onClick={() => {
+            openKirtan(doc.id, doc.name);
+          }}
+        >
+          Kirtan
         </Button>
         <Button
           size="sm"

@@ -67,6 +67,7 @@ import { applyTheme, themeLook } from './library/themes';
 import { defaultTransition, registerSlidesIpc } from './library/slides-ipc';
 import { registerThemesIpc } from './library/themes-ipc';
 import { registerWordsIpc } from './library/words-ipc';
+import { registerKirtansIpc } from './library/kirtans-ipc';
 import { runRelaunchSelfTest } from './relaunch-selftest';
 import { createdGroupId, runWatchdogSelfTest } from './selftest';
 import { simpleModeRefusals } from './simple-mode';
@@ -675,6 +676,14 @@ function start(): void {
     fromOperator,
     lookFor: (themeId, size) => themeLook(themes.themeOrDefault(themeId), size.width, size.height),
     changed: contentChanged,
+  });
+  registerKirtansIpc({
+    presentations,
+    revisions,
+    fromOperator,
+    lookFor: (themeId, size) => themeLook(themes.themeOrDefault(themeId), size.width, size.height),
+    changed: contentChanged,
+    mediaExists: (mediaId) => media.file(mediaId) !== null,
   });
   registerThemesIpc({
     themes,

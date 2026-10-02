@@ -7,6 +7,7 @@ import { loadLibrary, watchLibrary } from '../library/library-store';
 import { RemoveConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
 import { UndoBar } from '../library/UndoBar';
 import { WordsEditor } from '../library/WordsEditor';
+import { KirtanDialog } from '../kirtans/KirtanDialog';
 import { SlideEditor } from '../editor/SlideEditor';
 import { redo as redoEdit, undo as undoEdit, useEditor } from '../editor/editor-store';
 import { ThemesPanel } from '../themes/ThemesPanel';
@@ -150,6 +151,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <RemoveConfirm undoKey={shortcutText('undo', platform)} />
       <RemovePlaylistConfirm undoKey={shortcutText('undo', platform)} />
       <WordsEditor platform={platform} />
+      <KirtanDialog />
       <SlideEditor platform={platform} />
       <ThemesPanel />
       {screensOpen && (

@@ -124,8 +124,6 @@ export type TracksResult =
       /** Languages in the order its slides put them (then any it has none in). */
       order: Lang[];
       slides: TrackSlide[];
-      /** When the presentation last changed: a save checks nothing changed it meanwhile. */
-      stamp: string;
     }
   | { ok: false; message: string };
 
@@ -147,4 +145,6 @@ export const trackEditsSchema = z
   .min(1)
   .max(10_000);
 
-export type KirtanResult = { ok: true; revisionId: string } | { ok: false; message: string };
+/** A change to a kirtan: the revision Undo brings back (null when nothing changed), and how many slides changed. */
+export type KirtanResult =
+  { ok: true; revisionId: string | null; changed: number } | { ok: false; message: string };

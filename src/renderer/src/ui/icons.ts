@@ -54,6 +54,7 @@ export {
   Info,
   Italic,
   Keyboard,
+  Languages,
   Layers,
   LayoutGrid,
   ListMusic,
