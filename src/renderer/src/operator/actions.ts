@@ -17,9 +17,68 @@ export const useNotice = create<{ text: string | null }>(() => ({ text: null }))
 /** A long task's progress (a backup copying the media), or null. */
 export const useTaskProgress = create<{ progress: TaskProgress | null }>(() => ({ progress: null }));
 
-export async function dispatch(command: EngineCommand): Promise<void> {
-  const result = await window.drashti.engine.dispatch(command);
-  useNotice.setState({ text: result.ok ? null : result.message });
+/** Wait until this window's copy of the engine state has reached `rev` (a second at most). */
+function seen(rev: number, ms = 1000): Promise<void> {
+  return new Promise((resolve) => {
+    if (useEngine.getState().rev >= rev) {
+      resolve();
+      return;
+    }
+    const stop = useEngine.subscribe((s) => {
+      if (s.rev < rev) return;
+      stop();
+      clearTimeout(timer);
+      resolve();
+    });
+    const timer = setTimeout(() => {
+      stop();
+      resolve();
+    }, ms);
+  });
+}
+
+/** Settled when `promise` is, or after `ms`, whichever comes first. */
+function within(promise: Promise<unknown>, ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    const done = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    promise.then(done, done);
+  });
+}
+
+/** Every command sent from this window, settled once answered and seen in its copy of the state. */
+let sent: Promise<void> = Promise.resolve();
+
+export function dispatch(command: EngineCommand): Promise<void> {
+  const done = (async () => {
+    const result = await window.drashti.engine.dispatch(command);
+    useNotice.setState({ text: result.ok ? null : result.message });
+    if (result.ok) await seen(result.rev);
+  })();
+  sent = Promise.allSettled([sent, done]).then(() => undefined);
+  return done;
+}
+
+/*
+ * Keys and buttons take effect in turn, each once this window has seen what
+ * the ones before it did (a click on a slide too). What Next does depends on
+ * what is live: pressed twice quickly at the start of a playlist item, the
+ * second press must see the item live and go on, not start it again. A step
+ * that never ends (the main process gone) holds the keys up two seconds at
+ * most.
+ */
+let turn: Promise<void> = Promise.resolve();
+
+function inTurn(run: () => Promise<void>): Promise<void> {
+  const mine = turn.then(() => within(sent, 1500)).then(run);
+  turn = within(
+    mine.catch(() => undefined),
+    2000,
+  );
+  return mine;
 }
 
 /**
@@ -55,7 +114,11 @@ export async function chooseArrangement(presentationId: string, arrangementId: s
  * starts it (a presentation at its first slide); once it is live, Next and
  * Previous go along it, and on into the next or previous playlist item.
  */
-export async function runAction(action: OperatorAction, ui: { openScreens: () => void }): Promise<void> {
+export function runAction(action: OperatorAction, ui: { openScreens: () => void }): Promise<void> {
+  return inTurn(() => perform(action, ui));
+}
+
+async function perform(action: OperatorAction, ui: { openScreens: () => void }): Promise<void> {
   const live = useEngine.getState().state?.live;
   const { selectedId, doc, item } = useLibrary.getState();
   const somethingLive = live?.presentationId != null || live?.playlist != null;
@@ -126,7 +189,11 @@ export async function runAction(action: OperatorAction, ui: { openScreens: () =>
  * Undo puts back what Clear all took down. Nothing that changes the library,
  * the screens or the sound has a key here.
  */
-export async function runSimpleAction(action: OperatorAction, start: () => Promise<void>): Promise<void> {
+export function runSimpleAction(action: OperatorAction, start: () => Promise<void>): Promise<void> {
+  return inTurn(() => performSimple(action, start));
+}
+
+async function performSimple(action: OperatorAction, start: () => Promise<void>): Promise<void> {
   const live = useEngine.getState().state?.live;
   const somethingLive = live?.presentationId != null || live?.playlist != null;
   switch (action) {
@@ -141,6 +208,6 @@ export async function runSimpleAction(action: OperatorAction, start: () => Promi
     case 'removeSelected':
       return;
     default:
-      return runAction(action, { openScreens: () => undefined });
+      return perform(action, { openScreens: () => undefined });
   }
 }
