@@ -10,6 +10,8 @@ export interface MenuActions {
   reloadOperator: () => void;
   /** Edit > Undo: the operator page decides (typing in a field, or the last removal). */
   undo: { accelerator: string | null; run: () => void };
+  /** Edit > Redo: typing in a field, or the slide editor's last undone step. */
+  redo: { run: () => void };
   /** Turns off outputs covering the operator window (the keymap's uncoverControls). */
   uncoverControls: { accelerator: string | null; run: () => void };
   /** Help > Save diagnostics: one file on the Desktop to send after a problem. */
@@ -56,7 +58,13 @@ export function installMenu(actions: MenuActions): void {
           ...(actions.undo.accelerator ? { accelerator: actions.undo.accelerator } : {}),
           click: actions.undo.run,
         },
-        { role: 'redo' },
+        {
+          id: 'redo',
+          label: 'Redo',
+          // The keys the standard Redo item has on each system.
+          accelerator: isMac ? 'Shift+Command+Z' : 'Ctrl+Y',
+          click: actions.redo.run,
+        },
         { type: 'separator' },
         { role: 'cut' },
         { role: 'copy' },

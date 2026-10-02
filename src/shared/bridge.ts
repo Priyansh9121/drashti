@@ -14,6 +14,8 @@ import type {
   WordsResult,
 } from './library';
 import type { ModeResult, OperatorMode } from './mode';
+import type { Transition } from './model';
+import type { EditDoc, EditSlidesResult, SaveSlidesResult } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
 import type { SaveStillResult } from './media';
 import type {
@@ -48,6 +50,8 @@ export interface DrashtiBridge {
     getInfo(): Promise<AppInfo>;
     /** Edit > Undo was chosen (operator window). */
     onUndo(listener: () => void): () => void;
+    /** Edit > Redo was chosen (operator window). */
+    onRedo(listener: () => void): () => void;
     /** Something to tell the operator, from the main process. */
     onNotice(listener: (text: string) => void): () => void;
     /** What was put back on the screens after Drashti stopped unexpectedly, until dismissed. */
@@ -100,6 +104,23 @@ export interface DrashtiBridge {
     /** Presentations with slide text in legacy fonts, which search cannot read yet. */
     legacyPresentations(): Promise<{ id: string; name: string }[]>;
     getPresentation(id: string): Promise<PresentationDoc | null>;
+    /** A presentation's slides, everything on them, and how new text looks, for the slide editor. */
+    slidesForEdit(presentationId: string): Promise<EditSlidesResult>;
+    /**
+     * Put edited slides back as one change (Undo brings back the copy kept
+     * before it). Refused when the presentation changed since `stamp`, unless forced.
+     */
+    saveSlides(
+      presentationId: string,
+      doc: EditDoc,
+      stamp: string,
+      force?: boolean,
+    ): Promise<SaveSlidesResult>;
+    /** The transition for presentations without their own (a cut, until it is changed). */
+    getDefaultTransition(): Promise<Transition>;
+    setDefaultTransition(
+      transition: Transition,
+    ): Promise<{ ok: true; transition: Transition } | { ok: false; message: string }>;
     /** Presentations (for example by an import), props, messages or themes were added or changed. */
     onChanged(listener: (what: LibraryChange) => void): () => void;
     /**

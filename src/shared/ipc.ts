@@ -14,6 +14,8 @@ import type {
   WordsResult,
 } from './library';
 import type { ModeResult, OperatorMode } from './mode';
+import type { Transition } from './model';
+import type { EditDoc, EditSlidesResult, SaveSlidesResult } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
 import type { SaveStillResult } from './media';
 import type {
@@ -47,6 +49,8 @@ export const IPC = {
     getInfo: 'app:get-info',
     /** main -> operator: Edit > Undo was chosen (the page decides what to undo). */
     undo: 'app:undo',
+    /** main -> operator: Edit > Redo was chosen (the slide editor redoes, unless typing). */
+    redo: 'app:redo',
     /** main -> operator: something to tell the operator (for example where diagnostics were saved). */
     notice: 'app:notice',
     /** What was put back on the screens after an unexpected stop, or null. */
@@ -87,6 +91,12 @@ export const IPC = {
     restoreRevision: 'library:restore-revision',
     legacyPresentations: 'library:legacy-presentations',
     getPresentation: 'library:get-presentation',
+    /** A presentation's slides for the slide editor, and saving them (operator window only). */
+    slidesForEdit: 'library:slides-for-edit',
+    saveSlides: 'library:save-slides',
+    /** The transition for presentations without their own; changing it is for the operator window only. */
+    getDefaultTransition: 'library:get-default-transition',
+    setDefaultTransition: 'library:set-default-transition',
     /** Import files and folders (operator window only). */
     importPaths: 'library:import-paths',
     cancelImport: 'library:cancel-import',
@@ -235,6 +245,16 @@ export interface InvokeContract {
   [IPC.playlists.setItemOrder]: { args: [itemId: string, order: ItemOrder]; result: PlaylistResult };
   [IPC.playlists.renameHeader]: { args: [itemId: string, label: string]; result: PlaylistResult };
   [IPC.library.getPresentation]: { args: [id: string]; result: PresentationDoc | null };
+  [IPC.library.slidesForEdit]: { args: [presentationId: string]; result: EditSlidesResult };
+  [IPC.library.saveSlides]: {
+    args: [presentationId: string, doc: EditDoc, stamp: string, force: boolean];
+    result: SaveSlidesResult;
+  };
+  [IPC.library.getDefaultTransition]: { args: []; result: Transition };
+  [IPC.library.setDefaultTransition]: {
+    args: [transition: Transition];
+    result: { ok: true; transition: Transition } | { ok: false; message: string };
+  };
   [IPC.library.importPaths]: { args: [paths: string[], options?: ImportOptions]; result: ImportResult };
   [IPC.library.cancelImport]: { args: [runId: string]; result: boolean };
   [IPC.library.listImportRuns]: { args: []; result: ImportRunSummary[] };
@@ -297,6 +317,7 @@ export interface EventContract {
   [IPC.library.changed]: { at: number; what: LibraryChange };
   [IPC.playlists.changed]: { at: number };
   [IPC.app.undo]: { at: number };
+  [IPC.app.redo]: { at: number };
   [IPC.app.notice]: { text: string };
   [IPC.app.progress]: { progress: TaskProgress | null };
   [IPC.app.modeChanged]: { mode: OperatorMode };

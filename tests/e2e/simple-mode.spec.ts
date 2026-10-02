@@ -141,6 +141,7 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
   for (const name of [
     'Import…',
     'Edit words',
+    'Edit slides',
     'Remove',
     'Themes',
     'Screens',
@@ -173,6 +174,13 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
       return {
         remove: await d.library.removePresentations([welcomeId]),
         words: await d.library.saveWords(welcomeId, 'Placeholder changed'),
+        // The slide editor's save and the default transition (Session 7).
+        slides: await (async () => {
+          const opened = await d.library.slidesForEdit(welcomeId);
+          if (!opened.ok) return { ok: true, message: opened.message };
+          return d.library.saveSlides(welcomeId, { ...opened.doc, loop: true }, opened.stamp, true);
+        })(),
+        transition: await d.library.setDefaultTransition({ kind: 'dissolve', durationMs: 500 }),
         import: await d.library.importPaths(['/placeholder.txt']),
         playlist: await d.playlists.create('Placeholder new', null, false),
         prop: await d.props.remove(logoId),
@@ -195,6 +203,8 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
   expect(refused).toMatchObject({
     remove: no,
     words: no,
+    slides: no,
+    transition: no,
     import: no,
     playlist: no,
     prop: no,

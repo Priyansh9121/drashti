@@ -40,6 +40,8 @@
   --color-danger-strong: #c4262e;
   --color-danger-bg: #3a1214;
   --color-danger-fg: #ffb4b4;
+  /* The slide editor: lines things snap to (seen against any slide). */
+  --color-guide: #ff4fd8;
 
   /* Type: 14px body; 11px is the smallest text there is. */
   --text-2xs: 0.6875rem;

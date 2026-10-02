@@ -108,6 +108,8 @@ export interface TextElement extends ElementBase {
   style: TextStyle;
   /** Styled runs. When present they are drawn instead of `text`, in the element's style where unset. */
   runs?: TextRun[];
+  /** 0 to 1; left out for fully there. */
+  opacity?: number;
 }
 
 /**

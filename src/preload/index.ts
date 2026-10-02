@@ -26,6 +26,10 @@ const bridge: DrashtiBridge = {
       on(IPC.app.undo, () => {
         listener();
       }),
+    onRedo: (listener) =>
+      on(IPC.app.redo, () => {
+        listener();
+      }),
     onNotice: (listener) =>
       on(IPC.app.notice, ({ text }) => {
         listener(text);
@@ -67,6 +71,11 @@ const bridge: DrashtiBridge = {
     restoreRevision: (revisionId) => invoke(IPC.library.restoreRevision, revisionId),
     legacyPresentations: () => invoke(IPC.library.legacyPresentations),
     getPresentation: (id) => invoke(IPC.library.getPresentation, id),
+    slidesForEdit: (presentationId) => invoke(IPC.library.slidesForEdit, presentationId),
+    saveSlides: (presentationId, doc, stamp, force = false) =>
+      invoke(IPC.library.saveSlides, presentationId, doc, stamp, force),
+    getDefaultTransition: () => invoke(IPC.library.getDefaultTransition),
+    setDefaultTransition: (transition) => invoke(IPC.library.setDefaultTransition, transition),
     onChanged: (listener) =>
       on(IPC.library.changed, ({ what }) => {
         listener(what);

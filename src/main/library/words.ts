@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { LyricsGroup } from '../../shared/lyrics';
 import { groupKey, lyricsText, parseLyrics } from '../../shared/lyrics';
-import type { Lang, Rect, TextElement, TextRun, TextStyle } from '../../shared/model';
+import type { Lang, TextElement, TextRun, TextStyle } from '../../shared/model';
+import type { RunLook, SlideLook } from '../../shared/slide-edit';
 import { detectLang, mainLang, mergeRuns, withDetectedLangs } from '../../shared/text-runs';
 import type { ArrangementEntryRow, ContentRows, CueRow, ElementRow, GroupRow, SlideRow } from '../db/content';
 import type { NewPresentation } from '../db/presentations';
@@ -25,18 +26,10 @@ interface TextProps {
   runs?: TextRun[];
 }
 
-/** How a line in a language looks: a run's style without its words. */
-export type RunLook = Omit<TextRun, 'text' | 'lang' | 'legacy'>;
+export type { RunLook } from '../../shared/slide-edit';
 
 /** How a slide looks in a group that has none yet: the theme's text box. */
-export interface NewSlideLook {
-  frame: Rect;
-  style: TextStyle;
-  /** Per language, how its lines look (font, size, weight, colour). */
-  langs: Partial<Record<Lang, RunLook>>;
-  /** The colour behind the text, or null. */
-  background: string | null;
-}
+export type NewSlideLook = SlideLook;
 
 function textProps(row: ElementRow): TextProps | null {
   if (row.kind !== 'text') return null;
