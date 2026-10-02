@@ -128,12 +128,43 @@ describe('readRtf', () => {
       '{\\rtf1{\\colortbl;\\red1\\green2\\blue3;}\\ul under\\ul0  \\strike0\\charscalex100 plain ' +
         '\\outl\\strokewidth-40 outlined \\cb1 marked \\super up\\nosupersub}',
     );
-    expect(r.unsupported).toEqual([
-      'superscript or subscript',
-      'text background colour',
-      'text outline',
-      'underline',
+    expect(r.unsupported).toEqual(['superscript or subscript', 'text background colour', 'underline']);
+  });
+
+  it('reads outlines: Cocoa stroke widths are twentieths of a percent of the size', () => {
+    const r = readRtf(
+      '{\\rtf1{\\colortbl;\\red255\\green255\\blue255;\\red255\\green0\\blue0;}' +
+        '\\fs100\\cf1 \\outl0\\strokewidth-40 \\strokec2 red edge ' +
+        '\\outl0\\strokewidth0 plain \\outl\\strokec0 own colour \\outl0\\strokewidth80 hollow}',
+    );
+    expect(r.runs.map((x) => [x.text, x.outline])).toEqual([
+      // 2% of 50 points.
+      ['red edge ', { color: '#ff0000', width: 1 }],
+      ['plain ', undefined],
+      // \\outl alone: about 3%, in the text's own colour.
+      ['own colour ', { color: '#ffffff', width: 1.5 }],
+      ['hollow', { color: '#ffffff', width: 2 }],
     ]);
+    expect(r.unsupported).toEqual(['hollow letters']);
+  });
+
+  it('reads shadows: twips, Cocoa’s offset upwards, opacity out of 255', () => {
+    const r = readRtf(
+      '{\\rtf1{\\colortbl;\\red0\\green0\\blue255;}\\fs80 ' +
+        '\\shad\\shadx40\\shady-60\\shadr100\\shado128 \\shadc1 blue \\shad0 none}',
+    );
+    expect(r.runs.map((x) => [x.text, x.shadow])).toEqual([
+      ['blue ', { color: '#0000ff80', blur: 5, x: 2, y: 3 }],
+      ['none', undefined],
+    ]);
+    expect(r.unsupported).toEqual([]);
+    // No colour: Cocoa's own, black at a third.
+    expect(readRtf('{\\rtf1\\shad\\shadx0\\shady-20\\shadr40 cocoa}').runs[0]?.shadow).toEqual({
+      color: '#00000055',
+      blur: 2,
+      x: 0,
+      y: 1,
+    });
   });
 
   it('reads letter spacing (twips, or quarter points)', () => {

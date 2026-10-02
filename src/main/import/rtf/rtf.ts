@@ -1,4 +1,4 @@
-import type { TextAlign, TextRun } from '../../../shared/model';
+import type { Outline, Shadow, TextAlign, TextRun } from '../../../shared/model';
 import { mergeRuns } from '../../../shared/text-runs';
 import { codePageForCharset, decoderFor } from './codepages';
 
@@ -6,9 +6,10 @@ import { codePageForCharset, decoderFor } from './codepages';
  * A reader for the RTF inside presentation files (slide text is RTF in
  * both formats Drashti imports). It keeps what a slide needs: the text with
  * its paragraphs and line breaks, and per run the font, size, colour, bold
- * and italic, plus each paragraph's alignment. Formatting it cannot show yet
- * (outlines, underline, text backgrounds...) is listed, never dropped
- * silently. It never throws: broken RTF gives what could be read.
+ * and italic, outlines and shadows (Cocoa's \\strokewidth and \\shad words),
+ * plus each paragraph's alignment. Formatting it cannot show yet (underline,
+ * text backgrounds...) is listed, never dropped silently. It never throws:
+ * broken RTF gives what could be read.
  */
 
 export interface RtfResult {
@@ -36,6 +37,19 @@ interface State {
   italic: boolean;
   /** Index into the colour table (usually 0, "automatic"). */
   color: number;
+  /** \outl: outlined letters. */
+  outl: boolean;
+  /** Cocoa's \strokewidth: twentieths of a percent of the font size; negative strokes and fills, positive only strokes. */
+  strokeWidth: number;
+  /** \strokec: the outline's colour (index into the colour table; 0 for the text's own). */
+  strokeColor: number;
+  /** \shad and Cocoa's offset (\shadx, \shady, y upwards), blur (\shadr) in twips, opacity (\shado, 0 to 255), colour (\shadc). */
+  shadow: boolean;
+  shadowX: number;
+  shadowY: number;
+  shadowBlur: number;
+  shadowOpacity: number | null;
+  shadowColor: number | null;
   /** Characters to skip after \uN (the fallback). */
   uc: number;
   hidden: boolean;
@@ -126,9 +140,6 @@ const UNSUPPORTED: Record<string, string> = {
   ulw: 'underline',
   strike: 'strikethrough',
   striked: 'strikethrough',
-  outl: 'text outline',
-  strokewidth: 'text outline',
-  shad: 'text shadow',
   embo: 'embossed text',
   impr: 'engraved text',
   caps: 'all capitals',
@@ -193,6 +204,15 @@ function defaultState(): State {
     bold: false,
     italic: false,
     color: 0,
+    outl: false,
+    strokeWidth: 0,
+    strokeColor: 0,
+    shadow: false,
+    shadowX: 0,
+    shadowY: 0,
+    shadowBlur: 0,
+    shadowOpacity: null,
+    shadowColor: null,
     uc: 1,
     hidden: false,
     align: 'left',
@@ -201,6 +221,54 @@ function defaultState(): State {
     lineMultiple: false,
     dest: 'text',
     ignorable: false,
+  };
+}
+
+/** Outlines and shadows off (\plain). */
+const NO_DECORATION = {
+  outl: false,
+  strokeWidth: 0,
+  strokeColor: 0,
+  shadow: false,
+  shadowX: 0,
+  shadowY: 0,
+  shadowBlur: 0,
+  shadowOpacity: null,
+  shadowColor: null,
+} satisfies Partial<State>;
+
+const sameDecoration = (a: State, b: State) =>
+  (Object.keys(NO_DECORATION) as (keyof typeof NO_DECORATION)[]).every((k) => a[k] === b[k]);
+
+/** A colour from the table with an alpha (0 to 1), as #rrggbb or #rrggbbaa. */
+function withAlpha(color: string, alpha: number): string {
+  const a = Math.min(1, Math.max(0, alpha));
+  return a >= 1 ? color : `${color}${hex2(Math.round(a * 255))}`;
+}
+
+/**
+ * A run's outline: Cocoa's \strokewidth is in twentieths of a percent of the
+ * font size (so -40 is 2%), or \outl alone (about 3%). Null when it has none.
+ */
+function outlineOf(s: State, colors: readonly (string | null)[], textColor: string): Outline | null {
+  if (s.strokeWidth === 0 && !s.outl) return null;
+  const percent = s.strokeWidth !== 0 ? Math.abs(s.strokeWidth) / 20 : 3;
+  const width = Math.round((percent / 100) * s.size * 100) / 100;
+  return { color: (s.strokeColor > 0 ? colors[s.strokeColor] : null) ?? textColor, width };
+}
+
+/** A run's shadow, in points: Cocoa's offset is upwards, so it is turned over. Null when it has none. */
+function shadowOf(s: State, colors: readonly (string | null)[]): Shadow | null {
+  if (!s.shadow) return null;
+  const twips = (n: number) => Math.round((n / 20) * 100) / 100;
+  // Without a colour, Cocoa's own: black at a third.
+  const base = s.shadowColor !== null ? (colors[s.shadowColor] ?? '#000000') : '#000000';
+  const alpha = s.shadowOpacity !== null ? s.shadowOpacity / 255 : s.shadowColor !== null ? 1 : 1 / 3;
+  return {
+    color: withAlpha(base, alpha),
+    blur: twips(s.shadowBlur),
+    x: twips(s.shadowX),
+    y: twips(-s.shadowY) || 0,
   };
 }
 
@@ -296,7 +364,8 @@ export function readRtf(input: Uint8Array | string): RtfResult {
       last.state.spacing === s.spacing &&
       last.state.bold === s.bold &&
       last.state.italic === s.italic &&
-      last.state.color === s.color;
+      last.state.color === s.color &&
+      sameDecoration(last.state, s);
     if (same) last.text += text;
     else runs.push({ text, state: { ...s } });
     for (const ch of text) if (ch !== '\n') paragraphChars++;
@@ -380,6 +449,34 @@ export function readRtf(input: Uint8Array | string): RtfResult {
         st.italic = false;
         st.color = 0;
         st.hidden = false;
+        Object.assign(st, NO_DECORATION);
+        return;
+      case 'outl':
+        st.outl = on;
+        return;
+      case 'strokewidth':
+        st.strokeWidth = param ?? 0;
+        return;
+      case 'strokec':
+        st.strokeColor = param ?? 0;
+        return;
+      case 'shad':
+        st.shadow = on;
+        return;
+      case 'shadx':
+        st.shadowX = param ?? 0;
+        return;
+      case 'shady':
+        st.shadowY = param ?? 0;
+        return;
+      case 'shadr':
+        st.shadowBlur = Math.max(0, param ?? 0);
+        return;
+      case 'shado':
+        st.shadowOpacity = param;
+        return;
+      case 'shadc':
+        st.shadowColor = param;
         return;
       case 'pard':
         st.align = 'left';
@@ -579,6 +676,12 @@ export function readRtf(input: Uint8Array | string): RtfResult {
     // An empty colour-table entry means "automatic"; some writers start the table with a real colour.
     const color = colors[s.color];
     if (color) r.color = color;
+    const outline = outlineOf(s, colors, color ?? '#000000');
+    if (outline) r.outline = outline;
+    // Hollow letters (a stroke without the fill) show filled, with the outline.
+    if (outline && s.strokeWidth > 0 && run.text.trim() !== '') unsupported.add('hollow letters');
+    const shadow = shadowOf(s, colors);
+    if (shadow) r.shadow = shadow;
     out.push(r);
   }
   while (out.length > 0) {

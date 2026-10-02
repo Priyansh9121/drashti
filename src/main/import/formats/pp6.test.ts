@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { MediaElement, ShapeElement, TextElement } from '../../../shared/model';
 import { cocoaRtf, pp6Playlist, pp6Presentation, pp6Template } from '../testing/pp6-fixtures';
 import { XmlError } from '../xml';
-import { parsePp6, pp6Color, pp6Rect, TEMPLATES_LIBRARY } from './pp6';
+import { parsePp6, pp6Color, pp6Rect, pp6Shadow, TEMPLATES_LIBRARY } from './pp6';
 
 const bytes = (xml: string) => Buffer.from(xml, 'utf8');
 
@@ -137,7 +137,8 @@ describe('parsePp6: presentations', () => {
       color: '#ffffff',
       align: 'center',
       verticalAlign: 'bottom',
-      shadow: true,
+      // The file's own shadow: 2 points of blur, in black, 2.83 points right and down.
+      shadow: { color: '#000000', blur: 2, x: 2.83, y: 2.83 },
     });
   });
 
@@ -218,10 +219,11 @@ describe('parsePp6: presentations', () => {
     expect(codes).toEqual(
       expect.arrayContaining([
         ['slide-cues', 'info'],
-        ['transition', 'info'],
-        ['text-outline', 'warning'],
+        ['transition-kind', 'info'],
       ]),
     );
+    // A box's outline comes across now (as a shape's outline behind its words).
+    expect(codes.map(([code]) => code)).not.toContain('text-outline');
     // Backgrounds and audio run (as cues), so only the clear cue is reported, once.
     expect(codes.map(([code]) => code)).not.toContain('background-media');
     expect(presentation(xml).issues.find((i) => i.code === 'slide-cues')?.message).toBe(
@@ -229,6 +231,123 @@ describe('parsePp6: presentations', () => {
     );
     // Nothing in a report names the other product.
     expect(JSON.stringify(presentation(xml).issues)).not.toMatch(/propresenter/iu);
+  });
+});
+
+describe('parsePp6: the look and timing of slides', () => {
+  it('reads shadows as these files write them', () => {
+    expect(pp6Shadow('5.000000|0 0 0 0.5|{3, -4}')).toEqual({ color: '#00000080', blur: 5, x: 3, y: 4 });
+    expect(pp6Shadow('0.000000|1 0 0 1|{-2.5, 2.5}')).toEqual({
+      color: '#ff0000',
+      blur: 0,
+      x: -2.5,
+      y: -2.5,
+    });
+    // Nothing to see, or nothing readable.
+    expect(pp6Shadow('5|0 0 0 0|{1, 1}')).toBeNull();
+    expect(pp6Shadow('x|0 0 0 1|{1, 1}')).toBeNull();
+    expect(pp6Shadow(undefined)).toBeNull();
+  });
+
+  const look = presentation(
+    pp6Presentation({
+      uuid: 'LOOK',
+      groups: [
+        {
+          name: 'Verse',
+          slides: [
+            {
+              text: [
+                {
+                  rtf: cocoaRtf([['Placeholder turned', 72, [255, 255, 255]]]),
+                  rect: [100, 200, 800, 100],
+                  rotation: 30,
+                  outline: { color: '1 0 0 1', width: 3 },
+                  shadow: false,
+                  growToFit: true,
+                },
+              ],
+              shapes: [
+                {
+                  kind: 'shape',
+                  rect: [10, 10, 100, 50],
+                  outline: { color: '0 1 0 1', width: 4 },
+                  radius: 8,
+                },
+                { kind: 'circle', rect: [200, 10, 100, 100], fill: '0 0 1 1', rotation: -45, shadow: true },
+                { kind: 'rectangle', rect: [400, 10, 100, 50], fill: '1 1 0 1' },
+                { kind: 'custom', rect: [600, 10, 100, 50], fill: '1 1 1 1' },
+                // Neither fill nor outline: nothing to draw.
+                { kind: 'shape', rect: [800, 10, 100, 50] },
+              ],
+              transition: { type: 0, seconds: 1.5 },
+              timer: { seconds: 4 },
+            },
+            { transition: { type: -1, seconds: 1 }, timer: { seconds: 2.5 } },
+            { transition: { type: 12, seconds: 0.5 } },
+            { transition: { type: 0, seconds: 0 }, timer: { seconds: 6, loop: true } },
+          ],
+        },
+      ],
+    }),
+  );
+
+  it('keeps rotation, outlines round boxes and shapes, and circles', () => {
+    const [box, words, outlined, circle, path] = look.groups[0]?.slides[0]?.elements ?? [];
+    // The box's outline is a shape behind its words, turned with them.
+    expect(box).toMatchObject({
+      id: 's0-e0-fill',
+      kind: 'shape',
+      fill: null,
+      outline: { color: '#ff0000', width: 3 },
+      rotation: 30,
+    });
+    expect(words).toMatchObject({ kind: 'text', rotation: 30, style: { shadow: false } });
+    expect(outlined).toEqual({
+      id: 's0-e1',
+      kind: 'shape',
+      frame: { x: 10, y: 10, width: 100, height: 50 },
+      fill: null,
+      cornerRadius: 8,
+      opacity: 1,
+      outline: { color: '#00ff00', width: 4 },
+    });
+    expect(circle).toMatchObject({ kind: 'shape', shape: 'ellipse', fill: '#0000ff', rotation: -45 });
+    expect(path).toMatchObject({ kind: 'shape', fill: '#ffff00' });
+    expect(look.groups[0]?.slides[0]?.elements).toHaveLength(5);
+    const codes = look.issues.map((i) => i.code);
+    expect(codes).toEqual(expect.arrayContaining(['custom-shape', 'shape-shadow', 'grow-to-fit']));
+    expect(codes).not.toContain('rotation');
+    expect(codes).not.toContain('shape-outline');
+  });
+
+  it('keeps each slide’s transition and timer, and a timer back to the first slide on the last as a loop', () => {
+    const slides = look.groups[0]?.slides ?? [];
+    expect(slides.map((sl) => [sl.transition, sl.autoAdvanceMs])).toEqual([
+      [{ kind: 'dissolve', durationMs: 1500 }, 4000],
+      [null, 2500],
+      // Another kind of transition dissolves; no length is a cut.
+      [{ kind: 'dissolve', durationMs: 500 }, null],
+      [{ kind: 'cut', durationMs: 0 }, 6000],
+    ]);
+    expect(look.loop).toBe(true);
+    // The timer is the auto-advance, not a cue that does not run.
+    expect(slides.flatMap((sl) => sl.cues)).toEqual([]);
+    expect(look.issues.find((i) => i.code === 'transition-kind')?.message).toBe(
+      'A slide transition of another kind (a push, a wipe...) plays as a dissolve.',
+    );
+  });
+
+  it('says when a timer goes back to the first slide from the middle', () => {
+    const p = presentation(
+      pp6Presentation({
+        uuid: 'MIDDLE',
+        groups: [{ name: 'A', slides: [{ timer: { seconds: 3, loop: true } }, { timer: { seconds: 3 } }] }],
+      }),
+    );
+    expect(p.loop).toBe(false);
+    expect(p.groups[0]?.slides.map((sl) => sl.autoAdvanceMs)).toEqual([3000, 3000]);
+    expect(p.issues.map((i) => i.code)).toContain('timer-to-first');
   });
 });
 

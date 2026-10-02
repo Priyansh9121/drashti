@@ -210,4 +210,53 @@ describe('importing ProPresenter 7 files', () => {
     ]);
     expect(report?.items[0]?.message).toMatch(/^Not a readable \.pro file: /u);
   });
+
+  it('stores rotation, outlines, shadows, transitions, auto-advance and the loop it reads', async () => {
+    const t = setup();
+    t.write(
+      'Libraries/Default/Placeholder Timed.pro',
+      pp7Presentation({
+        uuid: 'P7-TIMED',
+        name: 'Placeholder Timed',
+        transition: { seconds: 0.6, effect: 'Dissolve' },
+        groups: [
+          {
+            name: 'Verse',
+            uuid: 'G-T',
+            slides: [
+              {
+                id: 't1',
+                text: [
+                  {
+                    rtf: cocoaRtf([['Placeholder timed line', 72, [255, 255, 255]]]),
+                    rotation: 15,
+                    stroke: { width: 2, color: [1, 1, 1, 1] },
+                    shadow: { angle: 270, offset: 5, radius: 2 },
+                  },
+                ],
+                transition: { seconds: 1.2 },
+                completion: { target: 1, action: 3, seconds: 3 },
+              },
+              { id: 't2', completion: { target: 4, action: 3, seconds: 5 } },
+            ],
+          },
+        ],
+      }),
+    );
+    const { report } = await t.run([t.source]);
+    const id = report?.items.find((i) => i.name === 'Placeholder Timed')?.target?.id ?? '';
+    const doc = t.presentations.get(id);
+    expect(doc).toMatchObject({ transition: { kind: 'dissolve', durationMs: 600 }, loop: true });
+    const [first, second] = doc?.groups[0]?.slides ?? [];
+    expect([first?.transition, first?.autoAdvanceMs, second?.autoAdvanceMs]).toEqual([
+      { kind: 'dissolve', durationMs: 1200 },
+      3000,
+      5000,
+    ]);
+    expect(first?.slide.elements.map((e) => [e.kind, e.rotation])).toEqual([
+      ['shape', 15],
+      ['text', 15],
+    ]);
+    expect(first?.slide.elements[1]).toMatchObject({ style: { shadow: { x: 0, y: 5, blur: 2 } } });
+  });
 });

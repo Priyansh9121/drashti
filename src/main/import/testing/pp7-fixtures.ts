@@ -19,18 +19,96 @@ const bounds = ([x = 0, y = 0, width = 0, height = 0]: number[]) => ({
 });
 const rtfBytes = (rtf: string) => Buffer.from(rtf, 'latin1');
 
+/** A Graphics.Shadow: degrees (the mathematical way), points, opacity. */
+export interface Pp7Shadow {
+  angle: number;
+  offset: number;
+  radius: number;
+  opacity?: number;
+  color?: number[];
+}
+/** A Graphics.Stroke (style 0 is a solid line). */
+export interface Pp7Stroke {
+  width: number;
+  color: number[];
+  style?: number;
+}
+/** A Graphics.Path.Shape type (1 rectangle, 2 ellipse, 4 right triangle, 8 custom, 11 rounded), and points for custom paths. */
+export interface Pp7Path {
+  type: number;
+  roundness?: number;
+  points?: [number, number][];
+  closed?: boolean;
+}
+
 export interface Pp7SlideSpec {
   id: string;
   label?: string;
   enabled?: boolean;
-  text?: { rtf: string; rect?: number[]; fill?: number[]; vertical?: 0 | 1 | 2 }[];
+  text?: {
+    rtf: string;
+    rect?: number[];
+    fill?: number[];
+    vertical?: 0 | 1 | 2;
+    rotation?: number;
+    shadow?: Pp7Shadow;
+    /** The element's own shadow (behind the box). */
+    elementShadow?: Pp7Shadow;
+    stroke?: Pp7Stroke;
+    /** Graphics.Text.ScaleBehavior (2 shrinks the words to fit). */
+    scale?: number;
+    path?: Pp7Path;
+  }[];
+  shapes?: {
+    rect: number[];
+    path: Pp7Path;
+    fill?: number[];
+    stroke?: Pp7Stroke;
+    rotation?: number;
+    shadow?: boolean;
+    gradient?: boolean;
+  }[];
   image?: { path: string; rect: number[] };
+  /** The slide's own transition: seconds, and the effect's name. */
+  transition?: { seconds: number; effect?: string };
+  /** How the cue moves on by itself: target 1 is the next slide, 4 the first; action 3 is after a time. */
+  completion?: { target: number; action: number; seconds: number };
   background?: { path: string; kind: 'image' | 'video'; loop?: boolean };
   audio?: string | { path: string; volume?: number; loop?: boolean };
   /** A Clear cue (clears a layer), which Drashti does not run yet. */
   clear?: boolean;
   notesRtf?: string;
 }
+
+const shadowOf = (sh: Pp7Shadow) => ({
+  enable: true,
+  angle: sh.angle,
+  offset: sh.offset,
+  radius: sh.radius,
+  opacity: sh.opacity ?? 1,
+  color: rgba(sh.color ?? [0, 0, 0, 1]),
+});
+const strokeOf = (st: Pp7Stroke) => ({
+  enable: true,
+  width: st.width,
+  color: rgba(st.color),
+  style: st.style ?? 0,
+});
+const pathOf = (p: Pp7Path) => ({
+  closed: p.closed ?? true,
+  points: (
+    p.points ?? [
+      [0, 0],
+      [1, 0],
+      [1, 1],
+      [0, 1],
+    ]
+  ).map(([x, y]) => ({ point: { x, y } })),
+  shape: {
+    type: p.type,
+    ...(p.roundness === undefined ? {} : { rounded_rectangle: { roundness: p.roundness } }),
+  },
+});
 
 function elements(s: Pp7SlideSpec) {
   const out: Record<string, unknown>[] = [];
@@ -41,8 +119,41 @@ function elements(s: Pp7SlideSpec) {
         name: `Text ${i}`,
         bounds: bounds(t.rect ?? [100, 100, 1720, 880]),
         opacity: 1,
-        text: { rtf_data: rtfBytes(t.rtf), vertical_alignment: t.vertical ?? 1 },
+        ...(t.rotation === undefined ? {} : { rotation: t.rotation }),
+        path: pathOf(t.path ?? { type: 1 }),
+        text: {
+          rtf_data: rtfBytes(t.rtf),
+          vertical_alignment: t.vertical ?? 1,
+          ...(t.shadow ? { shadow: shadowOf(t.shadow) } : {}),
+          ...(t.scale === undefined ? {} : { scale_behavior: t.scale }),
+        },
         ...(t.fill ? { fill: { enable: true, color: rgba(t.fill) } } : {}),
+        ...(t.stroke ? { stroke: strokeOf(t.stroke) } : {}),
+        ...(t.elementShadow ? { shadow: shadowOf(t.elementShadow) } : {}),
+      },
+    });
+  });
+  s.shapes?.forEach((sh, i) => {
+    out.push({
+      element: {
+        uuid: id(`${s.id}-sh${i}`),
+        name: `Shape ${i}`,
+        bounds: bounds(sh.rect),
+        opacity: 1,
+        ...(sh.rotation === undefined ? {} : { rotation: sh.rotation }),
+        path: pathOf(sh.path),
+        ...(sh.fill || sh.gradient
+          ? {
+              fill: {
+                enable: true,
+                ...(sh.gradient
+                  ? { gradient: { type: 0, stops: [{ color: rgba([1, 0, 0, 1]), position: 0 }] } }
+                  : { color: rgba(sh.fill ?? [1, 1, 1, 1]) }),
+              },
+            }
+          : {}),
+        ...(sh.stroke ? { stroke: strokeOf(sh.stroke) } : {}),
+        ...(sh.shadow ? { shadow: shadowOf({ angle: 315, offset: 5, radius: 5 }) } : {}),
       },
     });
   });
@@ -71,6 +182,7 @@ function actions(s: Pp7SlideSpec, width: number, height: number) {
         presentation: {
           base_slide: { uuid: id(`${s.id}-base`), size: { width, height }, elements: elements(s) },
           ...(s.notesRtf ? { notes: { rtf_data: rtfBytes(s.notesRtf) } } : {}),
+          ...(s.transition ? { transition: transitionOf(s.transition) } : {}),
         },
       },
     },
@@ -110,8 +222,15 @@ function actions(s: Pp7SlideSpec, width: number, height: number) {
   return list;
 }
 
+const transitionOf = (t: { seconds: number; effect?: string }) => ({
+  duration: t.seconds,
+  ...(t.effect ? { effect: { name: t.effect, render_id: t.effect } } : {}),
+});
+
 export interface Pp7DocSpec {
   uuid: string;
+  /** The presentation's own default transition. */
+  transition?: { seconds: number; effect?: string };
   name?: string;
   width?: number;
   height?: number;
@@ -143,8 +262,16 @@ export function pp7Presentation(spec: Pp7DocSpec): Uint8Array {
         uuid: id(s.id),
         name: s.label ?? '',
         ...(spec.noEnabledFlags ? {} : { isEnabled: s.enabled ?? true }),
+        ...(s.completion
+          ? {
+              completion_target_type: s.completion.target,
+              completion_action_type: s.completion.action,
+              completion_time: s.completion.seconds,
+            }
+          : {}),
         actions: actions(s, width, height),
       })),
+      ...(spec.transition ? { transition: transitionOf(spec.transition) } : {}),
       arrangements: (spec.arrangements ?? []).map((a, i) => ({
         uuid: id(`arr-${i}`),
         name: a.name,

@@ -1,12 +1,17 @@
 import type { ImportIssue } from '../../../shared/import';
 import type {
   MediaElement,
+  Outline,
   Rect,
+  Shadow,
   ShapeElement,
+  ShapeKind,
   SlideElement,
   TextElement,
+  Transition,
   VerticalAlign,
 } from '../../../shared/model';
+import { CUT, MAX_AUTO_ADVANCE_MS, MAX_TRANSITION_MS } from '../../../shared/model';
 import { mainLang, withDetectedLangs } from '../../../shared/text-runs';
 import { fileNameOf, pathFromReference } from '../media-resolver';
 import type {
@@ -77,6 +82,37 @@ const num = (value: string | undefined, fallback: number) => {
   return value !== undefined && value !== '' && Number.isFinite(n) ? n : fallback;
 };
 
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * "blur|r g b a|{x, y}" (an NSShadow, as these files write it) as a shadow in
+ * points. Cocoa's offset is upwards, so y is turned over. Null when it
+ * cannot be read or cannot be seen.
+ */
+export function pp6Shadow(value: string | undefined): Shadow | null {
+  if (!value) return null;
+  const [blurText, colorText, offsetText] = value.split('|');
+  const blur = Number(blurText);
+  const color = pp6Color(colorText);
+  const offset = (offsetText ?? '')
+    .replace(/[{}]/gu, '')
+    .split(',')
+    .map((n) => Number(n.trim()));
+  const [x = Number.NaN, y = Number.NaN] = offset;
+  if (!color || !Number.isFinite(blur) || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { color, blur: round2(Math.max(0, blur)), x: round2(x), y: round2(-y) || 0 };
+}
+
+/** An element's outline (drawingStroke, and its stroke dictionary's colour and width), or null. */
+function pp6Outline(node: XmlNode): Outline | null {
+  if (node.attrs['drawingStroke'] !== 'true') return null;
+  const entry = (key: string) =>
+    field(node, 'stroke')?.children.find((c) => c.attrs['rvXMLDictionaryKey'] === key);
+  const color = pp6Color(entry('RVShapeElementStrokeColorKey')?.text);
+  const width = num(entry('RVShapeElementStrokeWidthKey')?.text.trim(), 1);
+  return color && width > 0 ? { color, width: round2(width) } : null;
+}
+
 const VERTICAL: Record<string, VerticalAlign> = { '0': 'top', '1': 'middle', '2': 'bottom' };
 const FIT: Record<string, MediaElement['fit']> = { '0': 'fit', '1': 'fill', '2': 'stretch' };
 
@@ -113,8 +149,7 @@ class Losses {
 const RTF_FEATURE_CODES: Record<string, string> = {
   underline: 'rtf-underline',
   strikethrough: 'rtf-strikethrough',
-  'text outline': 'text-outline',
-  'text shadow': 'rtf-shadow',
+  'hollow letters': 'hollow-letters',
   'embossed text': 'rtf-emboss',
   'engraved text': 'rtf-engrave',
   'all capitals': 'all-caps',
@@ -133,6 +168,8 @@ interface Context {
   losses: Losses;
   /** Legacy (non-Unicode) Gujarati and Hindi fonts in the text. */
   legacy: LegacyFontUse;
+  /** Slides (by their place in the file) whose timer goes back to the first slide. */
+  loopsBack: number[];
 }
 
 function addMedia(ctx: Context, source: string | undefined, fallback: ParsedMediaRef['kind']): number | null {
@@ -170,19 +207,20 @@ function mediaElement(
 function textElement(ctx: Context, node: XmlNode, id: string, frame: Rect): SlideElement[] {
   const out: SlideElement[] = [];
   const a = node.attrs;
-  if (a['drawingFill'] === 'true') {
-    const fill = pp6Color(a['fillColor']);
-    if (fill) {
-      const shape: ShapeElement = {
-        id: `${id}-fill`,
-        kind: 'shape',
-        frame,
-        fill,
-        cornerRadius: Math.max(0, num(a['bezelRadius'], 0)),
-        opacity: Math.min(1, Math.max(0, num(a['opacity'], 1))),
-      };
-      out.push(shape);
-    }
+  // The box's own fill and outline: a shape behind the words.
+  const fill = a['drawingFill'] === 'true' ? pp6Color(a['fillColor']) : null;
+  const edge = pp6Outline(node);
+  if (fill || edge) {
+    const shape: ShapeElement = {
+      id: `${id}-fill`,
+      kind: 'shape',
+      frame,
+      fill,
+      cornerRadius: Math.max(0, num(a['bezelRadius'], 0)),
+      opacity: Math.min(1, Math.max(0, num(a['opacity'], 1))),
+    };
+    if (edge) shape.outline = edge;
+    out.push(shape);
   }
   const rtfNode = node.children.find((c) => c.attrs['rvXMLIvarName'] === 'RTFData');
   const plainNode = node.children.find((c) => c.attrs['rvXMLIvarName'] === 'PlainText');
@@ -210,11 +248,12 @@ function textElement(ctx: Context, node: XmlNode, id: string, frame: Rect): Slid
   } else if (plainNode && plainNode.text.trim() !== '') {
     text = Buffer.from(plainNode.text.trim(), 'base64').toString('utf8');
   }
-  if (a['drawingStroke'] === 'true') {
+  if (a['adjustsHeightToFit'] === 'true') {
     ctx.losses.add(
-      'text-outline',
-      'A text box outline is not shown yet.',
-      '{n} text box outlines are not shown yet.',
+      'grow-to-fit',
+      'A text box that grows to fit its words shows at its set size.',
+      '{n} text boxes that grow to fit their words show at their set size.',
+      'info',
     );
   }
   if (a['useAllCaps'] === 'true') {
@@ -245,7 +284,8 @@ function textElement(ctx: Context, node: XmlNode, id: string, frame: Rect): Slid
       align,
       verticalAlign: VERTICAL[a['verticalAlignment'] ?? ''] ?? 'middle',
       lineHeight,
-      shadow: a['drawingShadow'] === 'true',
+      // Its own shadow; Drashti's soft one if the file's cannot be read.
+      shadow: a['drawingShadow'] === 'true' ? (pp6Shadow(field(node, 'shadow')?.text) ?? true) : false,
     },
   };
   if (runs && runs.length > 0) el.runs = runs;
@@ -253,16 +293,19 @@ function textElement(ctx: Context, node: XmlNode, id: string, frame: Rect): Slid
   return out;
 }
 
+/** What a slide element becomes, turned as the file has it (degrees clockwise). */
 function elementsOf(ctx: Context, node: XmlNode, id: string): SlideElement[] {
+  const rotation = round2(num(node.attrs['rotation'], 0) % 360);
+  return elementsUnturned(ctx, node, id).map((el) => (rotation ? { ...el, rotation } : el));
+}
+
+function elementsUnturned(ctx: Context, node: XmlNode, id: string): SlideElement[] {
   const frame = pp6Rect(field(node, 'position')?.text) ?? {
     x: 0,
     y: 0,
     width: ctx.width,
     height: ctx.height,
   };
-  if (num(node.attrs['rotation'], 0) % 360 !== 0) {
-    ctx.losses.add('rotation', 'A rotated element shows unrotated.', '{n} rotated elements show unrotated.');
-  }
   switch (node.name) {
     case 'RVTextElement':
       return textElement(ctx, node, id, frame);
@@ -273,32 +316,43 @@ function elementsOf(ctx: Context, node: XmlNode, id: string): SlideElement[] {
     }
     case 'RVShapeElement':
     case 'RVBezierPathElement': {
-      const fill = node.attrs['drawingFill'] === 'true' ? pp6Color(node.attrs['fillColor']) : null;
-      const custom = node.name === 'RVBezierPathElement' && node.attrs['isRectangle'] !== 'true';
-      if (custom)
+      const a = node.attrs;
+      // A path is a rectangle or a circle when it says so; anything else is a custom shape.
+      const kind: ShapeKind | null =
+        node.name === 'RVShapeElement' || a['isRectangle'] === 'true'
+          ? 'rectangle'
+          : a['isCircle'] === 'true'
+            ? 'ellipse'
+            : null;
+      if (!kind) {
         ctx.losses.add(
           'custom-shape',
           'A custom shape is not imported.',
           '{n} custom shapes are not imported.',
         );
-      if (node.attrs['drawingStroke'] === 'true') {
-        ctx.losses.add(
-          'shape-outline',
-          'A shape outline is not shown yet.',
-          '{n} shape outlines are not shown yet.',
-        );
+        return [];
       }
-      if (!fill || custom) return [];
-      return [
-        {
-          id,
-          kind: 'shape',
-          frame,
-          fill,
-          cornerRadius: Math.max(0, num(node.attrs['bezelRadius'], 0)),
-          opacity: Math.min(1, Math.max(0, num(node.attrs['opacity'], 1))),
-        },
-      ];
+      if (a['drawingShadow'] === 'true')
+        ctx.losses.add(
+          'shape-shadow',
+          'A shape’s shadow is not shown.',
+          '{n} shapes’ shadows are not shown.',
+          'info',
+        );
+      const fill = a['drawingFill'] === 'true' ? pp6Color(a['fillColor']) : null;
+      const outline = pp6Outline(node);
+      if (!fill && !outline) return [];
+      const shape: ShapeElement = {
+        id,
+        kind: 'shape',
+        frame,
+        fill,
+        cornerRadius: kind === 'rectangle' ? Math.max(0, num(a['bezelRadius'], 0)) : 0,
+        opacity: Math.min(1, Math.max(0, num(a['opacity'], 1))),
+      };
+      if (kind !== 'rectangle') shape.shape = kind;
+      if (outline) shape.outline = outline;
+      return [shape];
     }
     default:
       ctx.losses.add(
@@ -335,6 +389,35 @@ function cueOf(ctx: Context, node: XmlNode): ParsedCue {
   }
 }
 
+/**
+ * A slide's transition (an RVTransition of its own). Type -1 uses the
+ * default; type 0 is a dissolve, and other kinds (pushes, wipes...) dissolve
+ * too and are counted. Null when the slide has none of its own.
+ */
+function transitionOf(ctx: Context, node: XmlNode | undefined): Transition | null {
+  const type = node?.attrs['transitionType'];
+  if (!node || type === undefined || type === '-1') return null;
+  const ms = Math.round(num(node.attrs['transitionDuration'], 1) * 1000);
+  if (ms <= 0) return CUT;
+  if (type !== '0')
+    ctx.losses.add(
+      'transition-kind',
+      'A slide transition of another kind (a push, a wipe...) plays as a dissolve.',
+      '{n} slide transitions of other kinds (pushes, wipes...) play as a dissolve.',
+      'info',
+    );
+  return { kind: 'dissolve', durationMs: Math.min(MAX_TRANSITION_MS, ms) };
+}
+
+/** A slide timer (RVSlideTimerCue): seconds before the next slide, and whether it goes back to the first. */
+function timerOf(node: XmlNode | undefined): { ms: number | null; loop: boolean } {
+  const seconds = num(node?.attrs['duration'], 0);
+  return {
+    ms: seconds > 0 ? Math.min(MAX_AUTO_ADVANCE_MS, Math.max(100, Math.round(seconds * 1000))) : null,
+    loop: node?.attrs['loopToBeginning'] === 'true',
+  };
+}
+
 function slideOf(ctx: Context, node: XmlNode, docBackground: string | null, index: number): ParsedSlide {
   const a = node.attrs;
   const elements: SlideElement[] = [];
@@ -365,7 +448,11 @@ function slideOf(ctx: Context, node: XmlNode, docBackground: string | null, inde
   arrayField(node, 'displayElements').forEach((child, i) => {
     elements.push(...elementsOf(ctx, child, `s${index}-e${i}`));
   });
-  const otherCues = arrayField(node, 'cues').map((c) => cueOf(ctx, c));
+  // The slide's timer is its auto-advance, not a cue.
+  const cueNodes = arrayField(node, 'cues');
+  const timer = timerOf(cueNodes.find((c) => c.name === 'RVSlideTimerCue'));
+  if (timer.loop) ctx.loopsBack.push(index);
+  const otherCues = cueNodes.filter((c) => c.name !== 'RVSlideTimerCue').map((c) => cueOf(ctx, c));
   cues.push(...otherCues);
   for (const cue of otherCues) {
     if (cue.kind === 'audio') continue;
@@ -376,15 +463,10 @@ function slideOf(ctx: Context, node: XmlNode, docBackground: string | null, inde
       'info',
     );
   }
-  const transitionType = node.children.find((c) => c.name === 'RVTransition')?.attrs['transitionType'];
-  if (transitionType !== undefined && transitionType !== '-1') {
-    ctx.losses.add(
-      'transition',
-      'A slide transition is not imported yet.',
-      '{n} slide transitions are not imported yet.',
-      'info',
-    );
-  }
+  const transition = transitionOf(
+    ctx,
+    node.children.find((c) => c.name === 'RVTransition'),
+  );
   if (a['hotKey'])
     ctx.losses.add(
       'hot-key',
@@ -399,6 +481,8 @@ function slideOf(ctx: Context, node: XmlNode, docBackground: string | null, inde
     enabled: a['enabled'] !== 'false',
     elements,
     cues,
+    transition,
+    autoAdvanceMs: timer.ms,
   };
 }
 
@@ -411,6 +495,7 @@ function presentationOf(root: XmlNode, filePath: string): ParsedPresentation {
     mediaIndex: new Map(),
     losses: new Losses(),
     legacy: new LegacyFontUse(),
+    loopsBack: [],
   };
   const docBackground = a['drawingBackgroundColor'] === 'true' ? pp6Color(a['backgroundColor']) : null;
   let slideIndex = 0;
@@ -470,6 +555,14 @@ function presentationOf(root: XmlNode, filePath: string): ParsedPresentation {
   let notes = notesText(a['notes']);
   if (ccli.length > 0)
     notes = `${notes}${notes ? '\n\n' : ''}CCLI: ${ccli.map(([k, v]) => `${k} ${v ?? ''}`).join('; ')}`;
+  // A timer going back to the first slide is a loop when it is on the last slide; elsewhere it cannot be.
+  const loop = ctx.loopsBack.includes(slideIndex - 1);
+  if (ctx.loopsBack.some((i) => i !== slideIndex - 1))
+    ctx.losses.add(
+      'timer-to-first',
+      'A slide that went back to the first slide by itself goes on to the next one.',
+      '{n} slides that went back to the first slide by themselves go on to the next one.',
+    );
   issues.push(...ctx.losses.issues(), ...ctx.legacy.issues());
   return {
     name: nameFromFile(filePath),
@@ -481,6 +574,7 @@ function presentationOf(root: XmlNode, filePath: string): ParsedPresentation {
     groups,
     arrangements,
     selectedArrangement: selected >= 0 ? selected : null,
+    loop,
     media: ctx.media,
     issues,
   };
@@ -556,6 +650,7 @@ function playlistDocOf(root: XmlNode, filePath: string): ParsedPlaylistDoc {
     mediaIndex: new Map(),
     losses: new Losses(),
     legacy: new LegacyFontUse(),
+    loopsBack: [],
   };
   const rootNode = field(root, 'rootNode');
   const top = rootNode ? playlistOf(ctx, rootNode, ctx.losses) : null;
