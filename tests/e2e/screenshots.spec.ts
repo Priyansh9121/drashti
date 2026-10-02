@@ -112,6 +112,74 @@ test('the slide editor', async () => {
   await app.close();
 });
 
+test('the kirtan library, screens’ languages, templates and the setup wizard', async () => {
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' });
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1600, height: 900 });
+  await win
+    .getByTestId('presentation-list')
+    .getByRole('button', { name: /Sample kirtan/ })
+    .click();
+
+  // The Kirtan dialog, with details filled in.
+  await win.getByTestId('kirtan-button').click();
+  const details = win.getByTestId('kirtan-details');
+  await details.getByTestId('kirtan-kavi').fill('Placeholder Kavi');
+  await details.getByTestId('kirtan-raag').fill('Placeholder Raag');
+  await details.getByTestId('kirtan-occasion').fill('Diwali');
+  await details.getByTestId('kirtan-occasion').press('Enter');
+  await shot(win, 'kirtan-dialog');
+  await win.getByTestId('kirtan-done').click();
+
+  // Edit words, by language: every language side by side, one missing.
+  await win.getByRole('button', { name: 'Edit words' }).click();
+  const editor = win.getByTestId('words-editor');
+  await editor.getByTestId('words-mode-tab-tracks').click();
+  await editor.getByTestId('track-slide').nth(1).getByRole('textbox', { name: 'Slide 2, English' }).fill('');
+  await shot(win, 'words-by-language');
+  await editor.getByRole('button', { name: 'Cancel' }).click();
+
+  // Screens: two groups, each with its own languages; and an output showing them.
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    for (const [name, i, langs] of [
+      ['Hall', 0, ['gu', 'translit']],
+      ['Stream', 1, ['translit', 'en']],
+    ] as const) {
+      const created = await d.screens.createGroup(name);
+      if (!created.ok) continue;
+      const g = created.snapshot.groups.find((x) => x.name === name);
+      await d.screens.assignDisplay(g?.id ?? '', created.snapshot.displays[i]?.id ?? -1, {
+        coverOperator: true,
+      });
+      await d.screens.setGroupLanguages(g?.id ?? '', [...langs]);
+    }
+  });
+  await win.getByTestId('slide-thumb').first().click();
+  await win.getByRole('button', { name: 'Screens', exact: true }).click();
+  await shot(win, 'screens-languages');
+  await win.getByRole('button', { name: 'Close screens' }).click();
+  await shot(win, 'operator-kirtan-languages');
+
+  // Templates, a playlist made from one, and filling a slot.
+  await win.getByTestId('playlist-view-tab-templates').click();
+  await shot(win, 'templates');
+  await win.getByRole('button', { name: 'New playlist from Example: Ravi Sabha' }).click();
+  await win.getByRole('textbox', { name: 'Playlist name' }).press('Enter');
+  await win.getByTestId('playlist-item').nth(1).click();
+  await expect(win.getByTestId('fill-slot')).toBeVisible();
+  await shot(win, 'fill-slot');
+  await win.getByTestId('fill-slot').getByRole('button', { name: 'Cancel' }).click();
+
+  // The setup wizard's screens step.
+  await app.evaluate(({ Menu }) => {
+    Menu.getApplicationMenu()?.getMenuItemById('set-up-screens')?.click();
+  });
+  await win.getByTestId('setup-wizard').getByTestId('setup-next').click();
+  await shot(win, 'setup-wizard');
+  await app.close();
+});
+
 test('Simple Mode', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
