@@ -213,7 +213,13 @@ export function MessagesPanel() {
   const reload = () => {
     void window.drashti.messages.list().then(setTemplates);
   };
-  useEffect(reload, []);
+  // Loaded as the window opens, and again whenever templates change (here, or arriving with an import).
+  useEffect(() => {
+    reload();
+    return window.drashti.library.onChanged((what) => {
+      if (what === 'messages' || what === 'presentations') reload();
+    });
+  }, []);
   const done = (changed: boolean) => {
     setEditing(null);
     if (changed) reload();

@@ -204,7 +204,8 @@ let watching = false;
 export function watchLibrary(): void {
   if (watching) return;
   watching = true;
-  window.drashti.library.onChanged(() => {
+  window.drashti.library.onChanged((what) => {
+    if (what !== 'presentations') return;
     void loadLibrary().then(async () => {
       const { selectedId } = useLibrary.getState();
       if (selectedId) await selectPresentation(selectedId);

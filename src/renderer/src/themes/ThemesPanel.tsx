@@ -424,9 +424,16 @@ function Panel({ initial }: { initial: string | null }) {
   const reload = async (pick?: string) => {
     show(await window.drashti.themes.list(), pick);
   };
+  // Loaded as the panel opens, and again whenever themes change (one made from a template or a slide).
   useEffect(() => {
-    void window.drashti.themes.list().then((list) => {
-      show(list);
+    const load = () => {
+      void window.drashti.themes.list().then((list) => {
+        show(list);
+      });
+    };
+    load();
+    return window.drashti.library.onChanged((what) => {
+      if (what === 'themes') load();
     });
   }, []);
   const theme = themes?.find((t) => t.id === chosen) ?? null;

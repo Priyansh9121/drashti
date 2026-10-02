@@ -17,11 +17,13 @@ export async function loadProps(): Promise<void> {
   useLogo.setState({ props, logoId });
 }
 
-/** Keep the props current: they can arrive with an import. */
+/** Keep the props current: they change in the Props panel, and can arrive with an import. */
 export function watchProps(): void {
   if (watching) return;
   watching = true;
-  window.drashti.library.onChanged(() => void loadProps());
+  window.drashti.library.onChanged((what) => {
+    if (what === 'props' || what === 'presentations') void loadProps();
+  });
   void loadProps();
 }
 

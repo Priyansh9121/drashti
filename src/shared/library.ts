@@ -11,6 +11,13 @@ export interface ImportSource {
   importedAt: string | null;
 }
 
+/**
+ * What changed in the library, so each list reloads only for its own kind:
+ * presentations (added, edited, removed, imported: an import can bring props
+ * too), or the props, message templates or themes.
+ */
+export type LibraryChange = 'presentations' | 'props' | 'messages' | 'themes';
+
 /** Removing or restoring presentations: the ids that changed. */
 export type RemoveResult = { ok: true; ids: string[] } | { ok: false; message: string };
 

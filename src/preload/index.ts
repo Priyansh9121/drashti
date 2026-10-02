@@ -68,8 +68,8 @@ const bridge: DrashtiBridge = {
     legacyPresentations: () => invoke(IPC.library.legacyPresentations),
     getPresentation: (id) => invoke(IPC.library.getPresentation, id),
     onChanged: (listener) =>
-      on(IPC.library.changed, () => {
-        listener();
+      on(IPC.library.changed, ({ what }) => {
+        listener(what);
       }),
     importPaths: (paths, options) => invoke(IPC.library.importPaths, paths, options),
     cancelImport: (runId) => invoke(IPC.library.cancelImport, runId),

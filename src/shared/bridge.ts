@@ -4,6 +4,7 @@ import type { CommandResult, EngineCommand } from './engine/commands';
 import type { EngineMessage, EngineSnapshotMessage } from './engine/protocol';
 import type { ImportOptions, ImportProgress, ImportReport, ImportResult, ImportRunSummary } from './import';
 import type {
+  LibraryChange,
   NewFromWordsResult,
   PresentationDoc,
   PresentationSummary,
@@ -99,8 +100,8 @@ export interface DrashtiBridge {
     /** Presentations with slide text in legacy fonts, which search cannot read yet. */
     legacyPresentations(): Promise<{ id: string; name: string }[]>;
     getPresentation(id: string): Promise<PresentationDoc | null>;
-    /** Presentations were added or changed (for example by an import). */
-    onChanged(listener: () => void): () => void;
+    /** Presentations (for example by an import), props, messages or themes were added or changed. */
+    onChanged(listener: (what: LibraryChange) => void): () => void;
     /**
      * Import files and folders (operator window only). Resolves when the run
      * has ended; changed files come back as conflicts unless options say what to do.

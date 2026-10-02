@@ -34,8 +34,6 @@ async function running(win: Page) {
     const d = (globalThis as PageGlobals).drashti;
     await d.props.setLogo(logoId);
   }, show.logoPropId);
-  // The panels load their lists as the window opens: open it again to see what was just made.
-  await win.reload();
   await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
   await win.getByTestId('playlist-item').filter({ hasText: KIRTAN }).click();
   await win.getByTestId('slide-thumb').nth(1).click();
