@@ -110,7 +110,7 @@ Every list, panel and dialog shows:
 There are three columns between a header and a footer:
 
 - **Left:** playlists above, and the library (presentations, media) below.
-- **Middle:** the chosen presentation's slides as thumbnails in groups, with the group colour beside each group's name.
+- **Middle:** the chosen presentation's slides as thumbnails in one grid, in play order, flowing on from one group to the next. Each thumbnail has its group's colour as a strip beside its number, and the first slide each time a group comes up carries the group's name. The thumbnail size (120 to 400 px, 170 at first) is remembered: at 170 three slides fit a row at 1280 × 720 and six at 1920 × 1080.
 - **Right:** Live, Next and the stage screen, then the props, messages and timers panels.
 - **Along the bottom:** the layer clears and black-out. Under them is the status bar: screens connected, the sound output, import progress and notices.
 
