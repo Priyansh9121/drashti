@@ -64,7 +64,7 @@ import type { BackupUi } from './library/backup-ui';
 import { backUp, restore } from './library/backup-ui';
 import { Revisions } from './library/revisions';
 import { applyTheme, themeLook } from './library/themes';
-import { registerSlidesIpc } from './library/slides-ipc';
+import { defaultTransition, registerSlidesIpc } from './library/slides-ipc';
 import { registerThemesIpc } from './library/themes-ipc';
 import { registerWordsIpc } from './library/words-ipc';
 import { runRelaunchSelfTest } from './relaunch-selftest';
@@ -323,7 +323,17 @@ function start(): void {
   const transport = new IpcTransport((error, target) => {
     log.warn(`Could not send an engine message to window ${target.id}`, error);
   });
-  const engine = new ShowEngine(slides, transport, Date.now, { items: (id) => playlists.playItems(id) });
+  // Settings kept in the library (the sound output, the mode, the logo, the default transition).
+  const settings = new SettingsRepo(db);
+  const engine = new ShowEngine(
+    slides,
+    transport,
+    Date.now,
+    { items: (id) => playlists.playItems(id) },
+    {
+      defaultTransition: () => defaultTransition(settings),
+    },
+  );
   const timers = new TimerRepo(db);
   engine.setTimers(timers.list());
 
@@ -509,7 +519,6 @@ function start(): void {
     if (operatorWindow && !operatorWindow.isDestroyed()) operatorWindow.webContents.send(channel, payload);
   };
   // ---- sound ----------------------------------------------------------------
-  const settings = new SettingsRepo(db);
   const audioOutput = new AudioOutput({
     load: () => settings.get('audioOutput'),
     save: (device) => {

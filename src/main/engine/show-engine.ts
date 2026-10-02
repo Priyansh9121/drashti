@@ -18,6 +18,7 @@ import {
 } from '../../shared/engine/state';
 import type { EngineTransport } from '../../shared/engine/transport';
 import type { BackgroundCue } from '../../shared/library';
+import { CUT, type Transition } from '../../shared/model';
 import { elapsedAt, type TimerDefinition, type TimerRun } from '../../shared/timers';
 import { remapPosition } from '../../shared/order';
 import type { EngineAction } from './actions';
@@ -29,6 +30,11 @@ type Resolved = { ok: true; actions: EngineAction[] } | Extract<CommandResult, {
 type MediaItem = Extract<PlayItem, { kind: 'media' }>;
 
 const NO_CHANGE: Resolved = { ok: true, actions: [] };
+
+export interface EngineOptions {
+  /** Drashti's own default transition, for presentations without one (a setting; a cut when left out). */
+  defaultTransition?: () => Transition;
+}
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
 export interface RestoreRequest {
@@ -91,6 +97,7 @@ export class ShowEngine {
     private readonly transport: EngineTransport,
     private readonly now: () => number = Date.now,
     private readonly playlists: PlaylistSource = NO_PLAYLISTS,
+    private readonly options: EngineOptions = {},
   ) {}
 
   get current(): EngineState {
@@ -302,6 +309,7 @@ export class ShowEngine {
     order: PlayOrder,
     played: PlayedSlide,
     playlist: PlaylistCursor | null,
+    how: { at?: number; transition?: Transition } = {},
   ): EngineAction {
     return {
       type: 'slide/show',
@@ -312,8 +320,18 @@ export class ShowEngine {
       playlist,
       slide: played.slide,
       notes: played.notes,
-      at: this.now(),
+      at: how.at ?? this.now(),
+      ...(how.transition ? { transition: how.transition } : {}),
     };
+  }
+
+  /**
+   * How a slide comes on: its own transition, else its presentation's, else
+   * Drashti's default. A dissolve of no length is a cut; a cut is left out.
+   */
+  private transitionFor(order: PlayOrder, played: PlayedSlide): Transition | undefined {
+    const t = played.transition ?? order.transition ?? this.options.defaultTransition?.() ?? CUT;
+    return t.kind === 'dissolve' && t.durationMs > 0 ? t : undefined;
   }
 
   private showSlide(
@@ -333,11 +351,20 @@ export class ShowEngine {
         message: `Slide ${slideIndex + 1} of ${order.slides.length} does not exist`,
       };
     }
-    const actions: EngineAction[] = [this.showAction(presentationId, slideIndex, order, played, playlist)];
+    const at = this.now();
+    const transition = this.transitionFor(order, played);
+    const actions: EngineAction[] = [
+      this.showAction(presentationId, slideIndex, order, played, playlist, {
+        at,
+        ...(transition ? { transition } : {}),
+      }),
+    ];
     // The slide's background and sound go on their layers; a slide without them leaves those layers as they are.
+    // A new background comes on with the slide (dissolving with it); the same file carries on.
+    const fade = transition ? { at, durationMs: transition.durationMs } : undefined;
     for (const cue of played.cues) {
       if (cue.kind === 'background') {
-        actions.push({ type: 'background/set', background: this.backgroundLayer(cue.background) });
+        actions.push({ type: 'background/set', background: this.backgroundLayer(cue.background, fade) });
       } else {
         const { mediaId, volume, loop } = cue;
         actions.push({
@@ -431,11 +458,15 @@ export class ShowEngine {
    * The background layer for a choice. The file already on the layer keeps
    * its start time, so it carries on playing instead of restarting.
    */
-  private backgroundLayer(choice: BackgroundChoice): BackgroundLayer {
+  private backgroundLayer(
+    choice: BackgroundChoice,
+    fade?: { at: number; durationMs: number },
+  ): BackgroundLayer {
     if (choice.kind === 'color') return choice;
     const current = this.state.layers.background;
-    const same = current?.kind === 'media' && current.mediaId === choice.mediaId;
-    return { ...choice, startedAt: same ? current.startedAt : this.now() };
+    if (current?.kind === 'media' && current.mediaId === choice.mediaId)
+      return { ...choice, startedAt: current.startedAt, ...(current.fade ? { fade: current.fade } : {}) };
+    return { ...choice, startedAt: fade?.at ?? this.now(), ...(fade ? { fade } : {}) };
   }
 
   /**

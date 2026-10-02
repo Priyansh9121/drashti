@@ -35,7 +35,17 @@ function upsert<T extends { id: string }>(items: T[], item: T): T[] | null {
 export function reduce(state: EngineState, action: EngineAction): EngineState {
   switch (action.type) {
     case 'slide/show': {
-      const { presentationId, slideIndex, slideCount, arrangementId, playlist, slide, notes, at } = action;
+      const {
+        presentationId,
+        slideIndex,
+        slideCount,
+        arrangementId,
+        playlist,
+        slide,
+        notes,
+        at,
+        transition,
+      } = action;
       const live = state.live;
       const sameCursor =
         live.presentationId === presentationId &&
@@ -48,14 +58,26 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
         current !== null && current.presentationId === presentationId && current.slideIndex === slideIndex;
       const sameSlide = samePlace && current.notes === notes && sameData(current.slide, slide);
       if (sameCursor && sameSlide) return state;
-      // New content for the live slide (an edit or a re-import) keeps its time, so its videos carry on.
+      // New content for the live slide (an edit or a re-import) keeps its time, so its videos carry on,
+      // and how it came on (a dissolve is not run again).
       const shownAt = samePlace ? current.shownAt : at;
+      const came = samePlace ? current.transition : transition;
       return {
         ...state,
         live: sameCursor ? live : { presentationId, slideIndex, slideCount, arrangementId, playlist },
         layers: sameSlide
           ? state.layers
-          : { ...state.layers, slide: { presentationId, slideIndex, slide, shownAt, notes } },
+          : {
+              ...state.layers,
+              slide: {
+                presentationId,
+                slideIndex,
+                slide,
+                shownAt,
+                notes,
+                ...(came ? { transition: came } : {}),
+              },
+            },
       };
     }
     case 'live/move': {
