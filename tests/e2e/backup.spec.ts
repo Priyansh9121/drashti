@@ -4,7 +4,15 @@ import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, operatorPage, outputPage, relaunchApp, setUpScreen } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  outputPage,
+  relaunchApp,
+  setUpScreen,
+} from './helpers';
 import { makeTestImage } from './test-media';
 
 /*
@@ -56,6 +64,7 @@ test('a backup brings the library back as it was, keeping the one before', async
     dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [into] });
     dialog.showMessageBox = () => Promise.resolve({ response: 0, checkboxChecked: true });
   }, backups);
+  await operatorReady(win);
   await first.app.evaluate(({ Menu }) => {
     Menu.getApplicationMenu()?.getMenuItemById('backup-library')?.click();
   });
@@ -147,6 +156,7 @@ test('a restored library that will not open is put back by itself, and the opera
     dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [into] });
     dialog.showMessageBox = () => Promise.resolve({ response: 0, checkboxChecked: false });
   }, backups);
+  await operatorReady(win);
   await first.app.evaluate(({ Menu }) => {
     Menu.getApplicationMenu()?.getMenuItemById('backup-library')?.click();
   });

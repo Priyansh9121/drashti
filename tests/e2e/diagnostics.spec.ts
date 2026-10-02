@@ -3,7 +3,7 @@ import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cocoaRtf, pp6Playlist, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
-import { importAndGetIds, launchApp, operatorPage } from './helpers';
+import { importAndGetIds, launchApp, operatorPage, operatorReady } from './helpers';
 
 /*
  * Help > Save diagnostics writes one file an operator can send: versions,
@@ -44,6 +44,7 @@ test('the diagnostics file holds the setup and the log, and no library text', as
   writeFileSync(broken, 'not a presentation');
   await importAndGetIds(win, [song, list, broken]);
 
+  await operatorReady(win);
   await app.evaluate(({ Menu }) => {
     Menu.getApplicationMenu()?.getMenuItemById('save-diagnostics')?.click();
   });
