@@ -64,6 +64,15 @@ export async function operatorPage(app: ElectronApplication): Promise<Page> {
   return app.waitForEvent('window', { predicate: isOperator });
 }
 
+/**
+ * Wait until the operator window's page is up and listening to the main process: the status bar
+ * shows the version once it is. A notice sent before then (a backup asked for from the menu the
+ * moment the window appears) would not be seen.
+ */
+export async function operatorReady(win: Page): Promise<void> {
+  await expect(win.getByRole('contentinfo', { name: 'Status' })).toContainText(/Electron \d/u);
+}
+
 /** Stop the app dead, as a crash or power cut would: the whole process tree, with no chance to quit cleanly. */
 export async function killApp(app: ElectronApplication): Promise<void> {
   const child = app.process();
