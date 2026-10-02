@@ -11,13 +11,19 @@ import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ConfirmDialog, useFocusTrap } from '../ui/Dialog';
 import {
+  ArrowDown,
+  ArrowUp,
   Circle,
+  CopyPlus,
   ImagePlus,
+  ListPlus,
   Minus,
+  Plus,
   RectangleHorizontal,
   Redo2,
   Shapes,
   Square,
+  Trash2,
   Type,
   Undo2,
 } from '../ui/icons';
@@ -45,7 +51,21 @@ import {
 import { Inspector } from './Inspector';
 import { MediaPicker, naturalSize } from './MediaPicker';
 import type { ShapeChoice } from './ops';
-import { addElement, findSlide, newMedia, newShape, newTextBox } from './ops';
+import {
+  addElement,
+  addGroup,
+  addSlideAfter,
+  copySlide,
+  findSlide,
+  moveSlideBy,
+  newMedia,
+  newShape,
+  newSlide,
+  newTextBox,
+  placeOf,
+  placeSlide,
+  removeSlide,
+} from './ops';
 import { finishTextEditing } from './TextBoxEditor';
 
 /*
@@ -283,11 +303,13 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           }}
           onChoose={(m) => {
             setPicking(false);
-            void naturalSize(m).then((size) => {
+            if (m.kind === 'audio') return;
+            const kind = m.kind;
+            void naturalSize({ id: m.id, kind }).then((size) => {
               const s = useEditor.getState();
               const current = s.doc ? findSlide(s.doc, s.slideId) : undefined;
               if (!s.doc || !current) return;
-              const el = newMedia({ id: m.id, kind: m.kind, ...(size ?? {}) }, s.doc);
+              const el = newMedia({ id: m.id, kind, ...(size ?? {}) }, s.doc);
               commit(addElement(s.doc, current.id, el), { select: [el.id] });
             });
           }}
@@ -330,66 +352,221 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   );
 }
 
-/** The slides, group by group: the one being edited is marked; click another to edit it. */
+/** The slides, group by group: the one being edited is marked; click another to edit it, drag to move it. */
 function SlideList({ doc, current }: { doc: EditDoc; current: string | null }) {
   const numbers = new Map(slidesOf(doc).map((s, i) => [s.id, i + 1]));
+  const total = numbers.size;
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [dropAt, setDropAt] = useState<{ groupId: string; index: number } | null>(null);
+  const act = (fn: (d: EditDoc, slideId: string) => { doc: EditDoc; show?: string } | null) => {
+    finishTextEditing();
+    const s = useEditor.getState();
+    if (!s.doc || !s.slideId) return;
+    const done = fn(s.doc, s.slideId);
+    if (!done) return;
+    commit(done.doc, { select: [] });
+    if (done.show) showSlide(done.show);
+  };
+  const look = () => useEditor.getState().look;
+  const drop = () => {
+    const s = useEditor.getState();
+    const moving = dragging && s.doc ? findSlide(s.doc, dragging) : undefined;
+    if (moving && dropAt && s.doc) {
+      const from = placeOf(s.doc, moving.id);
+      const group = s.doc.groups.find((g) => g.id === dropAt.groupId);
+      // Later in the same group: the slide itself no longer counts before the place.
+      const index =
+        from && group && s.doc.groups[from.group]?.id === group.id && from.index < dropAt.index
+          ? dropAt.index - 1
+          : dropAt.index;
+      commit(placeSlide(s.doc, moving, dropAt.groupId, index));
+    }
+    setDragging(null);
+    setDropAt(null);
+  };
   return (
     <nav
       aria-label="Slides"
-      className="w-52 shrink-0 overflow-y-auto border-r border-line bg-panel p-2"
+      className="flex w-52 shrink-0 flex-col border-r border-line bg-panel"
       data-testid="editor-slides"
     >
-      {doc.groups.map((g) => (
-        <section key={g.id} className="mb-3" aria-label={g.name || 'Slides without a group'}>
-          <h3 className="mb-1 flex items-center gap-2 text-xs font-bold text-fg">
-            <span
-              aria-hidden="true"
-              className="h-3 w-3 shrink-0 rounded-sm border border-line-strong"
-              style={{ background: g.color ?? 'transparent' }}
-            />
-            <Truncate text={g.name || 'No group'} />
-          </h3>
-          <ol className="space-y-2">
-            {g.slides.map((s) => {
-              const n = numbers.get(s.id) ?? 0;
-              const here = s.id === current;
-              return (
-                <li key={s.id}>
-                  <button
-                    type="button"
-                    data-testid="editor-slide-thumb"
-                    data-slide-id={s.id}
-                    aria-current={here ? 'true' : undefined}
-                    aria-label={`Slide ${n}${s.label ? `: ${s.label}` : ''}${s.enabled ? '' : ' (hidden in the show)'}`}
-                    onClick={() => {
-                      finishTextEditing();
-                      showSlide(s.id);
+      <div
+        className="flex shrink-0 flex-wrap gap-1 border-b border-line p-2"
+        role="toolbar"
+        aria-label="The slide being edited"
+      >
+        <IconButton
+          icon={Plus}
+          size="sm"
+          label="New slide after this one"
+          data-testid="slide-new"
+          onClick={() => {
+            act((d, id) => {
+              const made = newSlide(look());
+              return { doc: addSlideAfter(d, id, made), show: made.id };
+            });
+          }}
+        />
+        <IconButton
+          icon={ListPlus}
+          size="sm"
+          label="New group"
+          data-testid="group-new"
+          onClick={() => {
+            act((d) => {
+              const made = addGroup(d, 'New group', look());
+              return { doc: made.doc, show: made.slideId };
+            });
+          }}
+        />
+        <IconButton
+          icon={CopyPlus}
+          size="sm"
+          label="Duplicate this slide"
+          data-testid="slide-duplicate"
+          onClick={() => {
+            act((d, id) => {
+              const original = findSlide(d, id);
+              if (!original) return null;
+              const copy = copySlide(original);
+              return { doc: addSlideAfter(d, id, copy), show: copy.id };
+            });
+          }}
+        />
+        <IconButton
+          icon={ArrowUp}
+          size="sm"
+          label="Move this slide up"
+          data-testid="slide-up"
+          onClick={() => {
+            act((d, id) => ({ doc: moveSlideBy(d, id, -1) }));
+          }}
+        />
+        <IconButton
+          icon={ArrowDown}
+          size="sm"
+          label="Move this slide down"
+          data-testid="slide-down"
+          onClick={() => {
+            act((d, id) => ({ doc: moveSlideBy(d, id, 1) }));
+          }}
+        />
+        <IconButton
+          icon={Trash2}
+          size="sm"
+          variant="danger"
+          label="Delete this slide"
+          data-testid="slide-delete"
+          disabled={total < 2}
+          onClick={() => {
+            act((d, id) => {
+              const all = slidesOf(d);
+              const at = all.findIndex((x) => x.id === id);
+              const next = all[at + 1] ?? all[at - 1];
+              return next ? { doc: removeSlide(d, id), show: next.id } : null;
+            });
+          }}
+        />
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        {doc.groups.map((g) => (
+          <section
+            key={g.id}
+            className="mb-3"
+            aria-label={g.name || 'Slides without a group name'}
+            data-testid="editor-group"
+            data-group={g.name}
+            onDragOver={(e) => {
+              if (!dragging) return;
+              e.preventDefault();
+              // Over the group but no slide: at its end.
+              if (e.target === e.currentTarget) setDropAt({ groupId: g.id, index: g.slides.length });
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              drop();
+            }}
+          >
+            <h3 className="mb-1 flex items-center gap-2 text-xs font-bold text-fg">
+              <span
+                aria-hidden="true"
+                className="h-3 w-3 shrink-0 rounded-sm border border-line-strong"
+                style={{ background: g.color ?? 'transparent' }}
+              />
+              <Truncate text={g.name || 'No name'} />
+            </h3>
+            <ol className="space-y-2">
+              {g.slides.map((s, index) => {
+                const n = numbers.get(s.id) ?? 0;
+                const here = s.id === current;
+                const marker = dropAt?.groupId === g.id && dropAt.index === index;
+                return (
+                  <li
+                    key={s.id}
+                    className={cx('rounded-md', marker && 'shadow-[0_-3px_0_0_var(--color-accent)]')}
+                    onDragOver={(e) => {
+                      if (!dragging) return;
+                      e.preventDefault();
+                      const r = e.currentTarget.getBoundingClientRect();
+                      setDropAt({
+                        groupId: g.id,
+                        index: e.clientY > r.top + r.height / 2 ? index + 1 : index,
+                      });
                     }}
-                    className={cx(
-                      'w-full overflow-hidden rounded-md border-2 bg-black text-left',
-                      here ? 'border-accent' : 'border-line hover:border-field',
-                      !s.enabled && 'opacity-50',
-                    )}
                   >
-                    <span
-                      className="pointer-events-none relative block aspect-video w-full"
-                      data-a11y-picture
+                    <button
+                      type="button"
+                      draggable
+                      data-testid="editor-slide-thumb"
+                      data-slide-id={s.id}
+                      aria-current={here ? 'true' : undefined}
+                      aria-label={`Slide ${n}${s.label ? `: ${s.label}` : ''}${s.enabled ? '' : ' (hidden in the show)'}`}
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', s.id);
+                        setDragging(s.id);
+                      }}
+                      onDragEnd={() => {
+                        setDragging(null);
+                        setDropAt(null);
+                      }}
+                      onClick={() => {
+                        finishTextEditing();
+                        showSlide(s.id);
+                      }}
+                      className={cx(
+                        'w-full overflow-hidden rounded-md border-2 bg-black text-left',
+                        here ? 'border-accent' : 'border-line hover:border-field',
+                        !s.enabled && 'opacity-50',
+                        dragging === s.id && 'opacity-40',
+                      )}
                     >
-                      <PlacedInParent content={doc} mode="fit" className="absolute inset-0">
-                        <SlideView slide={renderSlide(doc, s)} media="still" />
-                      </PlacedInParent>
-                    </span>
-                    <span className="flex h-6 items-center gap-1 bg-panel-2 px-1.5 text-2xs text-muted">
-                      <span className="font-bold tabular-nums">{n}</span>
-                      {s.label && <Truncate text={s.label} className="min-w-0 flex-1" />}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-        </section>
-      ))}
+                      <span
+                        className="pointer-events-none relative block aspect-video w-full"
+                        data-a11y-picture
+                      >
+                        <PlacedInParent content={doc} mode="fit" className="absolute inset-0">
+                          <SlideView slide={renderSlide(doc, s)} media="still" />
+                        </PlacedInParent>
+                      </span>
+                      <span className="flex h-6 items-center gap-1 bg-panel-2 px-1.5 text-2xs text-muted">
+                        <span className="font-bold tabular-nums">{n}</span>
+                        {s.label && <Truncate text={s.label} className="min-w-0 flex-1" />}
+                        {s.autoAdvanceMs !== null && (
+                          <span className="ml-auto">{s.autoAdvanceMs / 1000} s</span>
+                        )}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+            {dropAt?.groupId === g.id && dropAt.index === g.slides.length && (
+              <div aria-hidden="true" className="mt-1 h-0.5 rounded bg-accent" />
+            )}
+          </section>
+        ))}
+      </div>
     </nav>
   );
 }

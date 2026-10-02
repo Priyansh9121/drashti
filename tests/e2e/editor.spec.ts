@@ -328,6 +328,9 @@ for (const [width, height] of [
     const win = await operatorPage(app);
     await win.setViewportSize({ width, height });
     const editor = await openEditor(win, /Sample kirtan/);
+    // Nothing selected: the slide's own settings.
+    await expect(editor.getByTestId('slide-panel')).toBeVisible();
+    await expectNoSeriousA11yIssues(win, `the slide editor's slide panel at ${width} x ${height}`);
     await clickSlide(win, 960, 540);
     await expect(editor.getByTestId('inspector-text')).toBeVisible();
     const problems = await win.evaluate(() => {

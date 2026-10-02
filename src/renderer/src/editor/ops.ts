@@ -286,3 +286,271 @@ export const onSlide = (el: SlideElement, size: { width: number; height: number 
   const b = boundsOf(el);
   return b.x < size.width && b.y < size.height && b.x + b.width > 0 && b.y + b.height > 0;
 };
+
+// ---- slides and groups -----------------------------------------------------------------
+
+/** A blank slide (with the look's background colour). */
+export function newSlide(look: SlideLook | null): EditSlide {
+  return {
+    id: newId(),
+    label: '',
+    notes: '',
+    background: look?.background ?? null,
+    enabled: true,
+    transition: null,
+    autoAdvanceMs: null,
+    elements: [],
+    cues: [],
+  };
+}
+
+/** A slide's place: its group and its index in the group. */
+export function placeOf(doc: EditDoc, slideId: string): { group: number; index: number } | null {
+  for (const [group, g] of doc.groups.entries()) {
+    const index = g.slides.findIndex((s) => s.id === slideId);
+    if (index >= 0) return { group, index };
+  }
+  return null;
+}
+
+/** Put a slide in a group at an index (taking it out of wherever it was). */
+export function placeSlide(doc: EditDoc, slide: EditSlide, groupId: string, index: number): EditDoc {
+  const without = doc.groups.map((g) => ({ ...g, slides: g.slides.filter((s) => s.id !== slide.id) }));
+  return {
+    ...doc,
+    groups: without.map((g) => {
+      if (g.id !== groupId) return g;
+      const slides = [...g.slides];
+      slides.splice(Math.max(0, Math.min(index, slides.length)), 0, slide);
+      return { ...g, slides };
+    }),
+  };
+}
+
+/** Add a slide just after another (in its group). */
+export function addSlideAfter(doc: EditDoc, afterId: string, slide: EditSlide): EditDoc {
+  const at = placeOf(doc, afterId);
+  const group = at ? doc.groups[at.group] : doc.groups.at(-1);
+  if (!group) return { ...doc, groups: [{ id: newId(), name: '', color: null, slides: [slide] }] };
+  return placeSlide(doc, slide, group.id, at ? at.index + 1 : group.slides.length);
+}
+
+/** A copy of a slide, with new ids for it and everything on it. */
+export function copySlide(slide: EditSlide): EditSlide {
+  return {
+    ...structuredClone(slide),
+    id: newId(),
+    elements: slide.elements.map((el) => ({ ...structuredClone(el), id: newId() })),
+    cues: slide.cues.map((c) => ({ ...c, id: newId() })),
+  };
+}
+
+export function removeSlide(doc: EditDoc, slideId: string): EditDoc {
+  return {
+    ...doc,
+    groups: doc.groups.map((g) => ({ ...g, slides: g.slides.filter((s) => s.id !== slideId) })),
+  };
+}
+
+/**
+ * One place up or down in the order. At the edge of its group it goes into
+ * the group before or after (at the end or the start of it).
+ */
+export function moveSlideBy(doc: EditDoc, slideId: string, step: -1 | 1): EditDoc {
+  const at = placeOf(doc, slideId);
+  const slide = findSlide(doc, slideId);
+  const group = at ? doc.groups[at.group] : undefined;
+  if (!at || !slide || !group) return doc;
+  const index = at.index + step;
+  if (index >= 0 && index < group.slides.length) return placeSlide(doc, slide, group.id, index);
+  const next = doc.groups[at.group + step];
+  if (!next) return doc;
+  return placeSlide(doc, slide, next.id, step < 0 ? next.slides.length : 0);
+}
+
+/** The colours offered for groups: the usual ones for verses, choruses and the like. */
+export const GROUP_COLORS = ['#3e63dd', '#e5484d', '#f76b15', '#8e4ec6', '#12a594', '#ffc53d'] as const;
+
+/** A new group at the end, with one blank slide; returns the slide's id. */
+export function addGroup(
+  doc: EditDoc,
+  name: string,
+  look: SlideLook | null,
+): { doc: EditDoc; slideId: string } {
+  const slide = newSlide(look);
+  const used = new Set(doc.groups.map((g) => g.color));
+  const color = GROUP_COLORS.find((c) => !used.has(c)) ?? GROUP_COLORS[0];
+  return {
+    doc: { ...doc, groups: [...doc.groups, { id: newId(), name, color, slides: [slide] }] },
+    slideId: slide.id,
+  };
+}
+
+export function changeGroup(
+  doc: EditDoc,
+  groupId: string,
+  patch: { name?: string; color?: string | null },
+): EditDoc {
+  return { ...doc, groups: doc.groups.map((g) => (g.id === groupId ? { ...g, ...patch } : g)) };
+}
+
+export function removeGroup(doc: EditDoc, groupId: string): EditDoc {
+  return { ...doc, groups: doc.groups.filter((g) => g.id !== groupId) };
+}
+
+/** Change a slide's own settings (label, notes, colour, hidden, transition, auto-advance, cues). */
+export function changeSlide(
+  doc: EditDoc,
+  slideId: string,
+  patch: Partial<Omit<EditSlide, 'id' | 'elements'>>,
+): EditDoc {
+  return mapSlide(doc, slideId, (s) => ({ ...s, ...patch }));
+}
+
+// ---- a slide's background and sound (its cues) ------------------------------------------
+
+interface CueSettings {
+  media?: 'image' | 'video';
+  fit?: 'fit' | 'fill' | 'stretch';
+  loop?: boolean;
+  volume?: number;
+}
+
+/** A cue's settings, read leniently. */
+export function cueSettings(cue: EditSlide['cues'][number]): CueSettings {
+  try {
+    const parsed: unknown = JSON.parse(cue.props);
+    return typeof parsed === 'object' && parsed !== null ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The slide's background picture or video (a cue: it goes on the background
+ * layer when the slide goes live), or none. Other cues stay as they are.
+ */
+export function setBackgroundCue(
+  slide: EditSlide,
+  media: { id: string; kind: 'image' | 'video'; fit: 'fit' | 'fill' | 'stretch'; loop: boolean } | null,
+): EditSlide {
+  const old = slide.cues.find((c) => c.kind === 'background');
+  const others = slide.cues.filter((c) => c.kind !== 'background');
+  if (!media) return { ...slide, cues: others };
+  const props = {
+    ...(old ? cueSettings(old) : {}),
+    media: media.kind,
+    fit: media.fit,
+    loop: media.kind === 'video' && media.loop,
+  };
+  return {
+    ...slide,
+    cues: [
+      {
+        id: old?.id ?? newId(),
+        kind: 'background',
+        label: old?.label ?? '',
+        mediaId: media.id,
+        props: JSON.stringify(props),
+      },
+      ...others,
+    ],
+  };
+}
+
+/** The slide's sound (a cue on the audio layer), or none. */
+export function setSoundCue(
+  slide: EditSlide,
+  sound: { id: string; volume: number; loop: boolean } | null,
+): EditSlide {
+  const old = slide.cues.find((c) => c.kind === 'audio');
+  const others = slide.cues.filter((c) => c.kind !== 'audio');
+  if (!sound) return { ...slide, cues: others };
+  const props = { ...(old ? cueSettings(old) : {}), volume: sound.volume, loop: sound.loop };
+  return {
+    ...slide,
+    cues: [
+      ...others,
+      {
+        id: old?.id ?? newId(),
+        kind: 'audio',
+        label: old?.label ?? '',
+        mediaId: sound.id,
+        props: JSON.stringify(props),
+      },
+    ],
+  };
+}
+
+// ---- one slide's look for every slide ----------------------------------------------------
+
+/**
+ * Every other slide in this slide's look: its colour, its shapes (those
+ * behind its first text box go behind, the rest in front), and for each
+ * text box (first with first, second with second...) its place, turn and
+ * style, with each language's words in the look they have here. Words
+ * never change, pictures and videos stay, and words in a legacy font keep
+ * their font.
+ */
+export function applyLookToAll(doc: EditDoc, slideId: string): EditDoc {
+  const source = findSlide(doc, slideId);
+  if (!source) return doc;
+  const texts = source.elements.filter((e): e is TextElement => e.kind === 'text');
+  const firstText = source.elements.findIndex((e) => e.kind === 'text');
+  const shapes = source.elements.filter((e): e is ShapeElement => e.kind === 'shape');
+  const behind = shapes.filter((s) => firstText < 0 || source.elements.indexOf(s) < firstText);
+  const front = shapes.filter((s) => !behind.includes(s));
+  const looks = new Map<Lang, Omit<TextRun, 'text' | 'lang' | 'legacy'>>();
+  for (const t of texts)
+    for (const run of t.runs ?? []) {
+      if (!run.lang || run.legacy || looks.has(run.lang)) continue;
+      const { text: _t, lang: _l, legacy: _g, ...look } = run;
+      looks.set(run.lang, look);
+    }
+  const restyle = (el: TextElement, model: TextElement): TextElement => {
+    // A box without runs is one run in its own language.
+    const own = el.runs ?? (el.lang && looks.has(el.lang) ? [{ text: el.text, lang: el.lang }] : undefined);
+    const runs = own?.map((r) => {
+      if (r.legacy) return r;
+      const look = r.lang ? looks.get(r.lang) : undefined;
+      // The run takes its language's look from the model slide, or follows the box.
+      const { text, lang, ...own } = r;
+      const plain = Object.fromEntries(
+        Object.entries(own).filter(
+          ([k]) =>
+            !['font', 'size', 'weight', 'italic', 'color', 'letterSpacing', 'shadow', 'outline'].includes(k),
+        ),
+      );
+      return { text, ...(lang !== undefined ? { lang } : {}), ...plain, ...(look ?? {}) };
+    });
+    const next: TextElement = { ...el, frame: { ...model.frame }, style: structuredClone(model.style) };
+    if (model.rotation) next.rotation = model.rotation;
+    else delete next.rotation;
+    if (runs?.some((r) => Object.keys(r).some((k) => k !== 'text'))) next.runs = runs;
+    else delete next.runs;
+    return next;
+  };
+  const copy = (s: ShapeElement): ShapeElement => ({ ...structuredClone(s), id: newId() });
+  return {
+    ...doc,
+    groups: doc.groups.map((g) => ({
+      ...g,
+      slides: g.slides.map((s) => {
+        if (s.id === source.id) return s;
+        let n = 0;
+        const kept = s.elements
+          .filter((e) => e.kind !== 'shape')
+          .map((e) => {
+            if (e.kind !== 'text') return e;
+            const model = texts[n++];
+            return model ? restyle(e, model) : e;
+          });
+        return {
+          ...s,
+          background: source.background,
+          elements: [...behind.map(copy), ...kept, ...front.map(copy)],
+        };
+      }),
+    })),
+  };
+}

@@ -15,7 +15,7 @@ import type {
 } from './library';
 import type { ModeResult, OperatorMode } from './mode';
 import type { Transition } from './model';
-import type { EditDoc, EditSlidesResult, SaveSlidesResult } from './slide-edit';
+import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
 import type { SaveStillResult } from './media';
 import type {
@@ -165,6 +165,8 @@ export const IPC = {
     remove: 'themes:remove',
     apply: 'themes:apply',
     fromPresentation: 'themes:from-presentation',
+    /** A theme from a slide in the slide editor (its first text box, its colour and background). */
+    fromSlide: 'themes:from-slide',
   },
   /** Message templates; changing them is for the operator window only. */
   messages: {
@@ -281,6 +283,7 @@ export interface InvokeContract {
   [IPC.themes.remove]: { args: [themeId: string]; result: ThemeResult };
   [IPC.themes.apply]: { args: [themeId: string, presentationIds: string[]]; result: ApplyThemeResult };
   [IPC.themes.fromPresentation]: { args: [presentationId: string]; result: ThemeResult };
+  [IPC.themes.fromSlide]: { args: [name: string, slide: ThemeSlide]; result: ThemeResult };
   [IPC.messages.list]: { args: []; result: MessageTemplate[] };
   [IPC.messages.create]: { args: [template: MessageTemplateFields]; result: MessageResult };
   [IPC.messages.update]: {

@@ -96,6 +96,15 @@ export type SaveSlidesResult =
   /** `changedElsewhere`: the presentation changed since the editor opened it; saving again with force overwrites that. */
   | { ok: false; message: string; changedElsewhere?: boolean };
 
+/** A slide as the editor has it, for "Make a theme from this slide". */
+export interface ThemeSlide {
+  width: number;
+  height: number;
+  background: string | null;
+  elements: SlideElement[];
+  cues: EditCue[];
+}
+
 // ---- checks for a save arriving over IPC ----------------------------------------------
 
 const MAX_SLIDES = 2_000;
@@ -126,6 +135,14 @@ const slideSchema: z.ZodType<EditSlide> = z.object({
   enabled: z.boolean(),
   transition: transitionSchema.nullable(),
   autoAdvanceMs: autoAdvanceSchema.nullable(),
+  elements: z.array(slideElementSchema).max(500),
+  cues: z.array(cueSchema).max(100),
+});
+
+export const themeSlideSchema: z.ZodType<ThemeSlide> = z.object({
+  width: z.number().int().min(16).max(16384),
+  height: z.number().int().min(16).max(16384),
+  background: hexColorSchema.nullable(),
   elements: z.array(slideElementSchema).max(500),
   cues: z.array(cueSchema).max(100),
 });

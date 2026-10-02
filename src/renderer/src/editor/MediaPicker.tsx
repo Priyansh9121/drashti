@@ -6,15 +6,17 @@ import { MediaStill } from '../render/MediaStill';
 import { MissingBadge, UnplayableBadge } from '../ui/Badge';
 import { Dialog } from '../ui/Dialog';
 import { TextInput } from '../ui/Field';
-import { Image } from '../ui/icons';
+import { Image, Music } from '../ui/icons';
 import { EmptyState } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 
 /*
  * Choosing a picture or video from the library to put on the slide (or
- * behind it). Pictures and videos are imported into the library first, by
- * dragging them onto it.
+ * behind it), or a sound for it. Media is imported into the library first,
+ * by dragging it onto the library.
  */
+
+const KIND = { image: 'Picture', video: 'Video', audio: 'Sound' } as const;
 
 /** A picture's or video's own size, for its proportions on the slide (null if it cannot be read). */
 export async function naturalSize(media: {
@@ -49,10 +51,13 @@ export function MediaPicker({
   title,
   onChoose,
   onClose,
+  sounds = false,
 }: {
   title: string;
-  onChoose: (media: MediaSummary & { kind: 'image' | 'video' }) => void;
+  onChoose: (media: MediaSummary) => void;
   onClose: () => void;
+  /** Offer sounds (and videos, for their sound) instead of pictures and videos. */
+  sounds?: boolean;
 }) {
   const media = useMedia((s) => s.media);
   const [query, setQuery] = useState('');
@@ -62,11 +67,11 @@ export function MediaPicker({
   const shown = useMemo(
     () =>
       media.filter(
-        (m): m is MediaSummary & { kind: 'image' | 'video' } =>
-          (m.kind === 'image' || m.kind === 'video') &&
+        (m) =>
+          (sounds ? m.kind === 'audio' || m.kind === 'video' : m.kind === 'image' || m.kind === 'video') &&
           m.name.toLowerCase().includes(query.trim().toLowerCase()),
       ),
-    [media, query],
+    [media, query, sounds],
   );
   return (
     <Dialog
@@ -77,7 +82,7 @@ export function MediaPicker({
       bodyClassName="flex min-h-0 flex-col gap-3"
     >
       <TextInput
-        aria-label="Find a picture or video by name"
+        aria-label={sounds ? 'Find a sound by name' : 'Find a picture or video by name'}
         placeholder="Find by name"
         value={query}
         autoFocus
@@ -86,28 +91,36 @@ export function MediaPicker({
         }}
       />
       {shown.length === 0 ? (
-        <EmptyState icon={Image} title="No pictures or videos">
-          Drag pictures and videos onto the library to import them, then choose one here.
+        <EmptyState icon={sounds ? Music : Image} title={sounds ? 'No sounds' : 'No pictures or videos'}>
+          Drag {sounds ? 'sound files' : 'pictures and videos'} onto the library to import them, then choose
+          one here.
         </EmptyState>
       ) : (
         <ul
           className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-3 overflow-y-auto"
-          aria-label="Pictures and videos"
+          aria-label={sounds ? 'Sounds' : 'Pictures and videos'}
         >
           {shown.map((m) => (
             <li key={m.id}>
               <button
                 type="button"
                 data-testid="media-choice"
-                aria-label={`${m.kind === 'video' ? 'Video' : 'Picture'}: ${m.name}${m.missing ? ' (missing)' : ''}`}
+                aria-label={`${KIND[m.kind]}: ${m.name}${m.missing ? ' (missing)' : ''}`}
                 disabled={m.missing}
                 onClick={() => {
                   onChoose(m);
                 }}
                 className="w-full overflow-hidden rounded-lg border-2 border-line bg-black text-left hover:border-field disabled:opacity-50"
               >
-                <span className="pointer-events-none relative block aspect-video w-full" data-a11y-picture>
-                  {!m.missing && <MediaStill mediaId={m.id} media={m.kind} />}
+                <span
+                  className="pointer-events-none relative flex aspect-video w-full items-center justify-center"
+                  data-a11y-picture
+                >
+                  {m.kind === 'audio' ? (
+                    <Music size={36} aria-hidden="true" className="text-muted" />
+                  ) : (
+                    !m.missing && <MediaStill mediaId={m.id} media={m.kind} />
+                  )}
                 </span>
                 <span className="flex h-7 items-center gap-2 bg-panel-2 px-2 text-xs text-muted">
                   <Truncate text={m.name} className="min-w-0 flex-1" />
