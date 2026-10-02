@@ -97,26 +97,29 @@ test('the test slide renders all four languages with the bundled fonts, shaped c
   expect(fonts.loadedFamilies).toEqual(['Noto Sans', 'Noto Sans Devanagari', 'Noto Sans Gujarati']);
   expect(fonts).toMatchObject({ gujarati: true, devanagari: true, latin: true });
 
-  // Chromium reports which font actually drew each line.
+  // Chromium reports which font actually drew each line (once it has laid the line out: asked
+  // again until it says, as a busy machine can be a moment behind).
   const cdp = await output.context().newCDPSession(output);
   await cdp.send('DOM.enable');
   await cdp.send('CSS.enable');
-  const { root } = await cdp.send('DOM.getDocument', { depth: -1 });
-  const usedFonts: Record<string, string[]> = {};
-  for (const lang of ['en', 'gu', 'hi', 'translit']) {
-    const { nodeId } = await cdp.send('DOM.querySelector', {
-      nodeId: root.nodeId,
-      selector: `[data-lang="${lang}"]`,
-    });
-    const { fonts: platform } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId });
-    usedFonts[lang] = platform.map((f) => `${f.familyName}${f.isCustomFont ? '' : ' (system)'}`);
-  }
+  const fontsOf = async (selector: string) => {
+    const { root } = await cdp.send('DOM.getDocument', { depth: -1 });
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector });
+    const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId });
+    return fonts.map((f) => `${f.familyName}${f.isCustomFont ? '' : ' (system)'}`);
+  };
   // One bundled (not system) face per line, e.g. "Noto Sans Gujarati Medium" for weight 500.
   const face = (family: string) => [expect.stringMatching(new RegExp(`^${family}( [A-Za-z]+)?$`))];
-  expect(usedFonts['gu']).toEqual(face('Noto Sans Gujarati'));
-  expect(usedFonts['hi']).toEqual(face('Noto Sans Devanagari'));
-  expect(usedFonts['en']).toEqual(face('Noto Sans'));
-  expect(usedFonts['translit']).toEqual(face('Noto Sans'));
+  const usedFonts: Record<string, string[]> = {};
+  for (const [lang, family] of [
+    ['en', 'Noto Sans'],
+    ['gu', 'Noto Sans Gujarati'],
+    ['hi', 'Noto Sans Devanagari'],
+    ['translit', 'Noto Sans'],
+  ] as const) {
+    await expect.poll(() => fontsOf(`[data-lang="${lang}"]`)).toEqual(face(family));
+    usedFonts[lang] = await fontsOf(`[data-lang="${lang}"]`);
+  }
   testInfo.annotations.push({ type: 'fonts used', description: JSON.stringify(usedFonts) });
 
   // Shaping: conjuncts become one glyph cluster, narrower than their parts drawn separately.
@@ -183,16 +186,8 @@ test('the test slide renders all four languages with the bundled fonts, shaped c
     { size: '92px', style: 'normal', weight: '600' },
     { size: '60px', style: 'italic', weight: '400' },
   ]);
-  const runFonts: string[][] = [];
-  for (const selector of ['[data-run][data-lang="gu"]', '[data-run][data-lang="translit"]']) {
-    const { nodeId } = await cdp.send('DOM.querySelector', {
-      nodeId: (await cdp.send('DOM.getDocument', { depth: -1 })).root.nodeId,
-      selector,
-    });
-    runFonts.push((await cdp.send('CSS.getPlatformFontsForNode', { nodeId })).fonts.map((f) => f.familyName));
-  }
-  expect(runFonts[0]).toEqual(face('Noto Sans Gujarati'));
-  expect(runFonts[1]).toEqual(face('Noto Sans'));
+  await expect.poll(() => fontsOf('[data-run][data-lang="gu"]')).toEqual(face('Noto Sans Gujarati'));
+  await expect.poll(() => fontsOf('[data-run][data-lang="translit"]')).toEqual(face('Noto Sans'));
   await win.evaluate(
     (id) =>
       (globalThis as PageGlobals).drashti.engine.dispatch({

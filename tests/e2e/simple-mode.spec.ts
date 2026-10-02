@@ -27,7 +27,11 @@ const state = (win: Page) =>
 async function screens(app: ElectronApplication): Promise<{ audience: Page; stage: Page }> {
   await expect.poll(() => outputPages(app).length).toBe(2);
   const pages = outputPages(app);
-  const roles = await Promise.all(pages.map((p) => p.getByTestId('output-root').getAttribute('data-role')));
+  const rolesNow = () =>
+    Promise.all(pages.map((p) => p.getByTestId('output-root').getAttribute('data-role')));
+  // A screen learns its role a moment after its group's role changes.
+  await expect.poll(async () => (await rolesNow()).sort().join(', ')).toBe('audience, stage');
+  const roles = await rolesNow();
   const audience = pages[roles.indexOf('audience')];
   const stage = pages[roles.indexOf('stage')];
   if (!audience || !stage) throw new Error(`roles: ${roles.join(', ')}`);
