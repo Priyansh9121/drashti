@@ -36,6 +36,8 @@ import { isTyping, useKeymap } from './useKeymap';
 import { watchProps } from './logo-store';
 import { connectMode, useMode } from './mode-store';
 import { SimpleApp } from '../simple/SimpleApp';
+import { SetupWizard } from '../setup/SetupWizard';
+import { openSetup } from '../setup/setup-store';
 
 /** Everything that keeps the window up to date, connected once as it opens. */
 function useConnections(setInfo: (info: AppInfo) => void): void {
@@ -112,6 +114,16 @@ function ProApp({ info }: { info: AppInfo | null }) {
     [openScreens],
   );
   useKeymap(platform, run);
+  // The setup wizard: by itself on the first start, and from View > Set Up Screens… (Pro Mode only).
+  useEffect(() => {
+    void window.drashti.setup.state().then((state) => {
+      if (state.firstRun) void openSetup();
+    });
+    return window.drashti.setup.onOpen(() => {
+      setScreensOpen(false);
+      void openSetup();
+    });
+  }, []);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -152,6 +164,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <RemovePlaylistConfirm undoKey={shortcutText('undo', platform)} />
       <WordsEditor platform={platform} />
       <KirtanDialog />
+      <SetupWizard platform={platform} />
       <SlideEditor platform={platform} />
       <ThemesPanel />
       {screensOpen && (

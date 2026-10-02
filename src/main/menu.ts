@@ -7,6 +7,8 @@ export interface MenuActions {
   mode: OperatorMode;
   /** View > Switch to Simple Mode, or Switch to Pro Mode… (which asks for the word in the window). */
   switchMode: () => void;
+  /** View > Set Up Screens…: the setup wizard (Pro Mode only). */
+  setUpScreens: () => void;
   reloadOperator: () => void;
   /** Edit > Undo: the operator page decides (typing in a field, or the last removal). */
   undo: { accelerator: string | null; run: () => void };
@@ -83,6 +85,16 @@ export function installMenu(actions: MenuActions): void {
           label: simple ? 'Switch to Pro Mode…' : 'Switch to Simple Mode',
           click: actions.switchMode,
         },
+        // Simple Mode never shows the setup wizard.
+        ...(simple
+          ? []
+          : [
+              {
+                id: 'set-up-screens',
+                label: 'Set Up Screens…',
+                click: actions.setUpScreens,
+              } as MenuItemConstructorOptions,
+            ]),
         { type: 'separator' },
         {
           label: 'Reload Operator Window',

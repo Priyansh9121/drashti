@@ -67,6 +67,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.screens.updateScreen,
   IPC.screens.removeScreen,
   IPC.audio.setOutput,
+  IPC.setup.finish,
+  IPC.setup.setSeen,
 ];
 
 /** Each locked channel's answer: a refusal in its own result's shape. */

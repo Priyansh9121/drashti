@@ -106,5 +106,6 @@ export {
   Upload,
   Volume2,
   VolumeX,
+  Wand2,
   X,
 } from 'lucide-react';

@@ -200,3 +200,95 @@ describe('ScreensService', () => {
     });
   });
 });
+
+describe('the setup wizard’s outputs, applied at Finish', () => {
+  const stageTv: DisplayInfo = {
+    ...hall,
+    id: 3,
+    label: 'Stage TV',
+    bounds: { ...hall.bounds, x: 3360 },
+    key: { ...hall.key, id: 3, label: 'Stage TV', x: 3360 },
+  };
+  function withTwo(): { service: ScreensService; repo: ScreenRepo } {
+    const db = openDatabase(':memory:');
+    const r = new ScreenRepo(db);
+    const outputs = new OutputManager({
+      listDisplays: () => [hall, stageTv],
+      screens: () => r.screens(),
+      saveDisplayKey: (id, key) => {
+        r.setDisplayKey(id, key);
+      },
+      openWindow: (): OutputWindow => ({
+        webContentsId: ++windows,
+        setBounds: () => undefined,
+        close: () => undefined,
+        isDestroyed: () => false,
+      }),
+      onChange: () => undefined,
+    });
+    return {
+      repo: r,
+      service: new ScreensService(
+        r,
+        outputs,
+        () => [hall, stageTv],
+        () => operatorDisplay,
+      ),
+    };
+  }
+  const shape = (r: ScreenRepo) =>
+    r.groups().map((g) => [g.name, g.role, g.languages, g.screens.map((sc) => sc.name)]);
+
+  it('makes Audience and Stage groups with their languages, and their outputs', () => {
+    const t = withTwo();
+    expect(
+      t.service.applySetup([
+        { displayId: 2, use: 'audience', languages: ['gu', 'translit'] },
+        { displayId: 3, use: 'stage', languages: ['gu'] },
+      ]).ok,
+    ).toBe(true);
+    expect(shape(t.repo)).toEqual([
+      ['Audience', 'audience', ['gu', 'translit'], ['Hall TV']],
+      ['Stage', 'stage', ['gu'], ['Stage TV']],
+    ]);
+  });
+
+  it('run again: a group changes in place, keeping its name and its screens’ settings; Not used removes one', () => {
+    const t = withTwo();
+    t.service.createGroup('Main Hall');
+    t.service.assignDisplay(t.repo.groups()[0]?.id, 2);
+    const screenId = t.repo.screens()[0]?.id ?? '';
+    t.service.updateScreen(screenId, { canvasWidth: 1280, canvasHeight: 720 });
+    t.service.applySetup([
+      { displayId: 2, use: 'audience', languages: ['translit', 'en'] },
+      { displayId: 3, use: 'none', languages: null },
+    ]);
+    expect(shape(t.repo)).toEqual([['Main Hall', 'audience', ['translit', 'en'], ['Hall TV']]]);
+    expect(t.repo.screen(screenId)).toMatchObject({ canvasWidth: 1280, canvasHeight: 720 });
+    // A display moved to the stage keeps its screen, in the new Stage group.
+    t.service.applySetup([
+      { displayId: 2, use: 'audience', languages: ['translit', 'en'] },
+      { displayId: 3, use: 'stage', languages: null },
+    ]);
+    t.service.applySetup([{ displayId: 3, use: 'none', languages: null }]);
+    expect(shape(t.repo)).toEqual([
+      ['Main Hall', 'audience', ['translit', 'en'], ['Hall TV']],
+      ['Stage', 'stage', null, []],
+    ]);
+  });
+
+  it('asks before covering the operator’s display, and changes nothing until it may', () => {
+    const t = withTwo();
+    operatorDisplay = 2;
+    const asked = t.service.applySetup([
+      { displayId: 3, use: 'stage', languages: null },
+      { displayId: 2, use: 'audience', languages: null },
+    ]);
+    expect(asked).toMatchObject({ ok: false, confirm: 'covers-operator' });
+    expect(t.repo.groups()).toEqual([]);
+    expect(
+      t.service.applySetup([{ displayId: 2, use: 'audience', languages: null }], { coverOperator: true }).ok,
+    ).toBe(true);
+    expect(shape(t.repo)).toEqual([['Audience', 'audience', null, ['Hall TV']]]);
+  });
+});

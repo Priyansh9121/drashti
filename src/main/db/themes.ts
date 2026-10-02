@@ -79,6 +79,17 @@ export class ThemeRepo {
     return id;
   }
 
+  /** Make a theme the default (presentations made in Drashti start with it). False if it does not exist. */
+  setDefault(id: string): boolean {
+    if (!this.get(id)) return false;
+    this.db
+      .prepare(
+        'INSERT INTO app_meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value',
+      )
+      .run(DEFAULT_KEY, id);
+    return true;
+  }
+
   /** The theme for new slides: this one if it still exists, else the default. */
   themeOrDefault(id: string | null): Theme {
     const found = id ? this.get(id) : null;

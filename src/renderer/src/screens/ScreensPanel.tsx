@@ -13,7 +13,8 @@ import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { Field, Select, TextInput } from '../ui/Field';
-import { Monitor, Plus, ScanEye, Trash2 } from '../ui/icons';
+import { Monitor, Plus, ScanEye, Trash2, Wand2 } from '../ui/icons';
+import { openSetup } from '../setup/setup-store';
 import { Kbd } from '../ui/Kbd';
 import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
@@ -371,9 +372,21 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
       closeLabel="Close screens"
       bodyClassName="space-y-6"
       headerActions={
-        <Button icon={ScanEye} onClick={() => void window.drashti.screens.identify()}>
-          Identify screens
-        </Button>
+        <>
+          <Button
+            icon={Wand2}
+            data-testid="open-setup"
+            onClick={() => {
+              onClose();
+              void openSetup();
+            }}
+          >
+            Setup wizard
+          </Button>
+          <Button icon={ScanEye} onClick={() => void window.drashti.screens.identify()}>
+            Identify screens
+          </Button>
+        </>
       }
     >
       {error && <Notice tone="danger">{error}</Notice>}

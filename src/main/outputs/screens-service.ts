@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { matchDisplays } from '../../shared/display-match';
+import type { Lang } from '../../shared/model';
 import { GROUP_ROLES } from '../../shared/screens';
+import type { SetupOutput } from '../../shared/setup';
 import type {
   CoverOptions,
   DisplayInfo,
@@ -157,6 +159,79 @@ export class ScreensService {
         turnedOff.push(this.repo.screen(s.screenId)?.name ?? s.screenId);
     }
     return { ...this.done(), turnedOff };
+  }
+
+  /**
+   * The setup wizard's outputs, all at once: each connected display shows
+   * the audience picture or the stage view in its languages, or nothing.
+   * A display already used by a screen keeps that screen (and its canvas),
+   * moved to the right group. A group whose screens all want the same new
+   * role and languages simply changes (keeping its name); otherwise each
+   * output joins a group with that role and those languages, made if there
+   * is none ("Audience", "Stage"). "Not used" removes the display's screen.
+   * Displays that are not connected are left alone. Covering the operator's
+   * display needs consent first, before anything changes.
+   */
+  applySetup(outputs: readonly SetupOutput[], rawOptions?: unknown): ScreensResult {
+    const displays = this.listDisplays();
+    const wanted = outputs.filter((o) => displays.some((d) => d.id === o.displayId));
+    for (const o of wanted)
+      if (o.use !== 'none') {
+        const consent = this.needsCoverConsent(o.displayId, rawOptions);
+        if (consent) return consent;
+      }
+    const screens = this.repo.screens();
+    const onDisplay = matchDisplays(
+      screens.flatMap((sc) => (sc.displayKey ? [{ screenId: sc.id, key: sc.displayKey }] : [])),
+      displays,
+    );
+    const screensOn = (displayId: number) => screens.filter((sc) => onDisplay.get(sc.id) === displayId);
+    const same = (a: Lang[] | null, b: Lang[] | null) => JSON.stringify(a) === JSON.stringify(b);
+    const want = new Map(wanted.map((o) => [o.displayId, o]));
+
+    // A group whose connected screens all want the same new role and languages changes in place.
+    for (const g of this.repo.groups()) {
+      const asked = g.screens.flatMap((sc) => {
+        const d = onDisplay.get(sc.id);
+        const o = d === undefined || d === null ? undefined : want.get(d);
+        return o ? [o] : [];
+      });
+      const first = asked[0];
+      if (!first || first.use === 'none' || asked.length !== g.screens.length) continue;
+      if (!asked.every((o) => o.use === first.use && same(o.languages, first.languages))) continue;
+      if (g.role !== first.use) this.repo.setGroupRole(g.id, first.use);
+      if (!same(g.languages, first.languages)) this.repo.setGroupLanguages(g.id, first.languages);
+    }
+    // Then every output goes where it belongs.
+    const groupFor = (use: 'audience' | 'stage', languages: Lang[] | null): string => {
+      const found = this.repo.groups().find((g) => g.role === use && same(g.languages, languages));
+      if (found) return found.id;
+      const base = use === 'stage' ? 'Stage' : 'Audience';
+      const names = new Set(this.repo.groups().map((g) => g.name));
+      let name = base;
+      for (let n = 2; names.has(name); n++) name = `${base} ${n}`;
+      const id = this.repo.createGroup(name, use);
+      this.repo.setGroupLanguages(id, languages);
+      return id;
+    };
+    for (const o of wanted) {
+      const display = displays.find((d) => d.id === o.displayId);
+      if (!display) continue;
+      const [keep, ...extra] = screensOn(o.displayId);
+      for (const sc of extra) this.repo.removeScreen(sc.id);
+      if (o.use === 'none') {
+        if (keep) this.repo.removeScreen(keep.id);
+        continue;
+      }
+      const groupId = groupFor(o.use, o.languages);
+      if (keep) {
+        if (keep.groupId !== groupId || !keep.enabled) this.repo.moveScreen(keep.id, groupId);
+      } else {
+        const count = this.repo.screens().length;
+        this.repo.addScreen(groupId, display.label || `Screen ${count + 1}`, display.key);
+      }
+    }
+    return this.done();
   }
 
   removeScreen(rawId: unknown): ScreensResult {

@@ -26,6 +26,7 @@ import type { ModeResult, OperatorMode } from './mode';
 import type { Lang, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
+import type { SetupPlan, SetupResult, SetupState } from './setup';
 import type { SaveStillResult } from './media';
 import type {
   ItemOrder,
@@ -153,6 +154,8 @@ export const IPC = {
     reportDevices: 'audio:report-devices',
     /** main -> audio player: the operator chose another output. */
     chosen: 'audio:chosen',
+    /** main -> audio player: play a short test tone on this output ('' for the system default). */
+    testTone: 'audio:test-tone',
     /** main -> operator: the sound output status changed. */
     status: 'audio:status',
   },
@@ -227,6 +230,20 @@ export const IPC = {
     uncoverOperator: 'screens:uncover-operator',
     /** main -> operator: the screen setup or display list changed. */
     changed: 'screens:changed',
+  },
+  /** The setup wizard (operator window only; never in Simple Mode). */
+  setup: {
+    state: 'setup:state',
+    /** It was shown (finished or closed): it does not open by itself again. */
+    setSeen: 'setup:set-seen',
+    /** Each connected display's number across it, for a few seconds (not the operator's display). */
+    identifyDisplays: 'setup:identify-displays',
+    /** A short tone on a sound output (null: the system default), through the audio player. */
+    testTone: 'setup:test-tone',
+    /** Apply the plan: outputs, languages, sound and theme, then a test slide on every screen. */
+    finish: 'setup:finish',
+    /** main -> operator: View > Set Up Screens… was chosen. */
+    open: 'setup:open',
   },
   output: {
     /** An output window asks which screen it is. */
@@ -381,6 +398,11 @@ export interface InvokeContract {
   [IPC.screens.identify]: { args: []; result: null };
   [IPC.screens.uncoverOperator]: { args: []; result: ScreensResult };
   [IPC.output.getContext]: { args: []; result: OutputContext | null };
+  [IPC.setup.state]: { args: []; result: SetupState };
+  [IPC.setup.setSeen]: { args: []; result: null };
+  [IPC.setup.identifyDisplays]: { args: []; result: { shown: number } };
+  [IPC.setup.testTone]: { args: [device: AudioDevice | null]; result: { ok: boolean } };
+  [IPC.setup.finish]: { args: [plan: SetupPlan, options?: CoverOptions]; result: SetupResult };
 }
 
 /** main -> renderer event channels and their payloads. */
@@ -399,6 +421,8 @@ export interface EventContract {
   [IPC.output.context]: OutputContext;
   [IPC.output.identify]: { name: string; groupName: string };
   [IPC.audio.chosen]: { device: AudioDevice | null };
+  [IPC.audio.testTone]: { deviceId: string };
+  [IPC.setup.open]: { at: number };
   [IPC.audio.status]: AudioOutputStatus;
 }
 

@@ -166,6 +166,21 @@ const bridge: DrashtiBridge = {
       on(IPC.audio.chosen, (payload) => {
         listener(payload.device);
       }),
+    onTestTone: (listener) =>
+      on(IPC.audio.testTone, (payload) => {
+        listener(payload.deviceId);
+      }),
+  },
+  setup: {
+    state: () => invoke(IPC.setup.state),
+    setSeen: () => invoke(IPC.setup.setSeen),
+    identifyDisplays: () => invoke(IPC.setup.identifyDisplays),
+    testTone: (device) => invoke(IPC.setup.testTone, device),
+    finish: (plan, options) => invoke(IPC.setup.finish, plan, options),
+    onOpen: (listener) =>
+      on(IPC.setup.open, () => {
+        listener();
+      }),
   },
   screens: {
     get: () => invoke(IPC.screens.get),

@@ -7,7 +7,7 @@ import { Button, IconButton } from '../ui/Button';
 import { Field, Select, TextInput } from '../ui/Field';
 import { Music, Play, Plus, X } from '../ui/icons';
 import { SectionTitle } from '../ui/Panel';
-import { addCategory, editDraft, loadDraft, useKirtan } from './kirtan-store';
+import { addCategory, draftChanged, editDraft, loadDraft, useKirtan } from './kirtan-store';
 
 /** Every value of a detail among the library's kirtans, for suggestions. */
 function useKnown(pick: (k: { kavi: string | null; raag: string | null; occasions: string[] }) => string[]) {
@@ -44,8 +44,11 @@ export function KirtanDetailsForm({ doc }: { doc: PresentationDoc }) {
   useEffect(() => {
     void loadMedia();
   }, []);
-  // Start from the kirtan's details whenever they are loaded again (after a save, or Undo).
+  // Start from the kirtan's details whenever they are loaded again (after a save, or Undo), unless
+  // the operator is in the middle of changing them (making the transliteration reloads them too).
   useEffect(() => {
+    const now = useKirtan.getState();
+    if (now.draft !== null && draftChanged(now)) return;
     if (kirtan)
       loadDraft({
         category: kirtan.category,
