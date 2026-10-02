@@ -43,7 +43,21 @@ export interface TestVideoOptions {
 
 /** Record a short WebM in the page (in real time) and save it, with its duration written in. */
 export async function makeTestVideo(page: Page, file: string, options: TestVideoOptions): Promise<string> {
-  const recorded = await page.evaluate(
+  // A page that draws nothing for a while (a busy machine) records nothing: then it records again.
+  for (let attempt = 1; ; attempt++) {
+    const recorded = await recordWebm(page, options);
+    const bytes = Buffer.from(recorded.base64, 'base64');
+    if (bytes.length >= 4 && bytes.readUInt32BE(0) === EBML_HEADER) {
+      writeFileSync(file, setWebmDuration(bytes, recorded.ms));
+      return file;
+    }
+    if (attempt === 3) throw new Error(`The page recorded no video in three tries (${bytes.length} bytes).`);
+  }
+}
+
+/** A WebM of a canvas recorded in the page, in real time, and how long the recording ran. */
+function recordWebm(page: Page, options: TestVideoOptions): Promise<{ base64: string; ms: number }> {
+  return page.evaluate(
     async ({ seconds, width, height, fps, tone, hue }) => {
       const canvas = document.createElement('canvas');
       canvas.width = width;
@@ -100,8 +114,6 @@ export async function makeTestVideo(page: Page, file: string, options: TestVideo
     },
     { width: 320, height: 180, fps: 30, tone: 0, hue: 210, ...options },
   );
-  writeFileSync(file, setWebmDuration(Buffer.from(recorded.base64, 'base64'), recorded.ms));
-  return file;
 }
 
 // ---- WebM --------------------------------------------------------------------
