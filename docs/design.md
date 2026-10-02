@@ -30,6 +30,7 @@ Colours are named for their **job**, never their hue (`bg-panel`, `text-muted`, 
 | `warning`, `warning-bg`, `warning-fg`               | Missing, can't play, needs a look                                          |
 | `success`, `success-bg`, `success-fg`               | Connected, showing                                                         |
 | `danger`, `danger-strong`, `danger-bg`, `danger-fg` | Removing and deleting; something failed                                    |
+| `guide`                                             | The slide editor's snapping guides (never text)                            |
 
 **Contrast** (WCAG 2.2 AA, measured): `fg` 15:1 and `muted` 7:1 on panels, and `faint` at least 4.5:1 on every surface. White on `live` is 5.0:1, white on `accent-strong` 5.2:1, `field` edges 3.2 to 3.5:1, and the focus ring 5.3 to 7:1. Text is never quieter than `faint`. Never put text on a surface with an opacity modifier (`text-fg/60`), because axe measures the mix. Run the accessibility checks after any colour change.
 
@@ -126,3 +127,14 @@ Simple Mode (`src/renderer/src/simple/`) is for a volunteer who has never used D
 - **Nothing that changes anything.** No editing, removing, importing, themes, screens, sound or backups. Don't add a control here that changes the library or the setup. The main process refuses those requests in Simple Mode anyway (`src/main/simple-mode.ts`).
 - **Undo comes first.** Back undoes the last Next exactly, and Put it back undoes Clear all. Every new action in Simple Mode needs a way to undo it, in one press.
 - It fits 1280 × 720 with nothing scrolling (`tests/e2e/simple-mode.spec.ts`).
+
+## 11. The slide editor
+
+The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edit words does, so nothing behind it can be pressed by mistake. Along the top: its name, Undo and Redo, what can be added (Words, Shape, Picture or video), then Cancel and Save (the primary button; **Done** when nothing has changed). Below: the slides on the left, the slide in the middle, the inspector on the right.
+
+- **The slide is drawn by the slide renderer**, scaled to fit, so what is seen is what the screens show. Selection is the `accent` colour: an outline round each selected element, square white handles to resize one and a round one above it to turn it, all a constant size on screen. Snapping guides are `guide` (a pink that shows on any slide), across the whole slide.
+- **The keyboard.** The slide is one focus stop (`role="application"`, with its keys in its label): Tab chooses the next element and, after the last, moves on to the inspector, so keyboard users are never trapped. A polite live region says what is selected, where and how big. Esc steps back one stage at a time: typing, then the selection, then the editor (asking first when there are changes).
+- **The inspector** groups its fields in titled sections (Selected, Place and size, Words, Shape, Picture/Video). Numbers change as they are typed; colours use the system picker. It says whether text styles go to the whole box or to the selected words.
+- **Typing in place** shows a dashed `accent` outline round the box; the words keep their look while typed.
+- Questions use the usual alert dialogs: "Throw away the changes?" (Keep editing has the focus) and "Save over the other change?".
+- It fits at 1280 × 720 with nothing cut off, and axe finds nothing serious, also while typing (`tests/e2e/editor.spec.ts`).

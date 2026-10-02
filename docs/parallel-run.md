@@ -112,7 +112,7 @@ Replay last week's sabha from its imported playlist, from start to end, as the o
 
 Write down anything different, with the time.
 
-To fix words on a slide, use **Edit words** above the slides. Saving can be undone with **Undo** (Cmd+Z or Ctrl+Z).
+To fix words on a slide, use **Edit words** above the slides. To change how a slide looks (move or resize its words, give a word its own font or size, add a shadow or an outline, a shape, a picture or a video), use **Edit slides** beside it, or double-click a slide. In the slide editor, click something to select it and drag it to move it (it snaps to the middle and edges; hold Alt to place it freely); double-click words to type in them. **Save** puts the change on the screens if the slide is live; **Cancel** keeps nothing. Either save can be undone with **Undo** (Cmd+Z or Ctrl+Z).
 
 ### Simple Mode, for a volunteer
 
@@ -208,3 +208,18 @@ On the Mac, **Cmd** is the ⌘ key; on Windows, use **Ctrl** instead. These keys
 | **Cmd+Shift+S** / **Ctrl+Shift+S**             | Open Screens                                                                                     |
 | **Cmd+Shift+U** / **Ctrl+Shift+U**             | Uncover the controls (works from anywhere)                                                       |
 | **Esc**                                        | Cancel editing words or a question, or empty the search box                                      |
+
+In the slide editor:
+
+| Key                                                    | What it does                                                                                                 |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| **Tab** / **Shift+Tab**                                | Select the next (or previous) thing on the slide                                                             |
+| **← → ↑ ↓**                                            | Move what is selected one pixel (with **Shift**, ten)                                                        |
+| **Enter**                                              | Type in the selected words (double-click them, too)                                                          |
+| **Esc**                                                | Stop typing; then let go of the selection; then close (asking first if changed)                              |
+| **Delete** or **Backspace**                            | Delete what is selected                                                                                      |
+| **Cmd+D** / **Ctrl+D**                                 | Duplicate what is selected                                                                                   |
+| **Cmd+Z** / **Ctrl+Z**, **Cmd+Shift+Z** / **Ctrl+Y**   | Undo and redo in the editor (while typing: the typing)                                                       |
+| **Cmd+S** / **Ctrl+S**                                 | Save the slides                                                                                              |
+| **Alt** (while dragging)                               | Place freely, without snapping                                                                               |
+| **Shift** (while dragging a corner or the turn handle) | Keep the proportions (a picture or video keeps them anyway: Shift lets them go); turn in steps of 15 degrees |

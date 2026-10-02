@@ -16,7 +16,8 @@ import { Badge, MissingBadge, UnplayableBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Field, Select, Slider } from '../ui/Field';
-import { LayoutGrid, Music, Palette, Pencil, Presentation } from '../ui/icons';
+import { LayoutGrid, Music, Palette, Pencil, Presentation, SquarePen } from '../ui/icons';
+import { openSlideEditor } from '../editor/editor-store';
 import { usePersistentState } from '../ui/persist';
 import { EmptyState, Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
@@ -51,6 +52,7 @@ function CueBackground({ cue }: { cue: BackgroundCue }) {
 
 const Thumb = memo(function Thumb({
   presentationId,
+  presentationName,
   arrangementId,
   playlist,
   position,
@@ -61,6 +63,7 @@ const Thumb = memo(function Thumb({
   firstOfRun,
 }: {
   presentationId: string;
+  presentationName: string;
   /** The order this grid shows, which going live from here plays. */
   arrangementId: string | null;
   /** The playlist item the grid shows, if any: going live from here plays on through the playlist. */
@@ -97,6 +100,8 @@ const Thumb = memo(function Thumb({
         aria-current={live ? 'true' : undefined}
         aria-label={`Slide ${position + 1}${group.name ? `, ${group.name}` : ''}${info.label ? `: ${info.label}` : ''}${live ? ' (live)' : ''}`}
         onClick={() => void goLive(presentationId, position, arrangementId, playlist)}
+        // A double-click opens the slide editor at this slide (the first click put it live).
+        onDoubleClick={() => void openSlideEditor(presentationId, presentationName, info.id)}
         className={cx(
           'group w-full overflow-hidden rounded-lg border-2 bg-black text-left transition-colors',
           live ? 'border-live' : found ? 'border-accent' : 'border-line hover:border-field',
@@ -389,6 +394,15 @@ function PresentationGrid({ item }: { item: (ShownItem & { kind: 'presentation' 
         <Button size="sm" icon={Pencil} onClick={() => void editWords(doc.id, doc.name)}>
           Edit words
         </Button>
+        <Button
+          size="sm"
+          icon={SquarePen}
+          data-testid="edit-slides"
+          // At the slide on the screens, or the one a search found.
+          onClick={() => void openSlideEditor(doc.id, doc.name, liveHere ? liveSlideId : focusSlideId)}
+        >
+          Edit slides
+        </Button>
         <LayoutGrid size={15} aria-hidden="true" className="shrink-0 text-muted" />
         <Slider
           aria-label="Thumbnail size"
@@ -422,6 +436,7 @@ function PresentationGrid({ item }: { item: (ShownItem & { kind: 'presentation' 
                 <Thumb
                   key={o.position}
                   presentationId={doc.id}
+                  presentationName={doc.name}
                   arrangementId={order.arrangementId}
                   playlist={playlist}
                   position={o.position}

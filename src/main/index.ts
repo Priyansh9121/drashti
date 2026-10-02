@@ -64,6 +64,7 @@ import type { BackupUi } from './library/backup-ui';
 import { backUp, restore } from './library/backup-ui';
 import { Revisions } from './library/revisions';
 import { applyTheme, themeLook } from './library/themes';
+import { registerSlidesIpc } from './library/slides-ipc';
 import { registerThemesIpc } from './library/themes-ipc';
 import { registerWordsIpc } from './library/words-ipc';
 import { runRelaunchSelfTest } from './relaunch-selftest';
@@ -657,6 +658,15 @@ function start(): void {
       if (rows) presentations.setContent(applyTheme(rows, themes.themeOrDefault(null)));
     },
   });
+  registerSlidesIpc({
+    db,
+    presentations,
+    revisions,
+    settings,
+    fromOperator,
+    lookFor: (themeId, size) => themeLook(themes.themeOrDefault(themeId), size.width, size.height),
+    changed: contentChanged,
+  });
   registerThemesIpc({
     themes,
     presentations,
@@ -1063,6 +1073,13 @@ function start(): void {
         // message then, and otherwise undoes the last removal.
         operatorWindow?.webContents.undo();
         sendToOperator(IPC.app.undo, { at: Date.now() });
+      },
+    },
+    redo: {
+      run: () => {
+        // As Undo: redo typing in a text field; the slide editor redoes its last undone step otherwise.
+        operatorWindow?.webContents.redo();
+        sendToOperator(IPC.app.redo, { at: Date.now() });
       },
     },
     uncoverControls: { accelerator: uncoverAccelerator, run: uncover },

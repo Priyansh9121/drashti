@@ -188,19 +188,21 @@ function PlaylistTree({ platform }: { platform: string }) {
           ]}
         />
       </div>
+      {/* An empty tree is no tree: the note stands on its own until there are playlists. */}
+      {tree.length === 0 && (
+        <div data-testid="playlist-tree" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+          <EmptyState icon={ListMusic} title="No playlists yet" compact>
+            Make one with the New button above, or import a playlist file.
+          </EmptyState>
+        </div>
+      )}
       <ul
         role="tree"
         aria-label="Playlists"
-        data-testid="playlist-tree"
+        data-testid={tree.length > 0 ? 'playlist-tree' : undefined}
+        hidden={tree.length === 0}
         className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2"
       >
-        {tree.length === 0 && (
-          <li role="none">
-            <EmptyState icon={ListMusic} title="No playlists yet" compact>
-              Make one with the New button above, or import a playlist file.
-            </EmptyState>
-          </li>
-        )}
         {rows.map(({ node, depth }) => {
           const open = node.isFolder && !closed.includes(node.id);
           const indent = { paddingLeft: 8 + depth * 14 };

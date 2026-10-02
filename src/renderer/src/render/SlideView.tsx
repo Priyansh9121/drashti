@@ -60,6 +60,21 @@ function frameStyle(el: SlideElement): CSSProperties {
 /** A size that shrink-to-fit can scale: the box's --fit (1 unless the words do not fit). */
 const fitted = (px: number | undefined) => (px === undefined ? undefined : `calc(var(--fit, 1) * ${px}px)`);
 
+/** How a run is drawn inside its box (the slide editor draws text it edits the same way). */
+export function runStyle(run: Omit<TextRun, 'text'>, el: TextElement): CSSProperties {
+  const lang = run.lang ?? el.lang;
+  return {
+    fontFamily: fontFamilyFor(run.font ?? el.style.fontFamily, lang),
+    fontSize: fitted(run.size),
+    color: run.color,
+    fontWeight: run.weight,
+    fontStyle: run.italic ? 'italic' : undefined,
+    letterSpacing: run.letterSpacing,
+    textShadow: textShadowCss(run.shadow),
+    ...textOutlineCss(run.outline),
+  };
+}
+
 /** Styled runs, inline, inside one block so the element's vertical alignment still applies. */
 function Runs({ el, runs }: { el: TextElement; runs: TextRun[] }) {
   return (
@@ -73,16 +88,7 @@ function Runs({ el, runs }: { el: TextElement; runs: TextRun[] }) {
             data-lang={run.lang ?? undefined}
             data-legacy={run.legacy ? 'true' : undefined}
             lang={lang ? HTML_LANG[lang] : undefined}
-            style={{
-              fontFamily: fontFamilyFor(run.font ?? el.style.fontFamily, lang),
-              fontSize: fitted(run.size),
-              color: run.color,
-              fontWeight: run.weight,
-              fontStyle: run.italic ? 'italic' : undefined,
-              letterSpacing: run.letterSpacing,
-              textShadow: textShadowCss(run.shadow),
-              ...textOutlineCss(run.outline),
-            }}
+            style={runStyle(run, el)}
           >
             {run.text}
           </span>
@@ -100,10 +106,12 @@ const MIN_FIT = 0.1;
  * box, found by measuring. Measured in layout pixels, so a box drawn scaled
  * (a thumbnail) or turned gets the same answer as the output.
  */
-function useShrinkToFit(
+export function useShrinkToFit(
   box: React.RefObject<HTMLDivElement | null>,
-  words: React.RefObject<HTMLDivElement | null>,
+  words: React.RefObject<HTMLElement | null>,
   el: TextElement,
+  /** Something else that changes the words (typing in the editor). */
+  again?: unknown,
 ): void {
   const on = el.style.shrinkToFit === true;
   const [fontsLoaded, setFontsLoaded] = useState(0);
@@ -141,11 +149,33 @@ function useShrinkToFit(
     // For tests and diagnostics: how much it was made smaller.
     if (lo < 1) b.setAttribute('data-fit', lo.toFixed(3));
     else b.removeAttribute('data-fit');
-  }, [box, words, el, on, fontsLoaded]);
+  }, [box, words, el, on, fontsLoaded, again]);
+}
+
+/** How a text box is drawn (the slide editor draws the box it edits the same way). */
+export function textBoxStyle(el: TextElement): CSSProperties {
+  const s = el.style;
+  return {
+    ...frameStyle(el),
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: justify[s.verticalAlign],
+    textAlign: s.align,
+    fontFamily: fontFamilyFor(s.fontFamily, el.lang),
+    fontSize: fitted(s.fontSize),
+    fontWeight: s.fontWeight,
+    lineHeight: s.lineHeight,
+    color: s.color,
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'anywhere',
+    fontKerning: 'normal',
+    textShadow: s.shadow === false ? undefined : textShadowCss(s.shadow),
+    ...textOutlineCss(s.outline ?? undefined),
+    opacity: el.opacity,
+  };
 }
 
 function TextView({ el }: { el: TextElement }) {
-  const s = el.style;
   const box = useRef<HTMLDivElement>(null);
   const words = useRef<HTMLDivElement>(null);
   useShrinkToFit(box, words, el);
@@ -154,25 +184,9 @@ function TextView({ el }: { el: TextElement }) {
       ref={box}
       data-element={el.id}
       data-lang={el.lang ?? ''}
-      data-shrink={s.shrinkToFit ? 'true' : undefined}
+      data-shrink={el.style.shrinkToFit ? 'true' : undefined}
       lang={el.lang ? HTML_LANG[el.lang] : undefined}
-      style={{
-        ...frameStyle(el),
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: justify[s.verticalAlign],
-        textAlign: s.align,
-        fontFamily: fontFamilyFor(s.fontFamily, el.lang),
-        fontSize: fitted(s.fontSize),
-        fontWeight: s.fontWeight,
-        lineHeight: s.lineHeight,
-        color: s.color,
-        whiteSpace: 'pre-wrap',
-        overflowWrap: 'anywhere',
-        fontKerning: 'normal',
-        textShadow: s.shadow === false ? undefined : textShadowCss(s.shadow),
-        ...textOutlineCss(s.outline ?? undefined),
-      }}
+      style={textBoxStyle(el)}
     >
       <div ref={words} style={{ width: '100%', flexShrink: 0 }}>
         {el.runs && el.runs.length > 0 ? <Runs el={el} runs={el.runs} /> : el.text}

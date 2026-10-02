@@ -16,6 +16,8 @@ const refused = () => ({ ok: false as const, message: SIMPLE_MODE_REFUSAL });
 export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.saveWords,
   IPC.library.newFromWords,
+  IPC.library.saveSlides,
+  IPC.library.setDefaultTransition,
   IPC.library.restoreRevision,
   IPC.library.importPaths,
   IPC.library.pickImportPaths,

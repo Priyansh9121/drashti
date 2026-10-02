@@ -7,6 +7,8 @@ import { loadLibrary, watchLibrary } from '../library/library-store';
 import { RemoveConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
 import { UndoBar } from '../library/UndoBar';
 import { WordsEditor } from '../library/WordsEditor';
+import { SlideEditor } from '../editor/SlideEditor';
+import { redo as redoEdit, undo as undoEdit, useEditor } from '../editor/editor-store';
 import { ThemesPanel } from '../themes/ThemesPanel';
 import { undoRemoval } from '../library/undo';
 import { PlaylistPanel } from '../playlists/PlaylistPanel';
@@ -50,8 +52,13 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     // the last removal, or in Simple Mode (which removes nothing) puts back what Clear all took down.
     const offUndo = window.drashti.app.onUndo(() => {
       if (isTyping(document.activeElement)) return;
-      if (useMode.getState().mode === 'simple') void window.drashti.engine.dispatch({ type: 'putBack' });
+      if (useEditor.getState().open) undoEdit();
+      else if (useMode.getState().mode === 'simple') void window.drashti.engine.dispatch({ type: 'putBack' });
       else void undoRemoval();
+    });
+    // Edit > Redo: the slide editor's last undone step (typing in a field redoes itself).
+    const offRedo = window.drashti.app.onRedo(() => {
+      if (!isTyping(document.activeElement) && useEditor.getState().open) redoEdit();
     });
     // Things the main process tells the operator (for example where diagnostics were saved).
     const offNotice = window.drashti.app.onNotice((text) => {
@@ -73,6 +80,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     void window.drashti.app.getInfo().then(setInfo);
     return () => {
       offUndo();
+      offRedo();
       offNotice();
       offProgress();
       window.removeEventListener('dragover', ignoreDrop);
@@ -142,6 +150,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <RemoveConfirm undoKey={shortcutText('undo', platform)} />
       <RemovePlaylistConfirm undoKey={shortcutText('undo', platform)} />
       <WordsEditor platform={platform} />
+      <SlideEditor platform={platform} />
       <ThemesPanel />
       {screensOpen && (
         <ScreensPanel
