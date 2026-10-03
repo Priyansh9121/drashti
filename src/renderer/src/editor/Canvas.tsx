@@ -141,7 +141,8 @@ export function Canvas({ platform }: { platform: string }) {
   const [guides, setGuides] = useState<Guides | null>(null);
   const [marquee, setMarquee] = useState<Rect | null>(null);
   const [editAt, setEditAt] = useState<Point | null>(null);
-  const pastedInPlaceAt = useRef(0);
+  /** When Paste in place's keys went down: the paste event that same press can also make is not a second paste. */
+  const pastedInPlaceAt = useRef<number | null>(null);
   const slide = doc ? findSlide(doc, slideId) : undefined;
   if (!doc || !slide) return <div ref={area} className="min-w-0 flex-1 bg-ink" />;
 
@@ -362,6 +363,8 @@ export function Canvas({ platform }: { platform: string }) {
   };
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    // Any other key: a paste after it is a paste of its own.
+    pastedInPlaceAt.current = null;
     // Alt places freely while dragging; on its own it must not open the window's menu bar (Windows).
     if (e.key === 'Alt') {
       e.preventDefault();
@@ -459,7 +462,9 @@ export function Canvas({ platform }: { platform: string }) {
     if (editing || e.target !== e.currentTarget) return;
     e.preventDefault();
     // Mod+Shift+V can also come as a paste: it was handled as Paste in place.
-    if (e.timeStamp - pastedInPlaceAt.current < 300) return;
+    const inPlaceAt = pastedInPlaceAt.current;
+    pastedInPlaceAt.current = null;
+    if (inPlaceAt !== null && e.timeStamp - inPlaceAt < 300) return;
     paste(false);
   };
 
