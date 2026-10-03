@@ -1,6 +1,7 @@
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import {
   app,
+  crashReporter,
   dialog,
   globalShortcut,
   powerSaveBlocker,
@@ -140,6 +141,12 @@ process.on('unhandledRejection', (reason) => {
 });
 // Tests on a computer someone is using: never active, never covering the screen (windows/quiet.ts).
 startQuietTests();
+// Tests only: keep crash dumps in this folder (never sent anywhere), to read with Electron's symbols.
+const crashDumps = process.env['DRASHTI_TEST_CRASH_DUMPS'];
+if (crashDumps) {
+  app.setPath('crashDumps', crashDumps);
+  crashReporter.start({ uploadToServer: false, compress: false });
+}
 // Development only: outputs as normal windows, for machines with one screen,
 // optionally with pretend extra displays to try several outputs. Always so in quiet test mode.
 const windowedOutputs = process.env['DRASHTI_WINDOWED_OUTPUTS'] === '1' || quietTests;

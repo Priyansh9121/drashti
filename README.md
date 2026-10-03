@@ -154,6 +154,8 @@ To check quiet runs on macOS, run `node scripts/quiet-check.mjs <spec>` after `p
 - `--expect-front` with `DRASHTI_E2E_LOUD=1` is the control run: Drashti must be seen in front there, or the check can't see it.
 - `DRASHTI_E2E_QUIET=1` makes a CI run quiet as well.
 
+**When Drashti crashes in a test**, the test's output says so with the exit code (on Windows, `0xffff7003` is a crash with no crash handler to write a dump). To see where, run that spec again with `DRASHTI_TEST_CRASH_DUMPS` pointing at a folder: the dumps land there. Read them with `minidump_stackwalk` and Electron's symbols for that version and platform, which `npx electron-minidump` fetches from symbols.electronjs.org. A dump holds the test app's memory, so keep it out of public places once read. This is how the Windows Uncover crash in Session 10 was found (see `src/main/outputs/electron-outputs.ts`).
+
 ### Switches
 
 | Environment variable                | Effect                                                                                                                                                                                |
@@ -173,6 +175,7 @@ To check quiet runs on macOS, run `node scripts/quiet-check.mjs <spec>` after `p
 | `DRASHTI_FFMPEG=<path>`             | Use this FFmpeg instead of the bundled one.                                                                                                                                           |
 | `DRASHTI_TEST_FAKE_DEVICES=1`       | Tests only: Chromium's fake camera (a moving test pattern) and fake microphone (a beep) stand in for real ones, and the system is not asked for camera or microphone access.          |
 | `DRASHTI_TEST_NO_SAFE_STORAGE=1`    | Tests only: behave as if the system's secure storage were missing, so no stream key can be saved.                                                                                     |
+| `DRASHTI_TEST_CRASH_DUMPS=<dir>`    | Tests only: keep crash dumps (minidumps) in this folder, never sent anywhere (see "End-to-end tests on a computer someone is using").                                                 |
 | `DRASHTI_TEST_QUIET=1`              | Tests only, ignored by a packaged Drashti: the quiet test mode (see "End-to-end tests on a computer someone is using").                                                               |
 
 If you start Drashti from inside another Electron app's process (for example an editor extension), make sure `ELECTRON_RUN_AS_NODE` is not set in that environment. When it's set, Electron starts as plain Node. The end-to-end tests clear it automatically.
