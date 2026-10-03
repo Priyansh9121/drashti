@@ -36,7 +36,13 @@ import { audioDeviceSchema } from '../shared/audio';
 import type { SetupResult } from '../shared/setup';
 import { setupPlanSchema, TEST_CARD_MS } from '../shared/setup';
 import type { ModeResult, OperatorMode } from '../shared/mode';
-import { isLeaveWord, isOperatorMode } from '../shared/mode';
+import {
+  isLeaveWord,
+  isOperatorMode,
+  SIMPLE_MODE_REFUSAL,
+  SIMPLE_MODE_REFUSED_COMMANDS,
+} from '../shared/mode';
+import { NO_LOOK } from '../shared/looks';
 import type { Db } from './db/database';
 import { LATEST_VERSION, openDatabase } from './db/database';
 import { ImportRepo } from './db/imports';
@@ -50,6 +56,8 @@ import { MessageRepo } from './db/messages';
 import { SettingsRepo } from './db/settings';
 import { DbSlideSource, PresentationRepo } from './db/presentations';
 import { ScreenRepo } from './db/screens';
+import { LookRepo } from './db/looks';
+import { LookService } from './looks/look-service';
 import { seedPlaceholders, seedTemplates } from './db/seed';
 import { ShowEngine } from './engine/show-engine';
 import { runEngineCommand } from './ipc/engine-ipc';
@@ -464,6 +472,11 @@ function start(): void {
       network?.broadcast(message);
     },
   };
+  // Looks: the engine reads them through the service, made just below (it needs the engine).
+  const lookRepo = new LookRepo(db);
+  let lookService: LookService | null = null;
+  /** Simple Mode is on (set once the mode is read, further down). */
+  let simpleNow = () => false;
   const engine = new ShowEngine(
     slides,
     new FanoutTransport([transport, networkTransport]),
@@ -471,8 +484,30 @@ function start(): void {
     { items: (id) => playlists.playItems(id) },
     {
       defaultTransition: () => defaultTransition(settings),
+      looks: {
+        look: (id) => lookService?.look(id) ?? null,
+        start: () => lookService?.start() ?? NO_LOOK,
+      },
+      // Simple Mode keeps the live Look: switching it is refused from the window, a phone or the API.
+      refuse: (command) =>
+        simpleNow() && SIMPLE_MODE_REFUSED_COMMANDS.includes(command.type) ? SIMPLE_MODE_REFUSAL : null,
     },
   );
+  const looks = new LookService({
+    repo: lookRepo,
+    engine,
+    changed: (view) => {
+      if (operatorWindow && !operatorWindow.isDestroyed())
+        operatorWindow.webContents.send(IPC.looks.changed, view);
+      network?.hint('looks');
+    },
+    log: (message) => {
+      log.info(message);
+    },
+  });
+  lookService = looks;
+  // The first Look goes live (recovery below may bring back another).
+  engine.refreshLook();
   const timers = new TimerRepo(db);
   engine.setTimers(timers.list());
 
@@ -508,9 +543,9 @@ function start(): void {
     return {
       screenId: s.id,
       screenName: s.name,
+      groupId: s.groupId,
       groupName: screenRepo.groupName(s.groupId) ?? '',
       role: screenRepo.groupRole(s.groupId) ?? 'audience',
-      languages: screenRepo.groupLanguages(s.groupId),
       testCardUntil: testCardUntil > Date.now() ? testCardUntil : null,
       canvasWidth: s.canvasWidth,
       canvasHeight: s.canvasHeight,
@@ -568,6 +603,7 @@ function start(): void {
     listDisplays,
     operatorDisplayId,
     () => stream?.inUse() ?? false,
+    looks,
   );
 
   // ---- keeping the operator's controls reachable ----------------------------
@@ -626,12 +662,13 @@ function start(): void {
   });
   let recovery: RecoveryNotice | null = null;
   // A restored library starts with nothing live (the saved state belongs to the library before it).
-  const saved = restored.restored ? null : toRestore(recoveryFiles);
+  const saved = restored.restored ? null : toRestore(recoveryFiles, lookRepo.firstId());
   if (saved) {
     const put = engine.restore(saved);
     const name = put.slide && saved.slide ? presentations.get(saved.slide.presentationId)?.name : undefined;
     recovery = {
       savedAt: saved.savedAt,
+      look: put.look,
       slide:
         saved.slide && put.slide
           ? { presentationName: name ?? '', slideNumber: saved.slide.slideIndex + 1 }
@@ -715,6 +752,8 @@ function start(): void {
     },
     now: Date.now,
     screensChanged: () => {
+      // The stream's group was made: the live Look covers it.
+      looks.groupsChanged();
       sendToOperator(IPC.screens.changed, screens.snapshot());
     },
     log: (level, message) => {
@@ -758,6 +797,7 @@ function start(): void {
   const savedMode = settings.get('operatorMode');
   let mode: OperatorMode = isOperatorMode(savedMode) ? savedMode : 'pro';
   if (mode === 'simple') log.info('Starting in Simple Mode');
+  simpleNow = () => mode === 'simple';
   // While it is on, every request that would change the library, screens or sound is refused here.
   lockChannels(
     () => mode === 'simple',
@@ -1148,7 +1188,11 @@ function start(): void {
         const path = join(mediaDir, row.path);
         return isInside(mediaDir, path) ? { path, kind: row.kind } : null;
       },
-      stageLanguages: () => screenRepo.stageLanguages(),
+      stage: () => {
+        const groupId = screenRepo.firstGroup('stage');
+        return { groupId, languages: groupId ? looks.liveLanguages(groupId) : null };
+      },
+      looks: () => lookRepo.list().map((l) => ({ id: l.id, name: l.name })),
       clockStyle: () => ({
         locale: app.getLocale(),
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -1352,6 +1396,18 @@ function start(): void {
     if (fromAudioPlayer(e)) audioOutput.report(devices, state);
     return null;
   });
+  // ---- Looks (switching the live one is the engine's setLook) ---------------------------------
+  const notLookOperator = { ok: false as const, message: 'Only the operator window can change the Looks.' };
+  handle(IPC.looks.list, () => looks.view());
+  handle(IPC.looks.create, (e, name, copyOf) =>
+    fromOperator(e) ? looks.create(name, copyOf) : notLookOperator,
+  );
+  handle(IPC.looks.rename, (e, id, name) => (fromOperator(e) ? looks.rename(id, name) : notLookOperator));
+  handle(IPC.looks.remove, (e, id) => (fromOperator(e) ? looks.remove(id) : notLookOperator));
+  handle(IPC.looks.move, (e, id, to) => (fromOperator(e) ? looks.move(id, to) : notLookOperator));
+  handle(IPC.looks.setGroup, (e, lookId, groupId, patch) =>
+    fromOperator(e) ? looks.setGroup(lookId, groupId, patch) : notLookOperator,
+  );
   handle(IPC.screens.get, () => screens.snapshot());
   handle(IPC.screens.createGroup, (e, name) => (fromOperator(e) ? screens.createGroup(name) : notAllowed));
   handle(IPC.screens.setGroupRole, (e, id, role) => {

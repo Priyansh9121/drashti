@@ -1,9 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { SlideLayer } from '../../../shared/engine/state';
 import { languageView } from '../../../shared/language-view';
+import type { SlideStyle } from '../../../shared/looks';
 import type { Lang } from '../../../shared/model';
+import { hasPicture, lowerThird } from '../../../shared/program';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
+import { LowerThird } from './LowerThird';
 import { Placed } from './Placed';
 import { SlideView } from './SlideView';
 import { engineNow } from './clock';
@@ -68,17 +71,50 @@ function mediaReady(root: HTMLElement): true | Promise<void> {
   ]);
 }
 
+/**
+ * One slide as a screen draws it: as designed, or (a Look's lower third) its
+ * words in a box along the bottom; a slide with no words but a picture or
+ * video is drawn as designed either way.
+ */
+function DrawnSlide({
+  layer,
+  canvas,
+  scaling,
+  languages,
+  slides,
+}: {
+  layer: SlideLayer;
+  canvas: Size;
+  scaling: ScalingMode;
+  languages: readonly Lang[] | null;
+  slides: SlideStyle;
+}) {
+  if (slides === 'lowerThird') {
+    const lines = lowerThird(layer.slide, languages);
+    if (lines.length > 0) return <LowerThird lines={lines} canvas={canvas} />;
+    if (!hasPicture(layer.slide)) return null;
+  }
+  return (
+    <Placed content={layer.slide} box={canvas} mode={scaling}>
+      <SlideView slide={languageView(layer.slide, languages)} startedAt={layer.shownAt} />
+    </Placed>
+  );
+}
+
 export function SlideLayerView({
   layer,
   canvas,
   scaling,
   languages = null,
+  slides = 'designed',
 }: {
   layer: SlideLayer | null;
   canvas: Size;
   scaling: ScalingMode;
   /** The languages this screen shows of a kirtan's slides (language-view.ts); null for all. */
   languages?: readonly Lang[] | null;
+  /** How this screen draws slides (its group's Look): as designed, or as a lower third. */
+  slides?: SlideStyle;
 }) {
   // A screen that comes along later shows the slide as it is (no fade).
   const [showing, setShowing] = useState<Showing>(() => ({ on: layer, off: null, fade: null }));
@@ -154,6 +190,7 @@ export function SlideLayerView({
     <div
       ref={rootRef}
       data-layer="slide"
+      data-slides={slides}
       data-fading={fading ? 'true' : undefined}
       data-fade-start={fade?.start ?? undefined}
       // The two slides blend with each other only, then go over the background as one.
@@ -173,9 +210,7 @@ export function SlideLayerView({
               mixBlendMode: fading && off && incoming ? 'plus-lighter' : undefined,
             }}
           >
-            <Placed content={l.slide} box={canvas} mode={scaling}>
-              <SlideView slide={languageView(l.slide, languages)} startedAt={l.shownAt} />
-            </Placed>
+            <DrawnSlide layer={l} canvas={canvas} scaling={scaling} languages={languages} slides={slides} />
           </div>
         );
       })}

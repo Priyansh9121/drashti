@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Lang } from '../../../../shared/model';
+import { groupLookIn } from '../../../../shared/looks';
 import { useEngine } from '../../engine/engine-store';
 import { preloadFonts } from '../../render/fonts';
 import { PlacedInParent } from '../../render/Placed';
@@ -10,7 +10,8 @@ import { onListsChanged, onOnline, startFeed, useFeed } from '../feed';
 /*
  * The stage display in a browser (a Stage device: a tablet on the stage, a
  * TV's browser): exactly what a stage screen shows, drawn by the same
- * StageView from the same state, in the stage group's languages, with the
+ * StageView from the same state, as the first stage group shows it in the
+ * live Look (a Look switch reaches it at once, through the feed), with the
  * engine's clock. Watch-only. While the connection is down it keeps the
  * last picture, as an output does, and says so in a small line; it
  * reconnects by itself.
@@ -22,7 +23,9 @@ export function StageDisplay() {
   const state = useEngine((s) => s.state);
   const feed = useFeed((s) => s.state);
   const [fonts, setFonts] = useState(false);
-  const [languages, setLanguages] = useState<Lang[] | null>(null);
+  // The stage display's group: what it shows is that group's settings in the live Look (engine state).
+  const [groupId, setGroupId] = useState<string | null>(null);
+  const languages = groupLookIn(state?.look, groupId).languages;
   const [clockStyle, setClockStyle] = useState<{ locale: string; timeZone: string } | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   useEffect(() => {
@@ -30,13 +33,13 @@ export function StageDisplay() {
       setFonts(true);
     });
     const load = () => {
-      void api<{ languages: Lang[] | null; clock: { locale: string; timeZone: string } }>(
-        '/api/v1/stage',
-      ).then((r) => {
-        if (!r.ok) return;
-        setLanguages(r.languages);
-        setClockStyle(r.clock);
-      });
+      void api<{ groupId: string | null; clock: { locale: string; timeZone: string } }>('/api/v1/stage').then(
+        (r) => {
+          if (!r.ok) return;
+          setGroupId(r.groupId);
+          setClockStyle(r.clock);
+        },
+      );
     };
     onOnline(load);
     onListsChanged((what) => {

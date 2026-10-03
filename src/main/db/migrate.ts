@@ -18,6 +18,7 @@ import { up as streaming } from './migrations/016-streaming';
 import { up as conversions } from './migrations/017-conversions';
 import { up as network } from './migrations/018-network';
 import { up as announcements } from './migrations/019-announcements';
+import { before as looksData, up as looks } from './migrations/020-looks';
 
 export interface Migration {
   version: number;
@@ -25,6 +26,13 @@ export interface Migration {
   up: string;
   /** Data that must be moved in code before `up` runs (same transaction). */
   before?: (db: Database.Database) => void;
+  /**
+   * `up` rebuilds a table other tables refer to (SQLite's way to change a
+   * column's CHECK or drop a referenced column): foreign keys are off while
+   * it runs, so dropping the old table cannot cascade, and every reference
+   * is checked before it commits.
+   */
+  rebuildsTable?: boolean;
 }
 
 /** All migrations, oldest first. Never edit a released one; add a new one. */
@@ -48,6 +56,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 17, name: 'converting media', up: conversions },
   { version: 18, name: 'the local network', up: network },
   { version: 19, name: 'announcements from phones', up: announcements },
+  { version: 20, name: 'looks', up: looks, before: looksData, rebuildsTable: true },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));
@@ -73,11 +82,23 @@ export function migrate(
   }
   const pending = migrations.filter((m) => m.version > from).sort((a, b) => a.version - b.version);
   for (const m of pending) {
-    db.transaction(() => {
-      m.before?.(db);
-      db.exec(m.up);
-      db.pragma(`user_version = ${m.version}`);
-    })();
+    // The pragma does nothing inside a transaction, so it is set around it.
+    const keys = db.pragma('foreign_keys', { simple: true }) as number;
+    if (m.rebuildsTable) db.pragma('foreign_keys = OFF');
+    try {
+      db.transaction(() => {
+        m.before?.(db);
+        db.exec(m.up);
+        if (m.rebuildsTable) {
+          const broken = db.pragma('foreign_key_check') as unknown[];
+          if (broken.length > 0)
+            throw new Error(`Migration ${m.version} would leave ${broken.length} broken reference(s).`);
+        }
+        db.pragma(`user_version = ${m.version}`);
+      })();
+    } finally {
+      if (m.rebuildsTable) db.pragma(`foreign_keys = ${keys === 1 ? 'ON' : 'OFF'}`);
+    }
   }
   return { from, to: schemaVersion(db) };
 }

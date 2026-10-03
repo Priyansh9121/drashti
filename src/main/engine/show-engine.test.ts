@@ -913,6 +913,7 @@ describe('ShowEngine', () => {
         ],
       });
       expect(put).toEqual({
+        look: null,
         slide: false,
         background: false,
         blackout: false,

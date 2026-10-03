@@ -13,15 +13,19 @@ import { expectFits } from './fit';
  * covered without the confirm step; Simple Mode never shows it.
  */
 
+/** Each group, with its languages in the live Look. */
 const groupsOf = (win: Page) =>
-  win.evaluate(async () =>
-    (await (globalThis as PageGlobals).drashti.screens.get()).groups.map((g) => ({
+  win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const [snapshot, looks] = await Promise.all([d.screens.get(), d.looks.list()]);
+    const live = looks.looks.find((l) => l.id === looks.liveId);
+    return snapshot.groups.map((g) => ({
       name: g.name,
       role: g.role,
-      languages: g.languages,
+      languages: live?.groups[g.id]?.languages ?? null,
       screens: g.screens.length,
-    })),
-  );
+    }));
+  });
 
 /** Choose View > Set Up Screens… in the menu, as the operator would. */
 async function fromMenu(app: ElectronApplication): Promise<void> {

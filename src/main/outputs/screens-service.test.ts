@@ -1,9 +1,27 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { NO_LOOK } from '../../shared/looks';
 import type { DisplayInfo } from '../../shared/screens';
+import type { Db } from '../db/database';
 import { openDatabase } from '../db/database';
+import { LookRepo } from '../db/looks';
 import { ScreenRepo } from '../db/screens';
+import { ShowEngine } from '../engine/show-engine';
+import { makeSource, RecordingTransport } from '../engine/testing';
+import { NO_PLAYLISTS } from '../engine/playlist-source';
+import { LookService } from '../looks/look-service';
 import { OutputManager, type OutputWindow } from './output-manager';
 import { ScreensService } from './screens-service';
+
+/** The library's Looks, with an engine that keeps the live one (each group's languages are there). */
+function looksOf(db: Db): LookService {
+  let looks: LookService | null = null;
+  const engine = new ShowEngine(makeSource(), new RecordingTransport(), Date.now, NO_PLAYLISTS, {
+    looks: { look: (id) => looks?.look(id) ?? null, start: () => looks?.start() ?? NO_LOOK },
+  });
+  looks = new LookService({ repo: new LookRepo(db), engine, changed: () => undefined, log: () => undefined });
+  engine.refreshLook();
+  return looks;
+}
 
 const hall: DisplayInfo = {
   id: 2,
@@ -22,12 +40,14 @@ const hall: DisplayInfo = {
 
 let service: ScreensService;
 let repo: ScreenRepo;
+let looks: LookService;
 let windows: number;
 let operatorDisplay: number | null;
 
 beforeEach(() => {
   const db = openDatabase(':memory:');
   repo = new ScreenRepo(db);
+  looks = looksOf(db);
   windows = 0;
   operatorDisplay = null;
   const outputs = new OutputManager({
@@ -49,6 +69,8 @@ beforeEach(() => {
     outputs,
     () => [hall],
     () => operatorDisplay,
+    () => false,
+    looks,
   );
 });
 
@@ -133,9 +155,10 @@ describe('ScreensService', () => {
     // It has no displays, and keeps its role.
     expect(service.assignDisplay(stream.id, 2)).toMatchObject({ ok: false });
     expect(service.setGroupRole(stream.id, 'audience')).toMatchObject({ ok: false });
-    // Its languages are set as any group's are.
+    // Its languages are set as any group's are (in the live Look).
+    looks.groupsChanged();
     expect(service.setGroupLanguages(stream.id, ['translit', 'en']).ok).toBe(true);
-    expect(repo.streamGroup()?.languages).toEqual(['translit', 'en']);
+    expect(looks.liveLanguages(stream.id)).toEqual(['translit', 'en']);
     // While the stream is on air or recording it stays; afterwards it can go (and comes back when needed).
     let inUse = true;
     const guarded = new ScreensService(
@@ -162,20 +185,24 @@ describe('ScreensService', () => {
     expect(repo.streamGroup()).toBeNull();
   });
 
-  it('sets the languages a group shows of a kirtan, in order, or all of them', () => {
+  it('sets the languages a group shows of a kirtan in the live Look, in order, or all of them', () => {
     service.createGroup('Hall');
-    const groupId = repo.groups()[0]?.id;
-    expect(repo.groups()[0]?.languages).toBeNull();
+    const groupId = repo.groups()[0]?.id ?? '';
+    expect(looks.liveLanguages(groupId)).toBeNull();
     expect(service.setGroupLanguages(groupId, ['translit', 'gu']).ok).toBe(true);
-    expect(repo.groups()[0]?.languages).toEqual(['translit', 'gu']);
-    expect(repo.groupLanguages(groupId ?? '')).toEqual(['translit', 'gu']);
+    expect(looks.liveLanguages(groupId)).toEqual(['translit', 'gu']);
+    expect(looks.view().looks[0]?.groups[groupId]?.languages).toEqual(['translit', 'gu']);
     // None, twice the same, or an unknown language: refused, and the choice stays.
     for (const bad of [[], ['gu', 'gu'], ['fr'], ['en', 'gu', 'hi', 'translit', 'en'], 'gu'])
       expect(service.setGroupLanguages(groupId, bad)).toMatchObject({ ok: false });
-    expect(repo.groups()[0]?.languages).toEqual(['translit', 'gu']);
+    expect(looks.liveLanguages(groupId)).toEqual(['translit', 'gu']);
     expect(service.setGroupLanguages(groupId, null).ok).toBe(true);
-    expect(repo.groups()[0]?.languages).toBeNull();
+    expect(looks.liveLanguages(groupId)).toBeNull();
     expect(service.setGroupLanguages('gone', ['gu'])).toMatchObject({ ok: false });
+    // A deleted group's settings leave every Look.
+    expect(service.setGroupLanguages(groupId, ['gu']).ok).toBe(true);
+    expect(service.deleteGroup(groupId).ok).toBe(true);
+    expect(Object.keys(looks.view().looks[0]?.groups ?? {})).toEqual([]);
   });
 
   it('renames and deletes groups, and removes screens', () => {
@@ -246,9 +273,10 @@ describe('the setup wizard’s outputs, applied at Finish', () => {
     bounds: { ...hall.bounds, x: 3360 },
     key: { ...hall.key, id: 3, label: 'Stage TV', x: 3360 },
   };
-  function withTwo(): { service: ScreensService; repo: ScreenRepo } {
+  function withTwo(): { service: ScreensService; repo: ScreenRepo; looks: LookService } {
     const db = openDatabase(':memory:');
     const r = new ScreenRepo(db);
+    const l = looksOf(db);
     const outputs = new OutputManager({
       listDisplays: () => [hall, stageTv],
       screens: () => r.screens(),
@@ -265,16 +293,19 @@ describe('the setup wizard’s outputs, applied at Finish', () => {
     });
     return {
       repo: r,
+      looks: l,
       service: new ScreensService(
         r,
         outputs,
         () => [hall, stageTv],
         () => operatorDisplay,
+        () => false,
+        l,
       ),
     };
   }
-  const shape = (r: ScreenRepo) =>
-    r.groups().map((g) => [g.name, g.role, g.languages, g.screens.map((sc) => sc.name)]);
+  const shape = (t: { repo: ScreenRepo; looks: LookService }) =>
+    t.repo.groups().map((g) => [g.name, g.role, t.looks.liveLanguages(g.id), g.screens.map((sc) => sc.name)]);
 
   it('makes Audience and Stage groups with their languages, and their outputs', () => {
     const t = withTwo();
@@ -284,7 +315,7 @@ describe('the setup wizard’s outputs, applied at Finish', () => {
         { displayId: 3, use: 'stage', languages: ['gu'] },
       ]).ok,
     ).toBe(true);
-    expect(shape(t.repo)).toEqual([
+    expect(shape(t)).toEqual([
       ['Audience', 'audience', ['gu', 'translit'], ['Hall TV']],
       ['Stage', 'stage', ['gu'], ['Stage TV']],
     ]);
@@ -300,7 +331,7 @@ describe('the setup wizard’s outputs, applied at Finish', () => {
       { displayId: 2, use: 'audience', languages: ['translit', 'en'] },
       { displayId: 3, use: 'none', languages: null },
     ]);
-    expect(shape(t.repo)).toEqual([['Main Hall', 'audience', ['translit', 'en'], ['Hall TV']]]);
+    expect(shape(t)).toEqual([['Main Hall', 'audience', ['translit', 'en'], ['Hall TV']]]);
     expect(t.repo.screen(screenId)).toMatchObject({ canvasWidth: 1280, canvasHeight: 720 });
     // A display moved to the stage keeps its screen, in the new Stage group.
     t.service.applySetup([
@@ -308,7 +339,7 @@ describe('the setup wizard’s outputs, applied at Finish', () => {
       { displayId: 3, use: 'stage', languages: null },
     ]);
     t.service.applySetup([{ displayId: 3, use: 'none', languages: null }]);
-    expect(shape(t.repo)).toEqual([
+    expect(shape(t)).toEqual([
       ['Main Hall', 'audience', ['translit', 'en'], ['Hall TV']],
       ['Stage', 'stage', null, []],
     ]);
@@ -326,6 +357,6 @@ describe('the setup wizard’s outputs, applied at Finish', () => {
     expect(
       t.service.applySetup([{ displayId: 2, use: 'audience', languages: null }], { coverOperator: true }).ok,
     ).toBe(true);
-    expect(shape(t.repo)).toEqual([['Audience', 'audience', null, ['Hall TV']]]);
+    expect(shape(t)).toEqual([['Audience', 'audience', null, ['Hall TV']]]);
   });
 });

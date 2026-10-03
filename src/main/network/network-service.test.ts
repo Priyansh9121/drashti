@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CommandResult, EngineCommand } from '../../shared/engine/commands';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import type { InvokeChannel } from '../../shared/ipc';
-import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
+import { SIMPLE_MODE_REFUSAL, SIMPLE_MODE_REFUSED_COMMANDS } from '../../shared/mode';
 import { DEVICE_KINDS, type NetworkStatus, PAIRING_CODE_TTL_MS } from '../../shared/network';
 import { DEVICE_OPS, type DeviceOp } from '../../shared/network-api';
 import { openDatabase } from '../db/database';
@@ -52,6 +52,9 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
     localName: () => null,
     engine: {
       dispatch: (c): CommandResult => {
+        // As the engine does in Simple Mode (show-engine.ts, refuse).
+        if (options.locked === true && SIMPLE_MODE_REFUSED_COMMANDS.includes(c.type))
+          return { ok: false, error: 'forbidden', message: SIMPLE_MODE_REFUSAL };
         commands.push(c);
         return { ok: true, changed: true, rev: commands.length };
       },
@@ -65,7 +68,11 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
       messages: () => [{ id: 'm1', name: 'Car', template: 'Car {plate} please move', fields: {} }],
       logo: () => ({ id: 'logo', name: 'Placeholder logo', elements: [] }),
       mediaSource: () => null,
-      stageLanguages: () => null,
+      stage: () => ({ groupId: 'stage-group', languages: ['gu'] }),
+      looks: () => [
+        { id: 'look-standard', name: 'Standard' },
+        { id: 'look-lower', name: 'Placeholder lower thirds' },
+      ],
       clockStyle: () => ({ locale: 'en-GB', timeZone: 'Europe/London' }),
     },
     announcements: {
@@ -225,6 +232,25 @@ describe('the network in the main process', () => {
     });
     service.answer({ address: PHONE, deviceId: remote, op: 'message.hide', args: { templateId: 'm1' } });
     expect(commands.at(-1)).toEqual({ type: 'hideMessage', messageId: 'message:m1' });
+    // Looks: a Remote reads them and switches the live one; a Stage device reads its group and languages.
+    expect(service.answer({ address: PHONE, deviceId: remote, op: 'looks', args: {} })).toMatchObject({
+      status: 200,
+      body: { looks: [{ name: 'Standard' }, { name: 'Placeholder lower thirds' }] },
+    });
+    expect(
+      service.answer({
+        address: PHONE,
+        deviceId: remote,
+        op: 'command',
+        args: { type: 'setLook', lookId: 'look-lower' },
+      }).status,
+    ).toBe(200);
+    expect(commands.at(-1)).toEqual({ type: 'setLook', lookId: 'look-lower' });
+    expect(service.answer({ address: PHONE, deviceId: stage, op: 'looks', args: {} }).status).toBe(403);
+    expect(service.answer({ address: PHONE, deviceId: stage, op: 'stage', args: {} })).toMatchObject({
+      status: 200,
+      body: { groupId: 'stage-group', languages: ['gu'] },
+    });
   });
 
   it('refuses over the network exactly what Simple Mode refuses in the window', () => {
@@ -240,6 +266,15 @@ describe('the network in the main process', () => {
       simple.service.answer({ address: PHONE, deviceId: remote, op: 'command', args: { type: 'next' } })
         .status,
     ).toBe(200);
+    // But not switch the Look, which Simple Mode keeps (the engine refuses it, from anywhere).
+    expect(
+      simple.service.answer({
+        address: PHONE,
+        deviceId: remote,
+        op: 'command',
+        args: { type: 'setLook', lookId: 'look-lower' },
+      }),
+    ).toEqual({ status: 403, body: { ok: false, error: 'forbidden', message: SIMPLE_MODE_REFUSAL } });
     // And the lock is asked: an action whose window request were locked is refused with Simple Mode's words.
     const everything = setup({ lockEverything: true });
     const id = everything.service.pairForCheck('remote', 'Placeholder phone').id;

@@ -187,5 +187,7 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       return sameData(state.layers.ticker, action.ticker)
         ? state
         : withLayers(state, { ticker: action.ticker });
+    case 'look/set':
+      return sameData(state.look, action.look) ? state : { ...state, look: action.look };
   }
 }

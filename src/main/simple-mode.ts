@@ -10,7 +10,8 @@ import { SIMPLE_MODE_REFUSAL } from '../shared/mode';
  * offer them either), and so is starting, ending or changing the stream,
  * and turning the local network on or off or changing its devices;
  * backup and restore leave the menu. Running the show
- * (the engine's commands), reading the library and saving diagnostics stay.
+ * (the engine's commands, except switching the Look: see
+ * SIMPLE_MODE_REFUSED_COMMANDS), reading the library and saving diagnostics stay.
  */
 
 const refused = () => ({ ok: false as const, message: SIMPLE_MODE_REFUSAL });
@@ -60,6 +61,12 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.timers.create,
   IPC.timers.update,
   IPC.timers.remove,
+  // Looks: Simple Mode keeps the live one (the engine refuses setLook) and changes none.
+  IPC.looks.create,
+  IPC.looks.rename,
+  IPC.looks.remove,
+  IPC.looks.move,
+  IPC.looks.setGroup,
   IPC.screens.createGroup,
   IPC.screens.renameGroup,
   IPC.screens.setGroupRole,

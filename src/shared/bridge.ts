@@ -52,6 +52,7 @@ import type {
 } from './playlists';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { PropFields, PropInfo, PropResult } from './props';
+import type { GroupLookPatch, LookResult, LooksView } from './looks';
 import type { SearchResult } from './search';
 import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes';
 import type { TimerFields, TimerResult } from './timers';
@@ -357,6 +358,24 @@ export interface DrashtiBridge {
     /** View > Set Up Screens… was chosen. */
     onOpen(listener: () => void): () => void;
   };
+  /**
+   * Looks: what each screen group shows, one live at a time (changing them:
+   * operator window, Pro Mode). Switching the live Look is the engine's
+   * setLook command.
+   */
+  looks: {
+    list(): Promise<LooksView>;
+    onChanged(listener: (view: LooksView) => void): () => void;
+    /** A new Look at the end of the list, a copy of `copyOf` (or every group with the defaults). */
+    create(name: string, copyOf: string | null): Promise<LookResult>;
+    rename(lookId: string, name: string): Promise<LookResult>;
+    /** Not the last one. Removing the live Look puts the first one live. */
+    remove(lookId: string): Promise<LookResult>;
+    /** To this place in the list (0: first, the Look Drashti starts with). */
+    move(lookId: string, to: number): Promise<LookResult>;
+    /** Change one group's settings in a Look. */
+    setGroup(lookId: string, groupId: string, patch: GroupLookPatch): Promise<LookResult>;
+  };
   /** Screen setup (operator window only). */
   screens: {
     get(): Promise<ScreensSnapshot>;
@@ -365,7 +384,10 @@ export interface DrashtiBridge {
     renameGroup(groupId: string, name: string): Promise<ScreensResult>;
     /** Audience screens show the picture; stage screens show the performers' view. */
     setGroupRole(groupId: string, role: ScreenRole): Promise<ScreensResult>;
-    /** The languages a group shows of a kirtan's slides, in this order; null for all, in each slide's order. */
+    /**
+     * The languages a group shows of a kirtan's slides in the live Look, in
+     * this order; null for all, in each slide's order (looks.setGroup sets them in any Look).
+     */
     setGroupLanguages(groupId: string, languages: Lang[] | null): Promise<ScreensResult>;
     deleteGroup(groupId: string): Promise<ScreensResult>;
     /** May answer `confirm: 'covers-operator'`: ask the operator, then repeat with { coverOperator: true }. */

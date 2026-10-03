@@ -1,5 +1,3 @@
-import type { Lang } from './model';
-
 /*
  * Built-in streaming (PLAN.md 4.2). The Program is what the stream shows: an
  * offscreen page drawn with the same renderer as the outputs, in one of two
@@ -128,8 +126,11 @@ export interface ProgramInputs {
 /** What the stream's page needs to know about itself. */
 export interface ProgramContext {
   layout: StreamLayout;
-  /** The stream group's languages for a kirtan's words; null for all of them. */
-  languages: Lang[] | null;
+  /**
+   * The stream's screen group: its languages for a kirtan's words are its
+   * settings in the live Look (engine state); null before it is made (every language).
+   */
+  groupId: string | null;
   /** The size the Program is drawn at (the preset's). */
   width: number;
   height: number;

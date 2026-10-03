@@ -5,8 +5,8 @@ import { STREAM_PRESETS } from '../../../shared/stream';
 import { Field, Select } from '../ui/Field';
 import { Radio } from '../ui/icons';
 import { loadProfiles, streamAction, useStream, watchProgram } from '../stream/stream-store';
-import { screensAction } from './screens-store';
-import { LanguagePicker } from './LanguagePicker';
+import type { LookInfo } from '../../../shared/looks';
+import { GroupLookSettings } from './LookSettings';
 
 /*
  * The stream's group in Screens: drawn off screen (it has no displays), with
@@ -51,7 +51,7 @@ function InputSelect({
   );
 }
 
-export function StreamGroupCard({ group }: { group: ScreenGroupConfig }) {
+export function StreamGroupCard({ group, look }: { group: ScreenGroupConfig; look: LookInfo | null }) {
   const status = useStream((s) => s.status);
   const profiles = useStream((s) => s.profiles);
   useEffect(() => {
@@ -75,15 +75,7 @@ export function StreamGroupCard({ group }: { group: ScreenGroupConfig }) {
           The stream, drawn off screen at {preset.width} × {preset.height}
         </span>
       </div>
-      <div className="rounded-lg border border-line bg-panel px-3 py-2.5">
-        <LanguagePicker
-          label="A kirtan’s languages on the stream"
-          value={group.languages}
-          onChange={(next) =>
-            void screensAction(() => window.drashti.screens.setGroupLanguages(group.id, next))
-          }
-        />
-      </div>
+      {look && <GroupLookSettings look={look} groupId={group.id} role="stream" />}
       {profile && (
         <div className="flex flex-wrap gap-3">
           <InputSelect

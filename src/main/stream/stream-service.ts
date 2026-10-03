@@ -303,8 +303,8 @@ export class StreamService {
     const preset = STREAM_PRESETS[profile.preset];
     return {
       layout: this.layout,
-      // The stream group's languages; every language until the operator has one (see ensureStreamGroup).
-      languages: this.deps.screens.streamGroup()?.languages ?? null,
+      // The stream group: its languages are in the live Look (every language until it is made: ensureStreamGroup).
+      groupId: this.deps.screens.streamGroup()?.id ?? null,
       width: preset.width,
       height: preset.height,
       camera: this.systemBlocked.camera ? null : profile.camera,

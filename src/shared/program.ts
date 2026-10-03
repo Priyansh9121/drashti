@@ -67,7 +67,7 @@ export function lowerThird(slide: RenderSlide, languages: readonly Lang[] | null
 }
 
 /** The slide has something to look at besides words: a picture or a video. */
-const hasPicture = (slide: RenderSlide) =>
+export const hasPicture = (slide: RenderSlide): boolean =>
   slide.elements.some((e) => e.kind === 'image' || e.kind === 'video');
 
 /** What the stream draws now, in this layout. */

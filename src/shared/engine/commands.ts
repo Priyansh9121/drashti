@@ -103,6 +103,8 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   /** A message on stage screens only, for the performers. */
   z.object({ type: z.literal('setStageMessage'), text: z.string().trim().min(1).max(300) }),
   z.object({ type: z.literal('clearStageMessage') }),
+  /** Switch the live Look: every screen group changes at once (Simple Mode refuses it). */
+  z.object({ type: z.literal('setLook'), lookId: id }),
 ]);
 
 export type EngineCommand = z.infer<typeof engineCommandSchema>;
@@ -117,7 +119,8 @@ export type EngineErrorCode =
   | 'unknown-item'
   | 'not-playable'
   | 'unknown-timer'
-  | 'nothing-to-put-back';
+  | 'nothing-to-put-back'
+  | 'unknown-look';
 
 export type CommandResult =
   { ok: true; changed: boolean; rev: number } | { ok: false; error: EngineErrorCode; message: string };

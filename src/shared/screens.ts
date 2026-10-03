@@ -1,5 +1,3 @@
-import type { Lang } from './model';
-
 /** How a screen's canvas is scaled into its output window. */
 export type ScalingMode = 'fit' | 'fill' | 'stretch';
 export const SCALING_MODES = ['fit', 'fill', 'stretch'] as const satisfies readonly ScalingMode[];
@@ -53,15 +51,11 @@ export interface ScreenConfig {
   enabled: boolean;
 }
 
+/** A screen group. What its screens show (layers, languages, slide style) is set in the Looks (shared/looks.ts). */
 export interface ScreenGroupConfig {
   id: string;
   name: string;
   role: ScreenRole;
-  /**
-   * The languages its screens show of a kirtan's slides, in this order;
-   * null for every language, in each slide's own order.
-   */
-  languages: Lang[] | null;
   screens: ScreenConfig[];
 }
 
@@ -114,11 +108,11 @@ export interface ScreenPatch {
 export interface OutputContext {
   screenId: string;
   screenName: string;
+  /** Its group: what it shows comes from the group's settings in the live Look (engine state). */
+  groupId: string;
   groupName: string;
   /** What the screen shows: the audience picture, or the performers' stage view. */
   role: ScreenRole;
-  /** Its group's languages for a kirtan's slides, in order; null for all of them. */
-  languages: Lang[] | null;
   /** Until when (ms since the epoch) it shows the setup wizard's test slide; null for none. */
   testCardUntil: number | null;
   canvasWidth: number;

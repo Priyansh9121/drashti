@@ -101,7 +101,8 @@ export type FromDevice =
   | { type: 'resync' };
 
 /** Hints that lists a device shows have changed and should be read again. */
-export type NetworkChange = 'playlists' | 'presentations' | 'messages' | 'timers' | 'props' | 'screens';
+export type NetworkChange =
+  'playlists' | 'presentations' | 'messages' | 'timers' | 'props' | 'screens' | 'looks';
 
 /** What the feed sends a device. */
 export type ToDevice =

@@ -8,8 +8,6 @@ import type {
   ScreenPatch,
   ScreenRole,
 } from '../../shared/screens';
-import type { Lang } from '../../shared/model';
-import { groupLanguagesSchema } from '../../shared/screens-schema';
 import type { Db } from './database';
 
 const displayKeySchema: z.ZodType<DisplayKey> = z.object({
@@ -37,17 +35,6 @@ function parseKey(json: string | null): DisplayKey | null {
   if (!json) return null;
   try {
     const parsed = displayKeySchema.safeParse(JSON.parse(json));
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
-  }
-}
-
-/** A group's languages as stored; anything unreadable shows them all. */
-function parseLangs(json: string | null): Lang[] | null {
-  if (!json) return null;
-  try {
-    const parsed = groupLanguagesSchema.safeParse(JSON.parse(json));
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
@@ -90,29 +77,18 @@ export class ScreenRepo {
 
   groups(): ScreenGroupConfig[] {
     const groups = this.db
-      .prepare('SELECT id, name, role, languages FROM screen_groups ORDER BY position, rowid')
-      .all() as { id: string; name: string; role: ScreenRole; languages: string | null }[];
+      .prepare('SELECT id, name, role FROM screen_groups ORDER BY position, rowid')
+      .all() as { id: string; name: string; role: ScreenRole }[];
     const screens = this.screens();
-    return groups.map((g) => ({
-      ...g,
-      languages: parseLangs(g.languages),
-      screens: screens.filter((s) => s.groupId === g.id),
-    }));
+    return groups.map((g) => ({ ...g, screens: screens.filter((s) => s.groupId === g.id) }));
   }
 
-  /** The languages a group shows, in order; null for all of them. */
-  groupLanguages(id: string): Lang[] | null {
-    const row = this.db.prepare('SELECT languages FROM screen_groups WHERE id = ?').get(id) as
-      { languages: string | null } | undefined;
-    return parseLangs(row?.languages ?? null);
-  }
-
-  setGroupLanguages(id: string, languages: readonly Lang[] | null): boolean {
-    return (
-      this.db
-        .prepare(`UPDATE screen_groups SET languages = ?, updated_at = ${NOW} WHERE id = ?`)
-        .run(languages ? JSON.stringify(languages) : null, id).changes > 0
-    );
+  /** Every group's id and role, in order (cheap: no screens). */
+  groupIds(): { id: string; role: ScreenRole }[] {
+    return this.db.prepare('SELECT id, role FROM screen_groups ORDER BY position, rowid').all() as {
+      id: string;
+      role: ScreenRole;
+    }[];
   }
 
   groupName(id: string): string | null {
@@ -144,32 +120,28 @@ export class ScreenRepo {
     return id;
   }
 
-  /** The languages the first stage group shows (by its place in Screens); null for all, or when there is none. */
-  stageLanguages(): Lang[] | null {
+  /** The first group in this role, by its place in Screens (the stage display follows the first stage group). */
+  firstGroup(role: ScreenRole): string | null {
     const row = this.db
-      .prepare("SELECT languages FROM screen_groups WHERE role = 'stage' ORDER BY position, rowid LIMIT 1")
-      .get() as { languages: string | null } | undefined;
-    return parseLangs(row?.languages ?? null);
+      .prepare('SELECT id FROM screen_groups WHERE role = ? ORDER BY position, rowid LIMIT 1')
+      .get(role) as { id: string } | undefined;
+    return row?.id ?? null;
   }
 
   /** The stream's group (role 'stream'): there is at most one, and it has no screens. */
-  streamGroup(): { id: string; languages: Lang[] | null } | null {
-    const row = this.db
-      .prepare(
-        "SELECT id, languages FROM screen_groups WHERE role = 'stream' ORDER BY position, rowid LIMIT 1",
-      )
-      .get() as { id: string; languages: string | null } | undefined;
-    return row ? { id: row.id, languages: parseLangs(row.languages) } : null;
+  streamGroup(): { id: string } | null {
+    const id = this.firstGroup('stream');
+    return id ? { id } : null;
   }
 
-  /** The stream's group, made (named "Stream", every language) the first time it is needed. */
-  ensureStreamGroup(): { id: string; languages: Lang[] | null } {
+  /** The stream's group, made (named "Stream", every language in every Look) the first time it is needed. */
+  ensureStreamGroup(): { id: string; made: boolean } {
     const found = this.streamGroup();
-    if (found) return found;
+    if (found) return { id: found.id, made: false };
     const names = new Set(this.groups().map((g) => g.name));
     let name = 'Stream';
     for (let n = 2; names.has(name); n++) name = `Stream ${n}`;
-    return { id: this.createGroup(name, 'stream'), languages: null };
+    return { id: this.createGroup(name, 'stream'), made: true };
   }
 
   renameGroup(id: string, name: string): boolean {

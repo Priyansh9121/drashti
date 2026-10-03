@@ -52,6 +52,7 @@ import type {
 } from './playlists';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { PropFields, PropInfo, PropResult } from './props';
+import type { GroupLookPatch, LookResult, LooksView } from './looks';
 import type { SearchResult } from './search';
 import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes';
 import type { TimerFields, TimerResult } from './timers';
@@ -235,6 +236,17 @@ export const IPC = {
     create: 'timers:create',
     update: 'timers:update',
     remove: 'timers:remove',
+  },
+  /** Looks: what each screen group shows. Changing them is for the operator window, Pro Mode (switching the live one is an engine command). */
+  looks: {
+    list: 'looks:list',
+    create: 'looks:create',
+    rename: 'looks:rename',
+    remove: 'looks:remove',
+    move: 'looks:move',
+    setGroup: 'looks:set-group',
+    /** main -> operator: the Looks changed (or which is live). */
+    changed: 'looks:changed',
   },
   screens: {
     get: 'screens:get',
@@ -470,6 +482,15 @@ export interface InvokeContract {
   [IPC.timers.create]: { args: [fields: TimerFields]; result: TimerResult };
   [IPC.timers.update]: { args: [timerId: string, fields: TimerFields]; result: TimerResult };
   [IPC.timers.remove]: { args: [timerId: string]; result: TimerResult };
+  [IPC.looks.list]: { args: []; result: LooksView };
+  [IPC.looks.create]: { args: [name: string, copyOf: string | null]; result: LookResult };
+  [IPC.looks.rename]: { args: [lookId: string, name: string]; result: LookResult };
+  [IPC.looks.remove]: { args: [lookId: string]; result: LookResult };
+  [IPC.looks.move]: { args: [lookId: string, to: number]; result: LookResult };
+  [IPC.looks.setGroup]: {
+    args: [lookId: string, groupId: string, patch: GroupLookPatch];
+    result: LookResult;
+  };
   [IPC.screens.get]: { args: []; result: ScreensSnapshot };
   [IPC.screens.createGroup]: { args: [name: string]; result: ScreensResult };
   [IPC.screens.renameGroup]: { args: [groupId: string, name: string]; result: ScreensResult };
@@ -550,6 +571,7 @@ export interface EventContract {
   [IPC.app.modeChanged]: { mode: OperatorMode };
   [IPC.app.askLeaveSimple]: { at: number };
   [IPC.screens.changed]: ScreensSnapshot;
+  [IPC.looks.changed]: LooksView;
   [IPC.output.context]: OutputContext;
   [IPC.output.identify]: { name: string; groupName: string };
   [IPC.audio.chosen]: { device: AudioDevice | null };

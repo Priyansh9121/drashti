@@ -79,19 +79,20 @@ curl -s "$DRASHTI/api/v1/status" -H "Authorization: Bearer $TOKEN"
 }
 ```
 
-| Request                            | Who           | Answers                                                                                                                     |
-| ---------------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/v1/me`                   | any device    | `device`: its name and kind.                                                                                                |
-| `GET /api/v1/status`               | Remote, Stage | `status`, as above.                                                                                                         |
-| `GET /api/v1/state`                | Remote, Stage | `rev` and `state`: the whole engine state, as the feed sends it.                                                            |
-| `GET /api/v1/stage`                | Stage         | `languages` the stage group shows (null for all) and `clock`: the locale and time zone the stage screens write the time in. |
-| `GET /api/v1/playlists`            | Remote        | `playlists`: every playlist and folder (`isFolder`, `parentId`), with templates marked (`template`).                        |
-| `GET /api/v1/playlists/{id}/items` | Remote        | `items`: headers, presentations (with their order), media and empty slots.                                                  |
-| `GET /api/v1/presentations/{id}`   | Remote        | `presentation`: its groups, slides (as drawn) and arrangements.                                                             |
-| `GET /api/v1/messages`             | Remote        | `messages`: the message templates and how their fields are filled.                                                          |
-| `GET /api/v1/timers`               | Remote        | `timers`: each timer, with when it started (each device works out the time).                                                |
-| `GET /api/v1/logo`                 | Remote        | `logo`: the prop marked as the logo (`id`, `name`), or null.                                                                |
-| `GET /api/v1/media/{id}/preview`   | Remote        | A small JPEG of a picture, or one frame of a video (never the file itself).                                                 |
+| Request                            | Who           | Answers                                                                                                                                                                                                        |
+| ---------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/me`                   | any device    | `device`: its name and kind.                                                                                                                                                                                   |
+| `GET /api/v1/status`               | Remote, Stage | `status`, as above.                                                                                                                                                                                            |
+| `GET /api/v1/state`                | Remote, Stage | `rev` and `state`: the whole engine state, as the feed sends it.                                                                                                                                               |
+| `GET /api/v1/stage`                | Stage         | `groupId`: the stage display's screen group (the first stage group, or null); `languages` it shows in the live Look (null for all); and `clock`: the locale and time zone the stage screens write the time in. |
+| `GET /api/v1/playlists`            | Remote        | `playlists`: every playlist and folder (`isFolder`, `parentId`), with templates marked (`template`).                                                                                                           |
+| `GET /api/v1/playlists/{id}/items` | Remote        | `items`: headers, presentations (with their order), media and empty slots.                                                                                                                                     |
+| `GET /api/v1/presentations/{id}`   | Remote        | `presentation`: its groups, slides (as drawn) and arrangements.                                                                                                                                                |
+| `GET /api/v1/messages`             | Remote        | `messages`: the message templates and how their fields are filled.                                                                                                                                             |
+| `GET /api/v1/timers`               | Remote        | `timers`: each timer, with when it started (each device works out the time).                                                                                                                                   |
+| `GET /api/v1/logo`                 | Remote        | `logo`: the prop marked as the logo (`id`, `name`), or null.                                                                                                                                                   |
+| `GET /api/v1/looks`                | Remote        | `looks`: every Look (`id`, `name`), in order (the first is the one Drashti starts with), and `liveId`: the live one.                                                                                           |
+| `GET /api/v1/media/{id}/preview`   | Remote        | A small JPEG of a picture, or one frame of a video (never the file itself).                                                                                                                                    |
 
 ## Running the show (Remote)
 
@@ -119,6 +120,7 @@ curl -s -X POST "$DRASHTI/api/v1/clear/all"    -H "Authorization: Bearer $TOKEN"
 | `POST /api/v1/timers/{id}/start`     |                                                                                                         | Starts (or carries on) a timer; also `/pause` and `/reset`.                                                                                                                                                                         |
 | `POST /api/v1/messages/{id}/show`    | `{"values":{"plate":"12"}}`                                                                             | Shows a message template with its fields filled in (`{id}` is the template's).                                                                                                                                                      |
 | `POST /api/v1/messages/{id}/hide`    |                                                                                                         | Takes that message off.                                                                                                                                                                                                             |
+| `POST /api/v1/looks/{id}/live`       |                                                                                                         | Makes that Look live: every screen group changes at once. Simple Mode refuses it (403), as it does in the operator window.                                                                                                          |
 
 ## Announcements (Announcements devices)
 

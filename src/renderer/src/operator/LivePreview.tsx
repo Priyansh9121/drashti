@@ -3,7 +3,7 @@ import { useEngine } from '../engine/engine-store';
 import { preloadFonts } from '../render/fonts';
 import { PlacedInParent } from '../render/Placed';
 import { Scene } from '../render/Scene';
-import { useFirstGroupLanguages, useScreens } from '../screens/screens-store';
+import { useFirstGroupLook, useScreens } from '../screens/screens-store';
 import { LANG_NAMES } from '../../../shared/themes';
 import { Badge, LiveBadge } from '../ui/Badge';
 import { cx } from '../ui/cx';
@@ -19,7 +19,11 @@ import { useNow } from '../render/useNow';
  */
 export function LivePreview() {
   const state = useEngine((s) => s.state);
-  const shownAs = useFirstGroupLanguages('audience');
+  // As the first audience group shows it in the live Look (its layers, languages and slide style).
+  const audience = useFirstGroupLook('audience');
+  const shownAs = audience?.look.languages
+    ? { name: audience.name, languages: audience.look.languages }
+    : null;
   const first = useScreens((s) => s.snapshot?.groups.flatMap((g) => g.screens)[0]);
   useEffect(() => {
     void preloadFonts();
@@ -54,7 +58,7 @@ export function LivePreview() {
               canvas={canvas}
               scaling={scaling}
               annotate
-              languages={shownAs?.languages ?? null}
+              {...(audience ? { look: audience.look } : {})}
             />
           )}
         </PlacedInParent>

@@ -484,12 +484,47 @@ function MessageRow({ template, shown }: { template: MessageTemplate; shown: boo
 const NO_TIMERS: TimerState[] = [];
 const NO_MESSAGES: EngineState['layers']['messages'] = [];
 
+/** The Looks: tapping one makes it live (every screen group changes at once). */
+function Looks() {
+  const looks = useRemote((s) => s.looks);
+  const liveId = useEngine((s) => s.state?.look.id ?? '');
+  if (!looks || looks.length < 2) return null;
+  return (
+    <section className="space-y-2" aria-labelledby="looks-title">
+      <h2 id="looks-title" className="text-sm font-bold tracking-wider text-muted uppercase">
+        Looks
+      </h2>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" data-testid="remote-looks">
+        {looks.map((look) => {
+          const live = look.id === liveId;
+          return (
+            <Button
+              key={look.id}
+              size="lg"
+              className="min-h-12"
+              variant={live ? 'live' : 'secondary'}
+              aria-pressed={live}
+              data-look={look.id}
+              onClick={() => {
+                if (!live) void tap(post(`/api/v1/looks/${encodeURIComponent(look.id)}/live`));
+              }}
+            >
+              <span className="truncate">{look.name}</span>
+            </Button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function TimersAndMessages() {
   const timers = useEngine((s) => s.state?.timers) ?? NO_TIMERS;
   const shown = useEngine((s) => s.state?.layers.messages) ?? NO_MESSAGES;
   const templates = useRemote((s) => s.templates);
   return (
     <div className="space-y-5">
+      <Looks />
       <section className="space-y-2" aria-labelledby="timers-title">
         <h2 id="timers-title" className="text-sm font-bold tracking-wider text-muted uppercase">
           Timers
@@ -547,7 +582,7 @@ function next(): Promise<void> {
 const TABS: { id: RemoteTab; label: string; icon: typeof Play }[] = [
   { id: 'show', label: 'Show', icon: Play },
   { id: 'playlist', label: 'Playlist', icon: ListMusic },
-  { id: 'more', label: 'Timers & messages', icon: Timer },
+  { id: 'more', label: 'More', icon: Timer },
 ];
 
 function BackNext({ wide }: { wide: boolean }) {

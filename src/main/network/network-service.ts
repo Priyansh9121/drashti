@@ -63,8 +63,13 @@ export interface NetworkReads {
   logo(): PropItem | null;
   /** A media item's file and kind for a preview (pictures and videos only). */
   mediaSource(mediaId: string): PreviewSource | null;
-  /** The languages the first stage screen group shows (null: all of them, or no stage group). */
-  stageLanguages(): Lang[] | null;
+  /**
+   * The stage display's group (the first stage group, or null when there is
+   * none) and its languages in the live Look (null: all of them).
+   */
+  stage(): { groupId: string | null; languages: Lang[] | null };
+  /** The Looks, in order (a Remote switches the live one). */
+  looks(): { id: string; name: string }[];
   /** How this computer writes the time (its locale and time zone), so a stage display's clock reads as the stage screens' does. */
   clockStyle(): { locale: string; timeZone: string };
 }
@@ -106,6 +111,7 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   status: IPC.engine.snapshot,
   state: IPC.engine.snapshot,
   stage: IPC.screens.get,
+  looks: IPC.looks.list,
   playlists: IPC.playlists.tree,
   items: IPC.playlists.items,
   presentation: IPC.library.getPresentation,
@@ -574,8 +580,16 @@ export class NetworkService implements EngineTransport {
     switch (request.op) {
       case 'status':
         return ok({ status: summary(this.deps.engine.state()) });
-      case 'stage':
-        return ok({ languages: this.deps.reads.stageLanguages(), clock: this.deps.reads.clockStyle() });
+      case 'stage': {
+        const stage = this.deps.reads.stage();
+        return ok({
+          languages: stage.languages,
+          groupId: stage.groupId,
+          clock: this.deps.reads.clockStyle(),
+        });
+      }
+      case 'looks':
+        return ok({ looks: this.deps.reads.looks(), liveId: this.deps.engine.state().look.id });
       case 'playlists':
         return ok({ playlists: this.deps.reads.playlists() });
       case 'items': {
@@ -625,7 +639,11 @@ export class NetworkService implements EngineTransport {
 
   private run(command: EngineCommand, who: string, did: string): DeviceAnswer {
     const result = this.deps.engine.dispatch(command);
-    if (!result.ok) return { status: result.error === 'invalid-command' ? 400 : 409, body: result };
+    if (!result.ok)
+      return {
+        status: result.error === 'invalid-command' ? 400 : result.error === 'forbidden' ? 403 : 409,
+        body: result,
+      };
     this.deps.log('info', `Network: ${who} ${did}`);
     return ok({ changed: result.changed, rev: result.rev });
   }

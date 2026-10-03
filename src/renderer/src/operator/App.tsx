@@ -32,6 +32,7 @@ import { NoticeArea, StatusBar } from './StatusBar';
 import { TimersPanel } from './TimersPanel';
 import { MessagesPanel } from './MessagesPanel';
 import { PropsPanel } from './PropsPanel';
+import { LooksPanel } from './LooksPanel';
 import { isTyping, useKeymap } from './useKeymap';
 import { watchProps } from './logo-store';
 import { connectMode, useMode } from './mode-store';
@@ -160,6 +161,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
             <LivePreview />
             <NextPreview />
             <div className="mt-3 divide-y divide-line border-t border-line">
+              <LooksPanel />
               <StageMessageControl />
               <PropsPanel />
               <MessagesPanel />

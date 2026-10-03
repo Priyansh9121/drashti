@@ -1,3 +1,5 @@
+import type { LiveLook } from '../looks';
+import { NO_LOOK } from '../looks';
 import type { Rect, RenderSlide, SlideElement, Transition } from '../model';
 import type { TimerState } from '../timers';
 
@@ -8,7 +10,7 @@ import type { TimerState } from '../timers';
  *
  * Bump ENGINE_STATE_VERSION whenever the shape changes incompatibly.
  */
-export const ENGINE_STATE_VERSION = 6;
+export const ENGINE_STATE_VERSION = 7;
 
 export type LayerName = 'audio' | 'background' | 'slide' | 'props' | 'messages' | 'ticker' | 'masks';
 
@@ -215,6 +217,11 @@ export interface EngineState {
    * (main-process clock) for durationMs. Windows show the time left.
    */
   autoAdvance: { startedAt: number; durationMs: number } | null;
+  /**
+   * The live Look (shared/looks.ts): each screen group's layers, languages
+   * and slide style. Switching it changes every group at once.
+   */
+  look: LiveLook;
 }
 
 export function emptyLayers(): Layers {
@@ -233,6 +240,7 @@ export function initialEngineState(): EngineState {
     stageMessage: null,
     timers: [],
     autoAdvance: null,
+    look: NO_LOOK,
   };
 }
 

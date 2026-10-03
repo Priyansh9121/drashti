@@ -22,7 +22,10 @@ import { EmptyState, Loading } from '../ui/States';
 import { Checkbox } from '../ui/Toggle';
 import { Truncate } from '../ui/Truncate';
 import { cancelCover, connectScreens, screensAction, useScreens } from './screens-store';
-import { LanguagePicker } from './LanguagePicker';
+import type { LookInfo } from '../../../shared/looks';
+import { useEngine } from '../engine/engine-store';
+import { connectLooks, useLooks } from '../looks/looks-store';
+import { GroupLookSettings, LooksSection } from './LookSettings';
 import { SoundOutput } from './SoundOutput';
 import { StreamGroupCard } from './StreamGroupCard';
 
@@ -245,10 +248,13 @@ function GroupCard({
   group,
   states,
   displays,
+  look,
 }: {
   group: ScreenGroupConfig;
   states: Map<string, ScreenState>;
   displays: DisplayInfo[];
+  /** The Look whose settings the card shows. */
+  look: LookInfo | null;
 }) {
   const [name, setName] = useState(group.name);
   const [shown, setShown] = useState(group.name);
@@ -296,13 +302,7 @@ function GroupCard({
           Delete group
         </Button>
       </div>
-      <div className="rounded-lg border border-line bg-panel px-3 py-2.5">
-        <LanguagePicker
-          label="A kirtan’s languages on these screens"
-          value={group.languages}
-          onChange={(next) => void screensAction(() => bridge().setGroupLanguages(group.id, next))}
-        />
-      </div>
+      {look && <GroupLookSettings look={look} groupId={group.id} role={group.role} />}
       {group.screens.length === 0 ? (
         <p className="px-2 text-sm text-muted">
           No screens yet. Choose a display above and press “Use this display”.
@@ -353,7 +353,17 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
   const [newGroup, setNewGroup] = useState('');
   useEffect(() => {
     connectScreens();
+    connectLooks();
   }, []);
+  // The Look whose settings the group cards show: the live one until another is chosen.
+  const liveId = useEngine((s) => s.state?.look.id ?? '');
+  const lookList = useLooks((s) => s.view?.looks);
+  const [chosenLook, setChosenLook] = useState<string | null>(null);
+  const look =
+    lookList?.find((l) => l.id === chosenLook) ??
+    lookList?.find((l) => l.id === liveId) ??
+    lookList?.[0] ??
+    null;
 
   const states = new Map((snapshot?.status ?? []).map((s) => [s.screenId, s.state]));
   const usedBy = new Map<number, string>();
@@ -414,6 +424,7 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
       </section>
       <section className="space-y-3">
         <SectionTitle>Screen groups</SectionTitle>
+        {look && <LooksSection lookId={look.id} onChoose={setChosenLook} />}
         <form
           className="flex gap-2"
           onSubmit={(e) => {
@@ -446,9 +457,9 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
         )}
         {(snapshot?.groups ?? []).map((g) =>
           g.role === 'stream' ? (
-            <StreamGroupCard key={g.id} group={g} />
+            <StreamGroupCard key={g.id} group={g} look={look} />
           ) : (
-            <GroupCard key={g.id} group={g} states={states} displays={snapshot?.displays ?? []} />
+            <GroupCard key={g.id} group={g} states={states} displays={snapshot?.displays ?? []} look={look} />
           ),
         )}
       </section>
