@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { launchApp, operatorPage } from './helpers';
+import { launchApp, needsRealScreen, operatorPage } from './helpers';
 
 const isOutput = (url: string) => url.includes('output.html');
 
 test("an output on the operator's display needs consent, and Uncover gets the controls back", async () => {
+  needsRealScreen();
   const { app } = await launchApp();
   const op = await operatorPage(app);
   await expect(op.getByTestId('presentation-list').getByRole('button')).toHaveCount(2);

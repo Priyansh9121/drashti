@@ -1,5 +1,5 @@
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
-import { _electron as electron, expect } from '@playwright/test';
+import { _electron as electron, expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -13,6 +13,25 @@ export type PageGlobals = typeof globalThis & { drashti: DrashtiBridge };
 export type OutputGlobals = typeof globalThis & {
   drashtiPaintLog?: { rev: number; sentAt: number; paintedAt: number }[];
 };
+
+/**
+ * Local runs are quiet: the app never becomes the active app or covers the
+ * screen of whoever is using the computer (src/main/windows/quiet.ts). CI
+ * runs it as an operator would, unless DRASHTI_E2E_QUIET=1 (to check the
+ * quiet mode itself: scripts/quiet-check.mjs). DRASHTI_E2E_LOUD=1 runs
+ * locally as CI does, only when the person at the computer has agreed to it.
+ */
+export const QUIET =
+  process.env['DRASHTI_E2E_LOUD'] !== '1' &&
+  (process.env['CI'] === undefined || process.env['DRASHTI_E2E_QUIET'] === '1');
+
+/**
+ * For a test that needs real focus, a real full-screen output or a whole
+ * display: it runs on CI, and is skipped in quiet local runs.
+ */
+export function needsRealScreen(): void {
+  test.skip(QUIET, 'Needs real focus or a full-screen output: runs on CI (or with DRASHTI_E2E_LOUD=1)');
+}
 
 /**
  * Environment for the app under test. ELECTRON_RUN_AS_NODE is removed because
@@ -30,7 +49,7 @@ function appEnv(extra: Record<string, string>): Record<string, string> {
 /**
  * Launch the built app (out/), with a fresh data folder unless one is given (to test restarts).
  * The setup wizard, which opens by itself on a first start, stays shut unless a test asks for it
- * (DRASHTI_TEST_NO_WIZARD: '0').
+ * (DRASHTI_TEST_NO_WIZARD: '0'). Quiet locally (see QUIET).
  */
 export async function launchApp(
   extraEnv: Record<string, string> = {},
@@ -43,6 +62,7 @@ export async function launchApp(
       DRASHTI_USER_DATA_DIR: userData,
       DRASHTI_NO_QUIT_CONFIRM: '1',
       DRASHTI_TEST_NO_WIZARD: '1',
+      DRASHTI_TEST_QUIET: QUIET ? '1' : '0',
       ...extraEnv,
     }),
   });

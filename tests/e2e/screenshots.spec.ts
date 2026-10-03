@@ -5,7 +5,7 @@ import { copyFileSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { dropFiles, launchApp, operatorPage, operatorReady } from './helpers';
+import { dropFiles, launchApp, operatorPage, operatorReady, QUIET } from './helpers';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 import { freePort, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
 
@@ -20,6 +20,7 @@ import { freePort, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
  */
 
 test.skip(!process.env['DRASHTI_SCREENSHOTS'], 'set DRASHTI_SCREENSHOTS=1 to take the screenshots');
+test.skip(QUIET, 'Screenshots need real windows: take them on CI (or with DRASHTI_E2E_LOUD=1)');
 
 const folder = join(__dirname, '..', '..', 'docs', 'screenshots');
 
