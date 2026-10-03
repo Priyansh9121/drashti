@@ -4,6 +4,9 @@ name: CI
 # packaging jobs run on macOS and Windows for every push to phase1 and main,
 # pull requests and manual runs (a manual run can target one OS). Pushes to
 # other branches get the Ubuntu checks and the secret scan only.
+#
+# A manual run can also be a quick check: only the end-to-end specs it names
+# (repeated if asked), quietly, or the screenshots, with no packaging.
 on:
   push:
   pull_request:
@@ -14,9 +17,27 @@ on:
         type: choice
         options: [both, windows, macos]
         default: both
+      specs:
+        description: 'Quick check: only these end-to-end specs (tests/e2e/...spec.ts, space-separated)'
+        type: string
+        default: ''
+      repeat:
+        description: 'Quick check: run each test this many times'
+        type: number
+        default: 1
+      quiet:
+        description: 'Quick check: in quiet test mode, watching the front app on macOS (scripts/quiet-check.mjs)'
+        type: boolean
+        default: false
+      screenshots:
+        description: 'Take the screenshots (tests/e2e/screenshots.spec.ts) and keep them as an artifact'
+        type: boolean
+        default: false
 
+# A push cancels the run still going on its branch. Manual runs have a group each: they never
+# cancel a push's run, and a push never cancels them.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ github.event_name == 'workflow_dispatch' && format('manual-{0}', github.run_id) || format('ci-{0}', github.ref) }}
   cancel-in-progress: true
 
 permissions:
@@ -69,6 +90,9 @@ jobs:
     env:
       # Unsigned internal builds for now; signing comes with distribution.
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # A quick check (a manual run naming specs, or taking the screenshots): no unit tests here
+      # (Ubuntu ran them), no packaging.
+      QUICK: ${{ github.event_name == 'workflow_dispatch' && (inputs.specs != '' || inputs.screenshots) }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -86,9 +110,10 @@ jobs:
       - name: Fetch FFmpeg
         run: node scripts/fetch-ffmpeg.mjs
       - name: Fetch FFmpeg for Intel Macs too (both Mac builds are packaged here)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && env.QUICK != 'true'
         run: node scripts/fetch-ffmpeg.mjs --target darwin-x64
       - name: Unit tests (inside Electron's Node)
+        if: env.QUICK != 'true'
         run: pnpm test
       # Phones and tablets on the local network: Playwright's own Chromium (Chrome on Android) and
       # WebKit (Safari on an iPhone) talk to the app's server in the end-to-end tests.
@@ -100,19 +125,66 @@ jobs:
       - name: Playwright's Chromium and WebKit
         run: pnpm exec playwright install chromium webkit
       - name: End-to-end tests (Playwright + Electron)
+        if: env.QUICK != 'true'
         run: pnpm test:e2e
+      - name: End-to-end quick check (the specs named, or the screenshots)
+        if: env.QUICK == 'true'
+        shell: bash
+        env:
+          SPECS: ${{ inputs.specs }}
+          REPEAT: ${{ inputs.repeat }}
+          QUIET: ${{ inputs.quiet }}
+          SCREENSHOTS: ${{ inputs.screenshots }}
+        run: |
+          specs=()
+          for s in $SPECS; do
+            case "$s" in
+              tests/e2e/*.spec.ts) [ -f "$s" ] || { echo "No such spec: $s"; exit 1; } ;;
+              *) echo "Not an end-to-end spec: $s"; exit 1 ;;
+            esac
+            specs+=("$s")
+          done
+          if [ "$SCREENSHOTS" = "true" ]; then
+            export DRASHTI_SCREENSHOTS=1
+            [ ${#specs[@]} -gt 0 ] || specs=(tests/e2e/screenshots.spec.ts)
+          fi
+          extra=()
+          if [ "${REPEAT:-1}" -gt 1 ]; then extra+=("--repeat-each=$REPEAT"); fi
+          pnpm build
+          if [ "$QUIET" = "true" ] && [ "$RUNNER_OS" = "macOS" ]; then
+            # Quietly, never seeing Drashti in front; then as an operator would, where it must be seen.
+            DRASHTI_E2E_QUIET=1 node scripts/quiet-check.mjs "${specs[@]}" "${extra[@]}"
+            DRASHTI_E2E_LOUD=1 node scripts/quiet-check.mjs --expect-front "${specs[@]}"
+          else
+            if [ "$QUIET" = "true" ]; then export DRASHTI_E2E_QUIET=1; fi
+            pnpm exec playwright test "${specs[@]}" "${extra[@]}"
+          fi
+      - name: Upload the screenshots
+        if: env.QUICK == 'true' && inputs.screenshots
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots-${{ runner.os }}
+          path: docs/screenshots
+          if-no-files-found: error
+          retention-days: 7
       - name: Drashti finds and runs its FFmpeg (built app)
+        if: env.QUICK != 'true'
         run: node scripts/check-ffmpeg.mjs
       # Playwright cannot follow app.relaunch(): back up, restore and restart for real.
       - name: Restart after a restore (built app)
+        if: env.QUICK != 'true'
         run: node scripts/check-relaunch.mjs
       - name: Package installers
+        if: env.QUICK != 'true'
         run: pnpm exec electron-builder --publish never
       - name: Restart after a restore (packaged app)
+        if: env.QUICK != 'true'
         run: node scripts/check-relaunch.mjs --packaged
       - name: Drashti finds and runs its FFmpeg (each packaged app)
+        if: env.QUICK != 'true'
         run: node scripts/check-ffmpeg.mjs --packaged
       - name: Upload installers
+        if: env.QUICK != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: drashti-${{ runner.os }}
