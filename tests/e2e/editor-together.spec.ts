@@ -80,6 +80,26 @@ test('several elements resize and turn together, each change one Undo; copy and 
   await expect(editor.getByTestId('group-box')).toBeVisible();
   await expectNoSeriousA11yIssues(win, 'the slide editor with two elements selected');
 
+  // Moved together: drag one of them 150 px down (Alt: no snapping); both move, and one Undo puts both back.
+  const first = before[0];
+  if (!first) throw new Error('no element');
+  const grab = await onCanvas(win, first.left + 30, first.top + 30);
+  const dropAt = await onCanvas(win, first.left + 30, first.top + 180);
+  await win.keyboard.down('Alt');
+  await drag(win, grab, dropAt);
+  await win.keyboard.up('Alt');
+  // Both by the same amount, about 150 px (the pointer lands on whole screen pixels).
+  await expect
+    .poll(async () => {
+      const moved = (await elementsOf(win)).map((x) => x.top - (before.find((b) => b.id === x.id)?.top ?? 0));
+      const [a = 0, b = 0] = moved;
+      return moved.length === 2 && Math.abs(a - b) <= 1 && Math.abs(a - 150) <= 3;
+    })
+    .toBe(true);
+  await expect(status).toHaveText('2 elements selected');
+  await win.keyboard.press(`${mod}+Z`);
+  await expect.poll(() => elementsOf(win)).toEqual(before);
+
   // Resize together from the right edge, 200 px to the left: both get narrower, the left edge stays.
   const e = await editor.getByTestId('group-handle-e').boundingBox();
   if (!e) throw new Error('no handle');
