@@ -113,12 +113,15 @@ jobs:
             release/*/*.exe
           if-no-files-found: error
           retention-days: 7
+      # Always: a test that passed only on its retry ("flaky") keeps the trace of the attempt that
+      # failed in test-results, and that is the only way to see what went wrong.
       - name: Upload Playwright report
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ runner.os }}
           path: |
             playwright-report
             test-results
+          if-no-files-found: ignore
           retention-days: 7
