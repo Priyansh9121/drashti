@@ -77,6 +77,8 @@ type Drag =
       box: Rect;
       lines: SnapLines;
       dragging: boolean;
+      /** Pressed on one of several selected: a click (no drag) leaves only this one selected. */
+      narrowTo: string | null;
     }
   | {
       kind: 'resize';
@@ -242,6 +244,7 @@ export function Canvas({ platform }: { platform: string }) {
         box: unionOf(moving.map((el) => boundsOf(el))) ?? { x: 0, y: 0, width: 0, height: 0 },
         lines: linesWithout(ids),
         dragging: false,
+        narrowTo: !additive && ids.length > 1 ? hit : null,
       };
       return;
     }
@@ -333,6 +336,11 @@ export function Canvas({ platform }: { platform: string }) {
         const inside = elements.filter((el) => overlaps(boundsOf(el), box)).map((el) => el.id);
         select([...new Set([...d.base, ...inside])]);
       }
+      return;
+    }
+    // A click on one of several selected elements (pressed there to drag them all, but not moved).
+    if (d.kind === 'move' && !d.dragging && d.narrowTo) {
+      select([d.narrowTo]);
       return;
     }
     endGesture();
