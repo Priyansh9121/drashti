@@ -40,6 +40,10 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await expect(p.getByTestId('connection')).toHaveText('Connected');
       await expect(p.getByTestId('remote')).toBeVisible();
       await expectNoSeriousA11yIssues(p, `the remote on a phone (${engine})`);
+      const size = p.viewportSize();
+      await p.setViewportSize({ width: 375, height: 812 });
+      await expectNoSeriousA11yIssues(p, `the remote at 375 x 812 (${engine})`);
+      if (size) await p.setViewportSize(size);
 
       // Next twice quickly with nothing live: the first starts the playlist, the second goes on (never restarts it).
       await p.getByTestId('remote-tab-playlist').click();

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { device, type Engine, networkOn, NETWORK_ENV, pairByQr, pairingCode } from './devices';
+import { device, type Engine, networkOn, NETWORK_ENV, pairByQr, pairingCode, TABLET } from './devices';
 import { expectFits } from './fit';
 import { launchApp, operatorPage, operatorReady } from './helpers';
 
@@ -60,6 +60,16 @@ test('the Network panel turns it on, pairs a phone by QR code and another by typ
   try {
     await iphone.page.goto(`${base}/pair`);
     await expectNoSeriousA11yIssues(iphone.page, 'the pairing page on an iPhone');
+    await iphone.page.setViewportSize({ width: 375, height: 812 });
+    await expectNoSeriousA11yIssues(iphone.page, 'the pairing page at 375 x 812');
+    const ipad = await device('webkit', TABLET);
+    try {
+      await ipad.page.goto(`${base}/pair`);
+      await expect(ipad.page.getByTestId('pair-page')).toBeVisible();
+      await expectNoSeriousA11yIssues(ipad.page, 'the pairing page on a tablet');
+    } finally {
+      await ipad.close();
+    }
     await iphone.page.getByTestId('pair-code').fill(`${typed.slice(0, 3)} ${typed.slice(3)}`);
     await iphone.page.getByRole('button', { name: 'Pair' }).click();
     await iphone.page.waitForURL(`${base}/stage`);
