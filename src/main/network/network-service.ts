@@ -1,0 +1,697 @@
+import { timingSafeEqual } from 'node:crypto';
+import { z } from 'zod';
+import { type CommandResult, type EngineCommand, parseEngineCommand } from '../../shared/engine/commands';
+import type { EngineMessage, EngineSnapshotMessage } from '../../shared/engine/protocol';
+import type { EngineState, PropItem } from '../../shared/engine/state';
+import type { EngineTransport } from '../../shared/engine/transport';
+import { IPC, type InvokeChannel } from '../../shared/ipc';
+import type { PresentationDoc } from '../../shared/library';
+import { fillMessage, type MessageTemplate, messageItemId } from '../../shared/messages';
+import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
+import { idSchema } from '../../shared/model-schema';
+import {
+  DEFAULT_NETWORK_PORT,
+  DEVICE_KIND_LABEL,
+  DEVICE_KINDS,
+  DEVICE_NAME_MAX,
+  type DeviceInfo,
+  type DeviceKind,
+  MAX_NETWORK_PORT,
+  MIN_NETWORK_PORT,
+  type NetworkChange,
+  type NetworkResult,
+  type NetworkStatus,
+  PAIRING_CODE_TTL_MS,
+} from '../../shared/network';
+import {
+  type DeviceAnswer,
+  type DeviceAuth,
+  type DeviceOp,
+  type DeviceRequest,
+  deviceMay,
+  isDeviceOp,
+  type PairAnswer,
+  REMOTE_COMMANDS,
+} from '../../shared/network-api';
+import type { PlaylistItemInfo, PlaylistNode } from '../../shared/playlists';
+import type { DeviceRepo, DeviceRow } from '../db/devices';
+import { localInterfaceAddresses } from './addresses';
+import type { NetworkWorker } from './network-worker';
+import type { PreviewSource } from './previews';
+import type { ServerOptions } from './server';
+import { hashToken, newPairingCode, newToken } from './tokens';
+import type { FromNetworkWorker } from './worker/protocol';
+
+/*
+ * The local network, as the main process runs it (README "The local
+ * network"). It keeps the settings (on or off, the port), the paired
+ * devices and the pairing code; starts and stops the network worker, which
+ * serves the devices; hands the worker each engine message; and answers
+ * what devices ask for, with the same checks the windows' requests get:
+ * the device and its kind, the same schemas, and Simple Mode's refusals.
+ * Everything a device does is logged with the device's name, never its
+ * token or the pairing code.
+ */
+
+export interface NetworkReads {
+  playlists(): PlaylistNode[];
+  items(playlistId: string): PlaylistItemInfo[];
+  presentation(presentationId: string): PresentationDoc | null;
+  messages(): MessageTemplate[];
+  /** The prop marked as the logo, ready for the engine; null when none is. */
+  logo(): PropItem | null;
+  /** A media item's file and kind for a preview (pictures and videos only). */
+  mediaSource(mediaId: string): PreviewSource | null;
+}
+
+export interface NetworkDeps {
+  devices: DeviceRepo;
+  settings: { get(name: string): unknown; set(name: string, value: unknown): void };
+  spawn(): NetworkWorker;
+  /** How the server is set up for this port (where the pages are, FFmpeg, the address to listen on). */
+  serverOptions(port: number): ServerOptions;
+  localName(): string | null;
+  engine: {
+    dispatch(command: EngineCommand): CommandResult;
+    snapshot(): EngineSnapshotMessage;
+    state(): EngineState;
+  };
+  reads: NetworkReads;
+  /** Whether Simple Mode refuses this window channel now (the same table the windows' requests go through). */
+  refused(channel: InvokeChannel): boolean;
+  /** The status changed: the operator window is told. */
+  changed(status: NetworkStatus): void;
+  log(level: 'info' | 'warn', message: string): void;
+  now(): number;
+}
+
+/**
+ * The window's request that does what each op does: a device gets what the
+ * operator window would get, Simple Mode included. Null for what only the
+ * network does (who am I, previews, announcements), which Simple Mode does
+ * not touch.
+ */
+export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
+  me: null,
+  status: IPC.engine.snapshot,
+  state: IPC.engine.snapshot,
+  playlists: IPC.playlists.tree,
+  items: IPC.playlists.items,
+  presentation: IPC.library.getPresentation,
+  messages: IPC.messages.list,
+  timers: IPC.engine.snapshot,
+  logo: IPC.props.getLogo,
+  command: IPC.engine.command,
+  'logo.set': IPC.engine.command,
+  'message.show': IPC.engine.command,
+  'message.hide': IPC.engine.command,
+  preview: null,
+  announce: null,
+};
+
+const ON_SETTING = 'network.on';
+const PORT_SETTING = 'network.port';
+/** A pairing code is dropped after this many wrong tries, whoever made them. */
+const WRONG_TRIES = 10;
+/** How often last-seen times are written to the library (never on each request). */
+const SEEN_WRITE_MS = 10 * 60 * 1000;
+
+const portSchema = z.number().int().min(MIN_NETWORK_PORT).max(MAX_NETWORK_PORT);
+const nameSchema = z.string().trim().min(1).max(DEVICE_NAME_MAX);
+const kindSchema = z.enum(DEVICE_KINDS);
+const showSchema = z
+  .object({
+    templateId: idSchema,
+    values: z.record(z.string().max(60), z.string().max(200)).optional(),
+  })
+  .strict();
+const hideSchema = z.object({ templateId: idSchema }).strict();
+const logoSchema = z.object({ on: z.boolean().optional() }).strict();
+
+const ok = (body: Record<string, unknown> = {}): DeviceAnswer => ({
+  status: 200,
+  body: { ok: true, ...body },
+});
+const deny = (status: number, message: string): DeviceAnswer => ({ status, body: { ok: false, message } });
+
+const sameCode = (a: string, b: string): boolean =>
+  a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+
+export class NetworkService implements EngineTransport {
+  private worker: NetworkWorker | null = null;
+  private serverState: NetworkStatus['state'] = 'off';
+  private message: string | null = null;
+  private boundPort: number | null = null;
+  private connected = new Set<string>();
+  private readonly lastSeen = new Map<string, string>();
+  private unsaved = new Map<string, string>();
+  private pairing: { code: string; kind: DeviceKind; name: string; expiresAt: number; wrong: number } | null =
+    null;
+  private pairingTimer: NodeJS.Timeout | null = null;
+  private poster: { url: string; madeAt: string } | null = null;
+  private stopping: Promise<void> | null = null;
+  private seenWriter: NodeJS.Timeout | null = null;
+  private seenNotice: NodeJS.Timeout | null = null;
+
+  constructor(private readonly deps: NetworkDeps) {}
+
+  // ---- settings ----------------------------------------------------------------------------
+
+  get on(): boolean {
+    return this.deps.settings.get(ON_SETTING) === true;
+  }
+
+  get port(): number {
+    const parsed = portSchema.safeParse(this.deps.settings.get(PORT_SETTING));
+    return parsed.success ? parsed.data : DEFAULT_NETWORK_PORT;
+  }
+
+  /** At start: listen again if the operator left it on. */
+  resume(): void {
+    if (this.on) this.startServer();
+  }
+
+  status(): NetworkStatus {
+    const port = this.boundPort ?? this.port;
+    const localName = this.deps.localName();
+    const addresses = localInterfaceAddresses()
+      .filter((a) => !a.includes(':'))
+      .map((a) => `http://${a}:${port}`);
+    const devices: DeviceInfo[] = this.deps.devices.list().map((d) => ({
+      id: d.id,
+      name: d.name,
+      kind: d.kind,
+      pairedAt: d.pairedAt,
+      lastSeenAt: this.lastSeen.get(d.id) ?? d.lastSeenAt,
+      connected: this.connected.has(d.id),
+      poster: d.poster,
+    }));
+    const pairing =
+      this.pairing && this.pairing.expiresAt > this.deps.now()
+        ? {
+            code: this.pairing.code,
+            kind: this.pairing.kind,
+            name: this.pairing.name,
+            url: `${addresses[0] ?? `http://localhost:${port}`}/pair#c=${this.pairing.code}`,
+            expiresAt: this.pairing.expiresAt,
+          }
+        : null;
+    return {
+      on: this.on,
+      state: this.serverState,
+      port,
+      message: this.message,
+      addresses,
+      localName: localName ? `http://${localName}:${port}` : null,
+      connected: devices.filter((d) => d.connected).length,
+      devices,
+      pairing,
+      poster: this.poster,
+    };
+  }
+
+  private changed(): void {
+    this.deps.changed(this.status());
+  }
+
+  setOn(raw: unknown): NetworkResult {
+    if (typeof raw !== 'boolean') return { ok: false, message: 'On or off?' };
+    if (raw === this.on && (raw ? this.worker !== null : this.worker === null))
+      return { ok: true, status: this.status() };
+    this.deps.settings.set(ON_SETTING, raw);
+    this.deps.log('info', raw ? 'Network: turned on' : 'Network: turned off');
+    if (raw) this.startServer();
+    else void this.stopServer();
+    this.changed();
+    return { ok: true, status: this.status() };
+  }
+
+  setPort(raw: unknown): NetworkResult {
+    const parsed = portSchema.safeParse(raw);
+    if (!parsed.success)
+      return { ok: false, message: `Choose a port from ${MIN_NETWORK_PORT} to ${MAX_NETWORK_PORT}.` };
+    if (parsed.data === this.port) return { ok: true, status: this.status() };
+    this.deps.settings.set(PORT_SETTING, parsed.data);
+    this.deps.log('info', `Network: port set to ${parsed.data}`);
+    if (this.worker) {
+      void this.stopServer().then(() => {
+        if (this.on) this.startServer();
+      });
+    }
+    this.changed();
+    return { ok: true, status: this.status() };
+  }
+
+  // ---- the worker -------------------------------------------------------------------------
+
+  private startServer(): void {
+    if (this.worker) return;
+    this.serverState = 'starting';
+    this.message = null;
+    const worker = this.deps.spawn();
+    this.worker = worker;
+    worker.onMessage((m) => {
+      if (this.worker === worker) this.fromWorker(worker, m);
+    });
+    worker.onExit(() => {
+      if (this.worker !== worker) return;
+      this.worker = null;
+      this.boundPort = null;
+      this.connected = new Set();
+      this.serverState = this.on ? 'failed' : 'off';
+      if (this.on) {
+        this.message = 'Drashti’s network stopped unexpectedly; starting it again.';
+        this.deps.log('warn', 'Network: the worker stopped; starting it again');
+        setTimeout(() => {
+          if (this.on && !this.worker) this.startServer();
+        }, 1000);
+      }
+      this.changed();
+    });
+    worker.send({ type: 'start', options: this.deps.serverOptions(this.port) });
+    this.seenWriter ??= setInterval(() => {
+      this.saveSeen();
+    }, SEEN_WRITE_MS);
+    this.changed();
+  }
+
+  /** Tell every device the network is off, stop listening and stop the worker. */
+  private stopServer(): Promise<void> {
+    const worker = this.worker;
+    if (!worker) return this.stopping ?? Promise.resolve();
+    this.worker = null;
+    this.saveSeen();
+    this.stopping = new Promise<void>((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        worker.kill();
+        resolve();
+      };
+      const timer = setTimeout(done, 2000);
+      worker.onMessage((m) => {
+        if (m.type === 'stopped') done();
+      });
+      worker.send({ type: 'stop', reason: 'network-off' });
+    }).finally(() => {
+      this.stopping = null;
+    });
+    this.serverState = 'off';
+    this.message = null;
+    this.boundPort = null;
+    this.connected = new Set();
+    this.changed();
+    return this.stopping;
+  }
+
+  private fromWorker(worker: NetworkWorker, m: FromNetworkWorker): void {
+    switch (m.type) {
+      case 'started':
+        if (m.result.ok) {
+          this.serverState = 'listening';
+          this.boundPort = m.result.port;
+          this.message = null;
+          this.pushDevices();
+          worker.send({ type: 'engine', message: this.deps.engine.snapshot() });
+          this.deps.log('info', `Network: listening on port ${m.result.port}`);
+        } else {
+          this.serverState = 'failed';
+          this.message = m.result.message;
+          this.deps.log('warn', `Network: could not start (${m.result.message})`);
+          this.worker = null;
+          worker.kill();
+        }
+        this.changed();
+        return;
+      case 'ask':
+        void this.ask(worker, m.id, m.question);
+        return;
+      case 'connected': {
+        const at = new Date(this.deps.now()).toISOString();
+        for (const id of m.deviceIds) if (!this.connected.has(id)) this.noteSeen(id, at);
+        for (const id of this.connected)
+          if (!m.deviceIds.includes(id)) this.deps.log('info', `Network: ${this.label(id)} disconnected`);
+        for (const id of m.deviceIds)
+          if (!this.connected.has(id)) this.deps.log('info', `Network: ${this.label(id)} connected`);
+        this.connected = new Set(m.deviceIds);
+        this.changed();
+        return;
+      }
+      case 'seen':
+        this.noteSeen(m.deviceId, new Date(this.deps.now()).toISOString());
+        return;
+      case 'resync':
+        worker.send({ type: 'engine', message: this.deps.engine.snapshot() });
+        return;
+      case 'log':
+        this.deps.log(m.level, `Network: ${m.message}`);
+        return;
+      case 'stopped':
+        return;
+    }
+  }
+
+  private async ask(
+    worker: NetworkWorker,
+    id: number,
+    question: Extract<FromNetworkWorker, { type: 'ask' }>['question'],
+  ): Promise<void> {
+    let answer: unknown;
+    try {
+      if (question.kind === 'request') answer = this.answer(question.request);
+      else if (question.kind === 'pair') answer = this.pair(question.code, question.address);
+      else answer = this.deps.reads.mediaSource(question.mediaId);
+    } catch (error) {
+      this.deps.log('warn', `Network: a request failed (${(error as Error).message})`);
+      answer =
+        question.kind === 'media'
+          ? null
+          : question.kind === 'pair'
+            ? { ok: false, status: 500, message: 'Something went wrong in Drashti.' }
+            : deny(500, 'Something went wrong in Drashti.');
+    }
+    await Promise.resolve();
+    worker.send({ type: 'answer', id, answer });
+  }
+
+  private pushDevices(): void {
+    const devices: DeviceAuth[] = this.deps.devices
+      .list()
+      .map((d) => ({ id: d.id, name: d.name, kind: d.kind, tokenHash: d.tokenHash }));
+    this.worker?.send({ type: 'devices', devices });
+  }
+
+  private label(id: string): string {
+    const d = this.deps.devices.get(id);
+    return d ? `${DEVICE_KIND_LABEL[d.kind]} “${d.name}”` : 'a removed device';
+  }
+
+  private noteSeen(id: string, at: string): void {
+    this.lastSeen.set(id, at);
+    this.unsaved.set(id, at);
+    // The operator window hears of it now and then, not on every tap.
+    this.seenNotice ??= setTimeout(() => {
+      this.seenNotice = null;
+      this.changed();
+    }, 5000);
+  }
+
+  private saveSeen(): void {
+    if (this.unsaved.size === 0) return;
+    const seen = this.unsaved;
+    this.unsaved = new Map();
+    try {
+      this.deps.devices.touch(seen);
+    } catch (error) {
+      this.deps.log(
+        'warn',
+        `Network: could not keep when devices were last seen (${(error as Error).message})`,
+      );
+    }
+  }
+
+  // ---- engine messages and hints ------------------------------------------------------------
+
+  broadcast(message: EngineMessage): void {
+    if (this.worker && this.serverState === 'listening') this.worker.send({ type: 'engine', message });
+  }
+
+  /** Lists the remotes show have changed (playlists, presentations, templates...). */
+  hint(what: NetworkChange): void {
+    if (this.worker && this.serverState === 'listening') this.worker.send({ type: 'hint', what });
+  }
+
+  // ---- pairing and devices ------------------------------------------------------------------
+
+  startPairing(rawKind: unknown, rawName: unknown): NetworkResult {
+    const kind = kindSchema.safeParse(rawKind);
+    if (!kind.success) return { ok: false, message: 'Choose what the device is for.' };
+    const given =
+      rawName === undefined || rawName === null || rawName === '' ? null : nameSchema.safeParse(rawName);
+    if (given && !given.success)
+      return { ok: false, message: `A name needs 1 to ${DEVICE_NAME_MAX} characters.` };
+    const names = new Set(this.deps.devices.list().map((d) => d.name));
+    let name = given?.data ?? '';
+    for (let n = 1; name === ''; n++) {
+      const candidate = `${DEVICE_KIND_LABEL[kind.data]} ${n}`;
+      if (!names.has(candidate)) name = candidate;
+    }
+    this.pairing = {
+      code: newPairingCode(),
+      kind: kind.data,
+      name,
+      expiresAt: this.deps.now() + PAIRING_CODE_TTL_MS,
+      wrong: 0,
+    };
+    if (this.pairingTimer) clearTimeout(this.pairingTimer);
+    this.pairingTimer = setTimeout(() => {
+      this.pairingTimer = null;
+      this.changed();
+    }, PAIRING_CODE_TTL_MS + 50);
+    this.deps.log('info', `Network: offering to pair a ${DEVICE_KIND_LABEL[kind.data]} device`);
+    this.changed();
+    return { ok: true, status: this.status() };
+  }
+
+  cancelPairing(): NetworkResult {
+    this.pairing = null;
+    this.changed();
+    return { ok: true, status: this.status() };
+  }
+
+  /** The device typed (or its QR code carried) this code: a new device, and its token, once. */
+  pair(code: string, address: string): PairAnswer {
+    const offer = this.pairing;
+    const wrong = {
+      ok: false as const,
+      status: 403,
+      message: 'That code is wrong or has expired. Ask the operator for a new one.',
+    };
+    if (!offer || offer.expiresAt <= this.deps.now()) return wrong;
+    if (!sameCode(code, offer.code)) {
+      offer.wrong++;
+      if (offer.wrong >= WRONG_TRIES) {
+        this.pairing = null;
+        this.deps.log('warn', 'Network: a pairing code was dropped after too many wrong tries');
+        this.changed();
+      }
+      return wrong;
+    }
+    this.pairing = null;
+    const token = newToken();
+    const device: DeviceRow = this.deps.devices.add({
+      name: offer.name,
+      kind: offer.kind,
+      tokenHash: hashToken(token),
+    });
+    this.deps.log(
+      'info',
+      `Network: paired ${DEVICE_KIND_LABEL[device.kind]} “${device.name}” from ${address}`,
+    );
+    this.noteSeen(device.id, new Date(this.deps.now()).toISOString());
+    this.pushDevices();
+    this.changed();
+    return {
+      ok: true,
+      token,
+      device: { id: device.id, name: device.name, kind: device.kind, tokenHash: device.tokenHash },
+    };
+  }
+
+  renameDevice(rawId: unknown, rawName: unknown): NetworkResult {
+    const id = idSchema.safeParse(rawId);
+    const name = nameSchema.safeParse(rawName);
+    if (!name.success) return { ok: false, message: `A name needs 1 to ${DEVICE_NAME_MAX} characters.` };
+    if (!id.success || !this.deps.devices.rename(id.data, name.data))
+      return { ok: false, message: 'That device is no longer paired.' };
+    this.pushDevices();
+    this.changed();
+    return { ok: true, status: this.status() };
+  }
+
+  /** Remove a device: its token stops working, and its connection is cut at once. */
+  revokeDevice(rawId: unknown): NetworkResult {
+    const id = idSchema.safeParse(rawId);
+    if (!id.success) return { ok: false, message: 'That device is no longer paired.' };
+    const label = this.label(id.data);
+    const device = this.deps.devices.get(id.data);
+    if (!device || !this.deps.devices.remove(id.data))
+      return { ok: false, message: 'That device is no longer paired.' };
+    if (device.poster) this.poster = null;
+    this.lastSeen.delete(id.data);
+    this.unsaved.delete(id.data);
+    this.deps.log('info', `Network: removed ${label}`);
+    this.pushDevices();
+    this.changed();
+    return { ok: true, status: this.status() };
+  }
+
+  /**
+   * A new announcements poster link (the old one stops working). Its key is
+   * in the link's #fragment, which browsers never send to a server; Drashti
+   * keeps only its hash, so the link is shown now, while Drashti runs.
+   */
+  makePoster(): NetworkResult {
+    this.deps.devices.removePosters();
+    const token = newToken();
+    this.deps.devices.add({
+      name: 'Announcements poster',
+      kind: 'announcements',
+      tokenHash: hashToken(token),
+      poster: true,
+    });
+    const status = this.status();
+    const base = status.addresses[0] ?? status.localName ?? `http://localhost:${status.port}`;
+    this.poster = { url: `${base}/announce#k=${token}`, madeAt: new Date(this.deps.now()).toISOString() };
+    this.deps.log('info', 'Network: made a new announcements poster link');
+    this.pushDevices();
+    this.changed();
+    return { ok: true, status: this.status() };
+  }
+
+  // ---- what devices ask for ------------------------------------------------------------------
+
+  answer(request: DeviceRequest): DeviceAnswer {
+    const device = this.deps.devices.get(request.deviceId);
+    if (!device) return deny(401, 'This device was removed in Drashti. Pair it again.');
+    if (!isDeviceOp(request.op) || !deviceMay(device.kind, request.op))
+      return deny(403, `A ${DEVICE_KIND_LABEL[device.kind]} device cannot do this.`);
+    const channel = OP_CHANNEL[request.op];
+    if (channel && this.deps.refused(channel)) return deny(403, SIMPLE_MODE_REFUSAL);
+    const args = (request.args ?? {}) as Record<string, unknown>;
+    const who = `${DEVICE_KIND_LABEL[device.kind]} “${device.name}”`;
+    switch (request.op) {
+      case 'status':
+        return ok({ status: summary(this.deps.engine.state()) });
+      case 'playlists':
+        return ok({ playlists: this.deps.reads.playlists() });
+      case 'items': {
+        const id = idSchema.safeParse(args['playlistId']);
+        return id.success
+          ? ok({ items: this.deps.reads.items(id.data) })
+          : deny(404, 'There is no such playlist.');
+      }
+      case 'presentation': {
+        const id = idSchema.safeParse(args['presentationId']);
+        const doc = id.success ? this.deps.reads.presentation(id.data) : null;
+        return doc ? ok({ presentation: doc }) : deny(404, 'There is no such presentation.');
+      }
+      case 'messages':
+        return ok({ messages: this.deps.reads.messages() });
+      case 'timers':
+        return ok({ timers: this.deps.engine.state().timers });
+      case 'logo': {
+        const logo = this.deps.reads.logo();
+        return ok({ logo: logo ? { id: logo.id, name: logo.name } : null });
+      }
+      case 'command':
+        return this.command(args, who);
+      case 'logo.set':
+        return this.setLogo(args, who);
+      case 'message.show':
+        return this.showMessage(args, who);
+      case 'message.hide': {
+        const parsed = hideSchema.safeParse(args);
+        if (!parsed.success) return deny(400, 'Which message?');
+        return this.run(
+          { type: 'hideMessage', messageId: messageItemId(parsed.data.templateId) },
+          who,
+          'took a message off',
+        );
+      }
+      case 'announce':
+        return deny(503, 'Announcements are not taken yet.');
+      case 'me':
+      case 'state':
+      case 'preview':
+        return deny(400, 'The network server answers that itself.');
+    }
+  }
+
+  private run(command: EngineCommand, who: string, did: string): DeviceAnswer {
+    const result = this.deps.engine.dispatch(command);
+    if (!result.ok) return { status: result.error === 'invalid-command' ? 400 : 409, body: result };
+    this.deps.log('info', `Network: ${who} ${did}`);
+    return ok({ changed: result.changed, rev: result.rev });
+  }
+
+  private command(args: Record<string, unknown>, who: string): DeviceAnswer {
+    const parsed = parseEngineCommand(args);
+    if (!parsed.ok) return deny(400, parsed.message);
+    const type = parsed.command.type;
+    if (!(REMOTE_COMMANDS as readonly string[]).includes(type))
+      return deny(403, 'A Remote device cannot do that.');
+    return this.run(parsed.command, who, type);
+  }
+
+  private setLogo(args: Record<string, unknown>, who: string): DeviceAnswer {
+    const parsed = logoSchema.safeParse(args);
+    if (!parsed.success) return deny(400, 'Logo on or off?');
+    const on = parsed.data.on ?? this.deps.engine.state().logo === null;
+    if (!on) return this.run({ type: 'hideLogo' }, who, 'took the logo down');
+    const logo = this.deps.reads.logo();
+    if (!logo) return deny(409, 'No prop is marked as the logo in Drashti (Props, the stamp button).');
+    return this.run({ type: 'showLogo', prop: logo }, who, 'showed the logo');
+  }
+
+  private showMessage(args: Record<string, unknown>, who: string): DeviceAnswer {
+    const parsed = showSchema.safeParse(args);
+    if (!parsed.success) return deny(400, 'Which message, with what in its fields?');
+    const template = this.deps.reads.messages().find((t) => t.id === parsed.data.templateId);
+    if (!template) return deny(404, 'There is no such message template.');
+    const timers = this.deps.engine.state().timers;
+    const filled = fillMessage(
+      template,
+      parsed.data.values ?? {},
+      (id) => timers.find((t) => t.id === id)?.name ?? 'timer',
+    );
+    if (!filled.message) return deny(400, `Fill in ${filled.missing.map((n) => `{${n}}`).join(', ')} first.`);
+    return this.run({ type: 'showMessage', message: filled.message }, who, 'showed a message');
+  }
+
+  /** At quit: let the devices know, and keep when they were last seen. */
+  close(): Promise<void> {
+    if (this.seenWriter) clearInterval(this.seenWriter);
+    if (this.pairingTimer) clearTimeout(this.pairingTimer);
+    if (this.seenNotice) clearTimeout(this.seenNotice);
+    this.saveSeen();
+    return this.stopServer();
+  }
+
+  /** The performance check: a paired device and its token, without the pairing dance. */
+  pairForCheck(kind: DeviceKind, name: string): { id: string; token: string } {
+    const token = newToken();
+    const device = this.deps.devices.add({ name, kind, tokenHash: hashToken(token) });
+    this.pushDevices();
+    return { id: device.id, token };
+  }
+}
+
+/** What the API's status says: where the show is, in short. */
+export function summary(state: EngineState): Record<string, unknown> {
+  const slide = state.layers.slide;
+  return {
+    live: {
+      presentationId: state.live.presentationId,
+      slideIndex: state.live.slideIndex,
+      slideCount: state.live.slideCount,
+      playlist: state.live.playlist,
+      onScreen: slide !== null,
+    },
+    blackout: state.blackout,
+    logo: state.logo !== null,
+    canPutBack: state.canPutBack,
+    next: state.next
+      ? state.next.kind === 'slide'
+        ? { kind: 'slide', presentationId: state.next.presentationId, slideIndex: state.next.slideIndex }
+        : { kind: 'media', itemId: state.next.itemId, label: state.next.label }
+      : null,
+    messages: state.layers.messages.map((m) => ({ id: m.id, text: m.text })),
+    timers: state.timers.map((t) => ({
+      id: t.id,
+      name: t.name,
+      kind: t.kind,
+      running: t.startedAt !== null,
+    })),
+    stageMessage: state.stageMessage !== null,
+  };
+}

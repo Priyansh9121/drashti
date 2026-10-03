@@ -187,6 +187,17 @@ const bridge: DrashtiBridge = {
         listener(payload.deviceId);
       }),
   },
+  network: {
+    status: () => invoke(IPC.network.status),
+    onChanged: (listener) => on(IPC.network.changed, listener),
+    setOn: (on) => invoke(IPC.network.setOn, on),
+    setPort: (port) => invoke(IPC.network.setPort, port),
+    startPairing: (kind, name) => invoke(IPC.network.startPairing, kind, name),
+    cancelPairing: () => invoke(IPC.network.cancelPairing),
+    renameDevice: (deviceId, name) => invoke(IPC.network.renameDevice, deviceId, name),
+    revokeDevice: (deviceId) => invoke(IPC.network.revokeDevice, deviceId),
+    makePoster: () => invoke(IPC.network.makePoster),
+  },
   stream: {
     status: () => invoke(IPC.stream.status),
     onChanged: (listener) => on(IPC.stream.changed, listener),

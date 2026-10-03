@@ -10,7 +10,7 @@ import {
   session,
   systemPreferences,
 } from 'electron';
-import { mkdirSync, mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, statSync } from 'node:fs';
 import { release as osRelease, tmpdir } from 'node:os';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { basename, isAbsolute, join } from 'node:path';
@@ -52,7 +52,7 @@ import { ScreenRepo } from './db/screens';
 import { seedPlaceholders, seedTemplates } from './db/seed';
 import { ShowEngine } from './engine/show-engine';
 import { runEngineCommand } from './ipc/engine-ipc';
-import { handle, handlerTimes, lockChannels } from './ipc/handle';
+import { handle, handlerTimes, lockChannels, refusedNow } from './ipc/handle';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
 import { AudioOutput } from './audio/audio-output';
@@ -104,6 +104,15 @@ import { ConvertService } from './convert/convert-service';
 import { diskFreeBytes } from './import/media-store';
 import { startPerfStream } from './stream/perf-stream';
 import { confirmedSchema } from '../shared/stream-schema';
+import { FanoutTransport, type EngineTransport } from '../shared/engine/transport';
+import type { PropItem } from '../shared/engine/state';
+import { DeviceRepo } from './db/devices';
+import { NetworkService } from './network/network-service';
+import { inProcessNetworkWorker, spawnNetworkWorker } from './network/network-worker';
+import { startPerfDevices } from './network/perf-devices';
+import { localName } from './network/local-name';
+import { isInside } from './media/media-protocol';
+import { rendererDir } from './windows/renderer';
 
 // Headless self-tests: run one, print the result, exit (see README). The performance test
 // imports a few hundred placeholder files, so it gets a throwaway data folder of its own.
@@ -152,6 +161,14 @@ const fakeDevices = process.env['DRASHTI_TEST_FAKE_DEVICES'] === '1';
 if (fakeDevices) app.commandLine.appendSwitch('use-fake-device-for-media-stream');
 // Tests only: behave as if the system's secure storage for keys were missing.
 const noSafeStorage = process.env['DRASHTI_TEST_NO_SAFE_STORAGE'] === '1';
+// Tests only: the local network listens on this computer alone (no firewall questions), and can be
+// told to treat this computer as outside the local network, to see such requests refused.
+const networkLocalOnly = process.env['DRASHTI_TEST_NETWORK_LOCAL'] === '1';
+const networkRefuseLoopback = process.env['DRASHTI_TEST_NETWORK_REFUSE_LOOPBACK'] === '1';
+// The performance check only: so many devices connected while it measures, and (to compare) the
+// network's server in the main process instead of its own.
+const perfDevices = Math.min(50, Math.max(0, Number(process.env['DRASHTI_PERF_DEVICES'] ?? 0) || 0));
+const perfNetworkInMain = process.env['DRASHTI_PERF_NETWORK_IN_MAIN'] === '1';
 
 // Library media reaches the sandboxed windows only through drashti-media:// (see media/media-protocol.ts).
 // Schemes must be registered before the app is ready.
@@ -295,12 +312,36 @@ const notAllowed = { ok: false as const, message: 'Only the operator window can 
  * The performance check, while streaming and recording when DRASHTI_PERF_STREAM names an
  * address on this computer (tests/perf/performance.spec.ts starts FFmpeg listening there).
  */
-async function runPerformanceTestWithStream(
-  ctx: Parameters<typeof runPerformanceTest>[0] & {
-    stream: StreamService;
-    operatorContents: () => Electron.WebContents | null;
-  },
-): ReturnType<typeof runPerformanceTest> {
+type PerfRun = Parameters<typeof runPerformanceTest>[0] & {
+  stream: StreamService;
+  network: NetworkService;
+  operatorContents: () => Electron.WebContents | null;
+};
+
+/** The performance check with DRASHTI_PERF_DEVICES paired devices following the feed meanwhile. */
+async function runPerformanceTestWithDevices(ctx: PerfRun): ReturnType<typeof runPerformanceTest> {
+  if (perfDevices === 0) return runPerformanceTestWithStream(ctx);
+  // DRASHTI_PERF_DEVICE_PAGES=1: each device also fetches the largest page files every second.
+  const pages =
+    process.env['DRASHTI_PERF_DEVICE_PAGES'] === '1'
+      ? readdirSync(join(rendererDir(), 'assets'))
+          .map((name) => ({ name, bytes: statSync(join(rendererDir(), 'assets', name)).size }))
+          .sort((a, b) => b.bytes - a.bytes)
+          .slice(0, 3)
+          .map((f) => `/assets/${f.name}`)
+      : [];
+  const devices = await startPerfDevices(ctx.network, perfDevices, perfNetworkInMain, pages);
+  try {
+    const result = await runPerformanceTestWithStream(ctx);
+    await devices.stop();
+    return { ...result, summary: `${result.summary}; ${devices.summary()}` };
+  } catch (error) {
+    await devices.stop();
+    throw error;
+  }
+}
+
+async function runPerformanceTestWithStream(ctx: PerfRun): ReturnType<typeof runPerformanceTest> {
   const url = process.env['DRASHTI_PERF_STREAM'];
   const operator = ctx.operatorContents();
   if (!url || !operator) return runPerformanceTest(ctx);
@@ -399,9 +440,16 @@ function start(): void {
   });
   // Settings kept in the library (the sound output, the mode, the logo, the default transition).
   const settings = new SettingsRepo(db);
+  // The local network gets every engine message too (once it is on); it is made further down.
+  let network: NetworkService | null = null;
+  const networkTransport: EngineTransport = {
+    broadcast: (message) => {
+      network?.broadcast(message);
+    },
+  };
   const engine = new ShowEngine(
     slides,
-    transport,
+    new FanoutTransport([transport, networkTransport]),
     Date.now,
     { items: (id) => playlists.playItems(id) },
     {
@@ -729,6 +777,7 @@ function start(): void {
       changedTimer = null;
       lastChanged = Date.now();
       sendToOperator(IPC.library.changed, { at: lastChanged, what: 'presentations' });
+      network?.hint('presentations');
     };
     if (now) {
       if (changedTimer) clearTimeout(changedTimer);
@@ -740,6 +789,7 @@ function start(): void {
   /** Props, message templates or themes changed: the operator's lists of them reload at once. */
   const listChanged = (what: Exclude<LibraryChange, 'presentations'>) => {
     sendToOperator(IPC.library.changed, { at: Date.now(), what });
+    if (what === 'props' || what === 'messages') network?.hint(what);
   };
   const imports = new ImportService({
     spawn: spawnImportWorker,
@@ -791,6 +841,7 @@ function start(): void {
       engine.refreshNext();
       libraryChanged(true);
       sendToOperator(IPC.playlists.changed, { at: Date.now() });
+      network?.hint('playlists');
       listChanged('props');
       listChanged('themes');
     },
@@ -984,6 +1035,103 @@ function start(): void {
         : { ok: false, message: 'That message no longer exists.' };
     }),
   );
+  // ---- the local network ----------------------------------------------------------
+  // Phones and tablets on the mandir's Wi-Fi, once paired (README "The local network"). Off until
+  // the operator turns it on (Pro Mode only); the server runs in a worker of its own.
+  const asPropItem = (p: {
+    id: string;
+    name: string;
+    elements: PropItem['elements'];
+    width?: number;
+    height?: number;
+  }): PropItem => ({
+    id: p.id,
+    name: p.name,
+    elements: p.elements,
+    width: p.width,
+    height: p.height,
+  });
+  const net = new NetworkService({
+    devices: new DeviceRepo(db),
+    settings,
+    spawn: () =>
+      perfNetworkInMain
+        ? inProcessNetworkWorker()
+        : spawnNetworkWorker((line) => {
+            log.info(`[network worker] ${line}`);
+          }),
+    serverOptions: (port) => ({
+      port,
+      bind: networkLocalOnly || perfTest ? '127.0.0.1' : '0.0.0.0',
+      webDir: rendererDir(),
+      ffmpeg: findFfmpeg({
+        packaged: app.isPackaged,
+        resourcesPath: process.resourcesPath,
+        appPath: app.getAppPath(),
+        platform: process.platform,
+        arch: process.arch,
+        override: process.env['DRASHTI_FFMPEG'],
+      }),
+      previewDir: join(app.getPath('userData'), 'Network', 'previews'),
+      localName: localName(),
+      refuseLoopback: networkRefuseLoopback,
+    }),
+    localName: () => localName(),
+    engine: {
+      dispatch: (command) => engine.dispatch(command),
+      snapshot: () => engine.snapshot(),
+      state: () => engine.current,
+    },
+    reads: {
+      playlists: () => playlists.tree(),
+      items: (playlistId) => playlists.itemsOf(playlistId),
+      presentation: (presentationId) => presentations.get(presentationId),
+      messages: () => messageTemplates.list(),
+      logo: () => {
+        const id = settings.get('logoPropId');
+        const prop = typeof id === 'string' ? props.list().find((p) => p.id === id) : undefined;
+        return prop ? asPropItem(prop) : null;
+      },
+      mediaSource: (mediaId) => {
+        if (!MEDIA_ID_PATTERN.test(mediaId)) return null;
+        const row = media.kindAndFile(mediaId);
+        if (!row || row.missing || row.kind === 'audio' || row.path === '') return null;
+        const path = join(mediaDir, row.path);
+        return isInside(mediaDir, path) ? { path, kind: row.kind } : null;
+      },
+    },
+    refused: (channel) => refusedNow(channel),
+    changed: (status) => {
+      sendToOperator(IPC.network.changed, status);
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+    now: Date.now,
+  });
+  network = net;
+  net.resume();
+  app.on('will-quit', () => {
+    void net.close();
+  });
+  const notNetworkOperator = {
+    ok: false as const,
+    message: 'Only the operator window can change the network.',
+  };
+  handle(IPC.network.status, () => net.status());
+  handle(IPC.network.setOn, (e, on) => (fromOperator(e) ? net.setOn(on) : notNetworkOperator));
+  handle(IPC.network.setPort, (e, port) => (fromOperator(e) ? net.setPort(port) : notNetworkOperator));
+  handle(IPC.network.startPairing, (e, kind, name) =>
+    fromOperator(e) ? net.startPairing(kind, name) : notNetworkOperator,
+  );
+  handle(IPC.network.cancelPairing, (e) => (fromOperator(e) ? net.cancelPairing() : notNetworkOperator));
+  handle(IPC.network.renameDevice, (e, id, name) =>
+    fromOperator(e) ? net.renameDevice(id, name) : notNetworkOperator,
+  );
+  handle(IPC.network.revokeDevice, (e, id) => (fromOperator(e) ? net.revokeDevice(id) : notNetworkOperator));
+  handle(IPC.network.makePoster, (e) => (fromOperator(e) ? net.makePoster() : notNetworkOperator));
+
   // Timers: made and edited here, started and paused through the engine.
   const timerChange = (e: IpcMainInvokeEvent, run: () => TimerResult): TimerResult => {
     if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can change timers.' };
@@ -1027,6 +1175,7 @@ function start(): void {
       engine.reorderLive();
       engine.refreshNext();
       sendToOperator(IPC.playlists.changed, { at: Date.now() });
+      net.hint('playlists');
     },
   });
   handle(IPC.library.getPresentation, (_event, id) => {
@@ -1487,7 +1636,7 @@ function start(): void {
   };
   if (perfTest) {
     operatorWindow.webContents.once('did-finish-load', () => {
-      void runPerformanceTestWithStream({
+      void runPerformanceTestWithDevices({
         operator: () => (operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : null),
         outputs: () => [...outputWindows.values()].filter((w) => !w.isDestroyed()),
         ensureOutput: () => ensureTestOutput('Performance test'),
@@ -1495,6 +1644,7 @@ function start(): void {
           app.getAppMetrics().some((m) => m.type === 'Utility' && m.name === 'Drashti import'),
         diagnostics: { loopDelay, handlerTimes, gc },
         stream: streaming,
+        network: net,
         operatorContents: () =>
           operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow.webContents : null,
       }).then(

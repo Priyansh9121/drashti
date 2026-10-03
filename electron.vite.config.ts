@@ -26,7 +26,13 @@ export default defineConfig({
           'import-worker': resolve('src/main/import/worker.ts'),
           // The stream worker: encoding, sending and recording (src/main/stream/worker/worker.ts).
           'stream-worker': resolve('src/main/stream/worker/worker.ts'),
+          // The network worker: the HTTP and WebSocket server for paired devices (src/main/network/worker/worker.ts).
+          'network-worker': resolve('src/main/network/worker/worker.ts'),
         },
+        // ws's optional native helpers are not installed. Left as plain requires, they fail and ws uses its
+        // own JavaScript; bundled, Vite would put an empty object in their place and ws would call
+        // functions that are not there on every frame of 32 bytes or more.
+        external: ['bufferutil', 'utf-8-validate'],
         onwarn(warning, warn) {
           // zod's comments confuse Rollup's annotation parser; harmless, so keep the build output readable.
           if (warning.code === 'INVALID_ANNOTATION' && warning.id?.includes('node_modules/zod')) return;

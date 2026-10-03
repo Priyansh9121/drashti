@@ -42,6 +42,13 @@ export class MediaRepo {
     }));
   }
 
+  /** A media item's kind and where its file is (relative to the media folder), for a preview; null for an unknown id. */
+  kindAndFile(mediaId: string): { kind: 'image' | 'video' | 'audio'; path: string; missing: boolean } | null {
+    const row = this.db.prepare('SELECT kind, path, missing FROM media WHERE id = ?').get(mediaId) as
+      { kind: 'image' | 'video' | 'audio'; path: string; missing: number } | undefined;
+    return row ? { kind: row.kind, path: row.path, missing: row.missing === 1 } : null;
+  }
+
   /** Where a media item's file is, relative to the media folder; null for an unknown id. */
   file(mediaId: string): MediaFileRow | null {
     const row = this.fileStmt.get(mediaId);
