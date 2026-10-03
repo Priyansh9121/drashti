@@ -105,7 +105,13 @@ test('operator: pick a presentation, go live by click and keyboard, clear layers
   await expect(output.locator('[data-layer="messages"]')).toHaveCount(0);
   await win.keyboard.press('F1');
   await expect(output.locator('[data-layer]')).toHaveCount(0);
-  await expect(win.getByRole('button', { name: /Clear all/ })).toBeDisabled();
+  // With nothing left to clear, Put it back takes Clear all's place until something goes up again.
+  await expect(win.getByRole('button', { name: /Clear all/ })).toHaveCount(0);
+  await win.getByTestId('put-back').click();
+  await expect(output.locator('[data-layer="slide"]')).toBeVisible();
+  await expect(win.getByRole('button', { name: /Clear all/ })).toBeEnabled();
+  await win.keyboard.press('F1');
+  await expect(output.locator('[data-layer]')).toHaveCount(0);
 
   // Keys typed into a field (here the Screens dialog) never drive the show.
   const before = await engineRev(win);

@@ -423,7 +423,8 @@ test('the local network: the Phones panel, announcements, the ticker, and the pa
     const panel = win.getByTestId('network-panel');
     await panel.getByTestId('pair-name').fill('Placeholder remote');
     await panel.getByTestId('pair-remote').click();
-    await expect(panel.getByTestId('qr-code')).toBeVisible();
+    await expect(panel.getByTestId('pairing-offer')).toBeVisible();
+    // The pairing code, its QR code and the poster's QR code (its key) are covered in the picture.
     await shot(win, 'phones-panel', [panel.getByTestId('qr-code'), panel.getByTestId('pairing-code')]);
     await win.keyboard.press('Escape');
     await expect(panel).toHaveCount(0);
