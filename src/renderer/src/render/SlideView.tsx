@@ -16,6 +16,7 @@ import { OBJECT_FIT } from './media-style';
 import { startPlayback } from './playback';
 import { requestStill, useStill } from './stills';
 import { engineNow } from './clock';
+import { PreviewPicture, usePreviewsOnly } from './previews';
 
 /**
  * How a slide draws its videos: 'live' plays them (outputs and the live
@@ -264,6 +265,15 @@ function SlideVideo({ el, startedAt }: { el: MediaElement; startedAt: number | u
 
 /** A video's still frame, made once and kept (thumbnails never play video). */
 export function VideoStill({ mediaId, style }: { mediaId: string; style: CSSProperties }) {
+  return usePreviewsOnly() ? (
+    <PreviewPicture mediaId={mediaId} style={style} />
+  ) : (
+    <WindowVideoStill mediaId={mediaId} style={style} />
+  );
+}
+
+/** In Drashti's windows: the still the operator window made and keeps in the media folder. */
+function WindowVideoStill({ mediaId, style }: { mediaId: string; style: CSSProperties }) {
   const still = useStill(mediaId);
   if (still.failed) {
     return <div data-media-id={mediaId} data-still="none" style={{ ...style, background: '#1f2937' }} />;
@@ -284,6 +294,8 @@ export function VideoStill({ mediaId, style }: { mediaId: string; style: CSSProp
 }
 
 function MediaView({ el, media, startedAt }: { el: MediaElement; media: MediaMode; startedAt?: number }) {
+  // A phone or tablet: pictures and videos as small previews, and no video plays.
+  if (usePreviewsOnly()) return <PreviewPicture mediaId={el.mediaId} style={mediaStyle(el)} />;
   if (el.kind === 'image') {
     return (
       <img
