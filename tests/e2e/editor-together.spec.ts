@@ -68,7 +68,7 @@ test('several elements resize and turn together, each change one Undo; copy and 
   const status = editor.getByTestId('editor-status');
   // A rectangle beside the words.
   await editor.getByTestId('add-shape').click();
-  await win.getByRole('menuitem', { name: 'Rectangle' }).click();
+  await win.getByRole('menuitem', { name: 'Rectangle', exact: true }).click();
   await expect(status).toContainText('Rectangle selected');
   const before = await elementsOf(win);
   expect(before).toHaveLength(2);
