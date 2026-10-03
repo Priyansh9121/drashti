@@ -68,6 +68,7 @@ const backgroundSchema: z.ZodType<BackgroundLayer> = z.discriminatedUnion('kind'
     fit: z.enum(['fit', 'fill', 'stretch']),
     loop: z.boolean(),
     startedAt: z.number(),
+    durationMs: z.number().positive().optional(),
   }),
 ]);
 
@@ -116,7 +117,10 @@ const savedSchema = z.object({
   // Files saved before Looks have none.
   lookId: idSchema.nullable().default(null),
 });
-const audioLayerSchema = z.intersection(audioChoiceSchema, z.object({ startedAt: z.number() }));
+const audioLayerSchema = z.intersection(
+  audioChoiceSchema,
+  z.object({ startedAt: z.number(), durationMs: z.number().positive().optional() }),
+);
 const markSchema = z.object({ session: z.string().min(1).max(64) });
 
 export function savedFrom(state: EngineState, session: string, now = new Date()): SavedLive {

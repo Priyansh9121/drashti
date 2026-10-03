@@ -171,10 +171,23 @@ describe('playlists the operator edits', () => {
     playlists.setItemOrder(arranged ?? '', { mode: 'arrangement', arrangementId: usual });
     presentations.remove([dhun]);
     expect(playlists.playItems(id)).toEqual([
-      { id: header, kind: 'skip', why: 'A header has nothing to show' },
-      { id: own, kind: 'presentation', presentationId: hymn, arrangementId: undefined },
-      { id: all, kind: 'presentation', presentationId: hymn, arrangementId: null },
-      { id: arranged, kind: 'presentation', presentationId: hymn, arrangementId: usual },
+      // Headers and presentations carry their names, for a stage screen's "coming up".
+      { id: header, kind: 'skip', why: 'A header has nothing to show', label: 'Opening', header: true },
+      {
+        id: own,
+        kind: 'presentation',
+        presentationId: hymn,
+        arrangementId: undefined,
+        label: 'Placeholder Hymn',
+      },
+      { id: all, kind: 'presentation', presentationId: hymn, arrangementId: null, label: 'Placeholder Hymn' },
+      {
+        id: arranged,
+        kind: 'presentation',
+        presentationId: hymn,
+        arrangementId: usual,
+        label: 'Placeholder Hymn',
+      },
       { id: gone, kind: 'skip', why: '“Placeholder Dhun” is no longer in the library' },
       { id: video, kind: 'media', mediaId: 'loop', media: 'video', label: 'Placeholder loop.mp4' },
       {

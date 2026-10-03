@@ -636,6 +636,50 @@ describe('ShowEngine', () => {
       expect(engine.current.next).toBeNull();
     });
 
+    it('says what is coming up in the playlist, headers too, for a stage screen', () => {
+      const { engine, playlists } = sabha();
+      playlists.set('sunday', [
+        { id: 'h1', kind: 'skip', why: 'A header has nothing to show', label: 'Kirtans', header: true },
+        {
+          id: 'i-song',
+          kind: 'presentation',
+          presentationId: 'song',
+          arrangementId: undefined,
+          label: 'Placeholder song',
+        },
+        { id: 'h2', kind: 'skip', why: 'A header has nothing to show', label: 'Pravachan', header: true },
+        { id: 'ph', kind: 'skip', why: '“Missing Song” was not found at import', label: 'Missing Song' },
+        { id: 'i-pic', kind: 'media', mediaId: 'pic', media: 'image', label: 'Welcome.png' },
+        {
+          id: 'i-p1',
+          kind: 'presentation',
+          presentationId: 'p1',
+          arrangementId: undefined,
+          label: 'Placeholder p1',
+        },
+      ]);
+      expect(engine.current.upcoming).toEqual([]);
+      engine.dispatch({ type: 'playItem', playlistId: 'sunday', itemId: 'i-song' });
+      // A placeholder that cannot play is left out; headers say where the sabha goes next.
+      expect(engine.current.upcoming).toEqual([
+        { id: 'h2', label: 'Pravachan', kind: 'header' },
+        { id: 'i-pic', label: 'Welcome.png', kind: 'media' },
+        { id: 'i-p1', label: 'Placeholder p1', kind: 'presentation' },
+      ]);
+      // The playlist changing changes it too.
+      playlists.set('sunday', [
+        {
+          id: 'i-song',
+          kind: 'presentation',
+          presentationId: 'song',
+          arrangementId: undefined,
+          label: 'Placeholder song',
+        },
+      ]);
+      engine.refreshNext();
+      expect(engine.current.upcoming).toEqual([]);
+    });
+
     it('jumps a whole item with next item and previous item', () => {
       const { engine } = sabha();
       expect(engine.dispatch({ type: 'nextItem' })).toMatchObject({ ok: false, error: 'nothing-live' });
@@ -1098,5 +1142,80 @@ describe('ShowEngine', () => {
     engine.dispatch({ type: 'next' });
     const times = transport.messages.map((m) => m.sentAt);
     expect(times[1]).toBeGreaterThan(times[0] ?? Infinity);
+  });
+
+  describe('lengths of the files playing (learned as a window plays them)', () => {
+    function withLengths() {
+      const source = makeSource();
+      const known = new Map<string, number>([['song', 180_000]]);
+      source.set(
+        'cued',
+        [textSlide('c1', 'One'), textSlide('c2', 'Two')],
+        [
+          [
+            {
+              kind: 'background',
+              label: '',
+              name: 'clip.mp4',
+              missing: false,
+              unplayable: null,
+              background: { kind: 'media', mediaId: 'clip', media: 'video', fit: 'fill', loop: true },
+            },
+            {
+              kind: 'audio',
+              label: '',
+              name: 'song.mp3',
+              missing: false,
+              unplayable: null,
+              mediaId: 'song',
+              volume: 1,
+              loop: false,
+            },
+          ],
+          [],
+        ],
+      );
+      const transport = new RecordingTransport();
+      let clock = 1000;
+      const engine = new ShowEngine(source, transport, () => ++clock, undefined, {
+        mediaLength: (id) => known.get(id) ?? null,
+      });
+      return { engine, known, transport };
+    }
+
+    it('come with a file the library knows, and are added when a window learns one', () => {
+      const { engine } = withLengths();
+      engine.dispatch(goLive('cued', 0));
+      expect(engine.current.layers.audio?.durationMs).toBe(180_000);
+      const bg = engine.current.layers.background;
+      expect(bg?.kind === 'media' ? bg.durationMs : 'none').toBeUndefined();
+      const startedAt = bg?.kind === 'media' ? bg.startedAt : 0;
+      expect(engine.learnLength('clip', 42_000)).toMatchObject({ ok: true, changed: true });
+      expect(engine.current.layers.background).toMatchObject({
+        mediaId: 'clip',
+        durationMs: 42_000,
+        startedAt,
+      });
+      // Learning it again, or a file not playing, changes nothing.
+      expect(engine.learnLength('clip', 42_000)).toMatchObject({ changed: false });
+      expect(engine.learnLength('other', 1000)).toMatchObject({ changed: false });
+    });
+
+    it('do not count as a change: Back and Put it back still undo what they would have', () => {
+      const { engine, known } = withLengths();
+      engine.dispatch(goLive('cued', 0));
+      engine.dispatch({ type: 'next' });
+      engine.learnLength('clip', 42_000);
+      known.set('clip', 42_000);
+      // Back undoes the Next exactly, the video's length kept.
+      engine.dispatch({ type: 'back' });
+      expect(engine.current.layers.slide?.slideIndex).toBe(0);
+      expect(engine.current.layers.background).toMatchObject({ durationMs: 42_000 });
+      engine.dispatch({ type: 'clearAll' });
+      engine.learnLength('song', 181_000);
+      expect(engine.current.canPutBack).toBe(true);
+      expect(engine.dispatch({ type: 'putBack' })).toMatchObject({ ok: true });
+      expect(engine.current.layers.slide?.slideIndex).toBe(0);
+    });
   });
 });

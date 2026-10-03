@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { EngineState } from '../../../shared/engine/state';
 import type { Lang } from '../../../shared/model';
-import { DEFAULT_GROUP_LOOK } from '../../../shared/looks';
+import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import { programPicture } from '../../../shared/program';
 import type { Size } from '../../../shared/scaling';
 import type { StreamLayout } from '../../../shared/stream';
@@ -52,7 +52,7 @@ export function ProgramView({
           state={state}
           canvas={canvas}
           scaling="fit"
-          look={{ ...DEFAULT_GROUP_LOOK, languages }}
+          look={{ ...DEFAULT_LIVE_GROUP_LOOK, languages }}
           ticker={false}
         />
       </div>

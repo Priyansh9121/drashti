@@ -1,3 +1,4 @@
+import type { DrashtiBridge } from '../../../shared/bridge';
 import type { CorrectionLimits } from '../../../shared/media';
 import {
   mediaUrl,
@@ -33,6 +34,22 @@ const CHECK_MS = 250;
  * Looping follows the element's `loop`. Returns a function that stops it and
  * lets go of the file.
  */
+/** Files whose length this page has told the main process (once each). */
+const toldLength = new Set<string>();
+
+/**
+ * Tell the main process how long a file is, once per page: a stage screen
+ * shows the time left on the background video or the sound (only the
+ * outputs' and the audio player's reports are kept).
+ */
+function tellLength(mediaId: string, seconds: number): void {
+  // Phones' pages draw with this renderer too, and have no bridge.
+  const bridge = (globalThis as { drashti?: DrashtiBridge }).drashti;
+  if (!bridge || !Number.isFinite(seconds) || seconds <= 0 || toldLength.has(mediaId)) return;
+  toldLength.add(mediaId);
+  void bridge.media.reportLength(mediaId, Math.round(seconds * 1000)).catch(() => undefined);
+}
+
 export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): () => void {
   const { mediaId, startedAt, onFrame, onError, audible = false, limits = PICTURE_LIMITS } = options;
   // How long the last jump took to land: the next one aims that far ahead, so it lands in step.
@@ -61,6 +78,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): ()
     else v.addEventListener('loadeddata', frame, { once: true });
   };
   const onMetadata = () => {
+    tellLength(mediaId, v.duration);
     const at = expected();
     if (at > 0.05) {
       v.addEventListener('seeked', whenFrame, { once: true });

@@ -327,6 +327,7 @@ export class PlaylistRepo {
             id: item.id,
             kind: 'presentation',
             presentationId: item.presentationId,
+            label: item.label,
             arrangementId:
               item.order.mode === 'presentation'
                 ? undefined
@@ -345,7 +346,13 @@ export class PlaylistRepo {
             };
           return { id: item.id, kind: 'media', mediaId: item.mediaId, media: item.media, label: item.label };
         case 'header':
-          return { id: item.id, kind: 'skip', why: 'A header has nothing to show' };
+          return {
+            id: item.id,
+            kind: 'skip',
+            why: 'A header has nothing to show',
+            label: item.label,
+            header: true,
+          };
         case 'placeholder':
           return {
             id: item.id,

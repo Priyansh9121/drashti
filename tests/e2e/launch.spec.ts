@@ -42,10 +42,12 @@ test('the operator window reaches the show engine through the typed bridge', asy
   const win = await operatorPage(app);
   await expect(win.getByTestId('live-text')).toHaveText('Nothing live');
 
+  // The first Look went live as Drashti started: the revision after that is the next one.
+  const { rev } = await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
   const result = await win.evaluate(() =>
     (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'toggleBlackout' }),
   );
-  expect(result).toEqual({ ok: true, changed: true, rev: 1 });
+  expect(result).toEqual({ ok: true, changed: true, rev: rev + 1 });
   await expect(win.getByTestId('blackout-button')).toHaveAttribute('aria-pressed', 'true');
 
   // Invalid input is rejected by the main process, not trusted.

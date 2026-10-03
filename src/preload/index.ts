@@ -172,6 +172,7 @@ const bridge: DrashtiBridge = {
     conversions: () => invoke(IPC.media.conversions),
     onConversions: (listener) => on(IPC.media.conversionsChanged, listener),
     undoConversion: (conversionId) => invoke(IPC.media.undoConversion, conversionId),
+    reportLength: (mediaId, durationMs) => invoke(IPC.media.reportLength, mediaId, durationMs),
   },
   audio: {
     getOutput: () => invoke(IPC.audio.getOutput),
@@ -239,6 +240,12 @@ const bridge: DrashtiBridge = {
       on(IPC.setup.open, () => {
         listener();
       }),
+  },
+  stageLayouts: {
+    list: () => invoke(IPC.stageLayouts.list),
+    onChanged: (listener) => on(IPC.stageLayouts.changed, listener),
+    save: (layoutId, layout) => invoke(IPC.stageLayouts.save, layoutId, layout),
+    remove: (layoutId) => invoke(IPC.stageLayouts.remove, layoutId),
   },
   looks: {
     list: () => invoke(IPC.looks.list),

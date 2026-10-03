@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_GROUP_LOOK, NO_LOOK, readGroupLook, storedGroupLook } from '../../shared/looks';
+import {
+  DEFAULT_GROUP_LOOK,
+  DEFAULT_LIVE_GROUP_LOOK,
+  NO_LOOK,
+  readGroupLook,
+  storedGroupLook,
+} from '../../shared/looks';
 import type { LooksView } from '../../shared/looks';
 import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
 import { openDatabase } from '../db/database';
@@ -34,11 +40,14 @@ function setup(options: { simple?: boolean } = {}) {
 describe('a group’s settings in a Look', () => {
   it('store only what differs from the defaults, and read anything damaged as the default', () => {
     expect(storedGroupLook(DEFAULT_GROUP_LOOK)).toEqual({});
-    expect(storedGroupLook({ layers: ['slide', 'props'], languages: ['gu'], slides: 'lowerThird' })).toEqual({
-      layers: ['slide', 'props'],
-      languages: ['gu'],
-      slides: 'lowerThird',
-    });
+    expect(
+      storedGroupLook({
+        layers: ['slide', 'props'],
+        languages: ['gu'],
+        slides: 'lowerThird',
+        stageLayoutId: 'l1',
+      }),
+    ).toEqual({ layers: ['slide', 'props'], languages: ['gu'], slides: 'lowerThird', stageLayoutId: 'l1' });
     expect(readGroupLook(undefined)).toEqual(DEFAULT_GROUP_LOOK);
     expect(
       readGroupLook({ layers: ['props', 'slide'], languages: ['gu', 'gu'], slides: 'sideways' }),
@@ -47,6 +56,7 @@ describe('a group’s settings in a Look', () => {
       layers: ['slide', 'props'],
       languages: null,
       slides: 'designed',
+      stageLayoutId: null,
     });
   });
 });
@@ -57,7 +67,7 @@ describe('Looks', () => {
     expect(t.engine.current.look).toEqual({
       id: t.standard,
       name: 'Standard',
-      groups: { [t.hall]: DEFAULT_GROUP_LOOK, [t.stage]: DEFAULT_GROUP_LOOK },
+      groups: { [t.hall]: DEFAULT_LIVE_GROUP_LOOK, [t.stage]: DEFAULT_LIVE_GROUP_LOOK },
     });
     expect(t.looks.view()).toMatchObject({ liveId: t.standard, looks: [{ name: 'Standard' }] });
   });
@@ -74,8 +84,13 @@ describe('Looks', () => {
     expect(t.engine.dispatch({ type: 'setLook', lookId: lower })).toMatchObject({ ok: true, changed: true });
     expect(t.transport.messages.length).toBe(before + 1);
     expect(t.engine.current.look.groups).toEqual({
-      [t.hall]: { layers: ['slide', 'props', 'messages'], languages: null, slides: 'lowerThird' },
-      [t.stage]: { ...DEFAULT_GROUP_LOOK, languages: ['gu'] },
+      [t.hall]: {
+        layers: ['slide', 'props', 'messages'],
+        languages: null,
+        slides: 'lowerThird',
+        stageLayout: null,
+      },
+      [t.stage]: { ...DEFAULT_LIVE_GROUP_LOOK, languages: ['gu'] },
     });
     // A Look that is gone cannot go live.
     expect(t.engine.dispatch({ type: 'setLook', lookId: 'gone' })).toMatchObject({

@@ -7,7 +7,7 @@ import { connectEngine, useEngine } from '../engine/engine-store';
 import { preloadFonts } from '../render/fonts';
 import { PlacedInParent } from '../render/Placed';
 import { Scene } from '../render/Scene';
-import { StageView } from '../render/StageView';
+import { StageScreen } from '../render/StageScreen';
 import { connectOutput, useOutput } from './output-store';
 import { Preloader } from './Preloader';
 import { DisplayNumber, TestCard } from './SetupCards';
@@ -98,7 +98,7 @@ function Output() {
       {state && fontsReady && (
         <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
           {stage ? (
-            <StageView state={state} languages={look.languages} />
+            <StageScreen state={state} look={look} canvas={canvas} />
           ) : (
             <Scene state={state} canvas={canvas} scaling={scaling} look={look} />
           )}

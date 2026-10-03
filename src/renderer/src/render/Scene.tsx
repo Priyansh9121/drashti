@@ -7,7 +7,7 @@ import type {
   TickerLayer,
 } from '../../../shared/engine/state';
 import type { LiveGroupLook, LookLayer } from '../../../shared/looks';
-import { DEFAULT_GROUP_LOOK } from '../../../shared/looks';
+import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import type { TimerState } from '../../../shared/timers';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
@@ -277,7 +277,7 @@ export const Scene = memo(function Scene({
   canvas,
   scaling,
   annotate = false,
-  look = DEFAULT_GROUP_LOOK,
+  look = DEFAULT_LIVE_GROUP_LOOK,
   ticker = true,
 }: {
   state: EngineState;

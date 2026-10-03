@@ -11,9 +11,16 @@ import { Select, TextInput } from '../ui/Field';
 import { ArrowLeft, ArrowRight, CopyPlus, Plus, Trash2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
-import { Tabs } from '../ui/Tabs';
+import { cx } from '../ui/cx';
 import { Checkbox } from '../ui/Toggle';
 import { LanguagePicker } from './LanguagePicker';
+import {
+  connectStageLayouts,
+  openStageLayouts,
+  STANDARD,
+  useStageLayouts,
+} from '../stage/stage-layouts-store';
+import { LayoutTemplate } from '../ui/icons';
 
 /*
  * Looks in Screens: the list (the first is the one Drashti starts with), the
@@ -73,24 +80,29 @@ export function LooksSection({
         window. The first Look is the one Drashti starts with. The groups below show their settings in the
         Look chosen here.
       </p>
-      <Tabs
-        group="looks"
-        label="The Look whose settings are shown"
-        size="sm"
-        className="flex-wrap"
-        items={list.map((l) => ({
-          id: l.id,
-          label: l.name,
-          extra:
-            l.id === liveId ? (
-              <Badge tone="live" className="ml-1">
-                Live
-              </Badge>
-            ) : undefined,
-        }))}
-        value={lookId}
-        onChange={onChoose}
-      />
+      <div role="group" aria-label="The Look whose settings are shown" className="flex flex-wrap gap-1">
+        {list.map((l) => {
+          const on = l.id === lookId;
+          return (
+            <button
+              key={l.id}
+              type="button"
+              aria-pressed={on}
+              data-testid="look-choice"
+              onClick={() => {
+                onChoose(l.id);
+              }}
+              className={cx(
+                'inline-flex h-7 max-w-full items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors',
+                on ? 'bg-panel-3 text-fg' : 'text-muted hover:bg-panel hover:text-fg',
+              )}
+            >
+              <span className="truncate">{l.name}</span>
+              {l.id === liveId && <Badge tone="live">Live</Badge>}
+            </button>
+          );
+        })}
+      </div>
       {error && <Notice tone="danger">{error}</Notice>}
       <div className="flex flex-wrap items-center gap-2">
         <TextInput
@@ -182,6 +194,7 @@ export function GroupLookSettings({
   groupId: string;
   role: ScreenRole;
 }) {
+  const layouts = useStageLayouts((s) => s.layouts);
   const settings: GroupLook | undefined = look.groups[groupId];
   if (!settings) return null;
   const set = (patch: Partial<GroupLook>) => void lookAction(() => looks().setGroup(look.id, groupId, patch));
@@ -233,6 +246,39 @@ export function GroupLookSettings({
             </Select>
           </label>
         </>
+      )}
+      {role === 'stage' && (
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex flex-wrap items-center gap-2 text-xs text-muted">
+            Stage layout
+            <Select
+              aria-label="Stage layout"
+              data-testid="look-stage-layout"
+              value={settings.stageLayoutId ?? STANDARD}
+              onFocus={connectStageLayouts}
+              onChange={(e) => {
+                set({ stageLayoutId: e.target.value === STANDARD ? null : e.target.value });
+              }}
+            >
+              <option value={STANDARD}>Standard</option>
+              {(layouts ?? []).map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <Button
+            size="sm"
+            icon={LayoutTemplate}
+            data-testid="edit-stage-layouts"
+            onClick={() => {
+              openStageLayouts(settings.stageLayoutId ?? STANDARD);
+            }}
+          >
+            Edit stage layouts…
+          </Button>
+        </div>
       )}
       <LanguagePicker
         label={

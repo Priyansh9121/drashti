@@ -115,6 +115,8 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
     }
     case 'next/set':
       return sameData(state.next, action.next) ? state : { ...state, next: action.next };
+    case 'upcoming/set':
+      return sameData(state.upcoming, action.upcoming) ? state : { ...state, upcoming: action.upcoming };
     case 'stage/message':
       return state.stageMessage === action.text ? state : { ...state, stageMessage: action.text };
     case 'timers/define': {

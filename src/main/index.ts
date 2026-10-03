@@ -58,6 +58,8 @@ import { DbSlideSource, PresentationRepo } from './db/presentations';
 import { ScreenRepo } from './db/screens';
 import { LookRepo } from './db/looks';
 import { LookService } from './looks/look-service';
+import { StageLayoutRepo } from './db/stage-layouts';
+import { StageLayoutService } from './stage/stage-layout-service';
 import { seedPlaceholders, seedTemplates } from './db/seed';
 import { ShowEngine } from './engine/show-engine';
 import { runEngineCommand } from './ipc/engine-ipc';
@@ -490,6 +492,8 @@ function start(): void {
   let lookService: LookService | null = null;
   /** Simple Mode is on (set once the mode is read, further down). */
   let simpleNow = () => false;
+  /** A media file's length, once learned from playing it (the media repo, made further down). */
+  let mediaLength: (mediaId: string) => number | null = () => null;
   const engine = new ShowEngine(
     slides,
     new FanoutTransport([transport, networkTransport]),
@@ -504,10 +508,13 @@ function start(): void {
       // Simple Mode keeps the live Look: switching it is refused from the window, a phone or the API.
       refuse: (command) =>
         simpleNow() && SIMPLE_MODE_REFUSED_COMMANDS.includes(command.type) ? SIMPLE_MODE_REFUSAL : null,
+      mediaLength: (mediaId) => mediaLength(mediaId),
     },
   );
+  const stageLayoutRepo = new StageLayoutRepo(db);
   const looks = new LookService({
     repo: lookRepo,
+    stageLayout: (id) => stageLayoutRepo.get(id),
     engine,
     changed: (view) => {
       if (operatorWindow && !operatorWindow.isDestroyed())
@@ -529,6 +536,7 @@ function start(): void {
   const mediaDir = join(userDataDir, 'Media');
   mkdirSync(mediaDir, { recursive: true });
   const media = new MediaRepo(db);
+  mediaLength = (mediaId) => media.lengthOf(mediaId);
   const serveMedia = async (request: Request) => {
     if (mediaDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, mediaDelayMs));
     return handleMediaRequest(request, {
@@ -1405,10 +1413,48 @@ function start(): void {
   handle(IPC.audio.setOutput, (e, device) =>
     fromOperator(e) ? audioOutput.choose(device) : audioOutput.status,
   );
+  // A window playing a video or sound says how long it is: kept, and the layer playing it says so.
+  const lengthSchema = z
+    .number()
+    .positive()
+    .max(24 * 3600 * 1000);
+  handle(IPC.media.reportLength, (e, mediaId, durationMs) => {
+    const player = manager.screenIdFor(e.sender.id) !== undefined || fromAudioPlayer(e);
+    const ms = lengthSchema.safeParse(durationMs);
+    if (!player || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId) || !ms.success) return null;
+    const rounded = Math.round(ms.data);
+    media.setLength(mediaId, rounded);
+    engine.learnLength(mediaId, rounded);
+    return null;
+  });
   handle(IPC.audio.reportDevices, (e, devices, state) => {
     if (fromAudioPlayer(e)) audioOutput.report(devices, state);
     return null;
   });
+  // ---- stage layouts (a stage group gets one through the live Look) ----------------------------------
+  const stageLayouts = new StageLayoutService({
+    repo: stageLayoutRepo,
+    forgetInLooks: (id) => {
+      lookRepo.forgetStageLayout(id);
+    },
+    changed: (layouts) => {
+      sendToOperator(IPC.stageLayouts.changed, layouts);
+      looks.layoutsChanged();
+    },
+    log: (message) => {
+      log.info(message);
+    },
+  });
+  const notLayoutOperator = {
+    ok: false as const,
+    message: 'Only the operator window can change stage layouts.',
+  };
+  handle(IPC.stageLayouts.list, () => stageLayouts.list());
+  handle(IPC.stageLayouts.save, (e, id, layout) =>
+    fromOperator(e) ? stageLayouts.save(id, layout) : notLayoutOperator,
+  );
+  handle(IPC.stageLayouts.remove, (e, id) => (fromOperator(e) ? stageLayouts.remove(id) : notLayoutOperator));
+
   // ---- Looks (switching the live one is the engine's setLook) ---------------------------------
   const notLookOperator = { ok: false as const, message: 'Only the operator window can change the Looks.' };
   handle(IPC.looks.list, () => looks.view());
