@@ -34,7 +34,16 @@ import {
   snapResize,
   unionOf,
 } from './geometry';
-import { deleteElements, duplicateElements, findSlide, mapElements, moveElements } from './ops';
+import {
+  deleteElements,
+  duplicateElements,
+  findSlide,
+  mapElements,
+  moveElements,
+  rotateElements,
+  scaleElements,
+} from './ops';
+import { copyElements, pasteElements } from './clipboard';
 import { finishTextEditing, TextBoxEditor } from './TextBoxEditor';
 
 /*
@@ -42,7 +51,10 @@ import { finishTextEditing, TextBoxEditor } from './TextBoxEditor';
  * screens. Click to select (Shift adds), drag to move (snapping to the
  * slide's edges and middle and to other elements; hold Alt to place freely),
  * drag a handle to resize or the round handle to turn, drag on the empty
- * slide to select several. Double-click (or Enter) a text box to type in it.
+ * slide to select several. Several selected have one box round them: its
+ * handles resize them together (snapping too) and its round handle turns
+ * them together, each step one Undo. Copy, Cut and Paste (the Edit menu's)
+ * copy elements between slides and presentations (clipboard.ts). Double-click (or Enter) a text box to type in it.
  * From the keyboard: Tab chooses the next element, the arrows move it (Shift
  * ten at a time), Delete removes it.
  */
@@ -77,7 +89,14 @@ type Drag =
       keepRatio: boolean;
     }
   | { kind: 'rotate'; id: string; startDoc: EditDoc; frame: Rect }
+  /** Several elements resized together by the box round them. */
+  | { kind: 'groupResize'; ids: string[]; handle: Handle; startDoc: EditDoc; box: Rect; lines: SnapLines }
+  /** Several elements turned together round the middle of the box round them. */
+  | { kind: 'groupRotate'; ids: string[]; startDoc: EditDoc; center: Point; from: number }
   | { kind: 'marquee'; start: Point; base: string[] };
+
+/** The angle (degrees) from `c` to `p`. */
+const angleOf = (c: Point, p: Point) => (Math.atan2(p.y - c.y, p.x - c.x) * 180) / Math.PI;
 
 const KIND_NAME: Record<SlideElement['kind'], string> = {
   text: 'Text box',
@@ -120,6 +139,7 @@ export function Canvas({ platform }: { platform: string }) {
   const [guides, setGuides] = useState<Guides | null>(null);
   const [marquee, setMarquee] = useState<Rect | null>(null);
   const [editAt, setEditAt] = useState<Point | null>(null);
+  const pastedInPlaceAt = useRef(0);
   const slide = doc ? findSlide(doc, slideId) : undefined;
   if (!doc || !slide) return <div ref={area} className="min-w-0 flex-1 bg-ink" />;
 
@@ -160,6 +180,31 @@ export function Canvas({ platform }: { platform: string }) {
     stage.current?.focus();
     const now = useEditor.getState();
     if (!now.doc) return;
+    if (handle && selected.length > 1) {
+      // Several elements: resized or turned together by the box round them.
+      e.currentTarget.setPointerCapture(e.pointerId);
+      const ids = selected.map((el) => el.id);
+      const box = unionOf(selected.map((el) => boundsOf(el))) ?? { x: 0, y: 0, width: 0, height: 0 };
+      drag.current =
+        handle === 'rotate'
+          ? {
+              kind: 'groupRotate',
+              ids,
+              startDoc: now.doc,
+              center: centerOf(box),
+              from: angleOf(centerOf(box), p),
+            }
+          : {
+              kind: 'groupResize',
+              ids,
+              handle: handle as Handle,
+              startDoc: now.doc,
+              box,
+              lines: linesWithout(ids),
+            };
+      beginGesture();
+      return;
+    }
     if (handle && single) {
       e.currentTarget.setPointerCapture(e.pointerId);
       if (handle === 'rotate') {
@@ -244,6 +289,24 @@ export function Canvas({ platform }: { platform: string }) {
       };
       updateGesture(mapElements(d.startDoc, slide.id, [d.id], (el) => ({ ...el, frame: next })));
       setGuides(shown);
+    } else if (d.kind === 'groupResize') {
+      let box = resizeFrame({ frame: d.box }, d.handle, p, { keepRatio: e.shiftKey, min: 8 });
+      let shown: Guides | null = null;
+      if (!free && !e.shiftKey) {
+        const snapped = snapResize(box, d.handle, d.lines, within);
+        box = snapped.frame;
+        shown = snapped.guides.x.length || snapped.guides.y.length ? snapped.guides : null;
+      }
+      updateGesture(scaleElements(d.startDoc, slide.id, d.ids, d.box, box));
+      setGuides(shown);
+    } else if (d.kind === 'groupRotate') {
+      let degrees = angleOf(d.center, p) - d.from;
+      if (e.shiftKey) degrees = Math.round(degrees / 15) * 15;
+      else if (!free) {
+        const quarter = Math.round(degrees / 90) * 90;
+        if (Math.abs(degrees - quarter) <= 3) degrees = quarter;
+      }
+      updateGesture(rotateElements(d.startDoc, slide.id, d.ids, d.center, degrees));
     } else if (d.kind === 'rotate') {
       const rotation = rotationToward(d.frame, p, { step: e.shiftKey, snapWithin: free ? 0 : 3 });
       updateGesture(
@@ -350,7 +413,46 @@ export function Canvas({ platform }: { platform: string }) {
       e.preventDefault();
       const copied = duplicateElements(now.doc, slide.id, selection);
       commit(copied.doc, { select: copied.ids });
+      return;
     }
+    // Paste in place (Mod+Shift+V): exactly where they were. (Mod+V comes as the window's paste.)
+    if (mod && e.shiftKey && e.key.toLowerCase() === 'v') {
+      e.preventDefault();
+      pastedInPlaceAt.current = e.timeStamp;
+      paste(true);
+    }
+  };
+
+  /** Paste what was copied onto this slide (one step for Undo); the pasted elements are selected. */
+  const paste = (inPlace: boolean) => {
+    const now = useEditor.getState();
+    if (!now.doc || now.editing) return;
+    const pasted = pasteElements(now.doc, slide.id, { inPlace });
+    if (pasted) commit(pasted.doc, { select: pasted.ids });
+  };
+  // The window's Copy, Cut and Paste (the Edit menu and its keys) while the slide has the focus.
+  const onCopy = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    if (editing || e.target !== e.currentTarget || selection.length === 0) return;
+    const now = useEditor.getState();
+    if (!now.doc) return;
+    e.preventDefault();
+    const n = copyElements(now.doc, slide.id, selection);
+    tell(n === 1 ? 'Copied 1 element.' : `Copied ${n} elements.`);
+  };
+  const onCut = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    if (editing || e.target !== e.currentTarget || selection.length === 0) return;
+    const now = useEditor.getState();
+    if (!now.doc) return;
+    e.preventDefault();
+    copyElements(now.doc, slide.id, selection);
+    commit(deleteElements(now.doc, slide.id, selection), { select: [] });
+  };
+  const onPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    if (editing || e.target !== e.currentTarget) return;
+    e.preventDefault();
+    // Mod+Shift+V can also come as a paste: it was handled as Paste in place.
+    if (e.timeStamp - pastedInPlaceAt.current < 300) return;
+    paste(false);
   };
 
   const status =
@@ -370,7 +472,7 @@ export function Canvas({ platform }: { platform: string }) {
         ref={stage}
         role="application"
         aria-roledescription="slide"
-        aria-label="The slide. Tab chooses the next element, the arrow keys move it (Shift for ten pixels), Enter types in a text box, Delete removes."
+        aria-label="The slide. Tab chooses the next element, the arrow keys move it (Shift for ten pixels), Enter types in a text box, Delete removes. Copy, Cut and Paste work on elements; Shift with Paste puts them exactly where they were."
         aria-describedby="editor-canvas-status"
         tabIndex={0}
         data-testid="editor-canvas"
@@ -383,6 +485,9 @@ export function Canvas({ platform }: { platform: string }) {
         onPointerCancel={onPointerUp}
         onDoubleClick={onDoubleClick}
         onKeyDown={onKeyDown}
+        onCopy={onCopy}
+        onCut={onCut}
+        onPaste={onPaste}
       >
         <div
           style={{
@@ -415,6 +520,7 @@ export function Canvas({ platform }: { platform: string }) {
             )}
           </div>
           <Selection elements={selected} scale={scale} handles={!editing && single !== undefined} />
+          {!editing && selected.length > 1 && <GroupBox elements={selected} scale={scale} />}
           {guides && <GuideLines guides={guides} doc={doc} scale={scale} />}
           {marquee && (
             <div
@@ -550,6 +656,75 @@ function Selection({
         );
       })}
     </>
+  );
+}
+
+/** The box round several selected elements, with handles to resize and turn them together. */
+function GroupBox({ elements, scale }: { elements: SlideElement[]; scale: number }) {
+  const box = unionOf(elements.map((el) => boundsOf(el)));
+  if (!box) return null;
+  const px = 1 / scale;
+  const size = HANDLE_PX * px;
+  return (
+    <div
+      data-testid="group-box"
+      style={{
+        position: 'absolute',
+        left: box.x,
+        top: box.y,
+        width: box.width,
+        height: box.height,
+        outline: `${px}px dashed var(--color-accent)`,
+        pointerEvents: 'none',
+      }}
+    >
+      {HANDLES.map((h) => (
+        <span
+          key={h}
+          data-handle={h}
+          data-testid={`group-handle-${h}`}
+          style={{
+            position: 'absolute',
+            left: HANDLE_AT[h].x * box.width - size / 2,
+            top: HANDLE_AT[h].y * box.height - size / 2,
+            width: size,
+            height: size,
+            background: '#ffffff',
+            border: `${px}px solid var(--color-accent-strong)`,
+            borderRadius: 2 * px,
+            cursor: CURSOR[h],
+            pointerEvents: 'auto',
+          }}
+        />
+      ))}
+      <span
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          left: box.width / 2 - px / 2,
+          top: -28 * px,
+          width: px,
+          height: 28 * px,
+          background: 'var(--color-accent)',
+        }}
+      />
+      <span
+        data-handle="rotate"
+        data-testid="group-handle-rotate"
+        style={{
+          position: 'absolute',
+          left: box.width / 2 - (size * 1.3) / 2,
+          top: -28 * px - (size * 1.3) / 2,
+          width: size * 1.3,
+          height: size * 1.3,
+          borderRadius: '50%',
+          background: '#ffffff',
+          border: `${px}px solid var(--color-accent-strong)`,
+          cursor: 'grab',
+          pointerEvents: 'auto',
+        }}
+      />
+    </div>
   );
 }
 

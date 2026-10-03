@@ -1,5 +1,6 @@
 import type {
   Lang,
+  Rect,
   MediaElement,
   Outline,
   ShapeElement,
@@ -12,7 +13,7 @@ import type {
 } from '../../../shared/model';
 import type { EditDoc, EditSlide, SlideLook } from '../../../shared/slide-edit';
 import { mainLang } from '../../../shared/text-runs';
-import { boundsOf, type Point } from './geometry';
+import { boundsOf, centerOf, normalizeAngle, type Point, rotatePoint } from './geometry';
 
 /*
  * What the slide editor does to its document, as pure functions: each
@@ -68,6 +69,56 @@ export function moveEach(doc: EditDoc, slideId: string, moves: ReadonlyMap<strin
   return mapElements(doc, slideId, [...moves.keys()], (el) => {
     const d = moves.get(el.id) ?? { x: 0, y: 0 };
     return { ...el, frame: { ...el.frame, x: round(el.frame.x + d.x), y: round(el.frame.y + d.y) } };
+  });
+}
+
+/**
+ * Several elements resized together: the box round them (`from`) becomes
+ * `to`, and each keeps its place in it, its middle moving and its size
+ * scaled with the box (words keep their size; a turned element keeps its turn).
+ */
+export function scaleElements(
+  doc: EditDoc,
+  slideId: string,
+  ids: readonly string[],
+  from: Rect,
+  to: Rect,
+): EditDoc {
+  const sx = from.width > 0 ? to.width / from.width : 1;
+  const sy = from.height > 0 ? to.height / from.height : 1;
+  return mapElements(doc, slideId, ids, (el) => {
+    const c = centerOf(el.frame);
+    const middle = { x: to.x + (c.x - from.x) * sx, y: to.y + (c.y - from.y) * sy };
+    // A frame a quarter turn round stretches the other way.
+    const turned = Math.round(normalizeAngle(el.rotation ?? 0) / 90) % 2 === 1;
+    const width = Math.max(1, el.frame.width * (turned ? sy : sx));
+    const height = Math.max(1, el.frame.height * (turned ? sx : sy));
+    return {
+      ...el,
+      frame: {
+        x: round(middle.x - width / 2),
+        y: round(middle.y - height / 2),
+        width: round(width),
+        height: round(height),
+      },
+    };
+  });
+}
+
+/** Several elements turned together round `center`: each moves round it and turns by `degrees`. */
+export function rotateElements(
+  doc: EditDoc,
+  slideId: string,
+  ids: readonly string[],
+  center: Point,
+  degrees: number,
+): EditDoc {
+  return mapElements(doc, slideId, ids, (el) => {
+    const c = rotatePoint(centerOf(el.frame), center, degrees);
+    const turn = round(normalizeAngle((el.rotation ?? 0) + degrees));
+    const { rotation: _old, ...rest } = el;
+    const frame = { ...el.frame, x: round(c.x - el.frame.width / 2), y: round(c.y - el.frame.height / 2) };
+    return turn === 0 || turn === 360 ? { ...rest, frame } : { ...rest, frame, rotation: turn };
   });
 }
 
