@@ -300,8 +300,9 @@ export function AnnouncePage() {
         <Button
           type="submit"
           variant="primary"
+          size="xl"
           disabled={busy || start !== 'ready'}
-          className="h-14 w-full text-lg"
+          className="w-full"
           data-testid="announce-send"
         >
           {busy ? 'Sending…' : 'Send'}

@@ -108,7 +108,7 @@ export function PairPage() {
               {problem}
             </p>
           )}
-          <Button type="submit" variant="primary" disabled={busy} className="h-14 w-full text-lg">
+          <Button type="submit" variant="primary" size="xl" disabled={busy} className="w-full">
             {busy ? 'Pairing…' : 'Pair'}
           </Button>
         </form>

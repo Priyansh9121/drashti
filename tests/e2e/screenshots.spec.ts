@@ -30,8 +30,11 @@ test.skip(QUIET, 'Screenshots need real windows: take them on CI (or with DRASHT
 
 const folder = join(__dirname, '..', '..', 'docs', 'screenshots');
 
-/** A picture of the page; `hide` covers parts that must not be kept (a pairing code and its QR code). */
-async function shot(page: Page, name: string, hide: Locator[] = []) {
+/**
+ * A picture of the page; `hide` covers parts that must not be kept (a pairing
+ * code and its QR code); `whole` takes all of a page that scrolls.
+ */
+async function shot(page: Page, name: string, hide: Locator[] = [], whole = false) {
   mkdirSync(folder, { recursive: true });
   // Let thumbnails and still frames settle.
   await page.waitForTimeout(700);
@@ -40,6 +43,7 @@ async function shot(page: Page, name: string, hide: Locator[] = []) {
     scale: 'css',
     mask: hide,
     maskColor: '#2a2f3a',
+    fullPage: whole,
   });
 }
 
@@ -447,7 +451,7 @@ test('the local network: the Phones panel, announcements, the ticker, and the pa
     await shot(stage.page, 'tablet-stage-display');
     await sender.page.reload();
     await expect(sender.page.getByTestId('announce-sent')).toHaveCount(3);
-    await shot(sender.page, 'phone-announce');
+    await shot(sender.page, 'phone-announce', [], true);
     await fresh.page.goto(`${base}/pair`);
     await expect(fresh.page.getByTestId('pair-code')).toBeVisible();
     await shot(fresh.page, 'phone-pair');
