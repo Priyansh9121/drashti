@@ -142,7 +142,10 @@ test('skipping every step, or closing, changes nothing; it opens again from the 
     await d.screens.setGroupLanguages(g?.id ?? '', ['gu']);
   });
   const before = await groupsOf(win);
-  const soundBefore = await win.evaluate(() => (globalThis as PageGlobals).drashti.audio.getOutput());
+  // The sound as it is once the audio player has looked at the outputs (it reports them after a moment).
+  const soundOutput = () => win.evaluate(() => (globalThis as PageGlobals).drashti.audio.getOutput());
+  await expect.poll(async () => (await soundOutput()).checked).toBe(true);
+  const soundBefore = await soundOutput();
 
   await fromMenu(app);
   const wizard = win.getByTestId('setup-wizard');
@@ -159,9 +162,7 @@ test('skipping every step, or closing, changes nothing; it opens again from the 
   await wizard.getByTestId('setup-finish').click();
   await expect(wizard.getByTestId('setup-done')).toBeVisible();
   expect(await groupsOf(win)).toEqual(before);
-  expect(await win.evaluate(() => (globalThis as PageGlobals).drashti.audio.getOutput())).toEqual(
-    soundBefore,
-  );
+  expect(await soundOutput()).toEqual(soundBefore);
   await wizard.getByRole('button', { name: 'Close', exact: true }).click();
 
   // Choices made, then closed: still nothing changes.
