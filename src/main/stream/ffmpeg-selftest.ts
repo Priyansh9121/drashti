@@ -34,14 +34,22 @@ function run(path: string, args: string[]): Promise<string> {
   });
 }
 
-export async function ffmpegSelfTest(path: string | null, platform: NodeJS.Platform): Promise<FfmpegSelfTestResult> {
+export async function ffmpegSelfTest(
+  path: string | null,
+  platform: NodeJS.Platform,
+): Promise<FfmpegSelfTestResult> {
   if (!path) return { passed: false, path, version: null, rtmps: false, encoders: [], chosen: null };
-  const version = (await run(path, ['-hide_banner', '-version'])).split('\n')[0]?.trim() || null;
+  const firstLine = (await run(path, ['-hide_banner', '-version'])).split('\n')[0]?.trim() ?? '';
+  const version = firstLine === '' ? null : firstLine;
   const protocols = await run(path, ['-hide_banner', '-protocols']);
   const rtmps = /^\s*rtmps\s*$/mu.test(protocols);
   const encoders = [];
   for (const c of encoderCandidates(platform))
-    encoders.push({ name: c.name, label: c.label, works: await tryEncoder(path, c.name, STREAM_PRESETS.weak) });
+    encoders.push({
+      name: c.name,
+      label: c.label,
+      works: await tryEncoder(path, c.name, STREAM_PRESETS.weak),
+    });
   const chosen = encoders.find((e) => e.works)?.label ?? null;
   return { passed: version !== null && rtmps && chosen !== null, path, version, rtmps, encoders, chosen };
 }
