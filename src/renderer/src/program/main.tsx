@@ -46,10 +46,6 @@ function Program() {
       setFontsReady(true);
       connectEngine();
     });
-    startCapture(
-      () => sound.level(),
-      () => sound.track(),
-    );
     void listDevices();
     navigator.mediaDevices.addEventListener('devicechange', () => {
       void listDevices().then(() => {
@@ -92,6 +88,14 @@ function Program() {
     </div>
   );
 }
+
+// Listen for the preview's and the encoder's ports before anything else: the main process sends
+// them as soon as the page has loaded, which can be before React has run its effects (a port
+// that arrives with no one listening is lost, and the stream would wait for frames for ever).
+startCapture(
+  () => sound.level(),
+  () => sound.track(),
+);
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');

@@ -77,6 +77,8 @@ const FOLDER_SETTING = 'stream.recordingFolder';
 export const KEEP_FREE_BYTES = 2 * 1024 ** 3;
 /** After an unexpected stop, Drashti goes live again by itself only if it starts again this soon. */
 export const RESUME_WITHIN_MS = 5 * 60 * 1000;
+/** No picture from the stream's page for this long, while wanted: it is given its port again (then 10 s, 20 s... to 1 min). */
+const NO_PICTURE_MS = 5000;
 export const FFMPEG_VERSION = '9.0.2';
 const FFMPEG_MISSING =
   'Drashti’s copy of FFmpeg is missing, so it cannot stream or record. Install Drashti again (or, from the repository, run node scripts/fetch-ffmpeg.mjs).';
@@ -108,6 +110,8 @@ const inputsSchema = z.object({
 export class StreamService {
   private program: BrowserWindow | null = null;
   private programReady = false;
+  /** When the stream's page last got the encoder's port, and how often since without a picture. */
+  private encoderPaired = { at: 0, tries: 0 };
   private readonly watchers = new Map<number, WebContents>();
   private inputs: ProgramInputs = NO_INPUTS;
   private layout: StreamLayout;
@@ -551,7 +555,28 @@ export class StreamService {
     const { port1, port2 } = new MessageChannelMain();
     worker.sendFrames(port1);
     program.webContents.postMessage(IPC.stream.port, { role: 'encoder' }, [port2]);
+    this.encoderPaired.at = this.deps.now();
     this.contextChanged();
+  }
+
+  /**
+   * Live or recording, the encoder chosen, but no picture: the page's port went astray (or its capture
+   * failed). Give it a new one, waiting longer each time, so a capture that keeps failing is not
+   * flooded; a picture resets the wait.
+   */
+  private checkPicture(status: WorkerStatus): void {
+    if (status.encoding || !this.inUse() || !status.encoder || status.error || !this.programReady) {
+      if (status.encoding) this.encoderPaired.tries = 0;
+      return;
+    }
+    const wait = Math.min(60_000, NO_PICTURE_MS * 2 ** this.encoderPaired.tries);
+    if (this.deps.now() - this.encoderPaired.at < wait) return;
+    this.encoderPaired.tries++;
+    this.deps.log(
+      'warn',
+      `The stream has had no picture from its page for ${wait / 1000} s: connecting it again`,
+    );
+    this.pairEncoder();
   }
 
   /** Stop the worker when neither live nor recording is wanted. */
@@ -612,6 +637,7 @@ export class StreamService {
     this.saveState();
     this.changed();
     if (!this.inUse()) this.settleWorker();
+    else this.checkPicture(status);
   }
 
   goLive(): StreamResult {
