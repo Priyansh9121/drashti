@@ -116,3 +116,32 @@ body.output {
   overflow: hidden;
   cursor: none;
 }
+
+/* Pages for phones and tablets on the network: they scroll as a page does, clear of notches. */
+body.web {
+  overflow-y: auto;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Printing the announcements poster: only the poster, large, black on white. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-poster,
+  .print-poster * {
+    visibility: visible;
+  }
+  .print-poster {
+    position: fixed;
+    inset: 0;
+    border: none;
+    background: #ffffff;
+    color: #000000;
+  }
+  .print-poster button {
+    display: none;
+  }
+}

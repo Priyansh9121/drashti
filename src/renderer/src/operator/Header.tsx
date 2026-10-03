@@ -2,7 +2,9 @@ import type { ReactNode } from 'react';
 import { shortcutText } from '../../../shared/keymap';
 import { openThemes } from '../themes/themes-store';
 import { Button } from '../ui/Button';
-import { LayoutGrid, Monitor, Palette, Radio } from '../ui/icons';
+import { LayoutGrid, Monitor, Palette, Radio, Smartphone } from '../ui/icons';
+import { NetworkBadge } from '../network/NetworkBadge';
+import { openNetwork } from '../network/network-store';
 import { OnAirBadges } from '../stream/OnAirBadges';
 import { openStreamPanel } from '../stream/stream-store';
 import { enterSimpleMode } from './mode-store';
@@ -27,6 +29,7 @@ export function Header({
     >
       <h1 className="shrink-0 text-base font-bold tracking-wide">Drashti</h1>
       <OnAirBadges />
+      <NetworkBadge />
       <div className="min-w-0 flex-1">
         <LiveStatus />
       </div>
@@ -37,6 +40,14 @@ export function Header({
         <Tooltip content="The stream to YouTube, and recording" side="bottom">
           <Button variant="ghost" icon={Radio} onClick={openStreamPanel} data-testid="open-stream">
             Stream
+          </Button>
+        </Tooltip>
+        <Tooltip
+          content="Phones and tablets on this Wi-Fi: a remote, a stage screen, announcements"
+          side="bottom"
+        >
+          <Button variant="ghost" icon={Smartphone} onClick={openNetwork} data-testid="open-network">
+            Phones
           </Button>
         </Tooltip>
         <Tooltip content="Screens and sound" kbd={shortcutText('openScreens', platform)} side="bottom">

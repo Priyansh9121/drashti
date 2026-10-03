@@ -170,3 +170,11 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **The import report** says the same in an `info` notice, with **Convert all**, and each file's row has its own **Convert**, then its progress, then "Converted: <copy>" in `success-fg` text.
 - **The copy is an ordinary row of its own**, next to the original (the same name, another extension). Undo goes on the one Undo stack, "Converted <file>".
 - It fits at 1280 × 720 (`tests/e2e/convert.spec.ts`), and the screenshots are `docs/screenshots/convert-*.png`.
+
+## 16. Phones and tablets
+
+- **The network says it is on, always.** While it is on, the header (and Simple Mode) carries "Network on · N devices" in a quiet badge of its own (an outlined accent, never the live red or the on-air violet), with a warning look when it is not listening.
+- **The Phones panel is a sheet on the right**, like Screens and Stream: a large switch, the addresses in a monospace font a volunteer can read out, pairing, the devices, the poster. Pairing shows a QR code (black on white with a quiet border, so every camera reads it, in a dark room too) beside the six-digit code in large monospace type, grouped "123 456", and the time it has left.
+- **Removing a device asks first**, and says it is cut off at once.
+- **Pages on phones are phone-first**: the design system's dark look, 16 px or larger type, touch targets at least 44 px, everything in one column, and nothing that needs a hover.
+- The panel fits at 1280 × 720 and the pairing page at 375 × 812 (`tests/e2e/network-pairing.spec.ts`).

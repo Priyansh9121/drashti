@@ -90,6 +90,15 @@ jobs:
         run: node scripts/fetch-ffmpeg.mjs --target darwin-x64
       - name: Unit tests (inside Electron's Node)
         run: pnpm test
+      # Phones and tablets on the local network: Playwright's own Chromium (Chrome on Android) and
+      # WebKit (Safari on an iPhone) talk to the app's server in the end-to-end tests.
+      - name: Cache Playwright's browsers
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.os == 'Windows' && '~\AppData\Local\ms-playwright' || '~/Library/Caches/ms-playwright' }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Playwright's Chromium and WebKit
+        run: pnpm exec playwright install chromium webkit
       - name: End-to-end tests (Playwright + Electron)
         run: pnpm test:e2e
       - name: Drashti finds and runs its FFmpeg (built app)

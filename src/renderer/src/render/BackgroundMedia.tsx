@@ -4,6 +4,7 @@ import { mediaUrl } from '../../../shared/media';
 import { NO_SLOTS, type Slot, type SlotEvent, type Slots, slotsReducer } from './background-slots';
 import { OBJECT_FIT } from './media-style';
 import { startPlayback } from './playback';
+import { engineNow } from './clock';
 
 function style(fit: MediaFit, visible: boolean) {
   return {
@@ -36,7 +37,7 @@ function VideoSlot({
       mediaId,
       startedAt,
       onFrame: () => {
-        dispatch({ type: 'ready', key, at: Date.now() });
+        dispatch({ type: 'ready', key, at: engineNow() });
       },
       onError: () => {
         dispatch({ type: 'failed', key });
@@ -79,7 +80,7 @@ function ImageSlot({
     img.src = mediaUrl(mediaId);
     img.decode().then(
       () => {
-        if (live) dispatch({ type: 'ready', key, at: Date.now() });
+        if (live) dispatch({ type: 'ready', key, at: engineNow() });
       },
       () => {
         if (live) dispatch({ type: 'failed', key });
@@ -104,7 +105,7 @@ function ImageSlot({
 
 /** Set the dissolve's opacities on a background's pictures: the old one out, the new one in. */
 function setFade(root: HTMLElement | null, start: number | null, ms: number): number {
-  const p = start === null ? 1 : Math.min(1, Math.max(0, (Date.now() - start) / ms));
+  const p = start === null ? 1 : Math.min(1, Math.max(0, (engineNow() - start) / ms));
   for (const el of root?.querySelectorAll<HTMLElement>('[data-bg-fade]') ?? [])
     el.style.opacity = String(el.dataset['bgFade'] === 'out' ? 1 - p : p);
   return p;

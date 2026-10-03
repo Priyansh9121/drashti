@@ -15,6 +15,7 @@ import { fontFamilyFor, HTML_LANG } from './fonts';
 import { OBJECT_FIT } from './media-style';
 import { startPlayback } from './playback';
 import { requestStill, useStill } from './stills';
+import { engineNow } from './clock';
 
 /**
  * How a slide draws its videos: 'live' plays them (outputs and the live
@@ -239,7 +240,7 @@ function mediaStyle(el: MediaElement): CSSProperties {
 function SlideVideo({ el, startedAt }: { el: MediaElement; startedAt: number | undefined }) {
   const ref = useRef<HTMLVideoElement>(null);
   // Props and other things without a start time play from when they appear.
-  const [mountedAt] = useState(() => Date.now());
+  const [mountedAt] = useState(() => engineNow());
   const start = startedAt ?? mountedAt;
   useEffect(() => {
     const v = ref.current;
