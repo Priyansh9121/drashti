@@ -188,6 +188,14 @@ export interface StreamStatus {
   keyStorage: { available: boolean; message: string | null };
   /** The bundled FFmpeg was found. */
   ffmpeg: { available: boolean; version: string | null };
+  /**
+   * Drashti stopped unexpectedly while on air or recording, more than 5
+   * minutes before it started again: what was going on, offered to the
+   * operator (sooner than that it goes again by itself).
+   */
+  resume: { live: boolean; recording: boolean; profileName: string; stoppedAt: number } | null;
+  /** Goes up whenever a profile or a key changes: windows read the profiles again. */
+  profilesVersion: number;
 }
 
 /** The Program's preview for the operator: a small JPEG, a few times a second. */

@@ -97,12 +97,17 @@ import { StreamProfileRepo } from './db/stream-profiles';
 import { StreamKeyStore } from './stream/key-store';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
 import { StreamService } from './stream/stream-service';
+import { findFfmpeg } from './stream/ffmpeg-path';
+import { ffmpegSelfTest } from './stream/ffmpeg-selftest';
+import { spawnStreamWorker } from './stream/stream-worker';
 import { confirmedSchema } from '../shared/stream-schema';
 
 // Headless self-tests: run one, print the result, exit (see README). The performance test
 // imports a few hundred placeholder files, so it gets a throwaway data folder of its own.
 const selfTest = process.env['DRASHTI_SELFTEST'] === 'watchdog';
 const perfTest = process.env['DRASHTI_SELFTEST'] === 'performance';
+// Check the bundled FFmpeg (scripts/check-ffmpeg.mjs): print what works, and exit.
+const ffmpegCheck = process.env['DRASHTI_SELFTEST'] === 'ffmpeg';
 // The restart after a restore, for real (scripts/check-relaunch.mjs; see relaunch-selftest.ts).
 const relaunchTest = process.env['DRASHTI_SELFTEST'] === 'restore-relaunch';
 // Tests (and multiple installs) can point Drashti at its own data folder.
@@ -284,6 +289,21 @@ const IMPORTABLE_EXTENSIONS = [
 const notAllowed = { ok: false as const, message: 'Only the operator window can change the screens.' };
 
 function start(): void {
+  if (ffmpegCheck) {
+    const path = findFfmpeg({
+      packaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      appPath: app.getAppPath(),
+      platform: process.platform,
+      arch: process.arch,
+      override: process.env['DRASHTI_FFMPEG'],
+    });
+    void ffmpegSelfTest(path, process.platform).then((result) => {
+      process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
+      app.exit(result.passed ? 0 : 1);
+    });
+    return;
+  }
   const permissionLog = logPermissions
     ? (line: string) => {
         log.info(line);
@@ -578,6 +598,24 @@ function start(): void {
     askMediaAccess: (kind) =>
       process.platform === 'darwin' ? systemPreferences.askForMediaAccess(kind) : Promise.resolve(true),
     fakeDevices,
+    ffmpegPath: () =>
+      findFfmpeg({
+        packaged: app.isPackaged,
+        resourcesPath: process.resourcesPath,
+        appPath: app.getAppPath(),
+        platform: process.platform,
+        arch: process.arch,
+        override: process.env['DRASHTI_FFMPEG'],
+      }),
+    spawnWorker: () =>
+      spawnStreamWorker((line) => {
+        log.info(`[stream worker] ${line}`);
+      }),
+    stateFile: join(app.getPath('userData'), 'stream-state.json'),
+    notice: (text) => {
+      sendToOperator(IPC.app.notice, { text });
+    },
+    now: Date.now,
     screensChanged: () => {
       sendToOperator(IPC.screens.changed, screens.snapshot());
     },
@@ -590,6 +628,9 @@ function start(): void {
   app.on('will-quit', () => {
     streaming.close();
   });
+  // After an unexpected stop while on air or recording: go again (within 5 minutes) or offer to.
+  const resumed = streaming.resumeAfterStop();
+  if (resumed) startNotice = startNotice ? `${startNotice}\n\n${resumed}` : resumed;
   // ---- sound ----------------------------------------------------------------
   const audioOutput = new AudioOutput({
     load: () => settings.get('audioOutput'),
@@ -1072,6 +1113,10 @@ function start(): void {
   handle(IPC.stream.pickFolder, (e) =>
     fromOperator(e) ? streaming.pickFolder(operatorWindow) : notOperator,
   );
+  handle(IPC.stream.dismissResume, (e) => {
+    if (fromOperator(e)) streaming.dismissResume();
+    return null;
+  });
   handle(IPC.stream.pageContext, (e) => (streaming.isProgram(e.sender) ? streaming.context() : null));
   handle(IPC.stream.pageInputs, (e, inputs) => {
     streaming.reportInputs(e.sender, inputs);

@@ -75,11 +75,23 @@ export async function setUpPlaceholderShow(
     ...(video ? [video] : []),
   ]);
   return win.evaluate(
-    async ({ welcomeId, kirtanId, names, withVideo }) => {
+    async ({ welcomeId: welcomeFromReport, kirtanId: kirtanFromReport, names, withVideo }) => {
       const d = (globalThis as PageGlobals).drashti;
+      // The report names each file's presentation; the library list by name is the fallback.
+      const listed = await d.library.listPresentations();
+      const byName = (name: string) => listed.find((p) => p.name === name)?.id ?? '';
+      const welcomeId = welcomeFromReport || byName(names.welcome);
+      const kirtanId = kirtanFromReport || byName(names.kirtan);
       const media = await d.library.listMedia();
       const pictureMediaId = media.find((m) => m.name.startsWith(names.picture))?.id ?? '';
       const videoMediaId = withVideo ? (media.find((m) => m.name.startsWith(names.video))?.id ?? '') : null;
+      const missing = Object.entries({ welcomeId, kirtanId, pictureMediaId, videoMediaId })
+        .filter(([, v]) => v === '')
+        .map(([k]) => k);
+      if (missing.length > 0)
+        throw new Error(
+          `The placeholder show is missing ${missing.join(', ')}: presentations ${JSON.stringify(listed.map((p) => p.name))}, media ${JSON.stringify(media.map((m) => m.name))}`,
+        );
       const made = await d.playlists.create(names.playlist, null, false);
       if (!made.ok) throw new Error(made.message);
       const playlistId = made.ids[0] ?? '';
@@ -148,7 +160,14 @@ export async function setUpPlaceholderShow(
     {
       welcomeId,
       kirtanId,
-      names: { picture: PICTURE, playlist: PLAYLIST, logo: LOGO, video: VIDEO },
+      names: {
+        picture: PICTURE,
+        playlist: PLAYLIST,
+        logo: LOGO,
+        video: VIDEO,
+        welcome: WELCOME,
+        kirtan: KIRTAN,
+      },
       withVideo: Boolean(video),
     },
   );

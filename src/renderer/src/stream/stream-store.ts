@@ -31,7 +31,10 @@ export function connectStream(): void {
   if (connected) return;
   connected = true;
   window.drashti.stream.onChanged((status) => {
+    const before = useStream.getState().status?.profilesVersion;
     useStream.setState({ status });
+    // A profile or a key changed (here or elsewhere): read the profiles again.
+    if (before !== undefined && before !== status.profilesVersion) void loadProfiles();
   });
   void window.drashti.stream.status().then((status) => {
     useStream.setState({ status });

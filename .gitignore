@@ -1,5 +1,7 @@
 # dependencies and build output
 node_modules/
+# the bundled FFmpeg, fetched by scripts/fetch-ffmpeg.mjs (never committed)
+vendor/
 out/
 dist/
 release/

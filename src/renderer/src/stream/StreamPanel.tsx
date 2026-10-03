@@ -9,6 +9,7 @@ import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { Loading } from '../ui/States';
 import { usePreview } from './preview';
+import { OnAirControls, RecordingControls } from './StreamControls';
 import { closeStreamPanel, loadProfiles, streamAction, useStream } from './stream-store';
 
 /*
@@ -191,6 +192,8 @@ export function StreamPanel() {
       </section>
       {status ? (
         <>
+          <OnAirControls status={status} />
+          <RecordingControls status={status} />
           <section className="space-y-2">
             <SectionTitle>Layout</SectionTitle>
             <LayoutSwitch layout={status.layout} />
