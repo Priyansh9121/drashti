@@ -25,7 +25,7 @@ import { z } from 'zod';
 import type { ScreenRepo } from '../db/screens';
 import type { SettingsRepo } from '../db/settings';
 import type { StreamProfileRepo } from '../db/stream-profiles';
-import type { StreamKeyStore } from './key-store';
+import { NO_SECURE_STORAGE, type StreamKeyStore } from './key-store';
 import type { StreamWorker } from './stream-worker';
 import type { WorkerStatus } from './worker/protocol';
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -622,11 +622,12 @@ export class StreamService {
     const key = this.deps.keys.get(profile.id);
     if (!key) {
       const storage = this.deps.keys.status();
+      if (!storage.available) return { ok: false, message: storage.message ?? NO_SECURE_STORAGE };
       return {
         ok: false,
-        message: storage.available
-          ? `There is no stream key for “${profile.name}”. Paste it in Stream settings first.`
-          : (storage.message ?? FFMPEG_MISSING),
+        message: this.deps.keys.has(profile.id)
+          ? `The stream key saved for “${profile.name}” cannot be read any more (this computer’s secure storage changed). Paste it again in Stream settings.`
+          : `There is no stream key for “${profile.name}”. Paste it in Stream settings first.`,
       };
     }
     this.ensureStreamGroup();
@@ -784,8 +785,10 @@ export class StreamService {
       'info',
       `After an unexpected stop ${Math.round(ago / 1000)} s ago, the stream (${what}) starts again by itself`,
     );
-    if (failed)
+    if (failed) {
+      this.deps.log('warn', `The stream could not start again by itself: ${failed.message}`);
       return `Drashti stopped unexpectedly while ${what}, and could not start again by itself: ${failed.message}`;
+    }
     return `Drashti stopped unexpectedly while ${what}. It went ${saved.live ? 'live' : 'back to recording'} again by itself with the profile “${profile.name}”${saved.recording ? ', in a new recording file (the earlier one is kept and plays)' : ''}.`;
   }
 
