@@ -226,3 +226,42 @@ test('refused: a foreign Host or Origin, no token, paths that escape, and addres
   expect(await raw(port, '/pair', { Host: host })).toBe(403);
   await outside.app.close();
 });
+
+test('each kind of device may do only its own things', async () => {
+  test.setTimeout(90_000);
+  const port = await freePort();
+  const { app } = await launchApp(NETWORK);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const n = net(win);
+  await n.setPort(port);
+  await n.setOn(true);
+  await expect.poll(async () => (await n.status()).state).toBe('listening');
+  const tokenFor = async (kind: 'remote' | 'stage' | 'announcements') => {
+    const code = await n.pairing(kind, `Placeholder ${kind}`);
+    const paired = await call(port, '/api/v1/pair', { method: 'POST', body: { code } });
+    return String(paired.json['token']);
+  };
+  const remote = await tokenFor('remote');
+  const stage = await tokenFor('stage');
+  const poster = await tokenFor('announcements');
+  // A Remote runs the show and reads its lists; a Stage device only watches; Announcements only sends.
+  expect((await call(port, '/api/v1/trigger/next', { method: 'POST', token: remote })).status).not.toBe(403);
+  expect((await call(port, '/api/v1/playlists', { token: remote })).status).toBe(200);
+  expect((await call(port, '/api/v1/state', { token: stage })).status).toBe(200);
+  expect((await call(port, '/api/v1/stage', { token: stage })).status).toBe(200);
+  for (const [path, method] of [
+    ['/api/v1/trigger/next', 'POST'],
+    ['/api/v1/blackout', 'POST'],
+    ['/api/v1/playlists', 'GET'],
+  ] as const)
+    expect((await call(port, path, { method, token: stage })).status, `stage ${path}`).toBe(403);
+  for (const [path, method] of [
+    ['/api/v1/state', 'GET'],
+    ['/api/v1/trigger/next', 'POST'],
+    ['/api/v1/messages', 'GET'],
+  ] as const)
+    expect((await call(port, path, { method, token: poster })).status, `announcements ${path}`).toBe(403);
+  expect((await call(port, '/api/v1/stage', { token: remote })).status).toBe(403);
+  await app.close();
+});
