@@ -21,6 +21,7 @@ import { pipeline } from 'node:stream/promises';
 import { z } from 'zod';
 import { fileStamp } from '../../shared/format';
 import type { Db } from '../db/database';
+import { CONVERTING_DIR } from '../import/media-store';
 
 /*
  * Backing up and restoring the library. A backup is a folder: the database,
@@ -79,7 +80,10 @@ function freshFolder(parent: string, name: string): string {
 const errorCode = (error: unknown): string | undefined =>
   error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : undefined;
 
-/** The files in a folder and below (regular files only, symbolic links not followed), with their sizes. */
+/**
+ * The files in a folder and below (regular files only, symbolic links not followed), with their sizes.
+ * A media folder's conversions going on are left out: they are not the library's yet.
+ */
 export async function filesIn(dir: string): Promise<{ path: string; bytes: number }[]> {
   const found: { path: string; bytes: number }[] = [];
   const walk = async (at: string): Promise<void> => {
@@ -92,8 +96,10 @@ export async function filesIn(dir: string): Promise<{ path: string; bytes: numbe
     }
     for (const entry of entries) {
       const full = join(at, entry.name);
-      if (entry.isDirectory()) await walk(full);
-      else if (entry.isFile())
+      if (entry.isDirectory()) {
+        if (at === dir && entry.name === CONVERTING_DIR) continue;
+        await walk(full);
+      } else if (entry.isFile())
         try {
           found.push({ path: relative(dir, full), bytes: (await stat(full)).size });
         } catch (error) {

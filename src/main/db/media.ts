@@ -16,7 +16,11 @@ export class MediaRepo {
     return (
       this.db
         .prepare(
-          'SELECT id, name, kind, missing, playable, format FROM media ORDER BY name COLLATE NOCASE, rowid',
+          `SELECT m.id, m.name, m.kind, m.missing, m.playable, m.format,
+                  (SELECT c.name FROM media_conversions mc JOIN media c ON c.id = mc.converted_id
+                    WHERE mc.original_id = m.id AND mc.undone_at IS NULL
+                    ORDER BY mc.created_at DESC LIMIT 1) AS converted_to
+             FROM media m ORDER BY m.name COLLATE NOCASE, m.rowid`,
         )
         .all() as {
         id: string;
@@ -25,6 +29,7 @@ export class MediaRepo {
         missing: number;
         playable: number | null;
         format: string | null;
+        converted_to: string | null;
       }[]
     ).map((r) => ({
       id: r.id,
@@ -32,6 +37,8 @@ export class MediaRepo {
       kind: r.kind,
       missing: r.missing === 1,
       unplayable: r.playable === 0 ? (r.format ?? 'a kind of file Drashti cannot play') : null,
+      format: r.format,
+      convertedTo: r.converted_to,
     }));
   }
 

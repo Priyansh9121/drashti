@@ -161,14 +161,14 @@ describe('runImport', () => {
       severity: 'warning',
       code: 'unplayable-media',
       message:
-        'Drashti cannot play Old clip.avi yet: AVI video. Converting files inside Drashti comes in a later version.',
+        'Drashti cannot play Old clip.avi as it is: AVI video. Convert it here (in the report, or in the media list).',
       fix: { kind: 'convert-media' },
     });
     expect(avi?.fix?.kind === 'convert-media' && avi.fix.advice).toMatch(/H\.264 MP4/);
     expect(item('Old clip.avi')?.issues).toHaveLength(1);
     expect(item('Logo.png')?.issues).toEqual([]);
     expect(item('Placeholder Hymn')?.issues.find((i) => i.code === 'unplayable-media')?.message).toBe(
-      'Drashti cannot play Blue Loop.mov yet: ProRes 422 HQ video (QuickTime). Converting files inside Drashti comes in a later version.',
+      'Drashti cannot play Blue Loop.mov as it is: ProRes 422 HQ video (QuickTime). Convert it here (in the report, or in the media list).',
     );
     // Marked in the library.
     expect(t.db.prepare('SELECT name, playable, format FROM media ORDER BY name').all()).toEqual([

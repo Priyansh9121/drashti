@@ -27,6 +27,7 @@ import type { Lang, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
 import type { SetupPlan, SetupResult, SetupState } from './setup';
+import type { ConversionJob, ConvertResult } from './convert';
 import type {
   ProgramContext,
   ProgramInputs,
@@ -269,6 +270,14 @@ export interface DrashtiBridge {
      * thumbnails, so it is made only once (operator window only).
      */
     saveStill(mediaId: string, jpeg: Uint8Array): Promise<SaveStillResult>;
+    /** Convert files Drashti cannot play (in turn, in the background). */
+    convert(mediaIds: string[]): Promise<ConvertResult>;
+    /** Cancel one conversion, or every one not finished (null). */
+    cancelConversion(jobId: string | null): Promise<ConvertResult>;
+    conversions(): Promise<ConversionJob[]>;
+    onConversions(listener: (jobs: ConversionJob[]) => void): () => void;
+    /** Undo a conversion: the original is used again wherever it was moved from. */
+    undoConversion(conversionId: string): Promise<{ ok: true } | { ok: false; message: string }>;
   };
   /** Where sound plays. */
   audio: {

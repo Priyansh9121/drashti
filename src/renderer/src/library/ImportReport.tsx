@@ -6,7 +6,7 @@ import { describeRun } from '../operator/StatusBar';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Select } from '../ui/Field';
-import { ChevronRight, FolderOpen } from '../ui/icons';
+import { ChevronRight, FolderOpen, Wand2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { plural } from '../ui/text';
 import { Truncate } from '../ui/Truncate';
@@ -19,7 +19,8 @@ import {
   resolveConflicts,
   useImports,
 } from './import-store';
-import { leaveItem, selectPresentation, useLibrary } from './library-store';
+import { convert, connectConversions, jobFor, useConvert } from './convert-store';
+import { leaveItem, loadMedia, selectPresentation, useLibrary, useMedia } from './library-store';
 
 /*
  * The migration report (PLAN.md 4.4): what came across, what did not, and a
@@ -38,6 +39,27 @@ function openPresentation(id: string) {
 function tryAgain(sourcePath: string) {
   closeReport();
   void importPaths([fileToImport(sourcePath)]);
+}
+
+/** Convert a file Drashti cannot play (or how it is going, or what came of it). */
+function ConvertFix({ mediaId, advice }: { mediaId: string; advice: string }) {
+  const job = useConvert((s) => jobFor(s.jobs, mediaId));
+  const converted = useMedia((s) => s.media.find((m) => m.id === mediaId)?.convertedTo ?? null);
+  if (converted !== null || job?.state === 'done')
+    return <span className="text-success-fg">Converted: {converted ?? job?.convertedName}</span>;
+  if (job?.state === 'waiting' || job?.state === 'converting')
+    return (
+      <span className="text-muted" title={job.note ?? undefined}>
+        {job.state === 'converting' && job.progress !== null
+          ? `Converting… ${Math.round(job.progress * 100)}%`
+          : 'Waiting to convert'}
+      </span>
+    );
+  return (
+    <Button size="sm" icon={Wand2} title={advice} onClick={() => void convert([mediaId])}>
+      {job?.state === 'failed' ? 'Try again' : 'Convert'}
+    </Button>
+  );
 }
 
 /** The buttons that fix an item, from its issues and outcome. */
@@ -91,11 +113,7 @@ function Fixes({ item }: { item: ImportItemReport }) {
         );
         break;
       case 'convert-media':
-        out.push(
-          <span key={key} className="text-muted">
-            {fix.advice}
-          </span>,
-        );
+        out.push(<ConvertFix key={key} mediaId={fix.mediaId} advice={fix.advice} />);
         break;
       case 'choose':
         break;
@@ -192,8 +210,14 @@ export function ImportReportDialog() {
   const [runs, setRuns] = useState<ImportRunSummary[]>([]);
   const reportId = report?.id;
   useEffect(() => {
-    if (reportId) void window.drashti.library.listImportRuns().then(setRuns);
+    if (!reportId) return;
+    void window.drashti.library.listImportRuns().then(setRuns);
+    connectConversions();
+    // Which files are converted already.
+    void loadMedia();
   }, [reportId]);
+  const media = useMedia((s) => s.media);
+  const jobs = useConvert((s) => s.jobs);
   if (!report) return null;
 
   const items = report.items;
@@ -222,6 +246,20 @@ export function ImportReportDialog() {
     report.status === 'cancelled' && 'Cancelled',
   ].filter(Boolean);
   const conflictPaths = conflicts.map((i) => i.sourcePath);
+  // Files still to convert: not converted, and not being converted.
+  const toConvert = [
+    ...new Set(
+      items.flatMap((i) => i.issues.flatMap((x) => (x.fix?.kind === 'convert-media' ? [x.fix.mediaId] : []))),
+    ),
+  ].filter((id) => {
+    const job = jobFor(jobs, id);
+    return (
+      (media.find((m) => m.id === id)?.convertedTo ?? null) === null &&
+      job?.state !== 'waiting' &&
+      job?.state !== 'converting' &&
+      job?.state !== 'done'
+    );
+  });
   const missingMedia = items.reduce(
     (n, i) => n + i.issues.filter((x) => x.fix?.kind === 'relink-media').length,
     0,
@@ -277,6 +315,26 @@ export function ImportReportDialog() {
         {cameAcross.length > 0 ? `Came across: ${cameAcross.join(' · ')}.` : 'Nothing new came across.'}{' '}
         {outcomes.length > 0 && <span className="text-muted">{outcomes.join(' · ')}.</span>}
       </p>
+      {toConvert.length > 0 && (
+        <Notice
+          tone="info"
+          role="none"
+          data-testid="convert-media"
+          actions={
+            <Button
+              size="sm"
+              icon={Wand2}
+              data-testid="report-convert-all"
+              onClick={() => void convert(toConvert)}
+            >
+              Convert all
+            </Button>
+          }
+        >
+          {plural(toConvert.length, 'media file')} Drashti cannot play. Convert makes a copy it plays, in its
+          media folder, and uses it everywhere; the original stays as it is, and Undo puts it back.
+        </Notice>
+      )}
       {missingMedia > 0 && (
         <Notice
           tone="warning"

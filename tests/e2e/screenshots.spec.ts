@@ -1,10 +1,11 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { mkdirSync, mkdtempSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { copyFileSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage } from './helpers';
+import { dropFiles, launchApp, operatorPage, operatorReady } from './helpers';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 import { freePort, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
 
@@ -309,3 +310,56 @@ async function mkdirAndShot(page: Page, name: string) {
   await page.waitForTimeout(700);
   await page.screenshot({ path: join(folder, `${name}.png`), scale: 'css' });
 }
+
+test('converting media: the import report, then the media list while converting and after', async () => {
+  test.setTimeout(180_000);
+  const ffmpeg = testFfmpeg();
+  test.skip(!ffmpeg, 'FFmpeg is not fetched here: run node scripts/fetch-ffmpeg.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-convert-shots-'));
+  const make = (args: string[]) => {
+    const r = spawnSync(ffmpeg ?? '', ['-hide_banner', '-loglevel', 'error', '-y', ...args]);
+    if (r.status !== 0) throw new Error(r.stderr.toString());
+  };
+  // Generated files only: a long old-style AVI (so it is still converting for the picture), a ProRes clip,
+  // an AIFF and the tiny HEIC from the fixtures.
+  const files = [
+    'Placeholder welcome loop.avi',
+    'Placeholder intro.mov',
+    'Placeholder bell.aiff',
+    'Placeholder photo.heic',
+  ].map((n) => join(dir, n));
+  make([
+    '-f',
+    'lavfi',
+    '-i',
+    'testsrc2=s=1280x720:r=30',
+    '-t',
+    '90',
+    '-c:v',
+    'mpeg4',
+    '-q:v',
+    '6',
+    files[0] ?? '',
+  ]);
+  make(['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25', '-t', '2', '-c:v', 'prores_ks', files[1] ?? '']);
+  make(['-f', 'lavfi', '-i', 'sine=r=44100', '-t', '2', files[2] ?? '']);
+  copyFileSync(join(process.cwd(), 'tests', 'fixtures', 'media', 'placeholder.heic'), files[3] ?? '');
+
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1600, height: 900 });
+  await operatorReady(win);
+  await dropFiles(win, win.getByTestId('library-drop'), files);
+  const report = win.getByTestId('import-report');
+  await expect(report.getByTestId('report-convert-all')).toBeVisible({ timeout: 60_000 });
+  await shot(win, 'convert-report');
+
+  await report.getByTestId('report-convert-all').click();
+  await report.getByRole('button', { name: 'Close' }).click();
+  await win.getByRole('tab', { name: 'Media' }).click();
+  await expect(win.getByTestId('convert-progress')).toBeVisible({ timeout: 60_000 });
+  await shot(win, 'convert-media-list');
+  await expect(win.getByTestId('convert-bar')).toBeHidden({ timeout: 150_000 });
+  await shot(win, 'convert-media-list-done');
+  await app.close();
+});

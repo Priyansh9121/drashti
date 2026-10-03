@@ -72,7 +72,12 @@ export interface MediaSummary {
   name: string;
   kind: 'image' | 'video' | 'audio';
   missing: boolean;
+  /** What it is, when Drashti cannot play it (ProRes, HEIC...); null otherwise. */
   unplayable: string | null;
+  /** What it is, as found at import (null: not known). */
+  format: string | null;
+  /** Converted for Drashti: the name of the copy everything now uses (null: not converted). */
+  convertedTo: string | null;
 }
 
 export type PlaylistResult = { ok: true; ids: string[] } | { ok: false; message: string };

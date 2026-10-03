@@ -58,6 +58,9 @@ describe('backing up the library', () => {
     const { dir, db } = dataFolder('Placeholder One');
     // Big enough to be streamed, so the progress moves while it copies.
     writeFileSync(join(dir, 'Media', 'video.bin'), Buffer.alloc(17 * 1024 * 1024, 1));
+    // A conversion going on: not the library's yet, so not backed up.
+    mkdirSync(join(dir, 'Media', '.converting'));
+    writeFileSync(join(dir, 'Media', '.converting', 'job.mp4'), 'part');
     const into = mkdtempSync(join(tmpdir(), 'drashti-backups-'));
     const now = new Date(2026, 8, 29, 18, 30);
     const progress: [number, number][] = [];
