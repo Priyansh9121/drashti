@@ -61,6 +61,8 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
       messages: () => [{ id: 'm1', name: 'Car', template: 'Car {plate} please move', fields: {} }],
       logo: () => ({ id: 'logo', name: 'Placeholder logo', elements: [] }),
       mediaSource: () => null,
+      stageLanguages: () => null,
+      clockStyle: () => ({ locale: 'en-GB', timeZone: 'Europe/London' }),
     },
     refused: (channel: InvokeChannel) =>
       options.lockEverything === true || (options.locked === true && SIMPLE_MODE_LOCKED.includes(channel)),

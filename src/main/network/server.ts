@@ -123,6 +123,7 @@ const ROUTES: Route[] = [
   route('GET', '/api/v1/me', 'me'),
   route('GET', '/api/v1/status', 'status'),
   route('GET', '/api/v1/state', 'state'),
+  route('GET', '/api/v1/stage', 'stage'),
   route('GET', '/api/v1/playlists', 'playlists'),
   route('GET', '/api/v1/playlists/:id/items', 'items', (_b, p) => ({ playlistId: p['id'] })),
   route('GET', '/api/v1/presentations/:id', 'presentation', (_b, p) => ({ presentationId: p['id'] })),
