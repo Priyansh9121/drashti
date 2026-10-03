@@ -19,6 +19,8 @@ export interface RecoveryNotice {
   stageMessage?: boolean;
   /** Timers, running or paused. */
   timers?: number;
+  /** The Look that was live, by name, when it was not the one Drashti starts with. */
+  look?: string | null;
 }
 
 function joinParts(parts: string[]): string {
@@ -42,6 +44,7 @@ export function recoveryText(notice: RecoveryNotice): string {
   count(notice.timers, 'a timer', 'timers');
   if (notice.logo) parts.push('the logo');
   if (notice.blackout) parts.push('black-out');
+  if (notice.look) parts.push(`the Look “${notice.look}”`);
   const put =
     parts.length > 0
       ? `Drashti stopped unexpectedly and has put back what was live: ${joinParts(parts)}.`

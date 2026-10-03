@@ -72,9 +72,13 @@ test('each screen shows its own languages of a kirtan, closed up; other slides i
   ).toBeDisabled();
   await expectNoSeriousA11yIssues(win, 'the Screens panel with languages chosen');
   await win.getByRole('button', { name: 'Close screens' }).click();
-  const chosen = await win.evaluate(async () =>
-    (await (globalThis as PageGlobals).drashti.screens.get()).groups.map((g) => [g.name, g.languages]),
-  );
+  // Each group's languages are its settings in the live Look (Standard).
+  const chosen = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const [snapshot, looks] = await Promise.all([d.screens.get(), d.looks.list()]);
+    const live = looks.looks.find((l) => l.id === looks.liveId);
+    return snapshot.groups.map((g) => [g.name, live?.groups[g.id]?.languages ?? null]);
+  });
   expect(chosen).toEqual([
     ['Hall', ['gu', 'translit']],
     ['Stream', ['translit', 'en']],

@@ -131,6 +131,8 @@ const ROUTES: Route[] = [
   route('GET', '/api/v1/timers', 'timers'),
   route('GET', '/api/v1/logo', 'logo'),
   route('GET', '/api/v1/media/:id/preview', 'preview', (_b, p) => ({ mediaId: p['id'] })),
+  route('GET', '/api/v1/looks', 'looks'),
+  route('POST', '/api/v1/looks/:id/live', 'command', (_b, p) => ({ type: 'setLook', lookId: p['id'] })),
   route('POST', '/api/v1/trigger/next', 'command', command('next')),
   route('POST', '/api/v1/trigger/back', 'command', command('back')),
   route('POST', '/api/v1/trigger/previous', 'command', command('previous')),

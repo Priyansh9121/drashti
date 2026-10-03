@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../render/fonts.css';
 import '../styles/app.css';
+import { groupLookIn } from '../../../shared/looks';
 import type { ProgramContext } from '../../../shared/stream';
 import { connectEngine, useEngine } from '../engine/engine-store';
 import { preloadFonts } from '../render/fonts';
@@ -40,6 +41,8 @@ function Program() {
   const cameraState = useProgram((s) => s.camera);
   const soundState = useProgram((s) => s.sound);
   const state = useEngine((s) => s.state);
+  // The stream group's languages in the live Look (switching the Look changes them on air).
+  const languages = groupLookIn(state?.look, context?.groupId).languages;
   const [fontsReady, setFontsReady] = useState(false);
   useEffect(() => {
     void preloadFonts().then(() => {
@@ -69,7 +72,7 @@ function Program() {
       className="relative h-full w-full bg-black"
       data-testid="program-root"
       data-layout={context?.layout ?? ''}
-      data-languages={context?.languages?.join(',') ?? 'all'}
+      data-languages={languages?.join(',') ?? 'all'}
       data-camera={cameraState}
       data-sound={soundState}
       data-fonts={fontsReady ? 'ready' : 'loading'}
@@ -79,7 +82,7 @@ function Program() {
           <ProgramView
             state={state}
             layout={context.layout}
-            languages={context.languages}
+            languages={languages}
             canvas={CANVAS}
             camera={camera}
           />

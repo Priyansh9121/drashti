@@ -6,7 +6,8 @@ import type {
   PropItem,
   TickerLayer,
 } from '../../../shared/engine/state';
-import type { Lang } from '../../../shared/model';
+import type { LiveGroupLook, LookLayer } from '../../../shared/looks';
+import { DEFAULT_GROUP_LOOK } from '../../../shared/looks';
 import type { TimerState } from '../../../shared/timers';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
@@ -267,31 +268,36 @@ function Mask({ mask, canvas }: { mask: MaskLayer; canvas: Size }) {
  * pixels). Bottom to top: background, slide, props, messages, the ticker,
  * masks, the logo, black-out. The operator preview and every output use this
  * same component; the preview sets `annotate` to mark problems the audience
- * never sees. The stream leaves the ticker out (`ticker`).
+ * never sees. What a screen shows of it is its group's settings in the live
+ * Look (`look`: its layers, languages and slide style). The stream leaves
+ * the ticker out (`ticker`).
  */
 export const Scene = memo(function Scene({
   state,
   canvas,
   scaling,
   annotate = false,
-  languages = null,
+  look = DEFAULT_GROUP_LOOK,
   ticker = true,
 }: {
   state: EngineState;
   canvas: Size;
   scaling: ScalingMode;
   annotate?: boolean;
-  /** The languages this screen shows of a kirtan's slides, in order; null for all of them. */
-  languages?: readonly Lang[] | null;
+  /** This screen's group's settings in the live Look (every layer and language when left out). */
+  look?: LiveGroupLook;
   /** Draw the announcements ticker (the hall's screens do; the stream does not). */
   ticker?: boolean;
 }) {
   const { layers } = state;
-  const band = ticker && layers.ticker ? layers.ticker : null;
+  const shown = (layer: LookLayer) => look.layers.includes(layer);
+  const band = ticker && shown('ticker') && layers.ticker ? layers.ticker : null;
+  const background = shown('background') ? layers.background : null;
   return (
     <div
       data-testid="scene"
       data-canvas={`${canvas.width}x${canvas.height}`}
+      data-look-layers={look.layers.join(',')}
       style={{
         position: 'relative',
         width: canvas.width,
@@ -300,16 +306,22 @@ export const Scene = memo(function Scene({
         background: '#000000',
       }}
     >
-      {layers.background?.kind === 'color' && (
+      {background?.kind === 'color' && (
         <div
           data-layer="background"
-          style={{ position: 'absolute', inset: 0, background: layers.background.color }}
+          style={{ position: 'absolute', inset: 0, background: background.color }}
         />
       )}
-      <BackgroundMedia layer={layers.background} annotate={annotate} />
-      <SlideLayerView layer={layers.slide} canvas={canvas} scaling={scaling} languages={languages} />
-      <PropsLayer props={layers.props} canvas={canvas} scaling={scaling} />
-      {layers.messages.length > 0 && (
+      <BackgroundMedia layer={background} annotate={annotate} />
+      <SlideLayerView
+        layer={shown('slide') ? layers.slide : null}
+        canvas={canvas}
+        scaling={scaling}
+        languages={look.languages}
+        slides={look.slides}
+      />
+      {shown('props') && <PropsLayer props={layers.props} canvas={canvas} scaling={scaling} />}
+      {shown('messages') && layers.messages.length > 0 && (
         <MessageBanner
           messages={layers.messages}
           timers={state.timers}
@@ -318,7 +330,7 @@ export const Scene = memo(function Scene({
         />
       )}
       {band && <TickerBand ticker={band} canvas={canvas} />}
-      {layers.masks && <Mask mask={layers.masks} canvas={canvas} />}
+      {shown('masks') && layers.masks && <Mask mask={layers.masks} canvas={canvas} />}
       {state.logo && (
         // The logo instead of the picture: drawn over the layers, which carry on underneath, so
         // taking it down brings back exactly what was there. Black-out covers it in turn.

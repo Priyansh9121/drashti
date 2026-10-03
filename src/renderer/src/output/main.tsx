@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client';
 import '../render/fonts.css';
 import '../styles/app.css';
+import { groupLookIn } from '../../../shared/looks';
 import { connectEngine, useEngine } from '../engine/engine-store';
 import { preloadFonts } from '../render/fonts';
 import { PlacedInParent } from '../render/Placed';
@@ -80,6 +81,8 @@ function Output() {
   const canvas = { width: context?.canvasWidth ?? 1920, height: context?.canvasHeight ?? 1080 };
   const stage = context?.role === 'stage';
   const scaling = context?.scaling ?? 'fit';
+  // What this screen shows: its group's settings in the live Look.
+  const look = groupLookIn(state?.look, context?.groupId);
   return (
     <div
       ref={rootRef}
@@ -87,21 +90,22 @@ function Output() {
       data-testid="output-root"
       data-screen={context?.screenId ?? ''}
       data-role={context?.role ?? 'audience'}
-      data-languages={context?.languages?.join(',') ?? 'all'}
+      data-languages={look.languages?.join(',') ?? 'all'}
+      data-slides={look.slides}
       data-fonts={fontsReady ? 'ready' : 'loading'}
     >
       {state && fontsReady && (
         <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
           {stage ? (
-            <StageView state={state} languages={context.languages} />
+            <StageView state={state} languages={look.languages} />
           ) : (
-            <Scene state={state} canvas={canvas} scaling={scaling} languages={context?.languages ?? null} />
+            <Scene state={state} canvas={canvas} scaling={scaling} look={look} />
           )}
         </PlacedInParent>
       )}
       {/* Stage screens show no pictures, so they load none ahead. */}
       {state && !stage && <Preloader next={state.next} />}
-      {context && fontsReady && <TestCard context={context} />}
+      {context && fontsReady && <TestCard context={context} languages={look.languages} />}
       <IdentifyOverlay />
     </div>
   );

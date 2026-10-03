@@ -240,6 +240,15 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
+  looks: {
+    list: () => invoke(IPC.looks.list),
+    onChanged: (listener) => on(IPC.looks.changed, listener),
+    create: (name, copyOf) => invoke(IPC.looks.create, name, copyOf),
+    rename: (lookId, name) => invoke(IPC.looks.rename, lookId, name),
+    remove: (lookId) => invoke(IPC.looks.remove, lookId),
+    move: (lookId, to) => invoke(IPC.looks.move, lookId, to),
+    setGroup: (lookId, groupId, patch) => invoke(IPC.looks.setGroup, lookId, groupId, patch),
+  },
   screens: {
     get: () => invoke(IPC.screens.get),
     onChanged: (listener) => on(IPC.screens.changed, listener),

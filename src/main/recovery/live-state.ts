@@ -55,6 +55,8 @@ export interface SavedLive {
    * saved (saved again every second while it counts), and its whole time.
    */
   autoAdvance: { leftMs: number; durationMs: number } | null;
+  /** The live Look (an id: it comes back whatever the engine version). */
+  lookId: string | null;
 }
 
 const backgroundSchema: z.ZodType<BackgroundLayer> = z.discriminatedUnion('kind', [
@@ -111,6 +113,8 @@ const savedSchema = z.object({
     .object({ leftMs: z.number().min(0), durationMs: z.number().positive() })
     .nullable()
     .default(null),
+  // Files saved before Looks have none.
+  lookId: idSchema.nullable().default(null),
 });
 const audioLayerSchema = z.intersection(audioChoiceSchema, z.object({ startedAt: z.number() }));
 const markSchema = z.object({ session: z.string().min(1).max(64) });
@@ -147,6 +151,7 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
           durationMs: state.autoAdvance.durationMs,
         }
       : null,
+    lookId: state.look.id === '' ? null : state.look.id,
   };
 }
 
@@ -168,9 +173,11 @@ export interface RecoveryFiles {
 /**
  * What to put back at startup: the saved state when the run that saved it
  * did not quit cleanly and something was live; otherwise null. A background
- * saved by another engine version is left out (its shape may differ).
+ * saved by another engine version is left out (its shape may differ). A
+ * Look other than `startLookId` (the one Drashti starts with) counts as
+ * something live.
  */
-export function toRestore(files: RecoveryFiles): SavedLive | null {
+export function toRestore(files: RecoveryFiles, startLookId: string | null = null): SavedLive | null {
   const saved = savedSchema.safeParse(readJson(files.state));
   if (!saved.success) return null;
   const mark = markSchema.safeParse(readJson(files.cleanMark));
@@ -203,6 +210,7 @@ export function toRestore(files: RecoveryFiles): SavedLive | null {
     ticker !== null,
     stageMessage !== null,
     timers.length > 0,
+    s.lookId !== null && s.lookId !== startLookId,
   ].some(Boolean);
   if (!anything) return null;
   return { ...s, version: 1, background, logo, audio, props, messages, ticker, stageMessage, timers };

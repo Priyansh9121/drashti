@@ -20,6 +20,7 @@ import {
 } from '../../shared/engine/state';
 import type { EngineTransport } from '../../shared/engine/transport';
 import type { BackgroundCue } from '../../shared/library';
+import type { LiveLook } from '../../shared/looks';
 import { CUT, type Transition } from '../../shared/model';
 import { elapsedAt, type TimerDefinition, type TimerRun } from '../../shared/timers';
 import { remapPosition } from '../../shared/order';
@@ -50,11 +51,26 @@ function withoutItem(layers: Layers, id: string): Layers {
   };
 }
 
+/** Where the engine finds Looks: the library's, every group's settings filled in. */
+export interface LookSource {
+  /** A Look, or null when it no longer exists. */
+  look(lookId: string): LiveLook | null;
+  /** The Look Drashti starts with: the first in the list. */
+  start(): LiveLook;
+}
+
 export interface EngineOptions {
   /** Drashti's own default transition, for presentations without one (a setting; a cut when left out). */
   defaultTransition?: () => Transition;
   /** Run `run` after `delayMs`; returns a way to cancel it (setTimeout when left out; tests run it by hand). */
   schedule?: (delayMs: number, run: () => void) => () => void;
+  /** The library's Looks (none when left out: every group has the defaults). */
+  looks?: LookSource;
+  /**
+   * Why a command is refused now, or null to run it: Simple Mode refuses
+   * switching the Look, from the window, a phone, the API or a macro alike.
+   */
+  refuse?: (command: EngineCommand) => string | null;
 }
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
@@ -77,10 +93,14 @@ export interface RestoreRequest {
   timers?: readonly { id: string; startedAt: number | null; elapsedMs: number }[];
   /** The slide was moving on by itself: it carries on with the time it had left. */
   autoAdvance?: { leftMs: number; durationMs: number } | null;
+  /** The Look that was live (left out or gone: the one already live stays). */
+  lookId?: string | null;
 }
 
 /** What restart recovery put back. */
 export interface Restored {
+  /** The name of the Look that came back, when it was not the one already live (the first); else null. */
+  look: string | null;
   slide: boolean;
   background: boolean;
   blackout: boolean;
@@ -166,6 +186,8 @@ export class ShowEngine {
   }
 
   dispatch(command: EngineCommand): CommandResult {
+    const refused = this.options.refuse?.(command) ?? null;
+    if (refused !== null) return { ok: false, error: 'forbidden', message: refused };
     return this.atOnce(() => {
       const resolved = this.resolve(command);
       if (!resolved.ok) return resolved;
@@ -195,6 +217,10 @@ export class ShowEngine {
   private restoreAt(request: RestoreRequest): Restored {
     const actions: EngineAction[] = [];
     let slide = false;
+    // The Look first, so the screens draw what comes back the way they did.
+    const look = request.lookId ? (this.options.looks?.look(request.lookId) ?? null) : null;
+    const lookBack = look !== null && look.id !== this.state.look.id;
+    if (look) actions.push({ type: 'look/set', look });
     const playlist = request.playlist ? this.checkItem(request.playlist) : null;
     if (request.slide) {
       const { presentationId, slideIndex, arrangementId } = request.slide;
@@ -247,6 +273,7 @@ export class ShowEngine {
       ]);
     }
     return {
+      look: lookBack ? look.name : null,
       slide,
       background: request.background !== null,
       blackout: request.blackout,
@@ -304,6 +331,20 @@ export class ShowEngine {
     return this.apply([
       { type: 'live/move', slideIndex, slideCount: after.slides.length, arrangementId: after.arrangementId },
     ]);
+  }
+
+  /**
+   * The Looks changed in the library (a Look or a group edited, made or
+   * removed): the live one is read again, so the screens follow at once.
+   * If it was removed, the first Look goes live. At startup this puts the
+   * first Look live.
+   */
+  refreshLook(): CommandResult {
+    const looks = this.options.looks;
+    if (!looks) return this.unchanged();
+    const id = this.state.look.id;
+    const look = (id ? looks.look(id) : null) ?? looks.start();
+    return this.apply([{ type: 'look/set', look }]);
   }
 
   /** The timers as the library defines them (at startup, and after the operator edits one). */
@@ -720,6 +761,11 @@ export class ShowEngine {
         return { ok: true, actions: [{ type: 'stage/message', text: command.text }] };
       case 'clearStageMessage':
         return { ok: true, actions: [{ type: 'stage/message', text: null }] };
+      case 'setLook': {
+        const look = this.options.looks?.look(command.lookId) ?? null;
+        if (!look) return { ok: false, error: 'unknown-look', message: 'That look no longer exists' };
+        return { ok: true, actions: [{ type: 'look/set', look }] };
+      }
     }
   }
 

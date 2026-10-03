@@ -74,8 +74,21 @@ describe('restart recovery', () => {
       stageMessage: null,
       timers: [],
       autoAdvance: null,
+      lookId: null,
     });
     expect(savedFrom(live({ slideIndex: null }), 'run-1').slide).toBeNull();
+  });
+
+  it('keeps the live Look; a Look other than the first is worth putting back on its own', async () => {
+    const writer = new LiveStateWriter(files, { throttleMs: 10 });
+    const nothing = initialEngineState();
+    await saved(writer, { ...nothing, look: { id: 'look-first', name: 'Standard', groups: {} } });
+    expect(toRestore(files, 'look-first')).toBeNull();
+    await saved(writer, { ...nothing, look: { id: 'look-2', name: 'Placeholder', groups: {} } });
+    expect(toRestore(files, 'look-first')).toMatchObject({ slide: null, lookId: 'look-2' });
+    // With a slide up, the Look comes along whichever it is.
+    await saved(writer, { ...live(), look: { id: 'look-first', name: 'Standard', groups: {} } });
+    expect(toRestore(files, 'look-first')).toMatchObject({ lookId: 'look-first' });
   });
 
   it('keeps the time a slide moving on by itself had left, saved again every second while it counts', async () => {

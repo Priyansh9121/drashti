@@ -1,3 +1,4 @@
+import type { LiveLook } from '../../shared/looks';
 import type { RenderSlide, Transition } from '../../shared/model';
 import type { TimerDefinition, TimerRun } from '../../shared/timers';
 import type {
@@ -65,4 +66,6 @@ export type EngineAction =
   | { type: 'ticker/set'; ticker: TickerLayer }
   | { type: 'mask/set'; mask: MaskLayer }
   /** Restart recovery: the count as it was, with the time it had left. */
-  | { type: 'advance/set'; autoAdvance: { startedAt: number; durationMs: number } | null };
+  | { type: 'advance/set'; autoAdvance: { startedAt: number; durationMs: number } | null }
+  /** The live Look, every group's settings resolved from the library. */
+  | { type: 'look/set'; look: LiveLook };

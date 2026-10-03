@@ -255,4 +255,77 @@ describe('migrations', () => {
     ]);
     db.close();
   });
+
+  it('upgrade a version 19 library for Looks: each group shows exactly what it did, in a Standard Look', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-db-'));
+    const file = join(dir, 'drashti.sqlite');
+    const v19 = openDatabase(file, MIGRATIONS.slice(0, 19));
+    const group = v19.prepare(
+      'INSERT INTO screen_groups (id, name, role, position, languages) VALUES (?, ?, ?, ?, ?)',
+    );
+    group.run('g-hall', 'Hall', 'audience', 0, JSON.stringify(['gu', 'translit']));
+    group.run('g-stage', 'Stage', 'stage', 1, JSON.stringify(['gu']));
+    group.run('g-lobby', 'Lobby', 'audience', 2, null);
+    // Unreadable languages showed every language: they still do.
+    group.run('g-odd', 'Odd', 'audience', 3, JSON.stringify(['gu', 'gu']));
+    group.run('g-stream', 'Stream', 'stream', 4, JSON.stringify(['translit', 'en']));
+    const screen = v19.prepare(
+      'INSERT INTO screens (id, group_id, name, canvas_width, position) VALUES (?, ?, ?, ?, ?)',
+    );
+    screen.run('s-hall', 'g-hall', 'Hall TV', 1280, 0);
+    screen.run('s-stage', 'g-stage', 'Stage TV', 1920, 0);
+    v19.close();
+
+    const db = openDatabase(file);
+    expect(schemaVersion(db)).toBe(LATEST_VERSION);
+    // One Look, Standard, with each group's languages; nothing else differs from the defaults.
+    const looks = db.prepare('SELECT name, definition, position FROM looks').all() as {
+      name: string;
+      definition: string;
+      position: number;
+    }[];
+    expect(looks.map((l) => [l.name, l.position])).toEqual([['Standard', 0]]);
+    expect(JSON.parse(looks[0]?.definition ?? '')).toEqual({
+      groups: {
+        'g-hall': { languages: ['gu', 'translit'] },
+        'g-stage': { languages: ['gu'] },
+        'g-stream': { languages: ['translit', 'en'] },
+      },
+    });
+    // The groups and their screens came through the rebuild; the languages left the group.
+    expect(db.prepare('SELECT id, name, role, position FROM screen_groups ORDER BY position').all()).toEqual([
+      { id: 'g-hall', name: 'Hall', role: 'audience', position: 0 },
+      { id: 'g-stage', name: 'Stage', role: 'stage', position: 1 },
+      { id: 'g-lobby', name: 'Lobby', role: 'audience', position: 2 },
+      { id: 'g-odd', name: 'Odd', role: 'audience', position: 3 },
+      { id: 'g-stream', name: 'Stream', role: 'stream', position: 4 },
+    ]);
+    expect(db.prepare('SELECT id, group_id, canvas_width FROM screens ORDER BY id').all()).toEqual([
+      { id: 's-hall', group_id: 'g-hall', canvas_width: 1280 },
+      { id: 's-stage', group_id: 'g-stage', canvas_width: 1920 },
+    ]);
+    const columns = (db.prepare('PRAGMA table_info(screen_groups)').all() as { name: string }[]).map(
+      (c) => c.name,
+    );
+    expect(columns).not.toContain('languages');
+    expect(columns).not.toContain('look_id');
+    // The screens still belong to their groups: deleting a group still takes its screens.
+    expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+    expect(db.pragma('foreign_key_check')).toEqual([]);
+    db.prepare("DELETE FROM screen_groups WHERE id = 'g-stage'").run();
+    expect(db.prepare('SELECT id FROM screens').all()).toEqual([{ id: 's-hall' }]);
+    // A group can now be a key and fill pair.
+    db.prepare("INSERT INTO screen_groups (id, name, role) VALUES ('g-key', 'Key', 'keyfill')").run();
+    expect(() =>
+      db.prepare("INSERT INTO screen_groups (id, name, role) VALUES ('x', 'X', 'nonsense')").run(),
+    ).toThrow();
+    db.close();
+  });
+
+  it('make a Standard Look on a new library, with every group at the defaults', () => {
+    const db = openDatabase(':memory:');
+    const looks = db.prepare('SELECT name, definition FROM looks').all();
+    expect(looks).toEqual([{ name: 'Standard', definition: JSON.stringify({ groups: {} }) }]);
+    db.close();
+  });
 });

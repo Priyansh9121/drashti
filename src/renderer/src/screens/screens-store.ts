@@ -1,5 +1,8 @@
 import { create } from 'zustand';
+import type { LiveGroupLook } from '../../../shared/looks';
+import { DEFAULT_GROUP_LOOK } from '../../../shared/looks';
 import type { Lang } from '../../../shared/model';
+import { useEngine } from '../engine/engine-store';
 import type { CoverOptions, ScreenRole, ScreensResult, ScreensSnapshot } from '../../../shared/screens';
 
 interface PendingCover {
@@ -24,15 +27,24 @@ export const useScreens = create<ScreensView>(() => ({
 }));
 
 /**
- * The languages the operator's previews show: those of the first group in
- * this role (the live and next previews follow the first audience group,
- * the stage preview the first stage group), with the group's name; null
- * languages when there is none, or it shows them all.
+ * How the operator's previews draw: as the first group in this role does in
+ * the live Look (the live and next previews follow the first audience group,
+ * the stage preview the first stage group), with the group's name; null when
+ * there is no such group.
  */
-export function useFirstGroupLanguages(role: ScreenRole): { name: string; languages: Lang[] } | null {
+export function useFirstGroupLook(role: ScreenRole): { name: string; look: LiveGroupLook } | null {
   // The group object itself: the same one until the setup changes.
   const group = useScreens((s) => s.snapshot?.groups.find((x) => x.role === role));
-  return group?.languages ? { name: group.name, languages: group.languages } : null;
+  const look = useEngine((s) => (group ? s.state?.look.groups[group.id] : undefined));
+  return group ? { name: group.name, look: look ?? DEFAULT_GROUP_LOOK } : null;
+}
+
+/** The languages the first group in this role shows, with its name; null when there is none, or it shows them all. */
+export function useFirstGroupLanguages(
+  role: ScreenRole,
+): { name: string; languages: readonly Lang[] } | null {
+  const first = useFirstGroupLook(role);
+  return first?.look.languages ? { name: first.name, languages: first.look.languages } : null;
 }
 
 let started = false;

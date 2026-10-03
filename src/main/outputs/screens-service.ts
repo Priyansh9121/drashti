@@ -21,6 +21,36 @@ import {
 import type { ScreenRepo } from '../db/screens';
 import type { OutputManager } from './output-manager';
 
+/** What screen changes do to the Looks (look-service.ts), which hold each group's languages. */
+export interface ScreenLooks {
+  /** A group's languages in the live Look. */
+  liveLanguages(groupId: string): Lang[] | null;
+  setLiveLanguages(groupId: string, languages: Lang[] | null): boolean;
+  /** A new group, with these languages in every Look (null: every language). */
+  groupMade(groupId: string, languages?: Lang[] | null): void;
+  groupsChanged(): void;
+  groupGone(groupId: string): void;
+}
+
+/** Without Looks (tests of screens alone): languages kept here. */
+export function memoryScreenLooks(): ScreenLooks {
+  const langs = new Map<string, Lang[] | null>();
+  return {
+    liveLanguages: (id) => langs.get(id) ?? null,
+    setLiveLanguages: (id, l) => {
+      langs.set(id, l);
+      return true;
+    },
+    groupMade: (id, l = null) => {
+      langs.set(id, l);
+    },
+    groupsChanged: () => undefined,
+    groupGone: (id) => {
+      langs.delete(id);
+    },
+  };
+}
+
 /**
  * The operator's screen-setup actions. Every input is validated here (it
  * arrives over IPC), then saved, then the output windows are reconciled.
@@ -34,6 +64,8 @@ export class ScreensService {
     private readonly operatorDisplayId: () => number | null = () => null,
     /** The stream is on air or recording (its group cannot go). */
     private readonly streamInUse: () => boolean = () => false,
+    /** Each group's languages live in the Looks. */
+    private readonly looks: ScreenLooks = memoryScreenLooks(),
   ) {}
 
   /** An output on this display would cover the operator window, and the operator has not agreed. */
@@ -65,7 +97,8 @@ export class ScreensService {
   createGroup(rawName: unknown): ScreensResult {
     const name = nameSchema.safeParse(rawName);
     if (!name.success) return this.fail('Give the group a name (up to 80 characters).');
-    this.repo.createGroup(name.data);
+    const id = this.repo.createGroup(name.data);
+    this.looks.groupMade(id);
     return this.done();
   }
 
@@ -86,16 +119,17 @@ export class ScreensService {
     if (this.repo.groupRole(id.data) === 'stream')
       return this.fail('The stream group always shows the stream.');
     if (!this.repo.setGroupRole(id.data, role.data)) return this.fail('That group no longer exists.');
+    this.looks.groupsChanged();
     return this.done();
   }
 
-  /** The languages a group shows of a kirtan's slides, in order; null for all of them. */
+  /** The languages a group shows of a kirtan's slides in the live Look, in order; null for all of them. */
   setGroupLanguages(rawId: unknown, rawLanguages: unknown): ScreensResult {
     const id = idSchema.safeParse(rawId);
     const languages = groupLanguagesSchema.safeParse(rawLanguages);
     if (!id.success || !languages.success)
       return this.fail('A group shows every language, or one to four of them, each once.');
-    if (!this.repo.setGroupLanguages(id.data, languages.data))
+    if (this.repo.groupName(id.data) === null || !this.looks.setLiveLanguages(id.data, languages.data))
       return this.fail('That group no longer exists.');
     return this.done();
   }
@@ -106,6 +140,7 @@ export class ScreensService {
     if (this.repo.groupRole(id.data) === 'stream' && this.streamInUse())
       return this.fail('The stream group is in use: end the stream and stop recording first.');
     if (!this.repo.deleteGroup(id.data)) return this.fail('That group no longer exists.');
+    this.looks.groupGone(id.data);
     return this.done();
   }
 
@@ -209,18 +244,22 @@ export class ScreensService {
       if (!first || first.use === 'none' || asked.length !== g.screens.length) continue;
       if (!asked.every((o) => o.use === first.use && same(o.languages, first.languages))) continue;
       if (g.role !== first.use) this.repo.setGroupRole(g.id, first.use);
-      if (!same(g.languages, first.languages)) this.repo.setGroupLanguages(g.id, first.languages);
+      if (!same(this.looks.liveLanguages(g.id), first.languages))
+        this.looks.setLiveLanguages(g.id, first.languages);
     }
     // Then every output goes where it belongs.
     const groupFor = (use: 'audience' | 'stage', languages: Lang[] | null): string => {
-      const found = this.repo.groups().find((g) => g.role === use && same(g.languages, languages));
+      const found = this.repo
+        .groups()
+        .find((g) => g.role === use && same(this.looks.liveLanguages(g.id), languages));
       if (found) return found.id;
       const base = use === 'stage' ? 'Stage' : 'Audience';
       const names = new Set(this.repo.groups().map((g) => g.name));
       let name = base;
       for (let n = 2; names.has(name); n++) name = `${base} ${n}`;
       const id = this.repo.createGroup(name, use);
-      this.repo.setGroupLanguages(id, languages);
+      // A group the wizard makes shows its languages in every Look.
+      this.looks.groupMade(id, languages);
       return id;
     };
     for (const o of wanted) {
@@ -240,6 +279,7 @@ export class ScreensService {
         this.repo.addScreen(groupId, display.label || `Screen ${count + 1}`, display.key);
       }
     }
+    this.looks.groupsChanged();
     return this.done();
   }
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { languageView } from '../../../shared/language-view';
+import type { Lang } from '../../../shared/model';
 import type { OutputContext } from '../../../shared/screens';
 import { sampleKirtanSlide } from '../../../shared/setup';
 import { LANG_NAMES } from '../../../shared/themes';
@@ -30,7 +31,13 @@ export function DisplayNumber({ number, label }: { number: string; label: string
  * The test slide: the screen's name, what it shows, and a sample kirtan
  * slide in its languages, until the time the main process gave.
  */
-export function TestCard({ context }: { context: OutputContext }) {
+export function TestCard({
+  context,
+  languages,
+}: {
+  context: OutputContext;
+  languages: readonly Lang[] | null;
+}) {
   const until = context.testCardUntil;
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -47,9 +54,9 @@ export function TestCard({ context }: { context: OutputContext }) {
   }, [until]);
   if (until === null || now >= until) return null;
   const canvas = { width: context.canvasWidth, height: context.canvasHeight };
-  const slide = languageView(sampleKirtanSlide(canvas.width, canvas.height), context.languages);
+  const slide = languageView(sampleKirtanSlide(canvas.width, canvas.height), languages);
   const shows = context.role === 'stage' ? 'The stage view' : 'The audience picture';
-  const langs = context.languages ? context.languages.map((l) => LANG_NAMES[l]).join(', ') : 'Every language';
+  const langs = languages ? languages.map((l) => LANG_NAMES[l]).join(', ') : 'Every language';
   return (
     <div className="absolute inset-0 z-40 bg-black" data-testid="test-card">
       <PlacedInParent content={canvas} mode={context.scaling} className="absolute inset-0">

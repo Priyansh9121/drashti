@@ -33,6 +33,8 @@ interface RemoteView {
   doc: PresentationDoc | null;
   templates: MessageTemplate[] | null;
   logo: { id: string; name: string } | null;
+  /** The Looks, in order (which is live comes with the engine state). */
+  looks: { id: string; name: string }[] | null;
 }
 
 export const useRemote = create<RemoteView>(() => ({
@@ -44,6 +46,7 @@ export const useRemote = create<RemoteView>(() => ({
   doc: null,
   templates: null,
   logo: null,
+  looks: null,
 }));
 
 export async function loadPlaylists(): Promise<void> {
@@ -90,6 +93,11 @@ async function loadTemplates(): Promise<void> {
   if (r.ok) useRemote.setState({ templates: r.messages });
 }
 
+async function loadLooks(): Promise<void> {
+  const r = await api<{ looks: { id: string; name: string }[] }>('/api/v1/looks');
+  if (r.ok) useRemote.setState({ looks: r.looks });
+}
+
 async function loadLogo(): Promise<void> {
   const r = await api<{ logo: { id: string; name: string } | null }>('/api/v1/logo');
   if (r.ok) useRemote.setState({ logo: r.logo });
@@ -131,6 +139,7 @@ export function startRemote(): void {
     void loadPlaylists();
     void loadTemplates();
     void loadLogo();
+    void loadLooks();
     const v = useRemote.getState().viewing;
     if (v) void loadDoc(v.presentationId);
   });
@@ -142,5 +151,6 @@ export function startRemote(): void {
     }
     if (what === 'messages') void loadTemplates();
     if (what === 'props') void loadLogo();
+    if (what === 'looks') void loadLooks();
   });
 }

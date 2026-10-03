@@ -24,3 +24,9 @@ export const SIMPLE_MODE_REFUSAL =
 
 export const isOperatorMode = (value: unknown): value is OperatorMode =>
   value === 'pro' || value === 'simple';
+
+/**
+ * Engine commands Simple Mode refuses, wherever they come from (the window,
+ * a phone, the API): Simple Mode keeps the live Look.
+ */
+export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = ['setLook'];

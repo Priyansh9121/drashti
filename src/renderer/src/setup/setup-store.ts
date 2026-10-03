@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useEngine } from '../engine/engine-store';
 import type { AudioDevice } from '../../../shared/audio';
 import type { Lang } from '../../../shared/model';
 import type { DisplayInfo } from '../../../shared/screens';
@@ -78,13 +79,16 @@ export async function openSetup(): Promise<void> {
     window.drashti.themes.list(),
   ]);
   useScreens.setState({ snapshot });
-  // Each display as it is used now: by a screen showing on it, in a group with its role and languages.
+  // Each display as it is used now: by a screen showing on it, in a group with its role, and its
+  // languages in the live Look.
+  const look = useEngine.getState().state?.look;
   const outputs: Record<number, OutputChoice> = {};
   for (const d of snapshot.displays) {
     const st = snapshot.status.find((x) => x.displayId === d.id && x.state === 'showing');
     const group = st ? snapshot.groups.find((g) => g.screens.some((sc) => sc.id === st.screenId)) : undefined;
+    const languages = group ? (look?.groups[group.id]?.languages ?? null) : null;
     outputs[d.id] = group
-      ? { use: group.role === 'stage' ? 'stage' : 'audience', languages: group.languages }
+      ? { use: group.role === 'stage' ? 'stage' : 'audience', languages: languages ? [...languages] : null }
       : { use: 'none', languages: null };
   }
   useSetup.setState({

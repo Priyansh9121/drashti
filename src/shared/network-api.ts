@@ -14,8 +14,10 @@ export const DEVICE_OPS = {
   status: ['remote', 'stage'],
   /** The whole engine state, with its revision. */
   state: ['remote', 'stage'],
-  /** What a stage screen shows of a kirtan: the stage screen group's languages. */
+  /** The stage display's screen group (the first stage group) and its languages in the live Look. */
   stage: ['stage'],
+  /** The Looks, in order, and which is live. */
+  looks: ['remote'],
   playlists: ['remote'],
   /** A playlist's items. */
   items: ['remote'],
@@ -50,8 +52,9 @@ export const deviceMay = (kind: DeviceKind, op: DeviceOp): boolean =>
 
 /**
  * The engine commands a Remote may send: running the show, as the operator
- * window does. Not setting backgrounds, sounds, props, masks or the stage
- * message, and never anything that changes the library.
+ * window does, and switching the Look. Not setting backgrounds, sounds,
+ * props, masks or the stage message, and never anything that changes the
+ * library.
  */
 export const REMOTE_COMMANDS = [
   'goLive',
@@ -69,6 +72,8 @@ export const REMOTE_COMMANDS = [
   'startTimer',
   'pauseTimer',
   'resetTimer',
+  // Switching the live Look (Simple Mode refuses it, as in the window).
+  'setLook',
 ] as const;
 
 /** A request from the network server to the main process, for a paired device. */
