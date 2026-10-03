@@ -181,6 +181,8 @@ export class StreamService {
     if (this.deps.screens.streamGroup() !== null) return;
     this.deps.screens.ensureStreamGroup();
     this.deps.screensChanged();
+    // The stream's page draws in its group's settings in the live Look: it learns the group now.
+    this.contextChanged();
   }
 
   profilesView(): StreamProfiles {

@@ -1,5 +1,6 @@
 import type { Browser, BrowserContext, Page } from '@playwright/test';
 import { chromium, devices, expect, webkit } from '@playwright/test';
+import { request } from 'node:http';
 import type { DeviceKind } from '../../src/shared/network';
 import type { PageGlobals } from './helpers';
 import { freePort } from './stream-helpers';
@@ -75,4 +76,51 @@ export async function device(engine: Engine, name: string = PHONE[engine]): Prom
 export async function pairByQr(page: Page, base: string, code: string, path: string): Promise<void> {
   await page.goto(`${base}/pair#c=${code}`);
   await page.waitForURL(`${base}${path}`);
+}
+
+/** A request to the app's API on this computer, as a script would make it; the status and the JSON answer. */
+export function apiCall(
+  port: number,
+  path: string,
+  options: { method?: string; token?: string; body?: unknown } = {},
+): Promise<{ status: number; json: Record<string, unknown> }> {
+  return new Promise((resolve, reject) => {
+    const body = options.body === undefined ? undefined : JSON.stringify(options.body);
+    const req = request(
+      {
+        host: '127.0.0.1',
+        port,
+        path,
+        method: options.method ?? 'GET',
+        headers: {
+          ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+          ...(body ? { 'Content-Type': 'application/json' } : {}),
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => {
+          let json: Record<string, unknown> = {};
+          try {
+            json = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
+          } catch {
+            // Not JSON.
+          }
+          resolve({ status: res.statusCode ?? 0, json });
+        });
+      },
+    );
+    req.on('error', reject);
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
+/** Pair a device of this kind for a script, through the API; its token (never printed). */
+export async function pairToken(win: Page, port: number, kind: DeviceKind, name: string): Promise<string> {
+  const code = await pairingCode(win, kind, name);
+  const paired = await apiCall(port, '/api/v1/pair', { method: 'POST', body: { code } });
+  expect(paired.status).toBe(200);
+  return String(paired.json['token']);
 }

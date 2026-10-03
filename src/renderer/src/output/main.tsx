@@ -90,6 +90,7 @@ function Output() {
       data-testid="output-root"
       data-screen={context?.screenId ?? ''}
       data-role={context?.role ?? 'audience'}
+      data-look={state?.look.id ?? ''}
       data-languages={look.languages?.join(',') ?? 'all'}
       data-slides={look.slides}
       data-fonts={fontsReady ? 'ready' : 'loading'}

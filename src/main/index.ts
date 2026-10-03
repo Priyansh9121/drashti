@@ -85,6 +85,7 @@ import { registerKirtansIpc } from './library/kirtans-ipc';
 import { runRelaunchSelfTest } from './relaunch-selftest';
 import { createdGroupId, runWatchdogSelfTest } from './selftest';
 import { simpleModeRefusals } from './simple-mode';
+import { writeOldLibrary } from './old-library-selftest';
 import {
   createOutputWindow,
   listDisplays,
@@ -414,6 +415,18 @@ function start(): void {
     log: permissionLog,
   });
 
+  // Tests only (never a packaged Drashti): write a library as an older Drashti kept it, then stop.
+  const oldLibrary = process.env['DRASHTI_SELFTEST_LIBRARY'];
+  if (process.env['DRASHTI_SELFTEST'] === 'old-library' && oldLibrary && !app.isPackaged) {
+    try {
+      writeOldLibrary(libraryFile(), oldLibrary, listDisplays());
+      app.exit(0);
+    } catch (error) {
+      log.error('Could not write the old library', error);
+      app.exit(1);
+    }
+    return;
+  }
   // A restore asked for before a restart is done first, before the library opens.
   const restored = pendingRestore();
   /** The operator window has read the start notice: later news goes as an ordinary notice. */
