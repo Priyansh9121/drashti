@@ -82,6 +82,11 @@ export interface NetworkDeps {
     state(): EngineState;
   };
   reads: NetworkReads;
+  /** Announcements from phones (announcement-service.ts). */
+  announcements: {
+    submit(device: { id: string; name: string }, address: string, input: unknown): DeviceAnswer;
+    statusFor(device: { id: string }, args: unknown): DeviceAnswer;
+  };
   /** Whether Simple Mode refuses this window channel now (the same table the windows' requests go through). */
   refused(channel: InvokeChannel): boolean;
   /** The status changed: the operator window is told. */
@@ -113,6 +118,7 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   'message.hide': IPC.engine.command,
   preview: null,
   announce: null,
+  announcement: null,
 };
 
 const ON_SETTING = 'network.on';
@@ -607,7 +613,9 @@ export class NetworkService implements EngineTransport {
         );
       }
       case 'announce':
-        return deny(503, 'Announcements are not taken yet.');
+        return this.deps.announcements.submit(device, request.address, args);
+      case 'announcement':
+        return this.deps.announcements.statusFor(device, args);
       case 'me':
       case 'state':
       case 'preview':
@@ -694,6 +702,7 @@ export function summary(state: EngineState): Record<string, unknown> {
         : { kind: 'media', itemId: state.next.itemId, label: state.next.label }
       : null,
     messages: state.layers.messages.map((m) => ({ id: m.id, text: m.text })),
+    ticker: state.layers.ticker?.items.map((i) => ({ id: i.id, text: i.text })) ?? [],
     timers: state.timers.map((t) => ({
       id: t.id,
       name: t.name,

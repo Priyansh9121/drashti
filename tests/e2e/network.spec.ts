@@ -263,5 +263,17 @@ test('each kind of device may do only its own things', async () => {
   ] as const)
     expect((await call(port, path, { method, token: poster })).status, `announcements ${path}`).toBe(403);
   expect((await call(port, '/api/v1/stage', { token: remote })).status).toBe(403);
+  // Only an Announcements device sends announcements, and asks only about its own.
+  const body = { text: 'Placeholder announcement', from: 'Placeholder name', minutes: 5 };
+  const sent = await call(port, '/api/v1/announcements', { method: 'POST', token: poster, body });
+  expect(sent.status).toBe(202);
+  const id = (sent.json['announcement'] as { id: string }).id;
+  for (const token of [remote, stage]) {
+    expect((await call(port, '/api/v1/announcements', { method: 'POST', token, body })).status).toBe(403);
+    expect((await call(port, `/api/v1/announcements/${id}`, { token })).status).toBe(403);
+  }
+  expect((await call(port, `/api/v1/announcements/${id}`, { token: poster })).status).toBe(200);
+  const other = await tokenFor('announcements');
+  expect((await call(port, `/api/v1/announcements/${id}`, { token: other })).status).toBe(404);
   await app.close();
 });

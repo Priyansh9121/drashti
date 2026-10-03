@@ -14,6 +14,7 @@ import {
   MessageSquare,
   Music,
   RotateCcw,
+  ScrollText,
   Stamp,
   Sticker,
   Square,
@@ -33,6 +34,7 @@ const clears: { action: OperatorAction; layer: LayerName; label: string; icon: I
   { action: 'clearBackground', layer: 'background', label: 'Background', icon: Image },
   { action: 'clearProps', layer: 'props', label: 'Props', icon: Sticker },
   { action: 'clearMessages', layer: 'messages', label: 'Messages', icon: MessageSquare },
+  { action: 'clearTicker', layer: 'ticker', label: 'Ticker', icon: ScrollText },
   { action: 'clearAudio', layer: 'audio', label: 'Audio', icon: Music },
   { action: 'clearMasks', layer: 'masks', label: 'Masks', icon: Layers },
 ];

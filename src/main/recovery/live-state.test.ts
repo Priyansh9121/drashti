@@ -70,6 +70,7 @@ describe('restart recovery', () => {
       audio: null,
       props: [],
       messages: [],
+      ticker: null,
       stageMessage: null,
       timers: [],
       autoAdvance: null,
@@ -160,6 +161,17 @@ describe('restart recovery', () => {
       // Only timers that ran: t2 was never started.
       timers: [{ id: 't1', startedAt: 5, elapsedMs: 0 }],
     });
+  });
+
+  it('keeps the announcements ticker, with when it started, so it carries on in step', async () => {
+    const state = live({ slideIndex: null, withBackground: false });
+    const ticker = { items: [{ id: 'a1', text: 'Placeholder announcement' }], startedAt: 4321 };
+    const writer = new LiveStateWriter(files, { throttleMs: 10 });
+    await saved(writer, { ...state, layers: { ...state.layers, ticker } });
+    expect(toRestore(files)).toMatchObject({ slide: null, ticker });
+    // Nothing else on the screens: the ticker alone is worth putting back.
+    await saved(writer, { ...initialEngineState(), layers: { ...initialEngineState().layers, ticker } });
+    expect(toRestore(files)?.ticker).toEqual(ticker);
   });
 
   it('leaves out the layers saved by another engine version', () => {

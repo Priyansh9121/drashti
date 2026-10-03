@@ -247,7 +247,13 @@ describe('the network server', () => {
     // The remote's request reaches the main process as an op with its arguments.
     const next = await call(port, '/api/v1/trigger/next', { method: 'POST', headers: bearer(REMOTE_TOKEN) });
     expect(next.status).toBe(200);
-    expect(host.requests.at(-1)).toEqual({ deviceId: 'd-remote', op: 'command', args: { type: 'next' } });
+    // With the address it came from (for the limit on announcements per phone).
+    expect(host.requests.at(-1)).toEqual({
+      deviceId: 'd-remote',
+      op: 'command',
+      args: { type: 'next' },
+      address: '127.0.0.1',
+    });
     await call(port, '/api/v1/trigger/slide', {
       method: 'POST',
       headers: { ...bearer(REMOTE_TOKEN), 'Content-Type': 'application/json' },

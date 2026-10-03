@@ -40,6 +40,7 @@ import type {
 } from './stream';
 import type { SaveStillResult } from './media';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
+import type { AnnouncementResult, AnnouncementsView } from './announcements';
 import type {
   ItemOrder,
   MediaSummary,
@@ -317,6 +318,19 @@ export const IPC = {
     /** main -> operator: the network's state changed. */
     changed: 'network:changed',
   },
+  /** Announcements sent from phones: the operator's queue (operator window only). */
+  announcements: {
+    list: 'announcements:list',
+    /** Pro Mode only, as are the rest that change it. */
+    edit: 'announcements:edit',
+    /** On the screens, as a message or in the ticker, until its time is up. */
+    approve: 'announcements:approve',
+    reject: 'announcements:reject',
+    /** Off the screens before its time is up. */
+    takeOff: 'announcements:take-off',
+    /** main -> operator: the queue changed. */
+    changed: 'announcements:changed',
+  },
   output: {
     /** An output window asks which screen it is. */
     getContext: 'output:get-context',
@@ -510,6 +524,17 @@ export interface InvokeContract {
   [IPC.network.renameDevice]: { args: [deviceId: string, name: string]; result: NetworkResult };
   [IPC.network.revokeDevice]: { args: [deviceId: string]; result: NetworkResult };
   [IPC.network.makePoster]: { args: []; result: NetworkResult };
+  [IPC.announcements.list]: { args: []; result: AnnouncementsView };
+  [IPC.announcements.edit]: {
+    args: [edit: { id: string; text: string; minutes: number }];
+    result: AnnouncementResult;
+  };
+  [IPC.announcements.approve]: {
+    args: [approval: { id: string; as: 'message' | 'ticker'; templateId?: string | null }];
+    result: AnnouncementResult;
+  };
+  [IPC.announcements.reject]: { args: [which: { id: string }]; result: AnnouncementResult };
+  [IPC.announcements.takeOff]: { args: [which: { id: string }]; result: AnnouncementResult };
 }
 
 /** main -> renderer event channels and their payloads. */
@@ -536,6 +561,7 @@ export interface EventContract {
   [IPC.stream.port]: { role: 'preview' | 'encoder' };
   [IPC.stream.context]: ProgramContext;
   [IPC.network.changed]: NetworkStatus;
+  [IPC.announcements.changed]: AnnouncementsView;
 }
 
 export type InvokeChannel = keyof InvokeContract;

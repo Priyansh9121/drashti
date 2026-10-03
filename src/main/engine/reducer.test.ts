@@ -34,6 +34,7 @@ function fullState(): EngineState {
     { type: 'background/set', background: { kind: 'color', color: '#112233' } },
     { type: 'prop/show', prop: { id: 'logo', name: 'Logo', elements: [] } },
     { type: 'message/show', message: { id: 'm1', text: 'Car please move' } },
+    { type: 'ticker/show', item: { id: 't1', text: 'Placeholder ticker words' }, at: 5 },
     {
       type: 'mask/set',
       mask: { id: 'mask', name: 'Centre', visible: { x: 10, y: 10, width: 100, height: 100 } },
@@ -146,6 +147,7 @@ describe('reduce', () => {
         slide: null,
         props: [],
         messages: [],
+        ticker: null,
         masks: null,
       });
       expect(next.live).toBe(s.live);
@@ -223,6 +225,39 @@ describe('reduce', () => {
       expect(reduce(same, { type: 'message/show', message: { id: 'm', text: 'Two' } })).toBe(same);
       expect(reduce(same, { type: 'message/hide', messageId: 'x' })).toBe(same);
       expect(reduce(same, { type: 'message/hide', messageId: 'm' }).layers.messages).toEqual([]);
+    });
+  });
+
+  describe('the ticker', () => {
+    it('starts again from the right each time an announcement joins, changes or leaves', () => {
+      let s = reduce(deepFreeze(initialEngineState()), {
+        type: 'ticker/show',
+        item: { id: 'a', text: 'One' },
+        at: 100,
+      });
+      expect(s.layers.ticker).toEqual({ items: [{ id: 'a', text: 'One' }], startedAt: 100 });
+      s = reduce(deepFreeze(s), { type: 'ticker/show', item: { id: 'b', text: 'Two' }, at: 200 });
+      expect(s.layers.ticker).toEqual({
+        items: [
+          { id: 'a', text: 'One' },
+          { id: 'b', text: 'Two' },
+        ],
+        startedAt: 200,
+      });
+      const same = deepFreeze(s);
+      // The same words again change nothing, and the ticker carries on where it is.
+      expect(reduce(same, { type: 'ticker/show', item: { id: 'b', text: 'Two' }, at: 300 })).toBe(same);
+      expect(reduce(same, { type: 'ticker/hide', itemId: 'missing', at: 300 })).toBe(same);
+      s = reduce(same, { type: 'ticker/hide', itemId: 'a', at: 300 });
+      expect(s.layers.ticker).toEqual({ items: [{ id: 'b', text: 'Two' }], startedAt: 300 });
+      expect(reduce(deepFreeze(s), { type: 'ticker/hide', itemId: 'b', at: 400 }).layers.ticker).toBeNull();
+    });
+
+    it('is put back as it was (restart recovery), carrying on from when it started', () => {
+      const ticker = { items: [{ id: 'a', text: 'One' }], startedAt: 50 };
+      const s = reduce(deepFreeze(initialEngineState()), { type: 'ticker/set', ticker });
+      expect(s.layers.ticker).toEqual(ticker);
+      expect(reduce(deepFreeze(s), { type: 'ticker/set', ticker: { ...ticker } })).toBe(s);
     });
   });
 });

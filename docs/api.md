@@ -72,6 +72,7 @@ curl -s "$DRASHTI/api/v1/status" -H "Authorization: Bearer $TOKEN"
     "canPutBack": false,
     "next": { "kind": "slide", "presentationId": "…", "slideIndex": 3 },
     "messages": [{ "id": "message:…", "text": "Car 12 please move" }],
+    "ticker": [{ "id": "…", "text": "Placeholder: prasad in the hall after arti" }],
     "timers": [{ "id": "…", "name": "Sabha starts in", "kind": "countdown", "running": true }],
     "stageMessage": false
   }
@@ -110,7 +111,7 @@ curl -s -X POST "$DRASHTI/api/v1/clear/all"    -H "Authorization: Bearer $TOKEN"
 | `POST /api/v1/trigger/previous-item` |                                                                                                         | The first slide of the one before.                                                                                                                                                                                                  |
 | `POST /api/v1/trigger/slide`         | `{"presentationId":"…","slideIndex":3,"arrangementId":null,"playlist":{"playlistId":"…","itemId":"…"}}` | Puts a slide up: `slideIndex` is its place in the playing order; `arrangementId` (left out for the presentation's own choice, null for every slide in order) and `playlist` (so Next carries on through the playlist) are optional. |
 | `POST /api/v1/trigger/item`          | `{"playlistId":"…","itemId":"…"}`                                                                       | Starts a playlist item: a presentation at its first slide, or a picture, video or sound.                                                                                                                                            |
-| `POST /api/v1/clear/slide`           |                                                                                                         | Takes the slide down (also `background`, `audio`, `props`, `messages`, `masks`).                                                                                                                                                    |
+| `POST /api/v1/clear/slide`           |                                                                                                         | Takes the slide down (also `background`, `audio`, `props`, `messages`, `ticker`, `masks`).                                                                                                                                          |
 | `POST /api/v1/clear/all`             |                                                                                                         | Takes everything down (Put it back brings it back).                                                                                                                                                                                 |
 | `POST /api/v1/put-back`              |                                                                                                         | Brings back what Clear all took down, while nothing else has gone up since.                                                                                                                                                         |
 | `POST /api/v1/blackout`              | `{"on":true}` or `{}`                                                                                   | Black-out on or off; with no `on`, the other way.                                                                                                                                                                                   |
@@ -121,7 +122,18 @@ curl -s -X POST "$DRASHTI/api/v1/clear/all"    -H "Authorization: Bearer $TOKEN"
 
 ## Announcements (Announcements devices)
 
-`POST /api/v1/announcements` with `{"text":"…","from":"…","minutes":10}` sends an announcement for the operator to approve (see README). Nothing reaches the screens until it is approved.
+```sh
+curl -s -X POST "$DRASHTI/api/v1/announcements" -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"text":"Placeholder: prasad in the hall after arti","from":"Placeholder name","minutes":10}'
+curl -s "$DRASHTI/api/v1/announcements/$ID" -H "Authorization: Bearer $TOKEN"
+```
+
+| Request                          | Body                                   | Answers                                                                                                                                                                                                              |
+| -------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/v1/announcements`     | `{"text":"…","from":"…","minutes":10}` | `202` and `announcement` (`id`, `status: "waiting"`). The words (1 to 200 characters, on one line), who it is from (1 to 60) and how long to show it (1 to 120 minutes). Nothing reaches the screens until approved. |
+| `GET /api/v1/announcements/{id}` |                                        | `announcement`: its `status` (`waiting`, `showing`, `ended` or `rejected`) and `until` (when it comes off by itself). Only for announcements this device sent.                                                       |
+
+A phone (a device from one address) can have 3 announcements waiting at a time, and the queue holds 30; more get `429` until the operator has decided. The operator approves an announcement as a message (from a message template) or in the ticker along the bottom of the audience screens (README, "Announcements from phones").
 
 ## The state feed (WebSocket)
 

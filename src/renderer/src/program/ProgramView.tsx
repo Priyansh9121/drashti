@@ -102,7 +102,7 @@ export function ProgramView({
   if (picture.kind === 'scene')
     return (
       <div data-testid="program-picture" data-kind="scene">
-        <Scene state={state} canvas={canvas} scaling="fit" languages={languages} />
+        <Scene state={state} canvas={canvas} scaling="fit" languages={languages} ticker={false} />
       </div>
     );
   return (

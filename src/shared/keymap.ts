@@ -23,6 +23,7 @@ export type OperatorAction =
   | 'clearBackground'
   | 'clearProps'
   | 'clearMessages'
+  | 'clearTicker'
   | 'clearAudio'
   | 'clearMasks'
   | 'toggleBlackout'
@@ -62,6 +63,8 @@ export const KEYMAP: readonly KeyBinding[] = [
   { action: 'clearMessages', keys: ['F5'], label: 'Clear messages' },
   { action: 'clearAudio', keys: ['F6'], label: 'Clear audio' },
   { action: 'clearMasks', keys: ['F7'], label: 'Clear masks' },
+  // The announcements ticker (Session 10).
+  { action: 'clearTicker', keys: ['F8'], label: 'Clear ticker' },
   { action: 'toggleBlackout', keys: ['B', '.'], label: 'Black-out' },
   // The logo instead of the picture, and back (the prop marked as the logo in Pro Mode).
   { action: 'toggleLogo', keys: ['L'], label: 'Logo' },

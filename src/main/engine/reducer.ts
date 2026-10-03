@@ -173,5 +173,19 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       if (!state.layers.messages.some((m) => m.id === action.messageId)) return state;
       return withLayers(state, { messages: state.layers.messages.filter((m) => m.id !== action.messageId) });
     }
+    case 'ticker/show': {
+      const items = upsert(state.layers.ticker?.items ?? [], action.item);
+      return items ? withLayers(state, { ticker: { items, startedAt: action.at } }) : state;
+    }
+    case 'ticker/hide': {
+      const ticker = state.layers.ticker;
+      if (!ticker?.items.some((i) => i.id === action.itemId)) return state;
+      const items = ticker.items.filter((i) => i.id !== action.itemId);
+      return withLayers(state, { ticker: items.length > 0 ? { items, startedAt: action.at } : null });
+    }
+    case 'ticker/set':
+      return sameData(state.layers.ticker, action.ticker)
+        ? state
+        : withLayers(state, { ticker: action.ticker });
   }
 }

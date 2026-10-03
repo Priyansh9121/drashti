@@ -93,6 +93,11 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.network.renameDevice,
   IPC.network.revokeDevice,
   IPC.network.makePoster,
+  // The announcements queue: Simple Mode never approves, edits, rejects or takes one off.
+  IPC.announcements.edit,
+  IPC.announcements.approve,
+  IPC.announcements.reject,
+  IPC.announcements.takeOff,
 ];
 
 /** Each locked channel's answer: a refusal in its own result's shape. */

@@ -1,21 +1,23 @@
 import { cx } from '../ui/cx';
 import { Smartphone } from '../ui/icons';
+import { useAnnouncements } from './announcements-store';
 import { useNetwork } from './network-store';
 
 /**
  * While the network is on, the operator window always says so, with how many
- * devices are connected: in the header and in Simple Mode. Its own quiet look,
- * apart from LIVE and ON AIR.
+ * devices are connected and how many announcements wait for Pro Mode: in the
+ * header and in Simple Mode. Its own quiet look, apart from LIVE and ON AIR.
  */
 export function NetworkBadge({ className }: { className?: string }) {
   const status = useNetwork((s) => s.status);
+  const waiting = useAnnouncements((s) => s.view?.waiting.length ?? 0);
   if (!status?.on) return null;
   const failed = status.state === 'failed';
-  const text = failed
-    ? 'Network: not listening'
-    : status.connected === 1
-      ? 'Network on · 1 device'
-      : `Network on · ${status.connected} devices`;
+  const devices =
+    status.connected === 1 ? 'Network on · 1 device' : `Network on · ${status.connected} devices`;
+  const queue =
+    waiting === 0 ? '' : waiting === 1 ? ' · 1 announcement waiting' : ` · ${waiting} announcements waiting`;
+  const text = failed ? 'Network: not listening' : `${devices}${queue}`;
   return (
     <span
       role="status"

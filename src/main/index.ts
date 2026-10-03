@@ -109,6 +109,8 @@ import { FanoutTransport, type EngineTransport } from '../shared/engine/transpor
 import type { PropItem } from '../shared/engine/state';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
+import { AnnouncementService } from './network/announcement-service';
+import { AnnouncementRepo } from './db/announcements';
 import { inProcessNetworkWorker, spawnNetworkWorker } from './network/network-worker';
 import { startPerfDevices } from './network/perf-devices';
 import { localName } from './network/local-name';
@@ -175,6 +177,11 @@ const noSafeStorage = process.env['DRASHTI_TEST_NO_SAFE_STORAGE'] === '1';
 // told to treat this computer as outside the local network, to see such requests refused.
 const networkLocalOnly = process.env['DRASHTI_TEST_NETWORK_LOCAL'] === '1';
 const networkRefuseLoopback = process.env['DRASHTI_TEST_NETWORK_REFUSE_LOOPBACK'] === '1';
+// Tests only: an announcement's minute is this many ms, so one can run out while a test watches.
+const announceMinuteMs = Math.min(
+  60_000,
+  Math.max(100, Number(process.env['DRASHTI_TEST_ANNOUNCE_MINUTE_MS'] ?? 60_000) || 60_000),
+);
 // The performance check only: so many devices connected while it measures, and (to compare) the
 // network's server in the main process instead of its own.
 const perfDevices = Math.min(50, Math.max(0, Number(process.env['DRASHTI_PERF_DEVICES'] ?? 0) || 0));
@@ -636,6 +643,7 @@ function start(): void {
       audio: put.audio,
       props: put.props,
       messages: put.messages,
+      ticker: put.ticker,
       stageMessage: put.stageMessage,
       timers: put.timers,
     };
@@ -1061,6 +1069,37 @@ function start(): void {
     width: p.width,
     height: p.height,
   });
+  // Announcements from phones: the queue the operator approves from (Pro Mode only).
+  const announcements = new AnnouncementService({
+    repo: new AnnouncementRepo(db),
+    engine: {
+      state: () => engine.current,
+      dispatch: (command) => engine.dispatch(command),
+      showTicker: (item) => engine.showTicker(item),
+      takeDown: (id) => engine.takeDown(id),
+    },
+    templates: {
+      list: () => messageTemplates.list(),
+      create: (template) => messageTemplates.create(template),
+      changed: () => {
+        listChanged('messages');
+      },
+    },
+    now: Date.now,
+    minuteMs: announceMinuteMs,
+    changed: (view) => {
+      sendToOperator(IPC.announcements.changed, view);
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+  });
+  // What recovery put back carries on until its time; the rest that was showing has ended.
+  announcements.resume();
+  app.on('will-quit', () => {
+    announcements.close();
+  });
   const net = new NetworkService({
     devices: new DeviceRepo(db),
     settings,
@@ -1115,6 +1154,10 @@ function start(): void {
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       }),
     },
+    announcements: {
+      submit: (device, address, input) => announcements.submit(device, address, input),
+      statusFor: (device, args) => announcements.statusFor(device, args),
+    },
     refused: (channel) => refusedNow(channel),
     changed: (status) => {
       sendToOperator(IPC.network.changed, status);
@@ -1146,6 +1189,23 @@ function start(): void {
   );
   handle(IPC.network.revokeDevice, (e, id) => (fromOperator(e) ? net.revokeDevice(id) : notNetworkOperator));
   handle(IPC.network.makePoster, (e) => (fromOperator(e) ? net.makePoster() : notNetworkOperator));
+  const notQueueOperator = {
+    ok: false as const,
+    message: 'Only the operator window can decide on announcements.',
+  };
+  handle(IPC.announcements.list, () => announcements.view());
+  handle(IPC.announcements.edit, (e, edit) =>
+    fromOperator(e) ? announcements.edit(edit) : notQueueOperator,
+  );
+  handle(IPC.announcements.approve, (e, approval) =>
+    fromOperator(e) ? announcements.approve(approval) : notQueueOperator,
+  );
+  handle(IPC.announcements.reject, (e, which) =>
+    fromOperator(e) ? announcements.reject(which) : notQueueOperator,
+  );
+  handle(IPC.announcements.takeOff, (e, which) =>
+    fromOperator(e) ? announcements.takeOff(which) : notQueueOperator,
+  );
 
   // Timers: made and edited here, started and paused through the engine.
   const timerChange = (e: IpcMainInvokeEvent, run: () => TimerResult): TimerResult => {

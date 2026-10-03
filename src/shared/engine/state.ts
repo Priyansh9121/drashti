@@ -8,9 +8,9 @@ import type { TimerState } from '../timers';
  *
  * Bump ENGINE_STATE_VERSION whenever the shape changes incompatibly.
  */
-export const ENGINE_STATE_VERSION = 5;
+export const ENGINE_STATE_VERSION = 6;
 
-export type LayerName = 'audio' | 'background' | 'slide' | 'props' | 'messages' | 'masks';
+export type LayerName = 'audio' | 'background' | 'slide' | 'props' | 'messages' | 'ticker' | 'masks';
 
 /** Bottom to top, the order outputs composite visible layers in. Audio has no picture. */
 export const LAYER_NAMES = [
@@ -19,6 +19,7 @@ export const LAYER_NAMES = [
   'slide',
   'props',
   'messages',
+  'ticker',
   'masks',
 ] as const satisfies readonly LayerName[];
 
@@ -135,6 +136,23 @@ export interface MessageItem {
   parts?: MessagePart[];
 }
 
+/** An announcement in the ticker. */
+export interface TickerItem {
+  id: string;
+  text: string;
+}
+
+/**
+ * Announcements scrolling along the bottom of the audience screens, one
+ * after another. Every screen works out where the words are from startedAt
+ * (main-process clock), so they scroll in step everywhere; it starts again
+ * from the right edge whenever an announcement joins or leaves.
+ */
+export interface TickerLayer {
+  items: TickerItem[];
+  startedAt: number;
+}
+
 /** A mask leaves `visible` showing and blacks out the rest of the canvas. Units: canvas pixels. */
 export interface MaskLayer {
   id: string;
@@ -148,6 +166,7 @@ export interface Layers {
   slide: SlideLayer | null;
   props: PropItem[];
   messages: MessageItem[];
+  ticker: TickerLayer | null;
   masks: MaskLayer | null;
 }
 
@@ -199,7 +218,7 @@ export interface EngineState {
 }
 
 export function emptyLayers(): Layers {
-  return { audio: null, background: null, slide: null, props: [], messages: [], masks: null };
+  return { audio: null, background: null, slide: null, props: [], messages: [], ticker: null, masks: null };
 }
 
 export function initialEngineState(): EngineState {
