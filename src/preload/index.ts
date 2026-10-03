@@ -20,6 +20,16 @@ function on<C extends EventChannel>(channel: C, listener: (payload: EventContrac
   };
 }
 
+// Ports for the stream's preview and encoder go on to the page itself: MessagePorts cannot cross the
+// context bridge, so they are posted into the page's own world (only this preload posts these).
+// (The preload is type-checked without the DOM's types: the page's window is reached through globalThis.)
+const pageWindow = globalThis as unknown as {
+  postMessage(message: unknown, targetOrigin: string, transfer: readonly unknown[]): void;
+};
+ipcRenderer.on(IPC.stream.port, (event, payload: { role: 'preview' | 'encoder' }) => {
+  pageWindow.postMessage({ drashtiStreamPort: payload.role }, '*', event.ports);
+});
+
 const bridge: DrashtiBridge = {
   app: {
     getInfo: () => invoke(IPC.app.getInfo),
@@ -171,6 +181,28 @@ const bridge: DrashtiBridge = {
       on(IPC.audio.testTone, (payload) => {
         listener(payload.deviceId);
       }),
+  },
+  stream: {
+    status: () => invoke(IPC.stream.status),
+    onChanged: (listener) => on(IPC.stream.changed, listener),
+    setLayout: (layout) => invoke(IPC.stream.setLayout, layout),
+    watchPreview: (watch) => invoke(IPC.stream.watchPreview, watch),
+    profiles: () => invoke(IPC.stream.profiles),
+    saveProfile: (id, input) => invoke(IPC.stream.saveProfile, id, input),
+    removeProfile: (id) => invoke(IPC.stream.removeProfile, id),
+    useProfile: (id) => invoke(IPC.stream.useProfile, id),
+    setKey: (id, key) => invoke(IPC.stream.setKey, id, key),
+    removeKey: (id) => invoke(IPC.stream.removeKey, id),
+    goLive: (confirm) => invoke(IPC.stream.goLive, confirm),
+    end: (confirm) => invoke(IPC.stream.end, confirm),
+    startRecording: () => invoke(IPC.stream.startRecording),
+    stopRecording: () => invoke(IPC.stream.stopRecording),
+    pickFolder: () => invoke(IPC.stream.pickFolder),
+    page: {
+      context: () => invoke(IPC.stream.pageContext),
+      onContext: (listener) => on(IPC.stream.context, listener),
+      reportInputs: (inputs) => invoke(IPC.stream.pageInputs, inputs),
+    },
   },
   setup: {
     state: () => invoke(IPC.setup.state),

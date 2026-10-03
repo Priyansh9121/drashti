@@ -125,6 +125,43 @@ describe('ScreensService', () => {
     expect(service.setGroupRole('gone', 'audience')).toMatchObject({ ok: false });
   });
 
+  it('keeps one stream group: off screen, with its languages, and gone only while the stream is off', () => {
+    const stream = repo.ensureStreamGroup();
+    expect(repo.ensureStreamGroup().id).toBe(stream.id);
+    expect(repo.groups().filter((g) => g.role === 'stream')).toHaveLength(1);
+    expect(repo.groups().find((g) => g.id === stream.id)?.name).toBe('Stream');
+    // It has no displays, and keeps its role.
+    expect(service.assignDisplay(stream.id, 2)).toMatchObject({ ok: false });
+    expect(service.setGroupRole(stream.id, 'audience')).toMatchObject({ ok: false });
+    // Its languages are set as any group's are.
+    expect(service.setGroupLanguages(stream.id, ['translit', 'en']).ok).toBe(true);
+    expect(repo.streamGroup()?.languages).toEqual(['translit', 'en']);
+    // While the stream is on air or recording it stays; afterwards it can go (and comes back when needed).
+    let inUse = true;
+    const guarded = new ScreensService(
+      repo,
+      new OutputManager({
+        listDisplays: () => [hall],
+        screens: () => repo.screens(),
+        saveDisplayKey: () => undefined,
+        openWindow: (): OutputWindow => ({
+          webContentsId: 99,
+          setBounds: () => undefined,
+          close: () => undefined,
+          isDestroyed: () => false,
+        }),
+        onChange: () => undefined,
+      }),
+      () => [hall],
+      () => null,
+      () => inUse,
+    );
+    expect(guarded.deleteGroup(stream.id)).toMatchObject({ ok: false });
+    inUse = false;
+    expect(guarded.deleteGroup(stream.id).ok).toBe(true);
+    expect(repo.streamGroup()).toBeNull();
+  });
+
   it('sets the languages a group shows of a kirtan, in order, or all of them', () => {
     service.createGroup('Hall');
     const groupId = repo.groups()[0]?.id;

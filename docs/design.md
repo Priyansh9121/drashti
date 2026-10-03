@@ -154,3 +154,11 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **The wizard is a dialog of steps**: the step names with numbers along the top (the current one bold, `aria-current="step"`), one step at a time, **Back** on the left, **Skip this step** and **Next** (primary) on the right, **Finish** on the last step after a summary in words. Anything it would change is said before Finish, and nothing changes until then.
 - **Outputs are numbered the same everywhere**: the wizard's rows, and the big number Identify puts across each display. The display the controls are on carries a `warning` badge, and choosing an output there says Finish will ask first.
 - Both fit at 1280 × 720 (`tests/e2e/templates.spec.ts`, `tests/e2e/setup.spec.ts`).
+
+## 14. The stream
+
+- **ON AIR and REC are not LIVE.** LIVE (`live`, red) means "on the hall's screens". The stream has its own marks in the header, beside the name, and in Simple Mode: **ON AIR** on `onair` (violet, white text 5.7:1), and **REC** as a `rec` dot beside the word on a panel. Both always say so in words, and while reconnecting ON AIR says "On air · reconnecting".
+- **The Stream panel is a sheet on the right**, like Screens: the Program's preview (marked `data-a11y-picture`) with the sound level under it, then the layout as two large choices (`role="radio"`), the inputs with their state in words, and the controls. **Stream settings** is a centred dialog over it.
+- **The level meter** reads -60 to 0 dB (`role="meter"`), green, then `warning` above -12 dB and `danger` above -3 dB, holding a peak and falling back at 20 dB a second like a mixer's.
+- **A key is never shown.** Once saved, the settings say "A key is saved for this profile" with **Replace key** and **Remove key**; the field is a password field and empties as soon as it is sent.
+- Both fit at 1280 × 720 (`tests/e2e/stream-program.spec.ts`).

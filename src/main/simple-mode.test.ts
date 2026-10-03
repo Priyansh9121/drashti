@@ -17,12 +17,18 @@ describe('Simple Mode locks', () => {
     for (const channel of SIMPLE_MODE_LOCKED) expect(allChannels()).toContain(channel);
     // Every channel that changes something is locked; reading and running the show are not.
     const changes = allChannels().filter((c) =>
-      /:(save|remove|restore|create|rename|apply|update|add|move|fill|set|delete|assign|import|pick|relink|new|from|make|finish)/u.test(
+      /:(save|remove|restore|create|rename|apply|update|add|move|fill|set|delete|assign|import|pick|relink|new|from|make|finish|use|go-live|end$|start|stop)/u.test(
         c,
       ),
     );
-    // Switching the mode, the thumbnails' still-frame cache, and an event from the main process.
-    const open = new Set<string>([IPC.app.setMode, IPC.media.saveStill, IPC.library.importProgress]);
+    // Switching the mode, the thumbnails' still-frame cache, an event from the main process, and
+    // reading the notice from the start.
+    const open = new Set<string>([
+      IPC.app.setMode,
+      IPC.media.saveStill,
+      IPC.library.importProgress,
+      IPC.app.startNotice,
+    ]);
     for (const c of changes) if (!open.has(c)) expect(SIMPLE_MODE_LOCKED, c).toContain(c);
     expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.engine.command);
     expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.screens.uncoverOperator);

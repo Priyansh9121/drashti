@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import type { EngineState, MaskLayer, MessageItem } from '../../../shared/engine/state';
+import type { EngineState, MaskLayer, MessageItem, PropItem } from '../../../shared/engine/state';
 import type { Lang } from '../../../shared/model';
 import type { TimerState } from '../../../shared/timers';
 import type { Size } from '../../../shared/scaling';
@@ -27,14 +27,17 @@ function MessageText({ message, timers }: { message: MessageItem; timers: readon
   );
 }
 
-function MessageBanner({
+/** The messages along the bottom of the picture (the stream's Camera layout puts them at the top). */
+export function MessageBanner({
   messages,
   timers,
   canvas,
+  at = 'bottom',
 }: {
   messages: MessageItem[];
   timers: readonly TimerState[];
   canvas: Size;
+  at?: 'top' | 'bottom';
 }) {
   const size = Math.round(canvas.height * 0.045);
   return (
@@ -44,7 +47,7 @@ function MessageBanner({
         position: 'absolute',
         left: 0,
         right: 0,
-        bottom: 0,
+        [at]: 0,
         padding: `${size * 0.5}px ${size}px`,
         background: 'rgba(0, 0, 0, 0.72)',
         color: '#ffffff',
@@ -61,6 +64,41 @@ function MessageBanner({
         </span>
       ))}
     </div>
+  );
+}
+
+/** Props: each on its own canvas, placed on the screen's as slides are. */
+export function PropsLayer({
+  props,
+  canvas,
+  scaling,
+}: {
+  props: readonly PropItem[];
+  canvas: Size;
+  scaling: ScalingMode;
+}) {
+  return (
+    <>
+      {props.map((prop) => {
+        const size = { width: prop.width ?? 1920, height: prop.height ?? 1080 };
+        return (
+          <div
+            key={prop.id}
+            data-layer="props"
+            data-prop={prop.id}
+            style={{ position: 'absolute', inset: 0 }}
+          >
+            <Placed content={size} box={canvas} mode={scaling}>
+              <div style={{ position: 'relative', width: size.width, height: size.height }}>
+                {prop.elements.map((el) => (
+                  <ElementView key={el.id} el={el} />
+                ))}
+              </div>
+            </Placed>
+          </div>
+        );
+      })}
+    </>
   );
 }
 
@@ -134,25 +172,7 @@ export const Scene = memo(function Scene({
       )}
       <BackgroundMedia layer={layers.background} annotate={annotate} />
       <SlideLayerView layer={layers.slide} canvas={canvas} scaling={scaling} languages={languages} />
-      {layers.props.map((prop) => {
-        const size = { width: prop.width ?? 1920, height: prop.height ?? 1080 };
-        return (
-          <div
-            key={prop.id}
-            data-layer="props"
-            data-prop={prop.id}
-            style={{ position: 'absolute', inset: 0 }}
-          >
-            <Placed content={size} box={canvas} mode={scaling}>
-              <div style={{ position: 'relative', width: size.width, height: size.height }}>
-                {prop.elements.map((el) => (
-                  <ElementView key={el.id} el={el} />
-                ))}
-              </div>
-            </Placed>
-          </div>
-        );
-      })}
+      <PropsLayer props={layers.props} canvas={canvas} scaling={scaling} />
       {layers.messages.length > 0 && (
         <MessageBanner messages={layers.messages} timers={state.timers} canvas={canvas} />
       )}

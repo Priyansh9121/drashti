@@ -27,6 +27,16 @@ import type { Lang, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
 import type { SetupPlan, SetupResult, SetupState } from './setup';
+import type {
+  ProgramContext,
+  ProgramInputs,
+  StreamLayout,
+  StreamProfileInput,
+  StreamProfiles,
+  StreamProfilesResult,
+  StreamResult,
+  StreamStatus,
+} from './stream';
 import type { SaveStillResult } from './media';
 import type {
   ItemOrder,
@@ -272,6 +282,32 @@ export interface DrashtiBridge {
     onChosen(listener: (device: AudioDevice | null) => void): () => void;
     /** Audio player only: play a short test tone on this output ('' for the system default). */
     onTestTone(listener: (deviceId: string) => void): () => void;
+  };
+  /** Built-in streaming (PLAN.md 4.2). Going live and ending need the operator's confirmation. */
+  stream: {
+    status(): Promise<StreamStatus>;
+    onChanged(listener: (status: StreamStatus) => void): () => void;
+    setLayout(layout: StreamLayout): Promise<StreamResult>;
+    /** Watch the Program's preview: frames and the sound level come on a port (see stream/preview.ts). */
+    watchPreview(on: boolean): Promise<null>;
+    profiles(): Promise<StreamProfiles>;
+    saveProfile(id: string | null, input: StreamProfileInput): Promise<StreamProfilesResult>;
+    removeProfile(id: string): Promise<StreamProfilesResult>;
+    useProfile(id: string): Promise<StreamProfilesResult>;
+    /** The key is kept in the system's secure storage and never comes back. */
+    setKey(id: string, key: string): Promise<StreamProfilesResult>;
+    removeKey(id: string): Promise<StreamProfilesResult>;
+    goLive(confirm: { confirmed: true }): Promise<StreamResult>;
+    end(confirm: { confirmed: true }): Promise<StreamResult>;
+    startRecording(): Promise<StreamResult>;
+    stopRecording(): Promise<StreamResult>;
+    pickFolder(): Promise<StreamResult>;
+    /** The stream's own page. */
+    page: {
+      context(): Promise<ProgramContext | null>;
+      onContext(listener: (context: ProgramContext) => void): () => void;
+      reportInputs(inputs: ProgramInputs): Promise<null>;
+    };
   };
   /** The setup wizard (operator window only; never in Simple Mode). */
   setup: {

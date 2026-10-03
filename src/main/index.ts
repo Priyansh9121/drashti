@@ -5,8 +5,10 @@ import {
   globalShortcut,
   powerSaveBlocker,
   protocol,
+  safeStorage,
   screen as electronScreen,
   session,
+  systemPreferences,
 } from 'electron';
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { release as osRelease, tmpdir } from 'node:os';
@@ -91,6 +93,11 @@ import { openGalleryWindow } from './windows/gallery-window';
 import { createOperatorWindow } from './windows/operator-window';
 import { RendererWatchdog, shouldConfirmQuit } from './watchdog';
 import { applySessionSecurity, secureWebContents } from './windows/security';
+import { StreamProfileRepo } from './db/stream-profiles';
+import { StreamKeyStore } from './stream/key-store';
+import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
+import { StreamService } from './stream/stream-service';
+import { confirmedSchema } from '../shared/stream-schema';
 
 // Headless self-tests: run one, print the result, exit (see README). The performance test
 // imports a few hundred placeholder files, so it gets a throwaway data folder of its own.
@@ -130,6 +137,13 @@ const mediaDelayMs = Math.min(
   5000,
   Math.max(0, Number(process.env['DRASHTI_TEST_MEDIA_DELAY_MS'] ?? 0) || 0),
 );
+
+// Tests only: Chromium's fake camera and microphone (a moving test pattern and a beep) stand in for real ones.
+// Only the device switch: the stream's page still captures its own real picture.
+const fakeDevices = process.env['DRASHTI_TEST_FAKE_DEVICES'] === '1';
+if (fakeDevices) app.commandLine.appendSwitch('use-fake-device-for-media-stream');
+// Tests only: behave as if the system's secure storage for keys were missing.
+const noSafeStorage = process.env['DRASHTI_TEST_NO_SAFE_STORAGE'] === '1';
 
 // Library media reaches the sandboxed windows only through drashti-media:// (see media/media-protocol.ts).
 // Schemes must be registered before the app is ready.
@@ -281,6 +295,12 @@ function start(): void {
     isAudioPlayer: (contents) => contents !== null && contents.id === audioWindow?.webContents.id,
     log: permissionLog,
   });
+  // The stream's page has a session of its own: the only one allowed a camera and a sound input.
+  const streamSession = session.fromPartition(STREAM_PARTITION);
+  applyStreamSessionSecurity(streamSession, {
+    isProgram: (contents) => stream?.isProgram(contents) ?? false,
+    log: permissionLog,
+  });
 
   // A restore asked for before a restart is done first, before the library opens.
   const restored = pendingRestore();
@@ -361,6 +381,7 @@ function start(): void {
   // Every window's session: the default one, and the audio player's own.
   protocol.handle(MEDIA_SCHEME, serveMedia);
   audioSession.protocol.handle(MEDIA_SCHEME, serveMedia);
+  streamSession.protocol.handle(MEDIA_SCHEME, serveMedia);
 
   // ---- outputs ----------------------------------------------------------
   const outputWindows = new Map<string, BrowserWindow>();
@@ -427,7 +448,14 @@ function start(): void {
     windowedOutputs || !operatorWindow || operatorWindow.isDestroyed()
       ? null
       : electronScreen.getDisplayMatching(operatorWindow.getBounds()).id;
-  const screens = new ScreensService(screenRepo, manager, listDisplays, operatorDisplayId);
+  let stream: StreamService | null = null;
+  const screens = new ScreensService(
+    screenRepo,
+    manager,
+    listDisplays,
+    operatorDisplayId,
+    () => stream?.inUse() ?? false,
+  );
 
   // ---- keeping the operator's controls reachable ----------------------------
   const uncoverAccelerator = acceleratorFor('uncoverControls');
@@ -528,6 +556,40 @@ function start(): void {
   const sendToOperator = <C extends EventChannel>(channel: C, payload: EventContract[C]) => {
     if (operatorWindow && !operatorWindow.isDestroyed()) operatorWindow.webContents.send(channel, payload);
   };
+
+  // ---- streaming -------------------------------------------------------------
+  const streamKeys = new StreamKeyStore(
+    join(app.getPath('userData'), 'stream-keys.json'),
+    safeStorage,
+    noSafeStorage,
+  );
+  stream = new StreamService({
+    profiles: new StreamProfileRepo(db, (id) => streamKeys.has(id)),
+    keys: streamKeys,
+    settings,
+    screens: screenRepo,
+    createProgram: createProgramWindow,
+    sendToOperator,
+    platform: process.platform,
+    mediaAccess: (kind) =>
+      process.platform === 'darwin' || process.platform === 'win32'
+        ? systemPreferences.getMediaAccessStatus(kind)
+        : 'granted',
+    askMediaAccess: (kind) =>
+      process.platform === 'darwin' ? systemPreferences.askForMediaAccess(kind) : Promise.resolve(true),
+    fakeDevices,
+    screensChanged: () => {
+      sendToOperator(IPC.screens.changed, screens.snapshot());
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+  });
+  const streaming = stream;
+  app.on('will-quit', () => {
+    streaming.close();
+  });
   // ---- sound ----------------------------------------------------------------
   const audioOutput = new AudioOutput({
     load: () => settings.get('audioOutput'),
@@ -938,13 +1000,22 @@ function start(): void {
   handle(IPC.screens.setGroupRole, (e, id, role) =>
     fromOperator(e) ? screens.setGroupRole(id, role) : notAllowed,
   );
-  handle(IPC.screens.setGroupLanguages, (e, id, languages) =>
-    fromOperator(e) ? screens.setGroupLanguages(id, languages) : notAllowed,
-  );
+  handle(IPC.screens.setGroupLanguages, (e, id, languages) => {
+    if (!fromOperator(e)) return notAllowed;
+    const result = screens.setGroupLanguages(id, languages);
+    // The stream group's languages are the stream's lower third's and slides'.
+    streaming.contextChanged();
+    return result;
+  });
   handle(IPC.screens.renameGroup, (e, id, name) =>
     fromOperator(e) ? screens.renameGroup(id, name) : notAllowed,
   );
-  handle(IPC.screens.deleteGroup, (e, id) => (fromOperator(e) ? screens.deleteGroup(id) : notAllowed));
+  handle(IPC.screens.deleteGroup, (e, id) => {
+    if (!fromOperator(e)) return notAllowed;
+    const result = screens.deleteGroup(id);
+    streaming.contextChanged();
+    return result;
+  });
   handle(IPC.screens.assignDisplay, (e, groupId, displayId, options) =>
     fromOperator(e) ? screens.assignDisplay(groupId, displayId, options) : notAllowed,
   );
@@ -970,6 +1041,43 @@ function start(): void {
     }
     return null;
   });
+  // ---- streaming (operator window; the stream's page for its own calls) ---------------
+  const notOperator = { ok: false as const, message: 'Only the operator window can change the stream.' };
+  handle(IPC.stream.status, () => streaming.status());
+  handle(IPC.stream.setLayout, (e, layout) => (fromOperator(e) ? streaming.setLayout(layout) : notOperator));
+  handle(IPC.stream.watchPreview, (e, on) => {
+    if (fromOperator(e)) streaming.watchPreview(e.sender, on === true);
+    return null;
+  });
+  handle(IPC.stream.profiles, () => streaming.profilesView());
+  handle(IPC.stream.saveProfile, (e, id, input) =>
+    fromOperator(e) ? streaming.saveProfile(id, input) : notOperator,
+  );
+  handle(IPC.stream.removeProfile, (e, id) => (fromOperator(e) ? streaming.removeProfile(id) : notOperator));
+  handle(IPC.stream.useProfile, (e, id) => (fromOperator(e) ? streaming.useProfile(id) : notOperator));
+  handle(IPC.stream.setKey, (e, id, key) => (fromOperator(e) ? streaming.setKey(id, key) : notOperator));
+  handle(IPC.stream.removeKey, (e, id) => (fromOperator(e) ? streaming.removeKey(id) : notOperator));
+  handle(IPC.stream.goLive, (e, confirm) =>
+    fromOperator(e) && confirmedSchema.safeParse(confirm).success
+      ? streaming.goLive()
+      : { ok: false as const, message: 'Going live needs the operator to confirm it.' },
+  );
+  handle(IPC.stream.end, (e, confirm) =>
+    fromOperator(e) && confirmedSchema.safeParse(confirm).success
+      ? streaming.end()
+      : { ok: false as const, message: 'Ending the stream needs the operator to confirm it.' },
+  );
+  handle(IPC.stream.startRecording, (e) => (fromOperator(e) ? streaming.startRecording() : notOperator));
+  handle(IPC.stream.stopRecording, (e) => (fromOperator(e) ? streaming.stopRecording() : notOperator));
+  handle(IPC.stream.pickFolder, (e) =>
+    fromOperator(e) ? streaming.pickFolder(operatorWindow) : notOperator,
+  );
+  handle(IPC.stream.pageContext, (e) => (streaming.isProgram(e.sender) ? streaming.context() : null));
+  handle(IPC.stream.pageInputs, (e, inputs) => {
+    streaming.reportInputs(e.sender, inputs);
+    return null;
+  });
+
   // ---- the setup wizard ----------------------------------------------------------
   // Tests start with it closed, unless a test is about it; the self-tests never open it (a dialog
   // would take the show's keys).

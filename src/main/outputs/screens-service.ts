@@ -32,6 +32,8 @@ export class ScreensService {
     private readonly listDisplays: () => DisplayInfo[],
     /** The display the operator window is on (null when outputs cannot cover it, e.g. windowed outputs). */
     private readonly operatorDisplayId: () => number | null = () => null,
+    /** The stream is on air or recording (its group cannot go). */
+    private readonly streamInUse: () => boolean = () => false,
   ) {}
 
   /** An output on this display would cover the operator window, and the operator has not agreed. */
@@ -81,6 +83,8 @@ export class ScreensService {
     const role = z.enum(GROUP_ROLES).safeParse(rawRole);
     if (!id.success || !role.success)
       return this.fail('A group shows the audience picture or the stage view.');
+    if (this.repo.groupRole(id.data) === 'stream')
+      return this.fail('The stream group always shows the stream.');
     if (!this.repo.setGroupRole(id.data, role.data)) return this.fail('That group no longer exists.');
     return this.done();
   }
@@ -98,7 +102,10 @@ export class ScreensService {
 
   deleteGroup(rawId: unknown): ScreensResult {
     const id = idSchema.safeParse(rawId);
-    if (!id.success || !this.repo.deleteGroup(id.data)) return this.fail('That group no longer exists.');
+    if (!id.success) return this.fail('That group no longer exists.');
+    if (this.repo.groupRole(id.data) === 'stream' && this.streamInUse())
+      return this.fail('The stream group is in use: end the stream and stop recording first.');
+    if (!this.repo.deleteGroup(id.data)) return this.fail('That group no longer exists.');
     return this.done();
   }
 
@@ -108,6 +115,8 @@ export class ScreensService {
     if (!groupId.success || !displayId.success) return this.fail('Choose a group and a display.');
     const groupName = this.repo.groupName(groupId.data);
     if (groupName === null) return this.fail('That group no longer exists.');
+    if (this.repo.groupRole(groupId.data) === 'stream')
+      return this.fail('The stream is drawn off screen: its group has no displays.');
     const display = this.listDisplays().find((d) => d.id === displayId.data);
     if (!display) return this.fail('That display is not connected any more.');
     const user = this.outputs.status().find((s) => s.displayId === display.id);
