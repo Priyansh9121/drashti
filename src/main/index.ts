@@ -100,6 +100,7 @@ import { StreamService } from './stream/stream-service';
 import { findFfmpeg } from './stream/ffmpeg-path';
 import { ffmpegSelfTest } from './stream/ffmpeg-selftest';
 import { spawnStreamWorker } from './stream/stream-worker';
+import { startPerfStream } from './stream/perf-stream';
 import { confirmedSchema } from '../shared/stream-schema';
 
 // Headless self-tests: run one, print the result, exit (see README). The performance test
@@ -287,6 +288,29 @@ const IMPORTABLE_EXTENSIONS = [
   'aiff',
 ];
 const notAllowed = { ok: false as const, message: 'Only the operator window can change the screens.' };
+
+/**
+ * The performance check, while streaming and recording when DRASHTI_PERF_STREAM names an
+ * address on this computer (tests/perf/performance.spec.ts starts FFmpeg listening there).
+ */
+async function runPerformanceTestWithStream(
+  ctx: Parameters<typeof runPerformanceTest>[0] & {
+    stream: StreamService;
+    operatorContents: () => Electron.WebContents | null;
+  },
+): ReturnType<typeof runPerformanceTest> {
+  const url = process.env['DRASHTI_PERF_STREAM'];
+  const operator = ctx.operatorContents();
+  if (!url || !operator) return runPerformanceTest(ctx);
+  const folder = mkdtempSync(join(tmpdir(), 'drashti-perf-recording-'));
+  const perf = await startPerfStream(ctx.stream, operator, url, folder);
+  try {
+    const result = await runPerformanceTest(ctx);
+    return { ...result, summary: `${result.summary}; ${perf.summary()}` };
+  } finally {
+    await perf.stop();
+  }
+}
 
 function start(): void {
   if (ffmpegCheck) {
@@ -1390,13 +1414,16 @@ function start(): void {
   };
   if (perfTest) {
     operatorWindow.webContents.once('did-finish-load', () => {
-      void runPerformanceTest({
+      void runPerformanceTestWithStream({
         operator: () => (operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : null),
         outputs: () => [...outputWindows.values()].filter((w) => !w.isDestroyed()),
         ensureOutput: () => ensureTestOutput('Performance test'),
         workerRunning: () =>
           app.getAppMetrics().some((m) => m.type === 'Utility' && m.name === 'Drashti import'),
         diagnostics: { loopDelay, handlerTimes, gc },
+        stream: streaming,
+        operatorContents: () =>
+          operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow.webContents : null,
       }).then(
         (result) => {
           process.stdout.write(`DRASHTI_PERFTEST_RESULT ${JSON.stringify(result)}\n`);

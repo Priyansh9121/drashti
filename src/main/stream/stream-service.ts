@@ -786,10 +786,15 @@ export class StreamService {
     if (picked.canceled || !folder) return { ok: true, status: this.status() };
     if (this.recording.state !== 'off')
       return { ok: false, message: 'Stop recording before choosing another folder.' };
+    this.setRecordingFolder(folder);
+    return { ok: true, status: this.status() };
+  }
+
+  /** Where recordings go (the operator chose it). */
+  setRecordingFolder(folder: string): void {
     this.recording.folder = folder;
     this.deps.settings.set(FOLDER_SETTING, folder);
     this.changed();
-    return { ok: true, status: this.status() };
   }
 
   /** Close everything (Drashti is quitting on purpose: the stream ends, and is not resumed). */
