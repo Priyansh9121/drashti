@@ -302,6 +302,8 @@ export interface DrashtiBridge {
     startRecording(): Promise<StreamResult>;
     stopRecording(): Promise<StreamResult>;
     pickFolder(): Promise<StreamResult>;
+    /** Let the offer to go live again after a crash go. */
+    dismissResume(): Promise<null>;
     /** The stream's own page. */
     page: {
       context(): Promise<ProgramContext | null>;

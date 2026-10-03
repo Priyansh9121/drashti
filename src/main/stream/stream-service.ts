@@ -26,6 +26,11 @@ import type { ScreenRepo } from '../db/screens';
 import type { SettingsRepo } from '../db/settings';
 import type { StreamProfileRepo } from '../db/stream-profiles';
 import type { StreamKeyStore } from './key-store';
+import type { StreamWorker } from './stream-worker';
+import type { WorkerStatus } from './worker/protocol';
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileStamp } from '../../shared/format';
 
 /*
  * The stream (PLAN.md 4.2), as the main process keeps it: the profiles and
@@ -50,6 +55,14 @@ export interface StreamServiceDeps {
   askMediaAccess(kind: 'camera' | 'microphone'): Promise<boolean>;
   /** The screen groups changed (the stream group was made): Screens shows it. */
   screensChanged(): void;
+  /** The bundled FFmpeg, or null when it is missing. */
+  ffmpegPath(): string | null;
+  spawnWorker(): StreamWorker;
+  /** Where the stream's state is kept between runs (to go live again after a crash). */
+  stateFile: string;
+  /** A sentence for the operator (the status bar's notice). */
+  notice(text: string): void;
+  now(): number;
   /** Tests: Chromium's fake camera and microphone stand in, and the system is not asked. */
   fakeDevices: boolean;
   log(level: 'info' | 'warn', message: string): void;
@@ -58,6 +71,21 @@ export interface StreamServiceDeps {
 const PROFILE_SETTING = 'stream.profileId';
 const LAYOUT_SETTING = 'stream.layout';
 const FOLDER_SETTING = 'stream.recordingFolder';
+/** Recording stops before the disk has less than this free (as backups and imports do). */
+export const KEEP_FREE_BYTES = 2 * 1024 ** 3;
+/** After an unexpected stop, Drashti goes live again by itself only if it starts again this soon. */
+export const RESUME_WITHIN_MS = 5 * 60 * 1000;
+export const FFMPEG_VERSION = '9.0.2';
+const FFMPEG_MISSING =
+  'Drashti’s copy of FFmpeg is missing, so it cannot stream or record. Install Drashti again (or, from the repository, run node scripts/fetch-ffmpeg.mjs).';
+
+const savedStreamSchema = z.object({
+  live: z.boolean(),
+  recording: z.boolean(),
+  profileId: z.string(),
+  at: z.number(),
+});
+type SavedStream = z.infer<typeof savedStreamSchema>;
 
 const NO_INPUTS: ProgramInputs = {
   cameras: [],
@@ -105,7 +133,16 @@ export class StreamService {
     message: null,
   };
   private encoder: string | null = null;
-  private ffmpeg: StreamStatus['ffmpeg'] = { available: false, version: null };
+  /** The encoder found to work here (the worker tries it first next time). */
+  private encoderName: string | null = null;
+  private worker: StreamWorker | null = null;
+  private workerStatus: WorkerStatus | null = null;
+  private liveWanted = false;
+  private recordWanted = false;
+  /** After an unexpected stop: what was going on, to go live again or offer to. */
+  private resume: StreamStatus['resume'] = null;
+  private heartbeat: NodeJS.Timeout | null = null;
+  private profilesVersion = 0;
 
   constructor(private readonly deps: StreamServiceDeps) {
     const saved = streamLayoutSchema.safeParse(deps.settings.get(LAYOUT_SETTING));
@@ -133,7 +170,7 @@ export class StreamService {
 
   /** On air or recording: the profile in use and its inputs stay as they are. */
   inUse(): boolean {
-    return this.live.state !== 'off' || this.recording.state !== 'off';
+    return this.liveWanted || this.recordWanted;
   }
 
   saveProfile(rawId: unknown, rawInput: unknown): StreamProfilesResult {
@@ -161,6 +198,8 @@ export class StreamService {
       this.deps.profiles.update(id.data, input.data);
     }
     this.contextChanged();
+    this.profilesVersion++;
+    this.changed();
     return { ok: true, profiles: this.profilesView() };
   }
 
@@ -182,6 +221,8 @@ export class StreamService {
     this.deps.profiles.remove(id.data);
     this.deps.keys.remove(id.data);
     this.contextChanged();
+    this.profilesVersion++;
+    this.changed();
     return { ok: true, profiles: this.profilesView() };
   }
 
@@ -193,6 +234,8 @@ export class StreamService {
       return { ok: false, message: 'End the stream and stop recording before changing profile.' };
     this.deps.settings.set(PROFILE_SETTING, id.data);
     this.contextChanged();
+    this.profilesVersion++;
+    this.changed();
     return { ok: true, profiles: this.profilesView() };
   }
 
@@ -207,6 +250,8 @@ export class StreamService {
     if (!kept.ok) return kept;
     this.deps.log('info', 'A stream key was saved');
     this.changed();
+    this.profilesVersion++;
+    this.changed();
     return { ok: true, profiles: this.profilesView() };
   }
 
@@ -215,6 +260,8 @@ export class StreamService {
     if (!id.success || !this.deps.profiles.get(id.data))
       return { ok: false, message: 'That profile no longer exists.' };
     this.deps.keys.remove(id.data);
+    this.changed();
+    this.profilesVersion++;
     this.changed();
     return { ok: true, profiles: this.profilesView() };
   }
@@ -246,7 +293,7 @@ export class StreamService {
       sound: this.systemBlocked.microphone ? null : profile.sound,
       soundDelayMs: profile.soundDelayMs,
       mixOwnSound: profile.mixOwnSound,
-      capturing: this.live.state !== 'off' || this.recording.state !== 'off',
+      capturing: this.liveWanted || this.recordWanted,
       preview: this.watchers.size > 0,
     };
   }
@@ -284,6 +331,7 @@ export class StreamService {
     win.webContents.on('did-finish-load', () => {
       this.programReady = true;
       this.pairPreviews();
+      this.pairEncoder();
       this.changed();
     });
     win.webContents.on('render-process-gone', (_e, details) => {
@@ -417,9 +465,11 @@ export class StreamService {
       },
       live: { ...this.live },
       recording: { ...this.recording, file: this.recording.file ? basename(this.recording.file) : null },
-      encoder: this.encoder,
+      encoder: this.workerStatus?.encoder?.label ?? this.encoder,
       keyStorage: this.deps.keys.status(),
-      ffmpeg: { ...this.ffmpeg },
+      ffmpeg: { available: this.deps.ffmpegPath() !== null, version: FFMPEG_VERSION },
+      resume: this.resume,
+      profilesVersion: this.profilesVersion,
     };
   }
 
@@ -427,22 +477,298 @@ export class StreamService {
     this.deps.sendToOperator(IPC.stream.changed, this.status());
   }
 
-  // ---- going live and recording (step 2) -----------------------------------------------
+  // ---- going live and recording -----------------------------------------------------------
+
+  /** The worker (encoding, sending, recording) runs while the stream is live or recording. */
+  private ensureWorker(ffmpeg: string): StreamWorker {
+    if (this.worker) return this.worker;
+    const worker = this.deps.spawnWorker();
+    this.worker = worker;
+    worker.onMessage((m) => {
+      if (this.worker !== worker) return;
+      if (m.type === 'log') this.deps.log(m.level, `[stream] ${m.message}`);
+      else this.fromWorker(m.status);
+    });
+    worker.onExit(() => {
+      if (this.worker !== worker) return;
+      this.worker = null;
+      this.workerStatus = null;
+      if (this.inUse()) {
+        // It stopped by itself: start it again with what was wanted.
+        this.deps.log('warn', 'The stream worker stopped; starting it again');
+        setTimeout(() => {
+          this.restartWorker();
+        }, 1000);
+      }
+    });
+    const preset = STREAM_PRESETS[this.activeProfile().preset];
+    worker.send({ type: 'start', ffmpeg, platform: this.deps.platform, preset, encoder: this.encoderName });
+    this.updateProgram();
+    this.pairEncoder();
+    return worker;
+  }
+
+  private restartWorker(): void {
+    const ffmpeg = this.deps.ffmpegPath();
+    if (!ffmpeg || !this.inUse()) return;
+    const worker = this.ensureWorker(ffmpeg);
+    const profile = this.activeProfile();
+    if (this.liveWanted) {
+      const key = this.deps.keys.get(profile.id);
+      if (key) worker.send({ type: 'live', url: profile.url, key });
+    }
+    if (this.recordWanted && this.recording.file)
+      worker.send({ type: 'record', file: this.nextFile(), keepFreeBytes: KEEP_FREE_BYTES });
+  }
+
+  /** Give the worker a port to the stream's page for its frames and sound. */
+  private pairEncoder(): void {
+    const program = this.program;
+    const worker = this.worker;
+    if (!worker || !program || program.isDestroyed() || !this.programReady) return;
+    const { port1, port2 } = new MessageChannelMain();
+    worker.sendFrames(port1);
+    program.webContents.postMessage(IPC.stream.port, { role: 'encoder' }, [port2]);
+    this.contextChanged();
+  }
+
+  /** Stop the worker when neither live nor recording is wanted. */
+  private settleWorker(): void {
+    if (this.inUse() || !this.worker) return;
+    this.worker.send({ type: 'stop' });
+    const worker = this.worker;
+    setTimeout(() => {
+      worker.kill();
+    }, 5000).unref();
+    this.worker = null;
+    this.workerStatus = null;
+    this.contextChanged();
+    this.updateProgram();
+  }
+
+  private fromWorker(status: WorkerStatus): void {
+    this.workerStatus = status;
+    if (status.encoder) {
+      this.encoderName = status.encoder.name;
+      this.encoder = status.encoder.label;
+    }
+    const w = status.live;
+    if (this.liveWanted) {
+      this.live = {
+        state: w.state === 'live' ? 'live' : w.state === 'reconnecting' ? 'reconnecting' : 'starting',
+        since: w.since,
+        health: w.health,
+        bitrateKbps: w.bitrateKbps,
+        fps: status.fps,
+        droppedFrames: status.droppedFrames,
+        reconnects: w.reconnects,
+        retryAt: w.retryAt,
+        message: status.error ?? w.message,
+      };
+    }
+    const r = status.recording;
+    const rate = r.rate ?? null;
+    const left =
+      r.freeBytes !== null && rate !== null && rate > 0
+        ? Math.max(0, (r.freeBytes - KEEP_FREE_BYTES) / rate)
+        : null;
+    if (this.recordWanted && r.state === 'off' && r.message) {
+      // The worker stopped the recording (the disk is nearly full): the stream goes on.
+      this.recordWanted = false;
+      this.deps.notice(r.message);
+    }
+    this.recording = {
+      ...this.recording,
+      state: r.state === 'recording' ? 'recording' : this.recordWanted ? 'starting' : 'off',
+      since: r.since,
+      file: r.file,
+      bytes: r.bytes,
+      freeBytes: r.freeBytes,
+      secondsLeft: left,
+      message: status.error ?? r.message,
+    };
+    this.saveState();
+    this.changed();
+    if (!this.inUse()) this.settleWorker();
+  }
 
   goLive(): StreamResult {
-    return { ok: false, message: 'Going live is not ready yet.' };
+    if (this.liveWanted) return { ok: false, message: 'The stream is already on air.' };
+    const ffmpeg = this.deps.ffmpegPath();
+    if (!ffmpeg) return { ok: false, message: FFMPEG_MISSING };
+    const profile = this.activeProfile();
+    const key = this.deps.keys.get(profile.id);
+    if (!key) {
+      const storage = this.deps.keys.status();
+      return {
+        ok: false,
+        message: storage.available
+          ? `There is no stream key for “${profile.name}”. Paste it in Stream settings first.`
+          : (storage.message ?? FFMPEG_MISSING),
+      };
+    }
+    this.liveWanted = true;
+    this.resume = null;
+    this.live = {
+      ...this.live,
+      state: 'starting',
+      since: null,
+      message: 'Starting…',
+      reconnects: 0,
+      droppedFrames: 0,
+    };
+    const worker = this.ensureWorker(ffmpeg);
+    worker.send({ type: 'live', url: profile.url, key });
+    this.deps.log(
+      'info',
+      `Going live with the profile “${profile.name}” (${STREAM_PRESETS[profile.preset].label})`,
+    );
+    this.startHeartbeat();
+    this.saveState();
+    this.contextChanged();
+    return { ok: true, status: this.status() };
   }
 
   end(): StreamResult {
-    return { ok: false, message: 'The stream is not on air.' };
+    if (!this.liveWanted) return { ok: false, message: 'The stream is not on air.' };
+    this.liveWanted = false;
+    this.worker?.send({ type: 'endLive' });
+    this.live = {
+      state: 'off',
+      since: null,
+      health: 'off',
+      bitrateKbps: null,
+      fps: null,
+      droppedFrames: 0,
+      reconnects: 0,
+      retryAt: null,
+      message: null,
+    };
+    this.deps.log('info', 'The stream was ended');
+    this.saveState();
+    this.settleWorker();
+    this.changed();
+    return { ok: true, status: this.status() };
+  }
+
+  /** A new recording file's name: Drashti and the local date and time. */
+  private nextFile(): string {
+    const folder = this.recording.folder ?? '';
+    let file = join(folder, `Drashti ${fileStamp(new Date(this.deps.now()))}.mkv`);
+    for (let n = 2; existsSync(file); n++)
+      file = join(folder, `Drashti ${fileStamp(new Date(this.deps.now()))} (${n}).mkv`);
+    return file;
   }
 
   startRecording(): StreamResult {
-    return { ok: false, message: 'Recording is not ready yet.' };
+    if (this.recordWanted) return { ok: false, message: 'It is already recording.' };
+    const ffmpeg = this.deps.ffmpegPath();
+    if (!ffmpeg) return { ok: false, message: FFMPEG_MISSING };
+    if (!this.recording.folder || !existsSync(this.recording.folder))
+      return { ok: false, message: 'Choose a folder for recordings first.' };
+    this.recordWanted = true;
+    this.resume = null;
+    this.recording = { ...this.recording, state: 'starting', message: null, bytes: 0, since: null };
+    const worker = this.ensureWorker(ffmpeg);
+    worker.send({ type: 'record', file: this.nextFile(), keepFreeBytes: KEEP_FREE_BYTES });
+    this.startHeartbeat();
+    this.saveState();
+    this.contextChanged();
+    return { ok: true, status: this.status() };
   }
 
   stopRecording(): StreamResult {
-    return { ok: false, message: 'Nothing is being recorded.' };
+    if (!this.recordWanted) return { ok: false, message: 'Nothing is being recorded.' };
+    this.recordWanted = false;
+    this.worker?.send({ type: 'stopRecording' });
+    this.recording = { ...this.recording, state: 'off', secondsLeft: null, message: null };
+    this.saveState();
+    this.settleWorker();
+    this.changed();
+    return { ok: true, status: this.status() };
+  }
+
+  // ---- after an unexpected stop ----------------------------------------------------------
+
+  private startHeartbeat(): void {
+    this.heartbeat ??= setInterval(() => {
+      if (this.inUse()) this.saveState();
+      else if (this.heartbeat) {
+        clearInterval(this.heartbeat);
+        this.heartbeat = null;
+      }
+    }, 5000);
+  }
+
+  /** What is going on, kept on disk (no key): after a crash, Drashti knows to go live again. */
+  private saveState(): void {
+    const state: SavedStream = {
+      live: this.liveWanted,
+      recording: this.recordWanted,
+      profileId: this.activeProfile().id,
+      at: this.deps.now(),
+    };
+    try {
+      const tmp = `${this.deps.stateFile}.tmp`;
+      writeFileSync(tmp, JSON.stringify(state));
+      renameSync(tmp, this.deps.stateFile);
+    } catch (error) {
+      this.deps.log('warn', `The stream's state could not be kept: ${String(error)}`);
+    }
+  }
+
+  /**
+   * At the start: if Drashti stopped while on air or recording (no End, no
+   * Stop), go live and record again by itself when that was under 5 minutes
+   * ago, with the same profile; after that, only offer to. A new recording
+   * file starts either way; the old one stays as it is and plays.
+   */
+  resumeAfterStop(): string | null {
+    let saved: SavedStream;
+    try {
+      saved = savedStreamSchema.parse(JSON.parse(readFileSync(this.deps.stateFile, 'utf8')));
+    } catch {
+      return null;
+    }
+    if (!saved.live && !saved.recording) return null;
+    const profile = this.deps.profiles.get(saved.profileId);
+    if (!profile) return null;
+    if (this.activeProfile().id !== profile.id) this.deps.settings.set(PROFILE_SETTING, profile.id);
+    const ago = this.deps.now() - saved.at;
+    const what = saved.live && saved.recording ? 'on air and recording' : saved.live ? 'on air' : 'recording';
+    if (ago > RESUME_WITHIN_MS) {
+      this.resume = {
+        live: saved.live,
+        recording: saved.recording,
+        profileName: profile.name,
+        stoppedAt: saved.at,
+      };
+      // Offered once: if Drashti stops again before the operator answers, it is not offered again.
+      const kept = { ...saved, live: false, recording: false };
+      try {
+        writeFileSync(this.deps.stateFile, JSON.stringify(kept));
+      } catch {
+        // Offered this time anyway.
+      }
+      this.changed();
+      return `Drashti stopped unexpectedly while ${what}, more than 5 minutes ago. Open the Stream panel to go live again.`;
+    }
+    const live = saved.live ? this.goLive() : null;
+    const rec = saved.recording ? this.startRecording() : null;
+    const failed = [live, rec].find((r): r is { ok: false; message: string } => r !== null && !r.ok);
+    this.deps.log(
+      'info',
+      `After an unexpected stop ${Math.round(ago / 1000)} s ago, the stream (${what}) starts again by itself`,
+    );
+    if (failed)
+      return `Drashti stopped unexpectedly while ${what}, and could not start again by itself: ${failed.message}`;
+    return `Drashti stopped unexpectedly while ${what}. It went ${saved.live ? 'live' : 'back to recording'} again by itself with the profile “${profile.name}”${saved.recording ? ', in a new recording file (the earlier one is kept and plays)' : ''}.`;
+  }
+
+  /** The operator answered the offer to go live again (or let it go). */
+  dismissResume(): void {
+    this.resume = null;
+    this.changed();
   }
 
   /** Choose the folder recordings go into. */
@@ -466,8 +792,16 @@ export class StreamService {
     return { ok: true, status: this.status() };
   }
 
-  /** Close everything (Drashti is quitting). */
+  /** Close everything (Drashti is quitting on purpose: the stream ends, and is not resumed). */
   close(): void {
+    if (this.liveWanted || this.recordWanted) {
+      this.liveWanted = false;
+      this.recordWanted = false;
+      this.saveState();
+    }
+    this.worker?.send({ type: 'stop' });
+    this.worker = null;
+    if (this.heartbeat) clearInterval(this.heartbeat);
     if (this.program && !this.program.isDestroyed()) this.program.destroy();
     this.program = null;
   }

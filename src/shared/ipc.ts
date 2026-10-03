@@ -277,6 +277,8 @@ export const IPC = {
     stopRecording: 'stream:stop-recording',
     /** Choose the recordings' folder. */
     pickFolder: 'stream:pick-folder',
+    /** The operator let the offer to go live again (after a crash) go. */
+    dismissResume: 'stream:dismiss-resume',
     /** main -> operator: the stream's state changed. */
     changed: 'stream:changed',
     /** main -> a page: a MessagePort for the preview or the encoder ({ role }). */
@@ -463,6 +465,7 @@ export interface InvokeContract {
   [IPC.stream.startRecording]: { args: []; result: StreamResult };
   [IPC.stream.stopRecording]: { args: []; result: StreamResult };
   [IPC.stream.pickFolder]: { args: []; result: StreamResult };
+  [IPC.stream.dismissResume]: { args: []; result: null };
   [IPC.stream.pageContext]: { args: []; result: ProgramContext | null };
   [IPC.stream.pageInputs]: { args: [inputs: ProgramInputs]; result: null };
 }

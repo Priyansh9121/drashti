@@ -40,7 +40,7 @@ Drashti's installers are made automatically each time a new version is ready, on
 
 1. Run the `.exe` installer. Windows says "Windows protected your PC", because the build is not signed yet. Click **More info**, then **Run anyway**.
 2. It installs for the current user, with no administrator password, and Drashti appears in the Start menu.
-3. Section 6 of `docs/windows-checks.md` has checks for this install; do them now and write down what you see (the rest of that file comes in section 8 of this guide).
+3. Section 6 of `docs/windows-checks.md` has checks for this install; do them now and write down what you see (the rest of that file comes in section 9 of this guide).
 
 When Drashti starts the first time, its library holds two sample presentations. Your own library comes in the next step.
 
@@ -142,7 +142,39 @@ Write down anything the volunteer found hard, with what they were trying to do.
 
 ---
 
-## 6. Falling back to ProPresenter
+## 6. Going live on YouTube, and recording
+
+Only on the computer that streams, and only once the screens and sound work. **Try it first on a private or unlisted YouTube stream**, never the mandir's public one, until it has worked twice.
+
+**Once, to set it up:**
+
+1. Plug in the camera (or the capture card) and the cable from the mixer's line out into the computer.
+2. In Drashti press **Stream** (top right), then **Stream settings**.
+3. In **YouTube Studio** choose **Go live**, then **Stream**. Copy the **Stream key** and paste it in Drashti's **Stream key** box, then **Save key**. Drashti keeps it locked away and never shows it again ("A key is saved"). Check the **Address** says `rtmps://a.rtmps.youtube.com/live2`.
+4. Choose the **Camera** and the **Sound input** (the mixer's line in). On a Mac, the first time, macOS asks whether Drashti may use the camera and the microphone: press **Allow**. If Drashti says Windows or macOS is blocking them, follow what it says, then open the Stream panel again.
+5. **Internet**: **Good internet** (1080p) needs an upload of 8 Mbps or more; otherwise choose **Weak internet** (720p). Ask whoever looks after the mandir's internet, or run a speed test on this computer.
+6. **Save profile**. Back in the Stream panel, the preview shows what the stream will look like, and the bar under it moves with the sound. Talk into a microphone on the mixer: if the lips move after the words are heard, raise **Sound delay** in Stream settings a little at a time.
+7. **Recording**: press **Choose a folder…** and pick a folder on a disk with plenty of space (an hour at Good internet is about 3 GB).
+
+**Each time:**
+
+1. Open the **Stream** panel. Choose **Camera and words** (the camera, with the kirtan's words along the bottom) or **Slides** (what the hall sees). You can switch at any time, even on air.
+2. Press **Record** if the sabha should be recorded too.
+3. Press **Go live…**, read what it says, then **Go live**. The top of the window says **ON AIR**. In YouTube Studio the stream appears after a few seconds.
+4. Run the sabha as usual. On the hall's screens, black-out and the logo do not black out the stream in **Camera and words**: the camera carries on and the words go.
+5. At the end, press **End the stream…**, then **End the stream**, and **Stop recording**. End the broadcast in YouTube Studio too.
+
+There is no key for going live or ending: always the buttons, and always a question first.
+
+**When the internet drops:** do nothing at first. Drashti says **Reconnecting** and tries again by itself (after 1, 2, 4, 8, 15 and then every 30 seconds), and the recording carries on all the while. The hall's screens are not affected. If it has not come back within a few minutes, check the internet (a browser on this computer), and if the connection is slow all evening, end the stream, choose **Weak internet** in Stream settings and go live again. If YouTube's broadcast has ended by then, start a new one in YouTube Studio.
+
+**If Drashti closes by itself while on air**, start it again: within 5 minutes it goes live again by itself (and records into a new file; the first one still plays) and says so. After 5 minutes it asks first, in the Stream panel.
+
+**If the disk fills up**, Drashti stops recording before less than 2 GB is free and says so; the stream goes on. The Stream panel always shows the free space and about how long the recording can go on.
+
+---
+
+## 7. Falling back to ProPresenter
 
 A real sabha always has a named fallback operator who knows how to switch back. Practise it on these evenings until it takes **under a minute**:
 
@@ -154,7 +186,7 @@ The plan's order for real use (PLAN.md, section 5.1) is: a smaller weekday or Ba
 
 ---
 
-## 7. After a problem: save diagnostics
+## 8. After a problem: save diagnostics
 
 If anything goes wrong (a screen went black, something froze, Drashti closed by itself), as soon as you can:
 
@@ -168,7 +200,7 @@ If Drashti closed by itself, start it again: it puts back what was on the screen
 
 ---
 
-## 8. The checks to run on each computer
+## 9. The checks to run on each computer
 
 Once per computer, during these evenings:
 
@@ -219,6 +251,8 @@ On the Mac, **Cmd** is the ⌘ key; on Windows, use **Ctrl** instead. These keys
 | **Cmd+Shift+S** / **Ctrl+Shift+S**             | Open Screens                                                                                     |
 | **Cmd+Shift+U** / **Ctrl+Shift+U**             | Uncover the controls (works from anywhere)                                                       |
 | **Esc**                                        | Cancel editing words or a question, or empty the search box                                      |
+
+Going live, ending the stream and recording have no keys: use the buttons in the **Stream** panel (each going live or ending asks first).
 
 In the slide editor:
 

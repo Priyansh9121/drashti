@@ -17,14 +17,32 @@ asarUnpack:
 # better-sqlite3's Node-API prebuilds load in Electron as they are.
 npmRebuild: false
 mac:
-  target: [dmg, zip]
+  # Apple silicon and Intel Macs, each with its own FFmpeg.
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
   category: public.app-category.productivity
   # Electron 44 needs macOS 13 Ventura or later (see README, open risks).
   minimumSystemVersion: '13.0'
+  # The bundled FFmpeg (scripts/fetch-ffmpeg.mjs), a separate program: LICENSES/ffmpeg/.
+  extraResources:
+    - from: vendor/ffmpeg/darwin-${arch}
+      to: ffmpeg
+      filter: [ffmpeg]
+  # macOS asks the operator before Drashti may use a camera or a sound input (for the stream).
+  extendInfo:
+    NSCameraUsageDescription: Drashti uses the camera or capture card you choose for the stream to YouTube.
+    NSMicrophoneUsageDescription: Drashti uses the sound input you choose (the mixer’s line in) for the stream to YouTube.
 win:
   target:
     - target: nsis
       arch: [x64]
+  extraResources:
+    - from: vendor/ffmpeg/win32-${arch}
+      to: ffmpeg
+      filter: [ffmpeg.exe]
 nsis:
   oneClick: false
   perMachine: false

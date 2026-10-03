@@ -7,7 +7,7 @@ import { connectEngine, useEngine } from '../engine/engine-store';
 import { preloadFonts } from '../render/fonts';
 import { PlacedInParent } from '../render/Placed';
 import { applyCameraChoice, listDevices } from './camera';
-import { setCaptureSize, startCapture, stopPreview } from './capture';
+import { setCaptureSize, startCapture, stopEncoder, stopPreview } from './capture';
 import { useProgram } from './program-store';
 import { ProgramView } from './ProgramView';
 import { StreamSound } from './sound';
@@ -27,6 +27,7 @@ async function apply(context: ProgramContext): Promise<void> {
   useProgram.setState({ context });
   setCaptureSize({ width: context.width, height: context.height });
   if (!context.preview) stopPreview();
+  if (!context.capturing) stopEncoder();
   sound.setDelay(context.soundDelayMs);
   sound.setOwnSound(context.mixOwnSound, useEngine.getState().state);
   await applyCameraChoice(context.camera, { width: context.width, height: context.height });
@@ -45,7 +46,10 @@ function Program() {
       setFontsReady(true);
       connectEngine();
     });
-    startCapture(() => sound.level());
+    startCapture(
+      () => sound.level(),
+      () => sound.track(),
+    );
     void listDevices();
     navigator.mediaDevices.addEventListener('devicechange', () => {
       void listDevices().then(() => {

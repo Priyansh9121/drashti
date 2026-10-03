@@ -77,10 +77,23 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The FFmpeg Drashti bundles: pinned builds, checked against their SHA-256 (never in git).
+      - name: Cache FFmpeg downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/drashti
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs') }}
+      - name: Fetch FFmpeg
+        run: node scripts/fetch-ffmpeg.mjs
+      - name: Fetch FFmpeg for Intel Macs too (both Mac builds are packaged here)
+        if: runner.os == 'macOS'
+        run: node scripts/fetch-ffmpeg.mjs --target darwin-x64
       - name: Unit tests (inside Electron's Node)
         run: pnpm test
       - name: End-to-end tests (Playwright + Electron)
         run: pnpm test:e2e
+      - name: Drashti finds and runs its FFmpeg (built app)
+        run: node scripts/check-ffmpeg.mjs
       # Playwright cannot follow app.relaunch(): back up, restore and restart for real.
       - name: Restart after a restore (built app)
         run: node scripts/check-relaunch.mjs
@@ -88,6 +101,8 @@ jobs:
         run: pnpm exec electron-builder --publish never
       - name: Restart after a restore (packaged app)
         run: node scripts/check-relaunch.mjs --packaged
+      - name: Drashti finds and runs its FFmpeg (each packaged app)
+        run: node scripts/check-ffmpeg.mjs --packaged
       - name: Upload installers
         uses: actions/upload-artifact@v7
         with:
