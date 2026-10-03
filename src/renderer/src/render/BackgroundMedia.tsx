@@ -5,6 +5,7 @@ import { NO_SLOTS, type Slot, type SlotEvent, type Slots, slotsReducer } from '.
 import { OBJECT_FIT } from './media-style';
 import { startPlayback } from './playback';
 import { engineNow } from './clock';
+import { PreviewPicture, usePreviewsOnly } from './previews';
 
 function style(fit: MediaFit, visible: boolean) {
   return {
@@ -147,8 +148,21 @@ function useFade(
  * The background layer's image or video. Changing it never flashes black:
  * the old picture stays until the new one has its first frame. Clearing it is
  * immediate. `annotate` marks a file that cannot play (the operator preview).
+ * On a phone or tablet it is a still preview instead (render/previews.tsx).
  */
-export function BackgroundMedia({
+export function BackgroundMedia(props: { layer: BackgroundLayer | null; annotate?: boolean }) {
+  const previews = usePreviewsOnly();
+  if (!previews) return <BackgroundPlayer {...props} />;
+  const layer = props.layer;
+  if (layer?.kind !== 'media') return null;
+  return (
+    <div data-layer="background" data-kind="media" style={{ position: 'absolute', inset: 0 }}>
+      <PreviewPicture mediaId={layer.mediaId} style={style(layer.fit, true)} />
+    </div>
+  );
+}
+
+function BackgroundPlayer({
   layer,
   annotate = false,
 }: {

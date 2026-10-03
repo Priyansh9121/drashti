@@ -168,8 +168,12 @@ function reconnectNow(): void {
   open();
 }
 
-/** Follow the feed: this page's copy of the engine state, and the engine's clock. */
+let following = false;
+
+/** Follow the feed: this page's copy of the engine state, and the engine's clock. Once per page. */
 export function startFeed(): void {
+  if (following) return;
+  following = true;
   connectEngineSource({
     onMessage: (listener) => {
       engine = listener;
