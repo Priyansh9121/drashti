@@ -571,6 +571,7 @@ function start(): void {
       groupId: s.groupId,
       groupName: screenRepo.groupName(s.groupId) ?? '',
       role: screenRepo.groupRole(s.groupId) ?? 'audience',
+      feed: s.feed,
       testCardUntil: testCardUntil > Date.now() ? testCardUntil : null,
       canvasWidth: s.canvasWidth,
       canvasHeight: s.canvasHeight,

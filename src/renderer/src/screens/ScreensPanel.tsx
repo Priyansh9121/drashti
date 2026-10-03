@@ -178,6 +178,22 @@ function ScreenRow({
           <span className="text-xs text-warning-fg">It opens by itself when the display is connected.</span>
         )}
         <span className="flex-1" />
+        {screen.feed !== null && (
+          <label className="flex items-center gap-1.5 text-xs text-muted">
+            Sends
+            <Select
+              aria-label={`What ${screen.name} sends`}
+              data-testid="screen-feed"
+              value={screen.feed}
+              onChange={(e) => {
+                update({ feed: e.target.value === 'key' ? 'key' : 'fill' });
+              }}
+            >
+              <option value="fill">The fill (the picture)</option>
+              <option value="key">The key (white where the fill has something)</option>
+            </Select>
+          </label>
+        )}
         <Checkbox
           label="On"
           checked={screen.enabled}
@@ -285,14 +301,16 @@ function GroupCard({
           <Select
             aria-label="What the group shows"
             data-testid="group-role"
-            value={group.role === 'stage' ? 'stage' : 'audience'}
+            value={group.role === 'stage' || group.role === 'keyfill' ? group.role : 'audience'}
             onChange={(e) => {
-              const role = e.target.value === 'stage' ? 'stage' : 'audience';
+              const v = e.target.value;
+              const role = v === 'stage' || v === 'keyfill' ? v : 'audience';
               void screensAction(() => bridge().setGroupRole(group.id, role));
             }}
           >
             <option value="audience">The audience picture</option>
             <option value="stage">The stage view (performers)</option>
+            <option value="keyfill">Key and fill (for a video switcher)</option>
           </Select>
         </label>
         <Button
@@ -305,6 +323,12 @@ function GroupCard({
         </Button>
       </div>
       {look && <GroupLookSettings look={look} groupId={group.id} role={group.role} />}
+      {group.role === 'keyfill' && (
+        <p className="px-2 text-xs text-muted" data-testid="keyfill-hint">
+          Two displays: the fill and the key, each into the video switcher (an ATEM, for example). Set its key
+          to pre-multiplied. Black-out and the logo are for the hall: they take these graphics off.
+        </p>
+      )}
       {group.screens.length === 0 ? (
         <p className="px-2 text-sm text-muted">
           No screens yet. Choose a display above and press “Use this display”.

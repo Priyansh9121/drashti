@@ -29,6 +29,7 @@ interface ScreenRow {
   canvas_height: number;
   scaling: ScalingMode;
   enabled: number;
+  feed: 'fill' | 'key' | null;
 }
 
 function parseKey(json: string | null): DisplayKey | null {
@@ -51,6 +52,7 @@ function toScreen(r: ScreenRow): ScreenConfig {
     canvasHeight: r.canvas_height,
     scaling: r.scaling,
     enabled: r.enabled === 1,
+    feed: r.feed,
   };
 }
 
@@ -163,7 +165,29 @@ export class ScreenRepo {
          VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(position), -1) + 1 FROM screens WHERE group_id = ?))`,
       )
       .run(id, groupId, name, displayKey ? JSON.stringify(displayKey) : null, groupId);
+    this.fixFeeds(groupId);
     return id;
+  }
+
+  /**
+   * A key and fill group's screens each have a feed: one without is the
+   * fill if the group has none yet, else the key. Other groups' screens have
+   * none.
+   */
+  fixFeeds(groupId: string): void {
+    const keyfill = this.groupRole(groupId) === 'keyfill';
+    const screens = this.screens().filter((s) => s.groupId === groupId);
+    if (!keyfill) {
+      this.db.prepare('UPDATE screens SET feed = NULL WHERE group_id = ? AND feed IS NOT NULL').run(groupId);
+      return;
+    }
+    let hasFill = screens.some((s) => s.feed === 'fill');
+    for (const s of screens) {
+      if (s.feed !== null) continue;
+      const feed = hasFill ? 'key' : 'fill';
+      hasFill = true;
+      this.db.prepare(`UPDATE screens SET feed = ?, updated_at = ${NOW} WHERE id = ?`).run(feed, s.id);
+    }
   }
 
   updateScreen(id: string, patch: ScreenPatch): boolean {
@@ -178,6 +202,7 @@ export class ScreenRepo {
     if (patch.canvasHeight !== undefined) set('canvas_height', patch.canvasHeight);
     if (patch.scaling !== undefined) set('scaling', patch.scaling);
     if (patch.enabled !== undefined) set('enabled', patch.enabled ? 1 : 0);
+    if (patch.feed !== undefined) set('feed', patch.feed);
     if (sets.length === 0) return this.screen(id) !== null;
     return (
       this.db
@@ -194,11 +219,18 @@ export class ScreenRepo {
 
   /** Move a screen to another group (its settings stay), switched on. */
   moveScreen(id: string, groupId: string): boolean {
-    return (
+    const from = this.screen(id)?.groupId;
+    const moved =
       this.db
-        .prepare(`UPDATE screens SET group_id = ?, enabled = 1, updated_at = ${NOW} WHERE id = ?`)
-        .run(groupId, id).changes > 0
-    );
+        .prepare(
+          `UPDATE screens SET group_id = ?, enabled = 1, feed = NULL, updated_at = ${NOW} WHERE id = ?`,
+        )
+        .run(groupId, id).changes > 0;
+    if (moved) {
+      this.fixFeeds(groupId);
+      if (from) this.fixFeeds(from);
+    }
+    return moved;
   }
 
   removeScreen(id: string): boolean {

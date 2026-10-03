@@ -15,6 +15,7 @@ export const screenPatchSchema: z.ZodType<ScreenPatch> = z
     canvasHeight: canvasSizeSchema,
     scaling: z.enum(SCALING_MODES),
     enabled: z.boolean(),
+    feed: z.enum(['fill', 'key']),
   })
   .partial();
 

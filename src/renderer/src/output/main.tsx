@@ -83,6 +83,8 @@ function Output() {
   const scaling = context?.scaling ?? 'fit';
   // What this screen shows: its group's settings in the live Look.
   const look = groupLookIn(state?.look, context?.groupId);
+  // A key and fill group's screen draws the fill or the key.
+  const matte = context?.role === 'keyfill' ? (context.feed ?? 'fill') : null;
   return (
     <div
       ref={rootRef}
@@ -90,6 +92,7 @@ function Output() {
       data-testid="output-root"
       data-screen={context?.screenId ?? ''}
       data-role={context?.role ?? 'audience'}
+      data-feed={matte ?? undefined}
       data-look={state?.look.id ?? ''}
       data-languages={look.languages?.join(',') ?? 'all'}
       data-slides={look.slides}
@@ -100,7 +103,7 @@ function Output() {
           {stage ? (
             <StageScreen state={state} look={look} canvas={canvas} />
           ) : (
-            <Scene state={state} canvas={canvas} scaling={scaling} look={look} />
+            <Scene state={state} canvas={canvas} scaling={scaling} look={look} matte={matte} />
           )}
         </PlacedInParent>
       )}

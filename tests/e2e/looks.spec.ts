@@ -219,25 +219,11 @@ test('a library from before Looks keeps exactly what each group showed', async (
   expect(looks.map((l) => l.name)).toEqual(['Standard']);
   expect(liveId).toBe(looks[0]?.id);
   const snapshot = await win.evaluate(() => (globalThis as PageGlobals).drashti.screens.get());
+  const all = ['background', 'slide', 'props', 'messages', 'ticker', 'masks'];
+  const standard = { layers: all, slides: 'designed', stageLayoutId: null, maskId: null };
   expect(snapshot.groups.map((g) => [g.name, g.role, looks[0]?.groups[g.id]])).toEqual([
-    [
-      'Hall',
-      'audience',
-      {
-        layers: ['background', 'slide', 'props', 'messages', 'ticker', 'masks'],
-        languages: ['translit', 'gu'],
-        slides: 'designed',
-      },
-    ],
-    [
-      'Stage',
-      'stage',
-      {
-        layers: ['background', 'slide', 'props', 'messages', 'ticker', 'masks'],
-        languages: ['gu'],
-        slides: 'designed',
-      },
-    ],
+    ['Hall', 'audience', { ...standard, languages: ['translit', 'gu'] }],
+    ['Stage', 'stage', { ...standard, languages: ['gu'] }],
   ]);
   // The screens show what they did: the hall transliteration then Gujarati, the stage Gujarati only.
   await expect.poll(() => outputPages(app).length).toBe(2);

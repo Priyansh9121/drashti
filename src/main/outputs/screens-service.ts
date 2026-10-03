@@ -30,6 +30,8 @@ export interface ScreenLooks {
   groupMade(groupId: string, languages?: Lang[] | null): void;
   groupsChanged(): void;
   groupGone(groupId: string): void;
+  /** A group became a key and fill pair: in every Look it starts with the words as a lower third, props and messages. */
+  becameKeyFill(groupId: string): void;
 }
 
 /** Without Looks (tests of screens alone): languages kept here. */
@@ -48,6 +50,7 @@ export function memoryScreenLooks(): ScreenLooks {
     groupGone: (id) => {
       langs.delete(id);
     },
+    becameKeyFill: () => undefined,
   };
 }
 
@@ -115,10 +118,13 @@ export class ScreensService {
     const id = idSchema.safeParse(rawId);
     const role = z.enum(GROUP_ROLES).safeParse(rawRole);
     if (!id.success || !role.success)
-      return this.fail('A group shows the audience picture or the stage view.');
+      return this.fail('A group shows the audience picture, the stage view, or a key and fill pair.');
     if (this.repo.groupRole(id.data) === 'stream')
       return this.fail('The stream group always shows the stream.');
+    const was = this.repo.groupRole(id.data);
     if (!this.repo.setGroupRole(id.data, role.data)) return this.fail('That group no longer exists.');
+    this.repo.fixFeeds(id.data);
+    if (role.data === 'keyfill' && was !== 'keyfill') this.looks.becameKeyFill(id.data);
     this.looks.groupsChanged();
     return this.done();
   }
