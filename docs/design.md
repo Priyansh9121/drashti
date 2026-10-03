@@ -112,7 +112,7 @@ There are three columns between a header and a footer:
 
 - **Left:** playlists above, and the library (presentations, media) below.
 - **Middle:** the chosen presentation's slides as thumbnails in one grid, in play order, flowing on from one group to the next. Each thumbnail has its group's colour as a strip beside its number, and the first slide each time a group comes up carries the group's name. The thumbnail size (120 to 400 px, 170 at first) is remembered: at 170 three slides fit a row at 1280 × 720 and six at 1920 × 1080.
-- **Right:** Live, Next and the stage screen, then the props, messages and timers panels.
+- **Right:** Live and Next, then the Looks, the stage screen, and the props, messages and timers panels.
 - **Along the bottom:** the layer clears and black-out. Under them is the status bar: screens connected, the sound output, import progress and notices.
 
 The columns are resized with `Splitter`s and the sizes are remembered on the computer (`ui/persist.ts`). Everything fits at 1280 × 720 with nothing cut off or overlapping. Simple Mode is one screen with big buttons, and fits at 1280 × 720 too.
@@ -185,3 +185,9 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **The Announcements queue is a sheet on the right**, like Phones, opened from a header button that appears while the network is on and turns warning with how many are waiting ("Announcements (2)"). Each waiting announcement is a card: its words large, who sent it, from which device, when and for how long, then the choice of how it goes up (In the ticker or As a message, and the template), Approve (primary), Edit and Reject (danger). On the screens, a card says On the screens (live) or Cleared from the screens (warning), when it comes off, and Take off. Earlier ones are one line each.
 - **The ticker is a band along the bottom of the audience screens**: 7.5 % of the canvas high, near-black at 80 % with a thin light line along its top, white words at the messages' size and weight, moving from right to left at about 130 px a second on a 1080-line screen. Messages sit just above it while it shows. It is in the layer bar as "Ticker" (F8), lit while it is on.
 - The panel fits at 1280 × 720, the pairing page at 375 × 812, and the remote passes the accessibility checks on a phone and on a tablet (`tests/e2e/network-pairing.spec.ts`, `tests/e2e/remote.spec.ts`). The announcements page passes them at 375 × 812, on a phone and on a tablet, and the queue fits at 1280 × 720 (`tests/e2e/announcements.spec.ts`).
+
+## 17. Looks
+
+- **Switching is a show action, so it sits with the live controls.** The Looks panel under Next is one button per Look, in the list's order. The live Look's button is `live` (red, white text) with a white dot and `aria-pressed="true"`; the others are plain. A Look is never switched by a key alone: it takes a click (or a phone's tap, or the API).
+- **Changing a Look is setup, so it lives in Screens.** At the top of Screen groups, the Looks are tabs (`Tabs`, `sm`), the live one with a **Live** badge. Below the tabs: the chosen Look's name (a field, saved on Enter or leaving it), **Duplicate**, **Earlier** and **Later** (the first is the one Drashti starts with), and **Remove** (`danger`, asking first, and saying whether the screens will change). Each group card then shows "In the Look “…”" with that group's settings: layers as tick boxes, how slides are drawn, and the languages picker. Stage groups show only their languages; the stream group only its languages.
+- **Simple Mode never shows either.** It keeps the live Look.
