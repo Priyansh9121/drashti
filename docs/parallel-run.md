@@ -100,6 +100,8 @@ Each step has **Skip this step**, which keeps things as they are. To set up by h
 
 If an output ever covers the controls by mistake, press **Cmd+Shift+U** (Mac) or **Ctrl+Shift+U** (Windows) to uncover them. It works even when Drashti is not the active app.
 
+**Looks.** A Look says what each screen group shows: which layers (the background, slides, props, messages, the ticker, the Masks layer), a kirtan's languages, and whether slides are drawn as designed or only their words, as a lower third. Drashti starts with one Look, **Standard**, which shows exactly what the screens showed before. In Screens, under **Looks**, **New Look** or **Duplicate** makes another, for example "Gujarati only" or "Lower thirds"; choose a Look there to see and change each group's settings in it. To switch the live Look in a sabha, use **Looks** under the live picture: every screen changes at once. The first Look in the list is the one Drashti starts with (**Earlier** and **Later** move a Look), and after an unexpected stop the Look that was live comes back. Simple Mode keeps whichever Look is live and cannot switch it.
+
 ---
 
 ## 5. Run a sabha from a playlist
@@ -112,7 +114,7 @@ Replay last week's sabha from its imported playlist, from start to end, as the o
 4. **Shift+→** jumps to the start of the next item; **Shift+←** goes back to the start of the previous one.
 5. Pictures and videos in the playlist go up as the background; songs and sounds play through the mixer.
 6. Under the live picture, **Next** shows what comes next.
-7. Try the other controls a sabha uses: **Black-out** (B), the clear buttons along the bottom (F1 to F8; each is lit while its layer is on the screens), a **timer** ("Sabha starts in 5:00"), a **message** (for example "Car {plate} please move"), a **prop** (the mandir's logo), and a **stage message** if there is a stage display.
+7. Try the other controls a sabha uses: **Black-out** (B), the clear buttons along the bottom (F1 to F8; each is lit while its layer is on the screens), a **timer** ("Sabha starts in 5:00"), a **message** (for example "Car {plate} please move"), a **prop** (the mandir's logo), a **stage message** if there is a stage display, and another **Look** if the mandir uses more than one.
 8. Compare with ProPresenter as you go. Things to look at:
    - Do the words look the same: size, font, line breaks, Gujarati and Hindi letters?
    - Are the backgrounds and videos the same, and do they start and loop the same way?
@@ -135,7 +137,7 @@ Simple Mode is one screen with big buttons, for running a sabha from its playlis
 4. **Next** (or →, Space, Page Down, or a presentation clicker) starts the playlist and goes through it. **Back** (←, Page Up) undoes the last Next exactly: after one Next too many, the screens are as they were.
 5. **Black out** (B or .) and **Logo** (L) cover the picture, and pressing them again brings back exactly what was there. The stage screens keep showing the words.
 6. **Clear all** (F1) takes everything down; straight after it, **Put it back** (or Cmd+Z, Ctrl+Z on Windows) brings it all back.
-7. Nothing in Simple Mode can import, edit, remove, or change themes, screens, the sound, or backups. Drashti remembers Simple Mode, and comes back in it after a restart.
+7. Nothing in Simple Mode can import, edit, remove, or change themes, screens, the sound, or backups, or switch the Look. Drashti remembers Simple Mode, and comes back in it after a restart.
 8. To leave it: **View**, then **Switch to Pro Mode…**, type **pro**, and press **Switch to Pro Mode**. Volunteers should not need to.
 
 Write down anything the volunteer found hard, with what they were trying to do.
