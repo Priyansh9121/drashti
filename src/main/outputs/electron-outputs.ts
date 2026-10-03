@@ -150,9 +150,7 @@ export function createOutputWindow(
     }
     win.setBounds(b);
   }
-  win.once('ready-to-show', () => {
-    win.showInactive();
-  });
+  const show = showWhenReady(win);
   void loadPage(win, 'output', { screen: config.id });
   const contentsId = win.webContents.id;
   const handle: OutputWindow = {
@@ -161,11 +159,32 @@ export function createOutputWindow(
       if (!options.windowed && !win.isDestroyed()) win.setBounds(bounds);
     },
     close: () => {
+      show.cancel();
       if (!win.isDestroyed()) win.destroy();
     },
     isDestroyed: () => win.isDestroyed(),
   };
   return { window: win, handle };
+}
+
+/**
+ * Show a window, without taking the focus, once its page has drawn its first
+ * frame; `cancel` before closing it. An output turned off while its page is
+ * still loading (Uncover, the wizard, a display change in its first moments)
+ * can have that first frame arrive while the window is being destroyed:
+ * showing it then made Electron read a widget already gone, and crashed
+ * Drashti on Windows (Session 10, from three crash dumps).
+ */
+function showWhenReady(win: BrowserWindow): { cancel: () => void } {
+  const show = () => {
+    if (!win.isDestroyed()) win.showInactive();
+  };
+  win.once('ready-to-show', show);
+  return {
+    cancel: () => {
+      win.removeListener('ready-to-show', show);
+    },
+  };
 }
 
 /**
@@ -203,11 +222,10 @@ export function showDisplayNumber(
     webPreferences: secureWebPreferences(),
   });
   if (!options.windowed) win.setAlwaysOnTop(true, 'screen-saver');
-  win.once('ready-to-show', () => {
-    win.showInactive();
-  });
+  const show = showWhenReady(win);
   void loadPage(win, 'output', { identify: String(number), label: display.label || `Display ${number}` });
   setTimeout(() => {
+    show.cancel();
     if (!win.isDestroyed()) win.destroy();
   }, options.forMs);
   return win;

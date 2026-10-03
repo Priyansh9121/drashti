@@ -2,7 +2,15 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import Database from 'better-sqlite3';
 import { join } from 'node:path';
-import { launchApp, needsRealScreen, operatorPage, useDisplay } from './helpers';
+import {
+  launchApp,
+  needsRealScreen,
+  operatorPage,
+  operatorReady,
+  type PageGlobals,
+  setUpScreen,
+  useDisplay,
+} from './helpers';
 
 async function outputPage(app: ElectronApplication): Promise<Page> {
   const existing = app.windows().find((w) => w.url().includes('output.html'));
@@ -92,5 +100,33 @@ test('screen groups: assign a display, open an output, restore it after a restar
   await win3.getByRole('button', { name: 'Screens', exact: true }).click();
   await expect(win3.getByTestId('screen-state')).toHaveText('Display not connected');
   expect(app.windows().some((w) => w.url().includes('output.html'))).toBe(false);
+  await app.close();
+});
+
+test('an output turned off while its page is still loading never brings Drashti down', async () => {
+  test.setTimeout(120_000);
+  // Turned off at once, again and again: each output window is destroyed before or as its page first
+  // draws. Showing a window as it was being destroyed crashed Drashti on Windows (Session 10).
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const screenId = await setUpScreen(win);
+  for (let i = 0; i < 20; i++)
+    await win.evaluate(async (id) => {
+      const d = (globalThis as PageGlobals).drashti;
+      for (const enabled of [false, true]) {
+        const r = await d.screens.updateScreen(id, { enabled });
+        if (!r.ok) throw new Error(r.message);
+      }
+    }, screenId);
+  await win.evaluate(async (id) => {
+    await (globalThis as PageGlobals).drashti.screens.updateScreen(id, { enabled: false });
+  }, screenId);
+  await expect
+    .poll(() => app.windows().filter((w) => !w.isClosed() && w.url().includes('output.html')).length)
+    .toBe(0);
+  // Still running, and still answering.
+  expect(app.process().exitCode).toBeNull();
+  await expect(win.getByRole('contentinfo', { name: 'Status' })).toContainText(/Electron \d/u);
   await app.close();
 });

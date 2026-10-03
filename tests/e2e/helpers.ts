@@ -66,7 +66,24 @@ export async function launchApp(
       ...extraEnv,
     }),
   });
+  sayIfItStops(app);
   return { app, userData };
+}
+
+/** Apps the tests stop dead on purpose (killApp). */
+const killed = new WeakSet<ElectronApplication>();
+
+/**
+ * A crash says so in the test's output, with Windows' exit code (0xffff7003
+ * is a crash with no crash handler: run again with DRASHTI_TEST_CRASH_DUMPS
+ * to keep a dump, README "End-to-end tests").
+ */
+function sayIfItStops(app: ElectronApplication): void {
+  app.process().once('exit', (code, signal) => {
+    if ((code === 0 && signal === null) || killed.has(app)) return;
+    const hex = code === null ? '' : ` (0x${(code >>> 0).toString(16)})`;
+    console.log(`Drashti stopped unexpectedly: exit code ${String(code)}${hex}, signal ${String(signal)}`);
+  });
 }
 
 /**
@@ -104,6 +121,7 @@ export async function operatorReady(win: Page): Promise<void> {
 
 /** Stop the app dead, as a crash or power cut would: the whole process tree, with no chance to quit cleanly. */
 export async function killApp(app: ElectronApplication): Promise<void> {
+  killed.add(app);
   const child = app.process();
   const exited = new Promise<void>((resolve) => {
     if (child.exitCode !== null || child.signalCode !== null) resolve();
