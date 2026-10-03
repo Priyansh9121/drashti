@@ -38,12 +38,16 @@ import { connectMode, useMode } from './mode-store';
 import { SimpleApp } from '../simple/SimpleApp';
 import { SetupWizard } from '../setup/SetupWizard';
 import { openSetup } from '../setup/setup-store';
+import { StreamPanel } from '../stream/StreamPanel';
+import { StreamSettings } from '../stream/StreamSettings';
+import { connectStream, useStream } from '../stream/stream-store';
 
 /** Everything that keeps the window up to date, connected once as it opens. */
 function useConnections(setInfo: (info: AppInfo) => void): void {
   useEffect(() => {
     connectEngine();
     connectScreens();
+    connectStream();
     watchLibrary();
     watchImports();
     watchPlaylists();
@@ -102,6 +106,7 @@ export function App() {
 
 function ProApp({ info }: { info: AppInfo | null }) {
   const [screensOpen, setScreensOpen] = useState(false);
+  const streamOpen = useStream((s) => s.panelOpen);
   const platform = info?.platform ?? 'darwin';
 
   const openScreens = useCallback(() => {
@@ -167,6 +172,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <SetupWizard platform={platform} />
       <SlideEditor platform={platform} />
       <ThemesPanel />
+      {streamOpen && <StreamPanel />}
+      <StreamSettings />
       {screensOpen && (
         <ScreensPanel
           platform={platform}

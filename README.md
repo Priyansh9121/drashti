@@ -47,6 +47,7 @@ Phase 1 has started:
 - a **design system** and a redesigned operator window (see "The design system");
 - **restart recovery** of the whole show: after an unexpected stop the slide, background, black-out and place in the playlist come back by themselves, with the sound, props, messages, the stage message and running or paused timers (the sound and timers carry on from where they would be), and a slide moving on by itself carries on with the time it had left;
 - **transitions** (a cut, or a dissolve on every screen at once, with the background a slide brings) and **auto-advance** (slides moving on by themselves, looping or not, with the time left shown);
+- the **stream's Program** (Session 9, in progress): an offscreen page drawn with the same renderer as the outputs, in two layouts switchable at any time (**Camera and words**: the camera or a capture card full frame with the live slide's words as a lower third in the stream group's languages; **Slides**: the hall's picture), one camera and one sound input (the mixer's line in) with a level meter and a delay, and Drashti's own sound mixed in on request; a **Stream** panel with a live preview, and **Stream settings** with profiles and keys kept in the system's secure storage;
 - a **library list** that stays cheap at any size (about 4 ms at 5,000 presentations, kirtan details included), and a **performance check** to run by hand on the real machines.
 
 Next (PLAN.md section 5.2): Session 9 is built-in YouTube streaming with camera input and local recording, and converting unplayable media with the bundled FFmpeg. The importers meet the mandir's own files, and the keys become the operators' own, at the mandir setup after the features are finished.
@@ -126,6 +127,8 @@ Each unit or end-to-end run keeps its temporary files in one folder, `drashti-ru
 | `DRASHTI_LOG_PERMISSIONS=1`         | Logs every permission a page checks or asks for (to see why a sound output cannot be chosen).                                                                                         |
 | `DRASHTI_TEST_MEDIA_DELAY_MS=<ms>`  | Tests only: media answers this late (up to 5 s), as from a slow disk.                                                                                                                 |
 | `DRASHTI_TEST_NO_RELAUNCH=1`        | Tests only: after Restore Library…, quit instead of restarting (the test starts Drashti again itself).                                                                                |
+| `DRASHTI_TEST_FAKE_DEVICES=1`       | Tests only: Chromium's fake camera (a moving test pattern) and fake microphone (a beep) stand in for real ones, and the system is not asked for camera or microphone access.          |
+| `DRASHTI_TEST_NO_SAFE_STORAGE=1`    | Tests only: behave as if the system's secure storage were missing, so no stream key can be saved.                                                                                     |
 
 If you start Drashti from inside another Electron app's process (for example an editor extension), make sure `ELECTRON_RUN_AS_NODE` is not set in that environment. When it's set, Electron starts as plain Node. The end-to-end tests clear it automatically.
 

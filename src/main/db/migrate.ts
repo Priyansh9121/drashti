@@ -14,6 +14,7 @@ import { up as screenLanguages } from './migrations/012-screen-languages';
 import { up as searchDetails } from './migrations/013-search-details';
 import { up as templates } from './migrations/014-templates';
 import { up as listedKirtans } from './migrations/015-listed-kirtans';
+import { up as streaming } from './migrations/016-streaming';
 
 export interface Migration {
   version: number;
@@ -40,6 +41,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 13, name: 'search by kirtan details', up: searchDetails },
   { version: 14, name: 'sabha templates', up: templates },
   { version: 15, name: 'kirtan details on the library list', up: listedKirtans },
+  { version: 16, name: 'streaming', up: streaming },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

@@ -27,6 +27,16 @@ import type { Lang, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
 import type { SetupPlan, SetupResult, SetupState } from './setup';
+import type {
+  ProgramContext,
+  ProgramInputs,
+  StreamLayout,
+  StreamProfileInput,
+  StreamProfiles,
+  StreamProfilesResult,
+  StreamResult,
+  StreamStatus,
+} from './stream';
 import type { SaveStillResult } from './media';
 import type {
   ItemOrder,
@@ -245,6 +255,39 @@ export const IPC = {
     /** main -> operator: View > Set Up Screens… was chosen. */
     open: 'setup:open',
   },
+  /** Built-in streaming (PLAN.md 4.2). */
+  stream: {
+    /** The stream's state: on air, recording, health, inputs. */
+    status: 'stream:status',
+    /** Camera or Slides, also while live (operator window only). */
+    setLayout: 'stream:set-layout',
+    /** The operator window watches the Program's preview (or stops); its port comes on `port`. */
+    watchPreview: 'stream:watch-preview',
+    profiles: 'stream:profiles',
+    saveProfile: 'stream:save-profile',
+    removeProfile: 'stream:remove-profile',
+    useProfile: 'stream:use-profile',
+    /** Keep a profile's key (never sent back to any window). */
+    setKey: 'stream:set-key',
+    removeKey: 'stream:remove-key',
+    /** Public: the window must say the operator confirmed. */
+    goLive: 'stream:go-live',
+    end: 'stream:end',
+    startRecording: 'stream:start-recording',
+    stopRecording: 'stream:stop-recording',
+    /** Choose the recordings' folder. */
+    pickFolder: 'stream:pick-folder',
+    /** main -> operator: the stream's state changed. */
+    changed: 'stream:changed',
+    /** main -> a page: a MessagePort for the preview or the encoder ({ role }). */
+    port: 'stream:port',
+    /** The stream's page asks what to draw and open. */
+    pageContext: 'stream:page-context',
+    /** The stream's page tells what cameras and sound inputs it sees, and how they are. */
+    pageInputs: 'stream:page-inputs',
+    /** main -> the stream's page: its context changed. */
+    context: 'stream:context',
+  },
   output: {
     /** An output window asks which screen it is. */
     getContext: 'output:get-context',
@@ -403,6 +446,25 @@ export interface InvokeContract {
   [IPC.setup.identifyDisplays]: { args: []; result: { shown: number } };
   [IPC.setup.testTone]: { args: [device: AudioDevice | null]; result: { ok: boolean } };
   [IPC.setup.finish]: { args: [plan: SetupPlan, options?: CoverOptions]; result: SetupResult };
+  [IPC.stream.status]: { args: []; result: StreamStatus };
+  [IPC.stream.setLayout]: { args: [layout: StreamLayout]; result: StreamResult };
+  [IPC.stream.watchPreview]: { args: [on: boolean]; result: null };
+  [IPC.stream.profiles]: { args: []; result: StreamProfiles };
+  [IPC.stream.saveProfile]: {
+    args: [id: string | null, input: StreamProfileInput];
+    result: StreamProfilesResult;
+  };
+  [IPC.stream.removeProfile]: { args: [id: string]; result: StreamProfilesResult };
+  [IPC.stream.useProfile]: { args: [id: string]; result: StreamProfilesResult };
+  [IPC.stream.setKey]: { args: [id: string, key: string]; result: StreamProfilesResult };
+  [IPC.stream.removeKey]: { args: [id: string]; result: StreamProfilesResult };
+  [IPC.stream.goLive]: { args: [confirm: { confirmed: true }]; result: StreamResult };
+  [IPC.stream.end]: { args: [confirm: { confirmed: true }]; result: StreamResult };
+  [IPC.stream.startRecording]: { args: []; result: StreamResult };
+  [IPC.stream.stopRecording]: { args: []; result: StreamResult };
+  [IPC.stream.pickFolder]: { args: []; result: StreamResult };
+  [IPC.stream.pageContext]: { args: []; result: ProgramContext | null };
+  [IPC.stream.pageInputs]: { args: [inputs: ProgramInputs]; result: null };
 }
 
 /** main -> renderer event channels and their payloads. */
@@ -424,6 +486,9 @@ export interface EventContract {
   [IPC.audio.testTone]: { deviceId: string };
   [IPC.setup.open]: { at: number };
   [IPC.audio.status]: AudioOutputStatus;
+  [IPC.stream.changed]: StreamStatus;
+  [IPC.stream.port]: { role: 'preview' | 'encoder' };
+  [IPC.stream.context]: ProgramContext;
 }
 
 export type InvokeChannel = keyof InvokeContract;

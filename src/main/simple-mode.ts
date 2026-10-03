@@ -7,7 +7,8 @@ import { SIMPLE_MODE_REFUSAL } from '../shared/mode';
  * What Simple Mode locks. Every request that would change the library, the
  * playlists, props, messages, timers, themes, the screens or the sound is
  * refused in the main process while Simple Mode is on (the window does not
- * offer them either); backup and restore leave the menu. Running the show
+ * offer them either), and so is starting, ending or changing the stream;
+ * backup and restore leave the menu. Running the show
  * (the engine's commands), reading the library and saving diagnostics stay.
  */
 
@@ -69,6 +70,18 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.audio.setOutput,
   IPC.setup.finish,
   IPC.setup.setSeen,
+  // The stream: Simple Mode shows ON AIR and REC, and can neither start, end nor change it.
+  IPC.stream.setLayout,
+  IPC.stream.saveProfile,
+  IPC.stream.removeProfile,
+  IPC.stream.useProfile,
+  IPC.stream.setKey,
+  IPC.stream.removeKey,
+  IPC.stream.goLive,
+  IPC.stream.end,
+  IPC.stream.startRecording,
+  IPC.stream.stopRecording,
+  IPC.stream.pickFolder,
 ];
 
 /** Each locked channel's answer: a refusal in its own result's shape. */

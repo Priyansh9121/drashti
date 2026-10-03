@@ -144,6 +144,26 @@ export class ScreenRepo {
     return id;
   }
 
+  /** The stream's group (role 'stream'): there is at most one, and it has no screens. */
+  streamGroup(): { id: string; languages: Lang[] | null } | null {
+    const row = this.db
+      .prepare(
+        "SELECT id, languages FROM screen_groups WHERE role = 'stream' ORDER BY position, rowid LIMIT 1",
+      )
+      .get() as { id: string; languages: string | null } | undefined;
+    return row ? { id: row.id, languages: parseLangs(row.languages) } : null;
+  }
+
+  /** The stream's group, made (named "Stream", every language) the first time it is needed. */
+  ensureStreamGroup(): { id: string; languages: Lang[] | null } {
+    const found = this.streamGroup();
+    if (found) return found;
+    const names = new Set(this.groups().map((g) => g.name));
+    let name = 'Stream';
+    for (let n = 2; names.has(name); n++) name = `Stream ${n}`;
+    return { id: this.createGroup(name, 'stream'), languages: null };
+  }
+
   renameGroup(id: string, name: string): boolean {
     return (
       this.db.prepare(`UPDATE screen_groups SET name = ?, updated_at = ${NOW} WHERE id = ?`).run(name, id)

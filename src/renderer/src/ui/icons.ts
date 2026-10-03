@@ -5,6 +5,7 @@
  * buttons have text, or an aria-label and a tooltip (IconButton).
  */
 export type { LucideIcon as Icon } from 'lucide-react';
+export { Camera, CircleDot, HardDrive, KeyRound, Mic, Radio, Video, Wifi, WifiOff } from 'lucide-react';
 export {
   AlertTriangle,
   AlignCenter,

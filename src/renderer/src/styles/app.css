@@ -40,6 +40,12 @@
   --color-danger-strong: #c4262e;
   --color-danger-bg: #3a1214;
   --color-danger-fg: #ffb4b4;
+  /*
+   * The stream: kept apart from the slide's LIVE. ON AIR (the stream is public now) is violet with
+   * white text (5.7:1); REC is a red dot beside the word, on a panel.
+   */
+  --color-onair: #7c3aed;
+  --color-rec: #ff5a5a;
   /* The slide editor: lines things snap to (seen against any slide). */
   --color-guide: #ff4fd8;
 

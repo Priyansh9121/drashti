@@ -24,6 +24,7 @@ import { Truncate } from '../ui/Truncate';
 import { cancelCover, connectScreens, screensAction, useScreens } from './screens-store';
 import { LanguagePicker } from './LanguagePicker';
 import { SoundOutput } from './SoundOutput';
+import { StreamGroupCard } from './StreamGroupCard';
 
 const stateText: Record<ScreenState, string> = {
   showing: 'Showing',
@@ -401,7 +402,12 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
         ) : (
           <ul className="space-y-2">
             {snapshot.displays.map((d) => (
-              <DisplayRow key={d.id} display={d} usedBy={usedBy.get(d.id) ?? null} groups={snapshot.groups} />
+              <DisplayRow
+                key={d.id}
+                display={d}
+                usedBy={usedBy.get(d.id) ?? null}
+                groups={snapshot.groups.filter((g) => g.role !== 'stream')}
+              />
             ))}
           </ul>
         )}
@@ -432,15 +438,19 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
             Add group
           </Button>
         </form>
-        {snapshot?.groups.length === 0 && (
+        {snapshot?.groups.every((g) => g.role === 'stream') && (
           <EmptyState icon={Monitor} title="No screen groups yet" compact>
             Add a group (for example Main Hall), then press “Use this display” next to each display that feeds
             it.
           </EmptyState>
         )}
-        {(snapshot?.groups ?? []).map((g) => (
-          <GroupCard key={g.id} group={g} states={states} displays={snapshot?.displays ?? []} />
-        ))}
+        {(snapshot?.groups ?? []).map((g) =>
+          g.role === 'stream' ? (
+            <StreamGroupCard key={g.id} group={g} />
+          ) : (
+            <GroupCard key={g.id} group={g} states={states} displays={snapshot?.displays ?? []} />
+          ),
+        )}
       </section>
       <CoverConfirm platform={platform} />
     </Dialog>

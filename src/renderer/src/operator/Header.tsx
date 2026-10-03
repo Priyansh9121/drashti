@@ -2,7 +2,9 @@ import type { ReactNode } from 'react';
 import { shortcutText } from '../../../shared/keymap';
 import { openThemes } from '../themes/themes-store';
 import { Button } from '../ui/Button';
-import { LayoutGrid, Monitor, Palette } from '../ui/icons';
+import { LayoutGrid, Monitor, Palette, Radio } from '../ui/icons';
+import { OnAirBadges } from '../stream/OnAirBadges';
+import { openStreamPanel } from '../stream/stream-store';
 import { enterSimpleMode } from './mode-store';
 import { Tooltip } from '../ui/Tooltip';
 import { LiveStatus } from './StatusLine';
@@ -24,6 +26,7 @@ export function Header({
       data-testid="app-header"
     >
       <h1 className="shrink-0 text-base font-bold tracking-wide">Drashti</h1>
+      <OnAirBadges />
       <div className="min-w-0 flex-1">
         <LiveStatus />
       </div>
@@ -31,6 +34,11 @@ export function Header({
         <Button variant="ghost" icon={Palette} onClick={() => openThemes()}>
           Themes
         </Button>
+        <Tooltip content="The stream to YouTube, and recording" side="bottom">
+          <Button variant="ghost" icon={Radio} onClick={openStreamPanel} data-testid="open-stream">
+            Stream
+          </Button>
+        </Tooltip>
         <Tooltip content="Screens and sound" kbd={shortcutText('openScreens', platform)} side="bottom">
           <Button variant="secondary" icon={Monitor} onClick={onOpenScreens}>
             Screens
