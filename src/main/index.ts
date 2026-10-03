@@ -100,6 +100,8 @@ import { StreamService } from './stream/stream-service';
 import { findFfmpeg } from './stream/ffmpeg-path';
 import { ffmpegSelfTest } from './stream/ffmpeg-selftest';
 import { spawnStreamWorker } from './stream/stream-worker';
+import { ConvertService } from './convert/convert-service';
+import { diskFreeBytes } from './import/media-store';
 import { startPerfStream } from './stream/perf-stream';
 import { confirmedSchema } from '../shared/stream-schema';
 
@@ -763,6 +765,60 @@ function start(): void {
     },
   });
   importer = imports;
+
+  // ---- converting media Drashti cannot play -----------------------------------------
+  const conversions = new ConvertService({
+    db: libraryDb,
+    mediaDir,
+    ffmpegPath: () =>
+      findFfmpeg({
+        packaged: app.isPackaged,
+        resourcesPath: process.resourcesPath,
+        appPath: app.getAppPath(),
+        platform: process.platform,
+        arch: process.arch,
+        override: process.env['DRASHTI_FFMPEG'],
+      }),
+    busy: () =>
+      streaming.inUse() ? 'Waits while the stream is on air or recording, then carries on by itself.' : null,
+    freeBytes: diskFreeBytes,
+    changed: (jobs) => {
+      sendToOperator(IPC.media.conversionsChanged, jobs);
+    },
+    libraryChanged: (changedPresentations) => {
+      // What is on the screens keeps playing the original; slides read from now on use the copy.
+      for (const id of changedPresentations) slides.invalidate(id);
+      engine.refreshNext();
+      libraryChanged(true);
+      sendToOperator(IPC.playlists.changed, { at: Date.now() });
+      listChanged('props');
+      listChanged('themes');
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+  });
+  app.on('will-quit', () => {
+    conversions.close();
+  });
+  handle(IPC.media.convert, (e, ids) =>
+    fromOperator(e)
+      ? conversions.convert(ids)
+      : { ok: false as const, message: 'Only the operator window can convert.' },
+  );
+  handle(IPC.media.cancelConversion, (e, id) =>
+    fromOperator(e)
+      ? conversions.cancel(id)
+      : { ok: false as const, message: 'Only the operator window can convert.' },
+  );
+  handle(IPC.media.conversions, () => conversions.list());
+  handle(IPC.media.undoConversion, (e, id) =>
+    fromOperator(e)
+      ? conversions.undo(id)
+      : { ok: false as const, message: 'Only the operator window can convert.' },
+  );
+
   const importPaths = async (rawPaths: unknown, rawOptions: unknown): Promise<ImportResult> => {
     const paths = importPathsSchema.safeParse(rawPaths);
     const options = importOptionsSchema.safeParse(rawOptions ?? {});

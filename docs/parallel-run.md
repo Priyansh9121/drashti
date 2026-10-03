@@ -67,7 +67,7 @@ While it imports, a progress bar shows in the status bar along the bottom, and y
 
 - It says what came across (presentations, slides, playlists, media).
 - **Missing media**: files ProPresenter pointed at that were not found. Press **Find…** and choose the folder where those files are, and Drashti finds them by name.
-- **Can't play**: some video and picture formats (ProRes, AVI, HEIC and a few others) cannot play in Drashti yet. They are listed with what to do.
+- **Can't play**: some video, picture and sound formats (ProRes, AVI, HEIC, AIFF and a few others) cannot play in Drashti as they are. Press **Convert all** (or **Convert** beside one file) and Drashti makes a copy of each that plays, one at a time in the background, and uses the copy everywhere the original was used. ProPresenter's files are never changed. It waits while the stream is on air or recording, and stops if the disk gets under 2 GB free. The **Media** tab beside Presentations shows the same, with progress and **Cancel**. If something looks wrong afterwards, **Undo** at the bottom of the left-hand column puts the original back.
 - **Legacy fonts**: older Gujarati and Hindi text is sometimes typed in fonts such as Gopika, Terafont or Kruti Dev. Those slides still show in that font when it is installed, but search cannot read them yet and their words cannot be edited as plain text. The report names the fonts.
 
 Importing a folder again later skips what did not change. For a presentation that changed in ProPresenter since, the report asks whether to **Replace** Drashti's copy or **Keep both**.

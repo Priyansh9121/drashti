@@ -167,6 +167,11 @@ const bridge: DrashtiBridge = {
   },
   media: {
     saveStill: (mediaId, jpeg) => invoke(IPC.media.saveStill, mediaId, jpeg),
+    convert: (mediaIds) => invoke(IPC.media.convert, mediaIds),
+    cancelConversion: (jobId) => invoke(IPC.media.cancelConversion, jobId),
+    conversions: () => invoke(IPC.media.conversions),
+    onConversions: (listener) => on(IPC.media.conversionsChanged, listener),
+    undoConversion: (conversionId) => invoke(IPC.media.undoConversion, conversionId),
   },
   audio: {
     getOutput: () => invoke(IPC.audio.getOutput),

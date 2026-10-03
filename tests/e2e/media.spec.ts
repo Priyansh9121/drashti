@@ -101,7 +101,7 @@ test('library media reaches the windows by id only, with byte ranges, and nothin
   await app.close();
 });
 
-test('media Drashti cannot play is found at import and listed in the report with what to do', async () => {
+test('media Drashti cannot play is found at import and listed in the report, with Convert', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-unplayable-'));
@@ -117,8 +117,10 @@ test('media Drashti cannot play is found at import and listed in the report with
   await expect(report).toBeVisible();
   // Items with notes are listed on their own first.
   const clip = report.getByTestId('report-item').filter({ hasText: 'Placeholder clip.avi' }).first();
-  await expect(clip).toContainText('Drashti cannot play Placeholder clip.avi yet: AVI video.');
-  await expect(clip).toContainText('Export it again as an H.264 MP4');
+  await expect(clip).toContainText('Drashti cannot play Placeholder clip.avi as it is: AVI video.');
+  // It offers to convert it, saying what that makes, and the report offers to convert them all.
+  await expect(clip.getByRole('button', { name: 'Convert' })).toHaveAttribute('title', /H\.264 MP4/u);
+  await expect(report.getByTestId('report-convert-all')).toBeVisible();
   const picture = report.getByTestId('report-item').filter({ hasText: 'Placeholder picture.png' }).first();
   await expect(picture).not.toContainText('cannot play');
   await app.close();

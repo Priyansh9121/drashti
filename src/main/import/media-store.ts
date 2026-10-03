@@ -55,6 +55,9 @@ export interface StagedMedia {
 
 const GiB = 1024 ** 3;
 
+/** In the media folder: the part-files of conversions going on (src/main/convert), not library content. */
+export const CONVERTING_DIR = '.converting';
+
 /** The media.playable column: 1, 0, or NULL when not sure. */
 const playableValue = (probe: MediaProbe): number | null =>
   probe.playable === null ? null : probe.playable ? 1 : 0;

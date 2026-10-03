@@ -27,6 +27,7 @@ import type { Lang, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
 import type { SetupPlan, SetupResult, SetupState } from './setup';
+import type { ConversionJob, ConvertResult } from './convert';
 import type {
   ProgramContext,
   ProgramInputs,
@@ -154,6 +155,14 @@ export const IPC = {
   media: {
     /** Keep a still frame the operator window made (operator window only). */
     saveStill: 'media:save-still',
+    /** Convert media Drashti cannot play, one after another (operator window only). */
+    convert: 'media:convert',
+    cancelConversion: 'media:cancel-conversion',
+    conversions: 'media:conversions',
+    /** Put back the original everywhere the conversion moved it (Undo). */
+    undoConversion: 'media:undo-conversion',
+    /** main -> operator: the conversions changed. */
+    conversionsChanged: 'media:conversions-changed',
   },
   audio: {
     /** The sound output: the operator's choice, the outputs found, and where sound plays. */
@@ -398,6 +407,13 @@ export interface InvokeContract {
     result: { ok: true; style: TranslitStyle } | { ok: false; message: string };
   };
   [IPC.media.saveStill]: { args: [mediaId: string, jpeg: Uint8Array]; result: SaveStillResult };
+  [IPC.media.convert]: { args: [mediaIds: string[]]; result: ConvertResult };
+  [IPC.media.cancelConversion]: { args: [jobId: string | null]; result: ConvertResult };
+  [IPC.media.conversions]: { args: []; result: ConversionJob[] };
+  [IPC.media.undoConversion]: {
+    args: [conversionId: string];
+    result: { ok: true } | { ok: false; message: string };
+  };
   [IPC.audio.getOutput]: { args: []; result: AudioOutputStatus };
   [IPC.audio.setOutput]: { args: [device: AudioDevice | null]; result: AudioOutputStatus };
   [IPC.audio.reportDevices]: { args: [devices: AudioDevice[], state: AudioOutputState]; result: null };
@@ -490,6 +506,7 @@ export interface EventContract {
   [IPC.setup.open]: { at: number };
   [IPC.audio.status]: AudioOutputStatus;
   [IPC.stream.changed]: StreamStatus;
+  [IPC.media.conversionsChanged]: ConversionJob[];
   [IPC.stream.port]: { role: 'preview' | 'encoder' };
   [IPC.stream.context]: ProgramContext;
 }

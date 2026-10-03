@@ -17,7 +17,7 @@ describe('Simple Mode locks', () => {
     for (const channel of SIMPLE_MODE_LOCKED) expect(allChannels()).toContain(channel);
     // Every channel that changes something is locked; reading and running the show are not.
     const changes = allChannels().filter((c) =>
-      /:(save|remove|restore|create|rename|apply|update|add|move|fill|set|delete|assign|import|pick|relink|new|from|make|finish|use|go-live|end$|start|stop)/u.test(
+      /:(save|remove|restore|create|rename|apply|update|add|move|fill|set|delete|assign|import|pick|relink|new|from|make|finish|use|go-live|end$|start|stop|convert|cancel-conversion|undo-conversion)/u.test(
         c,
       ),
     );

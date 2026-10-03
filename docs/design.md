@@ -162,3 +162,11 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **The level meter** reads -60 to 0 dB (`role="meter"`), green, then `warning` above -12 dB and `danger` above -3 dB, holding a peak and falling back at 20 dB a second like a mixer's; above 0 dB it says "Too loud" (the sound is clipped).
 - **A key is never shown.** Once saved, the settings say "A key is saved for this profile" with **Replace key** and **Remove key**; the field is a password field and empties as soon as it is sent.
 - Both fit at 1280 × 720 (`tests/e2e/stream-program.spec.ts`).
+
+## 15. Converting media
+
+- **Names come first.** The media list's column is narrow, so a row keeps its name whole and says everything else on its second line: "Video · can't play as it is" in `warning-fg` (what the file is in the tooltip) with a small **Convert** button (the `Wand2` icon) at the end; "Waiting to convert" (why, such as the stream being on air, in the tooltip); while converting, a thin bar and "Converting… 42%" (the words carry it for screen readers; the bar is only seen), with an **×** to cancel; after a failure, why, in `danger-fg`, and the button says **Try again**; once converted, "Converted to .mp4" (the tooltip names the copy everything now uses). Only a missing file keeps a badge.
+- **One bar above the list** when there is something to convert: how many files Drashti cannot play, with **Convert all**; while converting, "Converting N files, one at a time" and, for more than one, **Cancel all**. The bar's text is `aria-live="polite"`, so a screen reader hears it change.
+- **The import report** says the same in an `info` notice, with **Convert all**, and each file's row has its own **Convert**, then its progress, then "Converted: <copy>" in `success-fg` text.
+- **The copy is an ordinary row of its own**, next to the original (the same name, another extension). Undo goes on the one Undo stack, "Converted <file>".
+- It fits at 1280 × 720 (`tests/e2e/convert.spec.ts`), and the screenshots are `docs/screenshots/convert-*.png`.

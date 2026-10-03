@@ -5,8 +5,9 @@ import type { ImportIssue } from '../../shared/import';
 /*
  * What a media file really is, from its bytes (not its name), and whether
  * Drashti's windows (Chromium) can play it. No FFmpeg: containers and
- * codecs are recognised from their headers. Converting what cannot play
- * comes with FFmpeg in Phase 2; for now the import report says what to do.
+ * codecs are recognised from their headers. What cannot play is converted
+ * with the bundled FFmpeg (src/main/convert/), from the report or the
+ * media list.
  */
 
 export interface MediaProbe {
@@ -364,11 +365,11 @@ export async function probeMedia(path: string): Promise<MediaProbe> {
 export function unplayableAdvice(probe: MediaProbe): string {
   switch (probe.kind) {
     case 'image':
-      return 'Save a copy as a JPEG or PNG (for example with Preview on the Mac, or Photos on Windows) and use that instead.';
+      return 'Convert makes a JPEG (or a PNG, when it has transparency) that Drashti plays, and uses it wherever this picture was.';
     case 'audio':
-      return 'Convert it to MP3 or AAC (for example with Music on the Mac, or Audacity) and use that instead.';
+      return 'Convert makes an AAC sound file that Drashti plays, and uses it wherever this sound was.';
     default:
-      return 'Export it again as an H.264 MP4 (for example QuickTime Player: File > Export As > 1080p, or HandBrake) under the same name, then import the presentation again and choose Replace.';
+      return 'Convert makes an H.264 MP4 (or a WebM, when it has transparency) that Drashti plays, and uses it wherever this video was.';
   }
 }
 
@@ -377,7 +378,7 @@ export function unplayableIssue(name: string, probe: MediaProbe, mediaId: string
   return {
     severity: 'warning',
     code: 'unplayable-media',
-    message: `Drashti cannot play ${name} yet: ${probe.format}. Converting files inside Drashti comes in a later version.`,
+    message: `Drashti cannot play ${name} as it is: ${probe.format}. Convert it here (in the report, or in the media list).`,
     fix: { kind: 'convert-media', mediaId, advice: unplayableAdvice(probe) },
   };
 }

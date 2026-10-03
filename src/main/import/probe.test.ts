@@ -169,10 +169,15 @@ describe('recognising media Drashti cannot play', () => {
   });
 
   it('says what to do about each kind of file', () => {
-    expect(unplayableAdvice({ playable: false, format: 'HEIC photo', kind: 'image' })).toMatch(/JPEG or PNG/);
-    expect(unplayableAdvice({ playable: false, format: 'AIFF sound file', kind: 'audio' })).toMatch(
-      /MP3 or AAC/,
+    // Each says what Convert makes of it.
+    expect(unplayableAdvice({ playable: false, format: 'HEIC photo', kind: 'image' })).toMatch(
+      /JPEG \(or a PNG, when it has transparency\)/,
     );
-    expect(unplayableAdvice({ playable: false, format: 'AVI video', kind: 'video' })).toMatch(/H\.264 MP4/);
+    expect(unplayableAdvice({ playable: false, format: 'AIFF sound file', kind: 'audio' })).toMatch(
+      /AAC sound file/,
+    );
+    expect(unplayableAdvice({ playable: false, format: 'AVI video', kind: 'video' })).toMatch(
+      /H\.264 MP4 \(or a WebM, when it has transparency\)/,
+    );
   });
 });
