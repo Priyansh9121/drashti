@@ -2,7 +2,7 @@ import Database from 'better-sqlite3';
 import type { ImportProgress } from '../../shared/import';
 import { constants, setPriority } from 'node:os';
 import { sep } from 'node:path';
-import type { Db } from '../db/database';
+import { beginImmediately, type Db } from '../db/database';
 import { ImportRepo } from '../db/imports';
 import { schemaVersion } from '../db/migrate';
 import { MediaStore } from './media-store';
@@ -38,6 +38,8 @@ function openLibrary(file: string, expected: number): Db {
     db.pragma('busy_timeout = 5000');
     db.pragma('foreign_keys = ON');
     db.pragma('synchronous = NORMAL');
+    // The main process writes to the same file: transactions take the write lock as they begin.
+    beginImmediately(db);
     const version = schemaVersion(db);
     if (version !== expected) {
       throw new Error(`The library is at schema ${version}, but this import expects ${expected}.`);
