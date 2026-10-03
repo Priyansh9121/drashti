@@ -85,4 +85,16 @@ Do these if the displays have different scale settings, or set one to 125% for t
 | 8.1 | Quit Drashti and start ProPresenter. Time it. | ProPresenter's outputs return in under a minute.       |        |
 | 8.2 | Quit Drashti while outputs are showing.       | Drashti asks first, because the screens will go black. |        |
 
+## 9. Streaming, recording and converting
+
+Never go live to the mandir's real channel for these checks: make an **Unlisted** test broadcast in YouTube Studio, or skip 9.4.
+
+| #   | Check                                                                                                                                            | Expected                                                                                                                                                                                             | Result |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| 9.1 | **Stream** in the header, then **Stream settings**: choose the camera (or the capture card) and the mixer's line in, and save.                   | The Stream panel shows the camera's picture and the level moves with the sound. If Windows' privacy settings block either, the panel says so and where to turn it on (Settings, Privacy & security). |        |
+| 9.2 | Choose a folder, then **Record** for two minutes without going live, then **Stop**. Write down the encoder the panel names.                      | NVENC, Quick Sync or AMF on a PC with a graphics chip that has one, otherwise x264. The file plays in VLC from the start, picture and sound together.                                                |        |
+| 9.3 | Pull the network cable (or turn off Wi-Fi) for a minute while recording.                                                                         | The recording carries on and the hall's screens are not affected.                                                                                                                                    |        |
+| 9.4 | With an Unlisted test broadcast's key: **Go live…**, run a few slides for five minutes, pull the cable for 30 seconds, then **End the stream…**. | ON AIR in the header; **Reconnecting** while the cable is out, then on air again by itself; YouTube Studio shows the stream and says the stream health is good once it settles.                      |        |
+| 9.5 | Drag a video from a phone (HEVC) and a ProRes or AVI file into Drashti.                                                                          | A file this PC cannot play shows **Convert** in the media list; after converting, the copy plays on the screens.                                                                                     |        |
+
 Report failures with the step number, what you saw, and a photo of the screen if possible.
