@@ -417,6 +417,47 @@ test('Simple Mode shows ON AIR and REC, and refuses starting, ending or changing
   await app.close();
 });
 
+test('a port lost on its way to the stream’s page is given again, so the stream still goes live', async () => {
+  test.setTimeout(90_000);
+  const port = await freePort();
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-lost-port-'));
+  listeners.push(rtmpListener(ffmpeg ?? '', port, join(dir, 'lost.flv')));
+  const { app, userData } = await launchApp(FAKE);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await setUp(app, win, port, dir);
+  // The first port for the encoder never reaches the page (as if it arrived before the page listened).
+  await app.evaluate(({ webContents }) => {
+    const any = webContents.getAllWebContents()[0];
+    if (!any) throw new Error('no web contents');
+    const proto = Object.getPrototypeOf(any) as {
+      postMessage: (this: unknown, channel: string, message: unknown, transfer?: unknown[]) => void;
+    };
+    const real = proto.postMessage;
+    let dropped = false;
+    proto.postMessage = function (this: unknown, channel: string, message: unknown, transfer?: unknown[]) {
+      if (
+        !dropped &&
+        channel === 'stream:port' &&
+        (message as { role?: string } | null)?.role === 'encoder'
+      ) {
+        dropped = true;
+        return;
+      }
+      real.call(this, channel, message, transfer);
+    };
+  });
+  await win.evaluate(async () => {
+    await (globalThis as PageGlobals).drashti.stream.goLive({ confirmed: true });
+  });
+  await waitLive(win, userData, 'live', 45_000);
+  expect(streamLog(userData)).toContain('no picture from its page for 5 s: connecting it again');
+  await win.evaluate(async () => {
+    await (globalThis as PageGlobals).drashti.stream.end({ confirmed: true });
+  });
+  await app.close();
+});
+
 test('after a crash on air: back on air by itself within 5 minutes, in a new recording file; later, only offered', async () => {
   test.setTimeout(150_000);
   const port = await freePort();

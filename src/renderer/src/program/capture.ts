@@ -171,10 +171,14 @@ function update(): void {
   }
 }
 
-/** Start listening for ports from the main process. */
+let listening = false;
+
+/** Start listening for ports from the main process (once, when the page starts). */
 export function startCapture(level: () => number, sound: () => MediaStreamTrack | null): void {
   levelOf = level;
   soundTrack = sound;
+  if (listening) return;
+  listening = true;
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
     const data = event.data as { drashtiStreamPort?: string } | null;
