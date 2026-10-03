@@ -460,3 +460,228 @@ test('the local network: the Phones panel, announcements, the ticker, and the pa
   }
   await app.close();
 });
+
+test('Looks, stage layouts, masks, key and fill, macros, MIDI and the slide editor (Session 11)', async () => {
+  test.setTimeout(240_000);
+  const { app } = await launchApp({
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_EXTRA_DISPLAYS: '3',
+    ...NETWORK_ENV,
+  });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.setViewportSize({ width: 1600, height: 900 });
+  const show = await running(win);
+  // A hall, a stage, and a key and fill pair; a second Look with the hall as a lower third; a mask, a
+  // stage layout and macros.
+  await win.evaluate(async (logoId) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const group = async (name: string, role: 'audience' | 'stage' | 'keyfill', displays: number[]) => {
+      const g = await d.screens.createGroup(name);
+      if (!g.ok) throw new Error(g.message);
+      const id = g.snapshot.groups.find((x) => x.name === name)?.id ?? '';
+      if (role !== 'audience') await d.screens.setGroupRole(id, role);
+      for (const i of displays)
+        await d.screens.assignDisplay(id, g.snapshot.displays[i]?.id ?? -1, { coverOperator: true });
+      return id;
+    };
+    const hall = await group('Placeholder hall', 'audience', [0]);
+    const stage = await group('Placeholder stage', 'stage', [1]);
+    await group('Placeholder switcher', 'keyfill', [2, 3]);
+    const mask = await d.masks.save(null, {
+      name: 'Placeholder LED wall',
+      width: 1920,
+      height: 1080,
+      mode: 'hide',
+      shapes: [
+        { id: 'l', kind: 'rectangle', frame: { x: 0, y: 0, width: 160, height: 1080 } },
+        { id: 'r', kind: 'ellipse', frame: { x: 1620, y: -200, width: 600, height: 600 } },
+      ],
+    });
+    const layout = await d.stageLayouts.save(null, {
+      name: 'Placeholder band layout',
+      background: '#0b0d11',
+      boxes: [
+        {
+          id: 'm',
+          kind: 'stageMessage',
+          frame: { x: 48, y: 40, width: 1824, height: 110 },
+          size: 64,
+          color: '#000000',
+          align: 'left',
+          label: '',
+        },
+        {
+          id: 'c',
+          kind: 'current',
+          frame: { x: 48, y: 180, width: 1180, height: 560 },
+          size: 'fit',
+          color: '#ffffff',
+          align: 'left',
+          label: 'NOW',
+        },
+        {
+          id: 'k',
+          kind: 'clock',
+          frame: { x: 1280, y: 180, width: 592, height: 140 },
+          size: 'fit',
+          color: '#ffffff',
+          align: 'right',
+          label: '',
+        },
+        {
+          id: 't',
+          kind: 'timer',
+          frame: { x: 1280, y: 340, width: 592, height: 200 },
+          size: 80,
+          color: '#fde68a',
+          align: 'right',
+          label: '',
+          timerId: null,
+        },
+        {
+          id: 'u',
+          kind: 'upcoming',
+          frame: { x: 1280, y: 560, width: 592, height: 480 },
+          size: 44,
+          color: '#c9ced8',
+          align: 'left',
+          label: 'COMING UP',
+          count: 5,
+        },
+        {
+          id: 'n',
+          kind: 'next',
+          frame: { x: 48, y: 780, width: 1180, height: 260 },
+          size: 48,
+          color: '#c9ced8',
+          align: 'left',
+          label: 'NEXT',
+        },
+      ],
+    });
+    if (!mask.ok || !layout.ok) throw new Error('could not make the mask or the layout');
+    const looks = await d.looks.list();
+    const standard = looks.liveId;
+    await d.looks.setGroup(standard, hall, { maskId: mask.id });
+    await d.looks.setGroup(standard, stage, { stageLayoutId: layout.id });
+    const lower = await d.looks.create('Placeholder lower thirds', standard);
+    const lowerId = lower.ok
+      ? (lower.view.looks.find((l) => l.name === 'Placeholder lower thirds')?.id ?? '')
+      : '';
+    await d.looks.setGroup(lowerId, hall, { slides: 'lowerThird', layers: ['slide', 'props', 'messages'] });
+    await d.macros.save(null, {
+      name: 'Placeholder arti',
+      color: '#e8590c',
+      actions: [
+        { kind: 'clearAll' },
+        { kind: 'showProp', propId: logoId },
+        { kind: 'stageMessage', text: 'Placeholder: arti now' },
+        { kind: 'blackout', to: 'off' },
+      ],
+    });
+    await d.macros.save(null, {
+      name: 'Placeholder lower thirds on',
+      color: '#3e63dd',
+      actions: [{ kind: 'look', lookId: lowerId }],
+    });
+    await d.macros.save(null, {
+      name: 'Placeholder Standard',
+      color: '#868e96',
+      actions: [{ kind: 'look', lookId: standard }],
+    });
+    await d.engine.dispatch({ type: 'setStageMessage', text: 'Placeholder: two minutes' });
+  }, show.logoPropId);
+  await shot(win, 'operator-looks-macros-masks');
+
+  await win.getByRole('button', { name: 'Screens', exact: true }).click();
+  await expect(win.getByTestId('looks-section')).toBeVisible();
+  await shot(win, 'screens-looks', [], true);
+  await win.getByTestId('edit-stage-layouts').click();
+  const layouts = win.getByTestId('stage-layout-editor');
+  await layouts.getByRole('button', { name: 'Placeholder band layout' }).click();
+  await layouts.getByTestId('stage-box-list').getByRole('button').nth(1).click();
+  await shot(win, 'stage-layout-editor');
+  await layouts.getByRole('button', { name: 'Close stage layouts' }).click();
+  await win.getByTestId('edit-masks').first().click();
+  const masks = win.getByTestId('mask-editor');
+  await masks.getByTestId('mask-shape-list').getByRole('button').nth(1).click();
+  await shot(win, 'mask-editor');
+  await masks.getByRole('button', { name: 'Close masks' }).click();
+  await win.getByRole('button', { name: 'Close screens' }).click();
+
+  // The outputs: the hall with its own mask, the stage's layout, the key and fill pair.
+  const outputs = async (role: string, feed?: string) => {
+    for (const p of app
+      .windows()
+      .filter((w) => w.url().includes('output.html') && !w.url().includes('identify=')))
+      if (
+        (await p.getByTestId('output-root').getAttribute('data-role')) === role &&
+        (feed === undefined || (await p.getByTestId('output-root').getAttribute('data-feed')) === feed)
+      )
+        return p;
+    throw new Error(`no ${role} output`);
+  };
+  await shot(await outputs('audience'), 'output-hall-mask');
+  await shot(await outputs('stage'), 'output-stage-layout');
+  await win.getByTestId('looks-panel').getByRole('button', { name: 'Placeholder lower thirds' }).click();
+  await shot(await outputs('keyfill', 'fill'), 'output-fill');
+  await shot(await outputs('keyfill', 'key'), 'output-key');
+  await shot(await outputs('audience'), 'output-hall-lower-third');
+
+  await win.getByTestId('macros-panel').getByRole('button', { name: 'Edit' }).click();
+  await expect(win.getByTestId('macro-editor').getByTestId('macro-action')).toHaveCount(4);
+  await shot(win, 'macro-editor');
+  await win.getByRole('button', { name: 'Close macros' }).click();
+  await win.evaluate(() => {
+    const input = {
+      id: 'pad',
+      name: 'Placeholder pad',
+      state: 'connected',
+      type: 'input',
+      onmidimessage: null,
+    };
+    const access = {
+      inputs: new Map([['pad', input]]),
+      outputs: new Map(),
+      onstatechange: null,
+      sysexEnabled: false,
+    };
+    Object.defineProperty(navigator, 'requestMIDIAccess', {
+      configurable: true,
+      value: () => Promise.resolve(access),
+    });
+  });
+  await win.getByTestId('macros-panel').getByTestId('open-midi').click();
+  await win.getByTestId('midi-device').selectOption('Placeholder pad');
+  await shot(win, 'midi-dialog');
+  await win.getByRole('button', { name: 'Close MIDI' }).click();
+
+  // The slide editor with two elements selected together.
+  await win.getByTestId('edit-slides').click();
+  const editor = win.getByTestId('slide-editor');
+  await expect(editor.getByTestId('editor-canvas')).toBeVisible();
+  await editor.getByTestId('add-shape').click();
+  await win.getByRole('menuitem', { name: 'Rounded rectangle' }).click();
+  await editor.getByTestId('editor-canvas').focus();
+  await win.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+  await expect(editor.getByTestId('group-box')).toBeVisible();
+  await shot(win, 'slide-editor-together');
+  await editor.getByRole('button', { name: 'Cancel' }).click();
+  await win.getByTestId('discard-confirm').getByRole('button', { name: 'Throw them away' }).click();
+
+  // The phone remote's More tab: Looks and macros.
+  const { base } = await networkOn(win);
+  const code = await pairingCode(win, 'remote', 'Placeholder phone');
+  const phone = await device('chromium');
+  try {
+    await pairByQr(phone.page, base, code, '/remote');
+    await expect(phone.page.getByTestId('connection')).toHaveText('Connected');
+    await phone.page.getByTestId('remote-tab-more').click();
+    await expect(phone.page.getByTestId('remote-macros')).toBeVisible();
+    await shot(phone.page, 'phone-remote-more');
+  } finally {
+    await phone.close();
+  }
+  await app.close();
+});
