@@ -301,7 +301,7 @@ On the Mac, **Cmd** is the ⌘ key; on Windows, use **Ctrl** instead. These keys
 | **F4**                                         | Clear props                                                                                      |
 | **F5**                                         | Clear messages                                                                                   |
 | **F6**                                         | Clear the sound                                                                                  |
-| **F7**                                         | Clear masks                                                                                      |
+| **F7**                                         | Clear the Masks layer (a screen's own mask, set in its Look, stays)                              |
 | **F8**                                         | Clear the ticker (announcements scrolling along the bottom)                                      |
 | **Cmd+F** / **Ctrl+F**                         | Search the library                                                                               |
 | **Delete** or **Backspace** (in a list)        | Remove the marked presentations, playlists or items (asks first for presentations and playlists) |
@@ -311,7 +311,7 @@ On the Mac, **Cmd** is the ⌘ key; on Windows, use **Ctrl** instead. These keys
 | **Cmd+Shift+U** / **Ctrl+Shift+U**             | Uncover the controls (works from anywhere)                                                       |
 | **Esc**                                        | Cancel editing words or a question, or empty the search box                                      |
 
-Going live, ending the stream and recording have no keys: use the buttons in the **Stream** panel (each going live or ending asks first).
+Going live, ending the stream and recording have no keys: use the buttons in the **Stream** panel (each going live or ending asks first). Switching the Look and running a macro have no keys either: use their buttons under the live picture, or a MIDI pad mapped to a macro.
 
 In the slide editor:
 
@@ -323,6 +323,9 @@ In the slide editor:
 | **Esc**                                                | Stop typing; then let go of the selection; then close (asking first if changed)                              |
 | **Delete** or **Backspace**                            | Delete what is selected                                                                                      |
 | **Cmd+D** / **Ctrl+D**                                 | Duplicate what is selected                                                                                   |
+| **Cmd+A** / **Ctrl+A**                                 | Select everything on the slide                                                                               |
+| **Cmd+C**, **Cmd+X**, **Cmd+V** (Ctrl on Windows)      | Copy, cut and paste what is selected (to another slide, or another presentation's slides)                    |
+| **Cmd+Shift+V** / **Ctrl+Shift+V**                     | Paste exactly in place                                                                                       |
 | **Cmd+Z** / **Ctrl+Z**, **Cmd+Shift+Z** / **Ctrl+Y**   | Undo and redo in the editor (while typing: the typing)                                                       |
 | **Cmd+S** / **Ctrl+S**                                 | Save the slides                                                                                              |
 | **Alt** (while dragging)                               | Place freely, without snapping                                                                               |
