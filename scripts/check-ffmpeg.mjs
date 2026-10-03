@@ -34,7 +34,8 @@ function packagedApps() {
     }
     if (existsSync(win)) found.push(['Windows x64', win, []]);
   }
-  if (found.length === 0) throw new Error('No unpacked app in release/: run pnpm package (or package:dir) first.');
+  if (found.length === 0)
+    throw new Error('No unpacked app in release/: run pnpm package (or package:dir) first.');
   return found;
 }
 
