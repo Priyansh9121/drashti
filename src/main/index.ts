@@ -62,6 +62,9 @@ import { StageLayoutRepo } from './db/stage-layouts';
 import { StageLayoutService } from './stage/stage-layout-service';
 import { MaskRepo } from './db/masks';
 import { MaskService } from './masks/mask-service';
+import { MacroRepo } from './db/macros';
+import { MacroService } from './macros/macro-service';
+import { midiSettingsSchema, NO_MIDI } from '../shared/midi';
 import { seedPlaceholders, seedTemplates } from './db/seed';
 import { ShowEngine } from './engine/show-engine';
 import { runEngineCommand } from './ipc/engine-ipc';
@@ -406,7 +409,11 @@ function start(): void {
         log.info(line);
       }
     : undefined;
-  applySessionSecurity(session.defaultSession, { log: permissionLog });
+  applySessionSecurity(session.defaultSession, {
+    log: permissionLog,
+    // MIDI controllers: the operator window's page only (never SysEx).
+    isOperator: (contents) => contents !== null && contents.id === operatorWindow?.webContents.id,
+  });
   const audioSession = session.fromPartition(AUDIO_PARTITION);
   applySessionSecurity(audioSession, {
     isAudioPlayer: (contents) => contents !== null && contents.id === audioWindow?.webContents.id,
@@ -496,6 +503,8 @@ function start(): void {
   let simpleNow = () => false;
   /** A media file's length, once learned from playing it (the media repo, made further down). */
   let mediaLength: (mediaId: string) => number | null = () => null;
+  /** Macros (made further down, once props, messages and media are): a slide's macro cue runs through it. */
+  let macroService: MacroService | null = null;
   const engine = new ShowEngine(
     slides,
     new FanoutTransport([transport, networkTransport]),
@@ -511,6 +520,8 @@ function start(): void {
       refuse: (command) =>
         simpleNow() && SIMPLE_MODE_REFUSED_COMMANDS.includes(command.type) ? SIMPLE_MODE_REFUSAL : null,
       mediaLength: (mediaId) => mediaLength(mediaId),
+      macroCommands: (macroId) =>
+        macroService?.commands(macroId) ?? { ok: false, message: 'Macros are not ready yet.' },
     },
   );
   const stageLayoutRepo = new StageLayoutRepo(db);
@@ -1120,6 +1131,58 @@ function start(): void {
         : { ok: false, message: 'That message no longer exists.' };
     }),
   );
+  // ---- macros (shared/macros.ts): run as one change; Simple Mode runs none ------------------
+  const propItem = (id: string): PropItem | null => {
+    const p = props.list().find((x) => x.id === id);
+    return p ? asPropItem(p) : null;
+  };
+  const markedLogo = (): PropItem | null => {
+    const id = settings.get('logoPropId');
+    return typeof id === 'string' ? propItem(id) : null;
+  };
+  const macros = new MacroService({
+    repo: new MacroRepo(db),
+    engine: {
+      state: () => engine.current,
+      runMacro: (commands) => engine.runMacro(commands),
+    },
+    reads: {
+      prop: propItem,
+      template: (id) => messageTemplates.list().find((t) => t.id === id) ?? null,
+      media: (id) => media.kindAndName(id),
+      logo: markedLogo,
+    },
+    simple: () => mode === 'simple',
+    changed: (list) => {
+      sendToOperator(IPC.macros.changed, list);
+      network?.hint('macros');
+    },
+    log: (message) => {
+      log.info(message);
+    },
+  });
+  macroService = macros;
+  const notMacroOperator = {
+    ok: false as const,
+    message: 'Only the operator window can change or run macros.',
+  };
+  handle(IPC.macros.list, () => macros.list());
+  handle(IPC.macros.save, (e, id, macro) => (fromOperator(e) ? macros.save(id, macro) : notMacroOperator));
+  handle(IPC.macros.remove, (e, id) => (fromOperator(e) ? macros.remove(id) : notMacroOperator));
+  handle(IPC.macros.run, (e, id) => (fromOperator(e) ? macros.run(id) : notMacroOperator));
+  // The MIDI controller's settings: which device, and what its notes and controllers do.
+  handle(IPC.midi.get, () => {
+    const parsed = midiSettingsSchema.safeParse(settings.get('midi'));
+    return parsed.success ? parsed.data : NO_MIDI;
+  });
+  handle(IPC.midi.set, (e, raw) => {
+    if (!fromOperator(e)) return { ok: false as const, message: 'Only the operator window can set up MIDI.' };
+    const parsed = midiSettingsSchema.safeParse(raw);
+    if (!parsed.success) return { ok: false as const, message: 'Those MIDI settings cannot be kept.' };
+    settings.set('midi', parsed.data);
+    return { ok: true as const, settings: parsed.data };
+  });
+
   // ---- the local network ----------------------------------------------------------
   // Phones and tablets on the mandir's Wi-Fi, once paired (README "The local network"). Off until
   // the operator turns it on (Pro Mode only); the server runs in a worker of its own.
@@ -1220,11 +1283,13 @@ function start(): void {
         return { groupId, languages: groupId ? looks.liveLanguages(groupId) : null };
       },
       looks: () => lookRepo.list().map((l) => ({ id: l.id, name: l.name })),
+      macros: () => macros.list().map((m) => ({ id: m.id, name: m.name, color: m.color })),
       clockStyle: () => ({
         locale: app.getLocale(),
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       }),
     },
+    runMacro: (id, who) => macros.run(id, who),
     announcements: {
       submit: (device, address, input) => announcements.submit(device, address, input),
       statusFor: (device, args) => announcements.statusFor(device, args),

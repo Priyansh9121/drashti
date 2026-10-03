@@ -55,6 +55,8 @@ import type { PropFields, PropInfo, PropResult } from './props';
 import type { GroupLookPatch, LookResult, LooksView } from './looks';
 import type { StageLayout, StageLayoutResult } from './stage-layouts';
 import type { Mask, MaskResult } from './masks';
+import type { Macro, MacroResult, MacroRunResult } from './macros';
+import type { MidiResult, MidiSettings } from './midi';
 import type { SearchResult } from './search';
 import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes';
 import type { TimerFields, TimerResult } from './timers';
@@ -251,6 +253,20 @@ export const IPC = {
     setGroup: 'looks:set-group',
     /** main -> operator: the Looks changed (or which is live). */
     changed: 'looks:changed',
+  },
+  /** Macros (changing and running them: operator window, Pro Mode). */
+  macros: {
+    list: 'macros:list',
+    save: 'macros:save',
+    remove: 'macros:remove',
+    run: 'macros:run',
+    /** main -> operator: the macros changed. */
+    changed: 'macros:changed',
+  },
+  /** The MIDI controller's settings (changing them: operator window, Pro Mode). */
+  midi: {
+    get: 'midi:get',
+    set: 'midi:set',
   },
   /** The mask library (changing it: operator window, Pro Mode; putting one up is the engine's setMask). */
   masks: {
@@ -512,6 +528,12 @@ export interface InvokeContract {
     args: [lookId: string, groupId: string, patch: GroupLookPatch];
     result: LookResult;
   };
+  [IPC.macros.list]: { args: []; result: Macro[] };
+  [IPC.macros.save]: { args: [macroId: string | null, macro: Omit<Macro, 'id'>]; result: MacroResult };
+  [IPC.macros.remove]: { args: [macroId: string]; result: MacroResult };
+  [IPC.macros.run]: { args: [macroId: string]; result: MacroRunResult };
+  [IPC.midi.get]: { args: []; result: MidiSettings };
+  [IPC.midi.set]: { args: [settings: MidiSettings]; result: MidiResult };
   [IPC.masks.list]: { args: []; result: Mask[] };
   [IPC.masks.save]: { args: [maskId: string | null, mask: Omit<Mask, 'id'>]; result: MaskResult };
   [IPC.masks.remove]: { args: [maskId: string]; result: MaskResult };
@@ -604,6 +626,7 @@ export interface EventContract {
   [IPC.looks.changed]: LooksView;
   [IPC.stageLayouts.changed]: StageLayout[];
   [IPC.masks.changed]: Mask[];
+  [IPC.macros.changed]: Macro[];
   [IPC.output.context]: OutputContext;
   [IPC.output.identify]: { name: string; groupName: string };
   [IPC.audio.chosen]: { device: AudioDevice | null };

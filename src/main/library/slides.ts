@@ -63,6 +63,7 @@ export function editDocOf(rows: ContentRows, name: string): { doc: EditDoc; unre
       enabled: s.enabled === 1,
       transition: transitionFromJson(s.transition),
       autoAdvanceMs: s.auto_advance_ms,
+      macroId: s.macro_id,
       elements: (elements.get(s.id) ?? []).flatMap((row): SlideElement[] => {
         const el = elementFromRow(row);
         if (!el) unreadable++;
@@ -204,6 +205,7 @@ export function applySlideEdit(
             : transitionToJson(s.transition),
         auto_advance_ms: s.autoAdvanceMs,
         enabled: s.enabled ? 1 : 0,
+        macro_id: s.macroId,
       });
       const list: ElementRow[] = s.elements.map((el) => {
         const was = oldElements.get(el.id);

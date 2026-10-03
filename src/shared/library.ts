@@ -128,6 +128,8 @@ export interface SlideInfo {
   transition: Transition | null;
   /** How long it stays up before the next slide comes on by itself; null to wait for the operator. */
   autoAdvanceMs: number | null;
+  /** A macro it runs when it goes up (its cue); null for none. */
+  macroId: string | null;
 }
 
 export interface GroupInfo {

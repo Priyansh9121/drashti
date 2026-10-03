@@ -92,6 +92,7 @@ curl -s "$DRASHTI/api/v1/status" -H "Authorization: Bearer $TOKEN"
 | `GET /api/v1/timers`               | Remote        | `timers`: each timer, with when it started (each device works out the time).                                                                                                                                   |
 | `GET /api/v1/logo`                 | Remote        | `logo`: the prop marked as the logo (`id`, `name`), or null.                                                                                                                                                   |
 | `GET /api/v1/looks`                | Remote        | `looks`: every Look (`id`, `name`), in order (the first is the one Drashti starts with), and `liveId`: the live one.                                                                                           |
+| `GET /api/v1/macros`               | Remote        | `macros`: every macro (`id`, `name`, `color`), in order.                                                                                                                                                       |
 | `GET /api/v1/media/{id}/preview`   | Remote        | A small JPEG of a picture, or one frame of a video (never the file itself).                                                                                                                                    |
 
 ## Running the show (Remote)
@@ -121,6 +122,7 @@ curl -s -X POST "$DRASHTI/api/v1/clear/all"    -H "Authorization: Bearer $TOKEN"
 | `POST /api/v1/messages/{id}/show`    | `{"values":{"plate":"12"}}`                                                                             | Shows a message template with its fields filled in (`{id}` is the template's).                                                                                                                                                      |
 | `POST /api/v1/messages/{id}/hide`    |                                                                                                         | Takes that message off.                                                                                                                                                                                                             |
 | `POST /api/v1/looks/{id}/live`       |                                                                                                         | Makes that Look live: every screen group changes at once. Simple Mode refuses it (403), as it does in the operator window.                                                                                                          |
+| `POST /api/v1/macros/{id}/run`       |                                                                                                         | Runs that macro: its actions in order, as one change. Simple Mode refuses it (403); a macro that names something gone, or an action a macro may not do, is refused (409) and nothing changes.                                       |
 
 ## Announcements (Announcements devices)
 

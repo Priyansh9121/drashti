@@ -191,6 +191,11 @@ async function perform(action: OperatorAction, ui: { openScreens: () => void }):
  * Undo puts back what Clear all took down. Nothing that changes the library,
  * the screens or the sound has a key here.
  */
+/** Back (undo the last Next exactly, else Previous), in turn with the keys: a MIDI pad's Back in Pro Mode. */
+export function runBack(): Promise<void> {
+  return inTurn(() => dispatch({ type: 'back' }));
+}
+
 export function runSimpleAction(action: OperatorAction, start: () => Promise<void>): Promise<void> {
   return inTurn(() => performSimple(action, start));
 }

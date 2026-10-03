@@ -207,3 +207,9 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 
 - **A group role like the others**, "Key and fill (for a video switcher)", with a short line under it saying what the two displays are and how to set the switcher. Each screen in the group says what it sends ("The fill (the picture)", "The key (white where the fill has something)") in a select beside it.
 - **The key is not a picture to look at**: it is only on its output. The operator's previews never show it.
+
+## 21. Macros and MIDI
+
+- **A macro is a coloured button.** In the Macros panel each macro is a two-column button with a strip of its colour and its name; a click runs it at once (it is a show action, like Next). Its colour is chosen from a few that read on the dark panels.
+- **The macro editor lists actions as plain sentences in order**: the action's name, then its choices (a Look, a prop, a template and its fields…), with Earlier, Later and Remove as icon buttons with those words as their labels. Only actions a macro may do are offered.
+- **MIDI says what it heard.** The MIDI dialog shows the device and whether it is connected (in words), every action with what it is mapped to ("Note 36, channel 1") and Learn, and a live line with the last note or controller the controller sent, so an operator can see the pad is reaching Drashti.

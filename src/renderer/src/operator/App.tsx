@@ -35,6 +35,11 @@ import { PropsPanel } from './PropsPanel';
 import { StageLayoutEditor } from '../stage/StageLayoutEditor';
 import { MaskEditor } from '../masks/MaskEditor';
 import { MasksPanel } from './MasksPanel';
+import { MacrosPanel } from './MacrosPanel';
+import { MacroEditor } from '../macros/MacroEditor';
+import { runMacro } from '../macros/macros-store';
+import { setMidiHandler, startMidi } from '../midi/midi-store';
+import { runBack } from './actions';
 import { LooksPanel } from './LooksPanel';
 import { isTyping, useKeymap } from './useKeymap';
 import { watchProps } from './logo-store';
@@ -63,6 +68,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     watchPlaylists();
     watchProps();
     connectMode();
+    void startMidi();
     void loadLibrary();
     void loadTree();
     // Edit > Undo: in a text field the window undoes the typing itself; elsewhere it brings back
@@ -131,6 +137,20 @@ function ProApp({ info }: { info: AppInfo | null }) {
     [openScreens],
   );
   useKeymap(platform, run);
+  // A MIDI controller's pads, as keys are.
+  useEffect(() => {
+    setMidiHandler((action) => {
+      if (action.kind === 'next') run('next');
+      else if (action.kind === 'back') void runBack();
+      else if (action.kind === 'clearAll') run('clearAll');
+      else if (action.kind === 'blackout') run('toggleBlackout');
+      else if (action.kind === 'logo') run('toggleLogo');
+      else void runMacro(action.macroId);
+    });
+    return () => {
+      setMidiHandler(null);
+    };
+  }, [run]);
   // The setup wizard: by itself on the first start, and from View > Set Up Screens… (Pro Mode only).
   useEffect(() => {
     void window.drashti.setup.state().then((state) => {
@@ -165,6 +185,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
             <NextPreview />
             <div className="mt-3 divide-y divide-line border-t border-line">
               <LooksPanel />
+              <MacrosPanel />
               <StageMessageControl />
               <PropsPanel />
               <MasksPanel />
@@ -192,6 +213,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <StreamSettings />
       <StageLayoutEditor />
       <MaskEditor />
+      <MacroEditor />
       {screensOpen && (
         <ScreensPanel
           platform={platform}

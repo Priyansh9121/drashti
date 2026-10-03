@@ -22,6 +22,7 @@ import { before as looksData, up as looks } from './migrations/020-looks';
 import { up as stageLayouts } from './migrations/021-stage-layouts';
 import { up as masks } from './migrations/022-masks';
 import { up as keyFill } from './migrations/023-key-fill';
+import { up as macros } from './migrations/024-macros';
 
 export interface Migration {
   version: number;
@@ -63,6 +64,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 21, name: 'stage layouts', up: stageLayouts },
   { version: 22, name: 'masks', up: masks },
   { version: 23, name: 'key and fill outputs', up: keyFill },
+  { version: 24, name: 'macros', up: macros },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

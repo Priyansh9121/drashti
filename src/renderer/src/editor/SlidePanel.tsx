@@ -13,6 +13,7 @@ import { Toggle } from '../ui/Toggle';
 import { ConfirmDialog } from '../ui/Dialog';
 import { commit, select, tell, useEditor } from './editor-store';
 import { MediaPicker } from './MediaPicker';
+import { connectMacros, useMacros } from '../macros/macros-store';
 import type { EditCue } from '../../../shared/slide-edit';
 import {
   addGroup,
@@ -155,6 +156,38 @@ function useDefaultTransition(): [Transition | null, (t: Transition) => void] {
     });
   };
   return [value, set];
+}
+
+/** A macro the slide runs when it goes up (in the same change; not in Simple Mode). */
+function MacroCue({ value, onChange }: { value: string | null; onChange: (macroId: string | null) => void }) {
+  const macros = useMacros((s) => s.macros);
+  useEffect(() => {
+    connectMacros();
+  }, []);
+  return (
+    <Field
+      label="When it goes up, run"
+      hint="A macro runs with the slide, as one change (never in Simple Mode)."
+    >
+      <Select
+        data-testid="slide-macro"
+        value={value ?? ''}
+        onChange={(e) => {
+          onChange(e.target.value === '' ? null : e.target.value);
+        }}
+      >
+        <option value="">No macro</option>
+        {value !== null && !(macros ?? []).some((m) => m.id === value) && (
+          <option value={value}>A macro that is gone</option>
+        )}
+        {(macros ?? []).map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.name}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
 }
 
 export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
@@ -443,6 +476,12 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
             />
           </div>
         )}
+        <MacroCue
+          value={slide.macroId}
+          onChange={(macroId) => {
+            setSlide({ macroId });
+          }}
+        />
       </Section>
 
       <Section title="The presentation" testId="presentation-section">

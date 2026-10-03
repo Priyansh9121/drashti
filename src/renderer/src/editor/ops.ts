@@ -299,6 +299,7 @@ export function newSlide(look: SlideLook | null): EditSlide {
     enabled: true,
     transition: null,
     autoAdvanceMs: null,
+    macroId: null,
     elements: [],
     cues: [],
   };

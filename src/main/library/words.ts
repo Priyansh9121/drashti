@@ -326,6 +326,7 @@ export function applyWords(
       transition: null,
       auto_advance_ms: null,
       enabled: 1,
+      macro_id: null,
     };
     if (template) {
       const shared = shareLines(template.boxes, lines);

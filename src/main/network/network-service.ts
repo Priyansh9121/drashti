@@ -34,6 +34,7 @@ import {
   type PairAnswer,
   REMOTE_COMMANDS,
 } from '../../shared/network-api';
+import type { MacroRunResult } from '../../shared/macros';
 import type { PlaylistItemInfo, PlaylistNode } from '../../shared/playlists';
 import type { DeviceRepo, DeviceRow } from '../db/devices';
 import { localInterfaceAddresses } from './addresses';
@@ -70,6 +71,8 @@ export interface NetworkReads {
   stage(): { groupId: string | null; languages: Lang[] | null };
   /** The Looks, in order (a Remote switches the live one). */
   looks(): { id: string; name: string }[];
+  /** The macros, in order (a Remote runs them). */
+  macros(): { id: string; name: string; color: string }[];
   /** How this computer writes the time (its locale and time zone), so a stage display's clock reads as the stage screens' does. */
   clockStyle(): { locale: string; timeZone: string };
 }
@@ -87,6 +90,8 @@ export interface NetworkDeps {
     state(): EngineState;
   };
   reads: NetworkReads;
+  /** Run a macro for a device (macro-service.ts), named in the log. */
+  runMacro(macroId: string, who: string): MacroRunResult;
   /** Announcements from phones (announcement-service.ts). */
   announcements: {
     submit(device: { id: string; name: string }, address: string, input: unknown): DeviceAnswer;
@@ -112,6 +117,8 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   state: IPC.engine.snapshot,
   stage: IPC.screens.get,
   looks: IPC.looks.list,
+  macros: IPC.macros.list,
+  'macro.run': IPC.macros.run,
   playlists: IPC.playlists.tree,
   items: IPC.playlists.items,
   presentation: IPC.library.getPresentation,
@@ -590,6 +597,14 @@ export class NetworkService implements EngineTransport {
       }
       case 'looks':
         return ok({ looks: this.deps.reads.looks(), liveId: this.deps.engine.state().look.id });
+      case 'macros':
+        return ok({ macros: this.deps.reads.macros() });
+      case 'macro.run': {
+        const id = idSchema.safeParse(args['macroId']);
+        if (!id.success) return deny(404, 'There is no such macro.');
+        const ran = this.deps.runMacro(id.data, who);
+        return ran.ok ? ok({ changed: ran.changed, rev: ran.rev }) : deny(409, ran.message);
+      }
       case 'playlists':
         return ok({ playlists: this.deps.reads.playlists() });
       case 'items': {

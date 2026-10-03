@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isAudioPage, permissionCheckAllowed } from './security';
+import { isAudioPage, isOperatorPage, permissionCheckAllowed } from './security';
 
 const AUDIO = 'file:///Applications/Drashti.app/Contents/Resources/app.asar/out/renderer/audio.html';
 const OPERATOR = 'file:///Applications/Drashti.app/Contents/Resources/app.asar/out/renderer/index.html';
@@ -32,6 +32,21 @@ describe('permissions', () => {
       expect(permissionCheckAllowed(permission, true, AUDIO), permission).toBe(false);
       expect(permissionCheckAllowed(permission, false, OPERATOR), permission).toBe(false);
     }
+  });
+
+  it('lets only the operator window use MIDI, never SysEx', () => {
+    expect(permissionCheckAllowed('midi', false, OPERATOR, true)).toBe(true);
+    expect(permissionCheckAllowed('midi', false, 'http://localhost:5173/', true)).toBe(true);
+    // Not another window, not another page in the operator window, never SysEx.
+    expect(permissionCheckAllowed('midi', false, OPERATOR, false)).toBe(false);
+    expect(permissionCheckAllowed('midi', true, AUDIO, false)).toBe(false);
+    expect(permissionCheckAllowed('midi', false, OPERATOR.replace('index.html', 'output.html'), true)).toBe(
+      false,
+    );
+    expect(permissionCheckAllowed('midi', false, 'https://example.com/index.html', true)).toBe(false);
+    expect(permissionCheckAllowed('midiSysex', false, OPERATOR, true)).toBe(false);
+    expect(isOperatorPage(OPERATOR)).toBe(true);
+    expect(isOperatorPage('file:///x/index.html.evil')).toBe(false);
   });
 
   it('knows the audio page by its address', () => {
