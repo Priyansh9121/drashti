@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { summariesOf } from '../../shared/library';
 import type { SlideElement, TextElement } from '../../shared/model';
 import { readContent, writeContent } from './content';
 import { type Db, openDatabase } from './database';
@@ -103,8 +104,8 @@ describe('PresentationRepo', () => {
       ['A kirtan', 1, ['gu', 'translit']],
       ['b plain', 2, null],
     ]);
-    // A kirtan's details come with it, to filter the library by.
-    expect(list.map((p) => p.kirtan)).toEqual([
+    // A kirtan's details come with it (as stored, read in the operator window), to filter the library by.
+    expect(summariesOf(list).map((p) => p.kirtan)).toEqual([
       { category: 'Kirtan', kavi: null, raag: null, occasions: [] },
       null,
     ]);

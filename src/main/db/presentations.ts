@@ -6,7 +6,7 @@ import type {
   GroupInfo,
   ImportSource,
   PresentationDoc,
-  PresentationSummary,
+  PresentationListing,
   SlideCue,
   SlideInfo,
 } from '../../shared/library';
@@ -210,12 +210,8 @@ interface ListRow {
   height: number;
   slide_count: number;
   kirtan_tracks: string | null;
-  /** Set when it is a kirtan (its id), with its details. */
+  /** A kirtan's details as JSON (migration 15); null for other presentations. */
   kirtan: string | null;
-  category: string | null;
-  kavi: string | null;
-  raag: string | null;
-  occasions: string | null;
 }
 
 export class PresentationRepo {
@@ -241,17 +237,17 @@ export class PresentationRepo {
 
   /**
    * Every presentation, for the library list, library by library. Cheap at
-   * any size: slide counts and kirtan languages are kept on the presentation
-   * (migration 5), and an index gives each library's presentations in order.
+   * any size: slide counts, kirtan languages and kirtan details are kept on
+   * the presentation (migrations 5 and 15), and an index gives each
+   * library's presentations in order. The details go as stored, as JSON:
+   * the operator window reads them (summariesOf), not the main process.
    */
-  list(): PresentationSummary[] {
+  list(): PresentationListing[] {
     this.librariesStmt ??= this.db.prepare('SELECT id, name FROM libraries ORDER BY position, name');
     this.listStmt ??= this.db.prepare(
-      `SELECT p.id, p.name, p.width, p.height, p.slide_count, p.kirtan_tracks,
-              k.presentation_id AS kirtan, k.category, k.kavi, k.raag, k.occasions
-         FROM presentations p LEFT JOIN kirtans k ON k.presentation_id = p.id
-        WHERE p.library_id = ? AND p.deleted_at IS NULL
-        ORDER BY p.name COLLATE NOCASE`,
+      `SELECT id, name, width, height, slide_count, kirtan_tracks, kirtan FROM presentations
+        WHERE library_id = ? AND deleted_at IS NULL
+        ORDER BY name COLLATE NOCASE`,
     );
     const list = this.listStmt;
     return this.librariesStmt.all().flatMap((library) =>
@@ -263,12 +259,21 @@ export class PresentationRepo {
         width: r.width,
         height: r.height,
         kirtanTracks: r.kirtan_tracks === null ? null : toLangs(r.kirtan_tracks),
-        kirtan:
-          r.kirtan === null
-            ? null
-            : { category: r.category, kavi: r.kavi, raag: r.raag, occasions: occasionsFrom(r.occasions) },
+        kirtan: r.kirtan,
       })),
     );
+  }
+
+  /** The categories kirtans in the library have (not removed ones), A to Z. */
+  kirtanCategories(): string[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT DISTINCT k.category FROM kirtans k JOIN presentations p ON p.id = k.presentation_id
+            WHERE p.deleted_at IS NULL AND k.category IS NOT NULL ORDER BY k.category COLLATE NOCASE`,
+        )
+        .all() as { category: string }[]
+    ).map((r) => r.category);
   }
 
   get(id: string): PresentationDoc | null {
