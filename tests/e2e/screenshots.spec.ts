@@ -11,10 +11,15 @@ import { freePort, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
 
 /*
  * The screenshots in docs/screenshots/, with placeholder content only. Taken
- * by hand, not in CI (the pictures depend on the computer's fonts and
- * displays):
+ * on request, not in every CI run (the pictures depend on the computer's
+ * fonts and displays): a manual CI run on a macOS runner keeps them as an
+ * artifact,
  *
- *   DRASHTI_SCREENSHOTS=1 pnpm exec playwright test tests/e2e/screenshots.spec.ts
+ *   gh workflow run CI --ref <branch> -f os=macos -f screenshots=true
+ *
+ * or, when whoever is at the computer agrees (they need real windows),
+ *
+ *   DRASHTI_E2E_LOUD=1 DRASHTI_SCREENSHOTS=1 pnpm exec playwright test tests/e2e/screenshots.spec.ts
  *
  * (after pnpm build). They are kept at CSS pixel size.
  */

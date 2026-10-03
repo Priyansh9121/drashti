@@ -113,6 +113,17 @@ CI runs on GitHub Actions in the public `drashti` repository, where standard run
 gh workflow run CI --ref <branch> -f os=windows   # or os=macos, os=both
 ```
 
+A manual run can also be a quick check: only the specs it names, with no unit tests on the Mac or Windows runner and no packaging. Each manual run has its own concurrency group, so pushes and manual runs never cancel each other.
+
+```bash
+gh workflow run CI --ref <branch> -f os=windows -f specs="tests/e2e/operator-safety.spec.ts"
+gh workflow run CI --ref <branch> -f os=macos -f specs="tests/e2e/remote.spec.ts" -f repeat=5   # each test 5 times
+gh workflow run CI --ref <branch> -f os=macos -f specs="tests/e2e/network.spec.ts" -f quiet=true
+gh workflow run CI --ref <branch> -f os=macos -f screenshots=true   # kept as the screenshots-macOS artifact
+```
+
+- `quiet=true` runs the specs in the quiet test mode on a macOS runner while `scripts/quiet-check.mjs` watches the front app. It then runs them once more as an operator would, where Drashti must be seen in front (see "End-to-end tests on a computer someone is using").
+
 A **secret scan** job runs on every push and pull request: `scripts/secret-scan.mjs` downloads one pinned gitleaks release (its sha256 is written in the script and checked before use), proves on a throwaway repository that a planted token is found and printed redacted, then scans every commit of every branch with `--redact` and fails the run on any finding. The end-to-end jobs wait for it.
 
 Each unit or end-to-end run keeps its temporary files in one folder, `drashti-run-<process id>-…` in the system's temporary folder (`scripts/temp-root.mjs`; TMPDIR, TEMP and TMP point into it for the tests and the apps they start), and removes it at the end. A run that crashed leaves its folder behind; the next run clears it, and any loose `drashti-*` folders over an hour old.
@@ -376,7 +387,7 @@ Imports run in a separate worker process (an Electron utility process, `src/main
 
 ## Screenshots
 
-With placeholder content and generated media only, from `tests/e2e/screenshots.spec.ts` (`pnpm build`, then `DRASHTI_SCREENSHOTS=1 pnpm exec playwright test tests/e2e/screenshots.spec.ts`):
+With placeholder content and generated media only, from `tests/e2e/screenshots.spec.ts`. They're taken on a macOS runner by a manual CI run (`gh workflow run CI --ref <branch> -f os=macos -f screenshots=true`, kept as the `screenshots-macOS` artifact). They can also be taken locally with `DRASHTI_E2E_LOUD=1 DRASHTI_SCREENSHOTS=1 pnpm exec playwright test tests/e2e/screenshots.spec.ts` after `pnpm build`, when whoever is at the computer agrees.
 
 - [The operator window at 1920 × 1080](docs/screenshots/operator-1920x1080.png) and [at 1280 × 720](docs/screenshots/operator-1280x720.png)
 - [Simple Mode at 1280 × 720](docs/screenshots/simple-mode-1280x720.png), and [after Clear all, with Put it back](docs/screenshots/simple-mode-put-it-back.png)
