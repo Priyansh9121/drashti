@@ -21,12 +21,16 @@ import {
   Type,
 } from '../ui/icons';
 import { Kbd } from '../ui/Kbd';
+import { Tooltip } from '../ui/Tooltip';
 
 /*
  * Along the bottom: Clear all, a clear for each layer, and black-out. A
  * layer's clear is lit while that layer has something on the screens (a
  * dot, its edge in the live colour, and "on screen" read out) and dimmed
- * when there is nothing to clear.
+ * when there is nothing to clear. Its key (F2 to F8) is on the button from
+ * 1440 px wide, and in its tooltip at any width. Right after Clear all,
+ * Put it back takes Clear all's place (nothing is left to clear then), so
+ * the bar keeps its width and fits at 1280 px.
  */
 
 const clears: { action: OperatorAction; layer: LayerName; label: string; icon: Icon }[] = [
@@ -50,19 +54,8 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
       className="flex shrink-0 items-center gap-2 overflow-x-auto border-t border-line bg-panel px-3 py-2"
       data-testid="layer-bar"
     >
-      <Button
-        variant="primary"
-        size="lg"
-        icon={Eraser}
-        kbd={shortcutText('clearAll', platform)}
-        disabled={!anything}
-        onClick={() => {
-          run('clearAll');
-        }}
-      >
-        Clear all
-      </Button>
-      {canPutBack && (
+      {/* Put it back takes Clear all's place while it is offered: right after Clear all, with nothing left to clear. */}
+      {canPutBack ? (
         <Button
           variant="warning"
           size="lg"
@@ -72,35 +65,56 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
         >
           Put it back
         </Button>
+      ) : (
+        <Button
+          variant="primary"
+          size="lg"
+          icon={Eraser}
+          kbd={shortcutText('clearAll', platform)}
+          disabled={!anything}
+          onClick={() => {
+            run('clearAll');
+          }}
+        >
+          Clear all
+        </Button>
       )}
       <div role="group" aria-label="Clear one layer" className="flex items-center gap-1.5">
         {clears.map((c) => {
           const on = layers ? !isLayerEmpty(layers, c.layer) : false;
           const IconShape = c.icon;
           return (
-            <button
+            <Tooltip
               key={c.layer}
-              type="button"
-              disabled={!on}
-              data-lit={on ? 'true' : undefined}
-              onClick={() => {
-                run(c.action);
-              }}
-              aria-label={`Clear ${c.label.toLowerCase()}${on ? ' (on screen)' : ''}`}
-              className={cx(
-                'relative inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors',
-                on
-                  ? 'border-live bg-panel-2 text-fg hover:bg-panel-3'
-                  : 'cursor-not-allowed border-line bg-transparent text-faint',
-              )}
+              content={`Clear ${c.label.toLowerCase()}`}
+              kbd={shortcutText(c.action, platform)}
+              describes={false}
             >
-              <IconShape size={16} aria-hidden="true" />
-              {c.label}
-              <Kbd>{shortcutText(c.action, platform)}</Kbd>
-              {on && (
-                <span aria-hidden="true" className="absolute top-1 right-1 h-2 w-2 rounded-full bg-live" />
-              )}
-            </button>
+              <button
+                type="button"
+                disabled={!on}
+                data-lit={on ? 'true' : undefined}
+                onClick={() => {
+                  run(c.action);
+                }}
+                aria-label={`Clear ${c.label.toLowerCase()}${on ? ' (on screen)' : ''}`}
+                className={cx(
+                  'relative inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors',
+                  on
+                    ? 'border-live bg-panel-2 text-fg hover:bg-panel-3'
+                    : 'cursor-not-allowed border-line bg-transparent text-faint',
+                )}
+              >
+                <IconShape size={16} aria-hidden="true" />
+                {c.label}
+                <span className="hidden min-[1440px]:contents">
+                  <Kbd>{shortcutText(c.action, platform)}</Kbd>
+                </span>
+                {on && (
+                  <span aria-hidden="true" className="absolute top-1 right-1 h-2 w-2 rounded-full bg-live" />
+                )}
+              </button>
+            </Tooltip>
           );
         })}
       </div>
