@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import type { PageGlobals } from './helpers';
-import { dropFiles, launchApp, operatorPage } from './helpers';
+import { chooseMenuItem, dropFiles, launchApp, operatorPage } from './helpers';
 
 /*
  * Importing from the operator window: drag files onto the presentation
@@ -107,9 +107,7 @@ test('drag lyrics onto the library, read the report, go live, remove and undo, i
   await win.keyboard.press('Delete');
   await confirm.getByRole('button', { name: 'Remove' }).click();
   await expect(list.getByRole('button')).toHaveCount(2);
-  await app.evaluate(({ Menu }) => {
-    Menu.getApplicationMenu()?.getMenuItemById('undo')?.click();
-  });
+  await chooseMenuItem(app, 'undo');
   await expect(list.getByRole('button')).toHaveCount(3);
 
   // The file changes and is dropped again. A slide is live, so the report waits to be opened.

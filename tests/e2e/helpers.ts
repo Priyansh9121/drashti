@@ -119,6 +119,24 @@ export async function operatorReady(win: Page): Promise<void> {
   await expect(win.getByRole('contentinfo', { name: 'Status' })).toContainText(/Electron \d/u);
 }
 
+/**
+ * Choose an application menu item, as the operator would: from the main process's event loop.
+ * Playwright's evaluate can otherwise run in the middle of other main-process work (between two
+ * rows of a database query), where the item's own query is refused as the connection is busy.
+ */
+export async function chooseMenuItem(app: ElectronApplication, id: string): Promise<void> {
+  await app.evaluate(
+    ({ Menu }, item) =>
+      new Promise<void>((resolve) => {
+        setTimeout(() => {
+          Menu.getApplicationMenu()?.getMenuItemById(item)?.click();
+          resolve();
+        }, 0);
+      }),
+    id,
+  );
+}
+
 /** Stop the app dead, as a crash or power cut would: the whole process tree, with no chance to quit cleanly. */
 export async function killApp(app: ElectronApplication): Promise<void> {
   killed.add(app);

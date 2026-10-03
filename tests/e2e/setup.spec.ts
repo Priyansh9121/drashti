@@ -1,7 +1,15 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
-import { launchApp, needsRealScreen, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
+import {
+  chooseMenuItem,
+  launchApp,
+  needsRealScreen,
+  operatorPage,
+  operatorReady,
+  outputPages,
+  setUpScreen,
+} from './helpers';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
 
@@ -29,9 +37,7 @@ const groupsOf = (win: Page) =>
 
 /** Choose View > Set Up Screens… in the menu, as the operator would. */
 async function fromMenu(app: ElectronApplication): Promise<void> {
-  await app.evaluate(({ Menu }) => {
-    Menu.getApplicationMenu()?.getMenuItemById('set-up-screens')?.click();
-  });
+  await chooseMenuItem(app, 'set-up-screens');
 }
 
 const page = (app: ElectronApplication, part: string) => app.windows().find((w) => w.url().includes(part));

@@ -252,8 +252,10 @@ test('only the audio player may see sound outputs; the choice is remembered, and
     });
     expect(asked.microphone).not.toBe('granted');
     expect(asked.camera).not.toBe('granted');
+    // MIDI is the operator window's alone (Session 11: a controller's pads), never SysEx; the rest stay refused.
     for (const [name, state] of Object.entries(asked.states))
-      expect([name, state]).not.toEqual([name, 'granted']);
+      if (page === win && name === 'midi') expect(state).toBe('granted');
+      else expect([name, state]).not.toEqual([name, 'granted']);
   }
 
   // Choosing an output in Screens > Sound output moves the sound there, and it is remembered.

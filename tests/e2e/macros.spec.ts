@@ -1,10 +1,11 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import Database from 'better-sqlite3';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { apiCall, device, NETWORK_ENV, networkOn, pairByQr, pairingCode, pairToken } from './devices';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, operatorReady, outputPage, setUpScreen } from './helpers';
+import { chooseMenuItem, launchApp, operatorPage, operatorReady, outputPage, setUpScreen } from './helpers';
 
 /*
  * Macros and MIDI (Session 11): a macro made in the editor runs every action
@@ -107,22 +108,11 @@ test('a macro runs every action as one change, from the panel, a slide cue, the 
   expect(refused.ok ? '' : refused.message).toContain('not something a macro may do');
   // …and again when run, if one were written into the library another way.
   const macroId = (await win.evaluate(() => (globalThis as PageGlobals).drashti.macros.list()))[0]?.id ?? '';
-  await app.evaluate(
-    (_electron, { file, id }) => {
-      const main = (process as unknown as { mainModule?: { require(name: string): unknown } }).mainModule;
-      const Database = main?.require('better-sqlite3') as new (path: string) => {
-        prepare(sql: string): { run(...args: unknown[]): unknown };
-        close(): void;
-      };
-      const db = new Database(file);
-      db.prepare('UPDATE macros SET actions = ? WHERE id = ?').run(
-        JSON.stringify([{ kind: 'clearAll' }, { kind: 'endStream' }]),
-        id,
-      );
-      db.close();
-    },
-    { file: join(userData, 'drashti.sqlite'), id: macroId },
-  );
+  const planted = new Database(join(userData, 'drashti.sqlite'));
+  planted
+    .prepare('UPDATE macros SET actions = ? WHERE id = ?')
+    .run(JSON.stringify([{ kind: 'clearAll' }, { kind: 'endStream' }]), macroId);
+  planted.close();
   const rev = (await snapshot(win)).rev;
   const ran = await win.evaluate((id) => (globalThis as PageGlobals).drashti.macros.run(id), macroId);
   expect(ran.ok ? '' : ran.message).toContain('not something a macro may do');
@@ -293,9 +283,7 @@ test('MIDI: only the operator page may use it; Learn maps a note and a controlle
   await win.evaluate(() =>
     (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'clearStageMessage' }),
   );
-  await app.evaluate(({ Menu }) => {
-    Menu.getApplicationMenu()?.getMenuItemById('switch-mode')?.click();
-  });
+  await chooseMenuItem(app, 'switch-mode');
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   // The mock stays (the page did not reload); MIDI listens in both modes.
   await midi(win, [0xb9, 20, 0]);

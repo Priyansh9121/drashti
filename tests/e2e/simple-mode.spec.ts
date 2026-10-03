@@ -5,7 +5,15 @@ import { join } from 'node:path';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { killApp, launchApp, operatorPage, outputPages, relaunchApp, setUpScreen } from './helpers';
+import {
+  chooseMenuItem,
+  killApp,
+  launchApp,
+  operatorPage,
+  outputPages,
+  relaunchApp,
+  setUpScreen,
+} from './helpers';
 import { LOGO, setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -63,9 +71,7 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
   const now = stage.getByTestId('stage-current');
 
   // Into Simple Mode from the View menu.
-  await first.app.evaluate(({ Menu }) => {
-    Menu.getApplicationMenu()?.getMenuItemById('switch-mode')?.click();
-  });
+  await chooseMenuItem(first.app, 'switch-mode');
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await expect(win.getByTestId('simple-items').getByTestId('simple-item')).toHaveCount(4);
 
@@ -281,10 +287,7 @@ test('leaving Simple Mode takes the word typed on purpose', async () => {
   await expectNoSeriousA11yIssues(win, 'Simple Mode');
 
   // Only the View menu leads out, and it asks for the word.
-  const ask = () =>
-    app.evaluate(({ Menu }) => {
-      Menu.getApplicationMenu()?.getMenuItemById('switch-mode')?.click();
-    });
+  const ask = () => chooseMenuItem(app, 'switch-mode');
   await ask();
   const dialog = win.getByTestId('leave-simple');
   await expect(dialog).toBeVisible();

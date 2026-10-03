@@ -9,6 +9,7 @@ import { expectNoSeriousA11yIssues } from './a11y';
 import { apiCall, device, NETWORK_ENV, networkOn, pairByQr, pairingCode, pairToken } from './devices';
 import type { PageGlobals } from './helpers';
 import {
+  chooseMenuItem,
   killApp,
   launchApp,
   operatorPage,
@@ -305,9 +306,7 @@ test('recovery brings the Look back; Simple Mode refuses switching; the remote a
   }
 
   // Simple Mode keeps the live Look: the window, the API and the remote are all refused.
-  await first.app.evaluate(({ Menu }) => {
-    Menu.getApplicationMenu()?.getMenuItemById('switch-mode')?.click();
-  });
+  await chooseMenuItem(first.app, 'switch-mode');
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await expect(win.getByTestId('looks-panel')).toHaveCount(0);
   const refused = await win.evaluate(

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
 import {
+  chooseMenuItem,
   importAndGetIds,
   launchApp,
   operatorPage,
@@ -65,9 +66,7 @@ test('a backup brings the library back as it was, keeping the one before', async
     dialog.showMessageBox = () => Promise.resolve({ response: 0, checkboxChecked: true });
   }, backups);
   await operatorReady(win);
-  await first.app.evaluate(({ Menu }) => {
-    Menu.getApplicationMenu()?.getMenuItemById('backup-library')?.click();
-  });
+  await chooseMenuItem(first.app, 'backup-library');
   await expect(win.getByRole('alert').filter({ hasText: 'Library backed up to' })).toBeVisible();
   const [backup = ''] = readdirSync(backups);
   expect(backup).toMatch(/^Drashti backup \d{4}-\d{2}-\d{2} \d{2}-\d{2}$/u);
@@ -102,9 +101,7 @@ test('a backup brings the library back as it was, keeping the one before', async
     join(backups, backup),
   );
   const closed = first.app.waitForEvent('close', { timeout: 30_000 });
-  await first.app.evaluate(({ Menu }) => {
-    Menu.getApplicationMenu()?.getMenuItemById('restore-library')?.click();
-  });
+  await chooseMenuItem(first.app, 'restore-library');
   await closed;
 
   // The next start: the library as it was at the backup, nothing live, and a word about it.
@@ -157,9 +154,7 @@ test('a restored library that will not open is put back by itself, and the opera
     dialog.showMessageBox = () => Promise.resolve({ response: 0, checkboxChecked: false });
   }, backups);
   await operatorReady(win);
-  await first.app.evaluate(({ Menu }) => {
-    Menu.getApplicationMenu()?.getMenuItemById('backup-library')?.click();
-  });
+  await chooseMenuItem(first.app, 'backup-library');
   await expect(win.getByRole('alert').filter({ hasText: 'Library backed up to' })).toBeVisible();
   const [backup = ''] = readdirSync(backups);
 
@@ -177,9 +172,7 @@ test('a restored library that will not open is put back by itself, and the opera
     join(backups, backup),
   );
   const closed = first.app.waitForEvent('close', { timeout: 30_000 });
-  await first.app.evaluate(({ Menu }) => {
-    Menu.getApplicationMenu()?.getMenuItemById('restore-library')?.click();
-  });
+  await chooseMenuItem(first.app, 'restore-library');
   await closed;
 
   // The next start: the restored library fails to open, the one from before is back, and a word about it.

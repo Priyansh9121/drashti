@@ -10,7 +10,15 @@ import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import type { StreamStatus } from '../../src/shared/stream';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
-import { killApp, launchApp, operatorPage, operatorReady, type PageGlobals, relaunchApp } from './helpers';
+import {
+  chooseMenuItem,
+  killApp,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  relaunchApp,
+  type PageGlobals,
+} from './helpers';
 import { freePort, readFlv, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
 
 /*
@@ -305,13 +313,9 @@ test('after a run, the made-up key is nowhere: not in the logs, diagnostics, dat
     },
     { desk: desktop, into: backups },
   );
-  await app.evaluate(({ Menu }) => {
-    Menu.getApplicationMenu()?.getMenuItemById('save-diagnostics')?.click();
-  });
+  await chooseMenuItem(app, 'save-diagnostics');
   await expect(win.getByRole('alert').filter({ hasText: 'Diagnostics saved on the Desktop' })).toBeVisible();
-  await app.evaluate(({ Menu }) => {
-    Menu.getApplicationMenu()?.getMenuItemById('backup-library')?.click();
-  });
+  await chooseMenuItem(app, 'backup-library');
   await expect(win.getByRole('alert').filter({ hasText: 'Library backed up to' })).toBeVisible();
   await app.close();
 
