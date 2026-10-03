@@ -82,16 +82,18 @@ function DrawnSlide({
   scaling,
   languages,
   slides,
+  lift,
 }: {
   layer: SlideLayer;
   canvas: Size;
   scaling: ScalingMode;
   languages: readonly Lang[] | null;
   slides: SlideStyle;
+  lift: number;
 }) {
   if (slides === 'lowerThird') {
     const lines = lowerThird(layer.slide, languages);
-    if (lines.length > 0) return <LowerThird lines={lines} canvas={canvas} />;
+    if (lines.length > 0) return <LowerThird lines={lines} canvas={canvas} lift={lift} />;
     if (!hasPicture(layer.slide)) return null;
   }
   return (
@@ -107,6 +109,7 @@ export function SlideLayerView({
   scaling,
   languages = null,
   slides = 'designed',
+  lift = 0,
 }: {
   layer: SlideLayer | null;
   canvas: Size;
@@ -115,6 +118,8 @@ export function SlideLayerView({
   languages?: readonly Lang[] | null;
   /** How this screen draws slides (its group's Look): as designed, or as a lower third. */
   slides?: SlideStyle;
+  /** Canvas pixels a lower third keeps clear at the bottom (the ticker's band). */
+  lift?: number;
 }) {
   // A screen that comes along later shows the slide as it is (no fade).
   const [showing, setShowing] = useState<Showing>(() => ({ on: layer, off: null, fade: null }));
@@ -210,7 +215,14 @@ export function SlideLayerView({
               mixBlendMode: fading && off && incoming ? 'plus-lighter' : undefined,
             }}
           >
-            <DrawnSlide layer={l} canvas={canvas} scaling={scaling} languages={languages} slides={slides} />
+            <DrawnSlide
+              layer={l}
+              canvas={canvas}
+              scaling={scaling}
+              languages={languages}
+              slides={slides}
+              lift={lift}
+            />
           </div>
         );
       })}

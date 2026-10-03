@@ -32,7 +32,7 @@ function MessageText({ message, timers }: { message: MessageItem; timers: readon
   );
 }
 
-/** The messages along the bottom of the picture (the stream's Camera layout puts them at the top). */
+/** The messages along the bottom of the picture (at the top over a lower third, as in the stream's Camera layout). */
 export function MessageBanner({
   messages,
   timers,
@@ -281,6 +281,10 @@ export const Scene = memo(function Scene({
   const { layers } = state;
   const shown = (layer: LookLayer) => look.layers.includes(layer);
   const band = ticker && shown('ticker') && layers.ticker ? layers.ticker : null;
+  const bandHeight = band ? Math.round(canvas.height * TICKER_HEIGHT) : 0;
+  // A Look's lower third keeps the bottom: messages go along the top (as in the stream's Camera
+  // layout), and the words sit above the ticker's band.
+  const lowerThirds = look.slides === 'lowerThird';
   const background = shown('background') ? layers.background : null;
   // The group's own mask (its screens' shape) over everything; the Masks layer over the layers below the logo.
   const groupMask = look.mask;
@@ -325,6 +329,7 @@ export const Scene = memo(function Scene({
                 scaling={scaling}
                 languages={look.languages}
                 slides={look.slides}
+                lift={bandHeight}
               />
               {shown('props') && <PropsLayer props={layers.props} canvas={canvas} scaling={scaling} />}
               {shown('messages') && layers.messages.length > 0 && (
@@ -332,7 +337,8 @@ export const Scene = memo(function Scene({
                   messages={layers.messages}
                   timers={state.timers}
                   canvas={canvas}
-                  above={band ? Math.round(canvas.height * TICKER_HEIGHT) : 0}
+                  at={lowerThirds ? 'top' : 'bottom'}
+                  above={lowerThirds ? 0 : bandHeight}
                 />
               )}
               {band && <TickerBand ticker={band} canvas={canvas} />}

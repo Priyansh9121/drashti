@@ -477,8 +477,8 @@ test('Looks, stage layouts, masks, key and fill, macros, MIDI and the slide edit
   await operatorReady(win);
   await win.setViewportSize({ width: 1600, height: 900 });
   const show = await running(win);
-  // A hall, a stage, and a key and fill pair; a second Look with the hall as a lower third; a mask, a
-  // stage layout and macros.
+  // A hall, a stage, and a key and fill pair; a second Look with the hall's words as a lower third over
+  // its background; a mask, a stage layout and macros.
   await win.evaluate(async (logoId) => {
     const d = (globalThis as PageGlobals).drashti;
     const group = async (name: string, role: 'audience' | 'stage' | 'keyfill', displays: number[]) => {
@@ -574,7 +574,10 @@ test('Looks, stage layouts, masks, key and fill, macros, MIDI and the slide edit
     const lowerId = lower.ok
       ? (lower.view.looks.find((l) => l.name === 'Placeholder lower thirds')?.id ?? '')
       : '';
-    await d.looks.setGroup(lowerId, hall, { slides: 'lowerThird', layers: ['slide', 'props', 'messages'] });
+    await d.looks.setGroup(lowerId, hall, {
+      slides: 'lowerThird',
+      layers: ['background', 'slide', 'props', 'messages'],
+    });
     await d.macros.save(null, {
       name: 'Placeholder arti',
       color: '#e8590c',
@@ -596,7 +599,13 @@ test('Looks, stage layouts, masks, key and fill, macros, MIDI and the slide edit
       actions: [{ kind: 'look', lookId: standard }],
     });
     await d.engine.dispatch({ type: 'setStageMessage', text: 'Placeholder: two minutes' });
+    // A coloured background, so the hall's mask shows (what it hides is black).
+    await d.engine.dispatch({ type: 'setBackground', background: { kind: 'color', color: '#1f3a5f' } });
   }, show.logoPropId);
+  // The right column from its top: the Looks, Macros and Masks panels.
+  await win.getByTestId('looks-panel').evaluate((el) => {
+    el.scrollIntoView({ block: 'start' });
+  });
   await shot(win, 'operator-looks-macros-masks');
 
   await win.getByRole('button', { name: 'Screens', exact: true }).click();
@@ -668,6 +677,8 @@ test('Looks, stage layouts, masks, key and fill, macros, MIDI and the slide edit
   await expect(editor.getByTestId('editor-canvas')).toBeVisible();
   await editor.getByTestId('add-shape').click();
   await win.getByRole('menuitem', { name: 'Rounded rectangle' }).click();
+  // Below the words, so both show.
+  await editor.getByTestId('field-y').fill('700');
   await editor.getByTestId('editor-canvas').focus();
   await win.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
   await expect(editor.getByTestId('group-box')).toBeVisible();
