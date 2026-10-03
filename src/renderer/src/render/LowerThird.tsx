@@ -9,8 +9,16 @@ import { fontFamilyFor, HTML_LANG } from './fonts';
  * a camera in a video switcher).
  */
 
-/** The slide's words along the bottom of the picture, in a dark box. */
-export function LowerThird({ lines, canvas }: { lines: LowerThirdLine[]; canvas: Size }) {
+/** The slide's words along the bottom of the picture, in a dark box; `lift` canvas pixels higher (above the ticker). */
+export function LowerThird({
+  lines,
+  canvas,
+  lift = 0,
+}: {
+  lines: LowerThirdLine[];
+  canvas: Size;
+  lift?: number;
+}) {
   const size = canvas.height * (lines.length <= 2 ? 0.05 : lines.length === 3 ? 0.044 : 0.037);
   return (
     <div
@@ -19,7 +27,7 @@ export function LowerThird({ lines, canvas }: { lines: LowerThirdLine[]; canvas:
         position: 'absolute',
         left: 0,
         right: 0,
-        bottom: canvas.height * 0.06,
+        bottom: canvas.height * 0.06 + lift,
         display: 'flex',
         justifyContent: 'center',
       }}

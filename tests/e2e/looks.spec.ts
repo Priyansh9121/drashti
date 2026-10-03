@@ -64,20 +64,30 @@ async function upOnTheScreens(win: Page): Promise<void> {
   });
 }
 
-/** What an output draws now: its Look, layers, the slide's languages, and whether the words are a lower third. */
+/**
+ * What an output draws now: its Look, layers, the slide's languages, whether the words are a lower
+ * third, and where the messages go (along the top over a lower third, never covering its words).
+ */
 const drawn = (out: Page) =>
-  out.getByTestId('output-root').evaluate((root) => ({
-    look: root.getAttribute('data-look'),
-    background: root.querySelector('[data-layer="background"]') !== null,
-    messages: root.querySelector('[data-layer="messages"]') !== null,
-    slides: root.querySelector('[data-layer="slide"]')?.getAttribute('data-slides') ?? null,
-    lowerThird: [...root.querySelectorAll('[data-testid="lower-third"] [data-lang]')].map((l) =>
-      l.getAttribute('data-lang'),
-    ),
-    langs: [...root.querySelectorAll('[data-layer="slide"] [data-slide-in] [data-run]')].map((r) =>
-      r.getAttribute('data-lang'),
-    ),
-  }));
+  out.getByTestId('output-root').evaluate((root) => {
+    const message = root.querySelector<HTMLElement>('[data-layer="messages"]');
+    const a = message?.getBoundingClientRect();
+    const b = root.querySelector('[data-testid="lower-third"] > div')?.getBoundingClientRect();
+    return {
+      look: root.getAttribute('data-look'),
+      background: root.querySelector('[data-layer="background"]') !== null,
+      messages: message !== null,
+      messagesAt: message ? (message.style.top === '' ? 'bottom' : 'top') : null,
+      covered: a !== undefined && b !== undefined && a.top < b.bottom && b.top < a.bottom,
+      slides: root.querySelector('[data-layer="slide"]')?.getAttribute('data-slides') ?? null,
+      lowerThird: [...root.querySelectorAll('[data-testid="lower-third"] [data-lang]')].map((l) =>
+        l.getAttribute('data-lang'),
+      ),
+      langs: [...root.querySelectorAll('[data-layer="slide"] [data-slide-in] [data-run]')].map((r) =>
+        r.getAttribute('data-lang'),
+      ),
+    };
+  });
 
 test('two groups show their own layers, languages and slide style, and switching the Look changes both at once', async () => {
   const { app } = await launchApp(TWO_OUTPUTS);
@@ -94,6 +104,8 @@ test('two groups show their own layers, languages and slide style, and switching
       look: standard,
       background: true,
       messages: true,
+      messagesAt: 'bottom',
+      covered: false,
       slides: 'designed',
       lowerThird: [],
       langs: ['gu', 'hi', 'translit', 'en'],
@@ -160,6 +172,8 @@ test('two groups show their own layers, languages and slide style, and switching
       look: lower,
       background: false,
       messages: true,
+      messagesAt: 'top',
+      covered: false,
       slides: 'lowerThird',
       lowerThird: ['translit'],
       langs: [],
@@ -170,6 +184,8 @@ test('two groups show their own layers, languages and slide style, and switching
       look: lower,
       background: true,
       messages: false,
+      messagesAt: null,
+      covered: false,
       slides: 'designed',
       lowerThird: [],
       langs: ['gu'],
