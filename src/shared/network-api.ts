@@ -14,6 +14,8 @@ export const DEVICE_OPS = {
   status: ['remote', 'stage'],
   /** The whole engine state, with its revision. */
   state: ['remote', 'stage'],
+  /** What a stage screen shows of a kirtan: the stage screen group's languages. */
+  stage: ['stage'],
   playlists: ['remote'],
   /** A playlist's items. */
   items: ['remote'],

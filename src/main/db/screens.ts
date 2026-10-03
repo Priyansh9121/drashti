@@ -144,6 +144,14 @@ export class ScreenRepo {
     return id;
   }
 
+  /** The languages the first stage group shows (by its place in Screens); null for all, or when there is none. */
+  stageLanguages(): Lang[] | null {
+    const row = this.db
+      .prepare("SELECT languages FROM screen_groups WHERE role = 'stage' ORDER BY position, rowid LIMIT 1")
+      .get() as { languages: string | null } | undefined;
+    return parseLangs(row?.languages ?? null);
+  }
+
   /** The stream's group (role 'stream'): there is at most one, and it has no screens. */
   streamGroup(): { id: string; languages: Lang[] | null } | null {
     const row = this.db

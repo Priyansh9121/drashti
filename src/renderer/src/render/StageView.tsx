@@ -74,15 +74,22 @@ const label = {
 export function StageView({
   state,
   languages = null,
+  clockStyle,
 }: {
   state: EngineState;
   /** The languages the stage screens show of a kirtan's slides, in order; null for all of them. */
   languages?: readonly Lang[] | null;
+  /** How to write the time: Drashti's computer's way, on a stage display in another device's browser. */
+  clockStyle?: { locale: string; timeZone: string } | null;
 }) {
   const now = useNow();
   const slide = state.layers.slide;
   const next = state.next;
-  const clock = new Date(now).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const clock = new Date(now).toLocaleTimeString(clockStyle?.locale ?? [], {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: clockStyle?.timeZone,
+  });
   const background = state.layers.background;
   return (
     <div

@@ -1099,6 +1099,11 @@ function start(): void {
         const path = join(mediaDir, row.path);
         return isInside(mediaDir, path) ? { path, kind: row.kind } : null;
       },
+      stageLanguages: () => screenRepo.stageLanguages(),
+      clockStyle: () => ({
+        locale: app.getLocale(),
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      }),
     },
     refused: (channel) => refusedNow(channel),
     changed: (status) => {
@@ -1279,14 +1284,19 @@ function start(): void {
   });
   handle(IPC.screens.get, () => screens.snapshot());
   handle(IPC.screens.createGroup, (e, name) => (fromOperator(e) ? screens.createGroup(name) : notAllowed));
-  handle(IPC.screens.setGroupRole, (e, id, role) =>
-    fromOperator(e) ? screens.setGroupRole(id, role) : notAllowed,
-  );
+  handle(IPC.screens.setGroupRole, (e, id, role) => {
+    if (!fromOperator(e)) return notAllowed;
+    const result = screens.setGroupRole(id, role);
+    // A stage display in a browser shows the stage group's languages.
+    net.hint('screens');
+    return result;
+  });
   handle(IPC.screens.setGroupLanguages, (e, id, languages) => {
     if (!fromOperator(e)) return notAllowed;
     const result = screens.setGroupLanguages(id, languages);
-    // The stream group's languages are the stream's lower third's and slides'.
+    // The stream group's languages are the stream's lower third's and slides'; a stage display's too.
     streaming.contextChanged();
+    net.hint('screens');
     return result;
   });
   handle(IPC.screens.renameGroup, (e, id, name) =>

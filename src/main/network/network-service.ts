@@ -6,6 +6,7 @@ import type { EngineState, PropItem } from '../../shared/engine/state';
 import type { EngineTransport } from '../../shared/engine/transport';
 import { IPC, type InvokeChannel } from '../../shared/ipc';
 import type { PresentationDoc } from '../../shared/library';
+import type { Lang } from '../../shared/model';
 import { fillMessage, type MessageTemplate, messageItemId } from '../../shared/messages';
 import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
 import { idSchema } from '../../shared/model-schema';
@@ -62,6 +63,10 @@ export interface NetworkReads {
   logo(): PropItem | null;
   /** A media item's file and kind for a preview (pictures and videos only). */
   mediaSource(mediaId: string): PreviewSource | null;
+  /** The languages the first stage screen group shows (null: all of them, or no stage group). */
+  stageLanguages(): Lang[] | null;
+  /** How this computer writes the time (its locale and time zone), so a stage display's clock reads as the stage screens' does. */
+  clockStyle(): { locale: string; timeZone: string };
 }
 
 export interface NetworkDeps {
@@ -95,6 +100,7 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   me: null,
   status: IPC.engine.snapshot,
   state: IPC.engine.snapshot,
+  stage: IPC.screens.get,
   playlists: IPC.playlists.tree,
   items: IPC.playlists.items,
   presentation: IPC.library.getPresentation,
@@ -562,6 +568,8 @@ export class NetworkService implements EngineTransport {
     switch (request.op) {
       case 'status':
         return ok({ status: summary(this.deps.engine.state()) });
+      case 'stage':
+        return ok({ languages: this.deps.reads.stageLanguages(), clock: this.deps.reads.clockStyle() });
       case 'playlists':
         return ok({ playlists: this.deps.reads.playlists() });
       case 'items': {

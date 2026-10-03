@@ -69,6 +69,7 @@ export default defineConfig({
           // Pages for phones, tablets and browsers on the local network (src/main/network/web-files.ts).
           pair: resolve('src/renderer/pair.html'),
           remote: resolve('src/renderer/remote.html'),
+          'stage-display': resolve('src/renderer/stage-display.html'),
         },
       },
     },
