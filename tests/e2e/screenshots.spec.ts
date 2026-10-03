@@ -1,10 +1,12 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
 import { launchApp, operatorPage } from './helpers';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
+import { freePort, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
 
 /*
  * The screenshots in docs/screenshots/, with placeholder content only. Taken
@@ -210,3 +212,100 @@ test('the component gallery', async () => {
   await shot(gallery, 'component-gallery');
   await app.close();
 });
+
+test('the stream: the panel on air and recording, its settings, and the Program in both layouts', async () => {
+  test.setTimeout(120_000);
+  const ffmpeg = testFfmpeg();
+  test.skip(!ffmpeg, 'FFmpeg is not fetched here');
+  // Chromium's fake camera only, and FFmpeg on this computer in YouTube's place (a made-up key).
+  const port = await freePort();
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-shots-stream-'));
+  const listener = rtmpListener(ffmpeg ?? '', port, join(dir, 'received.flv'));
+  try {
+    const { app } = await launchApp({ DRASHTI_TEST_FAKE_DEVICES: '1' });
+    const win = await operatorPage(app);
+    await win.setViewportSize({ width: 1600, height: 900 });
+    await running(win);
+    await app.evaluate(({ dialog }, into) => {
+      dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [into] });
+    }, dir);
+    await win.getByTestId('open-stream').click();
+    const isStream = (p: Page) => p.url().includes('stream.html');
+    const program =
+      app.windows().find(isStream) ?? (await app.waitForEvent('window', { predicate: isStream }));
+    await expect
+      .poll(
+        async () =>
+          (await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.status())).inputs.cameras
+            .length,
+      )
+      .toBeGreaterThan(0);
+    await win.evaluate(
+      async ({ port, key }) => {
+        const d = (globalThis as PageGlobals).drashti;
+        const s = await d.stream.status();
+        const { profiles, activeId } = await d.stream.profiles();
+        const p = profiles.find((x) => x.id === activeId);
+        if (!p) return;
+        await d.stream.saveProfile(p.id, {
+          name: 'YouTube',
+          url: `rtmp://127.0.0.1:${port}/live2`,
+          preset: 'good',
+          camera: s.inputs.cameras[0] ?? null,
+          sound: s.inputs.microphones[0] ?? null,
+          soundDelayMs: 120,
+          mixOwnSound: false,
+        });
+        await d.stream.setKey(p.id, key);
+        const group = (await d.screens.get()).groups.find((g) => g.role === 'stream');
+        if (group) await d.screens.setGroupLanguages(group.id, ['translit', 'en']);
+        await d.stream.pickFolder();
+        await d.stream.startRecording();
+        await d.stream.goLive({ confirmed: true });
+      },
+      { port, key: TEST_KEY },
+    );
+    await expect
+      .poll(
+        async () =>
+          (await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.status())).live.state,
+        {
+          timeout: 30_000,
+        },
+      )
+      .toBe('live');
+    await expect(win.getByTestId('stream-preview')).toBeVisible();
+    await win.waitForTimeout(3000);
+    await shot(win, 'stream-panel');
+    await mkdirAndShot(program, 'stream-program-camera');
+    await win.getByTestId('stream-layout-slides').click();
+    await win.waitForTimeout(1000);
+    await mkdirAndShot(program, 'stream-program-slides');
+    await win.getByTestId('stream-layout-camera').click();
+    await win.getByTestId('open-stream-settings').click();
+    await expect(win.getByTestId('stream-key-saved')).toBeVisible();
+    await shot(win, 'stream-settings');
+    await win.getByRole('button', { name: 'Close stream settings' }).click();
+    await win.getByRole('button', { name: 'Close stream' }).click();
+    await win.setViewportSize({ width: 1280, height: 720 });
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+    await expect(win.getByTestId('on-air')).toBeVisible();
+    await shot(win, 'simple-mode-on-air');
+    await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro'));
+    await win.evaluate(async () => {
+      const d = (globalThis as PageGlobals).drashti;
+      await d.stream.end({ confirmed: true });
+      await d.stream.stopRecording();
+    });
+    await app.close();
+  } finally {
+    listener.kill('SIGKILL');
+  }
+});
+
+/** The Program's own picture (its offscreen page), at the stream's size. */
+async function mkdirAndShot(page: Page, name: string) {
+  mkdirSync(folder, { recursive: true });
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: join(folder, `${name}.png`), scale: 'css' });
+}

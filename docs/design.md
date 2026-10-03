@@ -157,8 +157,8 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 
 ## 14. The stream
 
-- **ON AIR and REC are not LIVE.** LIVE (`live`, red) means "on the hall's screens". The stream has its own marks in the header, beside the name, and in Simple Mode: **ON AIR** on `onair` (violet, white text 5.7:1), and **REC** as a `rec` dot beside the word on a panel. Both always say so in words, and while reconnecting ON AIR says "On air · reconnecting".
+- **ON AIR and REC are not LIVE.** LIVE (`live`, red) means "on the hall's screens". The stream has its own marks in the header, beside the name, and in Simple Mode: **ON AIR** on `onair` (violet, white text 5.7:1), and **REC** as a `rec` dot beside the word on a panel. Both always say so in words, and while reconnecting ON AIR says "On air · reconnecting". The window's own title says it too ("Drashti — ON AIR · REC").
 - **The Stream panel is a sheet on the right**, like Screens: the Program's preview (marked `data-a11y-picture`) with the sound level under it, then the layout as two large choices (`role="radio"`), the inputs with their state in words, and the controls. **Stream settings** is a centred dialog over it.
-- **The level meter** reads -60 to 0 dB (`role="meter"`), green, then `warning` above -12 dB and `danger` above -3 dB, holding a peak and falling back at 20 dB a second like a mixer's.
+- **The level meter** reads -60 to 0 dB (`role="meter"`), green, then `warning` above -12 dB and `danger` above -3 dB, holding a peak and falling back at 20 dB a second like a mixer's; above 0 dB it says "Too loud" (the sound is clipped).
 - **A key is never shown.** Once saved, the settings say "A key is saved for this profile" with **Replace key** and **Remove key**; the field is a password field and empties as soon as it is sent.
 - Both fit at 1280 × 720 (`tests/e2e/stream-program.spec.ts`).

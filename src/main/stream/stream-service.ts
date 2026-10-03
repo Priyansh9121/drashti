@@ -53,6 +53,8 @@ export interface StreamServiceDeps {
   mediaAccess(kind: 'camera' | 'microphone'): MediaAccess;
   /** Ask the system for it (macOS shows its question once). */
   askMediaAccess(kind: 'camera' | 'microphone'): Promise<boolean>;
+  /** ON AIR and REC for the window's own title ('' when neither). */
+  titleMarks?(marks: string): void;
   /** The screen groups changed (the stream group was made): Screens shows it. */
   screensChanged(): void;
   /** The bundled FFmpeg, or null when it is missing. */
@@ -161,6 +163,17 @@ export class StreamService {
     const first = this.deps.profiles.ensureOne();
     this.deps.settings.set(PROFILE_SETTING, first.id);
     return first;
+  }
+
+  /**
+   * The stream's group in Screens (its languages), made the first time the
+   * operator turns to the stream: the Stream panel or its settings, going
+   * live or recording. Never by the setup wizard on its own.
+   */
+  ensureStreamGroup(): void {
+    if (this.deps.screens.streamGroup() !== null) return;
+    this.deps.screens.ensureStreamGroup();
+    this.deps.screensChanged();
   }
 
   profilesView(): StreamProfiles {
@@ -281,12 +294,10 @@ export class StreamService {
   context(): ProgramContext {
     const profile = this.activeProfile();
     const preset = STREAM_PRESETS[profile.preset];
-    const made = this.deps.screens.streamGroup() === null;
-    const group = this.deps.screens.ensureStreamGroup();
-    if (made) this.deps.screensChanged();
     return {
       layout: this.layout,
-      languages: group.languages,
+      // The stream group's languages; every language until the operator has one (see ensureStreamGroup).
+      languages: this.deps.screens.streamGroup()?.languages ?? null,
       width: preset.width,
       height: preset.height,
       camera: this.systemBlocked.camera ? null : profile.camera,
@@ -473,8 +484,19 @@ export class StreamService {
     };
   }
 
+  private marks = '';
+
   private changed(): void {
-    this.deps.sendToOperator(IPC.stream.changed, this.status());
+    const status = this.status();
+    this.deps.sendToOperator(IPC.stream.changed, status);
+    const onAir = status.live.state === 'live' || status.live.state === 'reconnecting';
+    const marks = [onAir ? 'ON AIR' : '', status.recording.state === 'recording' ? 'REC' : '']
+      .filter(Boolean)
+      .join(' · ');
+    if (marks !== this.marks) {
+      this.marks = marks;
+      this.deps.titleMarks?.(marks);
+    }
   }
 
   // ---- going live and recording -----------------------------------------------------------
@@ -607,6 +629,7 @@ export class StreamService {
           : (storage.message ?? FFMPEG_MISSING),
       };
     }
+    this.ensureStreamGroup();
     this.liveWanted = true;
     this.resume = null;
     this.live = {
@@ -666,6 +689,7 @@ export class StreamService {
     if (!ffmpeg) return { ok: false, message: FFMPEG_MISSING };
     if (!this.recording.folder || !existsSync(this.recording.folder))
       return { ok: false, message: 'Choose a folder for recordings first.' };
+    this.ensureStreamGroup();
     this.recordWanted = true;
     this.resume = null;
     this.recording = { ...this.recording, state: 'starting', message: null, bytes: 0, since: null };

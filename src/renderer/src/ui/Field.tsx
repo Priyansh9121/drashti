@@ -186,7 +186,9 @@ export function Slider({
         aria-valuetext={format(value)}
         className="h-1.5 min-w-24 flex-1 cursor-pointer accent-accent-strong"
       />
-      <output className="w-10 text-right text-xs text-muted tabular-nums">{format(value)}</output>
+      <output className="min-w-10 text-right text-xs whitespace-nowrap text-muted tabular-nums">
+        {format(value)}
+      </output>
     </span>
   );
 }
