@@ -110,6 +110,10 @@ test('the stage display in a browser matches the stage screen, and comes back af
     await expect(t.getByTestId('stage-view')).toBeVisible();
     await expect(t.getByTestId('stage-current')).toHaveText('Placeholder stage line one');
     await expectNoSeriousA11yIssues(t, 'the stage display on a tablet');
+    const size = t.viewportSize();
+    await t.setViewportSize({ width: 375, height: 812 });
+    await expectNoSeriousA11yIssues(t, 'the stage display at 375 x 812');
+    if (size) await t.setViewportSize(size);
     // The same, part by part (the clock can turn over between reads: compare again until it agrees).
     await expect.poll(async () => JSON.stringify(await said(t))).toBe(JSON.stringify(await said(output)));
     const now = await said(t);
