@@ -136,6 +136,7 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **The keyboard.** The slide is one focus stop (`role="application"`, with its keys in its label): Tab chooses the next element and, after the last, moves on to the inspector, so keyboard users are never trapped. A polite live region says what is selected, where and how big. Esc steps back one stage at a time: typing, then the selection, then the editor (asking first when there are changes).
 - **The inspector** groups its fields in titled sections (Selected, Place and size, Words, Shape, Picture/Video). Numbers change as they are typed; colours use the system picker. It says whether text styles go to the whole box or to the selected words.
 - **Typing in place** shows a dashed `accent` outline round the box; the words keep their look while typed.
+- **Several selected** keep their own outlines and get one dashed `accent` box round them all, with the same square handles and round handle, which act on them together (snapping as one); "2 elements selected" is read out. Copy, Cut and Paste are the Edit menu's (and their keys); "Copied 1 element." shows in the editor's note line.
 - Questions use the usual alert dialogs: "Throw away the changes?" (Keep editing has the focus) and "Save over the other change?".
 - It fits at 1280 × 720 with nothing cut off, and axe finds nothing serious, also while typing (`tests/e2e/editor.spec.ts`).
 
