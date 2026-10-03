@@ -440,10 +440,10 @@ test('after a crash on air: back on air by itself within 5 minutes, in a new rec
   const again = await relaunchApp(userData, FAKE);
   const win2 = await operatorPage(again.app);
   await operatorReady(win2);
+  await waitLive(win2, userData, 'live', 45_000);
   await expect(win2.getByRole('alert').filter({ hasText: 'went live again by itself' })).toBeVisible({
     timeout: 20_000,
   });
-  await waitLive(win2, userData, 'live', 45_000);
   expect((await bridge(win2).status()).recording.state).toBe('recording');
   await win2.waitForTimeout(3000);
   await win2.evaluate(async () => {

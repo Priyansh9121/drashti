@@ -348,6 +348,8 @@ function start(): void {
 
   // A restore asked for before a restart is done first, before the library opens.
   const restored = pendingRestore();
+  /** The operator window has read the start notice: later news goes as an ordinary notice. */
+  let startNoticeTaken = false;
   let startNotice = restored.restored
     ? `Library restored from “${restored.from}”. The library from before is kept in Drashti’s data folder, in Backups/${restored.keptIn}.`
     : restored.message;
@@ -656,9 +658,14 @@ function start(): void {
   app.on('will-quit', () => {
     streaming.close();
   });
-  // After an unexpected stop while on air or recording: go again (within 5 minutes) or offer to.
-  const resumed = streaming.resumeAfterStop();
-  if (resumed) startNotice = startNotice ? `${startNotice}\n\n${resumed}` : resumed;
+  // After an unexpected stop while on air or recording: go again (within 5 minutes) or offer to,
+  // once the operator window is up (so the operator sees it happen).
+  const resumeStream = () => {
+    const resumed = streaming.resumeAfterStop();
+    if (!resumed) return;
+    if (startNoticeTaken) sendToOperator(IPC.app.notice, { text: resumed });
+    else startNotice = startNotice ? `${startNotice}\n\n${resumed}` : resumed;
+  };
   // ---- sound ----------------------------------------------------------------
   const audioOutput = new AudioOutput({
     load: () => settings.get('audioOutput'),
@@ -773,6 +780,7 @@ function start(): void {
     if (!fromOperator(e)) return null;
     const text = startNotice;
     startNotice = null;
+    startNoticeTaken = true;
     return text;
   });
   handle(IPC.app.dismissRecovery, (e) => {
@@ -1252,6 +1260,7 @@ function start(): void {
     watchdog.watch(audioWindow.webContents, 'audio player');
   };
   operatorWindow.webContents.once('did-finish-load', startAudioPlayer);
+  operatorWindow.webContents.once('did-finish-load', resumeStream);
   setTimeout(startAudioPlayer, 5000);
   let moveTimer: NodeJS.Timeout | null = null;
   operatorWindow.on('moved', () => {
