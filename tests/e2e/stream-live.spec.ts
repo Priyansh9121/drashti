@@ -433,6 +433,20 @@ test('after a crash on air: back on air by itself within 5 minutes, in a new rec
   });
   await waitLive(win, userData, 'live', 30_000);
   await win.waitForTimeout(3000);
+  // On Windows, safeStorage's own key lives in Chromium's Local State file, written a few seconds after
+  // it is made: a crash before that leaves the stream key unreadable (a real crash that soon after
+  // saving a key would too; the operator is then asked to paste it again).
+  if (process.platform === 'win32')
+    await expect
+      .poll(
+        () =>
+          existsSync(join(userData, 'Local State')) &&
+          readFileSync(join(userData, 'Local State'), 'utf8').includes('encrypted_key'),
+        {
+          timeout: 60_000,
+        },
+      )
+      .toBe(true);
   await killApp(app);
 
   // Started again soon after: on air and recording again by itself, and says so.

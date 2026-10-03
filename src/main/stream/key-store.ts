@@ -26,7 +26,7 @@ export type KeyResult = { ok: true } | { ok: false; message: string };
 const fileSchema = z.object({ version: z.literal(1), keys: z.record(z.string(), z.string()) });
 
 export const NO_SECURE_STORAGE =
-  'This computer’s secure storage for passwords is not available, so Drashti will not save a stream key: it would have to be kept as plain text. Paste the key each time you go live from another computer, or fix the system’s keychain.';
+  'This computer’s secure storage for passwords is not available, so Drashti will not save a stream key (it would have to be kept as plain text) and cannot go live from here. Go live from a computer where it works, or get the system’s keychain working and paste the key again.';
 
 export class StreamKeyStore {
   constructor(
