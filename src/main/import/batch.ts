@@ -53,7 +53,11 @@ export class BatchWriter {
    */
   write<T>(write: () => T, callbacks: BatchCallbacks<T> = {}): T | undefined {
     if (this.openedAt === null) {
-      this.db.exec('BEGIN');
+      // IMMEDIATE: the group holds the write lock from its start. The main process writes to the same
+      // file; a group begun as a reader could not become a writer once the main process had written
+      // (SQLITE_BUSY_SNAPSHOT, which no busy timeout waits out), and its file would fail. Instead the
+      // main process's write waits the moment it takes the group to commit (up to the busy timeout).
+      this.db.exec('BEGIN IMMEDIATE');
       this.openedAt = this.now();
     }
     const name = `item${++this.savepoints}`;
@@ -96,7 +100,7 @@ export class BatchWriter {
       for (const item of group) {
         let result: unknown;
         try {
-          result = this.db.transaction(item.write)();
+          result = this.db.transaction(item.write).immediate();
         } catch (error) {
           item.failed?.(error);
           continue;
