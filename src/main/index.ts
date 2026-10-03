@@ -1590,6 +1590,8 @@ function start(): void {
     if (!fromOperator(e)) return notAllowed;
     const result = screens.deleteGroup(id);
     streaming.contextChanged();
+    // A stage display in a browser follows the first stage group: it may be another now.
+    net.hint('screens');
     return result;
   });
   handle(IPC.screens.assignDisplay, (e, groupId, displayId, options) =>
@@ -1703,6 +1705,7 @@ function start(): void {
     if (outputs) {
       const applied = screens.applySetup(outputs, options);
       if (!applied.ok) return applied;
+      net.hint('screens');
     }
     if (sound !== 'skip') audioOutput.choose(sound);
     if (themeId !== null) {

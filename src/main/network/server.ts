@@ -367,10 +367,15 @@ export class NetworkServer {
     for (const c of this.clients) if (c.device) this.sendText(c, text);
   }
 
-  /** Lists a remote shows have changed. */
+  /**
+   * Lists a remote shows have changed; a stage display hears of the screens
+   * changing too (which group is the stage's).
+   */
   hint(what: NetworkChange): void {
     const text = JSON.stringify({ type: 'changed', what } satisfies ToDevice);
-    for (const c of this.clients) if (c.device?.kind === 'remote') this.sendText(c, text);
+    for (const c of this.clients)
+      if (c.device?.kind === 'remote' || (c.device?.kind === 'stage' && what === 'screens'))
+        this.sendText(c, text);
   }
 
   // ---- checks every request passes -------------------------------------------------------
