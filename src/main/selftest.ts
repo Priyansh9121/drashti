@@ -71,6 +71,25 @@ async function frameOf(win: BrowserWindow): Promise<Frame> {
   return { hash, bright, pid: win.webContents.getOSProcessId() };
 }
 
+/**
+ * The window's picture once the compositor shows it steadily: two captures in a row alike, with
+ * something bright in it (and, when given, not the picture from before). A slide the page has marked
+ * painted can take a moment longer to reach the screen on a slow machine (CI's Macs), so a fixed
+ * wait is not enough. After 5 s, the last capture, whatever it is.
+ */
+async function steadyFrame(win: BrowserWindow, notLike?: number): Promise<Frame> {
+  let last = await frameOf(win);
+  const end = Date.now() + 5000;
+  while (Date.now() < end) {
+    await sleep(100);
+    const now = await frameOf(win);
+    const steady = now.hash === last.hash && now.bright > 50 && now.hash !== notLike;
+    last = now;
+    if (steady) return now;
+  }
+  return last;
+}
+
 const js = <T>(win: BrowserWindow, code: string) =>
   win.webContents.executeJavaScript(code, true) as Promise<T>;
 
@@ -120,8 +139,7 @@ export async function runWatchdogSelfTest(ctx: SelfTestContext): Promise<SelfTes
       await waitFor(async () => (await paintedRev(output)) === rev1),
       `revision ${rev1}`,
     );
-    await sleep(150);
-    const before = await frameOf(output);
+    const before = await steadyFrame(output);
     const loadedAt = await js<number>(output, 'performance.timeOrigin');
     check('the output shows something', before.bright > 50, `${before.bright} bright pixels`);
     const audio = ctx.audioPlayer();
@@ -167,8 +185,7 @@ export async function runWatchdogSelfTest(ctx: SelfTestContext): Promise<SelfTes
     const moved = await waitFor(
       async () => ctx.engineRev() > Number(rev1) && (await paintedRev(output)) === String(ctx.engineRev()),
     );
-    await sleep(150);
-    const next = await frameOf(output);
+    const next = await steadyFrame(output, before.hash);
     check(
       'Next in the recovered operator window updates the output',
       moved && next.hash !== before.hash && next.pid === before.pid,
@@ -193,8 +210,7 @@ export async function runWatchdogSelfTest(ctx: SelfTestContext): Promise<SelfTes
     check('the watchdog reloads a crashed output', outputReloaded);
     const revNow = String(ctx.engineRev());
     const back = await waitFor(async () => (await paintedRev(output)) === revNow);
-    await sleep(150);
-    const restored = await frameOf(output);
+    const restored = await steadyFrame(output);
     check(
       'the reloaded output shows the live slide again',
       back && restored.hash === next.hash && restored.pid !== next.pid,
