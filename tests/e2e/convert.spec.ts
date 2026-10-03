@@ -193,7 +193,10 @@ test('convert all: each kind becomes what Drashti plays, the original stays, wha
       timeout: 60_000,
     })
     .toBe('Placeholder hevc.mp4');
-  expect((await snapshot(win)).state.layers.background).toEqual(live);
+  // Still the same playback (its length may have been learned meanwhile, as the output played it).
+  const { durationMs: _now, ...still } = { durationMs: 0, ...(await snapshot(win)).state.layers.background };
+  const { durationMs: _then, ...was } = { durationMs: 0, ...live };
+  expect(still).toEqual(was);
   // The playlist uses the copy now: playing the item again shows it.
   const copyId = after.find((m) => m.name === 'Placeholder old clip.mp4')?.id;
   const items = await win.evaluate(
