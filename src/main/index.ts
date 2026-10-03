@@ -113,6 +113,7 @@ import { startPerfDevices } from './network/perf-devices';
 import { localName } from './network/local-name';
 import { isInside } from './media/media-protocol';
 import { rendererDir } from './windows/renderer';
+import { quietTests, startQuietTests } from './windows/quiet';
 
 // Headless self-tests: run one, print the result, exit (see README). The performance test
 // imports a few hundred placeholder files, so it gets a throwaway data folder of its own.
@@ -137,9 +138,11 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason) => {
   log.error('Unhandled promise rejection in the main process', reason);
 });
+// Tests on a computer someone is using: never active, never covering the screen (windows/quiet.ts).
+startQuietTests();
 // Development only: outputs as normal windows, for machines with one screen,
-// optionally with pretend extra displays to try several outputs.
-const windowedOutputs = process.env['DRASHTI_WINDOWED_OUTPUTS'] === '1';
+// optionally with pretend extra displays to try several outputs. Always so in quiet test mode.
+const windowedOutputs = process.env['DRASHTI_WINDOWED_OUTPUTS'] === '1' || quietTests;
 if (windowedOutputs) setExtraDisplays(Number(process.env['DRASHTI_EXTRA_DISPLAYS'] ?? 0) || 0);
 // A Diagnostics menu for the manual watchdog check (see README).
 const diagnostics = process.env['DRASHTI_DIAGNOSTICS'] === '1';

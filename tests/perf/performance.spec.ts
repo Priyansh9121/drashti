@@ -4,6 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { QUIET } from '../e2e/helpers';
 import { freePort, testFfmpeg } from '../e2e/stream-helpers';
 
 /*
@@ -11,7 +12,11 @@ import { freePort, testFfmpeg } from '../e2e/stream-helpers';
  * "Performance" workflow): the app's own performance self-test, headless.
  * Not part of CI's runs, where virtual machines stall now and then. On the
  * mandir's machines run the installed app instead (README, "Performance check").
+ * It opens a real output, so on a computer someone is using it waits for
+ * their agreement (DRASHTI_E2E_LOUD=1); otherwise run the workflow.
  */
+
+test.skip(QUIET, 'Opens a real output: run the Performance workflow (or with DRASHTI_E2E_LOUD=1)');
 
 interface PerfResult {
   passed: boolean;

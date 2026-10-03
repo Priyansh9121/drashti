@@ -1,7 +1,7 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
+import { launchApp, needsRealScreen, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
 
@@ -196,6 +196,7 @@ test('skipping every step, or closing, changes nothing; it opens again from the 
 });
 
 test('never covers the operator’s display without the confirm step', async () => {
+  needsRealScreen();
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);

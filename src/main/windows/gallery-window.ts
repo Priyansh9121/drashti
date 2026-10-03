@@ -13,10 +13,14 @@ export function openGalleryWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
     height: 900,
+    show: false,
     title: 'Drashti Component Gallery',
     backgroundColor: '#0b0d11',
     autoHideMenuBar: true,
     webPreferences: secureWebPreferences(),
+  });
+  win.once('ready-to-show', () => {
+    win.show();
   });
   gallery = win;
   win.on('closed', () => {

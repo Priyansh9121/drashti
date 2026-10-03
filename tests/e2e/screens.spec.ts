@@ -2,7 +2,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import Database from 'better-sqlite3';
 import { join } from 'node:path';
-import { launchApp, operatorPage, useDisplay } from './helpers';
+import { launchApp, needsRealScreen, operatorPage, useDisplay } from './helpers';
 
 async function outputPage(app: ElectronApplication): Promise<Page> {
   const existing = app.windows().find((w) => w.url().includes('output.html'));
@@ -11,6 +11,7 @@ async function outputPage(app: ElectronApplication): Promise<Page> {
 }
 
 test('screen groups: assign a display, open an output, restore it after a restart', async () => {
+  needsRealScreen();
   const first = await launchApp();
   let app = first.app;
   const win = await operatorPage(app);

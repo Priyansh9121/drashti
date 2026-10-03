@@ -119,6 +119,30 @@ Each unit or end-to-end run keeps its temporary files in one folder, `drashti-ru
 
 `.github/workflows/audit-kit.yml` tests the audit scripts on both OSes, including under Windows PowerShell 5.1, when they change on `main` or in a pull request, or when started by hand.
 
+### End-to-end tests on a computer someone is using
+
+Each end-to-end test starts Drashti, and Drashti running as an operator would takes the keyboard and puts outputs over the whole screen. So the full suite runs on CI. On a computer someone is using, run one spec at a time (never with `--repeat-each`). Runs outside CI are quiet: the test helpers set `DRASHTI_TEST_QUIET=1` (`src/main/windows/quiet.ts`), and a packaged Drashti ignores it.
+
+- **Drashti never becomes the active app.** On macOS it runs as an accessory app, with no Dock icon and no menu bar. Every window is shown without activating it, and nothing focuses, raises or full-screens a window.
+- **Nothing covers the screen.** Outputs open as ordinary windows, and every window is see-through and lets clicks through to whatever is under it. The pages still draw as on a real screen, and Playwright stands in for keyboard focus.
+- **It makes no sound.** A system dialog that no test answered is answered with its cancel button instead of appearing.
+
+Some tests need real focus, a real full-screen output or a whole display. They skip themselves in quiet runs and run on CI:
+
+- covering and uncovering the operator's display;
+- the screens test's full-screen output;
+- the setup wizard's cover step;
+- the watchdog self-test;
+- the screenshots;
+- the performance check.
+
+`DRASHTI_E2E_LOUD=1` runs them locally as CI does, but only when whoever is at the computer agrees.
+
+To check quiet runs on macOS, run `node scripts/quiet-check.mjs <spec>` after `pnpm build`. It runs the spec while asking `lsappinfo front` every half second which app is in front, and fails if Drashti or Electron ever is.
+
+- `--expect-front` with `DRASHTI_E2E_LOUD=1` is the control run: Drashti must be seen in front there, or the check can't see it.
+- `DRASHTI_E2E_QUIET=1` makes a CI run quiet as well.
+
 ### Switches
 
 | Environment variable                | Effect                                                                                                                                                                                |
@@ -138,6 +162,7 @@ Each unit or end-to-end run keeps its temporary files in one folder, `drashti-ru
 | `DRASHTI_FFMPEG=<path>`             | Use this FFmpeg instead of the bundled one.                                                                                                                                           |
 | `DRASHTI_TEST_FAKE_DEVICES=1`       | Tests only: Chromium's fake camera (a moving test pattern) and fake microphone (a beep) stand in for real ones, and the system is not asked for camera or microphone access.          |
 | `DRASHTI_TEST_NO_SAFE_STORAGE=1`    | Tests only: behave as if the system's secure storage were missing, so no stream key can be saved.                                                                                     |
+| `DRASHTI_TEST_QUIET=1`              | Tests only, ignored by a packaged Drashti: the quiet test mode (see "End-to-end tests on a computer someone is using").                                                               |
 
 If you start Drashti from inside another Electron app's process (for example an editor extension), make sure `ELECTRON_RUN_AS_NODE` is not set in that environment. When it's set, Electron starts as plain Node. The end-to-end tests clear it automatically.
 
@@ -417,7 +442,7 @@ The code is in `src/main/library/backup.ts` (the work) and `backup-ui.ts` (the q
 | `src/main/convert/`                                             | Converting media Drashti cannot play: what each file becomes and FFmpeg's arguments (`plan.ts`), moving what used the original to the copy and back (`relink.ts`), and the queue (`convert-service.ts`).                                                                                               |
 | `src/main/audio/`                                               | The sound output choice (remembered in the library's settings).                                                                                                                                                                                                                                        |
 | `src/main/transport/`, `src/main/ipc/`                          | IPC transport for engine messages; IPC handler helpers.                                                                                                                                                                                                                                                |
-| `src/main/windows/`                                             | Operator window, security and web preferences.                                                                                                                                                                                                                                                         |
+| `src/main/windows/`                                             | Operator window, security and web preferences, and the quiet test mode.                                                                                                                                                                                                                                |
 | `src/main/stream/`                                              | Streaming: the stream service (profiles, keys, going live, recording, resuming after a crash), the Program window and its session, the key store, redaction, and the stream worker (`worker/`: the pipeline, encoders, Matroska, FFmpeg's progress).                                                   |
 | `src/renderer/src/program/`, `src/renderer/stream.html`         | The stream's page: the Program in its two layouts, the camera and sound input, and its own capture.                                                                                                                                                                                                    |
 | `src/renderer/src/stream/`                                      | The Stream panel, Stream settings, ON AIR and REC.                                                                                                                                                                                                                                                     |
