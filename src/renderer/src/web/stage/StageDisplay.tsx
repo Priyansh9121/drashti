@@ -3,7 +3,7 @@ import { groupLookIn } from '../../../../shared/looks';
 import { useEngine } from '../../engine/engine-store';
 import { preloadFonts } from '../../render/fonts';
 import { PlacedInParent } from '../../render/Placed';
-import { StageView } from '../../render/StageView';
+import { StageScreen } from '../../render/StageScreen';
 import { api } from '../device';
 import { onListsChanged, onOnline, startFeed, useFeed } from '../feed';
 
@@ -25,7 +25,7 @@ export function StageDisplay() {
   const [fonts, setFonts] = useState(false);
   // The stage display's group: what it shows is that group's settings in the live Look (engine state).
   const [groupId, setGroupId] = useState<string | null>(null);
-  const languages = groupLookIn(state?.look, groupId).languages;
+  const look = groupLookIn(state?.look, groupId);
   const [clockStyle, setClockStyle] = useState<{ locale: string; timeZone: string } | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   useEffect(() => {
@@ -59,7 +59,7 @@ export function StageDisplay() {
     <div className="relative h-dvh w-full bg-black" data-testid="stage-display" data-connection={feed}>
       {state && fonts ? (
         <PlacedInParent content={CANVAS} mode="fit" className="absolute inset-0">
-          <StageView state={state} languages={languages} clockStyle={clockStyle} />
+          <StageScreen state={state} look={look} canvas={CANVAS} clockStyle={clockStyle} />
         </PlacedInParent>
       ) : (
         <p className="absolute inset-0 flex items-center justify-center text-2xl text-muted">

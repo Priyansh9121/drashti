@@ -83,6 +83,8 @@ export interface AudioChoice {
 export interface AudioLayer extends AudioChoice {
   /** When it started (ms since the epoch, main-process clock), so the sound stays where it is. */
   startedAt: number;
+  /** How long the file is, once known (learned from playing it): a stage screen shows the time left. */
+  durationMs?: number;
 }
 
 export type MediaFit = 'fit' | 'fill' | 'stretch';
@@ -116,6 +118,8 @@ export type BackgroundLayer =
       startedAt: number;
       /** It came on dissolving from the background before, with its slide: from `at` for `durationMs`. */
       fade?: { at: number; durationMs: number };
+      /** A video's length, once known (learned from playing it): a stage screen shows the time left. */
+      durationMs?: number;
     });
 
 export interface PropItem {
@@ -191,6 +195,16 @@ export type UpNext =
     }
   | { kind: 'media'; itemId: string; mediaId: string; media: 'image' | 'video' | 'audio'; label: string };
 
+/** One of the playlist's next items, for a stage screen ("coming up"). */
+export interface UpcomingItem {
+  id: string;
+  label: string;
+  kind: 'presentation' | 'media' | 'header';
+}
+
+/** How many of the playlist's next items the state carries. */
+export const UPCOMING_ITEMS = 8;
+
 export interface EngineState {
   version: typeof ENGINE_STATE_VERSION;
   live: LiveCursor;
@@ -208,6 +222,8 @@ export interface EngineState {
   canPutBack: boolean;
   /** What Next will show, or null when nothing follows. */
   next: UpNext | null;
+  /** The playlist's next items after the one playing (headers too), up to UPCOMING_ITEMS. */
+  upcoming: UpcomingItem[];
   /** A message for the performers on stage screens; the audience never sees it. */
   stageMessage: string | null;
   /** Every timer, with when it was started: windows work out the time themselves. */
@@ -237,6 +253,7 @@ export function initialEngineState(): EngineState {
     logo: null,
     canPutBack: false,
     next: null,
+    upcoming: [],
     stageMessage: null,
     timers: [],
     autoAdvance: null,

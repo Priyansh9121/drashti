@@ -53,6 +53,7 @@ import type {
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { PropFields, PropInfo, PropResult } from './props';
 import type { GroupLookPatch, LookResult, LooksView } from './looks';
+import type { StageLayout, StageLayoutResult } from './stage-layouts';
 import type { SearchResult } from './search';
 import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes';
 import type { TimerFields, TimerResult } from './timers';
@@ -281,6 +282,8 @@ export interface DrashtiBridge {
     onConversions(listener: (jobs: ConversionJob[]) => void): () => void;
     /** Undo a conversion: the original is used again wherever it was moved from. */
     undoConversion(conversionId: string): Promise<{ ok: true } | { ok: false; message: string }>;
+    /** How long a file is, learned as it played (outputs and the audio player only). */
+    reportLength(mediaId: string, durationMs: number): Promise<null>;
   };
   /** Where sound plays. */
   audio: {
@@ -375,6 +378,15 @@ export interface DrashtiBridge {
     move(lookId: string, to: number): Promise<LookResult>;
     /** Change one group's settings in a Look. */
     setGroup(lookId: string, groupId: string, patch: GroupLookPatch): Promise<LookResult>;
+  };
+  /** Stage layouts made in Drashti: boxes on the stage canvas (changing them: operator window, Pro Mode). */
+  stageLayouts: {
+    list(): Promise<StageLayout[]>;
+    onChanged(listener: (layouts: StageLayout[]) => void): () => void;
+    /** Make one (no id) or save one. */
+    save(layoutId: string | null, layout: Omit<StageLayout, 'id'>): Promise<StageLayoutResult>;
+    /** Groups whose Looks used it show the Standard stage screen. */
+    remove(layoutId: string): Promise<StageLayoutResult>;
   };
   /** Screen setup (operator window only). */
   screens: {

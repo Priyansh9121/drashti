@@ -16,6 +16,8 @@ import {
   type PropItem,
   type TickerItem,
   type TickerLayer,
+  UPCOMING_ITEMS,
+  type UpcomingItem,
   type UpNext,
 } from '../../shared/engine/state';
 import type { EngineTransport } from '../../shared/engine/transport';
@@ -71,6 +73,8 @@ export interface EngineOptions {
    * switching the Look, from the window, a phone, the API or a macro alike.
    */
   refuse?: (command: EngineCommand) => string | null;
+  /** A media file's length in ms, when the library knows it (learned from playing it). */
+  mediaLength?: (mediaId: string) => number | null;
 }
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
@@ -142,6 +146,8 @@ export class ShowEngine {
   private cancelScheduled: (() => void) | null = null;
   /** The time of the change being made, read once (null between changes). */
   private at: number | null = null;
+  /** The change being made only adds what is known about it (a file's length): not a change to the show. */
+  private bookkeeping = false;
 
   constructor(
     private readonly source: SlideSource,
@@ -413,7 +419,61 @@ export class ShowEngine {
 
   /** A playlist or presentation changed: what comes next may be different now. */
   refreshNext(): CommandResult {
-    return this.apply([{ type: 'next/set', next: this.upNext(this.state.live) }]);
+    return this.apply([
+      { type: 'next/set', next: this.upNext(this.state.live) },
+      { type: 'upcoming/set', upcoming: this.upcoming(this.state.live) },
+    ]);
+  }
+
+  /**
+   * A media file's length, learned as a window played it: the background or
+   * sound playing it says how long it is (a stage screen shows the time left).
+   */
+  learnLength(mediaId: string, durationMs: number): CommandResult {
+    const actions: EngineAction[] = [];
+    const bg = this.state.layers.background;
+    if (bg?.kind === 'media' && bg.mediaId === mediaId && bg.durationMs !== durationMs)
+      actions.push({ type: 'background/set', background: { ...bg, durationMs } });
+    const audio = this.state.layers.audio;
+    if (audio?.mediaId === mediaId && audio.durationMs !== durationMs)
+      actions.push({ type: 'audio/set', audio: { ...audio, durationMs } });
+    if (actions.length === 0) return this.unchanged();
+    // Not a change to the show: what Back and Put it back can undo stays (pointing at the layers as they are now).
+    this.bookkeeping = true;
+    try {
+      return this.apply(actions);
+    } finally {
+      this.bookkeeping = false;
+    }
+  }
+
+  /** Layers as they were (Put it back, Back), with the lengths of their files the library knows by now. */
+  private withLengths(layers: Layers): Layers {
+    const bg = layers.background;
+    const audio = layers.audio;
+    const bgLength = bg?.kind === 'media' && bg.durationMs === undefined ? this.lengthOf(bg.mediaId) : {};
+    const audioLength = audio && audio.durationMs === undefined ? this.lengthOf(audio.mediaId) : {};
+    if (Object.keys(bgLength).length === 0 && Object.keys(audioLength).length === 0) return layers;
+    return {
+      ...layers,
+      background: bg?.kind === 'media' ? { ...bg, ...bgLength } : bg,
+      audio: audio ? { ...audio, ...audioLength } : null,
+    };
+  }
+
+  /** The playlist's next items after the one playing, headers included (for a stage screen). */
+  private upcoming(live: LiveCursor): UpcomingItem[] {
+    const at = live.playlist ? this.checkItem(live.playlist) : null;
+    if (!at) return [];
+    const out: UpcomingItem[] = [];
+    for (const item of at.items.slice(at.index + 1)) {
+      if (out.length >= UPCOMING_ITEMS) break;
+      if (item.kind === 'presentation')
+        out.push({ id: item.id, label: item.label ?? '', kind: 'presentation' });
+      else if (item.kind === 'media') out.push({ id: item.id, label: item.label, kind: 'media' });
+      else if (item.header) out.push({ id: item.id, label: item.label ?? '', kind: 'header' });
+    }
+    return out;
   }
 
   private unchanged(): CommandResult {
@@ -584,11 +644,17 @@ export class ShowEngine {
     return { ok: false, error: 'not-playable', message };
   }
 
+  /** A file's length when the library knows it (left out otherwise). */
+  private lengthOf(mediaId: string | null): { durationMs?: number } {
+    const ms = mediaId ? (this.options.mediaLength?.(mediaId) ?? null) : null;
+    return ms !== null && ms > 0 ? { durationMs: ms } : {};
+  }
+
   /** The audio layer for a choice: as with backgrounds, the file already playing carries on. */
   private audioLayer(choice: AudioChoice): AudioLayer {
     const current = this.state.layers.audio;
     const same = choice.mediaId !== null && current?.mediaId === choice.mediaId;
-    return { ...choice, startedAt: same ? current.startedAt : this.now() };
+    return { ...choice, startedAt: same ? current.startedAt : this.now(), ...this.lengthOf(choice.mediaId) };
   }
 
   /**
@@ -601,9 +667,15 @@ export class ShowEngine {
   ): BackgroundLayer {
     if (choice.kind === 'color') return choice;
     const current = this.state.layers.background;
+    const length = this.lengthOf(choice.mediaId);
     if (current?.kind === 'media' && current.mediaId === choice.mediaId)
-      return { ...choice, startedAt: current.startedAt, ...(current.fade ? { fade: current.fade } : {}) };
-    return { ...choice, startedAt: fade?.at ?? this.now(), ...(fade ? { fade } : {}) };
+      return {
+        ...choice,
+        startedAt: current.startedAt,
+        ...(current.fade ? { fade: current.fade } : {}),
+        ...length,
+      };
+    return { ...choice, startedAt: fade?.at ?? this.now(), ...(fade ? { fade } : {}), ...length };
   }
 
   /**
@@ -700,7 +772,10 @@ export class ShowEngine {
         const last = this.steps.at(-1);
         if (last?.toLive === this.state.live && last.toLayers === this.state.layers) {
           this.steps.pop();
-          return { ok: true, actions: [{ type: 'show/put', live: last.live, layers: last.layers }] };
+          return {
+            ok: true,
+            actions: [{ type: 'show/put', live: last.live, layers: this.withLengths(last.layers) }],
+          };
         }
         this.steps = [];
         return this.step(-1);
@@ -724,7 +799,10 @@ export class ShowEngine {
             error: 'nothing-to-put-back',
             message: 'There is nothing to put back: something else has gone up since Clear all.',
           };
-        return { ok: true, actions: [{ type: 'show/put', live: this.state.live, layers: cleared.from }] };
+        return {
+          ok: true,
+          actions: [{ type: 'show/put', live: this.state.live, layers: this.withLengths(cleared.from) }],
+        };
       }
       case 'setBlackout':
         return { ok: true, actions: [{ type: 'blackout/set', on: command.on }] };
@@ -776,6 +854,13 @@ export class ShowEngine {
    * timers and the stage message do not).
    */
   private keepUndo(prev: EngineState, next: EngineState, cause: EngineCommandType | null): EngineState {
+    if (this.bookkeeping) {
+      // What Back and Put it back would undo to stays, now as the layers are.
+      if (this.cleared?.to === prev.layers) this.cleared = { ...this.cleared, to: next.layers };
+      const last = this.steps.at(-1);
+      if (last?.toLayers === prev.layers) last.toLayers = next.layers;
+      return next;
+    }
     if (cause === 'clearAll') {
       if (next.layers !== prev.layers) this.cleared = { from: prev.layers, to: next.layers };
     } else if (this.cleared && next.layers !== this.cleared.to) {
@@ -799,10 +884,11 @@ export class ShowEngine {
   private applyAt(actions: readonly EngineAction[], cause: EngineCommandType | null): CommandResult {
     const prev = this.state;
     let next = actions.reduce(reduce, prev);
-    // A new position has a new slide after it.
+    // A new position has a new slide after it, and other items coming up.
     if (next.live !== prev.live) {
       const upNext = this.upNext(next.live);
       if (!sameData(next.next, upNext)) next = reduce(next, { type: 'next/set', next: upNext });
+      next = reduce(next, { type: 'upcoming/set', upcoming: this.upcoming(next.live) });
     }
     next = this.keepUndo(prev, next, cause);
     next = this.withAutoAdvance(prev, next);

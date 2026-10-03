@@ -19,6 +19,7 @@ import { up as conversions } from './migrations/017-conversions';
 import { up as network } from './migrations/018-network';
 import { up as announcements } from './migrations/019-announcements';
 import { before as looksData, up as looks } from './migrations/020-looks';
+import { up as stageLayouts } from './migrations/021-stage-layouts';
 
 export interface Migration {
   version: number;
@@ -57,6 +58,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 18, name: 'the local network', up: network },
   { version: 19, name: 'announcements from phones', up: announcements },
   { version: 20, name: 'looks', up: looks, before: looksData, rebuildsTable: true },
+  { version: 21, name: 'stage layouts', up: stageLayouts },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

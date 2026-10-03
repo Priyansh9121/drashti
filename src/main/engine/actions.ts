@@ -13,6 +13,7 @@ import type {
   PropItem,
   TickerItem,
   TickerLayer,
+  UpcomingItem,
   UpNext,
 } from '../../shared/engine/state';
 
@@ -42,6 +43,7 @@ export type EngineAction =
   /** The cursor moves to a playlist item that is not a presentation (a picture, video or sound). */
   | { type: 'live/item'; playlist: PlaylistCursor }
   | { type: 'next/set'; next: UpNext | null }
+  | { type: 'upcoming/set'; upcoming: UpcomingItem[] }
   | { type: 'stage/message'; text: string | null }
   /** The timers as defined in the library; each keeps its run (start time, counted time). */
   | { type: 'timers/define'; timers: readonly TimerDefinition[] }

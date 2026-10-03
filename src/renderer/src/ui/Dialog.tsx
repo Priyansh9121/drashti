@@ -77,13 +77,15 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, onEscape: (() =
   }, [ref, id]);
 }
 
-export type DialogSize = 'sm' | 'md' | 'lg' | 'xl';
+export type DialogSize = 'sm' | 'md' | 'lg' | 'xl' | 'full';
 
 const widths: Record<DialogSize, string> = {
   sm: 'w-[min(28rem,100%)]',
   md: 'w-[min(40rem,100%)]',
   lg: 'w-[min(56rem,100%)]',
   xl: 'w-[min(64rem,100%)]',
+  /** Editors with a canvas: as wide and tall as the window allows. */
+  full: 'h-[min(56rem,100%)] w-[min(96rem,100%)]',
 };
 
 export function Dialog({

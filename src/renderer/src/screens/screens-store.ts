@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { LiveGroupLook } from '../../../shared/looks';
-import { DEFAULT_GROUP_LOOK } from '../../../shared/looks';
+import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import type { Lang } from '../../../shared/model';
 import { useEngine } from '../engine/engine-store';
 import type { CoverOptions, ScreenRole, ScreensResult, ScreensSnapshot } from '../../../shared/screens';
@@ -36,7 +36,7 @@ export function useFirstGroupLook(role: ScreenRole): { name: string; look: LiveG
   // The group object itself: the same one until the setup changes.
   const group = useScreens((s) => s.snapshot?.groups.find((x) => x.role === role));
   const look = useEngine((s) => (group ? s.state?.look.groups[group.id] : undefined));
-  return group ? { name: group.name, look: look ?? DEFAULT_GROUP_LOOK } : null;
+  return group ? { name: group.name, look: look ?? DEFAULT_LIVE_GROUP_LOOK } : null;
 }
 
 /** The languages the first group in this role shows, with its name; null when there is none, or it shows them all. */

@@ -49,6 +49,24 @@ export class MediaRepo {
     return row ? { kind: row.kind, path: row.path, missing: row.missing === 1 } : null;
   }
 
+  /** How long a video or sound is, in ms, once Drashti has played it; null when not known. */
+  lengthOf(mediaId: string): number | null {
+    const row = this.db.prepare('SELECT duration_ms FROM media WHERE id = ?').get(mediaId) as
+      { duration_ms: number | null } | undefined;
+    return row?.duration_ms ?? null;
+  }
+
+  /** Keep a file's length, learned as it played. True when it changed. */
+  setLength(mediaId: string, durationMs: number): boolean {
+    return (
+      this.db
+        .prepare(
+          "UPDATE media SET duration_ms = ? WHERE id = ? AND kind IN ('video', 'audio') AND (duration_ms IS NULL OR duration_ms <> ?)",
+        )
+        .run(durationMs, mediaId, durationMs).changes > 0
+    );
+  }
+
   /** Where a media item's file is, relative to the media folder; null for an unknown id. */
   file(mediaId: string): MediaFileRow | null {
     const row = this.fileStmt.get(mediaId);

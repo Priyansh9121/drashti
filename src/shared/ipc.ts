@@ -53,6 +53,7 @@ import type {
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { PropFields, PropInfo, PropResult } from './props';
 import type { GroupLookPatch, LookResult, LooksView } from './looks';
+import type { StageLayout, StageLayoutResult } from './stage-layouts';
 import type { SearchResult } from './search';
 import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes';
 import type { TimerFields, TimerResult } from './timers';
@@ -166,6 +167,8 @@ export const IPC = {
     undoConversion: 'media:undo-conversion',
     /** main -> operator: the conversions changed. */
     conversionsChanged: 'media:conversions-changed',
+    /** An output or the audio player learned how long a file is, as it played it (stage screens show the time left). */
+    reportLength: 'media:report-length',
   },
   audio: {
     /** The sound output: the operator's choice, the outputs found, and where sound plays. */
@@ -247,6 +250,14 @@ export const IPC = {
     setGroup: 'looks:set-group',
     /** main -> operator: the Looks changed (or which is live). */
     changed: 'looks:changed',
+  },
+  /** Stage layouts made in Drashti (changing them: operator window, Pro Mode). */
+  stageLayouts: {
+    list: 'stage:layouts',
+    save: 'stage:save-layout',
+    remove: 'stage:remove-layout',
+    /** main -> operator: the layouts changed. */
+    changed: 'stage:layouts-changed',
   },
   screens: {
     get: 'screens:get',
@@ -454,6 +465,7 @@ export interface InvokeContract {
   [IPC.media.convert]: { args: [mediaIds: string[]]; result: ConvertResult };
   [IPC.media.cancelConversion]: { args: [jobId: string | null]; result: ConvertResult };
   [IPC.media.conversions]: { args: []; result: ConversionJob[] };
+  [IPC.media.reportLength]: { args: [mediaId: string, durationMs: number]; result: null };
   [IPC.media.undoConversion]: {
     args: [conversionId: string];
     result: { ok: true } | { ok: false; message: string };
@@ -491,6 +503,12 @@ export interface InvokeContract {
     args: [lookId: string, groupId: string, patch: GroupLookPatch];
     result: LookResult;
   };
+  [IPC.stageLayouts.list]: { args: []; result: StageLayout[] };
+  [IPC.stageLayouts.save]: {
+    args: [layoutId: string | null, layout: Omit<StageLayout, 'id'>];
+    result: StageLayoutResult;
+  };
+  [IPC.stageLayouts.remove]: { args: [layoutId: string]; result: StageLayoutResult };
   [IPC.screens.get]: { args: []; result: ScreensSnapshot };
   [IPC.screens.createGroup]: { args: [name: string]; result: ScreensResult };
   [IPC.screens.renameGroup]: { args: [groupId: string, name: string]; result: ScreensResult };
@@ -572,6 +590,7 @@ export interface EventContract {
   [IPC.app.askLeaveSimple]: { at: number };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.looks.changed]: LooksView;
+  [IPC.stageLayouts.changed]: StageLayout[];
   [IPC.output.context]: OutputContext;
   [IPC.output.identify]: { name: string; groupName: string };
   [IPC.audio.chosen]: { device: AudioDevice | null };

@@ -102,12 +102,20 @@ test('two groups show their own layers, languages and slide style, and switching
   // the side: Gujarati only, no messages.
   await win.getByRole('button', { name: 'Screens', exact: true }).click();
   const section = win.getByTestId('looks-section');
-  await expect(section.getByRole('tab', { name: /Standard/ })).toHaveAttribute('aria-selected', 'true');
+  await expect(section.getByTestId('look-choice').filter({ hasText: 'Standard' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await section.getByTestId('new-look').click();
-  await expect(section.getByRole('tab', { name: 'New Look' })).toHaveAttribute('aria-selected', 'true');
+  await expect(section.getByTestId('look-choice').filter({ hasText: 'New Look' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await section.getByRole('textbox', { name: 'Look name' }).fill('Placeholder lower thirds');
   await section.getByRole('textbox', { name: 'Look name' }).press('Enter');
-  await expect(section.getByRole('tab', { name: 'Placeholder lower thirds' })).toBeVisible();
+  await expect(
+    section.getByTestId('look-choice').filter({ hasText: 'Placeholder lower thirds' }),
+  ).toBeVisible();
   const groups = win.getByTestId('screen-group');
   const hallCard = groups.nth(0).getByTestId('group-look');
   await expect(hallCard).toContainText('In the Look “Placeholder lower thirds”');
@@ -123,7 +131,7 @@ test('two groups show their own layers, languages and slide style, and switching
     await sideCard.getByTestId('language-picker').getByRole('checkbox', { name }).uncheck();
   await expectNoSeriousA11yIssues(win, 'Screens with two Looks, a group’s settings in one');
   // Standard is unchanged: its settings are still the defaults.
-  await section.getByRole('tab', { name: /Standard/ }).click();
+  await section.getByTestId('look-choice').filter({ hasText: 'Standard' }).click();
   await expect(groups.nth(0).getByTestId('look-layer-background')).toBeChecked();
   await expect(groups.nth(0).getByTestId('languages-all')).toBeChecked();
   await win.getByRole('button', { name: 'Close screens' }).click();

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Lang } from './model';
 import { idSchema } from './model-schema';
+import type { StageLayout } from './stage-layouts';
 import { groupLanguagesSchema } from './screens-schema';
 
 /*
@@ -54,12 +55,15 @@ export interface GroupLook {
   /** A kirtan's languages on its screens, in this order; null for every language in each slide's order. */
   languages: Lang[] | null;
   slides: SlideStyle;
+  /** A stage group's layout (shared/stage-layouts.ts); null for the Standard stage screen. */
+  stageLayoutId: string | null;
 }
 
 export const DEFAULT_GROUP_LOOK: GroupLook = {
   layers: [...LOOK_LAYERS],
   languages: null,
   slides: 'designed',
+  stageLayoutId: null,
 };
 
 /** A Look as the operator window sees it: every group's settings, the defaults filled in. */
@@ -83,7 +87,17 @@ export interface LiveGroupLook {
   layers: readonly LookLayer[];
   languages: readonly Lang[] | null;
   slides: SlideStyle;
+  /** A stage group's layout, ready to draw; null for the Standard stage screen (or a layout since removed). */
+  stageLayout: StageLayout | null;
 }
+
+/** How a group draws when the live Look does not list it (and in previews with no group). */
+export const DEFAULT_LIVE_GROUP_LOOK: LiveGroupLook = {
+  layers: LOOK_LAYERS,
+  languages: null,
+  slides: 'designed',
+  stageLayout: null,
+};
 
 export interface LiveLook {
   /** Its id in the library ('' before the library's Looks are read). */
@@ -101,7 +115,7 @@ export function groupLookIn(
   look: LiveLook | null | undefined,
   groupId: string | null | undefined,
 ): LiveGroupLook {
-  return (groupId ? look?.groups[groupId] : undefined) ?? DEFAULT_GROUP_LOOK;
+  return (groupId ? look?.groups[groupId] : undefined) ?? DEFAULT_LIVE_GROUP_LOOK;
 }
 
 /** Whether a group's screens draw this layer in the live Look. */
@@ -121,6 +135,7 @@ export const groupLookPatchSchema = z
     layers: lookLayersSchema,
     languages: groupLanguagesSchema,
     slides: z.enum(SLIDE_STYLES),
+    stageLayoutId: idSchema.nullable(),
   })
   .partial()
   .strict();
@@ -146,6 +161,8 @@ export function readGroupLook(raw: unknown): GroupLook {
   if (languages.success) out.languages = languages.data;
   const slides = z.enum(SLIDE_STYLES).safeParse(r['slides']);
   if (slides.success) out.slides = slides.data;
+  const layout = idSchema.safeParse(r['stageLayoutId']);
+  if (layout.success) out.stageLayoutId = layout.data;
   return out;
 }
 
@@ -156,5 +173,6 @@ export function storedGroupLook(g: GroupLook): Record<string, unknown> {
   if (!all) out['layers'] = LOOK_LAYERS.filter((l) => g.layers.includes(l));
   if (g.languages !== null) out['languages'] = g.languages;
   if (g.slides !== 'designed') out['slides'] = g.slides;
+  if (g.stageLayoutId !== null) out['stageLayoutId'] = g.stageLayoutId;
   return out;
 }

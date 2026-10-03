@@ -32,6 +32,7 @@ import { NoticeArea, StatusBar } from './StatusBar';
 import { TimersPanel } from './TimersPanel';
 import { MessagesPanel } from './MessagesPanel';
 import { PropsPanel } from './PropsPanel';
+import { StageLayoutEditor } from '../stage/StageLayoutEditor';
 import { LooksPanel } from './LooksPanel';
 import { isTyping, useKeymap } from './useKeymap';
 import { watchProps } from './logo-store';
@@ -186,6 +187,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       {networkOpen && <NetworkPanel />}
       {announcementsOpen && <AnnouncementsPanel />}
       <StreamSettings />
+      <StageLayoutEditor />
       {screensOpen && (
         <ScreensPanel
           platform={platform}

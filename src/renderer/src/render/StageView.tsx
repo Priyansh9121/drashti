@@ -13,7 +13,7 @@ import { useNow } from './useNow';
  * one's own are Phase 3.
  */
 
-const kindName = { image: 'Picture', video: 'Video', audio: 'Sound' } as const;
+export const kindName = { image: 'Picture', video: 'Video', audio: 'Sound' } as const;
 
 const textElements = (slide: RenderSlide) =>
   slide.elements.filter((e): e is TextElement => e.kind === 'text' && e.text.trim() !== '');
@@ -27,10 +27,28 @@ function sizeFor(slide: RenderSlide, base: number): number {
   return base;
 }
 
-/** A slide's words in their own fonts (legacy fonts included), one box after another, in one size and colour. */
-function StageText({ slide, size, dim = false }: { slide: RenderSlide; size: number; dim?: boolean }) {
+/**
+ * A slide's words in their own fonts (legacy fonts included), one box after
+ * another, in one size and colour (left out: the size and colour around it,
+ * as a stage layout's box sets them).
+ */
+export function StageText({
+  slide,
+  size,
+  dim = false,
+}: {
+  slide: RenderSlide;
+  size?: number;
+  dim?: boolean;
+}) {
   return (
-    <div style={{ fontSize: size, lineHeight: 1.25, color: dim ? '#c9ced8' : '#ffffff' }}>
+    <div
+      style={{
+        fontSize: size,
+        lineHeight: 1.25,
+        color: size === undefined ? undefined : dim ? '#c9ced8' : '#ffffff',
+      }}
+    >
       {textElements(slide).map((el) => (
         <p
           key={el.id}

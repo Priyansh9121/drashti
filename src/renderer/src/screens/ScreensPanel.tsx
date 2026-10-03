@@ -26,6 +26,7 @@ import type { LookInfo } from '../../../shared/looks';
 import { useEngine } from '../engine/engine-store';
 import { connectLooks, useLooks } from '../looks/looks-store';
 import { GroupLookSettings, LooksSection } from './LookSettings';
+import { connectStageLayouts } from '../stage/stage-layouts-store';
 import { SoundOutput } from './SoundOutput';
 import { StreamGroupCard } from './StreamGroupCard';
 
@@ -354,6 +355,7 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
   useEffect(() => {
     connectScreens();
     connectLooks();
+    connectStageLayouts();
   }, []);
   // The Look whose settings the group cards show: the live one until another is chosen.
   const liveId = useEngine((s) => s.state?.look.id ?? '');

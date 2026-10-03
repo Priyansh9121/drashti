@@ -102,6 +102,8 @@ If an output ever covers the controls by mistake, press **Cmd+Shift+U** (Mac) or
 
 **Looks.** A Look says what each screen group shows: which layers (the background, slides, props, messages, the ticker, the Masks layer), a kirtan's languages, and whether slides are drawn as designed or only their words, as a lower third. Drashti starts with one Look, **Standard**, which shows exactly what the screens showed before. In Screens, under **Looks**, **New Look** or **Duplicate** makes another, for example "Gujarati only" or "Lower thirds"; choose a Look there to see and change each group's settings in it. To switch the live Look in a sabha, use **Looks** under the live picture: every screen changes at once. The first Look in the list is the one Drashti starts with (**Earlier** and **Later** move a Look), and after an unexpected stop the Look that was live comes back. Simple Mode keeps whichever Look is live and cannot switch it.
 
+**Stage layouts.** A stage screen shows the **Standard** stage view unless its group's Look gives it a layout of its own. In Screens, under a stage group, **Edit stage layouts…** opens the editor: **Duplicate** Standard, then drag the boxes where the performers want them (current and next slide, notes, clock, timers, the stage message, what's coming up in the playlist, the time left on a video or song, whether the hall is blacked out, or some fixed words), set each one's size and colour, and **Save**. Then choose it under **Stage layout** for the stage group. Ask the performers what they need to see.
+
 ---
 
 ## 5. Run a sabha from a playlist
