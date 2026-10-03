@@ -68,6 +68,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.looks.move,
   IPC.looks.setGroup,
   IPC.stageLayouts.save,
+  IPC.masks.save,
+  IPC.masks.remove,
   IPC.stageLayouts.remove,
   IPC.screens.createGroup,
   IPC.screens.renameGroup,

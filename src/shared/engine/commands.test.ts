@@ -33,7 +33,17 @@ describe('parseEngineCommand', () => {
       { type: 'hideProp', propId: 'logo' },
       { type: 'showMessage', message: { id: 'm', text: 'Car 123 please move' } },
       { type: 'hideMessage', messageId: 'm' },
-      { type: 'setMask', mask: { id: 'k', name: 'Mask', visible: { x: 0, y: 0, width: 5, height: 5 } } },
+      {
+        type: 'setMask',
+        mask: {
+          id: 'k',
+          name: 'Mask',
+          width: 1920,
+          height: 1080,
+          mode: 'hide',
+          shapes: [{ id: 's', kind: 'ellipse', frame: { x: 0, y: 0, width: 5, height: 5 } }],
+        },
+      },
     ];
     for (const input of valid)
       expect(parseEngineCommand(input), JSON.stringify(input)).toMatchObject({ ok: true });
@@ -51,10 +61,27 @@ describe('parseEngineCommand', () => {
       { type: 'setBackground', background: { kind: 'color', color: 'url(https://evil.example/x.png)' } },
       { type: 'setBackground', background: { kind: 'color', color: 'red' } },
       { type: 'showMessage', message: { id: 'm', text: '' } },
-      { type: 'setMask', mask: { id: 'k', name: 'k', visible: { x: 0, y: 0, width: -1, height: 5 } } },
       {
         type: 'setMask',
-        mask: { id: 'k', name: 'k', visible: { x: Number.NaN, y: 0, width: 1, height: 5 } },
+        mask: {
+          id: 'k',
+          name: 'Mask',
+          width: 1920,
+          height: 1080,
+          mode: 'hide',
+          shapes: [{ id: 's', kind: 'ellipse', frame: { x: 0, y: 0, width: -1, height: 5 } }],
+        },
+      },
+      {
+        type: 'setMask',
+        mask: {
+          id: 'k',
+          name: 'Mask',
+          width: 1920,
+          height: 1080,
+          mode: 'hide',
+          shapes: [{ id: 's', kind: 'ellipse', frame: { x: Number.NaN, y: 0, width: 1, height: 5 } }],
+        },
       },
     ];
     for (const input of invalid)

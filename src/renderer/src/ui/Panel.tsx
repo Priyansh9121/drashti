@@ -65,7 +65,8 @@ export function Panel({
             <button
               type="button"
               aria-expanded={open}
-              aria-controls={`${id}-body`}
+              // Only while the body is there to point at (axe: aria-controls must name an element).
+              aria-controls={open ? `${id}-body` : undefined}
               onClick={() => setOpen(!open)}
               className="-ml-1 flex items-center gap-0.5 rounded-sm px-1 py-0.5 tracking-wider uppercase hover:text-fg"
             >

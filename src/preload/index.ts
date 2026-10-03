@@ -241,6 +241,12 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
+  masks: {
+    list: () => invoke(IPC.masks.list),
+    onChanged: (listener) => on(IPC.masks.changed, listener),
+    save: (maskId, mask) => invoke(IPC.masks.save, maskId, mask),
+    remove: (maskId) => invoke(IPC.masks.remove, maskId),
+  },
   stageLayouts: {
     list: () => invoke(IPC.stageLayouts.list),
     onChanged: (listener) => on(IPC.stageLayouts.changed, listener),

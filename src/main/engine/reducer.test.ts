@@ -37,7 +37,14 @@ function fullState(): EngineState {
     { type: 'ticker/show', item: { id: 't1', text: 'Placeholder ticker words' }, at: 5 },
     {
       type: 'mask/set',
-      mask: { id: 'mask', name: 'Centre', visible: { x: 10, y: 10, width: 100, height: 100 } },
+      mask: {
+        id: 'mask',
+        name: 'Centre',
+        width: 1920,
+        height: 1080,
+        mode: 'show',
+        shapes: [{ id: 's', kind: 'rectangle', frame: { x: 10, y: 10, width: 100, height: 100 } }],
+      },
     },
     { type: 'blackout/set', on: true },
   ];
@@ -183,7 +190,14 @@ describe('reduce', () => {
   describe('single-value layers', () => {
     const background = { kind: 'color', color: '#abcdef' } as const;
     const audio = { id: 'a', title: 'Arti', mediaId: 'm', volume: 0.5, loop: true, startedAt: 7 };
-    const mask = { id: 'k', name: 'k', visible: { x: 0, y: 0, width: 1, height: 1 } };
+    const mask = {
+      id: 'k',
+      name: 'k',
+      width: 1920,
+      height: 1080,
+      mode: 'hide' as const,
+      shapes: [{ id: 's', kind: 'rectangle' as const, frame: { x: 0, y: 0, width: 1, height: 1 } }],
+    };
     const cases: [string, EngineAction, (s: EngineState) => unknown, unknown][] = [
       ['background', { type: 'background/set', background }, (s) => s.layers.background, background],
       ['audio', { type: 'audio/set', audio }, (s) => s.layers.audio, audio],

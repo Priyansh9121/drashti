@@ -46,8 +46,15 @@ describe('a group’s settings in a Look', () => {
         languages: ['gu'],
         slides: 'lowerThird',
         stageLayoutId: 'l1',
+        maskId: 'm1',
       }),
-    ).toEqual({ layers: ['slide', 'props'], languages: ['gu'], slides: 'lowerThird', stageLayoutId: 'l1' });
+    ).toEqual({
+      layers: ['slide', 'props'],
+      languages: ['gu'],
+      slides: 'lowerThird',
+      stageLayoutId: 'l1',
+      maskId: 'm1',
+    });
     expect(readGroupLook(undefined)).toEqual(DEFAULT_GROUP_LOOK);
     expect(
       readGroupLook({ layers: ['props', 'slide'], languages: ['gu', 'gu'], slides: 'sideways' }),
@@ -57,6 +64,7 @@ describe('a group’s settings in a Look', () => {
       languages: null,
       slides: 'designed',
       stageLayoutId: null,
+      maskId: null,
     });
   });
 });
@@ -89,6 +97,7 @@ describe('Looks', () => {
         languages: null,
         slides: 'lowerThird',
         stageLayout: null,
+        mask: null,
       },
       [t.stage]: { ...DEFAULT_LIVE_GROUP_LOOK, languages: ['gu'] },
     });

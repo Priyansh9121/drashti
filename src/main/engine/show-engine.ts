@@ -11,6 +11,7 @@ import {
   initialEngineState,
   type Layers,
   type LiveCursor,
+  type MaskLayer,
   type MessageItem,
   type PlaylistCursor,
   type PropItem,
@@ -92,6 +93,8 @@ export interface RestoreRequest {
   messages?: readonly MessageItem[];
   /** The announcements ticker, carrying on in step from when it started. */
   ticker?: TickerLayer | null;
+  /** The mask up on the Masks layer. */
+  masks?: MaskLayer | null;
   stageMessage?: string | null;
   /** Timer runs: a running timer carries on from its start time, a paused one keeps its count. */
   timers?: readonly { id: string; startedAt: number | null; elapsedMs: number }[];
@@ -113,6 +116,7 @@ export interface Restored {
   props: number;
   messages: number;
   ticker: number;
+  masks: boolean;
   stageMessage: boolean;
   timers: number;
 }
@@ -251,6 +255,7 @@ export class ShowEngine {
     for (const prop of request.props ?? []) actions.push({ type: 'prop/show', prop });
     for (const message of request.messages ?? []) actions.push({ type: 'message/show', message });
     if (request.ticker) actions.push({ type: 'ticker/set', ticker: request.ticker });
+    if (request.masks) actions.push({ type: 'mask/set', mask: request.masks });
     if (request.stageMessage) actions.push({ type: 'stage/message', text: request.stageMessage });
     // Timers that still exist: running ones count on from their start, paused ones keep their count.
     let timers = 0;
@@ -288,6 +293,7 @@ export class ShowEngine {
       props: request.props?.length ?? 0,
       messages: request.messages?.length ?? 0,
       ticker: request.ticker?.items.length ?? 0,
+      masks: Boolean(request.masks),
       stageMessage: Boolean(request.stageMessage),
       timers,
     };

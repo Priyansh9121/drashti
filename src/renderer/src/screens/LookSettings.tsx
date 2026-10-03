@@ -20,7 +20,9 @@ import {
   STANDARD,
   useStageLayouts,
 } from '../stage/stage-layouts-store';
-import { LayoutTemplate } from '../ui/icons';
+import { Frame, LayoutTemplate } from '../ui/icons';
+import { connectMasks, openMasks, useMasks } from '../masks/masks-store';
+import { useScreens } from './screens-store';
 
 /*
  * Looks in Screens: the list (the first is the one Drashti starts with), the
@@ -195,6 +197,8 @@ export function GroupLookSettings({
   role: ScreenRole;
 }) {
   const layouts = useStageLayouts((s) => s.layouts);
+  const masks = useMasks((s) => s.masks);
+  const group = useScreens((s) => s.snapshot?.groups.find((g) => g.id === groupId));
   const settings: GroupLook | undefined = look.groups[groupId];
   if (!settings) return null;
   const set = (patch: Partial<GroupLook>) => void lookAction(() => looks().setGroup(look.id, groupId, patch));
@@ -245,6 +249,41 @@ export function GroupLookSettings({
               ))}
             </Select>
           </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex flex-wrap items-center gap-2 text-xs text-muted">
+              Mask (these screens’ own shape)
+              <Select
+                aria-label="Mask: these screens’ own shape"
+                data-testid="look-mask"
+                value={settings.maskId ?? ''}
+                onFocus={connectMasks}
+                onChange={(e) => {
+                  set({ maskId: e.target.value === '' ? null : e.target.value });
+                }}
+              >
+                <option value="">None</option>
+                {(masks ?? []).map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <Button
+              size="sm"
+              icon={Frame}
+              data-testid="edit-masks"
+              onClick={() => {
+                const first = group?.screens[0];
+                openMasks(
+                  settings.maskId,
+                  first ? { width: first.canvasWidth, height: first.canvasHeight } : undefined,
+                );
+              }}
+            >
+              Edit masks…
+            </Button>
+          </div>
         </>
       )}
       {role === 'stage' && (

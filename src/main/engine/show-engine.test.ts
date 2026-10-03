@@ -167,7 +167,17 @@ describe('ShowEngine', () => {
         { type: 'setBackground', background: { kind: 'color', color: '#202020' } },
         { type: 'showProp', prop: { id: 'logo', name: 'Logo', elements: [] } },
         { type: 'showMessage', message: { id: 'm', text: 'Welcome' } },
-        { type: 'setMask', mask: { id: 'k', name: 'Mask', visible: { x: 0, y: 0, width: 10, height: 10 } } },
+        {
+          type: 'setMask',
+          mask: {
+            id: 'k',
+            name: 'Mask',
+            width: 1920,
+            height: 1080,
+            mode: 'hide',
+            shapes: [{ id: 's', kind: 'rectangle', frame: { x: 0, y: 0, width: 10, height: 10 } }],
+          },
+        },
       ];
       for (const c of commands) s.engine.dispatch(c);
       s.engine.showTicker({ id: 'a1', text: 'Placeholder announcement' });
@@ -966,6 +976,7 @@ describe('ShowEngine', () => {
         props: 1,
         messages: 1,
         ticker: 0,
+        masks: false,
         stageMessage: true,
         timers: 1,
       });
@@ -1119,7 +1130,14 @@ describe('ShowEngine', () => {
         },
         {
           type: 'setMask',
-          mask: { id: 'k', name: 'k', visible: { x: rand(5), y: 0, width: 10, height: 10 } },
+          mask: {
+            id: 'k',
+            name: 'k',
+            width: 1920,
+            height: 1080,
+            mode: 'hide',
+            shapes: [{ id: 's', kind: 'rectangle', frame: { x: rand(5), y: 0, width: 10, height: 10 } }],
+          },
         },
       ];
       return options[rand(options.length)] ?? { type: 'next' };

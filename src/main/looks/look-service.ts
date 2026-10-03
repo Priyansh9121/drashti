@@ -4,6 +4,7 @@ import type { LiveGroupLook, LiveLook, LookInfo, LookResult, LooksView } from '.
 import { groupLookPatchSchema, lookNameSchema, NO_LOOK } from '../../shared/looks';
 import type { Lang } from '../../shared/model';
 import { idSchema } from '../../shared/model-schema';
+import type { Mask } from '../../shared/masks';
 import type { StageLayout } from '../../shared/stage-layouts';
 import type { LookRepo } from '../db/looks';
 import type { LookSource } from '../engine/show-engine';
@@ -19,16 +20,19 @@ export interface LookServiceDeps {
   repo: LookRepo;
   /** A stage layout made in Drashti, or null (gone, or none: the Standard stage screen). */
   stageLayout?: (id: string) => StageLayout | null;
+  /** A mask from the library, or null (gone). */
+  mask?: (id: string) => Mask | null;
   engine: { current: EngineState; refreshLook(): unknown };
   /** The Looks changed: the operator window (and the phones) are told. */
   changed(view: LooksView): void;
   log(message: string): void;
 }
 
-/** A Look ready to draw: every group's settings, each stage group's layout in full. */
+/** A Look ready to draw: every group's settings, each stage group's layout and each group's mask in full. */
 export function liveLook(
   info: LookInfo,
   stageLayout: (id: string) => StageLayout | null = () => null,
+  mask: (id: string) => Mask | null = () => null,
 ): LiveLook {
   const groups: Record<string, LiveGroupLook> = {};
   for (const [id, g] of Object.entries(info.groups))
@@ -37,6 +41,7 @@ export function liveLook(
       languages: g.languages ? [...g.languages] : null,
       slides: g.slides,
       stageLayout: g.stageLayoutId ? stageLayout(g.stageLayoutId) : null,
+      mask: g.maskId ? mask(g.maskId) : null,
     };
   return { id: info.id, name: info.name, groups };
 }
@@ -48,7 +53,7 @@ export class LookService implements LookSource {
 
   look(lookId: string): LiveLook | null {
     const info = this.deps.repo.get(lookId);
-    return info ? liveLook(info, this.deps.stageLayout) : null;
+    return info ? liveLook(info, this.deps.stageLayout, this.deps.mask) : null;
   }
 
   start(): LiveLook {
@@ -125,6 +130,8 @@ export class LookService implements LookSource {
     const layoutId = patch.data.stageLayoutId;
     if (layoutId && !this.deps.stageLayout?.(layoutId))
       return this.fail('That stage layout no longer exists.');
+    const maskId = patch.data.maskId;
+    if (maskId && !this.deps.mask?.(maskId)) return this.fail('That mask no longer exists.');
     this.deps.repo.setGroup(look.id, groupId.data, patch.data);
     return this.done();
   }
@@ -148,6 +155,11 @@ export class LookService implements LookSource {
   /** A new group starts with these languages in every Look (the setup wizard's choice). */
   groupMade(groupId: string, languages: Lang[] | null = null): void {
     if (languages !== null) this.deps.repo.setGroupEverywhere(groupId, { languages });
+    this.done();
+  }
+
+  /** Masks changed (made, saved, removed): the live Look's groups draw them at once. */
+  masksChanged(): void {
     this.done();
   }
 

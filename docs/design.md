@@ -197,3 +197,8 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **Standard stays as it was.** It is built in, shown first in the editor's list as "Standard (built in)", drawn by the same StageView, and cannot be changed: an `info` notice says so and offers Duplicate.
 - **The editor is a large dialog** (`size="full"`): the layouts on the left, the layout in the middle drawn by the same renderer as the stage screens (with what is live now), the chosen box's settings on the right. Boxes are dashed outlines; the chosen one is an `accent` outline with square white handles; snapping guides are `guide`, as in the slide editor (`boxes/BoxCanvas.tsx` serves both editors). The canvas is one focus stop: Tab chooses the next box and the arrows move it; place and size are also number fields, so nothing needs a mouse. Changes are kept until **Save**; leaving with changes asks first.
 - **Boxes say what they show in words**, in the list of boxes and the canvas's spoken status ("Clock chosen, at 962, 186, 710 by 130").
+
+## 19. Masks
+
+- **Two kinds, said plainly.** In Screens a group's mask is "Mask (these screens' own shape)"; in the right column the **Masks** panel puts a mask up for a moment. The panel's buttons are like the Looks panel's: the mask that is up is `live` (red) with `aria-pressed="true"`, and pressing it again takes it down (as F7 does).
+- **The mask editor is the stage layout editor's twin** (`size="full"`, the same `BoxCanvas`): the masks on the left, the mask in the middle over a blue test grid (what it lets through) on black (what it hides), the chosen shape's settings on the right, Save at the bottom. "Hide what is inside them" and "Show only what is inside them" are two radio buttons, in words.

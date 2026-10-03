@@ -75,6 +75,7 @@ describe('restart recovery', () => {
       timers: [],
       autoAdvance: null,
       lookId: null,
+      masks: null,
     });
     expect(savedFrom(live({ slideIndex: null }), 'run-1').slide).toBeNull();
   });

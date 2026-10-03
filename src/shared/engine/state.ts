@@ -1,6 +1,7 @@
 import type { LiveLook } from '../looks';
+import type { Mask } from '../masks';
 import { NO_LOOK } from '../looks';
-import type { Rect, RenderSlide, SlideElement, Transition } from '../model';
+import type { RenderSlide, SlideElement, Transition } from '../model';
 import type { TimerState } from '../timers';
 
 /**
@@ -159,12 +160,11 @@ export interface TickerLayer {
   startedAt: number;
 }
 
-/** A mask leaves `visible` showing and blacks out the rest of the canvas. Units: canvas pixels. */
-export interface MaskLayer {
-  id: string;
-  name: string;
-  visible: Rect;
-}
+/**
+ * The Masks layer: a mask from the library (shared/masks.ts) the operator
+ * put up on the audience screens, until it is cleared (F7, Clear all).
+ */
+export type MaskLayer = Mask;
 
 export interface Layers {
   audio: AudioLayer | null;

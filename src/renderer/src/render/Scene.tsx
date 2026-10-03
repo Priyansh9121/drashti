@@ -1,13 +1,10 @@
-import { memo, useLayoutEffect, useRef } from 'react';
-import type {
-  EngineState,
-  MaskLayer,
-  MessageItem,
-  PropItem,
-  TickerLayer,
-} from '../../../shared/engine/state';
+import type { CSSProperties } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef } from 'react';
+import type { EngineState, MessageItem, PropItem, TickerLayer } from '../../../shared/engine/state';
 import type { LiveGroupLook, LookLayer } from '../../../shared/looks';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
+import type { Mask } from '../../../shared/masks';
+import { maskImageUrl } from '../../../shared/masks';
 import type { TimerState } from '../../../shared/timers';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
@@ -234,33 +231,17 @@ export function PropsLayer({
   );
 }
 
-function Mask({ mask, canvas }: { mask: MaskLayer; canvas: Size }) {
-  const v = mask.visible;
-  const black = { position: 'absolute', background: '#000000' } as const;
-  return (
-    <div data-layer="masks" style={{ position: 'absolute', inset: 0 }}>
-      <div style={{ ...black, left: 0, top: 0, width: canvas.width, height: Math.max(0, v.y) }} />
-      <div
-        style={{
-          ...black,
-          left: 0,
-          top: v.y + v.height,
-          width: canvas.width,
-          height: Math.max(0, canvas.height - v.y - v.height),
-        }}
-      />
-      <div style={{ ...black, left: 0, top: v.y, width: Math.max(0, v.x), height: v.height }} />
-      <div
-        style={{
-          ...black,
-          left: v.x + v.width,
-          top: v.y,
-          width: Math.max(0, canvas.width - v.x - v.width),
-          height: v.height,
-        }}
-      />
-    </div>
-  );
+const FULL = { position: 'absolute', inset: 0 } as const;
+
+/**
+ * A mask over what is inside: what it hides becomes see-through (the
+ * screen's black shows, or a key output keys it out). Its own canvas is
+ * stretched over the screen's.
+ */
+function maskStyle(mask: Mask | null): CSSProperties {
+  if (!mask) return FULL;
+  const image = maskImageUrl(mask);
+  return { ...FULL, maskImage: image, maskSize: '100% 100%', maskRepeat: 'no-repeat', maskPosition: '0 0' };
 }
 
 /**
@@ -293,6 +274,11 @@ export const Scene = memo(function Scene({
   const shown = (layer: LookLayer) => look.layers.includes(layer);
   const band = ticker && shown('ticker') && layers.ticker ? layers.ticker : null;
   const background = shown('background') ? layers.background : null;
+  // The group's own mask (its screens' shape) over everything; the Masks layer over the layers below the logo.
+  const groupMask = look.mask;
+  const layerMask = shown('masks') ? layers.masks : null;
+  const groupMaskStyle = useMemo(() => maskStyle(groupMask), [groupMask]);
+  const layerMaskStyle = useMemo(() => maskStyle(layerMask), [layerMask]);
   return (
     <div
       data-testid="scene"
@@ -306,58 +292,61 @@ export const Scene = memo(function Scene({
         background: '#000000',
       }}
     >
-      {background?.kind === 'color' && (
-        <div
-          data-layer="background"
-          style={{ position: 'absolute', inset: 0, background: background.color }}
-        />
-      )}
-      <BackgroundMedia layer={background} annotate={annotate} />
-      <SlideLayerView
-        layer={shown('slide') ? layers.slide : null}
-        canvas={canvas}
-        scaling={scaling}
-        languages={look.languages}
-        slides={look.slides}
-      />
-      {shown('props') && <PropsLayer props={layers.props} canvas={canvas} scaling={scaling} />}
-      {shown('messages') && layers.messages.length > 0 && (
-        <MessageBanner
-          messages={layers.messages}
-          timers={state.timers}
-          canvas={canvas}
-          above={band ? Math.round(canvas.height * TICKER_HEIGHT) : 0}
-        />
-      )}
-      {band && <TickerBand ticker={band} canvas={canvas} />}
-      {shown('masks') && layers.masks && <Mask mask={layers.masks} canvas={canvas} />}
-      {state.logo && (
-        // The logo instead of the picture: drawn over the layers, which carry on underneath, so
-        // taking it down brings back exactly what was there. Black-out covers it in turn.
-        <div
-          data-layer="logo"
-          data-testid="logo"
-          style={{ position: 'absolute', inset: 0, background: '#000000' }}
-        >
-          <Placed
-            content={{ width: state.logo.width ?? 1920, height: state.logo.height ?? 1080 }}
-            box={canvas}
-            mode={scaling}
-          >
+      <div data-look-mask={groupMask?.id} style={groupMaskStyle}>
+        <div data-layer={layerMask ? 'masks' : undefined} data-mask={layerMask?.id} style={layerMaskStyle}>
+          {background?.kind === 'color' && (
             <div
-              style={{
-                position: 'relative',
-                width: state.logo.width ?? 1920,
-                height: state.logo.height ?? 1080,
-              }}
-            >
-              {state.logo.elements.map((el) => (
-                <ElementView key={el.id} el={el} />
-              ))}
-            </div>
-          </Placed>
+              data-layer="background"
+              style={{ position: 'absolute', inset: 0, background: background.color }}
+            />
+          )}
+          <BackgroundMedia layer={background} annotate={annotate} />
+          <SlideLayerView
+            layer={shown('slide') ? layers.slide : null}
+            canvas={canvas}
+            scaling={scaling}
+            languages={look.languages}
+            slides={look.slides}
+          />
+          {shown('props') && <PropsLayer props={layers.props} canvas={canvas} scaling={scaling} />}
+          {shown('messages') && layers.messages.length > 0 && (
+            <MessageBanner
+              messages={layers.messages}
+              timers={state.timers}
+              canvas={canvas}
+              above={band ? Math.round(canvas.height * TICKER_HEIGHT) : 0}
+            />
+          )}
+          {band && <TickerBand ticker={band} canvas={canvas} />}
         </div>
-      )}
+        {state.logo && (
+          // The logo instead of the picture: drawn over the layers, which carry on underneath, so
+          // taking it down brings back exactly what was there. Black-out covers it in turn.
+          <div
+            data-layer="logo"
+            data-testid="logo"
+            style={{ position: 'absolute', inset: 0, background: '#000000' }}
+          >
+            <Placed
+              content={{ width: state.logo.width ?? 1920, height: state.logo.height ?? 1080 }}
+              box={canvas}
+              mode={scaling}
+            >
+              <div
+                style={{
+                  position: 'relative',
+                  width: state.logo.width ?? 1920,
+                  height: state.logo.height ?? 1080,
+                }}
+              >
+                {state.logo.elements.map((el) => (
+                  <ElementView key={el.id} el={el} />
+                ))}
+              </div>
+            </Placed>
+          </div>
+        )}
+      </div>
       {state.blackout && (
         <div
           data-layer="blackout"

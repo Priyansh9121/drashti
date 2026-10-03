@@ -60,6 +60,8 @@ import { LookRepo } from './db/looks';
 import { LookService } from './looks/look-service';
 import { StageLayoutRepo } from './db/stage-layouts';
 import { StageLayoutService } from './stage/stage-layout-service';
+import { MaskRepo } from './db/masks';
+import { MaskService } from './masks/mask-service';
 import { seedPlaceholders, seedTemplates } from './db/seed';
 import { ShowEngine } from './engine/show-engine';
 import { runEngineCommand } from './ipc/engine-ipc';
@@ -512,9 +514,11 @@ function start(): void {
     },
   );
   const stageLayoutRepo = new StageLayoutRepo(db);
+  const maskRepo = new MaskRepo(db);
   const looks = new LookService({
     repo: lookRepo,
     stageLayout: (id) => stageLayoutRepo.get(id),
+    mask: (id) => maskRepo.get(id),
     engine,
     changed: (view) => {
       if (operatorWindow && !operatorWindow.isDestroyed())
@@ -702,6 +706,7 @@ function start(): void {
       props: put.props,
       messages: put.messages,
       ticker: put.ticker,
+      masks: put.masks,
       stageMessage: put.stageMessage,
       timers: put.timers,
     };
@@ -1454,6 +1459,34 @@ function start(): void {
     fromOperator(e) ? stageLayouts.save(id, layout) : notLayoutOperator,
   );
   handle(IPC.stageLayouts.remove, (e, id) => (fromOperator(e) ? stageLayouts.remove(id) : notLayoutOperator));
+
+  // ---- the mask library (a group's own in a Look; one up on the Masks layer) ---------------------
+  const masks = new MaskService({
+    repo: maskRepo,
+    forgetInLooks: (id) => {
+      lookRepo.forgetMask(id);
+    },
+    layer: {
+      shown: () => engine.current.layers.masks,
+      show: (mask) => {
+        engine.dispatch({ type: 'setMask', mask });
+      },
+      clear: () => {
+        engine.dispatch({ type: 'clearLayer', layer: 'masks' });
+      },
+    },
+    changed: (list) => {
+      sendToOperator(IPC.masks.changed, list);
+      looks.masksChanged();
+    },
+    log: (message) => {
+      log.info(message);
+    },
+  });
+  const notMaskOperator = { ok: false as const, message: 'Only the operator window can change masks.' };
+  handle(IPC.masks.list, () => masks.list());
+  handle(IPC.masks.save, (e, id, mask) => (fromOperator(e) ? masks.save(id, mask) : notMaskOperator));
+  handle(IPC.masks.remove, (e, id) => (fromOperator(e) ? masks.remove(id) : notMaskOperator));
 
   // ---- Looks (switching the live one is the engine's setLook) ---------------------------------
   const notLookOperator = { ok: false as const, message: 'Only the operator window can change the Looks.' };
