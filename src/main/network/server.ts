@@ -156,6 +156,12 @@ const ROUTES: Route[] = [
   route('POST', '/api/v1/announcements', 'announce', (b) => b),
 ];
 
+/** Every request the API takes, as "METHOD /path" (docs/api.md documents each; a test checks). */
+export const API_ROUTES: readonly string[] = [
+  'POST /api/v1/pair',
+  ...ROUTES.map((r) => `${r.method} /${r.parts.join('/')}`),
+];
+
 type RouteMatch =
   | { found: true; route: Route; params: Record<string, string> }
   /** The path is known but takes another method. */
