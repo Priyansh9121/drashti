@@ -6,6 +6,7 @@ import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { Placed } from './Placed';
 import { SlideView } from './SlideView';
+import { engineNow } from './clock';
 
 /*
  * The slide layer on a screen, with its transition (PLAN.md 5.2, Session
@@ -84,7 +85,7 @@ export function SlideLayerView({
   const [seen, setSeen] = useState(layer);
   if (seen !== layer) {
     setSeen(layer);
-    setShowing((prev) => nextShowing(prev, layer, Date.now()));
+    setShowing((prev) => nextShowing(prev, layer, engineNow()));
   }
   const { on, off, fade } = showing;
   const inRef = useRef<HTMLDivElement>(null);
@@ -108,7 +109,7 @@ export function SlideLayerView({
     }
     let live = true;
     void ready.then(() => {
-      if (live) begin(Math.max(shownAt, Date.now()));
+      if (live) begin(Math.max(shownAt, engineNow()));
     });
     return () => {
       live = false;
@@ -122,7 +123,7 @@ export function SlideLayerView({
     if (start === null) return;
     let frame = 0;
     const tick = () => {
-      const p = fadeAt({ ms, start }, Date.now());
+      const p = fadeAt({ ms, start }, engineNow());
       if (inRef.current) inRef.current.style.opacity = String(p);
       if (outRef.current) outRef.current.style.opacity = String(1 - p);
       rootRef.current?.setAttribute('data-fade', p.toFixed(3));
@@ -141,7 +142,7 @@ export function SlideLayerView({
   // After every render, before it is painted: where the fade is now (the frames between renders set it too).
   const fading = fade !== null;
   useLayoutEffect(() => {
-    const p = start !== null ? fadeAt({ ms, start }, Date.now()) : 0;
+    const p = start !== null ? fadeAt({ ms, start }, engineNow()) : 0;
     if (inRef.current) inRef.current.style.opacity = fading ? String(p) : '';
     if (outRef.current) outRef.current.style.opacity = fading ? String(1 - p) : '';
   });

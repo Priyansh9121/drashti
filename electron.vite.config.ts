@@ -54,6 +54,9 @@ export default defineConfig({
     root: resolve('src/renderer'),
     plugins: [react(), tailwindcss(), devInlineScripts()],
     build: {
+      // The network's pages run in phones' browsers too: Safari 16.4 on an iPhone is the oldest
+      // (Tailwind's styles need it), so the code is built for that as well as Electron's Chromium.
+      target: ['chrome140', 'safari16', 'firefox128'],
       rollupOptions: {
         input: {
           index: resolve('src/renderer/index.html'),
@@ -63,6 +66,8 @@ export default defineConfig({
           stream: resolve('src/renderer/stream.html'),
           // The component gallery, for development (Diagnostics > Component Gallery).
           gallery: resolve('src/renderer/gallery.html'),
+          // Pages for phones, tablets and browsers on the local network (src/main/network/web-files.ts).
+          pair: resolve('src/renderer/pair.html'),
         },
       },
     },

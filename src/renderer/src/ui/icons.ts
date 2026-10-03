@@ -6,6 +6,8 @@
  */
 export type { LucideIcon as Icon } from 'lucide-react';
 export { Camera, CircleDot, HardDrive, KeyRound, Mic, Radio, Video, Wifi, WifiOff } from 'lucide-react';
+// The local network: phones and tablets, pairing by QR code, the announcements poster.
+export { Megaphone, Printer, QrCode, Smartphone, TabletSmartphone } from 'lucide-react';
 export {
   AlertTriangle,
   AlignCenter,

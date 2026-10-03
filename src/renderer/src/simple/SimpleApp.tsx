@@ -25,6 +25,7 @@ import { NoticeArea, StatusBar } from '../operator/StatusBar';
 import { useKeymap } from '../operator/useKeymap';
 import type { AppInfo } from '../../../shared/app-info';
 import { OnAirBadges } from '../stream/OnAirBadges';
+import { NetworkBadge } from '../network/NetworkBadge';
 
 /*
  * Simple Mode (PLAN.md section 3): one uncluttered screen for a volunteer.
@@ -310,6 +311,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
         <h1 className="shrink-0 text-lg font-bold tracking-wide">Drashti</h1>
         <Badge tone="info">Simple Mode</Badge>
         <OnAirBadges size="lg" />
+        <NetworkBadge />
         <div className="min-w-0 flex-1">
           <LiveStatus />
         </div>

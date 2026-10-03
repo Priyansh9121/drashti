@@ -39,6 +39,8 @@ import { SimpleApp } from '../simple/SimpleApp';
 import { SetupWizard } from '../setup/SetupWizard';
 import { openSetup } from '../setup/setup-store';
 import { StreamPanel } from '../stream/StreamPanel';
+import { NetworkPanel } from '../network/NetworkPanel';
+import { connectNetwork, useNetwork } from '../network/network-store';
 import { StreamSettings } from '../stream/StreamSettings';
 import { connectStream, useStream } from '../stream/stream-store';
 
@@ -48,6 +50,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectEngine();
     connectScreens();
     connectStream();
+    connectNetwork();
     watchLibrary();
     watchImports();
     watchPlaylists();
@@ -107,6 +110,7 @@ export function App() {
 function ProApp({ info }: { info: AppInfo | null }) {
   const [screensOpen, setScreensOpen] = useState(false);
   const streamOpen = useStream((s) => s.panelOpen);
+  const networkOpen = useNetwork((s) => s.open);
   const platform = info?.platform ?? 'darwin';
 
   const openScreens = useCallback(() => {
@@ -173,6 +177,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <SlideEditor platform={platform} />
       <ThemesPanel />
       {streamOpen && <StreamPanel />}
+      {networkOpen && <NetworkPanel />}
       <StreamSettings />
       {screensOpen && (
         <ScreensPanel

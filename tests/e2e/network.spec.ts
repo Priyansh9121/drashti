@@ -178,3 +178,51 @@ test('only Pro Mode turns the network on or off or pairs devices', async () => {
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro'));
   await app.close();
 });
+
+/** A raw request with any Host and Origin (as a page elsewhere, or a rebinding name, would send). */
+function raw(port: number, path: string, headers: Record<string, string>) {
+  return new Promise<number>((resolve, reject) => {
+    const req = request({ host: '127.0.0.1', port, path, method: 'GET', headers }, (res) => {
+      res.resume();
+      resolve(res.statusCode ?? 0);
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+test('refused: a foreign Host or Origin, no token, paths that escape, and addresses outside the local network', async () => {
+  test.setTimeout(90_000);
+  const port = await freePort();
+  const { app } = await launchApp(NETWORK);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const n = net(win);
+  await n.setPort(port);
+  await n.setOn(true);
+  await expect.poll(async () => (await n.status()).state).toBe('listening');
+  const host = `127.0.0.1:${port}`;
+  expect(await raw(port, '/pair', { Host: host })).toBe(200);
+  expect(await raw(port, '/pair', { Host: `attacker.example:${port}` })).toBe(421);
+  expect(await raw(port, '/api/v1/me', { Host: host, Origin: 'http://attacker.example' })).toBe(403);
+  expect(await raw(port, '/api/v1/state', { Host: host })).toBe(401);
+  for (const path of [
+    '/../drashti.sqlite',
+    '/assets/%2e%2e/%2e%2e/drashti.sqlite',
+    '/assets/..%2f..%2fdrashti.sqlite',
+  ])
+    expect(await raw(port, path, { Host: host }), path).toBe(400);
+  expect(await raw(port, '/drashti.sqlite', { Host: host })).toBe(404);
+  await app.close();
+
+  // Treated as outside the local network (a test switch), this computer is turned away too.
+  const outside = await launchApp({ ...NETWORK, DRASHTI_TEST_NETWORK_REFUSE_LOOPBACK: '1' });
+  const win2 = await operatorPage(outside.app);
+  await operatorReady(win2);
+  const n2 = net(win2);
+  await n2.setPort(port);
+  await n2.setOn(true);
+  await expect.poll(async () => (await n2.status()).state).toBe('listening');
+  expect(await raw(port, '/pair', { Host: host })).toBe(403);
+  await outside.app.close();
+});

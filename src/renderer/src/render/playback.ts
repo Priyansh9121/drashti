@@ -6,6 +6,7 @@ import {
   playbackOffset,
   playbackPosition,
 } from '../../../shared/media';
+import { engineNow } from './clock';
 
 export interface PlaybackOptions {
   mediaId: string;
@@ -46,7 +47,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): ()
     seekFrom = 0;
   };
   let framed = false;
-  const expected = () => playbackPosition({ startedAt, loop: v.loop }, v.duration, Date.now());
+  const expected = () => playbackPosition({ startedAt, loop: v.loop }, v.duration, engineNow());
   const frame = () => {
     if (framed) return;
     framed = true;
