@@ -32,6 +32,8 @@ import type { FromProgram, WorkerLive, WorkerRecording, WorkerStatus } from './p
 export interface PipelineHooks {
   status(status: WorkerStatus): void;
   log(level: 'info' | 'warn', message: string): void;
+  /** Free bytes on the disk holding this folder (a stand-in in tests; the disk's own figure otherwise). */
+  freeBytes?(dir: string): number | null;
 }
 
 const SAMPLE_RATE = 48_000;
@@ -488,6 +490,7 @@ export class StreamPipeline {
   }
 
   private freeBytes(file: string): number | null {
+    if (this.hooks.freeBytes) return this.hooks.freeBytes(dirname(file));
     try {
       const s = statfsSync(dirname(file));
       return s.bavail * s.bsize;

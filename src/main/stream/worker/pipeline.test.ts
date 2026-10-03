@@ -148,4 +148,63 @@ describe.skipIf(!existsSync(ffmpeg))('the stream pipeline, with FFmpeg', () => {
     expect(Math.max(...secs.slice(1).map((t, i) => t - (secs[i] ?? 0)))).toBeLessThan(2.1);
     expect(secs.at(-1) ?? 0).toBeGreaterThan(8);
   }, 120_000);
+
+  it('records without going live; when the disk runs low the recording stops and says why, and the stream goes on', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-pipeline-'));
+    const port = await freePort();
+    const seen: { status: WorkerStatus | null } = { status: null };
+    let free = 100 * 1024 ** 3;
+    const p = new StreamPipeline({
+      status: (s) => {
+        seen.status = s;
+      },
+      log: () => undefined,
+      freeBytes: () => free,
+    });
+    const current = () => seen.status;
+    const KEEP_FREE = 2 * 1024 ** 3;
+    await p.start({ ffmpeg, platform: process.platform, preset, encoder: null });
+    const stop = feed(p);
+    try {
+      // Recording alone: nothing goes on air.
+      p.record(join(dir, 'alone.mkv'), KEEP_FREE);
+      await until('recording', () => (current()?.recording.bytes ?? 0) > 20_000);
+      expect(current()?.recording.state).toBe('recording');
+      expect(current()?.live.state).toBe('off');
+      // Then on air as well, until the disk runs low: the recording stops with a message; the stream goes on.
+      listener(port, join(dir, 'live.flv'));
+      await sleep(500);
+      p.goLive(`rtmp://127.0.0.1:${port}/live2`, KEY);
+      await until('on air', () => current()?.live.state === 'live');
+      free = 1.5 * 1024 ** 3;
+      await until('the recording stopped', () => current()?.recording.state === 'off');
+      expect(current()?.recording.message).toBe(
+        'The recording stopped: only 1.5 GB is free on that disk, and Drashti keeps 2 GB free. The stream goes on.',
+      );
+      await sleep(2000);
+      expect(current()?.live.state).toBe('live');
+      // A new recording is refused while the disk is that full, and no file is made.
+      p.record(join(dir, 'refused.mkv'), KEEP_FREE);
+      expect(current()?.recording.state).toBe('off');
+      expect(existsSync(join(dir, 'refused.mkv'))).toBe(false);
+      p.endLive();
+    } finally {
+      stop();
+      p.stop();
+    }
+    await sleep(1000);
+    // The recording made alone reads from its start, as a player reads it.
+    const clusters: MkvCluster[] = [];
+    let header = false;
+    const splitter = new MkvSplitter(
+      () => {
+        header = true;
+      },
+      (c) => clusters.push(c),
+    );
+    splitter.push(readFileSync(join(dir, 'alone.mkv')));
+    expect(header).toBe(true);
+    expect(clusters[0]?.startsPicture).toBe(true);
+    expect(clusters.at(-1)?.timestamp ?? 0).toBeGreaterThan(0);
+  }, 120_000);
 });
