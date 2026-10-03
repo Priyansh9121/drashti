@@ -56,7 +56,7 @@ Phase 1 has started:
 - **the local network** (Session 10, off until the operator turns it on in Pro Mode): phones and tablets on the mandir's Wi-Fi, paired with a QR code or a code that works once, as a **remote** (Next and Back, slides, clears, black-out, the logo, timers and messages, drawn with the outputs' renderer), a **stage display** in a browser (exactly what a stage screen shows), or for **announcements** sent from phones, which reach the screens only once the operator approves them (as a message, or in a ticker scrolling in step on every audience screen); a versioned **API** (`docs/api.md`) for scripts and Companion; the state feed that output nodes will follow; every request checked as the windows' are, Simple Mode included;
 - a **library list** that stays cheap at any size (about 4 ms at 5,000 presentations, kirtan details included), and a **performance check** to run by hand on the real machines.
 
-Next (PLAN.md section 5.2): Session 11 and on, as PLAN.md sets out. The importers meet the mandir's own files, and the keys become the operators' own, at the mandir setup after the features are finished.
+Next (PLAN.md section 5.2): Session 12 and on, as PLAN.md sets out (the Shastra module, arti auto-cue, Samvat/tithi, idle-screen darshan and quotes, timers in sabha templates). The importers meet the mandir's own files, and the keys become the operators' own, at the mandir setup after the features are finished.
 
 ## The repository is public
 
@@ -562,5 +562,11 @@ Electron only supports its latest three major versions with security fixes, so g
 **Streaming has not met YouTube yet.** Tests send only to FFmpeg listening on the same computer; the first real stream is a hand test (the session report has the steps). VideoToolbox (the Mac's hardware encoder) stays under the bitrate but does not fill it on a still picture (82 kbps for a still slide in a 3 Mbps test), so YouTube Studio may say the bitrate is low during still slides; NVENC, Quick Sync, AMF and x264 do fill it. The Windows encoders have only met CI's virtual machine (x264); NVENC, Quick Sync and AMF are chosen by a test encode on the mandir's PC. A camera on a capture card, a mixer's line in and their delay need checking at the mandir.
 
 **Converting has met generated files only.** ProRes, AVI, ProRes 4444, AIFF, HEIC and HEVC made by FFmpeg convert in the tests; the mandir's own files may hold codecs these did not. A long video takes a while at the lowest priority (x264 "veryfast" on a Mac's or PC's processor), and its copy needs room on the disk next to the original.
+
+**Key and fill has met no video switcher yet.** The fill is drawn over black (pre-multiplied), so the switcher's key must be set to pre-multiplied; a switcher set to straight alpha would show dark fringes on half see-through edges. The two outputs paint each change within 0 to 4 ms of each other on CI's machines (windowed outputs); real displays at other refresh rates, or two outputs on two graphics cards, need checking at the mandir. DeckLink cards (key and fill over SDI from one card) wait for the audit.
+
+**MIDI has met no real controller.** The tests use a stand-in for Web MIDI. Device names, and whether a pad sends notes or controllers, differ from one controller to another (and Windows names devices differently from macOS): Learn handles both, but check the operators' own controller at the setup.
+
+**A video's or sound's length is learned the first time it plays.** The stage screen's "time left" box shows nothing for a file Drashti has never played until an output or the audio player loads it (well under a second), and Drashti keeps the length from then on.
 
 **Windows is untested on real hardware.** `docs/windows-checks.md` lists the hand checks for the parallel run. The Windows build, the end-to-end tests and the Windows audit script run in CI on `windows-latest`, and all of them passed there on the first run, including the audit script under Windows PowerShell 5.1. A CI runner has one virtual display and no ProPresenter, so none of this has met a real Windows PC with real screens yet.
