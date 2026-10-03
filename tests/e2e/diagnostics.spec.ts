@@ -3,7 +3,7 @@ import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cocoaRtf, pp6Playlist, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
-import { importAndGetIds, launchApp, operatorPage, operatorReady } from './helpers';
+import { chooseMenuItem, importAndGetIds, launchApp, operatorPage, operatorReady } from './helpers';
 
 /*
  * Help > Save diagnostics writes one file an operator can send: versions,
@@ -45,9 +45,7 @@ test('the diagnostics file holds the setup and the log, and no library text', as
   await importAndGetIds(win, [song, list, broken]);
 
   await operatorReady(win);
-  await app.evaluate(({ Menu }) => {
-    Menu.getApplicationMenu()?.getMenuItemById('save-diagnostics')?.click();
-  });
+  await chooseMenuItem(app, 'save-diagnostics');
   await expect(win.getByRole('alert').filter({ hasText: 'Diagnostics saved on the Desktop' })).toBeVisible();
   const [file] = readdirSync(desktop);
   expect(file).toMatch(/^Drashti diagnostics \d{4}-\d{2}-\d{2} \d{2}-\d{2}\.txt$/u);

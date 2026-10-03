@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { launchApp, needsRealScreen, operatorPage } from './helpers';
+import { chooseMenuItem, launchApp, needsRealScreen, operatorPage } from './helpers';
 
 const isOutput = (url: string) => url.includes('output.html');
 
@@ -70,9 +70,7 @@ test("an output on the operator's display needs consent, and Uncover gets the co
   await expect.poll(openOutputs).toBe(1);
 
   // The Window menu item does the same as the key.
-  await app.evaluate(({ Menu }) => {
-    Menu.getApplicationMenu()?.getMenuItemById('uncover-controls')?.click();
-  });
+  await chooseMenuItem(app, 'uncover-controls');
   await expect(op.getByTestId('screen-state')).toHaveText('Off');
   await expect.poll(openOutputs).toBe(0);
   await app.close();

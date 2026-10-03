@@ -6,7 +6,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
 import { device, networkOn, NETWORK_ENV, pairByQr, pairingCode, TABLET } from './devices';
-import { dropFiles, launchApp, operatorPage, operatorReady, outputPage, QUIET, setUpScreen } from './helpers';
+import {
+  chooseMenuItem,
+  dropFiles,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  outputPage,
+  QUIET,
+  setUpScreen,
+} from './helpers';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 import { freePort, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
 
@@ -192,9 +201,7 @@ test('the kirtan library, screens’ languages, templates and the setup wizard',
   await win.getByTestId('fill-slot').getByRole('button', { name: 'Cancel' }).click();
 
   // The setup wizard's screens step.
-  await app.evaluate(({ Menu }) => {
-    Menu.getApplicationMenu()?.getMenuItemById('set-up-screens')?.click();
-  });
+  await chooseMenuItem(app, 'set-up-screens');
   await win.getByTestId('setup-wizard').getByTestId('setup-next').click();
   await shot(win, 'setup-wizard');
   await app.close();
@@ -221,9 +228,7 @@ test('the component gallery', async () => {
   const { app } = await launchApp({ DRASHTI_DIAGNOSTICS: '1' });
   await expect((await operatorPage(app)).getByTestId('live-status')).toBeVisible();
   const opened = app.waitForEvent('window', { predicate: (w) => w.url().includes('gallery.html') });
-  await app.evaluate(({ Menu }) => {
-    Menu.getApplicationMenu()?.getMenuItemById('component-gallery')?.click();
-  });
+  await chooseMenuItem(app, 'component-gallery');
   const gallery = await opened;
   await gallery.setViewportSize({ width: 1440, height: 900 });
   await gallery.locator('#buttons').scrollIntoViewIfNeeded();

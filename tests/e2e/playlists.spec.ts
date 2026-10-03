@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cocoaRtf, pp6Playlist, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
-import { importAndGetIds, launchApp, operatorPage } from './helpers';
+import { chooseMenuItem, importAndGetIds, launchApp, operatorPage } from './helpers';
 import { makeTestImage } from './test-media';
 
 /*
@@ -183,9 +183,7 @@ test('playlists: imported ones with their placeholders, and building one by drag
   await confirm.getByRole('button', { name: 'Remove' }).click();
   await expect(node('Evening Sabha')).toHaveCount(0);
   await expect(undo).toContainText('Removed playlist “Evening Sabha”');
-  await app.evaluate(({ Menu }) => {
-    Menu.getApplicationMenu()?.getMenuItemById('undo')?.click();
-  });
+  await chooseMenuItem(app, 'undo');
   await expect(node('Evening Sabha')).toBeVisible();
   await node('Evening Sabha').click();
   await expect(items).toHaveCount(4);

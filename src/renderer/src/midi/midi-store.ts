@@ -79,8 +79,10 @@ function rising(data: Uint8Array): boolean {
 function seen(e: MIDIMessageEvent): MidiInput | null {
   const data = e.data;
   if (!data) return null;
+  // Every controller value is kept (a low one too), so the next rise past the middle counts.
+  const up = rising(data);
   const input = inputOf(data);
-  if (!input || !rising(data)) return null;
+  if (!input || !up) return null;
   useMidi.setState({ last: input });
   return input;
 }

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { launchApp, operatorPage } from './helpers';
+import { chooseMenuItem, launchApp, operatorPage } from './helpers';
 
 /*
  * The design system: the component gallery (Diagnostics > Component Gallery)
@@ -13,9 +13,7 @@ test('the component gallery opens from the Diagnostics menu and passes the acces
   // The menu is in place once the operator window is.
   await expect((await operatorPage(app)).getByTestId('live-status')).toBeVisible();
   const opened = app.waitForEvent('window', { predicate: (w) => w.url().includes('gallery.html') });
-  await app.evaluate(({ Menu }) => {
-    Menu.getApplicationMenu()?.getMenuItemById('component-gallery')?.click();
-  });
+  await chooseMenuItem(app, 'component-gallery');
   const gallery = await opened;
   await expect(gallery.getByTestId('gallery')).toBeVisible();
   await expect(gallery.getByRole('heading', { name: 'Component gallery' })).toBeVisible();
