@@ -33,7 +33,51 @@ export interface PresentationSummary {
   /** Language tracks, when the presentation is a kirtan. */
   kirtanTracks: Lang[] | null;
   /** A kirtan's details, to filter the library by; null for other presentations. */
-  kirtan: { category: string | null; kavi: string | null; raag: string | null; occasions: string[] } | null;
+  kirtan: ListedKirtan | null;
+}
+
+/** The kirtan details the library list carries. */
+export interface ListedKirtan {
+  category: string | null;
+  kavi: string | null;
+  raag: string | null;
+  occasions: string[];
+}
+
+/**
+ * A presentation as the main process sends it for the library list: the
+ * kirtan details are the JSON kept on the presentation (migration 15),
+ * read in the operator window (summariesOf) so the main process never
+ * parses or rebuilds them for thousands of rows.
+ */
+export type PresentationListing = Omit<PresentationSummary, 'kirtan'> & { kirtan: string | null };
+
+const text = (v: unknown): string | null => (typeof v === 'string' ? v : null);
+
+/** A kirtan's listed details from their JSON; null when there are none or they don't read. */
+export function listedKirtan(json: string | null): ListedKirtan | null {
+  if (json === null) return null;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as { category?: unknown; kavi?: unknown; raag?: unknown; occasions?: unknown };
+  return {
+    category: text(r.category),
+    kavi: text(r.kavi),
+    raag: text(r.raag),
+    occasions: Array.isArray(r.occasions)
+      ? r.occasions.filter((o): o is string => typeof o === 'string')
+      : [],
+  };
+}
+
+/** The library list as the operator window uses it, with each kirtan's details read. */
+export function summariesOf(listing: PresentationListing[]): PresentationSummary[] {
+  return listing.map((p) => ({ ...p, kirtan: listedKirtan(p.kirtan) }));
 }
 
 /**

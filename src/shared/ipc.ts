@@ -7,7 +7,7 @@ import type {
   LibraryChange,
   NewFromWordsResult,
   PresentationDoc,
-  PresentationSummary,
+  PresentationListing,
   RemoveResult,
   RevisionResult,
   SaveWordsResult,
@@ -266,7 +266,7 @@ export interface InvokeContract {
   [IPC.engine.subscribe]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.snapshot]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.command]: { args: [command: EngineCommand]; result: CommandResult };
-  [IPC.library.listPresentations]: { args: []; result: PresentationSummary[] };
+  [IPC.library.listPresentations]: { args: []; result: PresentationListing[] };
   [IPC.library.listMedia]: { args: []; result: MediaSummary[] };
   [IPC.library.search]: { args: [query: string]; result: SearchResult };
   [IPC.library.words]: { args: [presentationId: string]; result: WordsResult };

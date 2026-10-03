@@ -169,7 +169,7 @@ export function registerKirtansIpc({
   /** Drashti's categories, then those added, then any a kirtan has that is in neither (an import, say). */
   const categories = (): string[] => {
     const added = z.array(z.string()).safeParse(settings.get(CATEGORIES));
-    const used = presentations.list().flatMap((p) => (p.kirtan?.category ? [p.kirtan.category] : []));
+    const used = presentations.kirtanCategories();
     const all = [...DEFAULT_CATEGORIES, ...(added.success ? added.data : []), ...used];
     const seen = new Set<string>();
     return all.filter((c) => {

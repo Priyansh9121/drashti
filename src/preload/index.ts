@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent, webUtils } from 'ele
 import type { DrashtiBridge } from '../shared/bridge';
 import type { EventChannel, EventContract, InvokeArgs, InvokeChannel, InvokeResult } from '../shared/ipc';
 import { IPC } from '../shared/ipc';
+import { summariesOf } from '../shared/library';
 
 /** Typed ipcRenderer.invoke over the shared contract. */
 function invoke<C extends InvokeChannel>(channel: C, ...args: InvokeArgs<C>): Promise<InvokeResult<C>> {
@@ -62,7 +63,7 @@ const bridge: DrashtiBridge = {
     dispatch: (command) => invoke(IPC.engine.command, command),
   },
   library: {
-    listPresentations: () => invoke(IPC.library.listPresentations),
+    listPresentations: async () => summariesOf(await invoke(IPC.library.listPresentations)),
     listMedia: () => invoke(IPC.library.listMedia),
     search: (query) => invoke(IPC.library.search, query),
     words: (presentationId) => invoke(IPC.library.words, presentationId),

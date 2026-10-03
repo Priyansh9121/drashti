@@ -7,11 +7,14 @@ import { type Db, openDatabase } from './database';
 import { MIGRATIONS } from './migrate';
 import { PresentationRepo } from './presentations';
 import { fillLibrary } from './testing/big-library';
+import { summariesOf } from '../../shared/library';
 
 /*
  * The library list must stay cheap in the main process, whose event loop
  * carries every slide change: under 20 ms at 5,000 presentations (a big
  * mandir's library), including turning the answer into an IPC message.
+ * Kirtan details travel as the JSON kept on each presentation (migration
+ * 15); the operator window reads them (summariesOf), timed here apart.
  */
 
 const BUDGET_MS = 20;
@@ -44,7 +47,14 @@ describe(`the library list at ${COUNT} presentations`, () => {
     }
     times.sort((a, b) => a - b);
     const median = times[4] ?? Infinity;
-    console.log(`library list at ${COUNT}: median ${median.toFixed(1)} ms, worst ${times[8]?.toFixed(1)} ms`);
+    // Reading the kirtan details happens in the operator window, not here; shown for the record.
+    const listing = repo.list();
+    const readStart = performance.now();
+    summariesOf(listing);
+    const read = performance.now() - readStart;
+    console.log(
+      `library list at ${COUNT}: median ${median.toFixed(1)} ms, worst ${times[8]?.toFixed(1)} ms; reading the kirtan details in the window ${read.toFixed(1)} ms`,
+    );
     expect(median).toBeLessThan(BUDGET_MS);
   });
 
@@ -54,12 +64,105 @@ describe(`the library list at ${COUNT} presentations`, () => {
     expect(byLibrary.indexOf('Talks')).toBeGreaterThan(byLibrary.lastIndexOf('Kirtans'));
     const kirtans = list.filter((p) => p.libraryName === 'Kirtans').map((p) => p.name);
     expect(kirtans).toEqual([...kirtans].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })));
-    const first = list.find((p) => p.name === 'Placeholder Kirtan 00000');
+    const first = summariesOf(list).find((p) => p.name === 'Placeholder Kirtan 00000');
     // Presentation 0 has groups of 2 and 3 slides; presentation 1, groups of 3, 4 and 2 (see big-library.ts).
-    expect(first).toMatchObject({ slideCount: 5, kirtanTracks: ['en', 'translit'] });
+    expect(first).toMatchObject({
+      slideCount: 5,
+      kirtanTracks: ['en', 'translit'],
+      kirtan: { category: 'Placeholder', kavi: 'Placeholder Kavi 0', raag: null, occasions: [] },
+    });
     expect(list.find((p) => p.name === 'Placeholder Talk 00001')).toMatchObject({
       slideCount: 9,
       kirtanTracks: null,
+      kirtan: null,
+    });
+  });
+});
+
+describe('kirtan details on the list', () => {
+  const details = (mem: Db, id: string) =>
+    summariesOf(new PresentationRepo(mem).list()).find((p) => p.id === id)?.kirtan;
+
+  it('follow every write to the kirtans table', () => {
+    const mem = openDatabase(':memory:');
+    const repo = new PresentationRepo(mem);
+    const libraryId = repo.ensureLibrary('Default');
+    const id = repo.insert({ libraryId, name: 'Becomes a kirtan', groups: [] });
+    expect(details(mem, id)).toBeNull();
+    // Made a kirtan (as the Kirtan dialog does), its details changed, then not a kirtan.
+    mem.prepare("INSERT INTO kirtans (presentation_id, category) VALUES (?, 'Dhun')").run(id);
+    expect(details(mem, id)).toEqual({ category: 'Dhun', kavi: null, raag: null, occasions: [] });
+    mem
+      .prepare(
+        `UPDATE kirtans SET kavi = 'Placeholder Kavi', raag = 'Placeholder Raag', occasions = '["Placeholder Day"]' WHERE presentation_id = ?`,
+      )
+      .run(id);
+    expect(details(mem, id)).toEqual({
+      category: 'Dhun',
+      kavi: 'Placeholder Kavi',
+      raag: 'Placeholder Raag',
+      occasions: ['Placeholder Day'],
+    });
+    mem.prepare('DELETE FROM kirtans WHERE presentation_id = ?').run(id);
+    expect(details(mem, id)).toBeNull();
+    // Content replaced with kirtan details (an import or Undo), then without.
+    repo.replace(id, {
+      libraryId,
+      name: 'Becomes a kirtan',
+      groups: [],
+      kirtan: { category: 'Arti', occasions: ['A', 'B'] },
+    });
+    expect(details(mem, id)).toEqual({ category: 'Arti', kavi: null, raag: null, occasions: ['A', 'B'] });
+    repo.replace(id, { libraryId, name: 'Becomes a kirtan', groups: [] });
+    expect(details(mem, id)).toBeNull();
+    // Categories in use come from the table, removed presentations left out.
+    const other = repo.insert({ libraryId, name: 'Other', groups: [], kirtan: { category: 'Thal' } });
+    repo.insert({ libraryId, name: 'Third', groups: [], kirtan: { category: 'Arti' } });
+    expect(repo.kirtanCategories()).toEqual(['Arti', 'Thal']);
+    mem.prepare("UPDATE presentations SET deleted_at = '2026-01-01T00:00:00Z' WHERE id = ?").run(other);
+    expect(repo.kirtanCategories()).toEqual(['Arti']);
+    mem.close();
+  });
+
+  it('are filled in for a library made before they were kept (migration 15)', () => {
+    const file = join(dir, 'before-15.sqlite');
+    const older = openDatabase(
+      file,
+      MIGRATIONS.filter((m) => m.version <= 14),
+    );
+    older.exec(`
+      INSERT INTO libraries (id, name) VALUES ('lib', 'Default');
+      INSERT INTO presentations (id, library_id, name) VALUES ('p1', 'lib', 'A kirtan'), ('p2', 'lib', 'A talk');
+      INSERT INTO kirtans (presentation_id, category, kavi, occasions) VALUES ('p1', 'Kirtan', 'Placeholder Kavi', '["Placeholder Day"]');
+    `);
+    older.close();
+    const upgraded = openDatabase(file);
+    expect(details(upgraded, 'p1')).toEqual({
+      category: 'Kirtan',
+      kavi: 'Placeholder Kavi',
+      raag: null,
+      occasions: ['Placeholder Day'],
+    });
+    expect(details(upgraded, 'p2')).toBeNull();
+    upgraded.close();
+  });
+
+  it('read as nothing when the stored JSON is not details', () => {
+    const listing = {
+      id: 'x',
+      name: 'x',
+      libraryName: 'x',
+      slideCount: 0,
+      width: 1,
+      height: 1,
+      kirtanTracks: null,
+    };
+    expect(summariesOf([{ ...listing, kirtan: 'not json' }])[0]?.kirtan).toBeNull();
+    expect(summariesOf([{ ...listing, kirtan: '{"category":3,"occasions":["a",1]}' }])[0]?.kirtan).toEqual({
+      category: null,
+      kavi: null,
+      raag: null,
+      occasions: ['a'],
     });
   });
 });
