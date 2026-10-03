@@ -73,8 +73,11 @@ async function until(what: string, check: () => boolean, ms = 30_000): Promise<v
   }
 }
 
-/** Frames (a grey that changes) and sound, 1/30 s at a time, until stopped. */
-function feed(p: StreamPipeline): () => void {
+/**
+ * Frames (a grey that changes) and sound, 1/30 s at a time, until stopped; and the seconds fed so
+ * far (the recording's own time: a slow runner's timer can fall behind the clock).
+ */
+function feed(p: StreamPipeline): { stop: () => void; fed: () => number } {
   p.fromProgram({ kind: 'format', width: preset.width, height: preset.height, format: 'I420' });
   let n = 0;
   const timer = setInterval(() => {
@@ -86,8 +89,11 @@ function feed(p: StreamPipeline): () => void {
     p.fromProgram({ kind: 'audio', data: audio.buffer, frames: 1600 });
     n++;
   }, 1000 / 30);
-  return () => {
-    clearInterval(timer);
+  return {
+    stop: () => {
+      clearInterval(timer);
+    },
+    fed: () => n / 30,
   };
 }
 
@@ -107,14 +113,18 @@ describe.skipIf(!existsSync(ffmpeg))('the stream pipeline, with FFmpeg', () => {
     });
     const current = () => seen.status;
     await p.start({ ffmpeg, platform: process.platform, preset, encoder: null });
-    const stop = feed(p);
+    const { stop, fed } = feed(p);
+    // When the connection dropped, in the recording's own time (the seconds fed since it started).
+    let droppedAt = 0;
     try {
       const first = listener(port, join(dir, 'first.flv'));
       await sleep(500);
+      const recordedFrom = fed();
       p.record(join(dir, 'recording.mkv'), 1024 ** 2);
       p.goLive(`rtmp://127.0.0.1:${port}/live2`, KEY);
       await until('on air', () => current()?.live.state === 'live');
       await sleep(3000);
+      droppedAt = fed() - recordedFrom;
       first.kill('SIGKILL');
       await until('reconnecting', () => current()?.live.state === 'reconnecting');
       await sleep(1500);
@@ -123,6 +133,8 @@ describe.skipIf(!existsSync(ffmpeg))('the stream pipeline, with FFmpeg', () => {
         throw new Error(`${String(error)}\n${logs.join('\n')}`);
       });
       await sleep(3000);
+      // Six seconds recorded since the drop, however slowly the frames come.
+      await until('six seconds since the drop', () => fed() - recordedFrom > droppedAt + 6);
       expect(current()?.live.reconnects).toBeGreaterThanOrEqual(1);
       p.endLive();
       p.stopRecording();
@@ -135,7 +147,7 @@ describe.skipIf(!existsSync(ffmpeg))('the stream pipeline, with FFmpeg', () => {
     // short), and the key never reached a log line.
     expect(statSync(join(dir, 'second.flv')).size).toBeGreaterThan(1000);
     expect(logs.join('\n')).not.toContain(KEY);
-    // One recording, unbroken.
+    // One recording, unbroken, carrying on after the connection dropped.
     expect(readdirSync(dir).filter((f) => f.endsWith('.mkv'))).toEqual(['recording.mkv']);
     const clusters: MkvCluster[] = [];
     const splitter = new MkvSplitter(
@@ -146,7 +158,8 @@ describe.skipIf(!existsSync(ffmpeg))('the stream pipeline, with FFmpeg', () => {
     const secs = clusters.map((c) => (c.timestamp * splitter.timestampScaleNs) / 1e9);
     expect(secs[0]).toBe(0);
     expect(Math.max(...secs.slice(1).map((t, i) => t - (secs[i] ?? 0)))).toBeLessThan(2.1);
-    expect(secs.at(-1) ?? 0).toBeGreaterThan(8);
+    expect(droppedAt).toBeGreaterThan(1);
+    expect(secs.at(-1) ?? 0).toBeGreaterThan(droppedAt);
   }, 120_000);
 
   it('records without going live; when the disk runs low the recording stops and says why, and the stream goes on', async () => {
@@ -164,7 +177,7 @@ describe.skipIf(!existsSync(ffmpeg))('the stream pipeline, with FFmpeg', () => {
     const current = () => seen.status;
     const KEEP_FREE = 2 * 1024 ** 3;
     await p.start({ ffmpeg, platform: process.platform, preset, encoder: null });
-    const stop = feed(p);
+    const { stop } = feed(p);
     try {
       // Recording alone: nothing goes on air.
       p.record(join(dir, 'alone.mkv'), KEEP_FREE);
