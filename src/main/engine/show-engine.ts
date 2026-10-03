@@ -14,6 +14,8 @@ import {
   type MessageItem,
   type PlaylistCursor,
   type PropItem,
+  type TickerItem,
+  type TickerLayer,
   type UpNext,
 } from '../../shared/engine/state';
 import type { EngineTransport } from '../../shared/engine/transport';
@@ -30,6 +32,23 @@ type Resolved = { ok: true; actions: EngineAction[] } | Extract<CommandResult, {
 type MediaItem = Extract<PlayItem, { kind: 'media' }>;
 
 const NO_CHANGE: Resolved = { ok: true, actions: [] };
+
+/** These layers without one announcement (as a message or in the ticker). */
+function withoutItem(layers: Layers, id: string): Layers {
+  const messages = layers.messages.filter((m) => m.id !== id);
+  const ticker = layers.ticker;
+  const items = ticker?.items.filter((i) => i.id !== id) ?? [];
+  return {
+    ...layers,
+    messages: messages.length === layers.messages.length ? layers.messages : messages,
+    ticker:
+      !ticker || items.length === ticker.items.length
+        ? ticker
+        : items.length > 0
+          ? { ...ticker, items }
+          : null,
+  };
+}
 
 export interface EngineOptions {
   /** Drashti's own default transition, for presentations without one (a setting; a cut when left out). */
@@ -51,6 +70,8 @@ export interface RestoreRequest {
   audio?: AudioLayer | null;
   props?: readonly PropItem[];
   messages?: readonly MessageItem[];
+  /** The announcements ticker, carrying on in step from when it started. */
+  ticker?: TickerLayer | null;
   stageMessage?: string | null;
   /** Timer runs: a running timer carries on from its start time, a paused one keeps its count. */
   timers?: readonly { id: string; startedAt: number | null; elapsedMs: number }[];
@@ -67,6 +88,7 @@ export interface Restored {
   audio: boolean;
   props: number;
   messages: number;
+  ticker: number;
   stageMessage: boolean;
   timers: number;
 }
@@ -196,6 +218,7 @@ export class ShowEngine {
     if (request.audio) actions.push({ type: 'audio/set', audio: request.audio });
     for (const prop of request.props ?? []) actions.push({ type: 'prop/show', prop });
     for (const message of request.messages ?? []) actions.push({ type: 'message/show', message });
+    if (request.ticker) actions.push({ type: 'ticker/set', ticker: request.ticker });
     if (request.stageMessage) actions.push({ type: 'stage/message', text: request.stageMessage });
     // Timers that still exist: running ones count on from their start, paused ones keep their count.
     let timers = 0;
@@ -231,9 +254,33 @@ export class ShowEngine {
       audio: Boolean(request.audio),
       props: request.props?.length ?? 0,
       messages: request.messages?.length ?? 0,
+      ticker: request.ticker?.items.length ?? 0,
       stageMessage: Boolean(request.stageMessage),
       timers,
     };
+  }
+
+  /**
+   * An announcement in the ticker (approved by the operator). The ticker
+   * starts again from the right edge, on every screen at once.
+   */
+  showTicker(item: TickerItem): CommandResult {
+    return this.atOnce(() => this.apply([{ type: 'ticker/show', item, at: this.now() }]));
+  }
+
+  /**
+   * An announcement's time is up (or the operator took it off): off the
+   * screens, as a message or in the ticker, and out of what Put it back
+   * would bring back.
+   */
+  takeDown(id: string): CommandResult {
+    return this.atOnce(() => {
+      if (this.cleared) this.cleared = { ...this.cleared, from: withoutItem(this.cleared.from, id) };
+      return this.apply([
+        { type: 'message/hide', messageId: id },
+        { type: 'ticker/hide', itemId: id, at: this.now() },
+      ]);
+    });
   }
 
   /**

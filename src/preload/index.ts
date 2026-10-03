@@ -198,6 +198,14 @@ const bridge: DrashtiBridge = {
     revokeDevice: (deviceId) => invoke(IPC.network.revokeDevice, deviceId),
     makePoster: () => invoke(IPC.network.makePoster),
   },
+  announcements: {
+    list: () => invoke(IPC.announcements.list),
+    onChanged: (listener) => on(IPC.announcements.changed, listener),
+    edit: (edit) => invoke(IPC.announcements.edit, edit),
+    approve: (approval) => invoke(IPC.announcements.approve, approval),
+    reject: (which) => invoke(IPC.announcements.reject, which),
+    takeOff: (which) => invoke(IPC.announcements.takeOff, which),
+  },
   stream: {
     status: () => invoke(IPC.stream.status),
     onChanged: (listener) => on(IPC.stream.changed, listener),

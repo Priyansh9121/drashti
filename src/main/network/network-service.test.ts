@@ -15,6 +15,9 @@ import type { FromNetworkWorker, ToNetworkWorker } from './worker/protocol';
 
 /* The main process's side of the network, with a stand-in worker; made-up tokens and placeholder names. */
 
+/** A phone's address on the local network (made up). */
+const PHONE = '192.168.1.20';
+
 function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
   const db = openDatabase(':memory:');
   const devices = new DeviceRepo(db);
@@ -30,6 +33,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
     kill: () => undefined,
   };
   const commands: EngineCommand[] = [];
+  const announced: { device: string; address: string; input: unknown }[] = [];
   let now = 1_000_000;
   const statuses: NetworkStatus[] = [];
   const state = initialEngineState();
@@ -64,6 +68,13 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
       stageLanguages: () => null,
       clockStyle: () => ({ locale: 'en-GB', timeZone: 'Europe/London' }),
     },
+    announcements: {
+      submit: (device, address, input) => {
+        announced.push({ device: device.id, address, input });
+        return { status: 202, body: { ok: true } };
+      },
+      statusFor: () => ({ status: 404, body: { ok: false } }),
+    },
     refused: (channel: InvokeChannel) =>
       options.lockEverything === true || (options.locked === true && SIMPLE_MODE_LOCKED.includes(channel)),
     changed: (s) => statuses.push(s),
@@ -77,6 +88,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
     settings,
     sent,
     commands,
+    announced,
     statuses,
     fromWorker,
     tick: (ms: number) => {
@@ -154,7 +166,9 @@ describe('the network in the main process', () => {
     expect(service.revokeDevice(id)).toMatchObject({ ok: true });
     const last = sent.filter((m) => m.type === 'devices').at(-1);
     expect(last).toEqual({ type: 'devices', devices: [] });
-    expect(service.answer({ deviceId: id, op: 'command', args: { type: 'next' } }).status).toBe(401);
+    expect(
+      service.answer({ address: PHONE, deviceId: id, op: 'command', args: { type: 'next' } }).status,
+    ).toBe(401);
   });
 
   it('lets each kind of device do only its own things, and a Remote only run the show', () => {
@@ -162,30 +176,45 @@ describe('the network in the main process', () => {
     const remote = service.pairForCheck('remote', 'Placeholder phone').id;
     const stage = service.pairForCheck('stage', 'Placeholder tablet').id;
     const poster = service.pairForCheck('announcements', 'Placeholder poster').id;
-    expect(service.answer({ deviceId: remote, op: 'command', args: { type: 'next' } })).toMatchObject({
+    expect(
+      service.answer({ address: PHONE, deviceId: remote, op: 'command', args: { type: 'next' } }),
+    ).toMatchObject({
       status: 200,
       body: { ok: true, rev: 1 },
     });
-    expect(service.answer({ deviceId: stage, op: 'command', args: { type: 'next' } }).status).toBe(403);
-    expect(service.answer({ deviceId: poster, op: 'playlists', args: {} }).status).toBe(403);
+    expect(
+      service.answer({ address: PHONE, deviceId: stage, op: 'command', args: { type: 'next' } }).status,
+    ).toBe(403);
+    expect(service.answer({ address: PHONE, deviceId: poster, op: 'playlists', args: {} }).status).toBe(403);
     // Not running the show: refused, though the engine would take it from the operator window.
     for (const args of [
       { type: 'setStageMessage', text: 'Placeholder' },
       { type: 'setBackground', background: { kind: 'color', color: '#000000' } },
       { type: 'showProp', prop: { id: 'p', name: 'Placeholder', elements: [] } },
     ])
-      expect(service.answer({ deviceId: remote, op: 'command', args }).status, args.type).toBe(403);
-    expect(service.answer({ deviceId: remote, op: 'command', args: { type: 'goLive' } }).status).toBe(400);
+      expect(
+        service.answer({ address: PHONE, deviceId: remote, op: 'command', args }).status,
+        args.type,
+      ).toBe(403);
+    expect(
+      service.answer({ address: PHONE, deviceId: remote, op: 'command', args: { type: 'goLive' } }).status,
+    ).toBe(400);
     // The logo and messages are made here from what the operator marked and wrote, never sent whole.
-    service.answer({ deviceId: remote, op: 'logo.set', args: { on: true } });
+    service.answer({ address: PHONE, deviceId: remote, op: 'logo.set', args: { on: true } });
     expect(commands.at(-1)).toMatchObject({ type: 'showLogo', prop: { id: 'logo' } });
     expect(
-      service.answer({ deviceId: remote, op: 'message.show', args: { templateId: 'm1', values: {} } }),
+      service.answer({
+        address: PHONE,
+        deviceId: remote,
+        op: 'message.show',
+        args: { templateId: 'm1', values: {} },
+      }),
     ).toMatchObject({
       status: 400,
       body: { message: 'Fill in {plate} first.' },
     });
     service.answer({
+      address: PHONE,
       deviceId: remote,
       op: 'message.show',
       args: { templateId: 'm1', values: { plate: '12' } },
@@ -194,7 +223,7 @@ describe('the network in the main process', () => {
       type: 'showMessage',
       message: { id: 'message:m1', text: 'Car 12 please move' },
     });
-    service.answer({ deviceId: remote, op: 'message.hide', args: { templateId: 'm1' } });
+    service.answer({ address: PHONE, deviceId: remote, op: 'message.hide', args: { templateId: 'm1' } });
     expect(commands.at(-1)).toEqual({ type: 'hideMessage', messageId: 'message:m1' });
   });
 
@@ -207,13 +236,16 @@ describe('the network in the main process', () => {
     // In Simple Mode the remote still runs the show, as the window does.
     const simple = setup({ locked: true });
     const remote = simple.service.pairForCheck('remote', 'Placeholder phone').id;
-    expect(simple.service.answer({ deviceId: remote, op: 'command', args: { type: 'next' } }).status).toBe(
-      200,
-    );
+    expect(
+      simple.service.answer({ address: PHONE, deviceId: remote, op: 'command', args: { type: 'next' } })
+        .status,
+    ).toBe(200);
     // And the lock is asked: an action whose window request were locked is refused with Simple Mode's words.
     const everything = setup({ lockEverything: true });
     const id = everything.service.pairForCheck('remote', 'Placeholder phone').id;
-    expect(everything.service.answer({ deviceId: id, op: 'command', args: { type: 'next' } })).toEqual({
+    expect(
+      everything.service.answer({ address: PHONE, deviceId: id, op: 'command', args: { type: 'next' } }),
+    ).toEqual({
       status: 403,
       body: { ok: false, message: SIMPLE_MODE_REFUSAL },
     });

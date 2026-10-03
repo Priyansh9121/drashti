@@ -10,6 +10,7 @@ import type {
   MessageItem,
   PlaylistCursor,
   PropItem,
+  TickerLayer,
 } from '../../shared/engine/state';
 import { ENGINE_STATE_VERSION } from '../../shared/engine/state';
 import { hexColorSchema, idSchema } from '../../shared/model-schema';
@@ -44,6 +45,8 @@ export interface SavedLive {
   audio: AudioLayer | null;
   props: PropItem[];
   messages: MessageItem[];
+  /** The announcements ticker, with when it started: it carries on in step. */
+  ticker: TickerLayer | null;
   stageMessage: string | null;
   /** Timers that were running or paused (their definitions are in the library). */
   timers: { id: string; startedAt: number | null; elapsedMs: number }[];
@@ -65,6 +68,14 @@ const backgroundSchema: z.ZodType<BackgroundLayer> = z.discriminatedUnion('kind'
     startedAt: z.number(),
   }),
 ]);
+
+const tickerSchema: z.ZodType<TickerLayer> = z.object({
+  items: z
+    .array(z.object({ id: idSchema, text: z.string().min(1).max(500) }))
+    .min(1)
+    .max(50),
+  startedAt: z.number(),
+});
 
 const savedSchema = z.object({
   version: z.literal(1),
@@ -89,6 +100,7 @@ const savedSchema = z.object({
   audio: z.unknown().default(null),
   props: z.unknown().default([]),
   messages: z.unknown().default([]),
+  ticker: z.unknown().default(null),
   stageMessage: z.string().max(300).nullable().default(null),
   timers: z
     .array(z.object({ id: idSchema, startedAt: z.number().nullable(), elapsedMs: z.number().min(0) }))
@@ -124,6 +136,7 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
     audio: state.layers.audio,
     props: state.layers.props,
     messages: state.layers.messages,
+    ticker: state.layers.ticker,
     stageMessage: state.stageMessage,
     timers: state.timers
       .filter((t) => t.startedAt !== null || t.elapsedMs > 0)
@@ -175,6 +188,7 @@ export function toRestore(files: RecoveryFiles): SavedLive | null {
   const logo = layer(propSchema.nullable(), s.logo, null);
   const props = layer(z.array(propSchema).max(50), s.props, []);
   const messages = layer(z.array(messageSchema).max(50), s.messages, []);
+  const ticker = layer(tickerSchema.nullable(), s.ticker, null);
   const timers = same ? s.timers : [];
   const stageMessage = same ? s.stageMessage : null;
   const anything = [
@@ -186,11 +200,12 @@ export function toRestore(files: RecoveryFiles): SavedLive | null {
     audio !== null,
     props.length > 0,
     messages.length > 0,
+    ticker !== null,
     stageMessage !== null,
     timers.length > 0,
   ].some(Boolean);
   if (!anything) return null;
-  return { ...s, version: 1, background, logo, audio, props, messages, stageMessage, timers };
+  return { ...s, version: 1, background, logo, audio, props, messages, ticker, stageMessage, timers };
 }
 
 export interface LiveStateWriterOptions {

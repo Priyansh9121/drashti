@@ -40,6 +40,7 @@ import type {
 } from './stream';
 import type { SaveStillResult } from './media';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
+import type { AnnouncementResult, AnnouncementsView } from './announcements';
 import type {
   ItemOrder,
   MediaSummary,
@@ -332,6 +333,19 @@ export interface DrashtiBridge {
     renameDevice(deviceId: string, name: string): Promise<NetworkResult>;
     revokeDevice(deviceId: string): Promise<NetworkResult>;
     makePoster(): Promise<NetworkResult>;
+  };
+  /** Announcements sent from phones: the operator's queue (operator window only; changes in Pro Mode only). */
+  announcements: {
+    list(): Promise<AnnouncementsView>;
+    onChanged(listener: (view: AnnouncementsView) => void): () => void;
+    edit(edit: { id: string; text: string; minutes: number }): Promise<AnnouncementResult>;
+    approve(approval: {
+      id: string;
+      as: 'message' | 'ticker';
+      templateId?: string | null;
+    }): Promise<AnnouncementResult>;
+    reject(which: { id: string }): Promise<AnnouncementResult>;
+    takeOff(which: { id: string }): Promise<AnnouncementResult>;
   };
   /** The setup wizard (operator window only; never in Simple Mode). */
   setup: {

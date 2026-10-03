@@ -170,6 +170,7 @@ describe('ShowEngine', () => {
         { type: 'setMask', mask: { id: 'k', name: 'Mask', visible: { x: 0, y: 0, width: 10, height: 10 } } },
       ];
       for (const c of commands) s.engine.dispatch(c);
+      s.engine.showTicker({ id: 'a1', text: 'Placeholder announcement' });
       return s;
     }
 
@@ -202,6 +203,7 @@ describe('ShowEngine', () => {
         slide: null,
         props: [],
         messages: [],
+        ticker: null,
         masks: null,
       });
       expect(engine.current.live.presentationId).toBe('p1');
@@ -867,6 +869,14 @@ describe('ShowEngine', () => {
       expect(seen).toEqual([0]);
     });
 
+    it('puts back the ticker, carrying on in step from when it started', () => {
+      const { engine } = setup();
+      const ticker = { items: [{ id: 'a1', text: 'Placeholder announcement' }], startedAt: 77 };
+      const put = engine.restore({ slide: null, background: null, blackout: false, ticker });
+      expect(put.ticker).toBe(1);
+      expect(engine.current.layers.ticker).toEqual(ticker);
+    });
+
     it('puts back the sound, props, messages, the stage message and timers, carrying on from their start', () => {
       const transport = new RecordingTransport();
       const clock = 50_000;
@@ -910,6 +920,7 @@ describe('ShowEngine', () => {
         audio: true,
         props: 1,
         messages: 1,
+        ticker: 0,
         stageMessage: true,
         timers: 1,
       });
@@ -963,6 +974,41 @@ describe('ShowEngine', () => {
       engine.dispatch({ type: 'hideMessage', messageId: 'm' });
       expect(engine.current.layers.props).toEqual([]);
       expect(engine.current.layers.messages).toEqual([]);
+    });
+
+    it('runs the ticker: an announcement joins it, Clear all takes it down and Put it back brings it back', () => {
+      const { engine } = setup();
+      engine.showTicker({ id: 'a1', text: 'Placeholder announcement one' });
+      const started = engine.current.layers.ticker?.startedAt ?? 0;
+      expect(engine.current.layers.ticker?.items).toEqual([
+        { id: 'a1', text: 'Placeholder announcement one' },
+      ]);
+      engine.dispatch({ type: 'clearAll' });
+      expect(engine.current.layers.ticker).toBeNull();
+      engine.dispatch({ type: 'putBack' });
+      // Back as it was, in step from when it started.
+      expect(engine.current.layers.ticker).toEqual({
+        items: [{ id: 'a1', text: 'Placeholder announcement one' }],
+        startedAt: started,
+      });
+      engine.dispatch({ type: 'clearLayer', layer: 'ticker' });
+      expect(engine.current.layers.ticker).toBeNull();
+    });
+
+    it('takes an announcement down when its time is up, from the screens and from what Put it back would bring', () => {
+      const { engine } = setup();
+      engine.dispatch(goLive('p1', 0));
+      engine.showTicker({ id: 'a1', text: 'Placeholder one' });
+      engine.dispatch({ type: 'showMessage', message: { id: 'a2', text: 'Placeholder two' } });
+      expect(engine.takeDown('a2')).toMatchObject({ ok: true, changed: true });
+      expect(engine.current.layers.messages).toEqual([]);
+      // Cleared, then its time runs out: Put it back brings back the slide, not the announcement.
+      engine.dispatch({ type: 'clearAll' });
+      expect(engine.takeDown('a1')).toMatchObject({ ok: true, changed: false });
+      expect(engine.current.canPutBack).toBe(true);
+      engine.dispatch({ type: 'putBack' });
+      expect(engine.current.layers.slide).not.toBeNull();
+      expect(engine.current.layers.ticker).toBeNull();
     });
 
     it('keeps a stage message apart from the layers: Clear all leaves it', () => {

@@ -70,6 +70,7 @@ export default defineConfig({
           pair: resolve('src/renderer/pair.html'),
           remote: resolve('src/renderer/remote.html'),
           'stage-display': resolve('src/renderer/stage-display.html'),
+          announce: resolve('src/renderer/announce.html'),
         },
       },
     },

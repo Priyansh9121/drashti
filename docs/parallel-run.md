@@ -40,7 +40,7 @@ Drashti's installers are made automatically each time a new version is ready, on
 
 1. Run the `.exe` installer. Windows says "Windows protected your PC", because the build is not signed yet. Click **More info**, then **Run anyway**.
 2. It installs for the current user, with no administrator password, and Drashti appears in the Start menu.
-3. Section 6 of `docs/windows-checks.md` has checks for this install; do them now and write down what you see (the rest of that file comes in section 9 of this guide).
+3. Section 6 of `docs/windows-checks.md` has checks for this install; do them now and write down what you see (the rest of that file comes in section 10 of this guide).
 
 When Drashti starts the first time, its library holds two sample presentations. Your own library comes in the next step.
 
@@ -112,7 +112,7 @@ Replay last week's sabha from its imported playlist, from start to end, as the o
 4. **Shift+→** jumps to the start of the next item; **Shift+←** goes back to the start of the previous one.
 5. Pictures and videos in the playlist go up as the background; songs and sounds play through the mixer.
 6. Under the live picture, **Next** shows what comes next.
-7. Try the other controls a sabha uses: **Black-out** (B), the clear buttons along the bottom (F1 to F7; each is lit while its layer is on the screens), a **timer** ("Sabha starts in 5:00"), a **message** (for example "Car {plate} please move"), a **prop** (the mandir's logo), and a **stage message** if there is a stage display.
+7. Try the other controls a sabha uses: **Black-out** (B), the clear buttons along the bottom (F1 to F8; each is lit while its layer is on the screens), a **timer** ("Sabha starts in 5:00"), a **message** (for example "Car {plate} please move"), a **prop** (the mandir's logo), and a **stage message** if there is a stage display.
 8. Compare with ProPresenter as you go. Things to look at:
    - Do the words look the same: size, font, line breaks, Gujarati and Hindi letters?
    - Are the backgrounds and videos the same, and do they start and loop the same way?
@@ -175,7 +175,52 @@ There is no key for going live or ending: always the buttons, and always a quest
 
 ---
 
-## 7. Falling back to ProPresenter
+## 7. Phones and tablets on the Wi-Fi
+
+Drashti can take a phone as a remote, a tablet as a stage screen, and announcements sent from phones. It is off until you turn it on, and only phones you pair (or the printed poster's link) get in. Try it on one of these evenings with two or three phones.
+
+**Turning it on (once on each computer):**
+
+1. Press **Phones** in the header, then turn on **Let paired phones and tablets connect**.
+2. The first time, the computer asks about the network:
+   - **Mac:** "Do you want the application Drashti to accept incoming network connections?" Press **Allow**.
+   - **Windows:** Windows Security asks about Drashti. Tick **Private networks** only, then **Allow**. Check that Windows treats the mandir's Wi-Fi as private: Settings, **Network & internet**, the Wi-Fi's properties, **Private network**.
+3. The panel shows the address phones open, such as `http://192.168.1.20:8740`. While the network is on, the top of the window always says **Network on**, with how many devices are connected.
+
+**A phone as a remote:**
+
+1. The phone joins the **same Wi-Fi** as this computer.
+2. In **Phones**, type a name (for example "Remote: Priyansh's phone") and press **Pair a Remote device**. A QR code and a six-digit code appear for two minutes.
+3. On the phone, scan the QR code with the camera and open the link, or open the address in the browser and type the code.
+4. The remote opens: **Next** and **Back** at the bottom, the slides to tap, Clear, Black-out, Logo, timers and messages. The top says **Connected**. A tap does what the same button does in Drashti, and Simple Mode's limits apply to it too.
+
+**A tablet as a stage screen:** the same, with **Pair a Stage device**. The tablet shows what the stage screens show. Press **Full screen** on it, and set the tablet never to lock while it is on the stage.
+
+**The announcements poster:**
+
+1. In **Phones**, press **Make a poster link**, then **Print the poster**, and put it up where people can see it. The link is shown only then, so print it before closing Drashti.
+2. Anyone on the Wi-Fi can scan it and send an announcement: the words, who it is from, and how long to show it.
+3. **Announcements** at the top of Drashti says how many are waiting. Open it, and for each one:
+   - **Approve** puts it **In the ticker**, scrolling along the bottom of the hall's screens (not on the stream), or **As a message**. It comes off by itself when its time is up, or press **Take off**.
+   - **Edit** fixes a typo first.
+   - **Reject** keeps it off the screens.
+4. Only Pro Mode approves announcements. In Simple Mode the top says how many are waiting: ask the coordinator.
+5. **Make a new one** stops the old poster's link, for example if a photo of the poster was shared somewhere it should not be.
+
+**When a phone cannot connect:**
+
+- Is the phone on the **same Wi-Fi** as this computer, not a guest network? Turn its mobile data off and try again.
+- Does the top of Drashti say **Network on**? If the Phones panel says the port is in use by another program, quit that program, or choose another port (every phone then needs the new address).
+- **Windows:** if Private networks was not ticked, open Windows Security, **Firewall & network protection**, **Allow an app through firewall**, find Drashti and tick **Private**.
+- **Mac:** if Allow was not pressed, open System Settings, **Network**, **Firewall**, **Options**, and set Drashti to allow incoming connections.
+- Try the number address instead of the name ending `.local`, or the other way round.
+- If the Wi-Fi drops for a moment, do nothing: the remote says **Connecting…** and comes back by itself.
+
+**When a phone is lost** (or someone leaves the seva): in **Phones**, press **Remove** beside it. It is cut off at once, even in the middle of a sabha. To use it again, pair it with a new code.
+
+---
+
+## 8. Falling back to ProPresenter
 
 A real sabha always has a named fallback operator who knows how to switch back. Practise it on these evenings until it takes **under a minute**:
 
@@ -187,7 +232,7 @@ The plan's order for real use (PLAN.md, section 5.1) is: a smaller weekday or Ba
 
 ---
 
-## 8. After a problem: save diagnostics
+## 9. After a problem: save diagnostics
 
 If anything goes wrong (a screen went black, something froze, Drashti closed by itself), as soon as you can:
 
@@ -201,7 +246,7 @@ If Drashti closed by itself, start it again: it puts back what was on the screen
 
 ---
 
-## 9. The checks to run on each computer
+## 10. The checks to run on each computer
 
 Once per computer, during these evenings:
 
@@ -245,6 +290,7 @@ On the Mac, **Cmd** is the ⌘ key; on Windows, use **Ctrl** instead. These keys
 | **F5**                                         | Clear messages                                                                                   |
 | **F6**                                         | Clear the sound                                                                                  |
 | **F7**                                         | Clear masks                                                                                      |
+| **F8**                                         | Clear the ticker (announcements scrolling along the bottom)                                      |
 | **Cmd+F** / **Ctrl+F**                         | Search the library                                                                               |
 | **Delete** or **Backspace** (in a list)        | Remove the marked presentations, playlists or items (asks first for presentations and playlists) |
 | **Cmd+Z** / **Ctrl+Z**                         | Undo the last removal, words edit or theme (in Simple Mode: put back what Clear all took down)   |

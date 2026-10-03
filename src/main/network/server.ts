@@ -154,6 +154,7 @@ const ROUTES: Route[] = [
   })),
   route('POST', '/api/v1/messages/:id/hide', 'message.hide', (_b, p) => ({ templateId: p['id'] })),
   route('POST', '/api/v1/announcements', 'announce', (b) => b),
+  route('GET', '/api/v1/announcements/:id', 'announcement', (_b, p) => ({ id: p['id'] })),
 ];
 
 /** Every request the API takes, as "METHOD /path" (docs/api.md documents each; a test checks). */
@@ -507,7 +508,7 @@ export class NetworkServer {
       }
       const body = req.method === 'POST' ? await readJson(req) : {};
       const args = r.args ? r.args(body, params) : {};
-      const answer = await this.host.request({ deviceId: device.id, op: r.op, args });
+      const answer = await this.host.request({ deviceId: device.id, op: r.op, args, address });
       this.json(res, answer.status, answer.body);
     } catch (error) {
       if (error instanceof HttpError) this.json(res, error.status, { ok: false, message: error.message });

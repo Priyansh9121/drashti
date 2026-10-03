@@ -14,6 +14,8 @@ export interface RecoveryNotice {
   audio?: boolean;
   props?: number;
   messages?: number;
+  /** Announcements in the ticker. */
+  ticker?: number;
   stageMessage?: boolean;
   /** Timers, running or paused. */
   timers?: number;
@@ -35,6 +37,7 @@ export function recoveryText(notice: RecoveryNotice): string {
   };
   count(notice.props, 'a prop', 'props');
   count(notice.messages, 'a message', 'messages');
+  if (notice.ticker && notice.ticker > 0) parts.push('the ticker');
   if (notice.stageMessage) parts.push('the stage message');
   count(notice.timers, 'a timer', 'timers');
   if (notice.logo) parts.push('the logo');

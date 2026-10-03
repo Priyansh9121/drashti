@@ -156,6 +156,8 @@ async function perform(action: OperatorAction, ui: { openScreens: () => void }):
       return dispatch({ type: 'clearLayer', layer: 'audio' });
     case 'clearMasks':
       return dispatch({ type: 'clearLayer', layer: 'masks' });
+    case 'clearTicker':
+      return dispatch({ type: 'clearLayer', layer: 'ticker' });
     case 'toggleBlackout':
       return dispatch({ type: 'toggleBlackout' });
     case 'toggleLogo':

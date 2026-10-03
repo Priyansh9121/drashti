@@ -37,6 +37,8 @@ export const DEVICE_OPS = {
   preview: ['remote'],
   /** Send an announcement for the operator to approve. */
   announce: ['announcements'],
+  /** What became of an announcement this device sent. */
+  announcement: ['announcements'],
 } as const satisfies Record<string, readonly DeviceKind[]>;
 
 export type DeviceOp = keyof typeof DEVICE_OPS;
@@ -74,6 +76,8 @@ export interface DeviceRequest {
   deviceId: string;
   op: DeviceOp;
   args: unknown;
+  /** The address it came from (for the limit on announcements waiting from one phone; never logged). */
+  address: string;
 }
 
 /** The main process's answer: an HTTP status and a JSON body. */

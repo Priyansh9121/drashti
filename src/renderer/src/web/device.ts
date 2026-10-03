@@ -65,12 +65,17 @@ export function toPairing(): void {
 
 export type ApiAnswer<T> = ({ ok: true } & T) | { ok: false; message: string; status: number };
 
-/** A request to Drashti with this device's token. A token Drashti no longer knows goes back to pairing. */
+/**
+ * A request to Drashti with this device's token. A token Drashti no longer
+ * knows goes back to pairing; a token given here (the announcements poster's)
+ * leaves the pairing alone, and the caller deals with a 401.
+ */
 export async function api<T = Record<string, unknown>>(
   path: string,
-  init: { method?: 'GET' | 'POST'; body?: unknown } = {},
+  init: { method?: 'GET' | 'POST'; body?: unknown; token?: string } = {},
 ): Promise<ApiAnswer<T>> {
-  const token = current()?.token;
+  const own = init.token === undefined;
+  const token = init.token ?? current()?.token;
   let response: Response;
   try {
     response = await fetch(path, {
@@ -95,7 +100,7 @@ export async function api<T = Record<string, unknown>>(
   } catch {
     // An answer without JSON.
   }
-  if (response.status === 401 && token && path !== '/api/v1/pair') toPairing();
+  if (response.status === 401 && own && token && path !== '/api/v1/pair') toPairing();
   if (!response.ok || body['ok'] !== true)
     return {
       ok: false,

@@ -10,6 +10,8 @@ import type {
   MessageItem,
   PlaylistCursor,
   PropItem,
+  TickerItem,
+  TickerLayer,
   UpNext,
 } from '../../shared/engine/state';
 
@@ -55,6 +57,12 @@ export type EngineAction =
   | { type: 'prop/hide'; propId: string }
   | { type: 'message/show'; message: MessageItem }
   | { type: 'message/hide'; messageId: string }
+  /** An announcement joins the ticker (or its words change): it starts again from the right at `at`. */
+  | { type: 'ticker/show'; item: TickerItem; at: number }
+  /** An announcement leaves the ticker: the rest start again from the right at `at`. */
+  | { type: 'ticker/hide'; itemId: string; at: number }
+  /** Restart recovery: the ticker as it was, carrying on in step. */
+  | { type: 'ticker/set'; ticker: TickerLayer }
   | { type: 'mask/set'; mask: MaskLayer }
   /** Restart recovery: the count as it was, with the time it had left. */
   | { type: 'advance/set'; autoAdvance: { startedAt: number; durationMs: number } | null };

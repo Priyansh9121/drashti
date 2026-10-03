@@ -1,11 +1,12 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { dropFiles, launchApp, operatorPage, operatorReady, QUIET } from './helpers';
+import { device, networkOn, NETWORK_ENV, pairByQr, pairingCode, TABLET } from './devices';
+import { dropFiles, launchApp, operatorPage, operatorReady, outputPage, QUIET, setUpScreen } from './helpers';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 import { freePort, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
 
@@ -29,11 +30,17 @@ test.skip(QUIET, 'Screenshots need real windows: take them on CI (or with DRASHT
 
 const folder = join(__dirname, '..', '..', 'docs', 'screenshots');
 
-async function shot(page: Page, name: string) {
+/** A picture of the page; `hide` covers parts that must not be kept (a pairing code and its QR code). */
+async function shot(page: Page, name: string, hide: Locator[] = []) {
   mkdirSync(folder, { recursive: true });
   // Let thumbnails and still frames settle.
   await page.waitForTimeout(700);
-  await page.screenshot({ path: join(folder, `${name}.png`), scale: 'css' });
+  await page.screenshot({
+    path: join(folder, `${name}.png`),
+    scale: 'css',
+    mask: hide,
+    maskColor: '#2a2f3a',
+  });
 }
 
 /** The placeholder sabha running: the kirtan's verse live, a message on the screens and a timer going. */
@@ -367,5 +374,84 @@ test('converting media: the import report, then the media list while converting 
   await shot(win, 'convert-media-list');
   await expect(win.getByTestId('convert-bar')).toBeHidden({ timeout: 150_000 });
   await shot(win, 'convert-media-list-done');
+  await app.close();
+});
+
+test('the local network: the Phones panel, announcements, the ticker, and the pages on a phone and a tablet', async () => {
+  test.setTimeout(240_000);
+  const { app } = await launchApp({ ...NETWORK_ENV, DRASHTI_WINDOWED_OUTPUTS: '1' });
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await running(win);
+  await setUpScreen(win);
+  const output = await outputPage(app);
+  const { base } = await networkOn(win);
+  const phone = await device('webkit');
+  const tablet = await device('webkit', TABLET);
+  const stage = await device('webkit', TABLET);
+  const sender = await device('webkit');
+  const fresh = await device('webkit');
+  try {
+    await pairByQr(phone.page, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
+    await pairByQr(tablet.page, base, await pairingCode(win, 'remote', 'Placeholder tablet'), '/remote');
+    await pairByQr(stage.page, base, await pairingCode(win, 'stage', 'Placeholder stage tablet'), '/stage');
+    const key = await win.evaluate(async () => {
+      const r = await (globalThis as PageGlobals).drashti.network.makePoster();
+      return r.ok && r.status.poster ? (r.status.poster.url.split('#k=')[1] ?? '') : '';
+    });
+    await sender.page.goto(`${base}/announce#k=${key}`);
+    const send = async (text: string) => {
+      await sender.page.getByTestId('announce-text').fill(text);
+      await sender.page.getByTestId('announce-from').fill('Placeholder name');
+      await sender.page.getByTestId('announce-send').click();
+      await expect(sender.page.getByRole('status')).toContainText('waiting for the operator');
+    };
+    await send('Placeholder: prasad is in the hall after arti');
+    await send('Placeholder: car 12 please move');
+    await send('Placeholder: lost and found is at the front desk');
+    // The first in the ticker; the others wait.
+    await win.evaluate(async () => {
+      const d = (globalThis as PageGlobals).drashti;
+      const [first] = (await d.announcements.list()).waiting;
+      if (first) await d.announcements.approve({ id: first.id, as: 'ticker' });
+    });
+    await expect(output.getByTestId('ticker')).toBeVisible();
+
+    // The Phones panel, offering a code (covered in the picture), with the devices paired.
+    await win.getByTestId('open-network').click();
+    const panel = win.getByTestId('network-panel');
+    await panel.getByTestId('pair-name').fill('Placeholder remote');
+    await panel.getByTestId('pair-remote').click();
+    await expect(panel.getByTestId('qr-code')).toBeVisible();
+    await shot(win, 'phones-panel', [panel.getByTestId('qr-code'), panel.getByTestId('pairing-code')]);
+    await win.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+
+    // The announcements queue.
+    await win.getByTestId('open-announcements').click();
+    await expect(win.getByTestId('announcement-waiting')).toHaveCount(2);
+    await shot(win, 'announcements-queue');
+    await win.keyboard.press('Escape');
+
+    // An audience screen with the ticker; the pages.
+    await shot(output, 'output-ticker');
+    await expect(phone.page.getByTestId('connection')).toHaveText('Connected');
+    await shot(phone.page, 'phone-remote');
+    await phone.page.getByTestId('remote-tab-playlist').click();
+    await shot(phone.page, 'phone-remote-playlist');
+    await expect(tablet.page.getByTestId('remote-items')).toBeVisible();
+    await shot(tablet.page, 'tablet-remote');
+    await expect(stage.page.getByTestId('stage-view')).toBeVisible();
+    await shot(stage.page, 'tablet-stage-display');
+    await sender.page.reload();
+    await expect(sender.page.getByTestId('announce-sent')).toHaveCount(3);
+    await shot(sender.page, 'phone-announce');
+    await fresh.page.goto(`${base}/pair`);
+    await expect(fresh.page.getByTestId('pair-code')).toBeVisible();
+    await shot(fresh.page, 'phone-pair');
+  } finally {
+    for (const d of [phone, tablet, stage, sender, fresh]) await d.close();
+  }
   await app.close();
 });

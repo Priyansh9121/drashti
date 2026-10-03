@@ -175,7 +175,7 @@ function Pairing({ status }: { status: NetworkStatus }) {
               <KindIcon size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-muted" />
               <span className="min-w-0">
                 <span className="block text-sm font-medium text-fg">
-                  Pair a {DEVICE_KIND_LABEL[kind]} device
+                  Pair {kind === 'announcements' ? 'an' : 'a'} {DEVICE_KIND_LABEL[kind]} device
                 </span>
                 <span className="block text-xs text-muted">{DEVICE_KIND_HELP[kind]}</span>
               </span>

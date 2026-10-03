@@ -41,6 +41,8 @@ import { openSetup } from '../setup/setup-store';
 import { StreamPanel } from '../stream/StreamPanel';
 import { NetworkPanel } from '../network/NetworkPanel';
 import { connectNetwork, useNetwork } from '../network/network-store';
+import { AnnouncementsPanel } from '../network/AnnouncementsPanel';
+import { connectAnnouncements, useAnnouncements } from '../network/announcements-store';
 import { StreamSettings } from '../stream/StreamSettings';
 import { connectStream, useStream } from '../stream/stream-store';
 
@@ -51,6 +53,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectScreens();
     connectStream();
     connectNetwork();
+    connectAnnouncements();
     watchLibrary();
     watchImports();
     watchPlaylists();
@@ -111,6 +114,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
   const [screensOpen, setScreensOpen] = useState(false);
   const streamOpen = useStream((s) => s.panelOpen);
   const networkOpen = useNetwork((s) => s.open);
+  const announcementsOpen = useAnnouncements((s) => s.open);
   const platform = info?.platform ?? 'darwin';
 
   const openScreens = useCallback(() => {
@@ -178,6 +182,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <ThemesPanel />
       {streamOpen && <StreamPanel />}
       {networkOpen && <NetworkPanel />}
+      {announcementsOpen && <AnnouncementsPanel />}
       <StreamSettings />
       {screensOpen && (
         <ScreensPanel
