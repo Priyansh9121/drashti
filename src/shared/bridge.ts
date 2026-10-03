@@ -39,6 +39,7 @@ import type {
   StreamStatus,
 } from './stream';
 import type { SaveStillResult } from './media';
+import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
 import type {
   ItemOrder,
   MediaSummary,
@@ -319,6 +320,18 @@ export interface DrashtiBridge {
       onContext(listener: (context: ProgramContext) => void): () => void;
       reportInputs(inputs: ProgramInputs): Promise<null>;
     };
+  };
+  /** The local network: phones and tablets on the mandir's Wi-Fi (operator window only). */
+  network: {
+    status(): Promise<NetworkStatus>;
+    onChanged(listener: (status: NetworkStatus) => void): () => void;
+    setOn(on: boolean): Promise<NetworkResult>;
+    setPort(port: number): Promise<NetworkResult>;
+    startPairing(kind: DeviceKind, name?: string): Promise<NetworkResult>;
+    cancelPairing(): Promise<NetworkResult>;
+    renameDevice(deviceId: string, name: string): Promise<NetworkResult>;
+    revokeDevice(deviceId: string): Promise<NetworkResult>;
+    makePoster(): Promise<NetworkResult>;
   };
   /** The setup wizard (operator window only; never in Simple Mode). */
   setup: {

@@ -16,6 +16,7 @@ import { up as templates } from './migrations/014-templates';
 import { up as listedKirtans } from './migrations/015-listed-kirtans';
 import { up as streaming } from './migrations/016-streaming';
 import { up as conversions } from './migrations/017-conversions';
+import { up as network } from './migrations/018-network';
 
 export interface Migration {
   version: number;
@@ -44,6 +45,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 15, name: 'kirtan details on the library list', up: listedKirtans },
   { version: 16, name: 'streaming', up: streaming },
   { version: 17, name: 'converting media', up: conversions },
+  { version: 18, name: 'the local network', up: network },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

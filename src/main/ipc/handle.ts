@@ -22,6 +22,11 @@ export function lockChannels(
   lock = { locked, refusals };
 }
 
+/** Whether a request on this channel would be refused now (Simple Mode): the network asks the same table. */
+export function refusedNow(channel: InvokeChannel): boolean {
+  return lock !== null && lock.locked() && lock.refusals.has(channel);
+}
+
 function note(channel: string, started: number): void {
   const ms = performance.now() - started;
   if (ms > (handlerTimes.get(channel) ?? 0)) handlerTimes.set(channel, ms);

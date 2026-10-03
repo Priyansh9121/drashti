@@ -39,6 +39,7 @@ import type {
   StreamStatus,
 } from './stream';
 import type { SaveStillResult } from './media';
+import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
 import type {
   ItemOrder,
   MediaSummary,
@@ -299,6 +300,23 @@ export const IPC = {
     /** main -> the stream's page: its context changed. */
     context: 'stream:context',
   },
+  network: {
+    /** The local network's state: on or off, its addresses, the paired devices (operator window only). */
+    status: 'network:status',
+    /** Pro Mode only, as are the rest that change it. */
+    setOn: 'network:set-on',
+    setPort: 'network:set-port',
+    /** Offer a one-time code (and QR code) to pair a device of this kind. */
+    startPairing: 'network:start-pairing',
+    cancelPairing: 'network:cancel-pairing',
+    renameDevice: 'network:rename-device',
+    /** Remove a device: cut off at once. */
+    revokeDevice: 'network:revoke-device',
+    /** A new announcements poster link (the old one stops working). */
+    makePoster: 'network:make-poster',
+    /** main -> operator: the network's state changed. */
+    changed: 'network:changed',
+  },
   output: {
     /** An output window asks which screen it is. */
     getContext: 'output:get-context',
@@ -484,6 +502,14 @@ export interface InvokeContract {
   [IPC.stream.dismissResume]: { args: []; result: null };
   [IPC.stream.pageContext]: { args: []; result: ProgramContext | null };
   [IPC.stream.pageInputs]: { args: [inputs: ProgramInputs]; result: null };
+  [IPC.network.status]: { args: []; result: NetworkStatus };
+  [IPC.network.setOn]: { args: [on: boolean]; result: NetworkResult };
+  [IPC.network.setPort]: { args: [port: number]; result: NetworkResult };
+  [IPC.network.startPairing]: { args: [kind: DeviceKind, name?: string]; result: NetworkResult };
+  [IPC.network.cancelPairing]: { args: []; result: NetworkResult };
+  [IPC.network.renameDevice]: { args: [deviceId: string, name: string]; result: NetworkResult };
+  [IPC.network.revokeDevice]: { args: [deviceId: string]; result: NetworkResult };
+  [IPC.network.makePoster]: { args: []; result: NetworkResult };
 }
 
 /** main -> renderer event channels and their payloads. */
@@ -509,6 +535,7 @@ export interface EventContract {
   [IPC.media.conversionsChanged]: ConversionJob[];
   [IPC.stream.port]: { role: 'preview' | 'encoder' };
   [IPC.stream.context]: ProgramContext;
+  [IPC.network.changed]: NetworkStatus;
 }
 
 export type InvokeChannel = keyof InvokeContract;

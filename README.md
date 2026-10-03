@@ -249,6 +249,16 @@ How frames reach FFmpeg was chosen by measuring on the dev Mac (M2, 1080p30, fak
 
 **FFmpeg** 9.0.2 is bundled as a separate program, from a pinned build per platform, checked against its SHA-256 when downloaded (`scripts/fetch-ffmpeg.mjs`), never committed. These are GPL version 3 builds; Drashti only runs FFmpeg as its own process. `LICENSES/ffmpeg/README.md` says what that means and where the source is. CI fetches it on macOS and Windows and checks that the built and each packaged app finds and runs its own copy (`scripts/check-ffmpeg.mjs`).
 
+## The local network
+
+Phones, tablets and browsers on the mandir's Wi-Fi can run the show (**Remote**), show what a stage screen shows (**Stage**), or send announcements (**Announcements**), once paired with Drashti. The network is **off** until the operator turns it on in Pro Mode, and remembered over a restart.
+
+**How it works.** Drashti listens for HTTP and WebSocket on one port (8740 unless the operator picks another, from 1024 to 65535). If the port is taken, it says so and stays off rather than move to another port, because paired phones remember the address. The server runs in a utility process of its own (`src/main/network/`), like the import and stream workers: the main process, which carries every slide change, hands it each engine message once, and the worker sends it to every device; a device's request comes back to the main process, which checks and answers it. A device on the **state feed** (`/api/v1/feed`) gets the whole engine state, then each revisioned patch, as the windows do; one that drops out gets the whole state again when it reconnects. Output nodes (Session 13) will follow the same feed. Devices estimate how far their clock is from the engine's over the same connection (the shortest of several round trips), so timers and the clock agree with the screens.
+
+**Where the server runs was chosen by measuring** (the performance check with 10 Remote devices connected, alternating, on the dev Mac, 3 October 2026): slide changes reached the screen at the same speed with the server in the main process or in its own (medians 4 to 8 ms, 9 in 10 within 13 to 16 ms, worst 16 to 19 ms either way), and changes reached the devices in about 1 ms (9 in 10 within 2 ms). Adding each device fetching the largest page files every second made no difference either. With no difference at 10 devices, it runs in its own process: a stalled or crashing server, or a flood of requests, cannot hold up or crash the process that keeps the screens up.
+
+**Firewalls.** The first time the network is turned on, macOS (if its firewall is on) asks whether "Drashti" (or "Drashti Helper") may accept incoming network connections: choose **Allow**. Windows asks whether to allow Drashti on networks: tick **Private networks** only, and check that the mandir's Wi-Fi is set as a private network in Windows (Settings, Network & internet, the Wi-Fi's properties). Tests listen on this computer only (`DRASHTI_TEST_NETWORK_LOCAL=1`), so they never ask.
+
 ## What keeps the screens up (watchdog)
 
 - Every output window is its own renderer process with its own copy of the show state. The operator window crashing, hanging or reloading cannot change what the screens show: they keep their last frame.

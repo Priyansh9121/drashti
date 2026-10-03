@@ -1,0 +1,180 @@
+import type { ElectronApplication, Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { request } from 'node:http';
+import { connect } from 'node:net';
+import WebSocket from 'ws';
+import type { NetworkStatus, ToDevice } from '../../src/shared/network';
+import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { freePort } from './stream-helpers';
+
+/*
+ * The local network, end to end: the app's real server (on this computer
+ * only, so no firewall asks), paired through the operator window's code.
+ * Codes and tokens are made at run time and never printed.
+ */
+
+const NETWORK = { DRASHTI_TEST_NETWORK_LOCAL: '1' };
+
+const net = (win: Page) => ({
+  status: () => win.evaluate(() => (globalThis as PageGlobals).drashti.network.status()),
+  setPort: (port: number) =>
+    win.evaluate((p) => (globalThis as PageGlobals).drashti.network.setPort(p), port),
+  setOn: (on: boolean) => win.evaluate((o) => (globalThis as PageGlobals).drashti.network.setOn(o), on),
+  pairing: (kind: 'remote' | 'stage' | 'announcements', name: string) =>
+    win.evaluate(
+      async ({ kind, name }) => {
+        const r = await (globalThis as PageGlobals).drashti.network.startPairing(kind, name);
+        if (!r.ok || !r.status.pairing) throw new Error(r.ok ? 'no code' : r.message);
+        return r.status.pairing.code;
+      },
+      { kind, name },
+    ),
+  revoke: (id: string) =>
+    win.evaluate((d) => (globalThis as PageGlobals).drashti.network.revokeDevice(d), id),
+});
+
+/** Nothing answers on this port. */
+const refused = (port: number) =>
+  new Promise<boolean>((resolve) => {
+    const socket = connect(port, '127.0.0.1');
+    socket.once('connect', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.once('error', () => resolve(true));
+  });
+
+function call(port: number, path: string, options: { method?: string; token?: string; body?: unknown } = {}) {
+  return new Promise<{ status: number; json: Record<string, unknown> }>((resolve, reject) => {
+    const body = options.body === undefined ? undefined : JSON.stringify(options.body);
+    const req = request(
+      {
+        host: '127.0.0.1',
+        port,
+        path,
+        method: options.method ?? 'GET',
+        headers: {
+          ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+          ...(body ? { 'Content-Type': 'application/json' } : {}),
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8');
+          let json: Record<string, unknown> = {};
+          try {
+            json = JSON.parse(text) as Record<string, unknown>;
+          } catch {
+            // Not JSON (a page).
+          }
+          resolve({ status: res.statusCode ?? 0, json });
+        });
+      },
+    );
+    req.on('error', reject);
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
+async function workerRunning(app: ElectronApplication): Promise<boolean> {
+  return app.evaluate(({ app: a }) =>
+    a.getAppMetrics().some((m) => m.type === 'Utility' && m.name === 'Drashti network'),
+  );
+}
+
+test('off by default; on, a code pairs a device once, the feed follows the show, removing it cuts it off; off again, nothing listens', async () => {
+  test.setTimeout(90_000);
+  const port = await freePort();
+  const { app } = await launchApp(NETWORK);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const n = net(win);
+
+  // Off by default: no server process, nothing on the port.
+  expect(await n.status()).toMatchObject({ on: false, state: 'off' });
+  expect(await n.setPort(port)).toMatchObject({ ok: true });
+  expect(await refused(port)).toBe(true);
+  expect(await workerRunning(app)).toBe(false);
+
+  expect(await n.setOn(true)).toMatchObject({ ok: true });
+  await expect.poll(async () => (await n.status()).state).toBe('listening');
+  expect(await workerRunning(app)).toBe(true);
+  expect(await refused(port)).toBe(false);
+  expect((await call(port, '/api/v1/me')).status).toBe(401);
+
+  // A code from the operator window pairs one device, once.
+  const code = await n.pairing('remote', 'Placeholder phone');
+  const paired = await call(port, '/api/v1/pair', { method: 'POST', body: { code } });
+  expect(paired.status).toBe(200);
+  const token = String(paired.json['token']);
+  expect((await call(port, '/api/v1/pair', { method: 'POST', body: { code } })).status).toBe(403);
+  expect((await call(port, '/api/v1/me', { token })).json).toMatchObject({
+    device: { name: 'Placeholder phone', kind: 'remote' },
+  });
+  const status: NetworkStatus = await n.status();
+  expect(status.devices).toEqual([expect.objectContaining({ name: 'Placeholder phone', kind: 'remote' })]);
+  expect(JSON.stringify(status.devices)).not.toContain(token);
+
+  // The feed: the whole state, then each change the show makes.
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/api/v1/feed`);
+  const messages: ToDevice[] = [];
+  ws.on('message', (data: Buffer) => messages.push(JSON.parse(data.toString('utf8')) as ToDevice));
+  await new Promise<void>((resolve) => ws.once('open', () => resolve()));
+  ws.send(JSON.stringify({ type: 'hello', token }));
+  await expect
+    .poll(() => messages.some((m) => m.type === 'engine' && m.message.kind === 'snapshot'), {
+      message: `the feed said ${JSON.stringify(messages.map((m) => m.type))}`,
+    })
+    .toBe(true);
+  await expect.poll(async () => (await n.status()).connected).toBe(1);
+  const next = await call(port, '/api/v1/blackout', { method: 'POST', token, body: { on: true } });
+  expect(next.json).toMatchObject({ ok: true, changed: true });
+  await expect
+    .poll(() =>
+      messages.some(
+        (m) =>
+          m.type === 'engine' &&
+          m.message.kind === 'patch' &&
+          JSON.stringify(m.message.ops).includes('blackout'),
+      ),
+    )
+    .toBe(true);
+  expect(
+    await win.evaluate(
+      async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.blackout,
+    ),
+  ).toBe(true);
+
+  // Removing the device cuts its feed at once, and its token stops working.
+  const closed = new Promise<number>((resolve) => ws.once('close', (c) => resolve(c)));
+  await n.revoke(status.devices[0]?.id ?? '');
+  expect(await closed).toBe(4000);
+  expect(messages.at(-1)).toEqual({ type: 'bye', reason: 'revoked' });
+  expect((await call(port, '/api/v1/me', { token })).status).toBe(401);
+
+  // Off: nothing listens, and the server's process is gone.
+  expect(await n.setOn(false)).toMatchObject({ ok: true });
+  await expect.poll(() => refused(port)).toBe(true);
+  await expect.poll(() => workerRunning(app)).toBe(false);
+  await app.close();
+});
+
+test('only Pro Mode turns the network on or off or pairs devices', async () => {
+  const { app } = await launchApp(NETWORK);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+  const n = net(win);
+  expect(await n.setOn(true)).toMatchObject({ ok: false });
+  expect((await n.status()).on).toBe(false);
+  expect(
+    await win.evaluate(() =>
+      (globalThis as PageGlobals).drashti.network.startPairing('remote', 'Placeholder'),
+    ),
+  ).toMatchObject({ ok: false });
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro'));
+  await app.close();
+});
