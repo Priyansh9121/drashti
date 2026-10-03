@@ -13,6 +13,10 @@ on:
         type: choice
         options: [both, windows, macos]
         default: both
+      devices:
+        description: Paired Remote devices following the state feed during the check (0 for none)
+        type: number
+        default: 0
 
 permissions:
   contents: read
@@ -34,4 +38,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Performance self-test (headless)
+        env:
+          # The local network on (this computer only) with this many devices on the feed (README, "Performance check").
+          DRASHTI_PERF_DEVICES: ${{ inputs.devices }}
         run: pnpm test:perf
