@@ -184,8 +184,6 @@ export interface StreamStatus {
   };
   /** The encoder in use: e.g. "VideoToolbox (hardware)". */
   encoder: string | null;
-  /** Saving stream keys works here (the system's secure storage). */
-  keyStorage: { available: boolean; message: string | null };
   /** The bundled FFmpeg was found. */
   ffmpeg: { available: boolean; version: string | null };
   /**
@@ -209,6 +207,10 @@ export const STREAM_PAGE = 'stream';
 export interface StreamProfiles {
   profiles: StreamProfile[];
   activeId: string | null;
+  /**
+   * Saving stream keys works here (the system's secure storage). Asked only with the profiles, when
+   * the stream is turned to: on a Mac it reads the keychain, which can ask the user first.
+   */
   keyStorage: { available: boolean; message: string | null };
 }
 

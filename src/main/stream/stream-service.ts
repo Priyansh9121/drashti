@@ -155,6 +155,9 @@ export class StreamService {
     this.layout = saved.success ? saved.data : 'camera';
     const folder = z.string().safeParse(deps.settings.get(FOLDER_SETTING));
     this.recording.folder = folder.success ? folder.data : null;
+    // The profile in use, made now if there is none: asking for the status then never writes (it is
+    // asked for as the operator window opens, when an import may be writing).
+    this.activeProfile();
   }
 
   // ---- profiles and keys ---------------------------------------------------------------
@@ -481,7 +484,6 @@ export class StreamService {
       live: { ...this.live },
       recording: { ...this.recording, file: this.recording.file ? basename(this.recording.file) : null },
       encoder: this.workerStatus?.encoder?.label ?? this.encoder,
-      keyStorage: this.deps.keys.status(),
       ffmpeg: { available: this.deps.ffmpegPath() !== null, version: FFMPEG_VERSION },
       resume: this.resume,
       profilesVersion: this.profilesVersion,
