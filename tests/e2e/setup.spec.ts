@@ -37,6 +37,7 @@ test('on the first start: identify, what each output shows and its languages, a 
     DRASHTI_TEST_NO_WIZARD: '0',
     DRASHTI_WINDOWED_OUTPUTS: '1',
     DRASHTI_EXTRA_DISPLAYS: '1',
+    DRASHTI_TEST_FAKE_DEVICES: '1',
   });
   const win = await operatorPage(app);
   const wizard = win.getByTestId('setup-wizard');
@@ -83,6 +84,15 @@ test('on the first start: identify, what each output shows and its languages, a 
     .toBe('default');
   await wizard.getByTestId('setup-next').click();
 
+  // The stream's camera and sound input (Chromium's fake ones here); the key can wait.
+  await expect(wizard.getByTestId('setup-step')).toHaveText('Stream');
+  const camera = wizard.getByTestId('setup-stream-camera');
+  await expect(camera.locator('option')).not.toHaveCount(1);
+  await camera.selectOption({ index: 1 });
+  await wizard.getByTestId('setup-stream-sound').selectOption({ index: 1 });
+  await expectNoSeriousA11yIssues(win, 'the setup wizard, stream');
+  await wizard.getByTestId('setup-next').click();
+
   // Theme, then the summary.
   await expect(wizard.getByTestId('setup-step')).toHaveText('Theme');
   await wizard.getByTestId('setup-theme').first().getByRole('radio').check();
@@ -93,12 +103,21 @@ test('on the first start: identify, what each output shows and its languages, a 
   await expect(wizard.getByTestId('setup-summary')).toContainText(
     'Display 2: The stage view (performers), Gujarati',
   );
+  await expect(wizard.getByTestId('setup-summary')).toContainText('Stream: camera fake_device_0');
   await expectNoSeriousA11yIssues(win, 'the setup wizard, finish');
   await wizard.getByTestId('setup-finish').click();
   await expect(wizard.getByTestId('setup-done')).toContainText('A test slide is on 2 screens');
+  const streamInputs = await win.evaluate(async () => {
+    const { profiles, activeId } = await (globalThis as PageGlobals).drashti.stream.profiles();
+    const p = profiles.find((x) => x.id === activeId);
+    return [p?.camera?.label ?? null, p?.sound !== null];
+  });
+  expect(streamInputs).toEqual(['fake_device_0', true]);
+  // Setting up the stream's inputs brings its group into Screens (off screen, every language).
   expect(await groupsOf(win)).toEqual([
     { name: 'Audience', role: 'audience', languages: ['gu', 'translit'], screens: 1 },
     { name: 'Stage', role: 'stage', languages: ['gu'], screens: 1 },
+    { name: 'Stream', role: 'stream', languages: null, screens: 0 },
   ]);
 
   // A test slide on every screen, each in its own languages.
@@ -152,12 +171,13 @@ test('skipping every step, or closing, changes nothing; it opens again from the 
   await wizard.getByTestId('setup-next').click();
   // It starts from the setup as it is.
   await expect(wizard.getByTestId('setup-display').first().getByTestId('setup-use')).toHaveValue('audience');
-  for (const step of ['Screens', 'Sound', 'Theme']) {
+  for (const step of ['Screens', 'Sound', 'Stream', 'Theme']) {
     await expect(wizard.getByTestId('setup-step')).toHaveText(step);
     await wizard.getByTestId('setup-skip').click();
   }
   await expect(wizard.getByTestId('setup-summary')).toContainText('The screens stay as they are.');
   await expect(wizard.getByTestId('setup-summary')).toContainText('Sound: stays as it is');
+  await expect(wizard.getByTestId('setup-summary')).toContainText('Stream: stays as it is');
   await expect(wizard.getByTestId('setup-summary')).toContainText('Default theme: stays as it is');
   await wizard.getByTestId('setup-finish').click();
   await expect(wizard.getByTestId('setup-done')).toBeVisible();
@@ -190,7 +210,7 @@ test('never covers the operator’s display without the confirm step', async () 
   await expect(row).toContainText('The Drashti controls are here');
   await row.getByTestId('setup-use').selectOption('audience');
   await expect(row).toContainText('Finish asks before it does');
-  for (const step of ['Screens', 'Sound', 'Theme']) {
+  for (const step of ['Screens', 'Sound', 'Stream', 'Theme']) {
     await expect(wizard.getByTestId('setup-step')).toHaveText(step);
     await wizard.getByTestId('setup-next').click();
   }

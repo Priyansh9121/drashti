@@ -622,6 +622,10 @@ function start(): void {
     askMediaAccess: (kind) =>
       process.platform === 'darwin' ? systemPreferences.askForMediaAccess(kind) : Promise.resolve(true),
     fakeDevices,
+    titleMarks: (marks) => {
+      if (operatorWindow && !operatorWindow.isDestroyed())
+        operatorWindow.setTitle(marks ? `Drashti — ${marks}` : 'Drashti');
+    },
     ffmpegPath: () =>
       findFfmpeg({
         packaged: app.isPackaged,
@@ -1114,7 +1118,11 @@ function start(): void {
     if (fromOperator(e)) streaming.watchPreview(e.sender, on === true);
     return null;
   });
-  handle(IPC.stream.profiles, () => streaming.profilesView());
+  handle(IPC.stream.profiles, (e) => {
+    // The operator turned to the stream: its group (and languages) appear in Screens.
+    if (fromOperator(e) && mode === 'pro') streaming.ensureStreamGroup();
+    return streaming.profilesView();
+  });
   handle(IPC.stream.saveProfile, (e, id, input) =>
     fromOperator(e) ? streaming.saveProfile(id, input) : notOperator,
   );

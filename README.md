@@ -326,7 +326,7 @@ Imports run in a separate worker process (an Electron utility process, `src/main
 
 ## Screenshots
 
-With placeholder content only, from `tests/e2e/screenshots.spec.ts` (`pnpm build`, then `DRASHTI_SCREENSHOTS=1 pnpm exec playwright test tests/e2e/screenshots.spec.ts`):
+With placeholder content and generated media only, from `tests/e2e/screenshots.spec.ts` (`pnpm build`, then `DRASHTI_SCREENSHOTS=1 pnpm exec playwright test tests/e2e/screenshots.spec.ts`):
 
 - [The operator window at 1920 × 1080](docs/screenshots/operator-1920x1080.png) and [at 1280 × 720](docs/screenshots/operator-1280x720.png)
 - [Simple Mode at 1280 × 720](docs/screenshots/simple-mode-1280x720.png), and [after Clear all, with Put it back](docs/screenshots/simple-mode-put-it-back.png)
@@ -335,6 +335,7 @@ With placeholder content only, from `tests/e2e/screenshots.spec.ts` (`pnpm build
 - [The Kirtan dialog](docs/screenshots/kirtan-dialog.png), [Edit words by language, with a missing line](docs/screenshots/words-by-language.png), [Screens with each group's languages](docs/screenshots/screens-languages.png) and [a kirtan live, the preview in the first audience group's languages](docs/screenshots/operator-kirtan-languages.png)
 - [Templates](docs/screenshots/templates.png), [filling a slot](docs/screenshots/fill-slot.png) and [the setup wizard's screens step](docs/screenshots/setup-wizard.png)
 - [The component gallery](docs/screenshots/component-gallery.png)
+- The stream, with Chromium's fake camera (and FFmpeg on the same computer in YouTube's place): [the Stream panel on air and recording](docs/screenshots/stream-panel.png), [Stream settings](docs/screenshots/stream-settings.png), the Program [with the camera and the words](docs/screenshots/stream-program-camera.png) and [as the slides](docs/screenshots/stream-program-slides.png), and [Simple Mode on air](docs/screenshots/simple-mode-on-air.png)
 
 ![The operator window](docs/screenshots/operator-1920x1080.png)
 

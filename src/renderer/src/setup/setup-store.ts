@@ -3,6 +3,7 @@ import type { AudioDevice } from '../../../shared/audio';
 import type { Lang } from '../../../shared/model';
 import type { DisplayInfo } from '../../../shared/screens';
 import type { OutputUse, SetupPlan } from '../../../shared/setup';
+import type { DeviceChoice } from '../../../shared/stream';
 import type { Theme } from '../../../shared/themes';
 import { useScreens } from '../screens/screens-store';
 
@@ -13,7 +14,7 @@ import { useScreens } from '../screens/screens-store';
  * things as they are.
  */
 
-export const STEPS = ['Welcome', 'Screens', 'Sound', 'Theme', 'Finish'] as const;
+export const STEPS = ['Welcome', 'Screens', 'Sound', 'Stream', 'Theme', 'Finish'] as const;
 
 export interface OutputChoice {
   use: OutputUse;
@@ -33,6 +34,8 @@ interface SetupView {
   /** The sound output chosen (null: the system default), or 'skip'. */
   sound: AudioDevice | null | 'skip';
   themes: Theme[];
+  /** The stream's camera and sound input (for the profile in use), or 'skip' to keep them. */
+  stream: { camera: DeviceChoice | null; sound: DeviceChoice | null } | 'skip';
   /** The default theme chosen, or null to keep it. */
   themeId: string | null;
   defaultThemeId: string | null;
@@ -53,6 +56,7 @@ const closed: SetupView = {
   outputsSkipped: false,
   devices: [],
   sound: 'skip',
+  stream: 'skip',
   themes: [],
   themeId: null,
   defaultThemeId: null,
@@ -111,6 +115,7 @@ export function skipStep(): void {
   const { step } = useSetup.getState();
   if (STEPS[step] === 'Screens') useSetup.setState({ outputsSkipped: true });
   if (STEPS[step] === 'Sound') useSetup.setState({ sound: 'skip' });
+  if (STEPS[step] === 'Stream') useSetup.setState({ stream: 'skip' });
   if (STEPS[step] === 'Theme') useSetup.setState({ themeId: null });
   goTo(step + 1);
 }
@@ -153,5 +158,22 @@ export async function finishSetup(coverOperator = false): Promise<void> {
     return;
   }
   useScreens.setState({ snapshot: result.snapshot });
+  // The stream's inputs go on the profile in use (its key can be added later, in Stream settings).
+  if (s.stream !== 'skip') {
+    const { profiles, activeId } = await window.drashti.stream.profiles();
+    const p = profiles.find((x) => x.id === activeId);
+    if (p) {
+      const saved = await window.drashti.stream.saveProfile(p.id, {
+        name: p.name,
+        url: p.url,
+        preset: p.preset,
+        camera: s.stream.camera,
+        sound: s.stream.sound,
+        soundDelayMs: p.soundDelayMs,
+        mixOwnSound: p.mixOwnSound,
+      });
+      if (!saved.ok) useSetup.setState({ problem: saved.message });
+    }
+  }
   useSetup.setState({ busy: false, finished: { tested: result.tested } });
 }

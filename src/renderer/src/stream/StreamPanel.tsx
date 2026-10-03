@@ -60,6 +60,9 @@ function LayoutSwitch({ layout }: { layout: StreamLayout }) {
   );
 }
 
+/** The level in words: above 0 dB the sound is clipped (too loud from the mixer). */
+const levelWords = (db: number) => (db <= -60 ? 'Silent' : db > 0 ? 'Too loud' : `${Math.round(db)} dB`);
+
 /** The stream's sound, from silence (-60 dB and below) to full (0 dB). */
 function LevelMeter({ db }: { db: number }) {
   const shown = Math.max(-60, Math.min(0, db));
@@ -74,15 +77,15 @@ function LevelMeter({ db }: { db: number }) {
         aria-valuemin={-60}
         aria-valuemax={0}
         aria-valuenow={Math.round(shown)}
-        aria-valuetext={db <= -60 ? 'Silent' : `${Math.round(db)} dB`}
+        aria-valuetext={levelWords(db)}
         data-testid="stream-level"
         data-db={Math.round(db)}
         className="relative h-2.5 flex-1 overflow-hidden rounded-full border border-line-strong bg-panel-3"
       >
         <div className={cx('h-full', tone)} style={{ width: `${fill}%` }} />
       </div>
-      <span className="w-14 text-right text-xs text-muted tabular-nums">
-        {db <= -60 ? 'Silent' : `${Math.round(db)} dB`}
+      <span className={cx('w-16 text-right text-xs tabular-nums', db > 0 ? 'text-danger-fg' : 'text-muted')}>
+        {levelWords(db)}
       </span>
     </div>
   );

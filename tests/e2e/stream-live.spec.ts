@@ -156,6 +156,14 @@ test('go live to the stand-in for YouTube: H.264 and AAC, a keyframe every 2 s; 
 
   await waitLive(win, userData, 'live', 30_000);
   await expect(win.getByTestId('on-air')).toHaveText('On air');
+  // The window's own title says so too.
+  const title = () =>
+    app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .find((w) => w.webContents.getURL().includes('index.html'))
+        ?.getTitle(),
+    );
+  await expect.poll(title).toBe('Drashti — ON AIR');
   await expect(panel.getByTestId('stream-health')).toContainText('Good');
   await expect(panel.getByTestId('stream-bitrate')).not.toHaveText('—', { timeout: 10_000 });
   await expect(panel.getByText(/Encoder: /u)).toBeVisible();
@@ -169,6 +177,7 @@ test('go live to the stand-in for YouTube: H.264 and AAC, a keyframe every 2 s; 
   await end.getByRole('button', { name: 'End the stream' }).click();
   await expect.poll(async () => live(await bridge(win).status())).toBe('off');
   await expect(win.getByTestId('on-air')).toHaveCount(0);
+  await expect.poll(title).toBe('Drashti');
   await app.close();
 
   // What the stand-in received.

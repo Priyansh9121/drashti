@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useEffect, useId } from 'react';
 import { describeDisplay } from '../../../shared/display-match';
 import { shortcutText } from '../../../shared/keymap';
 import { LANG_NAMES } from '../../../shared/themes';
@@ -7,12 +7,14 @@ import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
-import { Select } from '../ui/Field';
+import { Field, Select } from '../ui/Field';
 import { Monitor, ScanEye, Volume2 } from '../ui/icons';
 import { Kbd } from '../ui/Kbd';
 import { Notice } from '../ui/Notice';
 import { Loading } from '../ui/States';
 import { plural } from '../ui/text';
+import type { DeviceChoice } from '../../../shared/stream';
+import { useStream, watchProgram } from '../stream/stream-store';
 import type { OutputChoice } from './setup-store';
 import {
   chooseOutput,
@@ -24,6 +26,8 @@ import {
   STEPS,
   useSetup,
 } from './setup-store';
+
+const useStreamStatus = () => useStream((s) => s.status);
 
 const USE_NAMES = {
   audience: 'The audience picture',
@@ -192,6 +196,69 @@ function SoundStep() {
   );
 }
 
+/** The stream's camera and sound input: optional, and the key can wait. */
+function StreamStep() {
+  const stream = useSetup((s) => s.stream);
+  const status = useStreamStatus();
+  useEffect(() => watchProgram(), []);
+  const chosen = stream === 'skip' ? { camera: null, sound: null } : stream;
+  const set = (patch: Partial<{ camera: DeviceChoice | null; sound: DeviceChoice | null }>) => {
+    useSetup.setState({ stream: { ...chosen, ...patch } });
+  };
+  const pick = (
+    label: string,
+    testId: string,
+    devices: DeviceChoice[],
+    value: DeviceChoice | null,
+    none: string,
+    key: 'camera' | 'sound',
+  ) => (
+    <Field label={label} className="min-w-0 flex-1">
+      <Select
+        data-testid={testId}
+        value={value?.id ?? ''}
+        onChange={(e) => {
+          set({ [key]: devices.find((d) => d.id === e.target.value) ?? null });
+        }}
+      >
+        <option value="">{none}</option>
+        {devices.map((d) => (
+          <option key={d.id} value={d.id}>
+            {d.label}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+  return (
+    <div className="space-y-3">
+      <p className="text-sm">
+        Only for the computer that streams the sabha to YouTube. Choose the camera (or capture card) and the
+        sound input (the mixer’s line in). The stream key can be added later, in Stream settings.
+      </p>
+      {stream === 'skip' && (
+        <Notice tone="info">Skipped: the stream’s camera and sound stay as they are.</Notice>
+      )}
+      {!status?.programOn ? (
+        <Loading label="Looking for cameras and sound inputs…" />
+      ) : (
+        <div className="flex flex-wrap gap-3">
+          {pick('Camera', 'setup-stream-camera', status.inputs.cameras, chosen.camera, 'No camera', 'camera')}
+          {pick(
+            'Sound input',
+            'setup-stream-sound',
+            status.inputs.microphones,
+            chosen.sound,
+            'No sound input',
+            'sound',
+          )}
+        </div>
+      )}
+      {status?.inputs.message && <Notice tone="warning">{status.inputs.message}</Notice>}
+    </div>
+  );
+}
+
 function ThemeStep() {
   const themes = useSetup((s) => s.themes);
   const themeId = useSetup((s) => s.themeId);
@@ -262,6 +329,12 @@ function FinishStep() {
               ? 'the computer’s default output'
               : plan.sound.label}
         </li>
+        <li>
+          Stream:{' '}
+          {state.stream === 'skip'
+            ? 'stays as it is'
+            : `camera ${state.stream.camera?.label ?? 'none'}, sound input ${state.stream.sound?.label ?? 'none'}`}
+        </li>
         <li>Default theme: {themeName ?? 'stays as it is'}</li>
       </ul>
     </div>
@@ -283,7 +356,7 @@ export function SetupWizard({ platform }: { platform: string }) {
   if (!open) return null;
   const name = STEPS[step] ?? 'Welcome';
   const last = step === STEPS.length - 1;
-  const skippable = name === 'Screens' || name === 'Sound' || name === 'Theme';
+  const skippable = name === 'Screens' || name === 'Sound' || name === 'Stream' || name === 'Theme';
   return (
     <>
       <Dialog
@@ -343,7 +416,8 @@ export function SetupWizard({ platform }: { platform: string }) {
           <div className="space-y-2 text-sm">
             <p>
               A few steps to set Drashti up on this computer: which output feeds which screens, the languages
-              each shows, where the sound goes, and the look new presentations start with.
+              each shows, where the sound goes, the stream’s camera and sound (if this computer streams), and
+              the look new presentations start with.
             </p>
             <p className="text-muted">
               Nothing changes until you press Finish at the end. Each step can be skipped to keep things as
@@ -355,6 +429,8 @@ export function SetupWizard({ platform }: { platform: string }) {
           <ScreensStep />
         ) : name === 'Sound' ? (
           <SoundStep />
+        ) : name === 'Stream' ? (
+          <StreamStep />
         ) : name === 'Theme' ? (
           <ThemeStep />
         ) : (
