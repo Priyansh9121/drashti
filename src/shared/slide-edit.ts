@@ -41,6 +41,8 @@ export interface EditSlide {
   /** Its own transition, or null for the presentation's. */
   transition: Transition | null;
   autoAdvanceMs: number | null;
+  /** A macro it runs when it goes up (its cue); null for none. */
+  macroId: string | null;
   /** Bottom to top. */
   elements: SlideElement[];
   cues: EditCue[];
@@ -135,6 +137,8 @@ const slideSchema: z.ZodType<EditSlide> = z.object({
   enabled: z.boolean(),
   transition: transitionSchema.nullable(),
   autoAdvanceMs: autoAdvanceSchema.nullable(),
+  // Documents saved before macro cues have none.
+  macroId: idSchema.nullable().default(null),
   elements: z.array(slideElementSchema).max(500),
   cues: z.array(cueSchema).max(100),
 });

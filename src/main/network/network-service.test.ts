@@ -73,8 +73,15 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
         { id: 'look-standard', name: 'Standard' },
         { id: 'look-lower', name: 'Placeholder lower thirds' },
       ],
+      macros: () => [{ id: 'macro-1', name: 'Placeholder arti', color: '#3e63dd' }],
       clockStyle: () => ({ locale: 'en-GB', timeZone: 'Europe/London' }),
     },
+    runMacro: (id) =>
+      options.locked === true
+        ? { ok: false, message: SIMPLE_MODE_REFUSAL }
+        : id === 'macro-1'
+          ? { ok: true, rev: 1, changed: true }
+          : { ok: false, message: 'That macro no longer exists.' },
     announcements: {
       submit: (device, address, input) => {
         announced.push({ device: device.id, address, input });
@@ -247,6 +254,21 @@ describe('the network in the main process', () => {
     ).toBe(200);
     expect(commands.at(-1)).toEqual({ type: 'setLook', lookId: 'look-lower' });
     expect(service.answer({ address: PHONE, deviceId: stage, op: 'looks', args: {} }).status).toBe(403);
+    // Macros: a Remote lists and runs them; one that is gone is refused.
+    expect(service.answer({ address: PHONE, deviceId: remote, op: 'macros', args: {} })).toMatchObject({
+      status: 200,
+      body: { macros: [{ id: 'macro-1', name: 'Placeholder arti' }] },
+    });
+    expect(
+      service.answer({ address: PHONE, deviceId: remote, op: 'macro.run', args: { macroId: 'macro-1' } }),
+    ).toMatchObject({ status: 200, body: { ok: true, rev: 1 } });
+    expect(
+      service.answer({ address: PHONE, deviceId: remote, op: 'macro.run', args: { macroId: 'gone' } }).status,
+    ).toBe(409);
+    expect(
+      service.answer({ address: PHONE, deviceId: stage, op: 'macro.run', args: { macroId: 'macro-1' } })
+        .status,
+    ).toBe(403);
     expect(service.answer({ address: PHONE, deviceId: stage, op: 'stage', args: {} })).toMatchObject({
       status: 200,
       body: { groupId: 'stage-group', languages: ['gu'] },
@@ -254,10 +276,11 @@ describe('the network in the main process', () => {
   });
 
   it('refuses over the network exactly what Simple Mode refuses in the window', () => {
-    // Each network action is the window request that does the same thing, so it gets the same answer.
+    // Each network action is the window request that does the same thing, so it gets the same answer:
+    // only running a macro is locked, as it is in the window (Simple Mode runs no macros).
     for (const op of Object.keys(DEVICE_OPS) as DeviceOp[]) {
       const channel = OP_CHANNEL[op];
-      if (channel) expect(SIMPLE_MODE_LOCKED.includes(channel), op).toBe(false);
+      if (channel) expect(SIMPLE_MODE_LOCKED.includes(channel), op).toBe(op === 'macro.run');
     }
     // In Simple Mode the remote still runs the show, as the window does.
     const simple = setup({ locked: true });
@@ -266,7 +289,16 @@ describe('the network in the main process', () => {
       simple.service.answer({ address: PHONE, deviceId: remote, op: 'command', args: { type: 'next' } })
         .status,
     ).toBe(200);
-    // But not switch the Look, which Simple Mode keeps (the engine refuses it, from anywhere).
+    // Not run a macro.
+    expect(
+      simple.service.answer({
+        address: PHONE,
+        deviceId: remote,
+        op: 'macro.run',
+        args: { macroId: 'macro-1' },
+      }),
+    ).toEqual({ status: 403, body: { ok: false, message: SIMPLE_MODE_REFUSAL } });
+    // And not switch the Look, which Simple Mode keeps (the engine refuses it, from anywhere).
     expect(
       simple.service.answer({
         address: PHONE,

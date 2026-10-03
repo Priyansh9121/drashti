@@ -49,6 +49,13 @@ export class MediaRepo {
     return row ? { kind: row.kind, path: row.path, missing: row.missing === 1 } : null;
   }
 
+  /** A media item's kind and name, when it is there to play (not missing); null otherwise. */
+  kindAndName(mediaId: string): { kind: 'image' | 'video' | 'audio'; name: string } | null {
+    const row = this.db.prepare('SELECT kind, name, missing FROM media WHERE id = ?').get(mediaId) as
+      { kind: 'image' | 'video' | 'audio'; name: string; missing: number } | undefined;
+    return row?.missing === 0 ? { kind: row.kind, name: row.name } : null;
+  }
+
   /** How long a video or sound is, in ms, once Drashti has played it; null when not known. */
   lengthOf(mediaId: string): number | null {
     const row = this.db.prepare('SELECT duration_ms FROM media WHERE id = ?').get(mediaId) as

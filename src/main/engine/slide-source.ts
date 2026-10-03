@@ -12,6 +12,8 @@ export interface PlayedSlide {
   transition?: Transition | null;
   /** It moves on by itself after this long; null (or left out) to wait for the operator. */
   autoAdvanceMs?: number | null;
+  /** A macro it runs when it goes up (its cue); null (or left out) for none. */
+  macroId?: string | null;
 }
 
 /** A presentation's slides in playing order (PLAN.md 4.3, arrangements). */

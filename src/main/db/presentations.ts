@@ -314,7 +314,7 @@ export class PresentationRepo {
       .all(id) as { id: string; name: string; color: string | null }[];
     const slides = this.db
       .prepare(
-        `SELECT s.id, s.group_id, s.label, s.notes, s.background, s.transition, s.auto_advance_ms
+        `SELECT s.id, s.group_id, s.label, s.notes, s.background, s.transition, s.auto_advance_ms, s.macro_id
            FROM slides s JOIN slide_groups g ON g.id = s.group_id
           WHERE g.presentation_id = ? AND s.enabled = 1
           ORDER BY g.position, g.rowid, s.position, s.rowid`,
@@ -327,6 +327,7 @@ export class PresentationRepo {
       background: string | null;
       transition: string | null;
       auto_advance_ms: number | null;
+      macro_id: string | null;
     }[];
     const elements = this.db
       .prepare(
@@ -390,6 +391,7 @@ export class PresentationRepo {
         cues: cuesBySlide.get(s.id) ?? [],
         transition: transitionFromJson(s.transition),
         autoAdvanceMs: s.auto_advance_ms,
+        macroId: s.macro_id,
       };
       groupInfos.get(s.group_id)?.slides.push(info);
     });
@@ -830,6 +832,7 @@ export class DbSlideSource implements SlideSource {
         notes: o.slide.notes,
         transition: o.slide.transition,
         autoAdvanceMs: o.slide.autoAdvanceMs,
+        macroId: o.slide.macroId,
       })),
       transition: doc.transition,
       loop: doc.loop,

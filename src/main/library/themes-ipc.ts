@@ -136,6 +136,7 @@ function slideRows(slide: ThemeSlide): ContentRows {
         transition: null,
         auto_advance_ms: null,
         enabled: 1,
+        macro_id: null,
       },
     ],
     elements: slide.elements.map((el, position) => {

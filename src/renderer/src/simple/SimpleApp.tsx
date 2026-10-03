@@ -15,7 +15,9 @@ import { Kbd } from '../ui/Kbd';
 import { readPersisted, writePersisted } from '../ui/persist';
 import { EmptyState } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
-import { playItem, runSimpleAction } from '../operator/actions';
+import { playItem, runSimpleAction, useNotice } from '../operator/actions';
+import { setMidiHandler } from '../midi/midi-store';
+import { SIMPLE_MODE_REFUSAL } from '../../../shared/mode';
 import { LivePreview } from '../operator/LivePreview';
 import { leaveSimpleMode, useMode } from '../operator/mode-store';
 import { NextPreview } from '../operator/NextPreview';
@@ -304,6 +306,20 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
     [start],
   );
   useKeymap(platform, run, SIMPLE_KEYMAP);
+  // A MIDI controller's pads do Simple Mode's own actions; Simple Mode runs no macros.
+  useEffect(() => {
+    setMidiHandler((action) => {
+      if (action.kind === 'next') run('next');
+      else if (action.kind === 'back') run('previous');
+      else if (action.kind === 'clearAll') run('clearAll');
+      else if (action.kind === 'blackout') run('toggleBlackout');
+      else if (action.kind === 'logo') run('toggleLogo');
+      else useNotice.setState({ text: SIMPLE_MODE_REFUSAL });
+    });
+    return () => {
+      setMidiHandler(null);
+    };
+  }, [run]);
   const key = (action: OperatorAction) => shortcutText(action, platform, SIMPLE_KEYMAP);
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="simple-mode">

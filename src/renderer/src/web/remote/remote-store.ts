@@ -35,6 +35,7 @@ interface RemoteView {
   logo: { id: string; name: string } | null;
   /** The Looks, in order (which is live comes with the engine state). */
   looks: { id: string; name: string }[] | null;
+  macros: { id: string; name: string; color: string }[] | null;
 }
 
 export const useRemote = create<RemoteView>(() => ({
@@ -47,6 +48,7 @@ export const useRemote = create<RemoteView>(() => ({
   templates: null,
   logo: null,
   looks: null,
+  macros: null,
 }));
 
 export async function loadPlaylists(): Promise<void> {
@@ -91,6 +93,11 @@ export function view(viewing: Viewing, toShowTab = true): void {
 async function loadTemplates(): Promise<void> {
   const r = await api<{ messages: MessageTemplate[] }>('/api/v1/messages');
   if (r.ok) useRemote.setState({ templates: r.messages });
+}
+
+async function loadMacros(): Promise<void> {
+  const r = await api<{ macros: { id: string; name: string; color: string }[] }>('/api/v1/macros');
+  if (r.ok) useRemote.setState({ macros: r.macros });
 }
 
 async function loadLooks(): Promise<void> {
@@ -140,6 +147,7 @@ export function startRemote(): void {
     void loadTemplates();
     void loadLogo();
     void loadLooks();
+    void loadMacros();
     const v = useRemote.getState().viewing;
     if (v) void loadDoc(v.presentationId);
   });
@@ -152,5 +160,6 @@ export function startRemote(): void {
     if (what === 'messages') void loadTemplates();
     if (what === 'props') void loadLogo();
     if (what === 'looks') void loadLooks();
+    if (what === 'macros') void loadMacros();
   });
 }

@@ -18,6 +18,10 @@ export const DEVICE_OPS = {
   stage: ['stage'],
   /** The Looks, in order, and which is live. */
   looks: ['remote'],
+  /** The macros (name, colour), in order. */
+  macros: ['remote'],
+  /** Run a macro (Simple Mode refuses). */
+  'macro.run': ['remote'],
   playlists: ['remote'],
   /** A playlist's items. */
   items: ['remote'],

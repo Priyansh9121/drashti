@@ -70,6 +70,11 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.stageLayouts.save,
   IPC.masks.save,
   IPC.masks.remove,
+  // Macros: Simple Mode runs none (MIDI mapped to its own actions still works), and changes none.
+  IPC.macros.save,
+  IPC.macros.remove,
+  IPC.macros.run,
+  IPC.midi.set,
   IPC.stageLayouts.remove,
   IPC.screens.createGroup,
   IPC.screens.renameGroup,

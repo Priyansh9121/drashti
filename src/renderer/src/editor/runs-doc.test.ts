@@ -155,6 +155,7 @@ describe('arranging and copying elements', () => {
             enabled: true,
             transition: null,
             autoAdvanceMs: null,
+            macroId: null,
             cues: [],
             elements: ['a', 'b', 'c', 'd'].map((id) => ({ ...box(undefined, id), id })),
           },

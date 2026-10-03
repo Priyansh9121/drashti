@@ -274,6 +274,7 @@ describe('putting edited slides back', () => {
             enabled: true,
             transition: { kind: 'dissolve', durationMs: 600 },
             autoAdvanceMs: 4000,
+            macroId: null,
             elements: [{ ...(verse.slides[0]?.elements[0] as TextElement), id: 'window-element' }],
             cues: [],
           },
