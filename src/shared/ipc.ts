@@ -54,6 +54,7 @@ import type { MessageResult, MessageTemplate, MessageTemplateFields } from './me
 import type { PropFields, PropInfo, PropResult } from './props';
 import type { GroupLookPatch, LookResult, LooksView } from './looks';
 import type { StageLayout, StageLayoutResult } from './stage-layouts';
+import type { Mask, MaskResult } from './masks';
 import type { SearchResult } from './search';
 import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes';
 import type { TimerFields, TimerResult } from './timers';
@@ -250,6 +251,14 @@ export const IPC = {
     setGroup: 'looks:set-group',
     /** main -> operator: the Looks changed (or which is live). */
     changed: 'looks:changed',
+  },
+  /** The mask library (changing it: operator window, Pro Mode; putting one up is the engine's setMask). */
+  masks: {
+    list: 'masks:list',
+    save: 'masks:save',
+    remove: 'masks:remove',
+    /** main -> operator: the masks changed. */
+    changed: 'masks:changed',
   },
   /** Stage layouts made in Drashti (changing them: operator window, Pro Mode). */
   stageLayouts: {
@@ -503,6 +512,9 @@ export interface InvokeContract {
     args: [lookId: string, groupId: string, patch: GroupLookPatch];
     result: LookResult;
   };
+  [IPC.masks.list]: { args: []; result: Mask[] };
+  [IPC.masks.save]: { args: [maskId: string | null, mask: Omit<Mask, 'id'>]; result: MaskResult };
+  [IPC.masks.remove]: { args: [maskId: string]; result: MaskResult };
   [IPC.stageLayouts.list]: { args: []; result: StageLayout[] };
   [IPC.stageLayouts.save]: {
     args: [layoutId: string | null, layout: Omit<StageLayout, 'id'>];
@@ -591,6 +603,7 @@ export interface EventContract {
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.looks.changed]: LooksView;
   [IPC.stageLayouts.changed]: StageLayout[];
+  [IPC.masks.changed]: Mask[];
   [IPC.output.context]: OutputContext;
   [IPC.output.identify]: { name: string; groupName: string };
   [IPC.audio.chosen]: { device: AudioDevice | null };

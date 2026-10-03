@@ -33,6 +33,8 @@ import { TimersPanel } from './TimersPanel';
 import { MessagesPanel } from './MessagesPanel';
 import { PropsPanel } from './PropsPanel';
 import { StageLayoutEditor } from '../stage/StageLayoutEditor';
+import { MaskEditor } from '../masks/MaskEditor';
+import { MasksPanel } from './MasksPanel';
 import { LooksPanel } from './LooksPanel';
 import { isTyping, useKeymap } from './useKeymap';
 import { watchProps } from './logo-store';
@@ -165,6 +167,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
               <LooksPanel />
               <StageMessageControl />
               <PropsPanel />
+              <MasksPanel />
               <MessagesPanel />
               <TimersPanel />
             </div>
@@ -188,6 +191,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       {announcementsOpen && <AnnouncementsPanel />}
       <StreamSettings />
       <StageLayoutEditor />
+      <MaskEditor />
       {screensOpen && (
         <ScreensPanel
           platform={platform}

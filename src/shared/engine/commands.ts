@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { hexColorSchema, idSchema, rectSchema, slideElementSchema } from '../model-schema';
+import { maskSchema } from '../masks';
+import { hexColorSchema, idSchema, slideElementSchema } from '../model-schema';
 import {
   type AudioChoice,
   type BackgroundChoice,
@@ -17,7 +18,6 @@ import {
 
 const id = idSchema;
 const hexColor = hexColorSchema;
-const rect = rectSchema;
 const slideElement = slideElementSchema;
 
 const background: z.ZodType<BackgroundChoice> = z.discriminatedUnion('kind', [
@@ -53,7 +53,7 @@ export const messageSchema: z.ZodType<MessageItem> = z.object({
   text: z.string().min(1).max(500),
   parts: z.array(messagePart).max(40).optional(),
 });
-const mask: z.ZodType<MaskLayer> = z.object({ id, name: z.string().max(200), visible: rect });
+const mask: z.ZodType<MaskLayer> = maskSchema;
 
 const playlistCursor = z.object({ playlistId: id, itemId: id });
 

@@ -7,12 +7,14 @@ import type {
   AudioLayer,
   BackgroundLayer,
   EngineState,
+  MaskLayer,
   MessageItem,
   PlaylistCursor,
   PropItem,
   TickerLayer,
 } from '../../shared/engine/state';
 import { ENGINE_STATE_VERSION } from '../../shared/engine/state';
+import { maskSchema } from '../../shared/masks';
 import { hexColorSchema, idSchema } from '../../shared/model-schema';
 
 /*
@@ -57,6 +59,8 @@ export interface SavedLive {
   autoAdvance: { leftMs: number; durationMs: number } | null;
   /** The live Look (an id: it comes back whatever the engine version). */
   lookId: string | null;
+  /** The mask up on the Masks layer. */
+  masks: MaskLayer | null;
 }
 
 const backgroundSchema: z.ZodType<BackgroundLayer> = z.discriminatedUnion('kind', [
@@ -116,6 +120,7 @@ const savedSchema = z.object({
     .default(null),
   // Files saved before Looks have none.
   lookId: idSchema.nullable().default(null),
+  masks: z.unknown().default(null),
 });
 const audioLayerSchema = z.intersection(
   audioChoiceSchema,
@@ -156,6 +161,7 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
         }
       : null,
     lookId: state.look.id === '' ? null : state.look.id,
+    masks: state.layers.masks,
   };
 }
 
@@ -200,6 +206,7 @@ export function toRestore(files: RecoveryFiles, startLookId: string | null = nul
   const props = layer(z.array(propSchema).max(50), s.props, []);
   const messages = layer(z.array(messageSchema).max(50), s.messages, []);
   const ticker = layer(tickerSchema.nullable(), s.ticker, null);
+  const masks = layer(maskSchema.nullable(), s.masks, null);
   const timers = same ? s.timers : [];
   const stageMessage = same ? s.stageMessage : null;
   const anything = [
@@ -212,12 +219,13 @@ export function toRestore(files: RecoveryFiles, startLookId: string | null = nul
     props.length > 0,
     messages.length > 0,
     ticker !== null,
+    masks !== null,
     stageMessage !== null,
     timers.length > 0,
     s.lookId !== null && s.lookId !== startLookId,
   ].some(Boolean);
   if (!anything) return null;
-  return { ...s, version: 1, background, logo, audio, props, messages, ticker, stageMessage, timers };
+  return { ...s, version: 1, background, logo, audio, props, messages, ticker, masks, stageMessage, timers };
 }
 
 export interface LiveStateWriterOptions {

@@ -141,6 +141,13 @@ export class LookRepo {
     for (const r of this.rows()) this.setGroup(r.id, groupId, patch);
   }
 
+  /** A mask was removed: groups that had it as their own shape show their whole canvas. */
+  forgetMask(maskId: string): void {
+    for (const look of this.list())
+      for (const [groupId, g] of Object.entries(look.groups))
+        if (g.maskId === maskId) this.setGroup(look.id, groupId, { maskId: null });
+  }
+
   /** A stage layout was removed: groups that used it show the Standard stage screen. */
   forgetStageLayout(layoutId: string): void {
     for (const look of this.list())

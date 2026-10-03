@@ -1,5 +1,6 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { near, pixels } from './pixels';
 import { TEST_LINES } from '../../src/main/db/seed';
 import type { PageGlobals } from './helpers';
 import { launchApp, operatorPage } from './helpers';
@@ -208,27 +209,6 @@ test('the test slide renders all four languages with the bundled fonts, shaped c
   await expect(output.locator('[data-lang="gu"]')).toHaveText(TEST_LINES.gu);
   await app.close();
 });
-
-/** The colour of each point (CSS pixels) in a page screenshot, decoded in the page itself. */
-async function pixels(page: Page, points: { x: number; y: number }[]): Promise<number[][]> {
-  const png = (await page.screenshot({ scale: 'css' })).toString('base64');
-  return page.evaluate(
-    async ({ png, points }) => {
-      // Decoded by hand: the page's security policy refuses fetch() of a data URL.
-      const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0));
-      const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
-      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return [];
-      ctx.drawImage(bitmap, 0, 0);
-      return points.map(({ x, y }) => [...ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data]);
-    },
-    { png, points },
-  );
-}
-
-const near = (rgba: number[] | undefined, rgb: [number, number, number], within = 40) =>
-  rgba !== undefined && rgb.every((c, i) => Math.abs((rgba[i] ?? -999) - c) <= within);
 
 test('an output draws shapes, outlines, shadows, rotation and shrink-to-fit', async () => {
   const { app } = await launchApp();

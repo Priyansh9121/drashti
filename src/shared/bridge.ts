@@ -54,6 +54,7 @@ import type { MessageResult, MessageTemplate, MessageTemplateFields } from './me
 import type { PropFields, PropInfo, PropResult } from './props';
 import type { GroupLookPatch, LookResult, LooksView } from './looks';
 import type { StageLayout, StageLayoutResult } from './stage-layouts';
+import type { Mask, MaskResult } from './masks';
 import type { SearchResult } from './search';
 import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes';
 import type { TimerFields, TimerResult } from './timers';
@@ -378,6 +379,15 @@ export interface DrashtiBridge {
     move(lookId: string, to: number): Promise<LookResult>;
     /** Change one group's settings in a Look. */
     setGroup(lookId: string, groupId: string, patch: GroupLookPatch): Promise<LookResult>;
+  };
+  /** The mask library (changing it: operator window, Pro Mode). A mask goes up with the engine's setMask. */
+  masks: {
+    list(): Promise<Mask[]>;
+    onChanged(listener: (masks: Mask[]) => void): () => void;
+    /** Make one (no id) or save one. */
+    save(maskId: string | null, mask: Omit<Mask, 'id'>): Promise<MaskResult>;
+    /** It comes off the Masks layer and out of every Look. */
+    remove(maskId: string): Promise<MaskResult>;
   };
   /** Stage layouts made in Drashti: boxes on the stage canvas (changing them: operator window, Pro Mode). */
   stageLayouts: {
