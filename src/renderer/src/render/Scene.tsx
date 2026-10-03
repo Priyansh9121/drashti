@@ -260,6 +260,7 @@ export const Scene = memo(function Scene({
   annotate = false,
   look = DEFAULT_LIVE_GROUP_LOOK,
   ticker = true,
+  matte = null,
 }: {
   state: EngineState;
   canvas: Size;
@@ -269,6 +270,13 @@ export const Scene = memo(function Scene({
   look?: LiveGroupLook;
   /** Draw the announcements ticker (the hall's screens do; the stream does not). */
   ticker?: boolean;
+  /**
+   * A key and fill pair's half: the fill is the picture, black where empty;
+   * the key is white wherever the fill has something, by its opacity, black
+   * elsewhere. Black-out and the logo are for the hall: they take the
+   * graphics off (nothing to key).
+   */
+  matte?: 'fill' | 'key' | null;
 }) {
   const { layers } = state;
   const shown = (layer: LookLayer) => look.layers.includes(layer);
@@ -279,6 +287,10 @@ export const Scene = memo(function Scene({
   const layerMask = shown('masks') ? layers.masks : null;
   const groupMaskStyle = useMemo(() => maskStyle(groupMask), [groupMask]);
   const layerMaskStyle = useMemo(() => maskStyle(layerMask), [layerMask]);
+  // Key and fill: black-out and the logo take the graphics off; the key draws every colour white, by its opacity.
+  const keyed = matte !== null;
+  const off = keyed && (state.blackout || state.logo !== null);
+  const content: CSSProperties = matte === 'key' ? { ...FULL, filter: 'brightness(0) invert(1)' } : FULL;
   return (
     <div
       data-testid="scene"
@@ -292,62 +304,70 @@ export const Scene = memo(function Scene({
         background: '#000000',
       }}
     >
-      <div data-look-mask={groupMask?.id} style={groupMaskStyle}>
-        <div data-layer={layerMask ? 'masks' : undefined} data-mask={layerMask?.id} style={layerMaskStyle}>
-          {background?.kind === 'color' && (
+      <div data-matte={matte ?? undefined} data-off={off ? 'true' : undefined} style={content}>
+        {!off && (
+          <div data-look-mask={groupMask?.id} style={groupMaskStyle}>
             <div
-              data-layer="background"
-              style={{ position: 'absolute', inset: 0, background: background.color }}
-            />
-          )}
-          <BackgroundMedia layer={background} annotate={annotate} />
-          <SlideLayerView
-            layer={shown('slide') ? layers.slide : null}
-            canvas={canvas}
-            scaling={scaling}
-            languages={look.languages}
-            slides={look.slides}
-          />
-          {shown('props') && <PropsLayer props={layers.props} canvas={canvas} scaling={scaling} />}
-          {shown('messages') && layers.messages.length > 0 && (
-            <MessageBanner
-              messages={layers.messages}
-              timers={state.timers}
-              canvas={canvas}
-              above={band ? Math.round(canvas.height * TICKER_HEIGHT) : 0}
-            />
-          )}
-          {band && <TickerBand ticker={band} canvas={canvas} />}
-        </div>
-        {state.logo && (
-          // The logo instead of the picture: drawn over the layers, which carry on underneath, so
-          // taking it down brings back exactly what was there. Black-out covers it in turn.
-          <div
-            data-layer="logo"
-            data-testid="logo"
-            style={{ position: 'absolute', inset: 0, background: '#000000' }}
-          >
-            <Placed
-              content={{ width: state.logo.width ?? 1920, height: state.logo.height ?? 1080 }}
-              box={canvas}
-              mode={scaling}
+              data-layer={layerMask ? 'masks' : undefined}
+              data-mask={layerMask?.id}
+              style={layerMaskStyle}
             >
+              {background?.kind === 'color' && (
+                <div
+                  data-layer="background"
+                  style={{ position: 'absolute', inset: 0, background: background.color }}
+                />
+              )}
+              <BackgroundMedia layer={background} annotate={annotate} />
+              <SlideLayerView
+                layer={shown('slide') ? layers.slide : null}
+                canvas={canvas}
+                scaling={scaling}
+                languages={look.languages}
+                slides={look.slides}
+              />
+              {shown('props') && <PropsLayer props={layers.props} canvas={canvas} scaling={scaling} />}
+              {shown('messages') && layers.messages.length > 0 && (
+                <MessageBanner
+                  messages={layers.messages}
+                  timers={state.timers}
+                  canvas={canvas}
+                  above={band ? Math.round(canvas.height * TICKER_HEIGHT) : 0}
+                />
+              )}
+              {band && <TickerBand ticker={band} canvas={canvas} />}
+            </div>
+            {state.logo && !keyed && (
+              // The logo instead of the picture: drawn over the layers, which carry on underneath, so
+              // taking it down brings back exactly what was there. Black-out covers it in turn.
               <div
-                style={{
-                  position: 'relative',
-                  width: state.logo.width ?? 1920,
-                  height: state.logo.height ?? 1080,
-                }}
+                data-layer="logo"
+                data-testid="logo"
+                style={{ position: 'absolute', inset: 0, background: '#000000' }}
               >
-                {state.logo.elements.map((el) => (
-                  <ElementView key={el.id} el={el} />
-                ))}
+                <Placed
+                  content={{ width: state.logo.width ?? 1920, height: state.logo.height ?? 1080 }}
+                  box={canvas}
+                  mode={scaling}
+                >
+                  <div
+                    style={{
+                      position: 'relative',
+                      width: state.logo.width ?? 1920,
+                      height: state.logo.height ?? 1080,
+                    }}
+                  >
+                    {state.logo.elements.map((el) => (
+                      <ElementView key={el.id} el={el} />
+                    ))}
+                  </div>
+                </Placed>
               </div>
-            </Placed>
+            )}
           </div>
         )}
       </div>
-      {state.blackout && (
+      {state.blackout && !keyed && (
         <div
           data-layer="blackout"
           data-testid="blackout"

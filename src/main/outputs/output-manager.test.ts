@@ -60,6 +60,7 @@ const screen = (id: string, d: DisplayInfo | null, enabled = true): ScreenConfig
   canvasHeight: 1080,
   scaling: 'fit',
   enabled,
+  feed: null,
 });
 
 beforeEach(() => {

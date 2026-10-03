@@ -38,6 +38,7 @@ describe('ScreenRepo', () => {
       canvasHeight: 1080,
       scaling: 'fit',
       enabled: true,
+      feed: null,
     });
     expect(repo.groupName(lobby)).toBe('Lobby');
   });

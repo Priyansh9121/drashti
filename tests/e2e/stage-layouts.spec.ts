@@ -94,7 +94,7 @@ test('Standard is the stage screen as before; a layout made in the editor puts e
   await settings.getByTestId('stage-box-fit').uncheck();
   await settings.getByTestId('stage-box-size').fill('48');
   // The clock, dragged about 150 px to the left on the canvas (from 1162: no line to snap to near there).
-  await editor.getByTestId('stage-box-list').getByRole('button', { name: 'Clock' }).click();
+  await editor.getByTestId('stage-box-list').getByRole('button', { name: 'Clock', exact: true }).click();
   const canvas = editor.getByTestId('stage-layout-canvas-stage');
   const scale = Number(await canvas.getAttribute('data-scale'));
   const chosen = await canvas.locator('[data-selected="true"]').boundingBox();

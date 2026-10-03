@@ -168,6 +168,15 @@ export class LookService implements LookSource {
     this.done();
   }
 
+  /** A group became a key and fill pair: in every Look, the words as a lower third, props and messages. */
+  becameKeyFill(groupId: string): void {
+    this.deps.repo.setGroupEverywhere(groupId, {
+      layers: ['slide', 'props', 'messages'],
+      slides: 'lowerThird',
+    });
+    this.done();
+  }
+
   /** Groups were added, removed or changed role in Screens: the live Look covers them again. */
   groupsChanged(): void {
     this.done();

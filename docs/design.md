@@ -202,3 +202,8 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 
 - **Two kinds, said plainly.** In Screens a group's mask is "Mask (these screens' own shape)"; in the right column the **Masks** panel puts a mask up for a moment. The panel's buttons are like the Looks panel's: the mask that is up is `live` (red) with `aria-pressed="true"`, and pressing it again takes it down (as F7 does).
 - **The mask editor is the stage layout editor's twin** (`size="full"`, the same `BoxCanvas`): the masks on the left, the mask in the middle over a blue test grid (what it lets through) on black (what it hides), the chosen shape's settings on the right, Save at the bottom. "Hide what is inside them" and "Show only what is inside them" are two radio buttons, in words.
+
+## 20. Key and fill
+
+- **A group role like the others**, "Key and fill (for a video switcher)", with a short line under it saying what the two displays are and how to set the switcher. Each screen in the group says what it sends ("The fill (the picture)", "The key (white where the fill has something)") in a select beside it.
+- **The key is not a picture to look at**: it is only on its output. The operator's previews never show it.

@@ -205,6 +205,62 @@ describe('ScreensService', () => {
     expect(Object.keys(looks.view().looks[0]?.groups ?? {})).toEqual([]);
   });
 
+  it('makes a key and fill pair: the first screen the fill, the next the key, and the words as a lower third', () => {
+    const stageTv: DisplayInfo = {
+      ...hall,
+      id: 3,
+      label: 'Stage TV',
+      bounds: { ...hall.bounds, x: 3360 },
+      key: { ...hall.key, id: 3, label: 'Stage TV', x: 3360 },
+    };
+    const db = openDatabase(':memory:');
+    const r = new ScreenRepo(db);
+    const l = looksOf(db);
+    const outputs = new OutputManager({
+      listDisplays: () => [hall, stageTv],
+      screens: () => r.screens(),
+      saveDisplayKey: () => undefined,
+      openWindow: (): OutputWindow => ({
+        webContentsId: ++windows,
+        setBounds: () => undefined,
+        close: () => undefined,
+        isDestroyed: () => false,
+      }),
+      onChange: () => undefined,
+    });
+    const s = new ScreensService(
+      r,
+      outputs,
+      () => [hall, stageTv],
+      () => null,
+      () => false,
+      l,
+    );
+    s.createGroup('Switcher');
+    const id = r.groups()[0]?.id ?? '';
+    s.assignDisplay(id, 2);
+    expect(r.screens().map((sc) => sc.feed)).toEqual([null]);
+    expect(s.setGroupRole(id, 'keyfill').ok).toBe(true);
+    s.assignDisplay(id, 3);
+    expect(r.screens().map((sc) => [sc.name, sc.feed])).toEqual([
+      ['Hall TV', 'fill'],
+      ['Stage TV', 'key'],
+    ]);
+    // Typically the words as a lower third, props and messages, with no background, in every Look.
+    expect(l.view().looks[0]?.groups[id]).toMatchObject({
+      layers: ['slide', 'props', 'messages'],
+      slides: 'lowerThird',
+    });
+    // Swapped by hand; back to an audience group, the screens have no feed.
+    const [fill, key] = r.screens();
+    expect(s.updateScreen(fill?.id, { feed: 'key' }).ok).toBe(true);
+    expect(s.updateScreen(key?.id, { feed: 'fill' }).ok).toBe(true);
+    expect(r.screens().map((sc) => sc.feed)).toEqual(['key', 'fill']);
+    expect(s.updateScreen(fill?.id, { feed: 'both' })).toMatchObject({ ok: false });
+    s.setGroupRole(id, 'audience');
+    expect(r.screens().map((sc) => sc.feed)).toEqual([null, null]);
+  });
+
   it('renames and deletes groups, and removes screens', () => {
     service.createGroup('A');
     const groupId = repo.groups()[0]?.id;
