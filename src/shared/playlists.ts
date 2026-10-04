@@ -31,6 +31,28 @@ export type ItemOrder =
   | { mode: 'all' }
   | { mode: 'arrangement'; arrangementId: string };
 
+/**
+ * What a playlist item does to a timer when it goes up (Session 12): start
+ * it from the beginning, reset it, or show it on the audience screens (as a
+ * message with its name and time). The pravachan item, for example, starts
+ * a 30-minute countdown, which the stage screens show while it runs.
+ */
+export interface TimerCue {
+  timerId: string;
+  action: 'start' | 'reset' | 'show';
+}
+
+export const TIMER_CUE_ACTIONS = ['start', 'reset', 'show'] as const satisfies readonly TimerCue['action'][];
+
+export const TIMER_CUE_NAMES: Record<TimerCue['action'], string> = {
+  start: 'Start it from the beginning',
+  reset: 'Reset it',
+  show: 'Show it on the audience screens',
+};
+
+/** The most timer cues an item has. */
+export const MAX_TIMER_CUES = 4;
+
 export type PlaylistItemInfo =
   | {
       id: string;
@@ -42,6 +64,8 @@ export type PlaylistItemInfo =
       order: ItemOrder;
       /** The named arrangement's name, when the order names one. */
       arrangementName: string | null;
+      /** What it does to timers when it goes up. */
+      timers: TimerCue[];
     }
   | {
       id: string;
@@ -53,6 +77,7 @@ export type PlaylistItemInfo =
       missing: boolean;
       /** What the file is, when Drashti cannot play it. */
       unplayable: string | null;
+      timers: TimerCue[];
     }
   | { id: string; kind: 'header'; label: string; color: string | null }
   /**
@@ -66,7 +91,7 @@ export type PlaylistItemInfo =
    * is loaded again: `missing` while no loaded text has it. Its label is
    * the reference as it read when it was added.
    */
-  | { id: string; kind: 'shastra'; label: string; passageId: string; missing: boolean };
+  | { id: string; kind: 'shastra'; label: string; passageId: string; missing: boolean; timers: TimerCue[] };
 
 /** What can be added to a playlist. */
 export type NewItem =
@@ -123,6 +148,10 @@ export const positionSchema = z.number().int().min(0).max(100_000);
 export const templateRequestSchema: z.ZodType<TemplateRequest> = z
   .object({ name: z.string().trim().min(1).max(200), slots: z.array(id).max(1000) })
   .strict();
+export const timerCuesSchema: z.ZodType<TimerCue[]> = z
+  .array(z.object({ timerId: id, action: z.enum(TIMER_CUE_ACTIONS) }).strict())
+  .max(MAX_TIMER_CUES);
+
 export const slotSchema = z
   .object({ label: z.string().trim().min(1).max(200), category: z.string().trim().min(1).max(60).nullable() })
   .strict();

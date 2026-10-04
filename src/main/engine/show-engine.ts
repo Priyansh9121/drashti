@@ -54,6 +54,12 @@ function withoutItem(layers: Layers, id: string): Layers {
   };
 }
 
+/** Commands that come back to a playlist item rather than move on to it: its timer cues do not run again. */
+const BACKWARDS: ReadonlySet<string> = new Set(['back', 'previous', 'previousItem']);
+
+/** The message a timer cue shows: one per timer (showing it again replaces it). */
+export const timerMessageId = (timerId: string): string => `timer:${timerId}`;
+
 /** Where the engine finds Looks: the library's, every group's settings filled in. */
 export interface LookSource {
   /** A Look, or null when it no longer exists. */
@@ -373,6 +379,38 @@ export class ShowEngine {
   /** The timers as the library defines them (at startup, and after the operator edits one). */
   setTimers(timers: readonly TimerDefinition[]): CommandResult {
     return this.apply([{ type: 'timers/define', timers }]);
+  }
+
+  /**
+   * What a playlist item's timer cues do as it goes up (shared/playlists.ts
+   * TimerCue): start a timer from the beginning, reset it, or show it on the
+   * audience screens as a message with its name and time.
+   */
+  private timerCueActions(cursor: PlaylistCursor, state: EngineState): EngineAction[] {
+    const item = this.playlists.items(cursor.playlistId)?.find((i) => i.id === cursor.itemId);
+    const cues = item && item.kind !== 'skip' ? (item.timers ?? []) : [];
+    const now = this.now();
+    return cues.flatMap((cue): EngineAction[] => {
+      const t = state.timers.find((x) => x.id === cue.timerId);
+      if (!t) return [];
+      if (cue.action === 'start')
+        return [{ type: 'timer/run', timerId: t.id, run: { startedAt: now, elapsedMs: 0 } }];
+      if (cue.action === 'reset')
+        return [{ type: 'timer/run', timerId: t.id, run: { startedAt: null, elapsedMs: 0 } }];
+      return [
+        {
+          type: 'message/show',
+          message: {
+            id: timerMessageId(t.id),
+            text: `${t.name} [${t.name}]`,
+            parts: [
+              { kind: 'text', text: `${t.name} ` },
+              { kind: 'timer', timerId: t.id },
+            ],
+          },
+        },
+      ];
+    });
   }
 
   /** Start, pause or reset a timer: the only changes the windows need to count by themselves. */
@@ -971,6 +1009,11 @@ export class ShowEngine {
       if (!sameData(next.next, upNext)) next = reduce(next, { type: 'next/set', next: upNext });
       next = reduce(next, { type: 'upcoming/set', upcoming: this.upcoming(next.live) });
     }
+    // A playlist item going up runs its timer cues, in the same change (not when Back, Previous or
+    // recovery come back to it).
+    const item = next.live.playlist;
+    if (item && item.itemId !== prev.live.playlist?.itemId && cause !== null && !BACKWARDS.has(cause))
+      next = this.timerCueActions(item, next).reduce(reduce, next);
     next = this.keepUndo(prev, next, cause);
     next = this.withAutoAdvance(prev, next);
     if (next === prev) return this.unchanged();

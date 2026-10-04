@@ -97,6 +97,7 @@ describe('playlists the operator edits', () => {
         presentationName: 'Placeholder Hymn',
         order: { mode: 'arrangement', arrangementId: usual },
         arrangementName: 'Usual',
+        timers: [],
       },
       {
         id: b,
@@ -106,6 +107,7 @@ describe('playlists the operator edits', () => {
         presentationName: null,
         order: { mode: 'all' },
         arrangementName: null,
+        timers: [],
       },
       {
         id: m,
@@ -115,6 +117,7 @@ describe('playlists the operator edits', () => {
         media: 'video',
         missing: false,
         unplayable: 'ProRes 422 video (QuickTime)',
+        timers: [],
       },
     ]);
   });
@@ -179,17 +182,33 @@ describe('playlists the operator edits', () => {
         presentationId: hymn,
         arrangementId: undefined,
         label: 'Placeholder Hymn',
+        timers: [],
       },
-      { id: all, kind: 'presentation', presentationId: hymn, arrangementId: null, label: 'Placeholder Hymn' },
+      {
+        id: all,
+        kind: 'presentation',
+        presentationId: hymn,
+        arrangementId: null,
+        label: 'Placeholder Hymn',
+        timers: [],
+      },
       {
         id: arranged,
         kind: 'presentation',
         presentationId: hymn,
         arrangementId: usual,
         label: 'Placeholder Hymn',
+        timers: [],
       },
       { id: gone, kind: 'skip', why: '“Placeholder Dhun” is no longer in the library' },
-      { id: video, kind: 'media', mediaId: 'loop', media: 'video', label: 'Placeholder loop.mp4' },
+      {
+        id: video,
+        kind: 'media',
+        mediaId: 'loop',
+        media: 'video',
+        label: 'Placeholder loop.mp4',
+        timers: [],
+      },
       {
         id: old,
         kind: 'skip',
@@ -293,6 +312,43 @@ describe('sabha templates', () => {
     // The template keeps its slot.
     expect(playlists.itemsOf(template)[1]).toMatchObject({ kind: 'placeholder', label: 'Kirtan' });
     expect(playlists.newFromTemplate(next, 'Not from a playlist', null)).toBeNull();
+  });
+
+  it('keeps an item’s timer cues in its template and the playlists made from it; a slot is renamed and re-categorised', () => {
+    const id = week();
+    const [, , hymnItem, loopItem] = playlists.itemsOf(id);
+    expect(playlists.setTimers(hymnItem?.id ?? '', [{ timerId: 'pravachan', action: 'start' }])).toBe(true);
+    expect(playlists.setTimers(loopItem?.id ?? '', [{ timerId: 'clock', action: 'show' }])).toBe(true);
+    // Headers have nothing to go up: no cues.
+    expect(playlists.setTimers(playlists.itemsOf(id)[0]?.id ?? '', [{ timerId: 'x', action: 'start' }])).toBe(
+      false,
+    );
+    expect(playlists.playItems(id)?.[2]).toMatchObject({
+      timers: [{ timerId: 'pravachan', action: 'start' }],
+    });
+    const template = playlists.saveAsTemplate(id, 'Sunday template', []) ?? '';
+    const slot = playlists.addSlot(template, null, 'Kirtan', 'Kirtan') ?? '';
+    const next = playlists.newFromTemplate(template, 'Next Sunday', null) ?? '';
+    const cuesOf = (playlistId: string) =>
+      playlists
+        .itemsOf(playlistId)
+        .map((i) => ('timers' in i ? i.timers.map((c) => `${c.action}:${c.timerId}`) : []));
+    expect(cuesOf(template)).toEqual([[], [], ['start:pravachan'], ['show:clock'], []]);
+    expect(cuesOf(next)).toEqual([[], [], ['start:pravachan'], ['show:clock'], []]);
+    // None takes them away.
+    expect(playlists.setTimers(playlists.itemsOf(next)[2]?.id ?? '', [])).toBe(true);
+    expect(cuesOf(next)[2]).toEqual([]);
+    // A slot: a new name and category (a Shastra passage, then none).
+    expect(playlists.editSlot(slot, 'Pravachan reading', 'Shastra')).toBe(true);
+    expect(playlists.itemsOf(template).at(-1)).toMatchObject({
+      kind: 'placeholder',
+      label: 'Pravachan reading',
+      category: 'Shastra',
+    });
+    expect(playlists.editSlot(slot, 'Pravachan reading', null)).toBe(true);
+    expect(playlists.itemsOf(template).at(-1)).toMatchObject({ category: null });
+    // Only a slot: not a presentation item, not a placeholder an import left.
+    expect(playlists.editSlot(hymnItem?.id ?? '', 'Renamed', null)).toBe(false);
   });
 
   it('starts every library with the example templates, once', () => {

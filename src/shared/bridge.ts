@@ -57,6 +57,7 @@ import type {
   PlaylistNode,
   PlaylistResult,
   TemplateRequest,
+  TimerCue,
 } from './playlists';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { PropFields, PropInfo, PropResult } from './props';
@@ -233,6 +234,10 @@ export interface DrashtiBridge {
     saveAsTemplate(playlistId: string, request: TemplateRequest): Promise<PlaylistResult>;
     /** A new playlist from a template, in a folder or at the top level, its slots ready to fill. */
     newFromTemplate(templateId: string, name: string, parentId: string | null): Promise<PlaylistResult>;
+    /** A slot's name, and the category its search starts at (a Shastra passage, or none). */
+    editSlot(itemId: string, slot: { label: string; category: string | null }): Promise<PlaylistResult>;
+    /** What an item does to timers when it goes up: start, reset or show each (none to take them away). */
+    setTimers(itemId: string, cues: TimerCue[]): Promise<PlaylistResult>;
     /** A slot, at a position or the end. */
     addSlot(
       playlistId: string,

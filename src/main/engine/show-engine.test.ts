@@ -877,6 +877,73 @@ describe('ShowEngine', () => {
         { ...countdown, name: 'Renamed', durationMs: 600_000, startedAt: 5_000, elapsedMs: 0 },
       ]);
     });
+
+    it('runs a playlist item’s timer cues as it goes up, in the same change; not when coming back to it', () => {
+      const source = makeSource();
+      source.set('talk', [textSlide('t1', 'Placeholder pravachan title')]);
+      source.set('after', [textSlide('a1', 'Placeholder after')]);
+      const playlists = new MemoryPlaylistSource();
+      playlists.set('sabha', [
+        {
+          id: 'i-talk',
+          kind: 'presentation',
+          presentationId: 'talk',
+          arrangementId: undefined,
+          timers: [
+            { timerId: 't1', action: 'start' },
+            { timerId: 't2', action: 'show' },
+          ],
+        },
+        {
+          id: 'i-after',
+          kind: 'presentation',
+          presentationId: 'after',
+          arrangementId: undefined,
+          timers: [{ timerId: 't1', action: 'reset' }],
+        },
+      ]);
+      let clock = 50_000;
+      const engine = new ShowEngine(source, new RecordingTransport(), () => clock, playlists);
+      engine.setTimers([countdown, { ...countdown, id: 't2', name: 'Placeholder clock', kind: 'clock' }]);
+      // Paused part way before the item: it starts again from the beginning.
+      engine.dispatch({ type: 'startTimer', timerId: 't1' });
+      clock = 60_000;
+      engine.dispatch({ type: 'pauseTimer', timerId: 't1' });
+      clock = 70_000;
+      const rev = engine.rev;
+      engine.dispatch({ type: 'playItem', playlistId: 'sabha', itemId: 'i-talk' });
+      // One change: the slide, the timer and the message together.
+      expect(engine.rev).toBe(rev + 1);
+      expect(engine.current.timers[0]).toMatchObject({ startedAt: 70_000, elapsedMs: 0 });
+      expect(engine.current.layers.messages).toEqual([
+        {
+          id: 'timer:t2',
+          text: 'Placeholder clock [Placeholder clock]',
+          parts: [
+            { kind: 'text', text: 'Placeholder clock ' },
+            { kind: 'timer', timerId: 't2' },
+          ],
+        },
+      ]);
+      // On into the next item: its cue resets the countdown.
+      clock = 80_000;
+      engine.dispatch({ type: 'next' });
+      expect(engine.current.live.playlist?.itemId).toBe('i-after');
+      expect(engine.current.timers[0]).toMatchObject({ startedAt: null, elapsedMs: 0 });
+      // Back to the talk item: its cues do not run again.
+      engine.dispatch({ type: 'previousItem' });
+      expect(engine.current.live.playlist?.itemId).toBe('i-talk');
+      expect(engine.current.timers[0]).toMatchObject({ startedAt: null, elapsedMs: 0 });
+      // A step within the same item never runs them either.
+      engine.dispatch({ type: 'startTimer', timerId: 't1' });
+      engine.dispatch({
+        type: 'goLive',
+        presentationId: 'talk',
+        slideIndex: 0,
+        playlist: { playlistId: 'sabha', itemId: 'i-talk' },
+      });
+      expect(engine.current.timers[0]?.startedAt).toBe(80_000);
+    });
   });
 
   describe('restart recovery', () => {

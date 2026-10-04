@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { ImportSource } from '../../shared/library';
 import type { ItemOrder, NewItem, PlaylistItemInfo, PlaylistNode } from '../../shared/playlists';
-import { SHASTRA_SLOT } from '../../shared/playlists';
+import { SHASTRA_SLOT, timerCuesSchema, type TimerCue } from '../../shared/playlists';
 import type { PassageKey } from '../../shared/shastra';
 import { parsePassageId, passageId, passageKeySchema } from '../../shared/shastra';
 import { ShastraRepo } from './shastra';
@@ -15,6 +15,8 @@ interface ItemRow {
   kind: 'presentation' | 'media' | 'header' | 'placeholder' | 'shastra';
   /** A passage's key, as JSON (shared/shastra.ts PassageKey). */
   passage: string | null;
+  /** Timer cues, as JSON (shared/playlists.ts TimerCue). */
+  timers: string | null;
   label: string;
   color: string | null;
   hint: string | null;
@@ -30,6 +32,17 @@ interface ItemRow {
   media_missing: number | null;
   media_playable: number | null;
   media_format: string | null;
+}
+
+/** Stored timer cues; none when they do not read. */
+function cuesOf(json: string | null): TimerCue[] {
+  if (json === null) return [];
+  try {
+    const parsed = timerCuesSchema.safeParse(JSON.parse(json));
+    return parsed.success ? parsed.data : [];
+  } catch {
+    return [];
+  }
 }
 
 /** A stored passage key; null when it does not read. */
@@ -53,6 +66,7 @@ function itemInfo(r: ItemRow, passageThere: (key: PassageKey) => boolean): Playl
         label: r.label,
         passageId: key ? passageId(key) : '',
         missing: !key || !passageThere(key),
+        timers: cuesOf(r.timers),
       };
     }
     case 'presentation': {
@@ -70,6 +84,7 @@ function itemInfo(r: ItemRow, passageThere: (key: PassageKey) => boolean): Playl
         presentationName: r.presentation_deleted === null ? r.presentation_name : null,
         order,
         arrangementName: order.mode === 'arrangement' ? r.arrangement_name : null,
+        timers: cuesOf(r.timers),
       };
     }
     case 'media':
@@ -81,6 +96,7 @@ function itemInfo(r: ItemRow, passageThere: (key: PassageKey) => boolean): Playl
         media: r.media_kind ?? 'video',
         missing: r.media_missing === 1,
         unplayable: r.media_playable === 0 ? (r.media_format ?? 'a kind of file Drashti cannot play') : null,
+        timers: cuesOf(r.timers),
       };
     case 'header':
       return { id: r.id, kind: 'header', label: r.label, color: r.color };
@@ -90,7 +106,7 @@ function itemInfo(r: ItemRow, passageThere: (key: PassageKey) => boolean): Playl
 }
 
 /** An item copied into a template, or from one into a new playlist. */
-type CopyItem =
+type CopyItem = (
   | { kind: 'header'; label: string; color: string | null }
   | {
       kind: 'presentation';
@@ -101,7 +117,11 @@ type CopyItem =
     }
   | { kind: 'media'; mediaId: string; label: string }
   | { kind: 'placeholder'; label: string; hint: string | null; category: string | null }
-  | { kind: 'shastra'; passage: string; label: string };
+  | { kind: 'shastra'; passage: string; label: string }
+) & {
+  /** Its timer cues, as stored (a template keeps them; a playlist from it gets them). */
+  timers?: string | null;
+};
 
 /*
  * Playlists and folders of playlists: imported ones (replaced as a whole
@@ -333,7 +353,7 @@ export class PlaylistRepo {
       this.db
         .prepare(
           `SELECT i.id, i.kind, i.label, i.color, i.hint, i.category, i.presentation_id, i.media_id, i.order_mode, i.arrangement_id,
-                  i.passage,
+                  i.passage, i.timers,
                   p.name AS presentation_name, p.deleted_at AS presentation_deleted, a.name AS arrangement_name,
                   m.kind AS media_kind, m.missing AS media_missing, m.playable AS media_playable, m.format AS media_format
              FROM playlist_items i
@@ -361,6 +381,7 @@ export class PlaylistRepo {
             kind: 'presentation',
             presentationId: item.presentationId,
             label: item.label,
+            timers: item.timers,
             arrangementId:
               item.order.mode === 'presentation'
                 ? undefined
@@ -377,7 +398,14 @@ export class PlaylistRepo {
               kind: 'skip',
               why: `Drashti cannot play “${item.label}” (${item.unplayable})`,
             };
-          return { id: item.id, kind: 'media', mediaId: item.mediaId, media: item.media, label: item.label };
+          return {
+            id: item.id,
+            kind: 'media',
+            mediaId: item.mediaId,
+            media: item.media,
+            label: item.label,
+            timers: item.timers,
+          };
         case 'header':
           return {
             id: item.id,
@@ -405,6 +433,7 @@ export class PlaylistRepo {
                 presentationId: item.passageId,
                 label: item.label,
                 arrangementId: null,
+                timers: item.timers,
               };
       }
     });
@@ -452,8 +481,8 @@ export class PlaylistRepo {
   /** Copy items into a playlist at its end (headers, presentations, media and slots), in one go. */
   private copyItems(to: string, items: readonly CopyItem[]): void {
     const insert = this.db.prepare(
-      `INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, media_id, label, color, hint, category, order_mode, arrangement_id, passage)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, media_id, label, color, hint, category, order_mode, arrangement_id, passage, timers)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const start = this.order(to).length;
     items.forEach((item, i) => {
@@ -471,6 +500,7 @@ export class PlaylistRepo {
         item.kind === 'presentation' ? item.orderMode : 'presentation',
         item.kind === 'presentation' ? item.arrangementId : null,
         item.kind === 'shastra' ? item.passage : null,
+        item.kind === 'header' || item.kind === 'placeholder' ? null : (item.timers ?? null),
       );
     });
   }
@@ -480,7 +510,7 @@ export class PlaylistRepo {
     return this.db
       .prepare(
         `SELECT i.id, i.kind, i.label, i.color, i.hint, i.category, i.presentation_id, i.media_id, i.order_mode, i.arrangement_id,
-                i.passage, k.category AS kirtan_category, p.deleted_at AS presentation_deleted
+                i.passage, i.timers, k.category AS kirtan_category, p.deleted_at AS presentation_deleted
            FROM playlist_items i
            LEFT JOIN presentations p ON p.id = i.presentation_id
            LEFT JOIN kirtans k ON k.presentation_id = i.presentation_id
@@ -498,6 +528,7 @@ export class PlaylistRepo {
       order_mode: string;
       arrangement_id: string | null;
       passage: string | null;
+      timers: string | null;
       kirtan_category: string | null;
       presentation_deleted: string | null;
     }[];
@@ -520,12 +551,12 @@ export class PlaylistRepo {
         this.storedItems(playlistId).flatMap((r): CopyItem[] => {
           if (r.kind === 'header') return [{ kind: 'header', label: r.label, color: r.color }];
           if (r.kind === 'media' && r.media_id)
-            return [{ kind: 'media', mediaId: r.media_id, label: r.label }];
+            return [{ kind: 'media', mediaId: r.media_id, label: r.label, timers: r.timers }];
           // A passage stays as it is, or becomes a slot that asks for one.
           if (r.kind === 'shastra' && r.passage !== null)
             return slot.has(r.id)
               ? [{ kind: 'placeholder', label: r.label, hint: null, category: SHASTRA_SLOT }]
-              : [{ kind: 'shastra', passage: r.passage, label: r.label }];
+              : [{ kind: 'shastra', passage: r.passage, label: r.label, timers: r.timers }];
           if (r.kind === 'placeholder' || (r.kind === 'presentation' && slot.has(r.id)))
             return [
               {
@@ -543,6 +574,7 @@ export class PlaylistRepo {
                 label: r.label,
                 orderMode: r.order_mode,
                 arrangementId: r.arrangement_id,
+                timers: r.timers,
               },
             ];
           return [];
@@ -567,11 +599,11 @@ export class PlaylistRepo {
         this.storedItems(templateId).flatMap((r): CopyItem[] => {
           if (r.kind === 'header') return [{ kind: 'header', label: r.label, color: r.color }];
           if (r.kind === 'media' && r.media_id)
-            return [{ kind: 'media', mediaId: r.media_id, label: r.label }];
+            return [{ kind: 'media', mediaId: r.media_id, label: r.label, timers: r.timers }];
           if (r.kind === 'placeholder')
             return [{ kind: 'placeholder', label: r.label, hint: null, category: r.category }];
           if (r.kind === 'shastra' && r.passage !== null)
-            return [{ kind: 'shastra', passage: r.passage, label: r.label }];
+            return [{ kind: 'shastra', passage: r.passage, label: r.label, timers: r.timers }];
           if (r.presentation_id && r.presentation_deleted === null)
             return [
               {
@@ -580,6 +612,7 @@ export class PlaylistRepo {
                 label: r.label,
                 orderMode: r.order_mode,
                 arrangementId: r.arrangement_id,
+                timers: r.timers,
               },
             ];
           return [];
@@ -776,6 +809,28 @@ export class PlaylistRepo {
             WHERE id = ? AND kind = 'placeholder' AND deleted_at IS NULL`,
         )
         .run(presentationId, row.name, itemId).changes === 1
+    );
+  }
+
+  /** What an item does to timers when it goes up (none to take them away). Not headers or slots. */
+  setTimers(itemId: string, cues: readonly TimerCue[]): boolean {
+    return (
+      this.db
+        .prepare(
+          `UPDATE playlist_items SET timers = ? WHERE id = ? AND kind IN ('presentation', 'media', 'shastra') AND deleted_at IS NULL`,
+        )
+        .run(cues.length > 0 ? JSON.stringify(cues) : null, itemId).changes === 1
+    );
+  }
+
+  /** A slot's name, and the category its search starts at (or a Shastra passage, or none). */
+  editSlot(itemId: string, label: string, category: string | null): boolean {
+    return (
+      this.db
+        .prepare(
+          `UPDATE playlist_items SET label = ?, category = ? WHERE id = ? AND kind = 'placeholder' AND hint IS NULL AND deleted_at IS NULL`,
+        )
+        .run(label, category, itemId).changes === 1
     );
   }
 

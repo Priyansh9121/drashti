@@ -24,6 +24,7 @@ import { up as masks } from './migrations/022-masks';
 import { up as keyFill } from './migrations/023-key-fill';
 import { up as macros } from './migrations/024-macros';
 import { up as shastra } from './migrations/025-shastra';
+import { up as timerCues } from './migrations/026-timer-cues';
 
 export interface Migration {
   version: number;
@@ -67,6 +68,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 23, name: 'key and fill outputs', up: keyFill },
   { version: 24, name: 'macros', up: macros },
   { version: 25, name: 'the Shastra module', up: shastra, rebuildsTable: true },
+  { version: 26, name: 'timers in sabha templates', up: timerCues },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

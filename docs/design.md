@@ -151,7 +151,8 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 ## 13. Templates and the setup wizard
 
 - **Templates live apart.** The playlist column has two tabs, Playlists and Templates. A template opened shows an `info` notice saying it never goes on the screens, with **New playlist from this**; its items are never put in the slide grid.
-- **Slots are dashed, quiet rows**: a dashed `line-strong` border, the slot's name, and "A slot · its category · choose what goes here". An import's placeholder keeps the dashed `warning` look: one is a place to fill, the other a problem.
+- **Slots are dashed, quiet rows**: a dashed `line-strong` border, the slot's name, and "A slot · its category · choose what goes here". An import's placeholder keeps the dashed `warning` look: one is a place to fill, the other a problem. **Edit slot…** (its menu) is a small dialog with the name and "Search in", the same fields as Add a slot.
+- **An item's timer cues say what they do, under its name**: a small clock and "starts “Pravachan”, shows “Sabha starts in”". They are set in **Timers when it goes up…** (its menu): one row per cue, two selects in words ("Start it from the beginning", the timer) and Remove; up to four.
 - **The wizard is a dialog of steps**: the step names with numbers along the top (the current one bold, `aria-current="step"`), one step at a time, **Back** on the left, **Skip this step** and **Next** (primary) on the right, **Finish** on the last step after a summary in words. Anything it would change is said before Finish, and nothing changes until then.
 - **Outputs are numbered the same everywhere**: the wizard's rows, and the big number Identify puts across each display. The display the controls are on carries a `warning` badge, and choosing an output there says Finish will ask first.
 - Both fit at 1280 × 720 (`tests/e2e/templates.spec.ts`, `tests/e2e/setup.spec.ts`).
