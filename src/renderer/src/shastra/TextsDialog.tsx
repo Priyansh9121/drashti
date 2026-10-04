@@ -97,7 +97,8 @@ export function TextsDialog() {
                 <td className="py-2 pr-3">
                   <span className="block font-medium">{t.name}</span>
                   <span className="block text-xs text-muted">
-                    Type “{t.abbreviation}” and a number · loaded {new Date(t.loadedAt).toLocaleDateString()}
+                    Type “{t.abbreviation}”{t.sectionCount > 0 ? ', a section' : ''} and a number · loaded{' '}
+                    {new Date(t.loadedAt).toLocaleDateString()}
                   </span>
                 </td>
                 <td className="py-2 pr-3 text-muted tabular-nums">

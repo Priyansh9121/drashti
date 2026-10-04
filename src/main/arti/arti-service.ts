@@ -90,10 +90,10 @@ export class ArtiService {
   view(): ArtiView {
     const now = this.deps.now();
     const offset = now - this.deps.engineNow();
-    const schedules = this.deps.repo.list().map((s) => {
-      const next = s.enabled && s.presentationName !== null ? nextArtiTime(s, now) : null;
-      return { ...s, nextAt: next === null ? null : next - offset };
-    });
+    const schedules = this.deps.repo.list().map((s) => ({
+      ...s,
+      nextAt: s.enabled && s.presentationName !== null ? nextArtiTime(s, now) : null,
+    }));
     const c = this.showing;
     const prompt: ArtiPrompt | null = c
       ? {
@@ -106,7 +106,7 @@ export class ArtiService {
           byItselfAt: c.byItselfAt === null ? null : c.byItselfAt - offset,
         }
       : null;
-    return { schedules, prompt };
+    return { schedules, prompt, offsetMs: offset };
   }
 
   save(id: string | null, input: unknown): ArtiResult {

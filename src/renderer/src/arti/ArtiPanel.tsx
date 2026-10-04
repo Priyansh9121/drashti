@@ -35,10 +35,12 @@ function nextText(at: number, now: number): string {
 
 export function ArtiPanel() {
   const schedules = useArti((s) => s.view?.schedules ?? null);
+  const offset = useArti((s) => s.view?.offsetMs ?? 0);
   useEffect(() => {
     connectArti();
   }, []);
-  const now = useNow(60_000);
+  // The schedules' clock: the engine's (only a test moves it ahead).
+  const now = useNow(60_000) + offset;
   return (
     <Panel
       title="Arti"
