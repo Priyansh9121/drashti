@@ -137,6 +137,14 @@ export class StreamPipeline {
   // ---- recording
   private recordFile: WriteStream | null = null;
   private recordConsumer: Consumer | null = null;
+  /**
+   * The encoder stopped while recording: the recording goes on in a new file
+   * once the encoder is back and has a picture (its new stream has a header
+   * of its own), and not before. When Drashti itself goes down, the encoder
+   * is often the first to go, and a file made in that moment would be left
+   * behind as an empty extra part.
+   */
+  private rollWaiting = false;
   private keepFree = 2 * 1024 ** 3;
   private recording: WorkerRecording = {
     state: 'off',
@@ -320,9 +328,7 @@ export class StreamPipeline {
       this.encodeProcess = null;
       if (this.stopping) return;
       this.log('warn', `The encoder stopped (code ${String(code)}); starting it again`);
-      // The recording goes on in a new file (the encoder's new stream has a header of its own).
-      this.recordConsumer = this.recordFile ? { started: false, offset: 0 } : null;
-      if (this.recordFile) this.rollRecording();
+      this.holdRecording();
       if (this.pushConsumer) this.pushConsumer = { started: false, offset: 0 };
       setTimeout(() => {
         this.maybeStartEncoder();
@@ -341,7 +347,7 @@ export class StreamPipeline {
     this.encodeProcess = null;
     child?.stdin.end();
     child?.kill();
-    if (this.recordFile) this.rollRecording();
+    this.holdRecording();
     if (this.pushConsumer) this.pushConsumer = { started: false, offset: 0 };
     this.maybeStartEncoder();
   }
@@ -382,6 +388,11 @@ export class StreamPipeline {
   // ---- out ------------------------------------------------------------------------------
 
   private toConsumers(cluster: MkvCluster): void {
+    // A recording held while the encoder was down goes on, in a new file, from the new encoder's first picture.
+    if (this.rollWaiting && this.header && pictureStart(cluster)) {
+      this.rollWaiting = false;
+      this.rollRecording();
+    }
     if (this.recordConsumer && this.recordFile) {
       const out = this.take(this.recordConsumer, cluster);
       if (out) this.writeRecording(out);
@@ -454,6 +465,15 @@ export class StreamPipeline {
     this.log('info', 'Recording started');
   }
 
+  /** The encoder is down: the recording's file is finished, and the next one waits for the encoder (rollWaiting). */
+  private holdRecording(): void {
+    if (!this.recordFile) return;
+    this.recordFile.end();
+    this.recordFile = null;
+    this.recordConsumer = null;
+    this.rollWaiting = true;
+  }
+
   /** The encoder started again: the recording carries on in a new file beside the old one. */
   private rollRecording(): void {
     const file = this.recording.file;
@@ -477,11 +497,13 @@ export class StreamPipeline {
   }
 
   stopRecording(message?: string): void {
-    if (!this.recordFile) {
+    const held = this.rollWaiting;
+    this.rollWaiting = false;
+    if (!this.recordFile && !held) {
       if (message) this.recording.message = message;
       return;
     }
-    this.recordFile.end();
+    this.recordFile?.end();
     this.recordFile = null;
     this.recordConsumer = null;
     this.recording = { ...this.recording, state: 'off', rate: null, message: message ?? null };
