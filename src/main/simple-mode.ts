@@ -74,6 +74,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.playlists.editSlot,
   IPC.playlists.setTimers,
   IPC.shastra.remove,
+  // The arti: Simple Mode answers the prompt (put up, not now, cancel) and changes no schedule.
+  IPC.arti.save,
+  IPC.arti.setEnabled,
+  IPC.arti.remove,
   // Macros: Simple Mode runs none (MIDI mapped to its own actions still works), and changes none.
   IPC.macros.save,
   IPC.macros.remove,

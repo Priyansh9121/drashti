@@ -4,6 +4,7 @@ import type { TimerDefinition, TimerRun } from '../../shared/timers';
 import type {
   AudioLayer,
   BackgroundLayer,
+  CuedNext,
   LayerName,
   Layers,
   LiveCursor,
@@ -43,6 +44,7 @@ export type EngineAction =
   /** The cursor moves to a playlist item that is not a presentation (a picture, video or sound). */
   | { type: 'live/item'; playlist: PlaylistCursor }
   | { type: 'next/set'; next: UpNext | null }
+  | { type: 'cue/set'; cue: CuedNext | null }
   | { type: 'upcoming/set'; upcoming: UpcomingItem[] }
   | { type: 'stage/message'; text: string | null }
   /** The timers as defined in the library; each keeps its run (start time, counted time). */

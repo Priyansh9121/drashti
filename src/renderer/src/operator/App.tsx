@@ -41,6 +41,8 @@ import { runMacro } from '../macros/macros-store';
 import { setMidiHandler, startMidi } from '../midi/midi-store';
 import { runBack } from './actions';
 import { LooksPanel } from './LooksPanel';
+import { ArtiPrompt } from '../arti/ArtiPrompt';
+import { ArtiDialog, ArtiPanel } from '../arti/ArtiPanel';
 import { isTyping, useKeymap } from './useKeymap';
 import { watchProps } from './logo-store';
 import { connectMode, useMode } from './mode-store';
@@ -165,6 +167,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <Header platform={platform} onOpenScreens={openScreens} />
+      <ArtiPrompt />
       <RecoveryBanner />
       <Columns
         left={
@@ -191,6 +194,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
               <MasksPanel />
               <MessagesPanel />
               <TimersPanel />
+              <ArtiPanel />
             </div>
           </aside>
         }
@@ -214,6 +218,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <StageLayoutEditor />
       <MaskEditor />
       <MacroEditor />
+      <ArtiDialog />
       {screensOpen && (
         <ScreensPanel
           platform={platform}

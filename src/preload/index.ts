@@ -260,6 +260,16 @@ const bridge: DrashtiBridge = {
     save: (maskId, mask) => invoke(IPC.masks.save, maskId, mask),
     remove: (maskId) => invoke(IPC.masks.remove, maskId),
   },
+  arti: {
+    view: () => invoke(IPC.arti.view),
+    onChanged: (listener) => on(IPC.arti.changed, listener),
+    save: (scheduleId, fields) => invoke(IPC.arti.save, scheduleId, fields),
+    setEnabled: (scheduleId, enabled) => invoke(IPC.arti.setEnabled, scheduleId, enabled),
+    remove: (scheduleId) => invoke(IPC.arti.remove, scheduleId),
+    putUp: (key) => invoke(IPC.arti.putUp, key),
+    notNow: (key) => invoke(IPC.arti.notNow, key),
+    cancel: (key) => invoke(IPC.arti.cancel, key),
+  },
   shastra: {
     list: () => invoke(IPC.shastra.list),
     tree: (textId) => invoke(IPC.shastra.tree, textId),

@@ -1,3 +1,4 @@
+import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
 import type {
   PassageInfo,
   PassageResult,
@@ -300,6 +301,18 @@ export const IPC = {
     setTheme: 'shastra:set-theme',
     remove: 'shastra:remove',
   },
+  /** The arti at its time (Session 12): schedules (Pro Mode), and answering the prompt (either mode). */
+  arti: {
+    view: 'arti:view',
+    save: 'arti:save',
+    setEnabled: 'arti:set-enabled',
+    remove: 'arti:remove',
+    putUp: 'arti:put-up',
+    notNow: 'arti:not-now',
+    cancel: 'arti:cancel',
+    /** main -> operator: the schedules or the prompt changed. */
+    changed: 'arti:changed',
+  },
   /** Stage layouts made in Drashti (changing them: operator window, Pro Mode). */
   stageLayouts: {
     list: 'stage:layouts',
@@ -571,6 +584,13 @@ export interface InvokeContract {
   [IPC.shastra.itemPassage]: { args: [itemId: string]; result: PassageInfo | null };
   [IPC.shastra.setTheme]: { args: [textId: string, themeId: string | null]; result: ShastraResult };
   [IPC.shastra.remove]: { args: [textId: string]; result: ShastraResult };
+  [IPC.arti.view]: { args: []; result: ArtiView };
+  [IPC.arti.save]: { args: [scheduleId: string | null, fields: ArtiFields]; result: ArtiResult };
+  [IPC.arti.setEnabled]: { args: [scheduleId: string, enabled: boolean]; result: ArtiResult };
+  [IPC.arti.remove]: { args: [scheduleId: string]; result: ArtiResult };
+  [IPC.arti.putUp]: { args: [key: string]; result: ArtiAnswer };
+  [IPC.arti.notNow]: { args: [key: string]; result: ArtiAnswer };
+  [IPC.arti.cancel]: { args: [key: string]; result: ArtiAnswer };
   [IPC.masks.list]: { args: []; result: Mask[] };
   [IPC.masks.save]: { args: [maskId: string | null, mask: Omit<Mask, 'id'>]; result: MaskResult };
   [IPC.masks.remove]: { args: [maskId: string]; result: MaskResult };
@@ -664,6 +684,7 @@ export interface EventContract {
   [IPC.stageLayouts.changed]: StageLayout[];
   [IPC.masks.changed]: Mask[];
   [IPC.macros.changed]: Macro[];
+  [IPC.arti.changed]: ArtiView;
   [IPC.output.context]: OutputContext;
   [IPC.output.identify]: { name: string; groupName: string };
   [IPC.audio.chosen]: { device: AudioDevice | null };
