@@ -18,7 +18,7 @@ on:
         options: [both, windows, macos]
         default: both
       specs:
-        description: 'Quick check: only these end-to-end specs (tests/e2e/...spec.ts, space-separated)'
+        description: 'Quick check: only these end-to-end specs (tests/e2e/...spec.ts, or one test as ...spec.ts:LINE; space-separated)'
         type: string
         default: ''
       repeat:
@@ -139,7 +139,8 @@ jobs:
           specs=()
           for s in $SPECS; do
             case "$s" in
-              tests/e2e/*.spec.ts) [ -f "$s" ] || { echo "No such spec: $s"; exit 1; } ;;
+              # A spec, or one test in it by its line (tests/e2e/x.spec.ts:120).
+              tests/e2e/*.spec.ts | tests/e2e/*.spec.ts:[0-9]*) [ -f "${s%%:*}" ] || { echo "No such spec: $s"; exit 1; } ;;
               *) echo "Not an end-to-end spec: $s"; exit 1 ;;
             esac
             specs+=("$s")
