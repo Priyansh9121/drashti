@@ -142,7 +142,8 @@ test('the fill and the key dissolve together, and paint each change within frame
   await goLive(1);
   const startOf = (page: Page) =>
     page
-      .locator('[data-layer="slide"][data-fading="true"]')
+      // The start is set a render after the dissolve begins (once its pictures can be drawn).
+      .locator('[data-layer="slide"][data-fading="true"][data-fade-start]')
       .getAttribute('data-fade-start', { timeout: 3000 });
   const [fillStart, keyStart] = await Promise.all([startOf(fill), startOf(key)]);
   expect(fillStart).not.toBeNull();

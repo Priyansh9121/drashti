@@ -150,15 +150,15 @@ test('a text loads from its file, again unchanged, and updated; references, nons
 
   // Search by words in each language (accents ignored), the made transliteration too.
   const search = panel.getByTestId('shastra-search');
-  const found = async (words: string) => {
+  /** The first hit for these words (waiting for this search's hits, not the last one's). */
+  const firstHit = async (words: string, says: string) => {
     await search.fill(words);
-    await expect(panel.getByTestId('shastra-hits')).toBeVisible();
-    return panel.getByTestId('shastra-hit').allInnerTexts();
+    await expect(panel.getByTestId('shastra-hit').first()).toContainText(says);
   };
-  expect((await found('द्वितीयः पादः 7'))[0]).toContain('Placeholder Granth 7');
-  expect((await found('મધ્ય વચન 3'))[0]).toContain('Placeholder Vachan Placeholder Madhya 3');
-  expect((await found('placeholder meaning 12'))[0]).toContain('Placeholder Granth 12');
-  expect((await found('dvitiyah 5'))[0]).toContain('Placeholder Granth 5');
+  await firstHit('द्वितीयः पादः 7', 'Placeholder Granth 7');
+  await firstHit('મધ્ય વચન 3', 'Placeholder Vachan Placeholder Madhya 3');
+  await firstHit('placeholder meaning 12', 'Placeholder Granth 12');
+  await firstHit('dvitiyah 5', 'Placeholder Granth 5');
   await search.fill('nowhere-to-be-found');
   await expect(panel.getByText('Nothing found')).toBeVisible();
   await search.fill('');
