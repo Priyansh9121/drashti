@@ -181,8 +181,9 @@ test('goes up by itself only as its schedule says, after a ten-second countdown 
   await expect(prompt).toHaveAttribute('data-counting', 'true');
   await expect(prompt).toContainText('Placeholder morning arti goes up by itself in ten seconds.');
   await expect(prompt.getByTestId('arti-countdown')).toHaveText(/^Up in (10|9|8)$/u);
-  await expectNoSeriousA11yIssues(win, 'the arti counting down to go up by itself');
   expect((await engine(win)).live.presentationId).toBe(other);
+  // (The count runs on in real time too: if the check outlasts it, the arti is simply up already.)
+  await expectNoSeriousA11yIssues(win, 'the arti counting down to go up by itself');
   await clockTo(first.app, at(1, 7, 0, 10));
   await expect.poll(async () => (await engine(win)).live.presentationId).toBe(arti);
   await expect(prompt).toHaveCount(0);
