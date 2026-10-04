@@ -98,7 +98,7 @@ function streamLog(userData: string): string {
     .map((f) => readFileSync(join(dir, f), 'utf8'))
     .join('\n')
     .split('\n')
-    .filter((l) => l.includes('stream'))
+    .filter((l) => /stream|encoder|Program|[Rr]ecording/u.test(l))
     .slice(-60)
     .join('\n');
 }
@@ -515,6 +515,8 @@ test('after a crash on air: back on air by itself within 5 minutes, in a new rec
   const files = readdirSync(dir)
     .filter((f) => f.endsWith('.mkv'))
     .sort();
+  if (files.length !== 2)
+    console.log(`Recordings: ${files.join(', ')}. The stream's log:\n${streamLog(userData)}`);
   expect(files).toHaveLength(2);
   for (const f of files) {
     const { header, clusters, seconds } = readRecording(join(dir, f));
