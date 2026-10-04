@@ -48,6 +48,7 @@ describe('migrations', () => {
         'messages',
         'timers',
         'macros',
+        'arti_schedules',
         'stream_profiles',
         'users',
       ]),

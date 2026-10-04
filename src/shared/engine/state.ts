@@ -11,7 +11,7 @@ import type { TimerState } from '../timers';
  *
  * Bump ENGINE_STATE_VERSION whenever the shape changes incompatibly.
  */
-export const ENGINE_STATE_VERSION = 7;
+export const ENGINE_STATE_VERSION = 8;
 
 export type LayerName = 'audio' | 'background' | 'slide' | 'props' | 'messages' | 'ticker' | 'masks';
 
@@ -205,6 +205,19 @@ export interface UpcomingItem {
 /** How many of the playlist's next items the state carries. */
 export const UPCOMING_ITEMS = 8;
 
+/**
+ * Something put first in line for Next (Session 12: the arti, at its
+ * scheduled time): Next plays it, and the previews show it as what comes
+ * next. It goes once played, or when the operator says Not now.
+ */
+export interface CuedNext {
+  presentationId: string;
+  /** What it is, for the prompt and the previews ("Evening arti"). */
+  label: string;
+  /** The live playlist's item with that presentation (the show then goes on through the playlist), or null. */
+  playlist: PlaylistCursor | null;
+}
+
 export interface EngineState {
   version: typeof ENGINE_STATE_VERSION;
   live: LiveCursor;
@@ -222,6 +235,8 @@ export interface EngineState {
   canPutBack: boolean;
   /** What Next will show, or null when nothing follows. */
   next: UpNext | null;
+  /** Put first in line for Next (the arti at its time), or null. */
+  cue: CuedNext | null;
   /** The playlist's next items after the one playing (headers too), up to UPCOMING_ITEMS. */
   upcoming: UpcomingItem[];
   /** A message for the performers on stage screens; the audience never sees it. */
@@ -253,6 +268,7 @@ export function initialEngineState(): EngineState {
     logo: null,
     canPutBack: false,
     next: null,
+    cue: null,
     upcoming: [],
     stageMessage: null,
     timers: [],

@@ -788,6 +788,98 @@ describe('ShowEngine', () => {
     });
   });
 
+  describe('a cued next (the arti at its time)', () => {
+    function show() {
+      const source = makeSource();
+      source.set('arti', [textSlide('a1', 'Placeholder arti one'), textSlide('a2', 'Placeholder arti two')]);
+      const playlists = new MemoryPlaylistSource();
+      playlists.set('evening', [
+        { id: 'i-p1', kind: 'presentation', presentationId: 'p1', arrangementId: undefined },
+        { id: 'i-arti', kind: 'presentation', presentationId: 'arti', arrangementId: undefined },
+        { id: 'i-p2', kind: 'presentation', presentationId: 'p2', arrangementId: undefined },
+      ]);
+      let clock = 1000;
+      const engine = new ShowEngine(source, new RecordingTransport(), () => ++clock, playlists);
+      return { engine };
+    }
+    const cue = (presentationId = 'arti'): EngineCommand => ({
+      type: 'cueNext',
+      presentationId,
+      label: 'Placeholder arti',
+    });
+
+    it('becomes what Next shows, in the live playlist when it has it, and goes once it is live', () => {
+      const { engine } = show();
+      engine.dispatch({ type: 'playItem', playlistId: 'evening', itemId: 'i-p1' });
+      expect(engine.current.next).toMatchObject({ kind: 'slide', presentationId: 'p1', slideIndex: 1 });
+      const rev = engine.rev;
+      expect(engine.dispatch(cue())).toMatchObject({ ok: true, changed: true });
+      // One change: the cue and what is next.
+      expect(engine.rev).toBe(rev + 1);
+      expect(engine.current.cue).toEqual({
+        presentationId: 'arti',
+        label: 'Placeholder arti',
+        playlist: { playlistId: 'evening', itemId: 'i-arti' },
+      });
+      expect(engine.current.next).toMatchObject({
+        kind: 'slide',
+        presentationId: 'arti',
+        slideIndex: 0,
+        itemId: 'i-arti',
+      });
+      // The screens do not change by themselves.
+      expect(engine.current.live).toMatchObject({ presentationId: 'p1', slideIndex: 0 });
+      engine.dispatch({ type: 'next' });
+      expect(engine.current.live).toMatchObject({
+        presentationId: 'arti',
+        slideIndex: 0,
+        playlist: { playlistId: 'evening', itemId: 'i-arti' },
+      });
+      expect(engine.current.cue).toBeNull();
+      // On through the arti, then the playlist.
+      expect(engine.current.next).toMatchObject({ presentationId: 'arti', slideIndex: 1 });
+      engine.dispatch({ type: 'next' });
+      engine.dispatch({ type: 'next' });
+      expect(engine.current.live).toMatchObject({ presentationId: 'p2', playlist: { itemId: 'i-p2' } });
+    });
+
+    it('plays on its own when the live playlist does not have it, and Not now takes it away', () => {
+      const { engine } = show();
+      engine.dispatch(goLive('p1', 2));
+      engine.dispatch(cue());
+      expect(engine.current.cue?.playlist).toBeNull();
+      expect(engine.current.next).toMatchObject({ presentationId: 'arti', slideIndex: 0, itemId: null });
+      engine.dispatch({ type: 'clearCue' });
+      expect(engine.current.cue).toBeNull();
+      expect(engine.current.next).toBeNull();
+      expect(engine.dispatch({ type: 'playCue' })).toMatchObject({ ok: false, error: 'nothing-cued' });
+      engine.dispatch(cue());
+      engine.dispatch({ type: 'playCue' });
+      expect(engine.current.live).toMatchObject({ presentationId: 'arti', slideIndex: 0, playlist: null });
+      expect(engine.current.cue).toBeNull();
+    });
+
+    it('goes when the operator puts it up another way; Previous leaves it', () => {
+      const { engine } = show();
+      engine.dispatch(goLive('p1', 1));
+      engine.dispatch(cue());
+      engine.dispatch({ type: 'previous' });
+      expect(engine.current.live.slideIndex).toBe(0);
+      expect(engine.current.cue?.presentationId).toBe('arti');
+      engine.dispatch(goLive('arti', 1));
+      expect(engine.current.cue).toBeNull();
+      expect(engine.current.next).toBeNull();
+    });
+
+    it('refuses a presentation that is not there or has no slides', () => {
+      const { engine } = show();
+      expect(engine.dispatch(cue('nope'))).toMatchObject({ ok: false, error: 'unknown-presentation' });
+      expect(engine.dispatch(cue('empty'))).toMatchObject({ ok: false, error: 'unknown-presentation' });
+      expect(engine.current.cue).toBeNull();
+      expect(parseEngineCommand({ type: 'cueNext', presentationId: 'arti', label: ' ' }).ok).toBe(false);
+    });
+  });
+
   describe('a presentation edited while it is live', () => {
     it('shows the new words at once, keeps a slide that moved, and leaves a slide that went', () => {
       const { engine, source } = setup();

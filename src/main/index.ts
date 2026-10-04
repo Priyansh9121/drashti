@@ -69,6 +69,9 @@ import { StageLayoutService } from './stage/stage-layout-service';
 import { MaskRepo } from './db/masks';
 import { MaskService } from './masks/mask-service';
 import { MacroRepo } from './db/macros';
+import { ArtiRepo } from './db/arti';
+import { ArtiService } from './arti/arti-service';
+import { type ArtiAnswer, artiKeySchema } from '../shared/arti';
 import { MacroService } from './macros/macro-service';
 import { midiSettingsSchema, NO_MIDI } from '../shared/midi';
 import { seedPlaceholders, seedTemplates } from './db/seed';
@@ -204,6 +207,10 @@ const announceMinuteMs = Math.min(
   60_000,
   Math.max(100, Number(process.env['DRASHTI_TEST_ANNOUNCE_MINUTE_MS'] ?? 60_000) || 60_000),
 );
+// Tests only: the arti schedules read this computer's clock moved on by this much (ms), and a test can
+// move it with globalThis.drashtiArtiClock(wallMs). The engine's clock is never moved.
+const artiTestClock = process.env['DRASHTI_TEST_ARTI_CLOCK'] === '1' && !app.isPackaged;
+let artiClockOffset = artiTestClock ? Number(process.env['DRASHTI_TEST_ARTI_OFFSET_MS'] ?? 0) || 0 : 0;
 // The performance check only: so many devices connected while it measures, and (to compare) the
 // network's server in the main process instead of its own.
 const perfDevices = Math.min(50, Math.max(0, Number(process.env['DRASHTI_PERF_DEVICES'] ?? 0) || 0));
@@ -527,6 +534,8 @@ function start(): void {
   let mediaLength: (mediaId: string) => number | null = () => null;
   /** Macros (made further down, once props, messages and media are): a slide's macro cue runs through it. */
   let macroService: MacroService | null = null;
+  /** The arti schedules (made further down, once macros are): told when presentations change. */
+  let artiService: ArtiService | null = null;
   const engine = new ShowEngine(
     playable,
     new FanoutTransport([transport, networkTransport]),
@@ -912,6 +921,8 @@ function start(): void {
       lastChanged = Date.now();
       sendToOperator(IPC.library.changed, { at: lastChanged, what: 'presentations' });
       network?.hint('presentations');
+      // An arti's presentation may have been renamed or removed.
+      artiService?.refresh();
     };
     if (now) {
       if (changedTimer) clearTimeout(changedTimer);
@@ -1202,6 +1213,62 @@ function start(): void {
     },
   });
   macroService = macros;
+  // ---- the arti at its time ---------------------------------------------------------------
+  const arti = new ArtiService({
+    repo: new ArtiRepo(db),
+    engine: {
+      state: () => engine.current,
+      dispatch: (command) => engine.dispatch(command),
+      onChange: (listener) => engine.onChange(listener),
+    },
+    now: () => Date.now() + artiClockOffset,
+    engineNow: Date.now,
+    changed: (view) => {
+      sendToOperator(IPC.arti.changed, view);
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+  });
+  artiService = arti;
+  app.on('will-quit', () => {
+    arti.dispose();
+  });
+  if (artiTestClock)
+    (globalThis as { drashtiArtiClock?: (wallMs: number) => void }).drashtiArtiClock = (wallMs) => {
+      artiClockOffset = wallMs - Date.now();
+      arti.check();
+    };
+  const notArtiOperator = {
+    ok: false as const,
+    message: 'Only the operator window can change arti schedules.',
+  };
+  const artiGone = { ok: false as const, message: 'That arti prompt has gone.' };
+  handle(IPC.arti.view, () => arti.view());
+  handle(IPC.arti.save, (e, id, fields) => {
+    if (!fromOperator(e)) return notArtiOperator;
+    const which = idSchema.nullable().safeParse(id);
+    return which.success ? arti.save(which.data, fields) : notArtiOperator;
+  });
+  handle(IPC.arti.setEnabled, (e, id, enabled) => {
+    const which = idSchema.safeParse(id);
+    return fromOperator(e) && which.success && typeof enabled === 'boolean'
+      ? arti.setEnabled(which.data, enabled)
+      : notArtiOperator;
+  });
+  handle(IPC.arti.remove, (e, id) => {
+    const which = idSchema.safeParse(id);
+    return fromOperator(e) && which.success ? arti.remove(which.data) : notArtiOperator;
+  });
+  // Answering the prompt: the operator window, in either mode.
+  const answer = (e: IpcMainInvokeEvent, key: unknown, run: (key: string) => ArtiAnswer) => {
+    const parsed = artiKeySchema.safeParse(key);
+    return fromOperator(e) && parsed.success ? run(parsed.data) : artiGone;
+  };
+  handle(IPC.arti.putUp, (e, key) => answer(e, key, (k) => arti.putUp(k)));
+  handle(IPC.arti.notNow, (e, key) => answer(e, key, (k) => arti.notNow(k)));
+  handle(IPC.arti.cancel, (e, key) => answer(e, key, (k) => arti.cancel(k)));
   const notMacroOperator = {
     ok: false as const,
     message: 'Only the operator window can change or run macros.',

@@ -222,3 +222,10 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **A passage is shown like a presentation.** It fills the slide grid with a group per item, named by its reference ("Placeholder Granth 14"), and a line in the header says it is a Shastra passage. Edit words, Kirtan and Edit slides are not offered: its slides are made from the text. Rows in the Shastra tab, search results and browsed items alike, can be dragged onto a playlist.
 - **Texts… is setup** (Pro Mode): a table of the loaded texts with their abbreviation ("Type “PG” and a number"), items, languages as badges, a theme select, and **Remove** (`ghost`, asking first in an `alertdialog`). The subtitle says that only authorised texts are loaded.
 - **Sanskrit's two scripts are named in full** everywhere a language is chosen: "Sanskrit (Devanagari)" and "Sanskrit (Gujarati script)"; badges are `SA` and `SA·GU`.
+
+## 23. The arti at its time
+
+- **A strip, not a dialog.** The arti prompt is a `warning-bg` strip across the operator window under the header, never modal: the show goes on under it, and Next keeps working. It names the arti, counts down to it (tabular figures), and offers **Put up Arti now** (`primary`, the only primary there) and **Not now**. When a schedule goes up by itself, it says so in words ("goes up by itself in ten seconds") with **Cancel** beside the count.
+- **Screen readers hear it once per step.** The sentence (coming up; it is time; going up by itself) is a `role="status"` that changes only when the step does; the ticking count beside it is hidden from them, so nothing is read out every second.
+- **Simple Mode: one big button.** The same strip sits above the big buttons with an `xxl` **Put up Arti now** and an `xl` **Not now**; there is nothing to set there.
+- **Times are set in the live column.** The Arti panel lists each time as its name, "Every day 19:00" or "Sun, Wed 19:00", when it next prompts, and its presentation; a switch turns one off; **By itself** is a `warning` badge. A removed presentation says so in `warning-fg` on its row.

@@ -201,8 +201,10 @@ export function runSimpleAction(action: OperatorAction, start: () => Promise<voi
 }
 
 async function performSimple(action: OperatorAction, start: () => Promise<void>): Promise<void> {
-  const live = useEngine.getState().state?.live;
-  const somethingLive = live?.presentationId != null || live?.playlist != null;
+  const state = useEngine.getState().state;
+  const live = state?.live;
+  // Next plays what is cued (the arti), else goes on, else starts the playlist.
+  const somethingLive = live?.presentationId != null || live?.playlist != null || state?.cue != null;
   switch (action) {
     case 'next':
       return somethingLive ? dispatch({ type: 'next' }) : start();

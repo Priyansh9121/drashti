@@ -6,6 +6,7 @@ import {
   type AudioLayer,
   type BackgroundChoice,
   type BackgroundLayer,
+  type CuedNext,
   ENGINE_STATE_VERSION,
   type EngineState,
   initialEngineState,
@@ -795,7 +796,22 @@ export class ShowEngine {
    * After the slide layer is cleared the cursor stays put, so Next shows the
    * following slide.
    */
+  /** What was cued (the arti at its time), from its first slide; in its playlist when the playlist has it. */
+  private playCue(): Resolved | null {
+    const cue = this.state.cue;
+    if (!cue) return null;
+    const item = cue.playlist ? this.checkItem(cue.playlist) : null;
+    const arrangement = item?.item.kind === 'presentation' ? item.item.arrangementId : undefined;
+    const order = this.source.order(cue.presentationId, arrangement);
+    if (!order || order.slides.length === 0) return null;
+    const shown = this.showSlide(cue.presentationId, 0, order.arrangementId, item?.cursor ?? null);
+    return shown.ok ? { ok: true, actions: [...shown.actions, { type: 'cue/set', cue: null }] } : shown;
+  }
+
   private step(delta: 1 | -1): Resolved {
+    // Next plays what was cued.
+    const cued = delta > 0 ? this.playCue() : null;
+    if (cued) return cued;
     const { presentationId, slideIndex, arrangementId, playlist } = this.state.live;
     if (presentationId !== null && slideIndex !== null) {
       // Along the order being played: a repeated chorus comes up again.
@@ -816,8 +832,14 @@ export class ShowEngine {
     return NO_CHANGE;
   }
 
-  /** What Next will show from here. */
-  private upNext(live: LiveCursor): UpNext | null {
+  /** What Next will show from here: what was cued, else the next slide or item. */
+  private upNext(live: LiveCursor, cue: CuedNext | null = this.state.cue): UpNext | null {
+    if (cue) {
+      const item = cue.playlist ? this.checkItem(cue.playlist) : null;
+      const arrangement = item?.item.kind === 'presentation' ? item.item.arrangementId : undefined;
+      const first = this.source.order(cue.presentationId, arrangement)?.slides[0];
+      if (first) return this.slideUpNext(cue.presentationId, 0, first, item?.cursor.itemId ?? null);
+    }
     if (live.presentationId !== null && live.slideIndex !== null) {
       const order = this.source.order(live.presentationId, live.arrangementId);
       const following = order?.slides[live.slideIndex + 1];
@@ -948,6 +970,31 @@ export class ShowEngine {
         return { ok: true, actions: [{ type: 'stage/message', text: command.text }] };
       case 'clearStageMessage':
         return { ok: true, actions: [{ type: 'stage/message', text: null }] };
+      case 'cueNext': {
+        const order = this.source.order(command.presentationId);
+        if (!order || order.slides.length === 0)
+          return {
+            ok: false,
+            error: 'unknown-presentation',
+            message: `No presentation ${command.presentationId}`,
+          };
+        // In the live playlist, when it has that presentation: the show then goes on through the playlist.
+        const at = this.state.live.playlist;
+        const items = at ? (this.playlists.items(at.playlistId) ?? []) : [];
+        const item = items.find(
+          (i) => i.kind === 'presentation' && i.presentationId === command.presentationId,
+        );
+        const cue: CuedNext = {
+          presentationId: command.presentationId,
+          label: command.label,
+          playlist: at && item ? { playlistId: at.playlistId, itemId: item.id } : null,
+        };
+        return { ok: true, actions: [{ type: 'cue/set', cue }] };
+      }
+      case 'clearCue':
+        return { ok: true, actions: [{ type: 'cue/set', cue: null }] };
+      case 'playCue':
+        return this.playCue() ?? { ok: false, error: 'nothing-cued', message: 'Nothing is cued' };
       case 'setLook': {
         const look = this.options.looks?.look(command.lookId) ?? null;
         if (!look) return { ok: false, error: 'unknown-look', message: 'That look no longer exists' };
@@ -1003,9 +1050,12 @@ export class ShowEngine {
   ): CommandResult {
     const prev = this.state;
     let next = actions.reduce(reduce, prev);
-    // A new position has a new slide after it, and other items coming up.
-    if (next.live !== prev.live) {
-      const upNext = this.upNext(next.live);
+    // What was cued goes once it is live (however it got there).
+    if (next.live !== prev.live && next.live.presentationId === next.cue?.presentationId)
+      next = reduce(next, { type: 'cue/set', cue: null });
+    // A new position (or a cue) has a new slide after it, and other items coming up.
+    if (next.live !== prev.live || next.cue !== prev.cue) {
+      const upNext = this.upNext(next.live, next.cue);
       if (!sameData(next.next, upNext)) next = reduce(next, { type: 'next/set', next: upNext });
       next = reduce(next, { type: 'upcoming/set', upcoming: this.upcoming(next.live) });
     }

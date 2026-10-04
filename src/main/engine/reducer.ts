@@ -113,6 +113,8 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
         },
       };
     }
+    case 'cue/set':
+      return { ...state, cue: action.cue };
     case 'next/set':
       return sameData(state.next, action.next) ? state : { ...state, next: action.next };
     case 'upcoming/set':

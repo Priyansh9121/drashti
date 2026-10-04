@@ -1,3 +1,4 @@
+import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
 import type {
   PassageInfo,
   PassageResult,
@@ -430,6 +431,23 @@ export interface DrashtiBridge {
     itemPassage(itemId: string): Promise<PassageInfo | null>;
     setTheme(textId: string, themeId: string | null): Promise<ShastraResult>;
     remove(textId: string): Promise<ShastraResult>;
+  };
+  /**
+   * The arti at its time: schedules (changing them: operator window, Pro Mode) and the prompt, which
+   * either mode answers.
+   */
+  arti: {
+    view(): Promise<ArtiView>;
+    onChanged(listener: (view: ArtiView) => void): () => void;
+    /** Make one (no id) or save one. */
+    save(scheduleId: string | null, fields: ArtiFields): Promise<ArtiResult>;
+    setEnabled(scheduleId: string, enabled: boolean): Promise<ArtiResult>;
+    remove(scheduleId: string): Promise<ArtiResult>;
+    /** The prompt's answers, for the prompt with this key. */
+    putUp(key: string): Promise<ArtiAnswer>;
+    notNow(key: string): Promise<ArtiAnswer>;
+    /** Stop it going up by itself; the prompt stays. */
+    cancel(key: string): Promise<ArtiAnswer>;
   };
   /** Stage layouts made in Drashti: boxes on the stage canvas (changing them: operator window, Pro Mode). */
   stageLayouts: {

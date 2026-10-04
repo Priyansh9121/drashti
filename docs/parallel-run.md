@@ -137,6 +137,8 @@ Write down anything different, with the time.
 
 **Making next week's playlist from a template.** At the top of the left column, **Templates** lists running orders to make playlists from: two examples come with Drashti (**Example: Ravi Sabha** and **Example: Bal/Kishore Sabha**), to change into the mandir's own. **Use** beside one makes a new playlist from it; type its name and press Enter. Its slots (dashed rows, such as "Kirtan" or "Pravachan title") are places to fill: click one, and pick what goes there (the list starts with the slot's category, and typing searches titles, words, kavi and raag). To keep a playlist's running order as a template, open the playlist and choose **Save as template…** in its menu (**⋯**): each kirtan can stay the same every week or become a slot. A template never goes on the screens itself. To rename a slot or change what it searches, right-click it and choose **Edit slot…**. To make an item start a timer as it goes up (the pravachan's countdown for the stage, for example), right-click it and choose **Timers when it goes up…**; a template keeps this for every playlist made from it.
 
+**The arti at its time.** An admin sets each arti's time once, in the **Arti** panel at the bottom of the live column (Pro Mode): **Add**, then its name ("Evening arti"), the presentation that is the arti (with its sound and background on its slides), every week on chosen days or on one date, the time (this computer's clock), and how many minutes before to ask. Those minutes before, a yellow strip under the header says "Evening arti at 19:00" and counts down. At the time, the arti becomes what **Next** shows (the Next picture shows its first slide), so the next press of Next puts it up; or press **Put up Arti now** (any time in those minutes, too), or **Not now** to leave it. Drashti never puts the arti up by itself, unless its schedule says **At the time, put it up by itself**: then it counts ten seconds first, and **Cancel** stops it. If Drashti was closed (or the computer asleep) at the arti's time, it does not run it late. The prompt goes by itself ten minutes after the time. Try one on a practice evening: set a time two minutes ahead, and check the prompt, Next and Not now.
+
 To fix words on a slide, use **Edit words** above the slides. To change how a slide looks (move or resize its words, give a word its own font or size, add a shadow or an outline, a shape, a picture or a video), use **Edit slides** beside it, or double-click a slide. In the slide editor, click something to select it and drag it to move it (it snaps to the middle and edges; hold Alt to place it freely); double-click words to type in them. Shift-click (or drag a box round them) selects several: drag the box round them by its handles to resize them together, or its round handle to turn them together. **Copy** and **Paste** (Cmd+C and Cmd+V, Ctrl on Windows) copy elements to another slide, or another presentation's editor, with their look; Cmd+Shift+V pastes exactly in place. **Save** puts the change on the screens if the slide is live; **Cancel** keeps nothing. Either save can be undone with **Undo** (Cmd+Z or Ctrl+Z).
 
 ### Simple Mode, for a volunteer
@@ -149,8 +151,9 @@ Simple Mode is one screen with big buttons, for running a sabha from its playlis
 4. **Next** (or →, Space, Page Down, or a presentation clicker) starts the playlist and goes through it. **Back** (←, Page Up) undoes the last Next exactly: after one Next too many, the screens are as they were.
 5. **Black out** (B or .) and **Logo** (L) cover the picture, and pressing them again brings back exactly what was there. The stage screens keep showing the words.
 6. **Clear all** (F1) takes everything down; straight after it, **Put it back** (or Cmd+Z, Ctrl+Z on Windows) brings it all back.
-7. Nothing in Simple Mode can import, edit, remove, or change themes, screens, the sound, or backups, or switch the Look. Drashti remembers Simple Mode, and comes back in it after a restart.
-8. To leave it: **View**, then **Switch to Pro Mode…**, type **pro**, and press **Switch to Pro Mode**. Volunteers should not need to.
+7. At the arti's time (if an admin set one), a big **Put up Arti now** button appears above the others, with **Not now** beside it. **Next** puts the arti up too, once its time has come.
+8. Nothing in Simple Mode can import, edit, remove, or change themes, screens, the sound, the arti times, or backups, or switch the Look. Drashti remembers Simple Mode, and comes back in it after a restart.
+9. To leave it: **View**, then **Switch to Pro Mode…**, type **pro**, and press **Switch to Pro Mode**. Volunteers should not need to.
 
 Write down anything the volunteer found hard, with what they were trying to do.
 
@@ -291,7 +294,7 @@ On the Mac, **Cmd** is the ⌘ key; on Windows, use **Ctrl** instead. These keys
 
 | Key                                            | What it does                                                                                     |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| **Space**, **→**, **↓** or **Page Down**       | Next slide (on into the next playlist item at the end)                                           |
+| **Space**, **→**, **↓** or **Page Down**       | Next slide (on into the next playlist item at the end; from the arti's time, the arti)           |
 | **←**, **↑** or **Page Up**                    | Previous slide (in Simple Mode, Back: undoes the last Next exactly)                              |
 | **Shift+→** or **Shift+↓**                     | Next playlist item                                                                               |
 | **Shift+←** or **Shift+↑**                     | Previous playlist item                                                                           |
@@ -313,7 +316,7 @@ On the Mac, **Cmd** is the ⌘ key; on Windows, use **Ctrl** instead. These keys
 | **Cmd+Shift+U** / **Ctrl+Shift+U**             | Uncover the controls (works from anywhere)                                                       |
 | **Esc**                                        | Cancel editing words or a question, or empty the search box                                      |
 
-Going live, ending the stream and recording have no keys: use the buttons in the **Stream** panel (each going live or ending asks first). Switching the Look and running a macro have no keys either: use their buttons under the live picture, or a MIDI pad mapped to a macro.
+Going live, ending the stream and recording have no keys: use the buttons in the **Stream** panel (each going live or ending asks first). Switching the Look and running a macro have no keys either: use their buttons under the live picture, or a MIDI pad mapped to a macro. The arti prompt has no keys of its own: from its time, Next puts the arti up.
 
 In the slide editor:
 

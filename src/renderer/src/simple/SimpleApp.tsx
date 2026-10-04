@@ -28,6 +28,7 @@ import { useKeymap } from '../operator/useKeymap';
 import type { AppInfo } from '../../../shared/app-info';
 import { OnAirBadges } from '../stream/OnAirBadges';
 import { NetworkBadge } from '../network/NetworkBadge';
+import { ArtiPrompt } from '../arti/ArtiPrompt';
 
 /*
  * Simple Mode (PLAN.md section 3): one uncluttered screen for a volunteer.
@@ -351,6 +352,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
           </p>
         </main>
       </div>
+      <ArtiPrompt big />
       <BigButtons platform={platform} run={run} />
       <StatusBar info={info} onOpenScreens={null} />
       <NoticeArea />

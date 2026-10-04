@@ -64,6 +64,32 @@ describe('Simple Mode locks', () => {
     expect(SIMPLE_MODE_REFUSED_COMMANDS).toEqual(['setLook']);
   });
 
+  it('every Session 12 request that changes something; the arti prompt is still answered', () => {
+    for (const channel of [
+      IPC.shastra.setTheme,
+      IPC.shastra.remove,
+      IPC.playlists.editSlot,
+      IPC.playlists.setTimers,
+      IPC.arti.save,
+      IPC.arti.setEnabled,
+      IPC.arti.remove,
+    ])
+      expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
+    // Finding passages, reading the schedules, and answering the prompt (its big button) stay.
+    for (const channel of [
+      IPC.shastra.list,
+      IPC.shastra.tree,
+      IPC.shastra.resolve,
+      IPC.shastra.search,
+      IPC.shastra.passage,
+      IPC.arti.view,
+      IPC.arti.putUp,
+      IPC.arti.notNow,
+      IPC.arti.cancel,
+    ])
+      expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
+  });
+
   it('answers each in the shape its caller expects', () => {
     expect(answers.get(IPC.props.save)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
     expect(answers.get(IPC.library.pickImportPaths)?.()).toEqual([]);

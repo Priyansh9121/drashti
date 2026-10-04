@@ -105,6 +105,10 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('clearStageMessage') }),
   /** Switch the live Look: every screen group changes at once (Simple Mode refuses it). */
   z.object({ type: z.literal('setLook'), lookId: id }),
+  /** Put a presentation first in line for Next (the arti at its time); clearCue takes it away. */
+  z.object({ type: z.literal('cueNext'), presentationId: id, label: z.string().trim().min(1).max(120) }),
+  z.object({ type: z.literal('clearCue') }),
+  z.object({ type: z.literal('playCue') }),
 ]);
 
 export type EngineCommand = z.infer<typeof engineCommandSchema>;
@@ -120,7 +124,8 @@ export type EngineErrorCode =
   | 'not-playable'
   | 'unknown-timer'
   | 'nothing-to-put-back'
-  | 'unknown-look';
+  | 'unknown-look'
+  | 'nothing-cued';
 
 export type CommandResult =
   { ok: true; changed: boolean; rev: number } | { ok: false; error: EngineErrorCode; message: string };
