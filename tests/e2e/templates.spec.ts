@@ -261,6 +261,7 @@ test('timers in templates: an item starts a countdown as it goes up, kept by the
     });
     if (!added.ok) throw new Error(added.message);
   }, made.templateId);
+  await win.getByTestId('playlists-back').click();
   await win.getByTestId('playlist-view-tab-templates').click();
   await win.getByTestId('template-node').filter({ hasText: 'Placeholder template' }).click();
   const slot = win.getByTestId('playlist-item').filter({ hasText: 'Placeholder slot' });
