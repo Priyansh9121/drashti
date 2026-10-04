@@ -293,4 +293,47 @@ describe('runImport', () => {
     const { summary } = await t.run([t.source], {}, { skipDir: (d) => d.endsWith('own') });
     expect(summary.totals.files).toBe(0);
   });
+
+  it('loads a Shastra text from its JSON file, again without change, and updated in place', async () => {
+    const t = setup();
+    const text = (verses: number[]) =>
+      JSON.stringify({
+        format: 'drashti-shastra',
+        version: 1,
+        name: 'Placeholder Granth',
+        abbreviation: 'PG',
+        items: verses.map((n) => ({ number: n, text: { sa: `नमूना श्लोकः ${n}`, en: `Placeholder ${n}.` } })),
+      });
+    const file = t.write('Placeholder Granth.json', text([1, 2]));
+    t.write('other.json', JSON.stringify({ format: 'something-else' }));
+    t.write('broken.json', '{ not json');
+    const first = await t.run([t.source]);
+    const row = (name: string) => first.report?.items.find((i) => i.name === name);
+    expect(row('Placeholder Granth (PG)')).toMatchObject({
+      format: 'shastra',
+      outcome: 'imported',
+      target: { kind: 'shastra' },
+      message: 'Loaded: 2 items. Find a passage in Shastra by typing its reference, for example “PG 1”.',
+    });
+    expect(row('Placeholder Granth (PG)')?.issues.map((i) => i.message)).toEqual([
+      'Transliteration for 2 items and Sanskrit in its other script for 2 items made by Drashti (marked as made).',
+    ]);
+    expect(row('other.json')?.outcome).toBe('unsupported');
+    expect(row('broken.json')?.outcome).toBe('failed');
+    // The same file again: nothing changes.
+    const again = await t.run([file]);
+    expect(again.report?.items[0]).toMatchObject({
+      outcome: 'skipped',
+      message: 'Already loaded, unchanged since.',
+    });
+    // A changed file: the same text, updated.
+    writeFileSync(file, text([1, 2, 3]));
+    const changed = await t.run([file]);
+    expect(changed.report?.items[0]).toMatchObject({
+      outcome: 'replaced',
+      target: { id: row('Placeholder Granth (PG)')?.target?.id },
+    });
+    expect((t.db.prepare('SELECT COUNT(*) AS n FROM shastra_texts').get() as { n: number }).n).toBe(1);
+    expect((t.db.prepare('SELECT COUNT(*) AS n FROM shastra_items').get() as { n: number }).n).toBe(3);
+  });
 });

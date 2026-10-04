@@ -1,3 +1,4 @@
+import { isPassageId } from '../../../shared/shastra';
 import { memo, useEffect, useMemo, useRef } from 'react';
 import type { PlaylistCursor } from '../../../shared/engine/state';
 import type { BackgroundCue, PresentationDoc, SlideInfo } from '../../../shared/library';
@@ -101,8 +102,11 @@ const Thumb = memo(function Thumb({
         aria-current={live ? 'true' : undefined}
         aria-label={`Slide ${position + 1}${group.name ? `, ${group.name}` : ''}${info.label ? `: ${info.label}` : ''}${live ? ' (live)' : ''}`}
         onClick={() => void goLive(presentationId, position, arrangementId, playlist)}
-        // A double-click opens the slide editor at this slide (the first click put it live).
-        onDoubleClick={() => void openSlideEditor(presentationId, presentationName, info.id)}
+        // A double-click opens the slide editor at this slide (the first click put it live); a passage's
+        // slides are made from its text, so they have no editor.
+        onDoubleClick={() => {
+          if (!isPassageId(presentationId)) void openSlideEditor(presentationId, presentationName, info.id);
+        }}
         className={cx(
           'group w-full overflow-hidden rounded-lg border-2 bg-black text-left transition-colors',
           live ? 'border-live' : found ? 'border-accent' : 'border-line hover:border-field',
@@ -257,6 +261,11 @@ function ItemView({ item }: { item: ShownItem }) {
         'No longer in the library',
         `“${item.label}” is no longer in the library. Undo its removal, or remove the item.`,
       );
+    case 'shastra':
+      return note(
+        'Its text is not loaded',
+        `“${item.label}” is a Shastra passage whose text is not loaded. It comes back when the text is loaded again (Shastra, Texts…).`,
+      );
     case 'media': {
       const problem = mediaProblem(item);
       return (
@@ -315,15 +324,19 @@ function ItemView({ item }: { item: ShownItem }) {
   }
 }
 
+/** A playlist item whose slides the grid shows: a presentation's, or a Shastra passage's. */
+type SlidesItem = ShownItem & ({ kind: 'presentation' } | { kind: 'shastra' });
+
 export function SlideGrid() {
   const item = useLibrary((s) => s.item);
+  if (item?.kind === 'shastra' && !item.missing) return <PresentationGrid item={item} />;
   if (item && (item.kind !== 'presentation' || item.presentationName === null))
     return <ItemView item={item} />;
   return <PresentationGrid item={item?.kind === 'presentation' ? item : null} />;
 }
 
-/** A presentation's slides: picked in the library, or a playlist item (in the item's order). */
-function PresentationGrid({ item }: { item: (ShownItem & { kind: 'presentation' }) | null }) {
+/** A presentation's slides (or a passage's): picked in the library, or a playlist item (in the item's order). */
+function PresentationGrid({ item }: { item: SlidesItem | null }) {
   const doc = useLibrary((s) => s.doc);
   const selectedId = useLibrary((s) => s.selectedId);
   const live = useEngine((s) => s.state?.live);
@@ -332,12 +345,15 @@ function PresentationGrid({ item }: { item: (ShownItem & { kind: 'presentation' 
   const isTemplate = useLibrary(
     (s) => s.presentations.find((p) => p.id === doc?.id)?.libraryName === 'Templates',
   );
+  const itemDoc = item ? (item.kind === 'shastra' ? item.passageId : item.presentationId) : null;
   const order = useMemo(
     () =>
       doc
         ? playOrder(
             doc,
-            item?.presentationId === doc.id ? itemArrangement(item, doc) : doc.selectedArrangementId,
+            item?.kind === 'presentation' && item.presentationId === doc.id
+              ? itemArrangement(item, doc)
+              : doc.selectedArrangementId,
           )
         : null,
     [doc, item],
@@ -363,7 +379,7 @@ function PresentationGrid({ item }: { item: (ShownItem & { kind: 'presentation' 
   const found = order.slides.find((o) => o.slide.id === focusSlideId)?.position ?? -1;
   // Until the newly selected presentation arrives, the old slides cannot be clicked:
   // a quick click must never put the previous presentation's slide live.
-  const stale = doc.id !== selectedId || (item !== null && item.presentationId !== doc.id);
+  const stale = doc.id !== selectedId || (item !== null && itemDoc !== doc.id);
   return (
     <section
       aria-label={`Slides of ${doc.name}`}
@@ -377,7 +393,16 @@ function PresentationGrid({ item }: { item: (ShownItem & { kind: 'presentation' 
         <h2 className="min-w-48 flex-[1_1_12rem] text-base font-bold">
           <Truncate text={doc.name} />
         </h2>
-        {item ? <ItemOrderPicker doc={doc} item={item} /> : <ArrangementPicker doc={doc} />}
+        {doc.passage ? (
+          // A Shastra passage is made from its text: its words and slides are not edited here.
+          <span className="text-xs text-muted" data-testid="passage-note">
+            Shastra passage{item ? '' : ' · drag it from Shastra onto a playlist to add it'}
+          </span>
+        ) : item?.kind === 'presentation' ? (
+          <ItemOrderPicker doc={doc} item={item} />
+        ) : (
+          <ArrangementPicker doc={doc} />
+        )}
         {isTemplate && (
           <Button
             size="sm"
@@ -392,29 +417,33 @@ function PresentationGrid({ item }: { item: (ShownItem & { kind: 'presentation' 
             Make a theme from this
           </Button>
         )}
-        <Button size="sm" icon={Pencil} onClick={() => void editWords(doc.id, doc.name)}>
-          Edit words
-        </Button>
-        <Button
-          size="sm"
-          icon={Music}
-          data-testid="kirtan-button"
-          aria-label={doc.kirtan ? 'Kirtan: languages and details' : 'Kirtan: make it a kirtan'}
-          onClick={() => {
-            openKirtan(doc.id, doc.name);
-          }}
-        >
-          Kirtan
-        </Button>
-        <Button
-          size="sm"
-          icon={SquarePen}
-          data-testid="edit-slides"
-          // At the slide on the screens, or the one a search found.
-          onClick={() => void openSlideEditor(doc.id, doc.name, liveHere ? liveSlideId : focusSlideId)}
-        >
-          Edit slides
-        </Button>
+        {!doc.passage && (
+          <>
+            <Button size="sm" icon={Pencil} onClick={() => void editWords(doc.id, doc.name)}>
+              Edit words
+            </Button>
+            <Button
+              size="sm"
+              icon={Music}
+              data-testid="kirtan-button"
+              aria-label={doc.kirtan ? 'Kirtan: languages and details' : 'Kirtan: make it a kirtan'}
+              onClick={() => {
+                openKirtan(doc.id, doc.name);
+              }}
+            >
+              Kirtan
+            </Button>
+            <Button
+              size="sm"
+              icon={SquarePen}
+              data-testid="edit-slides"
+              // At the slide on the screens, or the one a search found.
+              onClick={() => void openSlideEditor(doc.id, doc.name, liveHere ? liveSlideId : focusSlideId)}
+            >
+              Edit slides
+            </Button>
+          </>
+        )}
         <LayoutGrid size={15} aria-hidden="true" className="shrink-0 text-muted" />
         <Slider
           aria-label="Thumbnail size"

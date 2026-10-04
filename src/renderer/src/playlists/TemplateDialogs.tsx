@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { PresentationSummary } from '../../../shared/library';
+import { SHASTRA_SLOT } from '../../../shared/playlists';
 import { useLibrary } from '../library/library-store';
+import { PassagePicker } from '../shastra/PassagePicker';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Field, Select, TextInput } from '../ui/Field';
@@ -163,7 +165,14 @@ function AddSlot() {
           }}
         />
       </Field>
-      <Field label="Search in" hint="Filling the slot starts with the kirtans of this category.">
+      <Field
+        label="Search in"
+        hint={
+          category === SHASTRA_SLOT
+            ? 'Filling the slot asks for a Shastra passage, by its reference or its words.'
+            : 'Filling the slot starts with the kirtans of this category.'
+        }
+      >
         <Select
           data-testid="slot-category"
           value={category}
@@ -172,6 +181,7 @@ function AddSlot() {
           }}
         >
           <option value="">Every presentation</option>
+          <option value={SHASTRA_SLOT}>A Shastra passage</option>
           {categories.map((c) => (
             <option key={c} value={c}>
               {c}
@@ -216,6 +226,43 @@ export function FillSlotDialog() {
 }
 
 function FillSlot({ slot }: { slot: NonNullable<ReturnType<typeof usePlaylists.getState>['filling']> }) {
+  if (slot.category === SHASTRA_SLOT) return <FillWithPassage slot={slot} />;
+  return <FillWithPresentation slot={slot} />;
+}
+
+/** A slot that asks for a Shastra passage: its reference, or its words. */
+function FillWithPassage({
+  slot,
+}: {
+  slot: NonNullable<ReturnType<typeof usePlaylists.getState>['filling']>;
+}) {
+  const close = () => {
+    usePlaylists.setState({ filling: null });
+  };
+  return (
+    <Dialog
+      title={`Fill “${slot.label}”`}
+      subtitle="Choose the Shastra passage for this time."
+      size="md"
+      onClose={close}
+      testId="fill-slot"
+      bodyClassName="flex min-h-0 flex-col gap-3"
+      footer={<Button onClick={close}>Cancel</Button>}
+    >
+      <PassagePicker
+        onPick={(passageId) => {
+          void fillSlot(passageId);
+        }}
+      />
+    </Dialog>
+  );
+}
+
+function FillWithPresentation({
+  slot,
+}: {
+  slot: NonNullable<ReturnType<typeof usePlaylists.getState>['filling']>;
+}) {
   const presentations = useLibrary((s) => s.presentations);
   const categories = useCategories();
   const [category, setCategory] = useState<string>(slot.category ?? '');

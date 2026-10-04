@@ -3,6 +3,7 @@ import type { Lang, TextRun, TextStyle } from '../../shared/model';
 import { LANGS } from '../../shared/model';
 import { detectLang, mainLang, mergeRuns } from '../../shared/text-runs';
 import type { Theme, ThemeFields, ThemeLangStyle } from '../../shared/themes';
+import { DEFAULT_REFERENCE } from '../../shared/themes';
 import type { ContentRows, CueRow, ElementRow, SlideRow } from '../db/content';
 import type { NewSlideLook } from './words';
 
@@ -228,6 +229,7 @@ export function themeFromContent(rows: ContentRows, name: string): ThemeFields |
     return {
       name,
       langs,
+      reference: DEFAULT_REFERENCE,
       box: {
         x: clamp(element.x / rows.width),
         y: clamp(element.y / rows.height),

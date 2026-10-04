@@ -3,9 +3,23 @@
  * Everything here is plain, JSON-serializable data.
  */
 
-/** Language tracks: English, Gujarati, Hindi (Devanagari) and Roman transliteration. */
-export type Lang = 'en' | 'gu' | 'hi' | 'translit';
-export const LANGS: readonly Lang[] = ['en', 'gu', 'hi', 'translit'];
+/**
+ * Languages: English, Gujarati, Hindi (Devanagari), Roman transliteration,
+ * and Sanskrit in either of its scripts (Session 12, for Shastra texts):
+ * Devanagari ('sa') or Gujarati script ('sa-gu'). Sanskrit is two languages
+ * so that each screen group's Look chooses the script its audience reads,
+ * as it chooses any language. Script alone cannot tell Sanskrit from Hindi
+ * or Gujarati, so a line is Sanskrit only when it was marked so.
+ */
+export type Lang = 'en' | 'gu' | 'hi' | 'translit' | 'sa' | 'sa-gu';
+export const LANGS: readonly Lang[] = ['en', 'gu', 'hi', 'translit', 'sa', 'sa-gu'];
+
+/** A kirtan's language tracks (Edit words by language, the Kirtan dialog): the four kirtans are written in. */
+export type KirtanLang = Exclude<Lang, 'sa' | 'sa-gu'>;
+export const KIRTAN_LANGS: readonly KirtanLang[] = ['en', 'gu', 'hi', 'translit'];
+
+/** Sanskrit, in Devanagari or in Gujarati script. */
+export const isSanskrit = (lang: Lang | null | undefined): boolean => lang === 'sa' || lang === 'sa-gu';
 
 /** A rectangle in slide coordinates (pixels of the slide's design size). */
 export interface Rect {

@@ -1,3 +1,11 @@
+import type {
+  PassageInfo,
+  PassageResult,
+  ShastraHit,
+  ShastraResult,
+  ShastraTextInfo,
+  ShastraTree,
+} from './shastra';
 import type { AppInfo, TaskProgress } from './app-info';
 import type { AudioDevice, AudioOutputState, AudioOutputStatus } from './audio';
 import type { CommandResult, EngineCommand } from './engine/commands';
@@ -276,6 +284,17 @@ export const IPC = {
     /** main -> operator: the masks changed. */
     changed: 'masks:changed',
   },
+  /** Shastra texts (Session 12): finding passages; choosing a text's theme or removing it is Pro Mode only. */
+  shastra: {
+    list: 'shastra:list',
+    tree: 'shastra:tree',
+    resolve: 'shastra:resolve',
+    search: 'shastra:search',
+    passage: 'shastra:passage',
+    itemPassage: 'shastra:item-passage',
+    setTheme: 'shastra:set-theme',
+    remove: 'shastra:remove',
+  },
   /** Stage layouts made in Drashti (changing them: operator window, Pro Mode). */
   stageLayouts: {
     list: 'stage:layouts',
@@ -534,6 +553,14 @@ export interface InvokeContract {
   [IPC.macros.run]: { args: [macroId: string]; result: MacroRunResult };
   [IPC.midi.get]: { args: []; result: MidiSettings };
   [IPC.midi.set]: { args: [settings: MidiSettings]; result: MidiResult };
+  [IPC.shastra.list]: { args: []; result: ShastraTextInfo[] };
+  [IPC.shastra.tree]: { args: [textId: string]; result: ShastraTree | null };
+  [IPC.shastra.resolve]: { args: [reference: string]; result: PassageResult };
+  [IPC.shastra.search]: { args: [query: string]; result: ShastraHit[] };
+  [IPC.shastra.passage]: { args: [passageId: string]; result: PassageInfo | null };
+  [IPC.shastra.itemPassage]: { args: [itemId: string]; result: PassageInfo | null };
+  [IPC.shastra.setTheme]: { args: [textId: string, themeId: string | null]; result: ShastraResult };
+  [IPC.shastra.remove]: { args: [textId: string]; result: ShastraResult };
   [IPC.masks.list]: { args: []; result: Mask[] };
   [IPC.masks.save]: { args: [maskId: string | null, mask: Omit<Mask, 'id'>]; result: MaskResult };
   [IPC.masks.remove]: { args: [maskId: string]; result: MaskResult };

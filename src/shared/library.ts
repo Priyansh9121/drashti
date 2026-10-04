@@ -1,6 +1,7 @@
 import type { MediaBackground } from './engine/state';
 import type { KirtanInfo } from './kirtans';
 import type { Lang, RenderSlide, Transition } from './model';
+import type { PassageKey } from './shastra';
 
 /** Where an imported item came from, so imports can be re-run and traced. */
 export interface ImportSource {
@@ -17,7 +18,7 @@ export interface ImportSource {
  * presentations (added, edited, removed, imported: an import can bring props
  * too), or the props, message templates or themes.
  */
-export type LibraryChange = 'presentations' | 'props' | 'messages' | 'themes';
+export type LibraryChange = 'presentations' | 'props' | 'messages' | 'themes' | 'shastra';
 
 /** Removing or restoring presentations: the ids that changed. */
 export type RemoveResult = { ok: true; ids: string[] } | { ok: false; message: string };
@@ -162,6 +163,11 @@ export interface PresentationDoc {
   /** Its kirtan details and languages, or null when it is not a kirtan. */
   kirtan: KirtanInfo | null;
   source: ImportSource | null;
+  /**
+   * A Shastra passage shown as slides (Session 12): made from the text, so
+   * its words and slides are not edited here. Left out for a presentation.
+   */
+  passage?: { textId: string; reference: string; key: PassageKey } | null;
 }
 
 /** A presentation's words as plain text (the lyrics format), for the words editor. */

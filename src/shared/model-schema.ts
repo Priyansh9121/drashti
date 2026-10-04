@@ -8,11 +8,12 @@ import { MAX_AUTO_ADVANCE_MS, MAX_TRANSITION_MS } from './model';
  * database (which importers fill from ProPresenter files).
  */
 
-export const idSchema = z.string().min(1).max(128);
+/** An id: a UUID, or a passage (shared/shastra.ts), which can be longer. */
+export const idSchema = z.string().min(1).max(512);
 export const hexColorSchema = z
   .string()
   .regex(/^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/, 'expected a #rrggbb or #rrggbbaa colour');
-export const langSchema = z.enum(['en', 'gu', 'hi', 'translit']);
+export const langSchema = z.enum(['en', 'gu', 'hi', 'translit', 'sa', 'sa-gu']);
 
 /** z.number() already rejects NaN and Infinity. */
 const num = z.number();

@@ -549,6 +549,46 @@ function Macros() {
   );
 }
 
+/** A Shastra passage by its reference (the loaded texts' own abbreviations): it goes up at once. */
+function Shastra() {
+  const texts = useRemote((s) => s.shastra);
+  const [reference, setReference] = useState('');
+  if (!texts || texts.length === 0) return null;
+  const example = texts[0] ? `${texts[0].abbreviation} 1` : 'SD 14';
+  return (
+    <section className="space-y-2" aria-labelledby="shastra-title">
+      <h2 id="shastra-title" className="text-sm font-bold tracking-wider text-muted uppercase">
+        Shastra
+      </h2>
+      <form
+        className="flex gap-2"
+        data-testid="remote-shastra"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (reference.trim() !== '') void tap(post('/api/v1/shastra', { reference }));
+        }}
+      >
+        <input
+          aria-label="Reference"
+          placeholder={example}
+          value={reference}
+          onChange={(e) => {
+            setReference(e.target.value);
+          }}
+          maxLength={120}
+          autoCapitalize="characters"
+          spellCheck={false}
+          className="h-12 min-w-0 flex-1 rounded-lg border border-field bg-panel-3 px-3 text-base text-fg"
+        />
+        <Button type="submit" size="lg" variant="primary" className="min-h-12">
+          Show
+        </Button>
+      </form>
+      <p className="text-sm text-muted">{texts.map((t) => `${t.abbreviation}: ${t.name}`).join(' · ')}</p>
+    </section>
+  );
+}
+
 function TimersAndMessages() {
   const timers = useEngine((s) => s.state?.timers) ?? NO_TIMERS;
   const shown = useEngine((s) => s.state?.layers.messages) ?? NO_MESSAGES;
@@ -556,6 +596,7 @@ function TimersAndMessages() {
   return (
     <div className="space-y-5">
       <Looks />
+      <Shastra />
       <Macros />
       <section className="space-y-2" aria-labelledby="timers-title">
         <h2 id="timers-title" className="text-sm font-bold tracking-wider text-muted uppercase">

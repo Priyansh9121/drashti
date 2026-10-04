@@ -22,6 +22,10 @@ export const DEVICE_OPS = {
   macros: ['remote'],
   /** Run a macro (Simple Mode refuses). */
   'macro.run': ['remote'],
+  /** The loaded Shastra texts: name, abbreviation, how many items (Session 12). */
+  'shastra.texts': ['remote'],
+  /** Put up a Shastra passage by its reference ("SD 14", "Vach G.Pr. 1", "SD 14-16"). */
+  shastra: ['remote'],
   playlists: ['remote'],
   /** A playlist's items. */
   items: ['remote'],

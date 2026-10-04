@@ -1,3 +1,4 @@
+import { passageIdSchema } from './shastra';
 import { z } from 'zod';
 
 /*
@@ -58,13 +59,23 @@ export type PlaylistItemInfo =
    * its search starts at, if any), or something the import could not find
    * (with a hint: the file it named). Fill it by choosing or dropping one.
    */
-  | { id: string; kind: 'placeholder'; label: string; hint: string | null; category: string | null };
+  | { id: string; kind: 'placeholder'; label: string; hint: string | null; category: string | null }
+  /**
+   * A Shastra passage (Session 12), named by keys so it lasts when its text
+   * is loaded again: `missing` while no loaded text has it. Its label is
+   * the reference as it read when it was added.
+   */
+  | { id: string; kind: 'shastra'; label: string; passageId: string; missing: boolean };
 
 /** What can be added to a playlist. */
 export type NewItem =
   | { kind: 'presentation'; presentationId: string }
   | { kind: 'media'; mediaId: string }
-  | { kind: 'header'; label: string };
+  | { kind: 'header'; label: string }
+  | { kind: 'shastra'; passageId: string };
+
+/** A slot that asks for a Shastra passage (filling it opens the Shastra tab). */
+export const SHASTRA_SLOT = 'Shastra';
 
 /** A media item as the library's media list shows it. */
 export interface MediaSummary {
@@ -101,6 +112,7 @@ export const newItemsSchema: z.ZodType<NewItem[]> = z
       z.object({ kind: z.literal('presentation'), presentationId: id }).strict(),
       z.object({ kind: z.literal('media'), mediaId: id }).strict(),
       z.object({ kind: z.literal('header'), label: z.string().trim().min(1).max(200) }).strict(),
+      z.object({ kind: z.literal('shastra'), passageId: passageIdSchema }).strict(),
     ]),
   )
   .min(1)

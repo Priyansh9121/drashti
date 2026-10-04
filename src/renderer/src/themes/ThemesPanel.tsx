@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Lang, RenderSlide, TextRun } from '../../../shared/model';
 import { LANGS } from '../../../shared/model';
-import type { Theme, ThemeFields } from '../../../shared/themes';
+import type { Theme, ThemeFields, ThemeLangStyle } from '../../../shared/themes';
 import { DEFAULT_THEME, LANG_NAMES } from '../../../shared/themes';
 import { loadMedia, selectPresentation, useLibrary, useMedia } from '../library/library-store';
 import { pushRemoval } from '../library/undo';
@@ -26,6 +26,8 @@ const SAMPLE: Record<Lang, string> = {
   translit: 'Namūnā pankti',
   hi: 'नमूना पंक्ति',
   en: 'Placeholder line',
+  sa: 'नमूना श्लोकः',
+  'sa-gu': 'નમૂના શ્લોકઃ',
 };
 
 /** A slide showing a line in each language under the theme. */
@@ -179,72 +181,41 @@ function ThemeEditor({
             </tr>
           </thead>
           <tbody>
-            {LANGS.map((lang) => {
-              const st = draft.langs[lang];
-              const name = LANG_NAMES[lang];
-              return (
-                <tr key={lang} data-lang={lang}>
-                  <td className="py-1 pr-2 font-medium">{name}</td>
-                  <td className="pr-2">
-                    <TextInput
-                      aria-label={`${name} font`}
-                      placeholder="Bundled font"
-                      className="w-full"
-                      value={st.font ?? ''}
-                      onChange={(e) => {
-                        setLang(lang, { font: e.target.value.trim() === '' ? null : e.target.value });
-                      }}
-                    />
-                  </td>
-                  <td className="pr-2">
-                    <NumberInput
-                      aria-label={`${name} size`}
-                      min={8}
-                      max={600}
-                      value={st.size}
-                      onChange={(e) => {
-                        setLang(lang, { size: Number(e.target.value) || st.size });
-                      }}
-                    />
-                  </td>
-                  <td className="pr-2">
-                    <Select
-                      aria-label={`${name} weight`}
-                      value={st.weight}
-                      onChange={(e) => {
-                        setLang(lang, { weight: Number(e.target.value) });
-                      }}
-                    >
-                      <option value={400}>Regular</option>
-                      <option value={500}>Medium</option>
-                      <option value={700}>Bold</option>
-                    </Select>
-                  </td>
-                  <td className="pr-2">
-                    <ColorInput
-                      aria-label={`${name} colour`}
-                      value={st.color}
-                      onChange={(e) => {
-                        setLang(lang, { color: e.target.value });
-                      }}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      aria-label={`${name} shadow`}
-                      type="checkbox"
-                      className="h-4 w-4 accent-accent-strong"
-                      checked={st.shadow}
-                      onChange={(e) => {
-                        setLang(lang, { shadow: e.target.checked });
-                      }}
-                    />
-                  </td>
-                </tr>
-              );
-            })}
+            {LANGS.map((lang) => (
+              <StyleRow
+                key={lang}
+                rowKey={lang}
+                name={LANG_NAMES[lang]}
+                style={draft.langs[lang]}
+                onChange={(patch) => {
+                  setLang(lang, patch);
+                }}
+              />
+            ))}
+            <StyleRow
+              rowKey="reference"
+              name="Shastra reference"
+              style={draft.reference}
+              onChange={(patch) => {
+                setDraft((d) => ({ ...d, reference: { ...d.reference, ...patch } }));
+              }}
+            />
           </tbody>
         </table>
+        <label className="mt-2 flex items-center gap-2 text-xs text-muted">
+          A Shastra passage's reference line goes
+          <Select
+            aria-label="Where the reference line goes"
+            value={draft.reference.place}
+            onChange={(e) => {
+              const place = e.target.value === 'bottom' ? 'bottom' : 'top';
+              setDraft((d) => ({ ...d, reference: { ...d.reference, place } }));
+            }}
+          >
+            <option value="top">above the words</option>
+            <option value="bottom">below the words</option>
+          </Select>
+        </label>
       </section>
       <fieldset className="space-y-2 text-sm">
         <legend className="mb-2">
@@ -500,5 +471,79 @@ function Panel({ initial }: { initial: string | null }) {
         </>
       )}
     </Dialog>
+  );
+}
+
+/** One row of the styles table: a language's look, or the reference line's. */
+function StyleRow({
+  rowKey,
+  name,
+  style,
+  onChange,
+}: {
+  rowKey: string;
+  name: string;
+  style: ThemeLangStyle;
+  onChange: (patch: Partial<ThemeLangStyle>) => void;
+}) {
+  return (
+    <tr data-lang={rowKey}>
+      <td className="py-1 pr-2 font-medium">{name}</td>
+      <td className="pr-2">
+        <TextInput
+          aria-label={`${name} font`}
+          placeholder="Bundled font"
+          className="w-full"
+          value={style.font ?? ''}
+          onChange={(e) => {
+            onChange({ font: e.target.value.trim() === '' ? null : e.target.value });
+          }}
+        />
+      </td>
+      <td className="pr-2">
+        <NumberInput
+          aria-label={`${name} size`}
+          min={8}
+          max={600}
+          value={style.size}
+          onChange={(e) => {
+            onChange({ size: Number(e.target.value) || style.size });
+          }}
+        />
+      </td>
+      <td className="pr-2">
+        <Select
+          aria-label={`${name} weight`}
+          value={style.weight}
+          onChange={(e) => {
+            onChange({ weight: Number(e.target.value) });
+          }}
+        >
+          <option value={400}>Regular</option>
+          <option value={500}>Medium</option>
+          <option value={700}>Bold</option>
+        </Select>
+      </td>
+      <td className="pr-2">
+        <ColorInput
+          aria-label={`${name} colour`}
+          value={style.color}
+          onChange={(e) => {
+            onChange({ color: e.target.value });
+          }}
+        />
+      </td>
+      <td>
+        <input
+          aria-label={`${name} shadow`}
+          type="checkbox"
+          className="h-4 w-4 accent-accent-strong"
+          checked={style.shadow}
+          onChange={(e) => {
+            onChange({ shadow: e.target.checked });
+          }}
+        />
+      </td>
+    </tr>
   );
 }

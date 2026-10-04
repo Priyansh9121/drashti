@@ -13,11 +13,20 @@ export const LANG_FONT_STACK: Record<Lang | 'default', string> = {
   translit: `${LATIN}, sans-serif`,
   gu: `${GUJARATI}, ${LATIN}, sans-serif`,
   hi: `${DEVANAGARI}, ${LATIN}, sans-serif`,
+  sa: `${DEVANAGARI}, ${LATIN}, sans-serif`,
+  'sa-gu': `${GUJARATI}, ${LATIN}, sans-serif`,
   default: `${LATIN}, ${GUJARATI}, ${DEVANAGARI}, sans-serif`,
 };
 
 /** The CSS lang attribute for a language track. */
-export const HTML_LANG: Record<Lang, string> = { en: 'en', gu: 'gu', hi: 'hi', translit: 'gu-Latn' };
+export const HTML_LANG: Record<Lang, string> = {
+  en: 'en',
+  gu: 'gu',
+  hi: 'hi',
+  translit: 'gu-Latn',
+  sa: 'sa',
+  'sa-gu': 'sa-Gujr',
+};
 
 /** CSS font-family for a text element: its own font (if any) backed by the bundled stack. */
 export function fontFamilyFor(family: string | null, lang: Lang | null): string {

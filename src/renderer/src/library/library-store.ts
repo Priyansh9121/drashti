@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { PresentationDoc, PresentationSummary } from '../../../shared/library';
 import type { MediaSummary, PlaylistItemInfo } from '../../../shared/playlists';
 import type { SearchHit, SearchResult } from '../../../shared/search';
+import { isPassageId } from '../../../shared/shastra';
 
 /** A playlist item, with the playlist it is in. */
 export type ShownItem = PlaylistItemInfo & { playlistId: string };
@@ -25,6 +26,13 @@ interface LibraryView {
   focusSlideId: string | null;
 }
 
+/** Which list the left column shows: presentations, media, or Shastra texts. */
+export type LibraryTab = 'presentations' | 'media' | 'shastra';
+export const useLibraryTab = create<{ tab: LibraryTab }>(() => ({ tab: 'presentations' }));
+export function setLibraryTab(tab: LibraryTab): void {
+  useLibraryTab.setState({ tab });
+}
+
 export const useLibrary = create<LibraryView>(() => ({
   presentations: [],
   selectedId: null,
@@ -40,6 +48,7 @@ export async function showItem(item: ShownItem): Promise<void> {
   useLibrary.setState({ item });
   if (item.kind === 'presentation' && item.presentationName !== null)
     await selectPresentation(item.presentationId);
+  else if (item.kind === 'shastra' && !item.missing) await selectPresentation(item.passageId);
 }
 
 /** Back to the library's own selection (the grid no longer shows a playlist item). */
@@ -99,7 +108,8 @@ export async function loadLibrary(): Promise<void> {
     marked: marked.filter((id) => ids.has(id)),
     anchorId: anchorId && ids.has(anchorId) ? anchorId : null,
   });
-  if (selectedId && ids.has(selectedId)) return;
+  // A Shastra passage stays shown (it is not in the list).
+  if (selectedId && (ids.has(selectedId) || isPassageId(selectedId))) return;
   // Nothing selected yet, or the selected presentation is gone (removed): select the first.
   const first = presentations[0];
   if (first) await selectPresentation(first.id);
@@ -205,6 +215,12 @@ export function watchLibrary(): void {
   if (watching) return;
   watching = true;
   window.drashti.library.onChanged((what) => {
+    // A Shastra text loaded again, removed, or given another theme: the passage shown is made again.
+    if (what === 'shastra') {
+      const { selectedId } = useLibrary.getState();
+      if (selectedId && isPassageId(selectedId)) void selectPresentation(selectedId);
+      return;
+    }
     if (what !== 'presentations') return;
     void loadLibrary().then(async () => {
       const { selectedId } = useLibrary.getState();

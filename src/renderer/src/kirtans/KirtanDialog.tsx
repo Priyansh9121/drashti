@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { PresentationDoc } from '../../../shared/library';
-import { LANGS } from '../../../shared/model';
+import { KIRTAN_LANGS, LANGS } from '../../../shared/model';
 import { LANG_NAMES } from '../../../shared/themes';
 import { slideLines } from '../../../shared/tracks';
 import { editWords } from '../library/words-store';
@@ -22,10 +22,11 @@ function TrackSummary({ doc }: { doc: PresentationDoc }) {
     const slides = doc.groups.flatMap((g) => g.slides);
     return {
       total: slides.length,
+      // The four kirtan languages, and Sanskrit when a slide has it.
       per: LANGS.map((lang) => ({
         lang,
         n: slides.filter((s) => slideLines(s.slide.elements).lines[lang]).length,
-      })),
+      })).filter(({ lang, n }) => n > 0 || (KIRTAN_LANGS as readonly string[]).includes(lang)),
     };
   }, [doc]);
   return (

@@ -36,6 +36,8 @@ import {
 } from '../../shared/network-api';
 import type { MacroRunResult } from '../../shared/macros';
 import type { PlaylistItemInfo, PlaylistNode } from '../../shared/playlists';
+import type { PassageResult } from '../../shared/shastra';
+import { referenceInputSchema } from '../../shared/shastra';
 import type { DeviceRepo, DeviceRow } from '../db/devices';
 import { localInterfaceAddresses } from './addresses';
 import type { NetworkWorker } from './network-worker';
@@ -73,6 +75,10 @@ export interface NetworkReads {
   looks(): { id: string; name: string }[];
   /** The macros, in order (a Remote runs them). */
   macros(): { id: string; name: string; color: string }[];
+  /** The loaded Shastra texts. */
+  shastraTexts(): { name: string; abbreviation: string; itemCount: number }[];
+  /** What a Shastra reference names (a passage that plays like a presentation), or why it names nothing. */
+  passage(reference: string): PassageResult;
   /** How this computer writes the time (its locale and time zone), so a stage display's clock reads as the stage screens' does. */
   clockStyle(): { locale: string; timeZone: string };
 }
@@ -119,6 +125,9 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   looks: IPC.looks.list,
   macros: IPC.macros.list,
   'macro.run': IPC.macros.run,
+  'shastra.texts': IPC.shastra.list,
+  // Putting up a passage runs the show, as Next does: Simple Mode lets a Remote do it.
+  shastra: IPC.engine.command,
   playlists: IPC.playlists.tree,
   items: IPC.playlists.items,
   presentation: IPC.library.getPresentation,
@@ -599,6 +608,22 @@ export class NetworkService implements EngineTransport {
         return ok({ looks: this.deps.reads.looks(), liveId: this.deps.engine.state().look.id });
       case 'macros':
         return ok({ macros: this.deps.reads.macros() });
+      case 'shastra.texts':
+        return ok({ texts: this.deps.reads.shastraTexts() });
+      case 'shastra': {
+        const reference = referenceInputSchema.safeParse(args['reference']);
+        if (!reference.success) return deny(400, 'Send a reference, for example {"reference": "SD 14"}.');
+        const found = this.deps.reads.passage(reference.data);
+        if (!found.ok) return deny(404, found.message);
+        const shown = this.run(
+          { type: 'goLive', presentationId: found.passage.passageId, slideIndex: 0 },
+          who,
+          `put up ${found.passage.reference}`,
+        );
+        return shown.status === 200
+          ? ok({ ...(shown.body as object), reference: found.passage.reference })
+          : shown;
+      }
       case 'macro.run': {
         const id = idSchema.safeParse(args['macroId']);
         if (!id.success) return deny(404, 'There is no such macro.');
