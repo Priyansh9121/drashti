@@ -267,10 +267,11 @@ export function PresentationList({ platform }: { platform: string }) {
           group="library"
           label="Library"
           size="sm"
-          className="flex-1"
+          shrink
+          className="min-w-0 flex-1"
           value={tab}
           onChange={setTab}
-          // Words only: three tabs and the Import icon fit the library column's usual width.
+          // Words only: three tabs and the Import icon fit the library column's usual width (narrower, they shrink).
           items={[
             { id: 'presentations', label: 'Presentations' },
             { id: 'media', label: 'Media' },

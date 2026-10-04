@@ -26,6 +26,7 @@ export function Tabs<T extends string>({
   value,
   onChange,
   size = 'md',
+  shrink = false,
   className,
 }: {
   /** A name unique in the window, for the ids that tie tabs to panels. */
@@ -35,6 +36,8 @@ export function Tabs<T extends string>({
   value: T;
   onChange: (id: T) => void;
   size?: 'sm' | 'md';
+  /** In a narrow row the tabs narrow too, their words cut off (whole in their tooltip). */
+  shrink?: boolean;
   className?: string;
 }) {
   const list = useRef<HTMLDivElement>(null);
@@ -57,7 +60,7 @@ export function Tabs<T extends string>({
       role="tablist"
       aria-label={label}
       onKeyDown={move}
-      className={cx('flex items-center gap-0.5', className)}
+      className={cx('flex items-center gap-0.5', shrink && 'min-w-0', className)}
     >
       {items.map((t) => {
         const selected = t.id === value;
@@ -72,15 +75,19 @@ export function Tabs<T extends string>({
             aria-controls={tabPanelId(group, t.id)}
             tabIndex={selected ? 0 : -1}
             data-testid={`${group}-tab-${t.id}`}
+            title={shrink ? t.label : undefined}
             onClick={() => onChange(t.id)}
             className={cx(
               'relative inline-flex items-center gap-1.5 rounded-md font-medium transition-colors',
+              shrink && 'min-w-0',
               size === 'sm' ? 'h-7 px-2 text-xs' : 'h-8 px-3 text-sm',
               selected ? 'bg-panel-3 text-fg' : 'text-muted hover:bg-panel-2 hover:text-fg',
             )}
           >
-            {IconShape && <IconShape size={size === 'sm' ? 14 : 16} aria-hidden="true" />}
-            {t.label}
+            {IconShape && (
+              <IconShape size={size === 'sm' ? 14 : 16} aria-hidden="true" className="shrink-0" />
+            )}
+            {shrink ? <span className="min-w-0 truncate">{t.label}</span> : t.label}
             {t.extra}
             {selected && (
               <span
