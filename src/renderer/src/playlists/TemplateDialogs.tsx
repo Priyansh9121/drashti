@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { PresentationSummary } from '../../../shared/library';
-import { SHASTRA_SLOT } from '../../../shared/playlists';
+import type { TimerState } from '../../../shared/timers';
+import type { TimerCue } from '../../../shared/playlists';
+import { MAX_TIMER_CUES, SHASTRA_SLOT, TIMER_CUE_ACTIONS, TIMER_CUE_NAMES } from '../../../shared/playlists';
+import { useEngine } from '../engine/engine-store';
 import { useLibrary } from '../library/library-store';
 import { PassagePicker } from '../shastra/PassagePicker';
 import { Button } from '../ui/Button';
@@ -9,7 +12,17 @@ import { Field, Select, TextInput } from '../ui/Field';
 import { Search } from '../ui/icons';
 import { rowClass } from '../ui/ListRow';
 import { EmptyState } from '../ui/States';
-import { addSlot, fillSlot, nodeOf, saveAsTemplate, usePlaylists } from './playlist-store';
+import {
+  addSlot,
+  editSlot,
+  fillSlot,
+  nodeOf,
+  saveAsTemplate,
+  setTimerCues,
+  usePlaylists,
+} from './playlist-store';
+
+const NO_TIMERS: TimerState[] = [];
 
 /** Every category a kirtan can have (Drashti's, the mandir's, and any a kirtan has). */
 function useCategories(): string[] {
@@ -354,6 +367,182 @@ function FillWithPresentation({
             <Choice key={p.id} p={p} first={i === 0} />
           ))}
         </ul>
+      )}
+    </Dialog>
+  );
+}
+
+/** Renaming a slot, and changing the category its search starts at (Session 12). */
+export function EditSlotDialog() {
+  const slot = usePlaylists((s) => s.editingSlot);
+  return slot ? <EditSlot key={slot.id} slot={slot} /> : null;
+}
+
+function EditSlot({ slot }: { slot: NonNullable<ReturnType<typeof usePlaylists.getState>['editingSlot']> }) {
+  const categories = useCategories();
+  const [label, setLabel] = useState(slot.label);
+  const [category, setCategory] = useState<string>(slot.category ?? '');
+  const close = () => {
+    usePlaylists.setState({ editingSlot: null });
+  };
+  // The slot's own category stays offered, even if no kirtan has it now.
+  const offered =
+    slot.category && !categories.includes(slot.category) && slot.category !== SHASTRA_SLOT
+      ? [slot.category, ...categories]
+      : categories;
+  return (
+    <Dialog
+      title="Edit slot"
+      subtitle="Its name in the running order, and where filling it starts."
+      size="sm"
+      onClose={close}
+      testId="edit-slot"
+      bodyClassName="space-y-3"
+      footer={
+        <>
+          <Button onClick={close}>Cancel</Button>
+          <Button
+            variant="primary"
+            disabled={label.trim() === ''}
+            data-testid="save-slot"
+            onClick={() => void editSlot(label.trim(), category === '' ? null : category)}
+          >
+            Save
+          </Button>
+        </>
+      }
+    >
+      <Field label="Name">
+        <TextInput
+          data-testid="slot-label"
+          value={label}
+          maxLength={200}
+          autoFocus
+          onChange={(e) => {
+            setLabel(e.target.value);
+          }}
+        />
+      </Field>
+      <Field label="Search in">
+        <Select
+          data-testid="slot-category"
+          value={category}
+          onChange={(e) => {
+            setCategory(e.target.value);
+          }}
+        >
+          <option value="">Every presentation</option>
+          <option value={SHASTRA_SLOT}>A Shastra passage</option>
+          {offered.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </Select>
+      </Field>
+    </Dialog>
+  );
+}
+
+/**
+ * What an item does to timers when it goes up (Session 12): start one from
+ * the beginning, reset one, or show one on the audience screens. Templates
+ * keep these, and a playlist made from a template gets them.
+ */
+export function TimerCuesDialog() {
+  const item = usePlaylists((s) => s.cuesFor);
+  return item ? <TimerCues key={item.id} item={item} /> : null;
+}
+
+function TimerCues({ item }: { item: NonNullable<ReturnType<typeof usePlaylists.getState>['cuesFor']> }) {
+  const timers = useEngine((s) => s.state?.timers) ?? NO_TIMERS;
+  const [cues, setCues] = useState<TimerCue[]>(item.timers);
+  const close = () => {
+    usePlaylists.setState({ cuesFor: null });
+  };
+  const first = timers[0];
+  const change = (i: number, patch: Partial<TimerCue>) => {
+    setCues((c) => c.map((cue, k) => (k === i ? { ...cue, ...patch } : cue)));
+  };
+  return (
+    <Dialog
+      title="Timers when it goes up"
+      subtitle={`What “${item.label}” does to timers as it goes up (not when going back to it).`}
+      size="md"
+      onClose={close}
+      testId="timer-cues"
+      bodyClassName="space-y-3"
+      footer={
+        <>
+          <Button onClick={close}>Cancel</Button>
+          <Button variant="primary" data-testid="save-timer-cues" onClick={() => void setTimerCues(cues)}>
+            Save
+          </Button>
+        </>
+      }
+    >
+      {timers.length === 0 ? (
+        <p className="text-sm text-muted">There are no timers yet: make one in the Timers panel first.</p>
+      ) : (
+        <>
+          {cues.length === 0 && <p className="text-sm text-muted">It does nothing to timers.</p>}
+          <ul className="space-y-2">
+            {cues.map((cue, i) => (
+              <li key={i} className="flex flex-wrap items-center gap-2" data-testid="timer-cue">
+                <Select
+                  aria-label={`What cue ${i + 1} does`}
+                  value={cue.action}
+                  onChange={(e) => {
+                    const action = TIMER_CUE_ACTIONS.find((a) => a === e.target.value);
+                    if (action) change(i, { action });
+                  }}
+                >
+                  {TIMER_CUE_ACTIONS.map((a) => (
+                    <option key={a} value={a}>
+                      {TIMER_CUE_NAMES[a]}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  aria-label={`The timer cue ${i + 1} is for`}
+                  value={cue.timerId}
+                  onChange={(e) => {
+                    change(i, { timerId: e.target.value });
+                  }}
+                >
+                  {!timers.some((t) => t.id === cue.timerId) && (
+                    <option value={cue.timerId}>(a timer since removed)</option>
+                  )}
+                  {timers.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </Select>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setCues((c) => c.filter((_, k) => k !== i));
+                  }}
+                >
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
+          {first && cues.length < MAX_TIMER_CUES && (
+            <Button
+              size="sm"
+              data-testid="add-timer-cue"
+              onClick={() => {
+                setCues((c) => [...c, { timerId: first.id, action: 'start' }]);
+              }}
+            >
+              Add a timer
+            </Button>
+          )}
+        </>
       )}
     </Dialog>
   );

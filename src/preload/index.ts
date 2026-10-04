@@ -134,6 +134,8 @@ const bridge: DrashtiBridge = {
     newFromTemplate: (templateId, name, parentId) =>
       invoke(IPC.playlists.newFromTemplate, templateId, name, parentId),
     addSlot: (playlistId, at, slot) => invoke(IPC.playlists.addSlot, playlistId, at, slot),
+    editSlot: (itemId, slot) => invoke(IPC.playlists.editSlot, itemId, slot),
+    setTimers: (itemId, cues) => invoke(IPC.playlists.setTimers, itemId, cues),
     onChanged: (listener) =>
       on(IPC.playlists.changed, () => {
         listener();

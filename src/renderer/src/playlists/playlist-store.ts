@@ -6,6 +6,7 @@ import type {
   PlaylistItemInfo,
   PlaylistNode,
   PlaylistResult,
+  TimerCue,
 } from '../../../shared/playlists';
 import { useEngine } from '../engine/engine-store';
 import { leaveItem, showItem, useLibrary } from '../library/library-store';
@@ -43,6 +44,10 @@ interface PlaylistView {
   addingSlot: boolean;
   /** The slot (or import placeholder) being filled: its dialog is open. */
   filling: Extract<PlaylistItemInfo, { kind: 'placeholder' }> | null;
+  /** The slot being renamed or given another category: its dialog is open. */
+  editingSlot: Extract<PlaylistItemInfo, { kind: 'placeholder' }> | null;
+  /** The item whose timer cues are being set: its dialog is open. */
+  cuesFor: Extract<PlaylistItemInfo, { kind: 'presentation' | 'media' | 'shastra' }> | null;
 }
 
 export const usePlaylists = create<PlaylistView>(() => ({
@@ -61,6 +66,8 @@ export const usePlaylists = create<PlaylistView>(() => ({
   savingTemplate: null,
   addingSlot: false,
   filling: null,
+  editingSlot: null,
+  cuesFor: null,
 }));
 
 /** A playlist, folder or template by its id. */
@@ -216,6 +223,24 @@ export async function addSlot(label: string, category: string | null): Promise<b
   await reload();
   usePlaylists.setState({ marked: result.ids, anchorId: result.ids[0] ?? null });
   return true;
+}
+
+/** Rename the slot being edited, and give it a category (a Shastra passage, or none). */
+export async function editSlot(label: string, category: string | null): Promise<void> {
+  const slot = usePlaylists.getState().editingSlot;
+  if (!slot) return;
+  if (!settled(await api().editSlot(slot.id, { label, category }))) return;
+  usePlaylists.setState({ editingSlot: null });
+  await loadItems();
+}
+
+/** What the item being set up does to timers when it goes up. */
+export async function setTimerCues(cues: TimerCue[]): Promise<void> {
+  const item = usePlaylists.getState().cuesFor;
+  if (!item) return;
+  if (!settled(await api().setTimers(item.id, cues))) return;
+  usePlaylists.setState({ cuesFor: null });
+  await loadItems();
 }
 
 /** Fill the slot being filled with a presentation. */

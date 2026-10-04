@@ -9,6 +9,7 @@ import {
   playlistNameSchema,
   positionSchema,
   slotSchema,
+  timerCuesSchema,
   templateRequestSchema,
 } from '../../shared/playlists';
 import type { PlaylistRepo } from '../db/playlists';
@@ -163,6 +164,26 @@ export function registerPlaylistIpc({ repo, fromOperator, changed }: PlaylistIpc
         return failed('A playlist needs a name (1 to 200 characters).');
       const made = repo.newFromTemplate(id.data, n.data, parent.data);
       return made ? { ok: true, ids: [made] } : failed('That template, or the folder, no longer exists.');
+    }),
+  );
+  handle(IPC.playlists.editSlot, (e, itemId, slot) =>
+    change(e, () => {
+      const id = playlistIdSchema.safeParse(itemId);
+      const s = slotSchema.safeParse(slot);
+      if (!id.success || !s.success) return failed('A slot needs a name (1 to 200 characters).');
+      return repo.editSlot(id.data, s.data.label, s.data.category)
+        ? { ok: true, ids: [id.data] }
+        : failed('Only a slot can be renamed this way.');
+    }),
+  );
+  handle(IPC.playlists.setTimers, (e, itemId, cues) =>
+    change(e, () => {
+      const id = playlistIdSchema.safeParse(itemId);
+      const c = timerCuesSchema.safeParse(cues);
+      if (!id.success || !c.success) return failed('Those timer cues cannot be set.');
+      return repo.setTimers(id.data, c.data)
+        ? { ok: true, ids: [id.data] }
+        : failed('Only a presentation, media or passage item runs timers when it goes up.');
     }),
   );
   handle(IPC.playlists.addSlot, (e, playlistId, at, slot) =>

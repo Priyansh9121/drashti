@@ -57,6 +57,7 @@ import type {
   PlaylistNode,
   PlaylistResult,
   TemplateRequest,
+  TimerCue,
 } from './playlists';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { PropFields, PropInfo, PropResult } from './props';
@@ -216,6 +217,10 @@ export const IPC = {
     newFromTemplate: 'playlists:new-from-template',
     /** A slot: a place for a presentation, filled each time (a placeholder with a category). */
     addSlot: 'playlists:add-slot',
+    /** A slot's name and category (Session 12). */
+    editSlot: 'playlists:edit-slot',
+    /** What an item does to timers when it goes up (Session 12). */
+    setTimers: 'playlists:set-timers',
     /** main -> operator: playlists changed. */
     changed: 'playlists:changed',
   },
@@ -462,6 +467,11 @@ export interface InvokeContract {
     args: [playlistId: string, at: number | null, slot: { label: string; category: string | null }];
     result: PlaylistResult;
   };
+  [IPC.playlists.editSlot]: {
+    args: [itemId: string, slot: { label: string; category: string | null }];
+    result: PlaylistResult;
+  };
+  [IPC.playlists.setTimers]: { args: [itemId: string, cues: TimerCue[]]; result: PlaylistResult };
   [IPC.library.getPresentation]: { args: [id: string]; result: PresentationDoc | null };
   [IPC.library.slidesForEdit]: { args: [presentationId: string]; result: EditSlidesResult };
   [IPC.library.saveSlides]: {

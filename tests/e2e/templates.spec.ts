@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage } from './helpers';
+import { launchApp, operatorPage, operatorReady } from './helpers';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
 
@@ -195,3 +195,85 @@ for (const [width, height] of [
     await expectFits(win.getByTestId('fill-slot'), `filling a slot at ${width} x ${height}`);
     await app.close();
   });
+
+test('timers in templates: an item starts a countdown as it goes up, kept by the template and its playlists; a slot renamed and re-categorised', async () => {
+  test.setTimeout(90_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  const { playlistId } = await weekPlaylist(win);
+  const timerId = await win.evaluate(async () => {
+    const made = await (globalThis as PageGlobals).drashti.timers.create({
+      name: 'Placeholder pravachan',
+      kind: 'countdown',
+      durationMs: 30 * 60_000,
+      targetTime: null,
+      allowsOverrun: false,
+    });
+    if (!made.ok) throw new Error(made.message);
+    return made.id;
+  });
+
+  // In the window: the language slides item starts the countdown when it goes up.
+  await win.getByTestId('playlist-node').first().click();
+  const slidesItem = win.getByTestId('playlist-item').filter({ hasText: 'Language test slides' });
+  await slidesItem.click({ button: 'right' });
+  await win.getByRole('menuitem', { name: 'Timers when it goes up…' }).click();
+  const cues = win.getByTestId('timer-cues');
+  await cues.getByTestId('add-timer-cue').click();
+  await expect(cues.getByRole('combobox', { name: 'What cue 1 does' })).toHaveValue('start');
+  await expect(cues.getByRole('combobox', { name: 'The timer cue 1 is for' })).toHaveValue(timerId);
+  await expectNoSeriousA11yIssues(win, 'an item’s timer cues');
+  await cues.getByTestId('save-timer-cues').click();
+  await expect(cues).toHaveCount(0);
+  await expect(slidesItem.getByTestId('item-timer-cues')).toHaveText('starts “Placeholder pravachan”');
+
+  // A template keeps it; a playlist made from the template gets it, and running the item starts the countdown.
+  const made = await win.evaluate(async (pl) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const template = await d.playlists.saveAsTemplate(pl, { name: 'Placeholder template', slots: [] });
+    if (!template.ok) throw new Error(template.message);
+    const next = await d.playlists.newFromTemplate(template.ids[0] ?? '', 'Placeholder next week', null);
+    if (!next.ok) throw new Error(next.message);
+    const items = await d.playlists.items(next.ids[0] ?? '');
+    const item = items.find((i) => i.label === 'Language test slides');
+    return { templateId: template.ids[0] ?? '', playlistId: next.ids[0] ?? '', item };
+  }, playlistId);
+  expect(made.item).toMatchObject({ timers: [{ timerId, action: 'start' }] });
+  await win.evaluate(
+    ({ pl, itemId }) =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'playItem', playlistId: pl, itemId }),
+    { pl: made.playlistId, itemId: made.item?.id ?? '' },
+  );
+  await expect
+    .poll(async () => {
+      const snap = await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
+      return snap.state.timers.find((t) => t.id === timerId)?.startedAt !== null;
+    })
+    .toBe(true);
+
+  // A slot: renamed, and asking for a Shastra passage now.
+  await win.evaluate(async (tid) => {
+    const added = await (globalThis as PageGlobals).drashti.playlists.addSlot(tid, null, {
+      label: 'Placeholder slot',
+      category: 'Kirtan',
+    });
+    if (!added.ok) throw new Error(added.message);
+  }, made.templateId);
+  await win.getByTestId('playlist-view-tab-templates').click();
+  await win.getByTestId('template-node').filter({ hasText: 'Placeholder template' }).click();
+  const slot = win.getByTestId('playlist-item').filter({ hasText: 'Placeholder slot' });
+  await slot.click({ button: 'right' });
+  await win.getByRole('menuitem', { name: 'Edit slot…' }).click();
+  const edit = win.getByTestId('edit-slot');
+  await expect(edit.getByTestId('slot-category')).toHaveValue('Kirtan');
+  await expectNoSeriousA11yIssues(win, 'editing a slot');
+  await edit.getByTestId('slot-label').fill('Placeholder reading');
+  await edit.getByTestId('slot-category').selectOption('Shastra');
+  await edit.getByTestId('save-slot').click();
+  await expect(edit).toHaveCount(0);
+  const renamed = win.getByTestId('playlist-item').filter({ hasText: 'Placeholder reading' });
+  await expect(renamed).toContainText('A slot · Shastra');
+  await app.close();
+});

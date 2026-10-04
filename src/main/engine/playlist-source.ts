@@ -1,3 +1,4 @@
+import type { TimerCue } from '../../shared/playlists';
 /*
  * Playlists as the show engine plays them: each item is a presentation (in
  * its order), a picture, video or sound, or something to step over.
@@ -12,8 +13,17 @@ export type PlayItem =
       arrangementId: string | null | undefined;
       /** Its name in the playlist (for a stage screen's "coming up"). */
       label?: string;
+      /** What it does to timers when it goes up. */
+      timers?: readonly TimerCue[];
     }
-  | { id: string; kind: 'media'; mediaId: string; media: 'image' | 'video' | 'audio'; label: string }
+  | {
+      id: string;
+      kind: 'media';
+      mediaId: string;
+      media: 'image' | 'video' | 'audio';
+      label: string;
+      timers?: readonly TimerCue[];
+    }
   /** Nothing to play: a header, a placeholder, or something no longer there; `why` says which. */
   | { id: string; kind: 'skip'; why: string; label?: string; header?: boolean };
 

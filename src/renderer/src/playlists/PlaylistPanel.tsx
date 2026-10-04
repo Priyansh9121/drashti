@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { DragEvent, KeyboardEvent, MouseEvent } from 'react';
 import { actionFor, LIBRARY_KEYMAP } from '../../../shared/keymap';
-import type { NewItem, PlaylistItemInfo, PlaylistNode } from '../../../shared/playlists';
+import type { NewItem, PlaylistItemInfo, TimerCue, PlaylistNode } from '../../../shared/playlists';
 import { useEngine } from '../engine/engine-store';
 import { leaveItem, selectPresentation, useLibrary } from '../library/library-store';
 import { mediaKindIcon, mediaKindLabel, mediaProblem } from '../library/MediaList';
@@ -9,6 +9,7 @@ import { Badge, LiveBadge, MissingBadge, UnplayableBadge } from '../ui/Badge';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import {
+  Timer,
   BookOpen,
   AlertTriangle,
   BookTemplate,
@@ -34,7 +35,13 @@ import { EmptyState } from '../ui/States';
 import { TabPanel, Tabs } from '../ui/Tabs';
 import { Truncate } from '../ui/Truncate';
 import { dragKind, droppedIds, startDrag } from './drag';
-import { AddSlotDialog, FillSlotDialog, SaveTemplateDialog } from './TemplateDialogs';
+import {
+  AddSlotDialog,
+  EditSlotDialog,
+  FillSlotDialog,
+  SaveTemplateDialog,
+  TimerCuesDialog,
+} from './TemplateDialogs';
 import {
   addHeader,
   addItems,
@@ -472,6 +479,7 @@ function ItemBody({ item, live }: { item: PlaylistItemInfo; live: boolean }) {
             ) : item.order.mode === 'all' ? (
               <span className="text-xs text-muted">All slides in order</span>
             ) : null}
+            <CuesLine cues={item.timers} />
           </span>
           {liveBadge}
         </span>
@@ -487,6 +495,7 @@ function ItemBody({ item, live }: { item: PlaylistItemInfo; live: boolean }) {
               {item.label}
             </span>
             <span className="text-xs text-muted">{mediaKindLabel[item.media]}</span>
+            <CuesLine cues={item.timers} />
           </span>
           {item.missing ? <MissingBadge /> : problem && <UnplayableBadge />}
           {liveBadge}
@@ -506,6 +515,7 @@ function ItemBody({ item, live }: { item: PlaylistItemInfo; live: boolean }) {
             ) : (
               <span className="text-xs text-muted">Shastra passage</span>
             )}
+            <CuesLine cues={item.timers} />
           </span>
           {liveBadge}
         </span>
@@ -555,6 +565,30 @@ function itemMenu(item: PlaylistItemInfo): MenuEntry[] {
   };
   if (item.kind === 'header')
     return [{ label: 'Rename…', icon: Pencil, onSelect: () => startRenaming(item.id) }, remove];
+  // A slot (not a placeholder an import left): its name and where filling it starts.
+  if (item.kind === 'placeholder' && item.hint === null)
+    return [
+      {
+        label: 'Edit slot…',
+        icon: Pencil,
+        onSelect: () => {
+          usePlaylists.setState({ editingSlot: item });
+        },
+      },
+      remove,
+    ];
+  const timers: MenuEntry[] =
+    item.kind === 'presentation' || item.kind === 'media' || item.kind === 'shastra'
+      ? [
+          {
+            label: 'Timers when it goes up…',
+            icon: Timer,
+            onSelect: () => {
+              usePlaylists.setState({ cuesFor: item });
+            },
+          },
+        ]
+      : [];
   if (item.kind === 'presentation' && item.presentationName !== null)
     return [
       {
@@ -565,9 +599,24 @@ function itemMenu(item: PlaylistItemInfo): MenuEntry[] {
           void selectPresentation(item.presentationId);
         },
       },
+      ...timers,
       remove,
     ];
-  return [remove];
+  return [...timers, remove];
+}
+
+/** A line under an item that runs timer cues: what it does to which timers. */
+function CuesLine({ cues }: { cues: readonly TimerCue[] }) {
+  const timers = useEngine((s) => s.state?.timers);
+  if (cues.length === 0) return null;
+  const name = (id: string) => timers?.find((t) => t.id === id)?.name ?? 'a timer since removed';
+  const verb = { start: 'starts', reset: 'resets', show: 'shows' } as const;
+  return (
+    <span className="flex items-center gap-1 truncate text-xs text-muted" data-testid="item-timer-cues">
+      <Timer size={12} aria-hidden="true" className="shrink-0" />
+      {cues.map((c) => `${verb[c.action]} “${name(c.timerId)}”`).join(', ')}
+    </span>
+  );
 }
 
 function PlaylistItems({ platform, openId }: { platform: string; openId: string }) {
@@ -872,6 +921,8 @@ export function PlaylistPanel({ platform }: { platform: string }) {
       <SaveTemplateDialog />
       <AddSlotDialog />
       <FillSlotDialog />
+      <EditSlotDialog />
+      <TimerCuesDialog />
       {problem && (
         <Notice tone="warning" compact className="mx-2 mb-2" onDismiss={dismissProblem}>
           {problem}
