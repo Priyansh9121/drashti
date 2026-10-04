@@ -111,6 +111,8 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('cueNext'), presentationId: id, label: z.string().trim().min(1).max(120) }),
   z.object({ type: z.literal('clearCue') }),
   z.object({ type: z.literal('playCue') }),
+  z.object({ type: z.literal('startIdle') }),
+  z.object({ type: z.literal('stopIdle') }),
 ]);
 
 export type EngineCommand = z.infer<typeof engineCommandSchema>;

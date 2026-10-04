@@ -1,5 +1,6 @@
 import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
 import type { CalendarResult, CalendarView } from './calendar';
+import type { IdleResult, IdleSettings, IdleView, QuoteFields, QuoteResult } from './idle';
 import type {
   PassageInfo,
   PassageResult,
@@ -314,6 +315,15 @@ export const IPC = {
     /** main -> operator: the schedules or the prompt changed. */
     changed: 'arti:changed',
   },
+  /** The idle rotation (Session 12): its pictures, timing and quotes (Pro Mode); starting it is an engine command. */
+  idle: {
+    view: 'idle:view',
+    saveSettings: 'idle:save-settings',
+    saveQuote: 'idle:save-quote',
+    removeQuote: 'idle:remove-quote',
+    /** main -> operator: the settings, the quotes or the quote of the day changed. */
+    changed: 'idle:changed',
+  },
   /** Samvat and tithi (Session 12): the loaded calendars and today's entry; removing one is Pro Mode only. */
   calendar: {
     view: 'calendar:view',
@@ -592,6 +602,10 @@ export interface InvokeContract {
   [IPC.shastra.itemPassage]: { args: [itemId: string]; result: PassageInfo | null };
   [IPC.shastra.setTheme]: { args: [textId: string, themeId: string | null]; result: ShastraResult };
   [IPC.shastra.remove]: { args: [textId: string]; result: ShastraResult };
+  [IPC.idle.view]: { args: []; result: IdleView };
+  [IPC.idle.saveSettings]: { args: [settings: IdleSettings]; result: IdleResult };
+  [IPC.idle.saveQuote]: { args: [quoteId: string | null, quote: QuoteFields]; result: QuoteResult };
+  [IPC.idle.removeQuote]: { args: [quoteId: string]; result: IdleResult };
   [IPC.calendar.view]: { args: []; result: CalendarView };
   [IPC.calendar.remove]: { args: [calendarId: string]; result: CalendarResult };
   [IPC.arti.view]: { args: []; result: ArtiView };
@@ -696,6 +710,7 @@ export interface EventContract {
   [IPC.macros.changed]: Macro[];
   [IPC.arti.changed]: ArtiView;
   [IPC.calendar.changed]: CalendarView;
+  [IPC.idle.changed]: IdleView;
   [IPC.output.context]: OutputContext;
   [IPC.output.identify]: { name: string; groupName: string };
   [IPC.audio.chosen]: { device: AudioDevice | null };

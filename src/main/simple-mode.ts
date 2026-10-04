@@ -80,6 +80,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.arti.remove,
   // Calendars: loading one is an import (locked above); removing one is locked too.
   IPC.calendar.remove,
+  // The idle rotation: Simple Mode changes neither its pictures nor its quotes.
+  IPC.idle.saveSettings,
+  IPC.idle.saveQuote,
+  IPC.idle.removeQuote,
   // Macros: Simple Mode runs none (MIDI mapped to its own actions still works), and changes none.
   IPC.macros.save,
   IPC.macros.remove,

@@ -27,6 +27,7 @@ import { up as shastra } from './migrations/025-shastra';
 import { up as timerCues } from './migrations/026-timer-cues';
 import { up as arti } from './migrations/027-arti';
 import { up as calendar } from './migrations/028-calendar';
+import { up as idle } from './migrations/029-idle';
 
 export interface Migration {
   version: number;
@@ -73,6 +74,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 26, name: 'timers in sabha templates', up: timerCues },
   { version: 27, name: 'the arti at its time', up: arti },
   { version: 28, name: 'Samvat and tithi', up: calendar },
+  { version: 29, name: 'the idle rotation', up: idle },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

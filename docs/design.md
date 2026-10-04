@@ -236,3 +236,9 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **Nothing for a date the calendars do not give.** No placeholder text, no "unknown": the line, the stage box and the message field are simply empty. The Calendar dialog says it in words ("No loaded calendar gives today's date").
 - **Two languages, each written its own way.** Gujarati with Gujarati digits for the year ("સંવત ૨૦૮૨"), English with Latin digits ("Samvat 2082"); a stage box or message field chooses one. The names are the calendar's own, never translated by Drashti.
 - **The Calendar dialog is setup** (Pro Mode, from the Timers panel): today in both languages at the top, then the loaded calendars as a table (name, dates, days, **Remove** asking first), and **Load a calendar…** in its header. Its subtitle says only authorised calendars are loaded.
+
+## 25. The idle rotation
+
+- **Start is the panel's one primary button**, and turns into **Stop** (`live`, with the words) while it runs, with a line saying it stops by itself when a slide or picture goes up. Where it shows is said in words from the live Look ("Hall (once started), Lobby (always)"), or how to make it show.
+- **The pictures are shown whole** on black (never cropped: a darshan picture is not trimmed), and dissolve into the next over a second and a half. A quote is centred, each language in its own font, the attribution under it in muted grey after a dash.
+- **Set up is setup** (Pro Mode): the chosen pictures in order with Earlier and Later as labelled icon buttons, the library's pictures as ticks with thumbnails, the seconds, the quote of the day, and the quotes (each with its languages as badges, Edit and Remove asking first). Its subtitle says only authorised pictures and quotes are used.

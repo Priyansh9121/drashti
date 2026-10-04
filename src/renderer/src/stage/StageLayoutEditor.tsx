@@ -177,6 +177,11 @@ function BoxSettings({ box }: { box: StageBox }) {
           </Select>
         </Field>
       )}
+      {box.kind === 'quote' && (
+        <p className="text-xs text-muted">
+          The quote of the day from the idle rotation&apos;s quotes: one each day, the same all day.
+        </p>
+      )}
       {box.kind === 'samvat' && (
         <p className="text-xs text-muted">
           From the calendars loaded in Timers › Calendar. A date they do not give shows nothing.

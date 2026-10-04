@@ -24,6 +24,7 @@ import {
 } from '../../shared/engine/state';
 import type { EngineTransport } from '../../shared/engine/transport';
 import type { CalendarDay } from '../../shared/calendar';
+import type { IdleState, Quote } from '../../shared/idle';
 import type { BackgroundCue } from '../../shared/library';
 import type { LiveLook } from '../../shared/looks';
 import { CUT, type Transition } from '../../shared/model';
@@ -381,6 +382,19 @@ export class ShowEngine {
   /** The timers as the library defines them (at startup, and after the operator edits one). */
   setTimers(timers: readonly TimerDefinition[]): CommandResult {
     return this.apply([{ type: 'timers/define', timers }]);
+  }
+
+  /** What the idle rotation shows (from the admin's settings, the media library and the quotes). */
+  setIdle(content: Omit<IdleState, 'startedAt'>): CommandResult {
+    const { startedAt: _running, ...was } = this.state.idle;
+    if (sameData(was, content)) return this.unchanged();
+    return this.apply([{ type: 'idle/set', content }]);
+  }
+
+  /** The quote of the day: at midnight, and when the quotes change. */
+  setQuote(quote: Quote | null): CommandResult {
+    if (sameData(this.state.quote, quote)) return this.unchanged();
+    return this.apply([{ type: 'quote/set', quote }]);
   }
 
   /** Today's calendar entry: from the loaded calendars, at midnight and when they change. */
@@ -1002,6 +1016,14 @@ export class ShowEngine {
         return { ok: true, actions: [{ type: 'cue/set', cue: null }] };
       case 'playCue':
         return this.playCue() ?? { ok: false, error: 'nothing-cued', message: 'Nothing is cued' };
+      case 'startIdle':
+        return this.state.idle.startedAt === null
+          ? { ok: true, actions: [{ type: 'idle/run', startedAt: this.now() }] }
+          : NO_CHANGE;
+      case 'stopIdle':
+        return this.state.idle.startedAt === null
+          ? NO_CHANGE
+          : { ok: true, actions: [{ type: 'idle/run', startedAt: null }] };
       case 'setLook': {
         const look = this.options.looks?.look(command.lookId) ?? null;
         if (!look) return { ok: false, error: 'unknown-look', message: 'That look no longer exists' };
@@ -1057,6 +1079,15 @@ export class ShowEngine {
   ): CommandResult {
     const prev = this.state;
     let next = actions.reduce(reduce, prev);
+    // The idle rotation, once started, stops by itself when a slide or a picture goes up (so a later
+    // Clear all does not bring it back).
+    if (
+      next.idle.startedAt !== null &&
+      next.idle === prev.idle &&
+      ((next.layers.slide !== null && next.layers.slide !== prev.layers.slide) ||
+        (next.layers.background !== null && next.layers.background !== prev.layers.background))
+    )
+      next = reduce(next, { type: 'idle/run', startedAt: null });
     // What was cued goes once it is live (however it got there).
     if (next.live !== prev.live && next.live.presentationId === next.cue?.presentationId)
       next = reduce(next, { type: 'cue/set', cue: null });

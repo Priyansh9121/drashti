@@ -47,6 +47,7 @@ describe('a group’s settings in a Look', () => {
         slides: 'lowerThird',
         stageLayoutId: 'l1',
         maskId: 'm1',
+        idle: 'always',
       }),
     ).toEqual({
       layers: ['slide', 'props'],
@@ -54,17 +55,24 @@ describe('a group’s settings in a Look', () => {
       slides: 'lowerThird',
       stageLayoutId: 'l1',
       maskId: 'm1',
+      idle: 'always',
     });
     expect(readGroupLook(undefined)).toEqual(DEFAULT_GROUP_LOOK);
     expect(
-      readGroupLook({ layers: ['props', 'slide'], languages: ['gu', 'gu'], slides: 'sideways' }),
+      readGroupLook({
+        layers: ['props', 'slide'],
+        languages: ['gu', 'gu'],
+        slides: 'sideways',
+        idle: 'often',
+      }),
     ).toEqual({
-      // The layers in drawing order; the languages and slide style unreadable, so the defaults.
+      // The layers in drawing order; the languages, slide style and idle setting unreadable, so the defaults.
       layers: ['slide', 'props'],
       languages: null,
       slides: 'designed',
       stageLayoutId: null,
       maskId: null,
+      idle: 'off',
     });
   });
 });
@@ -98,6 +106,7 @@ describe('Looks', () => {
         slides: 'lowerThird',
         stageLayout: null,
         mask: null,
+        idle: 'off',
       },
       [t.stage]: { ...DEFAULT_LIVE_GROUP_LOOK, languages: ['gu'] },
     });

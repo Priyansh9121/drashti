@@ -1,4 +1,5 @@
 import type { CalendarDay } from '../../shared/calendar';
+import type { IdleState, Quote } from '../../shared/idle';
 import type { LiveLook } from '../../shared/looks';
 import type { RenderSlide, Transition } from '../../shared/model';
 import type { TimerDefinition, TimerRun } from '../../shared/timers';
@@ -48,6 +49,11 @@ export type EngineAction =
   | { type: 'cue/set'; cue: CuedNext | null }
   /** Today's calendar entry (a new day, or a calendar loaded or removed). */
   | { type: 'calendar/set'; calendar: CalendarDay | null }
+  /** The idle rotation starts (at a time) or stops (null). */
+  | { type: 'idle/run'; startedAt: number | null }
+  /** What the idle rotation shows (the admin's pictures, the quote of the day), and for how long each. */
+  | { type: 'idle/set'; content: Omit<IdleState, 'startedAt'> }
+  | { type: 'quote/set'; quote: Quote | null }
   | { type: 'upcoming/set'; upcoming: UpcomingItem[] }
   | { type: 'stage/message'; text: string | null }
   /** The timers as defined in the library; each keeps its run (start time, counted time). */

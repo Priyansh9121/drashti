@@ -1,5 +1,6 @@
 import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
 import type { CalendarResult, CalendarView } from './calendar';
+import type { IdleResult, IdleSettings, IdleView, QuoteFields, QuoteResult } from './idle';
 import type {
   PassageInfo,
   PassageResult,
@@ -432,6 +433,15 @@ export interface DrashtiBridge {
     itemPassage(itemId: string): Promise<PassageInfo | null>;
     setTheme(textId: string, themeId: string | null): Promise<ShastraResult>;
     remove(textId: string): Promise<ShastraResult>;
+  };
+  /** The idle rotation's pictures, timing and quotes (changing them: operator window, Pro Mode). */
+  idle: {
+    view(): Promise<IdleView>;
+    onChanged(listener: (view: IdleView) => void): () => void;
+    saveSettings(settings: IdleSettings): Promise<IdleResult>;
+    /** Make one (no id) or save one. */
+    saveQuote(quoteId: string | null, quote: QuoteFields): Promise<QuoteResult>;
+    removeQuote(quoteId: string): Promise<IdleResult>;
   };
   /** Samvat and tithi: the calendars an admin loaded (through Import), today's entry, removing one (Pro Mode). */
   calendar: {

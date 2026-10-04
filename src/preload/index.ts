@@ -260,6 +260,13 @@ const bridge: DrashtiBridge = {
     save: (maskId, mask) => invoke(IPC.masks.save, maskId, mask),
     remove: (maskId) => invoke(IPC.masks.remove, maskId),
   },
+  idle: {
+    view: () => invoke(IPC.idle.view),
+    onChanged: (listener) => on(IPC.idle.changed, listener),
+    saveSettings: (settings) => invoke(IPC.idle.saveSettings, settings),
+    saveQuote: (quoteId, quote) => invoke(IPC.idle.saveQuote, quoteId, quote),
+    removeQuote: (quoteId) => invoke(IPC.idle.removeQuote, quoteId),
+  },
   calendar: {
     view: () => invoke(IPC.calendar.view),
     onChanged: (listener) => on(IPC.calendar.changed, listener),

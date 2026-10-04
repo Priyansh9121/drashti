@@ -74,6 +74,9 @@ describe('Simple Mode locks', () => {
       IPC.arti.setEnabled,
       IPC.arti.remove,
       IPC.calendar.remove,
+      IPC.idle.saveSettings,
+      IPC.idle.saveQuote,
+      IPC.idle.removeQuote,
     ])
       expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
     // Finding passages, reading the schedules, and answering the prompt (its big button) stay.
@@ -88,6 +91,7 @@ describe('Simple Mode locks', () => {
       IPC.arti.notNow,
       IPC.arti.cancel,
       IPC.calendar.view,
+      IPC.idle.view,
     ])
       expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
   });

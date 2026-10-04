@@ -26,6 +26,8 @@ export type StageBoxKind =
   | 'clock'
   /** Today's Samvat date, tithi and festivals, from the loaded calendars (Session 12). */
   | 'samvat'
+  /** The quote of the day (one per date), from the idle rotation's quotes (Session 12). */
+  | 'quote'
   /** One chosen timer, or every running timer. */
   | 'timer'
   /** The operator's message for the stage. */
@@ -45,6 +47,7 @@ export const STAGE_BOX_KINDS = [
   'notes',
   'clock',
   'samvat',
+  'quote',
   'timer',
   'stageMessage',
   'upcoming',
@@ -59,6 +62,7 @@ export const STAGE_BOX_NAMES: Record<StageBoxKind, string> = {
   notes: 'Notes',
   clock: 'Clock',
   samvat: 'Samvat date and tithi',
+  quote: 'Quote of the day',
   timer: 'Timer',
   stageMessage: 'Stage message',
   upcoming: 'Next items in the playlist',
@@ -74,6 +78,7 @@ export const STAGE_BOX_LABELS: Record<StageBoxKind, string> = {
   notes: 'NOTES',
   clock: '',
   samvat: '',
+  quote: '',
   timer: '',
   stageMessage: '',
   upcoming: 'COMING UP',
@@ -170,7 +175,8 @@ export function newStageBox(kind: StageBoxKind, id: string): StageBox {
     kind === 'notes' ||
     kind === 'text' ||
     kind === 'upcoming' ||
-    kind === 'samvat';
+    kind === 'samvat' ||
+    kind === 'quote';
   const width = wide ? 1100 : 600;
   const height =
     kind === 'current' ? 600 : kind === 'clock' || kind === 'mediaLeft' || kind === 'samvat' ? 160 : 300;

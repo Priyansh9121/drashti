@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { IDLE_WHEN_NAMES, IDLE_WHENS } from '../../../shared/idle';
 import type { GroupLook, LookInfo, LookLayer, SlideStyle } from '../../../shared/looks';
 import { LOOK_LAYER_NAMES, LOOK_LAYERS } from '../../../shared/looks';
 import type { ScreenRole } from '../../../shared/screens';
@@ -245,6 +246,24 @@ export function GroupLookSettings({
               {(['designed', 'lowerThird'] as const).map((s) => (
                 <option key={s} value={s}>
                   {SLIDE_STYLE_NAMES[s]}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label className="flex flex-wrap items-center gap-2 text-xs text-muted">
+            When nothing is up
+            <Select
+              aria-label="When nothing is up on these screens"
+              data-testid="look-idle"
+              value={settings.idle}
+              onChange={(e) => {
+                const v = e.target.value;
+                set({ idle: v === 'started' || v === 'always' ? v : 'off' });
+              }}
+            >
+              {IDLE_WHENS.map((w) => (
+                <option key={w} value={w}>
+                  {IDLE_WHEN_NAMES[w]}
                 </option>
               ))}
             </Select>

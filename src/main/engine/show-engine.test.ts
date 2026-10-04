@@ -899,6 +899,63 @@ describe('ShowEngine', () => {
     expect(engine.current.calendar).toBeNull();
   });
 
+  describe('the idle rotation', () => {
+    const content = {
+      items: [
+        { kind: 'picture' as const, mediaId: 'pic-a' },
+        { kind: 'picture' as const, mediaId: 'pic-b' },
+      ],
+      secondsEach: 5,
+      dissolveMs: 1500,
+    };
+
+    it('starts and stops on command; its pictures change without stopping it', () => {
+      const { engine } = setup();
+      engine.setIdle(content);
+      expect(engine.current.idle).toEqual({ ...content, startedAt: null });
+      engine.dispatch({ type: 'startIdle' });
+      const started = engine.current.idle.startedAt;
+      expect(started).not.toBeNull();
+      // Starting again keeps its place.
+      expect(engine.dispatch({ type: 'startIdle' })).toMatchObject({ ok: true, changed: false });
+      engine.setIdle({ ...content, secondsEach: 8 });
+      expect(engine.current.idle).toMatchObject({ startedAt: started, secondsEach: 8 });
+      expect(engine.setIdle({ ...content, secondsEach: 8 })).toMatchObject({ changed: false });
+      engine.dispatch({ type: 'stopIdle' });
+      expect(engine.current.idle.startedAt).toBeNull();
+    });
+
+    it('stops by itself when a slide or a picture goes up, so Clear all does not bring it back', () => {
+      const { engine } = setup();
+      engine.setIdle(content);
+      engine.dispatch({ type: 'startIdle' });
+      // Clearing changes nothing up: it keeps running.
+      engine.dispatch({ type: 'clearAll' });
+      expect(engine.current.idle.startedAt).not.toBeNull();
+      engine.dispatch(goLive('p1', 0));
+      expect(engine.current.idle.startedAt).toBeNull();
+      engine.dispatch({ type: 'clearAll' });
+      expect(engine.current.idle.startedAt).toBeNull();
+      // A background (a picture or a colour) going up stops it too.
+      engine.dispatch({ type: 'startIdle' });
+      engine.dispatch({ type: 'setBackground', background: { kind: 'color', color: '#203040' } });
+      expect(engine.current.idle.startedAt).toBeNull();
+      // Started while something is up: it waits, and the next slide stops it.
+      engine.dispatch({ type: 'startIdle' });
+      expect(engine.current.idle.startedAt).not.toBeNull();
+      engine.dispatch(goLive('p2', 0));
+      expect(engine.current.idle.startedAt).toBeNull();
+    });
+
+    it('keeps the quote of the day for every window', () => {
+      const { engine } = setup();
+      const quote = { id: 'q1', words: { en: 'Placeholder quote' }, attribution: 'Placeholder' };
+      engine.setQuote(quote);
+      expect(engine.current.quote).toEqual(quote);
+      expect(engine.setQuote({ ...quote })).toMatchObject({ changed: false });
+    });
+  });
+
   describe('a presentation edited while it is live', () => {
     it('shows the new words at once, keeps a slide that moved, and leaves a slide that went', () => {
       const { engine, source } = setup();
