@@ -237,7 +237,7 @@ test('a library from before Looks keeps exactly what each group showed', async (
   expect(liveId).toBe(looks[0]?.id);
   const snapshot = await win.evaluate(() => (globalThis as PageGlobals).drashti.screens.get());
   const all = ['background', 'slide', 'props', 'messages', 'ticker', 'masks'];
-  const standard = { layers: all, slides: 'designed', stageLayoutId: null, maskId: null };
+  const standard = { layers: all, slides: 'designed', stageLayoutId: null, maskId: null, idle: 'off' };
   expect(snapshot.groups.map((g) => [g.name, g.role, looks[0]?.groups[g.id]])).toEqual([
     ['Hall', 'audience', { ...standard, languages: ['translit', 'gu'] }],
     ['Stage', 'stage', { ...standard, languages: ['gu'] }],
