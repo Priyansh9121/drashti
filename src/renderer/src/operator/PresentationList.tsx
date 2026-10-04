@@ -25,18 +25,7 @@ import { startDrag } from '../playlists/drag';
 import { Badge, LiveBadge } from '../ui/Badge';
 import { Button, IconButton } from '../ui/Button';
 import { TextInput } from '../ui/Field';
-import {
-  BookOpen,
-  FileText,
-  FolderOpen,
-  Image,
-  Import,
-  ListFilter,
-  Plus,
-  Presentation,
-  Search,
-  Upload,
-} from '../ui/icons';
+import { FileText, FolderOpen, Import, ListFilter, Plus, Search, Upload } from '../ui/icons';
 import { MenuButton } from '../ui/Menu';
 import { Notice } from '../ui/Notice';
 import { rowClass } from '../ui/ListRow';
@@ -281,10 +270,11 @@ export function PresentationList({ platform }: { platform: string }) {
           className="flex-1"
           value={tab}
           onChange={setTab}
+          // Words only: three tabs and the Import icon fit the library column's usual width.
           items={[
-            { id: 'presentations', label: 'Presentations', icon: Presentation },
-            { id: 'media', label: 'Media', icon: Image },
-            { id: 'shastra', label: 'Shastra', icon: BookOpen },
+            { id: 'presentations', label: 'Presentations' },
+            { id: 'media', label: 'Media' },
+            { id: 'shastra', label: 'Shastra' },
           ]}
         />
         <ImportMenu />
