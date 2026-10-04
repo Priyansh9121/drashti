@@ -133,10 +133,12 @@ describe('the network in the main process', () => {
     service.resume();
     expect(sent).toEqual([]);
     expect(service.setOn(true)).toMatchObject({ ok: true });
-    expect(sent[0]).toMatchObject({ type: 'start', options: { port: 8740 } });
+    // The devices and the state before it listens: a device reconnecting at once is known.
+    expect(sent.map((m) => m.type)).toEqual(['devices', 'engine', 'start']);
+    expect(sent[2]).toMatchObject({ type: 'start', options: { port: 8740 } });
     fromWorker({ type: 'started', result: { ok: true, port: 8740 } });
     expect(service.status().state).toBe('listening');
-    expect(sent.map((m) => m.type)).toEqual(['start', 'devices', 'engine']);
+    expect(sent.map((m) => m.type)).toEqual(['devices', 'engine', 'start', 'devices', 'engine']);
     expect(service.setPort(80)).toMatchObject({ ok: false });
   });
 
