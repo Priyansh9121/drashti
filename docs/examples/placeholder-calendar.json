@@ -1,0 +1,34 @@
+{
+  "format": "drashti-calendar",
+  "version": 1,
+  "name": "Placeholder calendar",
+  "description": "Made-up names for trying Drashti; not a real calendar.",
+  "days": [
+    {
+      "date": "2026-10-04",
+      "samvat": 1001,
+      "month": { "gu": "નમૂના માસ ૧", "en": "Placeholder month 1" },
+      "paksha": { "gu": "પહેલો પક્ષ", "en": "First half" },
+      "tithi": { "gu": "નમૂના તિથિ ૧", "en": "Placeholder tithi 1" },
+      "festivals": [{ "gu": "નમૂના ઉત્સવ", "en": "Placeholder festival" }]
+    },
+    {
+      "date": "2026-10-05",
+      "samvat": 1001,
+      "month": { "gu": "નમૂના માસ ૧", "en": "Placeholder month 1" },
+      "paksha": { "gu": "પહેલો પક્ષ", "en": "First half" },
+      "tithi": { "gu": "નમૂના તિથિ ૨", "en": "Placeholder tithi 2" }
+    },
+    {
+      "date": "2026-10-06",
+      "samvat": 1001,
+      "month": { "gu": "નમૂના માસ ૧", "en": "Placeholder month 1" },
+      "paksha": { "gu": "પહેલો પક્ષ", "en": "First half" },
+      "tithi": { "gu": "નમૂના તિથિ ૩", "en": "Placeholder tithi 3" },
+      "festivals": [
+        { "gu": "નમૂના ઉત્સવ", "en": "Placeholder festival" },
+        { "en": "Second placeholder festival" }
+      ]
+    }
+  ]
+}

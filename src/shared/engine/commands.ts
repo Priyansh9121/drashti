@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CALENDAR_LANGS } from '../calendar';
 import { maskSchema } from '../masks';
 import { hexColorSchema, idSchema, slideElementSchema } from '../model-schema';
 import {
@@ -47,6 +48,7 @@ export const propSchema: z.ZodType<PropItem> = z.object({
 const messagePart = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('text'), text: z.string().max(500) }),
   z.object({ kind: z.literal('timer'), timerId: id }),
+  z.object({ kind: z.literal('samvat'), lang: z.enum(CALENDAR_LANGS) }),
 ]);
 export const messageSchema: z.ZodType<MessageItem> = z.object({
   id,

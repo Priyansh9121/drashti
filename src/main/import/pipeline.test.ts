@@ -336,4 +336,48 @@ describe('runImport', () => {
     expect((t.db.prepare('SELECT COUNT(*) AS n FROM shastra_texts').get() as { n: number }).n).toBe(1);
     expect((t.db.prepare('SELECT COUNT(*) AS n FROM shastra_items').get() as { n: number }).n).toBe(3);
   });
+
+  it('loads a calendar from its JSON file, again without change, and updated by its name', async () => {
+    const t = setup();
+    const calendar = (dates: string[]) =>
+      JSON.stringify({
+        format: 'drashti-calendar',
+        version: 1,
+        name: 'Placeholder calendar',
+        days: [
+          ...dates.map((date, i) => ({
+            date,
+            samvat: 1001,
+            month: { en: 'Placeholder month' },
+            paksha: { en: 'First half' },
+            tithi: { en: `Placeholder tithi ${String(i + 1)}` },
+            festivals: i === 0 ? [{ en: 'Placeholder festival' }] : [],
+          })),
+          { date: '2026-13-01', samvat: 1001, month: { en: 'x' }, paksha: { en: 'x' }, tithi: { en: 'x' } },
+        ],
+      });
+    const file = t.write('Placeholder calendar.json', calendar(['2026-10-04', '2026-10-05']));
+    const first = await t.run([file]);
+    expect(first.report?.items[0]).toMatchObject({
+      format: 'calendar',
+      outcome: 'imported',
+      name: 'Placeholder calendar',
+      target: { kind: 'calendar' },
+      message:
+        "Loaded: 2 days, 2026-10-04 to 2026-10-05, with 1 festival. Today's Samvat date shows in the operator window, and wherever a stage layout or a message shows it.",
+    });
+    expect(first.report?.items[0]?.issues.map((i) => i.message)).toEqual([
+      'Day 3 was left out: That date does not exist. (at days › 2 › date).',
+    ]);
+    expect((await t.run([file])).report?.items[0]).toMatchObject({
+      outcome: 'skipped',
+      message: 'Already loaded, unchanged since.',
+    });
+    writeFileSync(file, calendar(['2026-10-04', '2026-10-05', '2026-10-06']));
+    expect((await t.run([file])).report?.items[0]).toMatchObject({
+      outcome: 'replaced',
+      target: { id: first.report?.items[0]?.target?.id },
+    });
+    expect((t.db.prepare('SELECT COUNT(*) AS n FROM calendar_days').get() as { n: number }).n).toBe(3);
+  });
 });

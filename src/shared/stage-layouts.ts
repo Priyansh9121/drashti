@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CALENDAR_LANGS, type CalendarLang } from './calendar';
 import type { Rect } from './model';
 import { hexColorSchema, idSchema } from './model-schema';
 
@@ -21,8 +22,10 @@ export type StageBoxKind =
   | 'next'
   /** The live slide's notes. */
   | 'notes'
-  /** The time of day, written as Drashti's computer writes it. */
+  /** The time of day, written as Drashti's computer writes it (and, if chosen, today's Samvat date under it). */
   | 'clock'
+  /** Today's Samvat date, tithi and festivals, from the loaded calendars (Session 12). */
+  | 'samvat'
   /** One chosen timer, or every running timer. */
   | 'timer'
   /** The operator's message for the stage. */
@@ -41,6 +44,7 @@ export const STAGE_BOX_KINDS = [
   'next',
   'notes',
   'clock',
+  'samvat',
   'timer',
   'stageMessage',
   'upcoming',
@@ -54,6 +58,7 @@ export const STAGE_BOX_NAMES: Record<StageBoxKind, string> = {
   next: 'Next slide',
   notes: 'Notes',
   clock: 'Clock',
+  samvat: 'Samvat date and tithi',
   timer: 'Timer',
   stageMessage: 'Stage message',
   upcoming: 'Next items in the playlist',
@@ -68,6 +73,7 @@ export const STAGE_BOX_LABELS: Record<StageBoxKind, string> = {
   next: 'NEXT',
   notes: 'NOTES',
   clock: '',
+  samvat: '',
   timer: '',
   stageMessage: '',
   upcoming: 'COMING UP',
@@ -95,6 +101,10 @@ export interface StageBox {
   text?: string;
   /** The playlist's next items: how many (1 to 8). */
   count?: number;
+  /** A clock box: today's Samvat date and tithi under the time. */
+  calendar?: boolean;
+  /** A Samvat box, or a clock box with the date: in Gujarati or English. */
+  lang?: CalendarLang;
 }
 
 export interface StageLayout {
@@ -139,6 +149,8 @@ export const stageBoxSchema: z.ZodType<StageBox> = z.object({
   timerId: idSchema.nullable().optional(),
   text: z.string().max(500).optional(),
   count: z.number().int().min(1).max(8).optional(),
+  calendar: z.boolean().optional(),
+  lang: z.enum(CALENDAR_LANGS).optional(),
 });
 
 /** What a layout keeps in the library (its id and name are columns of their own). */
@@ -153,9 +165,15 @@ export const stageLayoutNameSchema = z.string().trim().min(1).max(60);
 /** A new box of a kind, in the middle of the canvas, in the usual look. */
 export function newStageBox(kind: StageBoxKind, id: string): StageBox {
   const wide =
-    kind === 'current' || kind === 'next' || kind === 'notes' || kind === 'text' || kind === 'upcoming';
+    kind === 'current' ||
+    kind === 'next' ||
+    kind === 'notes' ||
+    kind === 'text' ||
+    kind === 'upcoming' ||
+    kind === 'samvat';
   const width = wide ? 1100 : 600;
-  const height = kind === 'current' ? 600 : kind === 'clock' || kind === 'mediaLeft' ? 160 : 300;
+  const height =
+    kind === 'current' ? 600 : kind === 'clock' || kind === 'mediaLeft' || kind === 'samvat' ? 160 : 300;
   return {
     id,
     kind,
@@ -174,6 +192,7 @@ export function newStageBox(kind: StageBoxKind, id: string): StageBox {
     ...(kind === 'timer' ? { timerId: null } : {}),
     ...(kind === 'text' ? { text: 'Placeholder words' } : {}),
     ...(kind === 'upcoming' ? { count: 4 } : {}),
+    ...(kind === 'samvat' ? { lang: 'gu' as const } : {}),
   };
 }
 

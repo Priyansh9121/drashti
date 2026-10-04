@@ -113,6 +113,8 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
         },
       };
     }
+    case 'calendar/set':
+      return { ...state, calendar: action.calendar };
     case 'cue/set':
       return { ...state, cue: action.cue };
     case 'next/set':

@@ -71,6 +71,9 @@ import { MaskService } from './masks/mask-service';
 import { MacroRepo } from './db/macros';
 import { ArtiRepo } from './db/arti';
 import { ArtiService } from './arti/arti-service';
+import { CalendarRepo } from './db/calendar';
+import { CalendarService } from './calendar/calendar-service';
+import { calendarIdSchema } from '../shared/calendar';
 import { type ArtiAnswer, artiKeySchema } from '../shared/arti';
 import { MacroService } from './macros/macro-service';
 import { midiSettingsSchema, NO_MIDI } from '../shared/midi';
@@ -536,6 +539,8 @@ function start(): void {
   let macroService: MacroService | null = null;
   /** The arti schedules (made further down, once macros are): told when presentations change. */
   let artiService: ArtiService | null = null;
+  /** Today's calendar entry (made further down): told when an import loads a calendar. */
+  let calendarService: CalendarService | null = null;
   const engine = new ShowEngine(
     playable,
     new FanoutTransport([transport, networkTransport]),
@@ -952,6 +957,8 @@ function start(): void {
       libraryChanged(true);
       // It may have loaded a Shastra text (or loaded one again).
       listChanged('shastra');
+      // Or a calendar.
+      calendarService?.refresh();
     },
     failRun: (runId, paths, message) => {
       importRepo.failRun(runId, paths, message);
@@ -1240,6 +1247,30 @@ function start(): void {
       artiClockOffset = wallMs - Date.now();
       arti.check();
     };
+  // ---- Samvat and tithi: today's entry from the loaded calendars -------------------------
+  const calendars = new CalendarService({
+    repo: new CalendarRepo(db),
+    engine: { setCalendar: (day) => engine.setCalendar(day) },
+    now: Date.now,
+    changed: (view) => {
+      sendToOperator(IPC.calendar.changed, view);
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+  });
+  calendarService = calendars;
+  app.on('will-quit', () => {
+    calendars.dispose();
+  });
+  handle(IPC.calendar.view, () => calendars.view());
+  handle(IPC.calendar.remove, (e, id) => {
+    const which = calendarIdSchema.safeParse(id);
+    return fromOperator(e) && which.success
+      ? calendars.remove(which.data)
+      : { ok: false as const, message: 'Only the operator window can remove a calendar.' };
+  });
   const notArtiOperator = {
     ok: false as const,
     message: 'Only the operator window can change arti schedules.',

@@ -229,3 +229,10 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **Screen readers hear it once per step.** The sentence (coming up; it is time; going up by itself) is a `role="status"` that changes only when the step does; the ticking count beside it is hidden from them, so nothing is read out every second.
 - **Simple Mode: one big button.** The same strip sits above the big buttons with an `xxl` **Put up Arti now** and an `xl` **Not now**; there is nothing to set there.
 - **Times are set in the live column.** The Arti panel lists each time as its name, "Every day 19:00" or "Sun, Wed 19:00", when it next prompts, and its presentation; a switch turns one off; **By itself** is a `warning` badge. A removed presentation says so in `warning-fg` on its row.
+
+## 24. Samvat and tithi
+
+- **Today's line is information, not a control.** Along the bottom of the operator window (and Simple Mode), with a calendar icon, in muted text; the festival after a dot in `warning-fg` bold, so a festival day is seen. In Pro Mode it opens the Calendar dialog; in Simple Mode it does nothing.
+- **Nothing for a date the calendars do not give.** No placeholder text, no "unknown": the line, the stage box and the message field are simply empty. The Calendar dialog says it in words ("No loaded calendar gives today's date").
+- **Two languages, each written its own way.** Gujarati with Gujarati digits for the year ("સંવત ૨૦૮૨"), English with Latin digits ("Samvat 2082"); a stage box or message field chooses one. The names are the calendar's own, never translated by Drashti.
+- **The Calendar dialog is setup** (Pro Mode, from the Timers panel): today in both languages at the top, then the loaded calendars as a table (name, dates, days, **Remove** asking first), and **Load a calendar…** in its header. Its subtitle says only authorised calendars are loaded.

@@ -1,10 +1,12 @@
 import { useEffect } from 'react';
+import { festivalsLine, samvatLine } from '../../../shared/calendar';
+import { useEngine } from '../engine/engine-store';
 import type { AppInfo } from '../../../shared/app-info';
 import { describeAppInfo } from '../../../shared/app-info';
 import { cancelImport, dismissFinished, openReport, useImports } from '../library/import-store';
 import { connectSound, useSound } from '../screens/sound-store';
 import { Button } from '../ui/Button';
-import { AlertTriangle, Info, Volume2, X } from '../ui/icons';
+import { AlertTriangle, CalendarDays, Info, Volume2, X } from '../ui/icons';
 import { Progress } from '../ui/Progress';
 import { plural } from '../ui/text';
 import { Truncate } from '../ui/Truncate';
@@ -142,13 +144,39 @@ function TaskStatus() {
   );
 }
 
+/** Today's Samvat date and tithi, with any festival (from the loaded calendars); nothing when they do not give today. */
+function TodayStatus({ onOpen }: { onOpen: (() => void) | null }) {
+  const day = useEngine((s) => s.state?.calendar ?? null);
+  if (!day) return null;
+  const festivals = festivalsLine(day, 'en');
+  return (
+    <button
+      type="button"
+      onClick={onOpen ?? undefined}
+      disabled={!onOpen}
+      title={onOpen ? 'The calendar' : undefined}
+      data-testid="today-calendar"
+      className="flex min-w-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-muted hover:text-fg disabled:hover:text-muted"
+    >
+      <CalendarDays size={13} aria-hidden="true" className="shrink-0" />
+      <span className="truncate">
+        {samvatLine(day, 'en')}
+        {festivals && <strong className="text-warning-fg">{` · ${festivals}`}</strong>}
+      </span>
+    </button>
+  );
+}
+
 export function StatusBar({
   info,
   onOpenScreens,
+  onOpenCalendar = null,
 }: {
   info: AppInfo | null;
   /** Null in Simple Mode, where the screens cannot be opened. */
   onOpenScreens: (() => void) | null;
+  /** The Calendar dialog (Pro Mode). */
+  onOpenCalendar?: (() => void) | null;
 }) {
   return (
     <footer
@@ -157,6 +185,7 @@ export function StatusBar({
     >
       <ScreensSummary onOpen={onOpenScreens} />
       <SoundStatus onOpen={onOpenScreens} />
+      <TodayStatus onOpen={onOpenCalendar} />
       <div aria-live="polite" className="flex min-w-0 flex-1 items-center gap-3">
         <ImportStatus />
         <TaskStatus />

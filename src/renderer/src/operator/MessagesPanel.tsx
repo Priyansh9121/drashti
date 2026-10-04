@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { CALENDAR_LANG_NAMES, CALENDAR_LANGS } from '../../../shared/calendar';
 import type { MessageItem } from '../../../shared/engine/state';
 import type { MessageField, MessageTemplate } from '../../../shared/messages';
 import { fieldOf, fillMessage, messageItemId, templateFields } from '../../../shared/messages';
@@ -12,6 +13,20 @@ import { Panel } from '../ui/Panel';
 import { EmptyState, Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { dispatch } from './actions';
+
+/** A field's choice in its select: "" typed in, a timer's id, or "samvat:gu" / "samvat:en". */
+function fieldChoice(f: MessageField): string {
+  if (f.kind === 'timer') return f.timerId;
+  if (f.kind === 'samvat') return `samvat:${f.lang}`;
+  return '';
+}
+
+function fieldFromChoice(choice: string): MessageField {
+  if (choice === '') return { kind: 'text' };
+  if (choice === 'samvat:gu' || choice === 'samvat:en')
+    return { kind: 'samvat', lang: choice === 'samvat:gu' ? 'gu' : 'en' };
+  return { kind: 'timer', timerId: choice };
+}
 
 const NO_MESSAGES: MessageItem[] = [];
 const NO_TIMERS: TimerState[] = [];
@@ -74,19 +89,21 @@ function TemplateForm({
           <Select
             aria-label={`How {${n}} is filled`}
 
-            value={fieldOf({ fields }, n).kind === 'timer' ? (fields[n] as { timerId: string }).timerId : ''}
+            value={fieldChoice(fieldOf({ fields }, n))}
             onChange={(e) => {
-              const timerId = e.target.value;
-              setFields((f) => ({
-                ...f,
-                [n]: timerId === '' ? { kind: 'text' } : { kind: 'timer', timerId },
-              }));
+              const choice = e.target.value;
+              setFields((f) => ({ ...f, [n]: fieldFromChoice(choice) }));
             }}
           >
             <option value="">Typed in</option>
             {timers.map((t) => (
               <option key={t.id} value={t.id}>
                 Timer: {t.name}
+              </option>
+            ))}
+            {CALENDAR_LANGS.map((lang) => (
+              <option key={lang} value={`samvat:${lang}`}>
+                {`Today's Samvat date (${CALENDAR_LANG_NAMES[lang]})`}
               </option>
             ))}
           </Select>
@@ -163,6 +180,10 @@ function TemplateRow({
         return f.kind === 'timer' ? (
           <p key={n} className="text-xs text-muted">
             {`{${n}}`}: timer “{timers.find((x) => x.id === f.timerId)?.name ?? 'removed'}”
+          </p>
+        ) : f.kind === 'samvat' ? (
+          <p key={n} className="text-xs text-muted">
+            {`{${n}}`}: today&apos;s Samvat date ({CALENDAR_LANG_NAMES[f.lang]})
           </p>
         ) : (
           <TextInput

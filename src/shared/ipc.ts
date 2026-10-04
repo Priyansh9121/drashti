@@ -1,4 +1,5 @@
 import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
+import type { CalendarResult, CalendarView } from './calendar';
 import type {
   PassageInfo,
   PassageResult,
@@ -313,6 +314,13 @@ export const IPC = {
     /** main -> operator: the schedules or the prompt changed. */
     changed: 'arti:changed',
   },
+  /** Samvat and tithi (Session 12): the loaded calendars and today's entry; removing one is Pro Mode only. */
+  calendar: {
+    view: 'calendar:view',
+    remove: 'calendar:remove',
+    /** main -> operator: the calendars or today's entry changed. */
+    changed: 'calendar:changed',
+  },
   /** Stage layouts made in Drashti (changing them: operator window, Pro Mode). */
   stageLayouts: {
     list: 'stage:layouts',
@@ -584,6 +592,8 @@ export interface InvokeContract {
   [IPC.shastra.itemPassage]: { args: [itemId: string]; result: PassageInfo | null };
   [IPC.shastra.setTheme]: { args: [textId: string, themeId: string | null]; result: ShastraResult };
   [IPC.shastra.remove]: { args: [textId: string]; result: ShastraResult };
+  [IPC.calendar.view]: { args: []; result: CalendarView };
+  [IPC.calendar.remove]: { args: [calendarId: string]; result: CalendarResult };
   [IPC.arti.view]: { args: []; result: ArtiView };
   [IPC.arti.save]: { args: [scheduleId: string | null, fields: ArtiFields]; result: ArtiResult };
   [IPC.arti.setEnabled]: { args: [scheduleId: string, enabled: boolean]; result: ArtiResult };
@@ -685,6 +695,7 @@ export interface EventContract {
   [IPC.masks.changed]: Mask[];
   [IPC.macros.changed]: Macro[];
   [IPC.arti.changed]: ArtiView;
+  [IPC.calendar.changed]: CalendarView;
   [IPC.output.context]: OutputContext;
   [IPC.output.identify]: { name: string; groupName: string };
   [IPC.audio.chosen]: { device: AudioDevice | null };

@@ -23,6 +23,7 @@ import {
   type UpNext,
 } from '../../shared/engine/state';
 import type { EngineTransport } from '../../shared/engine/transport';
+import type { CalendarDay } from '../../shared/calendar';
 import type { BackgroundCue } from '../../shared/library';
 import type { LiveLook } from '../../shared/looks';
 import { CUT, type Transition } from '../../shared/model';
@@ -380,6 +381,12 @@ export class ShowEngine {
   /** The timers as the library defines them (at startup, and after the operator edits one). */
   setTimers(timers: readonly TimerDefinition[]): CommandResult {
     return this.apply([{ type: 'timers/define', timers }]);
+  }
+
+  /** Today's calendar entry: from the loaded calendars, at midnight and when they change. */
+  setCalendar(calendar: CalendarDay | null): CommandResult {
+    if (sameData(this.state.calendar, calendar)) return this.unchanged();
+    return this.apply([{ type: 'calendar/set', calendar }]);
   }
 
   /**
