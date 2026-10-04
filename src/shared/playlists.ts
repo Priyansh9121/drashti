@@ -1,3 +1,4 @@
+import { idSchema } from './model-schema';
 import { passageIdSchema } from './shastra';
 import { z } from 'zod';
 
@@ -102,7 +103,8 @@ export interface TemplateRequest {
 
 // ---- checks for requests arriving over IPC ----------------------------------------
 
-const id = z.string().min(1).max(128);
+// An id, or a Shastra passage's (which can be longer).
+const id = idSchema;
 export const playlistIdSchema = id;
 export const idListSchema = z.array(id).min(1).max(1000);
 export const playlistNameSchema = z.string().trim().min(1).max(200);

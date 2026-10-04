@@ -214,3 +214,10 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **A macro is a coloured button.** In the Macros panel each macro is a two-column button with a strip of its colour and its name; a click runs it at once (it is a show action, like Next). Its colour is chosen from a few that read on the dark panels.
 - **The macro editor lists actions as plain sentences in order**: the action's name, then its choices (a Look, a prop, a template and its fields…), with Earlier, Later and Remove as icon buttons with those words as their labels. Only actions a macro may do are offered.
 - **MIDI says what it heard.** The MIDI dialog shows the device and whether it is connected (in words), every action with what it is mapped to ("Note 36, channel 1") and Learn, and a live line with the last note or controller the controller sent, so an operator can see the pad is reaching Drashti.
+
+## 22. Shastra
+
+- **A tab of the library, not a mode.** The Shastra tab sits beside Presentations and Media in the left column: the reference box first (with **Show**), then search, then the texts to browse, and **Texts…** at the foot. A reference that names nothing says why in a `warning-fg` line under the box (`role="status"`), never a dialog; the box keeps what was typed, to fix.
+- **A passage is shown like a presentation.** It fills the slide grid with a group per item, named by its reference ("Placeholder Granth 14"), and a line in the header says it is a Shastra passage. Edit words, Kirtan and Edit slides are not offered: its slides are made from the text. Rows in the Shastra tab, search results and browsed items alike, can be dragged onto a playlist.
+- **Texts… is setup** (Pro Mode): a table of the loaded texts with their abbreviation ("Type “PG” and a number"), items, languages as badges, a theme select, and **Remove** (`ghost`, asking first in an `alertdialog`). The subtitle says that only authorised texts are loaded.
+- **Sanskrit's two scripts are named in full** everywhere a language is chosen: "Sanskrit (Devanagari)" and "Sanskrit (Gujarati script)"; badges are `SA` and `SA·GU`.
