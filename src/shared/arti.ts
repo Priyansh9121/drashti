@@ -64,7 +64,7 @@ export interface ArtiSchedule {
 export interface ArtiScheduleInfo extends ArtiSchedule {
   /** Its presentation's name, or null when the presentation is gone (it then never prompts). */
   presentationName: string | null;
-  /** When it next prompts for (its time, in the main process's clock), or null (off, gone, or a date passed). */
+  /** Its next time (ms, by the schedules' clock: this computer's), or null (off, gone, or a date passed). */
   nextAt: number | null;
 }
 
@@ -118,6 +118,8 @@ export interface ArtiPrompt {
 export interface ArtiView {
   schedules: ArtiScheduleInfo[];
   prompt: ArtiPrompt | null;
+  /** How far the schedules' clock is ahead of the engine's: 0, except while a test moves it. */
+  offsetMs: number;
 }
 
 export type ArtiAnswer = { ok: true } | { ok: false; message: string };
