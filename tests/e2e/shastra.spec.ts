@@ -116,7 +116,12 @@ test('a text loads from its file, again unchanged, and updated; references, nons
   await expect(grid.getByTestId('edit-slides')).toHaveCount(0);
   await show('pg 14-16');
   await expect(grid).toHaveAttribute('data-presentation-id', 'shastra:pg#14-16');
-  await expect(grid.getByTestId('slide-thumb')).toHaveCount(3);
+  // A group for each item (an item may take more than one slide when every language is on).
+  await expect(grid.getByTestId('slide-group')).toHaveText([
+    /^Placeholder Granth 14/u,
+    /^Placeholder Granth 15/u,
+    /^Placeholder Granth 16/u,
+  ]);
   for (const typed of ['PV P.Pr. 2', 'pv ppr2', 'PV Placeholder Pratham 2']) {
     await show(typed);
     await expect(grid).toHaveAttribute('data-presentation-id', 'shastra:pv/ppr#2');
@@ -265,10 +270,10 @@ test('a long passage goes on over several slides and Next goes on to the next it
     ['placeholder', 'Placeholder reading slot'],
   ]);
   // Filling the slot in the window: it asks for a passage.
-  await win
-    .getByTestId('playlist-tree')
-    .getByRole('button', { name: /Placeholder from template/ })
-    .click();
+  // (The live playlist may be open: back to the list first.)
+  const back = win.getByTestId('playlists-back');
+  if (await back.isVisible()) await back.click();
+  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder from template' }).click();
   await win.getByTestId('playlist-item').filter({ hasText: 'Placeholder reading slot' }).click();
   const fill = win.getByTestId('fill-slot');
   await expect(fill.getByTestId('passage-picker')).toBeVisible();
