@@ -220,4 +220,54 @@ describe.skipIf(!existsSync(ffmpeg))('the stream pipeline, with FFmpeg', () => {
     expect(clusters[0]?.startsPicture).toBe(true);
     expect(clusters.at(-1)?.timestamp ?? 0).toBeGreaterThan(0);
   }, 120_000);
+
+  it('a recording goes on in a new file only once the encoder is back; going down with it leaves no extra file', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-pipeline-'));
+    const seen: { status: WorkerStatus | null } = { status: null };
+    const p = new StreamPipeline({
+      status: (s) => {
+        seen.status = s;
+      },
+      log: () => undefined,
+    });
+    const current = () => seen.status;
+    /** The encoder going down by itself, as when the system ends it first. */
+    const killEncoder = () => {
+      (p as unknown as { encodeProcess: ChildProcess | null }).encodeProcess?.kill('SIGKILL');
+    };
+    const files = () =>
+      readdirSync(dir)
+        .filter((f) => f.endsWith('.mkv'))
+        .sort();
+    await p.start({ ffmpeg, platform: process.platform, preset, encoder: null });
+    let feeding = feed(p);
+    const stop = () => {
+      feeding.stop();
+    };
+    try {
+      p.record(join(dir, 'recording.mkv'), 1024 ** 2);
+      await until('recording', () => (current()?.recording.bytes ?? 0) > 20_000);
+      // The encoder goes down while recording, and no picture comes: no new file however long it waits...
+      stop();
+      killEncoder();
+      await sleep(1500);
+      expect(files()).toEqual(['recording.mkv']);
+      expect(current()?.recording.state).toBe('recording');
+      // ...then pictures come, the encoder is back, and the recording goes on in one new file.
+      feeding = feed(p);
+      await until('a new part', () => (current()?.recording.file ?? '').includes(' part '));
+      await until('the new part grows', () => (current()?.recording.bytes ?? 0) > 20_000);
+      expect(files()).toHaveLength(2);
+      // Drashti going down, the encoder first: nothing new is made.
+      killEncoder();
+      stop();
+      p.stop();
+      await sleep(2500);
+      expect(files()).toHaveLength(2);
+      expect(current()?.recording.state).toBe('off');
+    } finally {
+      stop();
+      p.stop();
+    }
+  }, 120_000);
 });
