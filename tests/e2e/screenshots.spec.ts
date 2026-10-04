@@ -79,9 +79,17 @@ test('the operator window and its panels', async () => {
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1920, height: 1080 });
   await running(win);
+  // The live column from its top (starting the timer and showing the message scrolled it): the previews.
+  const live = win.getByRole('complementary', { name: 'Live' });
+  const toTop = () =>
+    live.evaluate((el) => {
+      el.scrollTop = 0;
+    });
+  await toTop();
   await shot(win, 'operator-1920x1080');
 
   await win.setViewportSize({ width: 1280, height: 720 });
+  await toTop();
   await shot(win, 'operator-1280x720');
 
   await win.setViewportSize({ width: 1600, height: 900 });
