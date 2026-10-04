@@ -102,19 +102,19 @@ const PresentationRow = memo(function PresentationRow({
   );
 });
 
+/** Import files or a folder: an icon beside the tabs (its name and tooltip say Import…), so the row fits. */
 function ImportMenu() {
   return (
     <MenuButton
       label="Import"
+      title="Import…"
       icon={Import}
       variant="secondary"
       entries={[
         { label: 'Files…', icon: FileText, onSelect: () => void importWithDialog('files') },
         { label: 'A folder…', icon: FolderOpen, onSelect: () => void importWithDialog('folder') },
       ]}
-    >
-      Import…
-    </MenuButton>
+    />
   );
 }
 
