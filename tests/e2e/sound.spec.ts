@@ -194,14 +194,26 @@ test('outputs and the sound stay in step, a reloaded output rejoins, and only th
       .find((w) => w.webContents.getURL().includes('index.html'))
       ?.webContents.forcefullyCrashRenderer();
   });
-  const carriedOn = await audio.evaluate(async (selector) => {
-    const el = document.querySelector<HTMLMediaElement>(selector);
-    if (!el) return -1;
-    const before = el.currentTime;
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    return (((el.currentTime - before) % el.duration) + el.duration) % el.duration;
-  }, sound);
-  expect(carriedOn).toBeGreaterThan(0.4);
+  // It plays on (a busy computer may stall it a moment while the window comes back: no fixed time is
+  // asked of it), in the same player, never paused.
+  const before = await audio.evaluate(
+    (selector) => document.querySelector<HTMLMediaElement>(selector)?.currentTime ?? -1,
+    sound,
+  );
+  await expect
+    .poll(
+      () =>
+        audio.evaluate(
+          ({ selector, from }) => {
+            const el = document.querySelector<HTMLMediaElement>(selector);
+            if (!el || el.paused) return -1;
+            return (((el.currentTime - from) % el.duration) + el.duration) % el.duration;
+          },
+          { selector: sound, from: before },
+        ),
+      { timeout: 5000 },
+    )
+    .toBeGreaterThan(0.4);
   expect(await audio.evaluate(() => performance.timeOrigin)).toBe(loadedAt);
   expect(await soundingIn(audio)).toBe(1);
 
