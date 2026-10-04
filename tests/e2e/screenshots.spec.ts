@@ -1,7 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
@@ -18,6 +18,7 @@ import {
 } from './helpers';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 import { freePort, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
+import { makeTestImage } from './test-media';
 
 /*
  * The screenshots in docs/screenshots/, with placeholder content only. Taken
@@ -699,5 +700,236 @@ test('Looks, stage layouts, masks, key and fill, macros, MIDI and the slide edit
   } finally {
     await phone.close();
   }
+  await app.close();
+});
+
+test('Shastra, timers in the running order, the arti prompt, Samvat and tithi, and the idle rotation (Session 12)', async () => {
+  test.setTimeout(300_000);
+  const { app } = await launchApp({
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_EXTRA_DISPLAYS: '2',
+    DRASHTI_TEST_ARTI_CLOCK: '1',
+  });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.setViewportSize({ width: 1600, height: 900 });
+  await running(win);
+  // The made-up texts and a made-up calendar for today, generated pictures, placeholder quotes.
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-shots-12-'));
+  const examples = join(__dirname, '..', '..', 'docs', 'examples');
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const now = new Date();
+  const today = `${String(now.getFullYear())}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const calendar = join(dir, 'placeholder-calendar.json');
+  writeFileSync(
+    calendar,
+    JSON.stringify({
+      format: 'drashti-calendar',
+      version: 1,
+      name: 'Placeholder calendar',
+      days: [
+        {
+          date: today,
+          samvat: 1001,
+          month: { gu: 'નમૂના માસ', en: 'Placeholder month' },
+          paksha: { gu: 'પહેલો પક્ષ', en: 'First half' },
+          tithi: { gu: 'નમૂના તિથિ ૩', en: 'Placeholder tithi 3' },
+          festivals: [{ gu: 'નમૂના ઉત્સવ', en: 'Placeholder festival' }],
+        },
+      ],
+    }),
+  );
+  const pictures: string[] = [];
+  for (const [i, color] of ['#3a6ea5', '#a5563a', '#4a8f4a'].entries())
+    pictures.push(
+      await makeTestImage(win, join(dir, `placeholder-darshan-${String(i + 1)}.png`), {
+        color,
+        width: 1600,
+        height: 900,
+      }),
+    );
+  const files = [
+    join(examples, 'placeholder-granth.json'),
+    join(examples, 'placeholder-vachan.json'),
+    calendar,
+    ...pictures,
+  ];
+  const made = await win.evaluate(
+    async ({ files, pictures }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const started = await d.library.importPaths(files);
+      if (!started.ok) throw new Error(started.message);
+      const report = await d.library.getImportReport(started.run.id);
+      const ids = pictures.map((p) => report?.items.find((i) => i.sourcePath === p)?.target?.id ?? '');
+      const screens: Record<string, string> = {};
+      const group = async (name: string, role: 'audience' | 'stage', display: number) => {
+        const g = await d.screens.createGroup(name);
+        if (!g.ok) throw new Error(g.message);
+        const id = g.snapshot.groups.find((x) => x.name === name)?.id ?? '';
+        if (role !== 'audience') await d.screens.setGroupRole(id, role);
+        const assigned = await d.screens.assignDisplay(id, g.snapshot.displays[display]?.id ?? -1, {
+          coverOperator: true,
+        });
+        if (!assigned.ok) throw new Error(assigned.message);
+        screens[name] = assigned.snapshot.groups.find((x) => x.id === id)?.screens[0]?.id ?? '';
+        return id;
+      };
+      const hall = await group('Placeholder hall', 'audience', 0);
+      const lobby = await group('Placeholder lobby', 'audience', 1);
+      const stage = await group('Placeholder stage', 'stage', 2);
+      const layout = await d.stageLayouts.save(null, {
+        name: 'Placeholder day layout',
+        background: '#0b0d11',
+        boxes: [
+          {
+            id: 'c',
+            kind: 'clock',
+            frame: { x: 48, y: 40, width: 1824, height: 260 },
+            size: 'fit',
+            color: '#ffffff',
+            align: 'right',
+            label: '',
+            calendar: true,
+            lang: 'en',
+          },
+          {
+            id: 's',
+            kind: 'samvat',
+            frame: { x: 48, y: 340, width: 1824, height: 220 },
+            size: 64,
+            color: '#fde68a',
+            align: 'left',
+            label: 'TODAY',
+            lang: 'gu',
+          },
+          {
+            id: 'q',
+            kind: 'quote',
+            frame: { x: 48, y: 620, width: 1824, height: 420 },
+            size: 56,
+            color: '#ffffff',
+            align: 'left',
+            label: 'QUOTE OF THE DAY',
+          },
+        ],
+      });
+      if (!layout.ok) throw new Error(layout.message);
+      const live = (await d.looks.list()).liveId;
+      await d.looks.setGroup(live, hall, { idle: 'started', languages: ['sa-gu', 'translit', 'gu'] });
+      await d.looks.setGroup(live, lobby, { idle: 'always' });
+      await d.looks.setGroup(live, stage, { stageLayoutId: layout.id });
+      for (const words of [
+        { gu: 'આ નમૂનાનું વાક્ય છે.', en: 'This is a placeholder quote.' },
+        { en: 'A second placeholder quote.' },
+      ])
+        await d.idle.saveQuote(null, { words, attribution: 'Placeholder' });
+      await d.idle.saveSettings({ pictures: ids, secondsEach: 4, quoteOfTheDay: true });
+      const kirtan = (await d.library.listPresentations()).find((p) => p.kirtan !== null)?.id ?? '';
+      await d.arti.save(null, {
+        name: 'Placeholder evening arti',
+        presentationId: kirtan,
+        days: [0, 1, 2, 3, 4, 5, 6],
+        date: null,
+        time: '19:00',
+        promptMinutes: 5,
+        byItself: false,
+        enabled: true,
+      });
+      await d.messages.create({
+        name: 'Placeholder today',
+        template: 'Today: {date}',
+        fields: { date: { kind: 'samvat', lang: 'en' } },
+      });
+      return { quoteId: (await d.idle.view()).quoteOfTheDay?.id ?? '', screens };
+    },
+    { files, pictures },
+  );
+  const quoteId = made.quoteId;
+  const outputs = async (name: string): Promise<Page> => {
+    const screenId = made.screens[name] ?? '-';
+    let found: Page | undefined;
+    await expect
+      .poll(async () => {
+        for (const p of app.windows().filter((w) => w.url().includes('output.html')))
+          if ((await p.getByTestId('output-root').getAttribute('data-screen')) === screenId) found = p;
+        return found !== undefined;
+      })
+      .toBe(true);
+    if (!found) throw new Error(`no ${name} output`);
+    return found;
+  };
+
+  // Shastra: a passage found by its reference, in the slide grid; the loaded texts.
+  await win.getByRole('tab', { name: 'Shastra' }).click();
+  const panel = win.getByTestId('shastra-panel');
+  await panel.getByTestId('shastra-reference').fill('PG 14-15');
+  await panel.getByTestId('shastra-reference').press('Enter');
+  await expect(win.getByTestId('slide-grid')).toHaveAttribute('data-presentation-id', 'shastra:pg#14-15');
+  await win.getByTestId('slide-thumb').first().click();
+  await shot(win, 'shastra-tab');
+  await panel.getByTestId('open-shastra-texts').click();
+  await expect(win.getByTestId('shastra-texts-dialog')).toBeVisible();
+  await shot(win, 'shastra-texts');
+  await win.getByRole('button', { name: 'Close Shastra texts' }).click();
+  await shot(await outputs('Placeholder hall'), 'output-shastra');
+
+  // A playlist item's timers.
+  await win.getByRole('tab', { name: 'Presentations' }).click();
+  await win.getByTestId('playlist-item').filter({ hasText: KIRTAN }).click({ button: 'right' });
+  await win.getByRole('menuitem', { name: 'Timers when it goes up…' }).click();
+  await win.getByTestId('timer-cues').getByTestId('add-timer-cue').click();
+  await shot(win, 'timer-cues');
+  await win.getByTestId('timer-cues').getByRole('button', { name: 'Cancel' }).click();
+
+  // The arti: minutes before its time (tomorrow, on the schedules' test clock), and its schedule.
+  const tomorrow = (h: number, m: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(h, m, 0, 0);
+    return d.getTime();
+  };
+  const clockTo = (ms: number) =>
+    app.evaluate((_e, at) => {
+      (globalThis as { drashtiArtiClock?: (wallMs: number) => void }).drashtiArtiClock?.(at);
+    }, ms);
+  await clockTo(tomorrow(18, 56));
+  await expect(win.getByTestId('arti-prompt')).toBeVisible();
+  await win.getByTestId('arti-panel').evaluate((el) => {
+    el.scrollIntoView({ block: 'start' });
+  });
+  await shot(win, 'arti-prompt');
+  await win.getByTestId('arti-schedule').getByRole('button').first().click();
+  await expect(win.getByTestId('arti-dialog')).toBeVisible();
+  await shot(win, 'arti-dialog');
+  await win.getByRole('button', { name: 'Close the arti time' }).click();
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+  await clockTo(tomorrow(19, 0));
+  await expect(win.getByTestId('simple-mode').getByTestId('arti-prompt')).toContainText('it is time');
+  await shot(win, 'simple-mode-arti');
+  await win.getByTestId('arti-not-now').click();
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro'));
+
+  // Samvat and tithi: the Calendar dialog, and the stage screen's clock, Samvat and quote boxes.
+  await win.getByTestId('open-calendar').click();
+  await expect(win.getByTestId('calendar-dialog')).toBeVisible();
+  await shot(win, 'calendar-dialog');
+  await win.getByRole('button', { name: 'Close the calendar' }).click();
+  await shot(await outputs('Placeholder stage'), 'output-stage-samvat');
+
+  // The idle rotation: its dialog; started, with nothing up, a picture and then the quote of the day.
+  await win.getByTestId('idle-panel').getByTestId('open-idle').click();
+  await expect(win.getByTestId('idle-dialog')).toBeVisible();
+  await shot(win, 'idle-dialog');
+  await win.getByRole('button', { name: 'Close the idle rotation' }).click();
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'clearAll' }));
+  await win.getByTestId('idle-panel').getByTestId('idle-start').click();
+  const hall = await outputs('Placeholder hall');
+  await expect(hall.locator('[data-layer="idle"][data-idle-index="0"]')).toBeVisible({ timeout: 20_000 });
+  await hall.waitForTimeout(500);
+  await shot(hall, 'output-idle-picture');
+  await expect(hall.locator('[data-layer="idle"][data-idle-index="3"]')).toBeVisible({ timeout: 20_000 });
+  await expect(hall.locator(`[data-idle-item="${quoteId}"]`).first()).toBeVisible();
+  await hall.waitForTimeout(500);
+  await shot(hall, 'output-idle-quote');
   await app.close();
 });
