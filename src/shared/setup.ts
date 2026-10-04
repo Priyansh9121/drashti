@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { AudioDevice } from './audio';
 import { audioDeviceSchema } from './audio';
-import type { Lang, RenderSlide, TextElement } from './model';
+import type { KirtanLang, Lang, RenderSlide, TextElement } from './model';
 import { idSchema } from './model-schema';
 import type { ScreensSnapshot } from './screens';
 import { groupLanguagesSchema } from './screens-schema';
@@ -67,7 +67,7 @@ export const setupPlanSchema: z.ZodType<SetupPlan> = z.object({
 export const TEST_CARD_MS = 8000;
 
 /** Placeholder lines in each language for test slides: written for Drashti, not kirtan text. */
-export const SAMPLE_LINES: Record<Lang, string> = {
+export const SAMPLE_LINES: Record<KirtanLang, string> = {
   gu: 'પરીક્ષણ સ્લાઇડ',
   hi: 'परीक्षण स्लाइड',
   translit: 'Parīkṣaṇ slāiḍ',

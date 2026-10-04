@@ -21,6 +21,7 @@ import {
 } from './import-store';
 import { convert, connectConversions, jobFor, useConvert } from './convert-store';
 import { leaveItem, loadMedia, selectPresentation, useLibrary, useMedia } from './library-store';
+import { showTexts } from '../shastra/shastra-store';
 
 /*
  * The migration report (PLAN.md 4.4): what came across, what did not, and a
@@ -124,6 +125,20 @@ function Fixes({ item }: { item: ImportItemReport }) {
     out.push(
       <Button key="open" size="sm" onClick={() => openPresentation(target.id)}>
         Open
+      </Button>,
+    );
+  }
+  if (target?.kind === 'shastra') {
+    out.push(
+      <Button
+        key="open"
+        size="sm"
+        onClick={() => {
+          closeReport();
+          showTexts();
+        }}
+      >
+        Open in Shastra
       </Button>,
     );
   }

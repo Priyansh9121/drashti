@@ -1,7 +1,9 @@
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import type { Lang, SlideElement, TextElement } from '../../../shared/model';
-import { LANGS } from '../../../shared/model';
+
+/** The languages there were when this migration was written (a migration never changes with the app). */
+const LANGS: readonly Lang[] = ['en', 'gu', 'hi', 'translit'];
 import { slideElementSchema } from '../../../shared/model-schema';
 import { langsOf, setLangLines, slideLines } from '../../../shared/tracks';
 

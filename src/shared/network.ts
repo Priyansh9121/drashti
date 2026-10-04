@@ -102,7 +102,15 @@ export type FromDevice =
 
 /** Hints that lists a device shows have changed and should be read again. */
 export type NetworkChange =
-  'playlists' | 'presentations' | 'messages' | 'timers' | 'props' | 'screens' | 'looks' | 'macros';
+  | 'playlists'
+  | 'presentations'
+  | 'messages'
+  | 'timers'
+  | 'props'
+  | 'screens'
+  | 'looks'
+  | 'macros'
+  | 'shastra';
 
 /** What the feed sends a device. */
 export type ToDevice =

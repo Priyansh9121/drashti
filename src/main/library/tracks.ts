@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { KirtanDetails, TrackEdit, TrackSlide } from '../../shared/kirtans';
 import { occasionsFrom } from '../../shared/kirtans';
 import type { Lang, SlideElement, TextElement } from '../../shared/model';
-import { LANGS } from '../../shared/model';
+import { KIRTAN_LANGS } from '../../shared/model';
 import type { SlideLook } from '../../shared/slide-edit';
 import { firstLook, type LineContext, setLangLines, slideLines, trackOrder } from '../../shared/tracks';
 import type { ContentRows, ElementRow } from '../db/content';
@@ -61,7 +61,11 @@ export function trackSlidesOf(rows: ContentRows): { slides: TrackSlide[]; order:
     };
   });
   const order = trackOrder(read.map((r) => r.order));
-  return { slides: read.map((r) => r.slide), order: [...order, ...LANGS.filter((l) => !order.includes(l))] };
+  // The languages found, then the kirtan languages missing so far (Sanskrit only where a slide has it).
+  return {
+    slides: read.map((r) => r.slide),
+    order: [...order, ...KIRTAN_LANGS.filter((l) => !order.includes(l))],
+  };
 }
 
 /** The kirtan details as stored, for the library and the details dialog. */

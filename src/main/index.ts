@@ -42,7 +42,9 @@ import {
   SIMPLE_MODE_REFUSAL,
   SIMPLE_MODE_REFUSED_COMMANDS,
 } from '../shared/mode';
-import { NO_LOOK } from '../shared/looks';
+import { groupLookIn, NO_LOOK } from '../shared/looks';
+import { DEFAULT_THEME } from '../shared/themes';
+import type { SlideSource } from './engine/slide-source';
 import type { Db } from './db/database';
 import { LATEST_VERSION, openDatabase } from './db/database';
 import { ImportRepo } from './db/imports';
@@ -51,6 +53,10 @@ import { PlaylistRepo } from './db/playlists';
 import { SearchIndex } from './db/search';
 import { TimerRepo } from './db/timers';
 import { ThemeRepo } from './db/themes';
+import { ShastraRepo } from './db/shastra';
+import { ShastraService } from './shastra/shastra-service';
+import { isPassageId, passageIdSchema, referenceInputSchema, shastraSearchSchema } from '../shared/shastra';
+import { FIT_EVERYWHERE, type FitTargets, fitTargets } from '../shared/shastra-slides';
 import { PropRepo } from './db/props';
 import { MessageRepo } from './db/messages';
 import { SettingsRepo } from './db/settings';
@@ -473,6 +479,22 @@ function start(): void {
   const playlists = new PlaylistRepo(db);
   const themes = new ThemeRepo(db);
   themes.defaultId();
+  // Shastra passages play like presentations, made from their texts (Session 12).
+  const shastraRepo = new ShastraRepo(db);
+  /** Where passages must fit: the live Look, the screen groups and the stream (set once they are made). */
+  let passageTargets: () => FitTargets = () => FIT_EVERYWHERE;
+  let mediaInfo: (id: string) => { name: string; missing: boolean; unplayable: string | null } | null = () =>
+    null;
+  const shastra = new ShastraService({
+    repo: shastraRepo,
+    theme: (id) => (id ? themes.get(id) : null) ?? themes.get(themes.defaultId()) ?? DEFAULT_THEME,
+    targets: () => passageTargets(),
+    media: (id) => mediaInfo(id),
+  });
+  /** What the engine plays: the library's presentations, and passages. */
+  const playable: SlideSource = {
+    order: (id, arrangementId) => (isPassageId(id) ? shastra.order(id) : slides.order(id, arrangementId)),
+  };
   // The search index is kept as presentations are written; a library indexed by an older version is redone once.
   const search = new SearchIndex(db);
   const indexStart = performance.now();
@@ -506,7 +528,7 @@ function start(): void {
   /** Macros (made further down, once props, messages and media are): a slide's macro cue runs through it. */
   let macroService: MacroService | null = null;
   const engine = new ShowEngine(
-    slides,
+    playable,
     new FanoutTransport([transport, networkTransport]),
     Date.now,
     { items: (id) => playlists.playItems(id) },
@@ -552,6 +574,10 @@ function start(): void {
   mkdirSync(mediaDir, { recursive: true });
   const media = new MediaRepo(db);
   mediaLength = (mediaId) => media.lengthOf(mediaId);
+  mediaInfo = (mediaId) => {
+    const found = media.kindAndName(mediaId);
+    return found ? { name: found.name, missing: false, unplayable: null } : null;
+  };
   const serveMedia = async (request: Request) => {
     if (mediaDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, mediaDelayMs));
     return handleMediaRequest(request, {
@@ -803,6 +829,18 @@ function start(): void {
   app.on('will-quit', () => {
     streaming.close();
   });
+  // A passage fits where the live Look shows it: audience and key and fill groups, and the stream's
+  // lower third while it is on air or recording in its Camera layout.
+  passageTargets = () => {
+    const look = engine.snapshot().state.look;
+    const context = streaming.context();
+    const camera = context.layout === 'camera' && streaming.inUse();
+    return fitTargets(
+      look,
+      screenRepo.groupIds(),
+      camera ? { languages: groupLookIn(look, context.groupId).languages } : null,
+    );
+  };
   // After an unexpected stop while on air or recording: go again (within 5 minutes) or offer to,
   // once the operator window is up (so the operator sees it happen).
   const resumeStream = () => {
@@ -885,7 +923,7 @@ function start(): void {
   /** Props, message templates or themes changed: the operator's lists of them reload at once. */
   const listChanged = (what: Exclude<LibraryChange, 'presentations'>) => {
     sendToOperator(IPC.library.changed, { at: Date.now(), what });
-    if (what === 'props' || what === 'messages') network?.hint(what);
+    if (what === 'props' || what === 'messages' || what === 'shastra') network?.hint(what);
   };
   const imports = new ImportService({
     spawn: spawnImportWorker,
@@ -901,6 +939,8 @@ function start(): void {
       // An import can change what comes next (a replaced presentation, a filled playlist).
       engine.refreshNext();
       libraryChanged(true);
+      // It may have loaded a Shastra text (or loaded one again).
+      listChanged('shastra');
     },
     failRun: (runId, paths, message) => {
       importRepo.failRun(runId, paths, message);
@@ -1264,7 +1304,11 @@ function start(): void {
     reads: {
       playlists: () => playlists.tree(),
       items: (playlistId) => playlists.itemsOf(playlistId),
-      presentation: (presentationId) => presentations.get(presentationId),
+      presentation: (presentationId) =>
+        isPassageId(presentationId) ? shastra.doc(presentationId) : presentations.get(presentationId),
+      shastraTexts: () =>
+        shastra.list().map((t) => ({ name: t.name, abbreviation: t.abbreviation, itemCount: t.itemCount })),
+      passage: (reference) => shastra.resolve(reference),
       messages: () => messageTemplates.list(),
       logo: () => {
         const id = settings.get('logoPropId');
@@ -1391,8 +1435,60 @@ function start(): void {
   });
   handle(IPC.library.getPresentation, (_event, id) => {
     const parsed = idSchema.safeParse(id);
-    return parsed.success ? presentations.get(parsed.data) : null;
+    if (!parsed.success) return null;
+    return isPassageId(parsed.data) ? shastra.doc(parsed.data) : presentations.get(parsed.data);
   });
+  // ---- Shastra texts (Session 12) ----------------------------------------------------
+  const textIdSchema = idSchema;
+  handle(IPC.shastra.list, () => shastra.list());
+  handle(IPC.shastra.tree, (_e, textId) => {
+    const parsed = textIdSchema.safeParse(textId);
+    return parsed.success ? shastra.tree(parsed.data) : null;
+  });
+  handle(IPC.shastra.resolve, (_e, reference) => {
+    const parsed = referenceInputSchema.safeParse(reference);
+    return parsed.success
+      ? shastra.resolve(parsed.data)
+      : { ok: false as const, message: 'Type a reference, for example “SD 14”.' };
+  });
+  handle(IPC.shastra.search, (_e, query) => {
+    const parsed = shastraSearchSchema.safeParse(query);
+    return parsed.success ? shastra.search(parsed.data) : [];
+  });
+  handle(IPC.shastra.passage, (_e, id) => {
+    const parsed = passageIdSchema.safeParse(id);
+    return parsed.success ? shastra.info(parsed.data) : null;
+  });
+  handle(IPC.shastra.itemPassage, (_e, itemId) => {
+    const parsed = idSchema.safeParse(itemId);
+    return parsed.success ? shastra.itemPassage(parsed.data) : null;
+  });
+  handle(IPC.shastra.setTheme, (e, textId, themeId) => {
+    if (!fromOperator(e))
+      return { ok: false as const, message: 'Only the operator window can change a text.' };
+    const t = textIdSchema.safeParse(textId);
+    const th = idSchema.nullable().safeParse(themeId);
+    if (!t.success || !th.success) return { ok: false as const, message: 'That is not a text or a theme.' };
+    if (th.data !== null && !themes.get(th.data))
+      return { ok: false as const, message: 'That theme is not in the library.' };
+    if (!shastra.setTheme(t.data, th.data))
+      return { ok: false as const, message: 'That text is not loaded.' };
+    listChanged('shastra');
+    // A live passage of this text is drawn again with its new theme as it next changes slide.
+    engine.refreshNext();
+    return { ok: true as const, texts: shastra.list() };
+  });
+  handle(IPC.shastra.remove, (e, textId) => {
+    if (!fromOperator(e))
+      return { ok: false as const, message: 'Only the operator window can remove a text.' };
+    const t = textIdSchema.safeParse(textId);
+    if (!t.success || !shastra.remove(t.data))
+      return { ok: false as const, message: 'That text is not loaded.' };
+    listChanged('shastra');
+    engine.refreshNext();
+    return { ok: true as const, texts: shastra.list() };
+  });
+
   handle(IPC.library.importPaths, (e, paths, options) =>
     fromOperator(e)
       ? importPaths(paths, options)

@@ -17,7 +17,16 @@ export interface ImportOptions {
 }
 
 /** How Drashti read a file. */
-export type ImportFormat = 'text' | 'media' | 'pp6' | 'pp7' | 'unknown';
+export type ImportFormat =
+  | 'text'
+  | 'media'
+  | 'pp6'
+  | 'pp7'
+  | 'unknown'
+  /** What an admin loads for the Shastra module, the calendar and the quotes (Session 12). */
+  | 'shastra'
+  | 'calendar'
+  | 'quotes';
 
 export type ItemOutcome =
   /** New in the library. */
@@ -80,7 +89,10 @@ export interface ImportItemReport {
   outcome: ItemOutcome;
   name: string | null;
   /** The library item it became, or the earlier import it matched. */
-  target: { kind: 'presentation' | 'media' | 'playlist'; id: string } | null;
+  target: {
+    kind: 'presentation' | 'media' | 'playlist' | 'shastra' | 'calendar' | 'quotes';
+    id: string;
+  } | null;
   counts: ImportCounts;
   message: string | null;
   issues: ImportIssue[];

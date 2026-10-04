@@ -9,6 +9,7 @@ import { Badge, LiveBadge, MissingBadge, UnplayableBadge } from '../ui/Badge';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import {
+  BookOpen,
   AlertTriangle,
   BookTemplate,
   ChevronDown,
@@ -114,12 +115,13 @@ function droppedItems(e: DragEvent): NewItem[] {
   if (kind === 'presentations')
     return droppedIds(e, kind).map((presentationId) => ({ kind: 'presentation', presentationId }));
   if (kind === 'media') return droppedIds(e, kind).map((mediaId) => ({ kind: 'media', mediaId }));
+  if (kind === 'passages') return droppedIds(e, kind).map((passageId) => ({ kind: 'shastra', passageId }));
   return [];
 }
 
 const fromLibrary = (e: DragEvent) => {
   const kind = dragKind(e);
-  return kind === 'presentations' || kind === 'media';
+  return kind === 'presentations' || kind === 'media' || kind === 'passages';
 };
 
 const isRemoveKey = (e: KeyboardEvent, platform: string) =>
@@ -491,6 +493,23 @@ function ItemBody({ item, live }: { item: PlaylistItemInfo; live: boolean }) {
         </span>
       );
     }
+    case 'shastra':
+      return (
+        <span className="flex items-center gap-2">
+          <BookOpen size={15} aria-hidden="true" className="shrink-0 text-muted" />
+          <span className="min-w-0 flex-1">
+            <span data-label title={item.label} className="block truncate text-sm font-medium">
+              {item.label}
+            </span>
+            {item.missing ? (
+              <span className="text-xs text-warning-fg">Its Shastra text is not loaded</span>
+            ) : (
+              <span className="text-xs text-muted">Shastra passage</span>
+            )}
+          </span>
+          {liveBadge}
+        </span>
+      );
     case 'placeholder':
       if (item.hint === null)
         return (
@@ -578,7 +597,14 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
     const box = row.getBoundingClientRect();
     const part = (e.clientY - box.top) / Math.max(1, box.height);
     const item = items[index];
-    if (dragKind(e) === 'presentations' && item?.kind === 'placeholder' && part > 0.2 && part < 0.8)
+    const kind = dragKind(e);
+    // A presentation or a passage dropped on the middle of a slot (or a placeholder) fills it.
+    if (
+      (kind === 'presentations' || kind === 'passages') &&
+      item?.kind === 'placeholder' &&
+      part > 0.2 &&
+      part < 0.8
+    )
       return { fill: item.id };
     return { at: part < 0.5 ? index : index + 1 };
   };
@@ -603,7 +629,8 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
       if ('at' in where) void moveItems(droppedIds(e, 'items'), where.at);
       return;
     }
-    if ('fill' in where) void fillPlaceholder(where.fill, droppedIds(e, 'presentations'));
+    if ('fill' in where)
+      void fillPlaceholder(where.fill, droppedIds(e, kind === 'passages' ? 'passages' : 'presentations'));
     else void addItems(openId, where.at, droppedItems(e));
   };
 

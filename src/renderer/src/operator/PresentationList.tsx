@@ -3,16 +3,20 @@ import type { DragEvent, KeyboardEvent } from 'react';
 import type { PresentationSummary } from '../../../shared/library';
 import { actionFor, LIBRARY_KEYMAP } from '../../../shared/keymap';
 import { LANGS } from '../../../shared/model';
+import { LANG_SHORT } from '../../../shared/themes';
 import { useEngine } from '../engine/engine-store';
 import { importPaths, importWithDialog, requestRemoval } from '../library/import-store';
 import {
   clearSearch,
   clickPresentation,
   openHit,
+  setLibraryTab,
   setSearch,
   useLibrary,
+  useLibraryTab,
   useSearch,
 } from '../library/library-store';
+import { ShastraPanel } from '../shastra/ShastraPanel';
 import { SearchResults } from '../library/SearchResults';
 import { applyFilters, filtering, KirtanFilters, toggleFilters, useFilters } from '../library/KirtanFilters';
 import { newFromWords } from '../library/words-store';
@@ -22,6 +26,7 @@ import { Badge, LiveBadge } from '../ui/Badge';
 import { Button, IconButton } from '../ui/Button';
 import { TextInput } from '../ui/Field';
 import {
+  BookOpen,
   FileText,
   FolderOpen,
   Image,
@@ -39,8 +44,6 @@ import { EmptyState } from '../ui/States';
 import { TabPanel, Tabs } from '../ui/Tabs';
 import { Truncate } from '../ui/Truncate';
 import { layoutRows, scrollToShow, visibleRows } from '../ui/virtual';
-
-const trackLabel = { en: 'EN', gu: 'GU', hi: 'HI', translit: 'TR' } as const;
 
 /** Rows in the list: a presentation, or a heading where a library starts. Fixed heights, so only rows in view are drawn. */
 type Row = { kind: 'heading'; library: string } | { kind: 'item'; p: PresentationSummary; index: number };
@@ -90,7 +93,7 @@ const PresentationRow = memo(function PresentationRow({
           {p.slideCount} {p.slideCount === 1 ? 'slide' : 'slides'}
           {p.kirtanTracks &&
             LANGS.filter((l) => p.kirtanTracks?.includes(l)).map((l) => (
-              <Badge key={l}>{trackLabel[l]}</Badge>
+              <Badge key={l}>{LANG_SHORT[l]}</Badge>
             ))}
         </span>
       </span>
@@ -176,7 +179,8 @@ export function PresentationList({ platform }: { platform: string }) {
   const markedSet = new Set(marked);
   const listRef = useRef<HTMLUListElement>(null);
   const [view, setView] = useState({ top: 0, height: 800 });
-  const [tab, setTab] = useState<'presentations' | 'media'>('presentations');
+  const tab = useLibraryTab((s) => s.tab);
+  const setTab = setLibraryTab;
   const searching = useSearch((s) => s.query.trim() !== '');
 
   // A heading where a library starts, when there is more than one (templates stay apart).
@@ -280,14 +284,17 @@ export function PresentationList({ platform }: { platform: string }) {
           items={[
             { id: 'presentations', label: 'Presentations', icon: Presentation },
             { id: 'media', label: 'Media', icon: Image },
+            { id: 'shastra', label: 'Shastra', icon: BookOpen },
           ]}
         />
         <ImportMenu />
       </div>
-      <SearchBox />
+      {tab !== 'shastra' && <SearchBox />}
       {tab === 'presentations' && <KirtanFilters />}
       <TabPanel group="library" id={tab} className="flex min-h-0 flex-1 flex-col">
-        {searching ? (
+        {tab === 'shastra' ? (
+          <ShastraPanel />
+        ) : searching ? (
           <SearchResults />
         ) : tab === 'media' ? (
           <MediaList platform={platform} />

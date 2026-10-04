@@ -75,6 +75,21 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
       ],
       macros: () => [{ id: 'macro-1', name: 'Placeholder arti', color: '#3e63dd' }],
       clockStyle: () => ({ locale: 'en-GB', timeZone: 'Europe/London' }),
+      shastraTexts: () => [{ name: 'Placeholder Granth', abbreviation: 'PG', itemCount: 16 }],
+      passage: (reference) =>
+        reference === 'PG 14'
+          ? {
+              ok: true,
+              passage: {
+                passageId: 'shastra:pg#14',
+                key: { text: 'pg', sections: [], from: 14, to: 14 },
+                reference: 'Placeholder Granth 14',
+              },
+            }
+          : {
+              ok: false,
+              message: `No loaded text is called “${reference.split(' ')[0] ?? ''}”. The texts are: PG.`,
+            },
     },
     runMacro: (id) =>
       options.locked === true
@@ -273,6 +288,27 @@ describe('the network in the main process', () => {
       status: 200,
       body: { groupId: 'stage-group', languages: ['gu'] },
     });
+    // Shastra: a Remote lists the texts and puts up a reference; nonsense is refused with why.
+    expect(service.answer({ address: PHONE, deviceId: remote, op: 'shastra.texts', args: {} })).toMatchObject(
+      {
+        status: 200,
+        body: { texts: [{ abbreviation: 'PG' }] },
+      },
+    );
+    expect(
+      service.answer({ address: PHONE, deviceId: remote, op: 'shastra', args: { reference: 'PG 14' } }),
+    ).toMatchObject({ status: 200, body: { ok: true, reference: 'Placeholder Granth 14' } });
+    expect(commands.at(-1)).toEqual({ type: 'goLive', presentationId: 'shastra:pg#14', slideIndex: 0 });
+    expect(
+      service.answer({ address: PHONE, deviceId: remote, op: 'shastra', args: { reference: 'XY 1' } }),
+    ).toEqual({
+      status: 404,
+      body: { ok: false, message: 'No loaded text is called “XY”. The texts are: PG.' },
+    });
+    expect(service.answer({ address: PHONE, deviceId: remote, op: 'shastra', args: {} }).status).toBe(400);
+    expect(
+      service.answer({ address: PHONE, deviceId: stage, op: 'shastra', args: { reference: 'PG 14' } }).status,
+    ).toBe(403);
   });
 
   it('refuses over the network exactly what Simple Mode refuses in the window', () => {

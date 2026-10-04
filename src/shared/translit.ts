@@ -337,9 +337,14 @@ function consonantText(c: Consonant, style: TranslitStyle, script: IndicScript):
   return r ? pick(r, style, script) : '';
 }
 
-/** A word in letters. */
-function wordText(script: IndicScript, syllables: Syllable[], style: TranslitStyle): string {
-  dropSchwas(syllables);
+/** A word in letters. Sanskrit says every "a" (dharmakṣetre, not dharmkṣetr): no schwa is dropped. */
+function wordText(
+  script: IndicScript,
+  syllables: Syllable[],
+  style: TranslitStyle,
+  sanskrit: boolean,
+): string {
+  if (!sanskrit) dropSchwas(syllables);
   const plain = style === 'plain';
   let out = '';
   /** The last sound written was a consonant (and which), for the plain v → w. */
@@ -429,10 +434,19 @@ function otherText(text: string, style: TranslitStyle): string {
   return out;
 }
 
-/** Gujarati and Devanagari in the text, in Roman letters; everything else as it is. */
-export function transliterate(text: string, style: TranslitStyle = 'plain'): string {
+/**
+ * Gujarati and Devanagari in the text, in Roman letters; everything else as
+ * it is. `sanskrit`: the text is Sanskrit, which keeps every "a".
+ */
+export function transliterate(
+  text: string,
+  style: TranslitStyle = 'plain',
+  { sanskrit = false }: { sanskrit?: boolean } = {},
+): string {
   return pieces(text)
-    .map((p) => (p.kind === 'word' ? wordText(p.script, p.syllables, style) : otherText(p.text, style)))
+    .map((p) =>
+      p.kind === 'word' ? wordText(p.script, p.syllables, style, sanskrit) : otherText(p.text, style),
+    )
     .join('');
 }
 

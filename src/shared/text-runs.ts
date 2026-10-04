@@ -55,6 +55,8 @@ export function scriptOf(text: string): Script | null {
 export function langOfLine(marked: Lang | null | undefined, text: string): Lang | null {
   const script = scriptOf(text);
   if (script === null) return null;
+  // Sanskrit is told from Hindi or Gujarati only by its mark; its script then says which of the two.
+  if (script !== 'latin' && (marked === 'sa' || marked === 'sa-gu')) return script === 'gu' ? 'sa-gu' : 'sa';
   if (script !== 'latin') return script;
   if (marked === 'en' || marked === 'translit') return marked;
   return detectLang(text) === 'translit' ? 'translit' : 'en';

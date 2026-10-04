@@ -1,3 +1,11 @@
+import type {
+  PassageInfo,
+  PassageResult,
+  ShastraHit,
+  ShastraResult,
+  ShastraTextInfo,
+  ShastraTree,
+} from './shastra';
 import type { AppInfo, TaskProgress } from './app-info';
 import type { AudioDevice, AudioOutputState, AudioOutputStatus } from './audio';
 import type { CommandResult, EngineCommand } from './engine/commands';
@@ -405,6 +413,18 @@ export interface DrashtiBridge {
     save(maskId: string | null, mask: Omit<Mask, 'id'>): Promise<MaskResult>;
     /** It comes off the Masks layer and out of every Look. */
     remove(maskId: string): Promise<MaskResult>;
+  };
+  /** Shastra texts (Session 12): references, search and browsing; a text's theme and removing it (Pro Mode). */
+  shastra: {
+    list(): Promise<ShastraTextInfo[]>;
+    tree(textId: string): Promise<ShastraTree | null>;
+    /** "SD 14", "Vach G.Pr. 1", "SD 14-16": the passage, or why it names nothing. */
+    resolve(reference: string): Promise<PassageResult>;
+    search(query: string): Promise<ShastraHit[]>;
+    passage(passageId: string): Promise<PassageInfo | null>;
+    itemPassage(itemId: string): Promise<PassageInfo | null>;
+    setTheme(textId: string, themeId: string | null): Promise<ShastraResult>;
+    remove(textId: string): Promise<ShastraResult>;
   };
   /** Stage layouts made in Drashti: boxes on the stage canvas (changing them: operator window, Pro Mode). */
   stageLayouts: {

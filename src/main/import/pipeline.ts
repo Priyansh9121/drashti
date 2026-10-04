@@ -38,6 +38,10 @@ import type {
 } from './model';
 import { MEDIA_REF, propsFromPresentation, slideCount } from './model';
 import { PropRepo } from '../db/props';
+import { SettingsRepo } from '../db/settings';
+import { ShastraRepo } from '../db/shastra';
+import { readShastraFile, SHASTRA_FORMAT } from '../../shared/shastra';
+import { TRANSLIT_STYLES, type TranslitStyle } from '../../shared/translit';
 import { unplayableIssue } from './probe';
 import { extOf, formatOf, type ScannedFile, scanPaths } from './scan';
 import { extractZip } from './zip';
@@ -121,6 +125,12 @@ const SUPPORT_FILES: Record<string, { format: ImportFormat; message: string }> =
 const SUPPORT_EXTENSIONS: Record<string, string> = { pro6dvd: 'DVD clip lists are not imported.' };
 
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+
+/** How transliteration is made (the setting kirtans use too): plain letters until the operator chooses marks. */
+function storedTranslitStyle(db: Db): TranslitStyle {
+  const value = new SettingsRepo(db).get('translitStyle');
+  return (TRANSLIT_STYLES as readonly unknown[]).includes(value) ? (value as TranslitStyle) : 'plain';
+}
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 const normalizePath = (p: string) => p.replace(/\\/gu, '/').toLowerCase();
 
@@ -944,11 +954,120 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     }
   };
 
+  // ---- what an admin loads: Shastra texts (and, later, calendars and quotes) -------------------
+
+  const importShastra = (where: Where, fileName: string, hash: string, raw: unknown) => {
+    const read = readShastraFile(raw);
+    if (!read.ok) {
+      failed(where, 'shastra', fileName, read.message);
+      return;
+    }
+    const text = read.text;
+    const at = position++;
+    batch.write(
+      () => {
+        const started = performance.now();
+        const loaded = new ShastraRepo(ctx.db).load(
+          text,
+          { path: where.sourcePath, hash },
+          storedTranslitStyle(ctx.db),
+        );
+        const issues: ImportIssue[] = read.notes.map((n) => ({
+          severity: n.severity,
+          code: 'shastra-note',
+          message: n.message,
+          fix: null,
+        }));
+        if (loaded.made.translit > 0 || loaded.made.script > 0)
+          issues.push({
+            severity: 'info',
+            code: 'shastra-made',
+            message: [
+              loaded.made.translit > 0 ? `transliteration for ${loaded.made.translit} items` : '',
+              loaded.made.script > 0 ? `Sanskrit in its other script for ${loaded.made.script} items` : '',
+            ]
+              .filter((x) => x !== '')
+              .join(' and ')
+              .replace(/^./u, (c) => c.toUpperCase())
+              .concat(' made by Drashti (marked as made).'),
+            fix: null,
+          });
+        const first = text.items[0]?.number ?? text.sections[0]?.items[0]?.number ?? 1;
+        const item: NewImportItem = {
+          sourcePath: where.sourcePath,
+          format: 'shastra',
+          outcome:
+            loaded.outcome === 'added' ? 'imported' : loaded.outcome === 'updated' ? 'replaced' : 'skipped',
+          name: `${text.name} (${text.abbreviation})`,
+          target: { kind: 'shastra', id: loaded.textId },
+          counts: NO_COUNTS,
+          message:
+            loaded.outcome === 'unchanged'
+              ? 'Already loaded, unchanged since.'
+              : `${loaded.outcome === 'updated' ? 'Updated' : 'Loaded'}: ${loaded.items} items${
+                  loaded.sections > 0 ? ` in ${loaded.sections} sections` : ''
+                }. Find a passage in Shastra by typing its reference${
+                  loaded.sections > 0 ? '' : `, for example “${text.abbreviation} ${first}”`
+                }.`,
+          issues: loaded.outcome === 'unchanged' ? [] : issues,
+        };
+        imports.addItem(ctx.runId, at, item);
+        time('write', started);
+        return item;
+      },
+      {
+        committed: (item) => {
+          addToTotals(totals, item);
+        },
+        failed: (error) => {
+          failed(where, 'shastra', fileName, `Could not load this text: ${errorText(error)}`, [], at);
+        },
+      },
+    );
+  };
+
+  /** A JSON file: what it says it is decides how it is read. */
+  const importJson = async (file: ScannedFile, where: Where) => {
+    const fileName = basename(file.path);
+    if (file.size > MAX_DOCUMENT_BYTES) {
+      failed(where, 'unknown', fileName, `${fileName} is ${formatBytes(file.size)}, too big to load.`);
+      return;
+    }
+    const bytes = await readFile(file.path);
+    const hash = sha256(bytes);
+    let raw: unknown;
+    try {
+      raw = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes).replace(/^\uFEFF/u, ''));
+    } catch (error) {
+      failed(where, 'unknown', fileName, `Not a JSON file Drashti can read: ${errorText(error)}`);
+      return;
+    }
+    const format = typeof raw === 'object' && raw !== null ? (raw as { format?: unknown }).format : undefined;
+    if (format === SHASTRA_FORMAT) {
+      importShastra(where, fileName, hash, raw);
+      return;
+    }
+    record({
+      sourcePath: where.sourcePath,
+      format: 'unknown',
+      outcome: 'unsupported',
+      name: fileName,
+      target: null,
+      counts: NO_COUNTS,
+      message: 'A JSON file that is not a Shastra text Drashti knows (see docs/shastra-format.md).',
+      issues: [],
+    });
+  };
+
   const unknown = new Map<string, string[]>();
 
   async function importOne(file: ScannedFile, where: Where): Promise<void> {
     const name = basename(file.path).toLowerCase();
     const ext = extOf(file.path);
+    if (ext === 'json') {
+      await importJson(file, where);
+      return;
+    }
     const support =
       SUPPORT_FILES[name] ??
       (SUPPORT_EXTENSIONS[ext] ? { format: 'unknown' as const, message: SUPPORT_EXTENSIONS[ext] } : null) ??

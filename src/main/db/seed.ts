@@ -1,4 +1,4 @@
-import type { Lang, TextElement, TextStyle } from '../../shared/model';
+import type { KirtanLang, Lang, TextElement, TextStyle } from '../../shared/model';
 import type { Db } from './database';
 import { PlaylistRepo } from './playlists';
 import { PresentationRepo } from './presentations';
@@ -13,7 +13,7 @@ export const TEST_PRESENTATION_NAME = 'Language test slides';
 export const KIRTAN_PRESENTATION_NAME = 'Sample kirtan (placeholder)';
 
 /** One line in each language: the text the rendering tests look for. */
-export const TEST_LINES: Record<Lang, string> = {
+export const TEST_LINES: Record<KirtanLang, string> = {
   en: 'Welcome to the test slide',
   gu: 'પરીક્ષણ સ્લાઇડમાં આપનું સ્વાગત છે',
   hi: 'परीक्षण स्लाइड में आपका स्वागत है',
@@ -55,7 +55,7 @@ function line(
  * transliteration line and the meaning in English. These are the kirtan's
  * four tracks; each screen shows the ones it is set to.
  */
-function kirtanBox(lines: Record<Lang, string>): TextElement {
+function kirtanBox(lines: Record<KirtanLang, string>): TextElement {
   const runs = [
     { text: `${lines.gu}\n`, lang: 'gu' as const, size: 92, weight: 600 },
     { text: `${lines.hi}\n`, lang: 'hi' as const, size: 80, weight: 600 },
@@ -73,7 +73,7 @@ function kirtanBox(lines: Record<Lang, string>): TextElement {
   };
 }
 
-const KIRTAN_LINES: { group: string; lines: Record<Lang, string> }[] = [
+const KIRTAN_LINES: { group: string; lines: Record<KirtanLang, string> }[] = [
   {
     group: 'Verse 1',
     lines: {

@@ -1,8 +1,8 @@
 import type { DragEvent } from 'react';
 
 /*
- * Dragging inside the operator window: presentations and media from the
- * library into a playlist, and items within a playlist. Only the kind of
+ * Dragging inside the operator window: presentations, media and Shastra
+ * passages from the library into a playlist, and items within a playlist. Only the kind of
  * drag can be read while it is under way; the ids arrive with the drop.
  */
 
@@ -10,6 +10,8 @@ const TYPES = {
   presentations: 'application/x-drashti-presentations',
   media: 'application/x-drashti-media',
   items: 'application/x-drashti-playlist-items',
+  /** Shastra passages (their ids), from the Shastra tab. */
+  passages: 'application/x-drashti-passages',
 } as const;
 
 export type DragKind = keyof typeof TYPES;

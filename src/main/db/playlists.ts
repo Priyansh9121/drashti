@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { ImportSource } from '../../shared/library';
 import type { ItemOrder, NewItem, PlaylistItemInfo, PlaylistNode } from '../../shared/playlists';
+import { SHASTRA_SLOT } from '../../shared/playlists';
+import type { PassageKey } from '../../shared/shastra';
+import { parsePassageId, passageId, passageKeySchema } from '../../shared/shastra';
+import { ShastraRepo } from './shastra';
 import type { PlayItem } from '../engine/playlist-source';
 import type { Db } from './database';
 
@@ -8,7 +12,9 @@ const NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 
 interface ItemRow {
   id: string;
-  kind: 'presentation' | 'media' | 'header' | 'placeholder';
+  kind: 'presentation' | 'media' | 'header' | 'placeholder' | 'shastra';
+  /** A passage's key, as JSON (shared/shastra.ts PassageKey). */
+  passage: string | null;
   label: string;
   color: string | null;
   hint: string | null;
@@ -26,8 +32,29 @@ interface ItemRow {
   media_format: string | null;
 }
 
-function itemInfo(r: ItemRow): PlaylistItemInfo {
+/** A stored passage key; null when it does not read. */
+function keyOf(json: string | null): PassageKey | null {
+  if (json === null) return null;
+  try {
+    const parsed = passageKeySchema.safeParse(JSON.parse(json));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+function itemInfo(r: ItemRow, passageThere: (key: PassageKey) => boolean): PlaylistItemInfo {
   switch (r.kind) {
+    case 'shastra': {
+      const key = keyOf(r.passage);
+      return {
+        id: r.id,
+        kind: 'shastra',
+        label: r.label,
+        passageId: key ? passageId(key) : '',
+        missing: !key || !passageThere(key),
+      };
+    }
     case 'presentation': {
       const order: ItemOrder =
         r.order_mode === 'all'
@@ -73,7 +100,8 @@ type CopyItem =
       arrangementId: string | null;
     }
   | { kind: 'media'; mediaId: string; label: string }
-  | { kind: 'placeholder'; label: string; hint: string | null; category: string | null };
+  | { kind: 'placeholder'; label: string; hint: string | null; category: string | null }
+  | { kind: 'shastra'; passage: string; label: string };
 
 /*
  * Playlists and folders of playlists: imported ones (replaced as a whole
@@ -111,7 +139,11 @@ export interface PlaylistSummary {
 }
 
 export class PlaylistRepo {
-  constructor(private readonly db: Db) {}
+  private readonly shastra: ShastraRepo;
+
+  constructor(private readonly db: Db) {
+    this.shastra = new ShastraRepo(db);
+  }
 
   /** Top-level playlists imported from this file, with the hash they were imported with. */
   findImported(
@@ -301,6 +333,7 @@ export class PlaylistRepo {
       this.db
         .prepare(
           `SELECT i.id, i.kind, i.label, i.color, i.hint, i.category, i.presentation_id, i.media_id, i.order_mode, i.arrangement_id,
+                  i.passage,
                   p.name AS presentation_name, p.deleted_at AS presentation_deleted, a.name AS arrangement_name,
                   m.kind AS media_kind, m.missing AS media_missing, m.playable AS media_playable, m.format AS media_format
              FROM playlist_items i
@@ -311,7 +344,7 @@ export class PlaylistRepo {
             ORDER BY i.position, i.rowid`,
         )
         .all(playlistId) as ItemRow[]
-    ).map(itemInfo);
+    ).map((r) => itemInfo(r, (key) => this.shastra.passage(key) !== null));
   }
 
   /** A playlist's items as the show engine plays them, or null if the playlist does not exist (or was removed). */
@@ -362,6 +395,17 @@ export class PlaylistRepo {
                 ? `“${item.label}” is not filled in yet`
                 : `“${item.label}” was not found at import`,
           };
+        case 'shastra':
+          // A passage plays like a presentation (shared/shastra.ts), while its text is loaded.
+          return item.missing
+            ? { id: item.id, kind: 'skip', why: `“${item.label}”: its Shastra text is not loaded` }
+            : {
+                id: item.id,
+                kind: 'presentation',
+                presentationId: item.passageId,
+                label: item.label,
+                arrangementId: null,
+              };
       }
     });
   }
@@ -408,8 +452,8 @@ export class PlaylistRepo {
   /** Copy items into a playlist at its end (headers, presentations, media and slots), in one go. */
   private copyItems(to: string, items: readonly CopyItem[]): void {
     const insert = this.db.prepare(
-      `INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, media_id, label, color, hint, category, order_mode, arrangement_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, media_id, label, color, hint, category, order_mode, arrangement_id, passage)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const start = this.order(to).length;
     items.forEach((item, i) => {
@@ -426,6 +470,7 @@ export class PlaylistRepo {
         item.kind === 'placeholder' ? item.category : null,
         item.kind === 'presentation' ? item.orderMode : 'presentation',
         item.kind === 'presentation' ? item.arrangementId : null,
+        item.kind === 'shastra' ? item.passage : null,
       );
     });
   }
@@ -435,7 +480,7 @@ export class PlaylistRepo {
     return this.db
       .prepare(
         `SELECT i.id, i.kind, i.label, i.color, i.hint, i.category, i.presentation_id, i.media_id, i.order_mode, i.arrangement_id,
-                k.category AS kirtan_category, p.deleted_at AS presentation_deleted
+                i.passage, k.category AS kirtan_category, p.deleted_at AS presentation_deleted
            FROM playlist_items i
            LEFT JOIN presentations p ON p.id = i.presentation_id
            LEFT JOIN kirtans k ON k.presentation_id = i.presentation_id
@@ -443,7 +488,7 @@ export class PlaylistRepo {
       )
       .all(playlistId) as {
       id: string;
-      kind: 'presentation' | 'media' | 'header' | 'placeholder';
+      kind: 'presentation' | 'media' | 'header' | 'placeholder' | 'shastra';
       label: string;
       color: string | null;
       hint: string | null;
@@ -452,6 +497,7 @@ export class PlaylistRepo {
       media_id: string | null;
       order_mode: string;
       arrangement_id: string | null;
+      passage: string | null;
       kirtan_category: string | null;
       presentation_deleted: string | null;
     }[];
@@ -475,6 +521,11 @@ export class PlaylistRepo {
           if (r.kind === 'header') return [{ kind: 'header', label: r.label, color: r.color }];
           if (r.kind === 'media' && r.media_id)
             return [{ kind: 'media', mediaId: r.media_id, label: r.label }];
+          // A passage stays as it is, or becomes a slot that asks for one.
+          if (r.kind === 'shastra' && r.passage !== null)
+            return slot.has(r.id)
+              ? [{ kind: 'placeholder', label: r.label, hint: null, category: SHASTRA_SLOT }]
+              : [{ kind: 'shastra', passage: r.passage, label: r.label }];
           if (r.kind === 'placeholder' || (r.kind === 'presentation' && slot.has(r.id)))
             return [
               {
@@ -519,6 +570,8 @@ export class PlaylistRepo {
             return [{ kind: 'media', mediaId: r.media_id, label: r.label }];
           if (r.kind === 'placeholder')
             return [{ kind: 'placeholder', label: r.label, hint: null, category: r.category }];
+          if (r.kind === 'shastra' && r.passage !== null)
+            return [{ kind: 'shastra', passage: r.passage, label: r.label }];
           if (r.presentation_id && r.presentation_deleted === null)
             return [
               {
@@ -618,19 +671,27 @@ export class PlaylistRepo {
     );
     const mediaName = this.db.prepare('SELECT name FROM media WHERE id = ?');
     const insert = this.db.prepare(
-      'INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, media_id, label) VALUES (?, ?, 0, ?, ?, ?, ?)',
+      'INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, media_id, label, passage) VALUES (?, ?, 0, ?, ?, ?, ?, ?)',
     );
     // Every item must exist before anything is written.
     const labels: string[] = [];
+    const passages: (string | null)[] = [];
     for (const item of items) {
+      const key = item.kind === 'shastra' ? parsePassageId(item.passageId) : null;
+      const display = key ? this.shastra.display(key) : null;
       const row =
         item.kind === 'presentation'
           ? (presentationName.get(item.presentationId) as { name: string } | undefined)
           : item.kind === 'media'
             ? (mediaName.get(item.mediaId) as { name: string } | undefined)
-            : { name: item.label };
+            : item.kind === 'shastra'
+              ? display === null
+                ? undefined
+                : { name: display }
+              : { name: item.label };
       if (!row) return [];
       labels.push(row.name);
+      passages.push(key ? JSON.stringify(key) : null);
     }
     return this.db.transaction(() => {
       const ids: string[] = items.map((item, i) => {
@@ -642,6 +703,7 @@ export class PlaylistRepo {
           item.kind === 'presentation' ? item.presentationId : null,
           item.kind === 'media' ? item.mediaId : null,
           labels[i] ?? '',
+          passages[i] ?? null,
         );
         return id;
       });
@@ -687,8 +749,21 @@ export class PlaylistRepo {
     return row?.playlist_id ?? null;
   }
 
-  /** Put a presentation where the import left a placeholder. */
+  /** Put a presentation (or a Shastra passage) where the import left a placeholder, or in a slot. */
   fillPlaceholder(itemId: string, presentationId: string): boolean {
+    const key = parsePassageId(presentationId);
+    if (key) {
+      const display = this.shastra.display(key);
+      if (display === null) return false;
+      return (
+        this.db
+          .prepare(
+            `UPDATE playlist_items SET kind = 'shastra', passage = ?, label = ?, hint = NULL, category = NULL
+              WHERE id = ? AND kind = 'placeholder' AND deleted_at IS NULL`,
+          )
+          .run(JSON.stringify(key), display, itemId).changes === 1
+      );
+    }
     const row = this.db
       .prepare('SELECT name FROM presentations WHERE id = ? AND deleted_at IS NULL')
       .get(presentationId) as { name: string } | undefined;

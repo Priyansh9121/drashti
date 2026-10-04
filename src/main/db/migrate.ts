@@ -23,6 +23,7 @@ import { up as stageLayouts } from './migrations/021-stage-layouts';
 import { up as masks } from './migrations/022-masks';
 import { up as keyFill } from './migrations/023-key-fill';
 import { up as macros } from './migrations/024-macros';
+import { up as shastra } from './migrations/025-shastra';
 
 export interface Migration {
   version: number;
@@ -65,6 +66,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 22, name: 'masks', up: masks },
   { version: 23, name: 'key and fill outputs', up: keyFill },
   { version: 24, name: 'macros', up: macros },
+  { version: 25, name: 'the Shastra module', up: shastra, rebuildsTable: true },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));
