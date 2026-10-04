@@ -158,7 +158,8 @@ test('a text loads from its file, again unchanged, and updated; references, nons
   await firstHit('द्वितीयः पादः 7', 'Placeholder Granth 7');
   await firstHit('મધ્ય વચન 3', 'Placeholder Vachan Placeholder Madhya 3');
   await firstHit('placeholder meaning 12', 'Placeholder Granth 12');
-  await firstHit('dvitiyah 5', 'Placeholder Granth 5');
+  // The transliteration Drashti made, in the plain style ("w" for व, as in "bhagwan").
+  await firstHit('dwitiyah 5', 'Placeholder Granth 5');
   await search.fill('nowhere-to-be-found');
   await expect(panel.getByText('Nothing found')).toBeVisible();
   await search.fill('');
@@ -168,13 +169,15 @@ test('a text loads from its file, again unchanged, and updated; references, nons
   const dialog = win.getByTestId('shastra-texts-dialog');
   await expect(dialog.getByTestId('shastra-text-row')).toHaveCount(2);
   await expectNoSeriousA11yIssues(win, 'the Shastra texts dialog');
+  await win.getByRole('button', { name: 'Close Shastra texts' }).click();
   // Simple Mode refuses changing the texts, from anywhere.
   const textId = (await bridge(win).texts())[1]?.id ?? '';
   const refused = await win.evaluate(async (id) => {
     const d = (globalThis as PageGlobals).drashti;
     await d.app.setMode('simple');
     const r = [await d.shastra.remove(id), await d.shastra.setTheme(id, null)];
-    await d.app.setMode('pro');
+    // Leaving Simple Mode takes the word.
+    await d.app.setMode('pro', 'pro');
     return r;
   }, textId);
   expect(refused).toEqual([
