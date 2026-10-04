@@ -68,7 +68,8 @@ test('a text loads from its file, again unchanged, and updated; references, nons
     'Loaded: 21 items. Find a passage in Shastra by typing its reference, for example “PG 1”.',
   );
   await expectNoSeriousA11yIssues(win, 'the import report with a Shastra text');
-  await report.getByRole('button', { name: 'Open in Shastra' }).click();
+  // (A text with notes is listed under those too.)
+  await report.getByRole('button', { name: 'Open in Shastra' }).first().click();
   await expect(win.getByTestId('shastra-texts-dialog').getByTestId('shastra-text-row')).toHaveCount(1);
   await win.getByRole('button', { name: 'Close Shastra texts' }).click();
   expect((await bridge(win).texts()).map((t) => t.abbreviation)).toEqual(['PG']);
@@ -229,13 +230,20 @@ test('a long passage goes on over several slides and Next goes on to the next it
     await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'next' }));
     await expect.poll(async () => (await live(win)).slideIndex).toBe(i);
   }
+  // The parts say so on the reference line.
+  const reference = async () =>
+    (await bridge(win).snapshot()).state.layers.slide?.slide.elements.find((e) =>
+      e.id.endsWith('-reference'),
+    );
+  expect(await reference()).toMatchObject({
+    kind: 'text',
+    text: `Placeholder Granth 21 (${String(count)}/${String(count)})`,
+  });
   await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'next' }));
   await expect.poll(async () => (await live(win)).presentationId).toBe('shastra:pg#1');
-  // The parts say so on the reference line, and every one fits its box (shrink-to-fit barely needed).
-  const state = (await bridge(win).snapshot()).state;
-  expect(
-    state.layers.slide?.slide.elements.some((e) => e.kind === 'text' && e.text === 'Placeholder Granth 1'),
-  ).toBe(true);
+  // A short item too may take two slides when the Look shows every language at once.
+  const first = await reference();
+  expect(first?.kind === 'text' ? first.text : null).toMatch(/^Placeholder Granth 1( \(1\/\d\))?$/u);
 
   // A template keeps a passage; a slot asks for one, filled from the playlist.
   const filled = await win.evaluate(async (pl) => {
