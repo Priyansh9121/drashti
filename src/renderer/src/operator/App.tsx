@@ -44,6 +44,7 @@ import { LooksPanel } from './LooksPanel';
 import { ArtiPrompt } from '../arti/ArtiPrompt';
 import { ArtiDialog, ArtiPanel } from '../arti/ArtiPanel';
 import { CalendarDialog } from '../calendar/CalendarDialog';
+import { IdlePanel } from '../idle/IdlePanel';
 import { openCalendar } from '../calendar/calendar-store';
 import { isTyping, useKeymap } from './useKeymap';
 import { watchProps } from './logo-store';
@@ -197,6 +198,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
               <MessagesPanel />
               <TimersPanel />
               <ArtiPanel />
+              <IdlePanel />
             </div>
           </aside>
         }

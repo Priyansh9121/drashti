@@ -84,6 +84,8 @@ function newAction(kind: MacroActionKind, c: Choices): MacroAction {
       return { kind, text: 'Placeholder: two minutes' };
     case 'playItem':
       return { kind, playlistId: c.playlists[0]?.id ?? '', itemId: '' };
+    case 'idle':
+      return { kind, to: 'start' };
   }
 }
 
@@ -363,6 +365,19 @@ function ActionFields({
       );
     case 'playItem':
       return <ItemPick action={action} c={c} set={set} />;
+    case 'idle':
+      return (
+        <Select
+          aria-label="The idle rotation"
+          value={action.to}
+          onChange={(e) => {
+            set({ ...action, to: e.target.value === 'stop' ? 'stop' : 'start' });
+          }}
+        >
+          <option value="start">Start</option>
+          <option value="stop">Stop</option>
+        </Select>
+      );
   }
 }
 

@@ -1,4 +1,6 @@
 import type { CalendarDay, CalendarLang } from '../calendar';
+import type { IdleState, Quote } from '../idle';
+import { NO_IDLE } from '../idle';
 import type { LiveLook } from '../looks';
 import type { Mask } from '../masks';
 import { NO_LOOK } from '../looks';
@@ -247,6 +249,10 @@ export interface EngineState {
   cue: CuedNext | null;
   /** Today's entry in the loaded calendars (Samvat date, tithi, festivals), or null when none gives today. */
   calendar: CalendarDay | null;
+  /** The idle rotation: what it shows, and whether the operator started it (shared/idle.ts). */
+  idle: IdleState;
+  /** The quote of the day (one per date), or null when there are no quotes. */
+  quote: Quote | null;
   /** The playlist's next items after the one playing (headers too), up to UPCOMING_ITEMS. */
   upcoming: UpcomingItem[];
   /** A message for the performers on stage screens; the audience never sees it. */
@@ -280,6 +286,8 @@ export function initialEngineState(): EngineState {
     next: null,
     cue: null,
     calendar: null,
+    idle: NO_IDLE,
+    quote: null,
     upcoming: [],
     stageMessage: null,
     timers: [],

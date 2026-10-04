@@ -42,6 +42,7 @@ export function liveLook(
       slides: g.slides,
       stageLayout: g.stageLayoutId ? stageLayout(g.stageLayoutId) : null,
       mask: g.maskId ? mask(g.maskId) : null,
+      idle: g.idle,
     };
   return { id: info.id, name: info.name, groups };
 }

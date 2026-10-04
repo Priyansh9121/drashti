@@ -51,6 +51,7 @@ describe('migrations', () => {
         'arti_schedules',
         'calendars',
         'calendar_days',
+        'quotes',
         'stream_profiles',
         'users',
       ]),

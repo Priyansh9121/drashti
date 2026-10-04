@@ -73,6 +73,9 @@ import { ArtiRepo } from './db/arti';
 import { ArtiService } from './arti/arti-service';
 import { CalendarRepo } from './db/calendar';
 import { CalendarService } from './calendar/calendar-service';
+import { QuoteRepo } from './db/quotes';
+import { IdleService } from './idle/idle-service';
+import { quoteIdSchema } from '../shared/idle';
 import { calendarIdSchema } from '../shared/calendar';
 import { type ArtiAnswer, artiKeySchema } from '../shared/arti';
 import { MacroService } from './macros/macro-service';
@@ -541,6 +544,8 @@ function start(): void {
   let artiService: ArtiService | null = null;
   /** Today's calendar entry (made further down): told when an import loads a calendar. */
   let calendarService: CalendarService | null = null;
+  /** The idle rotation (made further down): told when media change (a picture may have gone). */
+  let idleService: IdleService | null = null;
   const engine = new ShowEngine(
     playable,
     new FanoutTransport([transport, networkTransport]),
@@ -928,6 +933,8 @@ function start(): void {
       network?.hint('presentations');
       // An arti's presentation may have been renamed or removed.
       artiService?.refresh();
+      // A picture in the idle rotation may have gone (or come back).
+      idleService?.refresh();
     };
     if (now) {
       if (changedTimer) clearTimeout(changedTimer);
@@ -1270,6 +1277,40 @@ function start(): void {
     return fromOperator(e) && which.success
       ? calendars.remove(which.data)
       : { ok: false as const, message: 'Only the operator window can remove a calendar.' };
+  });
+  // ---- the idle rotation: its pictures, timing and quotes into the engine ------------------
+  const idleRotation = new IdleService({
+    quotes: new QuoteRepo(db),
+    settings,
+    picture: (id) => {
+      const m = media.kindAndName(id);
+      return m?.kind === 'image' ? { name: m.name } : null;
+    },
+    engine: { setIdle: (content) => engine.setIdle(content), setQuote: (quote) => engine.setQuote(quote) },
+    now: Date.now,
+    changed: (view) => {
+      sendToOperator(IPC.idle.changed, view);
+    },
+  });
+  idleService = idleRotation;
+  app.on('will-quit', () => {
+    idleRotation.dispose();
+  });
+  const notIdleOperator = {
+    ok: false as const,
+    message: 'Only the operator window can change the idle rotation.',
+  };
+  handle(IPC.idle.view, () => idleRotation.view());
+  handle(IPC.idle.saveSettings, (e, value) =>
+    fromOperator(e) ? idleRotation.saveSettings(value) : notIdleOperator,
+  );
+  handle(IPC.idle.saveQuote, (e, id, quote) => {
+    const which = quoteIdSchema.nullable().safeParse(id);
+    return fromOperator(e) && which.success ? idleRotation.saveQuote(which.data, quote) : notIdleOperator;
+  });
+  handle(IPC.idle.removeQuote, (e, id) => {
+    const which = quoteIdSchema.safeParse(id);
+    return fromOperator(e) && which.success ? idleRotation.removeQuote(which.data) : notIdleOperator;
   });
   const notArtiOperator = {
     ok: false as const,

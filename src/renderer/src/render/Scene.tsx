@@ -11,6 +11,7 @@ import type { TimerState } from '../../../shared/timers';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { BackgroundMedia } from './BackgroundMedia';
+import { IdleRotation } from './IdleRotation';
 import { engineNow } from './clock';
 import { LANG_FONT_STACK } from './fonts';
 import { Placed } from './Placed';
@@ -318,6 +319,10 @@ export const Scene = memo(function Scene({
   // Key and fill: black-out and the logo take the graphics off; the key draws every colour white, by its opacity.
   const keyed = matte !== null;
   const off = keyed && (state.blackout || state.logo !== null);
+  // The idle rotation, where this group's Look shows it, while nothing is up on these screens.
+  const nothingUp = background === null && (layers.slide === null || !shown('slide'));
+  const idle =
+    nothingUp && (look.idle === 'always' || (look.idle === 'started' && state.idle.startedAt !== null));
   const content: CSSProperties = matte === 'key' ? { ...FULL, filter: 'brightness(0) invert(1)' } : FULL;
   return (
     <div
@@ -347,6 +352,7 @@ export const Scene = memo(function Scene({
                 />
               )}
               <BackgroundMedia layer={background} annotate={annotate} />
+              {idle && <IdleRotation idle={state.idle} languages={look.languages} canvas={canvas} />}
               <SlideLayerView
                 layer={shown('slide') ? layers.slide : null}
                 canvas={canvas}

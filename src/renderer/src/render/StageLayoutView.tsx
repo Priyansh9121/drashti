@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { festivalsLine, samvatLine } from '../../../shared/calendar';
+import { QUOTE_LANGS } from '../../../shared/idle';
 import type { EngineState } from '../../../shared/engine/state';
 import { languageView } from '../../../shared/language-view';
 import type { Lang } from '../../../shared/model';
@@ -133,6 +134,22 @@ function BoxContents({
           >
             {samvatLine(state.calendar, lang)}
           </div>
+        </div>
+      );
+    }
+    case 'quote': {
+      const quote = state.quote;
+      if (!quote) return null;
+      return (
+        <div data-quote={quote.id}>
+          {QUOTE_LANGS.filter((l) => quote.words[l] !== undefined).map((l) => (
+            <p key={l} lang={l} style={{ margin: 0, fontFamily: LANG_FONT_STACK[l], whiteSpace: 'pre-wrap' }}>
+              {quote.words[l]}
+            </p>
+          ))}
+          {quote.attribution !== '' && (
+            <p style={{ margin: 0, fontSize: '0.6em', color: muted }}>— {quote.attribution}</p>
+          )}
         </div>
       );
     }
@@ -350,6 +367,8 @@ function contentKey(box: StageBox, state: EngineState): unknown {
     case 'clock':
     case 'samvat':
       return [box.calendar, box.lang, state.calendar];
+    case 'quote':
+      return state.quote;
     case 'text':
       return box.text;
   }

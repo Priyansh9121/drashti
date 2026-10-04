@@ -113,6 +113,12 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
         },
       };
     }
+    case 'idle/run':
+      return { ...state, idle: { ...state.idle, startedAt: action.startedAt } };
+    case 'idle/set':
+      return { ...state, idle: { ...action.content, startedAt: state.idle.startedAt } };
+    case 'quote/set':
+      return { ...state, quote: action.quote };
     case 'calendar/set':
       return { ...state, calendar: action.calendar };
     case 'cue/set':

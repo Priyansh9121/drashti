@@ -41,7 +41,8 @@ export type MacroAction =
   | { kind: 'blackout'; to: 'on' | 'off' | 'toggle' }
   | { kind: 'logo'; to: 'on' | 'off' | 'toggle' }
   | { kind: 'stageMessage'; text: string | null }
-  | { kind: 'playItem'; playlistId: string; itemId: string };
+  | { kind: 'playItem'; playlistId: string; itemId: string }
+  | { kind: 'idle'; to: 'start' | 'stop' };
 
 export type MacroActionKind = MacroAction['kind'];
 
@@ -61,6 +62,7 @@ export const MACRO_ACTION_NAMES: Record<MacroActionKind, string> = {
   logo: 'Logo',
   stageMessage: 'The stage message',
   playItem: 'Go to a playlist item',
+  idle: 'Start or stop the idle rotation',
 };
 
 export const MACRO_ACTION_KINDS = Object.keys(MACRO_ACTION_NAMES) as MacroActionKind[];
@@ -118,6 +120,7 @@ export const macroActionSchema: z.ZodType<MacroAction> = z.discriminatedUnion('k
   z.object({ kind: z.literal('logo'), to: on }).strict(),
   z.object({ kind: z.literal('stageMessage'), text: z.string().trim().min(1).max(300).nullable() }).strict(),
   z.object({ kind: z.literal('playItem'), playlistId: idSchema, itemId: idSchema }).strict(),
+  z.object({ kind: z.literal('idle'), to: z.enum(['start', 'stop']) }).strict(),
 ]);
 
 export const macroNameSchema = z.string().trim().min(1).max(60);

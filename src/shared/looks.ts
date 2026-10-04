@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { IDLE_WHENS, type IdleWhen } from './idle';
 import type { Lang } from './model';
 import { idSchema } from './model-schema';
 import type { Mask } from './masks';
@@ -60,6 +61,8 @@ export interface GroupLook {
   stageLayoutId: string | null;
   /** The group's screens' own shape: a mask from the library always over them in this Look (shared/masks.ts). */
   maskId: string | null;
+  /** When nothing is up on its screens: nothing, or the idle rotation once started, or always (shared/idle.ts). */
+  idle: IdleWhen;
 }
 
 export const DEFAULT_GROUP_LOOK: GroupLook = {
@@ -68,6 +71,7 @@ export const DEFAULT_GROUP_LOOK: GroupLook = {
   slides: 'designed',
   stageLayoutId: null,
   maskId: null,
+  idle: 'off',
 };
 
 /** A Look as the operator window sees it: every group's settings, the defaults filled in. */
@@ -95,6 +99,8 @@ export interface LiveGroupLook {
   stageLayout: StageLayout | null;
   /** The group's own mask, ready to draw (over everything on its screens); null for none. */
   mask: Mask | null;
+  /** When nothing is up: the idle rotation, once started or always; or nothing. */
+  idle: IdleWhen;
 }
 
 /** How a group draws when the live Look does not list it (and in previews with no group). */
@@ -104,6 +110,7 @@ export const DEFAULT_LIVE_GROUP_LOOK: LiveGroupLook = {
   slides: 'designed',
   stageLayout: null,
   mask: null,
+  idle: 'off',
 };
 
 export interface LiveLook {
@@ -144,6 +151,7 @@ export const groupLookPatchSchema = z
     slides: z.enum(SLIDE_STYLES),
     stageLayoutId: idSchema.nullable(),
     maskId: idSchema.nullable(),
+    idle: z.enum(IDLE_WHENS),
   })
   .partial()
   .strict();
@@ -173,6 +181,8 @@ export function readGroupLook(raw: unknown): GroupLook {
   if (layout.success) out.stageLayoutId = layout.data;
   const mask = idSchema.safeParse(r['maskId']);
   if (mask.success) out.maskId = mask.data;
+  const idle = z.enum(IDLE_WHENS).safeParse(r['idle']);
+  if (idle.success) out.idle = idle.data;
   return out;
 }
 
@@ -185,5 +195,6 @@ export function storedGroupLook(g: GroupLook): Record<string, unknown> {
   if (g.slides !== 'designed') out['slides'] = g.slides;
   if (g.stageLayoutId !== null) out['stageLayoutId'] = g.stageLayoutId;
   if (g.maskId !== null) out['maskId'] = g.maskId;
+  if (g.idle !== 'off') out['idle'] = g.idle;
   return out;
 }

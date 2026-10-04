@@ -178,6 +178,8 @@ export class MacroService {
         );
       case 'playItem':
         return ok({ type: 'playItem', playlistId: a.playlistId, itemId: a.itemId });
+      case 'idle':
+        return ok({ type: a.to === 'start' ? 'startIdle' : 'stopIdle' });
     }
   }
 }
