@@ -1,0 +1,197 @@
+{
+  "format": "drashti-shastra",
+  "version": 1,
+  "name": "Placeholder Granth",
+  "abbreviation": "PG",
+  "description": "A made-up text to try the Shastra module with. Its words mean nothing.",
+  "items": [
+    {
+      "number": 1,
+      "title": "Placeholder shlok 1",
+      "text": {
+        "sa": "नमूना श्लोकः प्रथमः पादः 1।\nनमूना श्लोकः द्वितीयः पादः 1॥",
+        "gu": "આ નમૂના શ્લોક 1 નો નમૂના અર્થ છે.",
+        "en": "This is the placeholder meaning of placeholder shlok 1."
+      }
+    },
+    {
+      "number": 2,
+      "title": "Placeholder shlok 2",
+      "text": {
+        "sa": "नमूना श्लोकः प्रथमः पादः 2।\nनमूना श्लोकः द्वितीयः पादः 2॥",
+        "gu": "આ નમૂના શ્લોક 2 નો નમૂના અર્થ છે.",
+        "en": "This is the placeholder meaning of placeholder shlok 2."
+      }
+    },
+    {
+      "number": 3,
+      "title": "Placeholder shlok 3",
+      "text": {
+        "sa": "नमूना श्लोकः प्रथमः पादः 3।\nनमूना श्लोकः द्वितीयः पादः 3॥",
+        "gu": "આ નમૂના શ્લોક 3 નો નમૂના અર્થ છે.",
+        "en": "This is the placeholder meaning of placeholder shlok 3."
+      }
+    },
+    {
+      "number": 4,
+      "title": "Placeholder shlok 4",
+      "text": {
+        "sa": "नमूना श्लोकः प्रथमः पादः 4।\nनमूना श्लोकः द्वितीयः पादः 4॥",
+        "gu": "આ નમૂના શ્લોક 4 નો નમૂના અર્થ છે.",
+        "en": "This is the placeholder meaning of placeholder shlok 4."
+      }
+    },
+    {
+      "number": 5,
+      "title": "Placeholder shlok 5",
+      "text": {
+        "sa": "नमूना श्लोकः प्रथमः पादः 5।\nनमूना श्लोकः द्वितीयः पादः 5॥",
+        "gu": "આ નમૂના શ્લોક 5 નો નમૂના અર્થ છે.",
+        "en": "This is the placeholder meaning of placeholder shlok 5."
+      }
+    },
+    {
+      "number": 6,
+      "title": "Placeholder shlok 6",
+      "text": {
+        "sa": "नमूना श्लोकः प्रथमः पादः 6।\nनमूना श्लोकः द्वितीयः पादः 6॥",
+        "gu": "આ નમૂના શ્લોક 6 નો નમૂના અર્થ છે.",
+        "en": "This is the placeholder meaning of placeholder shlok 6."
+      }
+    },
+    {
+      "number": 7,
+      "title": "Placeholder shlok 7",
+      "text": {
+        "sa": "नमूना श्लोकः प्रथमः पादः 7।\nनमूना श्लोकः द्वितीयः पादः 7॥",
+        "gu": "આ નમૂના શ્લોક 7 નો નમૂના અર્થ છે.",
+        "en": "This is the placeholder meaning of placeholder shlok 7."
+      }
+    },
+    {
+      "number": 8,
+      "title": "Placeholder shlok 8",
+      "text": {
+        "sa": "नमूना श्लोकः प्रथमः पादः 8।\nनमूना श्लोकः द्वितीयः पादः 8॥",
+        "gu": "આ નમૂના શ્લોક 8 નો નમૂના અર્થ છે.",
+        "en": "This is the placeholder meaning of placeholder shlok 8."
+      }
+    },
+    {
+      "number": 9,
+      "title": "Placeholder shlok 9",
+      "text": {
+        "sa": "नमूना श्लोकः प्रथमः पादः 9।\nनमूना श्लोकः द्वितीयः पादः 9॥",
+        "gu": "આ નમૂના શ્લોક 9 નો નમૂના અર્થ છે.",
+        "en": "This is the placeholder meaning of placeholder shlok 9."
+      }
+    },
+    {
+      "number": 10,
+      "title": "Placeholder shlok 10",
+      "text": {
+        "sa": "नमूना श्लोकः प्रथमः पादः 10।\nनमूना श्लोकः द्वितीयः पादः 10॥",
+        "gu": "આ નમૂના શ્લોક 10 નો નમૂના અર્થ છે.",
+        "en": "This is the placeholder meaning of placeholder shlok 10."
+      }
+    },
+    {
+      "number": 11,
+      "title": "Placeholder shlok 11",
+      "text": {
+        "sa": "नमूना श्लोकः प्रथमः पादः 11।\nनमूना श्लोकः द्वितीयः पादः 11॥",
+        "gu": "આ નમૂના શ્લોક 11 નો નમૂના અર્થ છે.",
+        "en": "This is the placeholder meaning of placeholder shlok 11."
+      }
+    },
+    {
+      "number": 12,
+      "title": "Placeholder shlok 12",
+      "text": {
+        "sa": "नमूना श्लोकः प्रथमः पादः 12।\nनमूना श्लोकः द्वितीयः पादः 12॥",
+        "gu": "આ નમૂના શ્લોક 12 નો નમૂના અર્થ છે.",
+        "en": "This is the placeholder meaning of placeholder shlok 12."
+      }
+    },
+    {
+      "number": 13,
+      "title": "Placeholder shlok 13",
+      "text": {
+        "sa": "नमूना श्लोकः प्रथमः पादः 13।\nनमूना श्लोकः द्वितीयः पादः 13॥",
+        "gu": "આ નમૂના શ્લોક 13 નો નમૂના અર્થ છે.",
+        "en": "This is the placeholder meaning of placeholder shlok 13."
+      }
+    },
+    {
+      "number": 14,
+      "title": "Placeholder shlok 14",
+      "text": {
+        "sa": "नमूना श्लोकः प्रथमः पादः 14।\nनमूना श्लोकः द्वितीयः पादः 14॥",
+        "gu": "આ નમૂના શ્લોક 14 નો નમૂના અર્થ છે.",
+        "en": "This is the placeholder meaning of placeholder shlok 14."
+      }
+    },
+    {
+      "number": 15,
+      "title": "Placeholder shlok 15",
+      "text": {
+        "sa": "नमूना श्लोकः प्रथमः पादः 15।\nनमूना श्लोकः द्वितीयः पादः 15॥",
+        "gu": "આ નમૂના શ્લોક 15 નો નમૂના અર્થ છે.",
+        "en": "This is the placeholder meaning of placeholder shlok 15."
+      }
+    },
+    {
+      "number": 16,
+      "title": "Placeholder shlok 16",
+      "text": {
+        "sa": "नमूना श्लोकः प्रथमः पादः 16।\nनमूना श्लोकः द्वितीयः पादः 16॥",
+        "gu": "આ નમૂના શ્લોક 16 નો નમૂના અર્થ છે.",
+        "en": "This is the placeholder meaning of placeholder shlok 16."
+      }
+    },
+    {
+      "number": 17,
+      "title": "Placeholder shlok 17",
+      "text": {
+        "sa": "नमूना श्लोकः प्रथमः पादः 17।\nनमूना श्लोकः द्वितीयः पादः 17॥",
+        "gu": "આ નમૂના શ્લોક 17 નો નમૂના અર્થ છે.",
+        "en": "This is the placeholder meaning of placeholder shlok 17."
+      }
+    },
+    {
+      "number": 18,
+      "title": "Placeholder shlok 18",
+      "text": {
+        "sa": "नमूना श्लोकः प्रथमः पादः 18।\nनमूना श्लोकः द्वितीयः पादः 18॥",
+        "gu": "આ નમૂના શ્લોક 18 નો નમૂના અર્થ છે.",
+        "en": "This is the placeholder meaning of placeholder shlok 18."
+      }
+    },
+    {
+      "number": 19,
+      "title": "Placeholder shlok 19",
+      "text": {
+        "sa": "नमूना श्लोकः प्रथमः पादः 19।\nनमूना श्लोकः द्वितीयः पादः 19॥",
+        "gu": "આ નમૂના શ્લોક 19 નો નમૂના અર્થ છે.",
+        "en": "This is the placeholder meaning of placeholder shlok 19."
+      }
+    },
+    {
+      "number": 20,
+      "title": "Placeholder shlok 20",
+      "text": {
+        "sa": "नमूना श्लोकः प्रथमः पादः 20।\nनमूना श्लोकः द्वितीयः पादः 20॥",
+        "gu": "આ નમૂના શ્લોક 20 નો નમૂના અર્થ છે.",
+        "en": "This is the placeholder meaning of placeholder shlok 20."
+      }
+    },
+    {
+      "number": 21,
+      "title": "A long placeholder item",
+      "text": {
+        "gu": "આ લાંબા નમૂના લખાણનું વાક્ય 1 છે. આ લાંબા નમૂના લખાણનું વાક્ય 2 છે. આ લાંબા નમૂના લખાણનું વાક્ય 3 છે. આ લાંબા નમૂના લખાણનું વાક્ય 4 છે. આ લાંબા નમૂના લખાણનું વાક્ય 5 છે. આ લાંબા નમૂના લખાણનું વાક્ય 6 છે. આ લાંબા નમૂના લખાણનું વાક્ય 7 છે. આ લાંબા નમૂના લખાણનું વાક્ય 8 છે. આ લાંબા નમૂના લખાણનું વાક્ય 9 છે. આ લાંબા નમૂના લખાણનું વાક્ય 10 છે. આ લાંબા નમૂના લખાણનું વાક્ય 11 છે. આ લાંબા નમૂના લખાણનું વાક્ય 12 છે. આ લાંબા નમૂના લખાણનું વાક્ય 13 છે. આ લાંબા નમૂના લખાણનું વાક્ય 14 છે. આ લાંબા નમૂના લખાણનું વાક્ય 15 છે. આ લાંબા નમૂના લખાણનું વાક્ય 16 છે. આ લાંબા નમૂના લખાણનું વાક્ય 17 છે. આ લાંબા નમૂના લખાણનું વાક્ય 18 છે. આ લાંબા નમૂના લખાણનું વાક્ય 19 છે. આ લાંબા નમૂના લખાણનું વાક્ય 20 છે. આ લાંબા નમૂના લખાણનું વાક્ય 21 છે. આ લાંબા નમૂના લખાણનું વાક્ય 22 છે. આ લાંબા નમૂના લખાણનું વાક્ય 23 છે. આ લાંબા નમૂના લખાણનું વાક્ય 24 છે. આ લાંબા નમૂના લખાણનું વાક્ય 25 છે. આ લાંબા નમૂના લખાણનું વાક્ય 26 છે. આ લાંબા નમૂના લખાણનું વાક્ય 27 છે. આ લાંબા નમૂના લખાણનું વાક્ય 28 છે. આ લાંબા નમૂના લખાણનું વાક્ય 29 છે. આ લાંબા નમૂના લખાણનું વાક્ય 30 છે.",
+        "en": "This is sentence 1 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 2 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 3 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 4 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 5 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 6 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 7 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 8 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 9 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 10 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 11 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 12 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 13 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 14 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 15 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 16 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 17 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 18 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 19 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 20 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 21 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 22 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 23 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 24 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 25 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 26 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 27 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 28 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 29 of a long placeholder passage, there to show how a long item goes on over several slides. This is sentence 30 of a long placeholder passage, there to show how a long item goes on over several slides."
+      }
+    }
+  ]
+}

@@ -117,7 +117,9 @@ export function registerPlaylistIpc({ repo, fromOperator, changed }: PlaylistIpc
       if (!item.success || !pid.success) return failed('That placeholder cannot be filled.');
       return repo.fillPlaceholder(item.data, pid.data)
         ? { ok: true, ids: [item.data] }
-        : failed('Only a placeholder can be filled, with a presentation still in the library.');
+        : failed(
+            'Only a placeholder can be filled, with a presentation still in the library or a loaded passage.',
+          );
     }),
   );
   handle(IPC.playlists.setItemOrder, (e, itemId, order) =>

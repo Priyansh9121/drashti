@@ -1,0 +1,85 @@
+{
+  "format": "drashti-shastra",
+  "version": 1,
+  "name": "Placeholder Vachan",
+  "abbreviation": "PV",
+  "description": "A made-up text with sections, as a Vachanamrut is arranged.",
+  "sections": [
+    {
+      "label": "Placeholder Pratham",
+      "abbreviation": "P.Pr.",
+      "items": [
+        {
+          "number": 1,
+          "title": "Placeholder talk 1",
+          "text": {
+            "gu": "નમૂના પ્રથમ વચન 1: આ એક નમૂના વાત છે.",
+            "en": "Placeholder first talk 1: a made-up talk."
+          }
+        },
+        {
+          "number": 2,
+          "title": "Placeholder talk 2",
+          "text": {
+            "gu": "નમૂના પ્રથમ વચન 2: આ એક નમૂના વાત છે.",
+            "en": "Placeholder first talk 2: a made-up talk."
+          }
+        },
+        {
+          "number": 3,
+          "title": "Placeholder talk 3",
+          "text": {
+            "gu": "નમૂના પ્રથમ વચન 3: આ એક નમૂના વાત છે.",
+            "en": "Placeholder first talk 3: a made-up talk."
+          }
+        },
+        {
+          "number": 4,
+          "title": "Placeholder talk 4",
+          "text": {
+            "gu": "નમૂના પ્રથમ વચન 4: આ એક નમૂના વાત છે.",
+            "en": "Placeholder first talk 4: a made-up talk."
+          }
+        },
+        {
+          "number": 5,
+          "title": "Placeholder talk 5",
+          "text": {
+            "gu": "નમૂના પ્રથમ વચન 5: આ એક નમૂના વાત છે.",
+            "en": "Placeholder first talk 5: a made-up talk."
+          }
+        }
+      ]
+    },
+    {
+      "label": "Placeholder Madhya",
+      "abbreviation": "P.M.",
+      "items": [
+        {
+          "number": 1,
+          "title": "Placeholder talk 1",
+          "text": {
+            "gu": "નમૂના મધ્ય વચન 1.",
+            "en": "Placeholder middle talk 1."
+          }
+        },
+        {
+          "number": 2,
+          "title": "Placeholder talk 2",
+          "text": {
+            "gu": "નમૂના મધ્ય વચન 2.",
+            "en": "Placeholder middle talk 2."
+          }
+        },
+        {
+          "number": 3,
+          "title": "Placeholder talk 3",
+          "text": {
+            "gu": "નમૂના મધ્ય વચન 3.",
+            "en": "Placeholder middle talk 3."
+          }
+        }
+      ]
+    }
+  ]
+}
