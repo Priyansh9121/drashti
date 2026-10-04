@@ -210,6 +210,18 @@ async function expectLaidOut(win: Page, what: string) {
         }
       });
     }
+    // The side columns' controls stay inside their column (a row of tabs and buttons must fit its width).
+    for (const id of ['column-left', 'column-right']) {
+      const column = document.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect();
+      if (!column) continue;
+      for (const el of document.querySelectorAll(
+        `[data-testid="${id}"] button, [data-testid="${id}"] [role="tab"]`,
+      )) {
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && (r.left < column.left - 0.5 || r.right > column.right + 0.5))
+          out.push(`${name(el)} sticks out of ${id}`);
+      }
+    }
     // The slide grid has room for at least two thumbnails side by side.
     const grid = document.querySelector('[data-testid="column-middle"]')?.getBoundingClientRect();
     if (!grid || grid.width < 380) out.push(`the slides have too little room (${grid?.width ?? 0} px)`);
