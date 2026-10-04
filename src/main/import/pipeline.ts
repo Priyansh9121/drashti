@@ -41,6 +41,11 @@ import { PropRepo } from '../db/props';
 import { SettingsRepo } from '../db/settings';
 import { ShastraRepo } from '../db/shastra';
 import { readShastraFile, SHASTRA_FORMAT } from '../../shared/shastra';
+import { CalendarRepo } from '../db/calendar';
+import { CALENDAR_FORMAT, readCalendarFile } from '../../shared/calendar';
+
+/** "1 day", "182 days". */
+const counted = (n: number, one: string): string => `${n.toLocaleString('en')} ${one}${n === 1 ? '' : 's'}`;
 import { TRANSLIT_STYLES, type TranslitStyle } from '../../shared/translit';
 import { unplayableIssue } from './probe';
 import { extOf, formatOf, type ScannedFile, scanPaths } from './scan';
@@ -1026,6 +1031,62 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     );
   };
 
+  const importCalendar = (where: Where, fileName: string, hash: string, raw: unknown) => {
+    const read = readCalendarFile(raw);
+    if (!read.ok) {
+      failed(where, 'calendar', fileName, read.message);
+      return;
+    }
+    const calendar = read.calendar;
+    const at = position++;
+    batch.write(
+      () => {
+        const started = performance.now();
+        const loaded = new CalendarRepo(ctx.db).load(calendar, { path: where.sourcePath, hash });
+        const issues: ImportIssue[] = read.issues.map((n) => ({
+          severity: 'warning',
+          code: 'calendar-note',
+          message: n.message,
+          fix: null,
+        }));
+        if (loaded.overlapping > 0)
+          issues.push({
+            severity: 'info',
+            code: 'calendar-overlap',
+            message: `${String(loaded.overlapping)} of its dates ${loaded.overlapping === 1 ? 'is' : 'are'} in another calendar too: this one is used for them now.`,
+            fix: null,
+          });
+        const item: NewImportItem = {
+          sourcePath: where.sourcePath,
+          format: 'calendar',
+          outcome:
+            loaded.outcome === 'added' ? 'imported' : loaded.outcome === 'updated' ? 'replaced' : 'skipped',
+          name: calendar.name,
+          target: { kind: 'calendar', id: loaded.calendarId },
+          counts: NO_COUNTS,
+          message:
+            loaded.outcome === 'unchanged'
+              ? 'Already loaded, unchanged since.'
+              : `${loaded.outcome === 'updated' ? 'Updated' : 'Loaded'}: ${counted(loaded.days, 'day')}, ${loaded.firstDate} to ${loaded.lastDate}${
+                  loaded.festivals > 0 ? `, with ${counted(loaded.festivals, 'festival')}` : ''
+                }. Today's Samvat date shows in the operator window, and wherever a stage layout or a message shows it.`,
+          issues: loaded.outcome === 'unchanged' ? [] : issues,
+        };
+        imports.addItem(ctx.runId, at, item);
+        time('write', started);
+        return item;
+      },
+      {
+        committed: (item) => {
+          addToTotals(totals, item);
+        },
+        failed: (error) => {
+          failed(where, 'calendar', fileName, `Could not load this calendar: ${errorText(error)}`, [], at);
+        },
+      },
+    );
+  };
+
   /** A JSON file: what it says it is decides how it is read. */
   const importJson = async (file: ScannedFile, where: Where) => {
     const fileName = basename(file.path);
@@ -1047,6 +1108,10 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       importShastra(where, fileName, hash, raw);
       return;
     }
+    if (format === CALENDAR_FORMAT) {
+      importCalendar(where, fileName, hash, raw);
+      return;
+    }
     record({
       sourcePath: where.sourcePath,
       format: 'unknown',
@@ -1054,7 +1119,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       name: fileName,
       target: null,
       counts: NO_COUNTS,
-      message: 'A JSON file that is not a Shastra text Drashti knows (see docs/shastra-format.md).',
+      message:
+        'A JSON file that is not a Shastra text or a calendar Drashti knows (see docs/shastra-format.md and docs/calendar-format.md).',
       issues: [],
     });
   };

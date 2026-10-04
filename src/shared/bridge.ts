@@ -1,4 +1,5 @@
 import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
+import type { CalendarResult, CalendarView } from './calendar';
 import type {
   PassageInfo,
   PassageResult,
@@ -431,6 +432,12 @@ export interface DrashtiBridge {
     itemPassage(itemId: string): Promise<PassageInfo | null>;
     setTheme(textId: string, themeId: string | null): Promise<ShastraResult>;
     remove(textId: string): Promise<ShastraResult>;
+  };
+  /** Samvat and tithi: the calendars an admin loaded (through Import), today's entry, removing one (Pro Mode). */
+  calendar: {
+    view(): Promise<CalendarView>;
+    onChanged(listener: (view: CalendarView) => void): () => void;
+    remove(calendarId: string): Promise<CalendarResult>;
   };
   /**
    * The arti at its time: schedules (changing them: operator window, Pro Mode) and the prompt, which

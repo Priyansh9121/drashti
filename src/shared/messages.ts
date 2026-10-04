@@ -1,14 +1,19 @@
 import { z } from 'zod';
+import { CALENDAR_LANGS, type CalendarLang } from './calendar';
 import type { MessageItem, MessagePart } from './engine/state';
 
 /*
  * Messages (PLAN.md 4.3): templates with fields, such as "Car {plate}
  * please move". The operator fills in the fields and shows the message on
- * the audience screens; several can be up at once. A field is typed in, or
- * shows a timer live.
+ * the audience screens; several can be up at once. A field is typed in,
+ * shows a timer live, or shows today's Samvat date and tithi.
  */
 
-export type MessageField = { kind: 'text' } | { kind: 'timer'; timerId: string };
+export type MessageField =
+  | { kind: 'text' }
+  | { kind: 'timer'; timerId: string }
+  /** Today's Samvat date and tithi, from the loaded calendars (Session 12). */
+  | { kind: 'samvat'; lang: CalendarLang };
 
 export interface MessageTemplate {
   id: string;
@@ -75,6 +80,9 @@ export function fillMessage(
     if (field.kind === 'timer') {
       parts.push({ kind: 'timer', timerId: field.timerId });
       text += `[${timerName(field.timerId)}]`;
+    } else if (field.kind === 'samvat') {
+      parts.push({ kind: 'samvat', lang: field.lang });
+      text += '[Samvat date]';
     } else {
       const value = (values[piece.name] ?? '').trim();
       parts.push({ kind: 'text', text: value });
@@ -92,6 +100,7 @@ export const messageItemId = (templateId: string): string => `message:${template
 const fieldSchema: z.ZodType<MessageField> = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('text') }).strict(),
   z.object({ kind: z.literal('timer'), timerId: z.string().min(1).max(128) }).strict(),
+  z.object({ kind: z.literal('samvat'), lang: z.enum(CALENDAR_LANGS) }).strict(),
 ]);
 
 export const messageTemplateSchema: z.ZodType<MessageTemplateFields> = z

@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { festivalsLine, samvatLine } from '../../../shared/calendar';
 import type { EngineState } from '../../../shared/engine/state';
 import { languageView } from '../../../shared/language-view';
 import type { Lang } from '../../../shared/model';
 import type { StageBox, StageLayout } from '../../../shared/stage-layouts';
 import { STAGE_HEIGHT, STAGE_WIDTH } from '../../../shared/stage-layouts';
 import { formatDuration } from '../../../shared/timers';
-import { fontFamilyFor } from './fonts';
+import { fontFamilyFor, LANG_FONT_STACK } from './fonts';
 import { kindName, StageText } from './StageView';
 import { TimerText } from './TimerText';
 import { useNow } from './useNow';
@@ -118,8 +119,35 @@ function BoxContents({
       return slide && slide.notes.trim() !== '' ? (
         <p style={{ margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{slide.notes}</p>
       ) : null;
-    case 'clock':
-      return <span style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{clock}</span>;
+    case 'clock': {
+      const time = <span style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{clock}</span>;
+      if (!box.calendar || !state.calendar) return time;
+      const lang = box.lang ?? 'gu';
+      return (
+        <div>
+          <div>{time}</div>
+          <div
+            lang={lang}
+            data-samvat={lang}
+            style={{ fontSize: '0.36em', fontFamily: LANG_FONT_STACK[lang] }}
+          >
+            {samvatLine(state.calendar, lang)}
+          </div>
+        </div>
+      );
+    }
+    case 'samvat': {
+      const day = state.calendar;
+      if (!day) return null;
+      const lang = box.lang ?? 'gu';
+      const festivals = festivalsLine(day, lang);
+      return (
+        <div lang={lang} data-samvat={lang} style={{ fontFamily: LANG_FONT_STACK[lang] }}>
+          <div>{samvatLine(day, lang)}</div>
+          {festivals && <div style={{ fontWeight: 700 }}>{festivals}</div>}
+        </div>
+      );
+    }
     case 'timer': {
       if (box.timerId) {
         const timer = state.timers.find((t) => t.id === box.timerId);
@@ -320,6 +348,8 @@ function contentKey(box: StageBox, state: EngineState): unknown {
     case 'screensState':
       return [state.blackout, state.logo?.id, state.layers.slide?.slide.id, state.layers.background?.kind];
     case 'clock':
+    case 'samvat':
+      return [box.calendar, box.lang, state.calendar];
     case 'text':
       return box.text;
   }

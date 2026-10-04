@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { CALENDAR_LANG_NAMES, CALENDAR_LANGS } from '../../../shared/calendar';
 import type { StageBox, StageBoxKind } from '../../../shared/stage-layouts';
 import {
   newStageBox,
@@ -148,6 +149,38 @@ function BoxSettings({ box }: { box: StageBox }) {
             ))}
           </Select>
         </Field>
+      )}
+      {box.kind === 'clock' && (
+        <Checkbox
+          label="Today's Samvat date under the time"
+          checked={box.calendar ?? false}
+          data-testid="stage-box-calendar"
+          onChange={(e) => {
+            set({ calendar: e.target.checked, lang: box.lang ?? 'gu' });
+          }}
+        />
+      )}
+      {(box.kind === 'samvat' || (box.kind === 'clock' && box.calendar)) && (
+        <Field label="The Samvat date in">
+          <Select
+            value={box.lang ?? 'gu'}
+            data-testid="stage-box-lang"
+            onChange={(e) => {
+              set({ lang: e.target.value === 'en' ? 'en' : 'gu' });
+            }}
+          >
+            {CALENDAR_LANGS.map((l) => (
+              <option key={l} value={l}>
+                {CALENDAR_LANG_NAMES[l]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
+      {box.kind === 'samvat' && (
+        <p className="text-xs text-muted">
+          From the calendars loaded in Timers › Calendar. A date they do not give shows nothing.
+        </p>
       )}
       {box.kind === 'text' && (
         <Field label="Words">

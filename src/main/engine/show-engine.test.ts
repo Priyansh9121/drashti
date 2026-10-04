@@ -880,6 +880,25 @@ describe('ShowEngine', () => {
     });
   });
 
+  it("keeps today's calendar entry for every window, sending nothing when it is the same", () => {
+    const { engine, transport } = setup();
+    const day = {
+      date: '2026-06-17',
+      samvat: 1001,
+      month: { en: 'Placeholder month' },
+      paksha: { en: 'First half' },
+      tithi: { en: 'Placeholder tithi 3' },
+      festivals: [],
+    };
+    expect(engine.setCalendar(day)).toMatchObject({ ok: true, changed: true });
+    expect(engine.current.calendar).toEqual(day);
+    const sent = transport.messages.length;
+    expect(engine.setCalendar({ ...day })).toMatchObject({ ok: true, changed: false });
+    expect(transport.messages.length).toBe(sent);
+    engine.setCalendar(null);
+    expect(engine.current.calendar).toBeNull();
+  });
+
   describe('a presentation edited while it is live', () => {
     it('shows the new words at once, keeps a slide that moved, and leaves a slide that went', () => {
       const { engine, source } = setup();

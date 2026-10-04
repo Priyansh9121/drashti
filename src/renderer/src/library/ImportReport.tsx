@@ -22,6 +22,7 @@ import {
 import { convert, connectConversions, jobFor, useConvert } from './convert-store';
 import { leaveItem, loadMedia, selectPresentation, useLibrary, useMedia } from './library-store';
 import { showTexts } from '../shastra/shastra-store';
+import { openCalendar } from '../calendar/calendar-store';
 
 /*
  * The migration report (PLAN.md 4.4): what came across, what did not, and a
@@ -125,6 +126,20 @@ function Fixes({ item }: { item: ImportItemReport }) {
     out.push(
       <Button key="open" size="sm" onClick={() => openPresentation(target.id)}>
         Open
+      </Button>,
+    );
+  }
+  if (target?.kind === 'calendar') {
+    out.push(
+      <Button
+        key="open"
+        size="sm"
+        onClick={() => {
+          closeReport();
+          openCalendar();
+        }}
+      >
+        Open Calendar
       </Button>,
     );
   }

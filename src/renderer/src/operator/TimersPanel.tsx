@@ -7,7 +7,8 @@ import { TimerText } from '../render/TimerText';
 import { Button } from '../ui/Button';
 import { Select, TextInput } from '../ui/Field';
 import { Checkbox } from '../ui/Toggle';
-import { Plus, Timer } from '../ui/icons';
+import { CalendarDays, Plus, Timer } from '../ui/icons';
+import { openCalendar } from '../calendar/calendar-store';
 import { Panel } from '../ui/Panel';
 import { EmptyState } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
@@ -220,9 +221,22 @@ export function TimersPanel() {
       data-testid="timers"
       bodyClassName="space-y-2 px-3 pb-3"
       actions={
-        <Button variant="ghost" size="sm" icon={Plus} onClick={() => setEditing('new')}>
-          New timer
-        </Button>
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={CalendarDays}
+            data-testid="open-calendar"
+            onClick={() => {
+              openCalendar();
+            }}
+          >
+            Calendar
+          </Button>
+          <Button variant="ghost" size="sm" icon={Plus} onClick={() => setEditing('new')}>
+            New timer
+          </Button>
+        </>
       }
     >
       {editing === 'new' && <TimerForm initial={null} onDone={done} />}

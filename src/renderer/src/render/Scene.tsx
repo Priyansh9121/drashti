@@ -1,5 +1,7 @@
 import type { CSSProperties } from 'react';
 import { memo, useLayoutEffect, useMemo, useRef } from 'react';
+import type { CalendarDay, CalendarLang } from '../../../shared/calendar';
+import { festivalsLine, samvatLine } from '../../../shared/calendar';
 import type { EngineState, MessageItem, PropItem, TickerLayer } from '../../../shared/engine/state';
 import type { LiveGroupLook, LookLayer } from '../../../shared/looks';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
@@ -16,16 +18,35 @@ import { SlideLayerView } from './SlideLayerView';
 import { ElementView } from './SlideView';
 import { TimerText } from './TimerText';
 
-/** A message's words and live timers. */
-function MessageText({ message, timers }: { message: MessageItem; timers: readonly TimerState[] }) {
+/** Today's Samvat date and tithi, with any festival; nothing when the calendars do not give today. */
+export function samvatText(calendar: CalendarDay | null, lang: CalendarLang): string {
+  if (!calendar) return '';
+  const festivals = festivalsLine(calendar, lang);
+  return festivals ? `${samvatLine(calendar, lang)} · ${festivals}` : samvatLine(calendar, lang);
+}
+
+/** A message's words, live timers and today's Samvat date. */
+function MessageText({
+  message,
+  timers,
+  calendar,
+}: {
+  message: MessageItem;
+  timers: readonly TimerState[];
+  calendar: CalendarDay | null;
+}) {
   if (!message.parts) return <>{message.text}</>;
   return (
     <>
       {message.parts.map((part, i) =>
         part.kind === 'text' ? (
           <span key={i}>{part.text}</span>
-        ) : (
+        ) : part.kind === 'timer' ? (
           <TimerText key={i} timer={timers.find((t) => t.id === part.timerId)} />
+        ) : (
+          <span key={i} lang={part.lang} data-samvat={part.lang}>
+            {samvatText(calendar, part.lang)}
+          </span>
         ),
       )}
     </>
@@ -36,12 +57,15 @@ function MessageText({ message, timers }: { message: MessageItem; timers: readon
 export function MessageBanner({
   messages,
   timers,
+  calendar = null,
   canvas,
   at = 'bottom',
   above = 0,
 }: {
   messages: MessageItem[];
   timers: readonly TimerState[];
+  /** Today's calendar entry, for a message's Samvat field. */
+  calendar?: CalendarDay | null;
   canvas: Size;
   at?: 'top' | 'bottom';
   /** Canvas pixels to leave at that edge (the ticker's band). */
@@ -68,7 +92,7 @@ export function MessageBanner({
       {messages.map((m, i) => (
         <span key={m.id} data-message={m.id}>
           {i > 0 && '   ·   '}
-          <MessageText message={m} timers={timers} />
+          <MessageText message={m} timers={timers} calendar={calendar} />
         </span>
       ))}
     </div>
@@ -336,6 +360,7 @@ export const Scene = memo(function Scene({
                 <MessageBanner
                   messages={layers.messages}
                   timers={state.timers}
+                  calendar={state.calendar}
                   canvas={canvas}
                   at={lowerThirds ? 'top' : 'bottom'}
                   above={lowerThirds ? 0 : bandHeight}

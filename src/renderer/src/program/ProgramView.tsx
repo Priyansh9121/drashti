@@ -85,7 +85,13 @@ export function ProgramView({
       {picture.lowerThird.length > 0 && <LowerThird lines={picture.lowerThird} canvas={canvas} />}
       {picture.props && <PropsLayer props={state.layers.props} canvas={canvas} scaling="fit" />}
       {picture.messages && (
-        <MessageBanner messages={state.layers.messages} timers={state.timers} canvas={canvas} at="top" />
+        <MessageBanner
+          messages={state.layers.messages}
+          timers={state.timers}
+          calendar={state.calendar}
+          canvas={canvas}
+          at="top"
+        />
       )}
     </div>
   );

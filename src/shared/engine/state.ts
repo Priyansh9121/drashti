@@ -1,3 +1,4 @@
+import type { CalendarDay, CalendarLang } from '../calendar';
 import type { LiveLook } from '../looks';
 import type { Mask } from '../masks';
 import { NO_LOOK } from '../looks';
@@ -132,8 +133,15 @@ export interface PropItem {
   height?: number;
 }
 
-/** Part of a message: words, or a timer shown live (each window works out its time). */
-export type MessagePart = { kind: 'text'; text: string } | { kind: 'timer'; timerId: string };
+/**
+ * Part of a message: words, a timer shown live (each window works out its
+ * time), or today's Samvat date and tithi from the loaded calendars (nothing
+ * when they do not give today).
+ */
+export type MessagePart =
+  | { kind: 'text'; text: string }
+  | { kind: 'timer'; timerId: string }
+  | { kind: 'samvat'; lang: CalendarLang };
 
 export interface MessageItem {
   id: string;
@@ -237,6 +245,8 @@ export interface EngineState {
   next: UpNext | null;
   /** Put first in line for Next (the arti at its time), or null. */
   cue: CuedNext | null;
+  /** Today's entry in the loaded calendars (Samvat date, tithi, festivals), or null when none gives today. */
+  calendar: CalendarDay | null;
   /** The playlist's next items after the one playing (headers too), up to UPCOMING_ITEMS. */
   upcoming: UpcomingItem[];
   /** A message for the performers on stage screens; the audience never sees it. */
@@ -269,6 +279,7 @@ export function initialEngineState(): EngineState {
     canPutBack: false,
     next: null,
     cue: null,
+    calendar: null,
     upcoming: [],
     stageMessage: null,
     timers: [],

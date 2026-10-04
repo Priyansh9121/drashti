@@ -43,6 +43,8 @@ import { runBack } from './actions';
 import { LooksPanel } from './LooksPanel';
 import { ArtiPrompt } from '../arti/ArtiPrompt';
 import { ArtiDialog, ArtiPanel } from '../arti/ArtiPanel';
+import { CalendarDialog } from '../calendar/CalendarDialog';
+import { openCalendar } from '../calendar/calendar-store';
 import { isTyping, useKeymap } from './useKeymap';
 import { watchProps } from './logo-store';
 import { connectMode, useMode } from './mode-store';
@@ -200,7 +202,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
         }
       />
       <LayerBar platform={platform} run={run} />
-      <StatusBar info={info} onOpenScreens={openScreens} />
+      <StatusBar info={info} onOpenScreens={openScreens} onOpenCalendar={openCalendar} />
       <NoticeArea />
 
       <ImportReportDialog />
@@ -219,6 +221,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <MaskEditor />
       <MacroEditor />
       <ArtiDialog />
+      <CalendarDialog />
       {screensOpen && (
         <ScreensPanel
           platform={platform}

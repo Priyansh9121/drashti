@@ -78,6 +78,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.arti.save,
   IPC.arti.setEnabled,
   IPC.arti.remove,
+  // Calendars: loading one is an import (locked above); removing one is locked too.
+  IPC.calendar.remove,
   // Macros: Simple Mode runs none (MIDI mapped to its own actions still works), and changes none.
   IPC.macros.save,
   IPC.macros.remove,
