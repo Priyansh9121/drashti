@@ -302,6 +302,10 @@ export class NetworkService implements EngineTransport {
       }
       this.changed();
     });
+    // The paired devices and the show first: a device that reconnects the moment the server listens
+    // (after a restart) is known, never refused as unpaired, and gets the show at once.
+    this.pushDevices();
+    worker.send({ type: 'engine', message: this.deps.engine.snapshot() });
     worker.send({ type: 'start', options: this.deps.serverOptions(this.port) });
     this.seenWriter ??= setInterval(() => {
       this.saveSeen();
@@ -344,6 +348,7 @@ export class NetworkService implements EngineTransport {
           this.serverState = 'listening';
           this.boundPort = m.result.port;
           this.message = null;
+          // Again, in case either changed while it started.
           this.pushDevices();
           worker.send({ type: 'engine', message: this.deps.engine.snapshot() });
           this.deps.log('info', `Network: listening on port ${m.result.port}`);
