@@ -513,6 +513,10 @@ function start(): void {
   const indexStart = performance.now();
   if (search.rebuildIfStale())
     log.info(`Search index built in ${Math.round(performance.now() - indexStart)} ms`);
+  // The Shastra texts' index too, when it was folded another way (Session 13's spellings).
+  const shastraIndexStart = performance.now();
+  if (shastraRepo.reindexIfStale())
+    log.info(`Shastra search index folded again in ${Math.round(performance.now() - shastraIndexStart)} ms`);
   // Removed presentations can be restored for 30 days.
   const purged = presentations.purgeRemoved(new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString());
   if (purged > 0) log.info(`Purged ${purged} presentation(s) removed more than 30 days ago`);

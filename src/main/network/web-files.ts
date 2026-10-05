@@ -58,6 +58,32 @@ export function safeRequestPath(raw: string): string | null {
   return decoded;
 }
 
+/**
+ * An API request's path as segments, each decoded on its own, so an id may
+ * hold an encoded "/" or "#" (a Shastra passage's id does): the API never
+ * maps a path to a file, so only plain segments are needed. Null when a
+ * segment is not plainly one (dot segments, back slashes, NULs, bad
+ * encoding), or the path is too long.
+ */
+export function apiSegments(raw: string): string[] | null {
+  const path = raw.split('?')[0] ?? '';
+  if (path.length === 0 || path.length > 1200 || !path.startsWith('/')) return null;
+  const out: string[] = [];
+  for (const part of path.split('/')) {
+    if (part === '') continue;
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(part);
+    } catch {
+      return null;
+    }
+    // No dot segments, even inside one segment ("..%2F" is "../").
+    if (/[\\\0]/u.test(decoded) || decoded.split('/').some((p) => p === '..' || p === '.')) return null;
+    out.push(decoded);
+  }
+  return out;
+}
+
 /** The files the pages need: the pages themselves and everything under assets/. */
 export function listWebFiles(webDir: string): Map<string, WebFile> {
   const files = new Map<string, WebFile>();

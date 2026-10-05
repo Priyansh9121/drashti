@@ -3,7 +3,11 @@
  * Gujarati, Hindi and transliteration. Text is folded the same way for the
  * index and for what the operator types: Latin accents go ("namuna" finds
  * "Namūnā"), letters are lower-cased, and Gujarati and Devanagari vowel
- * signs and viramas stay part of their words.
+ * signs and viramas stay part of their words. Transliteration is spelt
+ * many ways, so (Session 13) v and w are one letter, and a doubled vowel is
+ * its single one ("aa" as "a", "ee" as "i", "oo" as "u"): "dvitiyah" finds
+ * "dwitiyah", and "Shree" finds "Shri". Both sides fold alike, so English
+ * words still find themselves ("week" is "vik" on both).
  */
 
 /** Latin accents are the combining marks U+0300 to U+036F once a text is decomposed. */
@@ -13,8 +17,25 @@ const JOINERS = /[‌‍]/g;
 /** A word: letters, their marks (Indic vowel signs are marks) and digits. */
 const WORD = /[\p{L}\p{M}\p{N}]+/gu;
 
+/** Spellings of one sound in Latin letters, once lower-cased: v and w, and doubled (long) vowels. */
+const SPELLINGS: readonly [RegExp, string][] = [
+  [/w/g, 'v'],
+  [/aa+/g, 'a'],
+  [/ee+/g, 'i'],
+  [/ii+/g, 'i'],
+  [/oo+/g, 'u'],
+  [/uu+/g, 'u'],
+];
+
 export function foldText(text: string): string {
-  return text.normalize('NFD').replace(LATIN_ACCENTS, '').normalize('NFC').replace(JOINERS, '').toLowerCase();
+  let folded = text
+    .normalize('NFD')
+    .replace(LATIN_ACCENTS, '')
+    .normalize('NFC')
+    .replace(JOINERS, '')
+    .toLowerCase();
+  for (const [spelling, as] of SPELLINGS) folded = folded.replace(spelling, as);
+  return folded;
 }
 
 /** The folded words of a text, in order. */

@@ -123,6 +123,34 @@ describe('ShastraRepo', () => {
     expect(repo.search('nowhere')).toEqual([]);
   });
 
+  it('finds one spelling by another (v and w, doubled vowels), and folds an older index again once', () => {
+    const db = openDatabase(':memory:');
+    const repo = new ShastraRepo(db);
+    // A new library is marked as folded the current way.
+    expect(repo.reindexIfStale()).toBe(true);
+    expect(repo.reindexIfStale()).toBe(false);
+    const file = granth([1]);
+    const first = file.items?.[0];
+    if (first) first.text = { ...first.text, translit: 'Dwitiyah shree placeholder' };
+    repo.load(loaded(file), { path: null, hash: null }, 'plain');
+    repo.load(loaded(vachan), { path: null, hash: null }, 'plain');
+    expect(repo.search('dvitiyah').map((h) => h.reference)).toEqual(['Placeholder Granth 1']);
+    expect(repo.search('Shri').map((h) => h.reference)).toEqual(['Placeholder Granth 1']);
+    // An index folded by Session 12 (no mark, words as they were): folded again at the next start.
+    db.prepare('DELETE FROM shastra_fts').run();
+    db.prepare(
+      "INSERT INTO shastra_fts (rowid, reference, body) SELECT rowid, 'x', 'dwitiyah' FROM shastra_items",
+    ).run();
+    db.prepare("DELETE FROM app_meta WHERE key = 'shastra.search.version'").run();
+    expect(repo.search('dvitiyah')).toEqual([]);
+    expect(repo.reindexIfStale()).toBe(true);
+    expect(repo.search('dvitiyah').map((h) => h.reference)).toEqual(['Placeholder Granth 1']);
+    expect(repo.search('Placeholder Pratham 2').map((h) => h.reference)).toEqual([
+      'Placeholder Vachan Placeholder Pratham 2',
+    ]);
+    expect(repo.reindexIfStale()).toBe(false);
+  });
+
   it('removes a text, its words and its search entries', () => {
     const db = openDatabase(':memory:');
     const repo = new ShastraRepo(db);

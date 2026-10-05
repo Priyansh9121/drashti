@@ -32,6 +32,10 @@ import type { Db } from './database';
 
 const NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 
+/** How the search index is folded: bump to fold every loaded text again at the next start. 1: Session 13's spellings. */
+export const SHASTRA_SEARCH_VERSION = 1;
+const SEARCH_VERSION_KEY = 'shastra.search.version';
+
 export interface LoadResult {
   textId: string;
   outcome: 'added' | 'updated' | 'unchanged';
@@ -298,6 +302,55 @@ export class ShastraRepo {
       sections: sectionCount,
       made,
     };
+  }
+
+  /**
+   * Fold the search index again when it was folded another way (or never
+   * marked): Session 13 folds v and w, and doubled vowels, together
+   * (shared/search.ts). Returns whether it did.
+   */
+  reindexIfStale(): boolean {
+    const row = this.db.prepare('SELECT value FROM app_meta WHERE key = ?').get(SEARCH_VERSION_KEY) as
+      { value: string } | undefined;
+    if (row?.value === String(SHASTRA_SEARCH_VERSION)) return false;
+    this.db.transaction(() => {
+      this.db.prepare('DELETE FROM shastra_fts').run();
+      const items = this.db
+        .prepare(
+          `SELECT i.rowid AS rowid, i.id, i.number, i.section_id, x.name FROM shastra_items i
+             JOIN shastra_texts x ON x.id = i.text_id`,
+        )
+        .all() as { rowid: number; id: string; number: number; section_id: string | null; name: string }[];
+      const wordsOf = this.db.prepare('SELECT text FROM shastra_item_texts WHERE item_id = ? ORDER BY lang');
+      const labelsOf = this.db.prepare(
+        `WITH RECURSIVE up(id, parent_id, label, depth) AS (
+           SELECT id, parent_id, label, 0 FROM shastra_sections WHERE id = ?
+           UNION ALL SELECT s.id, s.parent_id, s.label, up.depth + 1 FROM shastra_sections s JOIN up ON s.id = up.parent_id)
+         SELECT label FROM up ORDER BY depth DESC`,
+      );
+      const labels = new Map<string, string[]>();
+      const index = this.db.prepare('INSERT INTO shastra_fts (rowid, reference, body) VALUES (?, ?, ?)');
+      for (const item of items) {
+        let path: string[] = [];
+        if (item.section_id) {
+          const known = labels.get(item.section_id);
+          path = known ?? (labelsOf.all(item.section_id) as { label: string }[]).map((l) => l.label);
+          labels.set(item.section_id, path);
+        }
+        const words = (wordsOf.all(item.id) as { text: string }[]).map((w) => w.text);
+        index.run(
+          item.rowid,
+          foldText(referenceLine(item.name, path, item.number, item.number)),
+          foldText(words.join('\n')),
+        );
+      }
+      this.db
+        .prepare(
+          'INSERT INTO app_meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value',
+        )
+        .run(SEARCH_VERSION_KEY, String(SHASTRA_SEARCH_VERSION));
+    })();
+    return true;
   }
 
   // ---- reading -----------------------------------------------------------------

@@ -322,6 +322,7 @@ function Slides() {
 
 const playable = (i: PlaylistItemInfo) =>
   (i.kind === 'presentation' && i.presentationName !== null) ||
+  (i.kind === 'shastra' && !i.missing) ||
   (i.kind === 'media' && !i.missing && i.unplayable === null);
 
 function Playlist() {
@@ -374,6 +375,12 @@ function Playlist() {
                     view({
                       presentationId: i.presentationId,
                       item: { playlistId, itemId: i.id, order: i.order },
+                    });
+                  // A Shastra passage plays like a presentation, its slides in order.
+                  else if (i.kind === 'shastra')
+                    view({
+                      presentationId: i.passageId,
+                      item: { playlistId, itemId: i.id, order: { mode: 'all' } },
                     });
                   else void tap(post('/api/v1/trigger/item', { playlistId, itemId: i.id }));
                 }}

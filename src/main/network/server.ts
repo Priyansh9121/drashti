@@ -34,7 +34,7 @@ import {
 import { RateLimiter, WrongCodeLimiter } from './limits';
 import { PreviewMaker, type PreviewSource } from './previews';
 import { hashToken } from './tokens';
-import { listWebFiles, safeRequestPath, type WebFile } from './web-files';
+import { apiSegments, listWebFiles, safeRequestPath, type WebFile } from './web-files';
 
 /*
  * Drashti's network server: HTTP and WebSocket on one port. It runs in a
@@ -107,14 +107,27 @@ interface Route {
   parts: string[];
   op: DeviceOp;
   args?: (body: Record<string, unknown>, params: Record<string, string>) => unknown;
+  /** What a ':name' segment may be (an id-like one unless given). */
+  param?: RegExp;
 }
 
-const route = (method: Route['method'], path: string, op: DeviceOp, args?: Route['args']): Route => ({
+const route = (
+  method: Route['method'],
+  path: string,
+  op: DeviceOp,
+  args?: Route['args'],
+  param?: RegExp,
+): Route => ({
   method,
   parts: path.split('/').filter(Boolean),
   op,
   args,
+  param,
 });
+
+/** A presentation's id, or a Shastra passage's ("shastra:pg#14", sent percent-encoded): both play alike. */
+const PRESENTATION_ID =
+  /^(?:[A-Za-z0-9_-]{1,128}|shastra:[^/#\s\\]{1,64}(?:\/[^/#\s\\]{1,160}){0,8}#\d{1,6}(?:-\d{1,6})?)$/u;
 
 const command = (type: string) => () => ({ type });
 
@@ -126,7 +139,13 @@ const ROUTES: Route[] = [
   route('GET', '/api/v1/stage', 'stage'),
   route('GET', '/api/v1/playlists', 'playlists'),
   route('GET', '/api/v1/playlists/:id/items', 'items', (_b, p) => ({ playlistId: p['id'] })),
-  route('GET', '/api/v1/presentations/:id', 'presentation', (_b, p) => ({ presentationId: p['id'] })),
+  route(
+    'GET',
+    '/api/v1/presentations/:id',
+    'presentation',
+    (_b, p) => ({ presentationId: p['id'] }),
+    PRESENTATION_ID,
+  ),
   route('GET', '/api/v1/messages', 'messages'),
   route('GET', '/api/v1/timers', 'timers'),
   route('GET', '/api/v1/logo', 'logo'),
@@ -175,8 +194,7 @@ type RouteMatch =
   | { found: false; method: true }
   | { found: false; method: false };
 
-function matchRoute(method: string, path: string): RouteMatch {
-  const parts = path.split('/').filter(Boolean);
+function matchRoute(method: string, parts: readonly string[]): RouteMatch {
   let otherMethod = false;
   for (const r of ROUTES) {
     if (r.parts.length !== parts.length) continue;
@@ -184,7 +202,7 @@ function matchRoute(method: string, path: string): RouteMatch {
     const fits = r.parts.every((p, i) => {
       const actual = parts[i] ?? '';
       if (p.startsWith(':')) {
-        if (!ID.test(actual)) return false;
+        if (!(r.param ?? ID).test(actual)) return false;
         params[p.slice(1)] = actual;
         return true;
       }
@@ -423,13 +441,19 @@ export class NetworkServer {
       return;
     }
     const address = req.socket.remoteAddress ?? '';
+    // The API's paths are segments (an id may hold an encoded "/"); the pages' files are names only.
+    if ((req.url ?? '').startsWith('/api/')) {
+      const segments = apiSegments(req.url ?? '');
+      if (!segments) {
+        this.json(res, 400, { ok: false, message: 'Drashti does not serve that path.' });
+        return;
+      }
+      void this.api(req, res, segments, address);
+      return;
+    }
     const path = safeRequestPath(req.url ?? '');
     if (!path) {
       this.json(res, 400, { ok: false, message: 'Drashti does not serve that path.' });
-      return;
-    }
-    if (path.startsWith('/api/')) {
-      void this.api(req, res, path, address);
       return;
     }
     if (!this.perAddress.take(address)) {
@@ -479,9 +503,14 @@ export class NetworkServer {
     return this.devices.get(hashToken(match[1])) ?? null;
   }
 
-  private async api(req: IncomingMessage, res: ServerResponse, path: string, address: string): Promise<void> {
+  private async api(
+    req: IncomingMessage,
+    res: ServerResponse,
+    segments: readonly string[],
+    address: string,
+  ): Promise<void> {
     try {
-      if (path === '/api/v1/pair') {
+      if (segments.join('/') === 'api/v1/pair') {
         if (req.method !== 'POST') throw new HttpError(405, 'Pair with POST.');
         await this.pair(req, res, address);
         return;
@@ -497,7 +526,7 @@ export class NetworkServer {
       }
       if (!this.perDevice.take(device.id)) throw new HttpError(429, 'Too many requests: slow down a little.');
       this.host.seen(device.id);
-      const found = matchRoute(req.method ?? 'GET', path);
+      const found = matchRoute(req.method ?? 'GET', segments);
       if (!found.found)
         throw found.method
           ? new HttpError(405, 'That request takes another method.')

@@ -130,7 +130,11 @@ function followLive(): void {
     if (key === last) return;
     last = key;
     const item = live.playlist
-      ? useRemote.getState().items?.find((i) => i.id === live.playlist?.itemId && i.kind === 'presentation')
+      ? useRemote
+          .getState()
+          .items?.find(
+            (i) => i.id === live.playlist?.itemId && (i.kind === 'presentation' || i.kind === 'shastra'),
+          )
       : undefined;
     // Following what went live leaves the tab as it is (timers stay in view while Next goes on).
     view(
@@ -139,7 +143,9 @@ function followLive(): void {
         item:
           live.playlist && item?.kind === 'presentation'
             ? { playlistId: live.playlist.playlistId, itemId: item.id, order: item.order }
-            : null,
+            : live.playlist && item?.kind === 'shastra'
+              ? { playlistId: live.playlist.playlistId, itemId: item.id, order: { mode: 'all' } }
+              : null,
       },
       false,
     );
