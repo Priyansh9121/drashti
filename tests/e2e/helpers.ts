@@ -49,7 +49,8 @@ function appEnv(extra: Record<string, string>): Record<string, string> {
 /**
  * Launch the built app (out/), with a fresh data folder unless one is given (to test restarts).
  * The setup wizard, which opens by itself on a first start, stays shut unless a test asks for it
- * (DRASHTI_TEST_NO_WIZARD: '0'). Quiet locally (see QUIET).
+ * (DRASHTI_TEST_NO_WIZARD: '0'), and Drashti starts as Main without asking (DRASHTI_ROLE). Quiet
+ * locally (see QUIET).
  */
 export async function launchApp(
   extraEnv: Record<string, string> = {},
@@ -63,6 +64,9 @@ export async function launchApp(
       DRASHTI_NO_QUIT_CONFIRM: '1',
       DRASHTI_TEST_NO_WIZARD: '1',
       DRASHTI_TEST_QUIET: QUIET ? '1' : '0',
+      // A first start asks whether the computer is Main or a node (Session 13): tests are Main
+      // unless they say otherwise (tests/e2e/nodes.ts starts nodes).
+      DRASHTI_ROLE: 'main',
       ...extraEnv,
     }),
   });
