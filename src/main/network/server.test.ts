@@ -266,6 +266,39 @@ describe('the network server', () => {
       (await call(port, '/api/v1/timers/..%2f/start', { method: 'POST', headers: bearer(REMOTE_TOKEN) }))
         .status,
     ).toBe(400);
+    // A Shastra passage plays like a presentation: its id (with "/" and "#") comes percent-encoded.
+    const passage = 'shastra:pg/ppr#14-16';
+    expect(
+      (
+        await call(port, `/api/v1/presentations/${encodeURIComponent(passage)}`, {
+          headers: bearer(REMOTE_TOKEN),
+        })
+      ).status,
+    ).toBe(200);
+    expect(host.requests.at(-1)).toMatchObject({ op: 'presentation', args: { presentationId: passage } });
+    // Only a passage's own shape, and never a dot segment.
+    expect(
+      (
+        await call(port, `/api/v1/presentations/${encodeURIComponent('shastra:x/../y#1')}`, {
+          headers: bearer(REMOTE_TOKEN),
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await call(port, `/api/v1/presentations/${encodeURIComponent('shastra:x y#1')}`, {
+          headers: bearer(REMOTE_TOKEN),
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await call(port, `/api/v1/timers/${encodeURIComponent('shastra:pg#1')}/start`, {
+          method: 'POST',
+          headers: bearer(REMOTE_TOKEN),
+        })
+      ).status,
+    ).toBe(404);
     const big = await call(port, '/api/v1/announcements', {
       method: 'POST',
       headers: { ...bearer(ANNOUNCE_TOKEN), 'Content-Type': 'application/json' },

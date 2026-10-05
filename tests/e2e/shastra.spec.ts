@@ -147,6 +147,8 @@ test('a text loads from its file, again unchanged, and updated; references, nons
   await show('PG 2');
   await grid.getByTestId('slide-thumb').first().click();
   await expect.poll(async () => (await live(win)).presentationId).toBe('shastra:pg#2');
+  // The header names the passage by its reference (Session 13), as it names a presentation.
+  await expect(win.getByTestId('live-text')).toHaveText(/^Live: Placeholder Granth 2 · slide 1 of \d+$/u);
 
   // Search by words in each language (accents ignored), the made transliteration too.
   const search = panel.getByTestId('shastra-search');
@@ -160,6 +162,8 @@ test('a text loads from its file, again unchanged, and updated; references, nons
   await firstHit('placeholder meaning 12', 'Placeholder Granth 12');
   // The transliteration Drashti made, in the plain style ("w" for व, as in "bhagwan").
   await firstHit('dwitiyah 5', 'Placeholder Granth 5');
+  // Spelt with v (Session 13), it is found all the same.
+  await firstHit('dvitiyah 6', 'Placeholder Granth 6');
   await search.fill('nowhere-to-be-found');
   await expect(panel.getByText('Nothing found')).toBeVisible();
   await search.fill('');
@@ -398,6 +402,16 @@ test('the remote and the API put up a reference', async () => {
     await form.getByRole('textbox', { name: 'Reference' }).fill('PV P.Pr. 3');
     await form.getByRole('button', { name: 'Show' }).click();
     await expect.poll(async () => (await live(win)).presentationId).toBe('shastra:pv/ppr#3');
+    // The phone shows the passage's slides under its reference, the one on the screens marked
+    // (its id holds "/" and "#": Session 13), and the operator window's header names it too.
+    await phone.page.getByTestId('remote-tab-show').click();
+    await expect(
+      phone.page.getByRole('heading', { name: 'Placeholder Vachan Placeholder Pratham 3' }),
+    ).toBeVisible();
+    await expect(phone.page.getByTestId('remote-slides').locator('[data-live="true"]')).toHaveCount(1);
+    await expect(win.getByTestId('live-text')).toContainText(
+      'Live: Placeholder Vachan Placeholder Pratham 3',
+    );
   } finally {
     await phone.close();
   }

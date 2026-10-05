@@ -17,6 +17,19 @@ describe('search folding', () => {
     expect(searchWords('क्‍ष — “quoted” (x)')).toEqual(['क्ष', 'quoted', 'x']);
   });
 
+  it('folds v and w, and doubled vowels, so one spelling finds another (Session 13)', () => {
+    expect(foldText('Dwitiyah')).toBe(foldText('dvitiyah'));
+    expect(searchWords('Shree')).toEqual(searchWords('Shri'));
+    expect(searchWords('Shreeji Swaami Bhagwaan')).toEqual(['shriji', 'svami', 'bhagvan']);
+    expect(searchWords('Poojaa')).toEqual(searchWords('Puja'));
+    expect(searchWords('Aaa ee')).toEqual(['a', 'i']);
+    // Prefixes still work after folding: typing "dwit" finds "dvitiyah".
+    expect(matchesAll(searchWords('dwit'), searchWords('Dvitiyah adhyay'))).toBe(true);
+    // English finds itself (both sides fold alike), and Gujarati and Devanagari are untouched.
+    expect(matchesAll(searchWords('week'), searchWords('This week'))).toBe(true);
+    expect(searchWords('નમૂના नमूना')).toEqual(['નમૂના', 'नमूना']);
+  });
+
   it('asks for every word, each as the start of a word', () => {
     expect(ftsQuery('  Namūnā  pan ')).toBe('"namuna"* "pan"*');
     expect(ftsQuery('— !')).toBeNull();

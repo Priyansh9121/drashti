@@ -40,6 +40,11 @@ test('search finds titles and slide text in English, Gujarati, Hindi and transli
       uuid: 'E2E-HI',
       groups: [{ name: 'Verse', slides: [{ text: [box('नमूना खोज पंक्ति')] }] }],
     }),
+    // Transliteration spelt one way, searched another (Session 13: v and w, doubled vowels).
+    spelling: pp6Presentation({
+      uuid: 'E2E-SPELLING',
+      groups: [{ name: 'Verse', slides: [{ text: [box('Placeholder shree dwitiya line')] }] }],
+    }),
     // Typed in a legacy Gujarati font: Latin letters that only look like Gujarati in that font.
     legacy: pp6Presentation({
       uuid: 'E2E-LEGACY',
@@ -50,6 +55,7 @@ test('search finds titles and slide text in English, Gujarati, Hindi and transli
     ['Placeholder English Hymn.pro6', files.english],
     ['Placeholder Gujarati Kirtan.pro6', files.gujarati],
     ['Placeholder Hindi Bhajan.pro6', files.hindi],
+    ['Placeholder Spelling Kirtan.pro6', files.spelling],
     ['Placeholder Legacy Kirtan.pro6', files.legacy],
   ].map(([name = '', content = '']) => {
     const path = join(dir, name);
@@ -90,6 +96,12 @@ test('search finds titles and slide text in English, Gujarati, Hindi and transli
   await expect.poll(names).toEqual(['Placeholder Gujarati Kirtan']);
   await expect(hits.first().getByTestId('search-line')).toHaveText('Namūnā śodh pankti');
 
+  // Another spelling of the same words: v for w, and a single vowel for a doubled one ("shri" for "shree").
+  await search.fill('shri dvitiya');
+  await expect.poll(names).toEqual(['Placeholder Spelling Kirtan']);
+  await expect(hits.first().getByTestId('search-line')).toHaveText('Placeholder shree dwitiya line');
+  await expect(hits.first().locator('mark')).toHaveText(['shree', 'dwitiya']);
+
   // Titles.
   await search.fill('bhajan');
   await expect.poll(names).toEqual(['Placeholder Hindi Bhajan']);
@@ -114,7 +126,7 @@ test('search finds titles and slide text in English, Gujarati, Hindi and transli
   await search.focus();
   await search.press('Escape');
   await expect(search).toHaveValue('');
-  await expect(win.getByTestId('presentation-list').getByRole('button')).toHaveCount(6);
+  await expect(win.getByTestId('presentation-list').getByRole('button')).toHaveCount(7);
 
   await app.close();
 });

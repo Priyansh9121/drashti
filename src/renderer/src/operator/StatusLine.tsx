@@ -2,6 +2,7 @@ import type { ScreenStatus } from '../../../shared/screens';
 import { useEngine } from '../engine/engine-store';
 import { useLibrary } from '../library/library-store';
 import { usePlaylists } from '../playlists/playlist-store';
+import { usePassageName } from '../shastra/passage-names';
 import { useScreens } from '../screens/screens-store';
 import { Badge, LiveBadge } from '../ui/Badge';
 import { cx } from '../ui/cx';
@@ -17,11 +18,13 @@ export function LiveStatus() {
   const blackout = useEngine((s) => s.state?.blackout ?? false);
   const audio = useEngine((s) => s.state?.layers.audio?.title ?? null);
   const name = useLibrary((s) => s.presentations.find((p) => p.id === live?.presentationId)?.name);
+  // A Shastra passage is not in the library's list: its reference instead.
+  const passage = usePassageName(live?.presentationId);
   // A picture, video or sound from a playlist: its name, when that playlist is open.
   const itemLabel = usePlaylists((s) => s.items.find((i) => i.id === live?.playlist?.itemId)?.label);
   let text = 'Nothing live';
   if (live?.presentationId && live.slideIndex !== null) {
-    text = `Live: ${name ?? 'presentation'} · slide ${live.slideIndex + 1} of ${live.slideCount}${slideShown ? '' : ' (cleared)'}`;
+    text = `Live: ${name ?? passage ?? 'presentation'} · slide ${live.slideIndex + 1} of ${live.slideCount}${slideShown ? '' : ' (cleared)'}`;
   } else if (live?.playlist) {
     text = `Live: ${itemLabel ?? 'playlist item'}`;
   }

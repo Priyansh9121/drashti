@@ -8,9 +8,10 @@ import type { Db } from './database';
 /**
  * Bump to rebuild every library's index at the next start (when what is
  * indexed changes). 2: kirtan lines are only in the slides' words
- * (migration 11). 3: a kirtan's details (migration 13).
+ * (migration 11). 3: a kirtan's details (migration 13). 4: v and w, and
+ * doubled vowels, fold together (Session 13, shared/search.ts).
  */
-export const SEARCH_VERSION = 3;
+export const SEARCH_VERSION = 4;
 const VERSION_KEY = 'search.version';
 
 interface TextProps {
