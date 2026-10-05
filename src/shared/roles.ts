@@ -101,6 +101,9 @@ export const ADMIN_CHANNELS: readonly InvokeChannel[] = [
   IPC.idle.saveQuote,
   IPC.idle.removeQuote,
   // Every schedule.
+  IPC.backups.save,
+  IPC.backups.pickFolder,
+  IPC.backups.runNow,
   IPC.arti.save,
   IPC.arti.setEnabled,
   IPC.arti.remove,

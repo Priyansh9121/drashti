@@ -15,6 +15,7 @@ import { ScreensSummary } from './StatusLine';
 import { connectNodes, openDashboard, useNodes } from '../nodes/nodes-store';
 import { nodeWarnings } from '../../../shared/nodes';
 import { useNow } from '../render/useNow';
+import { BackupWarning } from '../backups/BackupsDialog';
 
 /*
  * The status bar along the very bottom: the screens connected, where the
@@ -216,6 +217,7 @@ export function StatusBar({
       {/* The screens dashboard opens from here in both modes (Simple Mode only looks). */}
       <ScreensSummary onOpen={openDashboard} />
       <NodeWarnings />
+      <BackupWarning />
       <SoundStatus onOpen={onOpenScreens} />
       <TodayStatus onOpen={onOpenCalendar} />
       <div aria-live="polite" className="flex min-w-0 flex-1 items-center gap-3">

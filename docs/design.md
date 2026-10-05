@@ -261,3 +261,9 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **The admin PIN prompt says what it is for** ("To back up the library, type the admin PIN") and how long admin then stays unlocked. Cancel leaves everything as it was.
 - **Roles and PINs** (File menu) is one dialog in two states: off, two new PINs, each typed twice, with what each role does; on, a change for each PIN and Turn roles off (`danger`, asking first). The setup wizard's PINs step is the same fields.
 - The dialogs pass the accessibility checks at 1280 × 720 (`tests/e2e/roles.spec.ts`).
+
+## 28. Scheduled backups
+
+- **One dialog from the File menu** (`size="md"`): the switch, the folder (a read-only field with **Choose…**, since only a folder dialog can pick a drive), the days, the time, how many to keep and the media tick, then how they stand: running with a progress bar, waiting with why in an `info` notice, the last one (muted when it went well, `warning-fg` with the triangle when it was skipped or stopped) and the next. **Back up now** sits on the left of the footer, as an action, not a setting.
+- **A skipped or stopped backup shows in the status bar** in both modes (`warning-bg`, the triangle, the reason in words, and **OK** to put it away), because a volunteer may be the one who can plug the drive back in. It goes by itself after the next backup that works.
+- The dialog passes the accessibility checks at 1280 × 720 (`tests/e2e/scheduled-backups.spec.ts`).

@@ -79,6 +79,18 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
+  backups: {
+    view: () => invoke(IPC.backups.view),
+    save: (schedule) => invoke(IPC.backups.save, schedule),
+    pickFolder: () => invoke(IPC.backups.pickFolder),
+    runNow: () => invoke(IPC.backups.runNow),
+    dismiss: () => invoke(IPC.backups.dismiss),
+    onChanged: (listener) => on(IPC.backups.changed, listener),
+    onOpen: (listener) =>
+      on(IPC.backups.open, () => {
+        listener();
+      }),
+  },
   roles: {
     view: () => invoke(IPC.roles.view),
     unlock: (pin) => invoke(IPC.roles.unlock, pin),

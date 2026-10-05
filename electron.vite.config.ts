@@ -30,6 +30,8 @@ export default defineConfig({
           'network-worker': resolve('src/main/network/worker/worker.ts'),
           // The node link worker: Main's side of the link to its output nodes (src/main/nodes/worker/worker.ts).
           'link-worker': resolve('src/main/nodes/worker/worker.ts'),
+          // The backup worker: scheduled backups, at the lowest priority (src/main/backup/worker.ts).
+          'backup-worker': resolve('src/main/backup/worker.ts'),
         },
         // ws's optional native helpers are not installed. Left as plain requires, they fail and ws uses its
         // own JavaScript; bundled, Vite would put an empty object in their place and ws would call
