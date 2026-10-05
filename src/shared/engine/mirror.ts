@@ -19,6 +19,7 @@ export type MirrorResult =
 export class EngineMirror {
   private current: EngineState | null = null;
   private revision = -1;
+  private run: string | undefined = undefined;
 
   get state(): EngineState | null {
     return this.current;
@@ -28,12 +29,21 @@ export class EngineMirror {
     return this.revision;
   }
 
+  /** The engine run this copy follows (undefined before the first snapshot that says). */
+  get session(): string | undefined {
+    return this.run;
+  }
+
   apply(message: EngineMessage): MirrorResult {
     if (message.version !== ENGINE_STATE_VERSION) return 'incompatible';
     if (message.kind === 'snapshot') {
-      if (this.current && message.rev < this.revision) return 'stale';
+      // A snapshot from a new run of the engine (Drashti restarted) replaces what was here, whatever
+      // its revision: revisions start again from 0.
+      const sameRun = message.session === undefined || message.session === this.run;
+      if (this.current && sameRun && message.rev < this.revision) return 'stale';
       this.current = message.state;
       this.revision = message.rev;
+      if (message.session !== undefined) this.run = message.session;
       return 'applied';
     }
     if (!this.current) return 'resync';

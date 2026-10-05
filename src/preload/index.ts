@@ -201,6 +201,27 @@ const bridge: DrashtiBridge = {
     revokeDevice: (deviceId) => invoke(IPC.network.revokeDevice, deviceId),
     makePoster: () => invoke(IPC.network.makePoster),
   },
+  nodes: {
+    status: () => invoke(IPC.nodes.status),
+    onChanged: (listener) => on(IPC.nodes.changed, listener),
+    onThumbs: (listener) => on(IPC.nodes.thumbs, listener),
+    startPairing: () => invoke(IPC.nodes.startPairing),
+    cancelPairing: () => invoke(IPC.nodes.cancelPairing),
+    rename: (nodeId, name) => invoke(IPC.nodes.rename, nodeId, name),
+    remove: (nodeId) => invoke(IPC.nodes.remove, nodeId),
+    everything: (nodeId, on) => invoke(IPC.nodes.everything, nodeId, on),
+    reload: (nodeId, screenId) => invoke(IPC.nodes.reload, nodeId, screenId),
+    identify: (nodeId, displayId) => invoke(IPC.nodes.identify, nodeId, displayId),
+    watch: (watching) => invoke(IPC.nodes.watch, watching),
+  },
+  node: {
+    view: () => invoke(IPC.node.view),
+    onChanged: (listener) => on(IPC.node.changed, listener),
+    pair: (address, code) => invoke(IPC.node.pair, address, code),
+    unpair: () => invoke(IPC.node.unpair),
+    useAsMain: () => invoke(IPC.node.useAsMain),
+    identify: () => invoke(IPC.node.identify),
+  },
   announcements: {
     list: () => invoke(IPC.announcements.list),
     onChanged: (listener) => on(IPC.announcements.changed, listener),
@@ -319,6 +340,8 @@ const bridge: DrashtiBridge = {
       invoke(IPC.screens.assignDisplay, groupId, displayId, options),
     updateScreen: (screenId, patch, options) => invoke(IPC.screens.updateScreen, screenId, patch, options),
     removeScreen: (screenId) => invoke(IPC.screens.removeScreen, screenId),
+    assignNodeDisplay: (groupId, nodeId, displayId) =>
+      invoke(IPC.screens.assignNodeDisplay, groupId, nodeId, displayId),
     identify: () => invoke(IPC.screens.identify),
     uncoverOperator: () => invoke(IPC.screens.uncoverOperator),
   },
@@ -326,6 +349,7 @@ const bridge: DrashtiBridge = {
     getContext: () => invoke(IPC.output.getContext),
     onContext: (listener) => on(IPC.output.context, listener),
     onIdentify: (listener) => on(IPC.output.identify, listener),
+    report: (report) => invoke(IPC.output.report, report),
   },
 };
 

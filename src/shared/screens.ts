@@ -54,6 +54,8 @@ export interface ScreenConfig {
   enabled: boolean;
   /** In a key and fill group: the fill or the key (null in other groups). */
   feed: ScreenFeed | null;
+  /** The node whose display it is on (Session 13), or null for this computer's own displays. */
+  nodeId: string | null;
 }
 
 /** A screen group. What its screens show (layers, languages, slide style) is set in the Looks (shared/looks.ts). */
@@ -72,7 +74,9 @@ export type ScreenState =
   /** No display assigned. */
   | 'unassigned'
   /** Turned off by the operator. */
-  | 'disabled';
+  | 'disabled'
+  /** On a node that is not connected now (its screens show the last picture, if it is on). */
+  | 'node-offline';
 
 export interface ScreenStatus {
   screenId: string;
@@ -80,10 +84,20 @@ export interface ScreenStatus {
   displayId: number | null;
 }
 
+/** A node and the displays it last reported, as Screens lists them under it (Session 13). */
+export interface NodeDisplays {
+  id: string;
+  name: string;
+  online: boolean;
+  displays: DisplayInfo[];
+}
+
 export interface ScreensSnapshot {
   displays: DisplayInfo[];
   groups: ScreenGroupConfig[];
   status: ScreenStatus[];
+  /** Paired nodes, with their displays. */
+  nodes: NodeDisplays[];
 }
 
 export type ScreensResult =
@@ -128,6 +142,19 @@ export interface OutputContext {
   canvasHeight: number;
   scaling: ScalingMode;
   display: { pixelWidth: number; pixelHeight: number; refreshHz: number; scaleFactor: number } | null;
+  /**
+   * What to add to this computer's clock to get the engine's (Session 13):
+   * 0 on Main, the measured offset on a node.
+   */
+  clockOffsetMs?: number;
+}
+
+/** What an output window says about how it draws (every few seconds). */
+export interface OutputReport {
+  /** Frames that came more than one and a half frame times late, in the last minute. */
+  droppedFrames: number;
+  /** The engine revision it last painted. */
+  paintedRev: number;
 }
 
 /** Common canvas sizes offered in the UI; any size is allowed. */

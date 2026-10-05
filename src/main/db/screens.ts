@@ -30,6 +30,7 @@ interface ScreenRow {
   scaling: ScalingMode;
   enabled: number;
   feed: 'fill' | 'key' | null;
+  node_id: string | null;
 }
 
 function parseKey(json: string | null): DisplayKey | null {
@@ -53,6 +54,7 @@ function toScreen(r: ScreenRow): ScreenConfig {
     scaling: r.scaling,
     enabled: r.enabled === 1,
     feed: r.feed,
+    nodeId: r.node_id,
   };
 }
 
@@ -62,6 +64,7 @@ const NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 export class ScreenRepo {
   constructor(private readonly db: Db) {}
 
+  /** This computer's own screens (the output manager opens their windows). */
   screens(): ScreenConfig[] {
     const rows = this.db
       .prepare(
@@ -70,6 +73,22 @@ export class ScreenRepo {
       )
       .all() as ScreenRow[];
     return rows.map(toScreen);
+  }
+
+  /** Every screen, this computer's and the nodes' (Session 13). */
+  allScreens(): ScreenConfig[] {
+    const rows = this.db
+      .prepare(
+        `SELECT s.* FROM screens s JOIN screen_groups g ON g.id = s.group_id
+          ORDER BY g.position, g.rowid, s.position, s.rowid`,
+      )
+      .all() as ScreenRow[];
+    return rows.map(toScreen);
+  }
+
+  /** The screens on one node's displays. */
+  nodeScreens(nodeId: string): ScreenConfig[] {
+    return this.allScreens().filter((s) => s.nodeId === nodeId);
   }
 
   screen(id: string): ScreenConfig | null {
@@ -81,7 +100,7 @@ export class ScreenRepo {
     const groups = this.db
       .prepare('SELECT id, name, role FROM screen_groups ORDER BY position, rowid')
       .all() as { id: string; name: string; role: ScreenRole }[];
-    const screens = this.screens();
+    const screens = this.allScreens();
     return groups.map((g) => ({ ...g, screens: screens.filter((s) => s.groupId === g.id) }));
   }
 
@@ -157,14 +176,19 @@ export class ScreenRepo {
     return this.db.prepare('DELETE FROM screen_groups WHERE id = ?').run(id).changes > 0;
   }
 
-  addScreen(groupId: string, name: string, displayKey: DisplayKey | null): string {
+  addScreen(
+    groupId: string,
+    name: string,
+    displayKey: DisplayKey | null,
+    nodeId: string | null = null,
+  ): string {
     const id = randomUUID();
     this.db
       .prepare(
-        `INSERT INTO screens (id, group_id, name, display_key, position)
-         VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(position), -1) + 1 FROM screens WHERE group_id = ?))`,
+        `INSERT INTO screens (id, group_id, name, display_key, node_id, position)
+         VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(position), -1) + 1 FROM screens WHERE group_id = ?))`,
       )
-      .run(id, groupId, name, displayKey ? JSON.stringify(displayKey) : null, groupId);
+      .run(id, groupId, name, displayKey ? JSON.stringify(displayKey) : null, nodeId, groupId);
     this.fixFeeds(groupId);
     return id;
   }
@@ -176,7 +200,7 @@ export class ScreenRepo {
    */
   fixFeeds(groupId: string): void {
     const keyfill = this.groupRole(groupId) === 'keyfill';
-    const screens = this.screens().filter((s) => s.groupId === groupId);
+    const screens = this.allScreens().filter((s) => s.groupId === groupId);
     if (!keyfill) {
       this.db.prepare('UPDATE screens SET feed = NULL WHERE group_id = ? AND feed IS NOT NULL').run(groupId);
       return;

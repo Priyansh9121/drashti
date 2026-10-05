@@ -17,6 +17,12 @@ export interface EngineSnapshotMessage {
   state: EngineState;
   /** Wall-clock milliseconds when main sent it (for latency measurements). */
   sentAt: number;
+  /**
+   * This run of the engine (Session 13): revisions start again from 0 when
+   * Drashti restarts, so a copy that followed the last run (a phone, a node)
+   * takes a snapshot from a new run whatever its revision.
+   */
+  session?: string;
 }
 
 export interface EnginePatchMessage {

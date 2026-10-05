@@ -51,6 +51,7 @@ import type {
 } from './stream';
 import type { SaveStillResult } from './media';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
+import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
 import type { AnnouncementResult, AnnouncementsView } from './announcements';
 import type {
   ItemOrder,
@@ -75,6 +76,7 @@ import type { TimerFields, TimerResult } from './timers';
 import type {
   CoverOptions,
   OutputContext,
+  OutputReport,
   ScreenPatch,
   ScreenRole,
   ScreensResult,
@@ -350,6 +352,8 @@ export const IPC = {
     assignDisplay: 'screens:assign-display',
     updateScreen: 'screens:update-screen',
     removeScreen: 'screens:remove-screen',
+    /** Put a node's display into a group (Session 13). */
+    assignNodeDisplay: 'screens:assign-node-display',
     identify: 'screens:identify',
     uncoverOperator: 'screens:uncover-operator',
     /** main -> operator: the screen setup or display list changed. */
@@ -434,6 +438,41 @@ export const IPC = {
     /** main -> operator: the queue changed. */
     changed: 'announcements:changed',
   },
+  /** Output nodes, on Main (Session 13): pairing, the dashboard's status and actions (operator window only). */
+  nodes: {
+    status: 'nodes:status',
+    /** Pro Mode only, as are the rest that change something. */
+    startPairing: 'nodes:start-pairing',
+    cancelPairing: 'nodes:cancel-pairing',
+    rename: 'nodes:rename',
+    /** Remove (unpair) a node: cut off at once, its screens gone. */
+    remove: 'nodes:remove',
+    /** Copy every picture and video to this node ("Get everything ready"), or only the week's. */
+    everything: 'nodes:everything',
+    /** Reload one output window, on Main or on a node. */
+    reload: 'nodes:reload',
+    /** A display's number and name on it, on Main or on a node (also in Simple Mode). */
+    identify: 'nodes:identify',
+    /** The dashboard is open (thumbnails every few seconds) or closed. */
+    watch: 'nodes:watch',
+    /** main -> operator: the nodes' state changed. */
+    changed: 'nodes:changed',
+    /** main -> operator: new thumbnails for the dashboard. */
+    thumbs: 'nodes:thumbs',
+  },
+  /** A node's own window (node mode only). */
+  node: {
+    view: 'node:view',
+    /** Pair with Main at an address, with the code it shows. */
+    pair: 'node:pair',
+    unpair: 'node:unpair',
+    /** Restart as Main (the node's settings stay). */
+    useAsMain: 'node:use-as-main',
+    /** Each display's number across it, for a few seconds. */
+    identify: 'node:identify',
+    /** main -> node window: how it stands changed. */
+    changed: 'node:changed',
+  },
   output: {
     /** An output window asks which screen it is. */
     getContext: 'output:get-context',
@@ -441,6 +480,8 @@ export const IPC = {
     context: 'output:context',
     /** main -> output: show the screen's name for a few seconds. */
     identify: 'output:identify',
+    /** An output says how it is drawing: frames that came late, and the revision it last painted. */
+    report: 'output:report',
   },
 } as const;
 
@@ -645,6 +686,7 @@ export interface InvokeContract {
   [IPC.screens.identify]: { args: []; result: null };
   [IPC.screens.uncoverOperator]: { args: []; result: ScreensResult };
   [IPC.output.getContext]: { args: []; result: OutputContext | null };
+  [IPC.output.report]: { args: [report: OutputReport]; result: null };
   [IPC.setup.state]: { args: []; result: SetupState };
   [IPC.setup.setSeen]: { args: []; result: null };
   [IPC.setup.identifyDisplays]: { args: []; result: { shown: number } };
@@ -689,6 +731,24 @@ export interface InvokeContract {
   };
   [IPC.announcements.reject]: { args: [which: { id: string }]; result: AnnouncementResult };
   [IPC.announcements.takeOff]: { args: [which: { id: string }]; result: AnnouncementResult };
+  [IPC.nodes.status]: { args: []; result: NodesStatus };
+  [IPC.nodes.startPairing]: { args: []; result: NodesResult };
+  [IPC.nodes.cancelPairing]: { args: []; result: NodesResult };
+  [IPC.nodes.rename]: { args: [nodeId: string, name: string]; result: NodesResult };
+  [IPC.nodes.remove]: { args: [nodeId: string]; result: NodesResult };
+  [IPC.nodes.everything]: { args: [nodeId: string, on: boolean]; result: NodesResult };
+  [IPC.nodes.reload]: { args: [nodeId: string | null, screenId: string]; result: NodesResult };
+  [IPC.nodes.identify]: { args: [nodeId: string | null, displayId: number | null]; result: null };
+  [IPC.nodes.watch]: { args: [on: boolean]; result: null };
+  [IPC.screens.assignNodeDisplay]: {
+    args: [groupId: string, nodeId: string, displayId: number];
+    result: ScreensResult;
+  };
+  [IPC.node.view]: { args: []; result: NodeView };
+  [IPC.node.pair]: { args: [address: string, code: string]; result: NodeViewResult };
+  [IPC.node.unpair]: { args: []; result: NodeViewResult };
+  [IPC.node.useAsMain]: { args: []; result: { ok: boolean } };
+  [IPC.node.identify]: { args: []; result: { shown: number } };
 }
 
 /** main -> renderer event channels and their payloads. */
@@ -712,7 +772,7 @@ export interface EventContract {
   [IPC.calendar.changed]: CalendarView;
   [IPC.idle.changed]: IdleView;
   [IPC.output.context]: OutputContext;
-  [IPC.output.identify]: { name: string; groupName: string };
+  [IPC.output.identify]: { name: string; groupName: string; label?: string };
   [IPC.audio.chosen]: { device: AudioDevice | null };
   [IPC.audio.testTone]: { deviceId: string };
   [IPC.setup.open]: { at: number };
@@ -723,6 +783,9 @@ export interface EventContract {
   [IPC.stream.context]: ProgramContext;
   [IPC.network.changed]: NetworkStatus;
   [IPC.announcements.changed]: AnnouncementsView;
+  [IPC.nodes.changed]: NodesStatus;
+  [IPC.nodes.thumbs]: ScreenThumb[];
+  [IPC.node.changed]: NodeView;
 }
 
 export type InvokeChannel = keyof InvokeContract;

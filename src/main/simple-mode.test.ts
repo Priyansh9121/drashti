@@ -102,4 +102,21 @@ describe('Simple Mode locks', () => {
     expect(answers.get(IPC.audio.setOutput)?.()).toBe(status);
     expect(answers.size).toBe(SIMPLE_MODE_LOCKED.length);
   });
+
+  it('every Session 13 request that changes something: pairing, removing, assigning, reloading; the dashboard still opens', () => {
+    for (const channel of [
+      IPC.nodes.startPairing,
+      IPC.nodes.cancelPairing,
+      IPC.nodes.rename,
+      IPC.nodes.remove,
+      IPC.nodes.everything,
+      IPC.nodes.reload,
+      IPC.screens.assignNodeDisplay,
+    ])
+      expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
+    // Reading the nodes, watching the dashboard's pictures, Identify and an output's report are not locked.
+    for (const channel of [IPC.nodes.status, IPC.nodes.watch, IPC.nodes.identify, IPC.output.report])
+      expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
+    expect(answers.get(IPC.nodes.remove)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+  });
 });

@@ -51,6 +51,7 @@ import type {
 } from './stream';
 import type { SaveStillResult } from './media';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
+import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
 import type { AnnouncementResult, AnnouncementsView } from './announcements';
 import type {
   ItemOrder,
@@ -75,6 +76,7 @@ import type { TimerFields, TimerResult } from './timers';
 import type {
   CoverOptions,
   OutputContext,
+  OutputReport,
   ScreenPatch,
   ScreenRole,
   ScreensResult,
@@ -357,6 +359,32 @@ export interface DrashtiBridge {
     revokeDevice(deviceId: string): Promise<NetworkResult>;
     makePoster(): Promise<NetworkResult>;
   };
+  /** Output nodes on Main (Session 13): pairing, the dashboard, its actions (changes in Pro Mode only). */
+  nodes: {
+    status(): Promise<NodesStatus>;
+    onChanged(listener: (status: NodesStatus) => void): () => void;
+    onThumbs(listener: (thumbs: ScreenThumb[]) => void): () => void;
+    startPairing(): Promise<NodesResult>;
+    cancelPairing(): Promise<NodesResult>;
+    rename(nodeId: string, name: string): Promise<NodesResult>;
+    remove(nodeId: string): Promise<NodesResult>;
+    everything(nodeId: string, on: boolean): Promise<NodesResult>;
+    /** Reload one output: on Main (nodeId null) or on a node. */
+    reload(nodeId: string | null, screenId: string): Promise<NodesResult>;
+    /** A display's number and name on it (null: every display of that computer). */
+    identify(nodeId: string | null, displayId: number | null): Promise<null>;
+    /** The dashboard is open: thumbnails come every few seconds while it is. */
+    watch(on: boolean): Promise<null>;
+  };
+  /** A node's own window (node mode only). */
+  node: {
+    view(): Promise<NodeView>;
+    onChanged(listener: (view: NodeView) => void): () => void;
+    pair(address: string, code: string): Promise<NodeViewResult>;
+    unpair(): Promise<NodeViewResult>;
+    useAsMain(): Promise<{ ok: boolean }>;
+    identify(): Promise<{ shown: number }>;
+  };
   /** Announcements sent from phones: the operator's queue (operator window only; changes in Pro Mode only). */
   announcements: {
     list(): Promise<AnnouncementsView>;
@@ -493,6 +521,8 @@ export interface DrashtiBridge {
     assignDisplay(groupId: string, displayId: number, options?: CoverOptions): Promise<ScreensResult>;
     updateScreen(screenId: string, patch: ScreenPatch, options?: CoverOptions): Promise<ScreensResult>;
     removeScreen(screenId: string): Promise<ScreensResult>;
+    /** Put one of a node's displays into a group (Session 13). */
+    assignNodeDisplay(groupId: string, nodeId: string, displayId: number): Promise<ScreensResult>;
     /** Show each screen's name on its output for a few seconds. */
     identify(): Promise<null>;
     /** Turn off any output covering the operator window. */
@@ -502,6 +532,8 @@ export interface DrashtiBridge {
   output: {
     getContext(): Promise<OutputContext | null>;
     onContext(listener: (context: OutputContext) => void): () => void;
-    onIdentify(listener: (who: { name: string; groupName: string }) => void): () => void;
+    onIdentify(listener: (who: { name: string; groupName: string; label?: string }) => void): () => void;
+    /** How it draws: late frames and the revision it last painted (every few seconds). */
+    report(report: OutputReport): Promise<null>;
   };
 }

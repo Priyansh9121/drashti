@@ -39,6 +39,7 @@ describe('ScreenRepo', () => {
       scaling: 'fit',
       enabled: true,
       feed: null,
+      nodeId: null,
     });
     expect(repo.groupName(lobby)).toBe('Lobby');
   });

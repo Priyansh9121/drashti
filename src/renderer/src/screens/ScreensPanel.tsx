@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { describeDisplay } from '../../../shared/display-match';
 import type {
   DisplayInfo,
+  NodeDisplays,
   ScreenConfig,
   ScreenGroupConfig,
   ScreenState,
@@ -20,7 +20,6 @@ import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { EmptyState, Loading } from '../ui/States';
 import { Checkbox } from '../ui/Toggle';
-import { Truncate } from '../ui/Truncate';
 import { cancelCover, connectScreens, screensAction, useScreens } from './screens-store';
 import type { LookInfo } from '../../../shared/looks';
 import { useEngine } from '../engine/engine-store';
@@ -30,83 +29,25 @@ import { connectStageLayouts } from '../stage/stage-layouts-store';
 import { connectMasks } from '../masks/masks-store';
 import { SoundOutput } from './SoundOutput';
 import { StreamGroupCard } from './StreamGroupCard';
+import { NodesSection } from './NodesSection';
+import { DisplayRow } from './DisplayRow';
 
 const stateText: Record<ScreenState, string> = {
   showing: 'Showing',
   'missing-display': 'Display not connected',
   unassigned: 'No display',
   disabled: 'Off',
+  'node-offline': 'Node offline',
 };
 const stateTone: Record<ScreenState, string> = {
   showing: 'border-success/60 bg-success-bg text-success-fg',
   'missing-display': 'border-warning/60 bg-warning-bg text-warning-fg',
   unassigned: 'border-line-strong bg-panel-2 text-muted',
   disabled: 'border-line-strong bg-panel-2 text-muted',
+  'node-offline': 'border-warning/60 bg-warning-bg text-warning-fg',
 };
 
 const bridge = () => window.drashti.screens;
-
-function DisplayRow({
-  display,
-  usedBy,
-  groups,
-}: {
-  display: DisplayInfo;
-  usedBy: string | null;
-  groups: ScreenGroupConfig[];
-}) {
-  const [groupId, setGroupId] = useState('');
-  const target = groupId !== '' ? groupId : (groups[0]?.id ?? '');
-  return (
-    <li
-      className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-panel-2 px-3 py-2"
-      data-testid="display-row"
-      data-display-id={display.id}
-    >
-      <Monitor size={18} aria-hidden="true" className="shrink-0 text-muted" />
-      <div className="min-w-0 flex-1">
-        <Truncate text={describeDisplay(display)} className="text-sm font-medium" />
-        <div className="text-xs text-muted">
-          scale {display.scaleFactor}x{display.primary ? ' · main display' : ''}
-          {display.internal ? ' · built in' : ''}
-        </div>
-      </div>
-      {usedBy ? (
-        <span className="text-xs text-muted">Used by “{usedBy}”</span>
-      ) : groups.length === 0 ? (
-        <span className="text-xs text-muted">Create a group first</span>
-      ) : (
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-muted" htmlFor={`group-for-${display.id}`}>
-            Add to
-          </label>
-          <Select
-            id={`group-for-${display.id}`}
-            className="max-w-40"
-            value={target}
-            onChange={(e) => {
-              setGroupId(e.target.value);
-            }}
-          >
-            {groups.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-              </option>
-            ))}
-          </Select>
-          <Button
-            variant="primary"
-            onClick={() =>
-              void screensAction((consent) => bridge().assignDisplay(target, display.id, consent))
-            }
-          >
-            Use this display
-          </Button>
-        </div>
-      )}
-    </li>
-  );
-}
 
 function NumberField({
   label,
@@ -163,6 +104,9 @@ function ScreenRow({
     (p) => p.width === screen.canvasWidth && p.height === screen.canvasHeight,
   );
   const shownOn = displays.find((d) => d.key.id === screen.displayKey?.id);
+  const node = useScreens((s) =>
+    screen.nodeId ? s.snapshot?.nodes.find((n) => n.id === screen.nodeId) : undefined,
+  );
   return (
     <li className="space-y-2 rounded-lg border border-line bg-panel px-3 py-2.5" data-testid="screen-row">
       <div className="flex flex-wrap items-center gap-2">
@@ -173,6 +117,7 @@ function ScreenRow({
         >
           {stateText[state]}
           {state === 'showing' && shownOn ? ` on ${shownOn.label || `display ${shownOn.id}`}` : ''}
+          {node ? ` · ${node.name}` : ''}
         </span>
         {state === 'missing-display' && (
           <span className="text-xs text-warning-fg">It opens by itself when the display is connected.</span>
@@ -266,11 +211,14 @@ function GroupCard({
   group,
   states,
   displays,
+  nodes,
   look,
 }: {
   group: ScreenGroupConfig;
   states: Map<string, ScreenState>;
   displays: DisplayInfo[];
+  /** Output nodes and their displays (a screen on a node shows on one of those). */
+  nodes: NodeDisplays[];
   /** The Look whose settings the card shows. */
   look: LookInfo | null;
 }) {
@@ -340,7 +288,7 @@ function GroupCard({
               key={sc.id}
               screen={sc}
               state={states.get(sc.id) ?? 'unassigned'}
-              displays={displays}
+              displays={sc.nodeId ? (nodes.find((n) => n.id === sc.nodeId)?.displays ?? []) : displays}
             />
           ))}
         </ul>
@@ -398,7 +346,8 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
   for (const st of snapshot?.status ?? []) {
     if (st.displayId === null) continue;
     const screen = snapshot?.groups.flatMap((g) => g.screens).find((s) => s.id === st.screenId);
-    if (screen) usedBy.set(st.displayId, screen.name);
+    // This computer's displays only (a node's displays are listed under the node).
+    if (screen?.nodeId === null) usedBy.set(st.displayId, screen.name);
   }
 
   return (
@@ -450,6 +399,7 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
           </ul>
         )}
       </section>
+      <NodesSection groups={(snapshot?.groups ?? []).filter((g) => g.role !== 'stream')} />
       <section className="space-y-3">
         <SectionTitle>Screen groups</SectionTitle>
         {look && <LooksSection lookId={look.id} onChoose={setChosenLook} />}
@@ -487,7 +437,14 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
           g.role === 'stream' ? (
             <StreamGroupCard key={g.id} group={g} look={look} />
           ) : (
-            <GroupCard key={g.id} group={g} states={states} displays={snapshot?.displays ?? []} look={look} />
+            <GroupCard
+              key={g.id}
+              group={g}
+              states={states}
+              displays={snapshot?.displays ?? []}
+              nodes={snapshot?.nodes ?? []}
+              look={look}
+            />
           ),
         )}
       </section>

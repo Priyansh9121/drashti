@@ -21,6 +21,8 @@ export interface MenuActions {
   /** File > Back Up Library… and Restore Library…. */
   backUpLibrary: () => void;
   restoreLibrary: () => void;
+  /** File > Use This Computer as a Node…: asks, then restarts as a node (Pro Mode only). */
+  useAsNode: () => void;
   /** Only when DRASHTI_DIAGNOSTICS=1: for the manual watchdog check. */
   diagnostics: {
     crashOperator: () => void;
@@ -48,6 +50,8 @@ export function installMenu(actions: MenuActions): void {
             submenu: [
               { id: 'backup-library', label: 'Back Up Library…', click: actions.backUpLibrary },
               { id: 'restore-library', label: 'Restore Library…', click: actions.restoreLibrary },
+              { type: 'separator' },
+              { id: 'use-as-node', label: 'Use This Computer as a Node…', click: actions.useAsNode },
             ],
           } as MenuItemConstructorOptions,
         ]),
@@ -144,5 +148,16 @@ export function installMenu(actions: MenuActions): void {
       ],
     });
   }
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+/** A node's menu (Session 13): no show, no library; editing keys for its fields, and its window. */
+export function installNodeMenu(): void {
+  const isMac = process.platform === 'darwin';
+  const template: MenuItemConstructorOptions[] = [
+    ...(isMac ? [{ role: 'appMenu' } as MenuItemConstructorOptions] : []),
+    { role: 'editMenu' },
+    { role: 'windowMenu' },
+  ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }

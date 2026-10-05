@@ -28,6 +28,8 @@ export default defineConfig({
           'stream-worker': resolve('src/main/stream/worker/worker.ts'),
           // The network worker: the HTTP and WebSocket server for paired devices (src/main/network/worker/worker.ts).
           'network-worker': resolve('src/main/network/worker/worker.ts'),
+          // The node link worker: Main's side of the link to its output nodes (src/main/nodes/worker/worker.ts).
+          'link-worker': resolve('src/main/nodes/worker/worker.ts'),
         },
         // ws's optional native helpers are not installed. Left as plain requires, they fail and ws uses its
         // own JavaScript; bundled, Vite would put an empty object in their place and ws would call
@@ -64,6 +66,8 @@ export default defineConfig({
           audio: resolve('src/renderer/audio.html'),
           // The stream's Program, drawn off screen (src/main/stream/program-window.ts).
           stream: resolve('src/renderer/stream.html'),
+          // A node's own window (Session 13): which Main it follows, its displays and media.
+          node: resolve('src/renderer/node.html'),
           // The component gallery, for development (Diagnostics > Component Gallery).
           gallery: resolve('src/renderer/gallery.html'),
           // Pages for phones, tablets and browsers on the local network (src/main/network/web-files.ts).

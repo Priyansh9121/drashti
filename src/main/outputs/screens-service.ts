@@ -6,7 +6,9 @@ import type { SetupOutput } from '../../shared/setup';
 import type {
   CoverOptions,
   DisplayInfo,
+  NodeDisplays,
   ScreenPatch,
+  ScreenStatus,
   ScreensResult,
   ScreensSnapshot,
 } from '../../shared/screens';
@@ -54,6 +56,14 @@ export function memoryScreenLooks(): ScreenLooks {
   };
 }
 
+/** Screens on output nodes (Session 13): their displays and how their screens stand. */
+export interface NodeScreens {
+  displays(): NodeDisplays[];
+  screenStatus(): ScreenStatus[];
+}
+
+const NO_NODES: NodeScreens = { displays: () => [], screenStatus: () => [] };
+
 /**
  * The operator's screen-setup actions. Every input is validated here (it
  * arrives over IPC), then saved, then the output windows are reconciled.
@@ -69,6 +79,8 @@ export class ScreensService {
     private readonly streamInUse: () => boolean = () => false,
     /** Each group's languages live in the Looks. */
     private readonly looks: ScreenLooks = memoryScreenLooks(),
+    /** Output nodes' displays and screens. */
+    private readonly nodes: NodeScreens = NO_NODES,
   ) {}
 
   /** An output on this display would cover the operator window, and the operator has not agreed. */
@@ -85,7 +97,12 @@ export class ScreensService {
   }
 
   snapshot(): ScreensSnapshot {
-    return { displays: this.listDisplays(), groups: this.repo.groups(), status: this.outputs.status() };
+    return {
+      displays: this.listDisplays(),
+      groups: this.repo.groups(),
+      status: [...this.outputs.status(), ...this.nodes.screenStatus()],
+      nodes: this.nodes.displays(),
+    };
   }
 
   private done(): ScreensResult {
@@ -172,6 +189,41 @@ export class ScreensService {
     return this.done();
   }
 
+  /**
+   * One of a node's displays shows a group (Session 13): a screen like any
+   * other, on that node. A display already used by a screen is refused.
+   */
+  assignNodeDisplay(rawGroupId: unknown, rawNodeId: unknown, rawDisplayId: unknown): ScreensResult {
+    const groupId = idSchema.safeParse(rawGroupId);
+    const nodeId = idSchema.safeParse(rawNodeId);
+    const displayId = displayIdSchema.safeParse(rawDisplayId);
+    if (!groupId.success || !nodeId.success || !displayId.success)
+      return this.fail('Choose a group and one of the node’s displays.');
+    if (this.repo.groupName(groupId.data) === null) return this.fail('That group no longer exists.');
+    if (this.repo.groupRole(groupId.data) === 'stream')
+      return this.fail('The stream is drawn off screen: its group has no displays.');
+    const node = this.nodes.displays().find((n) => n.id === nodeId.data);
+    if (!node) return this.fail('That node is no longer paired.');
+    const display = node.displays.find((d) => d.id === displayId.data);
+    if (!display) return this.fail('That display is not connected to the node any more.');
+    const user = this.repo
+      .nodeScreens(node.id)
+      .find(
+        (sc) =>
+          sc.displayKey &&
+          matchDisplays([{ screenId: sc.id, key: sc.displayKey }], [display]).get(sc.id) === display.id,
+      );
+    if (user) return this.fail(`That display is already used by "${user.name}".`);
+    const count = this.repo.allScreens().length;
+    this.repo.addScreen(
+      groupId.data,
+      `${node.name}: ${display.label || `Screen ${count + 1}`}`,
+      display.key,
+      node.id,
+    );
+    return this.done();
+  }
+
   updateScreen(rawId: unknown, rawPatch: unknown, rawOptions?: unknown): ScreensResult {
     const id = idSchema.safeParse(rawId);
     const patch = screenPatchSchema.safeParse(rawPatch);
@@ -181,7 +233,7 @@ export class ScreensService {
     const clean: ScreenPatch = patch.data;
     const current = this.repo.screen(id.data);
     if (!current) return this.fail('That screen no longer exists.');
-    if (clean.enabled === true && !current.enabled && current.displayKey) {
+    if (clean.enabled === true && !current.enabled && current.displayKey && current.nodeId === null) {
       // Turning a screen back on: where would its output open?
       const displayId = matchDisplays(
         [{ screenId: current.id, key: current.displayKey }],

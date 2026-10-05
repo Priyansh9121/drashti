@@ -4,6 +4,7 @@ import '../render/fonts.css';
 import '../styles/app.css';
 import { groupLookIn } from '../../../shared/looks';
 import { connectEngine, useEngine } from '../engine/engine-store';
+import { engineNow } from '../render/clock';
 import { preloadFonts } from '../render/fonts';
 import { PlacedInParent } from '../render/Placed';
 import { Scene } from '../render/Scene';
@@ -50,7 +51,9 @@ function usePaintTiming(root: React.RefObject<HTMLDivElement | null>) {
     const frame = requestAnimationFrame(() => {
       const el = root.current;
       if (!el) return;
-      const paintedAt = Date.now();
+      // The engine's clock (Main's, on a node), as sentAt is: Main and its nodes compare alike.
+      const paintedAt = engineNow();
+      paintedRevNow = rev;
       el.dataset['paintedRev'] = String(rev);
       el.dataset['latencyMs'] = String(Math.max(0, paintedAt - sentAt));
       // A short history, so a test can match every command to the frame that showed it.
@@ -64,12 +67,49 @@ function usePaintTiming(root: React.RefObject<HTMLDivElement | null>) {
   }, [rev, sentAt, root]);
 }
 
+/** The revision this window last painted, and frames that came late, for its reports. */
+let paintedRevNow = -1;
+const late: number[] = [];
+
+/**
+ * Count frames that come more than one and a half frame times after the
+ * one before, and tell the main process every few seconds (the screens
+ * dashboard shows them). A window nobody can see draws few frames: those
+ * are not counted (a gap over a second is not a dropped frame).
+ */
+function useFrameReports(refreshHz: number) {
+  useEffect(() => {
+    const frameMs = 1000 / (refreshHz > 0 ? refreshHz : 60);
+    let last = performance.now();
+    let raf = 0;
+    const tick = (t: number) => {
+      const gap = t - last;
+      last = t;
+      if (gap > frameMs * 1.5 && gap < 1000) late.push(t);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    const report = setInterval(() => {
+      const since = performance.now() - 60_000;
+      while (late.length > 0 && (late[0] ?? 0) < since) late.shift();
+      void window.drashti.output
+        .report({ droppedFrames: late.length, paintedRev: paintedRevNow })
+        .catch(() => undefined);
+    }, 2000);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearInterval(report);
+    };
+  }, [refreshHz]);
+}
+
 function Output() {
   const context = useOutput((s) => s.context);
   const state = useEngine((s) => s.state);
   const [fontsReady, setFontsReady] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   usePaintTiming(rootRef);
+  useFrameReports(context?.display?.refreshHz ?? 60);
   useEffect(() => {
     connectOutput();
     // Fonts first, so the first live slide never shows a fallback font.

@@ -58,6 +58,20 @@ describe('EngineMirror', () => {
     expect(m.rev).toBe(9);
   });
 
+  it('takes a snapshot from a new run of the engine whatever its revision (Drashti restarted)', () => {
+    const m = new EngineMirror();
+    expect(m.apply({ ...snapshot(40), session: 'run-1' })).toBe('applied');
+    // The same run: an older snapshot is old news.
+    expect(m.apply({ ...snapshot(3, true), session: 'run-1' })).toBe('stale');
+    // A new run starts again from 0: its snapshot replaces the copy, and its patches follow it.
+    expect(m.apply({ ...snapshot(3, true), session: 'run-2' })).toBe('applied');
+    expect(m.session).toBe('run-2');
+    expect(m.rev).toBe(3);
+    expect(m.state?.blackout).toBe(true);
+    expect(m.apply(patch(3, 4, false))).toBe('applied');
+    expect(m.state?.blackout).toBe(false);
+  });
+
   it('refuses a different state version', () => {
     const m = new EngineMirror();
     const future: EngineSnapshotMessage = { ...snapshot(1), version: ENGINE_STATE_VERSION + 1 };
