@@ -8,6 +8,7 @@ import type { NodeHealth, ToNode } from '../../shared/nodes';
 import { versionMismatch } from '../../shared/nodes';
 import { LinkClient, openMediaFromMain, pairWithMain, type PinnedMain } from '../node-mode/link-client';
 import { makeIdentity } from './certificate';
+import { hashToken } from '../network/tokens';
 import { byteRange, type LinkHost, LinkServer } from './link-server';
 
 /*
@@ -209,6 +210,62 @@ describe('the node link', () => {
     expect(refused.find((r) => r.startsWith('refused'))).toContain('is not the Main this node paired with');
     expect(fakeHost.events.filter((e) => e.startsWith('online'))).toEqual([]);
     again.stop();
+  });
+
+  it('says plainly when the two computers disagree about the date, and keeps trying', async () => {
+    // Main made its certificate on a day still to come by this computer's clock (its clock was
+    // wrong, or this one is): not valid yet here. And one made so long ago that it has run out.
+    const future = makeIdentity('Placeholder Main', new Date(Date.now() + 10 * 24 * 3600 * 1000));
+    const past = makeIdentity('Placeholder Main', new Date(Date.now() - 31 * 365 * 24 * 3600 * 1000));
+    for (const [identity, words] of [
+      [future, 'Main’s certificate is not valid yet'],
+      [past, 'Main’s certificate has run out'],
+    ] as const) {
+      const { port, server: s } = await start(identity);
+      s.setOffer({ code: '482913', expiresAt: Date.now() + 60_000 });
+      const paired = await pair(port, '482913');
+      expect(paired.ok).toBe(false);
+      expect(paired.ok ? '' : paired.message).toContain(words);
+      expect(paired.ok ? '' : paired.message).toContain('Check the date and time on both computers.');
+      // A node paired before the clock went wrong: refused on the feed, saying why, and trying again by itself.
+      s.setNodes([
+        { id: 'n1', name: 'Placeholder Node', tokenHash: hashToken('test-made-up-node-token-000000000000') },
+      ]);
+      const states: string[] = [];
+      const client = new LinkClient(
+        {
+          id: 'main-1',
+          name: 'Placeholder Main',
+          certPem: identity.certPem,
+          fingerprint: identity.fingerprint,
+          addresses: ['127.0.0.1'],
+          port,
+        },
+        'test-made-up-node-token-000000000000',
+        VERSION,
+        {
+          state: (state, why) => {
+            states.push(`${state}: ${why ?? ''}`);
+          },
+          welcome: () => undefined,
+          message: () => undefined,
+          clock: () => undefined,
+          removed: () => undefined,
+        },
+      );
+      client.start();
+      await expect
+        .poll(() => states.filter((x) => x.startsWith('refused')).length, { timeout: 10_000 })
+        .toBeGreaterThanOrEqual(2);
+      const refusal = states.find((x) => x.startsWith('refused')) ?? '';
+      expect(refusal).toContain(words);
+      expect(refusal).toContain('Check the date and time on both computers. Trying again…');
+      client.stop();
+      await s.stop();
+      server = null;
+      rmSync(dir, { recursive: true, force: true });
+      dir = '';
+    }
   });
 
   it('refuses a node on another version, on the feed too, and says so on both sides', async () => {
