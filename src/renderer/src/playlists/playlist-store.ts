@@ -260,6 +260,10 @@ export async function setItemOrder(itemId: string, order: ItemOrder): Promise<vo
 
 export async function openPlaylist(id: string): Promise<void> {
   usePlaylists.setState({ openId: id, selectedNodeId: id, items: [], marked: [], anchorId: null });
+  // Opened on Main, it counts as this week's: output nodes copy its media ahead (Session 14).
+  void api()
+    .opened(id)
+    .catch(() => undefined);
   await loadItems();
 }
 

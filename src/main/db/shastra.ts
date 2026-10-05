@@ -32,8 +32,8 @@ import type { Db } from './database';
 
 const NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 
-/** How the search index is folded: bump to fold every loaded text again at the next start. 1: Session 13's spellings. */
-export const SHASTRA_SEARCH_VERSION = 1;
+/** How the search index is folded: bump to fold every loaded text again at the next start. 1: Session 13's spellings; 2: Session 14's. */
+export const SHASTRA_SEARCH_VERSION = 2;
 const SEARCH_VERSION_KEY = 'shastra.search.version';
 
 export interface LoadResult {
@@ -306,7 +306,8 @@ export class ShastraRepo {
 
   /**
    * Fold the search index again when it was folded another way (or never
-   * marked): Session 13 folds v and w, and doubled vowels, together
+   * marked): Session 13 folds v and w, and doubled vowels, together, and
+   * Session 14 x and ksh, f and ph, ru and ri after a consonant
    * (shared/search.ts). Returns whether it did.
    */
   reindexIfStale(): boolean {

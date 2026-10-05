@@ -25,12 +25,14 @@ export interface PlaylistIpcDeps {
   fromOperator: (event: IpcMainInvokeEvent) => boolean;
   /** Tell the operator window (and the engine) that playlists changed. */
   changed: () => void;
+  /** The operator opened a playlist (Session 14: it counts as this week's for nodes). */
+  opened: (playlistId: string) => void;
 }
 
 const refused: PlaylistResult = { ok: false, message: 'Only the operator window can change playlists.' };
 const failed = (message: string): PlaylistResult => ({ ok: false, message });
 
-export function registerPlaylistIpc({ repo, fromOperator, changed }: PlaylistIpcDeps): void {
+export function registerPlaylistIpc({ repo, fromOperator, changed, opened }: PlaylistIpcDeps): void {
   /** Run a change for the operator window, then tell everyone when something changed. */
   const change = (event: IpcMainInvokeEvent, run: () => PlaylistResult): PlaylistResult => {
     if (!fromOperator(event)) return refused;
@@ -43,6 +45,12 @@ export function registerPlaylistIpc({ repo, fromOperator, changed }: PlaylistIpc
   handle(IPC.playlists.items, (_e, playlistId) => {
     const id = playlistIdSchema.safeParse(playlistId);
     return id.success ? repo.itemsOf(id.data) : [];
+  });
+  // Opening is not a change to the playlist: Simple Mode's picker counts too.
+  handle(IPC.playlists.opened, (e, playlistId) => {
+    const id = playlistIdSchema.safeParse(playlistId);
+    if (fromOperator(e) && id.success) opened(id.data);
+    return null;
   });
   handle(IPC.playlists.create, (e, name, parentId, isFolder) =>
     change(e, () => {

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { initialEngineState } from '../../shared/engine/state';
 import type { SlideElement } from '../../shared/model';
 import { openDatabase } from '../db/database';
+import { PlaylistRepo } from '../db/playlists';
 import { PresentationRepo } from '../db/presentations';
 import { RateGate } from './link-server';
 import { WantedMedia } from './wanted-media';
@@ -112,6 +113,40 @@ describe('what a node copies', () => {
       ext: 'png',
     });
     expect(wanted.source('song', '/placeholder/Media')).toBeNull();
+  });
+});
+
+describe('a playlist opened on Main (Session 14)', () => {
+  it('counts as this week’s once opened, without changing when it last changed', () => {
+    const { db } = library();
+    const now = Date.now();
+    const wanted = new WantedMedia(
+      db,
+      () => [],
+      () => now,
+    );
+    const since = new Date(now - 7 * 24 * 3600 * 1000).toISOString();
+    const longAgo = new Date(now - 30 * 24 * 3600 * 1000).toISOString();
+    db.prepare('UPDATE playlists SET updated_at = ?, created_at = ? WHERE id = ?').run(
+      longAgo,
+      longAgo,
+      'long-ago',
+    );
+    const before = wanted.list(initialEngineState(), false).map((w) => w.id);
+    expect(before).not.toContain('old');
+    const repo = new PlaylistRepo(db);
+    // Opened: it did not count before, so what nodes copy changes...
+    expect(repo.markOpened('long-ago', since)).toBe(true);
+    wanted.invalidate();
+    expect(wanted.list(initialEngineState(), false).map((w) => w.id)).toContain('old');
+    // ...opened again, it already counted.
+    expect(repo.markOpened('long-ago', since)).toBe(false);
+    const row = db.prepare('SELECT updated_at FROM playlists WHERE id = ?').get('long-ago') as {
+      updated_at: string;
+    };
+    expect(row.updated_at).toBe(longAgo);
+    // Folders and unknown ids are not playlists to open.
+    expect(repo.markOpened('no-such-playlist', since)).toBe(false);
   });
 });
 

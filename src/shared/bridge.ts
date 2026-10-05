@@ -218,6 +218,8 @@ export interface DrashtiBridge {
   playlists: {
     tree(): Promise<PlaylistNode[]>;
     items(playlistId: string): Promise<PlaylistItemInfo[]>;
+    /** The operator opened it: it counts as this week's for output nodes (Session 14). */
+    opened(playlistId: string): Promise<null>;
     create(name: string, parentId: string | null, isFolder: boolean): Promise<PlaylistResult>;
     rename(playlistId: string, name: string): Promise<PlaylistResult>;
     /** Remove playlists or folders (with what they hold); restore brings them back (Undo). */

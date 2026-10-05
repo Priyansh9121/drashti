@@ -6,8 +6,13 @@
  * signs and viramas stay part of their words. Transliteration is spelt
  * many ways, so (Session 13) v and w are one letter, and a doubled vowel is
  * its single one ("aa" as "a", "ee" as "i", "oo" as "u"): "dvitiyah" finds
- * "dwitiyah", and "Shree" finds "Shri". Both sides fold alike, so English
- * words still find themselves ("week" is "vik" on both).
+ * "dwitiyah", and "Shree" finds "Shri". Session 14 adds x as ksh ("Axar"
+ * finds "Akshar"), f as ph ("Fal" finds "Phal"), and ru as ri after a
+ * consonant, where Gujarati writes ઋ as "ru" and Hindi ऋ as "ri" ("Krushna"
+ * finds "Krishna"; "guru" never finds "giri", whose r follows a vowel).
+ * Each folds to the longer spelling, so a word typed only partly still
+ * finds both ("aks" finds "Axar"). Both sides fold alike, so English words
+ * still find themselves ("week" is "vik" on both).
  */
 
 /** Latin accents are the combining marks U+0300 to U+036F once a text is decomposed. */
@@ -17,7 +22,11 @@ const JOINERS = /[‌‍]/g;
 /** A word: letters, their marks (Indic vowel signs are marks) and digits. */
 const WORD = /[\p{L}\p{M}\p{N}]+/gu;
 
-/** Spellings of one sound in Latin letters, once lower-cased: v and w, and doubled (long) vowels. */
+/**
+ * Spellings of one sound in Latin letters, once lower-cased, in this order:
+ * v and w, doubled (long) vowels, x and ksh, f and ph, then ri and ru after
+ * a consonant (the consonant is kept: a lookbehind, so "krru" folds once).
+ */
 const SPELLINGS: readonly [RegExp, string][] = [
   [/w/g, 'v'],
   [/aa+/g, 'a'],
@@ -25,6 +34,9 @@ const SPELLINGS: readonly [RegExp, string][] = [
   [/ii+/g, 'i'],
   [/oo+/g, 'u'],
   [/uu+/g, 'u'],
+  [/x/g, 'ksh'],
+  [/f/g, 'ph'],
+  [/(?<=[bcdghjklmnpqrstvyz])ru/g, 'ri'],
 ];
 
 export function foldText(text: string): string {
