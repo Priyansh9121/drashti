@@ -558,8 +558,10 @@ export class LinkServer {
       refuse(404, 'Not Found');
       return;
     }
+    // A node has an address of its own; this computer itself may run several (the performance
+    // check's simulated nodes, or a node beside Main to try it), within the overall limit.
     const fromHere = [...this.clients].filter((c) => c.address === address).length;
-    if (this.clients.size >= MAX_CLIENTS || fromHere >= MAX_CLIENTS_PER_ADDRESS) {
+    if (this.clients.size >= MAX_CLIENTS || (!isLoopback(address) && fromHere >= MAX_CLIENTS_PER_ADDRESS)) {
       refuse(503, 'Service Unavailable');
       return;
     }
