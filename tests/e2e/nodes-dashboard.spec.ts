@@ -98,6 +98,12 @@ test('the dashboard: pictures, status, Identify, the warning when a node goes, a
     await expect(nodeOut.getByTestId('identify-name')).toHaveText(/^2: /u);
     await expect(nodeOut.getByText(/· Placeholder Hall$/u)).toBeVisible();
 
+    // In Pro Mode, File offers to turn this computer into a node.
+    const useAsNode = () =>
+      main.app.evaluate(
+        ({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById('use-as-node')?.label ?? null,
+      );
+    expect(await useAsNode()).toBe('Use This Computer as a Node…');
     // Simple Mode: the dashboard still opens and Identify works; nothing that changes anything does.
     await dashboard.getByRole('button', { name: 'Close the dashboard' }).click();
     const refused = await main.win.evaluate(
@@ -122,6 +128,8 @@ test('the dashboard: pictures, status, Identify, the warning when a node goes, a
     );
     for (const r of refused) expect(r).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
     await expect(main.win.getByTestId('simple-mode')).toBeVisible();
+    // Nor can it turn this computer into a node: Simple Mode's menu has no File menu, so no such item.
+    await expect.poll(useAsNode).toBeNull();
     await main.win.getByTestId('screens-summary').click();
     await expect(dashboard).toBeVisible();
     await expect(dashboard.getByRole('button', { name: /^Remove/u })).toHaveCount(0);

@@ -260,6 +260,8 @@ With Drashti, the mandir's second computer can follow the first instead of runni
 
 **Pictures and videos:** the node keeps its own copies, made over the network before they are needed: what is on the screens, the playlist that is playing, and every playlist made or changed this week. For a festival with pictures from elsewhere in the library, press **Get everything ready** for the node in the screens dashboard (below). If something goes up before its copy has arrived, the words show at once and the picture or video appears as soon as it has copied.
 
+**Reusing a playlist from an earlier week:** a playlist nobody has changed this week is not copied ahead, only as each item goes up. Before the sabha, open it on Main and change something small (move an item and move it back, or rename and rename back): it then counts as this week's, and the node copies its pictures and videos straight away. Check the dashboard says they are all ready (for example "14 of 14 ready"). **Get everything ready** also covers it.
+
 **Before the sabha: the screens dashboard.** Click the screens line at the bottom left of Main's window (for example "3 screens showing"). The dashboard shows every display, Main's and the node's, with a small picture of what each really shows, and for the node: **Online**, its latency, its clock, and how many pictures and videos are ready (for example "14 of 14 ready"). **Identify** puts a display's number and screen name on it. Simple Mode can open the dashboard too, but cannot change anything there.
 
 **When a node goes offline** (the bottom of Main's window shows a warning, such as "“Lobby PC” offline since 19:42"):
