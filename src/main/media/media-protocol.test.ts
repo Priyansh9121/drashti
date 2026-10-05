@@ -184,6 +184,10 @@ describe('media URLs and ranges', () => {
     expect(mediaRequestOf(mediaUrl(id))).toEqual({ what: 'media', mediaId: id });
     expect(mediaRequestOf(stillUrl(id, 2))).toEqual({ what: 'still', mediaId: id });
     expect(mediaRequestOf('drashti-media://media/abc?v=2')).toEqual({ what: 'media', mediaId: 'abc' });
+    // A later try at a file (its own URL, so Chromium asks again) is the same file.
+    expect(mediaUrl(id, 2)).toBe(`drashti-media://media/${id}?try=2`);
+    expect(mediaRequestOf(mediaUrl(id, 2))).toEqual({ what: 'media', mediaId: id });
+    expect(mediaUrl(id, 0)).toBe(mediaUrl(id));
     expect(mediaRequestOf('drashti-media://media/a.b')).toBeNull();
     expect(mediaRequestOf('drashti-media://media/a%20b')).toBeNull();
     expect(mediaRequestOf('drashti-media://thumbs/abc')).toBeNull();

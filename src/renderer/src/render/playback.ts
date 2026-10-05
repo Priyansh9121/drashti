@@ -11,6 +11,8 @@ import { engineNow } from './clock';
 
 export interface PlaybackOptions {
   mediaId: string;
+  /** A later try at loading it (a node's copy that landed after the first try failed). */
+  attempt?: number;
   /** When the playback started (ms since the epoch, main-process clock). */
   startedAt: number;
   /** The file has its first frame (or sound), at the right point. */
@@ -51,7 +53,7 @@ function tellLength(mediaId: string, seconds: number): void {
 }
 
 export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): () => void {
-  const { mediaId, startedAt, onFrame, onError, audible = false, limits = PICTURE_LIMITS } = options;
+  const { mediaId, attempt, startedAt, onFrame, onError, audible = false, limits = PICTURE_LIMITS } = options;
   // How long the last jump took to land: the next one aims that far ahead, so it lands in step.
   let seekLead = 0;
   let seekFrom = 0;
@@ -102,7 +104,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): ()
   v.addEventListener('error', failed);
   v.addEventListener('seeked', landed);
   const timer = setInterval(check, CHECK_MS);
-  v.src = mediaUrl(mediaId);
+  v.src = mediaUrl(mediaId, attempt);
   return () => {
     clearInterval(timer);
     v.removeEventListener('loadedmetadata', onMetadata);

@@ -8,7 +8,7 @@ import { useMediaAttempt } from '../render/media-attempts';
 type LoadState = 'loading' | 'ready' | 'failed';
 
 /** An image fetched and decoded out of sight, so the slide that shows it paints it at once. */
-function PreloadImage({ mediaId }: { mediaId: string }) {
+function PreloadImage({ mediaId, attempt }: { mediaId: string; attempt: number }) {
   const ref = useRef<HTMLImageElement>(null);
   const [state, setState] = useState<LoadState>('loading');
   useEffect(() => {
@@ -26,16 +26,16 @@ function PreloadImage({ mediaId }: { mediaId: string }) {
     return () => {
       current = false;
     };
-  }, [mediaId]);
-  return <img ref={ref} src={mediaUrl(mediaId)} alt="" data-preload={mediaId} data-state={state} />;
+  }, [mediaId, attempt]);
+  return <img ref={ref} src={mediaUrl(mediaId, attempt)} alt="" data-preload={mediaId} data-state={state} />;
 }
 
 /** A video loaded up to its first frame out of sight (muted, never played). */
-function PreloadVideo({ mediaId }: { mediaId: string }) {
+function PreloadVideo({ mediaId, attempt }: { mediaId: string; attempt: number }) {
   const [state, setState] = useState<LoadState>('loading');
   return (
     <video
-      src={mediaUrl(mediaId)}
+      src={mediaUrl(mediaId, attempt)}
       muted
       playsInline
       preload="auto"
@@ -52,13 +52,13 @@ function PreloadVideo({ mediaId }: { mediaId: string }) {
   );
 }
 
-/** One file to load ahead; a node's copy that lands late is loaded again (a new element). */
+/** One file to load ahead; a node's copy that lands late is loaded again (a new element, a new URL). */
 function PreloadOne({ media }: { media: PreloadMedia }) {
   const attempt = useMediaAttempt(media.mediaId);
   return media.media === 'image' ? (
-    <PreloadImage key={attempt} mediaId={media.mediaId} />
+    <PreloadImage key={attempt} mediaId={media.mediaId} attempt={attempt} />
   ) : (
-    <PreloadVideo key={attempt} mediaId={media.mediaId} />
+    <PreloadVideo key={attempt} mediaId={media.mediaId} attempt={attempt} />
   );
 }
 

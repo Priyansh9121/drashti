@@ -9,9 +9,13 @@ export const MEDIA_SCHEME = 'drashti-media';
 /** A media id as the library stores it (a UUID); nothing else can name a file. */
 export const MEDIA_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
-/** The URL that loads a media item's file. */
-export function mediaUrl(mediaId: string): string {
-  return `${MEDIA_SCHEME}://media/${mediaId}`;
+/**
+ * The URL that loads a media item's file. A later try (a node's copy that landed after the first
+ * load failed) gets a URL of its own: Chromium fails a URL that failed a moment ago at once, without
+ * asking for it again, for up to 30 s or more. The main process reads only the path.
+ */
+export function mediaUrl(mediaId: string, attempt = 0): string {
+  return `${MEDIA_SCHEME}://media/${mediaId}${attempt > 0 ? `?try=${attempt}` : ''}`;
 }
 
 /**

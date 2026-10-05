@@ -239,7 +239,15 @@ function mediaStyle(el: MediaElement): CSSProperties {
 }
 
 /** A video placed on a slide, playing (muted) from when the slide went live, in step on every window. */
-function SlideVideo({ el, startedAt }: { el: MediaElement; startedAt: number | undefined }) {
+function SlideVideo({
+  el,
+  startedAt,
+  attempt,
+}: {
+  el: MediaElement;
+  startedAt: number | undefined;
+  attempt: number;
+}) {
   const ref = useRef<HTMLVideoElement>(null);
   // Props and other things without a start time play from when they appear.
   const [mountedAt] = useState(() => engineNow());
@@ -247,8 +255,8 @@ function SlideVideo({ el, startedAt }: { el: MediaElement; startedAt: number | u
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
-    return startPlayback(v, { mediaId: el.mediaId, startedAt: start });
-  }, [el.mediaId, start]);
+    return startPlayback(v, { mediaId: el.mediaId, attempt, startedAt: start });
+  }, [el.mediaId, attempt, start]);
   return (
     <video
       ref={ref}
@@ -305,7 +313,7 @@ function MediaView({ el, media, startedAt }: { el: MediaElement; media: MediaMod
         key={attempt}
         data-element={el.id}
         data-media-id={el.mediaId}
-        src={mediaUrl(el.mediaId)}
+        src={mediaUrl(el.mediaId, attempt)}
         alt=""
         draggable={false}
         style={mediaStyle(el)}
@@ -313,7 +321,7 @@ function MediaView({ el, media, startedAt }: { el: MediaElement; media: MediaMod
     );
   }
   if (media === 'still') return <VideoStill mediaId={el.mediaId} style={mediaStyle(el)} />;
-  return <SlideVideo key={attempt} el={el} startedAt={startedAt} />;
+  return <SlideVideo key={attempt} el={el} startedAt={startedAt} attempt={attempt} />;
 }
 
 export function ElementView({
