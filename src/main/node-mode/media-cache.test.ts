@@ -217,5 +217,7 @@ describe('a node’s media copies', () => {
     shown = ['big'];
     online = false;
     expect(await c.ensure('big')).toBeNull();
+    // Closing stops the copy that never ends (and lets go of its file).
+    await c.close();
   });
 });

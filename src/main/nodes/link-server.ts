@@ -127,12 +127,12 @@ export class RateGate {
   private rate: number;
 
   constructor(bytesPerSecond: number) {
-    this.rate = Math.max(64 * 1024, bytesPerSecond);
+    this.rate = Math.max(1024, bytesPerSecond);
     this.tokens = this.rate / 4;
   }
 
   setRate(bytesPerSecond: number): void {
-    this.rate = Math.max(64 * 1024, bytesPerSecond);
+    this.rate = Math.max(1024, bytesPerSecond);
   }
 
   /** Take `n` bytes: how long to wait before sending them (ms). */
