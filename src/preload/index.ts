@@ -91,6 +91,18 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
+  music: {
+    view: () => invoke(IPC.music.view),
+    create: (name) => invoke(IPC.music.create, name),
+    rename: (playlistId, name) => invoke(IPC.music.rename, playlistId, name),
+    remove: (playlistId) => invoke(IPC.music.remove, playlistId),
+    setOptions: (playlistId, options) => invoke(IPC.music.setOptions, playlistId, options),
+    addTracks: (playlistId, mediaIds, at) => invoke(IPC.music.addTracks, playlistId, mediaIds, at),
+    moveTrack: (trackId, to) => invoke(IPC.music.moveTrack, trackId, to),
+    removeTrack: (trackId) => invoke(IPC.music.removeTrack, trackId),
+    play: (playlistId, trackIndex) => invoke(IPC.music.play, playlistId, trackIndex),
+    onChanged: (listener) => on(IPC.music.changed, listener),
+  },
   updates: {
     view: () => invoke(IPC.updates.view),
     check: () => invoke(IPC.updates.check),

@@ -1,4 +1,5 @@
 import type { EngineState } from '../../../shared/engine/state';
+import { MUSIC_FADE_IN_MS, MUSIC_FADE_OUT_MS } from '../../../shared/music';
 
 /** One sound the show is making: a file, when it started, and how. */
 export interface Sound {
@@ -9,6 +10,9 @@ export interface Sound {
   loop: boolean;
   /** 0 to 1. */
   volume: number;
+  /** An audio playlist's track (Session 14): it fades in as it starts and out as it stops. */
+  fadeInMs?: number;
+  fadeOutMs?: number;
 }
 
 /**
@@ -20,13 +24,15 @@ export interface Sound {
 export function soundsOf(state: EngineState): Sound[] {
   const sounds: Sound[] = [];
   const audio = state.layers.audio;
-  if (audio?.mediaId) {
+  // A paused audio playlist makes no sound (it fades out, and starts again where it was).
+  if (audio?.mediaId && audio.pausedAtMs === undefined) {
     sounds.push({
       key: `audio:${audio.mediaId}@${audio.startedAt}`,
       mediaId: audio.mediaId,
       startedAt: audio.startedAt,
       loop: audio.loop,
       volume: audio.volume,
+      ...(audio.music ? { fadeInMs: MUSIC_FADE_IN_MS, fadeOutMs: MUSIC_FADE_OUT_MS } : {}),
     });
   }
   const bg = state.layers.background;

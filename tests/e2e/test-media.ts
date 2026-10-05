@@ -221,3 +221,29 @@ export function setWebmDuration(webm: Uint8Array, durationMs: number): Buffer {
     webm.subarray(info.end),
   ]);
 }
+
+/** A WAV file of a soft sine tone (placeholder sound only): 16-bit mono PCM, which Chromium plays. */
+export function makeTestTone(file: string, options: { seconds: number; hz?: number; rate?: number }): string {
+  const rate = options.rate ?? 8000;
+  const samples = Math.round(options.seconds * rate);
+  const data = Buffer.alloc(samples * 2);
+  const hz = options.hz ?? 440;
+  for (let i = 0; i < samples; i++)
+    data.writeInt16LE(Math.round(Math.sin((2 * Math.PI * hz * i) / rate) * 3000), i * 2);
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + data.length, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(rate, 24);
+  header.writeUInt32LE(rate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(data.length, 40);
+  writeFileSync(file, Buffer.concat([header, data]));
+  return file;
+}

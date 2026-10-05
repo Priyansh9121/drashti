@@ -144,6 +144,14 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.backups.save,
   IPC.backups.pickFolder,
   IPC.backups.runNow,
+  // Audio playlists (Session 14): Simple Mode plays and pauses one, and changes none.
+  IPC.music.create,
+  IPC.music.rename,
+  IPC.music.remove,
+  IPC.music.setOptions,
+  IPC.music.addTracks,
+  IPC.music.moveTrack,
+  IPC.music.removeTrack,
   // Updates (Session 14): Simple Mode never sees them.
   IPC.updates.check,
   IPC.updates.download,

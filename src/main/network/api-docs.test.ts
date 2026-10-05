@@ -18,7 +18,11 @@ describe('the API documentation', () => {
         expect(docs, route).toContain('POST /api/v1/clear/slide');
         continue;
       }
-      expect(docs, route).toContain(written(route).replace(/\/(pause|reset)$/u, '/start'));
+      // A timer's pause and reset are written with its start; other routes are written as they are.
+      const asWritten = route.includes('/timers/')
+        ? written(route).replace(/\/(pause|reset)$/u, '/start')
+        : written(route);
+      expect(docs, route).toContain(asWritten);
     }
   });
 });

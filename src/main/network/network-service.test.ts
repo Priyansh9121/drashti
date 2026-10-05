@@ -91,6 +91,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
               message: `No loaded text is called “${reference.split(' ')[0] ?? ''}”. The texts are: PG.`,
             },
     },
+    playMusic: () => ({ ok: true as const }),
     runMacro: (id) =>
       options.locked === true
         ? { ok: false, message: SIMPLE_MODE_REFUSAL }

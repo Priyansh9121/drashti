@@ -32,6 +32,7 @@ import { OnAirBadges } from '../stream/OnAirBadges';
 import { NetworkBadge } from '../network/NetworkBadge';
 import { ArtiPrompt } from '../arti/ArtiPrompt';
 import { MacroCountdown } from '../macros/MacroCountdown';
+import { MusicStrip } from '../music/MusicPanel';
 import { ScreensDashboard } from '../nodes/ScreensDashboard';
 import { useNodes } from '../nodes/nodes-store';
 
@@ -382,6 +383,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
               <NextPreview stacked />
             </div>
           </div>
+          <MusicStrip />
           <p className="mt-auto px-3 pt-3 text-xs leading-6 text-muted">
             Keys: Next <Kbd>{key('next')}</Kbd> or Page Down · Back <Kbd>{key('previous')}</Kbd> or Page Up ·
             Black out <Kbd>{key('toggleBlackout')}</Kbd> or <Kbd>.</Kbd> · Logo <Kbd>{key('toggleLogo')}</Kbd>{' '}

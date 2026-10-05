@@ -49,6 +49,7 @@ describe('moving everything to the converted file', () => {
       elements: ['e1'],
       props: ['pr'],
       themes: ['th'],
+      tracks: [],
     });
     expect(uses(db, 'old')).toEqual([0, 0, 0, 0, 0, 0]);
     expect(uses(db, 'new')).toEqual([1, 1, 1, 1, 1, 1]);
@@ -77,5 +78,29 @@ describe('moving everything to the converted file', () => {
       (db.prepare("SELECT media_id FROM playlist_items WHERE id = 'i1'").get() as { media_id: string })
         .media_id,
     ).toBe('other');
+  });
+});
+
+describe('a converted sound in an audio playlist (Session 14)', () => {
+  it('moves to the copy, keeping its place, and back with Undo', () => {
+    const db = openDatabase(':memory:');
+    db.exec(`
+      INSERT INTO media (id, kind, name, path) VALUES ('old', 'audio', 'Placeholder.aiff', 'aa/old.aiff'),
+        ('new', 'audio', 'Placeholder.m4a', 'bb/new.m4a'), ('other', 'audio', 'Other.mp3', 'cc/other.mp3');
+      INSERT INTO audio_playlists (id, name) VALUES ('ap', 'Placeholder music');
+      INSERT INTO audio_playlist_tracks (id, playlist_id, media_id, position) VALUES
+        ('t1', 'ap', 'other', 0), ('t2', 'ap', 'old', 1);
+    `);
+    const order = () =>
+      (
+        db.prepare('SELECT media_id FROM audio_playlist_tracks ORDER BY position').all() as {
+          media_id: string;
+        }[]
+      ).map((r) => r.media_id);
+    const moved = moveMedia(db, 'old', 'new');
+    expect(moved.tracks).toEqual(['t2']);
+    expect(order()).toEqual(['other', 'new']);
+    moveBack(db, moved, 'old', 'new');
+    expect(order()).toEqual(['other', 'old']);
   });
 });

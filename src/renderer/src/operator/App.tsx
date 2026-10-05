@@ -40,6 +40,7 @@ import { MasksPanel } from './MasksPanel';
 import { MacrosPanel } from './MacrosPanel';
 import { MacroEditor } from '../macros/MacroEditor';
 import { MacroCountdown } from '../macros/MacroCountdown';
+import { MusicPanel } from '../music/MusicPanel';
 import { runMacro } from '../macros/macros-store';
 import { setMidiHandler, startMidi } from '../midi/midi-store';
 import { runBack } from './actions';
@@ -207,6 +208,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
               <MasksPanel />
               <MessagesPanel />
               <TimersPanel />
+              <MusicPanel />
               <ArtiPanel />
               <IdlePanel />
             </div>

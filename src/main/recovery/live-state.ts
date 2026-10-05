@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { rename, rm, writeFile } from 'node:fs/promises';
 import { z } from 'zod';
-import { audioChoiceSchema, messageSchema, propSchema } from '../../shared/engine/commands';
+import { audioChoiceSchema, messageSchema, musicStartSchema, propSchema } from '../../shared/engine/commands';
 import type {
   AudioLayer,
   BackgroundLayer,
@@ -124,7 +124,13 @@ const savedSchema = z.object({
 });
 const audioLayerSchema = z.intersection(
   audioChoiceSchema,
-  z.object({ startedAt: z.number(), durationMs: z.number().positive().optional() }),
+  z.object({
+    startedAt: z.number(),
+    durationMs: z.number().positive().optional(),
+    // An audio playlist's track (Session 14): it comes back where it would be by now, or paused where it was.
+    music: musicStartSchema.extend({ index: z.number().int().min(0).max(999) }).optional(),
+    pausedAtMs: z.number().min(0).optional(),
+  }),
 );
 const markSchema = z.object({ session: z.string().min(1).max(64) });
 

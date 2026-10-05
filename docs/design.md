@@ -280,3 +280,10 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **The status bar says it in a word, in Pro Mode only** (`accent`, a download icon): "Drashti 1.0.1 is available", "… is downloaded", "… installs when Drashti quits"; a click opens the dialog. Simple Mode shows nothing about updates.
 - **A node's window offers to match Main** under its Main section, in the same calm column: what Main runs and what it runs, then **Update to Drashti x.y.z**, **Download**, **Quit and install**, one at a time.
 - The dialog and the node's offer pass the accessibility checks at 1280 × 720 (`tests/e2e/updates.spec.ts`).
+
+## 31. Music (audio playlists)
+
+- **A panel in the live column**, like the arti's: which list (a select, with rename and remove beside it), then the transport in one row (previous, **Play** or **Pause** as the one `primary` button, next), then loop and shuffle as small toggles whose state is `aria-pressed` and an accent colour with words in their labels, never colour alone. What plays is a status line above, with its time left ("Paused: …" while paused).
+- **Tracks are compact rows**: the number (or a play mark in `live` for the one playing), the name, its length, and Earlier, Later and take-out buttons. A track that cannot play says so in words and cannot be clicked. **Add sounds…** opens a dialog of the library's sounds to tick.
+- **Simple Mode gets one strip**, between the previews and the key hints: the list's name and what plays, and one large button, **Play music** or **Pause music**. Nothing else about music shows there, and it still fits 1280 × 720 with nothing scrolling.
+- The panel, the add dialog and Simple Mode's strip pass the accessibility checks at 1280 × 720 (`tests/e2e/music.spec.ts`).
