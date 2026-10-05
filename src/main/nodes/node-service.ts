@@ -23,6 +23,7 @@ import type { ScreenRepo } from '../db/screens';
 import type { LinkWorker } from './link-worker';
 import type { LinkOptions, LinkStats } from './link-server';
 import type { FromLinkWorker } from './worker/protocol';
+import { hashToken, newToken } from '../network/tokens';
 
 /*
  * Output nodes, as Main runs them (Session 13). It keeps the code on offer
@@ -46,7 +47,7 @@ export interface NodeServiceDeps {
   addresses(): string[];
   /** Listen on every interface, or on this computer only (tests). */
   bind: string;
-  engine: { snapshot(): EngineSnapshotMessage; state(): EngineState; session: string };
+  engine: { snapshot(): EngineSnapshotMessage; state(): EngineState; rev(): number; session: string };
   /** What a node should copy, in order. */
   wanted(state: EngineState, everything: boolean): MediaWant[];
   /** A media file for a node: where it is, its hash, size and extension. */
@@ -72,6 +73,8 @@ export const COPY_RATE = 30 * 1024 * 1024;
 export const COPY_RATE_ON_AIR = 5 * 1024 * 1024;
 /** How often nodes send pictures while the dashboard is open. */
 export const THUMB_EVERY_MS = 3000;
+/** A report is behind only when it misses what the show was this long ago. */
+const REPORT_SLACK_MS = 1500;
 /** Last-seen times are written now and then, never on every message. */
 const SEEN_WRITE_MS = 5 * 60 * 1000;
 
@@ -84,6 +87,8 @@ interface Live {
   version: string | null;
   health: NodeHealth | null;
   refused: string | null;
+  /** Since when its reports have been behind the show (ms), or null while it keeps up. */
+  behindSince: number | null;
 }
 
 export class NodeService implements EngineTransport {
@@ -105,6 +110,8 @@ export class NodeService implements EngineTransport {
   private onAirWas = false;
   private statsWaiters: ((stats: LinkStats) => void)[] = [];
   private stopping: Promise<void> | null = null;
+  /** The engine's revisions over the last few seconds, and when each came. */
+  private readonly revs: { at: number; rev: number }[] = [];
 
   constructor(private readonly deps: NodeServiceDeps) {}
 
@@ -263,6 +270,10 @@ export class NodeService implements EngineTransport {
         const l = this.liveOf(m.nodeId);
         const before = JSON.stringify(l.health?.outputs ?? null);
         l.health = m.health;
+        // Caught up with the show as it was a moment ago (a report is on its way while the show goes on),
+        // or behind it since when.
+        if (m.health.rev >= this.revBefore(this.deps.now() - REPORT_SLACK_MS)) l.behindSince = null;
+        else l.behindSince ??= this.deps.now();
         if (
           this.deps.nodes.setDisplays(m.nodeId, m.health.displays) ||
           before !== JSON.stringify(m.health.outputs)
@@ -306,10 +317,25 @@ export class NodeService implements EngineTransport {
     }
   }
 
+  /** The engine's revision as it was at this time. */
+  private revBefore(at: number): number {
+    let rev = -1;
+    for (const r of this.revs) if (r.at <= at) rev = r.rev;
+    return rev === -1 ? (this.revs[0]?.rev ?? this.deps.engine.rev()) - 1 : rev;
+  }
+
   private liveOf(nodeId: string): Live {
     let l = this.live.get(nodeId);
     if (!l) {
-      l = { online: false, since: null, address: null, version: null, health: null, refused: null };
+      l = {
+        online: false,
+        since: null,
+        address: null,
+        version: null,
+        health: null,
+        refused: null,
+        behindSince: null,
+      };
       this.live.set(nodeId, l);
     }
     return l;
@@ -389,6 +415,9 @@ export class NodeService implements EngineTransport {
   // ---- engine messages ----------------------------------------------------------------------
 
   broadcast(message: EngineMessage): void {
+    const at = this.deps.now();
+    this.revs.push({ at, rev: message.rev });
+    while (this.revs.length > 2 && (this.revs[1]?.at ?? at) < at - 10_000) this.revs.shift();
     if (!this.worker) return;
     this.worker.send({ type: 'engine', message });
     this.pushWanted();
@@ -563,6 +592,7 @@ export class NodeService implements EngineTransport {
       latencyMs: l?.health?.clock ? Math.round(l.health.clock.rttMs * 10) / 10 : null,
       versionRefused: l?.refused ?? null,
       everything: n.everything,
+      behindSince: l?.online && l.behindSince !== null ? new Date(l.behindSince).toISOString() : null,
     };
   }
 
@@ -637,6 +667,20 @@ export class NodeService implements EngineTransport {
       this.statsWaiters.push(resolve);
       worker.send({ type: 'stats', reset });
     });
+  }
+
+  /** The performance check: a paired node and its token, without the pairing dance. */
+  pairForCheck(name: string): { id: string; token: string } {
+    const token = newToken();
+    const row = this.deps.nodes.add({
+      name,
+      tokenHash: hashToken(token),
+      address: '127.0.0.1',
+      version: this.deps.version,
+    });
+    this.pushNodes();
+    this.updateWorker();
+    return { id: row.id, token };
   }
 
   close(): Promise<void> {

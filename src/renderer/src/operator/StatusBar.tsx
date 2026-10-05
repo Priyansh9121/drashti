@@ -12,6 +12,9 @@ import { plural } from '../ui/text';
 import { Truncate } from '../ui/Truncate';
 import { useNotice, useTaskProgress } from './actions';
 import { ScreensSummary } from './StatusLine';
+import { connectNodes, openDashboard, useNodes } from '../nodes/nodes-store';
+import { nodeWarnings } from '../../../shared/nodes';
+import { useNow } from '../render/useNow';
 
 /*
  * The status bar along the very bottom: the screens connected, where the
@@ -167,13 +170,40 @@ function TodayStatus({ onOpen }: { onOpen: (() => void) | null }) {
   );
 }
 
+/** A node offline, behind on media or out of step (Session 13): the first, and how many more; opens the dashboard. */
+function NodeWarnings() {
+  const status = useNodes((s) => s.status);
+  const now = useNow(2000);
+  useEffect(() => {
+    connectNodes();
+  }, []);
+  const warnings = status ? nodeWarnings(status.nodes, now) : [];
+  const first = warnings[0];
+  if (!first) return null;
+  return (
+    <button
+      type="button"
+      onClick={openDashboard}
+      title="Open the screens dashboard"
+      data-testid="node-warning"
+      className="flex min-w-0 items-center gap-1.5 rounded-sm bg-warning-bg px-1.5 py-0.5 text-warning-fg"
+    >
+      <AlertTriangle size={13} aria-hidden="true" className="shrink-0" />
+      <span className="truncate">
+        {first.text}
+        {warnings.length > 1 ? ` (and ${warnings.length - 1} more)` : ''}
+      </span>
+    </button>
+  );
+}
+
 export function StatusBar({
   info,
   onOpenScreens,
   onOpenCalendar = null,
 }: {
   info: AppInfo | null;
-  /** Null in Simple Mode, where the screens cannot be opened. */
+  /** Null in Simple Mode, where the screens cannot be set up. */
   onOpenScreens: (() => void) | null;
   /** The Calendar dialog (Pro Mode). */
   onOpenCalendar?: (() => void) | null;
@@ -183,7 +213,9 @@ export function StatusBar({
       className="flex h-7 shrink-0 items-center gap-3 border-t border-line bg-ink px-2 text-xs text-muted"
       aria-label="Status"
     >
-      <ScreensSummary onOpen={onOpenScreens} />
+      {/* The screens dashboard opens from here in both modes (Simple Mode only looks). */}
+      <ScreensSummary onOpen={openDashboard} />
+      <NodeWarnings />
       <SoundStatus onOpen={onOpenScreens} />
       <TodayStatus onOpen={onOpenCalendar} />
       <div aria-live="polite" className="flex min-w-0 flex-1 items-center gap-3">
