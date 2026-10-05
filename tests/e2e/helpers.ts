@@ -11,7 +11,7 @@ export type PageGlobals = typeof globalThis & { drashti: DrashtiBridge };
 
 /** Globals inside an output window: its history of painted engine revisions. */
 export type OutputGlobals = typeof globalThis & {
-  drashtiPaintLog?: { rev: number; sentAt: number; paintedAt: number }[];
+  drashtiPaintLog?: { rev: number; sentAt: number; paintedAt: number; wallAt: number }[];
 };
 
 /**
