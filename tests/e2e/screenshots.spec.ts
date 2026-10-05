@@ -945,8 +945,8 @@ test('Shastra, timers in the running order, the arti prompt, Samvat and tithi, a
 
 test('output nodes: the node’s window, Screens with a node, pairing, the dashboard and its warning (Session 13)', async () => {
   test.setTimeout(240_000);
-  const main = await launchMain();
-  const node = await launchNode();
+  const main = await launchMain({ DRASHTI_TEST_COMPUTER_NAME: 'Placeholder Mandir Mac' });
+  const node = await launchNode({ DRASHTI_TEST_COMPUTER_NAME: 'Placeholder Lobby PC' });
   try {
     await node.page.setViewportSize({ width: 1280, height: 720 });
     await shot(node.page, 'node-window-unpaired');

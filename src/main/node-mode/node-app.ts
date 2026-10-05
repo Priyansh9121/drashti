@@ -1,5 +1,4 @@
 import { app, BrowserWindow, dialog, protocol } from 'electron';
-import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { EngineMirror } from '../../shared/engine/mirror';
 import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
@@ -59,6 +58,8 @@ export interface NodeAppDeps {
   sleepGuard: SleepGuard;
   /** Tests only: this computer's clock as if it were this far off, to stand in for another computer's. */
   clockSkewMs: number;
+  /** This computer's name (as Main lists the node, and its window says). */
+  computerName: string;
   /** Restart as Main (the role file is written first). */
   restartAsMain(): void;
 }
@@ -71,7 +72,7 @@ const MEDIA_WAIT_MS = 60_000;
 export function startNode(deps: NodeAppDeps): void {
   const store = new NodeStore(deps.userData);
   let paired: NodeFile | null = store.read();
-  const host = nodeNameFrom(hostname());
+  const host = nodeNameFrom(deps.computerName);
   const localNow = () => Date.now() + deps.clockSkewMs;
 
   // ---- the show, as Main's feed brings it (or as it was last kept) --------------------------
