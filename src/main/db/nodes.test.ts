@@ -39,16 +39,20 @@ describe('NodeRepo', () => {
     expect(nodes.get(n.id)?.displays.map((d) => d.label)).toEqual(['Placeholder TV']);
     expect(nodes.setEverything(n.id, true)).toBe(true);
     expect(nodes.rename(n.id, 'Placeholder Hall PC')).toBe(true);
-    nodes.touch(
-      new Map([[n.id, { at: '2026-10-05T10:00:00.000Z', address: '192.168.1.31', version: null }]]),
-    );
+    // Seen a minute after pairing (times from now: pairing itself counts as seen).
+    const later = new Date(Date.now() + 60_000).toISOString();
+    nodes.touch(new Map([[n.id, { at: later, address: '192.168.1.31', version: null }]]));
     expect(nodes.get(n.id)).toMatchObject({
       name: 'Placeholder Hall PC',
       everything: true,
-      lastSeenAt: '2026-10-05T10:00:00.000Z',
+      lastSeenAt: later,
       address: '192.168.1.31',
       version: '1.0.0',
     });
+    // A sighting older than the last one never moves it back.
+    const earlier = new Date(Date.now() - 3_600_000).toISOString();
+    nodes.touch(new Map([[n.id, { at: earlier, address: '192.168.1.32', version: null }]]));
+    expect(nodes.get(n.id)).toMatchObject({ lastSeenAt: later, address: '192.168.1.31' });
     // The same token cannot be kept twice.
     expect(() =>
       nodes.add({ name: 'Copy', tokenHash: 'a'.repeat(64), address: null, version: '1.0.0' }),
