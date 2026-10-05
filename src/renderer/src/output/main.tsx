@@ -58,7 +58,8 @@ function usePaintTiming(root: React.RefObject<HTMLDivElement | null>) {
       el.dataset['latencyMs'] = String(Math.max(0, paintedAt - sentAt));
       // A short history, so a test can match every command to the frame that showed it.
       const log = (window.drashtiPaintLog ??= []);
-      log.push({ rev, sentAt, paintedAt });
+      // wallAt: this computer's own clock, so tests on one computer can compare Main's and a node's frames.
+      log.push({ rev, sentAt, paintedAt, wallAt: Date.now() });
       if (log.length > 20_000) log.splice(0, log.length - 20_000);
     });
     return () => {
