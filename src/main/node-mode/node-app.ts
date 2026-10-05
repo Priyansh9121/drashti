@@ -365,7 +365,7 @@ export function startNode(deps: NodeAppDeps): void {
             link = { state, why, since: Date.now() };
             log.info(`Node: link ${state}${why ? ` (${why})` : ''}`);
           }
-          if (state === 'online') cache.kick();
+          if (state === 'online') cache.backOnline();
           viewChanged();
         },
         welcome: (main) => {

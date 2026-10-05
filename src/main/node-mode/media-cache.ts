@@ -21,8 +21,11 @@ import { diskFreeBytes, sha256File } from '../import/media-store';
  * (sha256.ext, so each is served as what it is), with an index of which
  * media id is which file. Main says what to have and in what order; anything
  * on the screens (or up next) that is not here yet is fetched at once, ahead
- * of the list. One file at a time; an interrupted copy carries on from where
- * it stopped; every copy is checked against its hash before it is used.
+ * of the list (a copy for later gives way to it). One file at a time; an
+ * interrupted copy carries on from where it stopped; every copy is checked
+ * against its hash before it is used. A copy that fails is tried again soon
+ * when the screens need it, later otherwise, and at once when Main is back
+ * after being away.
  * A screen asking for a file that is not here yet waits for it for as long
  * as the file is on the screens and its copy can still arrive (its previous
  * picture stays up meanwhile); a copy that lands after a screen stopped
@@ -62,9 +65,9 @@ interface IndexFile {
 
 const GiB = 1024 * 1024 * 1024;
 const KEEP_DAYS_MS = 30 * 24 * 3600 * 1000;
-/** A file that could not be copied is tried again after this; one a screen is waiting for, sooner. */
+/** A file that could not be copied is tried again after this; one on the screens, sooner. */
 const RETRY_MS = 15_000;
-const URGENT_RETRY_MS = 2000;
+const SOON_RETRY_MS = 2000;
 /** How often a screen's wait is checked: is the file still on the screens, and Main reachable? */
 const HOLD_CHECK_MS = 1000;
 /** A copy that fails its hash this many times is given up (Main's own file is not what it says). */
@@ -80,8 +83,14 @@ export class MediaCache {
   private readonly urgent = new Set<string>();
   private readonly waiters = new Map<string, ((path: string | null) => void)[]>();
   private readonly failedAt = new Map<string, number>();
+  /** Failed for a reason a quick retry will not mend (no such file on Main, no room): tried now and then. */
+  private readonly lasting = new Set<string>();
   private readonly hashFailures = new Map<string, number>();
   private holdTimer: NodeJS.Timeout | null = null;
+  private retryTimer: NodeJS.Timeout | null = null;
+  private retryDue = 0;
+  /** The copy under way is being stopped to make way for one the screens need. */
+  private yielding = false;
   /** The copy under way (to stop it), the loop copying, and whether the cache has been closed. */
   private current: IncomingMessage | null = null;
   private runner: Promise<void> | null = null;
@@ -219,10 +228,21 @@ export class MediaCache {
     }, HOLD_CHECK_MS);
   }
 
-  /** Try again now (Main came back, or the screens changed). */
+  /** Try again now (the screens or the list changed). A copy for later gives way to one the screens need. */
   kick(): void {
-    if (this.closed || this.running) return;
+    if (this.closed) return;
+    if (this.running) {
+      if (this.shouldYield()) this.yieldCopy();
+      return;
+    }
     this.runner = this.run();
+  }
+
+  /** Main can be reached again: what failed while it was away is tried at once. */
+  backOnline(): void {
+    this.failedAt.clear();
+    this.lasting.clear();
+    this.kick();
   }
 
   /** Stop: the copy under way breaks off (it carries on next time), and nobody waits any more. */
@@ -230,6 +250,8 @@ export class MediaCache {
     this.closed = true;
     if (this.holdTimer) clearInterval(this.holdTimer);
     this.holdTimer = null;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
     this.current?.destroy();
     for (const id of [...this.waiters.keys()]) this.settle(id, null, 'closing');
     await this.runner?.catch(() => undefined);
@@ -277,17 +299,78 @@ export class MediaCache {
     this.deps.landed?.(mediaId);
   }
 
+  /** Files not here yet, most pressing first: what screens wait for, what is on them, then Main's list. */
+  private missing(shown: string[]): string[] {
+    const out: string[] = [];
+    for (const id of this.urgent) if (!this.has(id)) out.push(id);
+    for (const id of shown) if (!this.has(id) && this.index.ids.has(id)) out.push(id);
+    for (const w of this.wanted) if (!this.index.files.has(w.sha256)) out.push(w.id);
+    return out;
+  }
+
+  /** When a file may be tried (again): at once if it never failed, soon if the screens need it. */
+  private dueAt(id: string, shown: Set<string>): number {
+    const failed = this.failedAt.get(id);
+    if (failed === undefined) return 0;
+    const soon = !this.lasting.has(id) && (this.urgent.has(id) || shown.has(id));
+    return failed + (soon ? SOON_RETRY_MS : RETRY_MS);
+  }
+
   private next(): string | null {
+    for (const id of this.urgent) if (this.has(id)) this.settle(id, this.pathFor(id));
     const t = this.now();
-    const ready = (id: string) =>
-      (this.failedAt.get(id) ?? 0) + (this.urgent.has(id) ? URGENT_RETRY_MS : RETRY_MS) <= t;
-    for (const id of this.urgent) {
-      if (this.has(id)) this.settle(id, this.pathFor(id));
-      else if (ready(id)) return id;
-    }
-    for (const id of this.deps.inUse()) if (!this.has(id) && ready(id) && this.index.ids.has(id)) return id;
-    for (const w of this.wanted) if (!this.index.files.has(w.sha256) && ready(w.id)) return w.id;
-    return null;
+    const shown = this.deps.inUse();
+    const on = new Set(shown);
+    return this.missing(shown).find((id) => this.dueAt(id, on) <= t) ?? null;
+  }
+
+  /** The copy under way is for later, and the screens need a file that may be tried now. */
+  private shouldYield(): boolean {
+    const c = this.copying;
+    if (!c || !this.current || this.yielding) return false;
+    const shown = this.deps.inUse();
+    const on = new Set(shown);
+    if (this.urgent.has(c.id) || on.has(c.id)) return false;
+    const t = this.now();
+    return this.missing(shown).some(
+      (id) => id !== c.id && (this.urgent.has(id) || on.has(id)) && this.dueAt(id, on) <= t,
+    );
+  }
+
+  /** Stop the copy under way (it carries on from where it stopped later). */
+  private yieldCopy(): void {
+    this.yielding = true;
+    this.current?.destroy();
+  }
+
+  /**
+   * Come back when the first failed file is due again. A timer that fires a moment before that (the
+   * clocks differ by a millisecond or so) looks again for the rest of the wait, never a whole one.
+   */
+  private scheduleRetry(): void {
+    const shown = this.deps.inUse();
+    const on = new Set(shown);
+    const failed = this.missing(shown).filter((id) => this.failedAt.has(id));
+    const due = Math.min(...failed.map((id) => this.dueAt(id, on)));
+    if (this.retryTimer && due === this.retryDue) return;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+    if (this.closed || !this.deps.online() || failed.length === 0) return;
+    this.retryDue = due;
+    const needed = failed.filter((id) => this.urgent.has(id) || on.has(id));
+    if (needed.length > 0)
+      this.deps.log(
+        'info',
+        `Media copies: ${needed.length} on the screens not here yet; trying again in ${Math.max(1, due - this.now())} ms`,
+      );
+    this.retryTimer = setTimeout(
+      () => {
+        this.retryTimer = null;
+        this.kick();
+      },
+      Math.max(1, due - this.now()),
+    );
+    this.retryTimer.unref();
   }
 
   private async run(): Promise<void> {
@@ -297,9 +380,17 @@ export class MediaCache {
       for (let id = this.next(); id !== null && this.deps.online() && !this.closed; id = this.next()) {
         try {
           await this.copy(id);
+          this.failedAt.delete(id);
+          this.lasting.delete(id);
           this.problem = null;
         } catch (error) {
+          if (this.yielding) {
+            // Not a failure: it gave way to a file the screens need, and carries on afterwards.
+            this.deps.log('info', `Media copies: ${id} waits while a file the screens need is copied`);
+            continue;
+          }
           this.failedAt.set(id, this.now());
+          if (error instanceof Gone || error instanceof NoRoom) this.lasting.add(id);
           if (error instanceof NoRoom) {
             this.problem = error.message;
             this.settle(id, null, 'no room');
@@ -308,31 +399,18 @@ export class MediaCache {
           this.deps.log('warn', `Media copies: ${id} not copied (${(error as Error).message})`);
           // Gone for good: a screen waiting for it stops; anything else is tried again.
           if (error instanceof Gone) this.settle(id, null, error.message);
+          this.scheduleRetry();
         } finally {
+          this.yielding = false;
           this.copying = null;
+          this.current = null;
           this.deps.changed();
         }
       }
     } finally {
       this.running = false;
     }
-    // Something failed: come back to it later (soon, when a screen waits for it).
-    if (this.failedAt.size > 0 && !this.closed) {
-      const after = this.urgent.size > 0 ? URGENT_RETRY_MS : RETRY_MS;
-      const t = this.now();
-      const missing = this.deps.inUse().filter((id) => !this.has(id) && this.index.ids.has(id));
-      if (missing.length > 0 && this.deps.online()) {
-        const due = missing.map(
-          (id) =>
-            `${id} ${(this.failedAt.get(id) ?? 0) + (this.urgent.has(id) ? URGENT_RETRY_MS : RETRY_MS) - t} ms`,
-        );
-        this.deps.log(
-          'info',
-          `Media copies: ${missing.length} on the screens not here yet; looking again in ${after} ms (due: ${due.join(', ')})`,
-        );
-      }
-      setTimeout(() => this.kick(), after).unref();
-    }
+    this.scheduleRetry();
   }
 
   private room(bytes: number): boolean {
@@ -419,6 +497,7 @@ export class MediaCache {
       if (this.copying) this.copying.done += chunk.length;
     });
     this.current = res;
+    if (this.shouldYield()) this.yieldCopy();
     try {
       await pipeline(res, createWriteStream(part, { flags: from > 0 ? 'a' : 'w' }));
     } finally {
