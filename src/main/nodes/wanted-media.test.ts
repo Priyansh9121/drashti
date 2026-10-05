@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { initialEngineState } from '../../shared/engine/state';
 import type { SlideElement } from '../../shared/model';
@@ -105,7 +106,7 @@ describe('what a node copies', () => {
     ).toEqual(['live-item', 'old', 'prop-pic', 'slide-pic', 'week-item'].sort());
     // Where a file is, for a node that asks: inside the media folder only.
     expect(wanted.source('slide-pic', '/placeholder/Media')).toEqual({
-      path: `/placeholder/Media/${sha(1)}.png`,
+      path: join('/placeholder/Media', `${sha(1)}.png`),
       sha256: sha(1),
       bytes: 100,
       ext: 'png',
