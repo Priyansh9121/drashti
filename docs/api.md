@@ -4,6 +4,8 @@ Drashti answers on the mandir's local network, once the operator turns the netwo
 
 Everything here is **local only**: requests are refused from addresses outside the private ranges, from a Host header that is not this computer's own address or name, and (from a browser) from pages that are not Drashti's own. See README, "The local network", for the security model.
 
+**Not here: the node link.** Output nodes (Session 13: other computers running Drashti as a Node) talk to Main on a port of their own (8741) over TLS with Main's own certificate, which each node pins when it pairs. That link is for Drashti alone and is not part of this API: a script or Companion cannot use it, and it refuses browsers. See README, "Output nodes".
+
 ## Basics
 
 - **Address:** `http://<computer>:8740` (the port is set in the Phones panel). Examples below use

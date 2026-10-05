@@ -19,6 +19,7 @@ import {
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 import { freePort, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
 import { makeTestImage } from './test-media';
+import { launchMain, launchNode, nodeCode, nodeView, pairNode } from './nodes';
 
 /*
  * The screenshots in docs/screenshots/, with placeholder content only. Taken
@@ -940,4 +941,97 @@ test('Shastra, timers in the running order, the arti prompt, Samvat and tithi, a
   await hall.waitForTimeout(500);
   await shot(hall, 'output-idle-quote');
   await app.close();
+});
+
+test('output nodes: the node’s window, Screens with a node, pairing, the dashboard and its warning (Session 13)', async () => {
+  test.setTimeout(240_000);
+  const main = await launchMain();
+  const node = await launchNode();
+  try {
+    await node.page.setViewportSize({ width: 1280, height: 720 });
+    await shot(node.page, 'node-window-unpaired');
+    // Main offering a code (covered in the picture), then the node paired.
+    await main.win.setViewportSize({ width: 1920, height: 1080 });
+    await main.win.getByRole('button', { name: 'Screens', exact: true }).click();
+    await nodeCode(main.win);
+    await expect(main.win.getByTestId('node-pairing')).toBeVisible();
+    await main.win.getByTestId('nodes-section').scrollIntoViewIfNeeded();
+    await shot(main.win, 'screens-pair-node', [main.win.getByTestId('node-pairing-code')]);
+    await main.win.getByRole('button', { name: 'Close screens' }).click();
+    const nodeId = await pairNode(main, node);
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-shots-nodes-'));
+    const words = join(dir, 'Placeholder Node Kirtan.txt');
+    writeFileSync(words, '[Verse]\nPlaceholder line one on every screen\nPlaceholder line two\n');
+    const backdrop = await makeTestImage(main.win, join(dir, 'Placeholder hall backdrop.png'), {
+      width: 640,
+      height: 360,
+      color: '#203858',
+    });
+    const [id = ''] = await main.win.evaluate(
+      async (files) => {
+        const d = (globalThis as PageGlobals).drashti;
+        const r = await d.library.importPaths(files);
+        if (!r.ok) throw new Error(r.message);
+        const report = await d.library.getImportReport(r.run.id);
+        return files.map((f) => report?.items.find((i) => i.sourcePath === f)?.target?.id ?? '');
+      },
+      [words, backdrop],
+    );
+    await setUpScreen(main.win, 'Placeholder Hall', 1);
+    await expect
+      .poll(async () =>
+        main.win.evaluate(
+          async (n) =>
+            (await (globalThis as PageGlobals).drashti.screens.get()).nodes.find((x) => x.id === n)?.displays
+              .length ?? 0,
+          nodeId,
+        ),
+      )
+      .toBeGreaterThanOrEqual(2);
+    await main.win.evaluate(
+      async ({ nodeId, id }) => {
+        const d = (globalThis as PageGlobals).drashti;
+        const s = await d.screens.get();
+        const group = s.groups.find((g) => g.name === 'Placeholder Hall');
+        const n = s.nodes.find((x) => x.id === nodeId);
+        const r = await d.screens.assignNodeDisplay(group?.id ?? '', nodeId, n?.displays[1]?.id ?? -1);
+        if (!r.ok) throw new Error(r.message);
+        const media = await d.library.listMedia();
+        const bg = media.find((m) => m.name.startsWith('Placeholder hall backdrop'));
+        if (bg)
+          await d.engine.dispatch({
+            type: 'setBackground',
+            background: { kind: 'media', mediaId: bg.id, media: 'image', fit: 'fill', loop: false },
+          });
+        await d.engine.dispatch({ type: 'goLive', presentationId: id, slideIndex: 0 });
+      },
+      { nodeId, id },
+    );
+    await outputPage(node.app);
+    await expect
+      .poll(async () => (await nodeView(node.page)).displays.some((d) => d.screen?.showing))
+      .toBe(true);
+    await shot(node.page, 'node-window');
+    // Screens, with the node and its displays.
+    await main.win.getByRole('button', { name: 'Screens', exact: true }).click();
+    await main.win.getByTestId('nodes-section').scrollIntoViewIfNeeded();
+    await shot(main.win, 'screens-with-node');
+    await main.win.getByRole('button', { name: 'Close screens' }).click();
+    // The dashboard, with both pictures.
+    await main.win.getByTestId('screens-summary').click();
+    const dashboard = main.win.getByTestId('screens-dashboard');
+    await expect(dashboard.getByTestId('dashboard-thumb')).toHaveCount(2, { timeout: 20_000 });
+    await shot(main.win, 'screens-dashboard');
+    await main.win.setViewportSize({ width: 1280, height: 720 });
+    await shot(main.win, 'screens-dashboard-1280x720');
+    await dashboard.getByRole('button', { name: 'Close the dashboard' }).click();
+    // The node goes: the status bar's warning.
+    await node.app.close();
+    await expect(main.win.getByTestId('node-warning')).toBeVisible({ timeout: 20_000 });
+    await main.win.setViewportSize({ width: 1920, height: 1080 });
+    await shot(main.win, 'operator-node-offline');
+  } finally {
+    await node.app.close().catch(() => undefined);
+    await main.app.close();
+  }
 });

@@ -40,7 +40,7 @@ Drashti's installers are made automatically each time a new version is ready, on
 
 1. Run the `.exe` installer. Windows says "Windows protected your PC", because the build is not signed yet. Click **More info**, then **Run anyway**.
 2. It installs for the current user, with no administrator password, and Drashti appears in the Start menu.
-3. Section 6 of `docs/windows-checks.md` has checks for this install; do them now and write down what you see (the rest of that file comes in section 10 of this guide).
+3. Section 6 of `docs/windows-checks.md` has checks for this install; do them now and write down what you see (the rest of that file comes in section 11 of this guide).
 
 When Drashti starts the first time, its library holds two sample presentations. Your own library comes in the next step.
 
@@ -241,7 +241,40 @@ Drashti can take a phone as a remote, a tablet as a stage screen, and announceme
 
 ---
 
-## 8. Falling back to ProPresenter
+## 8. The second computer as a node
+
+With Drashti, the mandir's second computer can follow the first instead of running a show of its own: the first is **Main** (the library, the playlists, the controls), and the second is a **node** that shows Main's screens on its own displays, in step. A node has no controls and makes no sound. Try it on one of these evenings, after section 7.
+
+**Setting up the node (once):**
+
+1. Install **the same version** of Drashti on both computers (the node says so if they differ, and refuses to follow until they match).
+2. On the second computer, start Drashti. On its very first start it asks how the computer will be used: choose **Node: show screens for another computer**. (A computer that already runs Drashti as Main: **File**, then **Use This Computer as a Node…**; on Windows press **Alt** for the menu bar. Its library stays on the computer, untouched, for switching back.)
+3. The node's window opens: **Drashti Node**, with **Pair with Main**.
+4. On Main, open **Screens** (in the header), then press **Pair a node**. It shows Main's **address** (for example `192.168.1.20`) and a **code**, for two minutes.
+5. On the node, type the address and the code, then press **Pair with Main**. The node's window now says **Online** and **Follows** Main's name.
+6. The first time, Main's computer may ask about the network:
+   - **Mac:** "accept incoming network connections?" Press **Allow**.
+   - **Windows:** tick **Private networks** only, then **Allow**.
+
+**Giving the node's displays a screen:** in Main's **Screens**, under **Nodes**, each of the node's displays is listed with **Use this display**: choose the group (for example "Main Hall" or "Lobby") and press it. The node opens an output on that display and shows what that group shows, the same as Main's own screens. **Show display numbers** in the node's window puts each display's number on it, so you know which is which.
+
+**Pictures and videos:** the node keeps its own copies, made over the network before they are needed: what is on the screens, the playlist that is playing, and every playlist made or changed this week. For a festival with pictures from elsewhere in the library, press **Get everything ready** for the node in the screens dashboard (below). If something goes up before its copy has arrived, the words show at once and the picture or video appears as soon as it has copied.
+
+**Before the sabha: the screens dashboard.** Click the screens line at the bottom left of Main's window (for example "3 screens showing"). The dashboard shows every display, Main's and the node's, with a small picture of what each really shows, and for the node: **Online**, its latency, its clock, and how many pictures and videos are ready (for example "14 of 14 ready"). **Identify** puts a display's number and screen name on it. Simple Mode can open the dashboard too, but cannot change anything there.
+
+**When a node goes offline** (the bottom of Main's window shows a warning, such as "“Lobby PC” offline since 19:42"):
+
+- **Do not stop the sabha.** Main's own screens carry on. The node's screens keep their last picture (a video plays on), so nothing goes black.
+- Check the node computer is on, Drashti is open on it, and its network cable or Wi-Fi is connected. When the network is back, the node connects again **by itself** and catches up with the show; nothing needs pressing.
+- If the node computer restarted, Drashti shows the last picture again until Main answers.
+- If the warning says the node is **still copying** files on its screens, they appear as soon as they arrive. If it says there is not enough room on the node's disk, free some space on that computer.
+- If the node's window says **Refused**: "not the Main this node paired with", Main's computer or its Drashti data was replaced; unpair the node and pair it again. If nothing was replaced, tell whoever looks after Drashti, and leave the node unpaired. "Main runs Drashti … and this node runs …": install the same version on both.
+
+**Removing a node:** in Main's **Screens** (or the dashboard), press **Remove** beside it. It is cut off at once and its screens go black. To use it again, pair it with a new code. On the node, **Unpair…** does the same from its side, and **Use this computer as Main…** turns it back into a Main.
+
+---
+
+## 9. Falling back to ProPresenter
 
 A real sabha always has a named fallback operator who knows how to switch back. Practise it on these evenings until it takes **under a minute**:
 
@@ -253,7 +286,7 @@ The plan's order for real use (PLAN.md, section 5.1) is: a smaller weekday or Ba
 
 ---
 
-## 9. After a problem: save diagnostics
+## 10. After a problem: save diagnostics
 
 If anything goes wrong (a screen went black, something froze, Drashti closed by itself), as soon as you can:
 
@@ -267,7 +300,7 @@ If Drashti closed by itself, start it again: it puts back what was on the screen
 
 ---
 
-## 10. The checks to run on each computer
+## 11. The checks to run on each computer
 
 Once per computer, during these evenings:
 
@@ -320,7 +353,7 @@ On the Mac, **Cmd** is the ⌘ key; on Windows, use **Ctrl** instead. These keys
 | **Cmd+Shift+U** / **Ctrl+Shift+U**             | Uncover the controls (works from anywhere)                                                       |
 | **Esc**                                        | Cancel editing words or a question, or empty the search box                                      |
 
-Going live, ending the stream and recording have no keys: use the buttons in the **Stream** panel (each going live or ending asks first). Switching the Look and running a macro have no keys either: use their buttons under the live picture, or a MIDI pad mapped to a macro. The arti prompt has no keys of its own: from its time, Next puts the arti up.
+The screens dashboard has no key: click the screens line at the bottom left of the window (it opens in Simple Mode too). Going live, ending the stream and recording have no keys: use the buttons in the **Stream** panel (each going live or ending asks first). Switching the Look and running a macro have no keys either: use their buttons under the live picture, or a MIDI pad mapped to a macro. The arti prompt has no keys of its own: from its time, Next puts the arti up.
 
 In the slide editor:
 
