@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { CommandResult, EngineCommand, EngineCommandType } from '../../shared/engine/commands';
 import { diffState } from '../../shared/engine/patch';
 import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
@@ -156,6 +157,8 @@ const MAX_STEPS = 50;
 export class ShowEngine {
   private state: EngineState = initialEngineState();
   private revision = 0;
+  /** This run of the engine: its revisions start from 0 (snapshots say which run they are from). */
+  readonly session = randomUUID();
   private readonly listeners = new Set<(state: EngineState) => void>();
   /** What Clear all took down (from), while the layers are still what it left (to). */
   private cleared: { from: Layers; to: Layers } | null = null;
@@ -212,6 +215,7 @@ export class ShowEngine {
       rev: this.revision,
       state: this.state,
       sentAt: this.now(),
+      session: this.session,
     };
   }
 

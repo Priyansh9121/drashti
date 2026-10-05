@@ -123,6 +123,19 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.network.renameDevice,
   IPC.network.revokeDevice,
   IPC.network.makePoster,
+  // Output nodes (Session 13): Simple Mode sees the dashboard and Identify, and changes nothing:
+  // no pairing, removing, renaming, assigning, copying everything or reloading an output.
+  IPC.nodes.startPairing,
+  IPC.nodes.cancelPairing,
+  IPC.nodes.rename,
+  IPC.nodes.remove,
+  IPC.nodes.everything,
+  IPC.nodes.reload,
+  IPC.screens.assignNodeDisplay,
+  // A node's own window has no Simple Mode; listed so no change is ever open by mistake.
+  IPC.node.pair,
+  IPC.node.unpair,
+  IPC.node.useAsMain,
   // The announcements queue: Simple Mode never approves, edits, rejects or takes one off.
   IPC.announcements.edit,
   IPC.announcements.approve,

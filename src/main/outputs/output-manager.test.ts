@@ -61,6 +61,7 @@ const screen = (id: string, d: DisplayInfo | null, enabled = true): ScreenConfig
   scaling: 'fit',
   enabled,
   feed: null,
+  nodeId: null,
 });
 
 beforeEach(() => {

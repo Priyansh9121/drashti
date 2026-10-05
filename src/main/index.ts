@@ -92,7 +92,7 @@ import { log, logFiles, startLogFile } from './log';
 import { LiveStateWriter, toRestore } from './recovery/live-state';
 import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES } from './media/media-protocol';
 import { saveStill } from './media/stills';
-import { installMenu } from './menu';
+import { installMenu, installNodeMenu } from './menu';
 import { runPerformanceTest } from './perftest';
 import { registerPlaylistIpc } from './playlists/playlist-ipc';
 import { applyPendingRestore, backupLibrary, requestRestore, rollBackRestore } from './library/backup';
@@ -145,9 +145,19 @@ import { AnnouncementRepo } from './db/announcements';
 import { inProcessNetworkWorker, spawnNetworkWorker } from './network/network-worker';
 import { startPerfDevices } from './network/perf-devices';
 import { localName } from './network/local-name';
+import { localInterfaceAddresses } from './network/addresses';
 import { isInside } from './media/media-protocol';
 import { rendererDir } from './windows/renderer';
 import { quietTests, startQuietTests } from './windows/quiet';
+import { knownRole, readRole, writeRole } from './role';
+import { startNode } from './node-mode/node-app';
+import { NodeRepo } from './db/nodes';
+import { NodeService } from './nodes/node-service';
+import { spawnLinkWorker } from './nodes/link-worker';
+import { loadOrMakeIdentity } from './nodes/identity';
+import { WantedMedia } from './nodes/wanted-media';
+import type { NodeOutputStatus, ScreenThumb } from '../shared/nodes';
+import { hostname } from 'node:os';
 
 // Headless self-tests: run one, print the result, exit (see README). The performance test
 // imports a few hundred placeholder files, so it gets a throwaway data folder of its own.
@@ -221,6 +231,13 @@ let artiClockOffset = artiTestClock ? Number(process.env['DRASHTI_TEST_ARTI_OFFS
 // network's server in the main process instead of its own.
 const perfDevices = Math.min(50, Math.max(0, Number(process.env['DRASHTI_PERF_DEVICES'] ?? 0) || 0));
 const perfNetworkInMain = process.env['DRASHTI_PERF_NETWORK_IN_MAIN'] === '1';
+// Tests only (never a packaged Drashti): the version this copy says it runs, to see Main and a node
+// on different versions refuse each other; a node's clock as if it were this far off; and the port
+// Main listens for nodes on.
+const testVersion = app.isPackaged ? undefined : process.env['DRASHTI_TEST_VERSION'];
+const appVersion = () => testVersion ?? app.getVersion();
+const nodeClockSkewMs = app.isPackaged ? 0 : Number(process.env['DRASHTI_TEST_CLOCK_SKEW_MS'] ?? 0) || 0;
+const nodePortOverride = Number(process.env['DRASHTI_NODE_PORT'] ?? 0) || null;
 
 // Library media reaches the sandboxed windows only through drashti-media:// (see media/media-protocol.ts).
 // Schemes must be registered before the app is ready.
@@ -407,6 +424,63 @@ async function runPerformanceTestWithStream(ctx: PerfRun): ReturnType<typeof run
   }
 }
 
+/**
+ * Main or Node (Session 13): the role kept in the data folder, or asked on
+ * the very first start (a computer with a library is a Main). Self-tests and
+ * end-to-end tests start as Main unless DRASHTI_ROLE says otherwise.
+ */
+function boot(): void {
+  const userData = app.getPath('userData');
+  const selfTesting = process.env['DRASHTI_SELFTEST'] !== undefined;
+  let role = selfTesting ? 'main' : knownRole(userData, process.env['DRASHTI_ROLE']);
+  if (role === null) {
+    if (process.env['DRASHTI_TEST_NO_WIZARD'] === '1') role = 'main';
+    else {
+      const choice = dialog.showMessageBoxSync({
+        type: 'question',
+        buttons: ['Main: run the show here', 'Node: show screens for another computer'],
+        defaultId: 0,
+        cancelId: 0,
+        message: 'How will this computer be used?',
+        detail:
+          'Main runs the show: the library, the playlists and the controls. A Node follows a Main on the local network and shows its screens on this computer’s displays. You can change this later: on Main in the File menu, on a node in its window.',
+      });
+      role = choice === 1 ? 'node' : 'main';
+    }
+  }
+  if (!selfTesting && readRole(userData) !== role) writeRole(userData, role);
+  log.info(`Starting as ${role === 'node' ? 'a node' : 'Main'}`);
+  if (role === 'node') startNodeMode();
+  else start();
+}
+
+/** Drashti as a node: no library, no show controls, no sound (node-mode/node-app.ts). */
+function startNodeMode(): void {
+  applySessionSecurity(session.defaultSession, {
+    log: logPermissions
+      ? (line: string) => {
+          log.info(line);
+        }
+      : undefined,
+    isOperator: () => false,
+  });
+  installNodeMenu();
+  startNode({
+    userData: app.getPath('userData'),
+    version: appVersion(),
+    windowed: windowedOutputs,
+    watchdog,
+    sleepGuard,
+    clockSkewMs: nodeClockSkewMs,
+    restartAsMain: () => {
+      writeRole(app.getPath('userData'), 'main');
+      log.info('Restarting as Main');
+      if (!noRelaunch) app.relaunch();
+      app.exit(0);
+    },
+  });
+}
+
 function start(): void {
   if (ffmpegCheck) {
     const path = findFfmpeg({
@@ -535,6 +609,15 @@ function start(): void {
       network?.broadcast(message);
     },
   };
+  // Output nodes get every engine message too (while any is paired); made further down.
+  let nodeService: NodeService | null = null;
+  /** What each node should copy (made with the media, further down). */
+  let wantedMedia: WantedMedia | null = null;
+  const nodesTransport: EngineTransport = {
+    broadcast: (message) => {
+      nodeService?.broadcast(message);
+    },
+  };
   // Looks: the engine reads them through the service, made just below (it needs the engine).
   const lookRepo = new LookRepo(db);
   let lookService: LookService | null = null;
@@ -552,7 +635,7 @@ function start(): void {
   let idleService: IdleService | null = null;
   const engine = new ShowEngine(
     playable,
-    new FanoutTransport([transport, networkTransport]),
+    new FanoutTransport([transport, networkTransport, nodesTransport]),
     Date.now,
     { items: (id) => playlists.playItems(id) },
     {
@@ -674,6 +757,8 @@ function start(): void {
       }
       guardOperator();
       sleepGuard.update(manager.status().filter((st) => st.state === 'showing').length);
+      // Nodes follow their screens' settings (groups, canvases, names) as they change.
+      nodeService?.screensChanged();
     },
   });
   outputs = manager;
@@ -690,6 +775,10 @@ function start(): void {
     operatorDisplayId,
     () => stream?.inUse() ?? false,
     looks,
+    {
+      displays: () => nodeService?.displays() ?? [],
+      screenStatus: () => nodeService?.screenStatus() ?? [],
+    },
   );
 
   // ---- keeping the operator's controls reachable ----------------------------
@@ -939,6 +1028,9 @@ function start(): void {
       artiService?.refresh();
       // A picture in the idle rotation may have gone (or come back).
       idleService?.refresh();
+      // What the nodes should copy may have changed.
+      wantedMedia?.invalidate();
+      nodeService?.libraryChanged();
     };
     if (now) {
       if (changedTimer) clearTimeout(changedTimer);
@@ -951,6 +1043,10 @@ function start(): void {
   const listChanged = (what: Exclude<LibraryChange, 'presentations'>) => {
     sendToOperator(IPC.library.changed, { at: Date.now(), what });
     if (what === 'props' || what === 'messages' || what === 'shastra') network?.hint(what);
+    if (what === 'props') {
+      wantedMedia?.invalidate();
+      nodeService?.libraryChanged();
+    }
   };
   const imports = new ImportService({
     spawn: spawnImportWorker,
@@ -1496,6 +1592,177 @@ function start(): void {
   app.on('will-quit', () => {
     void net.close();
   });
+
+  // ---- output nodes (Session 13) ----------------------------------------------------------------
+  const nodeRepo = new NodeRepo(db);
+  const wanted = new WantedMedia(db, () => {
+    const idle = settings.get('idleRotation') as { pictures?: unknown } | undefined;
+    return Array.isArray(idle?.pictures)
+      ? idle.pictures.filter((p): p is string => typeof p === 'string')
+      : [];
+  });
+  wantedMedia = wanted;
+  const mainName = () => localName()?.replace(/\.local$/u, '') ?? hostname().replace(/\.local$/u, '');
+  let identityCache: ReturnType<typeof loadOrMakeIdentity> | null = null;
+  /** How each of Main's own outputs draws (they report every few seconds), for the dashboard. */
+  const localReports = new Map<string, { droppedFrames: number; paintedRev: number }>();
+  const nodes = new NodeService({
+    nodes: nodeRepo,
+    screens: screenRepo,
+    settings,
+    spawn: () =>
+      spawnLinkWorker((line) => {
+        log.info(`[node link worker] ${line}`);
+      }),
+    identity: () => {
+      identityCache ??= loadOrMakeIdentity(userDataDir, mainName());
+      return {
+        cert: identityCache.certPem,
+        key: identityCache.keyPem,
+        fingerprint: identityCache.fingerprint,
+        id: identityCache.id,
+        name: mainName(),
+      };
+    },
+    version: appVersion(),
+    addresses: () => [
+      ...localInterfaceAddresses().filter((a) => !a.includes(':')),
+      ...(localName() ? [localName() ?? ''] : []),
+    ],
+    bind: networkLocalOnly ? '127.0.0.1' : '0.0.0.0',
+    engine: { snapshot: () => engine.snapshot(), state: () => engine.current, session: engine.session },
+    wanted: (state, everything) => wanted.list(state, everything),
+    mediaFile: (mediaId) => wanted.source(mediaId, mediaDir),
+    onAir: () => streaming.inUse(),
+    changed: (status) => {
+      sendToOperator(IPC.nodes.changed, status);
+    },
+    screensChanged: () => {
+      sendToOperator(IPC.screens.changed, screens.snapshot());
+    },
+    thumbs: (thumbs) => {
+      sendToOperator(IPC.nodes.thumbs, thumbs);
+    },
+    localOutputs: () =>
+      manager.status().flatMap((st): NodeOutputStatus[] =>
+        st.state === 'showing' || st.state === 'missing-display' || st.state === 'disabled'
+          ? [
+              {
+                screenId: st.screenId,
+                state: st.state,
+                displayId: st.displayId,
+                droppedFrames: localReports.get(st.screenId)?.droppedFrames ?? 0,
+                paintedRev: localReports.get(st.screenId)?.paintedRev ?? -1,
+              },
+            ]
+          : [],
+      ),
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+    now: Date.now,
+    portOverride: nodePortOverride,
+  });
+  nodeService = nodes;
+  nodes.resume();
+  app.on('will-quit', () => {
+    void nodes.close();
+  });
+  // Pictures of Main's own outputs for the dashboard, every few seconds while it is open.
+  let localThumbs: NodeJS.Timeout | null = null;
+  const captureLocal = () => {
+    for (const [screenId, win] of outputWindows) {
+      if (win.isDestroyed()) continue;
+      void win.webContents
+        .capturePage()
+        .then((image) => {
+          if (image.isEmpty()) return;
+          const jpeg = image.resize({ width: 320, quality: 'good' }).toJPEG(60).toString('base64');
+          const thumb: ScreenThumb = {
+            screenId,
+            nodeId: null,
+            url: `data:image/jpeg;base64,${jpeg}`,
+            at: Date.now(),
+          };
+          sendToOperator(IPC.nodes.thumbs, [thumb]);
+        })
+        .catch(() => undefined);
+    }
+  };
+  const notNodesOperator = { ok: false as const, message: 'Only the operator window can change the nodes.' };
+  handle(IPC.nodes.status, () => nodes.status());
+  handle(IPC.nodes.startPairing, (e) => (fromOperator(e) ? nodes.startPairing() : notNodesOperator));
+  handle(IPC.nodes.cancelPairing, (e) => (fromOperator(e) ? nodes.cancelPairing() : notNodesOperator));
+  handle(IPC.nodes.rename, (e, id, name) => (fromOperator(e) ? nodes.rename(id, name) : notNodesOperator));
+  handle(IPC.nodes.remove, (e, id) => (fromOperator(e) ? nodes.remove(id) : notNodesOperator));
+  handle(IPC.nodes.everything, (e, id, on) =>
+    fromOperator(e) ? nodes.setEverything(id, on) : notNodesOperator,
+  );
+  handle(IPC.nodes.reload, (e, nodeId, screenId) => {
+    if (!fromOperator(e)) return notNodesOperator;
+    const sid = idSchema.safeParse(screenId);
+    if (!sid.success) return { ok: false as const, message: 'That screen no longer exists.' };
+    if (nodeId === null) {
+      const win = outputWindows.get(sid.data);
+      if (!win || win.isDestroyed()) return { ok: false as const, message: 'That screen is not showing.' };
+      log.info('Reloading an output from the screens dashboard');
+      win.webContents.reload();
+      return { ok: true as const, status: nodes.status() };
+    }
+    const nid = idSchema.safeParse(nodeId);
+    return nid.success
+      ? nodes.reload(nid.data, sid.data)
+      : { ok: false as const, message: 'That node is no longer paired.' };
+  });
+  handle(IPC.nodes.identify, (e, nodeId, displayId) => {
+    if (!fromOperator(e)) return null;
+    const display = typeof displayId === 'number' && Number.isFinite(displayId) ? displayId : null;
+    if (nodeId === null) {
+      // Main's own: the output on that display says its name, or the display its number.
+      const shownOn = listDisplays()
+        .map((d, i) => ({ d, n: i + 1 }))
+        .filter(({ d }) => display === null || d.id === display);
+      for (const { d, n } of shownOn) {
+        const st = manager.status().find((x) => x.displayId === d.id && x.state === 'showing');
+        const win = st ? outputWindows.get(st.screenId) : undefined;
+        const sc = st ? screenRepo.screen(st.screenId) : null;
+        if (win && sc && !win.isDestroyed())
+          win.webContents.send(IPC.output.identify, {
+            name: `${n}: ${sc.name}`,
+            groupName: screenRepo.groupName(sc.groupId) ?? '',
+          });
+        else if (operatorDisplayId() !== d.id)
+          showDisplayNumber(d, n, { windowed: windowedOutputs, forMs: 5000 });
+      }
+      return null;
+    }
+    const nid = idSchema.safeParse(nodeId);
+    if (nid.success) nodes.identify(nid.data, display);
+    return null;
+  });
+  handle(IPC.nodes.watch, (e, on) => {
+    if (!fromOperator(e)) return null;
+    const watching = on === true;
+    nodes.watch(watching);
+    if (localThumbs) clearInterval(localThumbs);
+    localThumbs = null;
+    if (watching) {
+      captureLocal();
+      localThumbs = setInterval(captureLocal, 3000);
+    }
+    return null;
+  });
+  handle(IPC.output.report, (e, raw) => {
+    const screenId = manager.screenIdFor(e.sender.id);
+    const r = raw as { droppedFrames?: unknown; paintedRev?: unknown } | null;
+    if (screenId && typeof r?.droppedFrames === 'number' && typeof r.paintedRev === 'number')
+      localReports.set(screenId, { droppedFrames: r.droppedFrames, paintedRev: r.paintedRev });
+    return null;
+  });
+  handle(IPC.screens.assignNodeDisplay, (e, groupId, nodeId, displayId) =>
+    fromOperator(e) ? screens.assignNodeDisplay(groupId, nodeId, displayId) : notAllowed,
+  );
   const notNetworkOperator = {
     ok: false as const,
     message: 'Only the operator window can change the network.',
@@ -2093,6 +2360,27 @@ function start(): void {
     restoreLibrary: () => {
       if (mode === 'pro') void restore(backupUi);
     },
+    useAsNode: () => {
+      if (mode !== 'pro') return;
+      const box = {
+        type: 'question' as const,
+        buttons: ['Cancel', 'Use as a node'],
+        defaultId: 0,
+        cancelId: 0,
+        message: 'Use this computer as a node?',
+        detail:
+          'Drashti restarts as a node: it then shows screens for another computer that runs Drashti as Main, and has no library or controls of its own. The screens go black while it restarts. The library stays on this computer, untouched; switching back (in the node’s window) brings it back.',
+      };
+      const parent = operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : undefined;
+      const choice = parent ? dialog.showMessageBoxSync(parent, box) : dialog.showMessageBoxSync(box);
+      if (choice !== 1) return;
+      writeRole(userDataDir, 'node');
+      log.info('Restarting as a node');
+      liveWriter.markClean();
+      quitConfirmed = true;
+      if (!noRelaunch) app.relaunch();
+      app.quit();
+    },
     reloadOperator: () => {
       operatorWindow?.webContents.reload();
     },
@@ -2277,7 +2565,7 @@ if (!app.requestSingleInstanceLock()) {
     secureWebContents(contents);
   });
 
-  void app.whenReady().then(start);
+  void app.whenReady().then(boot);
 
   app.on('window-all-closed', () => {
     app.quit();
