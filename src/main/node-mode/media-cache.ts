@@ -194,6 +194,7 @@ export class MediaCache {
     if (!MEDIA_ID_PATTERN.test(mediaId)) return Promise.resolve(null);
     return new Promise((resolve) => {
       const list = this.waiters.get(mediaId) ?? [];
+      if (list.length === 0) this.deps.log('info', `Media copies: a screen waits for ${mediaId}`);
       list.push(resolve);
       this.waiters.set(mediaId, list);
       this.urgent.add(mediaId);
@@ -208,7 +209,9 @@ export class MediaCache {
     this.holdTimer ??= setInterval(() => {
       const online = this.deps.online();
       const shown = new Set(this.deps.inUse());
-      for (const id of [...this.waiters.keys()]) if (!online || !shown.has(id)) this.settle(id, null);
+      for (const id of [...this.waiters.keys()])
+        if (!online || !shown.has(id))
+          this.settle(id, null, online ? 'no longer on the screens' : 'Main is away');
       if (this.waiters.size === 0 && this.holdTimer) {
         clearInterval(this.holdTimer);
         this.holdTimer = null;
@@ -228,7 +231,7 @@ export class MediaCache {
     if (this.holdTimer) clearInterval(this.holdTimer);
     this.holdTimer = null;
     this.current?.destroy();
-    for (const id of [...this.waiters.keys()]) this.settle(id, null);
+    for (const id of [...this.waiters.keys()]) this.settle(id, null, 'closing');
     await this.runner?.catch(() => undefined);
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
@@ -259,8 +262,10 @@ export class MediaCache {
     };
   }
 
-  private settle(mediaId: string, path: string | null): void {
+  private settle(mediaId: string, path: string | null, why?: string): void {
     const list = this.waiters.get(mediaId);
+    if (list && path === null)
+      this.deps.log('info', `Media copies: a screen stopped waiting for ${mediaId} (${why})`);
     this.waiters.delete(mediaId);
     this.urgent.delete(mediaId);
     for (const resolve of list ?? []) resolve(path);
@@ -297,12 +302,12 @@ export class MediaCache {
           this.failedAt.set(id, this.now());
           if (error instanceof NoRoom) {
             this.problem = error.message;
-            this.settle(id, null);
+            this.settle(id, null, 'no room');
             break;
           }
           this.deps.log('warn', `Media copies: ${id} not copied (${(error as Error).message})`);
           // Gone for good: a screen waiting for it stops; anything else is tried again.
-          if (error instanceof Gone) this.settle(id, null);
+          if (error instanceof Gone) this.settle(id, null, error.message);
         } finally {
           this.copying = null;
           this.deps.changed();
@@ -312,8 +317,22 @@ export class MediaCache {
       this.running = false;
     }
     // Something failed: come back to it later (soon, when a screen waits for it).
-    if (this.failedAt.size > 0 && !this.closed)
-      setTimeout(() => this.kick(), this.urgent.size > 0 ? URGENT_RETRY_MS : RETRY_MS).unref();
+    if (this.failedAt.size > 0 && !this.closed) {
+      const after = this.urgent.size > 0 ? URGENT_RETRY_MS : RETRY_MS;
+      const t = this.now();
+      const missing = this.deps.inUse().filter((id) => !this.has(id) && this.index.ids.has(id));
+      if (missing.length > 0 && this.deps.online()) {
+        const due = missing.map(
+          (id) =>
+            `${id} ${(this.failedAt.get(id) ?? 0) + (this.urgent.has(id) ? URGENT_RETRY_MS : RETRY_MS) - t} ms`,
+        );
+        this.deps.log(
+          'info',
+          `Media copies: ${missing.length} on the screens not here yet; looking again in ${after} ms (due: ${due.join(', ')})`,
+        );
+      }
+      setTimeout(() => this.kick(), after).unref();
+    }
   }
 
   private room(bytes: number): boolean {
@@ -391,6 +410,10 @@ export class MediaCache {
       res = await this.deps.open(mediaId, from);
     }
     this.copying = { id: mediaId, bytes: total, done: from };
+    this.deps.log(
+      'info',
+      `Media copies: copying ${mediaId} (${formatBytes(total)}${from > 0 ? `, from ${formatBytes(from)} on` : ''})`,
+    );
     this.deps.changed();
     res.on('data', (chunk: Buffer) => {
       if (this.copying) this.copying.done += chunk.length;
@@ -413,6 +436,7 @@ export class MediaCache {
     renameSync(part, this.pathOf(sha256, ext));
     this.index.files.set(sha256, { ext, bytes: checked.bytes, wantedAt: this.now() });
     this.save();
+    this.deps.log('info', `Media copies: ${mediaId} copied`);
     this.arrived(mediaId);
   }
 }

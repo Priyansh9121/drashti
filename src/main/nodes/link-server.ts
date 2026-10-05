@@ -398,6 +398,16 @@ export class LinkServer {
       }
       throw new HttpError(404, 'There is no such request.');
     } catch (error) {
+      const path = (req.url ?? '').split('?')[0] ?? '';
+      if (path.startsWith(NODE_PATHS.media)) {
+        const id = path.slice(NODE_PATHS.media.length);
+        const what = MEDIA_ID_PATTERN.test(id) ? id : 'an item';
+        const status = error instanceof HttpError ? error.status : 500;
+        this.host.log(
+          'info',
+          `Media copies: a request for ${what} was answered ${status} (${(error as Error).message})`,
+        );
+      }
       if (error instanceof HttpError)
         this.json(res, error.status, { ok: false, message: error.message, ...error.extra });
       else {
@@ -487,7 +497,8 @@ export class LinkServer {
   }
 
   private async media(req: IncomingMessage, res: ServerResponse, id: string): Promise<void> {
-    if (!this.authenticate(req)) throw new HttpError(401, 'This node is not paired with Main.');
+    const node = this.authenticate(req);
+    if (!node) throw new HttpError(401, 'This node is not paired with Main.');
     if (!MEDIA_ID_PATTERN.test(id)) throw new HttpError(404, 'There is no such media item.');
     const file = await this.host.mediaFile(id);
     if (!file) throw new HttpError(404, 'There is no such media item.');
@@ -518,12 +529,20 @@ export class LinkServer {
       res.end();
       return;
     }
+    this.host.log(
+      'info',
+      `Media copies: sending ${id} to “${node.name}” (${end - start + 1} bytes${start > 0 ? ` from byte ${start}` : ''})`,
+    );
     const stream = createReadStream(file.path, { start, end, highWaterMark: 64 * 1024 });
+    let sent = 0;
     const throttle = new Throttle(this.gate, (n) => {
       this.counts.mediaBytes += n;
+      sent += n;
     });
     stream.on('error', () => res.destroy());
     res.on('close', () => {
+      if (!res.writableFinished)
+        this.host.log('info', `Media copies: sending ${id} to “${node.name}” broke off after ${sent} bytes`);
       stream.destroy();
       throttle.destroy();
     });

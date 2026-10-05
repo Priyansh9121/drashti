@@ -1,5 +1,7 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { NodeView } from '../../src/shared/nodes';
 import type { PageGlobals } from './helpers';
 import { launchApp, operatorPage, operatorReady, relaunchApp } from './helpers';
@@ -100,4 +102,19 @@ export async function pairNode(main: MainRun, node: NodeRun): Promise<string> {
 
 export function nodesStatus(win: Page) {
   return win.evaluate(() => (globalThis as PageGlobals).drashti.nodes.status());
+}
+
+/**
+ * An instance's log lines about the link and media copies, oldest first, each marked with whose
+ * they are (for a failing test's diagnostics). None of them carries a code or a token.
+ */
+export function linkLog(userData: string, who: string): string[] {
+  const dir = join(userData, 'logs');
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => /^drashti(\.\d+)?\.log$/u.test(f))
+    .flatMap((f) => readFileSync(join(dir, f), 'utf8').split('\n'))
+    .filter((l) => /Media copies|Node: link|Nodes: .*(connected|disconnected|listening)/u.test(l))
+    .sort()
+    .map((l) => `${who} ${l}`);
 }

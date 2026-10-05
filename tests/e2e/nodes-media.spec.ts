@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
 import { importAndGetIds, killApp, outputPage, setUpScreen } from './helpers';
-import { launchMain, launchNode, nodeView, pairNode } from './nodes';
+import { launchMain, launchNode, linkLog, nodeView, pairNode } from './nodes';
 import { makeTestImage, makeTestVideo } from './test-media';
 
 /*
@@ -243,16 +243,57 @@ test('a video put up before its copy arrived: the picture before stays until it 
         }
       })
       .toBe(true);
+    const marks: string[] = [];
+    const mark = (what: string) => marks.push(`test ${new Date().toISOString()} ${what}`);
+    mark('Main is stopped dead');
     await killApp(main.app);
     // (It had not arrived: at this rate the clip takes many seconds.)
     expect(existsSync(join(node.userData, 'Media cache', `${sha(clipB)}.webm`))).toBe(false);
     await expect(node.page.getByTestId('node-link-state')).toHaveText('Offline', { timeout: 20_000 });
+    mark('the node says Offline');
     await expect.poll(() => slot(bId), { timeout: 20_000 }).toBe('failed');
+    mark('clip B failed on the node’s screen');
     // Main is back (restart recovery puts clip B up again): the copy carries on, and the screen loads it
     // by itself once it has landed.
     main = await launchMain(slow, { port: first.port, userData: first.userData });
+    mark('Main is started again');
     await expect(node.page.getByTestId('node-link-state')).toHaveText('Online', { timeout: 30_000 });
-    await expect.poll(() => slot(bId), { timeout: 150_000 }).toBe('playing');
+    mark('the node says Online');
+    const back = Date.now();
+    // What the node and Main did, for a slow or failed run: the copies, the screen's video element.
+    const diagnose = async (why: string) => {
+      const video = await out.evaluate(() =>
+        [...document.querySelectorAll<HTMLVideoElement>('[data-layer="background"] video')].map((v) => ({
+          mediaId: v.dataset['mediaId'],
+          state: v.dataset['state'],
+          networkState: v.networkState,
+          readyState: v.readyState,
+          paused: v.paused,
+          error: v.error ? `${v.error.code} ${v.error.message}` : null,
+        })),
+      );
+      const text = [
+        `LATE COPY DIAGNOSTICS (${why}); clip B is ${bId}, ${statSync(clipB).size} bytes`,
+        `node media: ${JSON.stringify((await nodeView(node.page)).media)}`,
+        `node screen's videos: ${JSON.stringify(video)}`,
+        ...[...marks, ...linkLog(first.userData, 'main'), ...linkLog(node.userData, 'node')].sort((a, b) =>
+          a.slice(a.indexOf(' ') + 1).localeCompare(b.slice(b.indexOf(' ') + 1)),
+        ),
+      ].join('\n');
+      console.log(text);
+      await test.info().attach('late-copy diagnostics', { body: text, contentType: 'text/plain' });
+    };
+    try {
+      await expect.poll(() => slot(bId), { timeout: 150_000 }).toBe('playing');
+    } catch (error) {
+      await diagnose('failed');
+      throw error;
+    }
+    const took = Date.now() - back;
+    console.log(
+      `LATE COPY: clip B (${statSync(clipB).size} bytes) played ${(took / 1000).toFixed(1)} s after the node was back online`,
+    );
+    if (took > 40_000) await diagnose('slow');
   } finally {
     await node.app.close();
     await main.app.close();
