@@ -525,6 +525,42 @@ function Looks() {
   );
 }
 
+/** The audio playlist (Session 14): Play and Pause, and the next track; what plays shows as it changes. */
+function Music() {
+  const audio = useEngine((s) => s.state?.layers.audio ?? null);
+  const music = audio?.music ? audio : null;
+  const paused = music?.pausedAtMs !== undefined;
+  return (
+    <section className="space-y-2" aria-labelledby="music-title" data-testid="remote-music">
+      <h2 id="music-title" className="text-sm font-bold tracking-wider text-muted uppercase">
+        Music
+      </h2>
+      {music && (
+        <p className="truncate text-sm" role="status">
+          {paused ? 'Paused: ' : ''}
+          {music.title} <span className="text-muted">({music.music?.name})</span>
+        </p>
+      )}
+      <div className="flex gap-2">
+        {music && !paused ? (
+          <Button size="lg" className="flex-1" onClick={() => void tap(post('/api/v1/music/pause'))}>
+            Pause music
+          </Button>
+        ) : (
+          <Button size="lg" className="flex-1" onClick={() => void tap(post('/api/v1/music/play'))}>
+            Play music
+          </Button>
+        )}
+        {music && (
+          <Button size="lg" onClick={() => void tap(post('/api/v1/music/next'))}>
+            Next track
+          </Button>
+        )}
+      </div>
+    </section>
+  );
+}
+
 /** The macros: tapping one runs its actions as one change (Simple Mode refuses). */
 function Macros() {
   const macros = useRemote((s) => s.macros);
@@ -605,6 +641,7 @@ function TimersAndMessages() {
       <Looks />
       <Shastra />
       <Macros />
+      <Music />
       <section className="space-y-2" aria-labelledby="timers-title">
         <h2 id="timers-title" className="text-sm font-bold tracking-wider text-muted uppercase">
           Timers

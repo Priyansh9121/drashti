@@ -21,6 +21,10 @@ on:
         description: Output nodes following the show over the node link, each copying a 32 MB file, during the check (0 for none)
         type: number
         default: 0
+      music:
+        description: An audio playlist plays during the check (Session 14)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -47,4 +51,6 @@ jobs:
           DRASHTI_PERF_DEVICES: ${{ inputs.devices }}
           # Output nodes on this computer following the show and copying media (README, "Performance check").
           DRASHTI_PERF_NODES: ${{ inputs.nodes }}
+          # An audio playlist playing meanwhile (README, "Performance check").
+          DRASHTI_PERF_MUSIC: ${{ inputs.music && '1' || '0' }}
         run: pnpm test:perf

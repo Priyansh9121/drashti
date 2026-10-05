@@ -22,6 +22,8 @@ export const DEVICE_OPS = {
   macros: ['remote'],
   /** Run a macro (Simple Mode refuses). */
   'macro.run': ['remote'],
+  /** Play the audio playlist: on from where it was paused, or the one played last (Session 14). */
+  'music.play': ['remote'],
   /** The loaded Shastra texts: name, abbreviation, how many items (Session 12). */
   'shastra.texts': ['remote'],
   /** Put up a Shastra passage by its reference ("SD 14", "Vach G.Pr. 1", "SD 14-16"). */
@@ -82,6 +84,11 @@ export const REMOTE_COMMANDS = [
   'resetTimer',
   // Switching the live Look (Simple Mode refuses it, as in the window).
   'setLook',
+  // The audio playlist (Session 14): pause, play on, the next or previous track.
+  'pauseMusic',
+  'resumeMusic',
+  'musicNext',
+  'musicPrevious',
 ] as const;
 
 /** A request from the network server to the main process, for a paired device. */

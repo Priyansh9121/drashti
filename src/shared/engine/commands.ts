@@ -59,6 +59,18 @@ const mask: z.ZodType<MaskLayer> = maskSchema;
 
 const playlistCursor = z.object({ playlistId: id, itemId: id });
 
+/** An audio playlist as the main process reads it from the library (its tracks in play order). */
+export const musicStartSchema = z.object({
+  playlistId: id,
+  name: z.string().max(200),
+  tracks: z
+    .array(z.object({ mediaId: id, title: z.string().max(300) }))
+    .min(1)
+    .max(1000),
+  loop: z.boolean(),
+  shuffle: z.boolean(),
+});
+
 export const engineCommandSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('goLive'),
@@ -113,6 +125,21 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('playCue') }),
   z.object({ type: z.literal('startIdle') }),
   z.object({ type: z.literal('stopIdle') }),
+  /**
+   * Audio playlists (Session 14), on the audio layer: start one at a track
+   * (the main process reads its tracks from the library), pause and play on,
+   * the next or previous track, and whether it goes round again.
+   */
+  z.object({
+    type: z.literal('playMusic'),
+    music: musicStartSchema,
+    index: z.number().int().min(0).max(999),
+  }),
+  z.object({ type: z.literal('pauseMusic') }),
+  z.object({ type: z.literal('resumeMusic') }),
+  z.object({ type: z.literal('musicNext') }),
+  z.object({ type: z.literal('musicPrevious') }),
+  z.object({ type: z.literal('setMusicLoop'), loop: z.boolean() }),
 ]);
 
 export type EngineCommand = z.infer<typeof engineCommandSchema>;
@@ -129,7 +156,8 @@ export type EngineErrorCode =
   | 'unknown-timer'
   | 'nothing-to-put-back'
   | 'unknown-look'
-  | 'nothing-cued';
+  | 'nothing-cued'
+  | 'no-music';
 
 export type CommandResult =
   { ok: true; changed: boolean; rev: number } | { ok: false; error: EngineErrorCode; message: string };

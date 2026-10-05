@@ -80,6 +80,29 @@ export interface AudioChoice {
   loop: boolean;
 }
 
+/** A track of an audio playlist (Session 14). */
+export interface MusicTrack {
+  mediaId: string;
+  title: string;
+}
+
+/**
+ * The audio layer playing an audio playlist (Session 14): its tracks in the
+ * order they play (shuffled when it says so, the same on every window and
+ * after a restart), and which one this is. The engine moves on to the next
+ * track as one ends (from the track's start time and length, so every
+ * window and the audio player agree), and at the end goes round again or
+ * stops.
+ */
+export interface MusicRun {
+  playlistId: string;
+  name: string;
+  tracks: MusicTrack[];
+  index: number;
+  loop: boolean;
+  shuffle: boolean;
+}
+
 /**
  * What the audio layer plays. It stays on later slides until something
  * replaces or clears it; the same file on a later slide carries on.
@@ -89,6 +112,10 @@ export interface AudioLayer extends AudioChoice {
   startedAt: number;
   /** How long the file is, once known (learned from playing it): a stage screen shows the time left. */
   durationMs?: number;
+  /** An audio playlist's track (Session 14): the playlist, and where in it. */
+  music?: MusicRun;
+  /** Paused this far into the track (ms); left out while it plays. Nothing sounds while paused. */
+  pausedAtMs?: number;
 }
 
 export type MediaFit = 'fit' | 'fill' | 'stretch';

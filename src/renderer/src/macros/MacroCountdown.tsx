@@ -33,6 +33,11 @@ export function MacroCountdown({ big = false }: { big?: boolean }) {
   useEffect(() => {
     connectCountdown();
   }, []);
+  // Ticks only while something counts down.
+  return countdowns.length > 0 ? <Counting big={big} countdowns={countdowns} /> : null;
+}
+
+function Counting({ big, countdowns }: { big: boolean; countdowns: MacroCountdownView['countdowns'] }) {
   const now = useNow(250);
   const first = countdowns[0];
   if (!first) return null;

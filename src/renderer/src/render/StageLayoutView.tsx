@@ -72,14 +72,14 @@ function Sized({ size, children, again }: { size: number | 'fit'; children: Reac
   );
 }
 
-/** How long is left on a playing file: its pass, when it loops. */
+/** How long is left on a playing file: its pass, when it loops; held where it is while paused (music). */
 function leftOn(
-  layer: { startedAt: number; durationMs?: number; loop: boolean },
+  layer: { startedAt: number; durationMs?: number; loop: boolean; pausedAtMs?: number },
   now: number,
 ): number | null {
   const d = layer.durationMs;
   if (d === undefined || d <= 0) return null;
-  const played = Math.max(0, now - layer.startedAt);
+  const played = layer.pausedAtMs ?? Math.max(0, now - layer.startedAt);
   return layer.loop ? d - (played % d) : Math.max(0, d - played);
 }
 

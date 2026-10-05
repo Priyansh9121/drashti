@@ -118,25 +118,33 @@ function AdminPinForm({ what }: { what: string | null }) {
 /** Who is at the controls (roles on): Operator, or Admin with its time left, and Lock. */
 export function RoleChip() {
   const view = useRoles((s) => s.view);
-  const now = useNow(1000);
   if (!view.on) return null;
-  if (view.adminUntil !== null && view.adminUntil > now) {
-    const left = waitText(view.adminUntil, now);
-    return (
-      <Tooltip content="Admin is unlocked. Lock it now, or it locks by itself." side="bottom">
-        <Button
-          variant="warning"
-          icon={LockOpen}
-          data-testid="role-chip"
-          data-role="admin"
-          aria-label={`Admin, unlocked for ${left}. Lock now`}
-          onClick={() => void window.drashti.roles.lock()}
-        >
-          Admin {left}
-        </Button>
-      </Tooltip>
-    );
-  }
+  if (view.adminUntil !== null) return <AdminChip until={view.adminUntil} />;
+  return <OperatorChip />;
+}
+
+/** Admin, with its time left (ticking only while it shows). */
+function AdminChip({ until }: { until: number }) {
+  const now = useNow(1000);
+  if (until <= now) return <OperatorChip />;
+  const left = waitText(until, now);
+  return (
+    <Tooltip content="Admin is unlocked. Lock it now, or it locks by itself." side="bottom">
+      <Button
+        variant="warning"
+        icon={LockOpen}
+        data-testid="role-chip"
+        data-role="admin"
+        aria-label={`Admin, unlocked for ${left}. Lock now`}
+        onClick={() => void window.drashti.roles.lock()}
+      >
+        Admin {left}
+      </Button>
+    </Tooltip>
+  );
+}
+
+function OperatorChip() {
   return (
     <Tooltip content="Running the show as an operator. Unlock admin with the admin PIN." side="bottom">
       <Button

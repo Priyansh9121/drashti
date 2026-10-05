@@ -36,6 +36,7 @@ import type { TranslitStyle } from './translit';
 import type { ModeResult, OperatorMode } from './mode';
 import type { RolesResult, RolesView } from './roles';
 import type { UpdateResult, UpdateView } from './updates';
+import type { MusicResult, MusicView } from './music';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { Lang, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
@@ -125,6 +126,20 @@ export interface DrashtiBridge {
     onChanged(listener: (view: ScheduledBackupsView) => void): () => void;
     /** File > Scheduled Backups… was chosen. */
     onOpen(listener: () => void): () => void;
+  };
+  /** Audio playlists (Session 14, operator window). */
+  music: {
+    view(): Promise<MusicView>;
+    create(name: string): Promise<MusicResult>;
+    rename(playlistId: string, name: string): Promise<MusicResult>;
+    remove(playlistId: string): Promise<MusicResult>;
+    setOptions(playlistId: string, options: { loop: boolean; shuffle: boolean }): Promise<MusicResult>;
+    addTracks(playlistId: string, mediaIds: string[], at: number | null): Promise<MusicResult>;
+    moveTrack(trackId: string, to: number): Promise<MusicResult>;
+    removeTrack(trackId: string): Promise<MusicResult>;
+    /** Play from a track; with no playlist, play on (paused) or start the last one. */
+    play(playlistId: string | null, trackIndex?: number): Promise<MusicResult>;
+    onChanged(listener: (view: MusicView) => void): () => void;
   };
   /** Updates (Session 14, operator window, Pro Mode). */
   updates: {

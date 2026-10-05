@@ -15,9 +15,19 @@ export interface Moved {
   elements: string[];
   props: string[];
   themes: string[];
+  /** Audio playlists' tracks (Session 14; left out by conversions made before). */
+  tracks?: string[];
 }
 
-export const NOTHING_MOVED: Moved = { cues: [], items: [], kirtans: [], elements: [], props: [], themes: [] };
+export const NOTHING_MOVED: Moved = {
+  cues: [],
+  items: [],
+  kirtans: [],
+  elements: [],
+  props: [],
+  themes: [],
+  tracks: [],
+};
 
 /** A copy of a JSON value with every `mediaId` equal to `from` set to `to`. */
 function swapIds(value: unknown, from: string, to: string): { value: unknown; changed: boolean } {
@@ -84,6 +94,7 @@ export function moveMedia(db: Db, from: string, to: string): Moved {
     const ids = (sql: string) => (db.prepare(sql).all(from) as { id: string }[]).map((r) => r.id);
     const cues = ids('SELECT id FROM slide_cues WHERE media_id = ?');
     const items = ids('SELECT id FROM playlist_items WHERE media_id = ?');
+    const tracks = ids('SELECT id FROM audio_playlist_tracks WHERE media_id = ?');
     const kirtans = (
       db.prepare('SELECT presentation_id AS id FROM kirtans WHERE audio_media_id = ?').all(from) as {
         id: string;
@@ -94,12 +105,13 @@ export function moveMedia(db: Db, from: string, to: string): Moved {
     );
     db.prepare('UPDATE slide_cues SET media_id = ? WHERE media_id = ?').run(to, from);
     db.prepare('UPDATE playlist_items SET media_id = ? WHERE media_id = ?').run(to, from);
+    db.prepare('UPDATE audio_playlist_tracks SET media_id = ? WHERE media_id = ?').run(to, from);
     db.prepare('UPDATE kirtans SET audio_media_id = ? WHERE audio_media_id = ?').run(to, from);
     const element = db.prepare("UPDATE elements SET props = json_set(props, '$.mediaId', ?) WHERE id = ?");
     for (const id of elements) element.run(to, id);
     const props = swapJson(db, 'props', from, to);
     const themes = swapJson(db, 'themes', from, to);
-    return { cues, items, kirtans, elements, props, themes };
+    return { cues, items, kirtans, elements, props, themes, tracks };
   })();
 }
 
@@ -112,6 +124,7 @@ export function moveBack(db: Db, moved: Moved, from: string, to: string): void {
     };
     back('UPDATE slide_cues SET media_id = ? WHERE id = ? AND media_id = ?', moved.cues);
     back('UPDATE playlist_items SET media_id = ? WHERE id = ? AND media_id = ?', moved.items);
+    back('UPDATE audio_playlist_tracks SET media_id = ? WHERE id = ? AND media_id = ?', moved.tracks ?? []);
     back(
       'UPDATE kirtans SET audio_media_id = ? WHERE presentation_id = ? AND audio_media_id = ?',
       moved.kirtans,

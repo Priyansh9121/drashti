@@ -15,6 +15,7 @@ import {
   type LiveCursor,
   type MaskLayer,
   type MessageItem,
+  type MusicRun,
   type PlaylistCursor,
   type PropItem,
   type TickerItem,
@@ -60,6 +61,25 @@ function withoutItem(layers: Layers, id: string): Layers {
 
 /** Commands that come back to a playlist item rather than move on to it: its timer cues do not run again. */
 const BACKWARDS: ReadonlySet<string> = new Set(['back', 'previous', 'previousItem']);
+
+/**
+ * Audio playlists play independently of the slides (Session 14): starting,
+ * pausing or moving through one is not a change Back or Put it back undo,
+ * and neither is a track ending and the next starting.
+ */
+const MUSIC_COMMANDS: ReadonlySet<string> = new Set([
+  'playMusic',
+  'pauseMusic',
+  'resumeMusic',
+  'musicNext',
+  'musicPrevious',
+  'setMusicLoop',
+]);
+
+/** A track whose length no window has reported this long after it started (it cannot play) is passed. */
+export const MUSIC_UNKNOWN_LENGTH_MS = 20_000;
+
+type MusicLayer = AudioLayer & { music: MusicRun };
 
 /** The message a timer cue shows: one per timer (showing it again replaces it). */
 export const timerMessageId = (timerId: string): string => `timer:${timerId}`;
@@ -167,6 +187,8 @@ export class ShowEngine {
   /** The auto-advance waiting to run, and how to cancel it. */
   private scheduled: { startedAt: number; durationMs: number } | null = null;
   private cancelScheduled: (() => void) | null = null;
+  /** An audio playlist's track waiting to end (its key), and how to cancel the wait. */
+  private musicWait: { key: string; cancel: () => void } | null = null;
   /** The time of the change being made, read once (null between changes). */
   private at: number | null = null;
   /** The change being made only adds what is known about it (a file's length): not a change to the show. */
@@ -225,7 +247,14 @@ export class ShowEngine {
     return this.atOnce(() => {
       const resolved = this.resolve(command);
       if (!resolved.ok) return resolved;
-      return this.apply(resolved.actions, command.type);
+      if (!MUSIC_COMMANDS.has(command.type)) return this.apply(resolved.actions, command.type);
+      // An audio playlist: not a change to the slides, so Back and Put it back still do what they would.
+      this.bookkeeping = true;
+      try {
+        return this.apply(resolved.actions, command.type);
+      } finally {
+        this.bookkeeping = false;
+      }
     });
   }
 
@@ -528,8 +557,15 @@ export class ShowEngine {
     }
   }
 
-  /** Layers as they were (Put it back, Back), with the lengths of their files the library knows by now. */
+  /**
+   * Layers as they were (Put it back, Back), with the lengths of their files
+   * the library knows by now. An audio playlist playing now goes on as it is
+   * (it is independent of the slides); one that was playing then comes back
+   * where it would be now.
+   */
   private withLengths(layers: Layers): Layers {
+    const playing = this.state.layers.audio;
+    if (playing?.music && layers.audio !== playing) layers = { ...layers, audio: playing };
     const bg = layers.background;
     const audio = layers.audio;
     const bgLength = bg?.kind === 'media' && bg.durationMs === undefined ? this.lengthOf(bg.mediaId) : {};
@@ -785,6 +821,42 @@ export class ShowEngine {
     return ms !== null && ms > 0 ? { durationMs: ms } : {};
   }
 
+  /** An audio playlist's track on the audio layer, from `startedAt`. */
+  private musicLayer(music: MusicRun, startedAt: number): AudioLayer {
+    const track = music.tracks[music.index] ?? music.tracks[0];
+    return {
+      id: `music:${music.playlistId}`,
+      title: track?.title ?? '',
+      mediaId: track?.mediaId ?? null,
+      volume: 1,
+      loop: false,
+      startedAt,
+      music,
+      ...this.lengthOf(track?.mediaId ?? null),
+    };
+  }
+
+  /**
+   * The track `by` away, from `startedAt`: round again at the end when the
+   * playlist loops, and otherwise the end (the layer clears); before the
+   * first track, the first (or, looping, the last).
+   */
+  private musicStep(a: MusicLayer, by: 1 | -1, startedAt: number): EngineAction {
+    const m = a.music;
+    let index = m.index + by;
+    if (index >= m.tracks.length) {
+      if (!m.loop) return { type: 'layer/clear', layer: 'audio' };
+      index = 0;
+    }
+    if (index < 0) index = m.loop ? m.tracks.length - 1 : 0;
+    return { type: 'audio/set', audio: this.musicLayer({ ...m, index }, startedAt) };
+  }
+
+  private musicNow(): MusicLayer | null {
+    const a = this.state.layers.audio;
+    return a?.music ? (a as MusicLayer) : null;
+  }
+
   /** The audio layer for a choice: as with backgrounds, the file already playing carries on. */
   private audioLayer(choice: AudioChoice): AudioLayer {
     const current = this.state.layers.audio;
@@ -1033,6 +1105,46 @@ export class ShowEngine {
         if (!look) return { ok: false, error: 'unknown-look', message: 'That look no longer exists' };
         return { ok: true, actions: [{ type: 'look/set', look }] };
       }
+      case 'playMusic': {
+        const index = Math.min(command.index, command.music.tracks.length - 1);
+        return {
+          ok: true,
+          actions: [{ type: 'audio/set', audio: this.musicLayer({ ...command.music, index }, this.now()) }],
+        };
+      }
+      case 'pauseMusic': {
+        const a = this.musicNow();
+        if (!a) return { ok: false, error: 'no-music', message: 'No audio playlist is playing' };
+        if (a.pausedAtMs !== undefined) return NO_CHANGE;
+        const into = Math.max(0, this.now() - a.startedAt);
+        const pausedAtMs = a.durationMs !== undefined ? Math.min(into, a.durationMs) : into;
+        return { ok: true, actions: [{ type: 'audio/set', audio: { ...a, pausedAtMs } }] };
+      }
+      case 'resumeMusic': {
+        const a = this.musicNow();
+        if (!a) return { ok: false, error: 'no-music', message: 'No audio playlist is playing' };
+        if (a.pausedAtMs === undefined) return NO_CHANGE;
+        const { pausedAtMs, ...playing } = a;
+        return {
+          ok: true,
+          actions: [{ type: 'audio/set', audio: { ...playing, startedAt: this.now() - pausedAtMs } }],
+        };
+      }
+      case 'musicNext':
+      case 'musicPrevious': {
+        const a = this.musicNow();
+        if (!a) return { ok: false, error: 'no-music', message: 'No audio playlist is playing' };
+        return { ok: true, actions: [this.musicStep(a, command.type === 'musicNext' ? 1 : -1, this.now())] };
+      }
+      case 'setMusicLoop': {
+        const a = this.musicNow();
+        if (!a) return { ok: false, error: 'no-music', message: 'No audio playlist is playing' };
+        if (a.music.loop === command.loop) return NO_CHANGE;
+        return {
+          ok: true,
+          actions: [{ type: 'audio/set', audio: { ...a, music: { ...a.music, loop: command.loop } } }],
+        };
+      }
     }
   }
 
@@ -1106,6 +1218,10 @@ export class ShowEngine {
     const item = next.live.playlist;
     if (item && item.itemId !== prev.live.playlist?.itemId && cause !== null && !BACKWARDS.has(cause))
       next = this.timerCueActions(item, next).reduce(reduce, next);
+    // An audio playlist's track that has ended by now (put back, recovered, or just ended) moves on.
+    const audio = this.caughtUp(next.layers.audio);
+    if (audio !== next.layers.audio)
+      next = reduce(next, audio ? { type: 'audio/set', audio } : { type: 'layer/clear', layer: 'audio' });
     next = this.keepUndo(prev, next, cause);
     next = this.withAutoAdvance(prev, next);
     if (next === prev) return this.unchanged();
@@ -1123,7 +1239,74 @@ export class ShowEngine {
     });
     for (const listener of this.listeners) listener(next);
     this.scheduleAdvance();
+    this.scheduleMusic();
     return { ok: true, changed: true, rev: this.revision };
+  }
+
+  /** What identifies an audio playlist's track as it plays: a new key, a new wait. */
+  private musicKey(a: MusicLayer | null): string | null {
+    if (!a || a.pausedAtMs !== undefined) return null;
+    return `${a.music.playlistId}/${String(a.music.index)}@${String(a.startedAt)}/${String(a.durationMs ?? '?')}`;
+  }
+
+  /** Wait for the track playing to end (its start and length; a file that never says how long is passed). */
+  private scheduleMusic(): void {
+    const a = this.musicNow();
+    const key = this.musicKey(a);
+    if (key === (this.musicWait?.key ?? null)) return;
+    this.musicWait?.cancel();
+    this.musicWait = null;
+    if (!a || key === null) return;
+    const ends = a.startedAt + (a.durationMs ?? MUSIC_UNKNOWN_LENGTH_MS);
+    const schedule =
+      this.options.schedule ??
+      ((ms: number, run: () => void) => {
+        const t = setTimeout(run, ms);
+        return () => {
+          clearTimeout(t);
+        };
+      });
+    const cancel = schedule(Math.max(0, ends - this.now()), () => {
+      if (this.musicWait?.key === key) this.musicWait = null;
+      this.musicEnded(key);
+    });
+    this.musicWait = { key, cancel };
+  }
+
+  /**
+   * The audio playlist's track where it would be by now: every track that
+   * would have ended since is passed, each next one starting where the last
+   * ended (after Put it back, Back or recovery, and as a track ends). Null
+   * when the playlist ended meanwhile.
+   */
+  private caughtUp(audio: AudioLayer | null): AudioLayer | null {
+    if (!audio?.music || audio.pausedAtMs !== undefined || audio.durationMs === undefined) return audio;
+    const now = this.now();
+    let a = audio as MusicLayer;
+    for (let i = 0; i < 1000 && a.durationMs !== undefined && a.startedAt + a.durationMs <= now; i++) {
+      const step = this.musicStep(a, 1, a.startedAt + a.durationMs);
+      if (step.type !== 'audio/set') return null;
+      a = step.audio as MusicLayer;
+    }
+    return a;
+  }
+
+  /**
+   * A track ended (or, with no length known, will not play): on to the next.
+   * Not a change to the show: Back and Put it back keep what they undo.
+   */
+  private musicEnded(key: string): void {
+    this.atOnce(() => {
+      const a = this.musicNow();
+      if (!a || this.musicKey(a) !== key) return;
+      this.bookkeeping = true;
+      try {
+        // A known length: catching up (in applyAt) moves on; a file that never said: passed now.
+        this.apply(a.durationMs === undefined ? [this.musicStep(a, 1, this.now())] : []);
+      } finally {
+        this.bookkeeping = false;
+      }
+    });
   }
 
   /**
@@ -1208,5 +1391,7 @@ export class ShowEngine {
     this.cancelScheduled?.();
     this.cancelScheduled = null;
     this.scheduled = null;
+    this.musicWait?.cancel();
+    this.musicWait = null;
   }
 }

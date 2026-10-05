@@ -83,6 +83,10 @@ import { calendarIdSchema } from '../shared/calendar';
 import { type ArtiAnswer, artiKeySchema } from '../shared/arti';
 import { MacroService } from './macros/macro-service';
 import { MacroScheduler } from './macros/macro-scheduler';
+import { AudioPlaylistRepo } from './db/audio-playlists';
+import { MusicService } from './music/music-service';
+import { startPerfMusic } from './music/perf-music';
+import { musicPlaySchema } from '../shared/music';
 import { UpdateService } from './update/update-service';
 import { defaultInstaller } from './update/installer';
 import { UPDATE_BASE } from '../shared/updates';
@@ -266,6 +270,8 @@ const testBackupRate = app.isPackaged ? null : Number(process.env['DRASHTI_TEST_
 // network's server in the main process instead of its own.
 const perfDevices = Math.min(50, Math.max(0, Number(process.env['DRASHTI_PERF_DEVICES'] ?? 0) || 0));
 const perfNetworkInMain = process.env['DRASHTI_PERF_NETWORK_IN_MAIN'] === '1';
+// The performance check only: an audio playlist playing meanwhile (Session 14).
+const perfMusic = process.env['DRASHTI_PERF_MUSIC'] === '1';
 // The performance check only: so many output nodes following the show (and copying a file) meanwhile.
 const perfNodes = Math.min(50, Math.max(0, Number(process.env['DRASHTI_PERF_NODES'] ?? 0) || 0));
 // Tests only (never a packaged Drashti): the version this copy says it runs, to see Main and a node
@@ -428,6 +434,7 @@ type PerfRun = Parameters<typeof runPerformanceTest>[0] & {
   nodes: NodeService;
   library: { db: Db; mediaDir: string };
   operatorContents: () => Electron.WebContents | null;
+  music: MusicService;
 };
 
 /** The performance check with DRASHTI_PERF_NODES output nodes following the show meanwhile. */
@@ -452,7 +459,7 @@ async function runPerformanceTestWithNodes(ctx: PerfRun): ReturnType<typeof runP
 
 /** The performance check with DRASHTI_PERF_DEVICES paired devices following the feed meanwhile. */
 async function runPerformanceTestWithDevices(ctx: PerfRun): ReturnType<typeof runPerformanceTest> {
-  if (perfDevices === 0) return runPerformanceTestWithStream(ctx);
+  if (perfDevices === 0) return runPerformanceTestWithMusic(ctx);
   // DRASHTI_PERF_DEVICE_PAGES=1: each device also fetches the largest page files every second.
   const pages =
     process.env['DRASHTI_PERF_DEVICE_PAGES'] === '1'
@@ -464,13 +471,22 @@ async function runPerformanceTestWithDevices(ctx: PerfRun): ReturnType<typeof ru
       : [];
   const devices = await startPerfDevices(ctx.network, perfDevices, perfNetworkInMain, pages);
   try {
-    const result = await runPerformanceTestWithStream(ctx);
+    const result = await runPerformanceTestWithMusic(ctx);
     await devices.stop();
     return { ...result, summary: `${result.summary}; ${devices.summary()}` };
   } catch (error) {
     await devices.stop();
     throw error;
   }
+}
+
+/** The performance check with an audio playlist playing meanwhile (DRASHTI_PERF_MUSIC=1). */
+async function runPerformanceTestWithMusic(ctx: PerfRun): ReturnType<typeof runPerformanceTest> {
+  if (!perfMusic) return runPerformanceTestWithStream(ctx);
+  const music = startPerfMusic(ctx.library.db, ctx.library.mediaDir, ctx.music);
+  const result = await runPerformanceTestWithStream(ctx);
+  music.stop();
+  return { ...result, summary: `${result.summary}; ${music.summary()}` };
 }
 
 async function runPerformanceTestWithStream(ctx: PerfRun): ReturnType<typeof runPerformanceTest> {
@@ -702,6 +718,8 @@ function start(): void {
   let macroService: MacroService | null = null;
   /** Macros' own times (made with the macros): told when the macros change. */
   let macroScheduler: MacroScheduler | null = null;
+  /** Audio playlists (made further down): the media library changing may change them. */
+  let musicService: MusicService | null = null;
   /** The arti schedules (made further down, once macros are): told when presentations change. */
   let artiService: ArtiService | null = null;
   /** Today's calendar entry (made further down): told when an import loads a calendar. */
@@ -1190,6 +1208,8 @@ function start(): void {
       // What the nodes should copy may have changed.
       wantedMedia?.invalidate();
       nodeService?.libraryChanged();
+      // A sound in an audio playlist may have been converted, found or lost.
+      if (musicService) sendToOperator(IPC.music.changed, musicService.view());
     };
     if (now) {
       if (changedTimer) clearTimeout(changedTimer);
@@ -1511,6 +1531,37 @@ function start(): void {
   handle(IPC.macros.cancelScheduled, (e, key) =>
     fromOperator(e) ? scheduler.cancel(key) : scheduler.view(),
   );
+  // ---- audio playlists (Session 14): music on the audio layer, independent of the slides ------------
+  const music = new MusicService({
+    repo: new AudioPlaylistRepo(db),
+    settings,
+    engine: { state: () => engine.current, dispatch: (command) => engine.dispatch(command) },
+    changed: (view) => {
+      sendToOperator(IPC.music.changed, view);
+    },
+    log: (message) => {
+      log.info(message);
+    },
+  });
+  musicService = music;
+  const notMusicOperator = { ok: false as const, message: 'Only the operator window can change music.' };
+  handle(IPC.music.view, () => music.view());
+  handle(IPC.music.create, (e, name) => (fromOperator(e) ? music.create(name) : notMusicOperator));
+  handle(IPC.music.rename, (e, id, name) => (fromOperator(e) ? music.rename(id, name) : notMusicOperator));
+  handle(IPC.music.remove, (e, id) => (fromOperator(e) ? music.remove(id) : notMusicOperator));
+  handle(IPC.music.setOptions, (e, id, options) =>
+    fromOperator(e) ? music.setOptions(id, options) : notMusicOperator,
+  );
+  handle(IPC.music.addTracks, (e, id, mediaIds, at) =>
+    fromOperator(e) ? music.addTracks(id, mediaIds, at) : notMusicOperator,
+  );
+  handle(IPC.music.moveTrack, (e, id, to) => (fromOperator(e) ? music.moveTrack(id, to) : notMusicOperator));
+  handle(IPC.music.removeTrack, (e, id) => (fromOperator(e) ? music.removeTrack(id) : notMusicOperator));
+  handle(IPC.music.play, (e, playlistId, trackIndex) => {
+    const parsed = musicPlaySchema.safeParse({ playlistId, index: trackIndex ?? 0 });
+    if (!fromOperator(e) || !parsed.success) return notMusicOperator;
+    return music.play(parsed.data.playlistId, parsed.data.index);
+  });
   // ---- the arti at its time ---------------------------------------------------------------
   const arti = new ArtiService({
     repo: new ArtiRepo(db),
@@ -1853,6 +1904,11 @@ function start(): void {
       }),
     },
     runMacro: (id, who) => macros.run(id, who),
+    playMusic: (who) => {
+      const played = music.play(null);
+      if (played.ok) log.info(`Music: ${who} played it`);
+      return played.ok ? { ok: true as const } : { ok: false as const, message: played.message };
+    },
     announcements: {
       submit: (device, address, input) => announcements.submit(device, address, input),
       statusFor: (device, args) => announcements.statusFor(device, args),
@@ -2796,6 +2852,7 @@ function start(): void {
         library: { db: libraryDb, mediaDir },
         operatorContents: () =>
           operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow.webContents : null,
+        music,
       }).then(
         (result) => {
           process.stdout.write(`DRASHTI_PERFTEST_RESULT ${JSON.stringify(result)}\n`);

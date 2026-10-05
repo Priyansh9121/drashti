@@ -16,7 +16,37 @@ import { soundsOf } from './sounds';
 interface Player {
   el: HTMLAudioElement;
   stop: () => void;
+  /** Its own volume (0 to 1), which a fade works towards. */
+  volume: number;
+  fadeOutMs: number;
+  /** A fade under way. */
+  fade: ReturnType<typeof setInterval> | null;
 }
+
+/** Ramp an element's volume to `to` over `ms` (an audio playlist's short fades); then `done`. */
+function fadeTo(player: Player, to: number, ms: number, done?: () => void): void {
+  if (player.fade) clearInterval(player.fade);
+  player.fade = null;
+  const from = player.el.volume;
+  if (ms <= 0 || from === to) {
+    player.el.volume = to;
+    done?.();
+    return;
+  }
+  const start = performance.now();
+  player.fade = setInterval(() => {
+    const t = Math.min(1, (performance.now() - start) / ms);
+    player.el.volume = Math.max(0, Math.min(1, from + (to - from) * t));
+    if (t >= 1) {
+      if (player.fade) clearInterval(player.fade);
+      player.fade = null;
+      done?.();
+    }
+  }, 25);
+}
+
+/** Players fading out after they stopped (still sounding for a moment). */
+const fadingOut = new Set<Player>();
 
 const players = new Map<string, Player>();
 let sinkId = '';
@@ -26,34 +56,61 @@ function play(state: EngineState | null): void {
   const wanted = new Map((state ? soundsOf(state) : []).map((s) => [s.key, s]));
   for (const [key, player] of players) {
     if (wanted.has(key)) continue;
-    player.stop();
-    player.el.remove();
     players.delete(key);
+    const end = () => {
+      fadingOut.delete(player);
+      player.stop();
+      player.el.remove();
+    };
+    // An audio playlist's track fades out (it was paused, moved on, or cleared); other sounds stop at once.
+    if (player.fadeOutMs > 0) {
+      fadingOut.add(player);
+      fadeTo(player, 0, player.fadeOutMs, end);
+    } else end();
   }
   for (const sound of wanted.values()) {
     const current = players.get(sound.key);
     if (current) {
       current.el.loop = sound.loop;
-      current.el.volume = sound.volume;
+      if (current.volume !== sound.volume) {
+        current.volume = sound.volume;
+        if (!current.fade) current.el.volume = sound.volume;
+      }
       continue;
     }
     const el = document.createElement('audio');
     el.loop = sound.loop;
-    el.volume = sound.volume;
+    el.volume = sound.fadeInMs ? 0 : sound.volume;
     el.preload = 'auto';
     el.dataset['key'] = sound.key;
     el.dataset['mediaId'] = sound.mediaId;
     document.body.append(el);
     void el.setSinkId(sinkId).catch(() => undefined);
     // Sound jumps later, and changes speed less, than pictures do: a skip or a pitch change is heard.
-    const stop = startPlayback(el, {
+    const player: Player = {
+      el,
+      volume: sound.volume,
+      fadeOutMs: sound.fadeOutMs ?? 0,
+      fade: null,
+      stop: () => undefined,
+    };
+    player.stop = startPlayback(el, {
       mediaId: sound.mediaId,
       startedAt: sound.startedAt,
       audible: true,
       limits: SOUND_LIMITS,
+      // An audio playlist's track fades in once it has its first sound.
+      ...(sound.fadeInMs
+        ? {
+            onFrame: () => {
+              fadeTo(player, player.volume, sound.fadeInMs ?? 0);
+            },
+          }
+        : {}),
     });
-    players.set(sound.key, { el, stop });
+    players.set(sound.key, player);
   }
+  document.body.dataset['fading'] = String(fadingOut.size);
 }
 
 /** Look at the sound outputs, play on the chosen one (or the default), and tell the operator. */
@@ -73,7 +130,9 @@ async function findOutputs(): Promise<void> {
   }
   if (next !== sinkId) {
     sinkId = next;
-    await Promise.all([...players.values()].map((p) => p.el.setSinkId(sinkId).catch(() => undefined)));
+    await Promise.all(
+      [...players.values(), ...fadingOut].map((p) => p.el.setSinkId(sinkId).catch(() => undefined)),
+    );
   }
   document.body.dataset['sinkId'] = sinkId;
   document.body.dataset['output'] = state;

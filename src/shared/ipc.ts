@@ -2,6 +2,7 @@ import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
 import type { RolesResult, RolesView } from './roles';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { UpdateResult, UpdateView } from './updates';
+import type { MusicResult, MusicView } from './music';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { IdleResult, IdleSettings, IdleView, QuoteFields, QuoteResult } from './idle';
 import type {
@@ -172,6 +173,25 @@ export const IPC = {
     changed: 'updates:changed',
     /** main -> operator: Help > Check for Updates… was chosen. */
     open: 'updates:open',
+  },
+  /**
+   * Audio playlists (Session 14, shared/music.ts): changing them is the
+   * operator's (Simple Mode refuses); playing one starts it in the engine,
+   * whose own commands pause it and move through it.
+   */
+  music: {
+    view: 'music:view',
+    create: 'music:create',
+    rename: 'music:rename',
+    remove: 'music:remove',
+    setOptions: 'music:set-options',
+    addTracks: 'music:add-tracks',
+    moveTrack: 'music:move-track',
+    removeTrack: 'music:remove-track',
+    /** Play a playlist from a track; with none, the one paused plays on or the last one starts (either mode). */
+    play: 'music:play',
+    /** main -> operator: the audio playlists changed. */
+    changed: 'music:changed',
   },
   engine: {
     /** Start receiving engine messages in this window; returns a snapshot. */
@@ -582,6 +602,21 @@ export interface InvokeContract {
   [IPC.backups.runNow]: { args: []; result: BackupsResult };
   [IPC.backups.dismiss]: { args: []; result: ScheduledBackupsView };
   [IPC.updates.view]: { args: []; result: UpdateView };
+  [IPC.music.view]: { args: []; result: MusicView };
+  [IPC.music.create]: { args: [name: string]; result: MusicResult };
+  [IPC.music.rename]: { args: [playlistId: string, name: string]; result: MusicResult };
+  [IPC.music.remove]: { args: [playlistId: string]; result: MusicResult };
+  [IPC.music.setOptions]: {
+    args: [playlistId: string, options: { loop: boolean; shuffle: boolean }];
+    result: MusicResult;
+  };
+  [IPC.music.addTracks]: {
+    args: [playlistId: string, mediaIds: string[], at: number | null];
+    result: MusicResult;
+  };
+  [IPC.music.moveTrack]: { args: [trackId: string, to: number]; result: MusicResult };
+  [IPC.music.removeTrack]: { args: [trackId: string]; result: MusicResult };
+  [IPC.music.play]: { args: [playlistId: string | null, trackIndex?: number]; result: MusicResult };
   [IPC.updates.check]: { args: []; result: UpdateResult };
   [IPC.updates.download]: { args: []; result: UpdateResult };
   [IPC.updates.cancel]: { args: []; result: UpdateResult };
@@ -871,6 +906,7 @@ export interface EventContract {
   [IPC.backups.changed]: ScheduledBackupsView;
   [IPC.backups.open]: { at: number };
   [IPC.updates.changed]: UpdateView;
+  [IPC.music.changed]: MusicView;
   [IPC.updates.open]: { at: number };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.looks.changed]: LooksView;

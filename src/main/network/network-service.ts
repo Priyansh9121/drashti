@@ -98,6 +98,8 @@ export interface NetworkDeps {
   reads: NetworkReads;
   /** Run a macro for a device (macro-service.ts), named in the log. */
   runMacro(macroId: string, who: string): MacroRunResult;
+  /** Play the audio playlist (music-service.ts): on from a pause, or the one played last. */
+  playMusic(who: string): { ok: true } | { ok: false; message: string };
   /** Announcements from phones (announcement-service.ts). */
   announcements: {
     submit(device: { id: string; name: string }, address: string, input: unknown): DeviceAnswer;
@@ -125,6 +127,8 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   looks: IPC.looks.list,
   macros: IPC.macros.list,
   'macro.run': IPC.macros.run,
+  // Playing music is not a change to the library: Simple Mode lets a Remote do it, as it does the window.
+  'music.play': IPC.music.play,
   'shastra.texts': IPC.shastra.list,
   // Putting up a passage runs the show, as Next does: Simple Mode lets a Remote do it.
   shastra: IPC.engine.command,
@@ -634,6 +638,10 @@ export class NetworkService implements EngineTransport {
         if (!id.success) return deny(404, 'There is no such macro.');
         const ran = this.deps.runMacro(id.data, who);
         return ran.ok ? ok({ changed: ran.changed, rev: ran.rev }) : deny(409, ran.message);
+      }
+      case 'music.play': {
+        const played = this.deps.playMusic(who);
+        return played.ok ? ok({ playing: true }) : deny(409, played.message);
       }
       case 'playlists':
         return ok({ playlists: this.deps.reads.playlists() });
