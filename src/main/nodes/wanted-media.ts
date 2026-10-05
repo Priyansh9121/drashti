@@ -11,7 +11,8 @@ import type { Db } from '../db/database';
  * What each node should have copies of, in order (Session 13):
  *   1. what is on the screens now, and what Next would bring;
  *   2. the live playlist's items;
- *   3. playlists made or changed in the last 7 days (the week's sabhas);
+ *   3. playlists made, changed or opened on Main in the last 7 days (the
+ *      week's sabhas; opened counts since Session 14);
  *   4. props (the logo among them) and the idle rotation's pictures;
  *   5. with "Get everything ready", every picture and video in the library.
  * Pictures and videos only: sound is never needed on a node. Files that are
@@ -121,10 +122,11 @@ export class WantedMedia {
       this.db
         .prepare(
           `SELECT id FROM playlists
-            WHERE is_folder = 0 AND is_template = 0 AND deleted_at IS NULL AND (updated_at >= ? OR created_at >= ?)
-            ORDER BY updated_at DESC`,
+            WHERE is_folder = 0 AND is_template = 0 AND deleted_at IS NULL
+              AND (updated_at >= ? OR created_at >= ? OR opened_at >= ?)
+            ORDER BY max(created_at, coalesce(updated_at, ''), coalesce(opened_at, '')) DESC`,
         )
-        .all(since, since) as { id: string }[]
+        .all(since, since, since) as { id: string }[]
     )
       .map((r) => r.id)
       .filter((id) => id !== livePlaylistId);

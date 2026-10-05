@@ -155,7 +155,7 @@ import { NodeRepo } from './db/nodes';
 import { NodeService } from './nodes/node-service';
 import { spawnLinkWorker } from './nodes/link-worker';
 import { loadOrMakeIdentity } from './nodes/identity';
-import { WantedMedia } from './nodes/wanted-media';
+import { RECENT_DAYS, WantedMedia } from './nodes/wanted-media';
 import { startPerfNodes } from './nodes/perf-nodes';
 import type { NodeOutputStatus, ScreenThumb } from '../shared/nodes';
 import { hostname } from 'node:os';
@@ -1882,6 +1882,14 @@ function start(): void {
       engine.refreshNext();
       sendToOperator(IPC.playlists.changed, { at: Date.now() });
       net.hint('playlists');
+    },
+    opened: (playlistId) => {
+      // Opened on Main, a playlist from an earlier week counts as this week's: nodes copy its media.
+      const since = new Date(Date.now() - RECENT_DAYS * 24 * 3600 * 1000).toISOString();
+      if (playlists.markOpened(playlistId, since)) {
+        wanted.invalidate();
+        nodes.libraryChanged();
+      }
     },
   });
   handle(IPC.library.getPresentation, (_event, id) => {

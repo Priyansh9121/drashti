@@ -14,7 +14,7 @@ describe('search folding', () => {
   });
 
   it('ignores zero-width joiners and punctuation', () => {
-    expect(searchWords('क्‍ष — “quoted” (x)')).toEqual(['क्ष', 'quoted', 'x']);
+    expect(searchWords('क्‍ष — “quoted” (y)')).toEqual(['क्ष', 'quoted', 'y']);
   });
 
   it('folds v and w, and doubled vowels, so one spelling finds another (Session 13)', () => {
@@ -28,6 +28,30 @@ describe('search folding', () => {
     // English finds itself (both sides fold alike), and Gujarati and Devanagari are untouched.
     expect(matchesAll(searchWords('week'), searchWords('This week'))).toBe(true);
     expect(searchWords('નમૂના नमूना')).toEqual(['નમૂના', 'नमूना']);
+  });
+
+  it('folds x and ksh, f and ph, and ru and ri after a consonant (Session 14)', () => {
+    expect(searchWords('Axar')).toEqual(searchWords('Akshar'));
+    expect(searchWords('Kshama Xama')).toEqual(['kshama', 'kshama']);
+    expect(searchWords('Fal')).toEqual(searchWords('Phal'));
+    expect(searchWords('Krushna')).toEqual(searchWords('Krishna'));
+    expect(searchWords('Shruti Shriji')).toEqual(['shriti', 'shriji']);
+    // Only after a consonant: guru and giri stay apart, and a word starting ru keeps it.
+    expect(searchWords('Guru')).toEqual(['guru']);
+    expect(searchWords('Giri')).toEqual(['giri']);
+    expect(matchesAll(searchWords('guru'), searchWords('Giri'))).toBe(false);
+    expect(matchesAll(searchWords('giri'), searchWords('Guru'))).toBe(false);
+    expect(searchWords('Rushi Rishi')).toEqual(['rushi', 'rishi']);
+    // Typed partly, each spelling still finds the other.
+    expect(matchesAll(searchWords('aks'), searchWords('Axar Purushottam'))).toBe(true);
+    expect(matchesAll(searchWords('ax'), searchWords('Akshar'))).toBe(true);
+    expect(matchesAll(searchWords('p'), searchWords('Fal'))).toBe(true);
+    expect(matchesAll(searchWords('kru'), searchWords('Krishna'))).toBe(true);
+    expect(matchesAll(searchWords('kri'), searchWords('Krushna'))).toBe(true);
+    // Doubled vowels fold first, so "Kruushna" is "Krushna" too.
+    expect(searchWords('Kruushna')).toEqual(searchWords('Krishna'));
+    // English still finds itself.
+    expect(matchesAll(searchWords('box fruit'), searchWords('The fruit box'))).toBe(true);
   });
 
   it('asks for every word, each as the start of a word', () => {

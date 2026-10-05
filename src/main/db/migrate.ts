@@ -29,6 +29,7 @@ import { up as arti } from './migrations/027-arti';
 import { up as calendar } from './migrations/028-calendar';
 import { up as idle } from './migrations/029-idle';
 import { up as nodes } from './migrations/030-nodes';
+import { up as openedPlaylists } from './migrations/031-opened-playlists';
 
 export interface Migration {
   version: number;
@@ -77,6 +78,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 28, name: 'Samvat and tithi', up: calendar },
   { version: 29, name: 'the idle rotation', up: idle },
   { version: 30, name: 'output nodes', up: nodes },
+  { version: 31, name: 'opened playlists count for nodes', up: openedPlaylists },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

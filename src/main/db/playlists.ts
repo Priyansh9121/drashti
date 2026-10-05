@@ -639,6 +639,23 @@ export class PlaylistRepo {
     })();
   }
 
+  /**
+   * The operator opened a playlist on Main (Session 14): it counts as this
+   * week's for nodes from now. Returns true when it did not count before
+   * (nothing about it was newer than `recentSince`), so what nodes copy changes.
+   */
+  markOpened(id: string, recentSince: string): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT max(created_at, coalesce(updated_at, ''), coalesce(opened_at, '')) AS latest
+           FROM playlists WHERE id = ? AND is_folder = 0 AND deleted_at IS NULL`,
+      )
+      .get(id) as { latest: string | null } | undefined;
+    if (!row) return false;
+    this.db.prepare(`UPDATE playlists SET opened_at = ${NOW} WHERE id = ?`).run(id);
+    return (row.latest ?? '') < recentSince;
+  }
+
   rename(id: string, name: string): boolean {
     return (
       this.db

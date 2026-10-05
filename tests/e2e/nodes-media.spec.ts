@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -134,6 +135,80 @@ test('media is copied before it is needed, checked by hash; what goes up first i
     for (const f of readdirSync(cacheDir).filter((n) => /^[0-9a-f]{64}\./u.test(n)))
       expect(sha(join(cacheDir, f))).toBe(f.split('.')[0]);
     await expect.poll(async () => (await nodeView(node.page)).media.problem).toBeNull();
+  } finally {
+    await node.app.close();
+    await main.app.close();
+  }
+});
+
+test('a playlist from an earlier week is copied once it is opened on Main (Session 14)', async () => {
+  test.setTimeout(180_000);
+  const main = await launchMain();
+  const node = await launchNode();
+  try {
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-nodes-opened-'));
+    const week = await makeTestImage(main.win, join(dir, 'Placeholder this week.png'), {
+      width: 320,
+      height: 180,
+      color: '#306050',
+    });
+    const old = await makeTestImage(main.win, join(dir, 'Placeholder earlier week.png'), {
+      width: 320,
+      height: 180,
+      color: '#603050',
+    });
+    await importAndGetIds(main.win, [week, old]);
+    const media = await main.win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia());
+    const idOf = (name: string) => media.find((m) => m.name.startsWith(name))?.id ?? '';
+    const made = await main.win.evaluate(
+      async ({ weekId, oldId }) => {
+        const d = (globalThis as PageGlobals).drashti;
+        const ids: string[] = [];
+        for (const [name, mediaId] of [
+          ['Placeholder This Week', weekId],
+          ['Placeholder Earlier Week', oldId],
+        ] as const) {
+          const r = await d.playlists.create(name, null, false);
+          if (!r.ok) throw new Error(r.message);
+          const id = r.ids[0] ?? '';
+          const added = await d.playlists.addItems(id, null, [{ kind: 'media', mediaId }]);
+          if (!added.ok) throw new Error(added.message);
+          ids.push(id);
+        }
+        return ids;
+      },
+      { weekId: idOf('Placeholder this week'), oldId: idOf('Placeholder earlier week') },
+    );
+    // The earlier week's playlist was made, changed and last opened ten days ago.
+    const tenDaysAgo = new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString();
+    const planted = new Database(join(main.userData, 'drashti.sqlite'));
+    planted
+      .prepare('UPDATE playlists SET created_at = ?, updated_at = ?, opened_at = NULL WHERE id = ?')
+      .run(tenDaysAgo, tenDaysAgo, made[1]);
+    planted.close();
+    // Paired after that: this week's picture is copied, the earlier week's is not.
+    await pairNode(main, node);
+    const cacheDir = join(node.userData, 'Media cache');
+    await expect.poll(() => existsSync(join(cacheDir, `${sha(week)}.png`)), { timeout: 30_000 }).toBe(true);
+    await expect.poll(async () => (await nodeView(node.page)).media.problem).toBeNull();
+    expect(existsSync(join(cacheDir, `${sha(old)}.png`))).toBe(false);
+    // Opening it on Main is enough: it now counts as this week's, and its picture is copied.
+    const tree = main.win.getByTestId('playlists').getByTestId('playlist-tree');
+    await tree.getByTestId('playlist-node').filter({ hasText: 'Placeholder Earlier Week' }).click();
+    await expect(main.win.getByTestId('playlists').getByTestId('playlist-title')).toHaveText(
+      'Placeholder Earlier Week',
+    );
+    await expect.poll(() => existsSync(join(cacheDir, `${sha(old)}.png`)), { timeout: 30_000 }).toBe(true);
+    expect(sha(join(cacheDir, `${sha(old)}.png`))).toBe(sha(old));
+    // Only the stamp moved: its name and items, and when they last changed, are as they were.
+    const check = new Database(join(main.userData, 'drashti.sqlite'), { readonly: true });
+    const row = check.prepare('SELECT updated_at, opened_at FROM playlists WHERE id = ?').get(made[1]) as {
+      updated_at: string;
+      opened_at: string | null;
+    };
+    check.close();
+    expect(row.updated_at).toBe(tenDaysAgo);
+    expect(row.opened_at).not.toBeNull();
   } finally {
     await node.app.close();
     await main.app.close();

@@ -204,6 +204,8 @@ export const IPC = {
   playlists: {
     tree: 'playlists:tree',
     items: 'playlists:items',
+    /** The operator opened a playlist: it counts as this week's for output nodes (Session 14). */
+    opened: 'playlists:opened',
     /** The rest change playlists (operator window only). */
     create: 'playlists:create',
     rename: 'playlists:rename',
@@ -508,6 +510,7 @@ export interface InvokeContract {
   [IPC.library.legacyPresentations]: { args: []; result: { id: string; name: string }[] };
   [IPC.playlists.tree]: { args: []; result: PlaylistNode[] };
   [IPC.playlists.items]: { args: [playlistId: string]; result: PlaylistItemInfo[] };
+  [IPC.playlists.opened]: { args: [playlistId: string]; result: null };
   [IPC.playlists.create]: {
     args: [name: string, parentId: string | null, isFolder: boolean];
     result: PlaylistResult;
