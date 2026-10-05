@@ -49,6 +49,9 @@ const errorCode = (error: unknown) =>
 
 let busy = false;
 
+/** A backup made by hand is running (a scheduled one waits for it). */
+export const handBackupRunning = (): boolean => busy;
+
 /** Run one of the flows; anything unexpected is told to the operator, and logged by its code only. */
 async function guarded(ui: BackupUi, what: string, flow: (ui: BackupUi) => Promise<void>): Promise<void> {
   try {

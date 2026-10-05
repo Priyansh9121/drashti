@@ -15,7 +15,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { copyFile, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, join, relative } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { z } from 'zod';
@@ -35,9 +35,11 @@ import { CONVERTING_DIR } from '../import/media-store';
  */
 
 export const LIBRARY_FILE = 'drashti.sqlite';
-const MEDIA = 'Media';
+export const MEDIA = 'Media';
 const REQUEST = 'restore-request.json';
-const NOTE = 'backup.json';
+export const NOTE = 'backup.json';
+/** A scheduled backup's list of the media files it needs from the shared pool (Session 14). */
+export const MANIFEST = 'media.json';
 /** Files this big are streamed, so the progress moves while they copy. */
 const STREAM_FROM = 16 * 1024 * 1024;
 
@@ -46,6 +48,13 @@ export interface BackupNote {
   schema: number;
   createdAt: string;
   media: boolean;
+  /** Made by a schedule (Session 14): only these are ever removed by Drashti, in their folder. */
+  scheduled?: boolean;
+  /**
+   * The media folder shared by the scheduled backups beside it (relative to
+   * this backup, "../Media"), with MANIFEST listing the files this one needs.
+   */
+  mediaPool?: string;
 }
 
 const noteSchema: z.ZodType<BackupNote> = z.object({
@@ -53,7 +62,31 @@ const noteSchema: z.ZodType<BackupNote> = z.object({
   schema: z.number().int(),
   createdAt: z.string(),
   media: z.boolean(),
+  scheduled: z.boolean().optional(),
+  mediaPool: z.string().optional(),
 });
+
+/** A note as it is read (null when it is missing or not a backup's note). */
+export function readNote(folder: string): BackupNote | null {
+  try {
+    return noteSchema.parse(JSON.parse(readFileSync(join(folder, NOTE), 'utf8')));
+  } catch {
+    return null;
+  }
+}
+
+const manifestSchema = z.object({ files: z.array(z.string().min(1).max(1024)).max(1_000_000) });
+
+/** The media files a scheduled backup needs from its pool, or null when its list cannot be read. */
+export function readManifest(folder: string): string[] | null {
+  try {
+    const files = manifestSchema.parse(JSON.parse(readFileSync(join(folder, MANIFEST), 'utf8'))).files;
+    // Only plain paths inside the pool: nothing that climbs out of it.
+    return files.every((f) => !isAbsolute(f) && !f.split(/[\\/]/u).includes('..')) ? files : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * The copies openDatabase keeps before upgrading a library (drashti.sqlite.v<N>.bak). They
@@ -195,7 +228,14 @@ export async function backupLibrary(
 }
 
 export type BackupCheck =
-  | { ok: true; media: boolean; schema: number; note: BackupNote }
+  | {
+      ok: true;
+      media: boolean;
+      schema: number;
+      note: BackupNote;
+      /** A scheduled backup's media: the pool folder and the files it needs there (else null). */
+      pool: { dir: string; files: string[] } | null;
+    }
   | { ok: false; code: 'no-library' | 'unfinished' | 'unreadable' | 'newer'; message: string };
 
 /** Whether a folder holds a finished backup this Drashti can restore. */
@@ -234,7 +274,20 @@ export function checkBackup(folder: string, latestSchema: number): BackupCheck {
       code: 'newer',
       message: 'That backup was made by a newer Drashti: update Drashti first.',
     };
-  return { ok: true, media: existsSync(join(folder, MEDIA)), schema, note };
+  // A scheduled backup keeps its media in the pool beside it; every file it lists must be there.
+  if (!existsSync(join(folder, MEDIA)) && note.mediaPool !== undefined && note.media) {
+    const dir = join(folder, note.mediaPool);
+    const files = readManifest(folder);
+    if (!files?.every((f) => existsSync(join(dir, f))))
+      return {
+        ok: false,
+        code: 'unfinished',
+        message:
+          'That backup’s media is not all there (the shared Media folder beside it is missing files), so it cannot be restored whole.',
+      };
+    return { ok: true, media: true, schema, note, pool: { dir, files } };
+  }
+  return { ok: true, media: existsSync(join(folder, MEDIA)), schema, note, pool: null };
 }
 
 /** Ask for a restore from `from` at the next start. */
@@ -304,7 +357,14 @@ export function applyPendingRestore(
       if (existsSync(`${current}${suffix}`))
         copyFileSync(`${current}${suffix}`, join(keptIn, `${LIBRARY_FILE}${suffix}`));
     rmSync(incomingMedia, { recursive: true, force: true });
-    if (check.media) cpSync(join(from, MEDIA), incomingMedia, { recursive: true });
+    if (check.pool) {
+      // A scheduled backup: the files it lists, from the pool shared by the backups beside it.
+      for (const file of check.pool.files) {
+        mkdirSync(dirname(join(incomingMedia, file)), { recursive: true });
+        copyFileSync(join(check.pool.dir, file), join(incomingMedia, file));
+      }
+      mkdirSync(incomingMedia, { recursive: true });
+    } else if (check.media) cpSync(join(from, MEDIA), incomingMedia, { recursive: true });
     copyFileSync(join(from, LIBRARY_FILE), incomingDb);
   } catch (error) {
     cleanUp();

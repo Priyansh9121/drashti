@@ -25,6 +25,8 @@ export interface MenuActions {
   useAsNode: () => void;
   /** File > Roles and PINs… (Session 14): the admin PIN and the operator PIN (Pro Mode only). */
   rolesAndPins: () => void;
+  /** File > Scheduled Backups… (Session 14). */
+  scheduledBackups: () => void;
   /** Only when DRASHTI_DIAGNOSTICS=1: for the manual watchdog check. */
   diagnostics: {
     crashOperator: () => void;
@@ -52,6 +54,7 @@ export function installMenu(actions: MenuActions): void {
             submenu: [
               { id: 'backup-library', label: 'Back Up Library…', click: actions.backUpLibrary },
               { id: 'restore-library', label: 'Restore Library…', click: actions.restoreLibrary },
+              { id: 'scheduled-backups', label: 'Scheduled Backups…', click: actions.scheduledBackups },
               { type: 'separator' },
               { id: 'roles-and-pins', label: 'Roles and PINs…', click: actions.rolesAndPins },
               { type: 'separator' },

@@ -53,6 +53,7 @@ import { watchProps } from './logo-store';
 import { connectMode, useMode } from './mode-store';
 import { connectRoles } from '../roles/roles-store';
 import { AdminPinDialog, RolesDialog } from '../roles/RolesDialogs';
+import { BackupsDialog } from '../backups/BackupsDialog';
 import { SimpleApp } from '../simple/SimpleApp';
 import { SetupWizard } from '../setup/SetupWizard';
 import { openSetup } from '../setup/setup-store';
@@ -231,6 +232,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <ArtiDialog />
       <CalendarDialog />
       <RolesDialog />
+      <BackupsDialog />
       <AdminPinDialog />
       {dashboardOpen && (
         <ScreensDashboard

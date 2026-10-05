@@ -97,9 +97,17 @@ import { saveStill } from './media/stills';
 import { installMenu, installNodeMenu } from './menu';
 import { runPerformanceTest } from './perftest';
 import { registerPlaylistIpc } from './playlists/playlist-ipc';
-import { applyPendingRestore, backupLibrary, requestRestore, rollBackRestore } from './library/backup';
+import {
+  applyPendingRestore,
+  backupLibrary,
+  requestRestore,
+  rollBackRestore,
+  sameDisk,
+} from './library/backup';
 import type { BackupUi } from './library/backup-ui';
-import { backUp, restore } from './library/backup-ui';
+import { backUp, handBackupRunning, restore } from './library/backup-ui';
+import { ScheduledBackups } from './backup/scheduled-backups';
+import { spawnBackupWorker } from './backup/spawn-backup-worker';
 import { Revisions } from './library/revisions';
 import { applyTheme, themeLook } from './library/themes';
 import { defaultTransition, registerSlidesIpc } from './library/slides-ipc';
@@ -226,10 +234,15 @@ const announceMinuteMs = Math.min(
   60_000,
   Math.max(100, Number(process.env['DRASHTI_TEST_ANNOUNCE_MINUTE_MS'] ?? 60_000) || 60_000),
 );
-// Tests only: the arti schedules read this computer's clock moved on by this much (ms), and a test can
-// move it with globalThis.drashtiArtiClock(wallMs). The engine's clock is never moved.
+// Tests only: the schedules (the arti, and since Session 14 backups and macros) read this computer's
+// clock moved on by this much (ms), and a test can move it with globalThis.drashtiArtiClock(wallMs).
+// The engine's clock is never moved.
 const artiTestClock = process.env['DRASHTI_TEST_ARTI_CLOCK'] === '1' && !app.isPackaged;
 let artiClockOffset = artiTestClock ? Number(process.env['DRASHTI_TEST_ARTI_OFFSET_MS'] ?? 0) || 0 : 0;
+/** The schedules' clock: this computer's, moved by a test only. */
+const scheduleNow = () => Date.now() + artiClockOffset;
+// Tests only: scheduled backups copy at this rate (bytes a second), so a test can watch one wait.
+const testBackupRate = app.isPackaged ? null : Number(process.env['DRASHTI_TEST_BACKUP_RATE'] ?? 0) || null;
 // The performance check only: so many devices connected while it measures, and (to compare) the
 // network's server in the main process instead of its own.
 const perfDevices = Math.min(50, Math.max(0, Number(process.env['DRASHTI_PERF_DEVICES'] ?? 0) || 0));
@@ -1451,7 +1464,7 @@ function start(): void {
       dispatch: (command) => engine.dispatch(command),
       onChange: (listener) => engine.onChange(listener),
     },
-    now: () => Date.now() + artiClockOffset,
+    now: scheduleNow,
     engineNow: Date.now,
     changed: (view) => {
       sendToOperator(IPC.arti.changed, view);
@@ -1465,10 +1478,54 @@ function start(): void {
   app.on('will-quit', () => {
     arti.dispose();
   });
+  // ---- scheduled backups (Session 14): into a folder an admin picks, at their times ----------------
+  const scheduledBackups = new ScheduledBackups({
+    settings,
+    now: scheduleNow,
+    engineNow: Date.now,
+    onAir: () => streaming.inUse(),
+    busy: handBackupRunning,
+    spawn: spawnBackupWorker,
+    dbFile: libraryFile(),
+    mediaDir,
+    userData: userDataDir,
+    app: app.getVersion(),
+    schema: LATEST_VERSION,
+    sameDisk,
+    changed: (view) => {
+      sendToOperator(IPC.backups.changed, view);
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+    ...(testBackupRate ? { bytesPerSecond: testBackupRate } : {}),
+  });
+  app.on('will-quit', () => {
+    scheduledBackups.dispose();
+  });
+  const notBackupsOperator = { ok: false as const, message: 'Only the operator window can change backups.' };
+  handle(IPC.backups.view, () => scheduledBackups.view());
+  handle(IPC.backups.save, (e, schedule) =>
+    fromOperator(e) ? scheduledBackups.save(schedule) : notBackupsOperator,
+  );
+  handle(IPC.backups.runNow, (e) => (fromOperator(e) ? scheduledBackups.runNow() : notBackupsOperator));
+  handle(IPC.backups.dismiss, () => scheduledBackups.dismiss());
+  handle(IPC.backups.pickFolder, async (e) => {
+    if (!fromOperator(e) || !operatorWindow) return notBackupsOperator;
+    const picked = await dialog.showOpenDialog(operatorWindow, {
+      title: 'Back Up Into',
+      message: 'Choose where scheduled backups go: a USB drive or another disk is best.',
+      buttonLabel: 'Choose',
+      properties: ['openDirectory', 'createDirectory', 'promptToCreate'],
+    });
+    return { ok: true as const, folder: picked.canceled ? null : (picked.filePaths[0] ?? null) };
+  });
   if (artiTestClock)
     (globalThis as { drashtiArtiClock?: (wallMs: number) => void }).drashtiArtiClock = (wallMs) => {
       artiClockOffset = wallMs - Date.now();
       arti.check();
+      scheduledBackups.check();
     };
   // ---- Samvat and tithi: today's entry from the loaded calendars -------------------------
   const calendars = new CalendarService({
@@ -2527,6 +2584,9 @@ function start(): void {
     },
     rolesAndPins: () => {
       if (mode === 'pro') sendToOperator(IPC.roles.open, { at: Date.now() });
+    },
+    scheduledBackups: () => {
+      if (mode === 'pro') sendToOperator(IPC.backups.open, { at: Date.now() });
     },
     useAsNode: () => {
       if (mode === 'pro') requireAdmin('use this computer as a node', useAsNode);

@@ -1,5 +1,6 @@
 import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
 import type { RolesResult, RolesView } from './roles';
+import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { IdleResult, IdleSettings, IdleView, QuoteFields, QuoteResult } from './idle';
 import type {
@@ -137,6 +138,20 @@ export const IPC = {
     askAdmin: 'roles:ask-admin',
     /** main -> operator: File > Roles and PINs… was chosen. */
     open: 'roles:open',
+  },
+  /** Scheduled backups (Session 14, shared/backups.ts): changing them, and Back up now, are an admin's. */
+  backups: {
+    view: 'backups:view',
+    save: 'backups:save',
+    /** Choose the folder (a USB drive or another disk); not kept until saved. */
+    pickFolder: 'backups:pick-folder',
+    runNow: 'backups:run-now',
+    /** The status bar's warning about a skipped or stopped backup has been read. */
+    dismiss: 'backups:dismiss',
+    /** main -> operator: the schedule or how backups stand changed. */
+    changed: 'backups:changed',
+    /** main -> operator: File > Scheduled Backups… was chosen. */
+    open: 'backups:open',
   },
   engine: {
     /** Start receiving engine messages in this window; returns a snapshot. */
@@ -530,6 +545,11 @@ export interface InvokeContract {
   [IPC.roles.changePin]: { args: [change: { role: 'admin' | 'operator'; pin: string }]; result: RolesResult };
   [IPC.roles.turnOff]: { args: []; result: RolesResult };
   [IPC.roles.cancelAsk]: { args: []; result: null };
+  [IPC.backups.view]: { args: []; result: ScheduledBackupsView };
+  [IPC.backups.save]: { args: [schedule: BackupSchedule]; result: BackupsResult };
+  [IPC.backups.pickFolder]: { args: []; result: PickFolderResult };
+  [IPC.backups.runNow]: { args: []; result: BackupsResult };
+  [IPC.backups.dismiss]: { args: []; result: ScheduledBackupsView };
   [IPC.engine.subscribe]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.snapshot]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.command]: { args: [command: EngineCommand]; result: CommandResult };
@@ -804,6 +824,8 @@ export interface EventContract {
   [IPC.roles.changed]: RolesView;
   [IPC.roles.askAdmin]: { what: string };
   [IPC.roles.open]: { at: number };
+  [IPC.backups.changed]: ScheduledBackupsView;
+  [IPC.backups.open]: { at: number };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.looks.changed]: LooksView;
   [IPC.stageLayouts.changed]: StageLayout[];

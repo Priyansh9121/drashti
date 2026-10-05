@@ -35,6 +35,7 @@ import type {
 import type { TranslitStyle } from './translit';
 import type { ModeResult, OperatorMode } from './mode';
 import type { RolesResult, RolesView } from './roles';
+import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { Lang, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
@@ -112,6 +113,17 @@ export interface DrashtiBridge {
     onModeChanged(listener: (mode: OperatorMode) => void): () => void;
     /** View > Switch to Pro Mode… was chosen: ask for the word (or, with roles on, a PIN). */
     onAskLeaveSimple(listener: () => void): () => void;
+  };
+  /** Scheduled backups (Session 14, operator window). */
+  backups: {
+    view(): Promise<ScheduledBackupsView>;
+    save(schedule: BackupSchedule): Promise<BackupsResult>;
+    pickFolder(): Promise<PickFolderResult>;
+    runNow(): Promise<BackupsResult>;
+    dismiss(): Promise<ScheduledBackupsView>;
+    onChanged(listener: (view: ScheduledBackupsView) => void): () => void;
+    /** File > Scheduled Backups… was chosen. */
+    onOpen(listener: () => void): () => void;
   };
   /** Roles (Session 14): an admin PIN and an operator PIN (operator window). */
   roles: {

@@ -1,5 +1,17 @@
 import { z } from 'zod';
 import { idSchema } from './model-schema';
+import {
+  daysSchema,
+  dateSchema,
+  hhmmSchema,
+  nextScheduleTime,
+  scheduleTimes,
+  scheduleWhenText,
+} from './schedule';
+import type { ScheduleWhen } from './schedule';
+
+// The days, dates and times are shared with the other schedules (shared/schedule.ts).
+export { countdownText, localDate, WEEKDAY_NAMES, WEEKDAY_SHORT } from './schedule';
 
 /*
  * The arti at its time (Session 12). An admin sets when each arti is: days
@@ -15,18 +27,6 @@ import { idSchema } from './model-schema';
  * clock, the one the engine counts with; the windows count down from the
  * times the main process gives them.
  */
-
-/** The days of the week, as JavaScript numbers them (0 is Sunday). */
-export const WEEKDAY_NAMES = [
-  'Sunday',
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-] as const;
-export const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
 /** The prompt shows at most this long before the time. */
 export const ARTI_PROMPT_MAX_MINUTES = 60;
@@ -70,22 +70,13 @@ export interface ArtiScheduleInfo extends ArtiSchedule {
 
 export type ArtiFields = Omit<ArtiSchedule, 'id' | 'presentationId'> & { presentationId: string };
 
-const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Write the time as HH:MM, for example 19:00.');
-
 export const artiFieldsSchema = z
   .object({
     name: z.string().trim().min(1, 'Give it a name, for example “Evening arti”.').max(80),
     presentationId: idSchema,
-    days: z
-      .array(z.number().int().min(0).max(6))
-      .max(7)
-      .transform((days) => [...new Set(days)].sort((a, b) => a - b)),
-    date: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Write the date as YYYY-MM-DD.')
-      .refine((d) => !Number.isNaN(Date.parse(`${d}T00:00:00`)), 'That date does not exist.')
-      .nullable(),
-    time: hhmm,
+    days: daysSchema,
+    date: dateSchema.nullable(),
+    time: hhmmSchema,
     promptMinutes: z.number().int().min(0).max(ARTI_PROMPT_MAX_MINUTES),
     byItself: z.boolean(),
     enabled: z.boolean(),
@@ -124,59 +115,12 @@ export interface ArtiView {
 
 export type ArtiAnswer = { ok: true } | { ok: false; message: string };
 
-const pad = (n: number) => String(n).padStart(2, '0');
-
-/** A local date as "YYYY-MM-DD". */
-export const localDate = (d: Date): string =>
-  `${String(d.getFullYear())}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-/**
- * The schedule's times from `fromMs` up to (not including) `toMs`, in
- * order: ms since the epoch, at this computer's local time on each day.
- */
-export function artiTimes(
-  s: Pick<ArtiSchedule, 'days' | 'date' | 'time'>,
-  fromMs: number,
-  toMs: number,
-): number[] {
-  const m = /^(\d{2}):(\d{2})$/.exec(s.time);
-  if (!m || toMs <= fromMs) return [];
-  const [hours, minutes] = [Number(m[1]), Number(m[2])];
-  const times: number[] = [];
-  // A day either side, so a time near midnight (or across a clock change) is never missed.
-  const day = new Date(fromMs);
-  day.setHours(0, 0, 0, 0);
-  day.setDate(day.getDate() - 1);
-  for (let i = 0; i < 400 && day.getTime() < toMs; i++) {
-    const on = s.date === null ? s.days.includes(day.getDay()) : localDate(day) === s.date;
-    if (on) {
-      const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hours, minutes).getTime();
-      if (at >= fromMs && at < toMs) times.push(at);
-    }
-    day.setDate(day.getDate() + 1);
-  }
-  return times;
-}
+/** The schedule's times from `fromMs` up to (not including) `toMs`, in order (shared/schedule.ts). */
+export const artiTimes = (s: ScheduleWhen, fromMs: number, toMs: number): number[] =>
+  scheduleTimes(s, fromMs, toMs);
 
 /** When a schedule next comes (its time), from `nowMs`; null if never (a date that has passed). */
-export function nextArtiTime(s: Pick<ArtiSchedule, 'days' | 'date' | 'time'>, nowMs: number): number | null {
-  // A weekly one comes within eight days; a date, whenever it is (up to a few years ahead).
-  const horizon = s.date === null ? 8 : 4 * 366;
-  return artiTimes(s, nowMs, nowMs + horizon * 24 * 3600 * 1000)[0] ?? null;
-}
+export const nextArtiTime = (s: ScheduleWhen, nowMs: number): number | null => nextScheduleTime(s, nowMs);
 
 /** When, in words: "Sun, Wed 19:00", "Every day 07:00", "2026-11-12 18:30". */
-export function artiWhen(s: Pick<ArtiSchedule, 'days' | 'date' | 'time'>): string {
-  if (s.date !== null) return `${s.date} ${s.time}`;
-  if (s.days.length === 7) return `Every day ${s.time}`;
-  return `${s.days.map((d) => WEEKDAY_SHORT[d] ?? '?').join(', ')} ${s.time}`;
-}
-
-/** "4:59" until the time; "0:00" once it is here. */
-export function countdownText(ms: number): string {
-  const s = Math.max(0, Math.ceil(ms / 1000));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  return h > 0 ? `${String(h)}:${pad(m)}:${pad(sec)}` : `${String(m)}:${pad(sec)}`;
-}
+export const artiWhen = (s: ScheduleWhen): string => scheduleWhenText(s);
