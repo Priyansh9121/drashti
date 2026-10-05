@@ -60,6 +60,28 @@ const TLS_REFUSALS = new Set([
   'CERT_UNTRUSTED',
 ]);
 
+/**
+ * A certificate refused for its dates: one of the two computers has a badly
+ * wrong date (the node's clock before the day Main made its certificate, or
+ * Main's clock wrong when it made it). Not a stranger: the clocks.
+ */
+const DATE_REFUSALS = new Set(['CERT_NOT_YET_VALID', 'CERT_HAS_EXPIRED']);
+
+export function isClockRefusal(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && DATE_REFUSALS.has(code);
+}
+
+/** What a refusal for the dates means, in words. */
+export function clockRefusal(error: unknown): string {
+  const code = (error as { code?: unknown } | null)?.code;
+  const how =
+    code === 'CERT_HAS_EXPIRED'
+      ? 'by this computer’s date, Main’s certificate has run out'
+      : 'by this computer’s date, Main’s certificate is not valid yet';
+  return `This computer and Main disagree about the date (${how}), so they cannot connect securely. Check the date and time on both computers. Trying again…`;
+}
+
 /** Was this connection refused for its certificate (another computer posing as Main)? */
 export function isCertificateRefusal(error: unknown): boolean {
   if (error instanceof NotOurMain) return true;
@@ -251,6 +273,8 @@ export async function pairWithMain(input: {
       node: finished.json.node,
     };
   } catch (error) {
+    if (isClockRefusal(error))
+      return { ok: false, message: clockRefusal(error).replace(' Trying again…', '') };
     if (isCertificateRefusal(error))
       return { ok: false, message: 'Main’s certificate changed while pairing. Try again.' };
     return { ok: false, message: unreachable(error, label) };
@@ -437,14 +461,19 @@ export class LinkClient {
         }, REFUSED_WAIT_MS);
         return;
       }
-      const why = isCertificateRefusal(failure)
-        ? new NotOurMain(label).message
-        : bye
-          ? NODE_BYE_TEXT[bye.reason]
-          : failure
-            ? unreachable(failure, label)
-            : 'The connection to Main was lost.';
-      if (isCertificateRefusal(failure)) this.events.state('refused', why);
+      // A clock so wrong that Main's certificate is out of its dates: said plainly, and tried again
+      // as any drop is (someone may fix the date at any moment).
+      const clock = isClockRefusal(failure);
+      const why = clock
+        ? clockRefusal(failure)
+        : isCertificateRefusal(failure)
+          ? new NotOurMain(label).message
+          : bye
+            ? NODE_BYE_TEXT[bye.reason]
+            : failure
+              ? unreachable(failure, label)
+              : 'The connection to Main was lost.';
+      if (clock || isCertificateRefusal(failure)) this.events.state('refused', why);
       else this.events.state('offline', why);
       this.addressIndex++;
       const wait = WAITS_MS[Math.min(this.attempt, WAITS_MS.length - 1)] ?? 3000;
