@@ -34,6 +34,7 @@ import type {
 } from './kirtans';
 import type { TranslitStyle } from './translit';
 import type { ModeResult, OperatorMode } from './mode';
+import type { RolesResult, RolesView } from './roles';
 import type { Lang, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
@@ -109,8 +110,31 @@ export interface DrashtiBridge {
     /** Into Simple Mode at once; back to Pro Mode only with the word typed (operator window only). */
     setMode(mode: OperatorMode, word?: string): Promise<ModeResult>;
     onModeChanged(listener: (mode: OperatorMode) => void): () => void;
-    /** View > Switch to Pro Mode… was chosen: ask for the word. */
+    /** View > Switch to Pro Mode… was chosen: ask for the word (or, with roles on, a PIN). */
     onAskLeaveSimple(listener: () => void): () => void;
+  };
+  /** Roles (Session 14): an admin PIN and an operator PIN (operator window). */
+  roles: {
+    view(): Promise<RolesView>;
+    /** The admin PIN: admin unlocked for a while. */
+    unlock(pin: string): Promise<RolesResult>;
+    lock(): Promise<RolesView>;
+    setPins(pins: { admin: string; operator: string }): Promise<RolesResult>;
+    changePin(change: { role: 'admin' | 'operator'; pin: string }): Promise<RolesResult>;
+    turnOff(): Promise<RolesResult>;
+    /** The operator closed the PIN prompt a menu item opened. */
+    cancelAsk(): Promise<null>;
+    onChanged(listener: (view: RolesView) => void): () => void;
+    /** A menu item needs the admin PIN: ask for it (what it is for, in words). */
+    onAskAdmin(listener: (what: string) => void): () => void;
+    /** File > Roles and PINs… was chosen. */
+    onOpen(listener: () => void): () => void;
+    /**
+     * The page's way to ask for the admin PIN. Before any admin request, the
+     * bridge asks the main process whether admin is locked and, if so, waits
+     * for this (true: unlocked); the main process decides either way.
+     */
+    setAdminAsker(asker: (() => Promise<boolean>) | null): void;
   };
   /** Files dropped on a page. */
   files: {

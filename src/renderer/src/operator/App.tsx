@@ -51,6 +51,8 @@ import { openCalendar } from '../calendar/calendar-store';
 import { isTyping, useKeymap } from './useKeymap';
 import { watchProps } from './logo-store';
 import { connectMode, useMode } from './mode-store';
+import { connectRoles } from '../roles/roles-store';
+import { AdminPinDialog, RolesDialog } from '../roles/RolesDialogs';
 import { SimpleApp } from '../simple/SimpleApp';
 import { SetupWizard } from '../setup/SetupWizard';
 import { openSetup } from '../setup/setup-store';
@@ -75,6 +77,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     watchPlaylists();
     watchProps();
     connectMode();
+    connectRoles();
     void startMidi();
     void loadLibrary();
     void loadTree();
@@ -227,6 +230,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <MacroEditor />
       <ArtiDialog />
       <CalendarDialog />
+      <RolesDialog />
+      <AdminPinDialog />
       {dashboardOpen && (
         <ScreensDashboard
           simple={false}

@@ -3,10 +3,26 @@ import type { DrashtiBridge } from '../shared/bridge';
 import type { EventChannel, EventContract, InvokeArgs, InvokeChannel, InvokeResult } from '../shared/ipc';
 import { IPC } from '../shared/ipc';
 import { summariesOf } from '../shared/library';
+import { isAdminChannel } from '../shared/roles';
 
-/** Typed ipcRenderer.invoke over the shared contract. */
-function invoke<C extends InvokeChannel>(channel: C, ...args: InvokeArgs<C>): Promise<InvokeResult<C>> {
-  return ipcRenderer.invoke(channel, ...args) as Promise<InvokeResult<C>>;
+/** The page's way to ask for the admin PIN (roles, Session 14), once it has given one. */
+let askAdmin: (() => Promise<boolean>) | null = null;
+
+/**
+ * Typed ipcRenderer.invoke over the shared contract. Before an admin
+ * request, with roles on and admin locked, the page asks for the admin PIN
+ * first; the request goes either way, and the main process decides.
+ */
+async function invoke<C extends InvokeChannel>(channel: C, ...args: InvokeArgs<C>): Promise<InvokeResult<C>> {
+  const asker = askAdmin;
+  if (asker && isAdminChannel(channel)) {
+    try {
+      if ((await ipcRenderer.invoke(IPC.roles.needsAdmin)) === true) await asker();
+    } catch {
+      // Asked and not answered: the main process refuses the request if admin is still locked.
+    }
+  }
+  return (await ipcRenderer.invoke(channel, ...args)) as InvokeResult<C>;
 }
 
 /** Typed listener for a main -> renderer event; returns an unsubscribe function. */
@@ -62,6 +78,27 @@ const bridge: DrashtiBridge = {
       on(IPC.app.askLeaveSimple, () => {
         listener();
       }),
+  },
+  roles: {
+    view: () => invoke(IPC.roles.view),
+    unlock: (pin) => invoke(IPC.roles.unlock, pin),
+    lock: () => invoke(IPC.roles.lock),
+    setPins: (pins) => invoke(IPC.roles.setPins, pins),
+    changePin: (change) => invoke(IPC.roles.changePin, change),
+    turnOff: () => invoke(IPC.roles.turnOff),
+    cancelAsk: () => invoke(IPC.roles.cancelAsk),
+    onChanged: (listener) => on(IPC.roles.changed, listener),
+    onAskAdmin: (listener) =>
+      on(IPC.roles.askAdmin, ({ what }) => {
+        listener(what);
+      }),
+    onOpen: (listener) =>
+      on(IPC.roles.open, () => {
+        listener();
+      }),
+    setAdminAsker: (asker) => {
+      askAdmin = asker;
+    },
   },
   files: {
     pathFor: (file) => webUtils.getPathForFile(file),

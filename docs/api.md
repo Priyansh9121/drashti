@@ -19,6 +19,7 @@ Everything here is **local only**: requests are refused from addresses outside t
 - **Tokens:** every request except pairing needs `Authorization: Bearer <token>`. There are no cookies, and a token is never put in a URL.
 - **Kinds of device:** a **Remote** may run the show (everything below except announcements), a **Stage** device only reads the state and the stage screen's settings, an **Announcements** device only sends announcements. No device can change the library, the screens, the sound, the stream or any settings.
 - **Simple Mode** refuses over the network what it refuses in the operator window (running the show stays allowed in both).
+- **Roles** (Session 14) change nothing here: a Remote device's requests are an operator's (running the show), so they never need the admin PIN, and no request on this API can do what only an admin may (pairing devices and nodes is done in Drashti's own window).
 - **Answers** are JSON: `{"ok": true, …}`, or `{"ok": false, "message": "…"}` with an HTTP status:
 
   | Status   | Meaning                                                                                                                              |

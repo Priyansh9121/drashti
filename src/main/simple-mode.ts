@@ -136,6 +136,11 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.node.pair,
   IPC.node.unpair,
   IPC.node.useAsMain,
+  // Roles (Session 14): Simple Mode sets no PIN and unlocks nothing; leaving it takes a PIN (app:set-mode).
+  IPC.roles.setPins,
+  IPC.roles.changePin,
+  IPC.roles.turnOff,
+  IPC.roles.unlock,
   // The announcements queue: Simple Mode never approves, edits, rejects or takes one off.
   IPC.announcements.edit,
   IPC.announcements.approve,

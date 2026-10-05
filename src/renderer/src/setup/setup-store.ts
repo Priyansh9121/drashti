@@ -15,7 +15,11 @@ import { useScreens } from '../screens/screens-store';
  * things as they are.
  */
 
-export const STEPS = ['Welcome', 'Screens', 'Sound', 'Stream', 'Theme', 'Finish'] as const;
+export const STEPS = ['Welcome', 'Screens', 'Sound', 'Stream', 'Theme', 'PINs', 'Finish'] as const;
+
+/** Two PINs to turn roles on at Finish (Session 14), each typed twice; or 'skip' to leave roles as they are. */
+export type PinChoice =
+  { admin: string; adminAgain: string; operator: string; operatorAgain: string } | 'skip';
 
 export interface OutputChoice {
   use: OutputUse;
@@ -39,6 +43,10 @@ interface SetupView {
   stream: { camera: DeviceChoice | null; sound: DeviceChoice | null } | 'skip';
   /** The default theme chosen, or null to keep it. */
   themeId: string | null;
+  /** PINs to turn roles on with, or 'skip' (always skipped once roles are on). */
+  pins: PinChoice;
+  /** Roles are on already: the PINs step only says where to change them. */
+  rolesOn: boolean;
   defaultThemeId: string | null;
   busy: boolean;
   problem: string | null;
@@ -60,6 +68,8 @@ const closed: SetupView = {
   stream: 'skip',
   themes: [],
   themeId: null,
+  pins: 'skip',
+  rolesOn: false,
   defaultThemeId: null,
   busy: false,
   problem: null,
@@ -72,11 +82,12 @@ export const useSetup = create<SetupView>(() => closed);
 /** Open the wizard, starting from the setup as it is. */
 export async function openSetup(): Promise<void> {
   useSetup.setState({ ...closed, open: true, busy: true });
-  const [state, snapshot, sound, themes] = await Promise.all([
+  const [state, snapshot, sound, themes, roles] = await Promise.all([
     window.drashti.setup.state(),
     window.drashti.screens.get(),
     window.drashti.audio.getOutput(),
     window.drashti.themes.list(),
+    window.drashti.roles.view(),
   ]);
   useScreens.setState({ snapshot });
   // Each display as it is used now: by a screen showing on it, in a group with its role, and its
@@ -101,6 +112,7 @@ export async function openSetup(): Promise<void> {
     themes: themes.themes,
     themeId: themes.defaultId,
     defaultThemeId: themes.defaultId,
+    rolesOn: roles.on,
   });
 }
 
@@ -121,6 +133,7 @@ export function skipStep(): void {
   if (STEPS[step] === 'Sound') useSetup.setState({ sound: 'skip' });
   if (STEPS[step] === 'Stream') useSetup.setState({ stream: 'skip' });
   if (STEPS[step] === 'Theme') useSetup.setState({ themeId: null });
+  if (STEPS[step] === 'PINs') useSetup.setState({ pins: 'skip' });
   goTo(step + 1);
 }
 
@@ -148,9 +161,25 @@ export function planOf(s: SetupView): SetupPlan {
   };
 }
 
+/** The PINs as chosen, ready to set; or why they cannot be, or null when the step is skipped. */
+export function pinsReady(pins: PinChoice): { admin: string; operator: string } | string | null {
+  if (pins === 'skip') return null;
+  const pin = /^\d{4,12}$/u;
+  if (!pin.test(pins.admin) || !pin.test(pins.operator)) return 'Each PIN is 4 to 12 digits.';
+  if (pins.admin !== pins.adminAgain || pins.operator !== pins.operatorAgain)
+    return 'Each PIN typed twice must match.';
+  if (pins.admin === pins.operator) return 'The admin PIN and the operator PIN must differ.';
+  return { admin: pins.admin, operator: pins.operator };
+}
+
 /** Apply everything chosen; with consent, outputs may cover the controls. */
 export async function finishSetup(coverOperator = false): Promise<void> {
   const s = useSetup.getState();
+  const pins = s.rolesOn ? null : pinsReady(s.pins);
+  if (typeof pins === 'string') {
+    useSetup.setState({ problem: `PINs: ${pins}` });
+    return;
+  }
   useSetup.setState({ busy: true, problem: null, askCover: false });
   const result = await window.drashti.setup.finish(planOf(s), { coverOperator });
   if (!result.ok) {
@@ -178,6 +207,11 @@ export async function finishSetup(coverOperator = false): Promise<void> {
       });
       if (!saved.ok) useSetup.setState({ problem: saved.message });
     }
+  }
+  // Roles on, last: whoever finished the setup is the admin from now (admin unlocked for a while).
+  if (pins) {
+    const set = await window.drashti.roles.setPins(pins);
+    if (!set.ok) useSetup.setState({ problem: set.message });
   }
   useSetup.setState({ busy: false, finished: { tested: result.tested } });
 }

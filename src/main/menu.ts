@@ -23,6 +23,8 @@ export interface MenuActions {
   restoreLibrary: () => void;
   /** File > Use This Computer as a Node…: asks, then restarts as a node (Pro Mode only). */
   useAsNode: () => void;
+  /** File > Roles and PINs… (Session 14): the admin PIN and the operator PIN (Pro Mode only). */
+  rolesAndPins: () => void;
   /** Only when DRASHTI_DIAGNOSTICS=1: for the manual watchdog check. */
   diagnostics: {
     crashOperator: () => void;
@@ -50,6 +52,8 @@ export function installMenu(actions: MenuActions): void {
             submenu: [
               { id: 'backup-library', label: 'Back Up Library…', click: actions.backUpLibrary },
               { id: 'restore-library', label: 'Restore Library…', click: actions.restoreLibrary },
+              { type: 'separator' },
+              { id: 'roles-and-pins', label: 'Roles and PINs…', click: actions.rolesAndPins },
               { type: 'separator' },
               { id: 'use-as-node', label: 'Use This Computer as a Node…', click: actions.useAsNode },
             ],

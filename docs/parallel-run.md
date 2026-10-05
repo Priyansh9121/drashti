@@ -157,9 +157,23 @@ Simple Mode is one screen with big buttons, for running a sabha from its playlis
 6. **Clear all** (F1) takes everything down; straight after it, **Put it back** (or Cmd+Z, Ctrl+Z on Windows) brings it all back.
 7. At the arti's time (if an admin set one), a big **Put up Arti now** button appears above the others, with **Not now** beside it. **Next** puts the arti up too, once its time has come.
 8. Nothing in Simple Mode can import, edit, remove, or change themes, screens, the sound, the arti times, or backups, or switch the Look. Drashti remembers Simple Mode, and comes back in it after a restart.
-9. To leave it: **View**, then **Switch to Pro Mode…**, type **pro**, and press **Switch to Pro Mode**. Volunteers should not need to.
+9. To leave it: **View**, then **Switch to Pro Mode…**, type **pro** (or, once PINs are set, a PIN: see below), and press **Switch to Pro Mode**. Volunteers should not need to.
 
 Write down anything the volunteer found hard, with what they were trying to do.
+
+### Roles and PINs
+
+Drashti has three roles. **Volunteers** run a sabha in Simple Mode, which changes nothing. **Operators** run the show in Pro Mode: playlists, words and slides, props, messages and timers, macros, Looks, announcements, going live and recording. **Admins** also set Drashti up: importing and removing, themes, Shastra texts, calendars, the idle rotation and every schedule, macros, the screens, Looks, stage layouts, masks and sound, the stream's settings and keys, phones and nodes, backups, restores and updates.
+
+Until someone sets PINs, roles are off and everything works as above. To turn them on, an admin chooses **File**, then **Roles and PINs…** (on Windows press **Alt** first), types an **admin PIN** and an **operator PIN** (4 to 12 digits each, different from each other), each twice, and presses **Turn on roles**. The setup wizard offers the same at its **PINs** step. Keep the admin PIN with whoever looks after Drashti, and give the operator PIN only to the operators.
+
+With roles on:
+
+- Drashti starts in **Simple Mode**. To leave it, **View**, then **Switch to Pro Mode…**, and type the **operator PIN** (or the admin PIN). After an unexpected stop during a show, Drashti comes back in the mode it was in, so the operator carries on.
+- In Pro Mode the header says **Operator**. Something only an admin may do (opening Screens to change a display, importing, a backup, a schedule…) asks for the **admin PIN** first. Admin then stays unlocked for **10 minutes** after the last thing an admin did, and the header shows **Admin** with the time left; press it to lock at once. Going into Simple Mode locks it too.
+- After **five wrong PINs** in a row, Drashti waits a minute before it checks another one, and longer after each further wrong PIN (up to 15 minutes), even if Drashti is restarted.
+- If nobody remembers the admin PIN, ask whoever looks after Drashti: they can reset it at the computer.
+- Phones and nodes keep their kinds: a Remote phone runs the show as an operator does, and pairing a phone or a node is for an admin.
 
 ---
 

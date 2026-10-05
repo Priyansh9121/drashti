@@ -22,9 +22,38 @@ export function lockChannels(
   lock = { locked, refusals };
 }
 
-/** Whether a request on this channel would be refused now (Simple Mode): the network asks the same table. */
+/**
+ * With roles on (Session 14), admin requests answer their refusal while
+ * admin is locked; one that goes through keeps admin unlocked for a while.
+ */
+let adminLock: {
+  locked: () => boolean;
+  refusals: ReadonlyMap<string, () => unknown>;
+  touched: () => void;
+} | null = null;
+
+/** Refuse the listed (admin) channels while `locked()` says so; `touched` hears of each that went through. */
+export function lockAdminChannels(
+  locked: () => boolean,
+  refusals: ReadonlyMap<InvokeChannel, () => unknown>,
+  touched: () => void,
+): void {
+  adminLock = { locked, refusals, touched };
+}
+
+/**
+ * What a request on this channel gets instead of running now, or undefined
+ * when it may run: Simple Mode's refusal first, then the admin's.
+ */
+export function refusalFor(channel: string): (() => unknown) | undefined {
+  const simple = lock?.locked() ? lock.refusals.get(channel) : undefined;
+  if (simple) return simple;
+  return adminLock?.locked() ? adminLock.refusals.get(channel) : undefined;
+}
+
+/** Whether a request on this channel would be refused now (Simple Mode, or admin locked): the network asks the same. */
 export function refusedNow(channel: InvokeChannel): boolean {
-  return lock !== null && lock.locked() && lock.refusals.has(channel);
+  return refusalFor(channel) !== undefined;
 }
 
 function note(channel: string, started: number): void {
@@ -46,8 +75,9 @@ export function handle<C extends InvokeChannel>(
     if (!isAppUrl(url, { devServerUrl: devServerUrl(), rendererDir: rendererDir() })) {
       throw new Error(`Refused ${channel} from ${url || 'an unknown frame'}`);
     }
-    const refusal = lock?.locked() ? lock.refusals.get(channel) : undefined;
+    const refusal = refusalFor(channel);
     if (refusal) return refusal();
+    if (adminLock?.refusals.has(channel)) adminLock.touched();
     const started = performance.now();
     const result = handler(event, ...args);
     // Time the synchronous part: that is what blocks the main process.

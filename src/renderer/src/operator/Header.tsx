@@ -11,6 +11,7 @@ import { openStreamPanel } from '../stream/stream-store';
 import { enterSimpleMode } from './mode-store';
 import { Tooltip } from '../ui/Tooltip';
 import { LiveStatus } from './StatusLine';
+import { RoleChip } from '../roles/RolesDialogs';
 
 /**
  * Announcements from phones: shown while the network is on, or while any is
@@ -80,6 +81,7 @@ export function Header({
             Screens
           </Button>
         </Tooltip>
+        <RoleChip />
         <Tooltip
           content="One screen with big buttons, for volunteers. Nothing can be changed there."
           side="bottom"

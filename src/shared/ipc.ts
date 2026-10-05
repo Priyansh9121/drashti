@@ -1,4 +1,5 @@
 import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
+import type { RolesResult, RolesView } from './roles';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { IdleResult, IdleSettings, IdleView, QuoteFields, QuoteResult } from './idle';
 import type {
@@ -112,6 +113,30 @@ export const IPC = {
     modeChanged: 'app:mode-changed',
     /** main -> operator: View > Switch to Pro Mode… was chosen; ask for the word. */
     askLeaveSimple: 'app:ask-leave-simple',
+  },
+  /**
+   * Roles (Session 14, shared/roles.ts): an admin PIN and an operator PIN.
+   * Setting, changing and removing them are admin requests (with roles on).
+   */
+  roles: {
+    view: 'roles:view',
+    /** Whether an admin request would be refused now (roles on, admin locked). */
+    needsAdmin: 'roles:needs-admin',
+    /** The admin PIN: admin unlocked for a while. */
+    unlock: 'roles:unlock',
+    /** Lock admin now. */
+    lock: 'roles:lock',
+    setPins: 'roles:set-pins',
+    changePin: 'roles:change-pin',
+    turnOff: 'roles:turn-off',
+    /** The operator closed the PIN prompt a menu item opened: that item is not done. */
+    cancelAsk: 'roles:cancel-ask',
+    /** main -> operator: the roles changed (on or off, admin unlocked or locked). */
+    changed: 'roles:changed',
+    /** main -> operator: a menu item needs the admin PIN; ask for it. */
+    askAdmin: 'roles:ask-admin',
+    /** main -> operator: File > Roles and PINs… was chosen. */
+    open: 'roles:open',
   },
   engine: {
     /** Start receiving engine messages in this window; returns a snapshot. */
@@ -497,6 +522,14 @@ export interface InvokeContract {
   [IPC.app.startNotice]: { args: []; result: string | null };
   [IPC.app.getMode]: { args: []; result: OperatorMode };
   [IPC.app.setMode]: { args: [mode: OperatorMode, word?: string]; result: ModeResult };
+  [IPC.roles.view]: { args: []; result: RolesView };
+  [IPC.roles.needsAdmin]: { args: []; result: boolean };
+  [IPC.roles.unlock]: { args: [pin: string]; result: RolesResult };
+  [IPC.roles.lock]: { args: []; result: RolesView };
+  [IPC.roles.setPins]: { args: [pins: { admin: string; operator: string }]; result: RolesResult };
+  [IPC.roles.changePin]: { args: [change: { role: 'admin' | 'operator'; pin: string }]; result: RolesResult };
+  [IPC.roles.turnOff]: { args: []; result: RolesResult };
+  [IPC.roles.cancelAsk]: { args: []; result: null };
   [IPC.engine.subscribe]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.snapshot]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.command]: { args: [command: EngineCommand]; result: CommandResult };
@@ -768,6 +801,9 @@ export interface EventContract {
   [IPC.app.progress]: { progress: TaskProgress | null };
   [IPC.app.modeChanged]: { mode: OperatorMode };
   [IPC.app.askLeaveSimple]: { at: number };
+  [IPC.roles.changed]: RolesView;
+  [IPC.roles.askAdmin]: { what: string };
+  [IPC.roles.open]: { at: number };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.looks.changed]: LooksView;
   [IPC.stageLayouts.changed]: StageLayout[];
