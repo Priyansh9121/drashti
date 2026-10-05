@@ -193,7 +193,7 @@ To check quiet runs on macOS, run `node scripts/quiet-check.mjs <spec>` after `p
 | `DRASHTI_TEST_VERSION=<version>`    | Tests only, ignored by a packaged Drashti: the version this copy says it runs, to see Main and a node on different versions refuse each other.                                        |
 | `DRASHTI_TEST_CLOCK_SKEW_MS=<ms>`   | Tests only, ignored by a packaged Drashti: a node's clock as if it were this far off, to see it measure Main's clock and correct for it.                                              |
 | `DRASHTI_TEST_COMPUTER_NAME=<name>` | Tests only, ignored by a packaged Drashti: the computer's name as Main and its nodes show it (screenshots never show a test computer's own).                                          |
-| `DRASHTI_TEST_COPY_RATE=<bytes>`    | Tests only, ignored by a packaged Drashti: Main copies media to nodes at this rate (bytes a second, 65536 at least), so a test can watch a copy under way.                            |
+| `DRASHTI_TEST_COPY_RATE=<bytes>`    | Tests only, ignored by a packaged Drashti: Main copies media to nodes at this rate (bytes a second, 1024 at least), so a test can watch a copy under way.                             |
 
 If you start Drashti from inside another Electron app's process (for example an editor extension), make sure `ELECTRON_RUN_AS_NODE` is not set in that environment. When it's set, Electron starts as plain Node. The end-to-end tests clear it automatically.
 

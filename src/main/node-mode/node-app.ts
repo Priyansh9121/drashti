@@ -557,6 +557,7 @@ export function startNode(deps: NodeAppDeps): void {
     healthTimer = null;
     client?.stop();
     saver.flush();
+    void cache.close();
     manager.closeAll();
   });
 

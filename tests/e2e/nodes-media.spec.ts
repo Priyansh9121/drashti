@@ -142,8 +142,8 @@ test('media is copied before it is needed, checked by hash; what goes up first i
 
 test('a video put up before its copy arrived: the picture before stays until it plays; cut off by Main going away, it loads when the copy lands', async () => {
   test.setTimeout(300_000);
-  // Copies crawl (64 KB a second), so the test can watch one under way.
-  const slow = { DRASHTI_TEST_COPY_RATE: '65536' };
+  // Copies crawl (16 KB a second), so the test can watch one under way.
+  const slow = { DRASHTI_TEST_COPY_RATE: '16384' };
   const first = await launchMain(slow);
   const node = await launchNode();
   let main = first;
@@ -162,7 +162,7 @@ test('a video put up before its copy arrived: the picture before stays until it 
       hue: 120,
     });
     const clipB = await makeTestVideo(main.win, join(dir, 'Placeholder late clip B.webm'), {
-      seconds: 4,
+      seconds: 8,
       width: 640,
       height: 360,
       hue: 300,
@@ -232,8 +232,20 @@ test('a video put up before its copy arrived: the picture before stays until it 
     // Clip B goes up, and Main stops dead while it is still copying: the node lets the screen's request go.
     await background(main, bId, 'video');
     await expect.poll(() => slot(bId)).toBe('loading');
-    await main.win.waitForTimeout(800);
+    // Main keeps what is live within a quarter of a second, for its restart recovery: once clip B is
+    // kept, Main stops dead.
+    await expect
+      .poll(() => {
+        try {
+          return readFileSync(join(main.userData, 'live-state.json'), 'utf8').includes(bId);
+        } catch {
+          return false;
+        }
+      })
+      .toBe(true);
     await killApp(main.app);
+    // (It had not arrived: at this rate the clip takes many seconds.)
+    expect(existsSync(join(node.userData, 'Media cache', `${sha(clipB)}.webm`))).toBe(false);
     await expect(node.page.getByTestId('node-link-state')).toHaveText('Offline', { timeout: 20_000 });
     await expect.poll(() => slot(bId), { timeout: 20_000 }).toBe('failed');
     // Main is back (restart recovery puts clip B up again): the copy carries on, and the screen loads it

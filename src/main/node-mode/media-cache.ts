@@ -82,6 +82,10 @@ export class MediaCache {
   private readonly failedAt = new Map<string, number>();
   private readonly hashFailures = new Map<string, number>();
   private holdTimer: NodeJS.Timeout | null = null;
+  /** The copy under way (to stop it), the loop copying, and whether the cache has been closed. */
+  private current: IncomingMessage | null = null;
+  private runner: Promise<void> | null = null;
+  private closed = false;
   private copying: { id: string; bytes: number; done: number } | null = null;
   private problem: string | null = null;
   private running = false;
@@ -126,20 +130,24 @@ export class MediaCache {
   private save(): void {
     this.saveTimer ??= setTimeout(() => {
       this.saveTimer = null;
-      try {
-        const temp = `${this.indexFile}.writing`;
-        writeFileSync(
-          temp,
-          JSON.stringify({
-            files: Object.fromEntries(this.index.files),
-            ids: Object.fromEntries(this.index.ids),
-          }),
-        );
-        renameSync(temp, this.indexFile);
-      } catch (error) {
-        this.deps.log('warn', `Media copies: could not keep the index (${(error as Error).message})`);
-      }
+      this.writeIndex();
     }, 500);
+  }
+
+  private writeIndex(): void {
+    try {
+      const temp = `${this.indexFile}.writing`;
+      writeFileSync(
+        temp,
+        JSON.stringify({
+          files: Object.fromEntries(this.index.files),
+          ids: Object.fromEntries(this.index.ids),
+        }),
+      );
+      renameSync(temp, this.indexFile);
+    } catch (error) {
+      this.deps.log('warn', `Media copies: could not keep the index (${(error as Error).message})`);
+    }
   }
 
   private pathOf(sha256: string, ext: string): string {
@@ -210,7 +218,23 @@ export class MediaCache {
 
   /** Try again now (Main came back, or the screens changed). */
   kick(): void {
-    void this.run();
+    if (this.closed || this.running) return;
+    this.runner = this.run();
+  }
+
+  /** Stop: the copy under way breaks off (it carries on next time), and nobody waits any more. */
+  async close(): Promise<void> {
+    this.closed = true;
+    if (this.holdTimer) clearInterval(this.holdTimer);
+    this.holdTimer = null;
+    this.current?.destroy();
+    for (const id of [...this.waiters.keys()]) this.settle(id, null);
+    await this.runner?.catch(() => undefined);
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+      this.writeIndex();
+    }
   }
 
   status(missingNow: number): NodeMediaStatus {
@@ -265,7 +289,7 @@ export class MediaCache {
     if (this.running) return;
     this.running = true;
     try {
-      for (let id = this.next(); id !== null && this.deps.online(); id = this.next()) {
+      for (let id = this.next(); id !== null && this.deps.online() && !this.closed; id = this.next()) {
         try {
           await this.copy(id);
           this.problem = null;
@@ -288,7 +312,7 @@ export class MediaCache {
       this.running = false;
     }
     // Something failed: come back to it later (soon, when a screen waits for it).
-    if (this.failedAt.size > 0)
+    if (this.failedAt.size > 0 && !this.closed)
       setTimeout(() => this.kick(), this.urgent.size > 0 ? URGENT_RETRY_MS : RETRY_MS).unref();
   }
 
@@ -371,7 +395,12 @@ export class MediaCache {
     res.on('data', (chunk: Buffer) => {
       if (this.copying) this.copying.done += chunk.length;
     });
-    await pipeline(res, createWriteStream(part, { flags: from > 0 ? 'a' : 'w' }));
+    this.current = res;
+    try {
+      await pipeline(res, createWriteStream(part, { flags: from > 0 ? 'a' : 'w' }));
+    } finally {
+      this.current = null;
+    }
     const checked = await sha256File(part);
     if (checked.sha256 !== sha256) {
       rmSync(part, { force: true });
