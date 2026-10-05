@@ -5,6 +5,7 @@ import { mediaUrl } from '../../../shared/media';
 import type { Lang } from '../../../shared/model';
 import type { Size } from '../../../shared/scaling';
 import { LANG_FONT_STACK } from './fonts';
+import { useMediaAttempt } from './media-attempts';
 import { useNow } from './useNow';
 
 /*
@@ -82,11 +83,14 @@ function ItemView({
   languages: readonly Lang[] | null;
   canvas: Size;
 }) {
+  // On a node, a picture whose copy landed after it was asked for is drawn again (a new element).
+  const attempt = useMediaAttempt(item.kind === 'picture' ? item.mediaId : '');
   return (
     <div style={{ ...FULL, opacity }} data-idle-item={item.kind === 'picture' ? item.mediaId : item.quote.id}>
       {item.kind === 'picture' ? (
         <img
-          src={mediaUrl(item.mediaId)}
+          key={attempt}
+          src={mediaUrl(item.mediaId, attempt)}
           alt=""
           draggable={false}
           style={{ ...FULL, width: '100%', height: '100%', objectFit: 'contain' }}

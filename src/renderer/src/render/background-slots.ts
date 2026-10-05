@@ -44,6 +44,15 @@ export const NO_SLOTS: Slots = { shown: null, incoming: null, leaving: null, fad
 
 export const slotKey = (layer: MediaLayer): string => `${layer.mediaId}@${layer.startedAt}`;
 
+/**
+ * On a node: the shown background failed (its copy had not arrived) and its file has landed since
+ * its last try. It tries again once for each landing, so a try that fails again never starts a
+ * loop of tries. The slot to try again, or null.
+ */
+export function retryAfterLanding(shown: Slot | null, landed: number): string | null {
+  return shown?.state === 'failed' && landed > (shown.attempt ?? 0) ? shown.key : null;
+}
+
 export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
   switch (event.type) {
     case 'layer': {

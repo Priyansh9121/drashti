@@ -1,7 +1,14 @@
 import { type Dispatch, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
 import type { BackgroundLayer, MediaFit } from '../../../shared/engine/state';
 import { mediaUrl } from '../../../shared/media';
-import { NO_SLOTS, type Slot, type SlotEvent, type Slots, slotsReducer } from './background-slots';
+import {
+  NO_SLOTS,
+  retryAfterLanding,
+  type Slot,
+  type SlotEvent,
+  type Slots,
+  slotsReducer,
+} from './background-slots';
 import { OBJECT_FIT } from './media-style';
 import { startPlayback } from './playback';
 import { engineNow } from './clock';
@@ -30,13 +37,14 @@ function VideoSlot({
   dispatch: Dispatch<SlotEvent>;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
-  const { key, layer } = slot;
+  const { key, layer, attempt } = slot;
   const { mediaId, startedAt } = layer;
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
     return startPlayback(v, {
       mediaId,
+      attempt,
       startedAt,
       onFrame: () => {
         dispatch({ type: 'ready', key, at: engineNow() });
@@ -45,7 +53,7 @@ function VideoSlot({
         dispatch({ type: 'failed', key });
       },
     });
-  }, [key, mediaId, startedAt, dispatch]);
+  }, [key, mediaId, attempt, startedAt, dispatch]);
 
   return (
     <video
@@ -73,13 +81,13 @@ function ImageSlot({
   dispatch: Dispatch<SlotEvent>;
 }) {
   const ref = useRef<HTMLImageElement>(null);
-  const { key, layer } = slot;
+  const { key, layer, attempt } = slot;
   const { mediaId } = layer;
   useEffect(() => {
     const img = ref.current;
     if (!img) return;
     let live = true;
-    img.src = mediaUrl(mediaId);
+    img.src = mediaUrl(mediaId, attempt);
     img.decode().then(
       () => {
         if (live) dispatch({ type: 'ready', key, at: engineNow() });
@@ -91,7 +99,7 @@ function ImageSlot({
     return () => {
       live = false;
     };
-  }, [key, mediaId, dispatch]);
+  }, [key, mediaId, attempt, dispatch]);
   return (
     <img
       ref={ref}
@@ -179,14 +187,14 @@ function BackgroundPlayer({
   }
   const rootRef = useRef<HTMLDivElement>(null);
   useFade(rootRef, slots, dispatch);
-  // On a node: a background that failed because its copy had not arrived loads again when it lands.
-  const failed = slots.shown?.state === 'failed' ? slots.shown : null;
-  const landed = useMediaAttempt(failed?.layer.mediaId ?? '');
+  // On a node: a background that failed because its copy had not arrived loads again when it lands,
+  // once for each landing (a try that fails again waits for the next one).
+  const shown = slots.shown;
+  const landed = useMediaAttempt(shown?.layer.mediaId ?? '');
   useEffect(() => {
-    if (failed && landed > 0) dispatch({ type: 'retry', key: failed.key });
-    // Only a landing (a new count) tries again, never the failure itself.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [landed]);
+    const key = retryAfterLanding(shown, landed);
+    if (key !== null) dispatch({ type: 'retry', key });
+  }, [shown, landed]);
   const list = [slots.leaving, slots.shown, slots.incoming].filter((s): s is Slot => s !== null);
   if (list.length === 0) return null;
   const fading = slots.fade !== null;

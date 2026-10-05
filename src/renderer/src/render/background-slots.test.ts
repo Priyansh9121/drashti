@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MediaLayer, Slots } from './background-slots';
-import { NO_SLOTS, slotKey, slotsReducer } from './background-slots';
+import { NO_SLOTS, retryAfterLanding, slotKey, slotsReducer } from './background-slots';
 
 const video = (mediaId: string, startedAt: number, extra: Partial<MediaLayer> = {}): MediaLayer => ({
   kind: 'media',
@@ -156,6 +156,26 @@ describe('background slots', () => {
     const fine = run({ type: 'layer', layer: c }, { type: 'ready', key: slotKey(c) });
     expect(slotsReducer(fine, { type: 'retry', key: slotKey(c) })).toBe(fine);
     expect(slotsReducer(fine, { type: 'retry', key: slotKey(b) })).toBe(fine);
+  });
+
+  it('tries a failed background again once for each landing of its file, never in a loop', () => {
+    let s = run({ type: 'layer', layer: b }, { type: 'failed', key: slotKey(b) });
+    // Not landed yet: no try.
+    expect(retryAfterLanding(s.shown, 0)).toBeNull();
+    // Landed once: one try.
+    expect(retryAfterLanding(s.shown, 1)).toBe(slotKey(b));
+    s = slotsReducer(s, { type: 'retry', key: slotKey(b) });
+    // While that try loads, nothing more.
+    expect(retryAfterLanding(s.shown, 1)).toBeNull();
+    s = slotsReducer(s, { type: 'failed', key: slotKey(b) });
+    // It failed again: no new try until the file lands again.
+    expect(s.shown).toMatchObject({ state: 'failed', attempt: 1 });
+    expect(retryAfterLanding(s.shown, 1)).toBeNull();
+    expect(retryAfterLanding(s.shown, 2)).toBe(slotKey(b));
+    // One on screen is left alone.
+    expect(
+      retryAfterLanding(run({ type: 'layer', layer: b }, { type: 'ready', key: slotKey(b) }).shown, 3),
+    ).toBeNull();
   });
 
   it('treats the same file started again as a new playback', () => {
