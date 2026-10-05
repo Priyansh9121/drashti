@@ -2789,6 +2789,8 @@ function start(): void {
   // Restore the saved screen assignments, and follow display changes.
   manager.reconcile();
   watchDisplays(() => {
+    // A display change noticed as Drashti quits comes after the library has closed: nothing to do.
+    if (db === null) return;
     manager.reconcile();
   });
 }
@@ -2806,6 +2808,8 @@ if (!app.requestSingleInstanceLock()) {
     secureWebContents(contents);
   });
 
+  // Each service tidies up as Drashti quits (well over Node's default of 10 listeners).
+  app.setMaxListeners(50);
   void app.whenReady().then(boot);
 
   app.on('window-all-closed', () => {
