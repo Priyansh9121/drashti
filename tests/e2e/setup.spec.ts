@@ -107,6 +107,10 @@ test('on the first start: identify, what each output shows and its languages, a 
   await expect(wizard.getByTestId('setup-step')).toHaveText('Theme');
   await wizard.getByTestId('setup-theme').first().getByRole('radio').check();
   await wizard.getByTestId('setup-next').click();
+  // PINs (Session 14): none for now, so roles stay off.
+  await expect(wizard.getByTestId('setup-step')).toHaveText('PINs');
+  await wizard.getByTestId('setup-next').click();
+  await expect(wizard.getByTestId('setup-summary')).toContainText('PINs: none (roles stay off)');
   await expect(wizard.getByTestId('setup-summary')).toContainText(
     'Display 1: The audience picture, Gujarati, Transliteration',
   );
@@ -181,7 +185,7 @@ test('skipping every step, or closing, changes nothing; it opens again from the 
   await wizard.getByTestId('setup-next').click();
   // It starts from the setup as it is.
   await expect(wizard.getByTestId('setup-display').first().getByTestId('setup-use')).toHaveValue('audience');
-  for (const step of ['Screens', 'Sound', 'Stream', 'Theme']) {
+  for (const step of ['Screens', 'Sound', 'Stream', 'Theme', 'PINs']) {
     await expect(wizard.getByTestId('setup-step')).toHaveText(step);
     await wizard.getByTestId('setup-skip').click();
   }
@@ -221,7 +225,7 @@ test('never covers the operator’s display without the confirm step', async () 
   await expect(row).toContainText('The Drashti controls are here');
   await row.getByTestId('setup-use').selectOption('audience');
   await expect(row).toContainText('Finish asks before it does');
-  for (const step of ['Screens', 'Sound', 'Stream', 'Theme']) {
+  for (const step of ['Screens', 'Sound', 'Stream', 'Theme', 'PINs']) {
     await expect(wizard.getByTestId('setup-step')).toHaveText(step);
     await wizard.getByTestId('setup-next').click();
   }

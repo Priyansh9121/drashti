@@ -14,6 +14,8 @@ export { Inbox, ScrollText, Send } from 'lucide-react';
 export { Blend, Frame, KeyboardMusic, LayoutTemplate, SwatchBook, Zap } from 'lucide-react';
 // Shastra texts, the arti, the calendar and the idle rotation (Session 12).
 export { BookOpen, CalendarDays, Flame, GalleryHorizontalEnd, Quote } from 'lucide-react';
+// Roles and PINs, scheduled backups, updates, music and markers (Session 14).
+export { LockOpen, ShieldCheck } from 'lucide-react';
 export {
   AlertTriangle,
   AlignCenter,

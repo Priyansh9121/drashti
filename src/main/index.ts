@@ -83,7 +83,9 @@ import { midiSettingsSchema, NO_MIDI } from '../shared/midi';
 import { seedPlaceholders, seedTemplates } from './db/seed';
 import { ShowEngine } from './engine/show-engine';
 import { runEngineCommand } from './ipc/engine-ipc';
-import { handle, handlerTimes, lockChannels, refusedNow } from './ipc/handle';
+import { handle, handlerTimes, lockAdminChannels, lockChannels, refusedNow } from './ipc/handle';
+import { RolesService } from './roles/roles-service';
+import { adminRefusals } from './roles/admin-lock';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
 import { AudioOutput } from './audio/audio-output';
@@ -1010,10 +1012,86 @@ function start(): void {
   });
   const fromAudioPlayer = (event: IpcMainInvokeEvent) => event.sender.id === audioWindow?.webContents.id;
 
+  // ---- roles (Session 14): an admin PIN and an operator PIN, off until an admin sets them ---------
+  // Kept in the data folder (never the library or a backup); every admin request is checked here.
+  const roles = new RolesService({
+    file: join(userDataDir, 'roles.json'),
+    now: Date.now,
+    changed: (view) => {
+      sendToOperator(IPC.roles.changed, view);
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+  });
+  app.on('will-quit', () => {
+    roles.dispose();
+  });
+  lockAdminChannels(
+    () => roles.needsAdmin(),
+    adminRefusals(
+      () => audioOutput.status,
+      () => roles.view(),
+    ),
+    () => {
+      roles.touchAdmin();
+    },
+  );
+  /** A menu item that needs the admin PIN: run now, or once the operator window has the PIN typed. */
+  let pendingAdmin: { run: () => void; until: number } | null = null;
+  const requireAdmin = (what: string, run: () => void) => {
+    if (!roles.needsAdmin()) {
+      roles.touchAdmin();
+      run();
+      return;
+    }
+    pendingAdmin = { run, until: Date.now() + 120_000 };
+    sendToOperator(IPC.roles.askAdmin, { what });
+  };
+  handle(IPC.roles.view, () => roles.view());
+  handle(IPC.roles.needsAdmin, () => roles.needsAdmin());
+  handle(IPC.roles.unlock, async (e, pin) => {
+    if (!fromOperator(e))
+      return {
+        ok: false as const,
+        message: 'Only the operator window can unlock admin.',
+        view: roles.view(),
+      };
+    const result = await roles.unlock(pin);
+    // A menu item waiting for the PIN goes ahead now.
+    const waiting = pendingAdmin;
+    pendingAdmin = null;
+    if (result.ok && waiting && Date.now() < waiting.until) setTimeout(waiting.run, 0);
+    return result;
+  });
+  handle(IPC.roles.lock, (e) => (fromOperator(e) ? roles.lock() : roles.view()));
+  const notRolesOperator = () => ({
+    ok: false as const,
+    message: 'Only the operator window can change the PINs.',
+    view: roles.view(),
+  });
+  handle(IPC.roles.setPins, (e, pins) => (fromOperator(e) ? roles.setPins(pins) : notRolesOperator()));
+  handle(IPC.roles.changePin, (e, change) =>
+    fromOperator(e) ? roles.changePin(change) : notRolesOperator(),
+  );
+  handle(IPC.roles.turnOff, (e) => (fromOperator(e) ? roles.turnOff() : notRolesOperator()));
+  handle(IPC.roles.cancelAsk, (e) => {
+    if (fromOperator(e)) pendingAdmin = null;
+    return null;
+  });
+
   // ---- Simple Mode ----------------------------------------------------------------
   // Remembered in the library's settings, so Drashti (and restart recovery) comes back in it.
   const savedMode = settings.get('operatorMode');
   let mode: OperatorMode = isOperatorMode(savedMode) ? savedMode : 'pro';
+  // With roles on, a clean start begins in Simple Mode (Pro Mode takes a PIN); after an unexpected
+  // stop the show comes back in the mode it was in, so the operator carries on (admin locked).
+  if (roles.on() && mode === 'pro' && saved === null) {
+    mode = 'simple';
+    settings.set('operatorMode', mode);
+    log.info('Roles are on: starting in Simple Mode');
+  }
   if (mode === 'simple') log.info('Starting in Simple Mode');
   simpleNow = () => mode === 'simple';
   // While it is on, every request that would change the library, screens or sound is refused here.
@@ -1026,17 +1104,25 @@ function start(): void {
     if (next === mode) return;
     mode = next;
     settings.set('operatorMode', next);
+    // A volunteer's mode: admin locks at once.
+    if (next === 'simple') roles.lock();
     log.info(next === 'simple' ? 'Switched to Simple Mode' : 'Switched to Pro Mode');
     rebuildMenu();
     sendToOperator(IPC.app.modeChanged, { mode: next });
   };
   handle(IPC.app.getMode, () => mode);
-  handle(IPC.app.setMode, (e, wanted, word): ModeResult => {
+  handle(IPC.app.setMode, async (e, wanted, word): Promise<ModeResult> => {
     if (!fromOperator(e) || !isOperatorMode(wanted))
       return { ok: false, message: 'Only the operator window can switch the mode.' };
-    // Leaving Simple Mode takes the word, typed on purpose.
-    if (mode === 'simple' && wanted === 'pro' && !(typeof word === 'string' && isLeaveWord(word)))
-      return { ok: false, message: 'Type pro to switch to Pro Mode.' };
+    if (mode === 'simple' && wanted === 'pro') {
+      // With roles on, leaving Simple Mode takes a PIN (the admin PIN unlocks admin too)...
+      if (roles.on()) {
+        const entered = await roles.enter(typeof word === 'string' ? word : '');
+        if (!entered.ok) return { ok: false, message: entered.message };
+      } else if (!(typeof word === 'string' && isLeaveWord(word)))
+        // ...otherwise the word, typed on purpose.
+        return { ok: false, message: 'Type pro to switch to Pro Mode.' };
+    }
     setMode(wanted);
     return { ok: true, mode };
   });
@@ -2394,6 +2480,27 @@ function start(): void {
     },
   };
 
+  /** File > Use This Computer as a Node…: asks, then restarts as a node (an admin, Pro Mode). */
+  const useAsNode = () => {
+    const box = {
+      type: 'question' as const,
+      buttons: ['Cancel', 'Use as a node'],
+      defaultId: 0,
+      cancelId: 0,
+      message: 'Use this computer as a node?',
+      detail:
+        'Drashti restarts as a node: it then shows screens for another computer that runs Drashti as Main, and has no library or controls of its own. The screens go black while it restarts. The library stays on this computer, untouched; switching back (in the node’s window) brings it back.',
+    };
+    const parent = operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : undefined;
+    const choice = parent ? dialog.showMessageBoxSync(parent, box) : dialog.showMessageBoxSync(box);
+    if (choice !== 1) return;
+    writeRole(userDataDir, 'node');
+    log.info('Restarting as a node');
+    liveWriter.markClean();
+    quitConfirmed = true;
+    if (!noRelaunch) app.relaunch();
+    app.quit();
+  };
   rebuildMenu = () => {
     installMenu(menuActions());
   };
@@ -2401,34 +2508,28 @@ function start(): void {
     mode,
     switchMode,
     setUpScreens: () => {
-      if (mode === 'pro') sendToOperator(IPC.setup.open, { at: Date.now() });
+      if (mode === 'pro')
+        requireAdmin('set up the screens', () => {
+          sendToOperator(IPC.setup.open, { at: Date.now() });
+        });
     },
     backUpLibrary: () => {
-      if (mode === 'pro') void backUp(backupUi);
+      if (mode === 'pro')
+        requireAdmin('back up the library', () => {
+          void backUp(backupUi);
+        });
     },
     restoreLibrary: () => {
-      if (mode === 'pro') void restore(backupUi);
+      if (mode === 'pro')
+        requireAdmin('restore the library', () => {
+          void restore(backupUi);
+        });
+    },
+    rolesAndPins: () => {
+      if (mode === 'pro') sendToOperator(IPC.roles.open, { at: Date.now() });
     },
     useAsNode: () => {
-      if (mode !== 'pro') return;
-      const box = {
-        type: 'question' as const,
-        buttons: ['Cancel', 'Use as a node'],
-        defaultId: 0,
-        cancelId: 0,
-        message: 'Use this computer as a node?',
-        detail:
-          'Drashti restarts as a node: it then shows screens for another computer that runs Drashti as Main, and has no library or controls of its own. The screens go black while it restarts. The library stays on this computer, untouched; switching back (in the node’s window) brings it back.',
-      };
-      const parent = operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : undefined;
-      const choice = parent ? dialog.showMessageBoxSync(parent, box) : dialog.showMessageBoxSync(box);
-      if (choice !== 1) return;
-      writeRole(userDataDir, 'node');
-      log.info('Restarting as a node');
-      liveWriter.markClean();
-      quitConfirmed = true;
-      if (!noRelaunch) app.relaunch();
-      app.quit();
+      if (mode === 'pro') requireAdmin('use this computer as a node', useAsNode);
     },
     reloadOperator: () => {
       operatorWindow?.webContents.reload();

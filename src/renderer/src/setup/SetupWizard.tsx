@@ -15,12 +15,14 @@ import { Loading } from '../ui/States';
 import { plural } from '../ui/text';
 import type { DeviceChoice } from '../../../shared/stream';
 import { useStream, watchProgram } from '../stream/stream-store';
-import type { OutputChoice } from './setup-store';
+import type { OutputChoice, PinChoice } from './setup-store';
+import { PinInput } from '../roles/RolesDialogs';
 import {
   chooseOutput,
   closeSetup,
   finishSetup,
   goTo,
+  pinsReady,
   planOf,
   skipStep,
   STEPS,
@@ -292,6 +294,94 @@ function ThemeStep() {
   );
 }
 
+function PinsStep() {
+  const pins = useSetup((s) => s.pins);
+  const rolesOn = useSetup((s) => s.rolesOn);
+  const name = useId();
+  if (rolesOn)
+    return (
+      <Notice tone="info">
+        Roles are on: two PINs are set. Change them, or turn roles off, in File, Roles and PINs.
+      </Notice>
+    );
+  const typed = pins === 'skip' ? null : pins;
+  const set = (patch: Partial<Exclude<PinChoice, 'skip'>>) => {
+    useSetup.setState({
+      pins: { ...(typed ?? { admin: '', adminAgain: '', operator: '', operatorAgain: '' }), ...patch },
+    });
+  };
+  const problem = typed && typed.adminAgain !== '' && typed.operatorAgain !== '' ? pinsReady(typed) : null;
+  return (
+    <div className="space-y-3 text-sm">
+      <p>
+        PINs keep setting up apart from running the show. With two PINs, Drashti starts in Simple Mode; the
+        operator PIN leaves it for Pro Mode, and the admin PIN also unlocks setting up (screens, the library,
+        schedules, backups). Without them, anyone in Pro Mode can change anything.
+      </p>
+      <fieldset className="space-y-1.5">
+        <legend className="sr-only">PINs</legend>
+        <label className="flex items-center gap-2">
+          <input
+            type="radio"
+            name={name}
+            className="h-4 w-4 accent-accent-strong"
+            checked={typed === null}
+            onChange={() => {
+              useSetup.setState({ pins: 'skip' });
+            }}
+          />
+          No PINs for now
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="radio"
+            name={name}
+            data-testid="setup-pins-on"
+            className="h-4 w-4 accent-accent-strong"
+            checked={typed !== null}
+            onChange={() => {
+              set({});
+            }}
+          />
+          Set an admin PIN and an operator PIN
+        </label>
+      </fieldset>
+      {typed && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-4">
+            <Field label="Admin PIN (4 to 12 digits)">
+              <PinInput
+                data-testid="setup-admin-pin"
+                value={typed.admin}
+                onChange={(e) => set({ admin: e.target.value })}
+              />
+            </Field>
+            <Field label="Again">
+              <PinInput value={typed.adminAgain} onChange={(e) => set({ adminAgain: e.target.value })} />
+            </Field>
+          </div>
+          <div className="flex flex-wrap gap-4">
+            <Field label="Operator PIN">
+              <PinInput
+                data-testid="setup-operator-pin"
+                value={typed.operator}
+                onChange={(e) => set({ operator: e.target.value })}
+              />
+            </Field>
+            <Field label="Again">
+              <PinInput
+                value={typed.operatorAgain}
+                onChange={(e) => set({ operatorAgain: e.target.value })}
+              />
+            </Field>
+          </div>
+          {typeof problem === 'string' && <p className="text-danger-fg">{problem}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FinishStep() {
   const state = useSetup();
   const plan = planOf(state);
@@ -336,6 +426,10 @@ function FinishStep() {
             : `camera ${state.stream.camera?.label ?? 'none'}, sound input ${state.stream.sound?.label ?? 'none'}`}
         </li>
         <li>Default theme: {themeName ?? 'stays as it is'}</li>
+        <li>
+          PINs:{' '}
+          {state.rolesOn ? 'roles stay on' : state.pins === 'skip' ? 'none (roles stay off)' : 'two PINs set'}
+        </li>
       </ul>
     </div>
   );
@@ -356,7 +450,8 @@ export function SetupWizard({ platform }: { platform: string }) {
   if (!open) return null;
   const name = STEPS[step] ?? 'Welcome';
   const last = step === STEPS.length - 1;
-  const skippable = name === 'Screens' || name === 'Sound' || name === 'Stream' || name === 'Theme';
+  const skippable =
+    name === 'Screens' || name === 'Sound' || name === 'Stream' || name === 'Theme' || name === 'PINs';
   return (
     <>
       <Dialog
@@ -433,6 +528,8 @@ export function SetupWizard({ platform }: { platform: string }) {
           <StreamStep />
         ) : name === 'Theme' ? (
           <ThemeStep />
+        ) : name === 'PINs' ? (
+          <PinsStep />
         ) : (
           <FinishStep />
         )}

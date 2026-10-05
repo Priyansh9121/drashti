@@ -253,3 +253,11 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **Pairing a node shows the address and the code together**, both in monospace, the code large and grouped "482 913", with the time it has left and Cancel: a person reads both out to whoever is at the node. Screens lists each node as a card with its displays (the same rows as this computer's, with Use this display).
 - **The node's window is one calm column** (`max-w-3xl`): what it is ("Drashti Node", the computer's name and version), the Main it follows with the link as a badge (Online `success`, Connecting… neutral, Offline `warning`, Refused `danger`) and, when it is not online, why in a notice in plain words; the certificate's fingerprint in monospace groups of four; its displays as rows with what each shows; its media as a progress bar and a sentence. Unpair (`danger`) and Use this computer as Main ask first. Before pairing, the same column holds the two fields (Main's address, Code) and one primary button.
 - The dashboard and the node's window pass the accessibility checks at 1280 × 720 (`tests/e2e/nodes-dashboard.spec.ts`).
+
+## 27. Roles and PINs
+
+- **Who is at the controls shows in the header**, only once roles are on: **Operator** (`ghost`, a lock icon) opens the admin PIN prompt; **Admin 9:41** (`warning`, an open lock, the time left counting down) locks at once when pressed. Nothing else changes in the window: an admin control stays where it is and asks for the PIN when used, so operators learn one layout.
+- **A PIN field is a password field for digits**: `inputMode="numeric"`, never autofilled, monospace and wide-spaced, cleared after every try, right or wrong. Wrong PINs say so in words under the field; the wait after too many counts down there too ("Try again in 0:45"), and the button that would try waits with it.
+- **The admin PIN prompt says what it is for** ("To back up the library, type the admin PIN") and how long admin then stays unlocked. Cancel leaves everything as it was.
+- **Roles and PINs** (File menu) is one dialog in two states: off, two new PINs, each typed twice, with what each role does; on, a change for each PIN and Turn roles off (`danger`, asking first). The setup wizard's PINs step is the same fields.
+- The dialogs pass the accessibility checks at 1280 × 720 (`tests/e2e/roles.spec.ts`).
