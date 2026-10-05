@@ -241,6 +241,8 @@ const testVersion = app.isPackaged ? undefined : process.env['DRASHTI_TEST_VERSI
 const appVersion = () => testVersion ?? app.getVersion();
 const nodeClockSkewMs = app.isPackaged ? 0 : Number(process.env['DRASHTI_TEST_CLOCK_SKEW_MS'] ?? 0) || 0;
 const nodePortOverride = Number(process.env['DRASHTI_NODE_PORT'] ?? 0) || null;
+// Tests only: the computer's name as Main and its nodes show it (screenshots never show a runner's own).
+const testComputerName = app.isPackaged ? undefined : process.env['DRASHTI_TEST_COMPUTER_NAME'];
 
 // Library media reaches the sandboxed windows only through drashti-media:// (see media/media-protocol.ts).
 // Schemes must be registered before the app is ready.
@@ -497,6 +499,7 @@ function startNodeMode(): void {
     watchdog,
     sleepGuard,
     clockSkewMs: nodeClockSkewMs,
+    computerName: testComputerName ?? hostname(),
     restartAsMain: () => {
       writeRole(app.getPath('userData'), 'main');
       log.info('Restarting as Main');
@@ -1627,7 +1630,8 @@ function start(): void {
       : [];
   });
   wantedMedia = wanted;
-  const mainName = () => localName()?.replace(/\.local$/u, '') ?? hostname().replace(/\.local$/u, '');
+  const mainName = () =>
+    testComputerName ?? localName()?.replace(/\.local$/u, '') ?? hostname().replace(/\.local$/u, '');
   let identityCache: ReturnType<typeof loadOrMakeIdentity> | null = null;
   /** How each of Main's own outputs draws (they report every few seconds), for the dashboard. */
   const localReports = new Map<string, { droppedFrames: number; paintedRev: number }>();
@@ -1650,10 +1654,14 @@ function start(): void {
       };
     },
     version: appVersion(),
-    addresses: () => [
-      ...localInterfaceAddresses().filter((a) => !a.includes(':')),
-      ...(localName() ? [localName() ?? ''] : []),
-    ],
+    // Listening on this computer only (tests, the performance check), this computer is the only address.
+    addresses: () =>
+      networkLocalOnly || perfTest
+        ? ['127.0.0.1']
+        : [
+            ...localInterfaceAddresses().filter((a) => !a.includes(':')),
+            ...(localName() ? [localName() ?? ''] : []),
+          ],
     bind: networkLocalOnly || perfTest ? '127.0.0.1' : '0.0.0.0',
     engine: {
       snapshot: () => engine.snapshot(),
