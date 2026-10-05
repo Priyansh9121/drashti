@@ -36,6 +36,88 @@ const LINK_TONE: Record<LinkState, 'success' | 'warning' | 'danger' | 'neutral'>
 
 const timeOf = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+/**
+ * Refused for its version (Session 14): update this node to Main's version.
+ * It downloads that version's installer from the releases, then Quit and
+ * install: the node quits, the installer runs, and the node is started
+ * again by hand (Drashti never starts itself again).
+ */
+function MatchMain({ view }: { view: NodeView }) {
+  const [problem, setProblem] = useState<string | null>(null);
+  const u = view.update;
+  const version = view.mainVersion;
+  if (!version) return null;
+  const act = (run: () => Promise<{ ok: true } | { ok: false; message: string }>) => {
+    setProblem(null);
+    void run().then((r) => {
+      if (!r.ok) setProblem(r.message);
+    });
+  };
+  const offered = u.offer?.version === version;
+  return (
+    <section className="space-y-2 rounded-lg border border-line p-3" data-testid="node-update">
+      <SectionTitle>Update this node</SectionTitle>
+      <p className="text-sm">
+        Main runs Drashti <strong>{version}</strong>; this node runs {view.version}. They must match.
+      </p>
+      {(!offered || u.phase === 'error' || u.phase === 'idle') && u.phase !== 'checking' && (
+        <Button
+          variant="primary"
+          data-testid="node-update-check"
+          onClick={() => act(() => window.drashti.node.updateCheck())}
+        >
+          Update to Drashti {version}
+        </Button>
+      )}
+      {u.phase === 'checking' && <Loading label="Looking for it…" />}
+      {offered && u.phase === 'available' && (
+        <Button
+          variant="primary"
+          data-testid="node-update-download"
+          onClick={() => act(() => window.drashti.node.updateDownload())}
+        >
+          Download Drashti {version}
+          {u.offer && u.offer.size > 0 ? ` (${formatBytes(u.offer.size)})` : ''}
+        </Button>
+      )}
+      {u.phase === 'downloading' && u.progress && (
+        <Progress
+          value={u.progress.total > 0 ? u.progress.done / u.progress.total : 0}
+          label="Downloading the update"
+        />
+      )}
+      {offered && u.phase === 'ready' && u.install === 'at-quit' && (
+        <div className="space-y-1">
+          <p className="text-sm">
+            Downloaded and checked. Quitting this node installs it; then start Drashti again here.
+          </p>
+          <Button
+            variant="primary"
+            data-testid="node-update-install"
+            onClick={() => act(() => window.drashti.node.updateInstall())}
+          >
+            Quit and install
+          </Button>
+        </div>
+      )}
+      {offered && u.phase === 'ready' && u.install === 'by-hand' && (
+        <Notice tone="info">
+          This copy of Drashti is not signed, so the Mac cannot install it by itself: quit Drashti, open the
+          downloaded file and drag Drashti into Applications.
+          <Button size="sm" className="mt-2" onClick={() => void window.drashti.node.updateShowFile()}>
+            Show the file
+          </Button>
+        </Notice>
+      )}
+      {(problem ?? u.message) && (
+        <p role="alert" className="text-sm text-warning-fg">
+          {problem ?? u.message}
+        </p>
+      )}
+    </section>
+  );
+}
+
 function PairForm({ onPaired }: { onPaired: (view: NodeView) => void }) {
   const [address, setAddress] = useState('');
   const [code, setCode] = useState('');
@@ -350,6 +432,7 @@ export function NodeApp() {
         sound.
       </p>
       <MainSection view={view} setView={setView} />
+      <MatchMain view={view} />
       <Displays view={view} />
       <Media view={view} />
     </main>

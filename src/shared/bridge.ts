@@ -35,6 +35,7 @@ import type {
 import type { TranslitStyle } from './translit';
 import type { ModeResult, OperatorMode } from './mode';
 import type { RolesResult, RolesView } from './roles';
+import type { UpdateResult, UpdateView } from './updates';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { Lang, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
@@ -123,6 +124,19 @@ export interface DrashtiBridge {
     dismiss(): Promise<ScheduledBackupsView>;
     onChanged(listener: (view: ScheduledBackupsView) => void): () => void;
     /** File > Scheduled Backups… was chosen. */
+    onOpen(listener: () => void): () => void;
+  };
+  /** Updates (Session 14, operator window, Pro Mode). */
+  updates: {
+    view(): Promise<UpdateView>;
+    check(): Promise<UpdateResult>;
+    download(): Promise<UpdateResult>;
+    cancel(): Promise<UpdateResult>;
+    setInstallOnQuit(on: boolean): Promise<UpdateResult>;
+    setAutoCheck(on: boolean): Promise<UpdateResult>;
+    showFile(): Promise<null>;
+    onChanged(listener: (view: UpdateView) => void): () => void;
+    /** Help > Check for Updates… was chosen. */
     onOpen(listener: () => void): () => void;
   };
   /** Roles (Session 14): an admin PIN and an operator PIN (operator window). */
@@ -422,6 +436,11 @@ export interface DrashtiBridge {
     unpair(): Promise<NodeViewResult>;
     useAsMain(): Promise<{ ok: boolean }>;
     identify(): Promise<{ shown: number }>;
+    /** Matching Main's version (Session 14): look for it, download it, quit to install it, or show the file. */
+    updateCheck(): Promise<NodeViewResult>;
+    updateDownload(): Promise<NodeViewResult>;
+    updateInstall(): Promise<NodeViewResult>;
+    updateShowFile(): Promise<null>;
   };
   /** Announcements sent from phones: the operator's queue (operator window only; changes in Pro Mode only). */
   announcements: {

@@ -1,6 +1,9 @@
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import {
   app,
+  autoUpdater,
+  net as electronNet,
+  shell,
   crashReporter,
   dialog,
   globalShortcut,
@@ -80,6 +83,9 @@ import { calendarIdSchema } from '../shared/calendar';
 import { type ArtiAnswer, artiKeySchema } from '../shared/arti';
 import { MacroService } from './macros/macro-service';
 import { MacroScheduler } from './macros/macro-scheduler';
+import { UpdateService } from './update/update-service';
+import { defaultInstaller } from './update/installer';
+import { UPDATE_BASE } from '../shared/updates';
 import { midiSettingsSchema, NO_MIDI } from '../shared/midi';
 import { seedPlaceholders, seedTemplates } from './db/seed';
 import { ShowEngine } from './engine/show-engine';
@@ -242,6 +248,18 @@ const artiTestClock = process.env['DRASHTI_TEST_ARTI_CLOCK'] === '1' && !app.isP
 let artiClockOffset = artiTestClock ? Number(process.env['DRASHTI_TEST_ARTI_OFFSET_MS'] ?? 0) || 0 : 0;
 /** The schedules' clock: this computer's, moved by a test only. */
 const scheduleNow = () => Date.now() + artiClockOffset;
+// Tests only (never a packaged Drashti): updates come from this server instead of GitHub Releases, and
+// install by writing what they would run into a file; a download goes at this rate; and a test can say
+// the stream is on air (globalThis.drashtiTestOnAir), for updates only.
+const testUpdateBase = app.isPackaged ? undefined : process.env['DRASHTI_UPDATE_URL'];
+const updateBase = testUpdateBase ?? UPDATE_BASE;
+const testInstallLog = app.isPackaged ? undefined : process.env['DRASHTI_TEST_UPDATE_INSTALL'];
+const testUpdateRate = app.isPackaged ? null : Number(process.env['DRASHTI_TEST_UPDATE_RATE'] ?? 0) || null;
+let testOnAir = false;
+if (!app.isPackaged && process.env['DRASHTI_TEST_ON_AIR_HOOK'] === '1')
+  (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir = (on) => {
+    testOnAir = on;
+  };
 // Tests only: scheduled backups copy at this rate (bytes a second), so a test can watch one wait.
 const testBackupRate = app.isPackaged ? null : Number(process.env['DRASHTI_TEST_BACKUP_RATE'] ?? 0) || null;
 // The performance check only: so many devices connected while it measures, and (to compare) the
@@ -513,6 +531,15 @@ function startNodeMode(): void {
   startNode({
     userData: app.getPath('userData'),
     version: appVersion(),
+    updateBase,
+    installer: defaultInstaller({
+      platform: process.platform,
+      isPackaged: app.isPackaged,
+      execPath: process.execPath,
+      testLog: testInstallLog,
+      updater: autoUpdater,
+    }),
+    updateRate: testUpdateRate,
     windowed: windowedOutputs,
     watchdog,
     sleepGuard,
@@ -1549,6 +1576,57 @@ function start(): void {
     });
     return { ok: true as const, folder: picked.canceled ? null : (picked.filePaths[0] ?? null) };
   });
+  // ---- updates (Session 14): an admin checks, downloads and says to install when Drashti quits ----
+  const updates = new UpdateService({
+    current: appVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    base: updateBase,
+    dir: join(userDataDir, 'Updates'),
+    fetch: (url, init) => electronNet.fetch(url, init),
+    installer: defaultInstaller({
+      platform: process.platform,
+      isPackaged: app.isPackaged,
+      execPath: process.execPath,
+      testLog: testInstallLog,
+      updater: autoUpdater,
+    }),
+    onAir: () => streaming.inUse() || testOnAir,
+    autoCheck: {
+      get: () => settings.get('updates.autoCheck') === true,
+      set: (on) => {
+        settings.set('updates.autoCheck', on);
+      },
+    },
+    now: Date.now,
+    changed: (view) => {
+      sendToOperator(IPC.updates.changed, view);
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+    ...(testUpdateRate ? { bytesPerSecond: testUpdateRate } : {}),
+  });
+  app.on('will-quit', () => {
+    updates.quit();
+  });
+  const notUpdatesOperator = { ok: false as const, message: 'Only the operator window can update Drashti.' };
+  handle(IPC.updates.view, () => updates.view());
+  handle(IPC.updates.check, (e) => (fromOperator(e) ? updates.check() : notUpdatesOperator));
+  handle(IPC.updates.download, (e) => (fromOperator(e) ? updates.download() : notUpdatesOperator));
+  handle(IPC.updates.cancel, (e) => (fromOperator(e) ? updates.cancel() : notUpdatesOperator));
+  handle(IPC.updates.setInstallOnQuit, (e, on) =>
+    fromOperator(e) && typeof on === 'boolean' ? updates.setInstallOnQuit(on) : notUpdatesOperator,
+  );
+  handle(IPC.updates.setAutoCheck, (e, on) =>
+    fromOperator(e) && typeof on === 'boolean' ? updates.setAutoCheck(on) : notUpdatesOperator,
+  );
+  handle(IPC.updates.showFile, (e) => {
+    const file = updates.downloadedFile();
+    if (fromOperator(e) && file) shell.showItemInFolder(file);
+    return null;
+  });
   if (artiTestClock)
     (globalThis as { drashtiArtiClock?: (wallMs: number) => void }).drashtiArtiClock = (wallMs) => {
       artiClockOffset = wallMs - Date.now();
@@ -2553,6 +2631,8 @@ function start(): void {
       // screens; and the operator has already agreed to the screens going black.
       liveWriter.markClean();
       quitConfirmed = true;
+      // Drashti starts again at once: an update waits for a quit of its own.
+      updates.holdForNextQuit();
       if (!noRelaunch) app.relaunch();
       app.quit();
     },
@@ -2582,6 +2662,7 @@ function start(): void {
     if (choice !== 1) return;
     writeRole(userDataDir, 'node');
     log.info('Restarting as a node');
+    updates.holdForNextQuit();
     liveWriter.markClean();
     quitConfirmed = true;
     if (!noRelaunch) app.relaunch();
@@ -2616,6 +2697,9 @@ function start(): void {
     },
     scheduledBackups: () => {
       if (mode === 'pro') sendToOperator(IPC.backups.open, { at: Date.now() });
+    },
+    checkForUpdates: () => {
+      if (mode === 'pro') sendToOperator(IPC.updates.open, { at: Date.now() });
     },
     useAsNode: () => {
       if (mode === 'pro') requireAdmin('use this computer as a node', useAsNode);

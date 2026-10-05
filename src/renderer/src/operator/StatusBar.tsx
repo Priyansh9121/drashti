@@ -16,6 +16,7 @@ import { connectNodes, openDashboard, useNodes } from '../nodes/nodes-store';
 import { nodeWarnings } from '../../../shared/nodes';
 import { useNow } from '../render/useNow';
 import { BackupWarning } from '../backups/BackupsDialog';
+import { UpdateStatus } from '../updates/UpdatesDialog';
 
 /*
  * The status bar along the very bottom: the screens connected, where the
@@ -218,6 +219,7 @@ export function StatusBar({
       <ScreensSummary onOpen={openDashboard} />
       <NodeWarnings />
       <BackupWarning />
+      <UpdateStatus />
       <SoundStatus onOpen={onOpenScreens} />
       <TodayStatus onOpen={onOpenCalendar} />
       <div aria-live="polite" className="flex min-w-0 flex-1 items-center gap-3">

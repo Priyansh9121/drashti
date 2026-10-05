@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Drashti's entitlements for the hardened runtime a notarised Mac app runs
+  under (electron-builder signs with these when a certificate is given).
+  Electron's JavaScript engine needs the first two. The stream's camera (or
+  capture card) and sound input (the mixer's line in) need the last two:
+  without them macOS refuses the devices to a hardened app, without asking.
+-->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.device.camera</key>
+    <true/>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+  </dict>
+</plist>

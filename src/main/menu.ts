@@ -27,6 +27,8 @@ export interface MenuActions {
   rolesAndPins: () => void;
   /** File > Scheduled Backups… (Session 14). */
   scheduledBackups: () => void;
+  /** Help > Check for Updates… (Session 14, Pro Mode only). */
+  checkForUpdates: () => void;
   /** Only when DRASHTI_DIAGNOSTICS=1: for the manual watchdog check. */
   diagnostics: {
     crashOperator: () => void;
@@ -138,7 +140,16 @@ export function installMenu(actions: MenuActions): void {
   ];
   template.push({
     role: 'help',
-    submenu: [{ id: 'save-diagnostics', label: 'Save Diagnostics…', click: actions.saveDiagnostics }],
+    submenu: [
+      { id: 'save-diagnostics', label: 'Save Diagnostics…', click: actions.saveDiagnostics },
+      // Simple Mode never sees updates.
+      ...(simple
+        ? []
+        : [
+            { type: 'separator' } as MenuItemConstructorOptions,
+            { id: 'check-for-updates', label: 'Check for Updates…', click: actions.checkForUpdates },
+          ]),
+    ],
   });
   if (actions.diagnostics) {
     const d = actions.diagnostics;

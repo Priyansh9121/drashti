@@ -136,10 +136,21 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.node.pair,
   IPC.node.unpair,
   IPC.node.useAsMain,
+  IPC.node.updateCheck,
+  IPC.node.updateDownload,
+  IPC.node.updateInstall,
+  IPC.node.updateShowFile,
   // Scheduled backups (Session 14): Simple Mode sees the warning (and can put it away), changes nothing.
   IPC.backups.save,
   IPC.backups.pickFolder,
   IPC.backups.runNow,
+  // Updates (Session 14): Simple Mode never sees them.
+  IPC.updates.check,
+  IPC.updates.download,
+  IPC.updates.cancel,
+  IPC.updates.setInstallOnQuit,
+  IPC.updates.setAutoCheck,
+  IPC.updates.showFile,
   // Roles (Session 14): Simple Mode sets no PIN and unlocks nothing; leaving it takes a PIN (app:set-mode).
   IPC.roles.setPins,
   IPC.roles.changePin,

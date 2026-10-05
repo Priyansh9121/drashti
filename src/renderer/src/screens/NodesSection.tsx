@@ -128,8 +128,9 @@ function NodeCard({
       {node.versionRefused && (
         <Notice tone="danger" compact data-testid="node-version-refused">
           This node runs Drashti {node.versionRefused}, and this computer runs{' '}
-          {useNodes.getState().status?.main.version}. Install the same version on both: until then it is
-          refused.
+          {useNodes.getState().status?.main.version}. It needs updating: on the node, press{' '}
+          <strong>Update to Drashti {useNodes.getState().status?.main.version}</strong>, or install that
+          version there by hand. Until then it is refused.
         </Notice>
       )}
       {!displays || displays.displays.length === 0 ? (
