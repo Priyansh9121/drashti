@@ -73,6 +73,8 @@ export const COPY_RATE = 30 * 1024 * 1024;
 export const COPY_RATE_ON_AIR = 5 * 1024 * 1024;
 /** How often nodes send pictures while the dashboard is open. */
 export const THUMB_EVERY_MS = 3000;
+/** Changes the windows hear of within this, together. */
+const CHANGE_COALESCE_MS = 250;
 /** A report is behind only when it misses what the show was this long ago. */
 const REPORT_SLACK_MS = 1500;
 /** Last-seen times are written now and then, never on every message. */
@@ -110,6 +112,9 @@ export class NodeService implements EngineTransport {
   private onAirWas = false;
   private statsWaiters: ((stats: LinkStats) => void)[] = [];
   private stopping: Promise<void> | null = null;
+  private changeTimer: NodeJS.Timeout | null = null;
+  /** Each node's displays as last kept (JSON), so a report that changes nothing writes nothing. */
+  private readonly knownDisplays = new Map<string, string>();
   /** The engine's revisions over the last few seconds, and when each came. */
   private readonly revs: { at: number; rev: number }[] = [];
 
@@ -274,11 +279,14 @@ export class NodeService implements EngineTransport {
         // or behind it since when.
         if (m.health.rev >= this.revBefore(this.deps.now() - REPORT_SLACK_MS)) l.behindSince = null;
         else l.behindSince ??= this.deps.now();
-        if (
-          this.deps.nodes.setDisplays(m.nodeId, m.health.displays) ||
-          before !== JSON.stringify(m.health.outputs)
-        )
-          this.deps.screensChanged();
+        // The displays are kept in the library only when they change (never a write on every report).
+        const displays = JSON.stringify(m.health.displays);
+        let changedDisplays = false;
+        if (this.knownDisplays.get(m.nodeId) !== displays) {
+          this.knownDisplays.set(m.nodeId, displays);
+          changedDisplays = this.deps.nodes.setDisplays(m.nodeId, m.health.displays);
+        }
+        if (changedDisplays || before !== JSON.stringify(m.health.outputs)) this.deps.screensChanged();
         this.changed();
         return;
       }
@@ -644,8 +652,16 @@ export class NodeService implements EngineTransport {
     });
   }
 
+  /**
+   * The windows hear of it a moment later, once for everything in that
+   * moment: with ten nodes reporting every two seconds, the operator window
+   * would otherwise be told five times a second.
+   */
   private changed(): void {
-    this.deps.changed(this.status());
+    this.changeTimer ??= setTimeout(() => {
+      this.changeTimer = null;
+      this.deps.changed(this.status());
+    }, CHANGE_COALESCE_MS);
   }
 
   private saveSeen(): void {
@@ -687,6 +703,7 @@ export class NodeService implements EngineTransport {
     if (this.seenWriter) clearInterval(this.seenWriter);
     if (this.offerTimer) clearTimeout(this.offerTimer);
     if (this.wantedTimer) clearTimeout(this.wantedTimer);
+    if (this.changeTimer) clearTimeout(this.changeTimer);
     this.saveSeen();
     return this.stopWorker();
   }
