@@ -31,6 +31,7 @@ import type { AppInfo } from '../../../shared/app-info';
 import { OnAirBadges } from '../stream/OnAirBadges';
 import { NetworkBadge } from '../network/NetworkBadge';
 import { ArtiPrompt } from '../arti/ArtiPrompt';
+import { MacroCountdown } from '../macros/MacroCountdown';
 import { ScreensDashboard } from '../nodes/ScreensDashboard';
 import { useNodes } from '../nodes/nodes-store';
 
@@ -389,6 +390,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
         </main>
       </div>
       <ArtiPrompt big />
+      <MacroCountdown big />
       <BigButtons platform={platform} run={run} />
       <StatusBar info={info} onOpenScreens={null} />
       <NoticeArea />

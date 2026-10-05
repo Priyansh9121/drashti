@@ -267,3 +267,9 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **One dialog from the File menu** (`size="md"`): the switch, the folder (a read-only field with **Choose…**, since only a folder dialog can pick a drive), the days, the time, how many to keep and the media tick, then how they stand: running with a progress bar, waiting with why in an `info` notice, the last one (muted when it went well, `warning-fg` with the triangle when it was skipped or stopped) and the next. **Back up now** sits on the left of the footer, as an action, not a setting.
 - **A skipped or stopped backup shows in the status bar** in both modes (`warning-bg`, the triangle, the reason in words, and **OK** to put it away), because a volunteer may be the one who can plug the drive back in. It goes by itself after the next backup that works.
 - The dialog passes the accessibility checks at 1280 × 720 (`tests/e2e/scheduled-backups.spec.ts`).
+
+## 29. Macros at set times
+
+- **A macro's times live in its editor**, under **Runs by itself**: one row per time (every week or one date, the days or the date, the time, an on switch, remove), and **Add a time**. The Macros panel marks a macro that runs by itself with a small clock and its time, never colour alone.
+- **The countdown is a strip, like the arti's prompt**: under the header in Pro Mode, above the big buttons in Simple Mode (`big`, as large as the arti's there), in `panel-3` with an accent border so it reads apart from the arti's yellow. It names the macro, says it runs by itself in ten seconds, counts down in large digits and offers **Cancel** (`secondary`). The sentence is a status line, read once; the digits are hidden from screen readers.
+- Both pass the accessibility checks at 1280 × 720 (`tests/e2e/scheduled-macros.spec.ts`).

@@ -30,6 +30,7 @@ import { up as calendar } from './migrations/028-calendar';
 import { up as idle } from './migrations/029-idle';
 import { up as nodes } from './migrations/030-nodes';
 import { up as openedPlaylists } from './migrations/031-opened-playlists';
+import { up as macroSchedules } from './migrations/032-macro-schedules';
 
 export interface Migration {
   version: number;
@@ -79,6 +80,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 29, name: 'the idle rotation', up: idle },
   { version: 30, name: 'output nodes', up: nodes },
   { version: 31, name: 'opened playlists count for nodes', up: openedPlaylists },
+  { version: 32, name: 'scheduled macros', up: macroSchedules },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

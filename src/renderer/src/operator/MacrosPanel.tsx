@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { MidiDialog } from '../midi/MidiDialog';
 import { connectMacros, openMacros, runMacro, useMacros } from '../macros/macros-store';
 import { Button } from '../ui/Button';
-import { KeyboardMusic, Pencil, Zap } from '../ui/icons';
+import { Clock, KeyboardMusic, Pencil, Zap } from '../ui/icons';
 import { Panel } from '../ui/Panel';
 
 /*
@@ -73,7 +73,20 @@ export function MacrosPanel() {
                 className="h-full w-1.5 shrink-0 self-stretch rounded-sm"
                 style={{ background: m.color }}
               />
-              <span className="truncate py-1.5">{m.name}</span>
+              <span className="min-w-0 flex-1 truncate py-1.5">{m.name}</span>
+              {m.schedules.some((s) => s.enabled) && (
+                <span
+                  className="flex shrink-0 items-center gap-0.5 text-xs text-muted"
+                  title={`Runs by itself at ${m.schedules
+                    .filter((s) => s.enabled)
+                    .map((s) => s.time)
+                    .join(', ')}`}
+                >
+                  <Clock size={12} aria-hidden="true" />
+                  <span className="sr-only">Runs by itself at </span>
+                  {m.schedules.find((s) => s.enabled)?.time}
+                </span>
+              )}
             </button>
           ))}
         </div>

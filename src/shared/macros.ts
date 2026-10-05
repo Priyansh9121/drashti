@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { LAYER_NAMES } from './engine/state';
 import { hexColorSchema, idSchema } from './model-schema';
+import { dateSchema, daysSchema, hhmmSchema } from './schedule';
+import type { ScheduleWhen } from './schedule';
 
 /*
  * Macros (Session 11): a name, a colour, and actions run in order as one
@@ -24,6 +26,16 @@ import { hexColorSchema, idSchema } from './model-schema';
  * Simple Mode runs no macros, from any trigger, slide cues included: a slide
  * with a macro cue goes up as it is. MIDI mapped to Simple Mode's own
  * actions (Next, Back, Clear all, Black-out, Logo) works there.
+ *
+ * Scheduled macros (Session 14): a macro can run by itself at set times,
+ * on the arti's schedules (days of the week and a time, or one date). At the
+ * time the operator window counts down ten seconds, with Cancel, then runs
+ * it. A time that passed while Drashti was closed (or the computer slept
+ * through it by more than a minute) is never run late. This is the one
+ * exception to Simple Mode running no macros: an admin chose the time on
+ * purpose (starting the idle rotation before the sabha, say), and the
+ * countdown, with Cancel, is shown in Simple Mode too, where a volunteer
+ * can stop it but change nothing.
  */
 
 export type MacroAction =
@@ -67,12 +79,62 @@ export const MACRO_ACTION_NAMES: Record<MacroActionKind, string> = {
 
 export const MACRO_ACTION_KINDS = Object.keys(MACRO_ACTION_NAMES) as MacroActionKind[];
 
+/** A time a macro runs by itself (Session 14). */
+export interface MacroSchedule extends ScheduleWhen {
+  id: string;
+  /** Off: kept, but it does not run. */
+  enabled: boolean;
+}
+
 export interface Macro {
   id: string;
   name: string;
   /** "#rrggbb": the button's colour. */
   color: string;
   actions: MacroAction[];
+  /** Times it runs by itself (none for most). */
+  schedules: MacroSchedule[];
+}
+
+/** A macro as saved: its schedules stay as they are when left out. */
+export interface MacroInput {
+  name: string;
+  color: string;
+  actions: unknown[];
+  schedules?: MacroSchedule[];
+}
+
+export const MACRO_SCHEDULES_MAX = 10;
+/** Running by itself: the countdown the operator can cancel. */
+export const MACRO_COUNTDOWN_MS = 10_000;
+/** A time is run only within this of it (a computer that slept through it does not run it late). */
+export const MACRO_RUN_WITHIN_MS = 60_000;
+
+export const macroScheduleSchema = z
+  .object({
+    id: z.string().min(1).max(64),
+    days: daysSchema,
+    date: dateSchema.nullable(),
+    time: hhmmSchema,
+    enabled: z.boolean(),
+  })
+  .strict()
+  .refine((s) => (s.date === null) !== (s.days.length === 0), {
+    message: 'Choose the days of the week, or one date.',
+  });
+
+/** A macro about to run by itself, counting down (the operator window, both modes). */
+export interface MacroCountdown {
+  /** This time of this schedule: what Cancel is for. */
+  key: string;
+  macroId: string;
+  name: string;
+  /** When it runs (engine clock): the windows count down to it. */
+  runAt: number;
+}
+
+export interface MacroCountdownView {
+  countdowns: MacroCountdown[];
 }
 
 export type MacroResult = { ok: true; macros: Macro[]; id: string } | { ok: false; message: string };
@@ -130,6 +192,7 @@ export const macroInputSchema = z.object({
   name: macroNameSchema,
   color: hexColorSchema,
   actions: z.array(z.unknown()).max(MAX_MACRO_ACTIONS),
+  schedules: z.array(macroScheduleSchema).max(MACRO_SCHEDULES_MAX).optional(),
 });
 
 /**

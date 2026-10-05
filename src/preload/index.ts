@@ -320,6 +320,9 @@ const bridge: DrashtiBridge = {
     save: (macroId, macro) => invoke(IPC.macros.save, macroId, macro),
     remove: (macroId) => invoke(IPC.macros.remove, macroId),
     run: (macroId) => invoke(IPC.macros.run, macroId),
+    countdown: () => invoke(IPC.macros.countdown),
+    cancelScheduled: (key) => invoke(IPC.macros.cancelScheduled, key),
+    onCountdown: (listener) => on(IPC.macros.countdownChanged, listener),
   },
   midi: {
     get: () => invoke(IPC.midi.get),

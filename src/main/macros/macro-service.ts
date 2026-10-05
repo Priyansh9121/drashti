@@ -55,14 +55,18 @@ export class MacroService {
       return { ok: false, message: 'A macro needs a name, a colour, and up to 30 actions.' };
     const checked = checkActions(input.data.actions);
     if (!checked.ok) return checked;
-    const { name, color } = input.data;
+    const { name, color, schedules } = input.data;
     if (id.data === null) {
-      const made = this.deps.repo.create(name, color, checked.actions);
+      const made = this.deps.repo.create(name, color, checked.actions, schedules ?? []);
       this.deps.log(`Macros: made one with ${checked.actions.length} action(s)`);
       return this.done(made);
     }
-    if (!this.deps.repo.save(id.data, name, color, checked.actions))
+    if (!this.deps.repo.save(id.data, name, color, checked.actions, schedules))
       return { ok: false, message: 'That macro no longer exists.' };
+    if (schedules !== undefined)
+      this.deps.log(
+        `Macros: one runs by itself at ${String(schedules.filter((x) => x.enabled).length)} time(s)`,
+      );
     return this.done(id.data);
   }
 
@@ -74,11 +78,16 @@ export class MacroService {
     return this.done(id.data);
   }
 
-  /** The engine commands a macro runs, checked again now; or why it cannot run. */
+  /**
+   * The engine commands a macro runs, checked again now; or why it cannot
+   * run. Simple Mode runs none, except at a time an admin scheduled
+   * (`scheduled`), after the countdown a volunteer can cancel.
+   */
   commands(
     macroId: string,
+    options: { scheduled?: boolean } = {},
   ): { ok: true; commands: EngineCommand[]; name: string } | { ok: false; message: string } {
-    if (this.deps.simple()) return { ok: false, message: SIMPLE_MODE_REFUSAL };
+    if (this.deps.simple() && !options.scheduled) return { ok: false, message: SIMPLE_MODE_REFUSAL };
     const stored = this.deps.repo.get(macroId);
     if (!stored) return { ok: false, message: 'That macro no longer exists.' };
     const checked = checkActions(stored.actions);
@@ -92,11 +101,11 @@ export class MacroService {
     return { ok: true, commands, name: stored.name };
   }
 
-  /** Run a macro now: from the Macros panel, the remote, the API or MIDI. */
-  run(rawId: unknown, who = 'the operator window'): MacroRunResult {
+  /** Run a macro now: from the Macros panel, the remote, the API, MIDI or (`scheduled`) its time. */
+  run(rawId: unknown, who = 'the operator window', options: { scheduled?: boolean } = {}): MacroRunResult {
     const id = idSchema.safeParse(rawId);
     if (!id.success) return { ok: false, message: 'That macro no longer exists.' };
-    const got = this.commands(id.data);
+    const got = this.commands(id.data, options);
     if (!got.ok) return got;
     const result = this.deps.engine.runMacro(got.commands);
     if (!result.ok) return { ok: false, message: result.message };

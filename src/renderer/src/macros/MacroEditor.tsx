@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react';
 import { LAYER_NAMES } from '../../../shared/engine/state';
-import type { MacroAction, MacroActionKind } from '../../../shared/macros';
-import { MACRO_ACTION_KINDS, MACRO_ACTION_NAMES, MACRO_COLORS } from '../../../shared/macros';
+import type { MacroAction, MacroActionKind, MacroSchedule } from '../../../shared/macros';
+import {
+  MACRO_ACTION_KINDS,
+  MACRO_ACTION_NAMES,
+  MACRO_COLORS,
+  MACRO_SCHEDULES_MAX,
+} from '../../../shared/macros';
+import { localDate } from '../../../shared/schedule';
+import { DaysPicker } from '../ui/DaysPicker';
 import type { MessageTemplate } from '../../../shared/messages';
 import { fieldOf, templateFields } from '../../../shared/messages';
 import type { PlaylistItemInfo } from '../../../shared/playlists';
@@ -14,10 +21,10 @@ import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { ColorInput, Field, NumberInput, Select, TextInput } from '../ui/Field';
-import { ArrowDown, ArrowUp, Plus, Trash2, X } from '../ui/icons';
+import { ArrowDown, ArrowUp, Clock, Plus, Trash2, X } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
-import { Checkbox } from '../ui/Toggle';
+import { Checkbox, Toggle } from '../ui/Toggle';
 import { change, closeMacros, isDirty, remove, save, show, startNew, useMacros } from './macros-store';
 
 /*
@@ -381,6 +388,85 @@ function ActionFields({
   }
 }
 
+const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
+
+/** The times a macro runs by itself (Session 14): weekly on days, or one date, each with its time. */
+function MacroTimes({ schedules, set }: { schedules: MacroSchedule[]; set: (s: MacroSchedule[]) => void }) {
+  const update = (i: number, patch: Partial<MacroSchedule>) => {
+    set(schedules.map((s, j) => (j === i ? { ...s, ...patch } : s)));
+  };
+  return (
+    <section className="space-y-2" data-testid="macro-times">
+      <SectionTitle>Runs by itself</SectionTitle>
+      <p className="text-xs text-muted">
+        At each time, Drashti counts down ten seconds (Cancel stops it), then runs this macro, in Simple Mode
+        too. A time while Drashti is closed, or a computer asleep, is not run later.
+      </p>
+      <ul className="space-y-2">
+        {schedules.map((s, i) => (
+          <li
+            key={s.id}
+            data-testid="macro-time"
+            className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-panel-2 px-2 py-1.5"
+          >
+            <Select
+              aria-label="Every week or on one date"
+              value={s.date === null ? 'weekly' : 'date'}
+              onChange={(ev) => {
+                if (ev.target.value === 'weekly') update(i, { date: null, days: EVERY_DAY });
+                else update(i, { days: [], date: localDate(new Date()) });
+              }}
+            >
+              <option value="weekly">Every week</option>
+              <option value="date">On one date</option>
+            </Select>
+            {s.date === null ? (
+              <DaysPicker days={s.days} onChange={(days) => update(i, { days })} />
+            ) : (
+              <TextInput
+                type="date"
+                aria-label="Date"
+                value={s.date}
+                onChange={(ev) => update(i, { date: ev.target.value })}
+              />
+            )}
+            <TextInput
+              type="time"
+              aria-label="Time (this computer's clock)"
+              data-testid="macro-time-at"
+              value={s.time}
+              onChange={(ev) => update(i, { time: ev.target.value })}
+            />
+            <Toggle checked={s.enabled} label="On" onChange={(on) => update(i, { enabled: on })} />
+            <span className="flex-1" />
+            <IconButton
+              icon={X}
+              label="Remove this time"
+              size="sm"
+              onClick={() => {
+                set(schedules.filter((_, j) => j !== i));
+              }}
+            />
+          </li>
+        ))}
+      </ul>
+      <Button
+        icon={Clock}
+        data-testid="macro-add-time"
+        disabled={schedules.length >= MACRO_SCHEDULES_MAX}
+        onClick={() => {
+          set([
+            ...schedules,
+            { id: crypto.randomUUID(), days: EVERY_DAY, date: null, time: '18:30', enabled: true },
+          ]);
+        }}
+      >
+        Add a time
+      </Button>
+    </section>
+  );
+}
+
 export function MacroEditor() {
   const s = useMacros();
   const looks = useLooks((x) => x.view?.looks);
@@ -621,6 +707,12 @@ export function MacroEditor() {
             </Button>
           </div>
         </section>
+        <MacroTimes
+          schedules={e.schedules}
+          set={(schedules) => {
+            change((x) => ({ ...x, schedules }));
+          }}
+        />
       </div>
       {ask && (
         <ConfirmDialog
