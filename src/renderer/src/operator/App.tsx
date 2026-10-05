@@ -15,6 +15,8 @@ import { undoRemoval } from '../library/undo';
 import { PlaylistPanel } from '../playlists/PlaylistPanel';
 import { loadTree, watchPlaylists } from '../playlists/playlist-store';
 import { ScreensPanel } from '../screens/ScreensPanel';
+import { ScreensDashboard } from '../nodes/ScreensDashboard';
+import { closeDashboard, useNodes } from '../nodes/nodes-store';
 import { connectScreens } from '../screens/screens-store';
 import { runAction, useNotice, useTaskProgress } from './actions';
 import type { OperatorAction } from '../../../shared/keymap';
@@ -127,6 +129,7 @@ export function App() {
 
 function ProApp({ info }: { info: AppInfo | null }) {
   const [screensOpen, setScreensOpen] = useState(false);
+  const dashboardOpen = useNodes((s) => s.dashboard);
   const streamOpen = useStream((s) => s.panelOpen);
   const networkOpen = useNetwork((s) => s.open);
   const announcementsOpen = useAnnouncements((s) => s.open);
@@ -224,6 +227,15 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <MacroEditor />
       <ArtiDialog />
       <CalendarDialog />
+      {dashboardOpen && (
+        <ScreensDashboard
+          simple={false}
+          onSetUp={() => {
+            closeDashboard();
+            setScreensOpen(true);
+          }}
+        />
+      )}
       {screensOpen && (
         <ScreensPanel
           platform={platform}

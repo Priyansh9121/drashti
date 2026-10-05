@@ -60,7 +60,7 @@ export function ScreensSummary({ onOpen }: { onOpen: (() => void) | null }) {
       ? 'No screens set up'
       : `${showing} ${showing === 1 ? 'screen' : 'screens'} showing${missing ? ` · ${missing} display${missing === 1 ? '' : 's'} not connected` : ''}`;
   const IconShape = missing ? MonitorOff : Monitor;
-  // In Simple Mode the screens cannot be opened: the same words, not a button.
+  // Without anything to open: the same words, not a button.
   if (!onOpen)
     return (
       <span
@@ -78,7 +78,7 @@ export function ScreensSummary({ onOpen }: { onOpen: (() => void) | null }) {
     <button
       type="button"
       onClick={onOpen}
-      title="Open the screens"
+      title="Open the screens dashboard"
       className={cx(
         'flex shrink-0 items-center gap-1.5 rounded-sm px-1.5 py-0.5',
         missing ? 'bg-warning-bg text-warning-fg' : 'text-muted hover:text-fg',

@@ -252,6 +252,56 @@ export interface NodeInfo {
   versionRefused: string | null;
   /** Copy every picture and video in the library, not only the week's ("Get everything ready"). */
   everything: boolean;
+  /** Since when (ISO) it has not caught up with the show (its last report older than Main's changes), or null. */
+  behindSince: string | null;
+}
+
+/** Past this, a node's clock estimate could be more than two frames out (half the round trip). */
+export const STEP_ROUND_TRIP_MS = 34;
+/** A node that has not caught up with a change for this long is behind. */
+export const BEHIND_AFTER_MS = 6000;
+
+export type NodeWarningKind = 'offline' | 'media' | 'step' | 'version';
+
+export interface NodeWarning {
+  nodeId: string;
+  kind: NodeWarningKind;
+  text: string;
+}
+
+/**
+ * What needs the operator's eye (the status bar and the dashboard): a node
+ * offline, one behind on media (something on its screens not copied yet, or
+ * copying stopped), one out of step (its clock not measured, or measured too
+ * loosely, or not caught up with the show), or one refused for its version.
+ */
+export function nodeWarnings(nodes: readonly NodeInfo[], now: number): NodeWarning[] {
+  const time = (iso: string | null) =>
+    iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+  return nodes.flatMap((n): NodeWarning[] => {
+    const name = `“${n.name}”`;
+    if (n.versionRefused)
+      return [{ nodeId: n.id, kind: 'version', text: `${name} runs another version of Drashti` }];
+    if (!n.online)
+      return [
+        { nodeId: n.id, kind: 'offline', text: `${name} offline${n.since ? ` since ${time(n.since)}` : ''}` },
+      ];
+    const out: NodeWarning[] = [];
+    const media = n.health?.media;
+    if (media && (media.missingNow > 0 || media.problem))
+      out.push({
+        nodeId: n.id,
+        kind: 'media',
+        text: media.problem
+          ? `${name}: ${media.problem}`
+          : `${name} is still copying ${media.missingNow === 1 ? 'a file' : `${media.missingNow} files`} on its screens`,
+      });
+    const clock = n.health?.clock;
+    const behind = n.behindSince !== null && now - Date.parse(n.behindSince) > BEHIND_AFTER_MS;
+    if (n.health && (!clock || clock.rttMs > STEP_ROUND_TRIP_MS || behind))
+      out.push({ nodeId: n.id, kind: 'step', text: `${name} is out of step with the show` });
+    return out;
+  });
 }
 
 /** A pairing code Main offers for a node, as its window shows it. */

@@ -156,6 +156,7 @@ import { NodeService } from './nodes/node-service';
 import { spawnLinkWorker } from './nodes/link-worker';
 import { loadOrMakeIdentity } from './nodes/identity';
 import { WantedMedia } from './nodes/wanted-media';
+import { startPerfNodes } from './nodes/perf-nodes';
 import type { NodeOutputStatus, ScreenThumb } from '../shared/nodes';
 import { hostname } from 'node:os';
 
@@ -231,6 +232,8 @@ let artiClockOffset = artiTestClock ? Number(process.env['DRASHTI_TEST_ARTI_OFFS
 // network's server in the main process instead of its own.
 const perfDevices = Math.min(50, Math.max(0, Number(process.env['DRASHTI_PERF_DEVICES'] ?? 0) || 0));
 const perfNetworkInMain = process.env['DRASHTI_PERF_NETWORK_IN_MAIN'] === '1';
+// The performance check only: so many output nodes following the show (and copying a file) meanwhile.
+const perfNodes = Math.min(50, Math.max(0, Number(process.env['DRASHTI_PERF_NODES'] ?? 0) || 0));
 // Tests only (never a packaged Drashti): the version this copy says it runs, to see Main and a node
 // on different versions refuse each other; a node's clock as if it were this far off; and the port
 // Main listens for nodes on.
@@ -384,8 +387,30 @@ const notAllowed = { ok: false as const, message: 'Only the operator window can 
 type PerfRun = Parameters<typeof runPerformanceTest>[0] & {
   stream: StreamService;
   network: NetworkService;
+  nodes: NodeService;
+  library: { db: Db; mediaDir: string };
   operatorContents: () => Electron.WebContents | null;
 };
+
+/** The performance check with DRASHTI_PERF_NODES output nodes following the show meanwhile. */
+async function runPerformanceTestWithNodes(ctx: PerfRun): ReturnType<typeof runPerformanceTest> {
+  if (perfNodes === 0) return runPerformanceTestWithDevices(ctx);
+  const nodes = await startPerfNodes(
+    ctx.nodes,
+    ctx.library.db,
+    ctx.library.mediaDir,
+    perfNodes,
+    appVersion(),
+  );
+  try {
+    const result = await runPerformanceTestWithDevices(ctx);
+    await nodes.stop();
+    return { ...result, summary: `${result.summary}; ${nodes.summary()}` };
+  } catch (error) {
+    await nodes.stop();
+    throw error;
+  }
+}
 
 /** The performance check with DRASHTI_PERF_DEVICES paired devices following the feed meanwhile. */
 async function runPerformanceTestWithDevices(ctx: PerfRun): ReturnType<typeof runPerformanceTest> {
@@ -1629,8 +1654,13 @@ function start(): void {
       ...localInterfaceAddresses().filter((a) => !a.includes(':')),
       ...(localName() ? [localName() ?? ''] : []),
     ],
-    bind: networkLocalOnly ? '127.0.0.1' : '0.0.0.0',
-    engine: { snapshot: () => engine.snapshot(), state: () => engine.current, session: engine.session },
+    bind: networkLocalOnly || perfTest ? '127.0.0.1' : '0.0.0.0',
+    engine: {
+      snapshot: () => engine.snapshot(),
+      state: () => engine.current,
+      rev: () => engine.rev,
+      session: engine.session,
+    },
     wanted: (state, everything) => wanted.list(state, everything),
     mediaFile: (mediaId) => wanted.source(mediaId, mediaDir),
     onAir: () => streaming.inUse(),
@@ -2460,7 +2490,7 @@ function start(): void {
   };
   if (perfTest) {
     operatorWindow.webContents.once('did-finish-load', () => {
-      void runPerformanceTestWithDevices({
+      void runPerformanceTestWithNodes({
         operator: () => (operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : null),
         outputs: () => [...outputWindows.values()].filter((w) => !w.isDestroyed()),
         ensureOutput: () => ensureTestOutput('Performance test'),
@@ -2469,6 +2499,8 @@ function start(): void {
         diagnostics: { loopDelay, handlerTimes, gc },
         stream: streaming,
         network: net,
+        nodes,
+        library: { db: libraryDb, mediaDir },
         operatorContents: () =>
           operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow.webContents : null,
       }).then(

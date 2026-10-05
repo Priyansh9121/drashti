@@ -29,6 +29,8 @@ import type { AppInfo } from '../../../shared/app-info';
 import { OnAirBadges } from '../stream/OnAirBadges';
 import { NetworkBadge } from '../network/NetworkBadge';
 import { ArtiPrompt } from '../arti/ArtiPrompt';
+import { ScreensDashboard } from '../nodes/ScreensDashboard';
+import { useNodes } from '../nodes/nodes-store';
 
 /*
  * Simple Mode (PLAN.md section 3): one uncluttered screen for a volunteer.
@@ -293,6 +295,7 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
 
 export function SimpleApp({ info }: { info: AppInfo | null }) {
   const platform = info?.platform ?? 'darwin';
+  const dashboardOpen = useNodes((s) => s.dashboard);
   const items = usePlaylists((s) => s.items);
   const openId = usePlaylists((s) => s.openId);
   // Next with nothing live starts the playlist at its first item that can play.
@@ -357,6 +360,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       <StatusBar info={info} onOpenScreens={null} />
       <NoticeArea />
       <LeaveSimpleDialog />
+      {dashboardOpen && <ScreensDashboard simple onSetUp={null} />}
     </div>
   );
 }

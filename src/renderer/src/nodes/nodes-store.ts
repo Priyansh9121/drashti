@@ -8,13 +8,29 @@ import type { NodesResult, NodesStatus, ScreenThumb } from '../../../shared/node
  */
 
 interface NodesView {
+  /** The screens dashboard is open. */
+  dashboard: boolean;
   status: NodesStatus | null;
   /** The latest picture of each screen, by screen id (while the dashboard is open). */
   thumbs: Record<string, ScreenThumb>;
   error: string | null;
 }
 
-export const useNodes = create<NodesView>(() => ({ status: null, thumbs: {}, error: null }));
+export const useNodes = create<NodesView>(() => ({
+  dashboard: false,
+  status: null,
+  thumbs: {},
+  error: null,
+}));
+
+export function openDashboard(): void {
+  connectNodes();
+  useNodes.setState({ dashboard: true, error: null });
+}
+
+export function closeDashboard(): void {
+  useNodes.setState({ dashboard: false, thumbs: {} });
+}
 
 let started = false;
 
