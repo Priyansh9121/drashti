@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } fro
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, outputPage, setUpScreen } from './helpers';
+import { importAndGetIds, killApp, outputPage, setUpScreen } from './helpers';
 import { launchMain, launchNode, nodeView, pairNode } from './nodes';
 import { makeTestImage, makeTestVideo } from './test-media';
 
@@ -134,6 +134,113 @@ test('media is copied before it is needed, checked by hash; what goes up first i
     for (const f of readdirSync(cacheDir).filter((n) => /^[0-9a-f]{64}\./u.test(n)))
       expect(sha(join(cacheDir, f))).toBe(f.split('.')[0]);
     await expect.poll(async () => (await nodeView(node.page)).media.problem).toBeNull();
+  } finally {
+    await node.app.close();
+    await main.app.close();
+  }
+});
+
+test('a video put up before its copy arrived: the picture before stays until it plays; cut off by Main going away, it loads when the copy lands', async () => {
+  test.setTimeout(300_000);
+  // Copies crawl (64 KB a second), so the test can watch one under way.
+  const slow = { DRASHTI_TEST_COPY_RATE: '65536' };
+  const first = await launchMain(slow);
+  const node = await launchNode();
+  let main = first;
+  try {
+    const nodeId = await pairNode(main, node);
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-nodes-late-'));
+    const picture = await makeTestImage(main.win, join(dir, 'Placeholder before picture.png'), {
+      width: 64,
+      height: 36,
+      color: '#406080',
+    });
+    const clipA = await makeTestVideo(main.win, join(dir, 'Placeholder late clip A.webm'), {
+      seconds: 4,
+      width: 640,
+      height: 360,
+      hue: 120,
+    });
+    const clipB = await makeTestVideo(main.win, join(dir, 'Placeholder late clip B.webm'), {
+      seconds: 4,
+      width: 640,
+      height: 360,
+      hue: 300,
+    });
+    await importAndGetIds(main.win, [picture, clipA, clipB]);
+    const media = await main.win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia());
+    const idOf = (name: string) => media.find((m) => m.name.startsWith(name))?.id ?? '';
+    const [pictureId, aId, bId] = [
+      idOf('Placeholder before picture'),
+      idOf('Placeholder late clip A'),
+      idOf('Placeholder late clip B'),
+    ];
+    await setUpScreen(main.win, 'Placeholder Hall', 1);
+    await expect
+      .poll(async () =>
+        main.win.evaluate(
+          async (n) =>
+            (await (globalThis as PageGlobals).drashti.screens.get()).nodes.find((x) => x.id === n)?.displays
+              .length ?? 0,
+          nodeId,
+        ),
+      )
+      .toBeGreaterThanOrEqual(2);
+    await main.win.evaluate(async (nid) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const s = await d.screens.get();
+      const group = s.groups.find((g) => g.name === 'Placeholder Hall');
+      const n = s.nodes.find((x) => x.id === nid);
+      const r = await d.screens.assignNodeDisplay(group?.id ?? '', nid, n?.displays[1]?.id ?? -1);
+      if (!r.ok) throw new Error(r.message);
+    }, nodeId);
+    const out = await outputPage(node.app);
+    const background = (main: typeof first, mediaId: string, kind: 'image' | 'video') =>
+      main.win.evaluate(
+        ({ mediaId, kind }) =>
+          (globalThis as PageGlobals).drashti.engine.dispatch({
+            type: 'setBackground',
+            background: { kind: 'media', mediaId, media: kind, fit: 'fill', loop: true },
+          }),
+        { mediaId, kind },
+      );
+    const slot = (mediaId: string) =>
+      out.evaluate((id) => {
+        const el = document.querySelector<HTMLElement>(`[data-layer="background"] [data-media-id="${id}"]`);
+        if (!el) return 'none';
+        const state = el.dataset['state'] ?? '';
+        const playing = el instanceof HTMLVideoElement && el.readyState >= 2 && !el.paused;
+        return playing ? 'playing' : state;
+      }, mediaId);
+
+    // The picture first: it is small, so it is there almost at once.
+    await background(main, pictureId, 'image');
+    await expect.poll(() => slot(pictureId), { timeout: 20_000 }).toBe('ready');
+    // Clip A goes up before it is copied: the picture stays up, whole, while the clip loads.
+    await background(main, aId, 'video');
+    await expect.poll(() => slot(aId)).toBe('loading');
+    expect(await slot(pictureId)).toBe('ready');
+    expect(
+      await out.evaluate((id) => {
+        const el = document.querySelector(`[data-layer="background"] [data-media-id="${id}"]`);
+        return el ? getComputedStyle(el).opacity : '';
+      }, pictureId),
+    ).toBe('1');
+    // Once copied, it plays (well past any time limit a copy could need at this rate).
+    await expect.poll(() => slot(aId), { timeout: 120_000 }).toBe('playing');
+
+    // Clip B goes up, and Main stops dead while it is still copying: the node lets the screen's request go.
+    await background(main, bId, 'video');
+    await expect.poll(() => slot(bId)).toBe('loading');
+    await main.win.waitForTimeout(800);
+    await killApp(main.app);
+    await expect(node.page.getByTestId('node-link-state')).toHaveText('Offline', { timeout: 20_000 });
+    await expect.poll(() => slot(bId), { timeout: 20_000 }).toBe('failed');
+    // Main is back (restart recovery puts clip B up again): the copy carries on, and the screen loads it
+    // by itself once it has landed.
+    main = await launchMain(slow, { port: first.port, userData: first.userData });
+    await expect(node.page.getByTestId('node-link-state')).toHaveText('Online', { timeout: 30_000 });
+    await expect.poll(() => slot(bId), { timeout: 150_000 }).toBe('playing');
   } finally {
     await node.app.close();
     await main.app.close();

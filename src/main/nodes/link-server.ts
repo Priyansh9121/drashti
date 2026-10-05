@@ -124,8 +124,11 @@ export class RateGate {
   private tokens: number;
   private at = performance.now();
 
-  constructor(private rate: number) {
-    this.tokens = rate / 4;
+  private rate: number;
+
+  constructor(bytesPerSecond: number) {
+    this.rate = Math.max(64 * 1024, bytesPerSecond);
+    this.tokens = this.rate / 4;
   }
 
   setRate(bytesPerSecond: number): void {

@@ -6,6 +6,7 @@ import { OBJECT_FIT } from './media-style';
 import { startPlayback } from './playback';
 import { engineNow } from './clock';
 import { PreviewPicture, usePreviewsOnly } from './previews';
+import { useMediaAttempt } from './media-attempts';
 
 function style(fit: MediaFit, visible: boolean) {
   return {
@@ -178,6 +179,14 @@ function BackgroundPlayer({
   }
   const rootRef = useRef<HTMLDivElement>(null);
   useFade(rootRef, slots, dispatch);
+  // On a node: a background that failed because its copy had not arrived loads again when it lands.
+  const failed = slots.shown?.state === 'failed' ? slots.shown : null;
+  const landed = useMediaAttempt(failed?.layer.mediaId ?? '');
+  useEffect(() => {
+    if (failed && landed > 0) dispatch({ type: 'retry', key: failed.key });
+    // Only a landing (a new count) tries again, never the failure itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [landed]);
   const list = [slots.leaving, slots.shown, slots.incoming].filter((s): s is Slot => s !== null);
   if (list.length === 0) return null;
   const fading = slots.fade !== null;
@@ -201,7 +210,7 @@ function BackgroundPlayer({
           );
         return (
           <div
-            key={slot.key}
+            key={`${slot.key}#${slot.attempt ?? 0}`}
             data-bg-fade={slot === slots.leaving ? 'out' : slot === slots.shown && fading ? 'in' : undefined}
             style={{
               position: 'absolute',

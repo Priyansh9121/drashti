@@ -243,6 +243,8 @@ const nodeClockSkewMs = app.isPackaged ? 0 : Number(process.env['DRASHTI_TEST_CL
 const nodePortOverride = Number(process.env['DRASHTI_NODE_PORT'] ?? 0) || null;
 // Tests only: the computer's name as Main and its nodes show it (screenshots never show a runner's own).
 const testComputerName = app.isPackaged ? undefined : process.env['DRASHTI_TEST_COMPUTER_NAME'];
+// Tests only: copies to nodes at this rate (bytes a second), so a copy can be watched while it goes.
+const testCopyRate = app.isPackaged ? null : Number(process.env['DRASHTI_TEST_COPY_RATE'] ?? 0) || null;
 
 // Library media reaches the sandboxed windows only through drashti-media:// (see media/media-protocol.ts).
 // Schemes must be registered before the app is ready.
@@ -1701,6 +1703,7 @@ function start(): void {
     },
     now: Date.now,
     portOverride: nodePortOverride,
+    copyRateOverride: testCopyRate,
   });
   nodeService = nodes;
   nodes.resume();

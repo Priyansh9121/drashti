@@ -140,6 +140,24 @@ describe('background slots', () => {
     });
   });
 
+  it('tries a background again when its copy lands on a node, after it had failed (Session 13)', () => {
+    let s = run(
+      { type: 'layer', layer: a },
+      { type: 'ready', key: slotKey(a) },
+      { type: 'layer', layer: b },
+      { type: 'failed', key: slotKey(b) },
+    );
+    expect(s.shown).toMatchObject({ key: slotKey(b), state: 'failed' });
+    s = slotsReducer(s, { type: 'retry', key: slotKey(b) });
+    expect(s.shown).toBeNull();
+    expect(s.incoming).toMatchObject({ key: slotKey(b), state: 'loading', attempt: 1 });
+    expect(onScreen(slotsReducer(s, { type: 'ready', key: slotKey(b) }))).toBe(slotKey(b));
+    // Only a failed background is tried again: one on screen, or one no longer up, is left alone.
+    const fine = run({ type: 'layer', layer: c }, { type: 'ready', key: slotKey(c) });
+    expect(slotsReducer(fine, { type: 'retry', key: slotKey(c) })).toBe(fine);
+    expect(slotsReducer(fine, { type: 'retry', key: slotKey(b) })).toBe(fine);
+  });
+
   it('treats the same file started again as a new playback', () => {
     const again = video('A', 9);
     const s = run(

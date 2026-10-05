@@ -65,6 +65,8 @@ export interface NodeServiceDeps {
   now(): number;
   /** Tests: listen on this port instead of the setting's. */
   portOverride?: number | null;
+  /** Tests: copies at this rate (bytes a second), on air or not. */
+  copyRateOverride?: number | null;
 }
 
 const PORT_SETTING = 'nodes.port';
@@ -182,7 +184,7 @@ export class NodeService implements EngineTransport {
       main: { id: identity.id, name: identity.name, version: this.deps.version },
       addresses: this.deps.addresses(),
       session: this.deps.engine.session,
-      bytesPerSecond: this.deps.onAir() ? COPY_RATE_ON_AIR : COPY_RATE,
+      bytesPerSecond: this.copyRate(),
     };
     worker.send({ type: 'start', options });
     this.seenWriter ??= setInterval(() => {
@@ -435,9 +437,12 @@ export class NodeService implements EngineTransport {
 
   /** The stream went on or off air: copies go slower or faster. */
   rateChanged(): void {
-    const onAir = this.deps.onAir();
-    this.onAirWas = onAir;
-    this.worker?.send({ type: 'rate', bytesPerSecond: onAir ? COPY_RATE_ON_AIR : COPY_RATE });
+    this.onAirWas = this.deps.onAir();
+    this.worker?.send({ type: 'rate', bytesPerSecond: this.copyRate() });
+  }
+
+  private copyRate(): number {
+    return this.deps.copyRateOverride ?? (this.deps.onAir() ? COPY_RATE_ON_AIR : COPY_RATE);
   }
 
   // ---- pairing ------------------------------------------------------------------------------

@@ -23,6 +23,10 @@ import { diskFreeBytes, sha256File } from '../import/media-store';
  * on the screens (or up next) that is not here yet is fetched at once, ahead
  * of the list. One file at a time; an interrupted copy carries on from where
  * it stopped; every copy is checked against its hash before it is used.
+ * A screen asking for a file that is not here yet waits for it for as long
+ * as the file is on the screens and its copy can still arrive (its previous
+ * picture stays up meanwhile); a copy that lands after a screen stopped
+ * waiting is announced, so the screen loads it then.
  * 2 GB stays free on the disk: copies nothing wants go first, and copies
  * nothing has wanted for 30 days go anyway.
  */
@@ -36,6 +40,8 @@ export interface CacheDeps {
   /** Media on the screens or up next now: never removed, fetched first. */
   inUse(): string[];
   changed(): void;
+  /** A copy has just landed (screens that gave up on it load it now). */
+  landed?(mediaId: string): void;
   log(level: 'info' | 'warn', message: string): void;
   freeBytes?: (dir: string) => number;
   reserveBytes?: number;
@@ -56,10 +62,17 @@ interface IndexFile {
 
 const GiB = 1024 * 1024 * 1024;
 const KEEP_DAYS_MS = 30 * 24 * 3600 * 1000;
-/** A file that could not be copied is tried again after this. */
+/** A file that could not be copied is tried again after this; one a screen is waiting for, sooner. */
 const RETRY_MS = 15_000;
+const URGENT_RETRY_MS = 2000;
+/** How often a screen's wait is checked: is the file still on the screens, and Main reachable? */
+const HOLD_CHECK_MS = 1000;
+/** A copy that fails its hash this many times is given up (Main's own file is not what it says). */
+const HASH_TRIES = 3;
 
 class NoRoom extends Error {}
+/** Main has no such file (or it never matches its hash): no point trying again. */
+class Gone extends Error {}
 
 export class MediaCache {
   private index: IndexFile = { files: new Map(), ids: new Map() };
@@ -67,6 +80,8 @@ export class MediaCache {
   private readonly urgent = new Set<string>();
   private readonly waiters = new Map<string, ((path: string | null) => void)[]>();
   private readonly failedAt = new Map<string, number>();
+  private readonly hashFailures = new Map<string, number>();
+  private holdTimer: NodeJS.Timeout | null = null;
   private copying: { id: string; bytes: number; done: number } | null = null;
   private problem: string | null = null;
   private running = false;
@@ -159,8 +174,11 @@ export class MediaCache {
   }
 
   /**
-   * This item is on the screens (or up next) now: its copy at once, ahead of
-   * everything else. Resolves with its path, or null when it cannot be had.
+   * A screen asks for this item and it is not here: its copy at once, ahead
+   * of everything else. Resolves with its path once it lands; with null once
+   * it cannot: Main has no such file, there is no room, the item is no longer
+   * on the screens (nor up next), or Main cannot be reached. A copy that
+   * breaks off is tried again meanwhile.
    */
   ensure(mediaId: string): Promise<string | null> {
     const path = this.pathFor(mediaId);
@@ -172,8 +190,22 @@ export class MediaCache {
       this.waiters.set(mediaId, list);
       this.urgent.add(mediaId);
       this.failedAt.delete(mediaId);
+      this.watchHolds();
       this.kick();
     });
+  }
+
+  /** Let go of screens' waits that can no longer end with the file. */
+  private watchHolds(): void {
+    this.holdTimer ??= setInterval(() => {
+      const online = this.deps.online();
+      const shown = new Set(this.deps.inUse());
+      for (const id of [...this.waiters.keys()]) if (!online || !shown.has(id)) this.settle(id, null);
+      if (this.waiters.size === 0 && this.holdTimer) {
+        clearInterval(this.holdTimer);
+        this.holdTimer = null;
+      }
+    }, HOLD_CHECK_MS);
   }
 
   /** Try again now (Main came back, or the screens changed). */
@@ -210,9 +242,16 @@ export class MediaCache {
     for (const resolve of list ?? []) resolve(path);
   }
 
+  /** A copy is here: whoever waits gets it, and screens that gave up hear of it. */
+  private arrived(mediaId: string): void {
+    this.settle(mediaId, this.pathFor(mediaId));
+    this.deps.landed?.(mediaId);
+  }
+
   private next(): string | null {
     const t = this.now();
-    const ready = (id: string) => (this.failedAt.get(id) ?? 0) + RETRY_MS <= t;
+    const ready = (id: string) =>
+      (this.failedAt.get(id) ?? 0) + (this.urgent.has(id) ? URGENT_RETRY_MS : RETRY_MS) <= t;
     for (const id of this.urgent) {
       if (this.has(id)) this.settle(id, this.pathFor(id));
       else if (ready(id)) return id;
@@ -238,7 +277,8 @@ export class MediaCache {
             break;
           }
           this.deps.log('warn', `Media copies: ${id} not copied (${(error as Error).message})`);
-          if (this.urgent.has(id)) this.settle(id, null);
+          // Gone for good: a screen waiting for it stops; anything else is tried again.
+          if (error instanceof Gone) this.settle(id, null);
         } finally {
           this.copying = null;
           this.deps.changed();
@@ -247,8 +287,9 @@ export class MediaCache {
     } finally {
       this.running = false;
     }
-    // Something failed: come back to it later.
-    if (this.failedAt.size > 0) setTimeout(() => this.kick(), RETRY_MS).unref();
+    // Something failed: come back to it later (soon, when a screen waits for it).
+    if (this.failedAt.size > 0)
+      setTimeout(() => this.kick(), this.urgent.size > 0 ? URGENT_RETRY_MS : RETRY_MS).unref();
   }
 
   private room(bytes: number): boolean {
@@ -297,6 +338,7 @@ export class MediaCache {
     }
     if (res.statusCode !== 200 && res.statusCode !== 206) {
       res.resume();
+      if (res.statusCode === 404) throw new Gone('Main has no such file');
       throw new Error(`Main answered ${res.statusCode ?? 'nothing'}`);
     }
     const sha256 = String(res.headers['x-drashti-sha256'] ?? '');
@@ -312,7 +354,7 @@ export class MediaCache {
       // Another item with the same file is here already.
       res.resume();
       rmSync(part, { force: true });
-      this.settle(mediaId, this.pathFor(mediaId));
+      this.arrived(mediaId);
       return;
     }
     if (!this.room(rest)) {
@@ -333,11 +375,15 @@ export class MediaCache {
     const checked = await sha256File(part);
     if (checked.sha256 !== sha256) {
       rmSync(part, { force: true });
+      const tries = (this.hashFailures.get(mediaId) ?? 0) + 1;
+      this.hashFailures.set(mediaId, tries);
+      if (tries >= HASH_TRIES) throw new Gone(`the copy never matched its hash (${tries} tries)`);
       throw new Error('the copy did not match its hash; it will be copied again');
     }
+    this.hashFailures.delete(mediaId);
     renameSync(part, this.pathOf(sha256, ext));
     this.index.files.set(sha256, { ext, bytes: checked.bytes, wantedAt: this.now() });
     this.save();
-    this.settle(mediaId, this.pathFor(mediaId));
+    this.arrived(mediaId);
   }
 }
