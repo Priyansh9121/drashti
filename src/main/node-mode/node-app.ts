@@ -1,4 +1,6 @@
-import { app, BrowserWindow, dialog, protocol } from 'electron';
+import { app, BrowserWindow, dialog, net, protocol, shell } from 'electron';
+import type { Installer } from '../update/installer';
+import { UpdateService } from '../update/update-service';
 import { join } from 'node:path';
 import { EngineMirror } from '../../shared/engine/mirror';
 import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
@@ -62,6 +64,11 @@ export interface NodeAppDeps {
   computerName: string;
   /** Restart as Main (the role file is written first). */
   restartAsMain(): void;
+  /** Where releases are, and how this computer installs one (Session 14: matching Main's version). */
+  updateBase: string;
+  installer: Installer;
+  /** Tests only: the download speed. */
+  updateRate: number | null;
 }
 
 /** How often the node reports its health to Main. */
@@ -110,6 +117,33 @@ export function startNode(deps: NodeAppDeps): void {
   };
   let nodeWindow: BrowserWindow | null = null;
   let viewTimer: NodeJS.Timeout | null = null;
+  /** Main refused this node for its version: Main's version, to update to (Session 14). */
+  let mainVersion: string | null = null;
+  /** Matching Main's version: offered once Main has refused this node for its version. */
+  const updates = new UpdateService({
+    current: deps.version,
+    platform: process.platform,
+    arch: process.arch,
+    base: deps.updateBase,
+    dir: join(deps.userData, 'Updates'),
+    fetch: (url, init) => net.fetch(url, init),
+    installer: deps.installer,
+    // A node streams nothing; it never waits for that.
+    onAir: () => false,
+    autoCheck: null,
+    now: Date.now,
+    changed: () => {
+      viewChanged();
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(`Node: ${message}`);
+      else log.info(`Node: ${message}`);
+    },
+    ...(deps.updateRate ? { bytesPerSecond: deps.updateRate } : {}),
+  });
+  app.on('will-quit', () => {
+    updates.quit();
+  });
   const viewChanged = () => {
     viewTimer ??= setTimeout(() => {
       viewTimer = null;
@@ -382,6 +416,12 @@ export function startNode(deps: NodeAppDeps): void {
           sendHealthNow();
         },
         message: fromMain,
+        refusedVersion: (version) => {
+          if (version !== mainVersion) {
+            mainVersion = version;
+            viewChanged();
+          }
+        },
         clock: (c) => {
           const before = offsetMs;
           clock = c;
@@ -450,6 +490,8 @@ export function startNode(deps: NodeAppDeps): void {
       media: cache.status(mirror.state ? inUse().filter((id) => !cache.has(id)).length : 0),
       clock,
       fromSaved,
+      mainVersion: link.state === 'refused' ? mainVersion : null,
+      update: updates.view(),
     };
   };
 
@@ -467,6 +509,11 @@ export function startNode(deps: NodeAppDeps): void {
     });
     if (!result.ok) {
       log.warn(`Node: pairing refused (${result.message})`);
+      if (result.mainVersion) {
+        mainVersion = result.mainVersion;
+        link = { state: 'refused', why: result.message, since: Date.now() };
+        viewChanged();
+      }
       return { ok: false, message: result.message };
     }
     const { version: _version, ...main } = result.main;
@@ -494,6 +541,33 @@ export function startNode(deps: NodeAppDeps): void {
     return { ok: true };
   });
   handle(IPC.node.identify, () => ({ shown: identify(null, '') }));
+  // Matching Main's version (Session 14): look for it, download it, then quit to install it.
+  handle(IPC.node.updateCheck, async (): Promise<NodeViewResult> => {
+    if (!mainVersion) return { ok: false, message: 'Main has not said which version it runs.' };
+    const r = await updates.check(mainVersion);
+    return r.ok ? { ok: true, view: view() } : { ok: false, message: r.message };
+  });
+  handle(IPC.node.updateDownload, (): NodeViewResult => {
+    const r = updates.download();
+    return r.ok ? { ok: true, view: view() } : { ok: false, message: r.message };
+  });
+  handle(IPC.node.updateInstall, async (): Promise<NodeViewResult> => {
+    const r = await updates.setInstallOnQuit(true);
+    if (!r.ok) return { ok: false, message: r.message };
+    if (!r.view.installOnQuit)
+      return { ok: false, message: r.view.message ?? 'It cannot install by itself here.' };
+    log.info('Node: quitting to install the update, as asked');
+    // Quit on purpose, as asked: the installer starts once Drashti has quit.
+    setTimeout(() => {
+      app.quit();
+    }, 200);
+    return { ok: true, view: view() };
+  });
+  handle(IPC.node.updateShowFile, () => {
+    const file = updates.downloadedFile();
+    if (file) shell.showItemInFolder(file);
+    return null;
+  });
 
   // The output page's own requests: the show, its screen, and how it draws.
   handle(IPC.engine.subscribe, (event) => {

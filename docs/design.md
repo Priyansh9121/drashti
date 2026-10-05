@@ -273,3 +273,10 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **A macro's times live in its editor**, under **Runs by itself**: one row per time (every week or one date, the days or the date, the time, an on switch, remove), and **Add a time**. The Macros panel marks a macro that runs by itself with a small clock and its time, never colour alone.
 - **The countdown is a strip, like the arti's prompt**: under the header in Pro Mode, above the big buttons in Simple Mode (`big`, as large as the arti's there), in `panel-3` with an accent border so it reads apart from the arti's yellow. It names the macro, says it runs by itself in ten seconds, counts down in large digits and offers **Cancel** (`secondary`). The sentence is a status line, read once; the digits are hidden from screen readers.
 - Both pass the accessibility checks at 1280 × 720 (`tests/e2e/scheduled-macros.spec.ts`).
+
+## 30. Updates
+
+- **One dialog from the Help menu** (Pro Mode only): which version this is, **Check now** on the left of the footer, and for a newer release a card with its version, size and notes, then one next step at a time: **Download** (`primary`), a progress bar with what it is doing (or why it waits) and **Stop**, then **Install it when Drashti quits** as a switch, saying that Drashti does not start again by itself. On an unsigned Mac the switch is an `info` notice saying how to install by hand, with **Show the file**. **Look once a day** is a switch whose label says it never downloads or installs by itself.
+- **The status bar says it in a word, in Pro Mode only** (`accent`, a download icon): "Drashti 1.0.1 is available", "… is downloaded", "… installs when Drashti quits"; a click opens the dialog. Simple Mode shows nothing about updates.
+- **A node's window offers to match Main** under its Main section, in the same calm column: what Main runs and what it runs, then **Update to Drashti x.y.z**, **Download**, **Quit and install**, one at a time.
+- The dialog and the node's offer pass the accessibility checks at 1280 × 720 (`tests/e2e/updates.spec.ts`).

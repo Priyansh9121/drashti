@@ -91,6 +91,20 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
+  updates: {
+    view: () => invoke(IPC.updates.view),
+    check: () => invoke(IPC.updates.check),
+    download: () => invoke(IPC.updates.download),
+    cancel: () => invoke(IPC.updates.cancel),
+    setInstallOnQuit: (on) => invoke(IPC.updates.setInstallOnQuit, on),
+    setAutoCheck: (on) => invoke(IPC.updates.setAutoCheck, on),
+    showFile: () => invoke(IPC.updates.showFile),
+    onChanged: (listener) => on(IPC.updates.changed, listener),
+    onOpen: (listener) =>
+      on(IPC.updates.open, () => {
+        listener();
+      }),
+  },
   roles: {
     view: () => invoke(IPC.roles.view),
     unlock: (pin) => invoke(IPC.roles.unlock, pin),
@@ -271,6 +285,10 @@ const bridge: DrashtiBridge = {
     unpair: () => invoke(IPC.node.unpair),
     useAsMain: () => invoke(IPC.node.useAsMain),
     identify: () => invoke(IPC.node.identify),
+    updateCheck: () => invoke(IPC.node.updateCheck),
+    updateDownload: () => invoke(IPC.node.updateDownload),
+    updateInstall: () => invoke(IPC.node.updateInstall),
+    updateShowFile: () => invoke(IPC.node.updateShowFile),
   },
   announcements: {
     list: () => invoke(IPC.announcements.list),

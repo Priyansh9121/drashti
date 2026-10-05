@@ -165,6 +165,10 @@ Simple Mode is one screen with big buttons, for running a sabha from its playlis
 
 Write down anything the volunteer found hard, with what they were trying to do.
 
+### Updates (for whoever looks after Drashti)
+
+Drashti never updates itself. To see if there is a newer version: **Help**, then **Check for Updates…** (Pro Mode; on Windows press **Alt** first). If there is one, an admin presses **Download** (it comes slowly in the background, and waits while the stream is on air or recording), then turns on **Install it when Drashti quits**. It installs the next time Drashti is quit, after the sabha, and Drashti does not start again by itself: start it as usual. On a Mac, until Drashti is signed, the update is downloaded but has to be installed by hand: **Show the file**, quit Drashti, open the file and drag Drashti into Applications. **Update the second computer too:** a node must run the same version as Main. Its window then says so and offers **Update to Drashti …**; press it, then **Download**, then **Quit and install**, and start it again.
+
 ### Roles and PINs
 
 Drashti has three roles. **Volunteers** run a sabha in Simple Mode, which changes nothing. **Operators** run the show in Pro Mode: playlists, words and slides, props, messages and timers, macros, Looks, announcements, going live and recording. **Admins** also set Drashti up: importing and removing, themes, Shastra texts, calendars, the idle rotation and every schedule, macros, the screens, Looks, stage layouts, masks and sound, the stream's settings and keys, phones and nodes, backups, restores and updates.

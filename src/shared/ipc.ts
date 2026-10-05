@@ -1,6 +1,7 @@
 import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
 import type { RolesResult, RolesView } from './roles';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
+import type { UpdateResult, UpdateView } from './updates';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { IdleResult, IdleSettings, IdleView, QuoteFields, QuoteResult } from './idle';
 import type {
@@ -152,6 +153,25 @@ export const IPC = {
     changed: 'backups:changed',
     /** main -> operator: File > Scheduled Backups… was chosen. */
     open: 'backups:open',
+  },
+  /**
+   * Updates (Session 14, shared/updates.ts): looking is anyone's in Pro Mode;
+   * downloading, installing at quit and the daily look are an admin's.
+   * Simple Mode never sees any of it.
+   */
+  updates: {
+    view: 'updates:view',
+    check: 'updates:check',
+    download: 'updates:download',
+    cancel: 'updates:cancel',
+    setInstallOnQuit: 'updates:set-install-on-quit',
+    setAutoCheck: 'updates:set-auto-check',
+    /** Show the downloaded file (to install it by hand on an unsigned Mac). */
+    showFile: 'updates:show-file',
+    /** main -> operator: how the update stands changed. */
+    changed: 'updates:changed',
+    /** main -> operator: Help > Check for Updates… was chosen. */
+    open: 'updates:open',
   },
   engine: {
     /** Start receiving engine messages in this window; returns a snapshot. */
@@ -518,6 +538,11 @@ export const IPC = {
     useAsMain: 'node:use-as-main',
     /** Each display's number across it, for a few seconds. */
     identify: 'node:identify',
+    /** Matching Main's version (Session 14): look for it, download it, quit to install it, or show the file. */
+    updateCheck: 'node:update-check',
+    updateDownload: 'node:update-download',
+    updateInstall: 'node:update-install',
+    updateShowFile: 'node:update-show-file',
     /** main -> node window: how it stands changed. */
     changed: 'node:changed',
   },
@@ -556,6 +581,13 @@ export interface InvokeContract {
   [IPC.backups.pickFolder]: { args: []; result: PickFolderResult };
   [IPC.backups.runNow]: { args: []; result: BackupsResult };
   [IPC.backups.dismiss]: { args: []; result: ScheduledBackupsView };
+  [IPC.updates.view]: { args: []; result: UpdateView };
+  [IPC.updates.check]: { args: []; result: UpdateResult };
+  [IPC.updates.download]: { args: []; result: UpdateResult };
+  [IPC.updates.cancel]: { args: []; result: UpdateResult };
+  [IPC.updates.setInstallOnQuit]: { args: [on: boolean]; result: UpdateResult };
+  [IPC.updates.setAutoCheck]: { args: [on: boolean]; result: UpdateResult };
+  [IPC.updates.showFile]: { args: []; result: null };
   [IPC.engine.subscribe]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.snapshot]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.command]: { args: [command: EngineCommand]; result: CommandResult };
@@ -815,6 +847,10 @@ export interface InvokeContract {
   [IPC.node.unpair]: { args: []; result: NodeViewResult };
   [IPC.node.useAsMain]: { args: []; result: { ok: boolean } };
   [IPC.node.identify]: { args: []; result: { shown: number } };
+  [IPC.node.updateCheck]: { args: []; result: NodeViewResult };
+  [IPC.node.updateDownload]: { args: []; result: NodeViewResult };
+  [IPC.node.updateInstall]: { args: []; result: NodeViewResult };
+  [IPC.node.updateShowFile]: { args: []; result: null };
 }
 
 /** main -> renderer event channels and their payloads. */
@@ -834,6 +870,8 @@ export interface EventContract {
   [IPC.roles.open]: { at: number };
   [IPC.backups.changed]: ScheduledBackupsView;
   [IPC.backups.open]: { at: number };
+  [IPC.updates.changed]: UpdateView;
+  [IPC.updates.open]: { at: number };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.looks.changed]: LooksView;
   [IPC.stageLayouts.changed]: StageLayout[];

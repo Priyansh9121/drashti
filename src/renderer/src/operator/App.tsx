@@ -55,6 +55,7 @@ import { connectMode, useMode } from './mode-store';
 import { connectRoles } from '../roles/roles-store';
 import { AdminPinDialog, RolesDialog } from '../roles/RolesDialogs';
 import { BackupsDialog } from '../backups/BackupsDialog';
+import { UpdatesDialog } from '../updates/UpdatesDialog';
 import { SimpleApp } from '../simple/SimpleApp';
 import { SetupWizard } from '../setup/SetupWizard';
 import { openSetup } from '../setup/setup-store';
@@ -235,6 +236,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <CalendarDialog />
       <RolesDialog />
       <BackupsDialog />
+      <UpdatesDialog />
       <AdminPinDialog />
       {dashboardOpen && (
         <ScreensDashboard

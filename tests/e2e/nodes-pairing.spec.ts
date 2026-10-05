@@ -106,6 +106,13 @@ test('a node on another version of Drashti is refused, saying so on both sides',
       await expect(main.win.getByTestId('node-version-refused')).toContainText(
         'This node runs Drashti 1.0.0-test.3, and this computer runs 1.0.0-test.1.',
       );
+      // Session 14: Main says it needs updating, and how; the node offers to match Main.
+      await expect(main.win.getByTestId('node-version-refused')).toContainText(
+        'It needs updating: on the node, press Update to Drashti 1.0.0-test.1',
+      );
+      await expect(updated.page.getByTestId('node-update')).toContainText(
+        'Main runs Drashti 1.0.0-test.1; this node runs 1.0.0-test.3',
+      );
       expect(
         await main.win.evaluate(
           async () => (await (globalThis as PageGlobals).drashti.nodes.status()).nodes[0]?.online,

@@ -139,6 +139,10 @@ export const ADMIN_CHANNELS: readonly InvokeChannel[] = [
   IPC.stream.setKey,
   IPC.stream.removeKey,
   IPC.stream.pickFolder,
+  // Updates: downloading, installing when Drashti quits, the daily look.
+  IPC.updates.download,
+  IPC.updates.setInstallOnQuit,
+  IPC.updates.setAutoCheck,
   // Phones and nodes.
   IPC.network.setOn,
   IPC.network.setPort,

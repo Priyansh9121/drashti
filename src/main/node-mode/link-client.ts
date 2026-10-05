@@ -322,6 +322,8 @@ export interface LinkEvents {
   clock(clock: NodeClock): void;
   /** Main removed this node (or no longer knows it): its pairing is gone. */
   removed(reason: NodeByeReason): void;
+  /** Main refused this node for its version: Main's version (Session 14: the node offers to match it). */
+  refusedVersion?(mainVersion: string | null): void;
 }
 
 /** After a drop: try again soon, then every couple of seconds (a node should be back as soon as Main is). */
@@ -455,6 +457,7 @@ export class LinkClient {
         return;
       }
       if (bye?.reason === 'version') {
+        this.events.refusedVersion?.(bye.mainVersion ?? null);
         this.events.state('refused', versionMismatch(bye.mainVersion ?? '?', this.version));
         this.retry = setTimeout(() => {
           this.open();

@@ -1,4 +1,5 @@
 import type { EngineMessage } from './engine/protocol';
+import type { UpdateView } from './updates';
 import type { DisplayInfo, DisplayKey, ScalingMode, ScreenFeed, ScreenRole } from './screens';
 
 /*
@@ -226,6 +227,10 @@ export interface NodeView {
   clock: NodeClock | null;
   /** Showing the last picture kept from before: Main has not been reached since this node started. */
   fromSaved: boolean;
+  /** Main refused this node for its version: Main's version (to update to), or null. */
+  mainVersion: string | null;
+  /** Updating this node to Main's version (Session 14). */
+  update: UpdateView;
 }
 
 export type NodeViewResult = { ok: true; view: NodeView } | { ok: false; message: string };

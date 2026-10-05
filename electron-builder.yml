@@ -26,6 +26,14 @@ mac:
   category: public.app-category.productivity
   # Electron 44 needs macOS 13 Ventura or later (see README, open risks).
   minimumSystemVersion: '13.0'
+  # Signing (Session 14): only when a Developer ID certificate is given (CSC_LINK, from CI secrets in the
+  # release workflow; see scripts/package-release.mjs); otherwise the app is left unsigned. Every binary
+  # in the app is signed, the bundled FFmpeg included, under the hardened runtime notarisation needs,
+  # with the camera and sound input allowed for the stream. Notarisation follows when the APPLE_API_*
+  # variables are set too, and is skipped when they are not.
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.inherit.plist
   # The bundled FFmpeg (scripts/fetch-ffmpeg.mjs), a separate program: LICENSES/ffmpeg/.
   extraResources:
     - from: vendor/ffmpeg/darwin-${arch}
@@ -39,6 +47,10 @@ win:
   target:
     - target: nsis
       arch: [x64]
+  # Signing (Session 14): only when a certificate is given (WIN_CSC_LINK, or Azure Trusted Signing; see
+  # scripts/package-release.mjs). The app, the installer, the bundled ffmpeg.exe, the native module and
+  # every DLL are signed then.
+  signExts: ['.node', '.dll']
   extraResources:
     - from: vendor/ffmpeg/win32-${arch}
       to: ffmpeg

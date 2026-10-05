@@ -266,7 +266,11 @@ function NodeFacts({ node }: { node: NodeInfo }) {
           : '–'}
       </dd>
       <dt className="text-muted">Version</dt>
-      <dd>{node.versionRefused ?? h?.version ?? '–'}</dd>
+      <dd data-testid="node-version">
+        {node.versionRefused
+          ? `${node.versionRefused} (needs updating to ${useNodes.getState().status?.main.version ?? 'Main’s'})`
+          : (h?.version ?? '–')}
+      </dd>
       <dt className="text-muted">Address</dt>
       <dd>{node.address ?? '–'}</dd>
     </dl>
