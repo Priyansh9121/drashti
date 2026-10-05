@@ -248,3 +248,33 @@ describe('macros', () => {
     ] satisfies EngineCommand[]);
   });
 });
+
+describe('scheduled macros (Session 14)', () => {
+  it('keep their times with the macro; run at a time an admin set, in Simple Mode too, never from a button there', () => {
+    const t = setup();
+    const r = t.macros.save(null, {
+      name: 'Placeholder idle',
+      color: '#3e63dd',
+      actions: [{ kind: 'idle', to: 'start' }],
+      schedules: [{ id: 's1', days: [6], date: null, time: '18:30', enabled: true }],
+    });
+    if (!r.ok) throw new Error(r.message);
+    expect(t.macros.list()[0]?.schedules).toEqual([
+      { id: 's1', days: [6], date: null, time: '18:30', enabled: true },
+    ]);
+    // Saved again without its times, it keeps them.
+    expect(t.macros.save(r.id, { name: 'Placeholder idle', color: '#2f9e44', actions: [] }).ok).toBe(true);
+    expect(t.macros.list()[0]?.schedules).toHaveLength(1);
+    // A time that is not right is refused.
+    const bad = t.macros.save(r.id, {
+      name: 'Placeholder idle',
+      color: '#3e63dd',
+      actions: [],
+      schedules: [{ id: 's1', days: [], date: null, time: '18:30', enabled: true }],
+    });
+    expect(bad.ok).toBe(false);
+    t.setSimple(true);
+    expect(t.macros.run(r.id).ok).toBe(false);
+    expect(t.macros.run(r.id, 'its schedule', { scheduled: true }).ok).toBe(true);
+  });
+});

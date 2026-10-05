@@ -39,6 +39,7 @@ import { MaskEditor } from '../masks/MaskEditor';
 import { MasksPanel } from './MasksPanel';
 import { MacrosPanel } from './MacrosPanel';
 import { MacroEditor } from '../macros/MacroEditor';
+import { MacroCountdown } from '../macros/MacroCountdown';
 import { runMacro } from '../macros/macros-store';
 import { setMidiHandler, startMidi } from '../midi/midi-store';
 import { runBack } from './actions';
@@ -178,6 +179,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
     <div className="flex h-full min-h-0 flex-col">
       <Header platform={platform} onOpenScreens={openScreens} />
       <ArtiPrompt />
+      <MacroCountdown />
       <RecoveryBanner />
       <Columns
         left={

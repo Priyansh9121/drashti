@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Macro, MacroAction, MacroResult } from '../../../shared/macros';
+import type { Macro, MacroAction, MacroResult, MacroSchedule } from '../../../shared/macros';
 import { MACRO_COLORS } from '../../../shared/macros';
 import { useNotice } from '../operator/actions';
 
@@ -14,6 +14,8 @@ interface Editing {
   name: string;
   color: string;
   actions: MacroAction[];
+  /** Times it runs by itself (Session 14). */
+  schedules: MacroSchedule[];
 }
 
 interface MacrosStore {
@@ -69,7 +71,9 @@ export function closeMacros(): void {
 
 export function show(id: string): void {
   const m = useMacros.getState().macros?.find((x) => x.id === id);
-  const editing = m ? { id: m.id, name: m.name, color: m.color, actions: m.actions } : null;
+  const editing = m
+    ? { id: m.id, name: m.name, color: m.color, actions: m.actions, schedules: m.schedules }
+    : null;
   useMacros.setState({ editing, saved: editing, problem: null });
 }
 
@@ -83,6 +87,7 @@ export function startNew(): void {
     name,
     color: MACRO_COLORS[count % MACRO_COLORS.length] ?? '#3e63dd',
     actions: [],
+    schedules: [],
   };
   useMacros.setState({ editing, saved: null, problem: null });
 }
@@ -103,7 +108,12 @@ export async function save(): Promise<boolean> {
   const e = useMacros.getState().editing;
   if (!e) return false;
   const result = await answer(() =>
-    window.drashti.macros.save(e.id, { name: e.name, color: e.color, actions: e.actions }),
+    window.drashti.macros.save(e.id, {
+      name: e.name,
+      color: e.color,
+      actions: e.actions,
+      schedules: e.schedules,
+    }),
   );
   if (!result.ok) return false;
   show(result.id);

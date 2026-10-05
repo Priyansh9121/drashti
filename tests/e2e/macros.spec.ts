@@ -102,7 +102,7 @@ test('a macro runs every action as one change, from the panel, a slide cue, the 
     (globalThis as PageGlobals).drashti.macros.save(null, {
       name: 'Placeholder forbidden',
       color: '#3e63dd',
-      actions: [{ kind: 'clearAll' }, { kind: 'goLiveStream' } as never],
+      actions: [{ kind: 'clearAll' }, { kind: 'goLiveStream' }],
     }),
   );
   expect(refused.ok ? '' : refused.message).toContain('not something a macro may do');

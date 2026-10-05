@@ -79,6 +79,7 @@ import { quoteIdSchema } from '../shared/idle';
 import { calendarIdSchema } from '../shared/calendar';
 import { type ArtiAnswer, artiKeySchema } from '../shared/arti';
 import { MacroService } from './macros/macro-service';
+import { MacroScheduler } from './macros/macro-scheduler';
 import { midiSettingsSchema, NO_MIDI } from '../shared/midi';
 import { seedPlaceholders, seedTemplates } from './db/seed';
 import { ShowEngine } from './engine/show-engine';
@@ -672,6 +673,8 @@ function start(): void {
   let mediaLength: (mediaId: string) => number | null = () => null;
   /** Macros (made further down, once props, messages and media are): a slide's macro cue runs through it. */
   let macroService: MacroService | null = null;
+  /** Macros' own times (made with the macros): told when the macros change. */
+  let macroScheduler: MacroScheduler | null = null;
   /** The arti schedules (made further down, once macros are): told when presentations change. */
   let artiService: ArtiService | null = null;
   /** Today's calendar entry (made further down): told when an import loads a calendar. */
@@ -1450,12 +1453,37 @@ function start(): void {
     changed: (list) => {
       sendToOperator(IPC.macros.changed, list);
       network?.hint('macros');
+      // A macro's times may have changed.
+      macroScheduler?.refresh();
     },
     log: (message) => {
       log.info(message);
     },
   });
   macroService = macros;
+  // Macros that run by themselves at their times (Session 14): a ten-second countdown with Cancel,
+  // in either mode (the one exception to Simple Mode running no macros), never late.
+  macroScheduler = new MacroScheduler({
+    macros: () => macros.list(),
+    run: (id) => macros.run(id, 'its schedule', { scheduled: true }),
+    now: scheduleNow,
+    engineNow: Date.now,
+    changed: (view) => {
+      sendToOperator(IPC.macros.countdownChanged, view);
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+  });
+  const scheduler = macroScheduler;
+  app.on('will-quit', () => {
+    scheduler.dispose();
+  });
+  handle(IPC.macros.countdown, () => scheduler.view());
+  handle(IPC.macros.cancelScheduled, (e, key) =>
+    fromOperator(e) ? scheduler.cancel(key) : scheduler.view(),
+  );
   // ---- the arti at its time ---------------------------------------------------------------
   const arti = new ArtiService({
     repo: new ArtiRepo(db),
@@ -1526,6 +1554,7 @@ function start(): void {
       artiClockOffset = wallMs - Date.now();
       arti.check();
       scheduledBackups.check();
+      scheduler.check();
     };
   // ---- Samvat and tithi: today's entry from the loaded calendars -------------------------
   const calendars = new CalendarService({
