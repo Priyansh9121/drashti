@@ -48,15 +48,22 @@ function fakeMain(files: Record<string, { bytes: Buffer; ext: string; lie?: bool
 
 function cache(
   main: ReturnType<typeof fakeMain>,
-  options: { free?: number; now?: () => number; inUse?: () => string[] } = {},
+  options: {
+    free?: number;
+    now?: () => number;
+    inUse?: () => string[];
+    online?: () => boolean;
+    landed?: (id: string) => void;
+  } = {},
 ) {
   dir ||= mkdtempSync(join(tmpdir(), 'drashti-cache-'));
   return new MediaCache({
     dir,
     open: main.open,
-    online: () => true,
+    online: options.online ?? (() => true),
     inUse: options.inUse ?? (() => []),
     changed: () => undefined,
+    landed: options.landed,
     log: () => undefined,
     freeBytes: () => options.free ?? 100 * GiB,
     now: options.now,
@@ -142,5 +149,73 @@ describe('a node’s media copies', () => {
     c.setWanted([]);
     expect(c.has('a')).toBe(false);
     expect(c.has('b')).toBe(true);
+  });
+
+  it('a screen waits for a copy for as long as it is on the screens, past a copy that broke off', async () => {
+    const a = Buffer.from('placeholder clip that breaks off once');
+    const main = fakeMain({ a: { bytes: a, ext: 'mp4' } });
+    let broken = false;
+    const open = main.open;
+    const landed: string[] = [];
+    const c = new MediaCache({
+      dir: (dir = mkdtempSync(join(tmpdir(), 'drashti-cache-'))),
+      // The first try fails as a dropped connection would; the next one works.
+      open: (id, from) => {
+        if (!broken) {
+          broken = true;
+          return Promise.reject(Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }));
+        }
+        return open(id, from);
+      },
+      online: () => true,
+      inUse: () => ['a'],
+      changed: () => undefined,
+      landed: (id) => landed.push(id),
+      log: () => undefined,
+      freeBytes: () => 100 * GiB,
+    });
+    expect(await c.ensure('a')).toBe(join(dir, `${sha(a)}.mp4`));
+    expect(landed).toEqual(['a']);
+  });
+
+  it('a screen stops waiting once the file is off the screens, or Main cannot be reached', async () => {
+    // A copy that never finishes: Main sends the start of the file and no more.
+    const slow = (): Promise<IncomingMessage> => {
+      const res = new PassThrough() as unknown as IncomingMessage & PassThrough;
+      Object.assign(res, {
+        statusCode: 200,
+        headers: { 'x-drashti-sha256': 'a'.repeat(64), 'x-drashti-ext': 'mp4', 'content-length': '1000000' },
+      });
+      (res as PassThrough).write(Buffer.alloc(10));
+      return Promise.resolve(res);
+    };
+    let shown = ['small', 'big'];
+    let online = true;
+    const small = Buffer.from('placeholder small picture');
+    const main = fakeMain({ small: { bytes: small, ext: 'png' } });
+    const c = new MediaCache({
+      dir: (dir = mkdtempSync(join(tmpdir(), 'drashti-cache-'))),
+      open: (id, from) => (id === 'big' ? slow() : main.open(id, from)),
+      online: () => online,
+      inUse: () => shown,
+      changed: () => undefined,
+      log: () => undefined,
+      freeBytes: () => 100 * GiB,
+    });
+    const smallPath = await c.ensure('small');
+    expect(smallPath).toBe(join(dir, `${sha(small)}.png`));
+    const waiting = c.ensure('big');
+    // While a screen waits for one file, one that is here is answered at once.
+    const asked = Date.now();
+    expect(await c.ensure('small')).toBe(smallPath);
+    expect(Date.now() - asked).toBeLessThan(50);
+    const started = Date.now();
+    shown = ['small'];
+    expect(await waiting).toBeNull();
+    expect(Date.now() - started).toBeLessThan(3000);
+    // And offline: let go too.
+    shown = ['big'];
+    online = false;
+    expect(await c.ensure('big')).toBeNull();
   });
 });

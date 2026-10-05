@@ -482,6 +482,8 @@ export const IPC = {
     identify: 'output:identify',
     /** An output says how it is drawing: frames that came late, and the revision it last painted. */
     report: 'output:report',
+    /** main -> output (on a node): a media file's copy has just landed; load it if it could not be before. */
+    mediaReady: 'output:media-ready',
   },
 } as const;
 
@@ -773,6 +775,7 @@ export interface EventContract {
   [IPC.idle.changed]: IdleView;
   [IPC.output.context]: OutputContext;
   [IPC.output.identify]: { name: string; groupName: string; label?: string };
+  [IPC.output.mediaReady]: { mediaId: string };
   [IPC.audio.chosen]: { device: AudioDevice | null };
   [IPC.audio.testTone]: { deviceId: string };
   [IPC.setup.open]: { at: number };

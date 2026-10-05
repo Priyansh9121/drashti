@@ -66,8 +66,6 @@ export interface NodeAppDeps {
 
 /** How often the node reports its health to Main. */
 const HEALTH_EVERY_MS = 2000;
-/** How long a request for a file that is being copied waits before the output gives up on it. */
-const MEDIA_WAIT_MS = 60_000;
 
 export function startNode(deps: NodeAppDeps): void {
   const store = new NodeStore(deps.userData);
@@ -137,6 +135,11 @@ export function startNode(deps: NodeAppDeps): void {
     online: () => client?.online ?? false,
     inUse,
     changed: viewChanged,
+    // A screen that stopped waiting for this file (Main was away, say) loads it now.
+    landed: (mediaId) => {
+      for (const win of outputWindows.values())
+        if (!win.isDestroyed()) win.webContents.send(IPC.output.mediaReady, { mediaId });
+    },
     log: (level, message) => {
       if (level === 'warn') log.warn(`Node: ${message}`);
       else log.info(`Node: ${message}`);
@@ -144,13 +147,10 @@ export function startNode(deps: NodeAppDeps): void {
   });
   protocol.handle(MEDIA_SCHEME, async (request) => {
     const asked = mediaRequestOf(request.url);
-    if (asked?.what === 'media' && !cache.has(asked.mediaId)) {
-      // On the screens before its copy arrived: fetched at once, and the picture waits for it.
-      await Promise.race([
-        cache.ensure(asked.mediaId),
-        new Promise((resolve) => setTimeout(resolve, MEDIA_WAIT_MS)),
-      ]);
-    }
+    // On the screens before its copy arrived: fetched at once, and the screen's request waits for it
+    // (the picture before it stays up meanwhile) for as long as it is on the screens and can still
+    // come. Requests for files already here never wait behind it.
+    if (asked?.what === 'media' && !cache.has(asked.mediaId)) await cache.ensure(asked.mediaId);
     return handleMediaRequest(request, {
       mediaDir: cacheDir,
       lookup: (id) => {

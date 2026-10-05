@@ -3,6 +3,7 @@ import type { PreloadMedia } from '../../../shared/engine/preload';
 import { mediaToPreload } from '../../../shared/engine/preload';
 import type { UpNext } from '../../../shared/engine/state';
 import { mediaUrl } from '../../../shared/media';
+import { useMediaAttempt } from '../render/media-attempts';
 
 type LoadState = 'loading' | 'ready' | 'failed';
 
@@ -51,6 +52,16 @@ function PreloadVideo({ mediaId }: { mediaId: string }) {
   );
 }
 
+/** One file to load ahead; a node's copy that lands late is loaded again (a new element). */
+function PreloadOne({ media }: { media: PreloadMedia }) {
+  const attempt = useMediaAttempt(media.mediaId);
+  return media.media === 'image' ? (
+    <PreloadImage key={attempt} mediaId={media.mediaId} />
+  ) : (
+    <PreloadVideo key={attempt} mediaId={media.mediaId} />
+  );
+}
+
 /** Loads what Next will show (PLAN.md 4.3), so its images and videos are never a frame late. */
 export function Preloader({ next }: { next: UpNext | null }) {
   const wanted: PreloadMedia[] = useMemo(() => mediaToPreload(next), [next]);
@@ -69,13 +80,9 @@ export function Preloader({ next }: { next: UpNext | null }) {
         pointerEvents: 'none',
       }}
     >
-      {wanted.map((m) =>
-        m.media === 'image' ? (
-          <PreloadImage key={`image:${m.mediaId}`} mediaId={m.mediaId} />
-        ) : (
-          <PreloadVideo key={`video:${m.mediaId}`} mediaId={m.mediaId} />
-        ),
-      )}
+      {wanted.map((m) => (
+        <PreloadOne key={`${m.media}:${m.mediaId}`} media={m} />
+      ))}
     </div>
   );
 }

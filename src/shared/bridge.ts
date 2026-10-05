@@ -535,5 +535,7 @@ export interface DrashtiBridge {
     onIdentify(listener: (who: { name: string; groupName: string; label?: string }) => void): () => void;
     /** How it draws: late frames and the revision it last painted (every few seconds). */
     report(report: OutputReport): Promise<null>;
+    /** On a node: a media file's copy has just landed (load it again if it could not be loaded). */
+    onMediaReady(listener: (mediaId: string) => void): () => void;
   };
 }

@@ -17,6 +17,7 @@ import { startPlayback } from './playback';
 import { requestStill, useStill } from './stills';
 import { engineNow } from './clock';
 import { PreviewPicture, usePreviewsOnly } from './previews';
+import { useMediaAttempt } from './media-attempts';
 
 /**
  * How a slide draws its videos: 'live' plays them (outputs and the live
@@ -294,11 +295,14 @@ function WindowVideoStill({ mediaId, style }: { mediaId: string; style: CSSPrope
 }
 
 function MediaView({ el, media, startedAt }: { el: MediaElement; media: MediaMode; startedAt?: number }) {
+  // On a node, a copy that landed after this picture was asked for: drawn again (a new element).
+  const attempt = useMediaAttempt(el.mediaId);
   // A phone or tablet: pictures and videos as small previews, and no video plays.
   if (usePreviewsOnly()) return <PreviewPicture mediaId={el.mediaId} style={mediaStyle(el)} />;
   if (el.kind === 'image') {
     return (
       <img
+        key={attempt}
         data-element={el.id}
         data-media-id={el.mediaId}
         src={mediaUrl(el.mediaId)}
@@ -309,7 +313,7 @@ function MediaView({ el, media, startedAt }: { el: MediaElement; media: MediaMod
     );
   }
   if (media === 'still') return <VideoStill mediaId={el.mediaId} style={mediaStyle(el)} />;
-  return <SlideVideo el={el} startedAt={startedAt} />;
+  return <SlideVideo key={attempt} el={el} startedAt={startedAt} />;
 }
 
 export function ElementView({

@@ -350,6 +350,10 @@ const bridge: DrashtiBridge = {
     onContext: (listener) => on(IPC.output.context, listener),
     onIdentify: (listener) => on(IPC.output.identify, listener),
     report: (report) => invoke(IPC.output.report, report),
+    onMediaReady: (listener) =>
+      on(IPC.output.mediaReady, ({ mediaId }) => {
+        listener(mediaId);
+      }),
   },
 };
 

@@ -15,6 +15,8 @@ export interface Slot {
   key: string;
   layer: MediaLayer;
   state: 'loading' | 'ready' | 'failed';
+  /** How many times it has been tried again (a node's copy that landed late); left out the first time. */
+  attempt?: number;
 }
 
 export interface Slots {
@@ -33,6 +35,8 @@ export type SlotEvent =
   /** `at`: when it became ready, to time its dissolve. */
   | { type: 'ready'; key: string; at?: number }
   | { type: 'failed'; key: string }
+  /** The file it failed on can be had now (a node's copy landed): try that playback again. */
+  | { type: 'retry'; key: string }
   /** The dissolve that started at `start` has finished. */
   | { type: 'faded'; start: number };
 
@@ -76,6 +80,17 @@ export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
     }
     case 'faded':
       return slots.fade?.start === event.start ? { ...slots, leaving: null, fade: null } : slots;
+    case 'retry': {
+      // Loading again out of sight; nothing is on screen meanwhile, as before.
+      const failed = slots.shown?.key === event.key && slots.shown.state === 'failed' ? slots.shown : null;
+      if (!failed) return slots;
+      return {
+        shown: null,
+        incoming: { ...failed, state: 'loading', attempt: (failed.attempt ?? 0) + 1 },
+        leaving: null,
+        fade: null,
+      };
+    }
     case 'failed':
       // A file that cannot play replaces the old picture with nothing, as the show asked.
       if (slots.incoming?.key === event.key)

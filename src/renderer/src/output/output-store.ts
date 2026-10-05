@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { OutputContext } from '../../../shared/screens';
 import { setClockOffset } from '../render/clock';
+import { watchMediaReady } from '../render/media-attempts';
 
 interface OutputView {
   context: OutputContext | null;
@@ -21,6 +22,8 @@ export function connectOutput(): void {
     useOutput.setState({ context });
   };
   window.drashti.output.onContext(take);
+  // On a node: copies that land after a screen asked for them are loaded again.
+  watchMediaReady();
   window.drashti.output.onIdentify((who) => {
     useOutput.setState({
       identify: { name: who.name, groupName: who.groupName, until: Date.now() + 5000 },
