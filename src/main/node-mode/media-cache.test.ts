@@ -220,4 +220,138 @@ describe('a node’s media copies', () => {
     // Closing stops the copy that never ends (and lets go of its file).
     await c.close();
   });
+
+  it('tries a file on the screens again soon, with no screen waiting for it', async () => {
+    const a = Buffer.from('placeholder clip on the screens');
+    const main = fakeMain({ a: { bytes: a, ext: 'mp4' } });
+    let fails = 1;
+    const landed: string[] = [];
+    const c = new MediaCache({
+      dir: (dir = mkdtempSync(join(tmpdir(), 'drashti-cache-'))),
+      open: (id, from) =>
+        fails-- > 0
+          ? Promise.reject(Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }))
+          : main.open(id, from),
+      online: () => true,
+      inUse: () => ['a'],
+      changed: () => undefined,
+      landed: (id) => landed.push(id),
+      log: () => undefined,
+      freeBytes: () => 100 * GiB,
+    });
+    const started = Date.now();
+    c.setWanted([want('a', a, 'mp4')]);
+    await expect.poll(() => landed, { timeout: 5000 }).toEqual(['a']);
+    // The short wait (2 s), not the long one (15 s).
+    expect(Date.now() - started).toBeLessThan(4000);
+    await c.close();
+  });
+
+  it('once Main is back, what failed while it was away is copied at once', async () => {
+    const a = Buffer.from('placeholder clip cut off by Main going away');
+    const main = fakeMain({ a: { bytes: a, ext: 'mp4' } });
+    let online = true;
+    let away = true;
+    let tries = 0;
+    const c = new MediaCache({
+      dir: (dir = mkdtempSync(join(tmpdir(), 'drashti-cache-'))),
+      open: (id, from) => {
+        tries++;
+        if (!away) return main.open(id, from);
+        online = false;
+        return Promise.reject(Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }));
+      },
+      online: () => online,
+      // Not on the screens: the long wait (15 s) would apply.
+      inUse: () => [],
+      changed: () => undefined,
+      log: () => undefined,
+      freeBytes: () => 100 * GiB,
+    });
+    c.setWanted([want('a', a, 'mp4')]);
+    await expect.poll(() => tries).toBe(1);
+    away = false;
+    online = true;
+    const back = Date.now();
+    c.backOnline();
+    await expect.poll(() => c.has('a'), { timeout: 3000 }).toBe(true);
+    expect(Date.now() - back).toBeLessThan(1000);
+    await c.close();
+  });
+
+  it('a retry whose timer fires a moment early looks again at once, not after another whole wait', async () => {
+    const a = Buffer.from('placeholder clip tried again');
+    const main = fakeMain({ a: { bytes: a, ext: 'mp4' } });
+    let fails = 1;
+    // After the failure is noted, this clock runs 30 ms behind the timers' own: every timer
+    // seems to fire 30 ms before its time.
+    let behind = 0;
+    const c = new MediaCache({
+      dir: (dir = mkdtempSync(join(tmpdir(), 'drashti-cache-'))),
+      open: (id, from) => {
+        if (fails-- > 0) {
+          setTimeout(() => (behind = 30), 0);
+          return Promise.reject(Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }));
+        }
+        return main.open(id, from);
+      },
+      online: () => true,
+      inUse: () => ['a'],
+      changed: () => undefined,
+      log: () => undefined,
+      freeBytes: () => 100 * GiB,
+      now: () => Date.now() - behind,
+    });
+    const started = Date.now();
+    c.setWanted([want('a', a, 'mp4')]);
+    await expect.poll(() => c.has('a'), { timeout: 6000 }).toBe(true);
+    // About 2 s after the failure (and 30 ms), never 2 s more.
+    expect(Date.now() - started).toBeLessThan(3500);
+    await c.close();
+  });
+
+  it('a copy for later gives way to a file the screens need, and carries on from where it stopped', async () => {
+    const big = Buffer.alloc(64 * 1024, 7);
+    const small = Buffer.from('placeholder picture put up now');
+    const main = fakeMain({ small: { bytes: small, ext: 'png' } });
+    const bigAsked: number[] = [];
+    // The big file comes slowly: its first 1000 bytes, then the rest only on a later request.
+    const open = (id: string, from: number): Promise<IncomingMessage> => {
+      if (id !== 'big') return main.open(id, from);
+      bigAsked.push(from);
+      const res = new PassThrough() as unknown as IncomingMessage & PassThrough;
+      Object.assign(res, {
+        statusCode: from > 0 ? 206 : 200,
+        headers: {
+          'x-drashti-sha256': sha(big),
+          'x-drashti-ext': 'mp4',
+          'content-length': String(big.length - from),
+        },
+      });
+      if (from > 0) (res as PassThrough).end(big.subarray(from));
+      else (res as PassThrough).write(big.subarray(0, 1000));
+      return Promise.resolve(res);
+    };
+    let shown: string[] = [];
+    const c = new MediaCache({
+      dir: (dir = mkdtempSync(join(tmpdir(), 'drashti-cache-'))),
+      open,
+      online: () => true,
+      inUse: () => shown,
+      changed: () => undefined,
+      log: () => undefined,
+      freeBytes: () => 100 * GiB,
+    });
+    c.setWanted([want('big', big, 'mp4'), want('small', small, 'png')]);
+    await expect.poll(() => c.status(0).copying?.done ?? 0).toBe(1000);
+    // The picture goes up: the big copy gives way, and the screen's request is answered at once.
+    shown = ['small'];
+    const asked = Date.now();
+    expect(await c.ensure('small')).toBe(join(dir, `${sha(small)}.png`));
+    expect(Date.now() - asked).toBeLessThan(1000);
+    // Then the big file carries on from its 1000th byte, and lands whole.
+    await expect.poll(() => c.has('big'), { timeout: 3000 }).toBe(true);
+    expect(bigAsked).toEqual([0, 1000]);
+    await c.close();
+  });
 });
