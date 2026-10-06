@@ -68,14 +68,45 @@ function belowNormal(pid: number | undefined): void {
 /** Something written to a stream, without waiting: how far behind it is. */
 const backlog = (s: { writableLength: number } | null | undefined) => s?.writableLength ?? 0;
 
-/** One place the encoded stream goes: it waits for a keyframe, then takes every cluster. */
-interface Consumer {
+/** One place the encoded stream goes (the recording, or the connection): it waits for a keyframe, then takes every cluster. */
+export interface Consumer {
   started: boolean;
   /** The first cluster's time, so it starts at 0. */
   offset: number;
+  /** It fell behind: clusters are dropped until a picture starts one, then it goes on (see consumerTake). */
+  skipping: boolean;
 }
 
+export const newConsumer = (): Consumer => ({ started: false, offset: 0, skipping: false });
+
 const pictureStart = (c: MkvCluster) => c.startsPicture;
+
+/**
+ * What to give a consumer of the encoder's next cluster: at its first picture, the stream's header
+ * and that cluster at time 0; then each cluster, its time counted from there. After it fell behind
+ * (skipping), nothing until a picture starts a cluster, then on in the same timeline: a gap where
+ * clusters were dropped, never a second header or a time going back. Session 15 found the connection
+ * sent the header again and its times from 0 after falling behind, and FFmpeg then held every
+ * packet's time where it had been: the stream froze. null: nothing to give yet.
+ */
+export function consumerTake(
+  consumer: Consumer,
+  cluster: MkvCluster,
+  header: Buffer | null,
+): Buffer[] | null {
+  if (!consumer.started) {
+    if (!pictureStart(cluster) || !header) return null;
+    consumer.started = true;
+    consumer.skipping = false;
+    consumer.offset = cluster.timestamp;
+    return [header, retimeCluster(cluster, 0)];
+  }
+  if (consumer.skipping) {
+    if (!pictureStart(cluster)) return null;
+    consumer.skipping = false;
+  }
+  return [retimeCluster(cluster, cluster.timestamp - consumer.offset)];
+}
 
 /** A plain-language reason the connection stopped, from FFmpeg's last words (already without the key). */
 export function connectionMessage(lastLines: readonly string[]): string {
@@ -98,7 +129,6 @@ export class StreamPipeline {
   private encoderName: string | null = null;
   private encodeProcess: ChildProcessWithoutNullStreams | null = null;
   private writer: MkvWriter | null = null;
-  private splitter: MkvSplitter | null = null;
   private header: Buffer | null = null;
   private format: { width: number; height: number; format: 'I420' | 'NV12' | 'BGRA' | 'RGBA' } | null = null;
   private lastFrame: Buffer | null = null;
@@ -289,17 +319,19 @@ export class StreamPipeline {
       'info',
       `Encoding started (${encoder.label}, ${preset.width}x${preset.height}, ${preset.videoKbps} kbps)`,
     );
-    this.splitter = new MkvSplitter(
+    // This encoder's own reader: what an encoder that has been replaced still writes reaches nobody.
+    const splitter = new MkvSplitter(
       (header) => {
-        this.header = header;
+        if (this.encodeProcess === child) this.header = header;
       },
       (cluster) => {
-        this.toConsumers(cluster);
+        if (this.encodeProcess === child) this.toConsumers(cluster);
       },
     );
     child.stdout.on('data', (chunk: Buffer) => {
+      if (this.encodeProcess !== child) return;
       try {
-        this.splitter?.push(chunk);
+        splitter.push(chunk);
       } catch (error) {
         this.log('warn', `The encoder's output could not be read: ${String(error)}`);
         this.restartEncoder();
@@ -329,7 +361,7 @@ export class StreamPipeline {
       if (this.stopping) return;
       this.log('warn', `The encoder stopped (code ${String(code)}); starting it again`);
       this.holdRecording();
-      if (this.pushConsumer) this.pushConsumer = { started: false, offset: 0 };
+      this.reconnectForNewEncoder();
       setTimeout(() => {
         this.maybeStartEncoder();
       }, 1000);
@@ -348,8 +380,27 @@ export class StreamPipeline {
     child?.stdin.end();
     child?.kill();
     this.holdRecording();
-    if (this.pushConsumer) this.pushConsumer = { started: false, offset: 0 };
+    this.reconnectForNewEncoder();
     this.maybeStartEncoder();
+  }
+
+  /**
+   * The encoder started again: its pictures start a new timeline (and may have new settings), which
+   * a connection already sending cannot take in the middle of its stream. So the connection starts
+   * again too, at once, and YouTube sees a short reconnection.
+   */
+  private reconnectForNewEncoder(): void {
+    const child = this.pusher;
+    if (!child) return;
+    this.pusher = null;
+    this.pushConsumer = null;
+    child.stdin.end();
+    setTimeout(() => {
+      child.kill();
+    }, 3000).unref();
+    if (!this.liveWanted || this.stopping) return;
+    this.log('info', 'The encoder started again, and so does the connection');
+    this.connect();
   }
 
   private writeAudio(pcm: Buffer, frames: number): void {
@@ -394,38 +445,27 @@ export class StreamPipeline {
       this.rollRecording();
     }
     if (this.recordConsumer && this.recordFile) {
-      const out = this.take(this.recordConsumer, cluster);
+      const out = consumerTake(this.recordConsumer, cluster, this.header);
       if (out) this.writeRecording(out);
     }
     if (this.pushConsumer && this.pusher) {
       const stdin = this.pusher.stdin;
       if (backlog(stdin) > PUSH_BACKLOG) {
-        // Too far behind: drop until the next keyframe, and count what is lost (a cluster is ~0.1 s).
-        this.pushConsumer.started = false;
+        // Too far behind: drop until the next keyframe, the times going on, and count what is lost
+        // (a cluster is ~0.1 s).
+        this.pushConsumer.skipping = true;
         this.dropped += Math.max(1, Math.round((this.preset?.fps ?? 30) / 10));
         return;
       }
       const starting = !this.pushConsumer.started;
-      const out = this.take(this.pushConsumer, cluster);
+      const resuming = this.pushConsumer.skipping;
+      const out = consumerTake(this.pushConsumer, cluster, this.header);
       if (out) {
         if (starting) this.log('info', 'Sending, from a keyframe');
+        else if (resuming) this.log('info', 'Sending again, from a keyframe, after falling behind');
         for (const part of out) stdin.write(part);
       }
     }
-  }
-
-  /**
-   * What to write for this consumer: from a keyframe on (the stream's header
-   * first), its times starting at 0; null while it waits for a keyframe.
-   */
-  private take(consumer: Consumer, cluster: MkvCluster): Buffer[] | null {
-    if (!consumer.started) {
-      if (!pictureStart(cluster) || !this.header) return null;
-      consumer.started = true;
-      consumer.offset = cluster.timestamp;
-      return [this.header, retimeCluster(cluster, 0)];
-    }
-    return [retimeCluster(cluster, cluster.timestamp - consumer.offset)];
   }
 
   // ---- recording -----------------------------------------------------------------------
@@ -451,7 +491,7 @@ export class StreamPipeline {
       this.stopRecording('The recording stopped: the file could not be written.');
     });
     this.recordFile = out;
-    this.recordConsumer = { started: false, offset: 0 };
+    this.recordConsumer = newConsumer();
     this.recording = {
       state: 'recording',
       file,
@@ -585,7 +625,7 @@ export class StreamPipeline {
     );
     belowNormal(child.pid);
     this.pusher = child;
-    this.pushConsumer = { started: false, offset: 0 };
+    this.pushConsumer = newConsumer();
     this.pushStartedAt = Date.now();
     this.log('info', `Connecting (try ${this.attempts + 1})`);
     child.stdout.resume();

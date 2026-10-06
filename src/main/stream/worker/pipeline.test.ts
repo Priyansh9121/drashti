@@ -221,6 +221,59 @@ describe.skipIf(!existsSync(ffmpeg))('the stream pipeline, with FFmpeg', () => {
     expect(clusters.at(-1)?.timestamp ?? 0).toBeGreaterThan(0);
   }, 120_000);
 
+  it('when the encoder starts again on air, the connection starts again with it: its times never go back', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-pipeline-'));
+    const port = await freePort();
+    const logs: string[] = [];
+    const seen: { status: WorkerStatus | null } = { status: null };
+    const p = new StreamPipeline({
+      status: (s) => {
+        seen.status = s;
+      },
+      log: (_level, line) => {
+        logs.push(line);
+      },
+    });
+    const current = () => seen.status;
+    // A listener for each connection, one after another (each takes one).
+    let listeners = 0;
+    const listen = (): void => {
+      listeners++;
+      const child = listener(port, join(dir, `connection ${String(listeners)}.flv`));
+      child.on('exit', () => {
+        if (listeners < 3) listen();
+      });
+    };
+    await p.start({ ffmpeg, platform: process.platform, preset, encoder: null });
+    const { stop } = feed(p);
+    try {
+      listen();
+      await sleep(500);
+      p.goLive(`rtmp://127.0.0.1:${port}/live2`, KEY);
+      await until('on air', () => current()?.live.state === 'live');
+      await sleep(3000);
+      // The encoder goes down by itself: a new one starts, and so does the connection.
+      (p as unknown as { encodeProcess: ChildProcess | null }).encodeProcess?.kill('SIGKILL');
+      await until('the connection started again', () =>
+        logs.some((l) => l.includes('The encoder started again, and so does the connection')),
+      );
+      await until(
+        'the second connection sending',
+        () =>
+          existsSync(join(dir, 'connection 2.flv')) && statSync(join(dir, 'connection 2.flv')).size > 20_000,
+      ).catch((error: unknown) => {
+        throw new Error(`${String(error)}\n${logs.join('\n')}`);
+      });
+      expect(current()?.live.state).toBe('live');
+      p.endLive();
+    } finally {
+      stop();
+      p.stop();
+    }
+    // FFmpeg never saw the times go back (it would say so, and hold every packet's time).
+    expect(logs.filter((l) => /non-monotonic/iu.test(l))).toEqual([]);
+  }, 120_000);
+
   it('a recording goes on in a new file only once the encoder is back; going down with it leaves no extra file', async () => {
     dir = mkdtempSync(join(tmpdir(), 'drashti-pipeline-'));
     const seen: { status: WorkerStatus | null } = { status: null };
