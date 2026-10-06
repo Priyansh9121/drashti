@@ -15,7 +15,7 @@ import {
   systemPreferences,
 } from 'electron';
 import { mkdirSync, mkdtempSync, readdirSync, statSync } from 'node:fs';
-import { release as osRelease, tmpdir } from 'node:os';
+import { constants as osConstants, release as osRelease, setPriority, tmpdir } from 'node:os';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { basename, isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
@@ -242,6 +242,18 @@ const mediaDelayMs = Math.min(
 // it, so nobody pauses the sabha's sound by pressing one. Keeping those controls up to date also took
 // the main process 60 to 180 ms each time a sound started on Windows (the performance check's trace).
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
+
+// The show's own process first (Session 15): on a two-core PC with no graphics chip, the windows decoding
+// video at the same priority kept the main process (every slide change, and the screens' media) waiting
+// for up to 2 s at a time. It uses little of the processor, so it never holds the screens up by going
+// first. Windows lets a program raise itself this far; macOS lets only the administrator.
+if (process.platform === 'win32') {
+  try {
+    setPriority(osConstants.priority.PRIORITY_ABOVE_NORMAL);
+  } catch {
+    // Kept at normal: nothing else changes.
+  }
+}
 
 // Tests only: Chromium's fake camera and microphone (a moving test pattern and a beep) stand in for real ones.
 // Only the device switch: the stream's page still captures its own real picture.
