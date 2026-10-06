@@ -64,6 +64,11 @@ export interface ParsedMediaRef {
   kind: 'image' | 'video' | 'audio';
   /** Its start and end points and markers, as the file gives them (Session 14; unconfirmed). */
   markers?: MediaMarkers;
+  /**
+   * Where the library says it came from, when that is not `originalPath`: a page drawn from a
+   * document is found at a temporary path, and came from the document's page (Session 15).
+   */
+  sourcePath?: string;
 }
 
 export type ParsedPlaylistItem =

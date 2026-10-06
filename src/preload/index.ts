@@ -440,6 +440,12 @@ const bridge: DrashtiBridge = {
         listener(mediaId);
       }),
   },
+  pictures: {
+    job: () => invoke(IPC.pictures.job),
+    page: (page) => invoke(IPC.pictures.page, page),
+    done: (done) => invoke(IPC.pictures.done, done),
+    asset: (kind, name) => invoke(IPC.pictures.asset, kind, name),
+  },
 };
 
 contextBridge.exposeInMainWorld('drashti', bridge);

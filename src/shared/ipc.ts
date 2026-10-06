@@ -4,6 +4,7 @@ import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsV
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
 import type { MarkersResult, MediaMarkers } from './markers';
+import type { PictureAssetKind, PictureJob, PicturePage, PicturesDone } from './pictures';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { IdleResult, IdleSettings, IdleView, QuoteFields, QuoteResult } from './idle';
 import type {
@@ -582,10 +583,24 @@ export const IPC = {
     /** main -> output (on a node): a media file's copy has just landed; load it if it could not be before. */
     mediaReady: 'output:media-ready',
   },
+  pictures: {
+    /** The hidden window that draws a PDF's pages (Session 15) asks what to draw (that window only). */
+    job: 'pictures:job',
+    /** It hands over each page as it is drawn; false says to stop. */
+    page: 'pictures:page',
+    /** And says when it has finished. */
+    done: 'pictures:done',
+    /** pdf.js's own data (fonts a PDF names without embedding them, and its decoders), by kind and name. */
+    asset: 'pictures:asset',
+  },
 } as const;
 
 /** Request/response channels: arguments and result for each. */
 export interface InvokeContract {
+  [IPC.pictures.job]: { args: []; result: PictureJob | null };
+  [IPC.pictures.page]: { args: [page: PicturePage]; result: boolean };
+  [IPC.pictures.done]: { args: [done: PicturesDone]; result: null };
+  [IPC.pictures.asset]: { args: [kind: PictureAssetKind, name: string]; result: Uint8Array | null };
   [IPC.app.getInfo]: { args: []; result: AppInfo };
   [IPC.app.recovery]: { args: []; result: RecoveryNotice | null };
   [IPC.app.dismissRecovery]: { args: []; result: null };

@@ -3,7 +3,7 @@ import { mkdir, open, type FileHandle } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { createInflateRaw } from 'node:zlib';
+import { createInflateRaw, inflateRawSync } from 'node:zlib';
 
 /*
  * Reading ZIP archives: presentation bundles and playlist exports are ZIP
@@ -207,5 +207,34 @@ async function* chunks(fh: FileHandle, start: number, length: number): AsyncGene
     if (buf.length === 0) throw new ZipError('The archive ends early.');
     done += buf.length;
     yield buf;
+  }
+}
+
+/**
+ * Read the entries `want` picks into memory (a document's small XML files), each at most `maxBytes`
+ * once inflated; bigger ones, and ones in a compression Drashti does not read, are left out.
+ */
+export async function readZipEntries(
+  path: string,
+  want: (name: string) => boolean,
+  maxBytes = 8 * 1024 * 1024,
+): Promise<Map<string, Buffer>> {
+  const fh = await open(path, 'r');
+  try {
+    const out = new Map<string, Buffer>();
+    for (const entry of await listOpen(fh)) {
+      if (entry.isDirectory || !want(entry.name) || entry.size > maxBytes || entry.compressedSize > maxBytes)
+        continue;
+      if (entry.method !== 0 && entry.method !== 8) continue;
+      const local = await readAt(fh, entry.offset, 30);
+      if (local.length < 30 || local.readUInt32LE(0) !== LOCAL)
+        throw new ZipError(`Broken entry ${entry.name}.`);
+      const dataStart = entry.offset + 30 + local.readUInt16LE(26) + local.readUInt16LE(28);
+      const raw = await readAt(fh, dataStart, entry.compressedSize);
+      out.set(entry.name, entry.method === 8 ? inflateRawSync(raw, { maxOutputLength: maxBytes }) : raw);
+    }
+    return out;
+  } finally {
+    await fh.close();
   }
 }

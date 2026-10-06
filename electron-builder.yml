@@ -43,6 +43,7 @@ mac:
   extendInfo:
     NSCameraUsageDescription: Drashti uses the camera or capture card you choose for the stream to YouTube.
     NSMicrophoneUsageDescription: Drashti uses the sound input you choose (the mixer’s line in) for the stream to YouTube.
+    NSAppleEventsUsageDescription: Drashti asks Keynote or PowerPoint to save a presentation you import as PDF, to show its slides as pictures.
 win:
   target:
     - target: nsis

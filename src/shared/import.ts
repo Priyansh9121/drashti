@@ -26,7 +26,9 @@ export type ImportFormat =
   /** What an admin loads for the Shastra module, the calendar and the quotes (Session 12). */
   | 'shastra'
   | 'calendar'
-  | 'quotes';
+  | 'quotes'
+  /** PDF, PowerPoint and Keynote files, each page made a picture on its slide (Session 15). */
+  | 'pictures';
 
 export type ItemOutcome =
   /** New in the library. */

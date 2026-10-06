@@ -46,7 +46,21 @@ describe('page security policies', () => {
     });
   }
 
-  for (const page of pages.filter((p) => !NETWORK_PAGES.has(p))) {
+  // The hidden window that draws a PDF's pages (Session 15): pdf.js's image decoders are
+  // WebAssembly, and it plays no media at all.
+  it('pdf.html (pictures): app scripts and WebAssembly only, no fetching, no media', () => {
+    const policy = policyOf(readFileSync(join(RENDERER, 'pdf.html'), 'utf8'));
+    expect(policy.get('default-src')).toEqual(["'self'"]);
+    expect(policy.get('script-src')).toEqual(["'self'", "'wasm-unsafe-eval'"]);
+    expect(policy.get('connect-src')).toEqual(["'self'"]);
+    expect(policy.get('media-src')).toEqual(["'none'"]);
+    expect(policy.get('object-src')).toEqual(["'none'"]);
+    expect(policy.get('base-uri')).toEqual(["'none'"]);
+    expect(policy.get('form-action')).toEqual(["'none'"]);
+    for (const [name, values] of policy) expect(values, name).not.toContain('drashti-media:');
+  });
+
+  for (const page of pages.filter((p) => !NETWORK_PAGES.has(p) && p !== 'pdf.html')) {
     it(`${page}: app scripts only, no fetching, media only as images and media`, () => {
       const policy = policyOf(readFileSync(join(RENDERER, page), 'utf8'));
       expect(policy.get('default-src')).toEqual(["'self'"]);

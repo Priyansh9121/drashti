@@ -38,6 +38,7 @@ import type { RolesResult, RolesView } from './roles';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
 import type { MarkersResult, MediaMarkers } from './markers';
+import type { PictureAssetKind, PictureJob, PicturePage, PicturesDone } from './pictures';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { Lang, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
@@ -617,5 +618,13 @@ export interface DrashtiBridge {
     report(report: OutputReport): Promise<null>;
     /** On a node: a media file's copy has just landed (load it again if it could not be loaded). */
     onMediaReady(listener: (mediaId: string) => void): () => void;
+  };
+  /** For the hidden window that draws a PDF's pages as pictures (Session 15). */
+  pictures: {
+    job(): Promise<PictureJob | null>;
+    /** False: stop (the import was cancelled). */
+    page(page: PicturePage): Promise<boolean>;
+    done(done: PicturesDone): Promise<null>;
+    asset(kind: PictureAssetKind, name: string): Promise<Uint8Array | null>;
   };
 }

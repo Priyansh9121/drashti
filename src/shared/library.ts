@@ -5,7 +5,7 @@ import type { PassageKey } from './shastra';
 
 /** Where an imported item came from, so imports can be re-run and traced. */
 export interface ImportSource {
-  kind: 'pp6' | 'pp7' | 'text' | 'docx' | 'media' | 'drashti';
+  kind: 'pp6' | 'pp7' | 'text' | 'docx' | 'media' | 'drashti' | 'pictures';
   /** Original file path. */
   path: string | null;
   /** Original id inside that file (for example a ProPresenter UUID). */

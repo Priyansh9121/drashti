@@ -3,7 +3,9 @@
 <!--
   For Drashti's helper processes and the bundled FFmpeg, signed alongside the
   app: the renderers' JavaScript engine, and the camera and sound input,
-  which Chromium opens from a helper process for the stream's page.
+  which Chromium opens from a helper process for the stream's page; and
+  Apple Events, for the import (a helper) asking Keynote or PowerPoint to save
+  a file as PDF.
 -->
 <plist version="1.0">
   <dict>
@@ -14,6 +16,8 @@
     <key>com.apple.security.device.camera</key>
     <true/>
     <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <key>com.apple.security.automation.apple-events</key>
     <true/>
   </dict>
 </plist>
