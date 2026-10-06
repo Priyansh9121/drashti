@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -105,18 +105,23 @@ describe('the Windows installer and signatures (Session 14)', () => {
 });
 
 describe.runIf(process.platform === 'win32')("Windows' own signature check", () => {
-  it('finds no signature on a file just written, and a valid one on a file Windows came with', async () => {
-    const file = join(mkdtempSync(join(tmpdir(), 'drashti-sig-')), 'Placeholder unsigned.exe');
-    writeFileSync(file, 'MZ placeholder');
+  it('finds no signature on a script just written, and a valid one on a program Microsoft signed', async () => {
+    // A kind of file Windows can check (a made-up .exe is "UnknownError", not "NotSigned").
+    const file = join(mkdtempSync(join(tmpdir(), 'drashti-sig-')), 'Placeholder unsigned.ps1');
+    writeFileSync(file, '# Placeholder script\r\n');
     // Asked and answered (not merely unreadable): no signature.
     expect(await windowsSignatures.read(file)).toEqual({ valid: false, subject: null, status: 'NotSigned' });
-    const shell = join(
-      process.env['SystemRoot'] ?? 'C:\\Windows',
-      'System32',
-      'WindowsPowerShell',
-      'v1.0',
-      'powershell.exe',
-    );
+    // PowerShell 7 is signed in the file, as an installer is; Windows' own PowerShell (in a catalog) otherwise.
+    const pwsh = join(process.env['ProgramFiles'] ?? 'C:\\Program Files', 'PowerShell', '7', 'pwsh.exe');
+    const shell = existsSync(pwsh)
+      ? pwsh
+      : join(
+          process.env['SystemRoot'] ?? 'C:\\Windows',
+          'System32',
+          'WindowsPowerShell',
+          'v1.0',
+          'powershell.exe',
+        );
     expect(windowsSignatures.readSync(shell)).toMatchObject({
       valid: true,
       status: 'Valid',
