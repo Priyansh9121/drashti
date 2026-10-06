@@ -152,6 +152,10 @@ test('Simple Mode plays and pauses the music, and changes no list', async () => 
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
+  // The system's media controls and media keys never reach the show's sound (Session 15).
+  expect(await app.evaluate(({ app: a }) => a.commandLine.getSwitchValue('disable-features'))).toContain(
+    'HardwareMediaKeyHandling',
+  );
   const dir = mkdtempSync(join(tmpdir(), 'drashti-music-simple-'));
   const tone = makeTestTone(join(dir, 'Placeholder simple tone.wav'), { seconds: 30 });
   await importAndGetIds(win, [tone]);

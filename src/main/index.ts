@@ -234,6 +234,12 @@ const mediaDelayMs = Math.min(
   Math.max(0, Number(process.env['DRASHTI_TEST_MEDIA_DELAY_MS'] ?? 0) || 0),
 );
 
+// Drashti's sound is the show's, not the computer's media (Session 15): the system's media controls
+// (Windows' media overlay, macOS's Now Playing) and the keyboard's or a headset's media keys never see
+// it, so nobody pauses the sabha's sound by pressing one. Keeping those controls up to date also took
+// the main process 60 to 180 ms each time a sound started on Windows (the performance check's trace).
+app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
+
 // Tests only: Chromium's fake camera and microphone (a moving test pattern and a beep) stand in for real ones.
 // Only the device switch: the stream's page still captures its own real picture.
 const fakeDevices = process.env['DRASHTI_TEST_FAKE_DEVICES'] === '1';
