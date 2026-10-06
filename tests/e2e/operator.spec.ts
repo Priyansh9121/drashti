@@ -121,6 +121,17 @@ test('operator: pick a presentation, go live by click and keyboard, clear layers
   expect(await engineRev(win)).toBe(before);
   await win.getByRole('button', { name: 'Close screens' }).click();
 
+  // Ten more slide changes, so the median below is of fifteen (five swung with a CI Mac's moods).
+  await thumbs.nth(0).click();
+  await expect(win.getByTestId('live-text')).toHaveText('Live: Sample kirtan (placeholder) · slide 1 of 3');
+  for (let i = 0; i < 10; i++) {
+    await win.keyboard.press(i % 2 === 0 ? 'ArrowRight' : 'ArrowLeft');
+    await expect(win.getByTestId('live-text')).toHaveText(
+      `Live: Sample kirtan (placeholder) · slide ${i % 2 === 0 ? 2 : 1} of 3`,
+    );
+    await outputCaughtUp();
+  }
+
   // Updates reach a painted frame on the output within one 60 Hz frame (16.7 ms) of leaving
   // the main process. The median must meet that; a rare scheduling hiccup is tolerated, a stall is not.
   const sorted = [...latencies].sort((a, b) => a - b);
