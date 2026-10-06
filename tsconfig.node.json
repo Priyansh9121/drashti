@@ -12,6 +12,7 @@
     "electron.vite.config.ts",
     "vitest.config.ts",
     "playwright.config.ts",
-    "playwright.perf.config.ts"
+    "playwright.perf.config.ts",
+    "playwright.soak.config.ts"
   ]
 }

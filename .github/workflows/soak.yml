@@ -1,0 +1,73 @@
+name: Soak
+
+# The soak test (Session 15; README, "Soak test"): a sabha that never stops, for three hours, on
+# macOS and Windows runners, started by hand only. Placeholder content and generated media; the
+# stream goes to FFmpeg on the runner, never the internet. It fails on a crash, a watchdog event,
+# a screen going black or memory that keeps growing, and keeps its report (the curves) either way.
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: Operating systems to run on
+        type: choice
+        options: [both, windows, macos]
+        default: both
+      minutes:
+        description: How long the sabha goes on (minutes)
+        type: number
+        default: 180
+      sample_minutes:
+        description: How often memory, processor and the screens are sampled (minutes)
+        type: number
+        default: 3
+
+permissions:
+  contents: read
+
+jobs:
+  soak:
+    name: Soak test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os == 'windows' && '["windows-latest"]' || inputs.os == 'macos' && '["macos-latest"]' || '["macos-latest","windows-latest"]') }}
+    runs-on: ${{ matrix.os }}
+    # Three hours of sabha, the setting up, and the report: well inside a job's six hours.
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Cache FFmpeg downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/drashti
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs') }}
+      - name: Fetch FFmpeg
+        run: node scripts/fetch-ffmpeg.mjs
+      # The phone on the feed: Playwright's own Chromium.
+      - name: Playwright's Chromium
+        run: pnpm exec playwright install chromium
+      - run: pnpm build
+      - name: The soak test
+        env:
+          DRASHTI_SOAK_MINUTES: ${{ inputs.minutes }}
+          DRASHTI_SOAK_SAMPLE_MINUTES: ${{ inputs.sample_minutes }}
+        run: pnpm exec playwright test -c playwright.soak.config.ts
+      - name: The summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f test-results/soak/summary.md ]; then cat test-results/soak/summary.md >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: soak-${{ runner.os }}
+          path: test-results/soak
+          if-no-files-found: warn
+          retention-days: 14
