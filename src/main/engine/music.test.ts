@@ -55,6 +55,39 @@ const music = (over: Partial<Omit<MusicRun, 'index'>> = {}): Omit<MusicRun, 'ind
 const playing = (e: ShowEngine) => e.current.layers.audio;
 
 describe('audio playlists', () => {
+  it('move on even when the timer comes a moment early (it waits again for what is left)', () => {
+    let clock = 1_000_000;
+    let early = 3;
+    const jobs: { at: number; run: () => void; cancelled: boolean }[] = [];
+    const engine = new ShowEngine(makeSource(), new RecordingTransport(), () => clock, undefined, {
+      mediaLength: (id) => LENGTHS[id] ?? null,
+      // The first wait comes 3 ms early, as a timer can; later ones on time.
+      schedule: (delay, run) => {
+        const job = { at: clock + Math.max(0, delay - early), run, cancelled: false };
+        early = 0;
+        jobs.push(job);
+        return () => {
+          job.cancelled = true;
+        };
+      },
+    });
+    const start = clock;
+    engine.dispatch({ type: 'playMusic', music: music(), index: 0 });
+    const runDue = () => {
+      for (const job of jobs.filter((j) => !j.cancelled && j.at <= clock)) {
+        jobs.splice(jobs.indexOf(job), 1);
+        job.run();
+      }
+    };
+    clock = start + 60_000 - 3;
+    runDue();
+    expect(playing(engine)).toMatchObject({ mediaId: 'a' });
+    // Nothing else happens; at the end it moves on all the same.
+    clock = start + 60_000;
+    runDue();
+    expect(playing(engine)).toMatchObject({ mediaId: 'b', startedAt: start + 60_000 });
+  });
+
   it('play their tracks one after another, each from where the last ended, and stop at the end', () => {
     const { engine, elapse, now } = setup();
     const start = now();
