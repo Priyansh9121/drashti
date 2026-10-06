@@ -31,6 +31,9 @@ interface PerfResult {
  * which cannot do that, two busy processes take the processor from it while it runs. What it says.
  */
 const HANDICAP = process.env['DRASHTI_PERF_HANDICAP'] === '1';
+/** A heavy case or modest hardware takes longer (the stream encoded in software on two cores, say): it reports, not times out. */
+const SLOW = HANDICAP || (process.env['DRASHTI_PERF_SCENARIO'] ?? '') !== '';
+const STOP_AFTER_MS = SLOW ? 840_000 : 240_000;
 
 function handicap(): { what: string; stop(): void } {
   if (!HANDICAP) return { what: '', stop: () => undefined };
@@ -76,7 +79,7 @@ function runPerformanceTest(
     let log = '';
     child.stdout.on('data', (d: Buffer) => (log += d.toString()));
     child.stderr.on('data', (d: Buffer) => (log += d.toString()));
-    const timer = setTimeout(() => child.kill(), 240_000);
+    const timer = setTimeout(() => child.kill(), STOP_AFTER_MS);
     child.on('exit', (code) => {
       clearTimeout(timer);
       load.stop();
@@ -91,7 +94,7 @@ function runPerformanceTest(
 }
 
 test('slide changes keep reaching the screen within a frame during a big import', async () => {
-  test.setTimeout(300_000);
+  test.setTimeout(STOP_AFTER_MS + 60_000);
   const { code, result, log } = await runPerformanceTest();
   expect(result, log.slice(-3000)).not.toBeNull();
   console.log(result?.summary);
@@ -105,7 +108,7 @@ test('slide changes keep reaching the screen within a frame during a big import'
 });
 
 test('slide changes keep reaching the screen within a frame while streaming and recording, during a big import', async () => {
-  test.setTimeout(360_000);
+  test.setTimeout(STOP_AFTER_MS + 120_000);
   const ffmpeg = testFfmpeg();
   test.skip(!ffmpeg, 'FFmpeg is not fetched here: run node scripts/fetch-ffmpeg.mjs');
   const port = await freePort();
