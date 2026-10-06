@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { EngineState } from '../../../../shared/engine/state';
 import type { PresentationDoc } from '../../../../shared/library';
+import type { PlaybackMarker } from '../../../../shared/markers';
 import { fieldOf, type MessageTemplate, messageItemId, templateFields } from '../../../../shared/messages';
 import { type OrderedSlide, playOrder } from '../../../../shared/order';
 import type { ItemOrder, PlaylistItemInfo } from '../../../../shared/playlists';
@@ -561,13 +562,16 @@ function Music() {
   );
 }
 
+/** None, as one array (a selector answering a new one each time would never settle). */
+const NO_MARKS: PlaybackMarker[] = [];
+
 /** Markers of the background video or the sound playing (Session 14): a tap jumps there, in step everywhere. */
 function Markers() {
   const bg = useEngine((s) => {
     const b = s.state?.layers.background;
-    return b?.kind === 'media' ? (b.marks ?? []) : [];
+    return b?.kind === 'media' ? (b.marks ?? NO_MARKS) : NO_MARKS;
   });
-  const audio = useEngine((s) => s.state?.layers.audio?.marks ?? []);
+  const audio = useEngine((s) => s.state?.layers.audio?.marks ?? NO_MARKS);
   if (bg.length === 0 && audio.length === 0) return null;
   const jump = (layer: 'background' | 'audio', id: string) =>
     void tap(post(`/api/v1/markers/${encodeURIComponent(id)}/jump`, { layer }));

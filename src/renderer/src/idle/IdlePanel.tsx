@@ -32,7 +32,8 @@ export function IdlePanel() {
   const running = useEngine((s) => s.state?.idle.startedAt != null);
   const items = useEngine((s) => s.state?.idle.items.length ?? 0);
   const look = useEngine((s) => s.state?.look ?? null);
-  const groups = useScreens((s) => s.snapshot?.groups ?? []);
+  // The fallback outside the selector: one answering a new [] each time never settles.
+  const groups = useScreens((s) => s.snapshot?.groups) ?? [];
   const view = useIdle((s) => s.view);
   useEffect(() => {
     connectIdle();
