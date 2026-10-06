@@ -261,8 +261,9 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
           : (run.result.message ?? ''),
       );
     }
-    // A scenario's slides change every few seconds, so fewer of them overlap the import.
-    const overlap = ctx.scenario?.slides ? 3 : 10;
+    // A scenario's slides change every two seconds, as in a sabha, so few of them overlap the import
+    // (a quick one takes 5 to 6 s on CI's Mac): its own figures are the video's frames and the blocks.
+    const overlap = ctx.scenario ? 2 : 10;
     check(
       `the import overlapped at least ${String(overlap)} slide changes`,
       during.length >= overlap,
