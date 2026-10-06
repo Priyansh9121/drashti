@@ -3,13 +3,16 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Db } from '../db/database';
 import { AudioPlaylistRepo } from '../db/audio-playlists';
+import type { CommandResult, EngineCommand } from '../../shared/engine/commands';
 import type { MusicService } from './music-service';
 
 /*
  * The performance check only (DRASHTI_PERF_MUSIC=1, Session 14): an audio
  * playlist plays while slides change during the big import, to show the
  * music costs the slides nothing. Two generated tones (placeholder sound),
- * in the check's throwaway library.
+ * in the check's throwaway library. DRASHTI_PERF_SOUND_CUE=1 (Session 15)
+ * plays one long tone on the audio layer instead, as a slide's sound cue
+ * would: a sound with none of the music's moving on and fading.
  */
 
 function tone(seconds: number, hz: number): Buffer {
@@ -34,24 +37,26 @@ function tone(seconds: number, hz: number): Buffer {
   return Buffer.concat([header, data]);
 }
 
+/** A generated tone in the check's media folder, as a sound in its library. */
+function addTone(db: Db, mediaDir: string, name: string, seconds: number, hz: number): string {
+  mkdirSync(join(mediaDir, 'perf'), { recursive: true });
+  const path = `perf/${name}.wav`;
+  writeFileSync(join(mediaDir, path), tone(seconds, hz));
+  const id = randomUUID();
+  db.prepare("INSERT INTO media (id, kind, name, path) VALUES (?, 'audio', ?, ?)").run(
+    id,
+    `Placeholder perf ${name}`,
+    path,
+  );
+  return id;
+}
+
 export function startPerfMusic(
   db: Db,
   mediaDir: string,
   music: MusicService,
 ): { summary(): string; stop(): void } {
-  mkdirSync(join(mediaDir, 'perf'), { recursive: true });
-  const ids: string[] = [];
-  for (const [i, hz] of [330, 440].entries()) {
-    const path = `perf/tone-${String(i + 1)}.wav`;
-    writeFileSync(join(mediaDir, path), tone(20, hz));
-    const id = randomUUID();
-    db.prepare("INSERT INTO media (id, kind, name, path) VALUES (?, 'audio', ?, ?)").run(
-      id,
-      `Placeholder perf tone ${String(i + 1)}`,
-      path,
-    );
-    ids.push(id);
-  }
+  const ids = [330, 440].map((hz, i) => addTone(db, mediaDir, `tone-${String(i + 1)}`, 20, hz));
   const repo = new AudioPlaylistRepo(db);
   const playlistId = repo.create('Placeholder perf music');
   repo.addTracks(playlistId, ids, null);
@@ -59,6 +64,24 @@ export function startPerfMusic(
   return {
     summary: () =>
       `music ${played.ok ? 'playing (an audio playlist of two tones)' : `not playing (${played.message})`}`,
+    stop: () => undefined,
+  };
+}
+
+/** One long tone on the audio layer, played once, as a slide's sound cue (DRASHTI_PERF_SOUND_CUE=1). */
+export function startPerfSoundCue(
+  db: Db,
+  mediaDir: string,
+  engine: { dispatch(command: EngineCommand): CommandResult },
+): { summary(): string; stop(): void } {
+  const mediaId = addTone(db, mediaDir, 'sound-cue', 180, 392);
+  const played = engine.dispatch({
+    type: 'playAudio',
+    audio: { id: randomUUID(), title: 'Placeholder perf sound cue', mediaId, volume: 1, loop: false },
+  });
+  return {
+    summary: () =>
+      `a sound cue ${played.ok ? 'playing (one tone of 3 minutes)' : `not playing (${played.message})`}`,
     stop: () => undefined,
   };
 }

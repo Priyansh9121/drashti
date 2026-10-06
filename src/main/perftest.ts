@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ELDHistogram } from 'node:perf_hooks';
 import type { DrashtiBridge } from '../shared/bridge';
+import type { MainWatch, PerfProfile } from './perf-watch';
 
 /*
  * Performance self-test, run by hand on the real machines (README,
@@ -40,6 +41,12 @@ export interface PerfContext {
   /** True while the import worker process is running. */
   workerRunning: () => boolean;
   diagnostics: { loopDelay: ELDHistogram; handlerTimes: Map<string, number>; gc: { max: number } };
+  /** Every main-process gap over 100 ms, beside what was going on (Session 15). */
+  watch?: MainWatch;
+  /** A CPU profile and a Chromium trace, kept in a folder (DRASHTI_PERF_PROFILE). */
+  profile?: PerfProfile;
+  /** Slide changes for this long with no import (DRASHTI_PERF_NO_IMPORT=1), to tell the import's share. */
+  noImportMs?: number;
 }
 
 /** How big the test import is. */
@@ -75,7 +82,7 @@ interface Sample {
  * else going on, then all through an import of `folder`. Kept free of
  * anything outside it, as it is sent to the page as source.
  */
-async function slideChangesDuringImport(folder: string) {
+async function slideChangesDuringImport(folder: string | null, forMs: number) {
   const d = (globalThis as unknown as { drashti: DrashtiBridge }).drashti;
   const id = (await d.library.listPresentations()).find((p) => p.name === 'Language test slides')?.id ?? '';
   const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -93,16 +100,36 @@ async function slideChangesDuringImport(folder: string) {
   }
   const state = { finished: false };
   const startedAt = Date.now();
-  const imported = d.library.importPaths([folder]).then((result) => {
-    state.finished = true;
-    return result;
-  });
+  // With no import (to compare), the same changes for a set time.
+  const imported =
+    folder === null
+      ? wait(forMs).then(() => {
+          state.finished = true;
+          return { ok: true, run: { totals: { failed: 0, imported: 0 } } };
+        })
+      : d.library.importPaths([folder]).then((result) => {
+          state.finished = true;
+          return result;
+        });
   while (!state.finished) {
     await change(true);
     await wait(40);
   }
   const result = await imported;
   return { samples, result, importMs: Date.now() - startedAt };
+}
+
+/** The main process's worst block and its gaps over 100 ms, each with what went on around it (at most 6). */
+export function watchSummary(watch: MainWatch): string {
+  const gaps = [...watch.gaps].sort((a, b) => b.ms - a.ms).slice(0, 6);
+  const told = gaps.map((g) => {
+    const near = watch
+      .near(g)
+      .slice(0, 8)
+      .map((e) => `${e.what}${e.ms === undefined ? '' : ` ${e.ms} ms`} @${e.at}`);
+    return `${g.ms} ms at ${g.at} ms${near.length > 0 ? ` [${near.join('; ')}]` : ''}`;
+  });
+  return `main process worst block ${watch.worstBlockMs()} ms, gaps over 100 ms: ${watch.gaps.length}${told.length > 0 ? ` (${told.join(' | ')})` : ''}`;
 }
 
 const js = <T>(win: BrowserWindow, code: string) =>
@@ -114,9 +141,10 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
   const folder = mkdtempSync(join(tmpdir(), 'drashti-perf-lyrics-'));
   const undo = await ctx.ensureOutput();
   try {
-    for (let i = 1; i <= PERF_SONGS; i++) {
-      writeFileSync(join(folder, `Placeholder Song ${String(i).padStart(3, '0')}.txt`), song(i));
-    }
+    if (ctx.noImportMs === undefined)
+      for (let i = 1; i <= PERF_SONGS; i++) {
+        writeFileSync(join(folder, `Placeholder Song ${String(i).padStart(3, '0')}.txt`), song(i));
+      }
     const operator = ctx.operator();
     let output: BrowserWindow | undefined;
     for (let i = 0; i < 100 && !output; i++) {
@@ -141,14 +169,21 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
     // about one a second; the slide changes are the operator's here, so keep them on time.
     operator.webContents.setBackgroundThrottling(false);
     const d = ctx.diagnostics;
+    const noImport = ctx.noImportMs !== undefined;
+    await ctx.profile?.start();
     d.loopDelay.reset();
     d.handlerTimes.clear();
     d.gc.max = 0;
+    ctx.watch?.reset();
+    ctx.watch?.note(noImport ? 'slide changes begin (no import)' : 'slide changes begin');
     const running = js<{
       samples: Sample[];
       result: { ok: boolean; message?: string; run?: { totals: { failed: number; imported: number } } };
       importMs: number;
-    }>(operator, `(${slideChangesDuringImport.toString()})(${JSON.stringify(folder)})`);
+    }>(
+      operator,
+      `(${slideChangesDuringImport.toString()})(${JSON.stringify(noImport ? null : folder)}, ${String(ctx.noImportMs ?? 0)})`,
+    );
     const state = { done: false };
     void running.finally(() => {
       state.done = true;
@@ -159,6 +194,8 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
       await sleep(50);
     }
     const run = await running;
+    ctx.watch?.note('slide changes end');
+    await ctx.profile?.stop(ctx.watch ?? null);
     if (!operator.isDestroyed()) operator.webContents.setBackgroundThrottling(true);
     const loopP99 = Math.round(d.loopDelay.percentile(99) / 1e6);
     const loopMax = Math.round(d.loopDelay.max / 1e6);
@@ -175,17 +212,22 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
     const during = run.samples.filter((s) => s.during).map(latency);
     const line = (label: string, v: number[]) =>
       `${label}: n=${v.length} median ${percentile(v, 0.5)} ms, p90 ${percentile(v, 0.9)} ms, worst ${Math.max(...v)} ms`;
-    const summary = `import of ${PERF_SONGS} files took ${run.importMs} ms; ${line('idle', idle)}; ${line('importing', during)}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms`;
+    const what = noImport
+      ? `no import: slide changes for ${run.importMs} ms`
+      : `import of ${PERF_SONGS} files took ${run.importMs} ms`;
+    const summary = `${what}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}`;
 
     const totals = run.result.run?.totals;
-    check('the import ran in its own process', sawWorker);
-    check(
-      'the import finished without failures',
-      run.result.ok && totals?.failed === 0 && totals.imported === PERF_SONGS,
-      run.result.ok
-        ? `${totals?.imported ?? 0} imported, ${totals?.failed ?? 0} failed`
-        : (run.result.message ?? ''),
-    );
+    if (!noImport) {
+      check('the import ran in its own process', sawWorker);
+      check(
+        'the import finished without failures',
+        run.result.ok && totals?.failed === 0 && totals.imported === PERF_SONGS,
+        run.result.ok
+          ? `${totals?.imported ?? 0} imported, ${totals?.failed ?? 0} failed`
+          : (run.result.message ?? ''),
+      );
+    }
     check('the import overlapped at least 10 slide changes', during.length >= 10, `${during.length}`);
     // 60 Hz: a frame is 16.7 ms.
     check(

@@ -25,6 +25,18 @@ on:
         description: An audio playlist plays during the check (Session 14)
         type: boolean
         default: false
+      sound_cue:
+        description: One long sound on the audio layer instead, as a slide's sound cue (Session 15)
+        type: boolean
+        default: false
+      no_import:
+        description: Slide changes for 20 s with no import, to tell the import's share (Session 15)
+        type: boolean
+        default: false
+      profile:
+        description: Keep a CPU profile of the main process, a Chromium trace and the gaps' timeline (an artifact)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -53,4 +65,17 @@ jobs:
           DRASHTI_PERF_NODES: ${{ inputs.nodes }}
           # An audio playlist playing meanwhile (README, "Performance check").
           DRASHTI_PERF_MUSIC: ${{ inputs.music && '1' || '0' }}
+          # Or one long sound on the audio layer; and slide changes with no import (Session 15).
+          DRASHTI_PERF_SOUND_CUE: ${{ inputs.sound_cue && '1' || '0' }}
+          DRASHTI_PERF_NO_IMPORT: ${{ inputs.no_import && '1' || '0' }}
+          # A CPU profile of the main process, a Chromium trace and the timeline of its gaps.
+          DRASHTI_PERF_PROFILE: ${{ inputs.profile && format('{0}/perf-profile', runner.temp) || '' }}
         run: pnpm test:perf
+      - name: Keep the profile, the trace and the timeline
+        if: always() && inputs.profile
+        uses: actions/upload-artifact@v7
+        with:
+          name: perf-profile-${{ runner.os }}
+          path: ${{ runner.temp }}/perf-profile*
+          if-no-files-found: warn
+          retention-days: 7

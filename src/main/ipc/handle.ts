@@ -56,9 +56,17 @@ export function refusedNow(channel: InvokeChannel): boolean {
   return refusalFor(channel) !== undefined;
 }
 
+/** The performance check's watch (Session 15): told of every request answered, and how long it took. */
+let heard: ((channel: string, ms: number) => void) | null = null;
+
+export function hearHandled(listener: ((channel: string, ms: number) => void) | null): void {
+  heard = listener;
+}
+
 function note(channel: string, started: number): void {
   const ms = performance.now() - started;
   if (ms > (handlerTimes.get(channel) ?? 0)) handlerTimes.set(channel, ms);
+  heard?.(channel, ms);
 }
 
 /**
