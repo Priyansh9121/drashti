@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { execFile, spawn, spawnSync } from 'node:child_process';
 import { createReadStream, statSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -9,7 +9,11 @@ import { join } from 'node:path';
  * only with an admin's say-so (update-service.ts decides when):
  *
  * - Windows: the NSIS installer runs silently (/S) once Drashti has quit,
- *   over the same per-user install, and does not start Drashti again.
+ *   over the same per-user install, and does not start Drashti again. When
+ *   the Drashti running is signed, the installer must be signed (Authenticode,
+ *   valid) by the same publisher, or it is refused: checked when an admin
+ *   says to install, and again just before it runs. An unsigned Drashti
+ *   takes the checked file as it is (its sha512 is from the release).
  * - A Mac signed with a Developer ID: the zip is handed to Squirrel.Mac
  *   (Electron's autoUpdater) through a feed on this computer only; Squirrel
  *   checks it is signed by the same developer as the app running, and
@@ -22,17 +26,132 @@ export interface Installer {
   mode: 'at-quit' | 'by-hand';
   /** Get it ready to install when Drashti quits (a Mac: Squirrel.Mac takes it now). */
   prepare(file: string, version: string): Promise<{ ok: true } | { ok: false; message: string }>;
-  /** Drashti is quitting, and an admin said to install: start it (Windows: the installer). */
-  atQuit(file: string): void;
+  /** Drashti is quitting, and an admin said to install: start it (Windows: the installer), unless refused. */
+  atQuit(file: string): { ok: true } | { ok: false; message: string };
 }
 
-export function windowsInstaller(): Installer {
-  return {
-    mode: 'at-quit',
-    prepare: () => Promise.resolve({ ok: true }),
-    atQuit: (file) => {
+/** A file's Authenticode signature as Windows sees it: valid or not, and who signed it. */
+export interface Authenticode {
+  valid: boolean;
+  /** The signing certificate's subject ("CN=…, O=…, C=…"), or null when there is none. */
+  subject: string | null;
+}
+
+/** Reading signatures: in the background (when an admin says to install) or at once (at quit). */
+export interface SignatureReader {
+  read(file: string): Promise<Authenticode>;
+  readSync(file: string): Authenticode;
+}
+
+/** A certificate subject's parts, by name (CN, O, …); quoted values are unquoted. */
+function subjectParts(subject: string): Map<string, string> {
+  const parts = new Map<string, string>();
+  for (const m of subject.matchAll(/(?:^|,)\s*([A-Za-z0-9.]+)=("(?:[^"]|"")*"|[^,]*)/g)) {
+    const raw = (m[2] ?? '').trim();
+    const value = raw.startsWith('"') ? raw.slice(1, -1).replace(/""/g, '"') : raw;
+    parts.set((m[1] ?? '').toUpperCase(), value.trim());
+  }
+  return parts;
+}
+
+/** Whether two signatures are the same publisher: the same name (CN) and organisation (O), whichever certificate. */
+export function samePublisher(a: string, b: string): boolean {
+  const [pa, pb] = [subjectParts(a), subjectParts(b)];
+  const cn = pa.get('CN');
+  return cn !== undefined && cn !== '' && cn === pb.get('CN') && pa.get('O') === pb.get('O');
+}
+
+/** Whether an installer may run, given the running Drashti's signature (null: unsigned, or not packaged). */
+export function installerAllowed(
+  own: Authenticode | null,
+  theirs: Authenticode,
+): { ok: true } | { ok: false; message: string } {
+  if (!own?.valid || !own.subject) return { ok: true };
+  if (!theirs.valid || !theirs.subject)
+    return {
+      ok: false,
+      message:
+        'The downloaded update has no valid signature, so Drashti will not install it. Download Drashti again from its releases page, or ask whoever looks after this computer.',
+    };
+  if (!samePublisher(own.subject, theirs.subject))
+    return {
+      ok: false,
+      message: `The downloaded update is signed by someone else (${subjectParts(theirs.subject).get('CN') ?? 'unknown'}), not by Drashti's publisher, so Drashti will not install it.`,
+    };
+  return { ok: true };
+}
+
+const SIGNATURE_SCRIPT =
+  '$s = Get-AuthenticodeSignature -LiteralPath $env:DRASHTI_SIGNED_FILE; ' +
+  '[pscustomobject]@{ status = [string]$s.Status; subject = $(if ($s.SignerCertificate) { $s.SignerCertificate.Subject } else { $null }) } | ConvertTo-Json -Compress';
+const POWERSHELL_ARGS = [
+  '-NoProfile',
+  '-NonInteractive',
+  '-ExecutionPolicy',
+  'Bypass',
+  '-Command',
+  SIGNATURE_SCRIPT,
+];
+
+function parseSignature(stdout: string): Authenticode {
+  try {
+    const r = JSON.parse(stdout) as { status?: unknown; subject?: unknown };
+    return { valid: r.status === 'Valid', subject: typeof r.subject === 'string' ? r.subject : null };
+  } catch {
+    return { valid: false, subject: null };
+  }
+}
+
+/** Windows' own check of a file's signature (PowerShell's Get-AuthenticodeSignature). */
+export const windowsSignatures: SignatureReader = {
+  read: (file) =>
+    new Promise((resolve) => {
+      execFile(
+        'powershell.exe',
+        POWERSHELL_ARGS,
+        { timeout: 30_000, windowsHide: true, env: { ...process.env, DRASHTI_SIGNED_FILE: file } },
+        (_error, stdout) => {
+          resolve(parseSignature(stdout));
+        },
+      );
+    }),
+  readSync: (file) =>
+    parseSignature(
+      spawnSync('powershell.exe', POWERSHELL_ARGS, {
+        encoding: 'utf8',
+        timeout: 30_000,
+        windowsHide: true,
+        env: { ...process.env, DRASHTI_SIGNED_FILE: file },
+      }).stdout,
+    ),
+};
+
+export function windowsInstaller(o: {
+  /** The running Drashti's own file, or null when it is not packaged (treated as unsigned). */
+  self: string | null;
+  signatures: SignatureReader;
+  run?: (file: string) => void;
+}): Installer {
+  // Asked once, when first needed.
+  let own: Authenticode | null | undefined;
+  const run =
+    o.run ??
+    ((file: string) => {
       // Silent, as an update; no --force-run, so Drashti is not started again by it.
       spawn(file, ['--updated', '/S'], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    });
+  return {
+    mode: 'at-quit',
+    prepare: async (file) => {
+      own ??= o.self === null ? null : await o.signatures.read(o.self);
+      if (!own?.valid) return { ok: true };
+      return installerAllowed(own, await o.signatures.read(file));
+    },
+    atQuit: (file) => {
+      own ??= o.self === null ? null : o.signatures.readSync(o.self);
+      const allowed = own?.valid ? installerAllowed(own, o.signatures.readSync(file)) : { ok: true as const };
+      if (allowed.ok) run(file);
+      return allowed;
     },
   };
 }
@@ -104,7 +223,7 @@ export function macInstaller(isSigned: () => boolean, updater: SquirrelUpdater):
       });
     },
     // Squirrel.Mac installs it as Drashti quits, by itself.
-    atQuit: () => undefined,
+    atQuit: () => ({ ok: true }),
   };
 }
 
@@ -117,7 +236,8 @@ export function defaultInstaller(o: {
   updater: SquirrelUpdater;
 }): Installer {
   if (o.testLog) return testInstaller(o.testLog, o.platform);
-  if (o.platform === 'win32') return windowsInstaller();
+  if (o.platform === 'win32')
+    return windowsInstaller({ self: o.isPackaged ? o.execPath : null, signatures: windowsSignatures });
   // The running app's bundle: Drashti.app/Contents/MacOS/Drashti, three folders up.
   return macInstaller(
     () => o.isPackaged && signedWithDeveloperId(join(o.execPath, '..', '..', '..')),
@@ -136,6 +256,7 @@ export function testInstaller(log: string, platform: string): Installer {
     atQuit: (file) => {
       const args = platform === 'win32' ? ['--updated', '/S'] : ['(Squirrel.Mac)'];
       writeFileSync(log, `${JSON.stringify({ file, args, at: new Date().toISOString() })}\n`);
+      return { ok: true };
     },
   };
 }

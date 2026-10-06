@@ -83,7 +83,10 @@ function service(base: string, extra: { onAir?: () => boolean; current?: string 
   const installer: Installer = {
     mode: 'at-quit',
     prepare: () => Promise.resolve({ ok: true }),
-    atQuit: (file) => installed.push(file),
+    atQuit: (file) => {
+      installed.push(file);
+      return { ok: true };
+    },
   };
   const dir = mkdtempSync(join(tmpdir(), 'drashti-updates-'));
   let auto = false;
