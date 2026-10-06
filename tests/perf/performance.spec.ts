@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
-import { spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -24,6 +25,42 @@ interface PerfResult {
   summary: string;
 }
 
+/**
+ * Modest hardware, on CI (DRASHTI_PERF_HANDICAP=1; Session 15): on Windows, Drashti and everything it
+ * starts get two cores (this process limits itself first, and children take its cores); on a Mac,
+ * which cannot do that, two busy processes take the processor from it while it runs. What it says.
+ */
+const HANDICAP = process.env['DRASHTI_PERF_HANDICAP'] === '1';
+
+function handicap(): { what: string; stop(): void } {
+  if (!HANDICAP) return { what: '', stop: () => undefined };
+  if (process.platform === 'win32') {
+    const env = { ...process.env };
+    delete env['PSModulePath'];
+    const ps = `${process.env['SystemRoot'] ?? 'C:\\Windows'}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
+    const r = spawnSync(
+      ps,
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `$p = Get-Process -Id ${String(process.pid)}; $p.ProcessorAffinity = 3; $p.ProcessorAffinity`,
+      ],
+      { env, encoding: 'utf8' },
+    );
+    return { what: `handicap: two cores (affinity ${r.stdout.trim() || 'not set'})`, stop: () => undefined };
+  }
+  const busy: ChildProcess[] = [0, 1].map(() =>
+    spawn(process.execPath, ['-e', 'for(;;){}'], { stdio: 'ignore' }),
+  );
+  return {
+    what: 'handicap: two busy processes competing for the processor',
+    stop: () => {
+      for (const b of busy) b.kill('SIGKILL');
+    },
+  };
+}
+
 function runPerformanceTest(
   extra: Record<string, string> = {},
 ): Promise<{ code: number | null; result: PerfResult | null; log: string }> {
@@ -32,6 +69,8 @@ function runPerformanceTest(
   for (const [k, v] of Object.entries(process.env))
     if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') env[k] = v;
   Object.assign(env, { DRASHTI_SELFTEST: 'performance', DRASHTI_NO_QUIT_CONFIRM: '1' }, extra);
+  const load = handicap();
+  if (load.what) console.log(load.what);
   return new Promise((resolve) => {
     const child = spawn(electron, ['.'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
     let log = '';
@@ -40,6 +79,7 @@ function runPerformanceTest(
     const timer = setTimeout(() => child.kill(), 240_000);
     child.on('exit', (code) => {
       clearTimeout(timer);
+      load.stop();
       const line = log.split('\n').find((l) => l.startsWith('DRASHTI_PERFTEST_RESULT '));
       resolve({
         code,
