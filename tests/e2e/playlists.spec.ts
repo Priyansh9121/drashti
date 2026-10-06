@@ -82,7 +82,11 @@ test('playlists: imported ones with their placeholders, and building one by drag
 
   const panel = win.getByTestId('playlists');
   const tree = panel.getByTestId('playlist-tree');
-  const node = (name: string) => tree.getByTestId('playlist-node').filter({ hasText: name });
+  // By the start of its words: a playlist's row also says its folder (", in Services") to screen readers.
+  const node = (name: string) =>
+    tree
+      .getByTestId('playlist-node')
+      .filter({ hasText: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`, 'u') });
   const items = panel.getByTestId('playlist-item');
   const presentations = win.getByTestId('presentation-list');
 
