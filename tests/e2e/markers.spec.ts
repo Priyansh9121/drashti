@@ -25,6 +25,13 @@ async function audioPage(app: ElectronApplication): Promise<Page> {
 }
 
 const FRAME = 1 / 30;
+/**
+ * How near the sound must be to the screens. A clip going round (or a jump) lands by seeking,
+ * and a sound is then put right gently (never faster than 2%, so it is never heard): for a
+ * moment after it can be a few frames out. Within 0.15 s is inside what broadcasters accept
+ * (ITU-R BT.1359: up to about 90 ms early and 185 ms late); the screens must agree to two frames.
+ */
+const SOUND_MARGIN = 0.15;
 
 interface Timing {
   startedAt: number;
@@ -161,7 +168,7 @@ test('a background loops between its points; a jump to a marker lands in step on
     if (bg?.kind !== 'media' || !bg.clip) throw new Error('no clip');
     return { startedAt: bg.startedAt, clip: bg.clip, ...(bg.seek ? { seek: bg.seek } : {}) };
   };
-  /** Wait until the three copies are within two frames of each other and each near the clock. */
+  /** Wait until the two screens are within two frames of each other, the sound near them, and each near the clock. */
   const inStep = async (t: Timing) => {
     const end = Date.now() + 15_000;
     for (;;) {
@@ -170,11 +177,14 @@ test('a background loops between its points; a jump to a marker lands in step on
         offsetOf(b, picture, t),
         offsetOf(audio, sound, t),
       ]);
-      const known = offsets.filter((o): o is number => o !== null);
+      const [pa, pb, heard] = offsets;
       if (
-        known.length === 3 &&
-        known.every((o) => Math.abs(o) < 0.25) &&
-        Math.max(...known) - Math.min(...known) < 2 * FRAME
+        pa != null &&
+        pb != null &&
+        heard != null &&
+        [pa, pb, heard].every((o) => Math.abs(o) < 0.25) &&
+        Math.abs(pa - pb) < 2 * FRAME &&
+        Math.abs(heard - (pa + pb) / 2) < SOUND_MARGIN
       )
         return;
       if (Date.now() > end) throw new Error(`Not in step after 15 s. Offsets ${JSON.stringify(offsets)}`);
