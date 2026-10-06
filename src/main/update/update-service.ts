@@ -299,7 +299,8 @@ export class UpdateService {
     if (this.deps.installer.mode !== 'at-quit') return;
     this.deps.log('info', 'Updates: installing as Drashti quits');
     rmSync(join(this.deps.dir, PENDING), { force: true });
-    this.deps.installer.atQuit(this.downloaded);
+    const ran = this.deps.installer.atQuit(this.downloaded);
+    if (!ran.ok) this.deps.log('warn', `Updates: not installed: ${ran.message}`);
   }
 
   /** An admin allows a look once a day (never a download), or not. */
