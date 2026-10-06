@@ -22,6 +22,8 @@ import { freePort, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
 import { makeTestImage, makeTestTone, makeTestVideo } from './test-media';
 import { launchMain, launchNode, nodeCode, nodeView, pairNode, typePairing } from './nodes';
 import { releaseServer } from './release-server';
+import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
+import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
 
 /*
  * The screenshots in docs/screenshots/, with placeholder content only. Taken
@@ -1230,4 +1232,52 @@ test('updates: the Updates dialog, the status bar, and a node offering to match 
     await main.app.close();
     mains.close();
   }
+});
+
+test('PDF and PowerPoint as pictures: the import report and the slides (Session 15)', async () => {
+  test.setTimeout(150_000);
+  const { app } = await launchApp({ DRASHTI_TEST_NO_CONVERTER: '1' });
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await setUpScreen(win, 'Main Hall', 0);
+  const output = await outputPage(app);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-shots-pictures-'));
+  const pdf = join(dir, 'Placeholder announcements.pdf');
+  writeFileSync(
+    pdf,
+    makeTestPdf([
+      {
+        width: 960,
+        height: 540,
+        color: [30, 58, 138],
+        text: 'Placeholder page one',
+        note: 'Placeholder note, page one',
+      },
+      { width: 720, height: 540, color: [127, 29, 29], text: 'Placeholder page two' },
+      { width: 960, height: 540, color: [20, 83, 45], text: 'Placeholder page three' },
+    ]),
+  );
+  const deck = join(dir, 'Placeholder deck.pptx');
+  writeFileSync(
+    deck,
+    makeTestPptx([{ color: '1E3A8A', text: 'Placeholder slide', notes: 'Placeholder note' }]),
+  );
+  await dropFiles(win, win.getByTestId('library-drop'), [pdf, deck]);
+  const report = win.getByTestId('import-report');
+  await expect(report).toBeVisible({ timeout: 60_000 });
+  await expect(report).toContainText('became a slide holding its picture');
+  await shot(win, 'pictures-report');
+  await report
+    .getByTestId('report-item')
+    .filter({ hasText: 'Placeholder announcements' })
+    .first()
+    .getByRole('button', { name: 'Open' })
+    .click();
+  await expect(report).toHaveCount(0);
+  await win.getByTestId('slide-thumb').nth(1).click();
+  await expect(win.getByTestId('live-text')).toContainText('slide 2 of 3');
+  await shot(win, 'pictures-slides');
+  await shot(output, 'output-pictures-page');
+  await app.close();
 });
