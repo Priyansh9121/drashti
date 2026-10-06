@@ -10,8 +10,9 @@ import { setUpPlaceholderShow } from './placeholder-show';
  * Accessibility of what is seen (Session 15, WCAG 2.2 AA): the text made
  * larger (200%) loses no control, in Pro Mode, Simple Mode and a dialog;
  * with the computer set to reduce motion, the interface's transitions stop;
- * and axe at 1280 x 720 on the screens other specs do not open, and on every
- * tab of the phone remote at 375 x 812 (axe's target-size check included).
+ * and axe at 1280 x 720 on the screens other specs do not open (Themes, the
+ * words editor, the slide editor's picture picker), and on every tab of the
+ * phone remote at 375 x 812 (axe's target-size check included).
  */
 
 /** Zoom the operator window as View > Zoom In does (1 is 100%). */
@@ -114,11 +115,12 @@ test('with the computer set to reduce motion, the interface does not move', asyn
   await app.close();
 });
 
-test('axe at 1280 x 720 on Themes and the words editor', async () => {
+test('axe at 1280 x 720 on Themes, the words editor and the slide editor’s picture picker', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
+  await setUpPlaceholderShow(win, { video: false });
   await win.getByRole('button', { name: 'Themes', exact: true }).click();
   await expect(win.getByTestId('themes-panel')).toBeVisible();
   await expectNoSeriousA11yIssues(win, 'Themes');
@@ -130,6 +132,14 @@ test('axe at 1280 x 720 on Themes and the words editor', async () => {
   await win.getByRole('button', { name: 'Edit words' }).click();
   await expect(win.getByTestId('words-editor')).toBeVisible();
   await expectNoSeriousA11yIssues(win, 'the words editor');
+  await win.keyboard.press('Escape');
+  await expect(win.getByTestId('words-editor')).toHaveCount(0);
+  await win.getByTestId('edit-slides').click();
+  const editor = win.getByTestId('slide-editor');
+  await expect(editor.getByTestId('editor-canvas')).toBeVisible();
+  await editor.getByTestId('add-media').click();
+  await expect(win.getByTestId('media-picker').getByTestId('media-choice').first()).toBeVisible();
+  await expectNoSeriousA11yIssues(win, 'the slide editor’s picture and video picker');
   await app.close();
 });
 
