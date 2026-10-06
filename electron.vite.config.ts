@@ -1,4 +1,5 @@
-import { resolve } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { defineConfig } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -13,6 +14,29 @@ function devInlineScripts(): Plugin {
     name: 'drashti-dev-inline-scripts',
     apply: 'serve',
     transformIndexHtml: (html) => html.replace("script-src 'self'", "script-src 'self' 'unsafe-inline'"),
+  };
+}
+
+/**
+ * pdf.js's own data for the pictures window (Session 15): the fonts a PDF can name without embedding
+ * them (with their licences) and its image decoders, copied into the build as they are. The window
+ * gets them through the bridge (src/main/pictures/pdf-pictures.ts), never by fetching.
+ */
+function pdfjsData(): Plugin {
+  return {
+    name: 'drashti-pdfjs-data',
+    apply: 'build',
+    generateBundle() {
+      for (const folder of ['standard_fonts', 'wasm']) {
+        const dir = resolve('node_modules/pdfjs-dist', folder);
+        for (const name of readdirSync(dir))
+          this.emitFile({
+            type: 'asset',
+            fileName: `pdfjs/${folder}/${name}`,
+            source: readFileSync(join(dir, name)),
+          });
+      }
+    },
   };
 }
 
@@ -56,7 +80,7 @@ export default defineConfig({
   },
   renderer: {
     root: resolve('src/renderer'),
-    plugins: [react(), tailwindcss(), devInlineScripts()],
+    plugins: [react(), tailwindcss(), devInlineScripts(), pdfjsData()],
     build: {
       // The network's pages run in phones' browsers too: Safari 16.4 on an iPhone is the oldest
       // (Tailwind's styles need it), so the code is built for that as well as Electron's Chromium.
@@ -77,6 +101,8 @@ export default defineConfig({
           remote: resolve('src/renderer/remote.html'),
           'stage-display': resolve('src/renderer/stage-display.html'),
           announce: resolve('src/renderer/announce.html'),
+          // The hidden window that draws a PDF's pages as pictures (Session 15).
+          pdf: resolve('src/renderer/pdf.html'),
         },
       },
     },

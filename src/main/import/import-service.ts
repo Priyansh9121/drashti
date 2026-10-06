@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { ImportOptions, ImportProgress, ImportResult, ImportRunSummary } from '../../shared/import';
+import type { PicturesResult } from '../../shared/pictures';
 import type { FromWorker, StartMessage, ToWorker } from './protocol';
 
 /*
@@ -25,6 +26,8 @@ export interface ImportServiceDeps {
   onFinished(run: ImportRunSummary | null): void;
   /** Record a run as failed (its worker died or could not start). */
   failRun(runId: string, paths: string[], message: string): void;
+  /** Draw a PDF's pages as pictures for the worker (Session 15): it cannot open the window that draws. */
+  drawPdf?(pdf: string, outDir: string, signal: AbortSignal): Promise<PicturesResult>;
   log(level: 'info' | 'warn', message: string): void;
 }
 
@@ -39,7 +42,7 @@ interface Job {
 
 export class ImportService {
   private readonly queue: Job[] = [];
-  private active: { job: Job; worker: WorkerProcess } | null = null;
+  private active: { job: Job; worker: WorkerProcess; drawing: AbortController } | null = null;
 
   constructor(private readonly deps: ImportServiceDeps) {}
 
@@ -81,6 +84,8 @@ export class ImportService {
     }
     if (this.active?.job.runId === runId) {
       this.active.worker.postMessage({ type: 'cancel', runId });
+      // A PDF being drawn for it stops too.
+      this.active.drawing.abort();
       return true;
     }
     return false;
@@ -108,12 +113,13 @@ export class ImportService {
       this.next();
       return;
     }
-    const active = { job, worker };
+    const active = { job, worker, drawing: new AbortController() };
     this.active = active;
     let settled = false;
     const settle = (result: ImportResult, run: ImportRunSummary | null) => {
       if (settled) return;
       settled = true;
+      active.drawing.abort();
       if (this.active === active) this.active = null;
       // The result is the worker's last message (it has closed the library by then): stop it.
       worker.kill();
@@ -129,6 +135,17 @@ export class ImportService {
         case 'wrote':
           this.deps.onWrote({ presentationId: m.presentationId, replaced: m.replaced });
           break;
+        case 'draw-pdf': {
+          const drawn = this.deps.drawPdf
+            ? this.deps.drawPdf(m.pdf, m.outDir, active.drawing.signal)
+            : Promise.resolve<PicturesResult>({ ok: false, message: 'Pictures cannot be made here.' });
+          void drawn
+            .catch((error: unknown): PicturesResult => ({ ok: false, message: String(error) }))
+            .then((result) => {
+              if (!settled) worker.postMessage({ type: 'drawn', requestId: m.requestId, result });
+            });
+          break;
+        }
         case 'finished':
           this.deps.log(
             'info',

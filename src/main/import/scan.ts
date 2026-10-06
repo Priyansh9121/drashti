@@ -2,6 +2,7 @@ import type { Dirent } from 'node:fs';
 import { lstat, readdir, stat } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import type { ImportFormat } from '../../shared/import';
+import { pictureSourceOf } from '../../shared/pictures';
 
 export type MediaKind = 'image' | 'video' | 'audio';
 
@@ -31,6 +32,8 @@ export function formatOf(path: string): ImportFormat {
   const ext = extOf(path);
   if (ext === 'txt') return 'text';
   if (MEDIA[ext]) return 'media';
+  // PDF, PowerPoint and Keynote files become pictures (Session 15).
+  if (pictureSourceOf(ext)) return 'pictures';
   if (PP6.has(ext)) return 'pp6';
   if (PP7.has(ext)) return 'pp7';
   // ProPresenter 7 keeps themes and playlists in files without an extension.

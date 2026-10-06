@@ -1,4 +1,6 @@
 import Database from 'better-sqlite3';
+import { randomUUID } from 'node:crypto';
+import type { PicturesResult } from '../../shared/pictures';
 import type { ImportProgress } from '../../shared/import';
 import { constants, setPriority } from 'node:os';
 import { sep } from 'node:path';
@@ -31,6 +33,14 @@ const cancelled = new Set<string>();
 const post = (message: FromWorker) => {
   port.postMessage(message);
 };
+/** PDFs the main process is drawing for this import (Session 15), by request. */
+const drawing = new Map<string, (result: PicturesResult) => void>();
+const drawPdf = (pdf: string, outDir: string): Promise<PicturesResult> =>
+  new Promise((resolve) => {
+    const requestId = randomUUID();
+    drawing.set(requestId, resolve);
+    post({ type: 'draw-pdf', requestId, pdf, outDir });
+  });
 
 function openLibrary(file: string, expected: number): Db {
   const db = new Database(file);
@@ -76,6 +86,8 @@ async function start(message: StartMessage): Promise<void> {
             paths: message.paths,
             options: message.options,
             timings,
+            drawPdf,
+            converters: message.converters !== false,
             onWrote: (wrote) => {
               post({ type: 'wrote', runId: message.runId, ...wrote });
             },
@@ -100,5 +112,8 @@ async function start(message: StartMessage): Promise<void> {
 port.on('message', (event) => {
   const message = event.data as ToWorker;
   if (message.type === 'cancel') cancelled.add(message.runId);
-  else void start(message);
+  else if (message.type === 'drawn') {
+    drawing.get(message.requestId)?.(message.result);
+    drawing.delete(message.requestId);
+  } else void start(message);
 });

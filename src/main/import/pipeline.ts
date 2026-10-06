@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, sep } from 'node:path';
@@ -49,6 +50,20 @@ const counted = (n: number, one: string): string => `${n.toLocaleString('en')} $
 import { TRANSLIT_STYLES, type TranslitStyle } from '../../shared/translit';
 import { unplayableIssue } from './probe';
 import { extOf, formatOf, type ScannedFile, scanPaths } from './scan';
+import type { PicturesResult } from '../../shared/pictures';
+import { pictureSourceOf } from '../../shared/pictures';
+import {
+  type Converter,
+  convertToPdf,
+  converterFor,
+  findConverters,
+  noConverterMessage,
+  notesForPages,
+  picturesIssues,
+  picturesPresentation,
+  type PptxSlide,
+  readPptx,
+} from './pictures';
 import { extractZip } from './zip';
 
 /*
@@ -64,6 +79,8 @@ import { extractZip } from './zip';
 
 /** Lyrics files bigger than this are not read. */
 export const MAX_TEXT_BYTES = 5 * 1024 * 1024;
+/** PDF, PowerPoint and Keynote files bigger than this are not made into pictures. */
+export const MAX_PICTURES_BYTES = 1024 * 1024 * 1024;
 /** Presentation and playlist files bigger than this are not read (they are XML or protobuf, not media). */
 export const MAX_DOCUMENT_BYTES = 200 * 1024 * 1024;
 /** Inside a bundle, a file's source path is the bundle's path, this, and the file's path inside it. */
@@ -91,9 +108,13 @@ export interface PipelineContext {
   batchBudgetMs?: number;
   /** Where bundles are unpacked (default: the system's temporary folder). */
   tempDir?: string;
+  /** Draws a PDF's pages as pictures (the main process does, in a window; Session 15). */
+  drawPdf?: (pdf: string, outDir: string) => Promise<PicturesResult>;
+  /** Whether Keynote or PowerPoint may save PowerPoint and Keynote files as PDF (default yes). */
+  converters?: boolean;
 }
 
-type SourceKind = 'text' | 'pp6' | 'pp7';
+type SourceKind = 'text' | 'pp6' | 'pp7' | 'pictures';
 
 /** Where a file is being imported from, and where to look for what it names. */
 interface Where {
@@ -131,6 +152,14 @@ const SUPPORT_EXTENSIONS: Record<string, string> = { pro6dvd: 'DVD clip lists ar
 
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
+/** A big file's sha256, read a piece at a time. */
+async function fileSha256(path: string): Promise<string> {
+  const hash = createHash('sha256');
+  for await (const chunk of createReadStream(path, { highWaterMark: 1024 * 1024 }))
+    hash.update(chunk as Buffer);
+  return hash.digest('hex');
+}
+
 /** How transliteration is made (the setting kirtans use too): plain letters until the operator chooses marks. */
 function storedTranslitStyle(db: Db): TranslitStyle {
   const value = new SettingsRepo(db).get('translitStyle');
@@ -146,7 +175,8 @@ export function importOrder(file: ScannedFile): number {
   if (pp7 === 'playlist') return 3;
   if (file.format === 'text' || ext === 'pro6' || ext === 'pro6template' || pp7 !== null) return 0;
   if (file.format === 'media') return 1;
-  if (ext === 'pro6x' || ext === 'probundle') return 2;
+  // PDF, PowerPoint and Keynote files take a while (saved as PDF, drawn): after the quick ones.
+  if (ext === 'pro6x' || ext === 'probundle' || file.format === 'pictures') return 2;
   if (ext === 'pro6pl' || ext === 'pro6plx' || ext === 'proplaylist') return 3;
   return 4;
 }
@@ -350,7 +380,11 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     const issues: ImportIssue[] = [];
     let marked = 0;
     for (const s of staged) {
-      const source = { kind, path: s.ref.originalPath };
+      // A page drawn from a document is a picture Drashti made, from that page.
+      const source = {
+        kind: kind === 'pictures' ? ('drashti' as const) : kind,
+        path: s.ref.sourcePath ?? s.ref.originalPath,
+      };
       if (s.staged) {
         const stored = ctx.media.addStaged(s.staged, source);
         ids.push(stored.mediaId);
@@ -381,17 +415,27 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
 
   // ---- presentations ----------------------------------------------------------------
 
-  const importPresentation = async (
+  /** An earlier import of the same file decides what happens to this one: null when it is done with. */
+  interface Decided {
+    latest: { id: string; name: string } | null;
+    choice: ConflictChoice | null;
+  }
+
+  /**
+   * Whether a presentation file goes ahead: unchanged since it was imported (skipped), changed (the
+   * operator chooses, or has chosen), or new. Recorded when it goes no further.
+   */
+  const decideEarlier = (
     file: ScannedFile,
     where: Where,
     kind: SourceKind,
+    ref: string | null,
     hash: string,
-    parsed: ParsedPresentation,
-  ) => {
+  ): Decided | null => {
     const fileName = basename(file.path);
     const base = { sourcePath: where.sourcePath, format: kind, counts: NO_COUNTS };
     const t = performance.now();
-    const earlier = presentations.findImported(kind, parsed.ref, where.sourcePath);
+    const earlier = presentations.findImported(kind, ref, where.sourcePath);
     const same =
       earlier.find((e) => e.sourceHash === hash) ??
       (earlier.length === 0 ? presentations.findByHash(kind, hash) : null);
@@ -409,7 +453,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         issues: [],
       });
       remember(where, file, same.id);
-      return;
+      return null;
     }
     const latest = earlier[0] ?? null;
     let choice: ConflictChoice | null = null;
@@ -432,7 +476,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           ],
         });
         remember(where, file, latest.id);
-        return;
+        return null;
       }
       if (decided === 'skip') {
         record({
@@ -444,10 +488,25 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           issues: [],
         });
         remember(where, file, latest.id);
-        return;
+        return null;
       }
       choice = decided;
     }
+    return { latest, choice };
+  };
+
+  const importPresentation = async (
+    file: ScannedFile,
+    where: Where,
+    kind: SourceKind,
+    hash: string,
+    parsed: ParsedPresentation,
+    decidedAlready?: Decided,
+  ) => {
+    const base = { sourcePath: where.sourcePath, format: kind, counts: NO_COUNTS };
+    const decided = decidedAlready ?? decideEarlier(file, where, kind, parsed.ref, hash);
+    if (!decided) return;
+    const { latest, choice } = decided;
     if (kind === 'text' && slideCount(parsed) === 0) {
       record({
         ...base,
@@ -537,6 +596,97 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       },
     );
     if (result) remember(where, file, result.wrote.presentationId);
+  };
+
+  /**
+   * A PDF, PowerPoint or Keynote file as pictures (Session 15): saved as PDF by Keynote or PowerPoint
+   * when it is not one, its pages drawn by the main process, then one slide per page.
+   */
+  const importPictures = async (file: ScannedFile, where: Where) => {
+    const fileName = basename(file.path);
+    const source = pictureSourceOf(extOf(file.path));
+    const fail = (code: string, message: string) => {
+      failed(where, 'pictures', fileName, message, [{ severity: 'error', code, message, fix: null }]);
+    };
+    if (!source || !ctx.drawPdf) {
+      fail('pictures-unavailable', 'Drashti cannot make pictures of this file here.');
+      return;
+    }
+    if (file.size > MAX_PICTURES_BYTES) {
+      fail(
+        'too-large',
+        `${fileName} is ${formatBytes(file.size)}: files over 1 GB are not made into pictures.`,
+      );
+      return;
+    }
+    let t = performance.now();
+    const hash = await fileSha256(file.path);
+    time('read', t);
+    // Unchanged since it was imported, or waiting for the operator's choice: nothing to draw.
+    const decided = decideEarlier(file, where, 'pictures', null, hash);
+    if (!decided) return;
+    const work = await mkdtemp(join(ctx.tempDir ?? tmpdir(), 'drashti-pictures-'));
+    try {
+      let pdf = file.path;
+      let converter: Converter | null = null;
+      let slides: PptxSlide[] | null = null;
+      if (source === 'pptx') {
+        try {
+          slides = await readPptx(file.path);
+        } catch {
+          // Its own slides cannot be read here: whatever saves it as PDF may still read it.
+        }
+      }
+      if (source !== 'pdf') {
+        converter =
+          ctx.converters === false ? null : converterFor(source, process.platform, await findConverters());
+        if (!converter) {
+          fail('pictures-no-converter', noConverterMessage(source));
+          return;
+        }
+        t = performance.now();
+        const converted = await convertToPdf(converter, file.path, work);
+        time('parse', t);
+        if (!converted.ok) {
+          fail('pictures-not-converted', converted.message);
+          return;
+        }
+        pdf = converted.pdf;
+        // The file's own notes when it could be read; otherwise what the converter told.
+        if (!slides?.some((sl) => sl.notes !== '') && converted.slides) slides = converted.slides;
+      }
+      t = performance.now();
+      const drawn = await ctx.drawPdf(pdf, join(work, 'pages'));
+      time('parse', t);
+      if (!drawn.ok) {
+        fail('pictures-not-drawn', drawn.message);
+        return;
+      }
+      const notes = slides ? notesForPages(slides, drawn.total) : null;
+      const parsed = picturesPresentation(
+        fileName,
+        drawn,
+        drawn.pages.map((p) => notes?.[p.index] ?? ''),
+      );
+      parsed.media = parsed.media.map((m, i) => ({
+        ...m,
+        sourcePath: `${where.sourcePath}#page=${String((drawn.pages[i]?.index ?? i) + 1)}`,
+      }));
+      const shown = slides?.filter((sl) => !sl.hidden) ?? [];
+      parsed.issues = picturesIssues({
+        source,
+        converter,
+        pages: drawn.pages.length,
+        total: drawn.total,
+        failed: drawn.failed,
+        withNotes: parsed.groups.flatMap((g) => g.slides).filter((sl) => sl.notes !== '').length,
+        animated: shown.filter((sl) => sl.animated).length,
+        notesUnmatched: slides !== null && notes === null && slides.some((sl) => sl.notes !== ''),
+      });
+      await importPresentation(file, where, 'pictures', hash, parsed, decided);
+    } finally {
+      await rm(work, { recursive: true, force: true });
+    }
   };
 
   const importText = async (file: ScannedFile, where: Where) => {
@@ -1168,6 +1318,9 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         return;
       case 'media':
         await importMedia(file, where);
+        return;
+      case 'pictures':
+        await importPictures(file, where);
         return;
       case 'pp6':
         if (ext === 'pro6x' || ext === 'pro6plx') await importBundle(file, where, 'pp6');

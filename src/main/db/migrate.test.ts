@@ -103,6 +103,97 @@ describe('migrations', () => {
     old.close();
   });
 
+  it('upgrade a version 34 library for pictures (Session 15), keeping every presentation and report as it was', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-db-'));
+    const file = join(dir, 'drashti.sqlite');
+    const v34 = openDatabase(
+      file,
+      MIGRATIONS.filter((m) => m.version <= 34),
+    );
+    v34.prepare("INSERT INTO libraries (id, name) VALUES ('l', 'Default')").run();
+    const add = v34.prepare(
+      `INSERT INTO presentations (id, library_id, name, source_kind, source_path, source_hash, slide_count, deleted_at)
+       VALUES (?, 'l', ?, ?, ?, ?, ?, ?)`,
+    );
+    add.run('a', 'Placeholder A', 'pp7', '/library/a.pro', 'hash-a', 3, null);
+    add.run('b', 'Placeholder B', 'text', '/library/b.txt', 'hash-b', 1, '2026-10-01T00:00:00.000Z');
+    v34
+      .prepare("INSERT INTO slide_groups (id, presentation_id, name, position) VALUES ('g', 'a', 'Verse', 0)")
+      .run();
+    v34
+      .prepare(
+        "INSERT INTO kirtans (presentation_id, category, kavi) VALUES ('a', 'Kirtan', 'Placeholder kavi')",
+      )
+      .run();
+    v34.prepare("INSERT INTO search_docs (presentation_id, lines) VALUES ('a', '[]')").run();
+    v34.prepare("INSERT INTO import_runs (id, status, paths) VALUES ('r', 'done', '[]')").run();
+    v34
+      .prepare(
+        "INSERT INTO import_items (id, run_id, position, source_path, format, outcome, target_kind, target_id) VALUES ('i', 'r', 0, '/library/a.pro', 'pp7', 'imported', 'presentation', 'a')",
+      )
+      .run();
+    v34
+      .prepare(
+        "INSERT INTO import_issues (item_id, severity, code, message) VALUES ('i', 'info', 'kirtan', 'Placeholder issue')",
+      )
+      .run();
+    const before = v34.prepare('SELECT rowid, * FROM presentations ORDER BY rowid').all();
+    const itemsBefore = v34.prepare('SELECT rowid, * FROM import_items').all();
+    v34.close();
+
+    const db = openDatabase(file);
+    expect(schemaVersion(db)).toBe(LATEST_VERSION);
+    expect(db.prepare('SELECT rowid, * FROM presentations ORDER BY rowid').all()).toEqual(before);
+    expect(db.prepare('SELECT rowid, * FROM import_items').all()).toEqual(itemsBefore);
+    expect(db.prepare("SELECT kirtan FROM presentations WHERE id = 'a'").get()).toEqual({
+      kirtan: expect.stringContaining('Placeholder kavi') as unknown,
+    });
+    expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    expect(db.pragma('integrity_check', { simple: true })).toBe('ok');
+    const indexes = (
+      db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name IN ('presentations', 'import_items')",
+        )
+        .all() as {
+        name: string;
+      }[]
+    ).map((r) => r.name);
+    expect(indexes).toEqual(
+      expect.arrayContaining([
+        'presentations_by_library',
+        'presentations_by_source',
+        'presentations_by_source_ref',
+        'presentations_by_source_hash',
+        'presentations_removed',
+        'presentations_listed',
+        'import_items_by_run',
+      ]),
+    );
+    // The kirtans' triggers still reach the rebuilt table; deleting cascades as before.
+    db.prepare("UPDATE kirtans SET kavi = 'Another placeholder' WHERE presentation_id = 'a'").run();
+    expect(db.prepare("SELECT kirtan FROM presentations WHERE id = 'a'").get()).toEqual({
+      kirtan: expect.stringContaining('Another placeholder') as unknown,
+    });
+    // Pictures may come in now.
+    db.prepare(
+      "INSERT INTO presentations (id, library_id, name, source_kind, source_path) VALUES ('c', 'l', 'Placeholder deck', 'pictures', '/library/deck.pdf')",
+    ).run();
+    db.prepare(
+      "INSERT INTO import_items (id, run_id, position, source_path, format, outcome) VALUES ('j', 'r', 1, '/library/deck.pdf', 'pictures', 'imported')",
+    ).run();
+    db.prepare("DELETE FROM presentations WHERE id = 'a'").run();
+    expect(db.prepare("SELECT COUNT(*) AS n FROM slide_groups WHERE presentation_id = 'a'").get()).toEqual({
+      n: 0,
+    });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM search_docs WHERE presentation_id = 'a'").get()).toEqual({
+      n: 0,
+    });
+    db.prepare("DELETE FROM import_items WHERE id = 'i'").run();
+    expect(db.prepare('SELECT COUNT(*) AS n FROM import_issues').get()).toEqual({ n: 0 });
+    db.close();
+  });
+
   it('upgrade a version 1 library to the latest schema, keeping its presentations', () => {
     const dir = mkdtempSync(join(tmpdir(), 'drashti-db-'));
     const file = join(dir, 'drashti.sqlite');

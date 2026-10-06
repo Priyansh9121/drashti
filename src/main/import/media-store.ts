@@ -40,7 +40,11 @@ export type MediaImportResult =
     }
   | { outcome: 'failed'; issue: ImportIssue };
 
-type MediaSource = Pick<ImportSource, 'kind'> & { path: string; ref?: string | null };
+/** Where a media item came from: pictures drawn from a document are Drashti's own ('drashti'). */
+type MediaSource = { kind: Exclude<ImportSource['kind'], 'pictures'> } & {
+  path: string;
+  ref?: string | null;
+};
 
 /** A file whose bytes are in the media folder, before it has a library row. */
 export interface StagedMedia {

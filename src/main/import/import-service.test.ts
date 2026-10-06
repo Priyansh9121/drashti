@@ -193,3 +193,38 @@ describe('ImportService', () => {
     expect(workers[0]?.killed).toBe(true);
   });
 });
+
+describe('ImportService and pictures (Session 15)', () => {
+  it('has the main process draw a PDF for the worker, and stops the drawing when the run is cancelled', async () => {
+    const asked: { pdf: string; outDir: string; signal: AbortSignal }[] = [];
+    let answer: (result: { ok: false; message: string }) => void = () => undefined;
+    const { service, workers } = setup({
+      drawPdf: (pdf, outDir, signal) => {
+        asked.push({ pdf, outDir, signal });
+        return new Promise((resolve) => {
+          answer = resolve;
+        });
+      },
+    });
+    const done = service.start(['/decks']);
+    const w = workers[0];
+    if (!w) throw new Error('no worker');
+    w.emit({ type: 'draw-pdf', requestId: 'r1', pdf: '/decks/a.pdf', outDir: '/tmp/pages' });
+    expect(asked.map((a) => [a.pdf, a.outDir])).toEqual([['/decks/a.pdf', '/tmp/pages']]);
+    answer({ ok: false, message: 'Placeholder reason.' });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(w.sent.at(-1)).toEqual({
+      type: 'drawn',
+      requestId: 'r1',
+      result: { ok: false, message: 'Placeholder reason.' },
+    });
+    // Cancelling the run stops a drawing under way.
+    w.emit({ type: 'draw-pdf', requestId: 'r2', pdf: '/decks/b.pdf', outDir: '/tmp/pages-b' });
+    expect(asked[1]?.signal.aborted).toBe(false);
+    service.cancel(w.runId);
+    expect(asked[1]?.signal.aborted).toBe(true);
+    w.emit({ type: 'finished', run: summary(w.runId) });
+    await done;
+  });
+});

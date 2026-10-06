@@ -146,6 +146,8 @@ import { ScreensService } from './outputs/screens-service';
 import { SleepGuard } from './outputs/sleep-guard';
 import { IpcTransport } from './transport/ipc-transport';
 import { AUDIO_PARTITION, createAudioWindow } from './windows/audio-window';
+import { createPicturesWindow } from './pictures/pictures-window';
+import { PdfPictures, pictureSize } from './pictures/pdf-pictures';
 import { openGalleryWindow } from './windows/gallery-window';
 import { createOperatorWindow } from './windows/operator-window';
 import { RendererWatchdog, shouldConfirmQuit } from './watchdog';
@@ -448,6 +450,11 @@ const IMPORTABLE_EXTENSIONS = [
   'wav',
   'm4a',
   'aiff',
+  // PDF, PowerPoint and Keynote files, as pictures (Session 15).
+  'pdf',
+  'pptx',
+  'ppt',
+  'key',
 ];
 const notAllowed = { ok: false as const, message: 'Only the operator window can change the screens.' };
 
@@ -1315,9 +1322,41 @@ function start(): void {
       nodeService?.libraryChanged();
     }
   };
+  // ---- PDF, PowerPoint and Keynote as pictures (Session 15) --------------------------------------
+  // The import worker asks; a hidden window of its own draws each page with pdf.js.
+  const pdfPictures = new PdfPictures({
+    open: createPicturesWindow,
+    size: () => pictureSize(screenRepo.allScreens(), screenRepo.firstGroup('audience')),
+    assetDirs: (kind) => {
+      const folder = kind === 'wasmUrl' ? 'wasm' : kind === 'cMapUrl' ? 'cmaps' : 'standard_fonts';
+      // The built app's copy; from the source, the package's own.
+      return [
+        join(rendererDir(), 'pdfjs', folder),
+        join(app.getAppPath(), 'node_modules', 'pdfjs-dist', folder),
+      ];
+    },
+    log: (message) => {
+      log.info(message);
+    },
+  });
+  handle(IPC.pictures.job, (e) => pdfPictures.job(e.sender));
+  handle(IPC.pictures.page, (e, page) => pdfPictures.page(e.sender, page));
+  handle(IPC.pictures.done, (e, done) => {
+    pdfPictures.done(e.sender, done);
+    return null;
+  });
+  handle(IPC.pictures.asset, (e, kind, name) => pdfPictures.asset(e.sender, kind, name));
   const imports = new ImportService({
     spawn: spawnImportWorker,
-    worker: { dbFile: libraryFile(), mediaDir, userDataDir, schemaVersion: LATEST_VERSION },
+    worker: {
+      dbFile: libraryFile(),
+      mediaDir,
+      userDataDir,
+      schemaVersion: LATEST_VERSION,
+      // Tests only (never a packaged Drashti): as if no Keynote or PowerPoint were installed.
+      converters: app.isPackaged || process.env['DRASHTI_TEST_NO_CONVERTER'] !== '1',
+    },
+    drawPdf: (pdf, outDir, signal) => pdfPictures.draw(pdf, outDir, signal),
     onProgress: (progress) => {
       sendToOperator(IPC.library.importProgress, progress);
     },

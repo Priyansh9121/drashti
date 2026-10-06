@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      The hidden window that draws a PDF's pages as pictures (Session 15). pdf.js runs here, in the
+      page itself (no worker), and reads nothing from anywhere: the PDF and pdf.js's own data come
+      through the bridge. WebAssembly is for pdf.js's image decoders only.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' blob: data:; font-src 'self' blob: data:; media-src 'none'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>Drashti Pictures</title>
+  </head>
+  <body>
+    <script type="module" src="./src/pictures/main.ts"></script>
+  </body>
+</html>

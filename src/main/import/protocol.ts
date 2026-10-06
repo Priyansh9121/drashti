@@ -1,4 +1,5 @@
 import type { ImportOptions, ImportProgress, ImportRunSummary, ImportTimings } from '../../shared/import';
+import type { PicturesResult } from '../../shared/pictures';
 
 /* Messages between the main process and the import worker (a utility process). */
 
@@ -18,6 +19,8 @@ export interface StartMessage {
   userDataDir: string;
   /** The schema version the main process opened; the worker refuses any other. */
   schemaVersion: number;
+  /** Whether Keynote or PowerPoint may be asked to save files as PDF (tests can say no). */
+  converters?: boolean;
 }
 
 export interface CancelMessage {
@@ -25,10 +28,19 @@ export interface CancelMessage {
   runId: string;
 }
 
-export type ToWorker = StartMessage | CancelMessage;
+/** A PDF drawn as pictures by the main process (the worker cannot open a window), for its request. */
+export interface DrawnMessage {
+  type: 'drawn';
+  requestId: string;
+  result: PicturesResult;
+}
+
+export type ToWorker = StartMessage | CancelMessage | DrawnMessage;
 
 export type FromWorker =
   | { type: 'progress'; progress: ImportProgress }
+  /** Draw this PDF's pages as pictures into `outDir` (Session 15); the answer comes as 'drawn'. */
+  | { type: 'draw-pdf'; requestId: string; pdf: string; outDir: string }
   | { type: 'wrote'; runId: string; presentationId: string; replaced: boolean }
   | { type: 'finished'; run: ImportRunSummary; timings?: ImportTimings }
   | { type: 'failed'; runId: string; message: string };
