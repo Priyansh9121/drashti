@@ -85,7 +85,7 @@ import { MacroService } from './macros/macro-service';
 import { MacroScheduler } from './macros/macro-scheduler';
 import { AudioPlaylistRepo } from './db/audio-playlists';
 import { MusicService } from './music/music-service';
-import { startPerfMusic } from './music/perf-music';
+import { startPerfMusic, startPerfSoundCue } from './music/perf-music';
 import { musicPlaySchema } from '../shared/music';
 import type { MediaMarkers } from '../shared/markers';
 import { mediaMarkersSchema, NO_MARKERS } from '../shared/markers';
@@ -96,7 +96,8 @@ import { midiSettingsSchema, NO_MIDI } from '../shared/midi';
 import { seedPlaceholders, seedTemplates } from './db/seed';
 import { ShowEngine } from './engine/show-engine';
 import { runEngineCommand } from './ipc/engine-ipc';
-import { handle, handlerTimes, lockAdminChannels, lockChannels, refusedNow } from './ipc/handle';
+import { handle, handlerTimes, hearHandled, lockAdminChannels, lockChannels, refusedNow } from './ipc/handle';
+import { MainWatch, PerfProfile, watchedMedia } from './perf-watch';
 import { RolesService } from './roles/roles-service';
 import { adminRefusals } from './roles/admin-lock';
 import { ImportService } from './import/import-service';
@@ -272,8 +273,13 @@ const testBackupRate = app.isPackaged ? null : Number(process.env['DRASHTI_TEST_
 // network's server in the main process instead of its own.
 const perfDevices = Math.min(50, Math.max(0, Number(process.env['DRASHTI_PERF_DEVICES'] ?? 0) || 0));
 const perfNetworkInMain = process.env['DRASHTI_PERF_NETWORK_IN_MAIN'] === '1';
-// The performance check only: an audio playlist playing meanwhile (Session 14).
+// The performance check only: an audio playlist playing meanwhile (Session 14); or, to tell what costs
+// what (Session 15), one long sound on the audio layer instead, and slide changes with no import.
 const perfMusic = process.env['DRASHTI_PERF_MUSIC'] === '1';
+const perfSoundCue = process.env['DRASHTI_PERF_SOUND_CUE'] === '1';
+const perfNoImport = process.env['DRASHTI_PERF_NO_IMPORT'] === '1';
+// The performance check only: a CPU profile of the main process and a Chromium trace, kept in this folder.
+const perfProfileDir = perfTest ? process.env['DRASHTI_PERF_PROFILE'] : undefined;
 // The performance check only: so many output nodes following the show (and copying a file) meanwhile.
 const perfNodes = Math.min(50, Math.max(0, Number(process.env['DRASHTI_PERF_NODES'] ?? 0) || 0));
 // Tests only (never a packaged Drashti): the version this copy says it runs, to see Main and a node
@@ -318,6 +324,14 @@ const gc = { max: 0 };
 new PerformanceObserver((list) => {
   for (const entry of list.getEntries()) gc.max = Math.max(gc.max, entry.duration);
 }).observe({ entryTypes: ['gc'] });
+// The performance check's watch on the main process (Session 15): every gap in its event loop over
+// 100 ms, beside what went on (the audio layer, media requests, slow requests, the import).
+const perfWatch = perfTest ? new MainWatch() : null;
+perfWatch?.start();
+if (perfWatch)
+  hearHandled((channel, ms) => {
+    if (ms >= 5 || channel === IPC.media.reportLength) perfWatch.note(`answered ${channel}`, ms);
+  });
 // Readable from the main process in end-to-end tests.
 (globalThis as { drashtiDiagnostics?: unknown }).drashtiDiagnostics = {
   watchdog,
@@ -437,6 +451,7 @@ type PerfRun = Parameters<typeof runPerformanceTest>[0] & {
   library: { db: Db; mediaDir: string };
   operatorContents: () => Electron.WebContents | null;
   music: MusicService;
+  engine: ShowEngine;
 };
 
 /** The performance check with DRASHTI_PERF_NODES output nodes following the show meanwhile. */
@@ -482,10 +497,12 @@ async function runPerformanceTestWithDevices(ctx: PerfRun): ReturnType<typeof ru
   }
 }
 
-/** The performance check with an audio playlist playing meanwhile (DRASHTI_PERF_MUSIC=1). */
+/** The performance check with an audio playlist (DRASHTI_PERF_MUSIC=1) or a sound cue playing meanwhile. */
 async function runPerformanceTestWithMusic(ctx: PerfRun): ReturnType<typeof runPerformanceTest> {
-  if (!perfMusic) return runPerformanceTestWithStream(ctx);
-  const music = startPerfMusic(ctx.library.db, ctx.library.mediaDir, ctx.music);
+  if (!perfMusic && !perfSoundCue) return runPerformanceTestWithStream(ctx);
+  const music = perfSoundCue
+    ? startPerfSoundCue(ctx.library.db, ctx.library.mediaDir, ctx.engine)
+    : startPerfMusic(ctx.library.db, ctx.library.mediaDir, ctx.music);
   const result = await runPerformanceTestWithStream(ctx);
   music.stop();
   return { ...result, summary: `${result.summary}; ${music.summary()}` };
@@ -805,14 +822,16 @@ function start(): void {
     return found ? { name: found.name, missing: false, unplayable: null } : null;
   };
   const serveMedia = async (request: Request) => {
+    const started = performance.now();
     if (mediaDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, mediaDelayMs));
-    return handleMediaRequest(request, {
+    const response = await handleMediaRequest(request, {
       mediaDir,
       lookup: (id) => media.file(id),
       warn: (message) => {
         log.warn(message);
       },
     });
+    return perfWatch ? watchedMedia(perfWatch, request, started, response) : response;
   };
   // Every window's session: the default one, and the audio player's own.
   protocol.handle(MEDIA_SCHEME, serveMedia);
@@ -955,6 +974,18 @@ function start(): void {
   engine.onChange((state) => {
     liveWriter.update(state);
   });
+  if (perfWatch) {
+    // The performance check's timeline: what the audio layer plays (the music's tracks, a sound cue).
+    let heardAudio = '';
+    engine.onChange((state) => {
+      const a = state.layers.audio;
+      const now = a
+        ? `${(a.mediaId ?? '-').slice(0, 8)} from ${String(a.startedAt)}${a.music ? ` (track ${String(a.music.index + 1)})` : ''}${a.pausedAtMs === undefined ? '' : ' paused'}`
+        : 'clear';
+      if (now !== heardAudio) perfWatch.note(`audio layer ${now}`);
+      heardAudio = now;
+    });
+  }
   let recovery: RecoveryNotice | null = null;
   // A restored library starts with nothing live (the saved state belongs to the library before it).
   const saved = restored.restored ? null : toRestore(recoveryFiles, lookRepo.firstId());
@@ -1261,6 +1292,7 @@ function start(): void {
       sendToOperator(IPC.library.importProgress, progress);
     },
     onWrote: ({ presentationId, replaced }) => {
+      perfWatch?.note('import wrote a presentation');
       if (replaced) slides.invalidate(presentationId);
       libraryChanged();
     },
@@ -2880,6 +2912,10 @@ function start(): void {
         operatorContents: () =>
           operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow.webContents : null,
         music,
+        engine,
+        ...(perfWatch ? { watch: perfWatch } : {}),
+        ...(perfProfileDir ? { profile: new PerfProfile(perfProfileDir) } : {}),
+        ...(perfNoImport ? { noImportMs: 20_000 } : {}),
       }).then(
         (result) => {
           process.stdout.write(`DRASHTI_PERFTEST_RESULT ${JSON.stringify(result)}\n`);

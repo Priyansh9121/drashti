@@ -91,9 +91,12 @@ test('slide changes keep reaching the screen within a frame while streaming and 
     { stdio: 'ignore' },
   );
   try {
+    const profile = process.env['DRASHTI_PERF_PROFILE'];
     const { code, result, log } = await runPerformanceTest({
       DRASHTI_PERF_STREAM: `rtmp://127.0.0.1:${port}/live2`,
       DRASHTI_TEST_FAKE_DEVICES: '1',
+      // Its own profile, beside the first check's.
+      ...(profile ? { DRASHTI_PERF_PROFILE: `${profile}-stream` } : {}),
     });
     expect(result, log.slice(-3000)).not.toBeNull();
     console.log(result?.summary);
