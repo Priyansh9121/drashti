@@ -21,6 +21,7 @@ interface Focus {
   inView: boolean;
   testid: string;
   tag: string;
+  role: string;
 }
 
 /** Where the keyboard is, and whether its focus ring can be seen. */
@@ -45,7 +46,15 @@ function focusOf(page: Page): Promise<Focus | null> {
       r.top < innerHeight &&
       r.left < innerWidth;
     const name = (el.getAttribute('aria-label') ?? el.textContent).trim().replace(/\s+/gu, ' ').slice(0, 60);
-    return { name, region, ring, inView, testid: el.dataset['testid'] ?? '', tag: el.tagName.toLowerCase() };
+    return {
+      name,
+      region,
+      ring,
+      inView,
+      testid: el.dataset['testid'] ?? '',
+      tag: el.tagName.toLowerCase(),
+      role: el.getAttribute('role') ?? '',
+    };
   });
 }
 
@@ -88,6 +97,12 @@ const engine = (win: Page) =>
     return { rev: s.rev, state: s.state };
   });
 
+/** The slide on the screens: its presentation and place ('' with none). */
+async function slideOn(win: Page): Promise<string> {
+  const slide = (await engine(win)).state.layers.slide;
+  return slide ? `${slide.presentationId} #${String(slide.slideIndex)}` : '';
+}
+
 async function setUp(win: Page) {
   const show = await setUpPlaceholderShow(win, { video: false });
   await win.evaluate(async (logoId) => {
@@ -116,11 +131,11 @@ test('Pro Mode: the keyboard goes through the window as it is laid out, its focu
     stops.filter((s) => !s.inView).map((s) => `${s.region}: ${s.name}`),
     'stops out of sight',
   ).toEqual([]);
-  // Every stop is in a landmark, and the regions come as they are laid out: the header, the left
-  // column (playlists, then the library), the slides, the live column, the controls along the
-  // bottom, and the status bar.
+  // Every stop is in a landmark (but the dividers, which sit between them), and the regions come as
+  // they are laid out: the header, the left column (playlists, then the library), the slides, the
+  // live column, the controls along the bottom, and the status bar.
   expect(
-    stops.filter((s) => s.region === 'none').map((s) => s.name),
+    stops.filter((s) => s.region === 'none' && s.role !== 'separator').map((s) => s.name),
     'stops outside any landmark',
   ).toEqual([]);
   const order = regionOrder(stops);
@@ -270,27 +285,33 @@ test('the arrows a control uses itself never also move the slide on the screens'
     const id = (await d.library.listPresentations()).find((p) => p.name === 'Language test slides')?.id ?? '';
     await d.engine.dispatch({ type: 'goLive', presentationId: id, slideIndex: 0 });
   });
-  const before = (await engine(win)).rev;
+  const live = await slideOn(win);
+  expect(live).not.toBe('');
   // The library's tabs: the arrows go to the next tab.
   await tabTo(win, (f) => f.testid.startsWith('library-tab-'));
   await win.keyboard.press('ArrowRight');
   await expect.poll(async () => (await focusOf(win))?.testid).not.toBe('library-tab-presentations');
   await win.keyboard.press('ArrowLeft');
-  // A playlist's menu (Shift+F10): the arrows go through its choices.
+  expect(await slideOn(win), "the arrows between the library's tabs moved the show").toBe(live);
+  // A playlist's menu (Shift+F10, on every system): the arrows go through its choices.
   await tabTo(win, (f) => f.testid === 'playlist-node');
   await win.keyboard.press('Shift+F10');
   await expect(win.getByRole('menu')).toBeVisible();
+  await expect.poll(async () => (await focusOf(win))?.role).toBe('menuitem');
   await win.keyboard.press('ArrowDown');
   await win.keyboard.press('ArrowDown');
+  expect(await slideOn(win), "the arrows in a playlist's menu moved the show").toBe(live);
   await win.keyboard.press('Escape');
   await expect(win.getByRole('menu')).toHaveCount(0);
+  expect(await slideOn(win), 'Esc on a menu moved the show').toBe(live);
   // A divider between the columns: the arrows move it.
-  await tabTo(win, (f) => f.tag === 'div' && f.name.includes('Resize'));
+  await tabTo(win, (f) => f.role === 'separator');
   await win.keyboard.press('ArrowRight');
-  expect((await engine(win)).rev, 'no key a control used moved the show').toBe(before);
+  await win.keyboard.press('ArrowLeft');
+  expect(await slideOn(win), 'the arrows on a divider moved the show').toBe(live);
   // And away from the controls the arrows still move the show.
   await win.locator('body').click({ position: { x: 640, y: 6 } });
   await win.keyboard.press('ArrowRight');
-  await expect.poll(async () => (await engine(win)).rev).toBeGreaterThan(before);
+  await expect.poll(() => slideOn(win)).not.toBe(live);
   await app.close();
 });
