@@ -97,7 +97,7 @@ interface Sample {
 async function slideChangesDuringImport(
   folder: string | null,
   forMs: number,
-  slides: { presentationId: string; everyMs: number } | null,
+  slides: { presentationId: string | null; everyMs: number } | null,
 ) {
   const d = (globalThis as unknown as { drashti: DrashtiBridge }).drashti;
   const id =
