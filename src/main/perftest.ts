@@ -53,6 +53,11 @@ export interface PerfContext {
 
 /** How big the test import is. */
 export const PERF_SONGS = 400;
+/**
+ * The longest the main process may go without a turn while measured (Session 15). Windows runners
+ * stay under 25 ms with the music on or off; CI's Mac runners reach 60 to 110 ms on a slow day.
+ */
+export const MAX_BLOCK_MS = 150;
 const VERSES = 16;
 
 function song(i: number): string {
@@ -256,6 +261,13 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
       slow <= Math.max(1, Math.floor(during.length * 0.02)),
       `${slow} of ${during.length}`,
     );
+    // Session 15: the main process carries every slide change; a block stops them all.
+    if (ctx.watch)
+      check(
+        `the main process never went more than ${String(MAX_BLOCK_MS)} ms without a turn`,
+        ctx.watch.worstBlockMs() <= MAX_BLOCK_MS,
+        `worst ${String(ctx.watch.worstBlockMs())} ms`,
+      );
     return { passed: checks.every((c) => c.ok), checks, summary };
   } finally {
     undo();
