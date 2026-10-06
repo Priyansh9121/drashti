@@ -92,7 +92,7 @@ The **setup wizard** sets the screens, their languages, the sound and the defaul
 
 **Masks.** A group's **Mask** in a Look is its screens' shape (an LED wall's outline, a projector spilling onto a pillar): **Edit masks…** under the group. It stays on: Clear all, F7 and Simple Mode never take it away. The **Masks** panel under the live picture is different: it puts a mask up for a moment, and F7 takes it down.
 
-**Sound.** In **Screens**, under **Sound output**, choose the output that goes to the mixer. If it is not connected when Drashti starts, Drashti plays on the computer's own speakers and a warning stays in the status bar until it is back.
+**Sound.** In **Screens**, under **Sound output**, choose the output that goes to the mixer. If it is not connected when Drashti starts, Drashti plays on the computer's default sound output, and a warning stays in the status bar until it is back.
 
 **The logo.** In **Props** under the live picture, the stamp button beside a prop makes it the logo (**L**, and **Logo** in both modes).
 
@@ -113,7 +113,7 @@ The **setup wizard** sets the screens, their languages, the sound and the defaul
 
 **Restoring.** **File**, then **Restore Library…**, and choose a backup folder (for a scheduled one, a "Drashti backup …" folder inside "Drashti scheduled backups"). Drashti asks first, keeps the library it has as well (in `Backups/` in its data folder), and restarts: the screens go black for a moment, so **never restore during a sabha**. If the backup turns out to be damaged, Drashti says so after the restart and keeps the library it had.
 
-**What a backup does not hold:** the PINs, the stream key (it is in the computer's own secure storage), the node's pairing and certificate, and the computer's own settings such as which display is which. On a new computer, set those again after restoring.
+**What a backup does not hold:** the PINs, the stream key (it is in the computer's own secure storage), and Main's certificate for the node. After restoring onto a new computer: set the PINs and the stream key again, pair the node again, and in **Screens** choose each screen's display again (the backup remembers the old computer's displays).
 
 ---
 
@@ -149,7 +149,7 @@ Section 7 of `docs/parallel-run.md` has the steps: **Phones** in the header, **L
 
 ## 8. The network: firewalls and a fixed address
 
-**Firewalls.** Drashti listens for phones (port 8740) and, on Main, for the node (port 8741), and only for computers on the mandir's own network. The first time each is turned on:
+**Firewalls.** Drashti listens for phones (port 8740, while the network is on) and, on Main, for the node (port 8741, while a node is paired). The first time each is turned on:
 
 - **Mac:** "Do you want the application Drashti to accept incoming network connections?" Press **Allow**. If it was refused: **System Settings**, **Network**, **Firewall**, **Options**, and set Drashti to allow incoming connections.
 - **Windows:** Windows Security asks about Drashti: tick **Private networks** only, then **Allow**. Check that Windows treats the mandir's network as private: **Settings**, **Network & internet**, the network's properties, **Private network**. If it was refused: Windows Security, **Firewall & network protection**, **Allow an app through firewall**, find Drashti and tick **Private**.

@@ -138,17 +138,29 @@ const ELLIPSE: MaskLayer = {
   shapes: [{ id: 'perf-ellipse', kind: 'ellipse', frame: { x: 160, y: 60, width: 1600, height: 960 } }],
 };
 
-/** Each screen's background video: frames shown (requestVideoFrameCallback) since the count began. */
+/**
+ * Each screen's background videos: for each, the frames it presented
+ * (requestVideoFrameCallback's presentedFrames) from its first frame to its
+ * last, against how many its rate gives in that time. Each video counts for
+ * the time it played, so the two videos of a dissolve are not counted twice.
+ */
 const COUNT = `(() => {
   const g = globalThis;
-  g.drashtiPerfFrames = { shown: 0, since: performance.now(), videos: 0 };
+  g.drashtiPerfFrames = [];
   const watched = new WeakSet();
   const watch = () => {
     for (const v of document.querySelectorAll('[data-layer="background"] video')) {
       if (watched.has(v)) continue;
       watched.add(v);
-      g.drashtiPerfFrames.videos++;
-      const on = () => { g.drashtiPerfFrames.shown++; v.requestVideoFrameCallback(on); };
+      const f = { first: null, last: null, firstFrames: 0, lastFrames: 0, callbacks: 0 };
+      g.drashtiPerfFrames.push(f);
+      const on = (now, meta) => {
+        f.callbacks++;
+        if (f.first === null) { f.first = now; f.firstFrames = meta.presentedFrames; }
+        f.last = now;
+        f.lastFrames = meta.presentedFrames;
+        v.requestVideoFrameCallback(on);
+      };
       v.requestVideoFrameCallback(on);
     }
   };
@@ -159,8 +171,12 @@ const COUNT = `(() => {
 const READ = `(() => {
   const g = globalThis;
   clearInterval(g.drashtiPerfFramesWatch);
-  const f = g.drashtiPerfFrames ?? { shown: 0, since: performance.now(), videos: 0 };
-  return { shown: f.shown, ms: performance.now() - f.since, videos: f.videos };
+  const all = (g.drashtiPerfFrames ?? []).filter((f) => f.first !== null && f.last > f.first);
+  return {
+    videos: all.length,
+    frames: all.reduce((n, f) => n + Math.max(f.callbacks, f.lastFrames - f.firstFrames + 1), 0),
+    seconds: all.reduce((n, f) => n + (f.last - f.first) / 1000, 0),
+  };
 })()`;
 
 export function startScenario(name: PerfScenario, deps: ScenarioDeps): ScenarioRun {
@@ -257,14 +273,16 @@ export function startScenario(name: PerfScenario, deps: ScenarioDeps): ScenarioR
         deps.outputs().map(
           (w) =>
             w.webContents.executeJavaScript(READ, true).catch(() => null) as Promise<{
-              shown: number;
-              ms: number;
               videos: number;
+              frames: number;
+              seconds: number;
             } | null>,
         ),
       );
-      // Frames shown against the video's own rate (a dissolve shows two videos for a moment: at most all).
-      const kept = counts.map((c) => (c && c.ms > 0 ? Math.min(1, c.shown / ((c.ms / 1000) * fps)) : 0));
+      // Frames presented against the videos' own rate, over the time each played.
+      const kept = counts.map((c) =>
+        c && c.seconds > 0 ? Math.min(1, c.frames / (c.seconds * fps + c.videos)) : 0,
+      );
       const worst = kept.length > 0 ? Math.min(...kept) : 0;
       const percent = (k: number) => `${String(Math.round(k * 100))}%`;
       return {
