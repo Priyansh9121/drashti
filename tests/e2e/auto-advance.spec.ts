@@ -151,8 +151,12 @@ test('at the end it stops (when the presentation does not loop), and after a for
   expect(back.autoAdvance?.durationMs).toBe(12_000);
   expect(left).toBeLessThanOrEqual(12_000 - elapsedBefore + 1500);
   expect(left).toBeGreaterThan(0);
+  // Slide two is up for only a second: look every 100 ms (the poll's own pace slows to a second).
   await expect
-    .poll(async () => (await snapshot(win2)).layers.slide?.slide.elements[0], { timeout: 20_000 })
+    .poll(async () => (await snapshot(win2)).layers.slide?.slide.elements[0], {
+      timeout: 20_000,
+      intervals: [100],
+    })
     .toMatchObject({ text: 'Placeholder two' });
   await second.app.close();
 });
