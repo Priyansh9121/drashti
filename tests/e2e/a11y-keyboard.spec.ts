@@ -88,8 +88,10 @@ async function tabRound(page: Page, max = 400): Promise<Focus[]> {
   return seen;
 }
 
-/** The regions in the order the keyboard first reaches them. */
-const regionOrder = (stops: readonly Focus[]) => [...new Set(stops.map((s) => s.region))];
+/** The regions in the order the keyboard first reaches them (the slides' region is named after what it shows). */
+const regionOrder = (stops: readonly Focus[]) => [
+  ...new Set(stops.map((s) => s.region.replace(/^Slides of .*/u, 'Slides'))),
+];
 
 const engine = (win: Page) =>
   win.evaluate(async () => {
