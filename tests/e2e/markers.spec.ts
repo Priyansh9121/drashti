@@ -25,6 +25,8 @@ async function audioPage(app: ElectronApplication): Promise<Page> {
 }
 
 const FRAME = 1 / 30;
+/** A frame on a 60 Hz screen: an end point is held within two of them. */
+const FRAME_60 = 1 / 60;
 /**
  * How near the sound must be to the screens. A clip going round (or a jump) lands by seeking,
  * and a sound is then put right gently (never faster than 2%, so it is never heard): for a
@@ -214,6 +216,109 @@ test('a background loops between its points; a jump to a marker lands in step on
     await inStep(await state());
   } finally {
     await phone.close();
+  }
+  await app.close();
+});
+
+/**
+ * Note in a window, from now on, the furthest its copy plays: where the element is (every few
+ * milliseconds) and, for a picture, the media time of every frame it puts on the screen.
+ */
+function watchFurthest(page: Page, selector: string): Promise<void> {
+  return page.evaluate((s) => {
+    const seen = { furthest: 0, samples: 0 };
+    (globalThis as { endWatch?: typeof seen }).endWatch = seen;
+    const framed = new WeakSet<HTMLVideoElement>();
+    setInterval(() => {
+      const v = document.querySelector<HTMLMediaElement>(s);
+      if (!v || !Number.isFinite(v.duration)) return;
+      seen.furthest = Math.max(seen.furthest, v.currentTime);
+      seen.samples++;
+      if (v instanceof HTMLVideoElement && !framed.has(v)) {
+        framed.add(v);
+        const onFrame = (_now: number, frame: VideoFrameCallbackMetadata) => {
+          seen.furthest = Math.max(seen.furthest, frame.mediaTime);
+          v.requestVideoFrameCallback(onFrame);
+        };
+        v.requestVideoFrameCallback(onFrame);
+      }
+    }, 2);
+  }, selector);
+}
+
+test('a file played once stops at its end point, within two frames, on two screens and the audio player', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-end-point-e2e-'));
+  const video = await makeTestVideo(win, join(dir, 'Placeholder end point clip.webm'), {
+    seconds: 5,
+    hue: 120,
+    tone: 440,
+  });
+  await importAndGetIds(win, [video]);
+  const mediaId =
+    (await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia()))[0]?.id ?? '';
+  // An end point between two of playback's quarter-second checks, which used to run up to 0.25 s past it.
+  const END = 2.137;
+  const set = await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.media.setMarkers(id, { startMs: null, endMs: 2137, markers: [] }),
+    mediaId,
+  );
+  expect(set.ok).toBe(true);
+  await setUpScreen(win, 'Main Hall', 0);
+  await setUpScreen(win, 'Overflow', 1);
+  await expect.poll(() => outputPages(app).length).toBe(2);
+  const [a, b] = outputPages(app) as [Page, Page];
+  const audio = await audioPage(app);
+  const picture = `[data-layer="background"] video[data-media-id="${mediaId}"]`;
+  const sound = `audio[data-media-id="${mediaId}"]`;
+  const copies = [
+    { name: 'the first screen', page: a, selector: picture },
+    { name: 'the second screen', page: b, selector: picture },
+    { name: 'the audio player', page: audio, selector: sound },
+  ];
+  for (const c of copies) await watchFurthest(c.page, c.selector);
+
+  // Played once as the background: every copy plays to the end point and holds there.
+  await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({
+        type: 'setBackground',
+        background: { kind: 'media', mediaId: id, media: 'video', fit: 'fill', loop: false },
+      }),
+    mediaId,
+  );
+  const watched = (page: Page, selector: string) =>
+    page.evaluate((s) => {
+      const v = document.querySelector<HTMLMediaElement>(s);
+      const seen = (globalThis as { endWatch?: { furthest: number; samples: number } }).endWatch;
+      return { paused: v?.paused ?? null, at: v?.currentTime ?? null, ...seen };
+    }, selector);
+  for (const c of copies)
+    await expect
+      .poll(
+        async () => {
+          const w = await watched(c.page, c.selector);
+          return w.paused === true && (w.at ?? 0) > 2 && (w.samples ?? 0) > 50;
+        },
+        { timeout: 30_000, message: `${c.name} holds at its end point` },
+      )
+      .toBe(true);
+  // A moment more: nothing moves on from there.
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  for (const c of copies) {
+    const w = await watched(c.page, c.selector);
+    console.log(
+      `${c.name}: held at ${String(w.at)} s, furthest ${String(w.furthest)} s (end point ${END} s)`,
+    );
+    expect(w.paused, c.name).toBe(true);
+    expect(Math.abs((w.at ?? 0) - END), `${c.name} is held at the end point`).toBeLessThanOrEqual(
+      2 * FRAME_60,
+    );
+    expect(w.furthest ?? Infinity, `${c.name} never plays past it`).toBeLessThanOrEqual(END + 2 * FRAME_60);
   }
   await app.close();
 });
