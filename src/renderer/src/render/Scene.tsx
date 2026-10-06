@@ -6,7 +6,7 @@ import type { EngineState, MessageItem, PropItem, TickerLayer } from '../../../s
 import type { LiveGroupLook, LookLayer } from '../../../shared/looks';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import type { Mask } from '../../../shared/masks';
-import { maskImageUrl } from '../../../shared/masks';
+import { maskCoverUrl } from '../../../shared/masks';
 import type { TimerState } from '../../../shared/timers';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
@@ -259,14 +259,28 @@ export function PropsLayer({
 const FULL = { position: 'absolute', inset: 0 } as const;
 
 /**
- * A mask over what is inside: what it hides becomes see-through (the
- * screen's black shows, or a key output keys it out). Its own canvas is
- * stretched over the screen's.
+ * A mask, drawn as its cover laid over what it masks: black where it hides
+ * (the screen's black, or nothing for a key output to key), see-through
+ * where the picture shows. Its own canvas is stretched over the screen's.
+ * The same pixels as masking the layers below, but a still picture on top:
+ * masking them instead (CSS mask-image) made the compositor draw a video
+ * background through the mask again on every one of its frames (Session 15).
  */
-function maskStyle(mask: Mask | null): CSSProperties {
-  if (!mask) return FULL;
-  const image = maskImageUrl(mask);
-  return { ...FULL, maskImage: image, maskSize: '100% 100%', maskRepeat: 'no-repeat', maskPosition: '0 0' };
+function MaskCover({ mask, layer }: { mask: Mask; layer: 'masks' | 'look' }) {
+  const style = useMemo<CSSProperties>(
+    () => ({
+      ...FULL,
+      backgroundImage: maskCoverUrl(mask),
+      backgroundSize: '100% 100%',
+      backgroundRepeat: 'no-repeat',
+    }),
+    [mask],
+  );
+  return layer === 'masks' ? (
+    <div data-layer="masks" data-mask={mask.id} style={style} />
+  ) : (
+    <div data-look-mask={mask.id} style={style} />
+  );
 }
 
 /**
@@ -314,8 +328,6 @@ export const Scene = memo(function Scene({
   // The group's own mask (its screens' shape) over everything; the Masks layer over the layers below the logo.
   const groupMask = look.mask;
   const layerMask = shown('masks') ? layers.masks : null;
-  const groupMaskStyle = useMemo(() => maskStyle(groupMask), [groupMask]);
-  const layerMaskStyle = useMemo(() => maskStyle(layerMask), [layerMask]);
   // Key and fill: black-out and the logo take the graphics off; the key draws every colour white, by its opacity.
   const keyed = matte !== null;
   const off = keyed && (state.blackout || state.logo !== null);
@@ -339,12 +351,8 @@ export const Scene = memo(function Scene({
     >
       <div data-matte={matte ?? undefined} data-off={off ? 'true' : undefined} style={content}>
         {!off && (
-          <div data-look-mask={groupMask?.id} style={groupMaskStyle}>
-            <div
-              data-layer={layerMask ? 'masks' : undefined}
-              data-mask={layerMask?.id}
-              style={layerMaskStyle}
-            >
+          <>
+            <div style={FULL}>
               {background?.kind === 'color' && (
                 <div
                   data-layer="background"
@@ -374,6 +382,7 @@ export const Scene = memo(function Scene({
               )}
               {band && <TickerBand ticker={band} canvas={canvas} />}
             </div>
+            {layerMask && !keyed && <MaskCover mask={layerMask} layer="masks" />}
             {state.logo && !keyed && (
               // The logo instead of the picture: drawn over the layers, which carry on underneath, so
               // taking it down brings back exactly what was there. Black-out covers it in turn.
@@ -401,9 +410,13 @@ export const Scene = memo(function Scene({
                 </Placed>
               </div>
             )}
-          </div>
+            {groupMask && !keyed && <MaskCover mask={groupMask} layer="look" />}
+          </>
         )}
       </div>
+      {/* A key and fill pair's covers go over the key's white too: what a mask hides is never keyed. */}
+      {keyed && !off && layerMask && <MaskCover mask={layerMask} layer="masks" />}
+      {keyed && !off && groupMask && <MaskCover mask={groupMask} layer="look" />}
       {state.blackout && !keyed && (
         <div
           data-layer="blackout"

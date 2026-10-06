@@ -55,7 +55,7 @@ async function keyFillPair(app: ElectronApplication, win: Page): Promise<{ fill:
   return { fill, key };
 }
 
-test('the key is white where the fill has something, grey at half opacity and black elsewhere', async () => {
+test('the key is white where the fill has something, grey at half opacity and black elsewhere, and where a mask hides', async () => {
   const { app } = await launchApp(TWO_OUTPUTS);
   const win = await operatorPage(app);
   await operatorReady(win);
@@ -106,6 +106,29 @@ test('the key is white where the fill has something, grey at half opacity and bl
       return [near(full, [255, 255, 255], 8), near(half, [128, 128, 128], 16), near(none, [0, 0, 0], 8)];
     })
     .toEqual([true, true, true]);
+  // The group's own mask (its screens' shape) hides the same on both: black on the fill, and black
+  // on the key (nothing keyed) where the opaque rectangle was; the rest is as it was.
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const made = await d.masks.save(null, {
+      name: 'Placeholder corner',
+      width: 1920,
+      height: 1080,
+      mode: 'hide',
+      shapes: [{ id: 'corner', kind: 'rectangle', frame: { x: 0, y: 0, width: 700, height: 540 } }],
+    });
+    if (!made.ok) throw new Error(made.message);
+    const group = (await d.screens.get()).groups.find((g) => g.name === 'Placeholder switcher');
+    const set = await d.looks.setGroup((await d.looks.list()).liveId, group?.id ?? '', { maskId: made.id });
+    if (!set.ok) throw new Error(set.message);
+  });
+  await expect
+    .poll(async () => {
+      const [full, half] = await canvasPixels(key, [FULL, HALF]);
+      return [near(full, [0, 0, 0], 8), near(half, [128, 128, 128], 16)];
+    })
+    .toEqual([true, true]);
+  await expect.poll(async () => near((await canvasPixels(fill, [FULL]))[0], [0, 0, 0], 8)).toBe(true);
   // Black-out is for the hall: it takes the graphics off both (nothing to key).
   await win.evaluate(() =>
     (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'setBlackout', on: true }),
