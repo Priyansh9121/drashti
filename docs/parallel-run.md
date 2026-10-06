@@ -376,6 +376,8 @@ On the Mac, **Cmd** is the ⌘ key; on Windows, use **Ctrl** instead. These keys
 | **F7**                                         | Clear the Masks layer (a screen's own mask, set in its Look, stays)                              |
 | **F8**                                         | Clear the ticker (announcements scrolling along the bottom)                                      |
 | **Cmd+F** / **Ctrl+F**                         | Search the library                                                                               |
+| **Shift+F10** or the Menu key (in a list)      | The menu of a playlist, folder or item, as a right-click (on a Mac laptop: **Fn+Shift+F10**)     |
+| **Tab** / **Shift+Tab**                        | Move through the window, region by region; **Enter** presses what has the focus (Space is Next)  |
 | **Delete** or **Backspace** (in a list)        | Remove the marked presentations, playlists or items (asks first for presentations and playlists) |
 | **Cmd+Z** / **Ctrl+Z**                         | Undo the last removal, words edit or theme (in Simple Mode: put back what Clear all took down)   |
 | **Cmd+Enter** / **Ctrl+Enter** (editing words) | Save the words                                                                                   |

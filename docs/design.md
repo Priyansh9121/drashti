@@ -99,12 +99,17 @@ Every list, panel and dialog shows:
 
 ## 8. Keyboard and screen readers
 
-- Everything works from the keyboard. The focus ring (`accent`, 2 px) is drawn by the base styles on every `:focus-visible` element; don't remove it, and if a component draws its own (the Splitter), it must be as visible.
-- The show's keys (`src/shared/keymap.ts`) are ignored while a field has the focus or a dialog is open (`aria-modal`).
-- Lists you move through with the arrows use roving focus (Tabs, menus); long lists are virtual, so only the rows in view exist.
+- Everything works from the keyboard. The focus ring (`accent`, 2 px) is drawn by the base styles on every `:focus-visible` element; don't remove it. A component may add its own sign beside it (the Splitter's line thickens), never instead of it.
+- The show's keys (`src/shared/keymap.ts`) are ignored while a field has the focus or a dialog is open (`aria-modal`), and for any key a control has used itself (`defaultPrevented`): a control that handles a key calls `preventDefault()`, so the arrows between tabs, through a menu or on a splitter never also move the slide on the screens (Session 15).
+- Lists you move through with the arrows use roving focus (Tabs, menus, radio groups through `ui/radio.ts`); long lists are virtual, so only the rows in view exist. A plain list of buttons (the playlists) is a list, not an ARIA tree: a tree takes the arrows, which belong to the show.
+- A row with a right-click menu opens it from the keyboard too: Shift+F10 or the Menu key, handled by the row itself on every system (`isMenuKey` in `ui/Menu.tsx`; Chromium does it by itself only on Windows).
+- **Landmarks.** The operator window is regions in the order it is laid out, and Tab goes through them in that order: the header, Playlists, Library, the slides, Live, Show controls (the layer bar) and the status bar. New panels go inside one of them. Only the splitters sit between regions.
 - Every control has a name: its text, its `Field` label, or an `aria-label`. Icon buttons have their label as a tooltip too.
 - Things that change on their own (what's live, import progress, notices) are in `aria-live` regions or have the status/alert role.
-- `tests/e2e` runs axe-core (`tests/e2e/a11y.ts`) on the operator window, Simple Mode, each panel and the gallery, and fails on any serious or critical finding.
+- **Larger text.** At 200% zoom (View, or the system's text size) every control can still be reached: below 960 × 540 CSS pixels the window scrolls rather than cutting columns off.
+- **Reduced motion.** With the computer set to reduce motion, the interface's transitions and animations stop (`app.css`). The screens' own dissolves and the ticker are the show, not the interface, and keep moving.
+- **Phones.** Every control on the phone pages is at least 24 × 24 CSS pixels (WCAG 2.5.8).
+- `tests/e2e` runs axe-core (`tests/e2e/a11y.ts`) on the operator window, Simple Mode, each panel and the gallery, and fails on any serious or critical finding. `a11y-keyboard.spec.ts` runs a sabha by keyboard alone in both modes and checks the Tab order and focus ring; `a11y-display.spec.ts` checks 200% zoom, reduced motion, and the phone pages at 375 × 812.
 
 ## 9. Layout of the operator window
 
@@ -203,6 +208,7 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 ## 19. Masks
 
 - **Two kinds, said plainly.** In Screens a group's mask is "Mask (these screens' own shape)"; in the right column the **Masks** panel puts a mask up for a moment. The panel's buttons are like the Looks panel's: the mask that is up is `live` (red) with `aria-pressed="true"`, and pressing it again takes it down (as F7 does).
+- **On the screens a mask is a cover**: its picture (black where it hides) laid over the layers it masks, never a CSS mask on them, so a video under it is not drawn through the mask on every frame (Session 15). The pixels are the same, a key output's too.
 - **The mask editor is the stage layout editor's twin** (`size="full"`, the same `BoxCanvas`): the masks on the left, the mask in the middle over a blue test grid (what it lets through) on black (what it hides), the chosen shape's settings on the right, Save at the bottom. "Hide what is inside them" and "Show only what is inside them" are two radio buttons, in words.
 
 ## 20. Key and fill
