@@ -28,7 +28,7 @@ import {
 } from '../ui/icons';
 import { controlClass } from '../ui/Field';
 import type { MenuEntry, MenuPlace } from '../ui/Menu';
-import { Menu, MenuButton, menuPlace } from '../ui/Menu';
+import { isMenuKey, Menu, MenuButton, menuBelow, menuPlace } from '../ui/Menu';
 import { Notice } from '../ui/Notice';
 import { rowClass } from '../ui/ListRow';
 import { EmptyState } from '../ui/States';
@@ -268,6 +268,12 @@ function PlaylistTree({ platform }: { platform: string }) {
                     openMenu(e, node);
                   }}
                   onKeyDown={(e) => {
+                    if (isMenuKey(e)) {
+                      e.preventDefault();
+                      selectNode(node.id);
+                      setMenu({ at: menuBelow(e.currentTarget), node });
+                      return;
+                    }
                     if (!isRemoveKey(e, platform)) return;
                     e.preventDefault();
                     requestRemoveNode(node.id);
@@ -316,7 +322,7 @@ function PlaylistTree({ platform }: { platform: string }) {
                   )}
                 </button>
                 {/* For the mouse: the keyboard opens the same menu on the playlist itself (Shift+F10 or
-                  the Menu key), since a tree may hold only its items. */}
+                  the Menu key), which keeps one Tab stop a row. */}
                 <span className="absolute right-1 opacity-0 group-hover:opacity-100" aria-hidden="true">
                   <IconButton
                     icon={MoreHorizontal}
@@ -402,6 +408,11 @@ function TemplateList() {
                   onContextMenu={(e) => {
                     e.preventDefault();
                     setMenu({ at: menuPlace(e), node: t });
+                  }}
+                  onKeyDown={(e) => {
+                    if (!isMenuKey(e)) return;
+                    e.preventDefault();
+                    setMenu({ at: menuBelow(e.currentTarget), node: t });
                   }}
                 >
                   <BookTemplate size={15} aria-hidden="true" className="shrink-0 text-muted" />
@@ -856,6 +867,12 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                   setMenu({ at: menuPlace(e), item });
                 }}
                 onKeyDown={(e) => {
+                  if (isMenuKey(e)) {
+                    e.preventDefault();
+                    if (!markedSet.has(item.id)) clickItem(item.id, { toggle: false, range: false });
+                    setMenu({ at: menuBelow(e.currentTarget), item });
+                    return;
+                  }
                   if (!isRemoveKey(e, platform)) return;
                   e.preventDefault();
                   if (!usePlaylists.getState().marked.includes(item.id))

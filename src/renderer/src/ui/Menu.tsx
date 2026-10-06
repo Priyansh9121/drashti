@@ -140,13 +140,26 @@ export function Menu({
   );
 }
 
+/** Where a menu opened from the keyboard goes: under the element. */
+export function menuBelow(el: Element): MenuPlace {
+  const box = el.getBoundingClientRect();
+  return { x: box.left + 8, y: box.bottom };
+}
+
 /** Where a right-click menu opens: at the pointer, or under the element when opened from the keyboard. */
 export function menuPlace(e: ReactMouseEvent): MenuPlace {
-  if (e.clientX === 0 && e.clientY === 0) {
-    const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    return { x: box.left + 8, y: box.bottom };
-  }
+  if (e.clientX === 0 && e.clientY === 0) return menuBelow(e.currentTarget);
   return { x: e.clientX, y: e.clientY };
+}
+
+/**
+ * Shift+F10 or the Menu key: a row's right-click menu from the keyboard.
+ * Chromium turns them into a right-click by itself only on Windows (and the
+ * Mac has neither), so rows with a menu ask for it themselves (Session 15).
+ */
+export function isMenuKey(e: ReactKeyboardEvent): boolean {
+  if (e.key === 'ContextMenu') return !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey;
+  return e.key === 'F10' && e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey;
 }
 
 /** A button that opens a menu under it: with words, or (icon and no words) an icon button. */

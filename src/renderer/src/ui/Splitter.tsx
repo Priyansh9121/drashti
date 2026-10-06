@@ -91,7 +91,7 @@ export function Splitter({
       onDoubleClick={() => onChange(clamp(defaultValue))}
       onKeyDown={onKeyDown}
       className={cx(
-        'group relative z-10 shrink-0 touch-none focus-visible:outline-none',
+        'group relative z-10 shrink-0 touch-none',
         vertical ? '-mx-1 w-2 cursor-col-resize' : '-my-1 h-2 cursor-row-resize',
         className,
       )}
@@ -101,7 +101,7 @@ export function Splitter({
         aria-hidden="true"
         className={cx(
           'absolute bg-line transition-colors group-hover:bg-accent/70 group-focus-visible:bg-accent group-active:bg-accent',
-          // The focus ring is the line itself, thicker.
+          // With the keyboard on it, the line thickens inside the usual focus ring.
           vertical
             ? 'inset-y-0 left-1/2 w-px -translate-x-1/2 group-focus-visible:w-[3px]'
             : 'inset-x-0 top-1/2 h-px -translate-y-1/2 group-focus-visible:h-[3px]',
