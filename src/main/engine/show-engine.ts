@@ -1362,6 +1362,9 @@ export class ShowEngine {
     const cancel = schedule(Math.max(0, ends - this.now()), () => {
       if (this.musicWait?.key === key) this.musicWait = null;
       this.musicEnded(key);
+      // A timer can come a moment early (its clock and this one differ by a millisecond or so): then
+      // nothing has ended yet and nothing changed, so wait again for what is left.
+      this.scheduleMusic();
     });
     this.musicWait = { key, cancel };
   }
