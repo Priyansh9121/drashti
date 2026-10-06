@@ -14,6 +14,7 @@ import type { PerfCheck } from './perftest';
  * hardware), chosen with DRASHTI_PERF_SCENARIO. Each runs while the usual
  * slide changes and the big import go on, with its own load on the screens:
  *
+ * - video-1080p30: a 1080p30 video background (masks-video without its mask, to compare);
  * - masks-video: a 1080p30 video background with a mask up over it;
  * - video-1080p60 and video-4k: a 1080p60, or a 4K (3840 × 2160) 30 fps, video background;
  * - dissolves-video: slides that each bring a different 1080p30 video
@@ -29,6 +30,7 @@ import type { PerfCheck } from './perftest';
  */
 
 export const PERF_SCENARIOS = [
+  'video-1080p30',
   'masks-video',
   'video-1080p60',
   'video-4k',
@@ -165,6 +167,12 @@ export function startScenario(name: PerfScenario, deps: ScenarioDeps): ScenarioR
   let fps = 30;
   let slides: ScenarioSlides | null = null;
   switch (name) {
+    case 'video-1080p30': {
+      background(
+        makeVideo(deps, 'video-1080p30', { width: 1920, height: 1080, fps: 30, seconds: 20, hue: 0 }),
+      );
+      break;
+    }
     case 'masks-video': {
       const v = makeVideo(deps, 'video-1080p30', { width: 1920, height: 1080, fps: 30, seconds: 20, hue: 0 });
       background(v);

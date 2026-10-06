@@ -44,7 +44,7 @@ on:
       scenario:
         description: A heavy case for the screens (Session 15; needs FFmpeg, fetched for it)
         type: choice
-        options: [none, masks-video, video-1080p60, video-4k, dissolves-video, three-outputs]
+        options: [none, video-1080p30, masks-video, video-1080p60, video-4k, dissolves-video, three-outputs]
         default: none
       handicap:
         description: 'Modest hardware: two cores for Drashti on Windows, two busy processes competing on a Mac'
