@@ -277,6 +277,8 @@ const perfNetworkInMain = process.env['DRASHTI_PERF_NETWORK_IN_MAIN'] === '1';
 // what (Session 15), one long sound on the audio layer instead, and slide changes with no import.
 const perfMusic = process.env['DRASHTI_PERF_MUSIC'] === '1';
 const perfSoundCue = process.env['DRASHTI_PERF_SOUND_CUE'] === '1';
+// ...and the sound first starting during the measured part, 1.5 s in, rather than before it.
+const perfSoundLate = process.env['DRASHTI_PERF_MUSIC_LATE'] === '1';
 const perfNoImport = process.env['DRASHTI_PERF_NO_IMPORT'] === '1';
 // The performance check only: a CPU profile of the main process and a Chromium trace, kept in this folder.
 const perfProfileDir = perfTest ? process.env['DRASHTI_PERF_PROFILE'] : undefined;
@@ -503,7 +505,12 @@ async function runPerformanceTestWithMusic(ctx: PerfRun): ReturnType<typeof runP
   const music = perfSoundCue
     ? startPerfSoundCue(ctx.library.db, ctx.library.mediaDir, ctx.engine)
     : startPerfMusic(ctx.library.db, ctx.library.mediaDir, ctx.music);
-  const result = await runPerformanceTestWithStream(ctx);
+  if (!perfSoundLate) music.play();
+  const result = await runPerformanceTestWithStream(
+    perfSoundLate
+      ? { ...ctx, during: { afterMs: 1500, what: 'the sound starts', run: () => music.play() } }
+      : ctx,
+  );
   music.stop();
   return { ...result, summary: `${result.summary}; ${music.summary()}` };
 }

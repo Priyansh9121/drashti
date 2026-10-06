@@ -51,19 +51,25 @@ function addTone(db: Db, mediaDir: string, name: string, seconds: number, hz: nu
   return id;
 }
 
-export function startPerfMusic(
-  db: Db,
-  mediaDir: string,
-  music: MusicService,
-): { summary(): string; stop(): void } {
+/** The check's sound: made ready at once, started by play() (at once, or during the measured part). */
+export interface PerfSound {
+  play(): void;
+  summary(): string;
+  stop(): void;
+}
+
+export function startPerfMusic(db: Db, mediaDir: string, music: MusicService): PerfSound {
   const ids = [330, 440].map((hz, i) => addTone(db, mediaDir, `tone-${String(i + 1)}`, 20, hz));
   const repo = new AudioPlaylistRepo(db);
   const playlistId = repo.create('Placeholder perf music');
   repo.addTracks(playlistId, ids, null);
-  const played = music.play(playlistId, 0);
+  let played: ReturnType<MusicService['play']> | null = null;
   return {
+    play: () => {
+      played ??= music.play(playlistId, 0);
+    },
     summary: () =>
-      `music ${played.ok ? 'playing (an audio playlist of two tones)' : `not playing (${played.message})`}`,
+      `music ${played?.ok ? 'playing (an audio playlist of two tones)' : `not playing (${played ? played.message : 'never started'})`}`,
     stop: () => undefined,
   };
 }
@@ -73,15 +79,22 @@ export function startPerfSoundCue(
   db: Db,
   mediaDir: string,
   engine: { dispatch(command: EngineCommand): CommandResult },
-): { summary(): string; stop(): void } {
+): PerfSound {
   const mediaId = addTone(db, mediaDir, 'sound-cue', 180, 392);
-  const played = engine.dispatch({
-    type: 'playAudio',
-    audio: { id: randomUUID(), title: 'Placeholder perf sound cue', mediaId, volume: 1, loop: false },
-  });
+  let played: CommandResult | null = null;
   return {
-    summary: () =>
-      `a sound cue ${played.ok ? 'playing (one tone of 3 minutes)' : `not playing (${played.message})`}`,
+    play: () => {
+      played ??= engine.dispatch({
+        type: 'playAudio',
+        audio: { id: randomUUID(), title: 'Placeholder perf sound cue', mediaId, volume: 1, loop: false },
+      });
+    },
+    summary: () => {
+      if (!played) return 'a sound cue never started';
+      return played.ok
+        ? 'a sound cue playing (one tone of 3 minutes)'
+        : `a sound cue not playing (${played.message})`;
+    },
     stop: () => undefined,
   };
 }
