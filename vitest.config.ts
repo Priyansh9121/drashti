@@ -13,6 +13,10 @@ export default defineConfig({
   test: {
     environment: 'node',
     pool: 'forks',
+    // CI's runners stall now and then for several seconds (a Windows runner took 10 to 13 s over
+    // tests that write to disk and take 2 s): 20 s, not the default 5, before a test counts as hung.
+    // Budgets are checked by the tests that time things, never by this.
+    testTimeout: 20_000,
     projects: [
       {
         extends: true,
