@@ -47,6 +47,8 @@ export interface PerfContext {
   profile?: PerfProfile;
   /** Slide changes for this long with no import (DRASHTI_PERF_NO_IMPORT=1), to tell the import's share. */
   noImportMs?: number;
+  /** Something to start this long into the measured part (the sound, DRASHTI_PERF_MUSIC_LATE=1). */
+  during?: { afterMs: number; what: string; run(): void };
 }
 
 /** How big the test import is. */
@@ -176,6 +178,13 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
     d.gc.max = 0;
     ctx.watch?.reset();
     ctx.watch?.note(noImport ? 'slide changes begin (no import)' : 'slide changes begin');
+    const midway = ctx.during;
+    const later = midway
+      ? setTimeout(() => {
+          ctx.watch?.note(midway.what);
+          midway.run();
+        }, midway.afterMs)
+      : null;
     const running = js<{
       samples: Sample[];
       result: { ok: boolean; message?: string; run?: { totals: { failed: number; imported: number } } };
@@ -194,6 +203,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
       await sleep(50);
     }
     const run = await running;
+    if (later) clearTimeout(later);
     ctx.watch?.note('slide changes end');
     await ctx.profile?.stop(ctx.watch ?? null);
     if (!operator.isDestroyed()) operator.webContents.setBackgroundThrottling(true);
