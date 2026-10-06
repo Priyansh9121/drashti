@@ -77,9 +77,13 @@ async function draw(): Promise<void> {
   canvas.width = job.width;
   canvas.height = job.height;
   const ctx = canvas.getContext('2d', { alpha: false });
+  // The page is drawn on a canvas of its own, its fitted size: pdf.js paints the whole canvas it
+  // draws on white first, which would whiten the black either side of a page of another shape.
+  const sheet = document.createElement('canvas');
+  const sheetCtx = sheet.getContext('2d', { alpha: false });
   const failed: number[] = [];
   const count = Math.min(doc.numPages, job.maxPages);
-  if (!ctx) {
+  if (!ctx || !sheetCtx) {
     await window.drashti.pictures.done({ total: doc.numPages, failed: [], error: 'Nothing to draw with.' });
     return;
   }
@@ -88,22 +92,22 @@ async function draw(): Promise<void> {
       const page = await doc.getPage(i + 1);
       const base = page.getViewport({ scale: 1 });
       const at = fitPage(base.width, base.height, job.width, job.height);
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, job.width, job.height);
-      // The page itself on white (as it prints), then its content.
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(at.x, at.y, at.w, at.h);
+      // The page on white (as it prints), with its content...
+      sheet.width = at.w;
+      sheet.height = at.h;
       await page.render({
-        canvas,
-        canvasContext: ctx,
+        canvas: sheet,
+        canvasContext: sheetCtx,
         viewport: page.getViewport({ scale: at.scale }),
-        transform: [1, 0, 0, 1, at.x, at.y],
         // As it prints: drawn straight through (a hidden window has no animation frames to wait for).
         intent: 'print',
         // Comments are notes, not part of the picture.
         annotationMode: AnnotationMode.DISABLE,
       }).promise;
+      // ...in the middle of the picture, black either side.
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, job.width, job.height);
+      ctx.drawImage(sheet, at.x, at.y);
       const png = await canvasPng(canvas);
       const notes = await commentsOf(doc, i + 1);
       page.cleanup();
