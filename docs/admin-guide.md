@@ -232,11 +232,13 @@ Fall back when Drashti cannot keep the screens right and the fix is not quick; n
 
 ## 13. How much the computers need
 
-Session 15 measured Drashti's heaviest cases on CI's virtual computers (no graphics chip on the Windows one, a shared one on the Mac), with and without a handicap (two cores on Windows, two busy programs on the Mac). The numbers are in the README ("Speed on modest hardware"). What they mean for the mandir:
+Session 15 measured Drashti's heaviest cases on CI's computers, which have no real graphics chip (the Windows one decodes and draws video with its four cores; the Mac is a virtual machine with a virtual one), and again with a handicap (only two cores on Windows; busy programs competing on the Mac). In each, the slides changed every two seconds while a big import ran. The numbers are in the README ("Speed on modest hardware"). What they mean for the mandir:
 
-- **Slides, words, dissolves, messages, timers and music** kept up everywhere, also during a big import.
-- **Video backgrounds** need the computer's graphics chip to decode and draw them: CI's computers, which have none to speak of, dropped frames of 1080p 60 fps and 4K video. Any Mac from the last ten years, or a PC with Intel, AMD or NVIDIA graphics, has one. Prefer 1080p 30 fps videos for backgrounds; 4K gains nothing on a 1080p screen.
-- **Streaming and recording on Windows without a graphics encoder** (NVENC, Quick Sync or AMF) take two or more cores by themselves; on the mandir's PC, Drashti chooses the graphics encoder when the PC has one (the Stream panel says which).
-- **A big import during a sabha** slows itself down to keep the show smooth; on a busy computer it can take many minutes. Import before or after.
+- **Even the Windows computer with no graphics chip** kept every frame of a 1080p video background at 30 or 60 fps, of 4K, of a video under a mask, and of three screens with the stream, a recording and the music, and slides reached the screens within two frames. With only two cores it still kept 95 to 99% of the frames, except when a new video started every two seconds (then only half).
+- **The Mac virtual machine** kept 86 to 100% of a 1080p30 background's frames, and fewer of 60 fps, 4K and dissolving videos. A real Mac decodes and draws video in its graphics chip.
+- So each computer needs **a graphics chip that decodes video** (section 1), and the computer that streams, **a graphics encoder** (VideoToolbox on a Mac; NVENC, Quick Sync or AMF on a PC): the Stream panel's "Encoder" line names the one in use. Without one, on a modest PC, streaming takes all the processor there is.
+- **Video backgrounds at 1080p and 30 fps.** 4K is four times the decoding for a 1080p screen, for nothing the hall can see.
+- **Big imports before or after the sabha.** During one, the import gives way to the show: with the stream on, on a two-core PC, 400 files took more than 12 minutes.
+- **After installing or updating, put a video up once before the first sabha:** the first one can hold slide changes up for a moment while the computer prepares its graphics.
 
 The performance check (section 12) on each mandir computer says whether that computer keeps up.
