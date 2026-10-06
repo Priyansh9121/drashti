@@ -41,6 +41,15 @@ on:
         description: Keep a CPU profile of the main process, a Chromium trace and the gaps' timeline (an artifact)
         type: boolean
         default: false
+      scenario:
+        description: A heavy case for the screens (Session 15; needs FFmpeg, fetched for it)
+        type: choice
+        options: [none, masks-video, video-1080p60, video-4k, dissolves-video, three-outputs]
+        default: none
+      handicap:
+        description: 'Modest hardware: two cores for Drashti on Windows, two busy processes competing on a Mac'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -61,20 +70,37 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # The scenarios make their videos with the bundled FFmpeg (and with it the check runs a second
+      # time while streaming and recording to FFmpeg on the runner).
+      - name: Cache FFmpeg downloads
+        if: inputs.scenario != 'none'
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/drashti
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs') }}
+      - name: Fetch FFmpeg
+        if: inputs.scenario != 'none'
+        run: node scripts/fetch-ffmpeg.mjs
       - name: Performance self-test (headless)
         env:
           # The local network on (this computer only) with this many devices on the feed (README, "Performance check").
           DRASHTI_PERF_DEVICES: ${{ inputs.devices }}
           # Output nodes on this computer following the show and copying media (README, "Performance check").
           DRASHTI_PERF_NODES: ${{ inputs.nodes }}
-          # An audio playlist playing meanwhile (README, "Performance check").
-          DRASHTI_PERF_MUSIC: ${{ inputs.music && '1' || '0' }}
+          # An audio playlist playing meanwhile (README, "Performance check"): further down, with the scenarios.
           # Or one long sound on the audio layer; and slide changes with no import (Session 15).
           DRASHTI_PERF_SOUND_CUE: ${{ inputs.sound_cue && '1' || '0' }}
           DRASHTI_PERF_NO_IMPORT: ${{ inputs.no_import && '1' || '0' }}
           DRASHTI_PERF_MUSIC_LATE: ${{ inputs.sound_late && '1' || '0' }}
           # A CPU profile of the main process, a Chromium trace and the timeline of its gaps.
           DRASHTI_PERF_PROFILE: ${{ inputs.profile && format('{0}/perf-profile', runner.temp) || '' }}
+          # A heavy case, and modest hardware (Session 15).
+          DRASHTI_PERF_SCENARIO: ${{ inputs.scenario != 'none' && inputs.scenario || '' }}
+          DRASHTI_PERF_HANDICAP: ${{ inputs.handicap && '1' || '0' }}
+          # Three outputs: windows, on two pretend displays beside the runner's own, with the music.
+          DRASHTI_WINDOWED_OUTPUTS: ${{ inputs.scenario == 'three-outputs' && '1' || '' }}
+          DRASHTI_EXTRA_DISPLAYS: ${{ inputs.scenario == 'three-outputs' && '2' || '' }}
+          DRASHTI_PERF_MUSIC: ${{ (inputs.music || inputs.scenario == 'three-outputs') && '1' || '0' }}
         run: pnpm test:perf
       - name: Keep the profile, the trace and the timeline
         if: always() && inputs.profile

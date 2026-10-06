@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { ELDHistogram } from 'node:perf_hooks';
 import type { DrashtiBridge } from '../shared/bridge';
 import type { MainWatch, PerfProfile } from './perf-watch';
+import type { ScenarioRun } from './perf-scenarios';
 
 /*
  * Performance self-test, run by hand on the real machines (README,
@@ -49,6 +50,10 @@ export interface PerfContext {
   noImportMs?: number;
   /** Something to start this long into the measured part (the sound, DRASHTI_PERF_MUSIC_LATE=1). */
   during?: { afterMs: number; what: string; run(): void };
+  /** A heavy case (DRASHTI_PERF_SCENARIO; Session 15): its own load on the screens, and its checks. */
+  scenario?: ScenarioRun;
+  /** Processor used by all of Drashti's processes since asked before (percent of one core). */
+  cpu?: () => number;
 }
 
 /** How big the test import is. */
@@ -89,9 +94,17 @@ interface Sample {
  * else going on, then all through an import of `folder`. Kept free of
  * anything outside it, as it is sent to the page as source.
  */
-async function slideChangesDuringImport(folder: string | null, forMs: number) {
+async function slideChangesDuringImport(
+  folder: string | null,
+  forMs: number,
+  slides: { presentationId: string; everyMs: number } | null,
+) {
   const d = (globalThis as unknown as { drashti: DrashtiBridge }).drashti;
-  const id = (await d.library.listPresentations()).find((p) => p.name === 'Language test slides')?.id ?? '';
+  const id =
+    slides?.presentationId ??
+    (await d.library.listPresentations()).find((p) => p.name === 'Language test slides')?.id ??
+    '';
+  const every = slides?.everyMs ?? 40;
   const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
   const samples: { rev: number; sentAt: number; during: boolean }[] = [];
   let slide = 0;
@@ -101,9 +114,10 @@ async function slideChangesDuringImport(folder: string | null, forMs: number) {
     const r = await d.engine.dispatch({ type: 'goLive', presentationId: id, slideIndex: slide });
     if (r.ok && r.changed) samples.push({ rev: r.rev, sentAt, during });
   };
-  for (let i = 0; i < 25; i++) {
+  // With slides that change every few seconds (a scenario), fewer before the import begins.
+  for (let i = 0; i < (slides ? 5 : 25); i++) {
     await change(false);
-    await wait(40);
+    await wait(every);
   }
   const state = { finished: false };
   const startedAt = Date.now();
@@ -120,7 +134,7 @@ async function slideChangesDuringImport(folder: string | null, forMs: number) {
         });
   while (!state.finished) {
     await change(true);
-    await wait(40);
+    await wait(every);
   }
   const result = await imported;
   return { samples, result, importMs: Date.now() - startedAt };
@@ -178,6 +192,8 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
     const d = ctx.diagnostics;
     const noImport = ctx.noImportMs !== undefined;
     await ctx.profile?.start();
+    await ctx.scenario?.begin();
+    ctx.cpu?.();
     d.loopDelay.reset();
     d.handlerTimes.clear();
     d.gc.max = 0;
@@ -196,7 +212,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
       importMs: number;
     }>(
       operator,
-      `(${slideChangesDuringImport.toString()})(${JSON.stringify(noImport ? null : folder)}, ${String(ctx.noImportMs ?? 0)})`,
+      `(${slideChangesDuringImport.toString()})(${JSON.stringify(noImport ? null : folder)}, ${String(ctx.noImportMs ?? 0)}, ${JSON.stringify(ctx.scenario?.slides ?? null)})`,
     );
     const state = { done: false };
     void running.finally(() => {
@@ -209,6 +225,8 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
     }
     const run = await running;
     if (later) clearTimeout(later);
+    const cpu = ctx.cpu?.();
+    const scenario = await ctx.scenario?.end();
     ctx.watch?.note('slide changes end');
     await ctx.profile?.stop(ctx.watch ?? null);
     if (!operator.isDestroyed()) operator.webContents.setBackgroundThrottling(true);
@@ -230,7 +248,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
     const what = noImport
       ? `no import: slide changes for ${run.importMs} ms`
       : `import of ${PERF_SONGS} files took ${run.importMs} ms`;
-    const summary = `${what}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}`;
+    const summary = `${what}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}${scenario ? `; ${scenario.summary}` : ''}`;
 
     const totals = run.result.run?.totals;
     if (!noImport) {
@@ -243,7 +261,13 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
           : (run.result.message ?? ''),
       );
     }
-    check('the import overlapped at least 10 slide changes', during.length >= 10, `${during.length}`);
+    // A scenario's slides change every few seconds, so fewer of them overlap the import.
+    const overlap = ctx.scenario?.slides ? 3 : 10;
+    check(
+      `the import overlapped at least ${String(overlap)} slide changes`,
+      during.length >= overlap,
+      `${during.length}`,
+    );
     // 60 Hz: a frame is 16.7 ms.
     check(
       'half the slide changes during the import reached the screen within a frame (17 ms)',
@@ -261,6 +285,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
       slow <= Math.max(1, Math.floor(during.length * 0.02)),
       `${slow} of ${during.length}`,
     );
+    if (scenario) checks.push(...scenario.checks);
     // Session 15: the main process carries every slide change; a block stops them all.
     if (ctx.watch)
       check(

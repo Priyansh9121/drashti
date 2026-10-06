@@ -98,6 +98,7 @@ import { ShowEngine } from './engine/show-engine';
 import { runEngineCommand } from './ipc/engine-ipc';
 import { handle, handlerTimes, hearHandled, lockAdminChannels, lockChannels, refusedNow } from './ipc/handle';
 import { MainWatch, PerfProfile, watchedMedia } from './perf-watch';
+import { isPerfScenario, startScenario } from './perf-scenarios';
 import { LaterWrites } from './db/later-writes';
 import { RolesService } from './roles/roles-service';
 import { adminRefusals } from './roles/admin-lock';
@@ -289,6 +290,11 @@ const perfSoundCue = process.env['DRASHTI_PERF_SOUND_CUE'] === '1';
 // ...and the sound first starting during the measured part, 1.5 s in, rather than before it.
 const perfSoundLate = process.env['DRASHTI_PERF_MUSIC_LATE'] === '1';
 const perfNoImport = process.env['DRASHTI_PERF_NO_IMPORT'] === '1';
+// The performance check only: a heavy case for the screens (Session 15: speed on modest hardware).
+const perfScenario =
+  perfTest && isPerfScenario(process.env['DRASHTI_PERF_SCENARIO'])
+    ? process.env['DRASHTI_PERF_SCENARIO']
+    : undefined;
 // The performance check only: a CPU profile of the main process and a Chromium trace, kept in this folder.
 const perfProfileDir = perfTest ? process.env['DRASHTI_PERF_PROFILE'] : undefined;
 // The performance check only: so many output nodes following the show (and copying a file) meanwhile.
@@ -470,7 +476,21 @@ type PerfRun = Parameters<typeof runPerformanceTest>[0] & {
   operatorContents: () => Electron.WebContents | null;
   music: MusicService;
   engine: ShowEngine;
+  ffmpegPath: () => string | null;
 };
+
+/** The performance check with a heavy case for the screens (DRASHTI_PERF_SCENARIO; Session 15). */
+function runPerformanceTestWithScenario(ctx: PerfRun): ReturnType<typeof runPerformanceTest> {
+  if (!perfScenario) return runPerformanceTestWithNodes(ctx);
+  const scenario = startScenario(perfScenario, {
+    db: ctx.library.db,
+    mediaDir: ctx.library.mediaDir,
+    ffmpeg: ctx.ffmpegPath(),
+    engine: ctx.engine,
+    outputs: ctx.outputs,
+  });
+  return runPerformanceTestWithNodes({ ...ctx, scenario });
+}
 
 /** The performance check with DRASHTI_PERF_NODES output nodes following the show meanwhile. */
 async function runPerformanceTestWithNodes(ctx: PerfRun): ReturnType<typeof runPerformanceTest> {
@@ -2793,12 +2813,12 @@ function start(): void {
     });
 
   /** For the self-tests: an output on the first display, if none is showing; returns an undo function. */
-  const ensureTestOutput = async (name: string) => {
+  const ensureTestOutput = async (name: string, count = 1) => {
     if (showingCount() > 0) return () => undefined;
     const created = screens.createGroup(name);
     const groupId = createdGroupId(created, name);
-    const display = listDisplays()[0];
-    if (groupId && display) screens.assignDisplay(groupId, display.id, { coverOperator: true });
+    for (const display of listDisplays().slice(0, count))
+      if (groupId) screens.assignDisplay(groupId, display.id, { coverOperator: true });
     await new Promise((resolve) => setTimeout(resolve, 300));
     return () => {
       if (groupId) screens.deleteGroup(groupId);
@@ -2977,10 +2997,11 @@ function start(): void {
   };
   if (perfTest) {
     operatorWindow.webContents.once('did-finish-load', () => {
-      void runPerformanceTestWithNodes({
+      void runPerformanceTestWithScenario({
         operator: () => (operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : null),
         outputs: () => [...outputWindows.values()].filter((w) => !w.isDestroyed()),
-        ensureOutput: () => ensureTestOutput('Performance test'),
+        // Three outputs for that scenario (windowed, with two extra displays, on a runner).
+        ensureOutput: () => ensureTestOutput('Performance test', perfScenario === 'three-outputs' ? 3 : 1),
         workerRunning: () =>
           app.getAppMetrics().some((m) => m.type === 'Utility' && m.name === 'Drashti import'),
         diagnostics: { loopDelay, handlerTimes, gc },
@@ -2992,6 +3013,16 @@ function start(): void {
           operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow.webContents : null,
         music,
         engine,
+        ffmpegPath: () =>
+          findFfmpeg({
+            packaged: app.isPackaged,
+            resourcesPath: process.resourcesPath,
+            appPath: app.getAppPath(),
+            platform: process.platform,
+            arch: process.arch,
+            override: process.env['DRASHTI_FFMPEG'],
+          }),
+        cpu: () => app.getAppMetrics().reduce((sum, m) => sum + m.cpu.percentCPUUsage, 0),
         ...(perfWatch ? { watch: perfWatch } : {}),
         ...(perfProfileDir ? { profile: new PerfProfile(perfProfileDir) } : {}),
         ...(perfNoImport ? { noImportMs: 20_000 } : {}),
