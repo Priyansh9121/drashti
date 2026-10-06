@@ -1207,9 +1207,13 @@ test('updates: the Updates dialog, the status bar, and a node offering to match 
     release.close();
   }
   const mains = await releaseServer({ '1.0.0-test.1': randomBytes(256 * 1024) }, '1.0.0-test.1');
-  const main = await launchMain({ DRASHTI_TEST_VERSION: '1.0.0-test.1' });
+  const main = await launchMain({
+    DRASHTI_TEST_VERSION: '1.0.0-test.1',
+    DRASHTI_TEST_COMPUTER_NAME: 'Placeholder Mandir Mac',
+  });
   const node = await launchNode({
     DRASHTI_TEST_VERSION: '1.0.0-test.2',
+    DRASHTI_TEST_COMPUTER_NAME: 'Placeholder Lobby PC',
     DRASHTI_UPDATE_URL: mains.base,
     DRASHTI_TEST_UPDATE_INSTALL: installLog,
   });
