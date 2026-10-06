@@ -133,12 +133,18 @@ test('operator: pick a presentation, go live by click and keyboard, clear layers
   }
 
   // Updates reach a painted frame on the output within one 60 Hz frame (16.7 ms) of leaving
-  // the main process. The median must meet that; a rare scheduling hiccup is tolerated, a stall is not.
+  // the main process. The median must meet that; the slow end too: the 12th of the 15 (about 3 in 4)
+  // within two frames (34 ms). A rare scheduling hiccup is tolerated, a stall is not.
   const sorted = [...latencies].sort((a, b) => a - b);
   const median = sorted[Math.floor(sorted.length / 2)] ?? Infinity;
+  const slowEnd = sorted[11] ?? Infinity;
   const worst = sorted.at(-1) ?? Infinity;
-  console.log(`output paint latency (ms): ${latencies.join(', ')}; median ${median}, worst ${worst}`);
+  console.log(
+    `output paint latency (ms): ${latencies.join(', ')}; median ${median}, 12th of ${sorted.length} ${slowEnd}, worst ${worst}`,
+  );
+  expect(latencies).toHaveLength(15);
   expect(median).toBeLessThanOrEqual(17);
+  expect(slowEnd).toBeLessThanOrEqual(34);
   expect(worst).toBeLessThan(250);
   test.info().annotations.push({ type: 'output paint latency (ms)', description: latencies.join(', ') });
   await app.close();
