@@ -37,6 +37,7 @@ import type { ModeResult, OperatorMode } from './mode';
 import type { RolesResult, RolesView } from './roles';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
+import type { MarkersResult, MediaMarkers } from './markers';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { Lang, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
@@ -370,6 +371,9 @@ export interface DrashtiBridge {
     onConversions(listener: (jobs: ConversionJob[]) => void): () => void;
     /** Undo a conversion: the original is used again wherever it was moved from. */
     undoConversion(conversionId: string): Promise<{ ok: true } | { ok: false; message: string }>;
+    /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
+    markers(mediaId: string): Promise<MediaMarkers>;
+    setMarkers(mediaId: string, markers: MediaMarkers): Promise<MarkersResult>;
     /** How long a file is, learned as it played (outputs and the audio player only). */
     reportLength(mediaId: string, durationMs: number): Promise<null>;
   };

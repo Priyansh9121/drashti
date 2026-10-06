@@ -30,30 +30,64 @@ export function stillUrl(mediaId: string, version = 0): string {
 export const STILL_WIDTH = 480;
 export const STILL_MAX_BYTES = 1024 * 1024;
 
+/** A start and an end point a file plays between (Session 14; ms into the file). */
+export interface PlaybackClip {
+  startMs: number;
+  endMs: number | null;
+}
+
+/** A jump (to a marker): at `at` (ms since the epoch) the playback was at `toMs` into the file. */
+export interface PlaybackSeek {
+  at: number;
+  toMs: number;
+}
+
+export interface PlaybackClock {
+  startedAt: number;
+  loop: boolean;
+  clip?: PlaybackClip;
+  seek?: PlaybackSeek;
+}
+
+/** Where a file plays between, in seconds (the whole file when it has no start and end points). */
+export function playbackBounds(
+  clip: PlaybackClip | undefined,
+  duration: number,
+): { start: number; end: number } {
+  if (!Number.isFinite(duration) || duration <= 0) return { start: 0, end: 0 };
+  const start = Math.min(duration, Math.max(0, (clip?.startMs ?? 0) / 1000));
+  const end = clip?.endMs != null ? Math.min(duration, Math.max(start, clip.endMs / 1000)) : duration;
+  return { start, end };
+}
+
 /**
  * Where a playback that started at `startedAt` (ms since the epoch) is at
- * `now`, in seconds: looping videos wrap, others stop at the end. Files that
- * do not say how long they are start from the top.
+ * `now`, in seconds: looping files wrap (between their start and end points,
+ * when they have them), others stop at the end; after a jump, it goes on from
+ * where the jump took it. Files that do not say how long they are start from
+ * the top.
  */
-export function playbackPosition(
-  playback: { startedAt: number; loop: boolean },
-  duration: number,
-  now: number,
-): number {
+export function playbackPosition(playback: PlaybackClock, duration: number, now: number): number {
   if (!Number.isFinite(duration) || duration <= 0) return 0;
-  const elapsed = Math.max(0, (now - playback.startedAt) / 1000);
-  return playback.loop ? elapsed % duration : Math.min(elapsed, duration);
+  const { start, end } = playbackBounds(playback.clip, duration);
+  const seek = playback.seek;
+  const from = seek ? Math.min(end, Math.max(start, seek.toMs / 1000)) : start;
+  const elapsed = Math.max(0, (now - (seek ? seek.at : playback.startedAt)) / 1000);
+  const span = end - start;
+  if (playback.loop && span > 0) return start + ((from - start + elapsed) % span);
+  return Math.min(from + elapsed, end);
 }
 
 /**
  * How far a playing file is from where the shared clock says it should be,
  * in seconds (+ ahead, - behind). Across a loop's end, 3.9 s and 0.1 s of a
- * 4 s file are 0.2 s apart, not 3.8 s.
+ * 4 s loop are 0.2 s apart, not 3.8 s (`span`: the loop's length, the whole
+ * file or between its start and end points).
  */
-export function playbackOffset(current: number, expected: number, duration: number, loop: boolean): number {
+export function playbackOffset(current: number, expected: number, span: number, loop: boolean): number {
   const d = current - expected;
-  if (!loop || !Number.isFinite(duration) || duration <= 0) return d;
-  return ((((d + duration / 2) % duration) + duration) % duration) - duration / 2;
+  if (!loop || !Number.isFinite(span) || span <= 0) return d;
+  return ((((d + span / 2) % span) + span) % span) - span / 2;
 }
 
 export type PlaybackCorrection = { seek: true } | { seek: false; rate: number };

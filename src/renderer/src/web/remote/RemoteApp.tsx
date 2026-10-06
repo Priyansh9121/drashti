@@ -561,6 +561,37 @@ function Music() {
   );
 }
 
+/** Markers of the background video or the sound playing (Session 14): a tap jumps there, in step everywhere. */
+function Markers() {
+  const bg = useEngine((s) => {
+    const b = s.state?.layers.background;
+    return b?.kind === 'media' ? (b.marks ?? []) : [];
+  });
+  const audio = useEngine((s) => s.state?.layers.audio?.marks ?? []);
+  if (bg.length === 0 && audio.length === 0) return null;
+  const jump = (layer: 'background' | 'audio', id: string) =>
+    void tap(post(`/api/v1/markers/${encodeURIComponent(id)}/jump`, { layer }));
+  return (
+    <section className="space-y-2" aria-labelledby="markers-title" data-testid="remote-markers">
+      <h2 id="markers-title" className="text-sm font-bold tracking-wider text-muted uppercase">
+        Jump to a marker
+      </h2>
+      <div className="flex flex-wrap gap-2">
+        {bg.map((m) => (
+          <Button key={`b-${m.id}`} size="lg" onClick={() => jump('background', m.id)}>
+            {m.name}
+          </Button>
+        ))}
+        {audio.map((m) => (
+          <Button key={`a-${m.id}`} size="lg" onClick={() => jump('audio', m.id)}>
+            {m.name} (sound)
+          </Button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 /** The macros: tapping one runs its actions as one change (Simple Mode refuses). */
 function Macros() {
   const macros = useRemote((s) => s.macros);
@@ -642,6 +673,7 @@ function TimersAndMessages() {
       <Shastra />
       <Macros />
       <Music />
+      <Markers />
       <section className="space-y-2" aria-labelledby="timers-title">
         <h2 id="timers-title" className="text-sm font-bold tracking-wider text-muted uppercase">
           Timers

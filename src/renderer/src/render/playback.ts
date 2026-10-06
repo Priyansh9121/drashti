@@ -1,8 +1,9 @@
 import type { DrashtiBridge } from '../../../shared/bridge';
-import type { CorrectionLimits } from '../../../shared/media';
+import type { CorrectionLimits, PlaybackClip, PlaybackSeek } from '../../../shared/media';
 import {
   mediaUrl,
   PICTURE_LIMITS,
+  playbackBounds,
   playbackCorrection,
   playbackOffset,
   playbackPosition,
@@ -23,7 +24,17 @@ export interface PlaybackOptions {
   audible?: boolean;
   /** When to jump, and how much the speed may change to catch up (pictures by default). */
   limits?: CorrectionLimits;
+  /**
+   * How it plays now (Session 14), read at every check so a change lands
+   * without loading the file again: whether it loops, its start and end
+   * points, and a jump to a marker. Left out: the element's own loop, the
+   * whole file.
+   */
+  timing?: () => { loop: boolean; clip?: PlaybackClip; seek?: PlaybackSeek };
 }
+
+/** A playback: call it to stop; resync() checks it against the clock at once (after a jump). */
+export type Playback = (() => void) & { resync: () => void };
 
 /** How often a playing file is checked against the shared clock. */
 const CHECK_MS = 250;
@@ -52,8 +63,15 @@ function tellLength(mediaId: string, seconds: number): void {
   void bridge.media.reportLength(mediaId, Math.round(seconds * 1000)).catch(() => undefined);
 }
 
-export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): () => void {
+export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Playback {
   const { mediaId, attempt, startedAt, onFrame, onError, audible = false, limits = PICTURE_LIMITS } = options;
+  /** How it plays now: a loop between start and end points is done here, not by the element. */
+  const clock = () => {
+    const t = options.timing?.();
+    if (t?.clip && v.loop) v.loop = false;
+    return { startedAt, loop: t ? t.loop : v.loop, clip: t?.clip, seek: t?.seek };
+  };
+  let wrap: ReturnType<typeof setTimeout> | null = null;
   // How long the last jump took to land: the next one aims that far ahead, so it lands in step.
   let seekLead = 0;
   let seekFrom = 0;
@@ -66,7 +84,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): ()
     seekFrom = 0;
   };
   let framed = false;
-  const expected = () => playbackPosition({ startedAt, loop: v.loop }, v.duration, engineNow());
+  const expected = () => playbackPosition(clock(), v.duration, engineNow());
   const frame = () => {
     if (framed) return;
     framed = true;
@@ -86,18 +104,39 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): ()
       v.addEventListener('seeked', whenFrame, { once: true });
       v.currentTime = at;
     } else whenFrame();
-    // A file that has already played to its end holds its last frame.
-    if (v.loop || at < v.duration) void v.play().catch(() => undefined);
+    // A file that has already played to its end (or end point) holds its last frame.
+    const c = clock();
+    if (c.loop || at < playbackBounds(c.clip, v.duration).end) void v.play().catch(() => undefined);
   };
   const check = () => {
     if (!framed || v.seeking || v.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
-    const at = expected();
-    if (!v.loop && at >= v.duration) return;
+    const c = clock();
+    const at = playbackPosition(c, v.duration, engineNow());
+    const { start, end } = playbackBounds(c.clip, v.duration);
+    // At its end point it holds there (its last frame), as at the end of the file.
+    if (!c.loop && at >= end - 0.01) {
+      if (!v.paused) v.pause();
+      if (c.clip && Math.abs(v.currentTime - end) > 0.1) v.currentTime = end;
+      return;
+    }
     if (v.paused && !v.ended) void v.play().catch(() => undefined);
-    const correction = playbackCorrection(playbackOffset(v.currentTime, at, v.duration, v.loop), limits);
-    // Aiming ahead past the end of a looping file wraps round to its start.
-    if (correction.seek) jump(v.loop ? ((at + seekLead) % v.duration) - seekLead : at);
+    const span = end - start;
+    const correction = playbackCorrection(playbackOffset(v.currentTime, at, span, c.loop), limits);
+    // Aiming ahead past the end of a loop wraps round to its start.
+    if (correction.seek) jump(c.loop && span > 0 ? start + ((at - start + seekLead) % span) - seekLead : at);
     else if (v.playbackRate !== correction.rate) v.playbackRate = correction.rate;
+    // A loop between start and end points: back to the start the moment it reaches the end point.
+    if (c.loop && c.clip && !wrap) {
+      const left = end - v.currentTime;
+      if (left < CHECK_MS / 1000 + 0.05)
+        wrap = setTimeout(
+          () => {
+            wrap = null;
+            jump(start);
+          },
+          Math.max(0, (left / v.playbackRate) * 1000),
+        );
+    }
   };
   v.muted = !audible;
   v.addEventListener('loadedmetadata', onMetadata, { once: true });
@@ -105,8 +144,9 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): ()
   v.addEventListener('seeked', landed);
   const timer = setInterval(check, CHECK_MS);
   v.src = mediaUrl(mediaId, attempt);
-  return () => {
+  const stop = () => {
     clearInterval(timer);
+    if (wrap) clearTimeout(wrap);
     v.removeEventListener('loadedmetadata', onMetadata);
     v.removeEventListener('error', failed);
     v.removeEventListener('loadeddata', frame);
@@ -117,4 +157,11 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): ()
     v.removeAttribute('src');
     v.load();
   };
+  return Object.assign(stop, {
+    resync: () => {
+      if (wrap) clearTimeout(wrap);
+      wrap = null;
+      check();
+    },
+  });
 }

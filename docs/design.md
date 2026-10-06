@@ -287,3 +287,9 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **Tracks are compact rows**: the number (or a play mark in `live` for the one playing), the name, its length, and Earlier, Later and take-out buttons. A track that cannot play says so in words and cannot be clicked. **Add sounds…** opens a dialog of the library's sounds to tick.
 - **Simple Mode gets one strip**, between the previews and the key hints: the list's name and what plays, and one large button, **Play music** or **Pause music**. Nothing else about music shows there, and it still fits 1280 × 720 with nothing scrolling.
 - The panel, the add dialog and Simple Mode's strip pass the accessibility checks at 1280 × 720 (`tests/e2e/music.spec.ts`).
+
+## 32. Playback markers
+
+- **A dialog from the media list's bookmark button**, titled with the file's name: a silent preview with its own controls at the top, then **Start** and **End** as time fields ("1:02.5") each with a small **Here** button, then the markers as compact rows (the name as a button that shows it in the preview, its time in tabular figures, and a remove button), then a name field and **Add at the time shown**. One problem line in `danger`, in words, above **Save** and **Cancel**.
+- **Jumps sit under the live picture**, one row per layer ("Background:", "Sound:"), small buttons with a bookmark icon and the marker's name; nothing shows when what plays has no markers. The remote's More tab has them as large buttons under **Jump to a marker**.
+- The dialog passes the accessibility checks at 1280 × 720 (`tests/e2e/markers.spec.ts`).

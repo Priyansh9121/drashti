@@ -1,9 +1,10 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { openMarkers } from '../markers/MarkersDialog';
 import type { MediaSummary } from '../../../shared/playlists';
 import { startDrag } from '../playlists/drag';
 import { MissingBadge } from '../ui/Badge';
 import type { Icon } from '../ui/icons';
-import { Film, Image, Music, Wand2, X } from '../ui/icons';
+import { Bookmark, Film, Image, Music, Wand2, X } from '../ui/icons';
 import { rowClass } from '../ui/ListRow';
 import type { ConversionJob } from '../../../shared/convert';
 import { Button, IconButton } from '../ui/Button';
@@ -165,6 +166,17 @@ const MediaRow = memo(function MediaRow({
         {m.missing && <MissingBadge />}
       </button>
       <ConvertControl m={m} job={job} />
+      {(m.kind === 'video' || m.kind === 'audio') && !m.missing && m.unplayable === null && (
+        <IconButton
+          icon={Bookmark}
+          label={`Start, end and markers of ${m.name}`}
+          size="sm"
+          data-testid="media-markers"
+          onClick={() => {
+            openMarkers(m);
+          }}
+        />
+      )}
     </div>
   );
 });

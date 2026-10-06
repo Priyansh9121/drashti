@@ -15,7 +15,7 @@ export { Blend, Frame, KeyboardMusic, LayoutTemplate, SwatchBook, Zap } from 'lu
 // Shastra texts, the arti, the calendar and the idle rotation (Session 12).
 export { BookOpen, CalendarDays, Flame, GalleryHorizontalEnd, Quote } from 'lucide-react';
 // Roles and PINs, scheduled backups, updates, music and markers (Session 14).
-export { Download, LockOpen, RefreshCw, ShieldCheck, Shuffle } from 'lucide-react';
+export { Bookmark, Download, LockOpen, RefreshCw, ShieldCheck, Shuffle } from 'lucide-react';
 export {
   AlertTriangle,
   AlignCenter,

@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
+import type { MediaMarkers } from '../../shared/markers';
 import { constants, createReadStream, statfsSync } from 'node:fs';
 import { copyFile, mkdir, rename, rm, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
@@ -244,6 +245,17 @@ export class MediaStore {
    * A media item whose file was not found: kept (path '') so slides can
    * point at it and the operator can relink it later. One per original path.
    */
+  /** Start and end points and markers from an imported file (Session 14), unless the item has its own. */
+  keepMarkers(mediaId: string, markers: MediaMarkers): boolean {
+    return (
+      this.db
+        .prepare(
+          "UPDATE media SET markers = ? WHERE id = ? AND markers IS NULL AND kind IN ('video', 'audio')",
+        )
+        .run(JSON.stringify(markers), mediaId).changes > 0
+    );
+  }
+
   addMissing(originalPath: string, kind: MediaKind, source: MediaSource): string {
     const found = this.db
       .prepare('SELECT id FROM media WHERE missing = 1 AND source_path = ? AND source_kind = ?')

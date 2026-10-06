@@ -89,6 +89,8 @@ export const REMOTE_COMMANDS = [
   'resumeMusic',
   'musicNext',
   'musicPrevious',
+  // A jump to a marker of the background video or the sound playing (Session 14).
+  'jumpToMarker',
 ] as const;
 
 /** A request from the network server to the main process, for a paired device. */

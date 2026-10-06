@@ -3,6 +3,7 @@ import type { RolesResult, RolesView } from './roles';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
+import type { MarkersResult, MediaMarkers } from './markers';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { IdleResult, IdleSettings, IdleView, QuoteFields, QuoteResult } from './idle';
 import type {
@@ -266,6 +267,9 @@ export const IPC = {
     conversionsChanged: 'media:conversions-changed',
     /** An output or the audio player learned how long a file is, as it played it (stage screens show the time left). */
     reportLength: 'media:report-length',
+    /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
+    markers: 'media:markers',
+    setMarkers: 'media:set-markers',
   },
   audio: {
     /** The sound output: the operator's choice, the outputs found, and where sound plays. */
@@ -723,6 +727,8 @@ export interface InvokeContract {
   [IPC.media.cancelConversion]: { args: [jobId: string | null]; result: ConvertResult };
   [IPC.media.conversions]: { args: []; result: ConversionJob[] };
   [IPC.media.reportLength]: { args: [mediaId: string, durationMs: number]; result: null };
+  [IPC.media.markers]: { args: [mediaId: string]; result: MediaMarkers };
+  [IPC.media.setMarkers]: { args: [mediaId: string, markers: MediaMarkers]; result: MarkersResult };
   [IPC.media.undoConversion]: {
     args: [conversionId: string];
     result: { ok: true } | { ok: false; message: string };

@@ -87,6 +87,8 @@ import { AudioPlaylistRepo } from './db/audio-playlists';
 import { MusicService } from './music/music-service';
 import { startPerfMusic } from './music/perf-music';
 import { musicPlaySchema } from '../shared/music';
+import type { MediaMarkers } from '../shared/markers';
+import { mediaMarkersSchema, NO_MARKERS } from '../shared/markers';
 import { UpdateService } from './update/update-service';
 import { defaultInstaller } from './update/installer';
 import { UPDATE_BASE } from '../shared/updates';
@@ -714,6 +716,8 @@ function start(): void {
   let simpleNow = () => false;
   /** A media file's length, once learned from playing it (the media repo, made further down). */
   let mediaLength: (mediaId: string) => number | null = () => null;
+  /** A video's or sound's start and end points and markers (the media repo, made further down). */
+  let mediaMarkers: (mediaId: string) => MediaMarkers | null = () => null;
   /** Macros (made further down, once props, messages and media are): a slide's macro cue runs through it. */
   let macroService: MacroService | null = null;
   /** Macros' own times (made with the macros): told when the macros change. */
@@ -741,6 +745,7 @@ function start(): void {
       refuse: (command) =>
         simpleNow() && SIMPLE_MODE_REFUSED_COMMANDS.includes(command.type) ? SIMPLE_MODE_REFUSAL : null,
       mediaLength: (mediaId) => mediaLength(mediaId),
+      mediaMarkers: (mediaId) => mediaMarkers(mediaId),
       macroCommands: (macroId) =>
         macroService?.commands(macroId) ?? { ok: false, message: 'Macros are not ready yet.' },
     },
@@ -773,6 +778,28 @@ function start(): void {
   mkdirSync(mediaDir, { recursive: true });
   const media = new MediaRepo(db);
   mediaLength = (mediaId) => media.lengthOf(mediaId);
+  mediaMarkers = (mediaId) => media.markersOf(mediaId);
+  // Playback markers (Session 14): kept with the file; what plays it follows at once.
+  handle(IPC.media.markers, (_e, mediaId) =>
+    typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId)
+      ? (media.markersOf(mediaId) ?? NO_MARKERS)
+      : NO_MARKERS,
+  );
+  handle(IPC.media.setMarkers, (e, mediaId, raw) => {
+    if (!fromOperator(e) || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId))
+      return { ok: false as const, message: 'Only the operator window can set markers.' };
+    const parsed = mediaMarkersSchema.safeParse(raw);
+    if (!parsed.success)
+      return {
+        ok: false as const,
+        message: parsed.error.issues[0]?.message ?? 'Those markers cannot be kept.',
+      };
+    if (!media.setMarkers(mediaId, parsed.data))
+      return { ok: false as const, message: 'Markers are for a video or a sound in the library.' };
+    engine.refreshMarkers(mediaId);
+    log.info(`Markers: set on a media item (${String(parsed.data.markers.length)} marker(s))`);
+    return { ok: true as const, markers: media.markersOf(mediaId) ?? NO_MARKERS };
+  });
   mediaInfo = (mediaId) => {
     const found = media.kindAndName(mediaId);
     return found ? { name: found.name, missing: false, unplayable: null } : null;

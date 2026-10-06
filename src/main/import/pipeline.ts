@@ -348,11 +348,13 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
   const storeMedia = (staged: readonly Staged[], kind: SourceKind) => {
     const ids: string[] = [];
     const issues: ImportIssue[] = [];
+    let marked = 0;
     for (const s of staged) {
       const source = { kind, path: s.ref.originalPath };
       if (s.staged) {
         const stored = ctx.media.addStaged(s.staged, source);
         ids.push(stored.mediaId);
+        if (s.ref.markers && ctx.media.keepMarkers(stored.mediaId, s.ref.markers)) marked++;
         if (stored.probe.playable === false)
           issues.push(unplayableIssue(s.staged.name, stored.probe, stored.mediaId));
         continue;
@@ -367,6 +369,13 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         fix: { kind: 'relink-media', mediaId: id },
       });
     }
+    if (marked > 0)
+      issues.push({
+        severity: 'info',
+        code: 'markers-read',
+        message: `Start and end points or markers were read for ${String(marked)} video(s) or sound(s). The older formats' markers follow the community notes on them and are not yet checked against real files: look them over (the media item's Markers).`,
+        fix: null,
+      });
     return { ids, issues, count: ids.length };
   };
 
