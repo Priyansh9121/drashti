@@ -104,7 +104,8 @@ test('a PDF dropped on the library becomes slides of its pages as pictures, with
   await expect(report).toContainText('Each of the 3 page(s) became a slide holding its picture');
   await expect(report).toContainText('2 slide(s) have speaker notes');
   await expectNoSeriousA11yIssues(win, 'the report for a PDF made into pictures');
-  await report.getByTestId('report-item').getByRole('button', { name: 'Open' }).click();
+  // With notes, the item is listed under "Imported with notes" and again under "Imported".
+  await report.getByTestId('report-item').first().getByRole('button', { name: 'Open' }).click();
   await expect(report).toHaveCount(0);
   await expect
     .poll(() =>
