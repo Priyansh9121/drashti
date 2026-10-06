@@ -1,6 +1,7 @@
 import type { EngineState } from '../../../shared/engine/state';
 import { SOUND_LIMITS } from '../../../shared/media';
 import type { DeviceChoice } from '../../../shared/stream';
+import type { Sound } from '../audio/sounds';
 import { soundsOf } from '../audio/sounds';
 import { startPlayback } from '../render/playback';
 import { failureState, findDevice, setSoundState } from './camera';
@@ -20,7 +21,10 @@ interface OwnSound {
   el: HTMLAudioElement;
   source: MediaElementAudioSourceNode;
   gain: GainNode;
+  /** What it plays now (its start and end points and a jump, as the audio player follows them). */
+  sound: Sound;
   stop: () => void;
+  resync: () => void;
 }
 
 export class StreamSound {
@@ -127,12 +131,15 @@ export class StreamSound {
     for (const sound of wanted.values()) {
       const current = this.own.get(sound.key);
       if (current) {
-        current.el.loop = sound.loop;
+        const jumped = current.sound.seek?.at !== sound.seek?.at;
+        current.sound = sound;
+        if (jumped) current.resync();
+        current.el.loop = sound.loop && !sound.clip;
         current.gain.gain.value = sound.volume;
         continue;
       }
       const el = document.createElement('audio');
-      el.loop = sound.loop;
+      el.loop = sound.loop && !sound.clip;
       el.preload = 'auto';
       el.dataset['key'] = sound.key;
       document.body.append(el);
@@ -141,13 +148,17 @@ export class StreamSound {
       const gain = this.ctx.createGain();
       gain.gain.value = sound.volume;
       source.connect(gain).connect(this.mix);
-      const stop = startPlayback(el, {
+      const own: OwnSound = { el, source, gain, sound, stop: () => undefined, resync: () => undefined };
+      const playback = startPlayback(el, {
         mediaId: sound.mediaId,
         startedAt: sound.startedAt,
         audible: true,
         limits: SOUND_LIMITS,
+        timing: () => ({ loop: own.sound.loop, clip: own.sound.clip, seek: own.sound.seek }),
       });
-      this.own.set(sound.key, { el, source, gain, stop });
+      own.stop = playback;
+      own.resync = playback.resync;
+      this.own.set(sound.key, own);
     }
   }
 
