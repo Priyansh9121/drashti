@@ -10,7 +10,7 @@ import {
   slotsReducer,
 } from './background-slots';
 import { OBJECT_FIT } from './media-style';
-import { startPlayback } from './playback';
+import { type Playback, startPlayback } from './playback';
 import { engineNow } from './clock';
 import { PreviewPicture, usePreviewsOnly } from './previews';
 import { useMediaAttempt } from './media-attempts';
@@ -39,13 +39,20 @@ function VideoSlot({
   const ref = useRef<HTMLVideoElement>(null);
   const { key, layer, attempt } = slot;
   const { mediaId, startedAt } = layer;
+  // Start and end points and a jump to a marker (Session 14) are read as they change, without a reload.
+  const timing = useRef(layer);
+  useLayoutEffect(() => {
+    timing.current = layer;
+  });
+  const playback = useRef<Playback | null>(null);
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
-    return startPlayback(v, {
+    const p = startPlayback(v, {
       mediaId,
       attempt,
       startedAt,
+      timing: () => ({ loop: timing.current.loop, clip: timing.current.clip, seek: timing.current.seek }),
       onFrame: () => {
         dispatch({ type: 'ready', key, at: engineNow() });
       },
@@ -53,7 +60,17 @@ function VideoSlot({
         dispatch({ type: 'failed', key });
       },
     });
+    playback.current = p;
+    return () => {
+      playback.current = null;
+      p();
+    };
   }, [key, mediaId, attempt, startedAt, dispatch]);
+  const seekAt = layer.seek?.at;
+  const clipKey = `${String(layer.clip?.startMs)}/${String(layer.clip?.endMs)}`;
+  useEffect(() => {
+    playback.current?.resync();
+  }, [seekAt, clipKey]);
 
   return (
     <video
@@ -65,7 +82,7 @@ function VideoSlot({
       playsInline
       disablePictureInPicture
       preload="auto"
-      loop={layer.loop}
+      loop={layer.loop && !layer.clip}
       style={style(layer.fit, visible)}
     />
   );

@@ -1,5 +1,6 @@
 import type { EngineState } from '../../../shared/engine/state';
 import { MUSIC_FADE_IN_MS, MUSIC_FADE_OUT_MS } from '../../../shared/music';
+import type { PlaybackClip, PlaybackSeek } from '../../../shared/media';
 
 /** One sound the show is making: a file, when it started, and how. */
 export interface Sound {
@@ -13,6 +14,9 @@ export interface Sound {
   /** An audio playlist's track (Session 14): it fades in as it starts and out as it stops. */
   fadeInMs?: number;
   fadeOutMs?: number;
+  /** Start and end points, and a jump to a marker (Session 14). */
+  clip?: PlaybackClip;
+  seek?: PlaybackSeek;
 }
 
 /**
@@ -33,6 +37,8 @@ export function soundsOf(state: EngineState): Sound[] {
       loop: audio.loop,
       volume: audio.volume,
       ...(audio.music ? { fadeInMs: MUSIC_FADE_IN_MS, fadeOutMs: MUSIC_FADE_OUT_MS } : {}),
+      ...(audio.clip ? { clip: audio.clip } : {}),
+      ...(audio.seek ? { seek: audio.seek } : {}),
     });
   }
   const bg = state.layers.background;
@@ -43,6 +49,8 @@ export function soundsOf(state: EngineState): Sound[] {
       startedAt: bg.startedAt,
       loop: bg.loop,
       volume: 1,
+      ...(bg.clip ? { clip: bg.clip } : {}),
+      ...(bg.seek ? { seek: bg.seek } : {}),
     });
   }
   const slide = state.layers.slide;

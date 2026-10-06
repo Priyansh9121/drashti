@@ -57,6 +57,7 @@ import { connectRoles } from '../roles/roles-store';
 import { AdminPinDialog, RolesDialog } from '../roles/RolesDialogs';
 import { BackupsDialog } from '../backups/BackupsDialog';
 import { UpdatesDialog } from '../updates/UpdatesDialog';
+import { MarkerJumps, MarkersDialog } from '../markers/MarkersDialog';
 import { SimpleApp } from '../simple/SimpleApp';
 import { SetupWizard } from '../setup/SetupWizard';
 import { openSetup } from '../setup/setup-store';
@@ -199,6 +200,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
         right={
           <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
             <LivePreview />
+            <MarkerJumps />
             <NextPreview />
             <div className="mt-3 divide-y divide-line border-t border-line">
               <LooksPanel />
@@ -239,6 +241,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <RolesDialog />
       <BackupsDialog />
       <UpdatesDialog />
+      <MarkersDialog />
       <AdminPinDialog />
       {dashboardOpen && (
         <ScreensDashboard

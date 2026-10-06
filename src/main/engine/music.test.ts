@@ -180,3 +180,52 @@ describe('audio playlists', () => {
     elapse(0);
   });
 });
+
+describe('playback markers (Session 14)', () => {
+  it('play a sound between its points, jump to a marker in step, and end a music track at its end point', () => {
+    let clock = 1_000_000;
+    const jobs: { at: number; run: () => void; cancelled: boolean }[] = [];
+    const markers = {
+      startMs: 10_000,
+      endMs: 40_000,
+      markers: [{ id: 'm1', name: 'Placeholder chorus', atMs: 30_000 }],
+    };
+    const engine = new ShowEngine(makeSource(), new RecordingTransport(), () => clock, undefined, {
+      mediaLength: (id) => LENGTHS[id] ?? null,
+      mediaMarkers: (id) => (id === 'a' ? markers : null),
+      schedule: (delay, run) => {
+        const job = { at: clock + delay, run, cancelled: false };
+        jobs.push(job);
+        return () => {
+          job.cancelled = true;
+        };
+      },
+    });
+    const elapse = (ms: number) => {
+      const end = clock + ms;
+      for (;;) {
+        const next = jobs.filter((j) => !j.cancelled && j.at <= end).sort((x, y) => x.at - y.at)[0];
+        if (!next) break;
+        jobs.splice(jobs.indexOf(next), 1);
+        clock = Math.max(clock, next.at);
+        next.run();
+      }
+      clock = end;
+    };
+    engine.dispatch({ type: 'playMusic', music: music(), index: 0 });
+    expect(playing(engine)).toMatchObject({
+      mediaId: 'a',
+      clip: { startMs: 10_000, endMs: 40_000 },
+      marks: [{ name: 'Placeholder chorus' }],
+    });
+    // A jump: from then it plays on from the marker, and the track ends 10 s later (at its end point).
+    elapse(5000);
+    expect(engine.dispatch({ type: 'jumpToMarker', layer: 'audio', markerId: 'm1' }).ok).toBe(true);
+    expect(playing(engine)?.seek).toEqual({ at: clock, toMs: 30_000 });
+    elapse(9_900);
+    expect(playing(engine)?.mediaId).toBe('a');
+    elapse(200);
+    expect(playing(engine)?.mediaId).toBe('b');
+    expect(engine.dispatch({ type: 'jumpToMarker', layer: 'audio', markerId: 'gone' }).ok).toBe(false);
+  });
+});

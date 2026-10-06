@@ -140,6 +140,12 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('musicNext') }),
   z.object({ type: z.literal('musicPrevious') }),
   z.object({ type: z.literal('setMusicLoop'), loop: z.boolean() }),
+  /** Jump the background video or the sound to one of its file's markers (Session 14), in step everywhere. */
+  z.object({
+    type: z.literal('jumpToMarker'),
+    layer: z.enum(['background', 'audio']),
+    markerId: z.string().min(1).max(64),
+  }),
 ]);
 
 export type EngineCommand = z.infer<typeof engineCommandSchema>;
@@ -157,7 +163,8 @@ export type EngineErrorCode =
   | 'nothing-to-put-back'
   | 'unknown-look'
   | 'nothing-cued'
-  | 'no-music';
+  | 'no-music'
+  | 'unknown-marker';
 
 export type CommandResult =
   { ok: true; changed: boolean; rev: number } | { ok: false; error: EngineErrorCode; message: string };

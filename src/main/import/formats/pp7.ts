@@ -1,4 +1,6 @@
 import { homedir } from 'node:os';
+import type { MediaMarkers } from '../../../shared/markers';
+import { keepMarkers, markersFrom } from '../markers';
 import { basename, dirname, join } from 'node:path';
 import type { ImportIssue } from '../../../shared/import';
 import type {
@@ -215,6 +217,25 @@ function addMedia(ctx: Context, media: Message | undefined, fallback: ParsedMedi
   ctx.media.push({ originalPath: path, kind });
   ctx.mediaIndex.set(path, ctx.media.length - 1);
   return ctx.media.length - 1;
+}
+
+/** A media cue's markers and its file's in and out points (seconds), unconfirmed (import/markers.ts). */
+function pp7Markers(
+  action: Message,
+  element: Message | undefined,
+  kind: 'video' | 'audio',
+): MediaMarkers | null {
+  const transport = msg(msg(element?.[kind])?.['transport']);
+  const markers = (Array.isArray(action['markers']) ? action['markers'] : [])
+    .map((m) => msg(m as never))
+    .filter((m): m is Message => m !== undefined)
+    .map((m) => ({ name: str(m['name']), seconds: num(m['time']) }));
+  return markersFrom(
+    num(transport?.['in_point']),
+    num(transport?.['out_point']),
+    num(transport?.['end_point']),
+    markers,
+  );
 }
 
 const scaleOf = (media: Message | undefined): MediaElement['fit'] => {
@@ -489,16 +510,23 @@ function cuesOf(ctx: Context, actions: Message[]): ParsedCue[] {
             'info',
           );
         }
+        const audioIndex = addMedia(ctx, element, 'audio');
+        keepMarkers(
+          audioIndex === null ? undefined : ctx.media[audioIndex],
+          pp7Markers(media, element, 'audio'),
+        );
         cues.push({
           kind: 'audio',
           label,
-          media: addMedia(ctx, element, 'audio'),
+          media: audioIndex,
           props: { volume: Math.min(1, Math.max(0, volume)), loop: behavior >= 1 && behavior <= 3 },
         });
         continue;
       }
       const kind: 'image' | 'video' = media['video'] || element?.['video'] ? 'video' : 'image';
       const index = addMedia(ctx, element, kind);
+      if (kind === 'video')
+        keepMarkers(index === null ? undefined : ctx.media[index], pp7Markers(media, element, 'video'));
       const loop = num(msg(media['video'])?.['playback_behavior']) === 1;
       // Layer 0 is the background layer (PLAN.md 4.3: a background cue, not slide content).
       if (num(media['layer_type']) === 0) {

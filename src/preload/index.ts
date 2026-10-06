@@ -251,6 +251,8 @@ const bridge: DrashtiBridge = {
     onConversions: (listener) => on(IPC.media.conversionsChanged, listener),
     undoConversion: (conversionId) => invoke(IPC.media.undoConversion, conversionId),
     reportLength: (mediaId, durationMs) => invoke(IPC.media.reportLength, mediaId, durationMs),
+    markers: (mediaId) => invoke(IPC.media.markers, mediaId),
+    setMarkers: (mediaId, markers) => invoke(IPC.media.setMarkers, mediaId, markers),
   },
   audio: {
     getOutput: () => invoke(IPC.audio.getOutput),

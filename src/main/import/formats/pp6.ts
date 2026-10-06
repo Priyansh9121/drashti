@@ -1,4 +1,5 @@
 import type { ImportIssue } from '../../../shared/import';
+import { keepMarkers, pp6Markers } from '../markers';
 import type {
   MediaElement,
   Outline,
@@ -375,8 +376,11 @@ function cueOf(ctx: Context, node: XmlNode): ParsedCue {
         media: addMedia(ctx, element?.attrs['source'], 'audio'),
         props: { volume: num(element?.attrs['volume'], 1), loop: element?.attrs['loopBehavior'] === '1' },
       };
-    case 'RVMediaCue':
-      return { kind: 'media', label, media: addMedia(ctx, element?.attrs['source'], 'video'), props: {} };
+    case 'RVMediaCue': {
+      const index = addMedia(ctx, element?.attrs['source'], 'video');
+      if (index !== null && element) keepMarkers(ctx.media[index], pp6Markers(element.attrs));
+      return { kind: 'media', label, media: index, props: {} };
+    }
     case 'RVClearCue':
       return { kind: 'clear', label, media: null, props: { action: node.attrs['actionType'] ?? '' } };
     case 'RVMessageCue':
@@ -432,6 +436,7 @@ function slideOf(ctx: Context, node: XmlNode, docBackground: string | null, inde
   ) {
     const media = backgroundElement.name === 'RVImageElement' ? 'image' : 'video';
     const ref = addMedia(ctx, backgroundElement.attrs['source'], media);
+    if (media === 'video' && ref !== null) keepMarkers(ctx.media[ref], pp6Markers(backgroundElement.attrs));
     if (ref !== null) {
       cues.push({
         kind: 'background',

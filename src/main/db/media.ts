@@ -1,4 +1,6 @@
 import type { Statement } from 'better-sqlite3';
+import type { MediaMarkers } from '../../shared/markers';
+import { mediaMarkersSchema } from '../../shared/markers';
 import type { MediaSummary } from '../../shared/playlists';
 import type { MediaFileRow } from '../media/media-protocol';
 import type { Db } from './database';
@@ -71,6 +73,29 @@ export class MediaRepo {
           "UPDATE media SET duration_ms = ? WHERE id = ? AND kind IN ('video', 'audio') AND (duration_ms IS NULL OR duration_ms <> ?)",
         )
         .run(durationMs, mediaId, durationMs).changes > 0
+    );
+  }
+
+  /** A video's or sound's start and end points and markers (Session 14), or null when it has none. */
+  markersOf(mediaId: string): MediaMarkers | null {
+    const row = this.db.prepare('SELECT markers FROM media WHERE id = ?').get(mediaId) as
+      { markers: string | null } | undefined;
+    if (!row?.markers) return null;
+    try {
+      const parsed = mediaMarkersSchema.safeParse(JSON.parse(row.markers));
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Keep them (null: none); only on a video or a sound. True when the item is one. */
+  setMarkers(mediaId: string, markers: MediaMarkers | null): boolean {
+    const empty = markers?.startMs === null && markers.endMs === null && markers.markers.length === 0;
+    return (
+      this.db
+        .prepare("UPDATE media SET markers = ? WHERE id = ? AND kind IN ('video', 'audio')")
+        .run(markers && !empty ? JSON.stringify(markers) : null, mediaId).changes > 0
     );
   }
 

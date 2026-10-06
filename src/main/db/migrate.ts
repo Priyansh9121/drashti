@@ -32,6 +32,7 @@ import { up as nodes } from './migrations/030-nodes';
 import { up as openedPlaylists } from './migrations/031-opened-playlists';
 import { up as macroSchedules } from './migrations/032-macro-schedules';
 import { up as audioPlaylists } from './migrations/033-audio-playlists';
+import { up as playbackMarkers } from './migrations/034-playback-markers';
 
 export interface Migration {
   version: number;
@@ -83,6 +84,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 31, name: 'opened playlists count for nodes', up: openedPlaylists },
   { version: 32, name: 'scheduled macros', up: macroSchedules },
   { version: 33, name: 'audio playlists', up: audioPlaylists },
+  { version: 34, name: 'playback markers', up: playbackMarkers },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

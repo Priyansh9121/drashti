@@ -6,6 +6,8 @@ import type { Mask } from '../masks';
 import { NO_LOOK } from '../looks';
 import type { RenderSlide, SlideElement, Transition } from '../model';
 import type { TimerState } from '../timers';
+import type { PlaybackClip, PlaybackSeek } from '../media';
+import type { PlaybackMarker } from '../markers';
 
 /**
  * Show engine state. The main process owns it; every renderer (and, later,
@@ -114,8 +116,14 @@ export interface AudioLayer extends AudioChoice {
   durationMs?: number;
   /** An audio playlist's track (Session 14): the playlist, and where in it. */
   music?: MusicRun;
-  /** Paused this far into the track (ms); left out while it plays. Nothing sounds while paused. */
+  /** Paused this far into the track (ms played since its start point); left out while it plays. Nothing sounds while paused. */
   pausedAtMs?: number;
+  /** The file's start and end points (Session 14), from the media library, when it has them. */
+  clip?: PlaybackClip;
+  /** Jumped to a marker (Session 14): from then it plays on from there. */
+  seek?: PlaybackSeek;
+  /** The file's named markers to jump to (Session 14), when it has any. */
+  marks?: PlaybackMarker[];
 }
 
 export type MediaFit = 'fit' | 'fill' | 'stretch';
@@ -151,6 +159,12 @@ export type BackgroundLayer =
       fade?: { at: number; durationMs: number };
       /** A video's length, once known (learned from playing it): a stage screen shows the time left. */
       durationMs?: number;
+      /** The file's start and end points (Session 14): a looping video loops between them. */
+      clip?: PlaybackClip;
+      /** Jumped to a marker (Session 14): from then it plays on from there. */
+      seek?: PlaybackSeek;
+      /** The file's named markers to jump to (Session 14), when it has any. */
+      marks?: PlaybackMarker[];
     });
 
 export interface PropItem {

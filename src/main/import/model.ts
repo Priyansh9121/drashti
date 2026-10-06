@@ -1,5 +1,6 @@
 import type { ImportIssue } from '../../shared/import';
 import type { SlideElement, Transition } from '../../shared/model';
+import type { MediaMarkers } from '../../shared/markers';
 
 /*
  * The intermediate model every importer produces. Parsers fill it from a
@@ -61,6 +62,8 @@ export interface ParsedMediaRef {
   /** The path (or file URL) stored in the source file. */
   originalPath: string;
   kind: 'image' | 'video' | 'audio';
+  /** Its start and end points and markers, as the file gives them (Session 14; unconfirmed). */
+  markers?: MediaMarkers;
 }
 
 export type ParsedPlaylistItem =

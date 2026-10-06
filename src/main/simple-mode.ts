@@ -114,6 +114,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.stream.stopRecording,
   IPC.stream.pickFolder,
   IPC.media.convert,
+  IPC.media.setMarkers,
   IPC.media.cancelConversion,
   IPC.media.undoConversion,
   IPC.network.setOn,

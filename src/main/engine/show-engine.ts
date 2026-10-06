@@ -33,6 +33,8 @@ import { CUT, type Transition } from '../../shared/model';
 import { elapsedAt, type TimerDefinition, type TimerRun } from '../../shared/timers';
 import { remapPosition } from '../../shared/order';
 import type { EngineAction } from './actions';
+import type { MediaMarkers, PlaybackMarker } from '../../shared/markers';
+import type { PlaybackClip } from '../../shared/media';
 import { NO_PLAYLISTS, type PlayItem, type PlaylistSource } from './playlist-source';
 import { reduce, sameData } from './reducer';
 import type { PlayedSlide, PlayOrder, SlideSource } from './slide-source';
@@ -68,6 +70,8 @@ const BACKWARDS: ReadonlySet<string> = new Set(['back', 'previous', 'previousIte
  * and neither is a track ending and the next starting.
  */
 const MUSIC_COMMANDS: ReadonlySet<string> = new Set([
+  // A jump to a marker moves what plays, not the slides.
+  'jumpToMarker',
   'playMusic',
   'pauseMusic',
   'resumeMusic',
@@ -106,6 +110,8 @@ export interface EngineOptions {
   refuse?: (command: EngineCommand) => string | null;
   /** A media file's length in ms, when the library knows it (learned from playing it). */
   mediaLength?: (mediaId: string) => number | null;
+  /** A video's or sound's start and end points and markers (Session 14), when it has any. */
+  mediaMarkers?: (mediaId: string) => MediaMarkers | null;
   /**
    * A slide's macro cue: the commands the macro runs, or why it does not run
    * (Simple Mode, a macro gone or forbidden): the slide then goes up alone.
@@ -815,6 +821,62 @@ export class ShowEngine {
     return { ok: false, error: 'not-playable', message };
   }
 
+  /** A file's start and end points as the library has them (left out when it has none). */
+  private clipOf(mediaId: string | null): { clip?: PlaybackClip; marks?: PlaybackMarker[] } {
+    const m = mediaId ? (this.options.mediaMarkers?.(mediaId) ?? null) : null;
+    if (!m) return {};
+    return {
+      ...(m.startMs !== null || m.endMs !== null
+        ? { clip: { startMs: m.startMs ?? 0, endMs: m.endMs } }
+        : {}),
+      ...(m.markers.length > 0 ? { marks: m.markers } : {}),
+    };
+  }
+
+  /**
+   * A file's markers changed in the library: what is playing it now plays
+   * between its new points (carrying on), with its new markers.
+   */
+  refreshMarkers(mediaId: string): CommandResult {
+    const actions: EngineAction[] = [];
+    const strip = <T extends { clip?: unknown; marks?: unknown }>(layer: T): T => {
+      const { clip: _c, marks: _m, ...rest } = layer;
+      return rest as T;
+    };
+    const bg = this.state.layers.background;
+    if (bg?.kind === 'media' && bg.mediaId === mediaId)
+      actions.push({ type: 'background/set', background: { ...strip(bg), ...this.clipOf(mediaId) } });
+    const audio = this.state.layers.audio;
+    if (audio?.mediaId === mediaId)
+      actions.push({ type: 'audio/set', audio: { ...strip(audio), ...this.clipOf(mediaId) } });
+    if (actions.length === 0) return this.unchanged();
+    this.bookkeeping = true;
+    try {
+      return this.apply(actions);
+    } finally {
+      this.bookkeeping = false;
+    }
+  }
+
+  /**
+   * When a playing sound ends (ms since the epoch), from its start (or the
+   * marker it jumped to) to its end point or the end of the file; null while
+   * its length is not known.
+   */
+  private endsAt(a: AudioLayer): number | null {
+    if (a.durationMs === undefined) return null;
+    const start = Math.min(a.durationMs, a.clip?.startMs ?? 0);
+    const end = Math.max(start, Math.min(a.durationMs, a.clip?.endMs ?? a.durationMs));
+    if (a.seek) return a.seek.at + Math.max(0, end - Math.min(end, Math.max(start, a.seek.toMs)));
+    return a.startedAt + (end - start);
+  }
+
+  /** How long a playing sound has played since its start point (ms), jumps included. */
+  private playedOf(a: AudioLayer, now: number): number {
+    if (a.seek) return Math.max(0, a.seek.toMs - (a.clip?.startMs ?? 0)) + Math.max(0, now - a.seek.at);
+    return Math.max(0, now - a.startedAt);
+  }
+
   /** A file's length when the library knows it (left out otherwise). */
   private lengthOf(mediaId: string | null): { durationMs?: number } {
     const ms = mediaId ? (this.options.mediaLength?.(mediaId) ?? null) : null;
@@ -833,6 +895,7 @@ export class ShowEngine {
       startedAt,
       music,
       ...this.lengthOf(track?.mediaId ?? null),
+      ...this.clipOf(track?.mediaId ?? null),
     };
   }
 
@@ -861,7 +924,14 @@ export class ShowEngine {
   private audioLayer(choice: AudioChoice): AudioLayer {
     const current = this.state.layers.audio;
     const same = choice.mediaId !== null && current?.mediaId === choice.mediaId;
-    return { ...choice, startedAt: same ? current.startedAt : this.now(), ...this.lengthOf(choice.mediaId) };
+    return {
+      ...choice,
+      startedAt: same ? current.startedAt : this.now(),
+      ...this.lengthOf(choice.mediaId),
+      ...this.clipOf(choice.mediaId),
+      // The same file carrying on keeps a jump it made.
+      ...(same && current.seek ? { seek: current.seek } : {}),
+    };
   }
 
   /**
@@ -875,14 +945,18 @@ export class ShowEngine {
     if (choice.kind === 'color') return choice;
     const current = this.state.layers.background;
     const length = this.lengthOf(choice.mediaId);
+    const clip = this.clipOf(choice.mediaId);
     if (current?.kind === 'media' && current.mediaId === choice.mediaId)
       return {
         ...choice,
         startedAt: current.startedAt,
         ...(current.fade ? { fade: current.fade } : {}),
         ...length,
+        ...clip,
+        // The same file carrying on keeps a jump it made.
+        ...(current.seek ? { seek: current.seek } : {}),
       };
-    return { ...choice, startedAt: fade?.at ?? this.now(), ...(fade ? { fade } : {}), ...length };
+    return { ...choice, startedAt: fade?.at ?? this.now(), ...(fade ? { fade } : {}), ...length, ...clip };
   }
 
   /**
@@ -1116,9 +1190,10 @@ export class ShowEngine {
         const a = this.musicNow();
         if (!a) return { ok: false, error: 'no-music', message: 'No audio playlist is playing' };
         if (a.pausedAtMs !== undefined) return NO_CHANGE;
-        const into = Math.max(0, this.now() - a.startedAt);
+        const into = this.playedOf(a, this.now());
         const pausedAtMs = a.durationMs !== undefined ? Math.min(into, a.durationMs) : into;
-        return { ok: true, actions: [{ type: 'audio/set', audio: { ...a, pausedAtMs } }] };
+        const { seek: _jump, ...rest } = a;
+        return { ok: true, actions: [{ type: 'audio/set', audio: { ...rest, pausedAtMs } }] };
       }
       case 'resumeMusic': {
         const a = this.musicNow();
@@ -1135,6 +1210,24 @@ export class ShowEngine {
         const a = this.musicNow();
         if (!a) return { ok: false, error: 'no-music', message: 'No audio playlist is playing' };
         return { ok: true, actions: [this.musicStep(a, command.type === 'musicNext' ? 1 : -1, this.now())] };
+      }
+      case 'jumpToMarker': {
+        const layer = command.layer === 'audio' ? this.state.layers.audio : this.state.layers.background;
+        const mediaId = layer && 'mediaId' in layer ? layer.mediaId : null;
+        const marker = mediaId
+          ? this.options.mediaMarkers?.(mediaId)?.markers.find((m) => m.id === command.markerId)
+          : undefined;
+        if (!layer || !mediaId || !marker)
+          return { ok: false, error: 'unknown-marker', message: 'That marker is not on what is playing' };
+        const seek = { at: this.now(), toMs: marker.atMs };
+        if (command.layer === 'audio' && this.state.layers.audio) {
+          const { pausedAtMs: _paused, ...audio } = this.state.layers.audio;
+          return { ok: true, actions: [{ type: 'audio/set', audio: { ...audio, seek } }] };
+        }
+        const bg = this.state.layers.background;
+        if (bg?.kind !== 'media')
+          return { ok: false, error: 'unknown-marker', message: 'Nothing is playing there' };
+        return { ok: true, actions: [{ type: 'background/set', background: { ...bg, seek } }] };
       }
       case 'setMusicLoop': {
         const a = this.musicNow();
@@ -1246,7 +1339,7 @@ export class ShowEngine {
   /** What identifies an audio playlist's track as it plays: a new key, a new wait. */
   private musicKey(a: MusicLayer | null): string | null {
     if (!a || a.pausedAtMs !== undefined) return null;
-    return `${a.music.playlistId}/${String(a.music.index)}@${String(a.startedAt)}/${String(a.durationMs ?? '?')}`;
+    return `${a.music.playlistId}/${String(a.music.index)}@${String(a.startedAt)}/${String(this.endsAt(a) ?? '?')}`;
   }
 
   /** Wait for the track playing to end (its start and length; a file that never says how long is passed). */
@@ -1257,7 +1350,7 @@ export class ShowEngine {
     this.musicWait?.cancel();
     this.musicWait = null;
     if (!a || key === null) return;
-    const ends = a.startedAt + (a.durationMs ?? MUSIC_UNKNOWN_LENGTH_MS);
+    const ends = this.endsAt(a) ?? a.startedAt + MUSIC_UNKNOWN_LENGTH_MS;
     const schedule =
       this.options.schedule ??
       ((ms: number, run: () => void) => {
@@ -1280,11 +1373,13 @@ export class ShowEngine {
    * when the playlist ended meanwhile.
    */
   private caughtUp(audio: AudioLayer | null): AudioLayer | null {
-    if (!audio?.music || audio.pausedAtMs !== undefined || audio.durationMs === undefined) return audio;
+    if (!audio?.music || audio.pausedAtMs !== undefined) return audio;
     const now = this.now();
     let a = audio as MusicLayer;
-    for (let i = 0; i < 1000 && a.durationMs !== undefined && a.startedAt + a.durationMs <= now; i++) {
-      const step = this.musicStep(a, 1, a.startedAt + a.durationMs);
+    for (let i = 0; i < 1000; i++) {
+      const ends = this.endsAt(a);
+      if (ends === null || ends > now) break;
+      const step = this.musicStep(a, 1, ends);
       if (step.type !== 'audio/set') return null;
       a = step.audio as MusicLayer;
     }

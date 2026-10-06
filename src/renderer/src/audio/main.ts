@@ -4,7 +4,7 @@ import type { EngineState } from '../../../shared/engine/state';
 import { SOUND_LIMITS } from '../../../shared/media';
 import { connectEngine, useEngine } from '../engine/engine-store';
 import { startPlayback } from '../render/playback';
-import { soundsOf } from './sounds';
+import { type Sound, soundsOf } from './sounds';
 
 /*
  * The audio player: the one place Drashti makes sound. A hidden window of
@@ -21,6 +21,9 @@ interface Player {
   fadeOutMs: number;
   /** A fade under way. */
   fade: ReturnType<typeof setInterval> | null;
+  /** The sound as the show has it now (its start and end points, a jump). */
+  sound: Sound;
+  resync: () => void;
 }
 
 /** Ramp an element's volume to `to` over `ms` (an audio playlist's short fades); then `done`. */
@@ -71,7 +74,10 @@ function play(state: EngineState | null): void {
   for (const sound of wanted.values()) {
     const current = players.get(sound.key);
     if (current) {
-      current.el.loop = sound.loop;
+      const jumped = current.sound.seek?.at !== sound.seek?.at;
+      current.sound = sound;
+      if (jumped) current.resync();
+      current.el.loop = sound.loop && !sound.clip;
       if (current.volume !== sound.volume) {
         current.volume = sound.volume;
         if (!current.fade) current.el.volume = sound.volume;
@@ -79,7 +85,7 @@ function play(state: EngineState | null): void {
       continue;
     }
     const el = document.createElement('audio');
-    el.loop = sound.loop;
+    el.loop = sound.loop && !sound.clip;
     el.volume = sound.fadeInMs ? 0 : sound.volume;
     el.preload = 'auto';
     el.dataset['key'] = sound.key;
@@ -92,13 +98,16 @@ function play(state: EngineState | null): void {
       volume: sound.volume,
       fadeOutMs: sound.fadeOutMs ?? 0,
       fade: null,
+      sound,
       stop: () => undefined,
+      resync: () => undefined,
     };
-    player.stop = startPlayback(el, {
+    const playback = startPlayback(el, {
       mediaId: sound.mediaId,
       startedAt: sound.startedAt,
       audible: true,
       limits: SOUND_LIMITS,
+      timing: () => ({ loop: player.sound.loop, clip: player.sound.clip, seek: player.sound.seek }),
       // An audio playlist's track fades in once it has its first sound.
       ...(sound.fadeInMs
         ? {
@@ -108,6 +117,8 @@ function play(state: EngineState | null): void {
           }
         : {}),
     });
+    player.stop = playback;
+    player.resync = playback.resync;
     players.set(sound.key, player);
   }
   document.body.dataset['fading'] = String(fadingOut.size);
