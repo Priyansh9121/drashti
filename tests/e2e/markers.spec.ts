@@ -4,6 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
+import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import type { PageGlobals } from './helpers';
 import { importAndGetIds, launchApp, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
 import { makeTestVideo } from './test-media';
@@ -77,7 +78,11 @@ function positions(page: Page, selector: string, ms: number): Promise<number[]> 
 
 test('a background loops between its points; a jump to a marker lands in step on two screens and the audio player', async () => {
   test.setTimeout(180_000);
-  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' });
+  const { app } = await launchApp({
+    ...NETWORK_ENV,
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_EXTRA_DISPLAYS: '1',
+  });
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
@@ -183,5 +188,22 @@ test('a background loops between its points; a jump to a marker lands in step on
   await jumps.getByTestId('marker-jump').click();
   await expect.poll(async () => (await state()).seek?.toMs).toBe(4000);
   await inStep(await state());
+
+  // And from a phone remote's More tab: a tap jumps there again, in step everywhere.
+  const { base } = await networkOn(win);
+  const phone = await device('webkit');
+  try {
+    await pairByQr(phone.page, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
+    await phone.page.getByTestId('remote-tab-more').click();
+    const remote = phone.page.getByTestId('remote-markers');
+    await expect(remote).toContainText('Placeholder chorus');
+    await expectNoSeriousA11yIssues(phone.page, 'the remote with markers');
+    const before = (await state()).seek?.at ?? 0;
+    await remote.getByRole('button', { name: 'Placeholder chorus' }).click();
+    await expect.poll(async () => (await state()).seek?.at ?? 0).toBeGreaterThan(before);
+    await inStep(await state());
+  } finally {
+    await phone.close();
+  }
   await app.close();
 });
