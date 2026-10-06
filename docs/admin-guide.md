@@ -1,0 +1,242 @@
+# The admin's guide: looking after Drashti
+
+This guide is for the **admins**: whoever sets Drashti up at the mandir and keeps it right from week to week. The operators' side, running a sabha in Pro Mode, is in `docs/operator-guide.md`; the first evenings beside ProPresenter are in `docs/parallel-run.md`; the day Drashti is set up on the mandir's computers has its own list, `docs/setup-day.md`.
+
+On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows the menu bar is hidden: press **Alt** to show it. With roles on (section 3), everything in this guide asks for the **admin PIN** first.
+
+---
+
+## 1. The two computers
+
+Drashti runs on both of the mandir's computers. One is **Main**: it keeps the library and the playlists, and the operators run the show on it. The other can be a **node**: it shows Main's screens on its own displays, in step, and has no controls of its own (section 6). Or both can be Mains with libraries of their own, as ProPresenter is today; the plan is to try the node on the parallel-run evenings first.
+
+**What each computer needs:**
+
+- **macOS 13 (Ventura) or later**, or **64-bit Windows 10 or 11**. The audit report says what each computer has.
+- **The same version of Drashti on both.** A node refuses a Main on another version, and says so (section 2).
+- **A graphics chip that plays video by itself** (any Mac from the last ten years, or a PC with Intel, AMD or NVIDIA graphics). Section 13 has what the speed tests found.
+- **A wired network between Main and the node** if at all possible, and a fixed address for Main (section 8).
+- **Room on the disk**: the media library, plus 2 GB that Drashti keeps free, plus the recordings (about 3 GB an hour).
+- Each computer's **user account with a password of its own**: the PINs keep the controls apart for the people at the show, not from someone who can use the computer's account.
+
+---
+
+## 2. Installing and updating
+
+**Installing.** Install Drashti on each computer from the installers on the project's GitHub page (section 2 of `docs/parallel-run.md` has the steps, including the warnings an unsigned app gets the first time). On its very first start, Drashti asks how the computer will be used: **Main** or **Node**. A computer that already has a library is a Main.
+
+**Checking for updates.** **Help**, then **Check for Updates…**. If there is a newer version, press **Download**: it comes slowly in the background, and waits while the stream is on air or recording. Then turn on **Install it when Drashti quits**. Nothing happens until Drashti is quit after the sabha, and Drashti does not start again by itself.
+
+![An update offered](screenshots/updates-offer.png)
+
+- **On Windows**, the update installs by itself as Drashti quits.
+- **On the Mac**, until Drashti is signed with an Apple certificate, the update is downloaded and checked but cannot install itself: press **Show the file**, quit Drashti, open the file and drag Drashti into **Applications**.
+- **Look once a day** makes Drashti check by itself (it only tells you; it never downloads on its own). It is off to begin with.
+
+**One version on both computers.** After updating Main, update the node too, the same evening. Until they match, the node refuses to follow Main and its screens keep their last picture; Main's **Screens** and the screens dashboard say which node needs updating. On the node, its window offers **Update to Drashti …**: press it, then **Download**, then **Quit and install**, and start it again. A node with no internet: install the same version on it by hand.
+
+![The node offering the update](screenshots/node-update-offer.png)
+
+**Never update on the day of a sabha.** Update after a sabha, run the checks in section 12 on both computers, and keep the old installer until the next sabha has gone well.
+
+---
+
+## 3. Roles and PINs
+
+Drashti has three roles:
+
+- **Volunteers** run a sabha in **Simple Mode**: big buttons, nothing can be changed.
+- **Operators** run the show in **Pro Mode**: playlists, words and slides, props, messages, timers, macros, Looks, masks, announcements, going live and recording.
+- **Admins** also set Drashti up: importing and removing, themes and the logo, Shastra texts, calendars, the idle rotation and every schedule (the arti, backups, macros' times), macros and MIDI, the screens, Looks, stage layouts, masks and sound, the stream's settings and key, phones and nodes, backups, restores and updates, and the PINs.
+
+**Turning roles on.** Until two PINs are set, roles are off and anyone can leave Simple Mode by typing **pro**. To turn them on: **File**, then **Roles and PINs…**. Type an **admin PIN** and an **operator PIN** (4 to 12 digits each, different from each other), each twice, and press **Turn on roles**. Keep the admin PIN with the admins, and give the operator PIN only to the operators.
+
+![Roles and PINs](screenshots/roles-dialog.png)
+
+With roles on:
+
+- Drashti starts in Simple Mode. **View**, then **Switch to Pro Mode…**, takes the operator PIN (or the admin PIN).
+- In Pro Mode the header says **Operator**. Anything only an admin may do asks for the admin PIN first. Admin then stays unlocked for **10 minutes after the last admin action**; the header says **Admin** with the time left, and a press on it locks at once. Going into Simple Mode locks it too.
+- After **five wrong PINs** in a row, Drashti waits a minute before it checks another, and longer after each further wrong one (up to 15 minutes), even over a restart. The log says a PIN was wrong, never the PIN.
+
+![The admin PIN asked for](screenshots/admin-pin.png)
+
+**Changing a PIN.** **File**, then **Roles and PINs…** (with the admin PIN).
+
+**Resetting a forgotten admin PIN.** It cannot be read back, so it is reset at the computer, by someone who can use its user account:
+
+1. Quit Drashti (on a Mac **Drashti**, then **Quit**; on Windows close its window).
+2. Delete the file `roles.json` from Drashti's data folder:
+   - **Mac:** in Finder choose **Go**, then **Go to Folder…**, paste `~/Library/Application Support/Drashti`, and drag `roles.json` to the Bin.
+   - **Windows:** paste `%APPDATA%\Drashti` into File Explorer's address bar, press Enter, and delete `roles.json`.
+3. Start Drashti. Roles are now off: Simple Mode is left by typing **pro**.
+4. Set two new PINs in **File**, then **Roles and PINs…**.
+
+Nothing else changes: the library, the playlists and the settings are as they were.
+
+---
+
+## 4. Screens, Looks and sound
+
+The **setup wizard** sets the screens, their languages, the sound and the default theme in one go: it opens by itself the first time, and later from **View**, then **Set Up Screens…**. Section 4 of `docs/parallel-run.md` goes through it and through setting screens up by hand in **Screens**.
+
+![The setup wizard](screenshots/setup-wizard.png)
+
+**Screen groups.** Each group is a set of screens that show the same: "Main Hall", "Stage", "Lobby". A group shows **the audience picture** or **the stage view (performers)**, or is **key and fill** for a video switcher. In **Screens**, each display has **Use this display**; each screen has its canvas size and scaling (for an LED wall that is not 1920 × 1080); **Identify screens** puts each screen's name on it.
+
+**Looks.** A Look says what every group shows: which layers, a kirtan's languages and their order, and whether slides are drawn as designed or as a lower third. One Look is live at a time, and the operators switch it under the live picture. In **Screens**, under **Looks**: **New Look**, **Duplicate**, rename, **Earlier**/**Later**, **Remove**; choose a Look there to see and change each group's settings in it. Drashti starts with the **first** Look in the list after a clean quit, so keep the everyday Look first.
+
+![Looks in Screens](screenshots/screens-looks.png)
+
+**Stage layouts.** Under a stage group, **Edit stage layouts…**: **Duplicate** Standard, then move and size its boxes (the slide, the next one, notes, the clock, timers, the stage message, what is next in the playlist, the time left on a video or sound, black-out and logo, fixed words), and **Save**. Then choose it under **Stage layout** for the group in the Looks that should use it. Ask the performers what they want to see.
+
+**Masks.** A group's **Mask** in a Look is its screens' shape (an LED wall's outline, a projector spilling onto a pillar): **Edit masks…** under the group. It stays on: Clear all, F7 and Simple Mode never take it away. The **Masks** panel under the live picture is different: it puts a mask up for a moment, and F7 takes it down.
+
+**Sound.** In **Screens**, under **Sound output**, choose the output that goes to the mixer. If it is not connected when Drashti starts, Drashti plays on the computer's own speakers and a warning stays in the status bar until it is back.
+
+**The logo.** In **Props** under the live picture, the stamp button beside a prop makes it the logo (**L**, and **Logo** in both modes).
+
+---
+
+## 5. Backups
+
+**By hand.** **File**, then **Back Up Library…**: choose a folder on a USB drive or another disk, and keep **Include the media** ticked. Do it after any evening the library changed a lot (an import, a festival's slides).
+
+**By themselves.** **File**, then **Scheduled Backups…**: **Choose…** the drive (never Drashti's own folder), tick the days, set the time (late evening, after the sabha), how many to keep (7 is a good start), keep **With the media** ticked, turn on **Back up by itself**, and **Save**. **Back up now** tries one at once.
+
+![Scheduled backups](screenshots/scheduled-backups.png)
+
+- The first backup copies every picture, video and sound; later ones copy only what is new, so they are quick.
+- Drashti removes the oldest backups it made there when there are more than the number to keep, and nothing else on the drive.
+- **Leave the drive plugged in.** A backup whose drive is missing is skipped, and a line at the bottom of the window says so until **OK**.
+- A backup waits while the stream is on air or recording. One whose time passed while Drashti was closed is not made later.
+
+**Restoring.** **File**, then **Restore Library…**, and choose a backup folder (for a scheduled one, a "Drashti backup …" folder inside "Drashti scheduled backups"). Drashti asks first, keeps the library it has as well (in `Backups/` in its data folder), and restarts: the screens go black for a moment, so **never restore during a sabha**. If the backup turns out to be damaged, Drashti says so after the restart and keeps the library it had.
+
+**What a backup does not hold:** the PINs, the stream key (it is in the computer's own secure storage), the node's pairing and certificate, and the computer's own settings such as which display is which. On a new computer, set those again after restoring.
+
+---
+
+## 6. The node
+
+Section 8 of `docs/parallel-run.md` has the steps: on the second computer choose **Node** on its first start; on Main, **Screens**, then **Pair a node**, which shows Main's address and a code for two minutes; on the node, type both and press **Pair with Main**. Then, in Main's **Screens**, give each of the node's displays a group with **Use this display**.
+
+![Pairing a node](screenshots/screens-pair-node.png)
+
+**Its pictures and videos.** The node keeps its own copies, made over the network ahead of time: what is on the screens and what Next brings, the playlist playing, every playlist made, changed or opened on Main in the last 7 days, the props, the logo and the idle rotation's pictures. Sound is never copied. For a festival with pictures from elsewhere in the library, press **Get everything ready** for the node in the screens dashboard. To reuse a playlist from an earlier week, open it on Main before the sabha (a click is enough).
+
+**Before each sabha**, open the screens dashboard (the screens line at the bottom of Main's window): the node should say **Online**, and its pictures and videos ready ("14 of 14 ready").
+
+**Fonts on the node.** The node draws the words itself. A font that is only installed on Main (a legacy Gujarati font, or an English font a theme names) must be installed on the node too (section 11).
+
+**Removing a node.** **Remove** beside it in Main's Screens or the dashboard: it is cut off at once and its screens go black. On the node, **Use this computer as Main…** turns it back into a Main, with the library it had before, untouched.
+
+---
+
+## 7. Phones and tablets
+
+Section 7 of `docs/parallel-run.md` has the steps: **Phones** in the header, **Let paired phones and tablets connect**, then **Pair a Remote / Stage / Announcements device** for each phone or tablet, and **Make a poster link** for announcements from anyone on the Wi-Fi.
+
+![The Phones panel](screenshots/phones-panel.png)
+
+- Name each phone after its owner ("Remote: Priyansh's phone"), so the list says whose it is.
+- **Remove** a phone that is lost, or whose owner leaves the seva: it is cut off at once.
+- **Make a new one** stops an old poster's link (if a photo of it went somewhere it should not).
+- Phones need **Safari 16.4 or later** on an iPhone or iPad, or **Chrome** on Android.
+- A stage tablet should be set never to lock while it shows the stage.
+
+---
+
+## 8. The network: firewalls and a fixed address
+
+**Firewalls.** Drashti listens for phones (port 8740) and, on Main, for the node (port 8741), and only for computers on the mandir's own network. The first time each is turned on:
+
+- **Mac:** "Do you want the application Drashti to accept incoming network connections?" Press **Allow**. If it was refused: **System Settings**, **Network**, **Firewall**, **Options**, and set Drashti to allow incoming connections.
+- **Windows:** Windows Security asks about Drashti: tick **Private networks** only, then **Allow**. Check that Windows treats the mandir's network as private: **Settings**, **Network & internet**, the network's properties, **Private network**. If it was refused: Windows Security, **Firewall & network protection**, **Allow an app through firewall**, find Drashti and tick **Private**.
+
+**A fixed address for Main.** Phones remember the address they were paired at, and the node looks for Main at the addresses it last knew. If the router gives Main a new number one day, phones paired at the old number cannot find it, and the node goes offline. So:
+
+- Ask whoever looks after the mandir's network to **reserve Main's address in the router** (often called a DHCP reservation, or a fixed or static IP), for the cable or Wi-Fi that Main uses (each has its own).
+- Pair phones at the address that ends in **`.local`** where the Phones panel shows one (it keeps working when the number changes).
+- If the number did change: pair the node again (on the node **Unpair…**, then pair with the new address), and the phones at the new address.
+- Use the mandir's own network, never a guest Wi-Fi, which keeps devices apart. A cable between Main and the node is better than Wi-Fi.
+
+---
+
+## 9. Shastra texts and calendars
+
+Drashti comes with no scripture text and no calendar: an admin loads files prepared from a source BAPS or the mandir has authorised. The file formats are in `docs/shastra-format.md` and `docs/calendar-format.md`, with made-up examples in `docs/examples/`.
+
+**Shastra texts.** Drag the file onto the library, or in the **Shastra** tab use **Texts…**, then **Load a text…**. Loading a text again (the same abbreviation) updates it, and its passages in playlists keep working. **Texts…** also removes one. Themes has a style for each language of a text, Sanskrit's two scripts included.
+
+![Shastra texts](screenshots/shastra-texts.png)
+
+**Calendars.** Drag the file onto the library, or **Calendar** in the Timers panel, then **Load a calendar…**. Loading it again (the same name) updates it. Today's Samvat date and tithi then show along the bottom of the operator window, on stage layouts that have the box for it, and on the hall's screens only in a message that uses it. A date no calendar gives shows nothing.
+
+![Calendars](screenshots/calendar-dialog.png)
+
+---
+
+## 10. The arti, the idle rotation, music and markers
+
+**The arti at its time.** The **Arti** panel at the bottom of the live column: **Add** sets its name, the presentation that is the arti, the days (or one date), the time, how many minutes before to prompt the operator, and whether it goes up by itself (then only after ten seconds counted down, with **Cancel**). The switch beside each turns it off without losing it. Without the "by itself" switch, it never goes up by itself: from its time, the operator's next Next puts it up.
+
+![Setting the arti's time](screenshots/arti-dialog.png)
+
+**The idle rotation.** Darshan pictures and quotes for before the sabha, or a lobby screen. **Set up** in the **Idle rotation** panel: tick pictures from the media library, put them in order, set how long each stays up, and type the quotes (from authorised sources) with who said or wrote them. Then, in **Screens**, each group's Look says what it shows **When nothing is up**: **The idle rotation, once started** (the operator presses **Start**; it stops by itself when the first slide goes up), **The idle rotation, always** (a lobby screen), or **Nothing**. A macro at a set time can start it (18:30, say).
+
+![The idle rotation's pictures and quotes](screenshots/idle-dialog.png)
+
+**Music before the sabha.** The **Music** panel: **New**, **Add sounds…** (tick sounds from the library), put them in order. The operators press **Play**; Simple Mode has **Play music** and **Pause music** too. A slide's own sound stops the music, with a fade.
+
+**Markers.** In the library's **Media** tab, a video or a sound has a **Markers** button (a bookmark): set where it starts and ends (**Here** takes the time the preview shows), and named markers to jump to (**Add at the time shown**). Every slide and item that uses the file follows them, and while it plays the markers are buttons under the live picture. Played once, it stops within two frames of its end point on every screen.
+
+![Markers](screenshots/markers-dialog.png)
+
+**Macros at set times.** In the macro editor, **Runs by itself**, **Add a time**. At the time, a strip counts down ten seconds with **Cancel**, in Simple Mode too. One whose time passed while Drashti was closed, or the computer slept, is not run later.
+
+---
+
+## 11. Fonts
+
+Drashti brings its own fonts for Gujarati, Hindi, English and transliteration, so its own slides look the same on every computer and phone. Two kinds of font come from the computer instead:
+
+- **Legacy Gujarati and Hindi fonts** (Gopika, Terafont, Kruti Dev and others), in which older slides were typed. The import report names them. Those slides only look right where the font is installed: install it on **Main and on the node**. Their words cannot be searched or edited as text yet.
+- **A font a theme or a slide names** (an English display font, say): install it on both computers too, or set the theme back to Drashti's own font (leave the font empty).
+
+After installing a font, quit Drashti and start it again. Then look at a few of those slides on every screen, the node's too.
+
+---
+
+## 12. Checks, diagnostics, and when things go wrong
+
+**After installing or updating, on each computer:**
+
+1. **The performance check** (section 11 of `docs/parallel-run.md`): run it twice and keep the second line. It should say `"passed":true`.
+2. **The watchdog self-test.** Start Drashti from Terminal (Mac) or PowerShell (Windows) with diagnostics on, put a slide up, and choose **Diagnostics**, then **Run Watchdog Self-Test**. Every line should say PASS.
+   - Mac: `DRASHTI_DIAGNOSTICS=1 /Applications/Drashti.app/Contents/MacOS/Drashti`
+   - Windows: `$env:DRASHTI_DIAGNOSTICS=1; & "$env:LOCALAPPDATA\Programs\drashti\Drashti.exe"`
+3. On the Windows PC, the checks in `docs/windows-checks.md`.
+
+**Diagnostics.** After any problem, **Help**, then **Save Diagnostics…** writes one file to the Desktop: the versions, the screens and sound, counts from the library, the watchdog's events and the log. It holds no kirtan words, names or file paths, so it can be sent to whoever helps. The log itself is in Drashti's data folder, under `logs/`.
+
+**Falling back to ProPresenter.** ProPresenter stays installed, untouched, until Drashti has run four weeks of sabhas on that computer without falling back (PLAN.md, section 5.1). Every sabha has a named fallback operator who has practised it (under a minute):
+
+1. Quit Drashti (**Cmd+Q**, or close its window on Windows). It asks first if screens are showing: confirm.
+2. Open ProPresenter. Its screens come back as before.
+3. After the sabha, save Drashti's diagnostics and write down what happened and when.
+
+Fall back when Drashti cannot keep the screens right and the fix is not quick; not for a slide that a click puts right.
+
+---
+
+## 13. How much the computers need
+
+Session 15 measured Drashti's heaviest cases on CI's virtual computers (no graphics chip on the Windows one, a shared one on the Mac), with and without a handicap (two cores on Windows, two busy programs on the Mac). The numbers are in the README ("Speed on modest hardware"). What they mean for the mandir:
+
+- **Slides, words, dissolves, messages, timers and music** kept up everywhere, also during a big import.
+- **Video backgrounds** need the computer's graphics chip to decode and draw them: CI's computers, which have none to speak of, dropped frames of 1080p 60 fps and 4K video. Any Mac from the last ten years, or a PC with Intel, AMD or NVIDIA graphics, has one. Prefer 1080p 30 fps videos for backgrounds; 4K gains nothing on a 1080p screen.
+- **Streaming and recording on Windows without a graphics encoder** (NVENC, Quick Sync or AMF) take two or more cores by themselves; on the mandir's PC, Drashti chooses the graphics encoder when the PC has one (the Stream panel says which).
+- **A big import during a sabha** slows itself down to keep the show smooth; on a busy computer it can take many minutes. Import before or after.
+
+The performance check (section 12) on each mandir computer says whether that computer keeps up.
