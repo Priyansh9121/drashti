@@ -120,6 +120,14 @@ export function maskSvg(mask: Pick<Mask, 'width' | 'height' | 'mode' | 'shapes'>
 export const maskImageUrl = (mask: Pick<Mask, 'width' | 'height' | 'mode' | 'shapes'>): string =>
   `url("data:image/svg+xml,${encodeURIComponent(maskSvg(mask))}")`;
 
+/**
+ * The mask's cover, as a CSS image: black where the mask hides, see-through
+ * where the picture shows (the mask image the other way round). Laid over a
+ * picture on black, it gives the same pixels as masking it.
+ */
+export const maskCoverUrl = (mask: Pick<Mask, 'width' | 'height' | 'mode' | 'shapes'>): string =>
+  maskImageUrl({ ...mask, mode: mask.mode === 'hide' ? 'show' : 'hide' });
+
 /** A new shape in the middle of a mask's canvas, a third of its size. */
 export function newMaskShape(
   kind: MaskShapeKind,
