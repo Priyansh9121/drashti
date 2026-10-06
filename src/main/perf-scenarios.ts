@@ -26,7 +26,10 @@ import type { PerfCheck } from './perftest';
  * The videos are FFmpeg's test pattern with a tone, made by the bundled
  * FFmpeg in the check's throwaway library. Besides the usual checks, each
  * screen's background video must show nine in ten of its frames: a computer
- * that cannot decode and draw it in time drops them.
+ * that cannot decode and draw it in time drops them. The slides change every
+ * two seconds, as in a sabha: the plain check's change every 40 ms is a test
+ * of the import, and on CI's Mac it alone cost a 1080p30 background half its
+ * frames, mask or none.
  */
 
 export const PERF_SCENARIOS = [
@@ -50,15 +53,18 @@ export interface ScenarioDeps {
   outputs: () => BrowserWindow[];
 }
 
-/** What the slide changes go through instead of the usual three text slides, and how often. */
+/** What the slide changes go through (null: the usual three text slides), and how often. */
 export interface ScenarioSlides {
-  presentationId: string;
+  presentationId: string | null;
   everyMs: number;
 }
 
+/** As an operator changes slides: every two seconds, not the plain check's 25 a second. */
+const AS_IN_A_SABHA: ScenarioSlides = { presentationId: null, everyMs: 2000 };
+
 export interface ScenarioRun {
-  /** The slides to change, when not the usual ones. */
-  slides: ScenarioSlides | null;
+  /** The slides to change, and how often. */
+  slides: ScenarioSlides;
   /** Start counting each screen's video frames (as the measured part begins). */
   begin(): Promise<void>;
   /** The scenario's own checks and figures, once the measured part is over. */
@@ -165,7 +171,7 @@ export function startScenario(name: PerfScenario, deps: ScenarioDeps): ScenarioR
     });
   };
   let fps = 30;
-  let slides: ScenarioSlides | null = null;
+  let slides: ScenarioSlides = AS_IN_A_SABHA;
   switch (name) {
     case 'video-1080p30': {
       background(
