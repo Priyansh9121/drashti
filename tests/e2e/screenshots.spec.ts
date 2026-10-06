@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -18,8 +19,9 @@ import {
 } from './helpers';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 import { freePort, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
-import { makeTestImage } from './test-media';
-import { launchMain, launchNode, nodeCode, nodeView, pairNode } from './nodes';
+import { makeTestImage, makeTestTone, makeTestVideo } from './test-media';
+import { launchMain, launchNode, nodeCode, nodeView, pairNode, typePairing } from './nodes';
+import { releaseServer } from './release-server';
 
 /*
  * The screenshots in docs/screenshots/, with placeholder content only. Taken
@@ -1033,5 +1035,195 @@ test('output nodes: the node’s window, Screens with a node, pairing, the dashb
   } finally {
     await node.app.close().catch(() => undefined);
     await main.app.close();
+  }
+});
+
+test('music, markers, macros at set times, scheduled backups, and roles and PINs (Session 14)', async () => {
+  test.setTimeout(240_000);
+  const { app } = await launchApp({ DRASHTI_TEST_ARTI_CLOCK: '1' });
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1920, height: 1080 });
+  await operatorReady(win);
+  await running(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-shots-14-'));
+  const toneOne = makeTestTone(join(dir, 'Placeholder tone one.wav'), { seconds: 40, hz: 440 });
+  const toneTwo = makeTestTone(join(dir, 'Placeholder tone two.wav'), { seconds: 50, hz: 330 });
+  const clip = await makeTestVideo(win, join(dir, 'Placeholder marked clip.webm'), { seconds: 6, hue: 200 });
+  await win.evaluate(
+    async (files) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const r = await d.library.importPaths(files);
+      if (!r.ok) throw new Error(r.message);
+      const media = await d.library.listMedia();
+      const tones = media.filter((m) => m.name.startsWith('Placeholder tone')).map((m) => m.id);
+      const list = await d.music.create('Placeholder before sabha');
+      if (!list.ok || !list.id) throw new Error('not made');
+      await d.music.addTracks(list.id, tones, null);
+    },
+    [toneOne, toneTwo, clip],
+  );
+
+  // The Music panel, playing.
+  const music = win.getByTestId('music-panel');
+  await music.scrollIntoViewIfNeeded();
+  await music.getByTestId('music-play').click();
+  await expect(music.getByTestId('music-now')).toContainText('Placeholder tone');
+  await shot(win, 'music-panel');
+
+  // Setting markers on a video, then its jumps under the live picture.
+  await win.getByRole('tab', { name: 'Media' }).click();
+  await win.getByTestId('media-markers').first().click();
+  const markers = win.getByTestId('markers-dialog');
+  await markers.getByTestId('markers-start').fill('0:01.0');
+  await markers.getByTestId('markers-end').fill('0:05.0');
+  const preview = markers.locator('video');
+  await expect.poll(() => preview.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThanOrEqual(1);
+  for (const [at, name] of [
+    [2, 'Placeholder verse'],
+    [3.5, 'Placeholder chorus'],
+  ] as const) {
+    await preview.evaluate((v: HTMLVideoElement, t) => {
+      v.currentTime = t;
+    }, at);
+    await expect.poll(() => preview.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(at, 1);
+    await markers.getByTestId('marker-name').fill(name);
+    await markers.getByTestId('marker-add').click();
+  }
+  await shot(win, 'markers-dialog');
+  await markers.getByTestId('markers-save').click();
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const video = (await d.library.listMedia()).find((m) => m.kind === 'video');
+    await d.engine.dispatch({
+      type: 'setBackground',
+      background: { kind: 'media', mediaId: video?.id ?? '', media: 'video', fit: 'fill', loop: true },
+    });
+  });
+  await expect(win.getByTestId('marker-jumps')).toContainText('Placeholder chorus');
+  await shot(win, 'marker-jumps');
+
+  // A macro at a set time: its editor, then the countdown.
+  const made = await win.evaluate(() =>
+    (globalThis as PageGlobals).drashti.macros.save(null, {
+      name: 'Placeholder before sabha',
+      color: '#2f9e44',
+      actions: [{ kind: 'stageMessage', text: 'Placeholder: sabha soon' }],
+      schedules: [{ id: 'weekdays', days: [1, 2, 3, 4, 5], date: null, time: '18:30', enabled: true }],
+    }),
+  );
+  expect(made.ok).toBe(true);
+  await win.getByTestId('macros-panel').scrollIntoViewIfNeeded();
+  await win.getByTestId('macros-panel').getByRole('button', { name: 'Edit' }).click();
+  const editor = win.getByTestId('macro-editor');
+  await editor.getByTestId('macro-time').scrollIntoViewIfNeeded();
+  await shot(win, 'macro-schedule');
+  await editor.getByRole('button', { name: 'Close macros' }).click();
+  const at = new Date();
+  at.setHours(18, 30, 0, 0);
+  while (at.getTime() <= Date.now() || at.getDay() === 0 || at.getDay() === 6) at.setDate(at.getDate() + 1);
+  await app.evaluate((_electron, ms) => {
+    (globalThis as { drashtiArtiClock?: (wallMs: number) => void }).drashtiArtiClock?.(ms);
+  }, at.getTime() + 500);
+  const countdown = win.getByTestId('macro-countdown');
+  await expect(countdown).toContainText('runs by itself');
+  await shot(win, 'macro-countdown');
+  await countdown.getByTestId('macro-countdown-cancel').click();
+
+  // Scheduled backups: a folder, weekdays at 03:00.
+  const drive = mkdtempSync(join(tmpdir(), 'Placeholder backup drive-'));
+  await win.evaluate(async (folder) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const { schedule } = await d.backups.view();
+    await d.backups.save({ ...schedule, folder, enabled: true, time: '03:00', keep: 5 });
+  }, drive);
+  await chooseMenuItem(app, 'scheduled-backups');
+  const backups = win.getByTestId('backups-dialog');
+  await expect(backups.getByTestId('backups-next')).toContainText('03:00');
+  await shot(win, 'scheduled-backups', [backups.getByTestId('backups-folder')]);
+  await backups.getByRole('button', { name: 'Close', exact: true }).click();
+
+  // Roles and PINs (made-up PINs, shown as dots): turned on, the chips, the admin prompt, leaving Simple Mode.
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await chooseMenuItem(app, 'roles-and-pins');
+  const roles = win.getByTestId('roles-dialog');
+  await roles.getByTestId('roles-admin-pin').fill('481526');
+  await roles.getByTestId('roles-admin-again').fill('481526');
+  await roles.getByTestId('roles-operator-pin').fill('937402');
+  await roles.getByTestId('roles-operator-again').fill('937402');
+  await shot(win, 'roles-dialog');
+  await roles.getByTestId('roles-turn-on').click();
+  await expect(win.getByTestId('role-chip')).toHaveAttribute('data-role', 'admin');
+  await shot(win, 'role-chip-admin');
+  await win.getByTestId('role-chip').click();
+  await expect(win.getByTestId('role-chip')).toHaveAttribute('data-role', 'operator');
+  const asked = win.evaluate(() => (globalThis as PageGlobals).drashti.screens.createGroup('Placeholder B'));
+  await expect(win.getByTestId('admin-pin')).toBeVisible();
+  await shot(win, 'admin-pin');
+  await win.getByTestId('admin-pin').getByRole('button', { name: 'Cancel' }).click();
+  await asked;
+  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await expect(win.getByTestId('simple-music')).toContainText('Placeholder before sabha');
+  await shot(win, 'simple-mode-music');
+  await chooseMenuItem(app, 'switch-mode');
+  await expect(win.getByTestId('leave-simple')).toBeVisible();
+  await shot(win, 'leave-simple-pin');
+  await app.close();
+});
+
+test('updates: the Updates dialog, the status bar, and a node offering to match Main (Session 14)', async () => {
+  test.setTimeout(240_000);
+  const release = await releaseServer({ '9.9.9': randomBytes(1024 * 1024) }, '9.9.9');
+  const installLog = join(mkdtempSync(join(tmpdir(), 'drashti-shots-update-')), 'install.json');
+  try {
+    const { app } = await launchApp({
+      DRASHTI_UPDATE_URL: release.base,
+      DRASHTI_TEST_UPDATE_INSTALL: installLog,
+    });
+    const win = await operatorPage(app);
+    await win.setViewportSize({ width: 1280, height: 720 });
+    await operatorReady(win);
+    await chooseMenuItem(app, 'check-for-updates');
+    const dialog = win.getByTestId('updates-dialog');
+    await dialog.getByTestId('updates-check').click();
+    await expect(dialog.getByTestId('updates-offer')).toContainText('Drashti 9.9.9');
+    await shot(win, 'updates-offer');
+    await dialog.getByTestId('updates-download').click();
+    await expect(dialog.getByTestId('updates-ready')).toContainText('Downloaded and checked', {
+      timeout: 30_000,
+    });
+    await dialog.getByTestId('updates-install-on-quit').click();
+    await expect
+      .poll(
+        async () =>
+          (await win.evaluate(() => (globalThis as PageGlobals).drashti.updates.view())).installOnQuit,
+      )
+      .toBe(true);
+    await shot(win, 'updates-ready');
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(win.getByTestId('update-status')).toContainText('installs when Drashti quits');
+    await shot(win, 'update-status');
+    await app.close();
+  } finally {
+    release.close();
+  }
+  const mains = await releaseServer({ '1.0.0-test.1': randomBytes(256 * 1024) }, '1.0.0-test.1');
+  const main = await launchMain({ DRASHTI_TEST_VERSION: '1.0.0-test.1' });
+  const node = await launchNode({
+    DRASHTI_TEST_VERSION: '1.0.0-test.2',
+    DRASHTI_UPDATE_URL: mains.base,
+    DRASHTI_TEST_UPDATE_INSTALL: installLog,
+  });
+  try {
+    await node.page.setViewportSize({ width: 1280, height: 720 });
+    await typePairing(node.page, main.port, await nodeCode(main.win));
+    const offer = node.page.getByTestId('node-update');
+    await expect(offer).toContainText('Main runs Drashti 1.0.0-test.1');
+    await offer.getByTestId('node-update-check').click();
+    await expect(offer.getByTestId('node-update-download')).toBeVisible();
+    await shot(node.page, 'node-update-offer', [node.page.getByTestId('node-pair-form').getByLabel('Code')]);
+  } finally {
+    await node.app.close().catch(() => undefined);
+    await main.app.close();
+    mains.close();
   }
 });
