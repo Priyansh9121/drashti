@@ -7,6 +7,7 @@ import { slidesOf } from '../../../shared/slide-edit';
 import { useMedia } from '../library/library-store';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
+import { radioKeys, radioTabIndex } from '../ui/radio';
 import { ColorInput, Field, NumberInput, Select, Slider, Textarea, TextInput } from '../ui/Field';
 import { Check, Music, Palette, Trash2, X } from '../ui/icons';
 import { Toggle } from '../ui/Toggle';
@@ -303,13 +304,25 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
               }}
             />
           </Field>
-          <div role="radiogroup" aria-label="Group colour" className="flex flex-wrap items-center gap-1.5">
-            {[null, ...GROUP_COLORS].map((c) => (
+          <div
+            role="radiogroup"
+            aria-label="Group colour"
+            className="flex flex-wrap items-center gap-1.5"
+            onKeyDown={radioKeys<string | null>([null, ...GROUP_COLORS], group.color, (c) => {
+              change((d) => changeGroup(d, group.id, { color: c }));
+            })}
+          >
+            {[null, ...GROUP_COLORS].map((c, i) => (
               <button
                 key={c ?? 'none'}
                 type="button"
                 role="radio"
                 aria-checked={group.color === c}
+                tabIndex={radioTabIndex(
+                  group.color === c,
+                  i,
+                  [null, ...GROUP_COLORS].some((x) => x === group.color),
+                )}
                 aria-label={c ? `Colour ${c}` : 'No colour'}
                 data-testid="group-color-choice"
                 onClick={() => {

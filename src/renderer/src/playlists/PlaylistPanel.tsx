@@ -177,6 +177,8 @@ function PlaylistTree({ platform }: { platform: string }) {
   const [dropOn, setDropOn] = useState<string | null>(null);
 
   // The rows to show: everything not inside a shut folder, with how deep it is.
+  /** Folders' names, for a screen reader: a playlist in a folder says which. */
+  const nameOf = useMemo(() => new Map(tree.map((n) => [n.id, n.name])), [tree]);
   const rows = useMemo(() => {
     const depth = new Map<string, number>();
     const hidden = new Set<string>();
@@ -223,9 +225,11 @@ function PlaylistTree({ platform }: { platform: string }) {
             </EmptyState>
           </div>
         )}
+        {/* A list of buttons, each a Tab stop, not an ARIA tree: a tree's arrow keys would take the
+            show's own (the arrows move the slides wherever the keyboard is). Folders say whether they
+            are open, and a playlist in a folder says which. */}
         <ul
-          role="tree"
-          aria-label="Playlists"
+          aria-label="Playlists and folders"
           data-testid={tree.length > 0 ? 'playlist-tree' : undefined}
           hidden={tree.length === 0}
           className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2"
@@ -235,7 +239,7 @@ function PlaylistTree({ platform }: { platform: string }) {
             const indent = { paddingLeft: 8 + depth * 14 };
             if (renaming === node.id)
               return (
-                <li key={node.id} role="none" className="py-0.5" style={indent}>
+                <li key={node.id} className="py-0.5" style={indent}>
                   <RenameField
                     value={node.name}
                     label={node.isFolder ? 'Folder name' : 'Playlist name'}
@@ -247,16 +251,14 @@ function PlaylistTree({ platform }: { platform: string }) {
                 </li>
               );
             return (
-              <li key={node.id} role="none" className="group relative flex items-center">
+              <li key={node.id} className="group relative flex items-center">
                 <button
                   type="button"
-                  role="treeitem"
                   data-testid="playlist-node"
                   data-kind={node.isFolder ? 'folder' : 'playlist'}
                   data-node-id={node.id}
-                  aria-level={depth + 1}
                   aria-expanded={node.isFolder ? open : undefined}
-                  aria-selected={selectedNodeId === node.id}
+                  aria-current={selectedNodeId === node.id ? 'true' : undefined}
                   style={indent}
                   onClick={() => {
                     if (node.isFolder) toggleFolder(node.id);
@@ -297,6 +299,9 @@ function PlaylistTree({ platform }: { platform: string }) {
                     {node.isFolder ? <Folder size={15} /> : <ListMusic size={15} />}
                   </span>
                   <Truncate text={node.name} className={cx('flex-1', node.isFolder && 'font-medium')} />
+                  {node.parentId !== null && (
+                    <span className="sr-only">, in {nameOf.get(node.parentId) ?? 'a folder'}</span>
+                  )}
                   {node.placeholders > 0 && (
                     <Badge
                       tone="warning"

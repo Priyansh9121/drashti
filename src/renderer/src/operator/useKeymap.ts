@@ -9,7 +9,9 @@ export function isTyping(target: EventTarget | null): boolean {
 
 /**
  * Run operator actions from the keyboard. Ignores key repeats (a held key
- * never skips slides), typing in fields, and anything while a dialog is open.
+ * never skips slides), typing in fields, keys a control has used itself (the
+ * arrows between tabs or through a menu: Session 15, they also moved the
+ * slide on the screens), and anything while a dialog is open.
  */
 export function useKeymap(
   platform: string,
@@ -22,7 +24,7 @@ export function useKeymap(
   });
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.repeat || event.isComposing || isTyping(event.target)) return;
+      if (event.repeat || event.isComposing || event.defaultPrevented || isTyping(event.target)) return;
       const action = actionFor(event, platform, keymap);
       if (!action) return;
       const dialogOpen = document.querySelector('[aria-modal="true"]') !== null;
