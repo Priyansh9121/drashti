@@ -25,7 +25,8 @@ let dir = '';
 const children: ChildProcess[] = [];
 afterEach(() => {
   for (const c of children.splice(0)) c.kill('SIGKILL');
-  if (dir) rmSync(dir, { recursive: true, force: true });
+  // Windows lets a file go only once the process that had it open has gone: try again for a moment.
+  if (dir) rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
 });
 
 function freePort(): Promise<number> {
@@ -235,13 +236,15 @@ describe.skipIf(!existsSync(ffmpeg))('the stream pipeline, with FFmpeg', () => {
       },
     });
     const current = () => seen.status;
-    // A listener for each connection, one after another (each takes one).
+    // A listener for each connection, one after another (each takes one), until the test is done.
     let listeners = 0;
+    let listening = true;
     const listen = (): void => {
+      if (!listening) return;
       listeners++;
       const child = listener(port, join(dir, `connection ${String(listeners)}.flv`));
       child.on('exit', () => {
-        if (listeners < 3) listen();
+        if (listening && listeners < 3) listen();
       });
     };
     await p.start({ ffmpeg, platform: process.platform, preset, encoder: null });
@@ -267,6 +270,7 @@ describe.skipIf(!existsSync(ffmpeg))('the stream pipeline, with FFmpeg', () => {
       expect(current()?.live.state).toBe('live');
       p.endLive();
     } finally {
+      listening = false;
       stop();
       p.stop();
     }
