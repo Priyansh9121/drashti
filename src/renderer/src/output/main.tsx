@@ -86,7 +86,10 @@ function useFrameReports(refreshHz: number) {
     const tick = (t: number) => {
       const gap = t - last;
       last = t;
-      if (gap > frameMs * 1.5 && gap < 1000) late.push(t);
+      if (gap > frameMs * 1.5 && gap < 1000) {
+        late.push(t);
+        window.drashtiLateFrames = (window.drashtiLateFrames ?? 0) + 1;
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
