@@ -13,7 +13,7 @@ const RENEWED = 'CN=Placeholder Mandir Software, O=Placeholder Mandir Software, 
 const SOMEONE_ELSE = 'CN=Placeholder Other Publisher, O=Placeholder Other Publisher, C=AU';
 
 function reader(files: Record<string, Authenticode>): SignatureReader {
-  const of = (file: string) => files[file] ?? { valid: false, subject: null };
+  const of = (file: string) => files[file] ?? { valid: false, subject: null, status: 'NotSigned' };
   return { read: (file) => Promise.resolve(of(file)), readSync: of };
 }
 
@@ -29,7 +29,7 @@ function installer(own: Authenticode | null, update: Authenticode) {
   return { i, ran };
 }
 
-const signed = (subject: string): Authenticode => ({ valid: true, subject });
+const signed = (subject: string): Authenticode => ({ valid: true, subject, status: 'Valid' });
 
 describe('the Windows installer and signatures (Session 14)', () => {
   it('a signed Drashti installs an update from the same publisher, a renewed certificate too', async () => {
@@ -54,8 +54,8 @@ describe('the Windows installer and signatures (Session 14)', () => {
 
   it('refuses one with no signature, or one Windows does not find valid', async () => {
     for (const update of [
-      { valid: false, subject: null },
-      { valid: false, subject: PUBLISHER },
+      { valid: false, subject: null, status: 'NotSigned' },
+      { valid: false, subject: PUBLISHER, status: 'HashMismatch' },
     ]) {
       const { i, ran } = installer(signed(PUBLISHER), update);
       const prepared = await i.prepare('C:\\update.exe', '1.0.1');
@@ -83,8 +83,8 @@ describe('the Windows installer and signatures (Session 14)', () => {
   });
 
   it('an unsigned Drashti (or one not packaged) stays as it was: it installs the checked file', async () => {
-    for (const own of [null, { valid: false, subject: null }]) {
-      const { i, ran } = installer(own, { valid: false, subject: null });
+    for (const own of [null, { valid: false, subject: null, status: 'NotSigned' }]) {
+      const { i, ran } = installer(own, { valid: false, subject: null, status: 'NotSigned' });
       expect(await i.prepare('C:\\update.exe', '1.0.1')).toEqual({ ok: true });
       expect(i.atQuit('C:\\update.exe')).toEqual({ ok: true });
       expect(ran).toEqual(['C:\\update.exe']);
@@ -108,7 +108,8 @@ describe.runIf(process.platform === 'win32')("Windows' own signature check", () 
   it('finds no signature on a file just written, and a valid one on a file Windows came with', async () => {
     const file = join(mkdtempSync(join(tmpdir(), 'drashti-sig-')), 'Placeholder unsigned.exe');
     writeFileSync(file, 'MZ placeholder');
-    expect(await windowsSignatures.read(file)).toEqual({ valid: false, subject: null });
+    // Asked and answered (not merely unreadable): no signature.
+    expect(await windowsSignatures.read(file)).toEqual({ valid: false, subject: null, status: 'NotSigned' });
     const shell = join(
       process.env['SystemRoot'] ?? 'C:\\Windows',
       'System32',
@@ -116,8 +117,10 @@ describe.runIf(process.platform === 'win32')("Windows' own signature check", () 
       'v1.0',
       'powershell.exe',
     );
-    const os = windowsSignatures.readSync(shell);
-    expect(os.valid).toBe(true);
-    expect(os.subject).toContain('O=Microsoft Corporation');
+    expect(windowsSignatures.readSync(shell)).toMatchObject({
+      valid: true,
+      status: 'Valid',
+      subject: expect.stringContaining('O=Microsoft Corporation') as unknown,
+    });
   }, 90_000);
 });
