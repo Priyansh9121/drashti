@@ -72,6 +72,8 @@ While it imports, a progress bar shows in the status bar along the bottom, and y
 
 **PowerPoint, Keynote and PDF.** A slide deck (an announcement deck, say) is dragged onto the presentation list the same way. Each page becomes a slide holding a picture of it, with its speaker notes kept for the stage screen. Its words cannot be changed in Drashti, and animations show as each slide's finished picture. A PowerPoint or Keynote file is first saved as PDF by Keynote (on the Mac) or PowerPoint (where it is installed); the first time, the Mac asks whether Drashti may control Keynote: choose **OK**. If neither is on the computer, the report says so: save the deck as PDF from PowerPoint (**File**, **Save As**, PDF) or Keynote (**File**, **Export To**, **PDF…**) and drag in the PDF.
 
+![The import report for a PDF, and for a PowerPoint file this computer cannot turn into pictures](screenshots/pictures-report.png)
+
 Importing a folder again later skips what did not change. For a presentation that changed in ProPresenter since, the report asks whether to **Replace** Drashti's copy or **Keep both**.
 
 Write down the numbers the report shows (presentations, playlists, media, problems) in your notes.
