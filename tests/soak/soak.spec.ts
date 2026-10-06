@@ -272,15 +272,51 @@ function watchdogLines(userData: string): number {
     .filter((l) => /Watchdog: .* (crashed|hung|gave-up)/u.test(l)).length;
 }
 
-/** How many times a log says something (Main's log). */
-function logCount(userData: string, pattern: RegExp): number {
-  const dir = join(userData, 'logs');
-  if (!existsSync(dir)) return 0;
-  return readdirSync(dir)
-    .filter((f) => /^drashti(\.\d+)?\.log$/u.test(f))
-    .flatMap((f) => readFileSync(join(dir, f), 'utf8').split('\n'))
-    .filter((l) => pattern.test(l)).length;
+/**
+ * Main's log, read at every sample: the lines new since the last read, so what the log rotates away
+ * later is still counted (Session 15's first soak lost three of the macro's runs to a busy log).
+ */
+class LogTally {
+  private since = '';
+  /** When the macro said it runs by itself. */
+  readonly macroRuns: string[] = [];
+  /** Warnings by what they say (numbers left out), and how often. */
+  readonly warnings = new Map<string, number>();
+
+  constructor(private readonly dir: string) {}
+
+  read(): void {
+    if (!existsSync(this.dir)) return;
+    let newest = this.since;
+    for (const f of readdirSync(this.dir).filter((name) => /^drashti(\.\d+)?\.log$/u.test(name)))
+      for (const line of readFileSync(join(this.dir, f), 'utf8').split('\n')) {
+        const at = line.slice(0, 24);
+        if (!/^\d{4}-\d\d-\d\dT/u.test(at) || at <= this.since) continue;
+        if (at > newest) newest = at;
+        if (line.includes('Macros: one runs by itself in ten seconds')) this.macroRuns.push(at);
+        if (line.includes('[warn]')) {
+          const key = line
+            .slice(25)
+            .replace(/0x[0-9a-f]+|\d+/giu, '#')
+            .slice(0, 100);
+          this.warnings.set(key, (this.warnings.get(key) ?? 0) + 1);
+        }
+      }
+    this.since = newest;
+  }
+
+  get warningCount(): number {
+    return [...this.warnings.values()].reduce((a, b) => a + b, 0);
+  }
+
+  /** The warning said most often, and how often. */
+  mostOften(): [string, number] | null {
+    return [...this.warnings.entries()].sort((a, b) => b[1] - a[1])[0] ?? null;
+  }
 }
+
+/** A soak's log should say little: this many warnings in three hours means something keeps going wrong. */
+const QUIET_LOG_WARNINGS = 1000;
 
 /** "YYYY-MM-DD" and "HH:MM" for a moment, in this computer's time (as schedules read them). */
 function localWhen(ms: number): { date: string; time: string } {
@@ -561,7 +597,9 @@ test('a sabha that never stops', async () => {
     let resumed = false;
     let slideChanges = 0;
 
+    const tally = new LogTally(join(userData, 'logs'));
     const sample = async () => {
+      tally.read();
       const mainProcs = await processes(app);
       const nodeProcs = node ? await processes(node.app) : [];
       const merged = new Map<string, ProcessSample>();
@@ -691,7 +729,9 @@ test('a sabha that never stops', async () => {
     if (exits.length === 0) await sample();
 
     // ---- what it came to ---------------------------------------------------------------------------------
-    const macroRuns = logCount(userData, /Macros: one runs by itself in ten seconds/u);
+    tally.read();
+    const macroRuns = tally.macroRuns.length;
+    const loudest = tally.mostOften();
     const backupsMade = existsSync(join(backups, 'Drashti scheduled backups'))
       ? readdirSync(join(backups, 'Drashti scheduled backups')).filter((f) =>
           existsSync(join(backups, 'Drashti scheduled backups', f, 'backup.json')),
@@ -768,6 +808,12 @@ test('a sabha that never stops', async () => {
         name: 'The scheduled backup was made (after waiting while on air)',
         ok: backupsMade >= 1,
         detail: `${String(backupsMade)} backup(s)`,
+        fatal: false,
+      },
+      {
+        name: `Drashti's log stayed quiet (fewer than ${String(QUIET_LOG_WARNINGS)} warnings)`,
+        ok: tally.warningCount < QUIET_LOG_WARNINGS,
+        detail: `${String(tally.warningCount)} warning(s)${loudest ? `; the most often (${String(loudest[1])} times): ${loudest[0]}` : ''}`,
         fatal: false,
       },
       {
