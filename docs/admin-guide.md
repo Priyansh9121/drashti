@@ -14,7 +14,7 @@ Drashti runs on both of the mandir's computers. One is **Main**: it keeps the li
 
 - **macOS 13 (Ventura) or later**, or **64-bit Windows 10 or 11**. The audit report says what each computer has.
 - **The same version of Drashti on both.** A node refuses a Main on another version, and says so (section 2).
-- **A graphics chip that plays video by itself** (any Mac from the last ten years, or a PC with Intel, AMD or NVIDIA graphics). Section 13 has what the speed tests found.
+- **A graphics chip that decodes video by itself**: every Mac that runs macOS 13 has one; a PC needs Intel, AMD or NVIDIA graphics (not a basic display adapter). Section 13 has what the speed tests found.
 - **A wired network between Main and the node** if at all possible, and a fixed address for Main (section 8).
 - **Room on the disk**: the media library, plus 2 GB that Drashti keeps free, plus the recordings (about 3 GB an hour).
 - Each computer's **user account with a password of its own**: the PINs keep the controls apart for the people at the show, not from someone who can use the computer's account.
