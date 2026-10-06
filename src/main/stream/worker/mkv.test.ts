@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MkvCluster } from './mkv';
 import { MkvSplitter, MkvWriter, retimeCluster } from './mkv';
+import { consumerTake, newConsumer } from './pipeline';
 
 /** A cluster as FFmpeg writes one to a pipe: known size, a time, then blocks. */
 function cluster(timestamp: number, blocks: { track: number; key: boolean }[]): Buffer {
@@ -101,5 +102,64 @@ describe('writing the encoder’s input', () => {
     expect(first.at(-1)).toBe(frame);
     expect(writer.block(2, 0.1, Buffer.alloc(8))[0]).not.toEqual(clusterId);
     expect(writer.block(1, 0.3, frame)[0]).toEqual(clusterId);
+  });
+});
+
+describe('what the recording and the connection are given of the encoder’s clusters', () => {
+  /** FFmpeg's clusters from 1 s to 7 s, 0.1 s apart; a picture starts one every 2 s. */
+  function clusters(): MkvCluster[] {
+    const out: MkvCluster[] = [];
+    const parts = [header()];
+    for (let t = 1000; t <= 7000; t += 100) parts.push(cluster(t, [{ track: 1, key: t % 2000 === 0 }]));
+    new MkvSplitter(
+      () => undefined,
+      (c) => out.push(c),
+    ).push(Buffer.concat(parts));
+    return out;
+  }
+  /** The time a cluster carries, read back. */
+  function timeOf(bytes: Buffer): number {
+    const got: MkvCluster[] = [];
+    new MkvSplitter(
+      () => undefined,
+      (c) => got.push(c),
+    ).push(Buffer.concat([header(), bytes]));
+    return got[0]?.timestamp ?? -1;
+  }
+
+  it('starts at a picture, with the header, at time 0; after falling behind it waits for a picture and goes on in the same timeline', () => {
+    const consumer = newConsumer();
+    const given: (number | 'header')[] = [];
+    for (const c of clusters()) {
+      // Too far behind from 3.5 s to 4.5 s: what comes then is dropped.
+      if (c.timestamp >= 3500 && c.timestamp < 4500) {
+        consumer.skipping = true;
+        continue;
+      }
+      for (const part of consumerTake(consumer, c, header()) ?? [])
+        given.push(part.equals(header()) ? 'header' : timeOf(part));
+    }
+    // The first picture (2 s) is time 0, after the header; the header never comes again.
+    expect(given.slice(0, 2)).toEqual(['header', 0]);
+    expect(given.filter((g) => g === 'header')).toHaveLength(1);
+    // The times only go forward: up to 3.4 s, a gap, then from the next picture (6 s) on to 7 s.
+    const times = given.filter((g): g is number => g !== 'header');
+    expect(times.every((t, i) => i === 0 || t > (times[i - 1] ?? -1))).toBe(true);
+    expect(times).toContain(1400);
+    expect(times.filter((t) => t > 1400 && t < 4000)).toEqual([]);
+    expect(times).toContain(4000);
+    expect(times.at(-1)).toBe(5000);
+  });
+
+  it('gives nothing until the header and a picture have come', () => {
+    const consumer = newConsumer();
+    const first = clusters()[0];
+    if (!first) throw new Error('no clusters');
+    expect(consumerTake(consumer, first, header())).toBeNull();
+    const picture = clusters().find((c) => c.startsPicture);
+    if (!picture) throw new Error('no picture');
+    expect(consumerTake(consumer, picture, null)).toBeNull();
+    expect(consumer.started).toBe(false);
+    expect(consumerTake(consumer, picture, header())).toHaveLength(2);
   });
 });
