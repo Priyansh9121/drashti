@@ -50,7 +50,8 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
   const canPutBack = useEngine((s) => s.state?.canPutBack ?? false);
   const anything = layers ? clears.some((c) => !isLayerEmpty(layers, c.layer)) : false;
   return (
-    <div
+    <section
+      aria-label="Show controls"
       className="flex shrink-0 items-center gap-2 overflow-x-auto border-t border-line bg-panel px-3 py-2"
       data-testid="layer-bar"
     >
@@ -145,6 +146,6 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
       >
         {blackout ? 'Black-out is on' : 'Black-out'}
       </Button>
-    </div>
+    </section>
   );
 }

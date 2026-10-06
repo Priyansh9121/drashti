@@ -179,7 +179,9 @@ function ProApp({ info }: { info: AppInfo | null }) {
   }, []);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    // Never narrower or shorter than the columns need (Session 15): with the text made larger (200%
+    // on a 1280 × 720 display leaves 640 × 360) the window scrolls rather than cutting the Live column off.
+    <div className="flex h-full min-h-[540px] min-w-[960px] flex-col">
       <Header platform={platform} onOpenScreens={openScreens} />
       <ArtiPrompt />
       <MacroCountdown />

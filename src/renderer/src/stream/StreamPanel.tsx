@@ -3,6 +3,7 @@ import type { StreamLayout, StreamStatus } from '../../../shared/stream';
 import { STREAM_PRESETS } from '../../../shared/stream';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
+import { radioKeys, radioTabIndex } from '../ui/radio';
 import { Dialog } from '../ui/Dialog';
 import { Camera, Mic, Presentation, Settings } from '../ui/icons';
 import { Notice } from '../ui/Notice';
@@ -31,8 +32,17 @@ const LAYOUTS: { id: StreamLayout; label: string; hint: string; icon: typeof Cam
 /** Camera or Slides: switchable at any time, also on air. */
 function LayoutSwitch({ layout }: { layout: StreamLayout }) {
   return (
-    <div role="radiogroup" aria-label="What the stream shows" className="grid grid-cols-2 gap-2">
-      {LAYOUTS.map((l) => {
+    <div
+      role="radiogroup"
+      aria-label="What the stream shows"
+      className="grid grid-cols-2 gap-2"
+      onKeyDown={radioKeys(
+        LAYOUTS.map((l) => l.id),
+        layout,
+        (id) => void streamAction(() => window.drashti.stream.setLayout(id)),
+      )}
+    >
+      {LAYOUTS.map((l, i) => {
         const on = l.id === layout;
         const Icon = l.icon;
         return (
@@ -41,6 +51,11 @@ function LayoutSwitch({ layout }: { layout: StreamLayout }) {
             type="button"
             role="radio"
             aria-checked={on}
+            tabIndex={radioTabIndex(
+              on,
+              i,
+              LAYOUTS.some((x) => x.id === layout),
+            )}
             data-testid={`stream-layout-${l.id}`}
             onClick={() => void streamAction(() => window.drashti.stream.setLayout(l.id))}
             className={cx(
