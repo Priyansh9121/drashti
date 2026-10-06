@@ -35,6 +35,8 @@ export interface Authenticode {
   valid: boolean;
   /** The signing certificate's subject ("CN=…, O=…, C=…"), or null when there is none. */
   subject: string | null;
+  /** Windows' word for it (Valid, NotSigned, HashMismatch, …), or "unreadable" when it could not be asked. */
+  status: string;
 }
 
 /** Reading signatures: in the background (when an admin says to install) or at once (at quit). */
@@ -70,8 +72,7 @@ export function installerAllowed(
   if (!theirs.valid || !theirs.subject)
     return {
       ok: false,
-      message:
-        'The downloaded update has no valid signature, so Drashti will not install it. Download Drashti again from its releases page, or ask whoever looks after this computer.',
+      message: `The downloaded update has no valid signature (Windows says: ${theirs.status}), so Drashti will not install it. Download Drashti again from its releases page, or ask whoever looks after this computer.`,
     };
   if (!samePublisher(own.subject, theirs.subject))
     return {
@@ -93,12 +94,35 @@ const POWERSHELL_ARGS = [
   SIGNATURE_SCRIPT,
 ];
 
+/** Windows PowerShell itself, by its full path (never one found on PATH). */
+function powershell(): string {
+  return join(
+    process.env['SystemRoot'] ?? 'C:\\Windows',
+    'System32',
+    'WindowsPowerShell',
+    'v1.0',
+    'powershell.exe',
+  );
+}
+
+/**
+ * Its environment: this one with the file to check, without PSModulePath (started from
+ * PowerShell 7, Windows PowerShell would load 7's modules and fail to check anything).
+ */
+function powershellEnv(file: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { DRASHTI_SIGNED_FILE: file };
+  for (const [key, value] of Object.entries(process.env))
+    if (key.toUpperCase() !== 'PSMODULEPATH' && key !== 'DRASHTI_SIGNED_FILE') env[key] = value;
+  return env;
+}
+
 function parseSignature(stdout: string): Authenticode {
   try {
     const r = JSON.parse(stdout) as { status?: unknown; subject?: unknown };
-    return { valid: r.status === 'Valid', subject: typeof r.subject === 'string' ? r.subject : null };
+    const status = typeof r.status === 'string' && r.status !== '' ? r.status : 'unreadable';
+    return { valid: status === 'Valid', subject: typeof r.subject === 'string' ? r.subject : null, status };
   } catch {
-    return { valid: false, subject: null };
+    return { valid: false, subject: null, status: 'unreadable' };
   }
 }
 
@@ -107,9 +131,9 @@ export const windowsSignatures: SignatureReader = {
   read: (file) =>
     new Promise((resolve) => {
       execFile(
-        'powershell.exe',
+        powershell(),
         POWERSHELL_ARGS,
-        { timeout: 30_000, windowsHide: true, env: { ...process.env, DRASHTI_SIGNED_FILE: file } },
+        { timeout: 30_000, windowsHide: true, env: powershellEnv(file) },
         (_error, stdout) => {
           resolve(parseSignature(stdout));
         },
@@ -117,11 +141,11 @@ export const windowsSignatures: SignatureReader = {
     }),
   readSync: (file) =>
     parseSignature(
-      spawnSync('powershell.exe', POWERSHELL_ARGS, {
+      spawnSync(powershell(), POWERSHELL_ARGS, {
         encoding: 'utf8',
         timeout: 30_000,
         windowsHide: true,
-        env: { ...process.env, DRASHTI_SIGNED_FILE: file },
+        env: powershellEnv(file),
       }).stdout,
     ),
 };
