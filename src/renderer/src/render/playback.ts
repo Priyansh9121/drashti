@@ -123,10 +123,13 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     const c = clock();
     const at = playbackPosition(c, v.duration, engineNow());
     const { start, end } = playbackBounds(c.clip, v.duration);
-    // At its end point it holds there (its last frame), as at the end of the file.
+    // Played once to its end: the file's own end comes by itself (it plays on to it and holds its last
+    // frame, even a moment behind the clock); an end point before that is held here.
     if (!c.loop && at >= end - 0.01) {
-      if (!v.paused) v.pause();
-      if (c.clip && Math.abs(v.currentTime - end) > 0.1) v.currentTime = end;
+      if (end < v.duration - 0.01) {
+        if (!v.paused) v.pause();
+        if (Math.abs(v.currentTime - end) > 0.1) v.currentTime = end;
+      }
       return;
     }
     if (v.paused && !v.ended) void v.play().catch(() => undefined);
