@@ -38,6 +38,8 @@ export type Playback = (() => void) & { resync: () => void };
 
 /** How often a playing file is checked against the shared clock. */
 const CHECK_MS = 250;
+/** How long after a sound lands before where it plays says how well the jump was aimed. */
+const SETTLE_MS = 300;
 
 /**
  * Play a library file in a media element, starting where a playback that
@@ -75,18 +77,20 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   // How long the last jump took to land: the next one aims that far ahead, so it lands in step.
   let seekLead = 0;
   let seekFrom = 0;
-  // How far off it still was once it played on (a sound takes a moment more to start again after
-  // landing): learned from each jump, so a clip looping every few seconds stays in step too.
+  // A sound takes a moment more to start again after landing (pictures play on at once): how far
+  // off its last jump still was once it played on, learned so a clip looping every few seconds keeps step.
   let settleLead = 0;
-  let settleChecks = 0;
+  let settleFrom = 0;
   const lead = () => seekLead + settleLead;
   const jump = (to: number) => {
     seekFrom = performance.now();
-    settleChecks = 2;
     v.currentTime = to + lead();
   };
   const landed = () => {
-    if (seekFrom > 0) seekLead = Math.min(0.5, (performance.now() - seekFrom) / 1000);
+    if (seekFrom > 0) {
+      seekLead = Math.min(0.5, (performance.now() - seekFrom) / 1000);
+      if (audible) settleFrom = performance.now();
+    }
     seekFrom = 0;
   };
   let framed = false;
@@ -128,10 +132,13 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     if (v.paused && !v.ended) void v.play().catch(() => undefined);
     const span = end - start;
     const offset = playbackOffset(v.currentTime, at, span, c.loop);
-    // The second check after a jump landed: where it plays now says how much further (or less far) to aim.
-    if (settleChecks > 0 && --settleChecks === 0)
-      settleLead = Math.min(0.5 - seekLead, Math.max(-seekLead, settleLead - offset));
     const correction = playbackCorrection(offset, limits);
+    // A sound's last jump, once it has played on a moment (or before it jumps again): where it plays
+    // says how much further (or less far) to aim next time.
+    if (settleFrom > 0 && (correction.seek || performance.now() - settleFrom >= SETTLE_MS)) {
+      settleFrom = 0;
+      settleLead = Math.min(0.5 - seekLead, Math.max(-seekLead, settleLead - offset));
+    }
     // Aiming ahead past the end of a loop wraps round to its start.
     if (correction.seek) jump(c.loop && span > 0 ? start + ((at - start + lead()) % span) - lead() : at);
     else if (v.playbackRate !== correction.rate) v.playbackRate = correction.rate;
