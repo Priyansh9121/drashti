@@ -98,6 +98,7 @@ import { ShowEngine } from './engine/show-engine';
 import { runEngineCommand } from './ipc/engine-ipc';
 import { handle, handlerTimes, hearHandled, lockAdminChannels, lockChannels, refusedNow } from './ipc/handle';
 import { MainWatch, PerfProfile, watchedMedia } from './perf-watch';
+import { LaterWrites } from './db/later-writes';
 import { RolesService } from './roles/roles-service';
 import { adminRefusals } from './roles/admin-lock';
 import { ImportService } from './import/import-service';
@@ -347,6 +348,8 @@ let quitConfirmed = false;
 let operatorWindow: BrowserWindow | null = null;
 let audioWindow: BrowserWindow | null = null;
 let db: Db | null = null;
+/** The show's own bookkeeping writes, made when the library is free (Session 15); flushed at quit. */
+let laterWrites: LaterWrites | null = null;
 let outputs: OutputManager | null = null;
 let importer: ImportService | null = null;
 
@@ -717,6 +720,20 @@ function start(): void {
   });
   // Settings kept in the library (the sound output, the mode, the logo, the default transition).
   const settings = new SettingsRepo(db);
+  // Bookkeeping the show writes by itself (a file's length, the music played last, a playlist opened,
+  // devices and nodes last seen, the mode) never waits for an import's write lock (Session 15).
+  const later = new LaterWrites(db, {
+    busyTimeoutMs: 5000,
+    warn: (message) => {
+      log.warn(message);
+    },
+  });
+  laterWrites = later;
+  const laterSetting = (key: string, value: unknown) => {
+    later.write(`setting:${key}`, () => {
+      settings.set(key, value);
+    });
+  };
   // The local network gets every engine message too (once it is on); it is made further down.
   let network: NetworkService | null = null;
   const networkTransport: EngineTransport = {
@@ -1229,7 +1246,7 @@ function start(): void {
   const setMode = (next: OperatorMode) => {
     if (next === mode) return;
     mode = next;
-    settings.set('operatorMode', next);
+    laterSetting('operatorMode', next);
     // A volunteer's mode: admin locks at once.
     if (next === 'simple') roles.lock();
     log.info(next === 'simple' ? 'Switched to Simple Mode' : 'Switched to Pro Mode');
@@ -1600,7 +1617,7 @@ function start(): void {
   // ---- audio playlists (Session 14): music on the audio layer, independent of the slides ------------
   const music = new MusicService({
     repo: new AudioPlaylistRepo(db),
-    settings,
+    settings: { get: (key) => settings.get(key), set: laterSetting },
     engine: { state: () => engine.current, dispatch: (command) => engine.dispatch(command) },
     changed: (view) => {
       sendToOperator(IPC.music.changed, view);
@@ -1908,6 +1925,9 @@ function start(): void {
   });
   const net = new NetworkService({
     devices: new DeviceRepo(db),
+    write: (key, run) => {
+      later.write(key, run);
+    },
     settings,
     spawn: () =>
       perfNetworkInMain
@@ -2011,6 +2031,9 @@ function start(): void {
   const localReports = new Map<string, { droppedFrames: number; paintedRev: number }>();
   const nodes = new NodeService({
     nodes: nodeRepo,
+    write: (key, run) => {
+      later.write(key, run);
+    },
     screens: screenRepo,
     settings,
     spawn: () =>
@@ -2258,10 +2281,12 @@ function start(): void {
     opened: (playlistId) => {
       // Opened on Main, a playlist from an earlier week counts as this week's: nodes copy its media.
       const since = new Date(Date.now() - RECENT_DAYS * 24 * 3600 * 1000).toISOString();
-      if (playlists.markOpened(playlistId, since)) {
-        wanted.invalidate();
-        nodes.libraryChanged();
-      }
+      later.write(`opened:${playlistId}`, () => {
+        if (playlists.markOpened(playlistId, since)) {
+          wanted.invalidate();
+          nodes.libraryChanged();
+        }
+      });
     },
   });
   handle(IPC.library.getPresentation, (_event, id) => {
@@ -2421,7 +2446,9 @@ function start(): void {
     const ms = lengthSchema.safeParse(durationMs);
     if (!player || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId) || !ms.success) return null;
     const rounded = Math.round(ms.data);
-    media.setLength(mediaId, rounded);
+    later.write(`length:${mediaId}`, () => {
+      media.setLength(mediaId, rounded);
+    });
     engine.learnLength(mediaId, rounded);
     return null;
   });
@@ -3032,6 +3059,7 @@ if (!app.requestSingleInstanceLock()) {
     sleepGuard.release();
     importer?.stop();
     outputs?.closeAll();
+    laterWrites?.flush();
     db?.close();
     db = null;
   });

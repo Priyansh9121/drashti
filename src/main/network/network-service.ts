@@ -85,6 +85,8 @@ export interface NetworkReads {
 
 export interface NetworkDeps {
   devices: DeviceRepo;
+  /** How bookkeeping reaches the library: when it is free, never waiting (Session 15). Left out: at once. */
+  write?: (key: string, run: () => void) => void;
   settings: { get(name: string): unknown; set(name: string, value: unknown): void };
   spawn(): NetworkWorker;
   /** How the server is set up for this port (where the pages are, FFmpeg, the address to listen on). */
@@ -182,6 +184,7 @@ export class NetworkService implements EngineTransport {
   private boundPort: number | null = null;
   private connected = new Set<string>();
   private readonly lastSeen = new Map<string, string>();
+  private seenSaves = 0;
   private unsaved = new Map<string, string>();
   private pairing: { code: string; kind: DeviceKind; name: string; expiresAt: number; wrong: number } | null =
     null;
@@ -442,14 +445,18 @@ export class NetworkService implements EngineTransport {
     if (this.unsaved.size === 0) return;
     const seen = this.unsaved;
     this.unsaved = new Map();
-    try {
-      this.deps.devices.touch(seen);
-    } catch (error) {
-      this.deps.log(
-        'warn',
-        `Network: could not keep when devices were last seen (${(error as Error).message})`,
-      );
-    }
+    const write = this.deps.write ?? ((_key: string, run: () => void) => run());
+    // Each batch on its own (a later one never replaces one still waiting).
+    write(`devices-seen:${String(++this.seenSaves)}`, () => {
+      try {
+        this.deps.devices.touch(seen);
+      } catch (error) {
+        this.deps.log(
+          'warn',
+          `Network: could not keep when devices were last seen (${(error as Error).message})`,
+        );
+      }
+    });
   }
 
   // ---- engine messages and hints ------------------------------------------------------------

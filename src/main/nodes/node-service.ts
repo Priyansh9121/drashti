@@ -37,6 +37,8 @@ import { hashToken, newToken } from '../network/tokens';
 
 export interface NodeServiceDeps {
   nodes: NodeRepo;
+  /** How bookkeeping reaches the library: when it is free, never waiting (Session 15). Left out: at once. */
+  write?: (key: string, run: () => void) => void;
   screens: ScreenRepo;
   settings: { get(name: string): unknown };
   spawn(): LinkWorker;
@@ -107,6 +109,7 @@ export class NodeService implements EngineTransport {
   private wantedTimer: NodeJS.Timeout | null = null;
   private watching = false;
   private seenWriter: NodeJS.Timeout | null = null;
+  private seenSaves = 0;
   private readonly unsaved = new Map<
     string,
     { at: string; address: string | null; version: string | null }
@@ -673,11 +676,18 @@ export class NodeService implements EngineTransport {
     if (this.unsaved.size === 0) return;
     const seen = new Map(this.unsaved);
     this.unsaved.clear();
-    try {
-      this.deps.nodes.touch(seen);
-    } catch (error) {
-      this.deps.log('warn', `Nodes: could not keep when nodes were last seen (${(error as Error).message})`);
-    }
+    const write = this.deps.write ?? ((_key: string, run: () => void) => run());
+    // Each batch on its own (a later one never replaces one still waiting).
+    write(`nodes-seen:${String(++this.seenSaves)}`, () => {
+      try {
+        this.deps.nodes.touch(seen);
+      } catch (error) {
+        this.deps.log(
+          'warn',
+          `Nodes: could not keep when nodes were last seen (${(error as Error).message})`,
+        );
+      }
+    });
   }
 
   /** The performance check: what the link has sent (and start counting again). */

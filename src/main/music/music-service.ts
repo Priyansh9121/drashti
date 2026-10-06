@@ -28,11 +28,18 @@ export interface MusicDeps {
 const gone = { ok: false as const, message: 'That audio playlist is no longer there.' };
 
 export class MusicService {
+  /**
+   * The playlist played last, as known here: kept at once, while the setting is written when the
+   * library is free (Session 15: never in the way of the show). Undefined until first read.
+   */
+  private last: unknown;
+
   constructor(private readonly deps: MusicDeps) {}
 
   view(): MusicView {
     const playlists = this.deps.repo.list();
-    const last = this.deps.settings.get(LAST);
+    this.last ??= this.deps.settings.get(LAST) ?? null;
+    const last = this.last;
     return {
       playlists,
       lastId: typeof last === 'string' && playlists.some((p) => p.id === last) ? last : null,
@@ -132,6 +139,7 @@ export class MusicService {
       index,
     });
     if (!started.ok) return { ok: false, message: started.message };
+    this.last = p.id;
     this.deps.settings.set(LAST, p.id);
     this.deps.log(`Music: playing an audio playlist (${String(tracks.length)} track(s))`);
     return this.done(p.id);
