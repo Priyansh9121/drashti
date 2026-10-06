@@ -40,6 +40,10 @@ export type Playback = (() => void) & { resync: () => void };
 const CHECK_MS = 250;
 /** How long after a sound lands before where it plays says how well the jump was aimed. */
 const SETTLE_MS = 300;
+/** Held at an end point: further from it than this (one frame at 60 Hz), it is put exactly there. */
+const HOLD_TOLERANCE = 1 / 60;
+/** How far before an end point (seconds) the stop is aimed, half a frame. */
+const HOLD_EARLY = 0.008;
 
 /**
  * Play a library file in a media element, starting where a playback that
@@ -74,6 +78,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     return { startedAt, loop: t ? t.loop : v.loop, clip: t?.clip, seek: t?.seek };
   };
   let wrap: ReturnType<typeof setTimeout> | null = null;
+  let hold: ReturnType<typeof setTimeout> | null = null;
   // How long the last jump took to land: the next one aims that far ahead, so it lands in step.
   let seekLead = 0;
   let seekFrom = 0;
@@ -118,20 +123,65 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     const c = clock();
     if (c.loop || at < playbackBounds(c.clip, v.duration).end) void v.play().catch(() => undefined);
   };
+  /** Played once, an end point before the file's own end (seconds); null when it loops or plays to the end. */
+  const endPoint = (c: ReturnType<typeof clock>): number | null => {
+    if (c.loop) return null;
+    const { end } = playbackBounds(c.clip, v.duration);
+    return end < v.duration - 0.01 ? end : null;
+  };
+  /** Held at its end point: paused there, exactly (within a frame). */
+  const holdAt = (end: number) => {
+    if (!v.paused) v.pause();
+    if (Math.abs(v.currentTime - end) > HOLD_TOLERANCE) v.currentTime = end;
+  };
+  /**
+   * Played once to an end point: stopped the moment the element itself gets there, timed from where
+   * it plays and how fast, not at the next check (up to a quarter of a second past it). Aimed a
+   * little early, so a timer that comes late still stops it within two frames.
+   */
+  const armHold = () => {
+    if (hold || v.paused || v.seeking) return;
+    const end = endPoint(clock());
+    if (end === null) return;
+    const left = (end - v.currentTime) / (v.playbackRate || 1);
+    if (left > CHECK_MS / 1000 + 0.05) return;
+    hold = setTimeout(
+      () => {
+        hold = null;
+        const point = endPoint(clock());
+        if (point === null || v.paused || v.seeking) return;
+        // Not there yet (it stalled a moment): aim again from where it is.
+        if ((point - v.currentTime) / (v.playbackRate || 1) > HOLD_EARLY * 1.5) armHold();
+        else holdAt(point);
+      },
+      Math.max(0, (left - HOLD_EARLY) * 1000),
+    );
+  };
+  /** A jump, a new speed or playing again: the stop is timed afresh. */
+  const rearm = () => {
+    if (hold) clearTimeout(hold);
+    hold = null;
+    armHold();
+  };
   const check = () => {
     if (!framed || v.seeking || v.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
     const c = clock();
     const at = playbackPosition(c, v.duration, engineNow());
     const { start, end } = playbackBounds(c.clip, v.duration);
-    // Played once to its end: the file's own end comes by itself (it plays on to it and holds its last
-    // frame, even a moment behind the clock); an end point before that is held here.
-    if (!c.loop && at >= end - 0.01) {
-      if (end < v.duration - 0.01) {
-        if (!v.paused) v.pause();
-        if (Math.abs(v.currentTime - end) > 0.1) v.currentTime = end;
-      }
+    const point = endPoint(c);
+    // An end point is held once the clock gets there, or once the element has (a moment ahead of the
+    // clock, which is near it).
+    if (
+      point !== null &&
+      (at >= point - 0.01 ||
+        (v.paused && v.currentTime >= point - HOLD_TOLERANCE && at >= point - limits.jumpOver))
+    ) {
+      holdAt(point);
       return;
     }
+    // Played once to its end: the file's own end comes by itself (it plays on to it and holds its last
+    // frame, even a moment behind the clock).
+    if (!c.loop && at >= end - 0.01) return;
     if (v.paused && !v.ended) void v.play().catch(() => undefined);
     const span = end - start;
     const offset = playbackOffset(v.currentTime, at, span, c.loop);
@@ -157,21 +207,25 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
           Math.max(0, (left / v.playbackRate) * 1000),
         );
     }
+    armHold();
   };
   v.muted = !audible;
   v.addEventListener('loadedmetadata', onMetadata, { once: true });
   v.addEventListener('error', failed);
   v.addEventListener('seeked', landed);
+  for (const event of ['seeked', 'playing', 'ratechange']) v.addEventListener(event, rearm);
   const timer = setInterval(check, CHECK_MS);
   v.src = mediaUrl(mediaId, attempt);
   const stop = () => {
     clearInterval(timer);
     if (wrap) clearTimeout(wrap);
+    if (hold) clearTimeout(hold);
     v.removeEventListener('loadedmetadata', onMetadata);
     v.removeEventListener('error', failed);
     v.removeEventListener('loadeddata', frame);
     v.removeEventListener('seeked', whenFrame);
     v.removeEventListener('seeked', landed);
+    for (const event of ['seeked', 'playing', 'ratechange']) v.removeEventListener(event, rearm);
     // Let go of the file and the decoder now, not when the element is collected.
     v.pause();
     v.removeAttribute('src');
@@ -180,7 +234,9 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   return Object.assign(stop, {
     resync: () => {
       if (wrap) clearTimeout(wrap);
+      if (hold) clearTimeout(hold);
       wrap = null;
+      hold = null;
       check();
     },
   });
