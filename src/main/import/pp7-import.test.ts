@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { openDatabase } from '../db/database';
 import { ImportRepo } from '../db/imports';
+import { MediaRepo } from '../db/media';
 import { PlaylistRepo } from '../db/playlists';
 import { PresentationRepo } from '../db/presentations';
 import { MediaStore } from './media-store';
@@ -340,5 +341,50 @@ describe('importing ProPresenter 7 files', () => {
       ['text', 15],
     ]);
     expect(first?.slide.elements[1]).toMatchObject({ style: { shadow: { x: 0, y: 5, blur: 2 } } });
+  });
+});
+
+describe('a ProPresenter 7 video’s start and end points and markers (Session 14)', () => {
+  it('come with the media item, marked to look over, and never replace ones set already', async () => {
+    const t = setup();
+    const marked = (uuid: string, at: number) =>
+      pp7Presentation({
+        uuid,
+        name: `Placeholder ${uuid}`,
+        groups: [
+          {
+            name: 'Verse',
+            uuid: `${uuid}-G`,
+            slides: [
+              {
+                id: `${uuid}-1`,
+                background: {
+                  path: '/Volumes/OldPC/Media/Marked Loop.mov',
+                  kind: 'video',
+                  loop: true,
+                  points: { in: 2, out: 6.5, markers: [{ name: 'Placeholder chorus', time: at }] },
+                },
+              },
+            ],
+          },
+        ],
+      });
+    t.write('Libraries/Default/Placeholder Marked.pro', marked('P7-MARKED', 4));
+    t.write('Media/Assets/Marked Loop.mov', 'placeholder video');
+    const { report } = await t.run([t.source]);
+    const item = report?.items.find((i) => i.format === 'pp7' && i.target?.kind === 'presentation');
+    expect(item?.issues.find((i) => i.code === 'markers-read')?.message).toContain('look them over');
+    const row = t.db.prepare("SELECT id FROM media WHERE name = 'Marked Loop.mov'").get() as { id: string };
+    const repo = new MediaRepo(t.db);
+    expect(repo.markersOf(row.id)).toMatchObject({
+      startMs: 2000,
+      endMs: 6500,
+      markers: [{ name: 'Placeholder chorus', atMs: 4000 }],
+    });
+    // Changed by hand, then the same file imported again with other markers: the hand's stay.
+    repo.setMarkers(row.id, { startMs: 1000, endMs: null, markers: [] });
+    t.write('Libraries/Default/Placeholder Marked Again.pro', marked('P7-AGAIN', 5));
+    await t.run([join(t.source, 'Libraries/Default/Placeholder Marked Again.pro')]);
+    expect(repo.markersOf(row.id)).toEqual({ startMs: 1000, endMs: null, markers: [] });
   });
 });

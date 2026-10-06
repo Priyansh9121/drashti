@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import type { ImportOptions } from '../../shared/import';
 import { openDatabase } from '../db/database';
 import { ImportRepo } from '../db/imports';
+import { MediaRepo } from '../db/media';
 import { PlaylistRepo } from '../db/playlists';
 import { DbSlideSource, PresentationRepo } from '../db/presentations';
 import { MediaStore } from './media-store';
@@ -442,5 +443,39 @@ describe('importing ProPresenter 6 files', () => {
       ['Props.pro6', 'imported', '3 props: show them from Props, under the live picture.'],
       ['Messages.xml', 'unsupported', 'Messages are set up again in Drashti (see the audit report).'],
     ]);
+  });
+});
+
+describe('a ProPresenter 6 video’s start and end points (Session 14)', () => {
+  it('come with the media item in its time scale, marked to look over', async () => {
+    const t = setup();
+    t.write('Media/Marked Loop.mov', 'placeholder video');
+    t.write(
+      'Placeholder Marked.pro6',
+      pp6Presentation({
+        uuid: 'P6-MARKED',
+        groups: [
+          {
+            name: 'Verse',
+            slides: [
+              {
+                background: {
+                  path: join(t.source, 'Media/Marked Loop.mov'),
+                  kind: 'video',
+                  loop: true,
+                  points: { timeScale: 600, in: 1200, out: 3900, end: 6000 },
+                },
+                text: [],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    const { report } = await t.run([join(t.source, 'Placeholder Marked.pro6')]);
+    const item = report?.items.find((i) => i.format === 'pp6' && i.target?.kind === 'presentation');
+    expect(item?.issues.find((i) => i.code === 'markers-read')?.message).toContain('not yet checked');
+    const row = t.db.prepare("SELECT id FROM media WHERE name = 'Marked Loop.mov'").get() as { id: string };
+    expect(new MediaRepo(t.db).markersOf(row.id)).toMatchObject({ startMs: 2000, endMs: 6500, markers: [] });
   });
 });

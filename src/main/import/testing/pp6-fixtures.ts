@@ -30,6 +30,15 @@ export function cocoaRtf(
   return `{\\rtf1\\ansi\\ansicpg1252\\cocoartf2639\n{\\fonttbl\\f0\\fswiss\\fcharset0 ${font};}\n{\\colortbl;${colors}}\n{\\*\\expandedcolortbl;;}\n\\pard\\pardirnatural\\${align}\\partightenfactor0\n\n${body}}`;
 }
 
+/** A video element's time attributes, as ProPresenter 6 writes them. */
+const pointsOf = (p: { timeScale?: number; in?: number; out?: number; end?: number } | undefined) =>
+  p
+    ? ` timeScale="${p.timeScale ?? 600}"` +
+      (p.in === undefined ? '' : ` inPoint="${p.in}"`) +
+      (p.out === undefined ? '' : ` outPoint="${p.out}"`) +
+      (p.end === undefined ? '' : ` endPoint="${p.end}"`)
+    : '';
+
 const esc = (s: string) => s.replace(/&/gu, '&amp;').replace(/"/gu, '&quot;').replace(/</gu, '&lt;');
 
 export interface Pp6TextBox {
@@ -61,7 +70,14 @@ export interface Pp6SlideSpec {
   label?: string;
   notes?: string;
   enabled?: boolean;
-  background?: { path: string; kind: 'image' | 'video'; loop?: boolean; scale?: number };
+  background?: {
+    path: string;
+    kind: 'image' | 'video';
+    loop?: boolean;
+    scale?: number;
+    /** A video's in and out points, in its time scale's units (600 a second unless given). */
+    points?: { timeScale?: number; in?: number; out?: number; end?: number };
+  };
   text?: Pp6TextBox[];
   image?: { path: string; rect: [number, number, number, number] };
   video?: { path: string; rect: [number, number, number, number]; loop?: boolean };
@@ -143,7 +159,7 @@ function slide(s: Pp6SlideSpec, i: number): string {
   const background = s.background
     ? `<RVMediaCue UUID="M-${i}" displayName="Background ${i}" actionType="0" alignment="4" behavior="2" dateAdded="" delayTime="0" enabled="true" nextCueUUID="" tags="" timeStamp="0" rvXMLIvarName="backgroundMediaCue">` +
       (s.background.kind === 'video'
-        ? `<RVVideoElement rvXMLIvarName="element" displayName="bg" UUID="V-${i}" source="${esc(fileUrl(s.background.path))}" scaleBehavior="${s.background.scale ?? 1}" playbackBehavior="${s.background.loop ? 1 : 0}" opacity="1" rotation="0"/>`
+        ? `<RVVideoElement rvXMLIvarName="element" displayName="bg" UUID="V-${i}" source="${esc(fileUrl(s.background.path))}" scaleBehavior="${s.background.scale ?? 1}" playbackBehavior="${s.background.loop ? 1 : 0}" opacity="1" rotation="0"${pointsOf(s.background.points)}/>`
         : `<RVImageElement rvXMLIvarName="element" displayName="bg" UUID="I-bg-${i}" source="${esc(fileUrl(s.background.path))}" scaleBehavior="${s.background.scale ?? 1}" opacity="1" rotation="0"/>`) +
       `</RVMediaCue>`
     : '';

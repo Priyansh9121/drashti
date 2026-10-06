@@ -73,7 +73,13 @@ export interface Pp7SlideSpec {
   transition?: { seconds: number; effect?: string };
   /** How the cue moves on by itself: target 1 is the next slide, 4 the first; action 3 is after a time. */
   completion?: { target: number; action: number; seconds: number };
-  background?: { path: string; kind: 'image' | 'video'; loop?: boolean };
+  background?: {
+    path: string;
+    kind: 'image' | 'video';
+    loop?: boolean;
+    /** A video's in and out points (seconds) and its markers, as the transport and the cue keep them. */
+    points?: { in?: number; out?: number; markers?: { name: string; time: number }[] };
+  };
   audio?: string | { path: string; volume?: number; loop?: boolean };
   /** A Clear cue (clears a layer), which Drashti does not run yet. */
   clear?: boolean;
@@ -188,7 +194,13 @@ function actions(s: Pp7SlideSpec, width: number, height: number) {
     },
   ];
   if (s.background) {
-    const props = { drawing: { scale_behavior: 1 } };
+    const points = s.background.points;
+    const props = {
+      drawing: { scale_behavior: 1 },
+      ...(points && (points.in !== undefined || points.out !== undefined)
+        ? { transport: { in_point: points.in ?? 0, out_point: points.out ?? 0 } }
+        : {}),
+    };
     list.push({
       uuid: id(`${s.id}-bg`),
       name: 'Background',
@@ -199,6 +211,7 @@ function actions(s: Pp7SlideSpec, width: number, height: number) {
         ...(s.background.kind === 'video'
           ? { video: { playback_behavior: s.background.loop ? 1 : 0 } }
           : { image: {} }),
+        ...(points?.markers ? { markers: points.markers } : {}),
       },
     });
   }
