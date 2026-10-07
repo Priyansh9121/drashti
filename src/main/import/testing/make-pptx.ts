@@ -47,15 +47,19 @@ const paragraphs = (text: string) =>
     .map((line) => `<a:p><a:r><a:rPr lang="en-US" dirty="0"/><a:t>${escape(line)}</a:t></a:r></a:p>`)
     .join('');
 
-function slideXml(slide: TestPptxSlide): string {
-  return `${XML}<p:sld ${NS}${slide.hidden ? ' show="0"' : ''}><p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val="${slide.color}"/></a:solidFill><a:effectLst/></p:bgPr></p:bg><p:spTree>${GROUP}<p:sp><p:nvSpPr><p:cNvPr id="2" name="Placeholder words"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="914400" y="2743200"/><a:ext cx="10363200" cy="1371600"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US" sz="4000" dirty="0"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:rPr><a:t>${escape(slide.text)}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>${slide.animated ? FADE_IN : ''}</p:sld>`;
+/** The slide's shape: 16:9 (13.33 × 7.5 inches) unless asked for 4:3 (10 × 7.5). */
+export type TestPptxShape = '16:9' | '4:3';
+const WIDTH: Record<TestPptxShape, number> = { '16:9': 12192000, '4:3': 9144000 };
+
+function slideXml(slide: TestPptxSlide, shape: TestPptxShape): string {
+  return `${XML}<p:sld ${NS}${slide.hidden ? ' show="0"' : ''}><p:cSld><p:bg><p:bgPr><a:solidFill><a:srgbClr val="${slide.color}"/></a:solidFill><a:effectLst/></p:bgPr></p:bg><p:spTree>${GROUP}<p:sp><p:nvSpPr><p:cNvPr id="2" name="Placeholder words"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="914400" y="2743200"/><a:ext cx="${String(WIDTH[shape] - 2 * 914400)}" cy="1371600"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US" sz="4000" dirty="0"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill></a:rPr><a:t>${escape(slide.text)}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>${slide.animated ? FADE_IN : ''}</p:sld>`;
 }
 
 function notesXml(notes: string): string {
   return `${XML}<p:notes ${NS}><p:cSld><p:spTree>${GROUP}<p:sp><p:nvSpPr><p:cNvPr id="2" name="Slide number"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="sldNum" sz="quarter" idx="5"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US"/><a:t>7</a:t></a:r></a:p></p:txBody></p:sp><p:sp><p:nvSpPr><p:cNvPr id="3" name="Notes"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/>${paragraphs(notes)}</p:txBody></p:sp></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>`;
 }
 
-export function makeTestPptx(slides: readonly TestPptxSlide[]): Buffer {
+export function makeTestPptx(slides: readonly TestPptxSlide[], shape: TestPptxShape = '16:9'): Buffer {
   const n = slides.map((_, i) => i + 1);
   const files: { name: string; data: string }[] = [
     {
@@ -73,7 +77,7 @@ export function makeTestPptx(slides: readonly TestPptxSlide[]): Buffer {
     },
     {
       name: 'ppt/presentation.xml',
-      data: `${XML}<p:presentation ${NS}><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:notesMasterIdLst><p:notesMasterId r:id="rId2"/></p:notesMasterIdLst><p:sldIdLst>${n.map((i) => `<p:sldId id="${String(255 + i)}" r:id="rId${String(9 + i)}"/>`).join('')}</p:sldIdLst><p:sldSz cx="12192000" cy="6858000"/><p:notesSz cx="6858000" cy="9144000"/></p:presentation>`,
+      data: `${XML}<p:presentation ${NS}><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:notesMasterIdLst><p:notesMasterId r:id="rId2"/></p:notesMasterIdLst><p:sldIdLst>${n.map((i) => `<p:sldId id="${String(255 + i)}" r:id="rId${String(9 + i)}"/>`).join('')}</p:sldIdLst><p:sldSz cx="${String(WIDTH[shape])}" cy="6858000"/><p:notesSz cx="6858000" cy="9144000"/></p:presentation>`,
     },
     {
       name: 'ppt/_rels/presentation.xml.rels',
@@ -112,7 +116,7 @@ export function makeTestPptx(slides: readonly TestPptxSlide[]): Buffer {
   slides.forEach((slide, k) => {
     const i = String(k + 1);
     files.push(
-      { name: `ppt/slides/slide${i}.xml`, data: slideXml(slide) },
+      { name: `ppt/slides/slide${i}.xml`, data: slideXml(slide, shape) },
       {
         name: `ppt/slides/_rels/slide${i}.xml.rels`,
         data: rels([

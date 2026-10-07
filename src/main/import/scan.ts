@@ -108,7 +108,9 @@ export async function scanPaths(paths: readonly string[], options: ScanOptions =
       if (name.startsWith('.') || IGNORED.has(lower)) continue;
       const full = join(dir, name);
       if (entry.isDirectory()) {
-        if (!IGNORED_DIRS.has(lower) && !lower.endsWith('.app')) await walk(full, depth + 1, out);
+        // A Keynote file saved as a package is a folder: one item, never its pictures inside.
+        if (lower.endsWith('.key')) out.push({ path: full, size: 0 });
+        else if (!IGNORED_DIRS.has(lower) && !lower.endsWith('.app')) await walk(full, depth + 1, out);
       } else if (entry.isFile() || entry.isSymbolicLink()) {
         try {
           const s = await stat(full);
@@ -134,6 +136,8 @@ export async function scanPaths(paths: readonly string[], options: ScanOptions =
     }
     if (info.isFile()) {
       addFile(root, info.size);
+    } else if (info.isDirectory() && root.toLowerCase().endsWith('.key')) {
+      addFile(root, 0);
     } else if (info.isDirectory()) {
       const found: { path: string; size: number }[] = [];
       await walk(root, 0, found);

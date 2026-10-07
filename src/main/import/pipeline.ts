@@ -53,17 +53,14 @@ import { extOf, formatOf, type ScannedFile, scanPaths } from './scan';
 import type { PicturesResult } from '../../shared/pictures';
 import { pictureSourceOf } from '../../shared/pictures';
 import {
+  checkDeck,
   type Converter,
+  convertersFor,
   convertToPdf,
-  converterFor,
   findConverters,
   noConverterMessage,
-  notesForPages,
-  picturesIssues,
-  picturesPresentation,
-  type PptxSlide,
-  readPptx,
-} from './pictures';
+} from './deck-converters';
+import { notesForPages, picturesIssues, picturesPresentation, type PptxSlide } from './pictures';
 import { extractZip } from './zip';
 
 /*
@@ -100,6 +97,12 @@ export interface PipelineContext {
   /** After each presentation is committed. */
   onWrote?: (wrote: { presentationId: string; replaced: boolean }) => void;
   isCancelled?: () => boolean;
+  /** Says when the run is cancelled, to stop work in the middle of a file (Keynote or PowerPoint saving one). */
+  signal?: AbortSignal;
+  /** A line for Drashti's log. */
+  log?: (message: string) => void;
+  /** Bring Drashti's window back to the front (Keynote or PowerPoint took it with a message). */
+  refocus?: () => void;
   /** Filled in with where the time went. */
   timings?: ImportTimings;
   /** Least time between progress reports (default 100 ms). */
@@ -619,6 +622,14 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       );
       return;
     }
+    // A Keynote file saved as a package is a folder (Session 16): not something to copy or hash.
+    if (source === 'key' && (await stat(file.path)).isDirectory()) {
+      fail(
+        'pictures-package',
+        'This Keynote file is saved as a package (a folder). Open it in Keynote, choose File > Advanced > Change File Type > Single File, then import it again.',
+      );
+      return;
+    }
     let t = performance.now();
     const hash = await fileSha256(file.path);
     time('read', t);
@@ -629,31 +640,59 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     try {
       let pdf = file.path;
       let converter: Converter | null = null;
+      let firstTried: { converter: Converter; reason: string } | null = null;
       let slides: PptxSlide[] | null = null;
-      if (source === 'pptx') {
-        try {
-          slides = await readPptx(file.path);
-        } catch {
-          // Its own slides cannot be read here: whatever saves it as PDF may still read it.
-        }
-      }
       if (source !== 'pdf') {
-        converter =
-          ctx.converters === false ? null : converterFor(source, process.platform, await findConverters());
-        if (!converter) {
+        // A plainly damaged file never reaches Keynote or PowerPoint, which would ask about it in a
+        // window nobody sees and stop answering (Session 16).
+        const checked = await checkDeck(source, file.path);
+        if (!checked.ok) {
+          fail('pictures-damaged', checked.message);
+          return;
+        }
+        slides = checked.slides;
+        const apps =
+          ctx.converters === false ? [] : convertersFor(source, process.platform, await findConverters());
+        if (apps.length === 0) {
           fail('pictures-no-converter', noConverterMessage(source));
           return;
         }
-        t = performance.now();
-        const converted = await convertToPdf(converter, file.path, work);
-        time('parse', t);
-        if (!converted.ok) {
-          fail('pictures-not-converted', converted.message);
+        const failures: { converter: Converter; message: string; reason: string }[] = [];
+        for (const app of apps) {
+          t = performance.now();
+          const converted = await convertToPdf(app, file.path, work, {
+            signal: ctx.signal,
+            slideCount: slides?.length,
+            log: ctx.log && ((line) => ctx.log?.(`Saving as PDF: ${line}`)),
+            refocus: ctx.refocus,
+          });
+          time('parse', t);
+          if (converted.ok) {
+            converter = app;
+            pdf = converted.pdf;
+            // The file's own notes when it could be read; otherwise what the app told.
+            if (!slides?.some((sl) => sl.notes !== '') && converted.slides) slides = converted.slides;
+            break;
+          }
+          if (converted.cancelled) {
+            fail('pictures-cancelled', 'Cancelled while it was being saved as PDF.');
+            return;
+          }
+          failures.push({ converter: app, message: converted.message, reason: converted.reason });
+        }
+        const first = failures[0];
+        if (!converter) {
+          const also = failures
+            .slice(1)
+            .map(
+              (f) =>
+                ` ${f.converter === 'keynote' ? 'Keynote' : 'PowerPoint'} could not either (${f.reason}).`,
+            )
+            .join('');
+          fail('pictures-not-converted', `${first?.message ?? ''}${also}`);
           return;
         }
-        pdf = converted.pdf;
-        // The file's own notes when it could be read; otherwise what the converter told.
-        if (!slides?.some((sl) => sl.notes !== '') && converted.slides) slides = converted.slides;
+        if (first) firstTried = { converter: first.converter, reason: first.reason };
       }
       t = performance.now();
       const drawn = await ctx.drawPdf(pdf, join(work, 'pages'));
@@ -676,6 +715,11 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       parsed.issues = picturesIssues({
         source,
         converter,
+        firstTried,
+        hidden:
+          slides && shown.length < slides.length && drawn.total === shown.length
+            ? slides.length - shown.length
+            : 0,
         pages: drawn.pages.length,
         total: drawn.total,
         failed: drawn.failed,

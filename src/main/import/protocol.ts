@@ -43,4 +43,8 @@ export type FromWorker =
   | { type: 'draw-pdf'; requestId: string; pdf: string; outDir: string }
   | { type: 'wrote'; runId: string; presentationId: string; replaced: boolean }
   | { type: 'finished'; run: ImportRunSummary; timings?: ImportTimings }
+  /** A line for Drashti's log (Keynote and PowerPoint's steps, Session 16). */
+  | { type: 'log'; level: 'info' | 'warn'; message: string }
+  /** Keynote or PowerPoint took the front with a message: Drashti's window should have it back. */
+  | { type: 'refocus' }
   | { type: 'failed'; runId: string; message: string };

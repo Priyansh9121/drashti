@@ -1,11 +1,8 @@
-import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { basename, join, posix } from 'node:path';
+import { basename, posix } from 'node:path';
 import type { ImportIssue } from '../../shared/import';
 import type { PictureSource } from '../../shared/pictures';
 import { tidyNotes } from '../../shared/pictures';
+import type { Converter } from './deck-converters';
 import { nameFromFile } from './formats/text';
 import type { ParsedPresentation } from './model';
 import { mediaRef } from './model';
@@ -14,8 +11,8 @@ import { readZipEntries } from './zip';
 
 /*
  * PDF, PowerPoint and Keynote as pictures (Session 15), in the import
- * worker: a PowerPoint or Keynote file is first saved as PDF by Keynote (on
- * a Mac) or PowerPoint (where it is installed); the main process draws the
+ * worker: a PowerPoint or Keynote file is first saved as PDF by PowerPoint
+ * or Keynote, where installed (./deck-converters.ts); the main process draws the
  * PDF's pages (src/main/pictures/pdf-pictures.ts); and this makes the
  * presentation: one slide per page, the page's picture full frame, its
  * speaker notes as the slide's notes. A .pptx's notes, and which of its
@@ -142,283 +139,6 @@ export function notesForPages(slides: readonly PptxSlide[], pages: number): stri
   return null;
 }
 
-// ---- saving as PDF -------------------------------------------------------------------------------
-
-export type Converter = 'keynote' | 'powerpoint';
-
-/** What can save a PowerPoint or Keynote file as PDF on this computer. */
-export interface Converters {
-  keynote: boolean;
-  powerpoint: boolean;
-}
-
-/** Keynote on a Mac first (it comes with every Mac), then PowerPoint; a .key needs Keynote. */
-export function converterFor(
-  source: PictureSource,
-  platform: NodeJS.Platform,
-  has: Converters,
-): Converter | null {
-  if (source === 'pdf') return null;
-  if (platform === 'darwin' && has.keynote) return 'keynote';
-  if (source !== 'key' && (platform === 'darwin' || platform === 'win32') && has.powerpoint)
-    return 'powerpoint';
-  return null;
-}
-
-/** What to do when nothing here can save the file as PDF, said plainly. */
-export function noConverterMessage(source: PictureSource): string {
-  return source === 'key'
-    ? 'This computer has no Keynote to turn this Keynote file into pictures. On a Mac, open it in Keynote and choose File > Export To > PDF…, then import the PDF.'
-    : 'This computer has no Keynote or PowerPoint to turn this file into pictures. Open it in PowerPoint (File > Save As, PDF) or Keynote (File > Export To > PDF…), then import the PDF.';
-}
-
-const exists = (path: string) => {
-  try {
-    return existsSync(path);
-  } catch {
-    return false;
-  }
-};
-
-/** Whether Windows knows PowerPoint (its automation is registered). */
-function windowsHasPowerPoint(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const child = spawn('reg', ['query', 'HKCR\\PowerPoint.Application\\CurVer'], { stdio: 'ignore' });
-    child.on('error', () => {
-      resolve(false);
-    });
-    child.on('exit', (code) => {
-      resolve(code === 0);
-    });
-  });
-}
-
-/** Keynote and PowerPoint where they are usually installed. */
-export async function findConverters(platform: NodeJS.Platform = process.platform): Promise<Converters> {
-  if (platform === 'darwin')
-    return {
-      keynote: exists('/Applications/Keynote.app') || exists(join(homedir(), 'Applications', 'Keynote.app')),
-      powerpoint: exists('/Applications/Microsoft PowerPoint.app'),
-    };
-  if (platform === 'win32') return { keynote: false, powerpoint: await windowsHasPowerPoint() };
-  return { keynote: false, powerpoint: false };
-}
-
-/** Run a program, giving up after `timeoutMs` or when `signal` says to stop. */
-function run(
-  command: string,
-  args: string[],
-  timeoutMs: number,
-  signal?: AbortSignal,
-  env: NodeJS.ProcessEnv = process.env,
-): Promise<{ code: number | null; stdout: string; stderr: string }> {
-  return new Promise((resolve) => {
-    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], env, windowsHide: true });
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (d: Buffer) => (stdout += d.toString()));
-    child.stderr.on('data', (d: Buffer) => (stderr += d.toString()));
-    const stop = () => child.kill();
-    const timer = setTimeout(stop, timeoutMs);
-    signal?.addEventListener('abort', stop);
-    child.on('error', (error) => {
-      clearTimeout(timer);
-      resolve({ code: null, stdout, stderr: stderr || error.message });
-    });
-    child.on('exit', (code) => {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', stop);
-      resolve({ code, stdout, stderr });
-    });
-  });
-}
-
-/** A big deck can take a while to open and save. */
-const CONVERT_TIMEOUT_MS = 5 * 60 * 1000;
-/** Keynote's notes come back one per shown slide, between these. */
-const NOTES_SEPARATOR = '\u001e';
-
-/** Keynote: open, note each shown slide's presenter notes, export a PDF (shown slides), close. */
-const KEYNOTE_SCRIPT = `on run argv
-  set inPath to item 1 of argv
-  set outPath to item 2 of argv
-  tell application "Keynote"
-    set theDoc to open (POSIX file inPath)
-    set noteList to {}
-    repeat with s in (slides of theDoc)
-      if skipped of s is false then set end of noteList to (presenter notes of s)
-    end repeat
-    export theDoc to (POSIX file outPath) as PDF with properties {PDF image quality:Best, skipped slides:false}
-    close theDoc saving no
-  end tell
-  set AppleScript's text item delimiters to (ASCII character 30)
-  return noteList as text
-end run
-`;
-
-/** PowerPoint on a Mac: open and save as PDF, in its own folder (it may not write elsewhere). */
-const POWERPOINT_MAC_SCRIPT = `on run argv
-  set inPath to item 1 of argv
-  set outPath to item 2 of argv
-  tell application "Microsoft PowerPoint"
-    open (POSIX file inPath)
-    set thePres to active presentation
-    save thePres in (POSIX file outPath) as save as PDF
-    close thePres saving no
-  end tell
-  return ""
-end run
-`;
-
-/**
- * PowerPoint on Windows, through its automation: open read-only without a
- * window, save as PDF (32 is ppSaveAsPDF), note every slide's notes and
- * whether it is hidden, close, and quit PowerPoint only if nothing else is
- * open in it. PowerPoint runs below normal priority meanwhile.
- */
-const POWERPOINT_WINDOWS_SCRIPT = `param([Parameter(Mandatory)][string]$In, [Parameter(Mandatory)][string]$Out, [Parameter(Mandatory)][string]$Notes)
-$ErrorActionPreference = 'Stop'
-$app = New-Object -ComObject PowerPoint.Application
-try { Get-Process POWERPNT -ErrorAction SilentlyContinue | ForEach-Object { $_.PriorityClass = 'BelowNormal' } } catch {}
-$pres = $app.Presentations.Open($In, -1, 0, 0)
-try {
-  $pres.SaveAs($Out, 32)
-  $slides = @()
-  foreach ($s in $pres.Slides) {
-    $text = ''
-    try { $text = [string]$s.NotesPage.Shapes.Placeholders(2).TextFrame.TextRange.Text } catch {}
-    $slides += [pscustomobject]@{ hidden = ($s.SlideShowTransition.Hidden -ne 0); notes = $text; animated = $false }
-  }
-  ConvertTo-Json -InputObject @($slides) -Compress | Set-Content -LiteralPath $Notes -Encoding UTF8
-} finally {
-  $pres.Close()
-  if ($app.Presentations.Count -eq 0) { $app.Quit() }
-  [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($app)
-}
-`;
-
-export type Converted =
-  | {
-      ok: true;
-      pdf: string;
-      /** Each slide, as the converter told it (null: the file itself is read for them, or none). */
-      slides: PptxSlide[] | null;
-      /** Keynote's notes are for shown slides only, already in the PDF's order. */
-      shownOnly: boolean;
-    }
-  | { ok: false; message: string };
-
-const firstLine = (text: string) =>
-  text
-    .split('\n')
-    .map((l) => l.trim())
-    .find((l) => l !== '')
-    ?.slice(0, 300) ?? '';
-
-/** Save a PowerPoint or Keynote file as PDF in `work` (a folder of its own) with the converter given. */
-export async function convertToPdf(
-  converter: Converter,
-  input: string,
-  work: string,
-  signal?: AbortSignal,
-  platform: NodeJS.Platform = process.platform,
-): Promise<Converted> {
-  const pdf = join(work, 'pictures.pdf');
-  if (converter === 'keynote') {
-    const script = join(work, 'keynote.applescript');
-    await writeFile(script, KEYNOTE_SCRIPT);
-    const r = await run('osascript', [script, input, pdf], CONVERT_TIMEOUT_MS, signal);
-    if (r.code !== 0 || !exists(pdf)) return { ok: false, message: keynoteMessage(r.stderr) };
-    const notes = r.stdout.replace(/\n$/u, '').split(NOTES_SEPARATOR);
-    return {
-      ok: true,
-      pdf,
-      slides: notes.map((n) => ({ hidden: false, notes: tidyNotes(n), animated: false })),
-      shownOnly: true,
-    };
-  }
-  if (platform === 'darwin') {
-    // PowerPoint for Mac may only write in its own folders: work there, then bring the PDF back.
-    const office = join(homedir(), 'Library', 'Group Containers', 'UBF8T346G9.Office', 'Drashti');
-    await mkdir(office, { recursive: true });
-    const inside = await mkdtemp(join(office, 'convert-'));
-    try {
-      const copy = join(inside, `deck${input.toLowerCase().endsWith('.ppt') ? '.ppt' : '.pptx'}`);
-      await copyFile(input, copy);
-      const out = join(inside, 'pictures.pdf');
-      const script = join(work, 'powerpoint.applescript');
-      await writeFile(script, POWERPOINT_MAC_SCRIPT);
-      const r = await run('osascript', [script, copy, out], CONVERT_TIMEOUT_MS, signal);
-      if (r.code !== 0 || !exists(out)) return { ok: false, message: powerPointMessage(r.stderr) };
-      await copyFile(out, pdf);
-      return { ok: true, pdf, slides: null, shownOnly: false };
-    } finally {
-      await rm(inside, { recursive: true, force: true });
-    }
-  }
-  const script = join(work, 'powerpoint.ps1');
-  const notesFile = join(work, 'notes.json');
-  await writeFile(script, POWERPOINT_WINDOWS_SCRIPT);
-  // Windows PowerShell by its full path, with no PSModulePath from whatever started Drashti.
-  const env = { ...process.env };
-  delete env['PSModulePath'];
-  const powershell = join(
-    process.env['SystemRoot'] ?? 'C:\\Windows',
-    'System32',
-    'WindowsPowerShell',
-    'v1.0',
-    'powershell.exe',
-  );
-  const r = await run(
-    powershell,
-    [
-      '-NoProfile',
-      '-NonInteractive',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-File',
-      script,
-      '-In',
-      input,
-      '-Out',
-      pdf,
-      '-Notes',
-      notesFile,
-    ],
-    CONVERT_TIMEOUT_MS,
-    signal,
-    env,
-  );
-  if (r.code !== 0 || !exists(pdf)) return { ok: false, message: powerPointMessage(r.stderr) };
-  let slides: PptxSlide[] | null = null;
-  try {
-    const raw = JSON.parse((await readFile(notesFile, 'utf8')).replace(/^\uFEFF/u, '')) as unknown;
-    if (Array.isArray(raw))
-      slides = raw.map((s: { hidden?: unknown; notes?: unknown }) => ({
-        hidden: s.hidden === true,
-        notes: tidyNotes(typeof s.notes === 'string' ? s.notes : ''),
-        animated: false,
-      }));
-  } catch {
-    // No notes to be had: the pictures come without them.
-  }
-  return { ok: true, pdf, slides, shownOnly: false };
-}
-
-function keynoteMessage(stderr: string): string {
-  if (/-1743|not allowed|Not authori[sz]ed/iu.test(stderr))
-    return 'Drashti is not allowed to use Keynote. In System Settings, Privacy & Security, Automation, allow Drashti to control Keynote, then import the file again.';
-  const detail = firstLine(stderr);
-  return `Keynote could not save it as PDF${detail ? ` (${detail})` : ''}. Open it in Keynote and choose File > Export To > PDF…, then import the PDF.`;
-}
-
-function powerPointMessage(stderr: string): string {
-  if (/-1743|not allowed|Not authori[sz]ed/iu.test(stderr))
-    return 'Drashti is not allowed to use PowerPoint. In System Settings, Privacy & Security, Automation, allow Drashti to control Microsoft PowerPoint, then import the file again.';
-  const detail = firstLine(stderr);
-  return `PowerPoint could not save it as PDF${detail ? ` (${detail})` : ''}. Open it in PowerPoint and choose File > Save As, PDF, then import the PDF.`;
-}
-
 // ---- the slides ----------------------------------------------------------------------------------
 
 /** A slide's own notes from the file, when it has some ('' is none). */
@@ -472,37 +192,63 @@ export function picturesPresentation(
   };
 }
 
+/** "1 slide has" or "3 slides have": a count with its words, singular or plural. */
+const counted = (n: number, one: string, many: string) => `${String(n)} ${n === 1 ? one : many}`;
+
 /** What the report says about a document made into pictures. */
 export function picturesIssues(details: {
   source: PictureSource;
   converter: Converter | null;
+  /** Another app was tried first and could not do it: why, in a few words. */
+  firstTried?: { converter: Converter; reason: string } | null;
   pages: number;
   total: number;
   failed: readonly number[];
   withNotes: number;
   animated: number;
+  /** Slides hidden in the file, which its PDF leaves out. */
+  hidden?: number;
   notesUnmatched: boolean;
 }): ImportIssue[] {
+  const name = (c: Converter) => (c === 'keynote' ? 'Keynote' : 'PowerPoint');
   const issues: ImportIssue[] = [
     {
       severity: 'info',
       code: 'pictures',
-      message: `Each of the ${String(details.pages)} page(s) became a slide holding its picture: the words on it cannot be edited or searched in Drashti.${details.source === 'pdf' ? '' : ' Animations and builds show as each slide’s finished picture.'}`,
+      message: `${details.pages === 1 ? 'The page became a slide' : `Each of the ${String(details.pages)} pages became a slide`} holding its picture: the words on it cannot be edited or searched in Drashti.${details.source === 'pdf' ? '' : ' Animations and builds show as each slide’s finished picture.'}`,
       fix: null,
     },
   ];
   if (details.converter)
-    issues.push({
-      severity: 'info',
-      code: 'pictures-converter',
-      message: `${details.converter === 'keynote' ? 'Keynote' : 'PowerPoint'} saved it as PDF first.`,
-      fix: null,
-    });
-  if (details.animated > 0)
+    issues.push(
+      details.firstTried
+        ? {
+            severity: 'warning',
+            code: 'pictures-converter',
+            message: `${name(details.firstTried.converter)} could not save it as PDF (${details.firstTried.reason}), so ${name(details.converter)} did. Check the pictures look right.`,
+            fix: null,
+          }
+        : {
+            severity: 'info',
+            code: 'pictures-converter',
+            message: `${name(details.converter)} saved it as PDF first.`,
+            fix: null,
+          },
+    );
+  if (details.animated > 0) {
+    const what = details.source === 'key' ? 'builds' : 'animations';
     issues.push({
       severity: 'info',
       code: 'pictures-animations',
-      message: `${String(details.animated)} slide(s) had animations: each shows its finished picture, all at once.`,
+      message: `${counted(details.animated, `slide has ${what}: it shows`, `slides have ${what}: each shows`)} its finished picture, all at once.`,
+      fix: null,
+    });
+  }
+  if ((details.hidden ?? 0) > 0)
+    issues.push({
+      severity: 'info',
+      code: 'pictures-hidden',
+      message: `${counted(details.hidden ?? 0, 'slide is', 'slides are')} hidden in the file and left out, as in its slide show.`,
       fix: null,
     });
   issues.push({
@@ -510,7 +256,7 @@ export function picturesIssues(details: {
     code: 'pictures-notes',
     message:
       details.withNotes > 0
-        ? `${String(details.withNotes)} slide(s) have speaker notes, kept as the slide's notes (the stage screen shows them).`
+        ? `${counted(details.withNotes, 'slide has', 'slides have')} speaker notes, kept as the slide’s notes (the stage screen shows them).`
         : 'The file has no speaker notes.',
     fix: null,
   });
@@ -533,7 +279,7 @@ export function picturesIssues(details: {
     issues.push({
       severity: 'warning',
       code: 'pictures-failed-pages',
-      message: `Page(s) ${details.failed.map((n) => String(n + 1)).join(', ')} could not be drawn and were left out.`,
+      message: `${details.failed.length === 1 ? 'Page' : 'Pages'} ${details.failed.map((n) => String(n + 1)).join(', ')} could not be drawn and ${details.failed.length === 1 ? 'was' : 'were'} left out.`,
       fix: null,
     });
   return issues;

@@ -225,9 +225,16 @@ export async function importAndGetIds(win: Page, files: string[]): Promise<strin
 /**
  * Drop files from disk onto an element, as a drag from the desktop does. A file
  * input gives the page File objects backed by the real files, so the preload
- * can tell their paths; they are then dropped with a DataTransfer.
+ * can tell their paths; they are then dropped with a DataTransfer. The
+ * presentation list shows its overlay meanwhile; elsewhere (`overlay: false`)
+ * the window takes the drop without one.
  */
-export async function dropFiles(page: Page, target: Locator, paths: string[]): Promise<void> {
+export async function dropFiles(
+  page: Page,
+  target: Locator,
+  paths: string[],
+  { overlay = true }: { overlay?: boolean } = {},
+): Promise<void> {
   await page.evaluate(() => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -246,7 +253,7 @@ export async function dropFiles(page: Page, target: Locator, paths: string[]): P
   });
   await target.dispatchEvent('dragenter', { dataTransfer });
   await target.dispatchEvent('dragover', { dataTransfer });
-  await expect(page.getByTestId('drop-overlay')).toBeVisible();
+  if (overlay) await expect(page.getByTestId('drop-overlay')).toBeVisible();
   await target.dispatchEvent('drop', { dataTransfer });
   await expect(page.getByTestId('drop-overlay')).toHaveCount(0);
 }

@@ -236,6 +236,8 @@ export function PresentationList({ platform }: { platform: string }) {
   };
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
+    // The window imports files dropped anywhere else (Pro Mode): this list has them.
+    e.stopPropagation();
     depth.current = 0;
     setDropping(false);
     const paths = Array.from(e.dataTransfer.files)

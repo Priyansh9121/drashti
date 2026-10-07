@@ -124,7 +124,11 @@ function ImportStatus() {
     );
   if (finished)
     return (
-      <div data-testid="import-result" className="flex min-w-0 items-center gap-1.5">
+      <div
+        data-testid="import-result"
+        className={`flex min-w-0 items-center gap-1.5${finished.totals.failed > 0 ? ' text-warning-fg' : ''}`}
+      >
+        {finished.totals.failed > 0 && <AlertTriangle size={13} aria-label="Problems" className="shrink-0" />}
         <Truncate text={describeRun(finished)} />
         <Button variant="secondary" size="sm" className="h-5" onClick={() => void openReport(finished.id)}>
           Report
