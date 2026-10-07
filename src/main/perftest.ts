@@ -54,6 +54,11 @@ export interface PerfContext {
   scenario?: ScenarioRun;
   /** Processor used by all of Drashti's processes since asked before (percent of one core). */
   cpu?: () => number;
+  /**
+   * An operator's edits meanwhile (DRASHTI_PERF_EDITS=1; Session 16): the words of a presentation,
+   * a playlist's name and a theme in turn, every 0.7 s, timed from the operator window.
+   */
+  edits?: boolean;
 }
 
 /** How big the test import is. */
@@ -89,6 +94,14 @@ interface Sample {
   during: boolean;
 }
 
+/** An operator's edit, as long as it took from the operator window. */
+interface EditSample {
+  kind: 'words' | 'playlist' | 'theme';
+  ms: number;
+  during: boolean;
+  ok: boolean;
+}
+
 /**
  * Runs in the operator page: change slides every 40 ms, first with nothing
  * else going on, then all through an import of `folder`. Kept free of
@@ -98,6 +111,7 @@ async function slideChangesDuringImport(
   folder: string | null,
   forMs: number,
   slides: { presentationId: string | null; everyMs: number } | null,
+  edits: boolean,
 ) {
   const d = (globalThis as unknown as { drashti: DrashtiBridge }).drashti;
   const id =
@@ -119,6 +133,37 @@ async function slideChangesDuringImport(
     await change(false);
     await wait(every);
   }
+  // An operator's edits (Session 16): the other placeholder presentation's words, a playlist's
+  // name and the default theme in turn, each changed back and forth so every save writes.
+  const editSamples: { kind: 'words' | 'playlist' | 'theme'; ms: number; during: boolean; ok: boolean }[] =
+    [];
+  const wordsId = (await d.library.listPresentations()).find((p) => p.id !== id)?.id ?? '';
+  const words = edits ? await d.library.words(wordsId) : null;
+  const made = edits ? await d.playlists.create('Placeholder edits', null, false) : null;
+  const playlistId = made?.ok ? (made.ids[0] ?? '') : '';
+  const themes = edits ? await d.themes.list() : null;
+  const theme = themes?.themes.find((t) => t.id === themes.defaultId) ?? null;
+  let editCount = 0;
+  const editOnce = async (during: boolean) => {
+    const n = editCount++;
+    const kind = (['words', 'playlist', 'theme'] as const)[n % 3] ?? 'words';
+    const t0 = performance.now();
+    let ok = false;
+    if (kind === 'words' && words?.ok)
+      ok = (await d.library.saveWords(wordsId, `${words.text}\n\nPlaceholder edit ${String(n % 2)}`)).ok;
+    else if (kind === 'playlist' && playlistId)
+      ok = (await d.playlists.rename(playlistId, `Placeholder edits ${String(n)}`)).ok;
+    else if (kind === 'theme' && theme) {
+      const { id: themeId, ...fields } = theme;
+      ok = (await d.themes.save(themeId, { ...fields, name: `${theme.name}${n % 2 ? ' ' : ''}` })).ok;
+    }
+    editSamples.push({ kind, ms: performance.now() - t0, during, ok });
+  };
+  if (edits)
+    for (let i = 0; i < 6; i++) {
+      await editOnce(false);
+      await wait(300);
+    }
   const state = { finished: false };
   const startedAt = Date.now();
   // With no import (to compare), the same changes for a set time.
@@ -132,12 +177,22 @@ async function slideChangesDuringImport(
           state.finished = true;
           return result;
         });
+  // The import finishing is seen after each wait (the narrowing of `state` would not see it).
+  const importing = () => !state.finished;
+  const editing = (async () => {
+    while (edits && importing()) {
+      await wait(700);
+      if (importing()) await editOnce(true);
+    }
+  })();
   while (!state.finished) {
     await change(true);
     await wait(every);
   }
   const result = await imported;
-  return { samples, result, importMs: Date.now() - startedAt };
+  const importMs = Date.now() - startedAt;
+  await editing;
+  return { samples, result, importMs, edits: editSamples };
 }
 
 /** The main process's worst block and its gaps over 100 ms, each with what went on around it (at most 6). */
@@ -210,9 +265,10 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
       samples: Sample[];
       result: { ok: boolean; message?: string; run?: { totals: { failed: number; imported: number } } };
       importMs: number;
+      edits: EditSample[];
     }>(
       operator,
-      `(${slideChangesDuringImport.toString()})(${JSON.stringify(noImport ? null : folder)}, ${String(ctx.noImportMs ?? 0)}, ${JSON.stringify(ctx.scenario?.slides ?? null)})`,
+      `(${slideChangesDuringImport.toString()})(${JSON.stringify(noImport ? null : folder)}, ${String(ctx.noImportMs ?? 0)}, ${JSON.stringify(ctx.scenario?.slides ?? null)}, ${String(ctx.edits === true)})`,
     );
     const state = { done: false };
     void running.finally(() => {
@@ -248,7 +304,22 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
     const what = noImport
       ? `no import: slide changes for ${run.importMs} ms`
       : `import of ${PERF_SONGS} files took ${run.importMs} ms`;
-    const summary = `${what}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}${scenario ? `; ${scenario.summary}` : ''}`;
+    const editLine = (label: string, v: EditSample[]) => {
+      const ms = v.map((e) => Math.round(e.ms));
+      return v.length === 0
+        ? `${label}: none`
+        : `${label}: n=${v.length} median ${percentile(ms, 0.5)} ms, p90 ${percentile(ms, 0.9)} ms, worst ${Math.max(...ms)} ms${v.some((e) => !e.ok) ? ` (${v.filter((e) => !e.ok).length} failed)` : ''}`;
+    };
+    const editsSummary = ctx.edits
+      ? `; operator's edits ${editLine(
+          'idle',
+          run.edits.filter((e) => !e.during),
+        )}; ${editLine(
+          'importing',
+          run.edits.filter((e) => e.during),
+        )} (${(['words', 'playlist', 'theme'] as const).map((k) => `${k} worst ${Math.max(0, ...run.edits.filter((e) => e.during && e.kind === k).map((e) => Math.round(e.ms)))} ms`).join(', ')})`
+      : '';
+    const summary = `${what}${editsSummary}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}${scenario ? `; ${scenario.summary}` : ''}`;
 
     const totals = run.result.run?.totals;
     if (!noImport) {

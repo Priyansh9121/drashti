@@ -302,6 +302,8 @@ const perfSoundCue = process.env['DRASHTI_PERF_SOUND_CUE'] === '1';
 // ...and the sound first starting during the measured part, 1.5 s in, rather than before it.
 const perfSoundLate = process.env['DRASHTI_PERF_MUSIC_LATE'] === '1';
 const perfNoImport = process.env['DRASHTI_PERF_NO_IMPORT'] === '1';
+// The performance check only: an operator's edits (words, a playlist, a theme) during the import (Session 16).
+const perfEdits = process.env['DRASHTI_PERF_EDITS'] === '1';
 // The performance check only: a heavy case for the screens (Session 15: speed on modest hardware).
 const perfScenario =
   perfTest && isPerfScenario(process.env['DRASHTI_PERF_SCENARIO'])
@@ -3044,6 +3046,7 @@ function start(): void {
         ...(perfWatch ? { watch: perfWatch } : {}),
         ...(perfProfileDir ? { profile: new PerfProfile(perfProfileDir) } : {}),
         ...(perfNoImport ? { noImportMs: 20_000 } : {}),
+        ...(perfEdits ? { edits: true } : {}),
       }).then(
         (result) => {
           process.stdout.write(`DRASHTI_PERFTEST_RESULT ${JSON.stringify(result)}\n`);
