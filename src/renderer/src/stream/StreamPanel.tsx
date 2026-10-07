@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { StreamLayout, StreamStatus } from '../../../shared/stream';
 import { STREAM_PRESETS } from '../../../shared/stream';
 import { Button } from '../ui/Button';
@@ -154,7 +154,8 @@ export function StreamPanel() {
   const status = useStream((s) => s.status);
   const profiles = useStream((s) => s.profiles);
   const error = useStream((s) => s.error);
-  const preview = usePreview();
+  const previewCanvas = useRef<HTMLCanvasElement | null>(null);
+  const preview = usePreview(previewCanvas);
   useEffect(() => {
     void loadProfiles();
   }, []);
@@ -193,15 +194,15 @@ export function StreamPanel() {
           className="relative aspect-video w-full overflow-hidden rounded-lg border border-line-strong bg-black"
           data-a11y-picture
         >
-          {preview.frame ? (
-            <img
-              src={preview.frame}
-              alt="What the stream shows now"
-              data-testid="stream-preview"
-              className="h-full w-full object-contain"
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center">
+          <canvas
+            ref={previewCanvas}
+            role="img"
+            aria-label="What the stream shows now"
+            data-testid={preview.hasFrame ? 'stream-preview' : undefined}
+            className="h-full w-full object-contain"
+          />
+          {!preview.hasFrame && (
+            <div className="absolute inset-0 flex items-center justify-center">
               <Loading label="Starting the stream’s picture…" />
             </div>
           )}
