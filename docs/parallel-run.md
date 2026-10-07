@@ -358,6 +358,35 @@ Once per computer, during these evenings:
 
    Run it twice and copy the **second** line into your notes (the first run after installing can be slow while the computer checks the new app). It should say `"passed":true`.
 
+   **The video cases** (on each computer that shows video: Main, and the node). The same check, with a video background on the screen while the slides change every two seconds, as in a sabha. Run each case once (twice if it did not pass), with the installed Drashti closed:
+   - `video-1080p30`: a 1080p video at 30 frames a second, the everyday background;
+   - `dissolves-video`: a new video dissolving in every two seconds, the hardest case;
+   - `masks-video`: the 1080p video under a mask (only if a screen has a mask).
+
+   Mac, in Terminal (one line per case):
+
+   ```bash
+   DRASHTI_SELFTEST=performance DRASHTI_PERF_SCENARIO=video-1080p30 /Applications/Drashti.app/Contents/MacOS/Drashti | grep DRASHTI_PERFTEST_RESULT
+   ```
+
+   Windows, in PowerShell (change the case on the second line for each run):
+
+   ```powershell
+   $env:DRASHTI_SELFTEST = 'performance'
+   $env:DRASHTI_PERF_SCENARIO = 'video-1080p30'
+   Start-Process -Wait -NoNewWindow "$env:LOCALAPPDATA\Programs\drashti\Drashti.exe" -RedirectStandardOutput "$env:TEMP\drashti-perf.txt"
+   Select-String DRASHTI_PERFTEST_RESULT "$env:TEMP\drashti-perf.txt"
+   ```
+
+   Copy each line into your notes. What matters in it (`"name"` is the check, `"ok"` whether it passed, `"detail"` its figure):
+   - **"every screen showed 9 in 10 of the background video's frames"** must be `"ok":true`. Its detail is the share it showed (for example `97%`). Below 90% means this computer cannot decode and draw the video in time: it needs a graphics chip that decodes video (`docs/admin-guide.md`, sections 1 and 13).
+   - **"half the slide changes during the import reached the screen within a frame"** and **"9 in 10 within two frames"** should be `"ok":true`.
+   - **"the main process never went more than 150 ms without a turn"** should be `"ok":true`; a figure a little over (say 150 to 200 ms) once is not a worry, several hundred is.
+   - **"the import overlapped at least 2 slide changes"** may say `"ok":false` on a fast computer: the import finished before the slides changed twice. That is fine, and it makes the whole line say `"passed":false`; judge by the lines above.
+   - The `summary` names the priority Drashti ran at (`main process priority above normal` on Windows).
+
+   **On the Windows PC only**, run `video-1080p30` and `dissolves-video` again with `$env:DRASHTI_PRIORITY = 'normal'` added (normal priority, level with other programs, instead of ahead of them), and keep those lines too: the admin decides from them whether Drashti runs ahead of other programs on this PC (`docs/admin-guide.md`, section 13). Afterwards close PowerShell (or `Remove-Item Env:DRASHTI_*`), so nothing is left set.
+
 2. **On the Windows PC**, go through `docs/windows-checks.md`: the taskbar, focus, scaling, sleep, notifications, installing, performance and the fallback drill. Write down Pass, Fail (with what you saw) or N/A for each.
 
 ---
