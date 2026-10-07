@@ -21,6 +21,11 @@ test('Drashti runs ahead of other programs, and an admin sets it back to normal 
   const { app, userData } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
+  // What Drashti saw as it set it, from its log (Chromium's start can change it after).
+  const said = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8')
+    .split('\n')
+    .filter((l) => l.includes('Main process priority'));
+  console.log(said.join('\n'));
   expect(getPriority(mainPid(app))).toBe(PRIORITY_ABOVE_NORMAL);
 
   // Unticked: normal at once, kept in the data folder, and said in the window.
