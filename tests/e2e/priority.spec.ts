@@ -15,7 +15,8 @@ import { chooseMenuItem, launchApp, operatorPage, operatorReady, relaunchApp } f
 test.skip(process.platform !== 'win32', 'Windows only: there a program may raise its own priority');
 
 const { PRIORITY_ABOVE_NORMAL, PRIORITY_NORMAL } = constants.priority;
-const mainPid = (app: Awaited<ReturnType<typeof launchApp>>['app']) => app.process().pid ?? 0;
+/** Drashti's main process, as it tells it (on Windows the process Playwright started is not it). */
+const mainPid = (app: Awaited<ReturnType<typeof launchApp>>['app']) => app.evaluate(() => process.pid);
 
 test('Drashti runs ahead of other programs, and an admin sets it back to normal for good', async () => {
   const { app, userData } = await launchApp();
@@ -26,11 +27,12 @@ test('Drashti runs ahead of other programs, and an admin sets it back to normal 
     .split('\n')
     .filter((l) => l.includes('Main process priority'));
   console.log(said.join('\n'));
-  expect(getPriority(mainPid(app))).toBe(PRIORITY_ABOVE_NORMAL);
+  const pid = await mainPid(app);
+  expect(getPriority(pid)).toBe(PRIORITY_ABOVE_NORMAL);
 
   // Unticked: normal at once, kept in the data folder, and said in the window.
   await chooseMenuItem(app, 'run-ahead');
-  await expect.poll(() => getPriority(mainPid(app))).toBe(PRIORITY_NORMAL);
+  await expect.poll(() => getPriority(pid)).toBe(PRIORITY_NORMAL);
   expect(JSON.parse(readFileSync(join(userData, 'drashti-priority.json'), 'utf8'))).toEqual({
     priority: 'normal',
   });
@@ -43,14 +45,15 @@ test('Drashti runs ahead of other programs, and an admin sets it back to normal 
   // The next start keeps it; ticked again, it runs ahead again.
   const again = await relaunchApp(userData);
   await operatorReady(await operatorPage(again.app));
-  expect(getPriority(mainPid(again.app))).toBe(PRIORITY_NORMAL);
+  const againPid = await mainPid(again.app);
+  expect(getPriority(againPid)).toBe(PRIORITY_NORMAL);
   await chooseMenuItem(again.app, 'run-ahead');
-  await expect.poll(() => getPriority(mainPid(again.app))).toBe(PRIORITY_ABOVE_NORMAL);
+  await expect.poll(() => getPriority(againPid)).toBe(PRIORITY_ABOVE_NORMAL);
   await again.app.close();
 
   // For one run (the performance check comparing the two), the environment says.
   const once = await relaunchApp(userData, { DRASHTI_PRIORITY: 'normal' });
   await operatorReady(await operatorPage(once.app));
-  expect(getPriority(mainPid(once.app))).toBe(PRIORITY_NORMAL);
+  expect(getPriority(await mainPid(once.app))).toBe(PRIORITY_NORMAL);
   await once.app.close();
 });
