@@ -20,6 +20,10 @@ on:
         description: How often memory, processor and the screens are sampled (minutes)
         type: number
         default: 3
+      heap:
+        description: Look inside the operator window (heap snapshots and memory dumps, compared on the runner; only the comparison is kept)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -57,6 +61,7 @@ jobs:
         env:
           DRASHTI_SOAK_MINUTES: ${{ inputs.minutes }}
           DRASHTI_SOAK_SAMPLE_MINUTES: ${{ inputs.sample_minutes }}
+          DRASHTI_SOAK_HEAP: ${{ inputs.heap && '1' || '0' }}
         run: pnpm exec playwright test -c playwright.soak.config.ts
       - name: The summary
         if: always()
