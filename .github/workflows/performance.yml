@@ -54,6 +54,10 @@ on:
         description: "An operator's edits (words, a playlist, a theme) every 0.7 s during the import, timed (Session 16)"
         type: boolean
         default: false
+      video_cases_packaged:
+        description: 'Instead: these video cases (comma-separated) from a packaged Drashti, as on the mandir computers (Session 16)'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -77,15 +81,26 @@ jobs:
       # The scenarios make their videos with the bundled FFmpeg (and with it the check runs a second
       # time while streaming and recording to FFmpeg on the runner).
       - name: Cache FFmpeg downloads
-        if: inputs.scenario != 'none'
+        if: inputs.scenario != 'none' || inputs.video_cases_packaged != ''
         uses: actions/cache@v6
         with:
           path: ~/.cache/drashti
           key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs') }}
       - name: Fetch FFmpeg
-        if: inputs.scenario != 'none'
+        if: inputs.scenario != 'none' || inputs.video_cases_packaged != ''
         run: node scripts/fetch-ffmpeg.mjs
+      # The video cases as a volunteer runs them, from a packaged app (scripts/check-video-cases.mjs).
+      - name: Package Drashti (unpacked)
+        if: inputs.video_cases_packaged != ''
+        run: pnpm package:dir
+      - name: The video cases from the packaged app
+        if: inputs.video_cases_packaged != ''
+        env:
+          CASES: ${{ inputs.video_cases_packaged }}
+        shell: bash
+        run: node scripts/check-video-cases.mjs --cases "$CASES"
       - name: Performance self-test (headless)
+        if: inputs.video_cases_packaged == ''
         env:
           # The local network on (this computer only) with this many devices on the feed (README, "Performance check").
           DRASHTI_PERF_DEVICES: ${{ inputs.devices }}
