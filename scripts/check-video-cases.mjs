@@ -12,6 +12,7 @@
 // so whether they keep a video's frames says little (the mandir's computers answer that).
 import { spawn } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
+import { constants, getPriority, setPriority } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -40,12 +41,35 @@ function packagedBinary() {
 
 const binary = arg('--app') ?? packagedBinary();
 
+/**
+ * Windows: start Drashti at normal priority, as the mandir PC does (Session 17). CI's runner starts
+ * programs below normal, and a program started from one below normal starts below normal too.
+ */
+function startAtNormal(start) {
+  if (process.platform !== 'win32') return start();
+  const before = getPriority();
+  try {
+    setPriority(constants.priority.PRIORITY_NORMAL);
+  } catch {
+    return start();
+  }
+  try {
+    return start();
+  } finally {
+    try {
+      setPriority(before);
+    } catch {
+      // As it is.
+    }
+  }
+}
+
 function runCase(scenario) {
   return new Promise((resolve) => {
     const env = { ...process.env, DRASHTI_SELFTEST: 'performance', DRASHTI_PERF_SCENARIO: scenario };
     if (SONGS) env.DRASHTI_PERF_SONGS = SONGS;
     delete env.ELECTRON_RUN_AS_NODE;
-    const child = spawn(binary, [], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = startAtNormal(() => spawn(binary, [], { env, stdio: ['ignore', 'pipe', 'pipe'] }));
     let out = '';
     child.stdout.on('data', (d) => (out += d.toString()));
     child.stderr.on('data', () => undefined);

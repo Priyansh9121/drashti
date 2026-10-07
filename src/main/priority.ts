@@ -57,11 +57,11 @@ export function applyPriority(
   }
 }
 
-/** This process's priority in words, for the log and the performance check. */
-export function describePriority(): string {
+/** A process's priority in words (this one unless a pid is given), for the log and the performance check. */
+export function describePriority(pid?: number): string {
   let value: number;
   try {
-    value = getPriority();
+    value = pid === undefined ? getPriority() : getPriority(pid);
   } catch {
     return 'unknown';
   }
@@ -72,4 +72,21 @@ export function describePriority(): string {
   if (value === p.PRIORITY_BELOW_NORMAL) return 'below normal';
   if (value === p.PRIORITY_LOW) return 'low';
   return `nice ${String(value)}`;
+}
+
+/**
+ * The priorities of several processes, counted (for example "normal ×6, below normal ×1"), for the
+ * performance check: Drashti's other processes, which take their priority from the main process as it
+ * starts them (Windows starts a program's children below normal only when it is below normal itself).
+ */
+export function describePriorities(pids: readonly number[], of = describePriority): string {
+  const counts = new Map<string, number>();
+  for (const pid of pids) {
+    const what = of(pid);
+    counts.set(what, (counts.get(what) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([what, n]) => `${what} ×${String(n)}`)
+    .join(', ');
 }

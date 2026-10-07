@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { constants, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { applyPriority, readPriority, writePriority } from './priority';
+import { applyPriority, describePriorities, readPriority, writePriority } from './priority';
 
 describe('the main process priority on Windows (Session 16)', () => {
   it('is above normal unless an admin set it back to normal, kept in the data folder', () => {
@@ -39,5 +39,13 @@ describe('the main process priority on Windows (Session 16)', () => {
         throw new Error('not allowed');
       }),
     ).toBe(false);
+  });
+
+  it("counts Drashti's other processes by priority, most first", () => {
+    const at: Record<number, string> = { 1: 'normal', 2: 'normal', 3: 'below normal', 4: 'normal' };
+    expect(describePriorities([1, 2, 3, 4], (pid) => at[pid ?? 0] ?? 'unknown')).toBe(
+      'normal ×3, below normal ×1',
+    );
+    expect(describePriorities([], () => 'normal')).toBe('');
   });
 });

@@ -3,7 +3,7 @@ import type { ChildProcess } from 'node:child_process';
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
+import { constants, getPriority, setPriority, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { QUIET } from '../e2e/helpers';
 import { freePort, testFfmpeg } from '../e2e/stream-helpers';
@@ -64,6 +64,31 @@ function handicap(): { what: string; stop(): void } {
   };
 }
 
+/**
+ * Start a program at normal priority on Windows, as the mandir PC starts Drashti (Session 17). CI's
+ * runner starts every program below normal, and Windows starts a program's children below normal only
+ * when it is below normal itself: this process goes to normal just while it starts Drashti, so Drashti
+ * and everything it starts begin at normal. FFmpeg standing in for YouTube stays as it was.
+ */
+function startAtNormal<T>(start: () => T): T {
+  if (process.platform !== 'win32') return start();
+  const before = getPriority();
+  try {
+    setPriority(constants.priority.PRIORITY_NORMAL);
+  } catch {
+    return start();
+  }
+  try {
+    return start();
+  } finally {
+    try {
+      setPriority(before);
+    } catch {
+      // As it is.
+    }
+  }
+}
+
 function runPerformanceTest(
   extra: Record<string, string> = {},
 ): Promise<{ code: number | null; result: PerfResult | null; log: string }> {
@@ -75,7 +100,7 @@ function runPerformanceTest(
   const load = handicap();
   if (load.what) console.log(load.what);
   return new Promise((resolve) => {
-    const child = spawn(electron, ['.'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = startAtNormal(() => spawn(electron, ['.'], { env, stdio: ['ignore', 'pipe', 'pipe'] }));
     let log = '';
     child.stdout.on('data', (d: Buffer) => (log += d.toString()));
     child.stderr.on('data', (d: Buffer) => (log += d.toString()));
