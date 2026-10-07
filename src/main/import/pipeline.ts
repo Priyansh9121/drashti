@@ -103,10 +103,10 @@ export interface PipelineContext {
   log?: (message: string) => void;
   /**
    * The main process waiting to write (an operator's edit; Session 16): between files the import
-   * commits its group and gives way until the main process has written. `holding` is told how to
-   * see whether a group is open (holding the library's write lock) at any moment.
+   * commits its group and gives way until the main process has written. `loop` says when the import
+   * goes through its files (and gives way only between them) and when it is done with them.
    */
-  way?: { wanted(): boolean; give(): Promise<void>; holding(open: () => boolean): void };
+  way?: { wanted(): boolean; give(): Promise<void>; loop(on: boolean): void };
   /** Bring Drashti's window back to the front (Keynote or PowerPoint took it with a message). */
   refocus?: () => void;
   /** Filled in with where the time went. */
@@ -291,7 +291,6 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     batch.maybeCommit();
     time('commit', t);
   };
-  ctx.way?.holding(() => batch.isOpen);
   /**
    * Between files: if the main process waits to write, commit and give way. A file's work can finish
    * without ever handing the worker's event loop a turn, and the main process's request is a message
@@ -1443,6 +1442,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     let done = 0;
     let status: ImportRunStatus = 'done';
     progress('importing', 0, total, null, true);
+    ctx.way?.loop(true);
     for (const file of files) {
       if (ctx.isCancelled?.()) {
         status = 'cancelled';
@@ -1464,6 +1464,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       maybeCommit();
       await giveWay();
     }
+    // From here on the import writes little: the main process need not wait for it to give way.
+    ctx.way?.loop(false);
 
     // Files Drashti does not read: one line per type, never dropped silently.
     for (const [ext, paths] of unknown) {

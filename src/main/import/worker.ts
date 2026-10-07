@@ -36,18 +36,23 @@ const post = (message: FromWorker) => {
   port.postMessage(message);
 };
 /**
- * The main process's writes waiting for the import to give way (Session 16), by request; and how
- * to see whether the import holds the library's write lock (a group is open).
+ * The main process's writes waiting for the import to give way (Session 16), by request; and
+ * whether the import is going through its files (then it gives way only between them).
  */
 const wayWanted = new Set<string>();
-let holding: () => boolean = () => false;
+let inLoop = false;
 let goOn: ((id: string) => void) | null = null;
 /** At most this long without the main process's 'go-on' before the import carries on anyway. */
 const GIVE_WAY_MAX_MS = 2000;
 const way = {
   wanted: () => wayWanted.size > 0,
-  holding: (open: () => boolean) => {
-    holding = open;
+  loop: (on: boolean) => {
+    inLoop = on;
+    // Done with the files: whatever still waits may go at once.
+    if (!on) {
+      for (const id of wayWanted) post({ type: 'gave-way', id, waiting: false });
+      wayWanted.clear();
+    }
   },
   give: async () => {
     // Every write waiting now goes, then the import carries on when the last says so.
@@ -165,9 +170,9 @@ port.on('message', (event) => {
     cancelled.add(message.runId);
     stoppers.get(message.runId)?.abort();
   } else if (message.type === 'give-way') {
-    // Not holding the library's write lock (scanning, reading a file before writing it, copying
-    // media): the main process may write at once. Otherwise between this file and the next.
-    if (holding()) wayWanted.add(message.id);
+    // Going through the files: between this file and the next (where a group may be open, or about
+    // to be). Otherwise (scanning first, or done) the main process may write at once.
+    if (inLoop) wayWanted.add(message.id);
     else post({ type: 'gave-way', id: message.id, waiting: false });
   } else if (message.type === 'go-on') {
     // A write that went ahead before the import gave way needs it no more.

@@ -1,4 +1,5 @@
 import { utilityProcess } from 'electron';
+import { constants, setPriority } from 'node:os';
 import { join } from 'node:path';
 import { log } from '../log';
 import type { WorkerProcess } from './import-service';
@@ -38,6 +39,16 @@ export function spawnImportWorker(): WorkerProcess {
     },
     kill: () => {
       child.kill();
+    },
+    boost: (on) => {
+      // The worker runs at the lowest priority (worker.ts). Windows lets the main process raise it
+      // and lower it again; macOS does not let a program raise a priority back (nor does it need to).
+      if (process.platform !== 'win32' || child.pid === undefined) return;
+      try {
+        setPriority(child.pid, on ? constants.priority.PRIORITY_NORMAL : constants.priority.PRIORITY_LOW);
+      } catch {
+        // Not allowed: it stays as it was.
+      }
     },
   };
 }
