@@ -42,3 +42,24 @@ jobs:
         run: ./tools/audit/test/check-windows-script.ps1
       - name: Fixture tests and a full run on this runner
         run: node tools/audit/test/run-tests.mjs --full
+
+  # The kit as it goes to the mandir on a USB drive (Session 16): the two scripts, the README and the
+  # operators' checklist, without the tests. Download it from this run's artifacts.
+  package:
+    name: The audit kit for the USB drive
+    needs: audit-kit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Put the kit together
+        run: |
+          mkdir -p kit/audit
+          cp tools/audit/audit-mac.sh tools/audit/audit-windows.ps1 tools/audit/README.md tools/audit/SETUP-CHECKLIST.md kit/audit/
+          ls -la kit/audit
+      - name: Keep it
+        uses: actions/upload-artifact@v7
+        with:
+          name: drashti-audit-kit
+          path: kit
+          if-no-files-found: error
+          retention-days: 30

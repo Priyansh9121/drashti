@@ -20,7 +20,7 @@ export LC_ALL=C
 PATH="/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 export PATH
 
-SCRIPT_VERSION="1.0.1"
+SCRIPT_VERSION="1.1.0"
 # For the self-tests only: a folder that stands in for / when looking in the
 # machine-wide places (/Library/Application Support, /Users/Shared), so a test
 # can pretend to be a Mac with no ProPresenter data at all. Empty on real runs.
@@ -757,6 +757,19 @@ section_machine() {
   ok=no
   case "$major" in ''|*[!0-9]*) ok=unknown ;; *) [ "$major" -ge 13 ] && ok=yes ;; esac
   mkv electron44Supported "$ok" b
+  # What Drashti needs from this Mac (Session 16): Keynote or PowerPoint to turn decks into pictures
+  # (their version, or "no"), and the stream's encoder (VideoToolbox, on every Mac that runs macOS 13).
+  for pair in "keynote:Keynote" "powerpoint:Microsoft PowerPoint"; do
+    key=${pair%%:*}; app=${pair#*:}; found=no
+    for d in "/Applications/$app.app" "$HOME/Applications/$app.app"; do
+      if [ -d "$d" ]; then
+        found=$(defaults read "$d/Contents/Info" CFBundleShortVersionString 2>/dev/null || echo yes)
+        break
+      fi
+    done
+    mkv "$key" "$found"
+  done
+  mkv streamEncoder VideoToolbox
   # 1 inside a virtual machine (macOS 11 and later); a VM may list no GPU at all.
   case "$(sysctl -n kern.hv_vmm_present 2>/dev/null)" in 1) mkv virtualMachine yes b ;; 0) mkv virtualMachine no b ;; *) mkv virtualMachine unknown b ;; esac
   if [ "$SKIP_SYSTEM" = 0 ]; then
@@ -1311,6 +1324,17 @@ write_md() {
       *) printf -- '- **Drashti (Electron 44) support:** unknown\n' ;;
     esac
     [ "$(mget virtualMachine)" = yes ] && printf -- '- **Virtual machine:** yes, so graphics and display details may be missing\n'
+    if [ -s "$W/gpus.tsv" ]; then
+      printf -- "- **Graphics for video:** %s; the stream's encoder would be VideoToolbox. The performance check's video cases tell for sure.\n" "$(awk -F'\t' '{ printf "%s%s", (NR > 1 ? ", " : ""), $2 }' "$W/gpus.tsv")"
+    fi
+    decks=""
+    [ "$(mget keynote)" != no ] && decks="Keynote $(mget keynote)"
+    [ "$(mget powerpoint)" != no ] && decks="${decks:+$decks, }PowerPoint $(mget powerpoint)"
+    if [ -n "$decks" ]; then
+      printf -- '- **Decks as pictures:** yes, %s (Drashti asks it to save each deck as PDF; macOS asks once whether Drashti may control it)\n' "$decks"
+    else
+      printf -- '- **Decks as pictures:** neither Keynote nor PowerPoint here: PowerPoint and Keynote files must be saved as PDF first\n'
+    fi
     printf -- '- **Displays:** %s connected, %s active\n' "$(wc -l < "$W/displays.tsv" | tr -d ' ')" "$(wc -l < "$W/screens.tsv" | tr -d ' ')"
     if [ -s "$W/pp_installs.tsv" ]; then
       printf -- '- **ProPresenter:** %s\n' "$(awk -F'\t' '{ printf "%s%s %s", (NR > 1 ? "; " : ""), $1, $2 }' "$W/pp_installs.tsv")"
