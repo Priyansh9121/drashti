@@ -21,6 +21,11 @@ export interface WorkerProcess {
   onMessage(listener: (message: FromWorker) => void): void;
   onExit(listener: (code: number) => void): void;
   kill(): void;
+  /**
+   * Run the worker at normal priority (true) or its own lowest (false) (Session 16): while the main
+   * process waits for it to give way, so that waiting is not for a process starved of the processor.
+   */
+  boost?(on: boolean): void;
 }
 
 export interface ImportServiceDeps {
@@ -56,6 +61,8 @@ export class ImportService {
     drawing: AbortController;
     /** The main process's writes waiting for the import to give way, by request. */
     ways: Map<string, (how?: 'waiting' | 'at once' | 'limit' | 'ended') => void>;
+    /** Writes waiting for the import, or let in and not done yet: while any are, it runs at normal priority. */
+    boosted: number;
   } | null = null;
 
   /** How giving way has gone (for the performance check): answers, how long they took, and limits reached. */
@@ -121,6 +128,15 @@ export class ImportService {
     const id = randomUUID();
     const asked = performance.now();
     this.wayStats.asked++;
+    // The import gets the processor it needs to reach the end of its file until the write is done.
+    if (active.boosted++ === 0) active.worker.boost?.(true);
+    let ended = false;
+    const end = () => {
+      if (ended) return;
+      ended = true;
+      if (--active.boosted === 0) active.worker.boost?.(false);
+      if (this.active === active) active.worker.postMessage({ type: 'go-on', id });
+    };
     return new Promise((resolve) => {
       const done = (how: 'waiting' | 'at once' | 'limit' | 'ended' = 'ended') => {
         clearTimeout(timer);
@@ -130,9 +146,7 @@ export class ImportService {
         else if (how === 'at once') this.wayStats.answeredAtOnce++;
         else if (how === 'limit') this.wayStats.limit++;
         this.wayStats.slowestMs = Math.max(this.wayStats.slowestMs, Math.round(ms));
-        resolve(() => {
-          if (this.active === active) active.worker.postMessage({ type: 'go-on', id });
-        });
+        resolve(end);
       };
       const timer = setTimeout(() => {
         done('limit');
@@ -169,6 +183,7 @@ export class ImportService {
       worker,
       drawing: new AbortController(),
       ways: new Map<string, (how?: 'waiting' | 'at once' | 'limit' | 'ended') => void>(),
+      boosted: 0,
     };
     this.active = active;
     let settled = false;

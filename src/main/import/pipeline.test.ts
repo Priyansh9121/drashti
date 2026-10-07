@@ -71,7 +71,7 @@ describe('runImport', () => {
         return (error as { code?: string }).code ?? 'failed';
       }
     };
-    let holding: () => boolean = () => false;
+    const loop: boolean[] = [];
     let boundary = 0;
     const seen: string[] = [];
     const { summary } = await t.run(
@@ -81,24 +81,26 @@ describe('runImport', () => {
         // One group for the whole run, unless the import gives way.
         batchBudgetMs: 60_000,
         way: {
-          holding: (open) => {
-            holding = open;
+          loop: (on) => {
+            loop.push(on);
           },
           wanted: () => {
             boundary++;
             // Between the first and second file the group holds the lock: a write is refused.
-            if (boundary === 1) seen.push(`holding ${String(holding())}: ${tryWrite()}`);
+            if (boundary === 1) seen.push(`group open: ${tryWrite()}`);
             return boundary === 2;
           },
           give: () => {
-            seen.push(`given way, holding ${String(holding())}: ${tryWrite()}`);
+            seen.push(`given way: ${tryWrite()}`);
             return Promise.resolve();
           },
         },
       },
     );
     expect(summary.totals.imported).toBe(4);
-    expect(seen).toEqual(['holding true: SQLITE_BUSY', 'given way, holding false: wrote']);
+    expect(seen).toEqual(['group open: SQLITE_BUSY', 'given way: wrote']);
+    // It went through its files, and said when it was done with them.
+    expect(loop).toEqual([true, false]);
     main.close();
   });
 

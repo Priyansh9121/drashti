@@ -21,6 +21,10 @@ class FakeWorker implements WorkerProcess {
   kill() {
     this.killed = true;
   }
+  boosts: boolean[] = [];
+  boost(on: boolean) {
+    this.boosts.push(on);
+  }
   emit(m: FromWorker) {
     this.messageListener(m);
   }
@@ -247,6 +251,8 @@ describe('ImportService and pictures (Session 15)', () => {
       });
       const ask = w.sent.find((m) => m.type === 'give-way');
       expect(ask).toBeDefined();
+      // Raised to normal priority while the write waits, so it is not waiting on a starved process.
+      expect(w.boosts).toEqual([true]);
       await Promise.resolve();
       expect(let_in).toBe(false);
       w.emit({ type: 'gave-way', id: ask?.id ?? '', waiting: true });
@@ -254,6 +260,7 @@ describe('ImportService and pictures (Session 15)', () => {
       expect(let_in).toBe(true);
       done();
       expect(w.sent.at(-1)).toEqual({ type: 'go-on', id: ask?.id });
+      expect(w.boosts).toEqual([true, false]);
     });
 
     it('goes ahead after its limit if the import does not answer, and when the run ends', async () => {
