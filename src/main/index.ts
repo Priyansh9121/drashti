@@ -261,7 +261,16 @@ app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 // it back to normal on a computer where that suits the screens better (File > Run Ahead of Other Programs;
 // Session 16): the performance check, in a throwaway folder, still reads this computer's choice.
 let mainPriority = readPriority(userDataOverride ?? homeData, process.env['DRASHTI_PRIORITY']);
-if (applyPriority(mainPriority)) log.info(`Main process priority: ${describePriority()}`);
+/** Set it (again), and say what it is now: Chromium's start can change it after the first time. */
+const holdPriority = (when: string) => {
+  const before = describePriority();
+  if (applyPriority(mainPriority))
+    log.info(`Main process priority ${when}: ${before} -> ${describePriority()}`);
+};
+holdPriority('at start');
+void app.whenReady().then(() => {
+  holdPriority('once ready');
+});
 /** File > Run Ahead of Other Programs (Windows; an admin's choice for this computer, kept and applied at once). */
 const priorityItem = (after: (text: string) => void) =>
   process.platform === 'win32'
@@ -2839,6 +2848,9 @@ function start(): void {
   };
   operatorWindow.webContents.once('did-finish-load', startAudioPlayer);
   operatorWindow.webContents.once('did-finish-load', resumeStream);
+  operatorWindow.webContents.once('did-finish-load', () => {
+    holdPriority('with the operator window open');
+  });
   setTimeout(startAudioPlayer, 5000);
   let moveTimer: NodeJS.Timeout | null = null;
   operatorWindow.on('moved', () => {
