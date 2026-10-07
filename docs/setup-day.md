@@ -55,6 +55,7 @@ ProPresenter stays installed and untouched all day. Drashti only reads its files
 - [ ] **The arti's times**, with the presentation that is the arti (admin guide, section 10).
 - [ ] **The idle rotation**: pictures and quotes from authorised sources, and which screens show it.
 - [ ] **Music** lists for before the sabha, and **markers** on any video or sound that needs a start or end point.
+- [ ] **(operators)** **Markers brought over from ProPresenter**: open three or four videos or sounds that had start or end points (or markers) in ProPresenter, and check in their **Markers** that Drashti's are at the same times. They follow community notes on the file formats, never yet checked against the mandir's own files: write down any that are off.
 - [ ] **Shastra texts** and **calendars**, if the mandir has prepared files from an authorised source.
 - [ ] **Sabha templates**: replace the two examples with the mandir's real running orders.
 - [ ] **(operators)** The keys: try their presentation clicker (Next, Back, Black-out). The keys are provisional until the checklist's "Keyboard shortcuts" section is read: write down any key they want different.
@@ -76,6 +77,7 @@ ProPresenter stays installed and untouched all day. Drashti only reads its files
 
 - [ ] Stream settings: the key from YouTube Studio (pasted once; Drashti never shows it again), the camera, the mixer's line in, **Good** or **Weak internet** from a speed test, the recording folder.
 - [ ] Write down the **Encoder** line the Stream panel shows (a graphics encoder such as VideoToolbox, NVENC, Quick Sync or AMF is best).
+- [ ] **On the Mac that streams**: during the test stream, write down the frames a second the Stream panel shows (it should hold at the profile's 30). CI's Mac, a virtual machine, managed only about 9: a real Mac has never been measured.
 - [ ] **Go live** on the unlisted stream for ten minutes while changing slides and playing a video. In YouTube Studio: the picture, the sound, the lips in time with the words (else raise **Sound delay**).
 - [ ] End it, open the recording in VLC, and do it all a second time on another day before a real sabha.
 
@@ -93,6 +95,7 @@ On each computer:
 - [ ] **(operators)** **A whole sabha rehearsed**: in Pro Mode by an operator, and in Simple Mode by a volunteer who has not used Drashti before. Write down anything they found hard.
 - [ ] **By keyboard alone** in Simple Mode: Tab to each big button, and Enter.
 - [ ] **A screen reader**, if anyone at the mandir uses one (this needs a person who uses it every day): VoiceOver on the Mac (**Cmd+F5**) or Narrator or NVDA on Windows. Check the regions are announced (header, playlists, library, slides, live, show controls, status), the buttons say what they do, the dialogs say their names, and Simple Mode's buttons can be found and pressed. On a phone, VoiceOver or TalkBack on the remote: Next and Back, and the tabs.
+- [ ] **On the Windows PC: Windows' own text size at 200%** (Windows 11: **Settings**, **Accessibility**, **Text size**; Windows 10: **Settings**, **Ease of Access**, **Display**, **Make text bigger**; 200%, then **Apply**): the operator window's buttons, lists and dialogs still fit and can be read, and nothing is cut off. Set it back afterwards if the operators prefer.
 - [ ] **The fallback drill**: the named fallback operator quits Drashti and opens ProPresenter. Time it: it should take under a minute.
 
 ## Write down
