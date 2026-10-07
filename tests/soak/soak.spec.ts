@@ -22,6 +22,8 @@ import type { MainRun, NodeRun } from '../e2e/nodes';
 import { launchMain, launchNode, pairNode } from '../e2e/nodes';
 import { freePort, TEST_KEY, testFfmpeg } from '../e2e/stream-helpers';
 import type { OutputSample, ProcessSample, SoakEvent, SoakReport, SoakSample, Verdict } from './report';
+import type { OperatorMemory } from './heap';
+import { allocatorDump, describe as describeMemory, heapSample, snapshot } from './heap';
 import { growth, mainTotal, memoryOf, writeReport } from './report';
 
 /*
@@ -50,6 +52,8 @@ test.skip(QUIET, 'A real show for hours on real windows: runs on CI (the Soak wo
 const MINUTES = Math.max(5, Number(process.env['DRASHTI_SOAK_MINUTES'] ?? '180') || 180);
 const SAMPLE_MS = Math.max(0.5, Number(process.env['DRASHTI_SOAK_SAMPLE_MINUTES'] ?? '3') || 3) * 60_000;
 const OUT = join(process.cwd(), 'test-results', 'soak');
+/** Look inside the operator window: heap snapshots and memory dumps (Session 16; ./heap.ts). */
+const HEAP = process.env['DRASHTI_SOAK_HEAP'] === '1';
 /** How often Next is pressed. */
 const SLIDE_MS = 6000;
 
@@ -598,6 +602,22 @@ test('a sabha that never stops', async () => {
     let slideChanges = 0;
 
     const tally = new LogTally(join(userData, 'logs'));
+    // Inside the operator window, when asked: snapshots and dumps stay in a folder of their own
+    // (never the report's) and are deleted once summed up.
+    const cdp = HEAP ? await win.context().newCDPSession(win) : null;
+    const memory: OperatorMemory = { samples: [], snapshots: [], dumps: [] };
+    const heapDir = mkdtempSync(join(tmpdir(), 'drashti-soak-heap-'));
+    const lookPoints = [
+      { label: 'warm', minute: at(0.2) },
+      { label: 'middle', minute: at(0.6) },
+    ];
+    const lookInside = async (label: string) => {
+      if (!cdp) return;
+      const m = minute();
+      memory.snapshots.push(await snapshot(cdp, heapDir, label, m));
+      memory.dumps.push(await allocatorDump(app, heapDir, label, m));
+      note(`operator window looked inside (${label})`);
+    };
     const sample = async () => {
       tally.read();
       const mainProcs = await processes(app);
@@ -653,6 +673,7 @@ test('a sabha that never stops', async () => {
         watchdog,
       };
       samples.push(s);
+      if (cdp) memory.samples.push(await heapSample(cdp, s.minute));
       console.log(
         `soak ${String(s.minute)} min: Main ${String(Math.round(mainTotal([s])[0]?.[1] ?? 0))} MB, node ${String(Math.round(s.processes.find((p) => p.label === 'Node (all of it)')?.memoryMb ?? 0))} MB, p90 ${outputs.map((o) => String(o.p90Ms)).join('/')} ms, late ${outputs.map((o) => String(o.lateFrames)).join('/')}, black ${String(outputs.some((o) => o.black))}, stream ${s.stream.state}, ${String(slideChanges)} slide changes`,
       );
@@ -724,9 +745,17 @@ test('a sabha that never stops', async () => {
         await sample();
         nextSample += SAMPLE_MS;
       }
+      const look = lookPoints[0];
+      if (cdp && look && minute() >= look.minute) {
+        lookPoints.shift();
+        await lookInside(look.label);
+      }
       await sleep(250);
     }
-    if (exits.length === 0) await sample();
+    if (exits.length === 0) {
+      await sample();
+      await lookInside('end');
+    }
 
     // ---- what it came to ---------------------------------------------------------------------------------
     tally.read();
@@ -824,6 +853,13 @@ test('a sabha that never stops', async () => {
       },
     ];
     writeReport(OUT, report(verdicts));
+    if (cdp) {
+      const text = describeMemory(memory, memoryOf(samples, 'Operator window'));
+      writeFileSync(join(OUT, 'operator-memory.md'), text);
+      writeFileSync(join(OUT, 'operator-memory.json'), JSON.stringify(memory, null, 1));
+      writeFileSync(join(OUT, 'summary.md'), `${readFileSync(join(OUT, 'summary.md'), 'utf8')}\n${text}`);
+      console.log(text);
+    }
     for (const v of verdicts)
       console.log(`${v.ok ? 'PASS' : v.fatal ? 'FAIL' : 'WARN'}  ${v.name}: ${v.detail}`);
     for (const v of verdicts.filter((x) => x.fatal)) expect.soft(v.ok, `${v.name}: ${v.detail}`).toBe(true);
