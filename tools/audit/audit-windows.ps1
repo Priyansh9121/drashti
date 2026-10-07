@@ -38,7 +38,7 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
-$ScriptVersion = '1.0.0'
+$ScriptVersion = '1.1.0'
 $Schema = 'drashti-audit/1'
 $Inv = [System.Globalization.CultureInfo]::InvariantCulture
 $OnWindows = ($PSVersionTable.PSVersion.Major -le 5) -or ($IsWindows -eq $true)
@@ -861,6 +861,27 @@ if ($OnWindows -and -not $SkipSystem) {
 # ---------------------------------------------------------------------------
 # 3. Audio, capture, SDI, MIDI and Stream Deck devices; related software
 # ---------------------------------------------------------------------------
+# What Drashti needs from this PC (Session 16): a graphics chip that decodes video (and, on the computer
+# that streams, its encoder), and PowerPoint's automation to turn decks into pictures. Only read.
+$Needs = [ordered]@{
+    graphics             = ((@($Gpus) | ForEach-Object { $_.name }) -join '; ')
+    basicDisplayOnly     = $false
+    streamEncoders       = ''
+    powerPointAutomation = $false
+}
+$encoders = New-Object System.Collections.ArrayList
+foreach ($g in @($Gpus)) {
+    $n = [string]$g.name
+    if ($n -match 'NVIDIA') { [void]$encoders.Add('NVENC') }
+    elseif ($n -match 'Intel') { [void]$encoders.Add('Quick Sync') }
+    elseif ($n -match 'AMD|Radeon') { [void]$encoders.Add('AMF') }
+}
+$Needs.streamEncoders = (@($encoders) | Select-Object -Unique) -join ', '
+$Needs.basicDisplayOnly = (@($Gpus).Count -gt 0) -and (@(@($Gpus) | Where-Object { [string]$_.name -notmatch 'Basic Display|Basic Render|Remote Display|Hyper-V' }).Count -eq 0)
+if ($OnWindows) {
+    try { $Needs.powerPointAutomation = [bool](Test-Path -LiteralPath 'Registry::HKEY_CLASSES_ROOT\PowerPoint.Application\CurVer') } catch { }
+}
+
 Write-Step '3/8 Audio, capture, SDI, MIDI and Stream Deck devices'
 $Audio = New-Object System.Collections.ArrayList
 $Devices = New-Object System.Collections.ArrayList
@@ -1455,6 +1476,7 @@ $Report = [ordered]@{
     options        = [ordered]@{ collect = $(if ($Collect) { $Collect } else { $null }); noMedia = [bool]$NoMedia; skipSystem = [bool]$SkipSystem; noDefaultLocations = [bool]$NoDefaultLocations; searchRoots = @($SearchRoot | Where-Object { $_ }); helper = $HaveHelper }
     machine        = $Machine
     gpus           = @($Gpus)
+    drashti        = $Needs
     displays       = @($Monitors)
     activeScreens  = @($Screens)
     audioDevices   = @($Audio)
@@ -1516,6 +1538,13 @@ $sb = New-Object System.Text.StringBuilder
 if ($Machine.Contains('electron44Supported')) {
     if ($Machine.electron44Supported) { [void]$sb.AppendLine('- **Drashti (Electron 44) support:** yes, 64-bit Windows 10 or later') }
     else { [void]$sb.AppendLine('- **Drashti (Electron 44) support:** NO. Electron 44 needs 64-bit Windows 10 or later. See the README for options.') }
+}
+if ($OnWindows -and -not $SkipSystem) {
+    if ($Needs.basicDisplayOnly) { [void]$sb.AppendLine("- **Graphics for video:** NO graphics chip driver ($($Needs.graphics)). Drashti needs a graphics chip that decodes video: see the admin guide, section 1.") }
+    elseif ($Needs.graphics) { [void]$sb.AppendLine("- **Graphics for video:** $($Needs.graphics); the stream's encoder would be $(if ($Needs.streamEncoders) { $Needs.streamEncoders } else { 'x264, on the processor (no graphics encoder found)' }). The performance check's video cases tell for sure.") }
+    else { [void]$sb.AppendLine('- **Graphics for video:** none found') }
+    if ($Needs.powerPointAutomation) { [void]$sb.AppendLine('- **Decks as pictures:** yes, PowerPoint is here (Drashti asks it to save each deck as PDF)') }
+    else { [void]$sb.AppendLine('- **Decks as pictures:** no PowerPoint here: PowerPoint files must be saved as PDF first') }
 }
 [void]$sb.AppendLine("- **Screens:** $($Screens.Count) active")
 if ($PpInstalls.Count -gt 0) { [void]$sb.AppendLine("- **ProPresenter:** " + ((@($PpInstalls) | ForEach-Object { "$($_.name) $($_.version)" } | Select-Object -Unique) -join '; ')) }

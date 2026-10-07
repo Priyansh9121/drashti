@@ -250,6 +250,13 @@ if (process.argv.includes('--full')) {
     const noGpuExplained = j.machine.virtualMachine === true && j.errors.some((e) => /no GPU/.test(e.message));
     check(`${run.tag}: at least one GPU (or a virtual machine that says it has none)`, j.gpus.length > 0 || noGpuExplained, JSON.stringify({ gpus: j.gpus, vm: j.machine.virtualMachine }));
     check(`${run.tag}: at least one active screen with a size`, j.activeScreens.some((s) => s.pixelWidth > 0 && s.pixelHeight > 0), JSON.stringify(j.activeScreens));
+    // What Drashti needs from the machine (Session 16): decks as pictures, and graphics for video.
+    const md = readFileSync(join(dir, 'audit-report.md'), 'utf8');
+    check(`${run.tag}: says whether decks can become pictures`, /\*\*Decks as pictures:\*\*/u.test(md), md.slice(0, 1500));
+    if (run.cmd === '/bin/bash')
+      check(`${run.tag}: Keynote, PowerPoint and the stream's encoder recorded`, typeof j.machine.keynote === 'string' && typeof j.machine.powerpoint === 'string' && j.machine.streamEncoder === 'VideoToolbox', JSON.stringify(j.machine));
+    else
+      check(`${run.tag}: graphics and PowerPoint's automation recorded`, typeof j.drashti?.powerPointAutomation === 'boolean' && typeof j.drashti?.graphics === 'string' && /\*\*Graphics for video:\*\*/u.test(md), JSON.stringify(j.drashti));
     console.log(`INFO  ${run.tag}: ${((Date.now() - t0) / 1000).toFixed(1)}s, ${j.activeScreens.length} screen(s), ${j.audioDevices.length} audio device(s), ${j.errors.length} problem(s)`);
     for (const e of j.errors) console.log(`INFO    problem: ${e.section}: ${e.message}`);
   }

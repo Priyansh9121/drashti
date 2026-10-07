@@ -8,6 +8,10 @@ Two read-only scripts that record how each ProPresenter machine is set up today,
 | ProPresenter 7 Windows PC | `audit-windows.ps1` | The built-in Windows PowerShell. No installs, no administrator rights. |
 | Both | `SETUP-CHECKLIST.md` | A printout and a pen, filled in by the operators. |
 
+## Getting the kit
+
+On GitHub, open **Actions**, then **Audit kit**, the latest run that passed, and download **drashti-audit-kit** under Artifacts (the run keeps it 30 days; **Run workflow** makes a new one). Unzip it: the `audit` folder inside is what goes on the USB drive. It holds the two scripts, this README and `SETUP-CHECKLIST.md`.
+
 ## What the scripts do
 
 They **only read**. They never change a setting, never edit, move or delete a file, and ProPresenter can stay open while they run. Each run creates one new folder named after the machine, for example `MANDIR-PC_20261004-101500`, containing:
@@ -25,6 +29,7 @@ They record:
 - every font used in slide text, and whether each looks like a legacy (non-Unicode) Gujarati or Hindi font;
 - every media file the library points to, and which are missing;
 - fonts installed beyond the OS defaults.
+- what Drashti needs from the machine (version 1.1, Session 16): its graphics for video and the encoder the stream would use (a PC with only a basic display adapter is flagged), and whether decks can become pictures here (Keynote or PowerPoint on the Mac, PowerPoint's automation on the PC).
 
 Licence and registration keys, stream keys, passwords and e-mail addresses are redacted from both report files.
 
