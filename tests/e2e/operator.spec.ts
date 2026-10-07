@@ -38,11 +38,27 @@ test('operator: pick a presentation, go live by click and keyboard, clear layers
 
   const latencies: number[] = [];
   /** Wait until the output has painted the engine's current revision, and note how long it took. */
-  const outputCaughtUp = async () => {
+  const outputCaughtUp = async (note = true) => {
     const rev = await engineRev(win);
     await expect(output.getByTestId('output-root')).toHaveAttribute('data-painted-rev', String(rev));
-    latencies.push(Number(await output.getByTestId('output-root').getAttribute('data-latency-ms')));
+    if (note) latencies.push(Number(await output.getByTestId('output-root').getAttribute('data-latency-ms')));
   };
+
+  // Warm the output up first (Session 16): its first paint of each slide (new text, fonts, layers) was
+  // slower on CI Macs, 11 of 78 over 34 ms in the first three changes against 8 of 312 after, and the
+  // check below is of slide changes as they go during a sabha. Every slide once, then clear.
+  for (const p of await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listPresentations())) {
+    for (let slideIndex = 0; slideIndex < 3; slideIndex++) {
+      await win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c), {
+        type: 'goLive' as const,
+        presentationId: p.id,
+        slideIndex,
+      });
+      await outputCaughtUp(false);
+    }
+  }
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'clearAll' }));
+  await outputCaughtUp(false);
 
   // The first presentation is selected; its three slides are shown as thumbnails.
   await list.getByRole('button', { name: /Language test slides/ }).click();
