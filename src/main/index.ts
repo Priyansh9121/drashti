@@ -49,7 +49,7 @@ import { groupLookIn, NO_LOOK } from '../shared/looks';
 import { DEFAULT_THEME } from '../shared/themes';
 import type { SlideSource } from './engine/slide-source';
 import type { Db } from './db/database';
-import { LATEST_VERSION, openDatabase } from './db/database';
+import { LATEST_VERSION, LIBRARY_BUSY_TIMEOUT_MS, openDatabase } from './db/database';
 import { ImportRepo } from './db/imports';
 import { MediaRepo } from './db/media';
 import { PlaylistRepo } from './db/playlists';
@@ -142,6 +142,7 @@ import { runRelaunchSelfTest } from './relaunch-selftest';
 import { createdGroupId, runWatchdogSelfTest } from './selftest';
 import { SIMPLE_MODE_LOCKED, simpleModeRefusals } from './simple-mode';
 import { applyPriority, describePriority, readPriority, writePriority } from './priority';
+import { whenFree, writeLockFree } from './db/write-lock';
 import { writeOldLibrary } from './old-library-selftest';
 import {
   createOutputWindow,
@@ -809,7 +810,7 @@ function start(): void {
   // Bookkeeping the show writes by itself (a file's length, the music played last, a playlist opened,
   // devices and nodes last seen, the mode) never waits for an import's write lock (Session 15).
   const later = new LaterWrites(db, {
-    busyTimeoutMs: 5000,
+    busyTimeoutMs: LIBRARY_BUSY_TIMEOUT_MS,
     warn: (message) => {
       log.warn(message);
     },
@@ -1468,7 +1469,21 @@ function start(): void {
   const edits = new Set<string>(SIMPLE_MODE_LOCKED);
   for (const c of [IPC.library.importPaths, IPC.library.pickImportPaths, IPC.library.relinkMedia])
     edits.delete(c);
-  setGiveWay((channel) => (imports.activeRunId !== null && edits.has(channel) ? imports.giveWay() : null));
+  setGiveWay((channel) => {
+    if (imports.activeRunId === null || !edits.has(channel)) return null;
+    // Usually the lock is free (the import holds it only while it writes a group): go at once.
+    if (writeLockFree(libraryDb, LIBRARY_BUSY_TIMEOUT_MS)) {
+      imports.wayStats.free++;
+      return null;
+    }
+    // Taken: ask the import to give way, and go the moment the lock is free (its group's own commit
+    // may come first), never waiting for it here.
+    const way = imports.giveWay();
+    return whenFree(() => writeLockFree(libraryDb, LIBRARY_BUSY_TIMEOUT_MS), way.ready).then((how) => {
+      if (how === 'free') imports.wayStats.freedMeanwhile++;
+      return way.done;
+    });
+  });
 
   // ---- converting media Drashti cannot play -----------------------------------------
   const conversions = new ConvertService({

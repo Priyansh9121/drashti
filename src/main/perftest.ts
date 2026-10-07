@@ -266,7 +266,12 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
       : null;
     const running = js<{
       samples: Sample[];
-      result: { ok: boolean; message?: string; run?: { totals: { failed: number; imported: number } } };
+      result: {
+        ok: boolean;
+        message?: string;
+        run?: { totals: { failed: number; imported: number } };
+        timings?: { commit: number; commits?: number; write: number; total: number };
+      };
       importMs: number;
       edits: EditSample[];
     }>(
@@ -314,8 +319,10 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
         : `${label}: n=${v.length} median ${percentile(ms, 0.5)} ms, p90 ${percentile(ms, 0.9)} ms, worst ${Math.max(...ms)} ms${v.some((e) => !e.ok) ? ` (${v.filter((e) => !e.ok).length} failed)` : ''}`;
     };
     const ways = ctx.wayStats?.();
+    const t = run.result.timings;
+    const commits = t?.commits ?? 0;
     const editsSummary = ctx.edits
-      ? `; import gave way ${ways ? JSON.stringify(ways) : '?'}; operator's edits ${editLine(
+      ? `; the import's commits: ${String(commits)}, ${String(Math.round(t?.commit ?? 0))} ms in all${commits > 0 ? ` (${String(Math.round((t?.commit ?? 0) / commits))} ms each)` : ''}; import gave way ${ways ? JSON.stringify(ways) : '?'}; operator's edits ${editLine(
           'idle',
           run.edits.filter((e) => !e.during),
         )}; ${editLine(

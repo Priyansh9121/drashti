@@ -147,6 +147,8 @@ export interface ImportTimings {
   /** Writing rows, and committing them (the part that waits for the disk). */
   write: number;
   commit: number;
+  /** How many groups were committed (Session 16: commit / commits is a commit's time). */
+  commits?: number;
   media: number;
   total: number;
 }

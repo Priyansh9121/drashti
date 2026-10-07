@@ -66,7 +66,17 @@ export class ImportService {
   } | null = null;
 
   /** How giving way has gone (for the performance check): answers, how long they took, and limits reached. */
-  readonly wayStats = { asked: 0, answeredWaiting: 0, answeredAtOnce: 0, limit: 0, slowestMs: 0 };
+  readonly wayStats = {
+    /** Edits during an import that found the write lock free at once. */
+    free: 0,
+    /** ...that found it free before the import had given way (its group's own commit). */
+    freedMeanwhile: 0,
+    asked: 0,
+    answeredWaiting: 0,
+    answeredAtOnce: 0,
+    limit: 0,
+    slowestMs: 0,
+  };
 
   constructor(private readonly deps: ImportServiceDeps) {}
 
@@ -116,29 +126,28 @@ export class ImportService {
   }
 
   /**
-   * Before the main process writes to the library (an operator's edit; Session 16): while an
-   * import runs, ask it to give way between files (it commits its group, holding the write lock no
-   * more), so the write does not wait for the group inside the main process, where everything else
-   * would wait with it. Resolves with what to call once written; at most `maxMs` later it resolves
-   * anyway (the write then waits for the lock as before). Immediately when no import runs.
+   * Before the main process writes to the library while the import holds the write lock (an
+   * operator's edit; Session 16): ask the import to give way between files (it commits its group and
+   * waits), running it at normal priority meanwhile. `ready` resolves when it has (or after `maxMs`,
+   * or when the run ends); `done` must be called once the write is done, whenever that is.
    */
-  giveWay(maxMs = GIVE_WAY_WAIT_MS): Promise<() => void> {
+  giveWay(maxMs = GIVE_WAY_WAIT_MS): { ready: Promise<void>; done: () => void } {
     const active = this.active;
-    if (!active) return Promise.resolve(() => undefined);
+    if (!active) return { ready: Promise.resolve(), done: () => undefined };
     const id = randomUUID();
     const asked = performance.now();
     this.wayStats.asked++;
     // The import gets the processor it needs to reach the end of its file until the write is done.
     if (active.boosted++ === 0) active.worker.boost?.(true);
     let ended = false;
-    const end = () => {
+    const done = () => {
       if (ended) return;
       ended = true;
       if (--active.boosted === 0) active.worker.boost?.(false);
       if (this.active === active) active.worker.postMessage({ type: 'go-on', id });
     };
-    return new Promise((resolve) => {
-      const done = (how: 'waiting' | 'at once' | 'limit' | 'ended' = 'ended') => {
+    const ready = new Promise<void>((resolve) => {
+      const answered = (how: 'waiting' | 'at once' | 'limit' | 'ended' = 'ended') => {
         clearTimeout(timer);
         active.ways.delete(id);
         const ms = performance.now() - asked;
@@ -146,14 +155,15 @@ export class ImportService {
         else if (how === 'at once') this.wayStats.answeredAtOnce++;
         else if (how === 'limit') this.wayStats.limit++;
         this.wayStats.slowestMs = Math.max(this.wayStats.slowestMs, Math.round(ms));
-        resolve(end);
+        resolve();
       };
       const timer = setTimeout(() => {
-        done('limit');
+        answered('limit');
       }, maxMs);
-      active.ways.set(id, done);
+      active.ways.set(id, answered);
       active.worker.postMessage({ type: 'give-way', id });
     });
+    return { ready, done };
   }
 
   /** Stop everything (the app is quitting). */
