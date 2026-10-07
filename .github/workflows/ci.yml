@@ -33,6 +33,10 @@ on:
         description: 'Take the screenshots (tests/e2e/screenshots.spec.ts) and keep them as an artifact'
         type: boolean
         default: false
+      unit:
+        description: 'Quick check: only these unit test files (src/...test.ts; space-separated), each run "repeat" times'
+        type: string
+        default: ''
 
 # A push cancels the run still going on its branch. Manual runs have a group each: they never
 # cancel a push's run, and a push never cancels them.
@@ -92,7 +96,7 @@ jobs:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       # A quick check (a manual run naming specs, or taking the screenshots): no unit tests here
       # (Ubuntu ran them), no packaging.
-      QUICK: ${{ github.event_name == 'workflow_dispatch' && (inputs.specs != '' || inputs.screenshots) }}
+      QUICK: ${{ github.event_name == 'workflow_dispatch' && (inputs.specs != '' || inputs.screenshots || inputs.unit != '') }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -127,8 +131,31 @@ jobs:
       - name: End-to-end tests (Playwright + Electron)
         if: env.QUICK != 'true'
         run: pnpm test:e2e
+      - name: Unit quick check (the files named, each run as many times as asked; Session 16)
+        if: env.QUICK == 'true' && inputs.unit != ''
+        shell: bash
+        env:
+          UNIT: ${{ inputs.unit }}
+          REPEAT: ${{ inputs.repeat }}
+        run: |
+          files=()
+          for f in $UNIT; do
+            case "$f" in
+              src/*.test.ts) [ -f "$f" ] || { echo "No such test file: $f"; exit 1; } ;;
+              *) echo "Not a unit test file: $f"; exit 1 ;;
+            esac
+            files+=("$f")
+          done
+          failed=0
+          for i in $(seq 1 "${REPEAT:-1}"); do
+            echo "::group::Run $i of ${REPEAT:-1}"
+            pnpm test "${files[@]}" || failed=$((failed + 1))
+            echo "::endgroup::"
+          done
+          echo "$failed of ${REPEAT:-1} runs failed"
+          [ "$failed" -eq 0 ]
       - name: End-to-end quick check (the specs named, or the screenshots)
-        if: env.QUICK == 'true'
+        if: env.QUICK == 'true' && (inputs.specs != '' || inputs.screenshots)
         shell: bash
         env:
           SPECS: ${{ inputs.specs }}
