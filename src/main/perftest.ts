@@ -6,6 +6,7 @@ import type { ELDHistogram } from 'node:perf_hooks';
 import type { DrashtiBridge } from '../shared/bridge';
 import type { MainWatch, PerfProfile } from './perf-watch';
 import type { ScenarioRun } from './perf-scenarios';
+import { describePriority } from './priority';
 
 /*
  * Performance self-test, run by hand on the real machines (README,
@@ -319,7 +320,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
           run.edits.filter((e) => e.during),
         )} (${(['words', 'playlist', 'theme'] as const).map((k) => `${k} worst ${Math.max(0, ...run.edits.filter((e) => e.during && e.kind === k).map((e) => Math.round(e.ms)))} ms`).join(', ')})`
       : '';
-    const summary = `${what}${editsSummary}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}${scenario ? `; ${scenario.summary}` : ''}`;
+    const summary = `${what}${editsSummary}; main process priority ${describePriority()}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}${scenario ? `; ${scenario.summary}` : ''}`;
 
     const totals = run.result.run?.totals;
     if (!noImport) {

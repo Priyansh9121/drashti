@@ -15,7 +15,7 @@ import {
   systemPreferences,
 } from 'electron';
 import { mkdirSync, mkdtempSync, readdirSync, statSync } from 'node:fs';
-import { constants as osConstants, release as osRelease, setPriority, tmpdir } from 'node:os';
+import { release as osRelease, tmpdir } from 'node:os';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { basename, isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
@@ -141,6 +141,7 @@ import { registerKirtansIpc } from './library/kirtans-ipc';
 import { runRelaunchSelfTest } from './relaunch-selftest';
 import { createdGroupId, runWatchdogSelfTest } from './selftest';
 import { SIMPLE_MODE_LOCKED, simpleModeRefusals } from './simple-mode';
+import { applyPriority, describePriority, readPriority, writePriority } from './priority';
 import { writeOldLibrary } from './old-library-selftest';
 import {
   createOutputWindow,
@@ -206,6 +207,8 @@ const ffmpegCheck = process.env['DRASHTI_SELFTEST'] === 'ffmpeg';
 const relaunchTest = process.env['DRASHTI_SELFTEST'] === 'restore-relaunch';
 // Tests (and multiple installs) can point Drashti at its own data folder.
 const userDataOverride = process.env['DRASHTI_USER_DATA_DIR'];
+/** This computer's own data folder, before any override (the performance check reads its settings). */
+const homeData = app.getPath('userData');
 if (userDataOverride) app.setPath('userData', userDataOverride);
 else if (perfTest) app.setPath('userData', mkdtempSync(join(tmpdir(), 'drashti-perf-')));
 // The log goes to a rotating file in the data folder too (see log.ts), from the start.
@@ -254,14 +257,30 @@ app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 // The show's own process first (Session 15): on a two-core PC with no graphics chip, the windows decoding
 // video at the same priority kept the main process (every slide change, and the screens' media) waiting
 // for up to 2 s at a time. It uses little of the processor, so it never holds the screens up by going
-// first. Windows lets a program raise itself this far; macOS lets only the administrator.
-if (process.platform === 'win32') {
-  try {
-    setPriority(osConstants.priority.PRIORITY_ABOVE_NORMAL);
-  } catch {
-    // Kept at normal: nothing else changes.
-  }
-}
+// first. Windows lets a program raise itself this far; macOS lets only the administrator. An admin can set
+// it back to normal on a computer where that suits the screens better (File > Run Ahead of Other Programs;
+// Session 16): the performance check, in a throwaway folder, still reads this computer's choice.
+let mainPriority = readPriority(userDataOverride ?? homeData, process.env['DRASHTI_PRIORITY']);
+if (applyPriority(mainPriority)) log.info(`Main process priority: ${describePriority()}`);
+/** File > Run Ahead of Other Programs (Windows; an admin's choice for this computer, kept and applied at once). */
+const priorityItem = (after: (text: string) => void) =>
+  process.platform === 'win32'
+    ? {
+        ahead: mainPriority === 'above-normal',
+        toggle: () => {
+          const next = mainPriority === 'normal' ? 'above-normal' : 'normal';
+          writePriority(app.getPath('userData'), next);
+          mainPriority = next;
+          applyPriority(next);
+          log.info(`Main process priority set to ${describePriority()} (File > Run Ahead of Other Programs)`);
+          after(
+            next === 'normal'
+              ? 'Drashti now runs at normal priority, level with other programs, on this computer.'
+              : 'Drashti now runs ahead of other programs on this computer (as it starts).',
+          );
+        },
+      }
+    : null;
 
 // Tests only: Chromium's fake camera and microphone (a moving test pattern and a beep) stand in for real ones.
 // Only the device switch: the stream's page still captures its own real picture.
@@ -627,7 +646,10 @@ function startNodeMode(): void {
       : undefined,
     isOperator: () => false,
   });
-  installNodeMenu();
+  const nodeMenu = () => {
+    installNodeMenu(priorityItem(() => nodeMenu()));
+  };
+  nodeMenu();
   startNode({
     userData: app.getPath('userData'),
     version: appVersion(),
@@ -2950,6 +2972,22 @@ function start(): void {
     checkForUpdates: () => {
       if (mode === 'pro') sendToOperator(IPC.updates.open, { at: Date.now() });
     },
+    priority: (() => {
+      const item = priorityItem((text) => {
+        rebuildMenu();
+        sendToOperator(IPC.app.notice, { text });
+      });
+      return (
+        item && {
+          ahead: item.ahead,
+          toggle: () => {
+            // The tick follows the setting, not the click, until an admin has said so.
+            rebuildMenu();
+            if (mode === 'pro') requireAdmin('change how Drashti runs beside other programs', item.toggle);
+          },
+        }
+      );
+    })(),
     useAsNode: () => {
       if (mode === 'pro') requireAdmin('use this computer as a node', useAsNode);
     },
