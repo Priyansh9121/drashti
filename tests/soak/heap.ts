@@ -62,6 +62,38 @@ export interface OperatorMemory {
   samples: HeapSample[];
   snapshots: SnapshotSummary[];
   dumps: AllocatorSummary[];
+  /** What the window loaded over the run, by kind of address (ids left out): how often, how many bytes. */
+  requests: Record<string, { count: number; bytes: number; type: string }>;
+}
+
+/** An address with its ids and query left out, so loads of the same kind count together. */
+export function requestKind(url: string): string {
+  const bare = url.split('?')[0]?.split('#')[0] ?? url;
+  return bare
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/giu, '<id>')
+    .replace(/[0-9a-f]{24,}/giu, '<hash>')
+    .replace(/\/\d+(?=\/|$)/gu, '/<n>')
+    .slice(0, 120);
+}
+
+/**
+ * Count what the window loads, through the probe's own DevTools session with nothing kept (no
+ * buffers: the probe must not add what it looks for).
+ */
+export async function watchRequests(cdp: CDPSession, into: OperatorMemory['requests']): Promise<void> {
+  const kinds = new Map<string, string>();
+  cdp.on('Network.requestWillBeSent', (e: { requestId: string; request: { url: string }; type?: string }) => {
+    const kind = requestKind(e.request.url);
+    kinds.set(e.requestId, kind);
+    const k = (into[kind] ??= { count: 0, bytes: 0, type: e.type ?? '?' });
+    k.count++;
+  });
+  cdp.on('Network.loadingFinished', (e: { requestId: string; encodedDataLength: number }) => {
+    const kind = kinds.get(e.requestId);
+    kinds.delete(e.requestId);
+    if (kind && into[kind]) into[kind].bytes += e.encodedDataLength;
+  });
+  await cdp.send('Network.enable', { maxTotalBufferSize: 0, maxResourceBufferSize: 0 });
 }
 
 export async function heapSample(cdp: CDPSession, minute: number): Promise<HeapSample> {
@@ -260,6 +292,22 @@ export function describe(memory: OperatorMemory, workingSet: [number, number][])
       if (topLoose.length > 0) lines.push(`At the end: ${topLoose.join(', ')}.`);
       lines.push('');
     }
+  }
+  const loads = Object.entries(memory.requests).sort((x, y) => y[1].count - x[1].count);
+  if (loads.length > 0) {
+    lines.push(
+      'What the window loaded over the run (each load is also kept by the DevTools network recorder of anything attached, such as Playwright):',
+      '',
+      '| Address (ids left out) | Type | Loads | MB |',
+      '|---|---|---:|---:|',
+      ...loads
+        .slice(0, 12)
+        .map(
+          ([kind, k]) =>
+            `| ${kind.replace(/\|/gu, '/')} | ${k.type} | ${String(k.count)} | ${mb(k.bytes / 1024 ** 2)} |`,
+        ),
+      '',
+    );
   }
   const dumps = memory.dumps;
   if (dumps.length > 1) {

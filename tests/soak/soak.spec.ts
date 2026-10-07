@@ -23,7 +23,7 @@ import { launchMain, launchNode, pairNode } from '../e2e/nodes';
 import { freePort, TEST_KEY, testFfmpeg } from '../e2e/stream-helpers';
 import type { OutputSample, ProcessSample, SoakEvent, SoakReport, SoakSample, Verdict } from './report';
 import type { OperatorMemory } from './heap';
-import { allocatorDump, describe as describeMemory, heapSample, snapshot } from './heap';
+import { allocatorDump, describe as describeMemory, heapSample, snapshot, watchRequests } from './heap';
 import { growth, mainTotal, memoryOf, writeReport } from './report';
 
 /*
@@ -605,7 +605,8 @@ test('a sabha that never stops', async () => {
     // Inside the operator window, when asked: snapshots and dumps stay in a folder of their own
     // (never the report's) and are deleted once summed up.
     const cdp = HEAP ? await win.context().newCDPSession(win) : null;
-    const memory: OperatorMemory = { samples: [], snapshots: [], dumps: [] };
+    const memory: OperatorMemory = { samples: [], snapshots: [], dumps: [], requests: {} };
+    if (cdp) await watchRequests(cdp, memory.requests);
     const heapDir = mkdtempSync(join(tmpdir(), 'drashti-soak-heap-'));
     const lookPoints = [
       { label: 'warm', minute: at(0.2) },
