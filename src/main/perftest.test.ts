@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { overlapCheck, paceOf } from './perftest';
+import { overlapCheck, paceOf, quickImport } from './perftest';
 
 describe("the performance check's import overlap (Session 17)", () => {
   it('reads the pace the slides really kept, never quicker than asked', () => {
@@ -18,6 +18,21 @@ describe("the performance check's import overlap (Session 17)", () => {
     expect(quick.ok).toBe(true);
     expect(quick.name).toBe('the import overlapped at least 2 slide changes (if it lasted 4.0 s or more)');
     expect(quick.detail).toBe('1 in 1.1 s, quicker than 2 changes take: nothing to judge');
+  });
+
+  it('calls an import quick only when fewer changes came than asked, in less time than they take', () => {
+    // Windows CI with 40 files: 2.0 s, one change; the slide-change lines then judge every change.
+    expect(quickImport(1, 2011, 2, 2012)).toBe(true);
+    // CI's Mac with 400 files, masks-video: 2 changes in 4.2 s, with one slow change before the
+    // import putting the bar at 4.3 s. Two came, so they are judged, and nothing says otherwise.
+    expect(quickImport(2, 4167, 2, 2150)).toBe(false);
+    expect(overlapCheck(2, 4167, 2, 2150)).toEqual({
+      name: 'the import overlapped at least 2 slide changes (if it lasted 4.3 s or more)',
+      ok: true,
+      detail: '2 in 4.2 s',
+    });
+    // A long import with one change is not quick: the slides stopped.
+    expect(quickImport(1, 12_300, 2, 2012)).toBe(false);
   });
 
   it('still fails an import long enough for two changes that overlapped fewer: the slides stopped', () => {
