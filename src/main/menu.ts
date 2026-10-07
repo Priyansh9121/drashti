@@ -2,6 +2,20 @@ import type { MenuItemConstructorOptions } from 'electron';
 import { Menu } from 'electron';
 import type { OperatorMode } from '../shared/mode';
 
+/** The main process's priority on Windows (Session 16): ticked is above normal, the default. */
+export interface PriorityItem {
+  ahead: boolean;
+  toggle: () => void;
+}
+
+const priorityItem = (p: PriorityItem): MenuItemConstructorOptions => ({
+  id: 'run-ahead',
+  label: 'Run Ahead of Other Programs',
+  type: 'checkbox',
+  checked: p.ahead,
+  click: p.toggle,
+});
+
 export interface MenuActions {
   /** Simple Mode leaves out backup and restore, and offers the way back to Pro Mode. */
   mode: OperatorMode;
@@ -29,6 +43,8 @@ export interface MenuActions {
   scheduledBackups: () => void;
   /** Help > Check for Updates… (Session 14, Pro Mode only). */
   checkForUpdates: () => void;
+  /** File > Run Ahead of Other Programs (Windows only, Pro Mode, admin; Session 16): null elsewhere. */
+  priority: PriorityItem | null;
   /** Only when DRASHTI_DIAGNOSTICS=1: for the manual watchdog check. */
   diagnostics: {
     crashOperator: () => void;
@@ -61,6 +77,9 @@ export function installMenu(actions: MenuActions): void {
               { id: 'roles-and-pins', label: 'Roles and PINs…', click: actions.rolesAndPins },
               { type: 'separator' },
               { id: 'use-as-node', label: 'Use This Computer as a Node…', click: actions.useAsNode },
+              ...(actions.priority
+                ? [{ type: 'separator' } as MenuItemConstructorOptions, priorityItem(actions.priority)]
+                : []),
             ],
           } as MenuItemConstructorOptions,
         ]),
@@ -169,11 +188,15 @@ export function installMenu(actions: MenuActions): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-/** A node's menu (Session 13): no show, no library; editing keys for its fields, and its window. */
-export function installNodeMenu(): void {
+/**
+ * A node's menu (Session 13): no show, no library; editing keys for its fields, and its window; and on
+ * Windows how high Drashti runs (Session 16).
+ */
+export function installNodeMenu(priority: PriorityItem | null = null): void {
   const isMac = process.platform === 'darwin';
   const template: MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: 'appMenu' } as MenuItemConstructorOptions] : []),
+    ...(priority ? [{ label: 'File', submenu: [priorityItem(priority)] } as MenuItemConstructorOptions] : []),
     { role: 'editMenu' },
     { role: 'windowMenu' },
   ];
