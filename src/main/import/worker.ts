@@ -170,6 +170,8 @@ port.on('message', (event) => {
     if (holding()) wayWanted.add(message.id);
     else post({ type: 'gave-way', id: message.id, waiting: false });
   } else if (message.type === 'go-on') {
+    // A write that went ahead before the import gave way needs it no more.
+    wayWanted.delete(message.id);
     goOn?.(message.id);
   } else if (message.type === 'drawn') {
     drawing.get(message.requestId)?.(message.result);

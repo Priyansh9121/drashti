@@ -292,9 +292,16 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     time('commit', t);
   };
   ctx.way?.holding(() => batch.isOpen);
-  /** Between files: the main process waits to write, so commit and give way. */
+  /**
+   * Between files: if the main process waits to write, commit and give way. A file's work can finish
+   * without ever handing the worker's event loop a turn, and the main process's request is a message
+   * waiting in that loop: so a turn first (measured on Windows CI: without it, edits waited 0.9 to
+   * 1.5 s for the request to be read).
+   */
   const giveWay = async () => {
-    if (!ctx.way?.wanted()) return;
+    if (!ctx.way) return;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    if (!ctx.way.wanted()) return;
     commit();
     await ctx.way.give();
   };
