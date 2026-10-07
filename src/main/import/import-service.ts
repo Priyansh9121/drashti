@@ -29,6 +29,8 @@ export interface ImportServiceDeps {
   /** Draw a PDF's pages as pictures for the worker (Session 15): it cannot open the window that draws. */
   drawPdf?(pdf: string, outDir: string, signal: AbortSignal): Promise<PicturesResult>;
   log(level: 'info' | 'warn', message: string): void;
+  /** Bring the operator's window back to the front (Keynote or PowerPoint took it, Session 16). */
+  refocus?(): void;
 }
 
 interface Job {
@@ -152,6 +154,12 @@ export class ImportService {
             `Import ${job.runId} ${m.run.status}: ${JSON.stringify(m.run.totals)}${m.timings ? `; ms ${JSON.stringify(m.timings)}` : ''}`,
           );
           settle({ ok: true, run: m.run, ...(m.timings ? { timings: m.timings } : {}) }, m.run);
+          break;
+        case 'log':
+          this.deps.log(m.level, m.message);
+          break;
+        case 'refocus':
+          this.deps.refocus?.();
           break;
         case 'failed':
           this.deps.log('warn', `Import ${job.runId} failed: ${m.message}`);

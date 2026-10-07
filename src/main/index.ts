@@ -1413,6 +1413,12 @@ function start(): void {
       if (level === 'warn') log.warn(message);
       else log.info(message);
     },
+    // Keynote or PowerPoint put a message in front of the operator: the keys come back here.
+    refocus: () => {
+      if (!operatorWindow || operatorWindow.isDestroyed()) return;
+      app.focus({ steal: true });
+      operatorWindow.focus();
+    },
   });
   importer = imports;
 

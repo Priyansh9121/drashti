@@ -30,6 +30,8 @@ try {
   // Not allowed on this system: run at normal priority.
 }
 const cancelled = new Set<string>();
+/** Stops work in the middle of a file when its run is cancelled (Keynote or PowerPoint saving one). */
+const stoppers = new Map<string, AbortController>();
 const post = (message: FromWorker) => {
   port.postMessage(message);
 };
@@ -77,6 +79,9 @@ async function start(message: StartMessage): Promise<void> {
       },
       isCancelled: () => cancelled.has(message.runId),
     };
+    const stopper = new AbortController();
+    stoppers.set(message.runId, stopper);
+    if (cancelled.has(message.runId)) stopper.abort();
     const timings = { scan: 0, read: 0, lookup: 0, parse: 0, write: 0, commit: 0, media: 0, total: 0 };
     const run =
       message.job === 'relink'
@@ -87,6 +92,13 @@ async function start(message: StartMessage): Promise<void> {
             options: message.options,
             timings,
             drawPdf,
+            signal: stopper.signal,
+            log: (line) => {
+              post({ type: 'log', level: 'info', message: line });
+            },
+            refocus: () => {
+              post({ type: 'refocus' });
+            },
             converters: message.converters !== false,
             onWrote: (wrote) => {
               post({ type: 'wrote', runId: message.runId, ...wrote });
@@ -102,6 +114,7 @@ async function start(message: StartMessage): Promise<void> {
     }
     result = { type: 'failed', runId: message.runId, message: text };
   } finally {
+    stoppers.delete(message.runId);
     db?.close();
   }
   // The result is the last message. The main process stops this process once it has it: exiting
@@ -111,8 +124,10 @@ async function start(message: StartMessage): Promise<void> {
 
 port.on('message', (event) => {
   const message = event.data as ToWorker;
-  if (message.type === 'cancel') cancelled.add(message.runId);
-  else if (message.type === 'drawn') {
+  if (message.type === 'cancel') {
+    cancelled.add(message.runId);
+    stoppers.get(message.runId)?.abort();
+  } else if (message.type === 'drawn') {
     drawing.get(message.requestId)?.(message.result);
     drawing.delete(message.requestId);
   } else void start(message);

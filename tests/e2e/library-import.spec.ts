@@ -218,3 +218,35 @@ test('drag a .pro6 presentation in: its text goes live, and missing media is fou
   await expect(output.locator('[data-run][data-lang="translit"]')).toHaveText('Namūnānī pahelī paṅkti');
   await app.close();
 });
+
+test('a file dropped anywhere on the window is imported, and a failed import shows as a problem', async () => {
+  const work = mkdtempSync(join(tmpdir(), 'drashti-drop-'));
+  const songOne = join(work, 'Placeholder Song One.txt');
+  copyFileSync(join(FIXTURES, 'Placeholder Song One.txt'), songOne);
+  // A PowerPoint file cut short: refused before any app is asked to open it.
+  const damaged = join(work, 'Placeholder damaged.pptx');
+  writeFileSync(damaged, Buffer.from('PK\u0003\u0004 placeholder, cut short'));
+
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  const list = win.getByTestId('presentation-list');
+  await expect(list.getByRole('button')).toHaveCount(2);
+
+  // Onto the slide grid, not the list (Session 16): imported all the same.
+  await dropFiles(win, win.getByTestId('slide-grid'), [songOne], { overlay: false });
+  await expect(list.getByRole('button', { name: /Placeholder Song One/ })).toHaveCount(1);
+  const report = win.getByTestId('import-report');
+  await expect(report).toBeVisible();
+  await report.getByRole('button', { name: 'Close' }).click();
+  await expect(win.getByTestId('import-result')).not.toContainText('problem');
+
+  // A file that fails: the status bar says so as a warning, with the report a click away.
+  await dropFiles(win, win.getByTestId('live-preview'), [damaged], { overlay: false });
+  await expect(report).toBeVisible();
+  await expect(report).toContainText('This file looks damaged');
+  await report.getByRole('button', { name: 'Close' }).click();
+  const result = win.getByTestId('import-result');
+  await expect(result).toContainText('1 problem');
+  await expect(result.getByLabel('Problems')).toBeVisible();
+  await app.close();
+});

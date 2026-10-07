@@ -272,6 +272,8 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 
 - **One dialog from the File menu** (`size="md"`): the switch, the folder (a read-only field with **Choose…**, since only a folder dialog can pick a drive), the days, the time, how many to keep and the media tick, then how they stand: running with a progress bar, waiting with why in an `info` notice, the last one (muted when it went well, `warning-fg` with the triangle when it was skipped or stopped) and the next. **Back up now** sits on the left of the footer, as an action, not a setting.
 - **A skipped or stopped backup shows in the status bar** in both modes (`warning-bg`, the triangle, the reason in words, and **OK** to put it away), because a volunteer may be the one who can plug the drive back in. It goes by itself after the next backup that works.
+- **An import with problems shows in `warning-fg` with the triangle** (Session 16): "1 problem" in the ordinary text colour was missed when a deck was refused. **Report** is beside it as before.
+- **Files dropped anywhere on the operator window are imported** in Pro Mode (Session 16), as on the presentation list, which keeps its own drop overlay. An operator drags a deck onto Drashti wherever it lands; before, a file dropped outside the list did nothing at all. Simple Mode still ignores dropped files.
 - The dialog passes the accessibility checks at 1280 × 720 (`tests/e2e/scheduled-backups.spec.ts`).
 
 ## 29. Macros at set times

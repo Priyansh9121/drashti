@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { AppInfo } from '../../../shared/app-info';
 import { connectEngine } from '../engine/engine-store';
 import { ImportReportDialog } from '../library/ImportReport';
-import { watchImports } from '../library/import-store';
+import { importPaths, watchImports } from '../library/import-store';
 import { loadLibrary, watchLibrary } from '../library/library-store';
 import { RemoveConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
 import { UndoBar } from '../library/UndoBar';
@@ -109,7 +109,8 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     void window.drashti.app.startNotice().then((text) => {
       if (text) useNotice.setState({ text });
     });
-    // Files dropped anywhere but the presentation list are ignored (never opened as a page).
+    // Files dropped where nothing takes them are never opened as a page (Pro Mode imports them,
+    // below; Simple Mode ignores them).
     const ignoreDrop = (e: DragEvent) => {
       if (e.dataTransfer?.types.includes('Files')) e.preventDefault();
     };
@@ -153,6 +154,30 @@ function ProApp({ info }: { info: AppInfo | null }) {
     [openScreens],
   );
   useKeymap(platform, run);
+  // Files dropped anywhere on the window are imported, as on the presentation list (which takes
+  // its own drops): an operator drags a deck onto Drashti, wherever it lands (Session 16).
+  useEffect(() => {
+    const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes('Files') === true;
+    const over = (e: DragEvent) => {
+      if (!hasFiles(e) || !e.dataTransfer) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    };
+    const drop = (e: DragEvent) => {
+      if (!hasFiles(e) || !e.dataTransfer) return;
+      e.preventDefault();
+      const paths = Array.from(e.dataTransfer.files)
+        .map((f) => window.drashti.files.pathFor(f))
+        .filter((p) => p !== '');
+      if (paths.length > 0) void importPaths(paths);
+    };
+    window.addEventListener('dragover', over);
+    window.addEventListener('drop', drop);
+    return () => {
+      window.removeEventListener('dragover', over);
+      window.removeEventListener('drop', drop);
+    };
+  }, []);
   // A MIDI controller's pads, as keys are.
   useEffect(() => {
     setMidiHandler((action) => {
