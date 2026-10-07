@@ -141,7 +141,7 @@ import { registerKirtansIpc } from './library/kirtans-ipc';
 import { runRelaunchSelfTest } from './relaunch-selftest';
 import { createdGroupId, runWatchdogSelfTest } from './selftest';
 import { SIMPLE_MODE_LOCKED, simpleModeRefusals } from './simple-mode';
-import { applyPriority, describePriority, readPriority, writePriority } from './priority';
+import { applyPriority, describePriorities, describePriority, readPriority, writePriority } from './priority';
 import { whenFree, writeLockFree } from './db/write-lock';
 import { writeOldLibrary } from './old-library-selftest';
 import {
@@ -262,6 +262,8 @@ app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 // it back to normal on a computer where that suits the screens better (File > Run Ahead of Other Programs;
 // Session 16): the performance check, in a throwaway folder, still reads this computer's choice.
 let mainPriority = readPriority(userDataOverride ?? homeData, process.env['DRASHTI_PRIORITY']);
+/** The priority Drashti was started at (the performance check says it: CI's Windows runner starts programs below normal). */
+const startedPriority = describePriority();
 /** Set it (again), and say what it is now: Chromium's start can change it after the first time. */
 const holdPriority = (when: string) => {
   const before = describePriority();
@@ -3129,6 +3131,16 @@ function start(): void {
             override: process.env['DRASHTI_FFMPEG'],
           }),
         cpu: () => app.getAppMetrics().reduce((sum, m) => sum + m.cpu.percentCPUUsage, 0),
+        priority: {
+          started: startedPriority,
+          others: () =>
+            describePriorities(
+              app
+                .getAppMetrics()
+                .filter((m) => m.type !== 'Browser')
+                .map((m) => m.pid),
+            ),
+        },
         ...(perfWatch ? { watch: perfWatch } : {}),
         ...(perfProfileDir ? { profile: new PerfProfile(perfProfileDir) } : {}),
         ...(perfNoImport ? { noImportMs: 20_000 } : {}),

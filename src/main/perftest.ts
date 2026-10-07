@@ -64,6 +64,8 @@ export interface PerfContext {
   wayStats?: () => Record<string, number>;
   /** How many files to import (DRASHTI_PERF_SONGS; PERF_SONGS unless asked): a slower or quicker import, to try the rules. */
   songs?: number;
+  /** The priority Drashti started at, and its other processes' (Session 17: the mandir PC starts it at normal). */
+  priority?: { started: string; others: () => string };
 }
 
 /** How big the test import is. */
@@ -383,7 +385,9 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
           run.edits.filter((e) => e.during),
         )} (${(['words', 'playlist', 'theme'] as const).map((k) => `${k} worst ${Math.max(0, ...run.edits.filter((e) => e.during && e.kind === k).map((e) => Math.round(e.ms)))} ms`).join(', ')})`
       : '';
-    const summary = `${what}${editsSummary}; main process priority ${describePriority()}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}${after.length > 0 ? `; ${line('just after the import', after)}` : ''}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}${scenario ? `; ${scenario.summary}` : ''}`;
+    const others = ctx.priority?.others();
+    const priority = `main process priority ${describePriority()}${ctx.priority ? ` (started at ${ctx.priority.started}${others ? `, its other processes ${others}` : ''})` : ''}`;
+    const summary = `${what}${editsSummary}; ${priority}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}${after.length > 0 ? `; ${line('just after the import', after)}` : ''}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}${scenario ? `; ${scenario.summary}` : ''}`;
 
     const totals = run.result.run?.totals;
     if (!noImport) {

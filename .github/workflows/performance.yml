@@ -62,6 +62,11 @@ on:
         description: 'How many files the check imports (400 as on the mandir computers; more for a slower import, fewer for a quicker one; Session 17)'
         type: number
         default: 400
+      priority:
+        description: "Windows: the main process's priority for the check (Drashti's own choice unless given); Drashti starts at normal either way, as on the mandir PC (Session 17)"
+        type: choice
+        options: [as-set, above-normal, normal]
+        default: as-set
 
 permissions:
   contents: read
@@ -102,6 +107,7 @@ jobs:
         env:
           CASES: ${{ inputs.video_cases_packaged }}
           SONGS: ${{ inputs.songs }}
+          DRASHTI_PRIORITY: ${{ inputs.priority != 'as-set' && inputs.priority || '' }}
         shell: bash
         run: node scripts/check-video-cases.mjs --cases "$CASES" --songs "$SONGS"
       - name: Performance self-test (headless)
@@ -123,6 +129,7 @@ jobs:
           DRASHTI_PERF_HANDICAP: ${{ inputs.handicap && '1' || '0' }}
           DRASHTI_PERF_EDITS: ${{ inputs.edits && '1' || '0' }}
           DRASHTI_PERF_SONGS: ${{ inputs.songs }}
+          DRASHTI_PRIORITY: ${{ inputs.priority != 'as-set' && inputs.priority || '' }}
           # Three outputs: windows, on two pretend displays beside the runner's own, with the music.
           DRASHTI_WINDOWED_OUTPUTS: ${{ inputs.scenario == 'three-outputs' && '1' || '' }}
           DRASHTI_EXTRA_DISPLAYS: ${{ inputs.scenario == 'three-outputs' && '2' || '' }}
