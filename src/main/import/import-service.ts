@@ -9,6 +9,12 @@ import type { FromWorker, StartMessage, ToWorker } from './protocol';
  * never delays the show.
  */
 
+/**
+ * How long a write waits for the import to give way before it goes ahead anyway (a file being
+ * read or parsed for longer than this: the write then waits for the lock as before).
+ */
+export const GIVE_WAY_WAIT_MS = 1500;
+
 /** The parts of a worker process the service uses (tests pass a fake). */
 export interface WorkerProcess {
   postMessage(message: ToWorker): void;
@@ -44,7 +50,13 @@ interface Job {
 
 export class ImportService {
   private readonly queue: Job[] = [];
-  private active: { job: Job; worker: WorkerProcess; drawing: AbortController } | null = null;
+  private active: {
+    job: Job;
+    worker: WorkerProcess;
+    drawing: AbortController;
+    /** The main process's writes waiting for the import to give way, by request. */
+    ways: Map<string, () => void>;
+  } | null = null;
 
   constructor(private readonly deps: ImportServiceDeps) {}
 
@@ -93,6 +105,31 @@ export class ImportService {
     return false;
   }
 
+  /**
+   * Before the main process writes to the library (an operator's edit; Session 16): while an
+   * import runs, ask it to give way between files (it commits its group, holding the write lock no
+   * more), so the write does not wait for the group inside the main process, where everything else
+   * would wait with it. Resolves with what to call once written; at most `maxMs` later it resolves
+   * anyway (the write then waits for the lock as before). Immediately when no import runs.
+   */
+  giveWay(maxMs = GIVE_WAY_WAIT_MS): Promise<() => void> {
+    const active = this.active;
+    if (!active) return Promise.resolve(() => undefined);
+    const id = randomUUID();
+    return new Promise((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        active.ways.delete(id);
+        resolve(() => {
+          if (this.active === active) active.worker.postMessage({ type: 'go-on', id });
+        });
+      };
+      const timer = setTimeout(done, maxMs);
+      active.ways.set(id, done);
+      active.worker.postMessage({ type: 'give-way', id });
+    });
+  }
+
   /** Stop everything (the app is quitting). */
   stop(): void {
     for (const job of this.queue.splice(0)) job.resolve({ ok: false, message: 'Drashti is quitting.' });
@@ -115,13 +152,15 @@ export class ImportService {
       this.next();
       return;
     }
-    const active = { job, worker, drawing: new AbortController() };
+    const active = { job, worker, drawing: new AbortController(), ways: new Map<string, () => void>() };
     this.active = active;
     let settled = false;
     const settle = (result: ImportResult, run: ImportRunSummary | null) => {
       if (settled) return;
       settled = true;
       active.drawing.abort();
+      // Writes waiting for the import to give way need wait no more.
+      for (const done of [...active.ways.values()]) done();
       if (this.active === active) this.active = null;
       // The result is the worker's last message (it has closed the library by then): stop it.
       worker.kill();
@@ -160,6 +199,9 @@ export class ImportService {
           break;
         case 'refocus':
           this.deps.refocus?.();
+          break;
+        case 'gave-way':
+          active.ways.get(m.id)?.();
           break;
         case 'failed':
           this.deps.log('warn', `Import ${job.runId} failed: ${m.message}`);

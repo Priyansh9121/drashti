@@ -35,7 +35,22 @@ export interface DrawnMessage {
   result: PicturesResult;
 }
 
-export type ToWorker = StartMessage | CancelMessage | DrawnMessage;
+/**
+ * The main process is about to write to the library (an operator's edit; Session 16): the import
+ * gives way between files, answering 'gave-way' with its group committed, and waits for 'go-on'.
+ */
+export interface GiveWayMessage {
+  type: 'give-way';
+  id: string;
+}
+
+/** The main process has written: the import may carry on (for the 'gave-way' of this id). */
+export interface GoOnMessage {
+  type: 'go-on';
+  id: string;
+}
+
+export type ToWorker = StartMessage | CancelMessage | DrawnMessage | GiveWayMessage | GoOnMessage;
 
 export type FromWorker =
   | { type: 'progress'; progress: ImportProgress }
@@ -47,4 +62,6 @@ export type FromWorker =
   | { type: 'log'; level: 'info' | 'warn'; message: string }
   /** Keynote or PowerPoint took the front with a message: Drashti's window should have it back. */
   | { type: 'refocus' }
+  /** The library is free for the main process's write (`waiting`: the import waits for 'go-on'). */
+  | { type: 'gave-way'; id: string; waiting: boolean }
   | { type: 'failed'; runId: string; message: string };

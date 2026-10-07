@@ -56,6 +56,18 @@ export function refusedNow(channel: InvokeChannel): boolean {
   return refusalFor(channel) !== undefined;
 }
 
+/**
+ * Before a request that may write to the library runs, what to wait for (Session 16): while an
+ * import runs, it gives way between files, so the write never waits for the import's group inside
+ * the main process (where every slide change would wait with it). Null: run at once. The wait
+ * resolves with what to call once the request has run.
+ */
+let giveWay: ((channel: string) => Promise<() => void> | null) | null = null;
+
+export function setGiveWay(wait: ((channel: string) => Promise<() => void> | null) | null): void {
+  giveWay = wait;
+}
+
 /** The performance check's watch (Session 15): told of every request answered, and how long it took. */
 let heard: ((channel: string, ms: number) => void) | null = null;
 
@@ -86,10 +98,21 @@ export function handle<C extends InvokeChannel>(
     const refusal = refusalFor(channel);
     if (refusal) return refusal();
     if (adminLock?.refusals.has(channel)) adminLock.touched();
-    const started = performance.now();
-    const result = handler(event, ...args);
-    // Time the synchronous part: that is what blocks the main process.
-    note(channel, started);
-    return result;
+    const run = () => {
+      const started = performance.now();
+      const result = handler(event, ...args);
+      // Time the synchronous part: that is what blocks the main process.
+      note(channel, started);
+      return result;
+    };
+    const waiting = giveWay?.(channel) ?? null;
+    if (!waiting) return run();
+    return waiting.then(async (done) => {
+      try {
+        return await run();
+      } finally {
+        done();
+      }
+    });
   });
 }

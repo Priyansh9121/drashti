@@ -56,6 +56,52 @@ const names = (db: Db) =>
   (db.prepare('SELECT name FROM presentations ORDER BY name').all() as { name: string }[]).map((r) => r.name);
 
 describe('runImport', () => {
+  it('gives way between files when the main process waits to write, its group committed (Session 16)', async () => {
+    const t = setup();
+    for (let i = 1; i <= 4; i++)
+      t.write(`Placeholder way ${String(i)}.txt`, `Placeholder line ${String(i)}\n`);
+    // The main process's connection, as an edit's would be, but refusing to wait at all.
+    const main = openDatabase(join(t.dir, 'drashti.sqlite'));
+    main.pragma('busy_timeout = 0');
+    const tryWrite = () => {
+      try {
+        main.prepare("INSERT OR REPLACE INTO app_meta (key, value) VALUES ('given way', '1')").run();
+        return 'wrote';
+      } catch (error) {
+        return (error as { code?: string }).code ?? 'failed';
+      }
+    };
+    let holding: () => boolean = () => false;
+    let boundary = 0;
+    const seen: string[] = [];
+    const { summary } = await t.run(
+      [t.source],
+      {},
+      {
+        // One group for the whole run, unless the import gives way.
+        batchBudgetMs: 60_000,
+        way: {
+          holding: (open) => {
+            holding = open;
+          },
+          wanted: () => {
+            boundary++;
+            // Between the first and second file the group holds the lock: a write is refused.
+            if (boundary === 1) seen.push(`holding ${String(holding())}: ${tryWrite()}`);
+            return boundary === 2;
+          },
+          give: () => {
+            seen.push(`given way, holding ${String(holding())}: ${tryWrite()}`);
+            return Promise.resolve();
+          },
+        },
+      },
+    );
+    expect(summary.totals.imported).toBe(4);
+    expect(seen).toEqual(['holding true: SQLITE_BUSY', 'given way, holding false: wrote']);
+    main.close();
+  });
+
   it('imports lyrics and media from a folder and keeps a report of everything', async () => {
     const t = setup();
     t.write('Song A.txt', SONG_A);

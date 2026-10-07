@@ -35,6 +35,42 @@ const stoppers = new Map<string, AbortController>();
 const post = (message: FromWorker) => {
   port.postMessage(message);
 };
+/**
+ * The main process's writes waiting for the import to give way (Session 16), by request; and how
+ * to see whether the import holds the library's write lock (a group is open).
+ */
+const wayWanted = new Set<string>();
+let holding: () => boolean = () => false;
+let goOn: ((id: string) => void) | null = null;
+/** At most this long without the main process's 'go-on' before the import carries on anyway. */
+const GIVE_WAY_MAX_MS = 2000;
+const way = {
+  wanted: () => wayWanted.size > 0,
+  holding: (open: () => boolean) => {
+    holding = open;
+  },
+  give: async () => {
+    // Every write waiting now goes, then the import carries on when the last says so.
+    const ids = [...wayWanted];
+    wayWanted.clear();
+    const left = new Set(ids);
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(done, GIVE_WAY_MAX_MS);
+      function done() {
+        clearTimeout(timer);
+        goOn = null;
+        resolve();
+      }
+      // Each write that was let in says when it is done.
+      goOn = (id) => {
+        left.delete(id);
+        if (left.size === 0) done();
+      };
+      for (const id of ids) post({ type: 'gave-way', id, waiting: true });
+    });
+  },
+};
+
 /** PDFs the main process is drawing for this import (Session 15), by request. */
 const drawing = new Map<string, (result: PicturesResult) => void>();
 const drawPdf = (pdf: string, outDir: string): Promise<PicturesResult> =>
@@ -93,6 +129,7 @@ async function start(message: StartMessage): Promise<void> {
             timings,
             drawPdf,
             signal: stopper.signal,
+            way,
             log: (line) => {
               post({ type: 'log', level: 'info', message: line });
             },
@@ -127,6 +164,13 @@ port.on('message', (event) => {
   if (message.type === 'cancel') {
     cancelled.add(message.runId);
     stoppers.get(message.runId)?.abort();
+  } else if (message.type === 'give-way') {
+    // Not holding the library's write lock (scanning, reading a file before writing it, copying
+    // media): the main process may write at once. Otherwise between this file and the next.
+    if (holding()) wayWanted.add(message.id);
+    else post({ type: 'gave-way', id: message.id, waiting: false });
+  } else if (message.type === 'go-on') {
+    goOn?.(message.id);
   } else if (message.type === 'drawn') {
     drawing.get(message.requestId)?.(message.result);
     drawing.delete(message.requestId);

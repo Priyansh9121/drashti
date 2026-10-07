@@ -96,7 +96,15 @@ import { midiSettingsSchema, NO_MIDI } from '../shared/midi';
 import { seedPlaceholders, seedTemplates } from './db/seed';
 import { ShowEngine } from './engine/show-engine';
 import { runEngineCommand } from './ipc/engine-ipc';
-import { handle, handlerTimes, hearHandled, lockAdminChannels, lockChannels, refusedNow } from './ipc/handle';
+import {
+  handle,
+  handlerTimes,
+  hearHandled,
+  lockAdminChannels,
+  lockChannels,
+  refusedNow,
+  setGiveWay,
+} from './ipc/handle';
 import { MainWatch, PerfProfile, watchedMedia } from './perf-watch';
 import { isPerfScenario, startScenario } from './perf-scenarios';
 import { LaterWrites } from './db/later-writes';
@@ -132,7 +140,7 @@ import { registerWordsIpc } from './library/words-ipc';
 import { registerKirtansIpc } from './library/kirtans-ipc';
 import { runRelaunchSelfTest } from './relaunch-selftest';
 import { createdGroupId, runWatchdogSelfTest } from './selftest';
-import { simpleModeRefusals } from './simple-mode';
+import { SIMPLE_MODE_LOCKED, simpleModeRefusals } from './simple-mode';
 import { writeOldLibrary } from './old-library-selftest';
 import {
   createOutputWindow,
@@ -1423,6 +1431,13 @@ function start(): void {
     },
   });
   importer = imports;
+  // An operator's edit during an import (Session 16): every request that changes something (the
+  // ones Simple Mode refuses) waits, without holding up the main process, for the import to give
+  // way between files, then writes with nothing in its way. Starting or stopping an import does not.
+  const edits = new Set<string>(SIMPLE_MODE_LOCKED);
+  for (const c of [IPC.library.importPaths, IPC.library.pickImportPaths, IPC.library.relinkMedia])
+    edits.delete(c);
+  setGiveWay((channel) => (imports.activeRunId !== null && edits.has(channel) ? imports.giveWay() : null));
 
   // ---- converting media Drashti cannot play -----------------------------------------
   const conversions = new ConvertService({

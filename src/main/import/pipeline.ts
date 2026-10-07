@@ -101,6 +101,12 @@ export interface PipelineContext {
   signal?: AbortSignal;
   /** A line for Drashti's log. */
   log?: (message: string) => void;
+  /**
+   * The main process waiting to write (an operator's edit; Session 16): between files the import
+   * commits its group and gives way until the main process has written. `holding` is told how to
+   * see whether a group is open (holding the library's write lock) at any moment.
+   */
+  way?: { wanted(): boolean; give(): Promise<void>; holding(open: () => boolean): void };
   /** Bring Drashti's window back to the front (Keynote or PowerPoint took it with a message). */
   refocus?: () => void;
   /** Filled in with where the time went. */
@@ -284,6 +290,13 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     const t = performance.now();
     batch.maybeCommit();
     time('commit', t);
+  };
+  ctx.way?.holding(() => batch.isOpen);
+  /** Between files: the main process waits to write, so commit and give way. */
+  const giveWay = async () => {
+    if (!ctx.way?.wanted()) return;
+    commit();
+    await ctx.way.give();
   };
   const totals = emptyTotals();
   const every = ctx.progressEveryMs ?? 100;
@@ -1442,6 +1455,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       }
       done++;
       maybeCommit();
+      await giveWay();
     }
 
     // Files Drashti does not read: one line per type, never dropped silently.
