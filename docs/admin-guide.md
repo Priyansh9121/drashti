@@ -241,4 +241,6 @@ Session 15 measured Drashti's heaviest cases on CI's computers, which have no re
 - **Big imports before or after the sabha.** During one, the import gives way to the show: with the stream on, on a two-core PC, 400 files took more than 12 minutes.
 - **After installing or updating, put a video up once before the first sabha:** the first one can hold slide changes up for a moment while the computer prepares its graphics.
 
-The performance check (section 12) on each mandir computer says whether that computer keeps up.
+The performance check (section 12) on each mandir computer says whether that computer keeps up, and its **video cases** say whether it shows a video background smoothly (`docs/parallel-run.md`, section 11; the setup-day checklist, section 8).
+
+**Ahead of other programs (Windows).** On Windows, Drashti runs ahead of other programs (above normal priority), so the screens' video never keeps a slide change waiting. On a PC with no graphics chip that comes at a price when a new video dissolves in every few seconds: the screens kept fewer of its frames in Session 15's tests. Run the video cases on the PC both ways (the checklist says how) and decide: to set it back to normal on that computer, untick **File**, **Run Ahead of Other Programs** (press **Alt** for the menu; admin only; a node has it in its own **File** menu). It changes at once and stays for every start after, on that computer only (restoring a library elsewhere does not bring it). Tick it again to go back. The log says which it runs at (`Main process priority …`).
