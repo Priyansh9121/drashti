@@ -27,9 +27,9 @@ ProPresenter stays installed and untouched all day. Drashti only reads its files
 
 - [ ] Drag ProPresenter's folders onto the presentation list (`docs/parallel-run.md`, section 3), and any other folders the audit named.
 - [ ] Read the report and **write down its numbers**: presentations, playlists, media, problems.
-- [ ] **Missing media**: **Find…** each folder the files are in.
-- [ ] **Can't play**: **Convert all**, and let it finish in the background.
-- [ ] **Legacy fonts** the report names: install each font on **Main and on the node** (admin guide, section 11). Quit and start Drashti again, and look at a few of those slides.
+- [ ] **Media that could not be found** (the report's notice "… media files could not be found"): **Find missing media…**, and pick each folder the files are in (or **Find…** beside one file).
+- [ ] **Media Drashti cannot play** (the notice "… media files Drashti cannot play"): **Convert all**, and let it finish in the background.
+- [ ] **Legacy fonts** the report's notes name (under **Imported with notes**): install each font on **Main and on the node** (admin guide, section 11). Quit and start Drashti again, and look at a few of those slides.
 - [ ] **PowerPoint, Keynote and PDF decks**: drag them in. Each page becomes a picture slide. The first time, macOS asks whether Drashti may control Keynote or Microsoft PowerPoint: **Allow**. If the report says there is no Keynote or PowerPoint here, or that one could not open a deck, save the deck as PDF and drag in the PDF.
 - [ ] **Keynote and PowerPoint on this computer** (never tried on these machines before the setup). With a placeholder deck (a few slides of made-up words, one hidden slide, one with an animation, speaker notes on some), not one of the mandir's: drag it in, and check the report says which app saved it as PDF, counts the hidden slide and the animation, and that the slides' notes are right. Then check that the app closed again (or, if it was already open with something of yours, that it was left as it was). **On the Windows PC with PowerPoint** this is the first time it has ever run: also check PowerPoint showed no window, and drag in a deck while PowerPoint is open with an unsaved presentation: the presentation must still be there, unsaved. Write down how long the deck took (the log says, **Help**, **Save Diagnostics…**).
 - [ ] **(operators)** Open five kirtans they know well and compare with ProPresenter: the words, the line breaks, the Gujarati and Hindi letters, the backgrounds.
@@ -45,7 +45,7 @@ ProPresenter stays installed and untouched all day. Drashti only reads its files
 - [ ] **(operators)** **Stage layout**: with the performers, the boxes they want on the stage screen.
 - [ ] **Masks** for any screen that is not a rectangle, or a projector that spills.
 - [ ] **Key and fill**, if the mandir's video switcher lays words over the camera: set the switcher's key to **pre-multiplied**, and check the words key cleanly over a camera.
-- [ ] **The node** (if there is one): **Pair a node** on Main, give the node's displays their groups, and **Get everything ready**. In the screens dashboard, the node says **Online** and its media all ready.
+- [ ] **The node** (if there is one): **Pair a node** on Main, give the node's displays their groups, and tick **Get everything ready** in the screens dashboard. In the screens dashboard, the node says **Online** and its media all ready.
 
 ## 4. The show's own things (Main)
 
@@ -75,7 +75,7 @@ ProPresenter stays installed and untouched all day. Drashti only reads its files
 
 ## 7. The stream (the computer that streams)
 
-- [ ] Stream settings: the key from YouTube Studio (pasted once; Drashti never shows it again), the camera, the mixer's line in, **Good** or **Weak internet** from a speed test, the recording folder.
+- [ ] Stream settings: the key from YouTube Studio (pasted once; Drashti never shows it again), the camera, the mixer's line in, **Good** or **Weak internet** from a speed test. Then, in the Stream panel's recording part, **Choose a folder…** for the recordings.
 - [ ] Write down the **Encoder** line the Stream panel shows (a graphics encoder such as VideoToolbox, NVENC, Quick Sync or AMF is best).
 - [ ] **On the Mac that streams**: during the test stream, write down the frames a second the Stream panel shows (it should hold at the profile's 30). CI's Mac, a virtual machine, managed only about 9: a real Mac has never been measured.
 - [ ] **Go live** on the unlisted stream for ten minutes while changing slides and playing a video. In YouTube Studio: the picture, the sound, the lips in time with the words (else raise **Sound delay**).
@@ -88,7 +88,7 @@ On each computer:
 - [ ] **The performance check**, twice (`docs/parallel-run.md`, section 11). Copy the second line into the table below. It should say `"passed":true`.
 - [ ] **The performance check's video cases** (same section): `video-1080p30` and `dissolves-video` on every computer that shows video (Main and the node), and `masks-video` where a screen has a mask. In each line, "every screen showed 9 in 10 of the background video's frames" must say `"ok":true`, and the slide-change lines too. ("the import overlapped at least 2 slide changes" may fail on a fast computer: that is fine.) A computer that keeps fewer than 9 in 10 frames needs a graphics chip that decodes video (admin guide, sections 1 and 13).
 - [ ] **On the Windows PC: ahead of other programs, or level with them** (admin guide, section 13). Run `video-1080p30` and `dissolves-video` again with `$env:DRASHTI_PRIORITY = 'normal'`. Keep Drashti ahead (the default) unless the normal runs kept clearly more of the video's frames (with dissolves) and their slide changes still passed; then an admin unticks **File**, **Run Ahead of Other Programs** on that PC (press **Alt** for the menu). Write down which, and why.
-- [ ] **The watchdog self-test** (admin guide, section 12): every line PASS.
+- [ ] **The watchdog self-test**, on Main (admin guide, section 12): every line PASS.
 - [ ] On the PC: **`docs/windows-checks.md`**, every line Pass, Fail (with what you saw) or N/A.
 - [ ] **A video background on every screen** for a minute, with a dissolve to another: smooth on every screen, the node's too, and in step. The first video after installing or updating can stutter for a second while the computer prepares its graphics: put one up once before each first sabha.
 - [ ] **The node in step**: a dissolve and a video side by side on Main's screen and the node's.

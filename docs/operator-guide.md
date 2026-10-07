@@ -10,7 +10,7 @@ On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows 
 
 - **Left column:** at the top the **Playlists** (and **Templates**), and below them the **Library**: Presentations, Media and Shastra, with the search box.
 - **Middle:** the **slides** of whatever you clicked, in the order they play.
-- **Right column:** the **live picture** (what the hall sees now), **Next** (what Next will bring), and the panels: Looks, Macros, Stage message, Props, Masks, Messages, Timers, Music, Arti and the Idle rotation.
+- **Right column:** the **live picture** (what the hall sees now), **Next** (what Next will bring), and the panels: Looks, Macros, Stage screen, Props, Masks, Messages, Timers, Music, Arti and the Idle rotation.
 - **Along the bottom:** the **clear buttons** for each layer, **Logo** and **Black-out**, then the **status bar** (the version, the screens, imports, warnings).
 
 ---
@@ -90,13 +90,13 @@ A clear button is lit, with a dot, while its layer is on the screens.
 
 ![The arti prompt](screenshots/arti-prompt.png)
 
-**Music during the sabha.** A slide or item with a sound of its own stops the music (with a short fade); Back brings it back where it would be. **Clear audio** (F6) stops it too.
+**Music during the sabha.** A slide or item with a sound of its own stops the music (with a short fade). **Clear audio** (the **Audio** button along the bottom, or F6) stops it too, and **Put it back**, pressed at once, brings it back where it would be by now.
 
 ## 3. When something goes wrong
 
 **The controls are covered by an output.** Press **Cmd+Shift+U** (Ctrl+Shift+U on Windows): every output over the controls turns off. It works even when Drashti is not the active app.
 
-**A mistake on the screens.** Put the right slide up with a click, or press **Back** (←). After **Clear all** by mistake, press **Put it back** at once.
+**A mistake on the screens.** Put the right slide up with a click, or press **←** (the slide before). After **Clear all** by mistake, press **Put it back** at once.
 
 **A screen is black or frozen.** Open the screens dashboard: its picture shows what that screen really shows. Pro Mode can **Reload** it there. If a whole output computer stopped (a node offline), carry on: its screens keep their last picture, and it comes back by itself when the network does.
 
