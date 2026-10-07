@@ -22,7 +22,7 @@ import type { MainRun, NodeRun } from '../e2e/nodes';
 import { launchMain, launchNode, pairNode } from '../e2e/nodes';
 import { freePort, TEST_KEY, testFfmpeg } from '../e2e/stream-helpers';
 import type { OutputSample, ProcessSample, SoakEvent, SoakReport, SoakSample, Verdict } from './report';
-import type { OperatorMemory } from './heap';
+import type { WindowMemory } from './heap';
 import { allocatorDump, describe as describeMemory, heapSample, snapshot, watchRequests } from './heap';
 import { growth, mainTotal, memoryOf, writeReport } from './report';
 
@@ -52,8 +52,14 @@ test.skip(QUIET, 'A real show for hours on real windows: runs on CI (the Soak wo
 const MINUTES = Math.max(5, Number(process.env['DRASHTI_SOAK_MINUTES'] ?? '180') || 180);
 const SAMPLE_MS = Math.max(0.5, Number(process.env['DRASHTI_SOAK_SAMPLE_MINUTES'] ?? '3') || 3) * 60_000;
 const OUT = join(process.cwd(), 'test-results', 'soak');
-/** Look inside the operator window: heap snapshots and memory dumps (Session 16; ./heap.ts). */
-const HEAP = process.env['DRASHTI_SOAK_HEAP'] === '1';
+/**
+ * Look inside a window: heap snapshots and memory dumps (./heap.ts). The operator window (Session 16;
+ * "1" as then), or Main's first output (Session 17).
+ */
+const HEAP: 'operator' | 'output' | null = (() => {
+  const asked = process.env['DRASHTI_SOAK_HEAP'] ?? '';
+  return asked === 'output' ? 'output' : asked === '1' || asked === 'operator' ? 'operator' : null;
+})();
 /** How often Next is pressed. */
 const SLIDE_MS = 6000;
 
@@ -210,6 +216,23 @@ function processes(app: ElectronApplication): Promise<{ label: string; memoryKb:
       cpu: m.cpu.percentCPUUsage,
     }));
   });
+}
+
+/** The working set of each window named by its address, MB (the soak's own table adds Main's outputs up). */
+function windowsMb(
+  app: ElectronApplication,
+  windows: { name: string; url: string }[],
+): Promise<Record<string, number>> {
+  return app.evaluate(({ app: a, webContents }, wanted) => {
+    const memory = new Map(a.getAppMetrics().map((m) => [m.pid, m.memory.workingSetSize / 1024]));
+    const out: Record<string, number> = {};
+    for (const w of wanted) {
+      const wc = webContents.getAllWebContents().find((c) => c.getURL() === w.url);
+      const mbNow = wc ? memory.get(wc.getOSProcessId()) : undefined;
+      if (mbNow !== undefined) out[w.name] = mbNow;
+    }
+    return out;
+  }, windows);
 }
 
 /** Whether a screen shows nothing at all: its picture, made small, has no pixel brighter than near-black. */
@@ -602,10 +625,13 @@ test('a sabha that never stops', async () => {
     let slideChanges = 0;
 
     const tally = new LogTally(join(userData, 'logs'));
-    // Inside the operator window, when asked: snapshots and dumps stay in a folder of their own
-    // (never the report's) and are deleted once summed up.
-    const cdp = HEAP ? await win.context().newCDPSession(win) : null;
-    const memory: OperatorMemory = { samples: [], snapshots: [], dumps: [], requests: {} };
+    // Inside a window, when asked: snapshots and dumps stay in a folder of their own (never the
+    // report's) and are deleted once summed up. Main's first output is the Main Hall's.
+    const probed = HEAP === 'output' ? outputPages(app)[0] : win;
+    if (!probed) throw new Error('no output to look inside');
+    const probedName = HEAP === 'output' ? 'Main output 1' : 'Operator window';
+    const cdp = HEAP ? await probed.context().newCDPSession(probed) : null;
+    const memory: WindowMemory = { window: probedName, samples: [], snapshots: [], dumps: [], requests: {} };
     if (cdp) await watchRequests(cdp, memory.requests);
     const heapDir = mkdtempSync(join(tmpdir(), 'drashti-soak-heap-'));
     const lookPoints = [
@@ -616,8 +642,8 @@ test('a sabha that never stops', async () => {
       if (!cdp) return;
       const m = minute();
       memory.snapshots.push(await snapshot(cdp, heapDir, label, m));
-      memory.dumps.push(await allocatorDump(app, heapDir, label, m));
-      note(`operator window looked inside (${label})`);
+      memory.dumps.push(await allocatorDump(app, heapDir, label, m, probed.url()));
+      note(`${probedName.toLowerCase()} looked inside (${label})`);
     };
     const sample = async () => {
       tally.read();
@@ -674,7 +700,14 @@ test('a sabha that never stops', async () => {
         watchdog,
       };
       samples.push(s);
-      if (cdp) memory.samples.push(await heapSample(cdp, s.minute));
+      if (cdp)
+        memory.samples.push({
+          ...(await heapSample(cdp, s.minute)),
+          windowsMb: await windowsMb(app, [
+            ...screens.map((page, i) => ({ name: `Main output ${String(i + 1)}`, url: page.url() })),
+            { name: 'Operator window', url: win.url() },
+          ]),
+        });
       console.log(
         `soak ${String(s.minute)} min: Main ${String(Math.round(mainTotal([s])[0]?.[1] ?? 0))} MB, node ${String(Math.round(s.processes.find((p) => p.label === 'Node (all of it)')?.memoryMb ?? 0))} MB, p90 ${outputs.map((o) => String(o.p90Ms)).join('/')} ms, late ${outputs.map((o) => String(o.lateFrames)).join('/')}, black ${String(outputs.some((o) => o.black))}, stream ${s.stream.state}, ${String(slideChanges)} slide changes`,
       );
@@ -855,9 +888,13 @@ test('a sabha that never stops', async () => {
     ];
     writeReport(OUT, report(verdicts));
     if (cdp) {
-      const text = describeMemory(memory, memoryOf(samples, 'Operator window'));
-      writeFileSync(join(OUT, 'operator-memory.md'), text);
-      writeFileSync(join(OUT, 'operator-memory.json'), JSON.stringify(memory, null, 1));
+      const own = memory.samples.flatMap((x): [number, number][] => {
+        const mbNow = x.windowsMb?.[probedName];
+        return mbNow === undefined ? [] : [[x.minute, mbNow]];
+      });
+      const text = describeMemory(memory, own);
+      writeFileSync(join(OUT, `${HEAP ?? 'window'}-memory.md`), text);
+      writeFileSync(join(OUT, `${HEAP ?? 'window'}-memory.json`), JSON.stringify(memory, null, 1));
       writeFileSync(join(OUT, 'summary.md'), `${readFileSync(join(OUT, 'summary.md'), 'utf8')}\n${text}`);
       console.log(text);
     }

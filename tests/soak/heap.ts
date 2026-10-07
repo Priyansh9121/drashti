@@ -3,13 +3,15 @@ import { join } from 'node:path';
 import type { CDPSession, ElectronApplication } from '@playwright/test';
 
 /*
- * Where the operator window's memory goes (Session 16). Every soak had the
- * operator window grow 60–140 MB over three hours; this looks inside it, and
- * runs only when asked (DRASHTI_SOAK_HEAP=1, the Soak workflow's "heap"
- * box):
+ * Where a window's memory goes (Session 16 for the operator window, Session
+ * 17 for an output). Every soak had the operator window grow 60–140 MB over
+ * three hours, and after that was explained, Main's two outputs grew 21–36
+ * MB an hour. This looks inside one window, and runs only when asked
+ * (DRASHTI_SOAK_HEAP=operator or output, the Soak workflow's "heap" choice):
  *
  * - at every sample, the window's JavaScript heap and its counts of
- *   documents, page nodes and event listeners (DevTools' own counters);
+ *   documents, page nodes and event listeners (DevTools' own counters), and
+ *   each window's own working set (the soak's tables add Main's outputs up);
  * - at three points (after warming up, in the middle, at the end), a heap
  *   snapshot, summed up by kind of object (how many, how big, and how many
  *   cut loose from the page), and a memory dump of the window's process by
@@ -17,8 +19,12 @@ import type { CDPSession, ElectronApplication } from '@playwright/test';
  *   graphics side), from Chromium's own memory tracing.
  *
  * The snapshots and traces stay on the runner and are deleted once summed up:
- * only the comparison is kept in the soak's report (operator-memory.md and
+ * only the comparison is kept in the soak's report (<window>-memory.md and
  * .json), never a snapshot (a heap snapshot holds whatever the page held).
+ *
+ * The probe counts what the window loads through a DevTools session of its
+ * own, which keeps no content but, like Playwright's, keeps a record of each
+ * load: the probed window has two such recorders, every other window one.
  */
 
 export interface HeapSample {
@@ -29,6 +35,8 @@ export interface HeapSample {
   documents: number;
   nodes: number;
   listeners: number;
+  /** Each window's own working set at the time, MB (Main's outputs one by one, the operator window). */
+  windowsMb?: Record<string, number>;
 }
 
 /** One kind of object in a heap snapshot: how many, and their own size. */
@@ -58,7 +66,9 @@ export interface AllocatorSummary {
   allocators: Record<string, number>;
 }
 
-export interface OperatorMemory {
+export interface WindowMemory {
+  /** Which window is looked inside ("Operator window", "Main output 1"). */
+  window: string;
   samples: HeapSample[];
   snapshots: SnapshotSummary[];
   dumps: AllocatorSummary[];
@@ -80,7 +90,7 @@ export function requestKind(url: string): string {
  * Count what the window loads, through the probe's own DevTools session with nothing kept (no
  * buffers: the probe must not add what it looks for).
  */
-export async function watchRequests(cdp: CDPSession, into: OperatorMemory['requests']): Promise<void> {
+export async function watchRequests(cdp: CDPSession, into: WindowMemory['requests']): Promise<void> {
   const kinds = new Map<string, string>();
   cdp.on('Network.requestWillBeSent', (e: { requestId: string; request: { url: string }; type?: string }) => {
     const kind = requestKind(e.request.url);
@@ -171,14 +181,14 @@ export function summarize(file: string, label: string, minute: number): Snapshot
   return { label, minute, totalMb: total / 1024 ** 2, objects, kinds, detached };
 }
 
-/** Snapshot the operator window, sum it up, and delete the snapshot. */
+/** Snapshot the window, sum it up, and delete the snapshot. */
 export async function snapshot(
   cdp: CDPSession,
   dir: string,
   label: string,
   minute: number,
 ): Promise<SnapshotSummary> {
-  const file = join(dir, `operator-${label}.heapsnapshot`);
+  const file = join(dir, `window-${label}.heapsnapshot`);
   try {
     await takeSnapshot(cdp, file);
     return summarize(file, label, minute);
@@ -187,26 +197,30 @@ export async function snapshot(
   }
 }
 
-/** The operator window's process by Chromium's allocators, from a few seconds of memory tracing. */
+/** The process of the window at `url`, by Chromium's allocators, from a few seconds of memory tracing. */
 export async function allocatorDump(
   app: ElectronApplication,
   dir: string,
   label: string,
   minute: number,
+  url: string,
 ): Promise<AllocatorSummary> {
-  const file = join(dir, `operator-${label}.trace.json`);
+  const file = join(dir, `window-${label}.trace.json`);
   try {
-    const pid = await app.evaluate(async ({ contentTracing, webContents }, path) => {
-      const operator = webContents.getAllWebContents().find((wc) => wc.getURL().includes('index.html'));
-      await contentTracing.startRecording({
-        included_categories: ['disabled-by-default-memory-infra'],
-        excluded_categories: ['*'],
-        memory_dump_config: { triggers: [{ mode: 'detailed', periodic_interval_ms: 1500 }] },
-      });
-      await new Promise((resolve) => setTimeout(resolve, 4000));
-      await contentTracing.stopRecording(path);
-      return operator?.getOSProcessId() ?? 0;
-    }, file);
+    const pid = await app.evaluate(
+      async ({ contentTracing, webContents }, { path, url }) => {
+        const window = webContents.getAllWebContents().find((wc) => wc.getURL() === url);
+        await contentTracing.startRecording({
+          included_categories: ['disabled-by-default-memory-infra'],
+          excluded_categories: ['*'],
+          memory_dump_config: { triggers: [{ mode: 'detailed', periodic_interval_ms: 1500 }] },
+        });
+        await new Promise((resolve) => setTimeout(resolve, 4000));
+        await contentTracing.stopRecording(path);
+        return window?.getOSProcessId() ?? 0;
+      },
+      { path: file, url },
+    );
     return summarizeTrace(readFileSync(file, 'utf8'), pid, label, minute);
   } finally {
     rmSync(file, { force: true });
@@ -250,9 +264,20 @@ export function summarizeTrace(json: string, pid: number, label: string, minute:
 
 const mb = (n: number | null | undefined) => (n === null || n === undefined ? '–' : n.toFixed(1));
 
+/** DevTools' network records in a snapshot: Blink's ResourceData objects, one for each load a recorder saw. */
+export function networkRecords(snap: SnapshotSummary): Kind {
+  return Object.entries(snap.kinds)
+    .filter(([name]) => name.includes('NetworkResourcesData'))
+    .reduce((sum, [, k]) => ({ count: sum.count + k.count, bytes: sum.bytes + k.bytes }), {
+      count: 0,
+      bytes: 0,
+    });
+}
+
 /** The comparison, in words and tables: what grew from the first point to the last. */
-export function describe(memory: OperatorMemory, workingSet: [number, number][]): string {
-  const lines: string[] = ['## Inside the operator window (Session 16)', ''];
+export function describe(memory: WindowMemory, workingSet: [number, number][]): string {
+  const what = memory.window === 'Operator window' ? 'the operator window' : memory.window;
+  const lines: string[] = [`## Inside ${what} (Sessions 16 and 17)`, ''];
   const s = memory.samples;
   if (s.length > 1) {
     const first = s[0];
@@ -263,6 +288,34 @@ export function describe(memory: OperatorMemory, workingSet: [number, number][])
         `From minute ${String(first.minute)} to ${String(last.minute)}: working set ${mb(ws(first.minute))} → ${mb(ws(last.minute))} MB; JavaScript heap in use ${mb(first.jsUsedMb)} → ${mb(last.jsUsedMb)} MB (of ${mb(first.jsTotalMb)} → ${mb(last.jsTotalMb)}); page nodes ${String(first.nodes)} → ${String(last.nodes)}; event listeners ${String(first.listeners)} → ${String(last.listeners)}; documents ${String(first.documents)} → ${String(last.documents)}.`,
         '',
       );
+    const names = [...new Set(s.flatMap((x) => Object.keys(x.windowsMb ?? {})))];
+    if (names.length > 0) {
+      // Each window by half hours (the median of its samples), so trimming's dips do not mislead.
+      const halves = [...new Set(s.map((x) => Math.floor(x.minute / 30)))];
+      const median = (v: number[]) => [...v].sort((a, b) => a - b)[Math.floor((v.length - 1) / 2)];
+      lines.push(
+        `Each window's working set, the median of each half hour (MB), from minute ${String(first?.minute ?? 0)}:`,
+        '',
+        `| Window | ${halves.map((h) => `${String(h * 30)}–${String(h * 30 + 30)} min`).join(' | ')} |`,
+        `|---|${halves.map(() => '---:').join('|')}|`,
+        ...names.map(
+          (n) =>
+            `| ${n}${n === memory.window ? ' (looked inside)' : ''} | ${halves
+              .map((h) =>
+                mb(
+                  median(
+                    s
+                      .filter((x) => Math.floor(x.minute / 30) === h)
+                      .map((x) => x.windowsMb?.[n])
+                      .filter((v): v is number => v !== undefined),
+                  ),
+                ),
+              )
+              .join(' | ')} |`,
+        ),
+        '',
+      );
+    }
   }
   const snaps = memory.snapshots;
   if (snaps.length > 1) {
@@ -285,6 +338,14 @@ export function describe(memory: OperatorMemory, workingSet: [number, number][])
         );
       const loose = snaps.map((x) => Object.values(x.detached).reduce((sum, k) => sum + k.count, 0));
       lines.push('', `Page nodes cut loose but still held: ${loose.map(String).join(' → ')}.`);
+      lines.push(
+        `DevTools' network records (one for each load a recorder saw; this window has two recorders, Playwright's and the probe's): ${snaps
+          .map((x) => {
+            const r = networkRecords(x);
+            return `${r.count.toLocaleString('en')} (${mb(r.bytes / 1024 ** 2)} MB)`;
+          })
+          .join(' → ')}.`,
+      );
       const topLoose = Object.entries(c.detached)
         .sort((x, y) => y[1].count - x[1].count)
         .slice(0, 8)
