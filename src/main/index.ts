@@ -341,6 +341,12 @@ const perfSoundLate = process.env['DRASHTI_PERF_MUSIC_LATE'] === '1';
 const perfNoImport = process.env['DRASHTI_PERF_NO_IMPORT'] === '1';
 // The performance check only: an operator's edits (words, a playlist, a theme) during the import (Session 16).
 const perfEdits = process.env['DRASHTI_PERF_EDITS'] === '1';
+// The performance check only: how many files it imports (400 unless asked), for a slower or quicker
+// import than this computer's own, to try the rules (Session 17).
+const perfSongs = Math.min(
+  5000,
+  Math.max(0, Math.round(Number(process.env['DRASHTI_PERF_SONGS'] ?? 0) || 0)),
+);
 // The performance check only: a heavy case for the screens (Session 15: speed on modest hardware).
 const perfScenario =
   perfTest && isPerfScenario(process.env['DRASHTI_PERF_SCENARIO'])
@@ -3127,6 +3133,7 @@ function start(): void {
         ...(perfProfileDir ? { profile: new PerfProfile(perfProfileDir) } : {}),
         ...(perfNoImport ? { noImportMs: 20_000 } : {}),
         ...(perfEdits ? { edits: true, wayStats: () => ({ ...(importer?.wayStats ?? {}) }) } : {}),
+        ...(perfSongs > 0 ? { songs: perfSongs } : {}),
       }).then(
         (result) => {
           process.stdout.write(`DRASHTI_PERFTEST_RESULT ${JSON.stringify(result)}\n`);

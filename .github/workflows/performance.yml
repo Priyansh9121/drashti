@@ -58,6 +58,10 @@ on:
         description: 'Instead: these video cases (comma-separated) from a packaged Drashti, as on the mandir computers (Session 16)'
         type: string
         default: ''
+      songs:
+        description: 'How many files the check imports (400 as on the mandir computers; more for a slower import, fewer for a quicker one; Session 17)'
+        type: number
+        default: 400
 
 permissions:
   contents: read
@@ -97,8 +101,9 @@ jobs:
         if: inputs.video_cases_packaged != ''
         env:
           CASES: ${{ inputs.video_cases_packaged }}
+          SONGS: ${{ inputs.songs }}
         shell: bash
-        run: node scripts/check-video-cases.mjs --cases "$CASES"
+        run: node scripts/check-video-cases.mjs --cases "$CASES" --songs "$SONGS"
       - name: Performance self-test (headless)
         if: inputs.video_cases_packaged == ''
         env:
@@ -117,6 +122,7 @@ jobs:
           DRASHTI_PERF_SCENARIO: ${{ inputs.scenario != 'none' && inputs.scenario || '' }}
           DRASHTI_PERF_HANDICAP: ${{ inputs.handicap && '1' || '0' }}
           DRASHTI_PERF_EDITS: ${{ inputs.edits && '1' || '0' }}
+          DRASHTI_PERF_SONGS: ${{ inputs.songs }}
           # Three outputs: windows, on two pretend displays beside the runner's own, with the music.
           DRASHTI_WINDOWED_OUTPUTS: ${{ inputs.scenario == 'three-outputs' && '1' || '' }}
           DRASHTI_EXTRA_DISPLAYS: ${{ inputs.scenario == 'three-outputs' && '2' || '' }}

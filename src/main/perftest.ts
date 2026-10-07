@@ -62,6 +62,8 @@ export interface PerfContext {
   edits?: boolean;
   /** How the import gave way to those edits (the import service's counts). */
   wayStats?: () => Record<string, number>;
+  /** How many files to import (DRASHTI_PERF_SONGS; PERF_SONGS unless asked): a slower or quicker import, to try the rules. */
+  songs?: number;
 }
 
 /** How big the test import is. */
@@ -90,6 +92,32 @@ export const percentile = (values: readonly number[], p: number): number => {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * p))] ?? Infinity;
 };
+
+/** How often the slides really changed: the median time between changes sent one after another. */
+export function paceOf(sentAts: readonly number[], everyMs: number): number {
+  const gaps = sentAts.slice(1).map((at, i) => at - (sentAts[i] ?? at));
+  return gaps.length > 0 ? Math.max(everyMs, percentile(gaps, 0.5)) : everyMs;
+}
+
+/**
+ * Whether the slides kept changing all through the import (Session 17). The
+ * import must overlap at least `wanted` slide changes, but only if it lasted
+ * as long as that many take at the pace the slides kept before it: a
+ * computer that brings in the files before the slides could change twice
+ * (CI's Mac did, in about a second, while the video cases change slides
+ * every 2 s) is quick, not failing. A longer import that overlaps fewer
+ * means the changes stopped while it ran, which is what this checks.
+ */
+export function overlapCheck(during: number, importMs: number, wanted: number, paceMs: number): PerfCheck {
+  const needsMs = wanted * paceMs;
+  const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
+  const quick = importMs < needsMs;
+  return {
+    name: `the import overlapped at least ${String(wanted)} slide changes (if it lasted ${seconds(needsMs)} or more)`,
+    ok: quick || during >= wanted,
+    detail: `${String(during)} in ${seconds(importMs)}${quick ? `, quicker than ${String(wanted)} changes take: nothing to judge` : ''}`,
+  };
+}
 
 interface Sample {
   rev: number;
@@ -218,11 +246,15 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
   const checks: PerfCheck[] = [];
   const check = (name: string, ok: boolean, detail = '') => checks.push({ name, ok, detail });
   const folder = mkdtempSync(join(tmpdir(), 'drashti-perf-lyrics-'));
+  const songs = ctx.songs ?? PERF_SONGS;
   const undo = await ctx.ensureOutput();
   try {
     if (ctx.noImportMs === undefined)
-      for (let i = 1; i <= PERF_SONGS; i++) {
-        writeFileSync(join(folder, `Placeholder Song ${String(i).padStart(3, '0')}.txt`), song(i));
+      for (let i = 1; i <= songs; i++) {
+        writeFileSync(
+          join(folder, `Placeholder Song ${String(i).padStart(Math.max(3, String(songs).length), '0')}.txt`),
+          song(i),
+        );
       }
     const operator = ctx.operator();
     let output: BrowserWindow | undefined;
@@ -311,7 +343,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
       `${label}: n=${v.length} median ${percentile(v, 0.5)} ms, p90 ${percentile(v, 0.9)} ms, worst ${Math.max(...v)} ms`;
     const what = noImport
       ? `no import: slide changes for ${run.importMs} ms`
-      : `import of ${PERF_SONGS} files took ${run.importMs} ms`;
+      : `import of ${String(songs)} files took ${run.importMs} ms`;
     const editLine = (label: string, v: EditSample[]) => {
       const ms = v.map((e) => Math.round(e.ms));
       return v.length === 0
@@ -337,30 +369,31 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
       check('the import ran in its own process', sawWorker);
       check(
         'the import finished without failures',
-        run.result.ok && totals?.failed === 0 && totals.imported === PERF_SONGS,
+        run.result.ok && totals?.failed === 0 && totals.imported === songs,
         run.result.ok
           ? `${totals?.imported ?? 0} imported, ${totals?.failed ?? 0} failed`
           : (run.result.message ?? ''),
       );
     }
-    // A scenario's slides change every two seconds, as in a sabha, so few of them overlap the import
-    // (a quick one takes 5 to 6 s on CI's Mac): its own figures are the video's frames and the blocks.
-    const overlap = ctx.scenario ? 2 : 10;
-    check(
-      `the import overlapped at least ${String(overlap)} slide changes`,
-      during.length >= overlap,
-      `${during.length}`,
+    // A scenario's slides change every two seconds, as in a sabha, so few of them overlap the import,
+    // and on a quick computer none but the first (Session 17): its own figures are the video's frames
+    // and the blocks. The pace is the one the slides kept before the import.
+    const pace = paceOf(
+      run.samples.filter((s) => !s.during).map((s) => s.sentAt),
+      ctx.scenario?.slides.everyMs ?? 40,
     );
-    // 60 Hz: a frame is 16.7 ms.
+    checks.push(overlapCheck(during.length, run.importMs, ctx.scenario ? 2 : 10, pace));
+    // 60 Hz: a frame is 16.7 ms. (No change during the import at all: the line above says why.)
+    const none = during.length === 0;
     check(
       'half the slide changes during the import reached the screen within a frame (17 ms)',
-      percentile(during, 0.5) <= 17,
-      `median ${percentile(during, 0.5)} ms`,
+      none || percentile(during, 0.5) <= 17,
+      none ? 'none during the import' : `median ${percentile(during, 0.5)} ms`,
     );
     check(
       '9 in 10 within two frames (34 ms)',
-      percentile(during, 0.9) <= 34,
-      `p90 ${percentile(during, 0.9)} ms`,
+      none || percentile(during, 0.9) <= 34,
+      none ? 'none during the import' : `p90 ${percentile(during, 0.9)} ms`,
     );
     const slow = during.filter((ms) => ms > 100).length;
     check(

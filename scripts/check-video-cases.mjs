@@ -5,6 +5,8 @@
 //   node scripts/check-video-cases.mjs                     the unpacked app electron-builder left in release/
 //   node scripts/check-video-cases.mjs --app <path>        an installed one (Drashti.exe, or Drashti.app/Contents/MacOS/Drashti)
 //   node scripts/check-video-cases.mjs --cases video-1080p30,dissolves-video
+//   node scripts/check-video-cases.mjs --songs 2000         a bigger import (400 files unless asked), to try
+//                                                           the rules with a slower import (Session 17)
 //
 // It fails only when a case did not run or gave no result: CI's machines have no real graphics chip,
 // so whether they keep a video's frames says little (the mandir's computers answer that).
@@ -19,6 +21,7 @@ const arg = (name) => {
   return i >= 0 ? process.argv[i + 1] : undefined;
 };
 const CASES = (arg('--cases') ?? 'video-1080p30,dissolves-video').split(',').filter(Boolean);
+const SONGS = arg('--songs');
 const TIMEOUT_MS = 6 * 60_000;
 
 /** The unpacked app electron-builder left in release/<version>/. */
@@ -40,6 +43,7 @@ const binary = arg('--app') ?? packagedBinary();
 function runCase(scenario) {
   return new Promise((resolve) => {
     const env = { ...process.env, DRASHTI_SELFTEST: 'performance', DRASHTI_PERF_SCENARIO: scenario };
+    if (SONGS) env.DRASHTI_PERF_SONGS = SONGS;
     delete env.ELECTRON_RUN_AS_NODE;
     const child = spawn(binary, [], { env, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
@@ -68,6 +72,13 @@ for (const scenario of CASES) {
   }
   ran++;
   console.log(`${scenario}: ${result.passed ? 'passed' : 'did not pass'}`);
+  // How long the import took, and the priority Drashti ran at, from the summary.
+  const parts = String(result.summary ?? '').split('; ');
+  const told = [
+    parts.find((p) => p.startsWith('import of ')),
+    parts.find((p) => p.startsWith('main process priority')),
+  ];
+  if (told.some(Boolean)) console.log(`  (${told.filter(Boolean).join('; ')})`);
   for (const c of result.checks)
     console.log(`  ${c.ok ? 'PASS' : 'FAIL'}  ${c.name}${c.detail ? ` (${c.detail})` : ''}`);
 }
