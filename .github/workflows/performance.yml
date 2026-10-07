@@ -50,6 +50,10 @@ on:
         description: 'Modest hardware: two cores for Drashti on Windows, two busy processes competing on a Mac'
         type: boolean
         default: false
+      edits:
+        description: "An operator's edits (words, a playlist, a theme) every 0.7 s during the import, timed (Session 16)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -97,6 +101,7 @@ jobs:
           # A heavy case, and modest hardware (Session 15).
           DRASHTI_PERF_SCENARIO: ${{ inputs.scenario != 'none' && inputs.scenario || '' }}
           DRASHTI_PERF_HANDICAP: ${{ inputs.handicap && '1' || '0' }}
+          DRASHTI_PERF_EDITS: ${{ inputs.edits && '1' || '0' }}
           # Three outputs: windows, on two pretend displays beside the runner's own, with the music.
           DRASHTI_WINDOWED_OUTPUTS: ${{ inputs.scenario == 'three-outputs' && '1' || '' }}
           DRASHTI_EXTRA_DISPLAYS: ${{ inputs.scenario == 'three-outputs' && '2' || '' }}
