@@ -100,8 +100,8 @@ export function paceOf(sentAts: readonly number[], everyMs: number): number {
 }
 
 /**
- * Whether the import was too quick to judge the slide changes by (Session
- * 17): it overlapped fewer of them than the check asks for, and lasted less
+ * Whether the import was too quick to owe the overlap (Session 17): it
+ * overlapped fewer slide changes than the check asks for, and lasted less
  * than that many take at the pace the slides kept before it. CI's Mac brings
  * in the 400 files in about a second while the video cases change slides
  * every 2 s, so only the change sent as the import began came during it.
@@ -131,6 +131,8 @@ interface Sample {
   rev: number;
   sentAt: number;
   during: boolean;
+  /** Made after a quick import, until five were made from its start (a scenario; Session 17). */
+  after: boolean;
 }
 
 /** An operator's edit, as long as it took from the operator window. */
@@ -159,13 +161,13 @@ async function slideChangesDuringImport(
     '';
   const every = slides?.everyMs ?? 40;
   const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-  const samples: { rev: number; sentAt: number; during: boolean }[] = [];
+  const samples: { rev: number; sentAt: number; during: boolean; after: boolean }[] = [];
   let slide = 0;
-  const change = async (during: boolean) => {
+  const change = async (during: boolean, after = false) => {
     slide = (slide + 1) % 3;
     const sentAt = Date.now();
     const r = await d.engine.dispatch({ type: 'goLive', presentationId: id, slideIndex: slide });
-    if (r.ok && r.changed) samples.push({ rev: r.rev, sentAt, during });
+    if (r.ok && r.changed) samples.push({ rev: r.rev, sentAt, during, after });
   };
   // With slides that change every few seconds (a scenario), fewer before the import begins.
   for (let i = 0; i < (slides ? 5 : 25); i++) {
@@ -203,17 +205,19 @@ async function slideChangesDuringImport(
       await editOnce(false);
       await wait(300);
     }
-  const state = { finished: false };
+  const state = { finished: false, finishedAt: 0 };
   const startedAt = Date.now();
   // With no import (to compare), the same changes for a set time.
   const imported =
     folder === null
       ? wait(forMs).then(() => {
           state.finished = true;
+          state.finishedAt = Date.now();
           return { ok: true, run: { totals: { failed: 0, imported: 0 } } };
         })
       : d.library.importPaths([folder]).then((result) => {
           state.finished = true;
+          state.finishedAt = Date.now();
           return result;
         });
   // The import finishing is seen after each wait (the narrowing of `state` would not see it).
@@ -228,8 +232,16 @@ async function slideChangesDuringImport(
     await change(true);
     await wait(every);
   }
+  // With slides every few seconds (a scenario), a quick import is over before enough changes came to
+  // judge by: they go on after it at the same pace until five have been made since it began (Session 17).
+  const since = () => samples.filter((s) => s.during || s.after).length;
+  for (let tries = 0; slides && since() < 5 && tries < 10; tries++) {
+    await change(false, true);
+    await wait(every);
+  }
   const result = await imported;
-  const importMs = Date.now() - startedAt;
+  // When the import itself finished: the loop above sees it only after its wait.
+  const importMs = state.finishedAt - startedAt;
   await editing;
   return { samples, result, importMs, edits: editSamples };
 }
@@ -345,8 +357,9 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
     await sleep(200);
     const paints = await js<{ rev: number; paintedAt: number }[]>(shown, 'globalThis.drashtiPaintLog ?? []');
     const latency = (s: Sample) => (paints.find((p) => p.rev >= s.rev)?.paintedAt ?? Infinity) - s.sentAt;
-    const idle = run.samples.filter((s) => !s.during).map(latency);
+    const idle = run.samples.filter((s) => !s.during && !s.after).map(latency);
     const during = run.samples.filter((s) => s.during).map(latency);
+    const after = run.samples.filter((s) => s.after).map(latency);
     const line = (label: string, v: number[]) =>
       `${label}: n=${v.length} median ${percentile(v, 0.5)} ms, p90 ${percentile(v, 0.9)} ms, worst ${Math.max(...v)} ms`;
     const what = noImport
@@ -370,7 +383,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
           run.edits.filter((e) => e.during),
         )} (${(['words', 'playlist', 'theme'] as const).map((k) => `${k} worst ${Math.max(0, ...run.edits.filter((e) => e.during && e.kind === k).map((e) => Math.round(e.ms)))} ms`).join(', ')})`
       : '';
-    const summary = `${what}${editsSummary}; main process priority ${describePriority()}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}${scenario ? `; ${scenario.summary}` : ''}`;
+    const summary = `${what}${editsSummary}; main process priority ${describePriority()}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}${after.length > 0 ? `; ${line('just after the import', after)}` : ''}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}${scenario ? `; ${scenario.summary}` : ''}`;
 
     const totals = run.result.run?.totals;
     if (!noImport) {
@@ -384,20 +397,22 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
       );
     }
     // A scenario's slides change every two seconds, as in a sabha, so few of them overlap the import,
-    // and on a quick computer none but the first (Session 17): its own figures are the video's frames
-    // and the blocks. The pace is the one the slides kept before the import.
+    // and on a quick computer only the first (Session 17): the overlap is owed only if the import lasted
+    // long enough, at the pace the slides kept before it.
     const pace = paceOf(
-      run.samples.filter((s) => !s.during).map((s) => s.sentAt),
+      run.samples.filter((s) => !s.during && !s.after).map((s) => s.sentAt),
       ctx.scenario?.slides.everyMs ?? 40,
     );
     const wanted = ctx.scenario ? 2 : 10;
     checks.push(overlapCheck(during.length, run.importMs, wanted, pace));
-    // A quick import overlaps too few changes to judge by (one, sent as it began, would decide the
-    // median alone): then the lines below judge every measured change, before the import and during
-    // it, under the same load on the screens, and say so.
-    const quick = quickImport(during.length, run.importMs, wanted, pace);
-    const judged = quick ? [...idle, ...during] : during;
-    const which = quick ? ` (all ${String(judged.length)} changes: the import was quick)` : '';
+    // The changes from the import's start: those during it, and, when a quick one was over before five
+    // came (a scenario's slides change every 2 s), the next ones after it, under the same load on the
+    // screens (Session 17). One change, sent as the import began, would otherwise decide the lines.
+    const judged = [...during, ...after];
+    const which =
+      after.length > 0
+        ? `, ${String(judged.length)} changes from the import's start, ${String(after.length)} after it`
+        : '';
     // 60 Hz: a frame is 16.7 ms. (No change during a long import at all: the line above says why.)
     const none = judged.length === 0;
     check(
