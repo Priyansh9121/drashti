@@ -1275,6 +1275,14 @@ test('PDF and PowerPoint as pictures: the import report and the slides (Session 
     .getByRole('button', { name: 'Open' })
     .click();
   await expect(report).toHaveCount(0);
+  // An import with a problem says so in the status bar, in the warning colour (Session 16).
+  await expect(win.getByTestId('import-result').getByLabel('Problems')).toBeVisible();
+  await win.waitForTimeout(500);
+  await win.screenshot({
+    path: join(folder, 'import-problem-status.png'),
+    scale: 'css',
+    clip: { x: 0, y: 720 - 64, width: 1280, height: 64 },
+  });
   await win.getByTestId('slide-thumb').nth(1).click();
   await expect(win.getByTestId('live-text')).toContainText('slide 2 of 3');
   await shot(win, 'pictures-slides');
