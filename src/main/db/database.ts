@@ -4,6 +4,9 @@ import { LATEST_VERSION, migrate, type Migration, MIGRATIONS, schemaVersion } fr
 
 export type Db = Database.Database;
 
+/** How long a write in this process waits for another's write lock (the import's) before failing. */
+export const LIBRARY_BUSY_TIMEOUT_MS = 5000;
+
 /**
  * Make every transaction on this connection take the write lock at its
  * start (BEGIN IMMEDIATE). Two connections write the library: the main
@@ -39,7 +42,7 @@ export function openDatabase(file: string, migrations: readonly Migration[] = MI
     db.pragma('journal_mode = WAL');
     db.pragma('synchronous = NORMAL');
     db.pragma('foreign_keys = ON');
-    db.pragma('busy_timeout = 5000');
+    db.pragma(`busy_timeout = ${String(LIBRARY_BUSY_TIMEOUT_MS)}`);
     beginImmediately(db);
     const current = schemaVersion(db);
     const latest = Math.max(0, ...migrations.map((m) => m.version));

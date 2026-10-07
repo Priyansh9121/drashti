@@ -281,14 +281,25 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
   const presentations = new PresentationRepo(ctx.db);
   const playlists = new PlaylistRepo(ctx.db);
   const batch = new BatchWriter(ctx.db, { budgetMs: ctx.batchBudgetMs ?? 250 });
+  /** Run a commit, counting it when it committed a group. */
+  const groupOpen = () => batch.isOpen;
+  const countCommit = (run: () => void) => {
+    const open = groupOpen();
+    run();
+    if (open && !groupOpen() && timings) timings.commits = (timings.commits ?? 0) + 1;
+  };
   const commit = () => {
     const t = performance.now();
-    batch.commit();
+    countCommit(() => {
+      batch.commit();
+    });
     time('commit', t);
   };
   const maybeCommit = () => {
     const t = performance.now();
-    batch.maybeCommit();
+    countCommit(() => {
+      batch.maybeCommit();
+    });
     time('commit', t);
   };
   /**
@@ -1496,7 +1507,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     imports.finishRun(ctx.runId, status, totals, message);
     if (timings) {
       for (const key of Object.keys(timings) as (keyof ImportTimings)[])
-        timings[key] = Math.round(timings[key]);
+        timings[key] = Math.round(timings[key] ?? 0);
       timings.total = Math.round(performance.now() - runStarted);
     }
     progress('finished', done, total, null, true);
