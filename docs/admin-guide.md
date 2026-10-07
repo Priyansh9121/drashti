@@ -31,9 +31,9 @@ Drashti runs on both of the mandir's computers. One is **Main**: it keeps the li
 
 - **On Windows**, the update installs by itself as Drashti quits.
 - **On the Mac**, until Drashti is signed with an Apple certificate, the update is downloaded and checked but cannot install itself: press **Show the file**, quit Drashti, open the file and drag Drashti into **Applications**.
-- **Look once a day** makes Drashti check by itself (it only tells you; it never downloads on its own). It is off to begin with.
+- **Look for a newer version once a day** makes Drashti check by itself (it only tells you; it never downloads on its own). It is off to begin with.
 
-**One version on both computers.** After updating Main, update the node too, the same evening. Until they match, the node refuses to follow Main and its screens keep their last picture; Main's **Screens** and the screens dashboard say which node needs updating. On the node, its window offers **Update to Drashti …**: press it, then **Download**, then **Quit and install**, and start it again. A node with no internet: install the same version on it by hand.
+**One version on both computers.** After updating Main, update the node too, the same evening. Until they match, the node refuses to follow Main and its screens keep their last picture; Main's **Screens** and the screens dashboard say which node needs updating. On the node, its window offers **Update to Drashti …**: press it, then **Download Drashti …**, then **Quit and install**, and start it again. A node with no internet: install the same version on it by hand.
 
 ![The node offering the update](screenshots/node-update-offer.png)
 
@@ -65,7 +65,7 @@ With roles on:
 
 **Resetting a forgotten admin PIN.** It cannot be read back, so it is reset at the computer, by someone who can use its user account:
 
-1. Quit Drashti (on a Mac **Drashti**, then **Quit**; on Windows close its window).
+1. Quit Drashti (on a Mac **Drashti**, then **Quit Drashti**; on Windows close its window).
 2. Delete the file `roles.json` from Drashti's data folder:
    - **Mac:** in Finder choose **Go**, then **Go to Folder…**, paste `~/Library/Application Support/Drashti`, and drag `roles.json` to the Bin.
    - **Windows:** paste `%APPDATA%\Drashti` into File Explorer's address bar, press Enter, and delete `roles.json`.
@@ -123,7 +123,7 @@ Section 8 of `docs/parallel-run.md` has the steps: on the second computer choose
 
 ![Pairing a node](screenshots/screens-pair-node.png)
 
-**Its pictures and videos.** The node keeps its own copies, made over the network ahead of time: what is on the screens and what Next brings, the playlist playing, every playlist made, changed or opened on Main in the last 7 days, the props, the logo and the idle rotation's pictures. Sound is never copied. For a festival with pictures from elsewhere in the library, press **Get everything ready** for the node in the screens dashboard. To reuse a playlist from an earlier week, open it on Main before the sabha (a click is enough).
+**Its pictures and videos.** The node keeps its own copies, made over the network ahead of time: what is on the screens and what Next brings, the playlist playing, every playlist made, changed or opened on Main in the last 7 days, the props, the logo and the idle rotation's pictures. Sound is never copied. For a festival with pictures from elsewhere in the library, tick **Get everything ready** for the node in the screens dashboard (it copies every picture and video in the library, not only this week's, until it is unticked). To reuse a playlist from an earlier week, open it on Main before the sabha (a click is enough).
 
 **Before each sabha**, open the screens dashboard (the screens line at the bottom of Main's window): the node should say **Online**, and its pictures and videos ready ("14 of 14 ready").
 
@@ -189,7 +189,7 @@ Drashti comes with no scripture text and no calendar: an admin loads files prepa
 
 **Music before the sabha.** The **Music** panel: **New**, **Add sounds…** (tick sounds from the library), put them in order. The operators press **Play**; Simple Mode has **Play music** and **Pause music** too. A slide's own sound stops the music, with a fade.
 
-**Markers.** In the library's **Media** tab, a video or a sound has a **Markers** button (a bookmark): set where it starts and ends (**Here** takes the time the preview shows), and named markers to jump to (**Add at the time shown**). Every slide and item that uses the file follows them, and while it plays the markers are buttons under the live picture. Played once, it stops within two frames of its end point on every screen.
+**Markers.** In the library's **Media** tab, a video or a sound has a **Markers** button (a bookmark; its tooltip says "Start, end and markers of …"): set where it starts and ends (**Here** takes the time the preview shows), and named markers to jump to (**Add at the time shown**). Every slide and item that uses the file follows them, and while it plays the markers are buttons under the live picture. Played once, it stops within two frames of its end point on every screen.
 
 ![Markers](screenshots/markers-dialog.png)
 
@@ -213,12 +213,12 @@ After installing a font, quit Drashti and start it again. Then look at a few of 
 **After installing or updating, on each computer:**
 
 1. **The performance check** (section 11 of `docs/parallel-run.md`): run it twice and keep the second line. It should say `"passed":true`.
-2. **The watchdog self-test.** Start Drashti from Terminal (Mac) or PowerShell (Windows) with diagnostics on, put a slide up, and choose **Diagnostics**, then **Run Watchdog Self-Test**. Every line should say PASS.
+2. **The watchdog self-test** (on Main: a node has no **Diagnostics** menu, though its screens have a watchdog of their own). Start Drashti from Terminal (Mac) or PowerShell (Windows) with diagnostics on, put a slide up, and choose **Diagnostics**, then **Run Watchdog Self-Test**. Every line should say PASS.
    - Mac: `DRASHTI_DIAGNOSTICS=1 /Applications/Drashti.app/Contents/MacOS/Drashti`
    - Windows: `$env:DRASHTI_DIAGNOSTICS=1; & "$env:LOCALAPPDATA\Programs\drashti\Drashti.exe"`
 3. On the Windows PC, the checks in `docs/windows-checks.md`.
 
-**Diagnostics.** After any problem, **Help**, then **Save Diagnostics…** writes one file to the Desktop: the versions, the screens and sound, counts from the library, the watchdog's events and the log. It holds no kirtan words, names or file paths, so it can be sent to whoever helps. The log itself is in Drashti's data folder, under `logs/`.
+**Diagnostics.** After any problem, **Help**, then **Save Diagnostics…** writes one file to the Desktop: the versions, the screens and sound, counts from the library, the watchdog's events and the log. It holds no kirtan words, names or file paths, so it can be sent to whoever helps. The log itself is in Drashti's data folder, under `logs/`. A node has no **Help** menu: after a problem there, copy its `logs` folder instead.
 
 **Falling back to ProPresenter.** ProPresenter stays installed, untouched, until Drashti has run four weeks of sabhas on that computer without falling back (PLAN.md, section 5.1). Every sabha has a named fallback operator who has practised it (under a minute):
 
