@@ -411,13 +411,21 @@ async function convertOnMac(
   const before = await pidsOf(app);
   /** The app in front before: an app that comes to the front meanwhile is showing the operator something. */
   const frontBefore = await frontApp();
-  /** Whether the app took the front from Drashti (a question about the file, in front of the operator). */
+  /**
+   * Whether the app has the front, taken from whatever had it (Drashti, as a rule). For Keynote
+   * that is a question about the file in front of the operator: given a file as a double-click
+   * gives it, it stays behind unless it has something to ask. PowerPoint comes to the front for a
+   * moment as it opens a good file too, so for it this only means Drashti takes the front back
+   * afterwards.
+   */
   const tookFront = async () => {
     if (frontBefore?.id === app.id) return false;
-    return (await frontApp())?.id === app.id;
+    const now = (await frontApp())?.id === app.id;
+    if (now) state.tookFront = true;
+    return now;
   };
   /** `answering` is false once the app has stopped answering (it is asking a question nobody sees). */
-  const state = { answering: true, shown: false };
+  const state = { answering: true, tookFront: false };
   /** The open document, as the app knows it, once found. */
   let doc: string | null = null;
   // PowerPoint for Mac may only read and write in its own folders: work there.
@@ -592,9 +600,8 @@ async function convertOnMac(
           return fromError(r, 'opening the file');
       }
       if (Date.now() - lastAnswer > limits.silentMs) return silentFail('opening the file');
-      if (await tookFront()) {
+      if ((await tookFront()) && app.converter === 'keynote') {
         log('came to the front instead of opening it');
-        state.shown = true;
         return fail(
           `${name} could not open it`,
           `${name} could not open the file and showed a message about it: it may be damaged. ${
@@ -696,7 +703,8 @@ async function convertOnMac(
     if (before.length === 0) await quitIfIdle(app, before, stem, state.answering, log);
     else log('left open, as the operator had it');
     // The app took the front from Drashti: give the operator's window the keys back.
-    if (state.shown && frontBefore?.pid === process.ppid) {
+    if (!state.tookFront && frontBefore?.pid === process.ppid) await tookFront();
+    if (state.tookFront && frontBefore?.pid === process.ppid) {
       log('Drashti back in front');
       options.refocus?.();
     }
