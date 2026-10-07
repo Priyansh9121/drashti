@@ -55,8 +55,11 @@ export class ImportService {
     worker: WorkerProcess;
     drawing: AbortController;
     /** The main process's writes waiting for the import to give way, by request. */
-    ways: Map<string, () => void>;
+    ways: Map<string, (how?: 'waiting' | 'at once' | 'limit' | 'ended') => void>;
   } | null = null;
+
+  /** How giving way has gone (for the performance check): answers, how long they took, and limits reached. */
+  readonly wayStats = { asked: 0, answeredWaiting: 0, answeredAtOnce: 0, limit: 0, slowestMs: 0 };
 
   constructor(private readonly deps: ImportServiceDeps) {}
 
@@ -116,15 +119,24 @@ export class ImportService {
     const active = this.active;
     if (!active) return Promise.resolve(() => undefined);
     const id = randomUUID();
+    const asked = performance.now();
+    this.wayStats.asked++;
     return new Promise((resolve) => {
-      const done = () => {
+      const done = (how: 'waiting' | 'at once' | 'limit' | 'ended' = 'ended') => {
         clearTimeout(timer);
         active.ways.delete(id);
+        const ms = performance.now() - asked;
+        if (how === 'waiting') this.wayStats.answeredWaiting++;
+        else if (how === 'at once') this.wayStats.answeredAtOnce++;
+        else if (how === 'limit') this.wayStats.limit++;
+        this.wayStats.slowestMs = Math.max(this.wayStats.slowestMs, Math.round(ms));
         resolve(() => {
           if (this.active === active) active.worker.postMessage({ type: 'go-on', id });
         });
       };
-      const timer = setTimeout(done, maxMs);
+      const timer = setTimeout(() => {
+        done('limit');
+      }, maxMs);
       active.ways.set(id, done);
       active.worker.postMessage({ type: 'give-way', id });
     });
@@ -152,7 +164,12 @@ export class ImportService {
       this.next();
       return;
     }
-    const active = { job, worker, drawing: new AbortController(), ways: new Map<string, () => void>() };
+    const active = {
+      job,
+      worker,
+      drawing: new AbortController(),
+      ways: new Map<string, (how?: 'waiting' | 'at once' | 'limit' | 'ended') => void>(),
+    };
     this.active = active;
     let settled = false;
     const settle = (result: ImportResult, run: ImportRunSummary | null) => {
@@ -201,7 +218,7 @@ export class ImportService {
           this.deps.refocus?.();
           break;
         case 'gave-way':
-          active.ways.get(m.id)?.();
+          active.ways.get(m.id)?.(m.waiting ? 'waiting' : 'at once');
           break;
         case 'failed':
           this.deps.log('warn', `Import ${job.runId} failed: ${m.message}`);

@@ -3099,7 +3099,7 @@ function start(): void {
         ...(perfWatch ? { watch: perfWatch } : {}),
         ...(perfProfileDir ? { profile: new PerfProfile(perfProfileDir) } : {}),
         ...(perfNoImport ? { noImportMs: 20_000 } : {}),
-        ...(perfEdits ? { edits: true } : {}),
+        ...(perfEdits ? { edits: true, wayStats: () => ({ ...(importer?.wayStats ?? {}) }) } : {}),
       }).then(
         (result) => {
           process.stdout.write(`DRASHTI_PERFTEST_RESULT ${JSON.stringify(result)}\n`);

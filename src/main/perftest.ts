@@ -60,6 +60,8 @@ export interface PerfContext {
    * a playlist's name and a theme in turn, every 0.7 s, timed from the operator window.
    */
   edits?: boolean;
+  /** How the import gave way to those edits (the import service's counts). */
+  wayStats?: () => Record<string, number>;
 }
 
 /** How big the test import is. */
@@ -311,8 +313,9 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
         ? `${label}: none`
         : `${label}: n=${v.length} median ${percentile(ms, 0.5)} ms, p90 ${percentile(ms, 0.9)} ms, worst ${Math.max(...ms)} ms${v.some((e) => !e.ok) ? ` (${v.filter((e) => !e.ok).length} failed)` : ''}`;
     };
+    const ways = ctx.wayStats?.();
     const editsSummary = ctx.edits
-      ? `; operator's edits ${editLine(
+      ? `; import gave way ${ways ? JSON.stringify(ways) : '?'}; operator's edits ${editLine(
           'idle',
           run.edits.filter((e) => !e.during),
         )}; ${editLine(
