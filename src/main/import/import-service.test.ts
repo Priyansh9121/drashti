@@ -227,4 +227,56 @@ describe('ImportService and pictures (Session 15)', () => {
     w.emit({ type: 'finished', run: summary(w.runId) });
     await done;
   });
+
+  describe('giving way to the main process’s writes (Session 16)', () => {
+    it('lets a write go at once when no import runs', async () => {
+      const { service } = setup();
+      const done = await service.giveWay();
+      expect(typeof done).toBe('function');
+    });
+
+    it('asks the running import to give way, waits for it, and tells it to go on once written', async () => {
+      const { service, workers } = setup();
+      void service.start(['/x']);
+      const w = workers[0];
+      if (!w) throw new Error('no worker');
+      let let_in = false;
+      const waiting = service.giveWay().then((done) => {
+        let_in = true;
+        return done;
+      });
+      const ask = w.sent.find((m) => m.type === 'give-way');
+      expect(ask).toBeDefined();
+      await Promise.resolve();
+      expect(let_in).toBe(false);
+      w.emit({ type: 'gave-way', id: ask?.id ?? '', waiting: true });
+      const done = await waiting;
+      expect(let_in).toBe(true);
+      done();
+      expect(w.sent.at(-1)).toEqual({ type: 'go-on', id: ask?.id });
+    });
+
+    it('goes ahead after its limit if the import does not answer, and when the run ends', async () => {
+      vi.useFakeTimers();
+      try {
+        const { service, workers } = setup();
+        void service.start(['/x']);
+        const w = workers[0];
+        if (!w) throw new Error('no worker');
+        let first = false;
+        void service.giveWay(1500).then(() => (first = true));
+        await vi.advanceTimersByTimeAsync(1499);
+        expect(first).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(first).toBe(true);
+        let second = false;
+        void service.giveWay(1500).then(() => (second = true));
+        w.emit({ type: 'finished', run: summary(w.runId) });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(second).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
 });
