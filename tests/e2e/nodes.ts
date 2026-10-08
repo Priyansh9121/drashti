@@ -16,7 +16,7 @@ import { freePort } from './stream-helpers';
  */
 
 /** Both instances: outputs as windows, one extra pretend display, the network on this computer only. */
-const COMMON = {
+export const COMMON = {
   DRASHTI_WINDOWED_OUTPUTS: '1',
   DRASHTI_EXTRA_DISPLAYS: '1',
   DRASHTI_TEST_NETWORK_LOCAL: '1',

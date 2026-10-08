@@ -431,6 +431,11 @@ export function NodeApp() {
         This computer shows screens for a Main on the local network. It has no show controls and makes no
         sound.
       </p>
+      {view.notice && (
+        <Notice tone={view.notice.startsWith('Could not') ? 'warning' : 'success'} data-testid="node-notice">
+          {view.notice}
+        </Notice>
+      )}
       <MainSection view={view} setView={setView} />
       <MatchMain view={view} />
       <Displays view={view} />

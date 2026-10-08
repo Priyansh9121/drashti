@@ -88,7 +88,7 @@ On each computer:
 - [ ] **The performance check**, twice (`docs/parallel-run.md`, section 11). Copy the second line into the table below. It should say `"passed":true`.
 - [ ] **The performance check's video cases** (same section): `video-1080p30` and `dissolves-video` on every computer that shows video (Main and the node), and `masks-video` where a screen has a mask. In each line, "every screen showed 9 in 10 of the background video's frames" must say `"ok":true`, and the slide-change lines too, "the import overlapped at least 2 slide changes" among them (on a quick computer it passes with "nothing to judge": the import was over too soon to need it, and the slide-change lines judge the five changes from its start instead, saying how many came after it). A computer that keeps fewer than 9 in 10 frames needs a graphics chip that decodes video (admin guide, sections 1 and 13).
 - [ ] **On the Windows PC: ahead of other programs, or level with them** (admin guide, section 13). Run `video-1080p30` and `dissolves-video` again with `$env:DRASHTI_PRIORITY = 'normal'`. Keep Drashti ahead (the default) unless the normal runs kept clearly more of the video's frames (with dissolves) and their slide changes still passed; then an admin unticks **File**, **Run Ahead of Other Programs** on that PC (press **Alt** for the menu). Write down which, and why.
-- [ ] **The watchdog self-test**, on Main (admin guide, section 12): every line PASS.
+- [ ] **The watchdog self-test**, on Main and on the node (admin guide, section 12): every line PASS. On the node, with a slide of words up on Main and the node's display showing it.
 - [ ] On the PC: **`docs/windows-checks.md`**, every line Pass, Fail (with what you saw) or N/A.
 - [ ] **A video background on every screen** for a minute, with a dissolve to another: smooth on every screen, the node's too, and in step. The first video after installing or updating can stutter for a second while the computer prepares its graphics: put one up once before each first sabha.
 - [ ] **The node in step**: a dissolve and a video side by side on Main's screen and the node's.
@@ -116,7 +116,7 @@ Keep this with the notebook. Never the PINs, the stream key or pairing codes.
 | Performance check, second line                                |      |                        |
 | Video cases: frames shown (1080p30 / dissolves / masks)       |      |                        |
 | Windows: ahead of other programs, or normal (and the figures) |      |                        |
-| Watchdog self-test result                                     |      |                        |
+| Watchdog self-test result (Main, and the node)                |      |                        |
 | Windows checks: any Fail                                      |      |                        |
 | Stream: encoder, internet preset, test dates and how it went  |      |                        |
 | Node: round trip and clock in the dashboard                   |      |                        |

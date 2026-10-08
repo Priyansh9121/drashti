@@ -10,6 +10,8 @@ import type { RendererWatchdog } from './watchdog';
  *
  * Run it from Diagnostics > Run Watchdog Self-Test (DRASHTI_DIAGNOSTICS=1),
  * or headless with DRASHTI_SELFTEST=watchdog (prints the result and exits).
+ * A node has its own (Session 17): the same menu item there, or
+ * DRASHTI_SELFTEST=node-watchdog.
  */
 
 export interface SelfTestCheck {
@@ -77,13 +79,13 @@ async function frameOf(win: BrowserWindow): Promise<Frame> {
  * painted can take a moment longer to reach the screen on a slow machine (CI's Macs), so a fixed
  * wait is not enough. After 5 s, the last capture, whatever it is.
  */
-async function steadyFrame(win: BrowserWindow, notLike?: number): Promise<Frame> {
+async function steadyFrame(win: BrowserWindow, notLike?: number, minBright = 50): Promise<Frame> {
   let last = await frameOf(win);
   const end = Date.now() + 5000;
   while (Date.now() < end) {
     await sleep(100);
     const now = await frameOf(win);
-    const steady = now.hash === last.hash && now.bright > 50 && now.hash !== notLike;
+    const steady = now.hash === last.hash && now.bright > minBright && now.hash !== notLike;
     last = now;
     if (steady) return now;
   }
@@ -105,7 +107,7 @@ const operatorReady = async (ctx: SelfTestContext) => {
 /** The engine revision the audio player follows ('' while it is loading). */
 const audioRev = (win: BrowserWindow) => js<string>(win, `document.body.dataset.rev ?? ''`);
 
-const reloads = (ctx: SelfTestContext, window: string) =>
+const reloads = (ctx: { watchdog: RendererWatchdog }, window: string) =>
   ctx.watchdog.events.filter((e) => e.window === window && e.kind === 'reloaded').length;
 
 export async function runWatchdogSelfTest(ctx: SelfTestContext): Promise<SelfTestResult> {
@@ -236,6 +238,135 @@ export async function runWatchdogSelfTest(ctx: SelfTestContext): Promise<SelfTes
     ctx.dispatch({ type: 'clearAll' });
     undo();
   }
+}
+
+/**
+ * A node's watchdog self-test (Session 17). A node has no show controls and
+ * no sound: Main runs the show. It proves, on the node, that its screens keep
+ * their last frame while its own window crashes or reloads, that the watchdog
+ * brings the window back, that a crashed output comes back showing Main's
+ * live slide, and that the node follows Main throughout. Main must have a
+ * slide up, and one of this node's displays in a screen group.
+ */
+export interface NodeSelfTestContext {
+  nodeWindow: () => BrowserWindow | null;
+  outputs: () => BrowserWindow[];
+  watchdog: RendererWatchdog;
+  /** The show's revision as the node has it from Main. */
+  rev: () => number;
+  /** Whether the link to Main is up. */
+  online: () => boolean;
+}
+
+/** Bright pixels in a node's capture (160 px wide) that say it shows something: black has none. */
+const NODE_BRIGHT = 10;
+
+const nodeWindowReady = async (ctx: NodeSelfTestContext) => {
+  const win = ctx.nodeWindow();
+  if (!win || win.webContents.isCrashed() || win.webContents.isLoading()) return false;
+  return js<boolean>(win, `document.querySelector('[data-testid="node-window"]') !== null`);
+};
+
+export async function runNodeWatchdogSelfTest(ctx: NodeSelfTestContext): Promise<SelfTestResult> {
+  const checks: SelfTestCheck[] = [];
+  const check = (name: string, ok: boolean, detail = '') => {
+    checks.push({ name, ok, detail });
+    return ok;
+  };
+  check(
+    'the node follows Main',
+    await waitFor(() => ctx.online(), 20_000),
+    ctx.online() ? 'online' : 'not connected: start Main, or pair this node again',
+  );
+  await waitFor(() => ctx.outputs().length > 0);
+  const output = ctx.outputs()[0] ?? null;
+  if (
+    !check(
+      'an output window is open',
+      output !== null,
+      output ? '' : "none: put one of this node's displays in a screen group on Main",
+    ) ||
+    !output
+  )
+    return { passed: false, checks };
+  await waitFor(
+    async () =>
+      (await js<string>(
+        output,
+        `document.querySelector('[data-testid="output-root"]')?.dataset.fonts ?? ''`,
+      )) === 'ready',
+  );
+  check(
+    "the output shows Main's live slide",
+    await waitFor(async () => (await paintedRev(output)) === String(ctx.rev())),
+    `revision ${String(ctx.rev())}`,
+  );
+  // Whatever Main has up, so long as it is not black: a node's screen may be small (a window, in tests).
+  const before = await steadyFrame(output, undefined, NODE_BRIGHT);
+  const loadedAt = await js<number>(output, 'performance.timeOrigin');
+  check(
+    'the output shows something',
+    before.bright > NODE_BRIGHT,
+    `${String(before.bright)} bright pixels${before.bright > NODE_BRIGHT ? '' : ': put a slide of words up on Main first'}`,
+  );
+
+  // 1. Crash the node's own window.
+  const windowReloadsBefore = reloads(ctx, 'node window');
+  ctx.nodeWindow()?.webContents.forcefullyCrashRenderer();
+  await sleep(40);
+  const during = await frameOf(output);
+  check(
+    "while the node's window is crashed, the output keeps the same frame",
+    during.hash === before.hash && during.pid === before.pid,
+    `frame ${during.hash === before.hash ? 'unchanged' : 'CHANGED'}, output process ${during.pid === before.pid ? 'unchanged' : 'CHANGED'}`,
+  );
+  check(
+    "the watchdog reloads the node's window",
+    await waitFor(() => reloads(ctx, 'node window') > windowReloadsBefore),
+  );
+  check("the reloaded node's window works", await waitFor(() => nodeWindowReady(ctx)));
+  const after = await frameOf(output);
+  check(
+    'the output was never reloaded or redrawn',
+    after.hash === before.hash &&
+      after.pid === before.pid &&
+      (await js<number>(output, 'performance.timeOrigin')) === loadedAt,
+  );
+
+  // 2. Reload the node's window: the output does not change.
+  ctx.nodeWindow()?.webContents.reload();
+  await sleep(40);
+  const reloading = await frameOf(output);
+  check(
+    "while the node's window reloads, the output keeps the same frame",
+    reloading.hash === before.hash && reloading.pid === before.pid,
+  );
+  check("the node's window comes back after a reload", await waitFor(() => nodeWindowReady(ctx)));
+
+  // 3. Crash the output itself: the watchdog reloads it and it shows Main's live slide again.
+  const fromEvent = ctx.watchdog.events.length;
+  output.webContents.forcefullyCrashRenderer();
+  check(
+    'the watchdog reloads a crashed output',
+    await waitFor(() =>
+      ctx.watchdog.events
+        .slice(fromEvent)
+        .some((e) => e.window.startsWith('output') && e.kind === 'reloaded'),
+    ),
+  );
+  const back = await waitFor(async () => (await paintedRev(output)) === String(ctx.rev()));
+  const restored = await steadyFrame(output, undefined, NODE_BRIGHT);
+  check(
+    "the reloaded output shows Main's live slide again",
+    back && restored.hash === before.hash && restored.pid !== before.pid,
+    `frame ${restored.hash === before.hash ? 'matches' : 'differs'}, new process ${restored.pid !== before.pid ? 'yes' : 'no'}`,
+  );
+  check(
+    'the node still follows Main',
+    ctx.online(),
+    ctx.online() ? `online, revision ${String(ctx.rev())}` : 'not connected',
+  );
+  return { passed: checks.every((c) => c.ok), checks };
 }
 
 /** Turn a ScreensResult into the id of the group it created (for undo). */

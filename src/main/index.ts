@@ -139,7 +139,7 @@ import { registerThemesIpc } from './library/themes-ipc';
 import { registerWordsIpc } from './library/words-ipc';
 import { registerKirtansIpc } from './library/kirtans-ipc';
 import { runRelaunchSelfTest } from './relaunch-selftest';
-import { createdGroupId, runWatchdogSelfTest } from './selftest';
+import { createdGroupId, runWatchdogSelfTest, type SelfTestResult } from './selftest';
 import { SIMPLE_MODE_LOCKED, simpleModeRefusals } from './simple-mode';
 import { applyPriority, describePriorities, describePriority, readPriority, writePriority } from './priority';
 import { whenFree, writeLockFree } from './db/write-lock';
@@ -201,6 +201,8 @@ import { hostname } from 'node:os';
 // Headless self-tests: run one, print the result, exit (see README). The performance test
 // imports a few hundred placeholder files, so it gets a throwaway data folder of its own.
 const selfTest = process.env['DRASHTI_SELFTEST'] === 'watchdog';
+// A node's own watchdog self-test (Session 17): starts as a node, with the pairing in its data folder.
+const nodeSelfTest = process.env['DRASHTI_SELFTEST'] === 'node-watchdog';
 const perfTest = process.env['DRASHTI_SELFTEST'] === 'performance';
 // Check the bundled FFmpeg (scripts/check-ffmpeg.mjs): print what works, and exit.
 const ffmpegCheck = process.env['DRASHTI_SELFTEST'] === 'ffmpeg';
@@ -632,7 +634,7 @@ async function runPerformanceTestWithStream(ctx: PerfRun): ReturnType<typeof run
 function boot(): void {
   const userData = app.getPath('userData');
   const selfTesting = process.env['DRASHTI_SELFTEST'] !== undefined;
-  let role = selfTesting ? 'main' : knownRole(userData, process.env['DRASHTI_ROLE']);
+  let role = nodeSelfTest ? 'node' : selfTesting ? 'main' : knownRole(userData, process.env['DRASHTI_ROLE']);
   if (role === null) {
     if (process.env['DRASHTI_TEST_NO_WIZARD'] === '1') role = 'main';
     else {
@@ -664,11 +666,7 @@ function startNodeMode(): void {
       : undefined,
     isOperator: () => false,
   });
-  const nodeMenu = () => {
-    installNodeMenu(priorityItem(() => nodeMenu()));
-  };
-  nodeMenu();
-  startNode({
+  const node = startNode({
     userData: app.getPath('userData'),
     version: appVersion(),
     updateBase,
@@ -685,6 +683,12 @@ function startNodeMode(): void {
     sleepGuard,
     clockSkewMs: nodeClockSkewMs,
     computerName: testComputerName ?? hostname(),
+    diagnostics: {
+      app: appInfo,
+      watchdogHistory: () => watchdogHistory,
+      logFiles,
+      desktop: () => app.getPath('desktop'),
+    },
     restartAsMain: () => {
       writeRole(app.getPath('userData'), 'main');
       log.info('Restarting as Main');
@@ -692,6 +696,38 @@ function startNodeMode(): void {
       app.exit(0);
     },
   });
+  /** The node's watchdog self-test, its result in a box (the menu) or printed (headless). */
+  const showResult = (result: SelfTestResult) => {
+    const lines = result.checks.map(
+      (c) => `${c.ok ? 'PASS' : 'FAIL'}  ${c.name}${c.detail ? ` (${c.detail})` : ''}`,
+    );
+    void dialog.showMessageBox({
+      type: result.passed ? 'info' : 'error',
+      message: result.passed ? 'Watchdog self-test passed' : 'Watchdog self-test FAILED',
+      detail: lines.join('\n'),
+    });
+  };
+  const nodeMenu = () => {
+    installNodeMenu({
+      priority: priorityItem(() => nodeMenu()),
+      saveDiagnostics: node.saveDiagnostics,
+      diagnostics: diagnostics
+        ? {
+            runSelfTest: () => {
+              void node.runSelfTest().then(showResult);
+            },
+            crashWindow: node.crashWindow,
+            crashOutputs: node.crashOutputs,
+          }
+        : null,
+    });
+  };
+  nodeMenu();
+  if (nodeSelfTest)
+    void node.runSelfTest().then((result) => {
+      process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
+      app.exit(result.passed ? 0 : 1);
+    });
 }
 
 function start(): void {

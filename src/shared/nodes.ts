@@ -231,6 +231,8 @@ export interface NodeView {
   mainVersion: string | null;
   /** Updating this node to Main's version (Session 14). */
   update: UpdateView;
+  /** A line to show for a while (Session 17: "Diagnostics saved on the Desktop: …"), or null. */
+  notice: string | null;
 }
 
 export type NodeViewResult = { ok: true; view: NodeView } | { ok: false; message: string };
