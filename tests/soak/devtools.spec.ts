@@ -101,8 +101,8 @@ interface Rate {
   last: number;
   /** The least-squares slope after the warm-up, MB an hour. */
   perHour: number;
-  /** The median of each quarter of the half, MB. */
-  quarters: number[];
+  /** The median of each quarter of the half, MB; null for a quarter with no sample (a short half's first). */
+  quarters: (number | null)[];
 }
 
 function rateOf(points: [number, number][]): Rate | null {
@@ -113,7 +113,7 @@ function rateOf(points: [number, number][]): Rate | null {
   const my = kept.reduce((s, [, y]) => s + y, 0) / n;
   const sxy = kept.reduce((s, [x, y]) => s + (x - mx) * (y - my), 0);
   const sxx = kept.reduce((s, [x]) => s + (x - mx) ** 2, 0);
-  const median = (v: number[]) => [...v].sort((a, b) => a - b)[Math.floor((v.length - 1) / 2)] ?? 0;
+  const median = (v: number[]) => [...v].sort((a, b) => a - b)[Math.floor((v.length - 1) / 2)] ?? null;
   const quarters = [0, 1, 2, 3].map((q) =>
     median(
       points
@@ -288,7 +288,7 @@ test('the output windows’ memory, with DevTools attached and without (Session 
       rates[w] = { ws, priv };
       if (!ws) continue;
       report.push(
-        `| ${w} | ${mb(ws.first)} → ${mb(ws.last)} | ${mb(ws.perHour)} | ${ws.quarters.map(mb).join(', ')} | ${priv ? `${mb(priv.first)} → ${mb(priv.last)}` : '–'} | ${priv ? mb(priv.perHour) : '–'} |`,
+        `| ${w} | ${mb(ws.first)} → ${mb(ws.last)} | ${mb(ws.perHour)} | ${ws.quarters.map((q) => (q === null ? '–' : mb(q))).join(', ')} | ${priv ? `${mb(priv.first)} → ${mb(priv.last)}` : '–'} | ${priv ? mb(priv.perHour) : '–'} |`,
       );
     }
     report.push('');
