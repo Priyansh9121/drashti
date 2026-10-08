@@ -20,6 +20,11 @@ on:
         description: How often memory, processor and the screens are sampled (minutes)
         type: number
         default: 3
+      test:
+        description: 'The sabha that never stops, or (Session 17) the output windows'' memory with DevTools attached and without: two halves of "minutes" each'
+        type: choice
+        options: [sabha, devtools]
+        default: sabha
       heap:
         description: Look inside a window (heap snapshots and memory dumps, compared on the runner; only the comparison is kept)
         type: choice
@@ -63,6 +68,7 @@ jobs:
           DRASHTI_SOAK_MINUTES: ${{ inputs.minutes }}
           DRASHTI_SOAK_SAMPLE_MINUTES: ${{ inputs.sample_minutes }}
           DRASHTI_SOAK_HEAP: ${{ inputs.heap != 'none' && inputs.heap || '' }}
+          DRASHTI_SOAK_DEVTOOLS: ${{ inputs.test == 'devtools' && '1' || '0' }}
         run: pnpm exec playwright test -c playwright.soak.config.ts
       - name: The summary
         if: always()

@@ -371,6 +371,11 @@ const nodePortOverride = Number(process.env['DRASHTI_NODE_PORT'] ?? 0) || null;
 const testComputerName = app.isPackaged ? undefined : process.env['DRASHTI_TEST_COMPUTER_NAME'];
 // Tests only: copies to nodes at this rate (bytes a second), so a copy can be watched while it goes.
 const testCopyRate = app.isPackaged ? null : Number(process.env['DRASHTI_TEST_COPY_RATE'] ?? 0) || null;
+// Tests only: each window's memory in the log this often (Session 17: the outputs' memory measured with
+// nothing attached, tests/soak/devtools.spec.ts).
+const testMemoryEveryMs = app.isPackaged
+  ? 0
+  : Math.max(0, Number(process.env['DRASHTI_TEST_MEMORY_EVERY_MS'] ?? 0) || 0);
 
 // Library media reaches the sandboxed windows only through drashti-media:// (see media/media-protocol.ts).
 // Schemes must be registered before the app is ready.
@@ -1129,6 +1134,37 @@ function start(): void {
   engine.onChange((state) => {
     liveWriter.update(state);
   });
+  if (testMemoryEveryMs > 0)
+    setInterval(
+      () => {
+        const names = new Map<string, string>();
+        for (const g of screens.snapshot().groups) for (const sc of g.screens) names.set(sc.id, sc.name);
+        const labels = new Map<number, string>();
+        for (const [screenId, w] of outputWindows)
+          if (!w.isDestroyed())
+            labels.set(w.webContents.getOSProcessId(), `Output "${names.get(screenId) ?? screenId}"`);
+        if (operatorWindow && !operatorWindow.isDestroyed())
+          labels.set(operatorWindow.webContents.getOSProcessId(), 'Operator window');
+        if (audioWindow && !audioWindow.isDestroyed())
+          labels.set(audioWindow.webContents.getOSProcessId(), 'Audio player');
+        const memory: Record<string, { ws: number; priv?: number }> = {};
+        for (const m of app.getAppMetrics()) {
+          const name =
+            labels.get(m.pid) ??
+            (m.type === 'Browser' ? 'Main process' : m.type === 'GPU' ? 'GPU' : `Other ${m.type}`);
+          const was = memory[name] ?? { ws: 0 };
+          const priv = m.memory.privateBytes;
+          memory[name] = {
+            ws: Math.round(((was.ws * 1024 + m.memory.workingSetSize) / 1024) * 10) / 10,
+            ...(priv === undefined
+              ? {}
+              : { priv: Math.round((((was.priv ?? 0) * 1024 + priv) / 1024) * 10) / 10 }),
+          };
+        }
+        log.info(`Memory (test): ${JSON.stringify(memory)}`);
+      },
+      Math.max(5000, testMemoryEveryMs),
+    );
   if (perfWatch) {
     // The performance check's timeline: what the audio layer plays (the music's tracks, a sound cue).
     let heardAudio = '';
