@@ -22,7 +22,7 @@ So it opens like an app, from one tap:
 ![The live picture with your notes under it, on an iPhone](screenshots/phone-remote-notes.png)
 
 - **At the top: what is on the screens now**, with a red LIVE badge.
-- **Under it: Notes.** Your notes for this slide, and below them the next slide's notes. **Hide notes** and **Show notes** switch them off and on; your phone remembers which.
+- **Under it: Notes.** Your notes for this slide, and below them the next slide's notes. **Hide notes** and **Show notes** switch them off and on; your phone remembers which. The notes are the slides' own notes in Drashti, the ones the stage screens show: at the Drashti computer, open the presentation in the editor, pick a slide, and type them under **Notes** in the Inspector on the right.
 - **Next** and **Back** are always at the bottom of the page.
 - **Library**: every presentation in Drashti, by name. Type in the search box to find a talk, a kirtan, or words on a slide. Tap a presentation to see its slides. **Nothing changes on the screens until you tap a slide.** Then that slide goes up, and Next carries on from it.
 - **On the screens** takes you back to the slides that are showing now, after you have looked at another presentation.
