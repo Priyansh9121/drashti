@@ -31,6 +31,15 @@ let generation = 0;
 /** The encoder port's frames so far, and whether a frame failed to go to it (each said once). */
 let encoderFrames = 0;
 let encoderFailed = false;
+/**
+ * The capture's newest frame (Session 18). A capture gives a frame only when the picture changes, so one
+ * already running for the preview gave an encoder paired while the picture stood still (a still slide over
+ * the camera, between two sabhas) nothing at all, and the stream never went on air: a new encoder now gets
+ * this frame at once.
+ */
+let latest: VideoFrame | null = null;
+/** Frames go to the encoder one after another, in order (the newest, given to a new encoder, first). */
+let sending: Promise<void> = Promise.resolve();
 
 /**
  * What the capture does, for Drashti's log (Session 18: the stream that sometimes had no picture
@@ -94,6 +103,24 @@ async function sendFrame(frame: VideoFrame): Promise<void> {
   }
   port.postMessage({ kind: 'video', data });
   if (++encoderFrames === 1) say(`the first frame went to the encoder (${key})`);
+}
+
+function keepLatest(frame: VideoFrame | null): void {
+  latest?.close();
+  latest = frame;
+}
+
+/** Hand a frame to the encoder after those before it (the first that cannot go is said, once). */
+function toEncoder(frame: VideoFrame): Promise<void> {
+  const next = sending
+    .then(() => sendFrame(frame))
+    .catch((error: unknown) => {
+      if (encoderFailed) return;
+      encoderFailed = true;
+      say(`a frame could not go to the encoder: ${why(error)}`);
+    });
+  sending = next;
+  return next;
 }
 
 /** The stream's sound to the encoder, as it is made (interleaved 32-bit float). */
@@ -164,6 +191,7 @@ async function capture(): Promise<void> {
       void reader.cancel();
       break;
     }
+    keepLatest(frame.clone());
     frames++;
     document.body.dataset['frames'] = String(frames);
     const now = performance.now();
@@ -176,14 +204,10 @@ async function capture(): Promise<void> {
         previewBusy = false;
       });
     }
-    if (encoder)
-      await sendFrame(frame).catch((error: unknown) => {
-        if (encoderFailed) return;
-        encoderFailed = true;
-        say(`a frame could not go to the encoder: ${why(error)}`);
-      });
+    if (encoder) await toEncoder(frame);
     frame.close();
   }
+  if (mine === generation) keepLatest(null);
   say(`capture ${String(mine)} ended after ${String(mineFrames)} frames`);
   document.body.dataset['capture'] = 'off';
 }
@@ -202,6 +226,7 @@ function update(): void {
   } else if (!wanted() && track) {
     say('nothing wants the picture: the capture stops');
     generation++;
+    keepLatest(null);
     track.stop();
     track = null;
   }
@@ -224,13 +249,22 @@ export function startCapture(level: () => number, sound: () => MediaStreamTrack 
       preview?.close();
       preview = port;
     } else if (data?.drashtiStreamPort === 'encoder') {
-      say(`the encoder's port arrived (${track ? 'capturing' : 'no capture yet'})`);
+      say(
+        `the encoder's port arrived (${track ? 'capturing' : 'no capture yet'}${latest ? ': the newest frame goes at once' : ''})`,
+      );
       encoder?.close();
       encoder = port;
       sentFormat = '';
       encoderFrames = 0;
       encoderFailed = false;
       void sendSound();
+      // The picture as it stands, at once: a capture already running gives no frame until it changes.
+      if (latest) {
+        const still = latest.clone();
+        void toEncoder(still).finally(() => {
+          still.close();
+        });
+      }
     } else return;
     port.start();
     update();
@@ -272,6 +306,7 @@ export function setCaptureSize(next: { width: number; height: number }): void {
   size = next;
   if (track) {
     generation++;
+    keepLatest(null);
     track.stop();
     track = null;
     update();
