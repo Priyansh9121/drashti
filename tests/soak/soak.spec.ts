@@ -224,6 +224,20 @@ async function screenSample(
   };
 }
 
+/**
+ * Main's log lines about the stream and the recording since `from` (an ISO time), oldest first. The
+ * stream worker blanks the key out of its own lines; anything after the address's app is blanked here too.
+ */
+function streamLines(dir: string, from: string): string[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f) => /^drashti(\.\d+)?\.log$/u.test(f))
+    .flatMap((f) => readFileSync(join(dir, f), 'utf8').split('\n'))
+    .filter((l) => l.slice(0, 24) >= from && /stream|record|encoder|connect|sending|program|backup/iu.test(l))
+    .sort()
+    .map((l) => l.replace(/(rtmps?:\/\/[^/\s]+\/[^/\s]+\/)\S+/giu, '$1…').slice(0, 400));
+}
+
 /** Watchdog events in an instance's log: a window crashed, hung or was given up on. */
 function watchdogLines(userData: string): number {
   const dir = join(userData, 'logs');
@@ -495,24 +509,41 @@ test('a sabha that never stops', async () => {
       { port, key: TEST_KEY },
     );
     expect(ready).toBe('ok');
+    // Main's own log about the stream from the stream's end on (Session 17): kept in the report and
+    // printed, so going on air again after the pause can be read from the log, as it went.
+    let endedAt: string | null = null;
+    const keepStreamLog = (why: string) => {
+      if (!endedAt) return;
+      const lines = streamLines(join(userData, 'logs'), endedAt);
+      const text = `${why}: Main's log about the stream from the pause on\n${lines.join('\n')}\n`;
+      writeFileSync(join(OUT, 'stream-log.txt'), text, { flag: 'a' });
+      console.log(text);
+    };
     const goLive = async () => {
       await win.evaluate(async () => {
         const d = (globalThis as PageGlobals).drashti;
         await d.stream.startRecording();
         await d.stream.goLive({ confirmed: true });
       });
-      await expect
-        .poll(
-          async () =>
-            (await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.status())).live.state,
-          {
-            timeout: 60_000,
-          },
-        )
-        .toBe('live');
+      try {
+        await expect
+          .poll(
+            async () =>
+              (await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.status())).live.state,
+            {
+              timeout: 60_000,
+            },
+          )
+          .toBe('live');
+      } catch (error) {
+        keepStreamLog('NOT on air again within 60 s');
+        throw error;
+      }
+      keepStreamLog('on air again');
       note('on air and recording');
     };
     const offAir = async () => {
+      endedAt = new Date().toISOString();
       await win.evaluate(async () => {
         const d = (globalThis as PageGlobals).drashti;
         await d.stream.end({ confirmed: true });
