@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, net, protocol, shell } from 'electron';
 import type { Installer } from '../update/installer';
 import { UpdateService } from '../update/update-service';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { EngineMirror } from '../../shared/engine/mirror';
 import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
@@ -21,6 +21,8 @@ import {
 } from '../../shared/nodes';
 import { mediaWantListSchema, nodeNameFrom, nodeScreenListSchema } from '../../shared/nodes-schema';
 import type { DisplayInfo, OutputContext, OutputReport, ScreenConfig } from '../../shared/screens';
+import type { DiagnosticsInput } from '../diagnostics';
+import { saveNodeDiagnostics } from '../diagnostics';
 import { handle } from '../ipc/handle';
 import { log } from '../log';
 import { handleMediaRequest, mediaRequestOf } from '../media/media-protocol';
@@ -32,6 +34,8 @@ import {
 } from '../outputs/electron-outputs';
 import { OutputManager } from '../outputs/output-manager';
 import type { SleepGuard } from '../outputs/sleep-guard';
+import type { SelfTestResult } from '../selftest';
+import { runNodeWatchdogSelfTest } from '../selftest';
 import { IpcTransport } from '../transport/ipc-transport';
 import type { RendererWatchdog } from '../watchdog';
 import { loadPage } from '../windows/renderer';
@@ -69,12 +73,27 @@ export interface NodeAppDeps {
   installer: Installer;
   /** Tests only: the download speed. */
   updateRate: number | null;
+  /** For Help > Save Diagnostics… (Session 17): the versions, the watchdog's events, the log, the Desktop. */
+  diagnostics: {
+    app: () => DiagnosticsInput['app'];
+    watchdogHistory: () => DiagnosticsInput['watchdog'];
+    logFiles: () => string[];
+    desktop: () => string;
+  };
+}
+
+/** What the node's menu can do (Session 17). */
+export interface NodeAppHandle {
+  saveDiagnostics: () => void;
+  runSelfTest: () => Promise<SelfTestResult>;
+  crashWindow: () => void;
+  crashOutputs: () => void;
 }
 
 /** How often the node reports its health to Main. */
 const HEALTH_EVERY_MS = 2000;
 
-export function startNode(deps: NodeAppDeps): void {
+export function startNode(deps: NodeAppDeps): NodeAppHandle {
   const store = new NodeStore(deps.userData);
   let paired: NodeFile | null = store.read();
   const host = nodeNameFrom(deps.computerName);
@@ -144,6 +163,19 @@ export function startNode(deps: NodeAppDeps): void {
   app.on('will-quit', () => {
     updates.quit();
   });
+  /** A line the node's window shows for a while (diagnostics saved, say), as Main's live controls do. */
+  let notice: string | null = null;
+  let noticeTimer: NodeJS.Timeout | null = null;
+  const say = (text: string) => {
+    notice = text;
+    if (noticeTimer) clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(() => {
+      notice = null;
+      noticeTimer = null;
+      viewChanged();
+    }, 20_000);
+    viewChanged();
+  };
   const viewChanged = () => {
     viewTimer ??= setTimeout(() => {
       viewTimer = null;
@@ -492,6 +524,7 @@ export function startNode(deps: NodeAppDeps): void {
       fromSaved,
       mainVersion: link.state === 'refused' ? mainVersion : null,
       update: updates.view(),
+      notice,
     };
   };
 
@@ -649,4 +682,73 @@ export function startNode(deps: NodeAppDeps): void {
   };
   if (paired) connect();
   log.info(`Node: started${paired ? ` following Main “${paired.main.name}”` : ' (not paired yet)'}`);
+
+  // ---- diagnostics (Session 17) ---------------------------------------------------------------------
+  const saveDiagnostics = () => {
+    try {
+      const status = manager.status();
+      const displays = listDisplays();
+      const file = saveNodeDiagnostics(deps.diagnostics.desktop(), {
+        app: deps.diagnostics.app(),
+        displays,
+        screens: (paired?.screens ?? []).map((s) => {
+          const st = status.find((x) => x.screenId === s.screenId);
+          const d = displays.find((x) => x.id === st?.displayId);
+          const r = reports.get(s.screenId);
+          return {
+            name: s.name,
+            groupName: s.groupName,
+            role: s.role,
+            canvasWidth: s.canvasWidth,
+            canvasHeight: s.canvasHeight,
+            scaling: s.scaling,
+            enabled: s.enabled,
+            state: st?.state ?? 'unknown',
+            display: d ? d.label || `display ${String(d.id)}` : null,
+            droppedFrames: r?.droppedFrames ?? 0,
+            paintedRev: r?.paintedRev ?? -1,
+          };
+        }),
+        main: paired
+          ? {
+              name: paired.main.name,
+              addresses: paired.main.addresses,
+              port: paired.main.port,
+              pairedAt: paired.pairedAt,
+            }
+          : null,
+        link,
+        clock,
+        rev: mirror.rev,
+        fromSaved,
+        media: cache.status(mirror.state ? inUse().filter((id) => !cache.has(id)).length : 0),
+        watchdog: deps.diagnostics.watchdogHistory(),
+        logFiles: deps.diagnostics.logFiles(),
+        now: new Date(),
+      });
+      log.info('Node: diagnostics saved to the Desktop');
+      say(`Diagnostics saved on the Desktop: ${basename(file)}`);
+    } catch (error) {
+      log.error('Node: could not save diagnostics', error);
+      say('Could not save diagnostics: see the log in the data folder.');
+    }
+  };
+  const showingOutputs = () => [...outputWindows.values()].filter((w) => !w.isDestroyed());
+  return {
+    saveDiagnostics,
+    runSelfTest: () =>
+      runNodeWatchdogSelfTest({
+        nodeWindow: () => (nodeWindow && !nodeWindow.isDestroyed() ? nodeWindow : null),
+        outputs: showingOutputs,
+        watchdog: deps.watchdog,
+        rev: () => mirror.rev,
+        online: () => client?.online ?? false,
+      }),
+    crashWindow: () => {
+      nodeWindow?.webContents.forcefullyCrashRenderer();
+    },
+    crashOutputs: () => {
+      for (const w of showingOutputs()) w.webContents.forcefullyCrashRenderer();
+    },
+  };
 }

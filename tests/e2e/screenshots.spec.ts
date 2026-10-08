@@ -1016,6 +1016,14 @@ test('output nodes: the node’s window, Screens with a node, pairing, the dashb
       .poll(async () => (await nodeView(node.page)).displays.some((d) => d.screen?.showing))
       .toBe(true);
     await shot(node.page, 'node-window');
+    // A node's Save Diagnostics (Session 17): its window says where the file went.
+    const desktop = mkdtempSync(join(tmpdir(), 'drashti-shots-node-desktop-'));
+    await node.app.evaluate(({ app }, folder) => {
+      app.setPath('desktop', folder);
+    }, desktop);
+    await chooseMenuItem(node.app, 'save-diagnostics');
+    await expect(node.page.getByTestId('node-notice')).toContainText('Diagnostics saved on the Desktop');
+    await shot(node.page, 'node-diagnostics-saved');
     // Screens, with the node and its displays.
     await main.win.getByRole('button', { name: 'Screens', exact: true }).click();
     await main.win.getByTestId('nodes-section').scrollIntoViewIfNeeded();

@@ -213,12 +213,15 @@ After installing a font, quit Drashti and start it again. Then look at a few of 
 **After installing or updating, on each computer:**
 
 1. **The performance check** (section 11 of `docs/parallel-run.md`): run it twice and keep the second line. It should say `"passed":true`.
-2. **The watchdog self-test** (on Main: a node has no **Diagnostics** menu, though its screens have a watchdog of their own). Start Drashti from Terminal (Mac) or PowerShell (Windows) with diagnostics on, put a slide up, and choose **Diagnostics**, then **Run Watchdog Self-Test**. Every line should say PASS.
+2. **The watchdog self-test**, on Main and on the node. Start Drashti from Terminal (Mac) or PowerShell (Windows) with diagnostics on, put a slide up, and choose **Diagnostics**, then **Run Watchdog Self-Test**. Every line should say PASS.
    - Mac: `DRASHTI_DIAGNOSTICS=1 /Applications/Drashti.app/Contents/MacOS/Drashti`
    - Windows: `$env:DRASHTI_DIAGNOSTICS=1; & "$env:LOCALAPPDATA\Programs\drashti\Drashti.exe"`
+
+   On the node, start it the same way, with Main running, a slide of words up on Main (no video or timer, which change the picture) and one of the node's displays showing it; then **Diagnostics**, then **Run Watchdog Self-Test** (on Windows, press **Alt** for the menu). It crashes and reloads the node's own window and crashes the output, and checks the screen keeps its picture throughout and comes back showing Main's slide. Don't change slides on Main while it runs (about half a minute).
+
 3. On the Windows PC, the checks in `docs/windows-checks.md`.
 
-**Diagnostics.** After any problem, **Help**, then **Save Diagnostics…** writes one file to the Desktop: the versions, the screens and sound, counts from the library, the watchdog's events and the log. It holds no kirtan words, names or file paths, so it can be sent to whoever helps. The log itself is in Drashti's data folder, under `logs/`. A node has no **Help** menu: after a problem there, copy its `logs` folder instead.
+**Diagnostics.** After any problem, **Help**, then **Save Diagnostics…** writes one file to the Desktop: the versions, the screens and sound, counts from the library, the watchdog's events and the log. It holds no kirtan words, names or file paths, so it can be sent to whoever helps. The log itself is in Drashti's data folder, under `logs/`. On the node, **Help**, then **Save Diagnostics…** writes the node's own file to its Desktop (on Windows, press **Alt** for the menu): its link to Main and since when, its clock against Main's, the screens Main gave it, its copies of Main's pictures and videos (counts only), the watchdog's events and the log. It has no library part, and never the node's key to Main. Send both files after a problem that showed on the node's screens.
 
 **Falling back to ProPresenter.** ProPresenter stays installed, untouched, until Drashti has run four weeks of sabhas on that computer without falling back (PLAN.md, section 5.1). Every sabha has a named fallback operator who has practised it (under a minute):
 

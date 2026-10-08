@@ -188,17 +188,52 @@ export function installMenu(actions: MenuActions): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+/** What a node's menu does (Session 17 added Help and, with DRASHTI_DIAGNOSTICS=1, Diagnostics). */
+export interface NodeMenuActions {
+  /** File > Run Ahead of Other Programs (Windows only; Session 16): null elsewhere. */
+  priority: PriorityItem | null;
+  /** Help > Save Diagnostics…: one file on the Desktop, as on Main (without the library). */
+  saveDiagnostics: () => void;
+  /** Only when DRASHTI_DIAGNOSTICS=1: the node's watchdog self-test and the manual crash buttons. */
+  diagnostics: {
+    runSelfTest: () => void;
+    crashWindow: () => void;
+    crashOutputs: () => void;
+  } | null;
+}
+
 /**
- * A node's menu (Session 13): no show, no library; editing keys for its fields, and its window; and on
- * Windows how high Drashti runs (Session 16).
+ * A node's menu (Session 13): no show, no library; editing keys for its fields, and its window; on
+ * Windows how high Drashti runs (Session 16); Save Diagnostics, and the watchdog self-test with
+ * diagnostics on (Session 17).
  */
-export function installNodeMenu(priority: PriorityItem | null = null): void {
+export function installNodeMenu(actions: NodeMenuActions): void {
   const isMac = process.platform === 'darwin';
   const template: MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: 'appMenu' } as MenuItemConstructorOptions] : []),
-    ...(priority ? [{ label: 'File', submenu: [priorityItem(priority)] } as MenuItemConstructorOptions] : []),
+    ...(actions.priority
+      ? [{ label: 'File', submenu: [priorityItem(actions.priority)] } as MenuItemConstructorOptions]
+      : []),
     { role: 'editMenu' },
     { role: 'windowMenu' },
+    {
+      role: 'help',
+      submenu: [{ id: 'save-diagnostics', label: 'Save Diagnostics…', click: actions.saveDiagnostics }],
+    },
   ];
+  if (actions.diagnostics) {
+    const d = actions.diagnostics;
+    template.push({
+      label: 'Diagnostics',
+      submenu: [
+        { id: 'run-watchdog-self-test', label: 'Run Watchdog Self-Test', click: d.runSelfTest },
+        { type: 'separator' },
+        { label: "Crash the Node's Window (watchdog test)", click: d.crashWindow },
+        { label: 'Crash the Output Windows (watchdog test)', click: d.crashOutputs },
+        { type: 'separator' },
+        { role: 'toggleDevTools' },
+      ],
+    });
+  }
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
