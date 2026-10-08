@@ -186,7 +186,9 @@ export class UpdateService {
         ok: false,
         message: this.phase === 'ready' ? 'It is downloaded already.' : 'Look for an update first.',
       };
-    const dest = join(this.deps.dir, file.name.replace(/[^\w.-]/gu, '_'));
+    // A release's file names never change (build/downloads.json), so the version goes in the name here:
+    // a download stopped part-way carries on only into the same version.
+    const dest = join(this.deps.dir, `${m.version}-${file.name}`.replace(/[^\w.-]/gu, '_'));
     this.phase = 'downloading';
     this.cancelled = false;
     this.progress = { done: 0, total: file.size };

@@ -23,7 +23,15 @@ Drashti runs on both of the mandir's computers. One is **Main**: it keeps the li
 
 ## 2. Installing and updating
 
-**Installing.** Install Drashti on each computer from the installers on the project's GitHub page (section 2 of `docs/parallel-run.md` has the steps, including the warnings an unsigned app gets the first time). On its very first start, Drashti asks how the computer will be used: **Main** or **Node**. A computer that already has a library is a Main.
+**Installing.** Drashti is free. Each computer has one download link, and it always gives the newest version:
+
+| Computer                                                                        | Download                                                                                       |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| A Mac with Apple silicon (**About This Mac** shows **Chip**: Apple M1 or later) | https://github.com/Priyansh9121/drashti/releases/latest/download/Drashti-mac-apple-silicon.dmg |
+| A Mac with an Intel processor (**About This Mac** shows **Processor**: Intel)   | https://github.com/Priyansh9121/drashti/releases/latest/download/Drashti-mac-intel.dmg         |
+| A Windows 10 or 11 PC (64-bit)                                                  | https://github.com/Priyansh9121/drashti/releases/latest/download/Drashti-windows-setup.exe     |
+
+The links work once a version has been published (README, "Releases, signing and updates": the Release workflow, from `main`, with **publish** ticked); until then they say Not Found. Every release is at https://github.com/Priyansh9121/drashti/releases, with `SHA256SUMS.txt` to check a download by hand (on a Mac `shasum -a 256 <file>` in Terminal, on Windows `Get-FileHash <file>` in PowerShell). Until Drashti is signed, its first start on each computer asks once: on a Mac, **System Settings**, **Privacy & Security**, **Open Anyway**; on Windows, **More info**, **Run anyway** (section 2 of `docs/parallel-run.md` has every step). On its very first start, Drashti asks how the computer will be used: **Main** or **Node**. A computer that already has a library is a Main.
 
 **Checking for updates.** **Help**, then **Check for Updates…**. If there is a newer version, press **Download**: it comes slowly in the background, and waits while the stream is on air or recording. Then turn on **Install it when Drashti quits**. Nothing happens until Drashti is quit after the sabha, and Drashti does not start again by itself.
 

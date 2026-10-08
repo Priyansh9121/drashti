@@ -23,24 +23,28 @@ On the Windows PC, Drashti needs 64-bit Windows 10 or Windows 11. Press the Wind
 
 ## 2. Get Drashti and install it
 
-Drashti's installers are made automatically each time a new version is ready, on GitHub. Whoever looks after Drashti will send you a link, or you can fetch them yourself if you have access:
+Drashti is free, from one link for each computer. Each link always gives the newest version:
 
-1. Open the Drashti repository on GitHub, then **Actions**, then **CI**.
-2. Open the newest run with a green tick for the `main` branch.
-3. At the bottom, under **Artifacts**, download **drashti-macOS** (for the Mac) or **drashti-Windows** (for the PC). They are zip files. They are kept for 7 days only, so ask for a new run if they have gone.
-4. Unzip the download.
+- **A Mac with Apple silicon:** https://github.com/Priyansh9121/drashti/releases/latest/download/Drashti-mac-apple-silicon.dmg
+- **A Mac with an Intel processor:** https://github.com/Priyansh9121/drashti/releases/latest/download/Drashti-mac-intel.dmg
+- **The Windows PC:** https://github.com/Priyansh9121/drashti/releases/latest/download/Drashti-windows-setup.exe
+
+**Which Mac is it?** Apple menu, **About This Mac** (as in section 1). A line **Chip** that says Apple M1, M2, M3 or later means Apple silicon. A line **Processor** that mentions Intel means an Intel Mac. Take the right one: the Apple-silicon file does not open on an Intel Mac, and the Intel one runs more slowly on Apple silicon.
+
+If a link says **Not Found**, no version has been published yet. Whoever looks after Drashti can then give you the installers from the newest CI run (**Actions**, **CI**, the newest green run for `main`, under **Artifacts**: **drashti-macOS** or **drashti-Windows**, zip files kept for 7 days; unzip the download).
 
 **On the Mac:**
 
-1. Open the `.dmg` file and drag **Drashti** into **Applications**.
-2. Open Drashti from Applications. The first time, macOS says it cannot check the app, because it is not signed yet. Click **Done** (or **Cancel**), then open **System Settings**, then **Privacy & Security**, scroll down, and click **Open Anyway** next to the message about Drashti. Confirm with your password if asked. (On older macOS versions you can instead right-click Drashti in Applications and choose **Open**.)
-3. This is only needed once.
+1. Open the downloaded `.dmg` (in **Downloads**) and drag **Drashti** into **Applications**.
+2. Open Drashti from Applications. The first time, macOS says it could not verify Drashti, because it is not signed yet. Click **Done**, then open **System Settings**, then **Privacy & Security**, scroll down to **Security**, and click **Open Anyway** next to the message about Drashti. Confirm with your password (or Touch ID), and click **Open Anyway** once more. (On macOS 13 or 14 you can instead right-click Drashti in Applications and choose **Open**.)
+3. This is only needed once. Eject the Drashti disk in Finder's sidebar; the `.dmg` can go in the Bin.
 
 **On the Windows PC:**
 
-1. Run the `.exe` installer. Windows says "Windows protected your PC", because the build is not signed yet. Click **More info**, then **Run anyway**.
-2. It installs for the current user, with no administrator password, and Drashti appears in the Start menu.
-3. Section 6 of `docs/windows-checks.md` has checks for this install; do them now and write down what you see (the rest of that file comes in section 11 of this guide).
+1. Open the downloaded `Drashti-windows-setup.exe`. If the browser says it is not commonly downloaded, keep it (in Edge: **…**, **Keep**, then **Show more**, **Keep anyway**).
+2. Windows says "Windows protected your PC", because the build is not signed yet. Click **More info**, then **Run anyway**.
+3. It installs for the current user, with no administrator password, and Drashti appears in the Start menu.
+4. Section 6 of `docs/windows-checks.md` has checks for this install; do them now and write down what you see (the rest of that file comes in section 11 of this guide).
 
 When Drashti starts the first time, its library holds two sample presentations. Your own library comes in the next step.
 

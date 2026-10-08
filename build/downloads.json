@@ -1,0 +1,46 @@
+{
+  "about": "The release's installers under names that never change (Session 18), so GitHub's releases/latest/download/<name> link always gives the newest one. scripts/package-release.mjs renames electron-builder's files (built) to these; scripts/release-assets.mjs puts the zips and the Windows installer in the update manifest; scripts/check-installers.mjs installs each and starts it.",
+  "repo": "Priyansh9121/drashti",
+  "files": [
+    {
+      "name": "Drashti-mac-apple-silicon.dmg",
+      "platform": "darwin",
+      "arch": "arm64",
+      "kind": "dmg",
+      "built": "Drashti-{version}-arm64.dmg",
+      "for": "a Mac with Apple silicon (M1 or later)"
+    },
+    {
+      "name": "Drashti-mac-intel.dmg",
+      "platform": "darwin",
+      "arch": "x64",
+      "kind": "dmg",
+      "built": "Drashti-{version}.dmg",
+      "for": "a Mac with an Intel processor"
+    },
+    {
+      "name": "Drashti-windows-setup.exe",
+      "platform": "win32",
+      "arch": "x64",
+      "kind": "nsis",
+      "built": "Drashti-{version}-setup-x64.exe",
+      "for": "64-bit Windows 10 or 11"
+    },
+    {
+      "name": "Drashti-mac-apple-silicon.zip",
+      "platform": "darwin",
+      "arch": "arm64",
+      "kind": "zip",
+      "built": "Drashti-{version}-arm64-mac.zip",
+      "for": "Drashti's own updates on an Apple-silicon Mac"
+    },
+    {
+      "name": "Drashti-mac-intel.zip",
+      "platform": "darwin",
+      "arch": "x64",
+      "kind": "zip",
+      "built": "Drashti-{version}-mac.zip",
+      "for": "Drashti's own updates on an Intel Mac"
+    }
+  ]
+}

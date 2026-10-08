@@ -1,8 +1,11 @@
 name: Release
 
 # Builds a release of Drashti (Session 14): the Mac and Windows installers, signed and notarised when
-# the certificates are given as repository secrets (and left unsigned, cleanly, when they are not), the
-# update manifest Drashti's update check reads (drashti-update.json), checksums, and FFmpeg's source.
+# the certificates are given as repository secrets (and left unsigned, cleanly, when they are not: a Mac's
+# signed ad hoc), the update manifest Drashti's update check reads (drashti-update.json), checksums, and
+# FFmpeg's source. The installers have names that never change (build/downloads.json, Session 18), so
+# https://github.com/<owner>/<repo>/releases/latest/download/<name> always gives the newest; each is
+# installed on its runner as a person would, and the Drashti it installs must start.
 #
 # It publishes a GitHub release only when started by hand with "publish" ticked, from main. Otherwise
 # (publish off, or a push to the scratch branch release-dry-run) it builds and checks everything and
@@ -82,6 +85,8 @@ jobs:
         run: node scripts/check-ffmpeg.mjs --packaged
       - name: Restart after a restore (packaged app)
         run: node scripts/check-relaunch.mjs --packaged
+      - name: Each installer installs as a person would, and what it installs starts
+        run: node scripts/check-installers.mjs
       - uses: actions/upload-artifact@v7
         with:
           name: installers-${{ runner.os }}
