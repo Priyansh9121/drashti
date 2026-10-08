@@ -117,6 +117,8 @@ export class NodeService implements EngineTransport {
   private onAirWas = false;
   private statsWaiters: ((stats: LinkStats) => void)[] = [];
   private stopping: Promise<void> | null = null;
+  /** Closing for good (Drashti is quitting): the link is never started again. */
+  private closing = false;
   private changeTimer: NodeJS.Timeout | null = null;
   /** Each node's displays as last kept (JSON), so a report that changes nothing writes nothing. */
   private readonly knownDisplays = new Map<string, string>();
@@ -143,6 +145,7 @@ export class NodeService implements EngineTransport {
   }
 
   private updateWorker(): void {
+    if (this.closing) return;
     if (this.needed()) this.startWorker();
     else void this.stopWorker();
   }
@@ -160,7 +163,8 @@ export class NodeService implements EngineTransport {
       if (this.worker === worker) this.fromWorker(worker, m);
     });
     worker.onExit(() => {
-      if (this.worker !== worker) return;
+      // Stopped on purpose, or Drashti is quitting: never started again.
+      if (this.worker !== worker || this.closing) return;
       this.worker = null;
       this.boundPort = null;
       for (const l of this.live.values()) l.online = false;
@@ -715,6 +719,9 @@ export class NodeService implements EngineTransport {
   }
 
   close(): Promise<void> {
+    // Once (Session 17: at quit it could come again after the library had closed).
+    if (this.closing) return this.stopping ?? Promise.resolve();
+    this.closing = true;
     if (this.seenWriter) clearInterval(this.seenWriter);
     if (this.offerTimer) clearTimeout(this.offerTimer);
     if (this.wantedTimer) clearTimeout(this.wantedTimer);
