@@ -483,11 +483,19 @@ test('on air, and on air again, with the preview watched and a picture standing 
   const page = await streamPage(app);
   const frames = () => page.evaluate(() => Number(document.body.dataset['frames'] ?? '0'));
   await expect.poll(frames).toBeGreaterThan(0);
-  const standsStill = async () => {
-    const before = await frames();
-    await win.waitForTimeout(2500);
-    expect(await frames(), 'the capture gave no new frame: the picture stands still').toBe(before);
-  };
+  // The picture stands still: the capture gives no new frame for 2.5 s (once it has settled: a capture
+  // that starts may give a second frame as the page finishes drawing).
+  const standsStill = () =>
+    expect
+      .poll(
+        async () => {
+          const before = await frames();
+          await win.waitForTimeout(2500);
+          return (await frames()) === before;
+        },
+        { message: 'the capture gives no new frame: the picture stands still', timeout: 30_000 },
+      )
+      .toBe(true);
   const goLive = () =>
     win.evaluate(async () => {
       await (globalThis as PageGlobals).drashti.stream.goLive({ confirmed: true });
@@ -499,6 +507,9 @@ test('on air, and on air again, with the preview watched and a picture standing 
     await (globalThis as PageGlobals).drashti.stream.end({ confirmed: true });
   });
   await waitLive(win, userData, 'off');
+  // The stand-in for YouTube takes one stream: a new one listens for the next.
+  listeners.splice(0).forEach((l) => l.kill('SIGKILL'));
+  listeners.push(rtmpListener(ffmpeg ?? '', port, join(dir, 'still-again.flv')));
   // On air again: the picture still stands still, and the stream has it at once.
   await standsStill();
   await goLive();
