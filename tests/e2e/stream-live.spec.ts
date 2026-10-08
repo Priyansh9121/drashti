@@ -48,8 +48,14 @@ async function streamPage(app: ElectronApplication): Promise<Page> {
   return app.windows().find(isStream) ?? app.waitForEvent('window', { predicate: isStream });
 }
 
-/** The profile in use sends to the local listener, with the fake camera and microphone and the test key. */
-async function setUp(app: ElectronApplication, win: Page, port: number, folder: string): Promise<void> {
+/** The profile in use sends to the local listener, with the fake camera (or none) and microphone and the test key. */
+async function setUp(
+  app: ElectronApplication,
+  win: Page,
+  port: number,
+  folder: string,
+  withCamera = true,
+): Promise<void> {
   await app.evaluate(({ dialog }, into) => {
     dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [into] });
   }, folder);
@@ -62,7 +68,7 @@ async function setUp(app: ElectronApplication, win: Page, port: number, folder: 
     })
     .toBe(true);
   const result = await win.evaluate(
-    async ({ port, key }) => {
+    async ({ port, key, withCamera }) => {
       const d = (globalThis as PageGlobals).drashti;
       const s = await d.stream.status();
       const { profiles, activeId } = await d.stream.profiles();
@@ -72,7 +78,7 @@ async function setUp(app: ElectronApplication, win: Page, port: number, folder: 
         name: 'Local test',
         url: `rtmp://127.0.0.1:${port}/live2`,
         preset: 'weak',
-        camera: s.inputs.cameras[0] ?? null,
+        camera: withCamera ? (s.inputs.cameras[0] ?? null) : null,
         sound: s.inputs.microphones[0] ?? null,
         soundDelayMs: 0,
         mixOwnSound: false,
@@ -83,7 +89,7 @@ async function setUp(app: ElectronApplication, win: Page, port: number, folder: 
       const folder = await d.stream.pickFolder();
       return folder.ok ? 'ok' : folder.message;
     },
-    { port, key: TEST_KEY },
+    { port, key: TEST_KEY, withCamera },
   );
   expect(result).toBe('ok');
 }
@@ -456,6 +462,48 @@ test('a port lost on its way to the stream’s page is given again, so the strea
   });
   await waitLive(win, userData, 'live', 45_000);
   expect(streamLog(userData)).toContain('no picture from its page for 5 s: connecting it again');
+  await win.evaluate(async () => {
+    await (globalThis as PageGlobals).drashti.stream.end({ confirmed: true });
+  });
+  await app.close();
+});
+
+test('on air, and on air again, with the preview watched and a picture standing still (no camera)', async () => {
+  test.setTimeout(150_000);
+  const port = await freePort();
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-still-'));
+  listeners.push(rtmpListener(ffmpeg ?? '', port, join(dir, 'still.flv')));
+  const { app, userData } = await launchApp(FAKE);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await setUp(app, win, port, dir, false);
+  // The preview is watched, so the stream page's capture is already going. With no camera, nothing on
+  // the Program moves, and a capture gives a frame only when the picture changes (Session 18: on CI's
+  // Mac a still picture over the camera kept the stream "starting" after the pause between sabhas).
+  const page = await streamPage(app);
+  const frames = () => page.evaluate(() => Number(document.body.dataset['frames'] ?? '0'));
+  await expect.poll(frames).toBeGreaterThan(0);
+  const standsStill = async () => {
+    const before = await frames();
+    await win.waitForTimeout(2500);
+    expect(await frames(), 'the capture gave no new frame: the picture stands still').toBe(before);
+  };
+  const goLive = () =>
+    win.evaluate(async () => {
+      await (globalThis as PageGlobals).drashti.stream.goLive({ confirmed: true });
+    });
+  await standsStill();
+  await goLive();
+  await waitLive(win, userData, 'live', 30_000);
+  await win.evaluate(async () => {
+    await (globalThis as PageGlobals).drashti.stream.end({ confirmed: true });
+  });
+  await waitLive(win, userData, 'off');
+  // On air again: the picture still stands still, and the stream has it at once.
+  await standsStill();
+  await goLive();
+  await waitLive(win, userData, 'live', 30_000);
+  expect(streamLog(userData)).not.toContain('no picture from its page');
   await win.evaluate(async () => {
     await (globalThis as PageGlobals).drashti.stream.end({ confirmed: true });
   });
