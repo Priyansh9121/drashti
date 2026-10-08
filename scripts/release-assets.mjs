@@ -44,27 +44,15 @@ const hash = async (file, algorithm, encoding) => {
   return h.digest(encoding);
 };
 
-// What electron-builder names them (electron-builder.yml): the Mac zips for Squirrel.Mac, the NSIS installer.
-const KINDS = [
-  {
-    re: new RegExp(`^Drashti-${version.replace(/\./gu, '\\.')}-arm64-mac\\.zip$`, 'u'),
-    platform: 'darwin',
-    arch: 'arm64',
-    kind: 'zip',
-  },
-  {
-    re: new RegExp(`^Drashti-${version.replace(/\./gu, '\\.')}-mac\\.zip$`, 'u'),
-    platform: 'darwin',
-    arch: 'x64',
-    kind: 'zip',
-  },
-  {
-    re: new RegExp(`^Drashti-${version.replace(/\./gu, '\\.')}-setup-x64\\.exe$`, 'u'),
-    platform: 'win32',
-    arch: 'x64',
-    kind: 'nsis',
-  },
-];
+// The installers under the names that never change (build/downloads.json; scripts/package-release.mjs
+// gives them): the Mac zips for Squirrel.Mac, and the NSIS installer, go in the update; every one of them
+// must be there.
+const downloads = JSON.parse(readFileSync(join('build', 'downloads.json'), 'utf8')).files;
+const KINDS = downloads
+  .filter((d) => d.kind === 'zip' || d.kind === 'nsis')
+  .map((d) => ({ re: new RegExp(`^${d.name.replace(/\./gu, '\\.')}$`, 'u'), ...d }));
+for (const d of downloads)
+  if (!existsSync(join(dir, d.name))) throw new Error(`${d.name} (for ${d.for}) is not among the installers`);
 const names = readdirSync(dir);
 const files = [];
 for (const k of KINDS) {

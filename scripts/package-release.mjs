@@ -12,8 +12,12 @@
 //            AZURE_SIGNING_ACCOUNT, AZURE_SIGNING_PROFILE and AZURE_PUBLISHER_NAME.
 //
 // Writes release-signing.json ({ platform, signed, notarised }) for scripts/verify-signing.mjs.
+//
+// Then (Session 18) it gives this computer's installers the names that never change
+// (build/downloads.json: Drashti-mac-apple-silicon.dmg and so on), so GitHub's
+// releases/latest/download/<name> link always gives the newest.
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -80,6 +84,15 @@ if (process.platform === 'darwin' && has('MAC_CERT_P12')) {
   how = 'signed with Azure Trusted Signing';
 }
 if (!signed) env.CSC_IDENTITY_AUTO_DISCOVERY = 'false';
+// No certificate on a Mac (Session 18): signed ad hoc all through, so that a downloaded copy is one macOS
+// "could not verify" (opened once with Open Anyway in System Settings, Privacy & Security), not one it
+// calls "damaged" (an app whose own signature does not cover it, as electron-builder leaves an unsigned
+// one: there is no Open Anyway for that). Without the hardened runtime, which only notarisation needs
+// and whose library validation stops an app signed ad hoc from starting.
+if (!signed && process.platform === 'darwin') {
+  extra.push('-c.mac.identity=-', '-c.mac.hardenedRuntime=false');
+  how = 'signed ad hoc (no certificate given)';
+}
 console.log(`Signing: ${how}.`);
 
 const result = spawnSync('pnpm', ['exec', 'electron-builder', '--publish', 'never', ...extra], {
@@ -92,4 +105,21 @@ writeFileSync(
   'release-signing.json',
   `${JSON.stringify({ platform: process.platform, signed, notarised })}\n`,
 );
-process.exit(result.status ?? 1);
+if (result.status !== 0) process.exit(result.status ?? 1);
+
+// The names that never change, for this computer's installers.
+const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
+const { files } = JSON.parse(readFileSync(join('build', 'downloads.json'), 'utf8'));
+const out = join('release', version);
+let missing = 0;
+for (const f of files.filter((x) => x.platform === process.platform)) {
+  const built = join(out, f.built.replace('{version}', version));
+  if (!existsSync(built)) {
+    console.log(`Missing: ${built} (for ${f.for})`);
+    missing++;
+    continue;
+  }
+  renameSync(built, join(out, f.name));
+  console.log(`${f.name}  (for ${f.for})`);
+}
+process.exit(missing === 0 ? 0 : 1);

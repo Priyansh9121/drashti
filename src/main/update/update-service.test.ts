@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -144,6 +144,23 @@ describe('updates', () => {
     expect(again.view()).toMatchObject({ phase: 'ready', installOnQuit: true });
     again.quit();
     expect(t.installed).toHaveLength(1);
+    expect(readFileSync(t.installed[0] ?? '').equals(body)).toBe(true);
+  });
+
+  it('carry a stopped download on only into the same version, as the release names never change', async () => {
+    const name = 'Drashti-windows-setup.exe';
+    const body = Buffer.alloc(300_000, 9);
+    const r = await releases({ [name]: body }, (base) => manifestFor(base, '1.0.2', name, body));
+    const t = service(r.base);
+    // What a download of 1.0.1 stopped part-way left, under the same name.
+    writeFileSync(join(t.dir, `${name}.part`), Buffer.alloc(100_000, 1));
+    writeFileSync(join(t.dir, `1.0.1-${name}.part`), Buffer.alloc(100_000, 1));
+    const u = t.make();
+    await u.check();
+    u.download();
+    await until(() => u.view().phase === 'ready');
+    expect((await u.setInstallOnQuit(true)).ok).toBe(true);
+    u.quit();
     expect(readFileSync(t.installed[0] ?? '').equals(body)).toBe(true);
   });
 

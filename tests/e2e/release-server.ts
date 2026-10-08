@@ -15,7 +15,13 @@ export interface Release {
 export async function releaseServer(versions: Record<string, Buffer>, latest: string): Promise<Release> {
   let served = 0;
   const kind = process.platform === 'win32' ? 'nsis' : 'zip';
-  const nameOf = (v: string) => (kind === 'nsis' ? `Drashti-${v}-setup-x64.exe` : `Drashti-${v}-mac.zip`);
+  // The release's names, which never change (build/downloads.json); the version is in the path.
+  const name =
+    kind === 'nsis'
+      ? 'Drashti-windows-setup.exe'
+      : process.arch === 'arm64'
+        ? 'Drashti-mac-apple-silicon.zip'
+        : 'Drashti-mac-intel.zip';
   const manifestOf = (base: string, v: string): UpdateManifest => {
     const body = versions[v] ?? Buffer.alloc(0);
     return {
@@ -29,8 +35,8 @@ export async function releaseServer(versions: Record<string, Buffer>, latest: st
           platform: process.platform === 'win32' ? 'win32' : 'darwin',
           arch: process.arch === 'arm64' ? 'arm64' : 'x64',
           kind,
-          name: nameOf(v),
-          url: `${base}/download/v${v}/${nameOf(v)}`,
+          name,
+          url: `${base}/download/v${v}/${name}`,
           size: body.length,
           sha512: createHash('sha512').update(body).digest('base64'),
         },
