@@ -28,6 +28,19 @@ let frames = 0;
 let sentFormat = '';
 /** Each capture has its own number: one replaced (a new size) stops handing frames on at once. */
 let generation = 0;
+/** The encoder port's frames so far, and whether a frame failed to go to it (each said once). */
+let encoderFrames = 0;
+let encoderFailed = false;
+
+/**
+ * What the capture does, for Drashti's log (Session 18: the stream that sometimes had no picture
+ * after going on air again). The main process keeps the lines that start with "[program]".
+ */
+const say = (text: string) => {
+  console.info(`[program] ${text}`);
+};
+const why = (error: unknown) =>
+  error instanceof Error ? `${error.name}: ${error.message}`.slice(0, 200) : String(error).slice(0, 200);
 
 const previewHeight = () => Math.round((PREVIEW_WIDTH * size.height) / size.width);
 
@@ -80,6 +93,7 @@ async function sendFrame(frame: VideoFrame): Promise<void> {
     port.postMessage({ kind: 'format', width: rect.width, height: rect.height, format });
   }
   port.postMessage({ kind: 'video', data });
+  if (++encoderFrames === 1) say(`the first frame went to the encoder (${key})`);
 }
 
 /** The stream's sound to the encoder, as it is made (interleaved 32-bit float). */
@@ -114,22 +128,36 @@ async function sendSound(): Promise<void> {
 
 async function capture(): Promise<void> {
   const mine = ++generation;
+  say(`capture ${String(mine)} asks for the picture (${String(size.width)}x${String(size.height)})`);
   const display = await navigator.mediaDevices.getDisplayMedia({
     video: { width: size.width, height: size.height, frameRate: 30 },
     audio: false,
   });
   const video = display.getVideoTracks()[0];
-  if (!video) return;
+  if (!video) {
+    say(`capture ${String(mine)} got no video track`);
+    return;
+  }
   if (mine !== generation) {
+    say(`capture ${String(mine)} was replaced before it began`);
     video.stop();
     return;
   }
   track = video;
+  const settings = video.getSettings();
+  say(
+    `capture ${String(mine)} began: ${String(settings.width)}x${String(settings.height)}, ${String(settings.frameRate)} fps, ${video.readyState}`,
+  );
+  video.addEventListener('ended', () => {
+    say(`capture ${String(mine)}'s track ended`);
+  });
   document.body.dataset['capture'] = 'on';
   const reader = new MediaStreamTrackProcessor({ track: video }).readable.getReader();
+  let mineFrames = 0;
   for (;;) {
     const { value: frame, done } = await reader.read();
     if (done) break;
+    if (++mineFrames === 1) say(`capture ${String(mine)}'s first frame`);
     if (mine !== generation) {
       // Replaced by a capture at another size: its frames are not handed on.
       frame.close();
@@ -148,9 +176,15 @@ async function capture(): Promise<void> {
         previewBusy = false;
       });
     }
-    if (encoder) await sendFrame(frame).catch(() => undefined);
+    if (encoder)
+      await sendFrame(frame).catch((error: unknown) => {
+        if (encoderFailed) return;
+        encoderFailed = true;
+        say(`a frame could not go to the encoder: ${why(error)}`);
+      });
     frame.close();
   }
+  say(`capture ${String(mine)} ended after ${String(mineFrames)} frames`);
   document.body.dataset['capture'] = 'off';
 }
 
@@ -160,11 +194,13 @@ function wanted(): boolean {
 
 function update(): void {
   if (wanted() && !track) {
-    void capture().catch(() => {
+    void capture().catch((error: unknown) => {
+      say(`the capture failed: ${why(error)}`);
       track = null;
       document.body.dataset['capture'] = 'failed';
     });
   } else if (!wanted() && track) {
+    say('nothing wants the picture: the capture stops');
     generation++;
     track.stop();
     track = null;
@@ -188,9 +224,12 @@ export function startCapture(level: () => number, sound: () => MediaStreamTrack 
       preview?.close();
       preview = port;
     } else if (data?.drashtiStreamPort === 'encoder') {
+      say(`the encoder's port arrived (${track ? 'capturing' : 'no capture yet'})`);
       encoder?.close();
       encoder = port;
       sentFormat = '';
+      encoderFrames = 0;
+      encoderFailed = false;
       void sendSound();
     } else return;
     port.start();
@@ -219,6 +258,7 @@ export function stopPreview(): void {
 
 /** Nothing is being encoded: frames and sound stop going to the worker. */
 export function stopEncoder(): void {
+  if (encoder) say('the encoder stops');
   encoder?.close();
   encoder = null;
   void soundReader?.cancel();

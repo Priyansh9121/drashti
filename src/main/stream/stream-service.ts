@@ -333,6 +333,7 @@ export class StreamService {
     if (wanted && (!this.program || this.program.isDestroyed())) {
       void this.openProgram();
     } else if (!wanted && this.program && !this.program.isDestroyed()) {
+      this.deps.log('info', "The stream's page closes: nothing needs it");
       this.program.destroy();
       this.program = null;
       this.programReady = false;
@@ -346,9 +347,11 @@ export class StreamService {
     if (this.program && !this.program.isDestroyed()) return;
     const { width, height } = this.context();
     const win = this.deps.createProgram({ width, height });
+    this.deps.log('info', `The stream's page opens (${String(width)}x${String(height)})`);
     this.program = win;
     this.programReady = false;
     win.webContents.on('did-finish-load', () => {
+      this.deps.log('info', "The stream's page loaded");
       this.programReady = true;
       this.pairPreviews();
       this.pairEncoder();
@@ -559,6 +562,7 @@ export class StreamService {
     const { port1, port2 } = new MessageChannelMain();
     worker.sendFrames(port1);
     program.webContents.postMessage(IPC.stream.port, { role: 'encoder' }, [port2]);
+    this.deps.log('info', "The stream's page was given the encoder");
     this.encoderPaired.at = this.deps.now();
     this.contextChanged();
   }
