@@ -16,7 +16,7 @@ import { SettingsRepo } from './settings';
 describe('later writes', () => {
   const open: Db[] = [];
   afterEach(() => {
-    for (const db of open.splice(0)) db.close();
+    for (const db of open.splice(0)) if (db.open) db.close();
   });
 
   const setup = () => {
@@ -100,6 +100,25 @@ describe('later writes', () => {
     });
     expect(later.pending).toBe(0);
     expect(warnings[0]).toContain('no such column');
+  });
+
+  it('drop a write after the quit, or with the library closed, saying so and never throwing (Session 17)', () => {
+    const quitting = setup();
+    quitting.later.flush();
+    let ran = false;
+    expect(() => {
+      quitting.later.write('nodes-seen:1', () => {
+        ran = true;
+      });
+    }).not.toThrow();
+    expect(ran).toBe(false);
+    expect(quitting.warnings.at(-1)).toBe('A later write (nodes-seen:1) was not made: the library is closed');
+    const closed = setup();
+    closed.main.close();
+    expect(() => {
+      closed.later.write('nodes-seen:2', () => undefined);
+    }).not.toThrow();
+    expect(closed.warnings.at(-1)).toContain('the library is closed');
   });
 
   it('write whatever still waits when Drashti quits', () => {

@@ -34,6 +34,8 @@ export interface LaterWritesOptions {
 export class LaterWrites {
   private readonly waiting = new Map<string, () => void>();
   private armed = false;
+  /** Set by the quit's flush: later writes are dropped. */
+  private closed = false;
 
   constructor(
     private readonly db: Db,
@@ -50,6 +52,13 @@ export class LaterWrites {
    * what is written: a newer write for it replaces one still waiting.
    */
   write(key: string, run: () => void): void {
+    // After the quit's flush, or with the library closed, a write is dropped, saying so, and never
+    // throws (Session 17: the nodes' "last seen", saved at quit after the library had closed, was an
+    // uncaught exception in the main process).
+    if (this.closed || !this.db.open) {
+      this.options.warn?.(`A later write (${key}) was not made: the library is closed`);
+      return;
+    }
     this.waiting.delete(key);
     // Writes for other things that are waiting go first, so nothing jumps the queue.
     if (this.waiting.size === 0 && this.attempt(key, run)) return;
@@ -59,6 +68,7 @@ export class LaterWrites {
 
   /** At quit: whatever is still waiting is written, waiting for the library if it must. */
   flush(): void {
+    this.closed = true;
     for (const [key, run] of this.waiting) {
       try {
         run();
@@ -90,6 +100,7 @@ export class LaterWrites {
     const schedule = this.options.schedule ?? ((f: () => void, ms: number) => setTimeout(f, ms));
     schedule(() => {
       this.armed = false;
+      if (this.closed || !this.db.open) return;
       for (const [key, run] of this.waiting) {
         if (!this.attempt(key, run)) break;
         this.waiting.delete(key);
