@@ -84,6 +84,29 @@ export function apiSegments(raw: string): string[] | null {
   return out;
 }
 
+/**
+ * A GET request's query (Session 18: the remote's library pages and search), as plain strings: the
+ * first value of each name, at most 8 names, each value at most 200 characters. Never null: an
+ * address without a query, or one that cannot be read, has none.
+ */
+export function apiQuery(raw: string): Record<string, string> {
+  const at = raw.indexOf('?');
+  if (at < 0) return {};
+  const out: Record<string, string> = {};
+  let params: URLSearchParams;
+  try {
+    params = new URLSearchParams(raw.slice(at + 1, at + 1 + 2000));
+  } catch {
+    return {};
+  }
+  for (const [name, value] of params) {
+    if (Object.keys(out).length >= 8) break;
+    if (!/^[a-z]{1,16}$/u.test(name) || Object.hasOwn(out, name)) continue;
+    out[name] = value.slice(0, 200);
+  }
+  return out;
+}
+
 /** The files the pages need: the pages themselves and everything under assets/. */
 export function listWebFiles(webDir: string): Map<string, WebFile> {
   const files = new Map<string, WebFile>();

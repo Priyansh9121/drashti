@@ -299,6 +299,23 @@ describe('the network server', () => {
         })
       ).status,
     ).toBe(404);
+    // The presenter's remote (Session 18): the library a page at a time, and searched, by query string.
+    expect(
+      (await call(port, '/api/v1/presentations?offset=100&limit=50', { headers: bearer(REMOTE_TOKEN) }))
+        .status,
+    ).toBe(200);
+    expect(host.requests.at(-1)).toMatchObject({
+      op: 'presentations',
+      args: { offset: '100', limit: '50' },
+    });
+    expect(
+      (await call(port, '/api/v1/search?q=placeholder%20words', { headers: bearer(REMOTE_TOKEN) })).status,
+    ).toBe(200);
+    expect(host.requests.at(-1)).toMatchObject({ op: 'search', args: { query: 'placeholder words' } });
+    expect((await call(port, '/api/v1/search?q=x', { headers: bearer(STAGE_TOKEN) })).status).toBe(403);
+    expect(
+      (await call(port, '/api/v1/presentations', { method: 'POST', headers: bearer(REMOTE_TOKEN) })).status,
+    ).toBe(405);
     const big = await call(port, '/api/v1/announcements', {
       method: 'POST',
       headers: { ...bearer(ANNOUNCE_TOKEN), 'Content-Type': 'application/json' },

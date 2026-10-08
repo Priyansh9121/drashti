@@ -33,9 +33,14 @@ import {
   isDeviceOp,
   type PairAnswer,
   REMOTE_COMMANDS,
+  REMOTE_LIBRARY_MAX,
+  REMOTE_LIBRARY_PAGE,
+  type RemoteLibraryPage,
+  type RemotePresentation,
 } from '../../shared/network-api';
 import type { MacroRunResult } from '../../shared/macros';
 import type { PlaylistItemInfo, PlaylistNode } from '../../shared/playlists';
+import type { SearchResult } from '../../shared/search';
 import type { PassageResult } from '../../shared/shastra';
 import { referenceInputSchema } from '../../shared/shastra';
 import type { DeviceRepo, DeviceRow } from '../db/devices';
@@ -61,6 +66,10 @@ export interface NetworkReads {
   playlists(): PlaylistNode[];
   items(playlistId: string): PlaylistItemInfo[];
   presentation(presentationId: string): PresentationDoc | null;
+  /** The library's presentations by name, `limit` of them from `offset`, and how many there are (Session 18). */
+  library(offset: number, limit: number): { presentations: RemotePresentation[]; total: number };
+  /** The library searched as the operator window searches it. */
+  search(query: string): SearchResult;
   messages(): MessageTemplate[];
   /** The prop marked as the logo, ready for the engine; null when none is. */
   logo(): PropItem | null;
@@ -137,6 +146,9 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   playlists: IPC.playlists.tree,
   items: IPC.playlists.items,
   presentation: IPC.library.getPresentation,
+  // The presenter's remote (Session 18) reads the library as the window does: Simple Mode keeps reading.
+  presentations: IPC.library.listPresentations,
+  search: IPC.library.search,
   messages: IPC.messages.list,
   timers: IPC.engine.snapshot,
   logo: IPC.props.getLogo,
@@ -172,6 +184,13 @@ const ok = (body: Record<string, unknown> = {}): DeviceAnswer => ({
   status: 200,
   body: { ok: true, ...body },
 });
+/** A whole number from a query string (or a number), within bounds; `fallback` when there is none. */
+export function wholeNumber(raw: unknown, fallback: number, min: number, max: number): number {
+  const n =
+    typeof raw === 'string' && /^\d{1,9}$/u.test(raw) ? Number(raw) : typeof raw === 'number' ? raw : NaN;
+  return Number.isInteger(n) ? Math.min(max, Math.max(min, n)) : fallback;
+}
+
 const deny = (status: number, message: string): DeviceAnswer => ({ status, body: { ok: false, message } });
 
 const sameCode = (a: string, b: string): boolean =>
@@ -662,6 +681,16 @@ export class NetworkService implements EngineTransport {
         const id = idSchema.safeParse(args['presentationId']);
         const doc = id.success ? this.deps.reads.presentation(id.data) : null;
         return doc ? ok({ presentation: doc }) : deny(404, 'There is no such presentation.');
+      }
+      case 'presentations': {
+        const offset = wholeNumber(args['offset'], 0, 0, 1_000_000);
+        const limit = wholeNumber(args['limit'], REMOTE_LIBRARY_PAGE, 1, REMOTE_LIBRARY_MAX);
+        const page: RemoteLibraryPage = { ...this.deps.reads.library(offset, limit), offset };
+        return ok({ ...page });
+      }
+      case 'search': {
+        const query = typeof args['query'] === 'string' ? args['query'].trim().slice(0, 200) : '';
+        return ok({ ...this.deps.reads.search(query) });
       }
       case 'messages':
         return ok({ messages: this.deps.reads.messages() });

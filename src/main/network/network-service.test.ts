@@ -65,6 +65,32 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
       playlists: () => [],
       items: () => [],
       presentation: () => null,
+      library: (offset, limit) => {
+        const all = Array.from({ length: 250 }, (_, i) => ({
+          id: `p${String(i).padStart(3, '0')}`,
+          name: `Placeholder ${String(i).padStart(3, '0')}`,
+          libraryName: 'Default',
+          slideCount: 3,
+          category: i % 2 === 0 ? 'Placeholder category' : null,
+        }));
+        return { total: all.length, presentations: all.slice(offset, offset + limit) };
+      },
+      search: (query) => ({
+        query,
+        hits:
+          query === ''
+            ? []
+            : [
+                {
+                  presentationId: 'p007',
+                  name: 'Placeholder 007',
+                  libraryName: 'Default',
+                  match: { kind: 'title' },
+                },
+              ],
+        more: false,
+        legacyCount: 0,
+      }),
       messages: () => [{ id: 'm1', name: 'Car', template: 'Car {plate} please move', fields: {} }],
       logo: () => ({ id: 'logo', name: 'Placeholder logo', elements: [] }),
       mediaSource: () => null,
@@ -312,6 +338,69 @@ describe('the network in the main process', () => {
     expect(
       service.answer({ address: PHONE, deviceId: stage, op: 'shastra', args: { reference: 'PG 14' } }).status,
     ).toBe(403);
+  });
+
+  it('lets a Remote read the library a page at a time and search it, in Simple Mode too (Session 18)', () => {
+    for (const locked of [false, true]) {
+      const { service, commands } = setup({ locked });
+      const remote = service.pairForCheck('remote', 'Placeholder phone').id;
+      const stage = service.pairForCheck('stage', 'Placeholder tablet').id;
+      const read = (op: 'presentations' | 'search', args: Record<string, unknown>) =>
+        service.answer({ address: PHONE, deviceId: remote, op, args });
+      // A page of 100 from the start, with how many there are.
+      const first = read('presentations', {});
+      expect(first.status).toBe(200);
+      expect(first.body).toMatchObject({ ok: true, offset: 0, total: 250 });
+      const firstPage = (first.body as { presentations: { id: string; category: string | null }[] })
+        .presentations;
+      expect(firstPage).toHaveLength(100);
+      expect(firstPage[0]).toEqual({
+        id: 'p000',
+        name: 'Placeholder 000',
+        libraryName: 'Default',
+        slideCount: 3,
+        category: 'Placeholder category',
+      });
+      // As a query string brings them: the last page, a page too big, numbers that are not.
+      expect(read('presentations', { offset: '200', limit: '100' }).body).toMatchObject({ offset: 200 });
+      expect(
+        (read('presentations', { offset: '200' }).body as { presentations: unknown[] }).presentations,
+      ).toHaveLength(50);
+      expect(
+        (read('presentations', { limit: '5000' }).body as { presentations: unknown[] }).presentations,
+      ).toHaveLength(200);
+      expect(read('presentations', { offset: '-3', limit: 'all' }).body).toMatchObject({ offset: 0 });
+      // Searched as the window searches; nothing asked, nothing found.
+      expect(read('search', { query: ' placeholder 7 ' }).body).toMatchObject({
+        ok: true,
+        query: 'placeholder 7',
+        hits: [{ presentationId: 'p007' }],
+      });
+      expect(read('search', {}).body).toMatchObject({ ok: true, query: '', hits: [] });
+      // A slide of a presentation found there goes up, as from the window (Simple Mode too).
+      expect(
+        service.answer({
+          address: PHONE,
+          deviceId: remote,
+          op: 'command',
+          args: { type: 'goLive', presentationId: 'p007', slideIndex: 1 },
+        }).status,
+      ).toBe(200);
+      expect(commands.at(-1)).toMatchObject({ type: 'goLive', presentationId: 'p007', slideIndex: 1 });
+      // A stage display reads neither.
+      expect(service.answer({ address: PHONE, deviceId: stage, op: 'presentations', args: {} }).status).toBe(
+        403,
+      );
+      expect(service.answer({ address: PHONE, deviceId: stage, op: 'search', args: {} }).status).toBe(403);
+    }
+    // The lock is asked for both, as for the window's own reads.
+    const everything = setup({ lockEverything: true });
+    const id = everything.service.pairForCheck('remote', 'Placeholder phone').id;
+    for (const op of ['presentations', 'search'] as const)
+      expect(everything.service.answer({ address: PHONE, deviceId: id, op, args: {} })).toEqual({
+        status: 403,
+        body: { ok: false, message: SIMPLE_MODE_REFUSAL },
+      });
   });
 
   it('refuses over the network exactly what Simple Mode refuses in the window', () => {

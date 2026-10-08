@@ -33,6 +33,10 @@ export const DEVICE_OPS = {
   items: ['remote'],
   /** A presentation's slides, groups and arrangements (as the operator window reads them). */
   presentation: ['remote'],
+  /** The library's presentations by name, a page at a time (Session 18: the presenter's remote). */
+  presentations: ['remote'],
+  /** The library searched as the operator window searches it: titles, a kirtan's details, slide words. */
+  search: ['remote'],
   /** Message templates and their fields. */
   messages: ['remote'],
   timers: ['remote'],
@@ -92,6 +96,27 @@ export const REMOTE_COMMANDS = [
   // A jump to a marker of the background video or the sound playing (Session 14).
   'jumpToMarker',
 ] as const;
+
+/** A presentation as a Remote lists the library (Session 18): no files, nothing to change it with. */
+export interface RemotePresentation {
+  id: string;
+  name: string;
+  libraryName: string;
+  slideCount: number;
+  /** A kirtan's category, or null (not a kirtan, or none set). */
+  category: string | null;
+}
+
+/** One page of the library for a Remote: the presentations from `offset`, and how many there are. */
+export interface RemoteLibraryPage {
+  presentations: RemotePresentation[];
+  offset: number;
+  total: number;
+}
+
+/** How many presentations a Remote gets at once, unless it asks for fewer (and the most it may). */
+export const REMOTE_LIBRARY_PAGE = 100;
+export const REMOTE_LIBRARY_MAX = 200;
 
 /** A request from the network server to the main process, for a paired device. */
 export interface DeviceRequest {

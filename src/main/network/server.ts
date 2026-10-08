@@ -34,7 +34,7 @@ import {
 import { RateLimiter, WrongCodeLimiter } from './limits';
 import { PreviewMaker, type PreviewSource } from './previews';
 import { hashToken } from './tokens';
-import { apiSegments, listWebFiles, safeRequestPath, type WebFile } from './web-files';
+import { apiQuery, apiSegments, listWebFiles, safeRequestPath, type WebFile } from './web-files';
 
 /*
  * Drashti's network server: HTTP and WebSocket on one port. It runs in a
@@ -138,6 +138,9 @@ const ROUTES: Route[] = [
   route('GET', '/api/v1/state', 'state'),
   route('GET', '/api/v1/stage', 'stage'),
   route('GET', '/api/v1/playlists', 'playlists'),
+  // The presenter's remote (Session 18): the library a page at a time, and searched.
+  route('GET', '/api/v1/presentations', 'presentations', (q) => ({ offset: q['offset'], limit: q['limit'] })),
+  route('GET', '/api/v1/search', 'search', (q) => ({ query: q['q'] })),
   route('GET', '/api/v1/playlists/:id/items', 'items', (_b, p) => ({ playlistId: p['id'] })),
   route(
     'GET',
@@ -555,7 +558,8 @@ export class NetworkServer {
         await this.preview(res, params['id'] ?? '');
         return;
       }
-      const body = req.method === 'POST' ? await readJson(req) : {};
+      // A POST's JSON body, or a GET's query (strings only).
+      const body = req.method === 'POST' ? await readJson(req) : apiQuery(req.url ?? '');
       const args = r.args ? r.args(body, params) : {};
       const answer = await this.host.request({ deviceId: device.id, op: r.op, args, address });
       this.json(res, answer.status, answer.body);

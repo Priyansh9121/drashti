@@ -143,6 +143,7 @@ Section 7 of `docs/parallel-run.md` has the steps: **Phones** in the header, **L
 - **Remove** a phone that is lost, or whose owner leaves the seva: it is cut off at once.
 - **Make a new one** stops an old poster's link (if a photo of it went somewhere it should not).
 - Phones need **Safari 16.4 or later** on an iPhone or iPad, or **Chrome** on Android.
+- **Presenters** (a speaker with a phone or an iPad) pair as a Remote, and use `docs/presenter-guide.md`: the library, their notes, and Next, from their own device, at no cost.
 - A stage tablet should be set never to lock while it shows the stage.
 
 ---

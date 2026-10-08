@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import type { PresentationDoc } from '../../../../shared/library';
 import type { MessageTemplate } from '../../../../shared/messages';
+import type { RemoteLibraryPage, RemotePresentation } from '../../../../shared/network-api';
 import type { ItemOrder, PlaylistItemInfo, PlaylistNode } from '../../../../shared/playlists';
+import type { SearchHit, SearchResult } from '../../../../shared/search';
 import { useEngine } from '../../engine/engine-store';
 import { api } from '../device';
 import { onListsChanged, onOnline } from '../feed';
@@ -14,7 +16,21 @@ import { onListsChanged, onOnline } from '../feed';
  * The slides shown follow the live item, until the operator picks another.
  */
 
-export type RemoteTab = 'show' | 'playlist' | 'more';
+export type RemoteTab = 'show' | 'playlist' | 'library' | 'more';
+
+/** What a tablet's side shows beside the show: the playlist or the whole library (Session 18). */
+export type RemoteSide = 'playlist' | 'library';
+
+/** The library as a Remote reads it (Session 18): by name a page at a time, or searched. */
+export interface RemoteLibrary {
+  /** The presentations listed so far, by name, and how many there are. */
+  list: RemotePresentation[] | null;
+  total: number;
+  /** What is searched for ('' for none), and what was found (null while it is asked). */
+  query: string;
+  hits: SearchHit[] | null;
+  more: boolean;
+}
 
 /** The slides shown: a playlist item's (in its order) or the live presentation's. */
 export interface Viewing {
@@ -25,6 +41,12 @@ export interface Viewing {
 
 interface RemoteView {
   tab: RemoteTab;
+  side: RemoteSide;
+  library: RemoteLibrary;
+  /** A slide to bring into view in the slides shown (a search found its words), or null. */
+  focusSlideId: string | null;
+  /** The live slide's notes and the next one's, under the live picture (remembered on this device). */
+  notesOpen: boolean;
   playlists: PlaylistNode[] | null;
   /** The playlist the Playlist tab shows (the live one, until another is picked). */
   playlistId: string | null;
@@ -40,8 +62,32 @@ interface RemoteView {
   shastra: { name: string; abbreviation: string; itemCount: number }[] | null;
 }
 
+const NOTES_KEY = 'drashti.remote.notes';
+
+/** Whether this device last had the notes open (the browser may refuse storage: then they start open). */
+function notesWereOpen(): boolean {
+  try {
+    return localStorage.getItem(NOTES_KEY) !== 'hidden';
+  } catch {
+    return true;
+  }
+}
+
+export function setNotesOpen(open: boolean): void {
+  useRemote.setState({ notesOpen: open });
+  try {
+    localStorage.setItem(NOTES_KEY, open ? 'shown' : 'hidden');
+  } catch {
+    // Kept for this visit only.
+  }
+}
+
 export const useRemote = create<RemoteView>(() => ({
   tab: 'show',
+  side: 'playlist',
+  library: { list: null, total: 0, query: '', hits: null, more: false },
+  focusSlideId: null,
+  notesOpen: notesWereOpen(),
   playlists: null,
   playlistId: null,
   items: null,
@@ -93,6 +139,40 @@ export function view(viewing: Viewing, toShowTab = true): void {
   }
 }
 
+// ---- the library (Session 18) ---------------------------------------------------------------------
+
+/** The library by name: the first page, or the next one after those listed. */
+export async function loadLibrary(more = false): Promise<void> {
+  const before = useRemote.getState().library;
+  const offset = more ? (before.list?.length ?? 0) : 0;
+  const r = await api<RemoteLibraryPage>(`/api/v1/presentations?offset=${String(offset)}`);
+  if (!r.ok) return;
+  const now = useRemote.getState().library;
+  const list = more ? [...(now.list ?? []).slice(0, offset), ...r.presentations] : r.presentations;
+  useRemote.setState({ library: { ...now, list, total: r.total } });
+}
+
+/** Search the library as the window does; an answer to an older query is let go. */
+export async function searchLibrary(query: string): Promise<void> {
+  const q = query.trim();
+  const now = useRemote.getState().library;
+  useRemote.setState({ library: { ...now, query: q, hits: q === '' ? null : now.hits, more: false } });
+  if (q === '') return;
+  const r = await api<SearchResult>(`/api/v1/search?q=${encodeURIComponent(q)}`);
+  const latest = useRemote.getState().library;
+  if (!r.ok || latest.query !== q) return;
+  useRemote.setState({ library: { ...latest, hits: r.hits, more: r.more } });
+}
+
+/**
+ * A presentation from the library: its slides shown (nothing goes up until one is tapped); on a phone,
+ * on the Show tab. A slide the search found is brought into view.
+ */
+export function openPresentation(presentationId: string, slideId: string | null = null): void {
+  useRemote.setState({ focusSlideId: slideId });
+  view({ presentationId, item: null });
+}
+
 async function loadTemplates(): Promise<void> {
   const r = await api<{ messages: MessageTemplate[] }>('/api/v1/messages');
   if (r.ok) useRemote.setState({ templates: r.messages });
@@ -120,6 +200,37 @@ async function loadLogo(): Promise<void> {
   if (r.ok) useRemote.setState({ logo: r.logo });
 }
 
+/** What is live, as the slides to show: the live presentation, with its playlist item when it has one. */
+function liveViewing(): Viewing | null {
+  const live = useEngine.getState().state?.live;
+  if (!live?.presentationId) return null;
+  const item = live.playlist
+    ? useRemote
+        .getState()
+        .items?.find(
+          (i) => i.id === live.playlist?.itemId && (i.kind === 'presentation' || i.kind === 'shastra'),
+        )
+    : undefined;
+  return {
+    presentationId: live.presentationId,
+    item:
+      live.playlist && item?.kind === 'presentation'
+        ? { playlistId: live.playlist.playlistId, itemId: item.id, order: item.order }
+        : live.playlist && item?.kind === 'shastra'
+          ? { playlistId: live.playlist.playlistId, itemId: item.id, order: { mode: 'all' } }
+          : null,
+  };
+}
+
+/** Back to the slides on the screens, from a presentation opened from the library (Session 18). */
+export function viewLive(): void {
+  const v = liveViewing();
+  if (v) {
+    useRemote.setState({ focusSlideId: null });
+    view(v, false);
+  }
+}
+
 /** The slides shown follow what goes live: a new live item, or the live presentation. */
 function followLive(): void {
   let last = '';
@@ -129,26 +240,9 @@ function followLive(): void {
     const key = `${live.presentationId}|${live.playlist?.itemId ?? ''}`;
     if (key === last) return;
     last = key;
-    const item = live.playlist
-      ? useRemote
-          .getState()
-          .items?.find(
-            (i) => i.id === live.playlist?.itemId && (i.kind === 'presentation' || i.kind === 'shastra'),
-          )
-      : undefined;
+    const v = liveViewing();
     // Following what went live leaves the tab as it is (timers stay in view while Next goes on).
-    view(
-      {
-        presentationId: live.presentationId,
-        item:
-          live.playlist && item?.kind === 'presentation'
-            ? { playlistId: live.playlist.playlistId, itemId: item.id, order: item.order }
-            : live.playlist && item?.kind === 'shastra'
-              ? { playlistId: live.playlist.playlistId, itemId: item.id, order: { mode: 'all' } }
-              : null,
-      },
-      false,
-    );
+    if (v) view(v, false);
   });
 }
 
@@ -173,6 +267,10 @@ export function startRemote(): void {
     if (what === 'presentations') {
       const v = useRemote.getState().viewing;
       if (v) void loadDoc(v.presentationId);
+      // The library changed: the list again if it was read, and the search again if one is up.
+      const { library } = useRemote.getState();
+      if (library.list) void loadLibrary();
+      if (library.query !== '') void searchLibrary(library.query);
     }
     if (what === 'messages') void loadTemplates();
     if (what === 'props') void loadLogo();

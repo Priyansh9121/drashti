@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { RemotePresentation } from '../../../../shared/network-api';
+import { KIRTAN_FIELD_NAMES, type SearchHit } from '../../../../shared/search';
 import type { EngineState } from '../../../../shared/engine/state';
 import type { PresentationDoc } from '../../../../shared/library';
 import type { PlaybackMarker } from '../../../../shared/markers';
@@ -18,9 +20,11 @@ import { Button } from '../../ui/Button';
 import { cx } from '../../ui/cx';
 import {
   Ban,
+  BookOpen,
   ChevronLeft,
   ChevronRight,
   Eraser,
+  FileText,
   Layers,
   ListMusic,
   Pause,
@@ -28,6 +32,7 @@ import {
   RotateCcw,
   Stamp,
   Timer,
+  Tv,
 } from '../../ui/icons';
 import { Notice } from '../../ui/Notice';
 import { api, current } from '../device';
@@ -35,7 +40,19 @@ import { startFeed, useFeed } from '../feed';
 import { ConnectionChip } from '../Connection';
 import { networkPreviews } from '../previews';
 import { tap, useTapNotice } from '../taps';
-import { loadPlaylists, type RemoteTab, showPlaylist, startRemote, useRemote, view } from './remote-store';
+import {
+  loadLibrary,
+  loadPlaylists,
+  openPresentation,
+  type RemoteTab,
+  searchLibrary,
+  setNotesOpen,
+  showPlaylist,
+  startRemote,
+  useRemote,
+  view,
+  viewLive,
+} from './remote-store';
 
 /*
  * The remote for a phone or tablet (a Remote device): what is on the screens
@@ -45,23 +62,41 @@ import { loadPlaylists, type RemoteTab, showPlaylist, startRemote, useRemote, vi
  * renderer with the bundled fonts, so Gujarati shapes the same on every
  * phone; pictures and videos are small previews. Each tap takes effect after
  * the one before it (taps.ts).
+ *
+ * For a presenter (Session 18): the whole library, searched or by name (open
+ * a presentation, tap a slide to put it up), the live slide's notes and the
+ * next one's under the live picture, and, on a tablet held sideways, the
+ * live picture, the notes and Next beside the slides.
  */
 
 const CANVAS = { width: 1920, height: 1080 };
 
 const post = (path: string, body?: unknown) => () => api<{ rev?: number }>(path, { method: 'POST', body });
 
-/** On a tablet or a wide window, everything at once; on a phone, tabs. */
-function useWide(): boolean {
-  const query = '(min-width: 768px)';
-  const [wide, setWide] = useState(() => matchMedia(query).matches);
+/**
+ * How the page is laid out: tabs on a phone; on a tablet held upright (or a narrow window), the
+ * playlist or the library beside the show; held sideways (or a wide window), the live picture, the
+ * notes and Next beside the slides (Session 18).
+ */
+type RemoteLayout = 'phone' | 'wide' | 'landscape';
+const WIDE = '(min-width: 768px)';
+const LANDSCAPE = '(min-width: 1000px) and (orientation: landscape)';
+
+function useLayout(): RemoteLayout {
+  const read = (): RemoteLayout =>
+    matchMedia(LANDSCAPE).matches ? 'landscape' : matchMedia(WIDE).matches ? 'wide' : 'phone';
+  const [layout, setLayout] = useState(read);
   useEffect(() => {
-    const m = matchMedia(query);
-    const on = () => setWide(m.matches);
-    m.addEventListener('change', on);
-    return () => m.removeEventListener('change', on);
+    const queries = [matchMedia(LANDSCAPE), matchMedia(WIDE)];
+    const on = () => {
+      setLayout(read());
+    };
+    for (const q of queries) q.addEventListener('change', on);
+    return () => {
+      for (const q of queries) q.removeEventListener('change', on);
+    };
   }, []);
-  return wide;
+  return layout;
 }
 
 const itemArrangement = (order: ItemOrder, doc: PresentationDoc): string | null =>
@@ -138,6 +173,55 @@ function NextLine({ state }: { state: EngineState | null }) {
   );
 }
 
+/** The live slide's notes and the next slide's, for a presenter; one tap shows or hides them (Session 18). */
+function Notes({ state }: { state: EngineState | null }) {
+  const open = useRemote((s) => s.notesOpen);
+  const live = state?.layers.slide?.notes.trim() ?? '';
+  const next = state?.next?.kind === 'slide' ? state.next.notes.trim() : '';
+  return (
+    <section className="space-y-2" aria-labelledby="notes-title" data-testid="remote-notes-section">
+      <div className="flex items-center gap-2">
+        <h2 id="notes-title" className="flex-1 text-sm font-bold tracking-wider text-muted uppercase">
+          Notes
+        </h2>
+        <Button
+          size="sm"
+          icon={FileText}
+          aria-expanded={open}
+          aria-controls="remote-notes"
+          data-testid="remote-notes-toggle"
+          onClick={() => {
+            setNotesOpen(!open);
+          }}
+        >
+          {open ? 'Hide notes' : 'Show notes'}
+        </Button>
+      </div>
+      {open && (
+        <div
+          id="remote-notes"
+          className="space-y-2 rounded-lg border border-line bg-panel-2 px-3 py-2"
+          data-testid="remote-notes"
+        >
+          <p
+            className={cx('text-lg whitespace-pre-wrap', live ? 'text-fg' : 'text-muted')}
+            data-testid="remote-notes-live"
+          >
+            {live || (state?.layers.slide ? 'No notes on this slide.' : 'No slide on the screens.')}
+          </p>
+          <p
+            className="border-t border-line pt-2 text-base whitespace-pre-wrap text-muted"
+            data-testid="remote-notes-next"
+          >
+            <span className="font-bold">Next: </span>
+            {next || (state?.next?.kind === 'slide' ? 'no notes' : 'no slide')}
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function QuickActions({ state }: { state: EngineState | null }) {
   const logoMarked = useRemote((s) => s.logo !== null);
   const blackout = state?.blackout ?? false;
@@ -198,7 +282,18 @@ function QuickActions({ state }: { state: EngineState | null }) {
 
 // ---- the shown item's slides -----------------------------------------------------------------
 
-function SlideThumb({ s, live, onTap }: { s: OrderedSlide; live: boolean; onTap: () => void }) {
+function SlideThumb({
+  s,
+  live,
+  focus,
+  onTap,
+}: {
+  s: OrderedSlide;
+  live: boolean;
+  /** The slide a search found: brought into view and outlined. */
+  focus: boolean;
+  onTap: () => void;
+}) {
   const bg = s.slide.cues.find((c) => c.kind === 'background');
   const words = firstLine(s);
   return (
@@ -210,10 +305,12 @@ function SlideThumb({ s, live, onTap }: { s: OrderedSlide; live: boolean; onTap:
         aria-label={`${s.group.name} ${s.position + 1}${words ? `: ${words}` : ''}${live ? ', on the screens' : ''}`}
         data-testid="remote-slide"
         data-position={s.position}
+        data-slide-id={s.slide.id}
         data-live={live ? 'true' : undefined}
+        data-focus={focus ? 'true' : undefined}
         className={cx(
           'block w-full overflow-hidden rounded-lg border-2 bg-panel-2 text-left',
-          live ? 'border-live' : 'border-line',
+          live ? 'border-live' : focus ? 'border-accent' : 'border-line',
         )}
       >
         <div className="relative bg-black" aria-hidden="true" data-a11y-picture>
@@ -260,11 +357,21 @@ function SlideThumb({ s, live, onTap }: { s: OrderedSlide; live: boolean; onTap:
 function Slides() {
   const viewing = useRemote((s) => s.viewing);
   const doc = useRemote((s) => s.doc);
+  const focusSlideId = useRemote((s) => s.focusSlideId);
   const live = useEngine((s) => s.state?.live ?? null);
   const shownIndex = useEngine((s) => s.state?.layers.slide?.slideIndex ?? null);
+  // A slide a search found, once its presentation is open: into view.
+  useEffect(() => {
+    if (!focusSlideId || doc?.id !== viewing?.presentationId) return;
+    document
+      .querySelector(`[data-testid="remote-slide"][data-slide-id="${CSS.escape(focusSlideId)}"]`)
+      ?.scrollIntoView({ block: 'center' });
+  }, [focusSlideId, doc, viewing]);
   if (!viewing)
     return (
-      <p className="text-base text-muted">Nothing is live. Choose an item in the playlist, or press Next.</p>
+      <p className="text-base text-muted">
+        Nothing is live. Choose an item in the playlist or a presentation in the library, or press Next.
+      </p>
     );
   if (doc?.id !== viewing.presentationId) return <p className="text-base text-muted">Opening…</p>;
   const isLiveItem =
@@ -277,12 +384,18 @@ function Slides() {
       : doc.selectedArrangementId;
   const order = playOrder(doc, arrangementId);
   const item = viewing.item;
+  const otherThanLive = live?.presentationId != null && live.presentationId !== viewing.presentationId;
   return (
     <section className="space-y-2" aria-labelledby="slides-title">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <h2 id="slides-title" className="min-w-0 flex-1 truncate text-base font-bold text-fg">
           {doc.name}
         </h2>
+        {otherThanLive && (
+          <Button size="lg" icon={Tv} data-testid="remote-show-live" onClick={viewLive}>
+            On the screens
+          </Button>
+        )}
         {item && !isLiveItem && (
           <Button
             size="lg"
@@ -296,12 +409,18 @@ function Slides() {
           </Button>
         )}
       </div>
+      {!isLiveItem && !item && (
+        <p className="text-sm text-muted" data-testid="remote-slides-hint">
+          Not on the screens. Tap a slide to put it up.
+        </p>
+      )}
       <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4" data-testid="remote-slides">
         {order.slides.map((s) => (
           <SlideThumb
             key={`${s.position}`}
             s={s}
             live={isLiveItem && shownIndex === s.position}
+            focus={focusSlideId === s.slide.id}
             onTap={() =>
               void tap(
                 post('/api/v1/trigger/slide', {
@@ -402,6 +521,196 @@ function Playlist() {
         })}
       </ul>
     </section>
+  );
+}
+
+// ---- the library (Session 18) -----------------------------------------------------------------------
+
+function LibraryRow({
+  name,
+  detail,
+  live,
+  onOpen,
+}: {
+  name: string;
+  detail: string;
+  live: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onOpen}
+        data-testid="remote-library-item"
+        data-live={live ? 'true' : undefined}
+        className={cx(
+          'flex min-h-12 w-full items-center gap-2 rounded-lg border bg-panel-2 px-3 py-2 text-left',
+          live ? 'border-live' : 'border-line',
+        )}
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-base text-fg">{name}</span>
+          {detail && <span className="block truncate text-sm text-muted">{detail}</span>}
+        </span>
+        {live && <LiveBadge />}
+      </button>
+    </li>
+  );
+}
+
+/** Where a search found a presentation: its title, a kirtan's detail, or a line of its words. */
+const matchText = (hit: SearchHit): string =>
+  hit.match.kind === 'title'
+    ? hit.libraryName
+    : hit.match.kind === 'detail'
+      ? `${KIRTAN_FIELD_NAMES[hit.match.field]}: ${hit.match.value}`
+      : `“${hit.match.line}”`;
+
+const listedText = (p: RemotePresentation): string =>
+  [p.libraryName, p.category, `${String(p.slideCount)} ${p.slideCount === 1 ? 'slide' : 'slides'}`]
+    .filter(Boolean)
+    .join(' · ');
+
+function Library() {
+  const library = useRemote((s) => s.library);
+  const liveId = useEngine((s) => s.state?.live.presentationId ?? null);
+  const [typed, setTyped] = useState(library.query);
+  // The list by name, the first time the library is shown.
+  useEffect(() => {
+    if (!useRemote.getState().library.list) void loadLibrary();
+  }, []);
+  // Searched a moment after the last key, as the window does.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void searchLibrary(typed);
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [typed]);
+  const searching = library.query !== '';
+  return (
+    <section className="space-y-3" aria-labelledby="library-title" data-testid="remote-library">
+      <h2 id="library-title" className="text-sm font-bold tracking-wider text-muted uppercase">
+        Library
+      </h2>
+      <input
+        type="search"
+        aria-label="Search the library"
+        placeholder="A title, a kavi, or words on a slide"
+        value={typed}
+        maxLength={200}
+        enterKeyHint="search"
+        autoCapitalize="off"
+        spellCheck={false}
+        onChange={(e) => {
+          setTyped(e.target.value);
+        }}
+        className="h-12 w-full rounded-lg border border-field bg-panel-2 px-3 text-base text-fg"
+        data-testid="remote-library-search"
+      />
+      {searching ? (
+        library.hits === null ? (
+          <p className="text-base text-muted">Searching…</p>
+        ) : library.hits.length === 0 ? (
+          <p className="text-base text-muted" data-testid="remote-library-none">
+            Nothing found for “{library.query}”.
+          </p>
+        ) : (
+          <>
+            <ul className="space-y-1.5" aria-label="Found">
+              {library.hits.map((h) => (
+                <LibraryRow
+                  key={`${h.presentationId}:${h.match.kind === 'text' ? h.match.slideId : h.match.kind}`}
+                  name={h.name}
+                  detail={matchText(h)}
+                  live={liveId === h.presentationId}
+                  onOpen={() => {
+                    openPresentation(h.presentationId, h.match.kind === 'text' ? h.match.slideId : null);
+                  }}
+                />
+              ))}
+            </ul>
+            {library.more && (
+              <p className="text-sm text-muted">
+                More were found than are listed: add a word to narrow it down.
+              </p>
+            )}
+          </>
+        )
+      ) : library.list === null ? (
+        <p className="text-base text-muted">Loading…</p>
+      ) : library.list.length === 0 ? (
+        <p className="text-base text-muted">The library is empty.</p>
+      ) : (
+        <>
+          <ul className="space-y-1.5" aria-label="Presentations">
+            {library.list.map((p) => (
+              <LibraryRow
+                key={p.id}
+                name={p.name}
+                detail={listedText(p)}
+                live={liveId === p.id}
+                onOpen={() => {
+                  openPresentation(p.id);
+                }}
+              />
+            ))}
+          </ul>
+          {library.list.length < library.total && (
+            <Button
+              size="lg"
+              className="w-full"
+              data-testid="remote-library-more"
+              onClick={() => void loadLibrary(true)}
+            >
+              Show more ({String(library.total - library.list.length)} more)
+            </Button>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+/** On a tablet held upright, the playlist or the library beside the show. */
+function SidePanel() {
+  const side = useRemote((s) => s.side);
+  return (
+    <div className="space-y-3">
+      <div role="tablist" aria-label="Beside the show" className="grid grid-cols-2 gap-2">
+        {(
+          [
+            { id: 'playlist', label: 'Playlist', icon: ListMusic },
+            { id: 'library', label: 'Library', icon: BookOpen },
+          ] as const
+        ).map((t) => {
+          const TabIcon = t.icon;
+          const on = side === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              data-testid={`remote-side-${t.id}`}
+              onClick={() => useRemote.setState({ side: t.id })}
+              className={cx(
+                'flex min-h-11 items-center justify-center gap-2 rounded-lg text-sm',
+                on ? 'bg-panel-3 text-fg' : 'text-muted',
+              )}
+            >
+              <TabIcon size={18} aria-hidden="true" />
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+      <div role="tabpanel" aria-label={side === 'playlist' ? 'Playlist' : 'Library'}>
+        {side === 'playlist' ? <Playlist /> : <Library />}
+      </div>
+    </div>
   );
 }
 
@@ -735,11 +1044,52 @@ function next(): Promise<void> {
 const TABS: { id: RemoteTab; label: string; icon: typeof Play }[] = [
   { id: 'show', label: 'Show', icon: Play },
   { id: 'playlist', label: 'Playlist', icon: ListMusic },
+  { id: 'library', label: 'Library', icon: BookOpen },
   { id: 'more', label: 'More', icon: Timer },
 ];
 
-function BackNext({ wide }: { wide: boolean }) {
+/** On a tablet held sideways, the slides, the playlist, the library or the rest, beside the live picture. */
+const PANEL_TABS: { id: RemoteTab; label: string; icon: typeof Play }[] = [
+  { id: 'show', label: 'Slides', icon: Play },
+  { id: 'playlist', label: 'Playlist', icon: ListMusic },
+  { id: 'library', label: 'Library', icon: BookOpen },
+  { id: 'more', label: 'More', icon: Timer },
+];
+
+function TabRow({ tabs, testId, label }: { tabs: typeof TABS; testId: string; label: string }) {
   const tab = useRemote((s) => s.tab);
+  return (
+    <div
+      role="tablist"
+      aria-label={label}
+      className={cx('grid gap-2', tabs.length === 4 ? 'grid-cols-4' : 'grid-cols-3')}
+    >
+      {tabs.map((t) => {
+        const TabIcon = t.icon;
+        const on = t.id === tab;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={on}
+            data-testid={`${testId}-${t.id}`}
+            onClick={() => useRemote.setState({ tab: t.id })}
+            className={cx(
+              'flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-lg text-xs',
+              on ? 'bg-panel-3 text-fg' : 'text-muted',
+            )}
+          >
+            <TabIcon size={18} aria-hidden="true" />
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function BackNext({ wide }: { wide: boolean }) {
   return (
     <div className="shrink-0 border-t border-line bg-panel px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       <div className="grid grid-cols-2 gap-3">
@@ -762,28 +1112,8 @@ function BackNext({ wide }: { wide: boolean }) {
         </Button>
       </div>
       {!wide && (
-        <div role="tablist" aria-label="What to show" className="mt-3 grid grid-cols-3 gap-2">
-          {TABS.map((t) => {
-            const TabIcon = t.icon;
-            const on = t.id === tab;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                aria-selected={on}
-                data-testid={`remote-tab-${t.id}`}
-                onClick={() => useRemote.setState({ tab: t.id })}
-                className={cx(
-                  'flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-lg text-xs',
-                  on ? 'bg-panel-3 text-fg' : 'text-muted',
-                )}
-              >
-                <TabIcon size={18} aria-hidden="true" />
-                {t.label}
-              </button>
-            );
-          })}
+        <div className="mt-3">
+          <TabRow tabs={TABS} testId="remote-tab" label="What to show" />
         </div>
       )}
     </div>
@@ -795,10 +1125,11 @@ function Layout() {
   const state = useEngine((s) => s.state);
   const notice = useTapNotice((s) => s.text);
   const device = useFeed((s) => s.device);
-  const wide = useWide();
+  const layout = useLayout();
   const show = (
     <div className="space-y-4">
       <LivePicture state={state} />
+      <Notes state={state} />
       <NextLine state={state} />
       <QuickActions state={state} />
       <Slides />
@@ -806,7 +1137,7 @@ function Layout() {
   );
   return (
     // One screen: the header, a middle that scrolls, and Back and Next below it (nothing scrolls under them).
-    <div className="flex h-dvh flex-col" data-testid="remote">
+    <div className="flex h-dvh flex-col" data-testid="remote" data-layout={layout}>
       <header className="flex shrink-0 items-center gap-3 border-b border-line bg-panel px-4 py-3">
         <div className="min-w-0 flex-1">
           <p className="text-base font-bold tracking-wide text-fg">Drashti remote</p>
@@ -821,9 +1152,32 @@ function Layout() {
           </Notice>
         </div>
       )}
-      {wide ? (
+      {layout === 'landscape' ? (
+        // Held sideways: the live picture, the notes and what comes next beside the slides.
+        <main className="grid min-h-0 flex-1 grid-cols-[minmax(20rem,40%)_minmax(0,1fr)] gap-6 p-4">
+          <div className="min-h-0 space-y-4 overflow-y-auto" data-testid="remote-presenter">
+            <LivePicture state={state} />
+            <Notes state={state} />
+            <NextLine state={state} />
+            <QuickActions state={state} />
+          </div>
+          <div className="flex min-h-0 flex-col gap-3">
+            <TabRow tabs={PANEL_TABS} testId="remote-panel" label="Beside the live picture" />
+            <div
+              className="min-h-0 flex-1 overflow-y-auto"
+              role="tabpanel"
+              aria-label={PANEL_TABS.find((t) => t.id === tab)?.label}
+            >
+              {tab === 'show' && <Slides />}
+              {tab === 'playlist' && <Playlist />}
+              {tab === 'library' && <Library />}
+              {tab === 'more' && <TimersAndMessages />}
+            </div>
+          </div>
+        </main>
+      ) : layout === 'wide' ? (
         <main className="grid min-h-0 flex-1 grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)] gap-6 overflow-y-auto p-4">
-          <Playlist />
+          <SidePanel />
           <div className="space-y-6">
             {show}
             <TimersAndMessages />
@@ -837,10 +1191,11 @@ function Layout() {
         >
           {tab === 'show' && show}
           {tab === 'playlist' && <Playlist />}
+          {tab === 'library' && <Library />}
           {tab === 'more' && <TimersAndMessages />}
         </main>
       )}
-      <BackNext wide={wide} />
+      <BackNext wide={layout !== 'phone'} />
     </div>
   );
 }

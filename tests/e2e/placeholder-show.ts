@@ -172,3 +172,34 @@ export async function setUpPlaceholderShow(
     },
   );
 }
+
+/** A presenter's talk (Session 18): outside every playlist, with notes on its slides. */
+export const TALK = 'Placeholder Talk';
+export const NOTE_ONE = 'Placeholder note: welcome everyone';
+export const NOTE_TWO = 'Placeholder note: the second point';
+
+/** A presenter's talk, not in any playlist: three slides, notes on the first two. */
+export async function placeholderTalk(win: Page): Promise<string> {
+  const file = join(mkdtempSync(join(tmpdir(), 'drashti-talk-')), `${TALK}.txt`);
+  writeFileSync(
+    file,
+    '[Verse]\nPlaceholder talk opening\n\nPlaceholder talk point two\n\nPlaceholder talk closing\n',
+  );
+  const [id = ''] = await importAndGetIds(win, [file]);
+  await win.evaluate(
+    async ({ id, notes }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const opened = await d.library.slidesForEdit(id);
+      if (!opened.ok) throw new Error(opened.message);
+      opened.doc.groups
+        .flatMap((g) => g.slides)
+        .forEach((s, i) => {
+          s.notes = notes[i] ?? '';
+        });
+      const saved = await d.library.saveSlides(id, opened.doc, opened.stamp);
+      if (!saved.ok) throw new Error(saved.message);
+    },
+    { id, notes: [NOTE_ONE, NOTE_TWO, ''] },
+  );
+  return id;
+}

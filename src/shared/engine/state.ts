@@ -243,6 +243,8 @@ export type UpNext =
       background: MediaBackground | null;
       /** The playlist item it starts, when it is in the next item. */
       itemId: string | null;
+      /** Its notes, for a presenter's remote (Session 18). */
+      notes: string;
     }
   | { kind: 'media'; itemId: string; mediaId: string; media: 'image' | 'video' | 'audio'; label: string };
 
