@@ -771,6 +771,9 @@ function start(): void {
   applyStreamSessionSecurity(streamSession, {
     isProgram: (contents) => stream?.isProgram(contents) ?? false,
     log: permissionLog,
+    logCapture: (line) => {
+      log.info(line);
+    },
   });
 
   // Tests only (never a packaged Drashti): write a library as an older Drashti kept it, then stop.
@@ -1237,7 +1240,10 @@ function start(): void {
     keys: streamKeys,
     settings,
     screens: screenRepo,
-    createProgram: createProgramWindow,
+    createProgram: (size) =>
+      createProgramWindow(size, (line) => {
+        log.info(`Stream page: ${line}`);
+      }),
     sendToOperator,
     platform: process.platform,
     mediaAccess: (kind) =>

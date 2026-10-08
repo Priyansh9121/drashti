@@ -45,7 +45,10 @@ export function streamPermissionAllowed(
 export interface StreamSessionRules {
   /** True for the Program window's page. */
   isProgram(contents: WebContents | null): boolean;
+  /** Every permission asked for and checked (DRASHTI_LOG_PERMISSIONS). */
   log?(line: string): void;
+  /** Each capture of the page's own picture, granted or refused: rare, so always kept (Session 18). */
+  logCapture?(line: string): void;
 }
 
 /**
@@ -75,14 +78,22 @@ export function applyStreamSessionSecurity(session: Session, rules: StreamSessio
       BrowserWindow.getAllWindows().some(
         (w) => rules.isProgram(w.webContents) && w.webContents.mainFrame === frame,
       );
-    rules.log?.(`Stream capture ${own ? 'granted' : 'refused'} for ${frame?.url ?? 'no frame'}`);
+    const line = `Stream capture ${own ? 'granted' : 'refused'} for ${frame?.url ?? 'no frame'}`;
+    rules.log?.(line);
+    rules.logCapture?.(line);
     if (own) callback({ video: frame });
     else callback({});
   });
 }
 
-/** The Program window: offscreen, at the stream's size, never shown. */
-export function createProgramWindow(size: { width: number; height: number }): BrowserWindow {
+/**
+ * The Program window: offscreen, at the stream's size, never shown. What its page says about its
+ * capture (lines starting "[program]") goes to `log` (Session 18).
+ */
+export function createProgramWindow(
+  size: { width: number; height: number },
+  log?: (line: string) => void,
+): BrowserWindow {
   const win = new BrowserWindow({
     show: false,
     width: size.width,
@@ -104,6 +115,9 @@ export function createProgramWindow(size: { width: number; height: number }): Br
   win.webContents.setFrameRate(PROGRAM_FPS);
   win.webContents.on('paint', (event) => {
     event.texture?.release();
+  });
+  win.webContents.on('console-message', (details) => {
+    if (details.message.startsWith('[program] ')) log?.(details.message.slice(10, 310));
   });
   void loadPage(win, 'stream');
   return win;
