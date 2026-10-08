@@ -17,7 +17,7 @@ import {
   QUIET,
   setUpScreen,
 } from './helpers';
-import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
+import { KIRTAN, NOTE_ONE, placeholderTalk, PLAYLIST, setUpPlaceholderShow, TALK } from './placeholder-show';
 import { freePort, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
 import { makeTestImage, makeTestTone, makeTestVideo } from './test-media';
 import { launchMain, launchNode, nodeCode, nodeView, pairNode, typePairing } from './nodes';
@@ -476,6 +476,73 @@ test('the local network: the Phones panel, announcements, the ticker, and the pa
     await shot(fresh.page, 'phone-pair');
   } finally {
     for (const d of [phone, tablet, stage, sender, fresh]) await d.close();
+  }
+  await app.close();
+});
+
+test('the presenter’s remote: the library and the notes on an iPhone, and an iPad held sideways (Session 18)', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp({ ...NETWORK_ENV, DRASHTI_WINDOWED_OUTPUTS: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await setUpPlaceholderShow(win);
+  const talkId = await placeholderTalk(win);
+  await setUpScreen(win);
+  await outputPage(app);
+  await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({
+        type: 'goLive',
+        presentationId: id,
+        slideIndex: 0,
+      }),
+    talkId,
+  );
+  const { base } = await networkOn(win);
+  const phone = await device('webkit');
+  const sideways = await device('webkit', 'iPad (gen 7) landscape');
+  const upright = await device('webkit', TABLET);
+  try {
+    await pairByQr(
+      phone.page,
+      base,
+      await pairingCode(win, 'remote', 'Placeholder presenter phone'),
+      '/remote',
+    );
+    await pairByQr(
+      sideways.page,
+      base,
+      await pairingCode(win, 'remote', 'Placeholder presenter iPad'),
+      '/remote',
+    );
+    await pairByQr(upright.page, base, await pairingCode(win, 'remote', 'Placeholder tablet'), '/remote');
+    const p = phone.page;
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    // The live slide's notes and the next one's, under the live picture.
+    await expect(p.getByTestId('remote-notes-live')).toHaveText(NOTE_ONE);
+    await shot(p, 'phone-remote-notes');
+    // The whole library, by name, then searched by words on a slide.
+    await p.getByTestId('remote-tab-library').click();
+    await expect(p.getByTestId('remote-library-item').filter({ hasText: TALK })).toBeVisible();
+    await shot(p, 'phone-remote-library');
+    await p.getByTestId('remote-library-search').fill('talk point two');
+    await expect(
+      p.getByTestId('remote-library-item').filter({ hasText: 'Placeholder talk point two' }),
+    ).toBeVisible();
+    await shot(p, 'phone-remote-search');
+    // Held sideways: the live picture, the notes and Next beside the slides.
+    const t = sideways.page;
+    await expect(t.getByTestId('remote')).toHaveAttribute('data-layout', 'landscape');
+    await expect(t.getByTestId('remote-notes-live')).toHaveText(NOTE_ONE);
+    await expect(t.getByTestId('remote-slide').first()).toHaveAttribute('data-live', 'true');
+    await shot(t, 'tablet-remote-sideways');
+    // Held upright: the library beside the show.
+    const u = upright.page;
+    await u.getByTestId('remote-side-library').click();
+    await expect(u.getByTestId('remote-library-item').filter({ hasText: TALK })).toBeVisible();
+    await shot(u, 'tablet-remote-library');
+  } finally {
+    for (const d of [phone, sideways, upright]) await d.close();
   }
   await app.close();
 });

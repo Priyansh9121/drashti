@@ -75,6 +75,14 @@ export function matchesAll(queryWords: readonly string[], textWords: readonly st
 /** The kirtan details search reads. */
 export type KirtanField = 'kavi' | 'raag' | 'category' | 'occasion';
 
+/** A kirtan's details, as search results name them (the window's and a phone's). */
+export const KIRTAN_FIELD_NAMES: Record<KirtanField, string> = {
+  kavi: 'Kavi',
+  raag: 'Raag',
+  category: 'Category',
+  occasion: 'Occasion',
+};
+
 export interface SearchHit {
   presentationId: string;
   name: string;

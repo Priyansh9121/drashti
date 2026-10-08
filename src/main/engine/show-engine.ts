@@ -1049,6 +1049,7 @@ export class ShowEngine {
       slide: played.slide,
       background: cue?.unplayable === null && !cue.missing ? cue.background : null,
       itemId,
+      notes: played.notes,
     };
   }
 

@@ -65,6 +65,7 @@ ProPresenter stays installed and untouched all day. Drashti only reads its files
 - [ ] **Phones**, **Let paired phones and tablets connect**. Answer the firewall: **Allow** on the Mac; on Windows **Private networks** only, and check the mandir's network is set as private.
 - [ ] Write down the address the Phones panel shows, and check it is the reserved one.
 - [ ] Pair two or three phones as remotes, and a tablet as a stage display. Phones need Safari 16.4 or later (iOS 16.4) or Chrome on Android.
+- [ ] **A presenter's iPhone and iPad** (`docs/presenter-guide.md`): pair, Add to Home Screen, open it from the Home Screen, search the library for words on a slide, open the presentation, tap a slide (the screens follow), read the notes, and hold the iPad sideways (the notes and Next beside the slides). Try a Windows laptop's browser too if a presenter uses one.
 - [ ] Make the announcements poster, print it, and send one test announcement.
 
 ## 6. Roles and PINs (Main, and the node's Main settings)

@@ -1,6 +1,6 @@
 import { Fragment } from 'react';
 import type { SearchHit } from '../../../shared/search';
-import { searchWords } from '../../../shared/search';
+import { KIRTAN_FIELD_NAMES as FIELD_NAMES, searchWords } from '../../../shared/search';
 import { hideLegacy, openHit, showLegacy, useLibrary, useSearch } from './library-store';
 import { clickPresentation } from './library-store';
 import { Button } from '../ui/Button';
@@ -9,9 +9,6 @@ import { rowClass } from '../ui/ListRow';
 import { Notice } from '../ui/Notice';
 import { EmptyState } from '../ui/States';
 import { plural } from '../ui/text';
-
-/** A kirtan's details, as search results name them. */
-const FIELD_NAMES = { kavi: 'Kavi', raag: 'Raag', category: 'Category', occasion: 'Occasion' } as const;
 
 /** A line with the words the operator typed marked, as it is written (accents and all). */
 function Marked({ line, query }: { line: string; query: string }) {

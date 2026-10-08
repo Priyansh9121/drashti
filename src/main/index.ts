@@ -20,7 +20,7 @@ import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { basename, isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
 import type { ImportResult } from '../shared/import';
-import type { LibraryChange } from '../shared/library';
+import { type LibraryChange, listedKirtan } from '../shared/library';
 import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/import-schema';
 import { type EventChannel, type EventContract, IPC } from '../shared/ipc';
 import { acceleratorFor } from '../shared/keymap';
@@ -2188,6 +2188,21 @@ function start(): void {
       items: (playlistId) => playlists.itemsOf(playlistId),
       presentation: (presentationId) =>
         isPassageId(presentationId) ? shastra.doc(presentationId) : presentations.get(presentationId),
+      // The presenter's remote (Session 18): the library a page at a time (no files), and searched.
+      library: (offset, limit) => {
+        const all = presentations.list();
+        return {
+          total: all.length,
+          presentations: all.slice(offset, offset + limit).map((p) => ({
+            id: p.id,
+            name: p.name,
+            libraryName: p.libraryName,
+            slideCount: p.slideCount,
+            category: listedKirtan(p.kirtan)?.category ?? null,
+          })),
+        };
+      },
+      search: (query) => search.search(query),
       shastraTexts: () =>
         shastra.list().map((t) => ({ name: t.name, abbreviation: t.abbreviation, itemCount: t.itemCount })),
       passage: (reference) => shastra.resolve(reference),

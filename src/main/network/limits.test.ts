@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { RateLimiter, WrongCodeLimiter } from './limits';
-import { listWebFiles, safeRequestPath } from './web-files';
+import { apiQuery, listWebFiles, safeRequestPath } from './web-files';
 
 describe('limits on the network', () => {
   it('lets a device ask so much a second, with a burst', () => {
@@ -62,5 +62,19 @@ describe('the pages’ files', () => {
       expect(safeRequestPath(bad), bad).toBeNull();
     expect(safeRequestPath('/assets/remote-abc123.js?v=1')).toBe('/assets/remote-abc123.js');
     expect(safeRequestPath('/remote')).toBe('/remote');
+  });
+
+  it("reads a GET request's query as plain strings, a few short ones (Session 18)", () => {
+    expect(apiQuery('/api/v1/presentations')).toEqual({});
+    expect(apiQuery('/api/v1/presentations?offset=100&limit=50')).toEqual({ offset: '100', limit: '50' });
+    // The first of a name, decoded; names that are not plain words are left out.
+    expect(apiQuery('/api/v1/search?q=placeholder%20words&q=other&Q=x&__proto__=1&a-b=2')).toEqual({
+      q: 'placeholder words',
+    });
+    expect(apiQuery(`/api/v1/search?q=${'x'.repeat(500)}`)['q']).toHaveLength(200);
+    const many = Array.from({ length: 20 }, (_, i) => `${String.fromCharCode(97 + i)}=1`).join('&');
+    expect(Object.keys(apiQuery(`/x?${many}`))).toHaveLength(8);
+    // A broken escape is read as it can be, never thrown on.
+    expect(typeof apiQuery('/x?q=%E0%A4%A')['q']).toBe('string');
   });
 });

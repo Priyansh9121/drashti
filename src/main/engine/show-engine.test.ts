@@ -53,6 +53,22 @@ describe('ShowEngine', () => {
       expect(engine.current.next).toMatchObject({ kind: 'slide', presentationId: 'p1', slideIndex: 2 });
     });
 
+    it("carries the live slide's notes and the next slide's, for a presenter's remote (Session 18)", () => {
+      const { source, engine } = setup();
+      source.set('pn', [textSlide('pn1', 'One'), textSlide('pn2', 'Two'), textSlide('pn3', 'Three')], [], {
+        notes: ['Placeholder note one', 'Placeholder note two', ''],
+      });
+      engine.dispatch(goLive('pn', 0));
+      expect(engine.current.layers.slide?.notes).toBe('Placeholder note one');
+      expect(engine.current.next).toMatchObject({
+        kind: 'slide',
+        slideIndex: 1,
+        notes: 'Placeholder note two',
+      });
+      engine.dispatch({ type: 'next' });
+      expect(engine.current.next).toMatchObject({ kind: 'slide', slideIndex: 2, notes: '' });
+    });
+
     it('rejects an unknown presentation without broadcasting', () => {
       const { engine, transport } = setup();
       expect(engine.dispatch(goLive('nope', 0))).toMatchObject({ ok: false, error: 'unknown-presentation' });

@@ -32,6 +32,7 @@ describe('what an output loads ahead', () => {
         slide,
         background: { kind: 'media', mediaId: 'clouds', media: 'video', fit: 'fill', loop: true },
         itemId: null,
+        notes: '',
       }),
     ).toEqual([
       { mediaId: 'clouds', media: 'video' },

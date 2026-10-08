@@ -250,6 +250,8 @@ Drashti can take a phone as a remote, a tablet as a stage screen, and announceme
 3. On the phone, scan the QR code with the camera and open the link, or open the address in the browser and type the code.
 4. The remote opens: **Next** and **Back** at the bottom, the slides to tap, Clear, Black-out, Logo, timers and messages. The top says **Connected**. A tap does what the same button does in Drashti, and Simple Mode's limits apply to it too.
 
+**A presenter's phone or iPad** is a Remote too: it also has the whole **Library** (search, open a presentation, tap a slide to put it up), the slide's **Notes** under the live picture, and, on an iPad held sideways, the notes and Next beside the slides. Give the presenter `docs/presenter-guide.md`: one page, from pairing and Add to Home Screen to using it.
+
 **A tablet as a stage screen:** the same, with **Pair a Stage device**. The tablet shows what the stage screens show. Press **Full screen** on it, and set the tablet never to lock while it is on the stage.
 
 **The announcements poster:**
