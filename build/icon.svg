@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="tile-fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5e1b52"/>
+      <stop offset="1" stop-color="#2a0b27"/>
+    </linearGradient>
+    <linearGradient id="flame" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff7a2f"/>
+      <stop offset="1" stop-color="#ffc23d"/>
+    </linearGradient>
+    <linearGradient id="bowl" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd36b"/>
+      <stop offset="1" stop-color="#ef9b33"/>
+    </linearGradient>
+  </defs>
+  <rect id="tile" x="100" y="100" width="824" height="824" rx="185" fill="url(#tile-fill)"/>
+  <!-- A lamp's flame, with its bright core, over the lamp (a diya): the light we see by. -->
+  <path d="M512 172C566 288 690 414 690 552A178 178 0 0 1 334 552C334 414 458 288 512 172Z" fill="url(#flame)"/>
+  <path d="M512 404C538 458 594 512 594 584A82 82 0 0 1 430 584C430 512 486 458 512 404Z" fill="#fff3c4"/>
+  <path d="M262 690H762C750 792 644 852 512 852C380 852 274 792 262 690Z"
+    fill="url(#bowl)" stroke="#370f32" stroke-width="30" paint-order="stroke"/>
+</svg>
