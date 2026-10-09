@@ -1,4 +1,5 @@
 import { BrowserWindow } from 'electron';
+import { windowIcon } from './app-icon';
 import { loadPage } from './renderer';
 import { secureWebPreferences } from './web-preferences';
 
@@ -17,6 +18,7 @@ export function openGalleryWindow(): BrowserWindow {
     title: 'Drashti Component Gallery',
     backgroundColor: '#0b0d11',
     autoHideMenuBar: true,
+    ...windowIcon(),
     webPreferences: secureWebPreferences(),
   });
   win.once('ready-to-show', () => {

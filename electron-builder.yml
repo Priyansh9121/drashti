@@ -17,6 +17,9 @@ asarUnpack:
 # better-sqlite3's Node-API prebuilds load in Electron as they are.
 npmRebuild: false
 mac:
+  # Drashti's own icon (Session 19), made with the .ico and the phone pages' icons from build/icon.svg by
+  # scripts/make-icons.mjs (pnpm icons). Without it the app carried Electron's.
+  icon: build/icon.icns
   # Apple silicon and Intel Macs, each with its own FFmpeg.
   target:
     - target: dmg
@@ -44,7 +47,13 @@ mac:
     NSCameraUsageDescription: Drashti uses the camera or capture card you choose for the stream to YouTube.
     NSMicrophoneUsageDescription: Drashti uses the sound input you choose (the mixer’s line in) for the stream to YouTube.
     NSAppleEventsUsageDescription: Drashti asks Keynote or PowerPoint to save a presentation you import as PDF, to show its slides as pictures.
+dmg:
+  # The disk image's own icon when it is opened in Finder.
+  icon: build/icon.icns
 win:
+  # The app (and so its Start menu entry and its windows in the taskbar); the windows also name it
+  # themselves (src/main/windows/app-icon.ts), from the copy beside the app's resources.
+  icon: build/icon.ico
   target:
     - target: nsis
       arch: [x64]
@@ -56,7 +65,11 @@ win:
     - from: vendor/ffmpeg/win32-${arch}
       to: ffmpeg
       filter: [ffmpeg.exe]
+    - from: build/icon.ico
+      to: icon.ico
 nsis:
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true

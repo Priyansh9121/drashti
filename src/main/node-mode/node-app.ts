@@ -38,6 +38,7 @@ import type { SelfTestResult } from '../selftest';
 import { runNodeWatchdogSelfTest } from '../selftest';
 import { IpcTransport } from '../transport/ipc-transport';
 import type { RendererWatchdog } from '../watchdog';
+import { windowIcon } from '../windows/app-icon';
 import { loadPage } from '../windows/renderer';
 import { secureWebPreferences } from '../windows/web-preferences';
 import { LinkClient, openMediaFromMain, pairWithMain } from './link-client';
@@ -631,6 +632,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     title: 'Drashti Node',
     backgroundColor: '#0b0d11',
     autoHideMenuBar: true,
+    ...windowIcon(),
     webPreferences: secureWebPreferences(),
   });
   deps.watchdog.watch(nodeWindow.webContents, 'node window');

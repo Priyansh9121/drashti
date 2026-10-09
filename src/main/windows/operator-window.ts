@@ -1,4 +1,5 @@
 import { BrowserWindow } from 'electron';
+import { windowIcon } from './app-icon';
 import { loadPage } from './renderer';
 import { secureWebPreferences } from './web-preferences';
 
@@ -13,6 +14,7 @@ export function createOperatorWindow(): BrowserWindow {
     backgroundColor: '#0b0d11',
     // Windows: keep the menu bar out of a volunteer's way (Alt shows it).
     autoHideMenuBar: true,
+    ...windowIcon(),
     webPreferences: secureWebPreferences(),
   });
   win.once('ready-to-show', () => {
