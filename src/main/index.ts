@@ -115,7 +115,7 @@ import { spawnImportWorker } from './import/spawn-worker';
 import { AudioOutput } from './audio/audio-output';
 import { saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
-import { LiveStateWriter, toRestore } from './recovery/live-state';
+import { LiveStateWriter, startupRecovery, type StartupRecovery } from './recovery/live-state';
 import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES } from './media/media-protocol';
 import { saveStill } from './media/stills';
 import { installMenu, installNodeMenu } from './menu';
@@ -1181,8 +1181,13 @@ function start(): void {
     });
   }
   let recovery: RecoveryNotice | null = null;
-  // A restored library starts with nothing live (the saved state belongs to the library before it).
-  const saved = restored.restored ? null : toRestore(recoveryFiles, lookRepo.firstId());
+  // What the last run left, read once before this run saves anything (Session 20): whether it quit
+  // cleanly (which also decides the starting mode) and, if not, its show. A restored library starts
+  // with nothing live (the saved state belongs to the library before it).
+  const startup: StartupRecovery = restored.restored
+    ? { cleanQuit: true, putBack: null, tooOld: null }
+    : startupRecovery(recoveryFiles, { startLookId: lookRepo.firstId() });
+  const saved = startup.putBack;
   if (saved) {
     const put = engine.restore(saved);
     const name = put.slide && saved.slide ? presentations.get(saved.slide.presentationId)?.name : undefined;
@@ -1219,6 +1224,48 @@ function start(): void {
       })}`,
     );
   }
+  const old = startup.tooOld;
+  if (old) {
+    // Stopped unexpectedly too long ago (RECOVERY_MAX_AGE_MS): the notice names what was live, and
+    // nothing goes on the screens.
+    const slideGone = old.slide !== null && !presentations.get(old.slide.presentationId);
+    recovery = {
+      savedAt: old.savedAt,
+      putBack: false,
+      look: old.lookId && old.lookId !== lookRepo.firstId() ? (lookRepo.get(old.lookId)?.name ?? null) : null,
+      slide:
+        old.slide && !slideGone
+          ? {
+              presentationName: presentations.get(old.slide.presentationId)?.name ?? '',
+              slideNumber: old.slide.slideIndex + 1,
+            }
+          : null,
+      slideGone,
+      background: old.background !== null,
+      blackout: old.blackout,
+      logo: old.logo !== null,
+      audio: old.audio !== null,
+      props: old.props.length,
+      messages: old.messages.length,
+      ticker: old.ticker?.items.length ?? 0,
+      masks: old.masks !== null,
+      stageMessage: old.stageMessage !== null,
+      timers: old.timers.length,
+    };
+    log.warn(
+      `Not putting back the show of a run that stopped unexpectedly: saved ${old.savedAt}, too long before this start (${JSON.stringify(
+        {
+          slide: old.slide
+            ? { presentationId: old.slide.presentationId, slideIndex: old.slide.slideIndex }
+            : null,
+          slideGone,
+          blackout: old.blackout,
+        },
+      )})`,
+    );
+  }
+  // This run takes the saved file over from now on, so a later start knows how this run ended.
+  liveWriter.start(engine.current);
   // Only a quit on purpose is clean (not a crash, and not the self-test's exit).
   app.on('will-quit', () => {
     liveWriter.markClean();

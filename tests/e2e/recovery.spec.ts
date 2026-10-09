@@ -23,7 +23,8 @@ import { makeTestImage, makeTestVideo } from './test-media';
 
 const line = (text: string) => ({ rtf: cocoaRtf([[text, 80, [255, 255, 255]]]) });
 
-test('after a crash the same slide, background and black-out come back; after a clean quit nothing is live', async () => {
+test('after a crash the same slide, background and black-out come back; after a clean quit nothing is live, even after a start that changed nothing', async () => {
+  test.setTimeout(150_000);
   const first = await launchApp();
   const win = await operatorPage(first.app);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-recovery-'));
@@ -93,7 +94,20 @@ test('after a crash the same slide, background and black-out come back; after a 
   expect(layers).toEqual({ slide: null, background: null, blackout: false });
   expect(await win3.evaluate(() => (globalThis as PageGlobals).drashti.app.recovery())).toBeNull();
   await expect(win3.getByTestId('recovery-notice')).toHaveCount(0);
+
+  // That start changed nothing and quits cleanly: the start after it still has nothing to put back.
+  // Before Session 20 it put the show from the second run back, as after a crash (seen on 9 Oct 2026).
   await third.app.close();
+  const fourth = await relaunchApp(first.userData);
+  const win4 = await operatorPage(fourth.app);
+  await expect(win4.getByTestId('presentation-list').getByRole('button').first()).toBeVisible();
+  expect(await win4.evaluate(() => (globalThis as PageGlobals).drashti.app.recovery())).toBeNull();
+  const layers4 = await win4.evaluate(async () => {
+    const s = (await (globalThis as PageGlobals).drashti.engine.snapshot()).state;
+    return { slide: s.layers.slide, background: s.layers.background, blackout: s.blackout };
+  });
+  expect(layers4).toEqual({ slide: null, background: null, blackout: false });
+  await fourth.app.close();
 });
 
 test('after a crash a running timer, a message and the sound come back, carrying on where they were', async () => {

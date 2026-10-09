@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { recoveryText } from './recovery';
+import { RECOVERY_MAX_AGE_MS, recoveryText, stoppedWhen } from './recovery';
 
 const notice = {
   savedAt: '2026-09-29T10:00:00.000Z',
@@ -40,6 +40,27 @@ describe('the recovery notice', () => {
     );
     expect(recoveryText({ ...notice, slideGone: true })).toBe(
       'Drashti stopped unexpectedly. The slide that was live is no longer in the library.',
+    );
+  });
+
+  it('after a stop too long ago, says what was live and when, and that nothing went back (Session 20)', () => {
+    expect(RECOVERY_MAX_AGE_MS).toBe(3 * 60 * 60 * 1000);
+    // Made from the computer's own time, so it reads 18:34 wherever the test runs.
+    const savedAt = new Date(2026, 9, 9, 18, 34).toISOString();
+    expect(stoppedWhen(savedAt)).toBe('on Fri 9 Oct at 18:34');
+    expect(
+      recoveryText({
+        ...notice,
+        savedAt,
+        putBack: false,
+        slide: { presentationName: 'Placeholder Hymn', slideNumber: 3 },
+        blackout: true,
+      }),
+    ).toBe(
+      'Drashti stopped unexpectedly on Fri 9 Oct at 18:34, 3 hours or more before it started again, so nothing was put back on the screens. What was live then: "Placeholder Hymn", slide 3 and black-out.',
+    );
+    expect(recoveryText({ ...notice, savedAt: 'not a time', putBack: false, slideGone: true })).toBe(
+      'Drashti stopped unexpectedly at a time it cannot tell, so nothing was put back on the screens. The slide that was live is no longer in the library.',
     );
   });
 });
