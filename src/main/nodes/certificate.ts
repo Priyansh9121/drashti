@@ -67,6 +67,9 @@ const COMMON_NAME = '2.5.4.3';
 const BASIC_CONSTRAINTS = '2.5.29.19';
 const KEY_USAGE = '2.5.29.15';
 
+/** The writer above, for tests that need certificates of other shapes (src/main/stream/testing/made-up-ca.ts). */
+export const der = { tlv, sequence, set, explicit, utf8, octets, bool, bits, oid, integer, time };
+
 /** The DER of a certificate, as PEM. */
 export function toPem(der: Buffer): string {
   const lines = der.toString('base64').match(/.{1,64}/gu) ?? [];

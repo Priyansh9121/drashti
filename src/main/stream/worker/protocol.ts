@@ -10,8 +10,18 @@ import type { StreamHealth, StreamPreset } from '../../../shared/stream';
  */
 
 export type ToStreamWorker =
-  /** Get ready to encode: which FFmpeg, the preset, and the encoder if one is known to work. */
-  | { type: 'start'; ffmpeg: string; platform: NodeJS.Platform; preset: StreamPreset; encoder: string | null }
+  /**
+   * Get ready to encode: which FFmpeg, the preset, the encoder if one is known to work, and the
+   * certificate authorities a secure address is checked against (../tls.ts).
+   */
+  | {
+      type: 'start';
+      ffmpeg: string;
+      platform: NodeJS.Platform;
+      preset: StreamPreset;
+      encoder: string | null;
+      caFile: string | null;
+    }
   /** Send to this address with this key (again and again until `endLive`). */
   | { type: 'live'; url: string; key: string }
   | { type: 'endLive' }
