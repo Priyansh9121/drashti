@@ -446,6 +446,8 @@ if (perfWatch)
   gc,
 };
 let quitConfirmed = false;
+/** The quit goes ahead (confirmed): nothing may open a window now, or the quit stops (Session 23). */
+let quitStarted = false;
 
 let operatorWindow: BrowserWindow | null = null;
 let audioWindow: BrowserWindow | null = null;
@@ -1257,6 +1259,7 @@ function start(): void {
   if (testMemoryEveryMs > 0)
     setInterval(
       () => {
+        if (db === null) return;
         const names = new Map<string, string>();
         for (const g of screens.snapshot().groups) for (const sc of g.screens) names.set(sc.id, sc.name);
         const labels = new Map<number, string>();
@@ -1627,6 +1630,8 @@ function start(): void {
   const libraryChanged = (now = false) => {
     const send = () => {
       changedTimer = null;
+      // Quitting: the library has closed (Session 23: a change during an import came 2 s later).
+      if (db === null) return;
       lastChanged = Date.now();
       sendToOperator(IPC.library.changed, { at: lastChanged, what: 'presentations' });
       network?.hint('presentations');
@@ -1647,6 +1652,10 @@ function start(): void {
       changedTimer ??= setTimeout(send, Math.max(0, lastChanged + 2000 - Date.now()));
     }
   };
+  stops.add('library change notices', () => {
+    if (changedTimer) clearTimeout(changedTimer);
+    changedTimer = null;
+  });
   /** Props, message templates or themes changed: the operator's lists of them reload at once. */
   const listChanged = (what: Exclude<LibraryChange, 'presentations'>) => {
     sendToOperator(IPC.library.changed, { at: Date.now(), what });
@@ -3187,7 +3196,7 @@ function start(): void {
   // first, Chromium 152 can hand the operator window the audio player's list of sound outputs.
   let audioStarted = false;
   const startAudioPlayer = () => {
-    if (audioStarted) return;
+    if (audioStarted || quitStarted) return;
     audioStarted = true;
     audioWindow = createAudioWindow();
     watchdog.watch(audioWindow.webContents, 'audio player');
@@ -3216,7 +3225,9 @@ function start(): void {
       event.preventDefault();
       return;
     }
-    // The quit goes ahead: the stream's page must not open again as the windows close (Session 23).
+    // The quit goes ahead: no window may open now (the stream's page, the audio player), or the quit
+    // stops (Session 23).
+    quitStarted = true;
     streaming.quitting();
   });
 
