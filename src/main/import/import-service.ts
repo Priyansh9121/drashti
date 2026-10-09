@@ -55,6 +55,8 @@ interface Job {
 
 export class ImportService {
   private readonly queue: Job[] = [];
+  /** Drashti is quitting: nothing more starts, and what the stopped worker says after is not heard. */
+  private stopped = false;
   private active: {
     job: Job;
     worker: WorkerProcess;
@@ -166,14 +168,27 @@ export class ImportService {
     return { ready, done };
   }
 
-  /** Stop everything (the app is quitting). */
+  /**
+   * Stop everything (the app is quitting). An import cut short is recorded now, while the library is
+   * still open (Session 23: the worker's exit came after the library had closed, and recording it then
+   * threw an uncaught exception).
+   */
   stop(): void {
+    this.stopped = true;
     for (const job of this.queue.splice(0)) job.resolve({ ok: false, message: 'Drashti is quitting.' });
-    this.active?.worker.kill();
+    const active = this.active;
+    if (!active) return;
+    this.active = null;
+    active.drawing.abort();
+    for (const done of [...active.ways.values()]) done();
+    active.worker.kill();
+    this.deps.log('info', `Import ${active.job.runId} stopped: Drashti is quitting`);
+    this.recordFailure(active.job, 'Drashti quit before the import finished.');
+    active.job.resolve({ ok: false, message: 'Drashti is quitting.' });
   }
 
   private next(): void {
-    if (this.active) return;
+    if (this.active || this.stopped) return;
     const job = this.queue.shift();
     if (!job) return;
     let worker: WorkerProcess;
@@ -198,7 +213,7 @@ export class ImportService {
     this.active = active;
     let settled = false;
     const settle = (result: ImportResult, run: ImportRunSummary | null) => {
-      if (settled) return;
+      if (settled || this.stopped) return;
       settled = true;
       active.drawing.abort();
       // Writes waiting for the import to give way need wait no more.
@@ -211,6 +226,7 @@ export class ImportService {
       this.next();
     };
     worker.onMessage((m) => {
+      if (this.stopped) return;
       switch (m.type) {
         case 'progress':
           if (m.progress.runId === job.runId) this.deps.onProgress(m.progress);
@@ -252,7 +268,7 @@ export class ImportService {
       }
     });
     worker.onExit((code) => {
-      if (settled) return;
+      if (settled || this.stopped) return;
       const message = `The import stopped unexpectedly (exit code ${code}).`;
       this.deps.log('warn', message);
       this.recordFailure(job, message);

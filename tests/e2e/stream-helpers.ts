@@ -1,8 +1,11 @@
+import type { ElectronApplication, Page } from '@playwright/test';
+import { expect } from '@playwright/test';
 import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
+import type { PageGlobals } from './helpers';
 
 /*
  * For the stream's tests: the bundled FFmpeg listening for RTMP on this
@@ -55,6 +58,61 @@ export function rtmpListener(ffmpeg: string, port: number, file: string): ChildP
     ],
     { stdio: 'ignore', windowsHide: true },
   );
+}
+
+/** The stream's own page (the Program), once it is open. */
+export async function streamPage(app: ElectronApplication): Promise<Page> {
+  const isStream = (p: Page) => p.url().includes('stream.html');
+  return app.windows().find(isStream) ?? app.waitForEvent('window', { predicate: isStream });
+}
+
+/**
+ * The profile in use sends to the local listener on this port, with the fake camera (or none) and
+ * microphone and the test key; recordings go into this folder.
+ */
+export async function setUpStream(
+  app: ElectronApplication,
+  win: Page,
+  port: number,
+  folder: string,
+  withCamera = true,
+): Promise<void> {
+  await app.evaluate(({ dialog }, into) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [into] });
+  }, folder);
+  await win.getByTestId('open-stream').click();
+  await streamPage(app);
+  await expect
+    .poll(async () => {
+      const s = await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.status());
+      return s.inputs.cameras.length > 0 && s.inputs.microphones.length > 0;
+    })
+    .toBe(true);
+  const result = await win.evaluate(
+    async ({ port, key, withCamera }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const s = await d.stream.status();
+      const { profiles, activeId } = await d.stream.profiles();
+      const p = profiles.find((x) => x.id === activeId);
+      if (!p) return 'no profile';
+      const saved = await d.stream.saveProfile(p.id, {
+        name: 'Local test',
+        url: `rtmp://127.0.0.1:${port}/live2`,
+        preset: 'weak',
+        camera: withCamera ? (s.inputs.cameras[0] ?? null) : null,
+        sound: s.inputs.microphones[0] ?? null,
+        soundDelayMs: 0,
+        mixOwnSound: false,
+      });
+      if (!saved.ok) return saved.message;
+      const kept = await d.stream.setKey(p.id, key);
+      if (!kept.ok) return kept.message;
+      const folder = await d.stream.pickFolder();
+      return folder.ok ? 'ok' : folder.message;
+    },
+    { port, key: TEST_KEY, withCamera },
+  );
+  expect(result).toBe('ok');
 }
 
 export interface FlvSummary {

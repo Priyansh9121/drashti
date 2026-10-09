@@ -162,7 +162,8 @@ import { createPicturesWindow } from './pictures/pictures-window';
 import { PdfPictures, pictureSize } from './pictures/pdf-pictures';
 import { openGalleryWindow } from './windows/gallery-window';
 import { createOperatorWindow } from './windows/operator-window';
-import { RendererWatchdog, shouldConfirmQuit } from './watchdog';
+import { StopList } from './lifecycle';
+import { quitDetail, RendererWatchdog, shouldConfirmQuit } from './watchdog';
 import { applySessionSecurity, secureWebContents } from './windows/security';
 import { StreamProfileRepo } from './db/stream-profiles';
 import { StreamKeyStore } from './stream/key-store';
@@ -227,6 +228,16 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason) => {
   log.error('Unhandled promise rejection in the main process', reason);
 });
+// What stops as Drashti quits, in one ordered list (lifecycle.ts, Session 23): run at will-quit, or
+// before an exit that skips it (app.exit).
+const stops = new StopList((name, error) => {
+  log.error(`Quitting: ${name} did not stop cleanly`, error);
+});
+/** Exit at once (self-tests, restarting as Main): everything still stops, in order, first. */
+const exitNow = (code: number) => {
+  stops.run();
+  app.exit(code);
+};
 // Tests on a computer someone is using: never active, never covering the screen (windows/quiet.ts).
 startQuietTests();
 // Tests only: keep crash dumps in this folder (never sent anywhere), to read with Electron's symbols.
@@ -430,9 +441,6 @@ let quitConfirmed = false;
 let operatorWindow: BrowserWindow | null = null;
 let audioWindow: BrowserWindow | null = null;
 let db: Db | null = null;
-/** The show's own bookkeeping writes, made when the library is free (Session 15); flushed at quit. */
-let laterWrites: LaterWrites | null = null;
-let outputs: OutputManager | null = null;
 let importer: ImportService | null = null;
 
 function appInfo(): AppInfo {
@@ -700,7 +708,10 @@ function startNodeMode(): void {
       writeRole(app.getPath('userData'), 'main');
       log.info('Restarting as Main');
       if (!noRelaunch) app.relaunch();
-      app.exit(0);
+      exitNow(0);
+    },
+    atQuit: (name, stop) => {
+      stops.add(name, stop);
     },
   });
   /** The node's watchdog self-test, its result in a box (the menu) or printed (headless). */
@@ -733,7 +744,7 @@ function startNodeMode(): void {
   if (nodeSelfTest)
     void node.runSelfTest().then((result) => {
       process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
-      app.exit(result.passed ? 0 : 1);
+      exitNow(result.passed ? 0 : 1);
     });
 }
 
@@ -749,7 +760,7 @@ function start(): void {
     });
     void ffmpegSelfTest(path, process.platform).then((result) => {
       process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
-      app.exit(result.passed ? 0 : 1);
+      exitNow(result.passed ? 0 : 1);
     });
     return;
   }
@@ -783,10 +794,10 @@ function start(): void {
   if (process.env['DRASHTI_SELFTEST'] === 'old-library' && oldLibrary && !app.isPackaged) {
     try {
       writeOldLibrary(libraryFile(), oldLibrary, listDisplays());
-      app.exit(0);
+      exitNow(0);
     } catch (error) {
       log.error('Could not write the old library', error);
-      app.exit(1);
+      exitNow(1);
     }
     return;
   }
@@ -869,7 +880,14 @@ function start(): void {
       log.warn(message);
     },
   });
-  laterWrites = later;
+  // Last as Drashti quits, in this order (lifecycle.ts): every service has stopped using the library.
+  stops.addLast('later writes', () => {
+    later.flush();
+  });
+  stops.addLast('library', () => {
+    db?.close();
+    db = null;
+  });
   const laterSetting = (key: string, value: unknown) => {
     later.write(`setting:${key}`, () => {
       settings.set(key, value);
@@ -1062,7 +1080,9 @@ function start(): void {
       nodeService?.screensChanged();
     },
   });
-  outputs = manager;
+  stops.add('outputs', () => {
+    manager.closeAll();
+  });
   /** The display the operator window is on. Windowed (development) outputs never cover it. */
   const operatorDisplayId = (): number | null =>
     windowedOutputs || !operatorWindow || operatorWindow.isDestroyed()
@@ -1265,8 +1285,8 @@ function start(): void {
   }
   // This run takes the saved file over from now on, so a later start knows how this run ended.
   liveWriter.start(engine.current);
-  // Only a quit on purpose is clean (not a crash, and not the self-test's exit).
-  app.on('will-quit', () => {
+  // Only a quit on purpose is clean (not a crash): the very last step, after the library has closed.
+  stops.addLast('clean-quit mark', () => {
     liveWriter.markClean();
   });
 
@@ -1333,7 +1353,7 @@ function start(): void {
     },
   });
   const streaming = stream;
-  app.on('will-quit', () => {
+  stops.add('stream', () => {
     streaming.close();
   });
   // A passage fits where the live Look shows it: audience and key and fill groups, and the stream's
@@ -1351,7 +1371,7 @@ function start(): void {
   // After an unexpected stop while on air or recording: go again (within 5 minutes) or offer to,
   // once the operator window is up (so the operator sees it happen).
   const resumeStream = () => {
-    const resumed = streaming.resumeAfterStop();
+    const resumed = streaming.resumeAfterStop({ cleanQuit: startup.cleanQuit });
     if (!resumed) return;
     if (startNoticeTaken) sendToOperator(IPC.app.notice, { text: resumed });
     else startNotice = startNotice ? `${startNotice}\n\n${resumed}` : resumed;
@@ -1387,7 +1407,7 @@ function start(): void {
       else log.info(message);
     },
   });
-  app.on('will-quit', () => {
+  stops.add('roles', () => {
     roles.dispose();
   });
   lockAdminChannels(
@@ -1605,6 +1625,9 @@ function start(): void {
     },
   });
   importer = imports;
+  stops.add('imports', () => {
+    imports.stop();
+  });
   // An operator's edit during an import (Session 16): every request that changes something (the
   // ones Simple Mode refuses) waits, without holding up the main process, for the import to give
   // way between files, then writes with nothing in its way. Starting or stopping an import does not.
@@ -1661,7 +1684,7 @@ function start(): void {
       else log.info(message);
     },
   });
-  app.on('will-quit', () => {
+  stops.add('conversions', () => {
     conversions.close();
   });
   handle(IPC.media.convert, (e, ids) =>
@@ -1895,7 +1918,7 @@ function start(): void {
     },
   });
   const scheduler = macroScheduler;
-  app.on('will-quit', () => {
+  stops.add('scheduled macros', () => {
     scheduler.dispose();
   });
   handle(IPC.macros.countdown, () => scheduler.view());
@@ -1952,7 +1975,7 @@ function start(): void {
     },
   });
   artiService = arti;
-  app.on('will-quit', () => {
+  stops.add('arti', () => {
     arti.dispose();
   });
   // ---- scheduled backups (Session 14): into a folder an admin picks, at their times ----------------
@@ -1978,7 +2001,7 @@ function start(): void {
     },
     ...(testBackupRate ? { bytesPerSecond: testBackupRate } : {}),
   });
-  app.on('will-quit', () => {
+  stops.add('scheduled backups', () => {
     scheduledBackups.dispose();
   });
   const notBackupsOperator = { ok: false as const, message: 'Only the operator window can change backups.' };
@@ -2030,7 +2053,8 @@ function start(): void {
     },
     ...(testUpdateRate ? { bytesPerSecond: testUpdateRate } : {}),
   });
-  app.on('will-quit', () => {
+  // The very last step: the installer may close Drashti as it starts, so everything else is done first.
+  stops.addLast('updates (an install at quit)', () => {
     updates.quit();
   });
   const notUpdatesOperator = { ok: false as const, message: 'Only the operator window can update Drashti.' };
@@ -2070,7 +2094,7 @@ function start(): void {
     },
   });
   calendarService = calendars;
-  app.on('will-quit', () => {
+  stops.add('calendars', () => {
     calendars.dispose();
   });
   handle(IPC.calendar.view, () => calendars.view());
@@ -2095,7 +2119,7 @@ function start(): void {
     },
   });
   idleService = idleRotation;
-  app.on('will-quit', () => {
+  stops.add('idle rotation', () => {
     idleRotation.dispose();
   });
   const notIdleOperator = {
@@ -2208,7 +2232,7 @@ function start(): void {
   });
   // What recovery put back carries on until its time; the rest that was showing has ended.
   announcements.resume();
-  app.on('will-quit', () => {
+  stops.add('announcements', () => {
     announcements.close();
   });
   const net = new NetworkService({
@@ -2314,9 +2338,7 @@ function start(): void {
   });
   network = net;
   net.resume();
-  app.on('will-quit', () => {
-    void net.close();
-  });
+  stops.add('network', () => net.close());
 
   // ---- output nodes (Session 13) ----------------------------------------------------------------
   const nodeRepo = new NodeRepo(db);
@@ -2405,9 +2427,7 @@ function start(): void {
   });
   nodeService = nodes;
   nodes.resume();
-  app.on('will-quit', () => {
-    void nodes.close();
-  });
+  stops.add('nodes', () => nodes.close());
   // Pictures of Main's own outputs for the dashboard, every few seconds while it is open.
   let localThumbs: NodeJS.Timeout | null = null;
   const captureLocal = () => {
@@ -2988,9 +3008,9 @@ function start(): void {
 
   // ---- windows --------------------------------------------------------------
   const showingCount = () => manager.status().filter((st) => st.state === 'showing').length;
-  /** Ask before anything that would black out the screens. Returns true when it is fine to quit. */
+  /** Ask before anything that would black out the screens or end the stream. Returns true when it is fine to quit. */
   const confirmQuit = (): boolean => {
-    if (!shouldConfirmQuit(showingCount(), quitConfirmed, noQuitConfirm)) return true;
+    if (!shouldConfirmQuit(showingCount(), quitConfirmed, noQuitConfirm, streaming.inUse())) return true;
     const parent = operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : undefined;
     const options = {
       type: 'warning' as const,
@@ -2998,7 +3018,7 @@ function start(): void {
       defaultId: 0,
       cancelId: 0,
       message: 'Quit Drashti?',
-      detail: `${showingCount()} screen(s) are showing. If Drashti quits, they go black.`,
+      detail: quitDetail(showingCount(), streaming.wanted()),
     };
     const choice = parent ? dialog.showMessageBoxSync(parent, options) : dialog.showMessageBoxSync(options);
     quitConfirmed = choice === 1;
@@ -3036,7 +3056,12 @@ function start(): void {
     app.quit();
   });
   app.on('before-quit', (event) => {
-    if (!confirmQuit()) event.preventDefault();
+    if (!confirmQuit()) {
+      event.preventDefault();
+      return;
+    }
+    // The quit goes ahead: the stream's page must not open again as the windows close (Session 23).
+    streaming.quitting();
   });
 
   const runSelfTest = () =>
@@ -3245,10 +3270,9 @@ function start(): void {
       : null,
   });
   rebuildMenu();
-  /** The self-tests end on purpose: a clean quit, so the next start does not put their slides back. */
+  /** The self-tests end on purpose: a clean quit (the stop list's last step), so the next start does not put their slides back. */
   const exitSelfTest = (code: number) => {
-    liveWriter.markClean();
-    app.exit(code);
+    exitNow(code);
   };
   if (perfTest) {
     operatorWindow.webContents.once('did-finish-load', () => {
@@ -3397,13 +3421,14 @@ if (!app.requestSingleInstanceLock()) {
     app.quit();
   });
 
-  app.on('will-quit', () => {
+  // Made before any service, so stopped after them all (lifecycle.ts).
+  stops.add('shortcuts', () => {
     globalShortcut.unregisterAll();
+  });
+  stops.add('sleep guard', () => {
     sleepGuard.release();
-    importer?.stop();
-    outputs?.closeAll();
-    laterWrites?.flush();
-    db?.close();
-    db = null;
+  });
+  app.on('will-quit', () => {
+    stops.run();
   });
 }
