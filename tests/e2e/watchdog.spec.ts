@@ -37,7 +37,8 @@ function runSelfTest(
     let log = '';
     child.stdout.on('data', (d: Buffer) => (log += d.toString()));
     child.stderr.on('data', (d: Buffer) => (log += d.toString()));
-    const timer = setTimeout(() => child.kill(), 90_000);
+    // Session 23's hung output waits up to 40 s for the heartbeat to notice it.
+    const timer = setTimeout(() => child.kill(), 150_000);
     child.on('exit', (code) => {
       clearTimeout(timer);
       const line = log.split('\n').find((l) => l.startsWith('DRASHTI_SELFTEST_RESULT '));
@@ -51,6 +52,7 @@ function runSelfTest(
 }
 
 test('watchdog self-test: operator crash and reload never touch the output or the sound; crashed windows come back', async () => {
+  test.setTimeout(180_000);
   needsRealScreen();
   const userData = mkdtempSync(join(tmpdir(), 'drashti-selftest-'));
   const { code, result, log } = await runSelfTest(userData);
@@ -71,6 +73,8 @@ test('watchdog self-test: operator crash and reload never touch the output or th
     'the operator window comes back after a reload',
     'the watchdog reloads a crashed output',
     'the reloaded output shows the live slide again',
+    'a hung output (stuck in a loop, taking no input) is noticed and restarted',
+    'the restarted output shows the live slide again',
     'the watchdog reloads a crashed audio player',
     'the reloaded audio player follows the show again',
   ]);

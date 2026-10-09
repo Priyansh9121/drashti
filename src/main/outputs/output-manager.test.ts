@@ -171,4 +171,27 @@ describe('OutputManager', () => {
     manager.closeAll();
     expect(live()).toEqual([]);
   });
+
+  it('a window the watchdog gave up on is Stopped, not showing, until it draws again (Session 23)', () => {
+    screens = [screen('audience', hall), screen('stage', stage)];
+    manager.reconcile();
+    const before = changes;
+    manager.setStopped('audience', true);
+    expect(manager.status()[0]).toEqual({ screenId: 'audience', state: 'stopped', displayId: 2 });
+    expect(manager.status()[1]?.state).toBe('showing');
+    expect(changes).toBe(before + 1);
+    // Its window stays open on its display (it is tried again there).
+    expect(live()).toEqual(['audience@2', 'stage@3']);
+    manager.setStopped('audience', true);
+    expect(changes).toBe(before + 1);
+    manager.setStopped('audience', false);
+    expect(manager.status()[0]?.state).toBe('showing');
+    // A window closed (turned off) forgets it: turned on again, it starts afresh.
+    manager.setStopped('audience', true);
+    screens = [screen('audience', hall, false), screen('stage', stage)];
+    manager.reconcile();
+    screens = [screen('audience', hall), screen('stage', stage)];
+    manager.reconcile();
+    expect(manager.status()[0]?.state).toBe('showing');
+  });
 });

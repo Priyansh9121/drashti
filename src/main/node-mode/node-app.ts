@@ -25,6 +25,7 @@ import type { DiagnosticsInput } from '../diagnostics';
 import { saveNodeDiagnostics } from '../diagnostics';
 import { handle } from '../ipc/handle';
 import { hearRenderErrors } from '../render-errors-ipc';
+import { CHECK_EVERY_MS, OutputHeartbeat } from '../outputs/heartbeat';
 import { log } from '../log';
 import { handleMediaRequest, mediaRequestOf } from '../media/media-protocol';
 import {
@@ -290,6 +291,34 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       if (context) sendToPage(win, IPC.output.context, context);
     }
   };
+  // Hung and stale outputs (Session 23; ../outputs/heartbeat.ts): as on Main, an output whose reports
+  // stop, or stop showing the show, is crashed into the watchdog's reload.
+  const heartbeat = new OutputHeartbeat({
+    now: Date.now,
+    engineRev: () => mirror.rev,
+    judged: () =>
+      manager
+        .status()
+        .filter((st) => st.state === 'showing')
+        .map((st) => st.screenId)
+        .filter((id) => {
+          const w = outputWindows.get(id);
+          return w !== undefined && !w.isDestroyed() && w.isVisible() && !w.isMinimized();
+        }),
+    stuck: (screenId, reason) => {
+      const w = outputWindows.get(screenId);
+      if (!w || w.isDestroyed()) return;
+      const name = outputNames.get(screenId) ?? 'an output';
+      log.warn(`Node: output ${name} is stuck (${reason}): restarting it`);
+      deps.watchdog.stuck(w.webContents, name, reason);
+    },
+  });
+  const heartbeatTimer = setInterval(() => {
+    heartbeat.check();
+  }, CHECK_EVERY_MS);
+  deps.atQuit('output heartbeat', () => {
+    clearInterval(heartbeatTimer);
+  });
   const manager = new OutputManager({
     listDisplays,
     screens: () => (paired?.screens ?? []).map(asConfig),
@@ -306,8 +335,15 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       outputWindows.set(config.id, window);
       outputNames.set(config.id, `output "${config.name}"`);
       deps.watchdog.watch(window.webContents, `output "${config.name}"`);
+      heartbeat.opened(config.id);
+      window.webContents.on('did-start-loading', () => {
+        heartbeat.opened(config.id);
+      });
       window.on('closed', () => {
-        if (outputWindows.get(config.id) === window) outputWindows.delete(config.id);
+        if (outputWindows.get(config.id) === window) {
+          outputWindows.delete(config.id);
+          heartbeat.closed(config.id);
+        }
         reports.delete(config.id);
       });
       return h;
@@ -365,6 +401,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       case 'engine': {
         const result = mirror.apply(message.message);
         if (result === 'applied') {
+          heartbeat.changed(mirror.rev);
           fromSaved = false;
           transport.broadcast(message.message);
           saver.update(snapshot(), offsetMs);
@@ -648,8 +685,10 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   handle(IPC.output.report, (event, raw) => {
     const screenId = manager.screenIdFor(event.sender.id);
     const r = raw as Partial<OutputReport> | null;
-    if (screenId && r && typeof r.droppedFrames === 'number' && typeof r.paintedRev === 'number')
+    if (screenId && r && typeof r.droppedFrames === 'number' && typeof r.paintedRev === 'number') {
       reports.set(screenId, { droppedFrames: r.droppedFrames, paintedRev: r.paintedRev });
+      heartbeat.report(screenId, r.paintedRev);
+    }
     return null;
   });
   // A node keeps no lengths and no stills (the library is Main's).

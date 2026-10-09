@@ -76,7 +76,12 @@ export type ScreenState =
   /** Turned off by the operator. */
   | 'disabled'
   /** On a node that is not connected now (its screens show the last picture, if it is on). */
-  | 'node-offline';
+  | 'node-offline'
+  /**
+   * Its window kept crashing and the watchdog gave up on it (Session 23): black, tried again by
+   * itself after 2 minutes and then every 10, or at once with Try again in Screens.
+   */
+  | 'stopped';
 
 export interface ScreenStatus {
   screenId: string;

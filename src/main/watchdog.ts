@@ -8,7 +8,7 @@ export interface WatchTarget {
 }
 
 export type WatchdogEventKind =
-  'crashed' | 'reloaded' | 'unresponsive' | 'responsive' | 'hung' | 'gave-up' | 'render-error';
+  'crashed' | 'reloaded' | 'unresponsive' | 'responsive' | 'hung' | 'gave-up' | 'render-error' | 'retried';
 
 export interface WatchdogEvent {
   window: string;
@@ -25,6 +25,11 @@ export interface WatchdogOptions {
   /** Waits before each successive reload: the first crash reloads almost at once. */
   backoffMs?: readonly number[];
 }
+
+/** After giving up on a window (a crash loop), it is tried again this long after (Session 23)... */
+export const RETRY_FIRST_MS = 2 * 60_000;
+/** ...and then this long after each time it gives up again. */
+export const RETRY_AGAIN_MS = 10 * 60_000;
 
 interface Timers {
   setTimeout: (fn: () => void, ms: number) => unknown;
@@ -50,6 +55,8 @@ export class RendererWatchdog {
   readonly events: WatchdogEvent[] = [];
   /** When each window was last reloaded after a render error. */
   private readonly renderReloads = new Map<string, number>();
+  /** Each watched window's "try it again now" (Screens' Try again, Session 23). */
+  private readonly retries = new Map<WatchTarget, (why: string) => void>();
 
   constructor(
     private readonly onEvent: (e: WatchdogEvent) => void = () => undefined,
@@ -82,6 +89,23 @@ export class RendererWatchdog {
     }, 100);
   }
 
+  /**
+   * A window judged stuck from outside (an output whose heartbeat stopped, Session 23): it is
+   * crashed, and the crash path reloads it, as a hang Chromium noticed would be.
+   */
+  stuck(target: WatchTarget, name: string, reason: string): void {
+    this.record(name, 'hung', reason);
+    if (!target.isDestroyed()) target.forcefullyCrashRenderer();
+  }
+
+  /** Try a window again now (after it was given up on): false when it is not watched. */
+  retryNow(target: WatchTarget, why = 'asked to'): boolean {
+    const retry = this.retries.get(target);
+    if (!retry) return false;
+    retry(why);
+    return true;
+  }
+
   watch(target: WatchTarget, name: string, options: WatchdogOptions = {}): void {
     const hangMs = options.hangMs ?? 5000;
     const maxCrashes = options.maxCrashesPerMinute ?? 5;
@@ -89,7 +113,22 @@ export class RendererWatchdog {
     const crashes: number[] = [];
     let hangTimer: unknown = null;
     let reloadTimer: unknown = null;
+    let retryTimer: unknown = null;
     let gaveUp = false;
+    /** How many times it was given up on: the first is tried again sooner. */
+    let gaveUpTimes = 0;
+
+    // Given up on: tried again, its crash count starting afresh (Session 23).
+    const retry = (why: string) => {
+      if (retryTimer !== null) this.timers.clearTimeout(retryTimer);
+      retryTimer = null;
+      if (target.isDestroyed()) return;
+      crashes.length = 0;
+      gaveUp = false;
+      target.reload();
+      this.record(name, 'retried', why);
+    };
+    this.retries.set(target, retry);
 
     const cancelHang = () => {
       if (hangTimer !== null) this.timers.clearTimeout(hangTimer);
@@ -104,7 +143,17 @@ export class RendererWatchdog {
       crashes.push(now);
       while (crashes.length > 0 && now - (crashes[0] ?? now) > 60_000) crashes.shift();
       if (crashes.length > maxCrashes) {
-        if (!gaveUp) this.record(name, 'gave-up', `${crashes.length} crashes in a minute`);
+        if (!gaveUp) {
+          this.record(name, 'gave-up', `${crashes.length} crashes in a minute`);
+          // No reload meanwhile (one was still waiting from the crash before): only the retry.
+          if (reloadTimer !== null) this.timers.clearTimeout(reloadTimer);
+          reloadTimer = null;
+          gaveUpTimes++;
+          const wait = gaveUpTimes === 1 ? RETRY_FIRST_MS : RETRY_AGAIN_MS;
+          retryTimer = this.timers.setTimeout(() => {
+            retry(`${Math.round(wait / 60_000)} minutes after giving up`);
+          }, wait);
+        }
         gaveUp = true;
         return;
       }
@@ -138,6 +187,8 @@ export class RendererWatchdog {
     target.on('destroyed', () => {
       cancelHang();
       if (reloadTimer !== null) this.timers.clearTimeout(reloadTimer);
+      if (retryTimer !== null) this.timers.clearTimeout(retryTimer);
+      this.retries.delete(target);
     });
   }
 }

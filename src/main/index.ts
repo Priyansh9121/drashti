@@ -164,7 +164,8 @@ import { openGalleryWindow } from './windows/gallery-window';
 import { createOperatorWindow } from './windows/operator-window';
 import { StopList } from './lifecycle';
 import { hearRenderErrors } from './render-errors-ipc';
-import { quitDetail, RendererWatchdog, shouldConfirmQuit } from './watchdog';
+import { CHECK_EVERY_MS, OutputHeartbeat } from './outputs/heartbeat';
+import { quitDetail, RendererWatchdog, shouldConfirmQuit, type WatchdogEvent } from './watchdog';
 import { applySessionSecurity, secureWebContents } from './windows/security';
 import { StreamProfileRepo } from './db/stream-profiles';
 import { StreamKeyStore } from './stream/key-store';
@@ -398,6 +399,8 @@ const testMemoryEveryMs = app.isPackaged
 // Schemes must be registered before the app is ready.
 protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { ...MEDIA_SCHEME_PRIVILEGES } }]);
 
+/** What the show does with an output's watchdog events (set once the outputs exist: Session 23). */
+let outputWatchdogEvent: ((e: WatchdogEvent) => void) | null = null;
 /** The watchdog's recent events, for diagnostics. */
 const watchdogHistory: { at: string; window: string; kind: string; reason: string | null }[] = [];
 const watchdog = new RendererWatchdog((e) => {
@@ -412,6 +415,7 @@ const watchdog = new RendererWatchdog((e) => {
   if (e.kind === 'crashed' || e.kind === 'hung' || e.kind === 'gave-up' || e.kind === 'render-error')
     log.warn(text);
   else log.info(text);
+  outputWatchdogEvent?.(e);
 });
 // Screens never sleep or dim while an output is showing.
 const sleepGuard = new SleepGuard(powerSaveBlocker, (held) => {
@@ -1068,6 +1072,57 @@ function start(): void {
         : null,
     };
   };
+  // ---- hung, stale and given-up outputs (Session 23; outputs/heartbeat.ts, watchdog.ts) ----------
+  // Each output's 2-second report is its heartbeat: one that stops, or stops painting the show, is
+  // crashed into the watchdog's reload. One the watchdog gave up on is shown as Stopped.
+  const heartbeat = new OutputHeartbeat({
+    now: Date.now,
+    engineRev: () => engine.rev,
+    judged: () =>
+      manager
+        .status()
+        .filter((st) => st.state === 'showing')
+        .map((st) => st.screenId)
+        .filter((id) => {
+          const w = outputWindows.get(id);
+          return w !== undefined && !w.isDestroyed() && w.isVisible() && !w.isMinimized();
+        }),
+    stuck: (screenId, reason) => {
+      const w = outputWindows.get(screenId);
+      if (!w || w.isDestroyed()) return;
+      const name = outputNames.get(screenId) ?? 'an output';
+      log.warn(`Output ${name} is stuck (${reason}): restarting it`);
+      watchdog.stuck(w.webContents, name, reason);
+    },
+  });
+  const heartbeatTimer = setInterval(() => {
+    heartbeat.check();
+  }, CHECK_EVERY_MS);
+  stops.add('output heartbeat', () => {
+    clearInterval(heartbeatTimer);
+  });
+  engine.onChange(() => {
+    heartbeat.changed(engine.rev);
+  });
+  const screenOfOutput = (name: string) => [...outputNames].find(([, n]) => n === name)?.[0];
+  /** Stopped outputs whose page has loaded again since: their next report ends Stopped. */
+  const loadedSinceStopped = new Set<string>();
+  const stopOutput = (screenId: string) => {
+    loadedSinceStopped.delete(screenId);
+    manager.setStopped(screenId, true);
+  };
+  outputWatchdogEvent = (e) => {
+    const screenId = screenOfOutput(e.window);
+    if (screenId === undefined) return;
+    // A page loaded again gets its grace before it is judged.
+    if (e.kind === 'reloaded' || e.kind === 'retried') heartbeat.opened(screenId);
+    // Given up on: Stopped (the status line and Screens say so) until it draws again.
+    if (e.kind === 'gave-up') stopOutput(screenId);
+  };
+  // Tests only (never a packaged Drashti): mark an output as given up on, as a crash loop would,
+  // to see Stopped and Try again (Session 23; Playwright cannot follow a renderer that crashes).
+  if (!app.isPackaged && process.env['DRASHTI_TEST_GIVE_UP'] === '1')
+    (globalThis as { drashtiTestGiveUp?: (screenId: string) => void }).drashtiTestGiveUp = stopOutput;
   const manager = new OutputManager({
     listDisplays,
     screens: () => screenRepo.screens(),
@@ -1082,8 +1137,17 @@ function start(): void {
       outputWindows.set(config.id, window);
       outputNames.set(config.id, `output "${config.name}"`);
       watchdog.watch(window.webContents, `output "${config.name}"`);
+      heartbeat.opened(config.id);
+      // However it loads again (the watchdog, the dashboard's Reload, a test), it gets its grace.
+      window.webContents.on('did-start-loading', () => {
+        heartbeat.opened(config.id);
+        loadedSinceStopped.add(config.id);
+      });
       window.on('closed', () => {
-        if (outputWindows.get(config.id) === window) outputWindows.delete(config.id);
+        if (outputWindows.get(config.id) === window) {
+          outputWindows.delete(config.id);
+          heartbeat.closed(config.id);
+        }
       });
       return h;
     },
@@ -1094,7 +1158,10 @@ function start(): void {
         if (context) sendToPage(win, IPC.output.context, context);
       }
       guardOperator();
-      sleepGuard.update(manager.status().filter((st) => st.state === 'showing').length);
+      // A stopped output (Session 23) is still on its display and tried again: the display stays awake.
+      sleepGuard.update(
+        manager.status().filter((st) => st.state === 'showing' || st.state === 'stopped').length,
+      );
       // Nodes follow their screens' settings (groups, canvases, names) as they change.
       nodeService?.screensChanged();
     },
@@ -2503,8 +2570,14 @@ function start(): void {
     if (nodeId === null) {
       const win = outputWindows.get(sid.data);
       if (!win || win.isDestroyed()) return { ok: false as const, message: 'That screen is not showing.' };
-      log.info('Reloading an output from the screens dashboard');
-      win.webContents.reload();
+      // Stopped (given up on, Session 23): Try again, with the watchdog's count starting afresh.
+      if (manager.status().some((st) => st.screenId === sid.data && st.state === 'stopped')) {
+        log.info('Trying a stopped output again, as the operator asked');
+        watchdog.retryNow(win.webContents, 'Try again');
+      } else {
+        log.info('Reloading an output from the screens dashboard');
+        win.webContents.reload();
+      }
       return { ok: true as const, status: nodes.status() };
     }
     const nid = idSchema.safeParse(nodeId);
@@ -2553,8 +2626,12 @@ function start(): void {
   handle(IPC.output.report, (e, raw) => {
     const screenId = manager.screenIdFor(e.sender.id);
     const r = raw as { droppedFrames?: unknown; paintedRev?: unknown } | null;
-    if (screenId && typeof r?.droppedFrames === 'number' && typeof r.paintedRev === 'number')
+    if (screenId && typeof r?.droppedFrames === 'number' && typeof r.paintedRev === 'number') {
       localReports.set(screenId, { droppedFrames: r.droppedFrames, paintedRev: r.paintedRev });
+      heartbeat.report(screenId, r.paintedRev);
+      // Reporting from a page loaded since it was given up on: it draws again.
+      if (loadedSinceStopped.has(screenId)) manager.setStopped(screenId, false);
+    }
     return null;
   });
   // Render errors in any window (Session 23): logged; an output draws black and is reloaded once.

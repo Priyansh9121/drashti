@@ -38,6 +38,7 @@ const stateText: Record<ScreenState, string> = {
   unassigned: 'No display',
   disabled: 'Off',
   'node-offline': 'Node offline',
+  stopped: 'Stopped',
 };
 const stateTone: Record<ScreenState, string> = {
   showing: 'border-success/60 bg-success-bg text-success-fg',
@@ -45,6 +46,7 @@ const stateTone: Record<ScreenState, string> = {
   unassigned: 'border-line-strong bg-panel-2 text-muted',
   disabled: 'border-line-strong bg-panel-2 text-muted',
   'node-offline': 'border-warning/60 bg-warning-bg text-warning-fg',
+  stopped: 'border-danger/60 bg-danger-bg text-danger-fg',
 };
 
 const bridge = () => window.drashti.screens;
@@ -121,6 +123,20 @@ function ScreenRow({
         </span>
         {state === 'missing-display' && (
           <span className="text-xs text-warning-fg">It opens by itself when the display is connected.</span>
+        )}
+        {state === 'stopped' && (
+          <>
+            <span className="text-xs text-danger-fg" data-testid="screen-stopped">
+              It kept failing, so it is black for now. Drashti tries it again by itself every few minutes.
+            </span>
+            <Button
+              size="sm"
+              data-testid="screen-try-again"
+              onClick={() => void window.drashti.nodes.reload(null, screen.id)}
+            >
+              Try again
+            </Button>
+          </>
         )}
         <span className="flex-1" />
         {screen.feed !== null && (
