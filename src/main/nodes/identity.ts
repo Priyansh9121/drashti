@@ -101,12 +101,14 @@ export function loadIdentity(
   }
   const moved = setAside(f.file, o.now);
   const setAsideAs = moved === null ? null : basename(moved);
-  try {
-    mkdirSync(f.dir, { recursive: true });
-    writeFileSync(f.held, JSON.stringify({ reason: read.reason, setAside: setAsideAs }, null, 2));
-  } catch {
-    // Held for this run anyway; with the file set aside, the next start would make a new one.
-  }
+  // Moved aside: the hold is kept, so the next start does not make a new one in its place. Not moved
+  // (still locked, say): it stays where it is, and the next start reads it again.
+  if (moved !== null)
+    try {
+      writeFileSync(f.held, JSON.stringify({ reason: read.reason, setAside: setAsideAs }, null, 2));
+    } catch {
+      // Held for this run anyway.
+    }
   o.log(
     `Nodes: node-link/identity.json could not be read (${read.reason}); ${
       setAsideAs ? `kept as ${setAsideAs}` : 'left where it is'

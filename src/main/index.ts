@@ -763,6 +763,7 @@ function startNodeMode(): void {
   if (nodeSelfTest)
     void node.runSelfTest().then((result) => {
       process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
+      node.holdUpdate();
       exitNow(result.passed ? 0 : 1);
     });
 }
@@ -1078,14 +1079,22 @@ function start(): void {
   const heartbeat = new OutputHeartbeat({
     now: Date.now,
     engineRev: () => engine.rev,
+    // Showing, or stopped and tried again since (a retry that hangs is noticed too); never a page
+    // that has crashed and waits for the watchdog.
     judged: () =>
       manager
         .status()
-        .filter((st) => st.state === 'showing')
+        .filter((st) => st.state === 'showing' || st.state === 'stopped')
         .map((st) => st.screenId)
         .filter((id) => {
           const w = outputWindows.get(id);
-          return w !== undefined && !w.isDestroyed() && w.isVisible() && !w.isMinimized();
+          return (
+            w !== undefined &&
+            !w.isDestroyed() &&
+            !w.webContents.isCrashed() &&
+            w.isVisible() &&
+            !w.isMinimized()
+          );
         }),
     stuck: (screenId, reason) => {
       const w = outputWindows.get(screenId);
@@ -1217,7 +1226,10 @@ function start(): void {
     const showing = new Set(
       manager
         .status()
-        .flatMap((st) => (st.state === 'showing' && st.displayId !== null ? [st.displayId] : [])),
+        // A stopped output (Session 23) is still a window over its display.
+        .flatMap((st) =>
+          (st.state === 'showing' || st.state === 'stopped') && st.displayId !== null ? [st.displayId] : [],
+        ),
     );
     const target = placeOperator(operatorWindow.getBounds(), listDisplays(), showing);
     if (target) {
@@ -3416,6 +3428,8 @@ function start(): void {
   rebuildMenu();
   /** The self-tests end on purpose: a clean quit (the stop list's last step), so the next start does not put their slides back. */
   const exitSelfTest = (code: number) => {
+    // A self-test's end is not the quit an update waits for.
+    updates.holdForNextQuit();
     exitNow(code);
   };
   if (perfTest) {

@@ -1,4 +1,4 @@
-import { existsSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { DrashtiRole } from '../shared/nodes';
 import { readState, readStateTwice, setAside } from './state-file';
@@ -42,9 +42,9 @@ export function knownRole(userData: string, env: string | undefined): DrashtiRol
 /**
  * The role to start in, and what to tell the person at the computer about it (Session 23). A role
  * file that is there but cannot be read is not taken for none: on a node nobody may be at the
- * computer to answer a question at the start. So the role is decided from the files there, a
- * library (drashti.sqlite) meaning Main and none a node, the file is set aside with the date, and
- * the note says what was chosen. null: a first start, where only the person at it can say.
+ * computer to answer a question at the start. So the role is decided from the files there (whichever
+ * role ran last wrote its own files last; no library at all means a node), the file is set aside with
+ * the date, and the note says what was chosen. null: a first start, where only the person at it can say.
  */
 export function startingRole(
   userData: string,
@@ -56,18 +56,35 @@ export function startingRole(
   const read = readStateTwice(join(userData, FILE), parseRole, o.retryMs);
   if (read.status === 'ok') return { role: read.value, note: null };
   if (read.status === 'missing') return { role: library ? 'main' : null, note: null };
-  const role: DrashtiRole = library ? 'main' : 'node';
+  // A computer can have been both (a Main turned into a node keeps its library): whichever ran last
+  // wrote its own files last.
+  const lastWritten = (names: string[]) =>
+    Math.max(
+      0,
+      ...names.map((n) => {
+        try {
+          return statSync(join(userData, n)).mtimeMs;
+        } catch {
+          return 0;
+        }
+      }),
+    );
+  const asMain = lastWritten(['drashti.sqlite', 'drashti.sqlite-wal', 'live-state.json']);
+  const asNode = lastWritten(['node.json', 'node-show.json']);
+  const role: DrashtiRole = asMain > asNode ? 'main' : 'node';
   const moved = setAside(join(userData, FILE), o.now);
   const kept = moved ? `kept as “${basename(moved)}”` : 'left where it is';
   o.log(
-    `${FILE} could not be read (${read.reason}); ${kept}. Starting as ${role === 'main' ? 'Main: this computer has a library' : 'a node: this computer has no library'}`,
+    `${FILE} could not be read (${read.reason}); ${kept}. Starting as ${role === 'main' ? "Main: Main's files are the newest" : "a node: no library, or a node's files are the newest"}`,
   );
   return {
     role,
     note: `This computer's role file could not be read, so Drashti started as ${
       role === 'main'
-        ? 'Main, because this computer has a library'
-        : 'a node, because this computer has no library'
+        ? 'Main, because it last ran as Main'
+        : library
+          ? 'a node, because it last ran as a node'
+          : 'a node, because this computer has no library'
     }. The file was ${kept} in Drashti's data folder. To change the role, ${
       role === 'main'
         ? 'choose File, then Use This Computer as a Node…'

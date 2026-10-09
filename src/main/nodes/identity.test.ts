@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -68,6 +68,27 @@ describe('Main’s node identity', () => {
     expect(readdirSync(linkDir())).toContain('identity.unreadable-2026-10-10 05-36.json');
     expect(readdirSync(linkDir())).not.toContain('identity.json');
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'one that cannot be moved aside stays where it is, with no hold: read again at the next start',
+    () => {
+      dir = mkdtempSync(join(tmpdir(), 'drashti-identity-'));
+      const first = identity();
+      const text = readFileSync(file(), 'utf8');
+      writeFileSync(file(), text.slice(0, 20));
+      // Nothing in the folder can be moved or written (as when antivirus holds it).
+      chmodSync(linkDir(), 0o555);
+      try {
+        expect(load().ok).toBe(false);
+      } finally {
+        chmodSync(linkDir(), 0o755);
+      }
+      expect(readdirSync(linkDir())).toEqual(['identity.json']);
+      // Readable again: the same identity, and the nodes never had to be paired again.
+      writeFileSync(file(), text);
+      expect(identity()).toEqual(first);
+    },
+  );
 
   it('only an admin’s new identity ends the hold', () => {
     dir = mkdtempSync(join(tmpdir(), 'drashti-identity-'));

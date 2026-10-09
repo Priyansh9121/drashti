@@ -254,7 +254,13 @@ export class ScreensService {
     const operatorDisplay = this.operatorDisplayId();
     const covering = this.outputs
       .status()
-      .filter((s) => s.state === 'showing' && s.displayId !== null && s.displayId === operatorDisplay);
+      // A stopped output (Session 23) is still a window over its display.
+      .filter(
+        (s) =>
+          (s.state === 'showing' || s.state === 'stopped') &&
+          s.displayId !== null &&
+          s.displayId === operatorDisplay,
+      );
     const turnedOff: string[] = [];
     for (const s of covering) {
       if (this.repo.updateScreen(s.screenId, { enabled: false }))

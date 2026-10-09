@@ -85,6 +85,9 @@ export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
       // The same playback: new settings (fit, loop), and whatever was loading is not wanted any more.
       if (slots.shown?.key === key) return { ...slots, shown: { ...slots.shown, layer }, incoming: null };
       if (slots.incoming?.key === key) return { ...slots, incoming: { ...slots.incoming, layer } };
+      // The picture going away is wanted again (Back during a dissolve): it comes back whole, at once.
+      if (slots.leaving?.key === key)
+        return { shown: { ...slots.leaving, layer }, incoming: null, leaving: null, fade: null };
       // Something new, loading out of sight. A dissolve still running carries on to its end, and the new
       // one follows it (Session 23): ended where it was, the picture stayed part-way through, dim.
       const shown = slots.shown?.state === 'ready' ? slots.shown : null;

@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -52,8 +60,19 @@ describe('a role file that cannot be read (Session 23)', () => {
     mkdirSync(join(dir, 'drashti-role.json'));
     const r = start();
     expect(r.role).toBe('main');
-    expect(r.note).toContain('started as Main, because this computer has a library');
+    expect(r.note).toContain('started as Main, because it last ran as Main');
     expect(readdirSync(dir)).toContain('drashti-role.unreadable-2026-10-10 05-36.json');
+  });
+
+  it('on a computer that was Main and then a node (it keeps its library): the role that ran last', () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-role-'));
+    writeFileSync(join(dir, 'drashti.sqlite'), 'a library');
+    utimesSync(join(dir, 'drashti.sqlite'), new Date(2026, 9, 1), new Date(2026, 9, 1));
+    writeFileSync(join(dir, 'node.json'), '{}');
+    writeFileSync(join(dir, 'drashti-role.json'), 'garbage');
+    const r = start();
+    expect(r.role).toBe('node');
+    expect(r.note).toContain('started as a node, because it last ran as a node');
   });
 
   it('a missing file is still a first start (asked), and the environment still wins', () => {

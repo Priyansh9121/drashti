@@ -146,7 +146,7 @@ Section 8 of `docs/parallel-run.md` has the steps: on the second computer choose
 **When a file Drashti keeps cannot be read** (a damaged disk, a file cut short). Drashti never takes it for a missing file and never writes over it: it tries once more, then keeps the file aside in its data folder with the date in its name (for example `identity.unreadable-2026-10-10 05-36.json`), and says what it did:
 
 - **Main's identity for its nodes** (`node-link/identity.json`): every paired node checks it, so Drashti does not make a new one by itself. A note says so when Drashti starts, nothing follows Main, and **Screens** says "The nodes cannot follow this computer". An admin presses **Make a new identity…** there; then pair each node again (on the node, **Unpair…**, then a new code from Main).
-- **A node's role file**: the node starts as a node without asking (a computer with a library starts as Main), and its window says what it chose.
+- **The role file** (Main or Node): Drashti starts as whichever it last ran as (judged from its other files; with no library at all, a node) without asking, and says what it chose.
 - **A node's pairing** (`node.json`): the node starts unpaired and says so. Pair it again.
 
 ---

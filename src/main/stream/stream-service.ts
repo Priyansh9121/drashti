@@ -356,6 +356,8 @@ export class StreamService {
 
   private async openProgram(): Promise<void> {
     await this.checkSystemAccess();
+    // Drashti may have begun to quit while the system asked (a new window would stop the quit).
+    if (this.closing) return;
     if (this.program && !this.program.isDestroyed()) return;
     const { width, height } = this.context();
     const win = this.deps.createProgram({ width, height });

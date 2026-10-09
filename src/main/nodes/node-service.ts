@@ -107,6 +107,8 @@ export class NodeService implements EngineTransport {
   private worker: LinkWorker | null = null;
   private state: NodesStatus['state'] = 'off';
   private message: string | null = null;
+  /** Main's identity could not be read (Session 23): kept until an admin makes a new one, nodes or not. */
+  private identityProblem: string | null = null;
   private boundPort: number | null = null;
   private offer: { code: string; expiresAt: number } | null = null;
   private offerTimer: NodeJS.Timeout | null = null;
@@ -163,6 +165,7 @@ export class NodeService implements EngineTransport {
     const identity = this.deps.identity();
     if ('problem' in identity) {
       // No identity to give the link: nothing listens, and the operator is told (status).
+      this.identityProblem = identity.problem;
       if (this.state !== 'failed' || this.message !== identity.problem) {
         this.state = 'failed';
         this.message = identity.problem;
@@ -491,7 +494,12 @@ export class NodeService implements EngineTransport {
 
   startPairing(): NodesResult {
     const identity = this.deps.identity();
-    if ('problem' in identity) return { ok: false, message: identity.problem };
+    if ('problem' in identity) {
+      // Screens shows the problem, with Make a new identity…, from now on, even with no node paired.
+      this.identityProblem = identity.problem;
+      this.changed();
+      return { ok: false, message: identity.problem };
+    }
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     this.setOffer({ code, expiresAt: this.deps.now() + NODE_PAIRING_TTL_MS });
     this.deps.log('info', 'Nodes: offering a code to pair a node');
@@ -512,6 +520,7 @@ export class NodeService implements EngineTransport {
       'info',
       'Nodes: a new identity was made, as an admin asked; each node must be paired again',
     );
+    this.identityProblem = null;
     this.state = 'off';
     this.message = null;
     this.updateWorker();
@@ -663,7 +672,7 @@ export class NodeService implements EngineTransport {
       message: this.message,
       mainName: identity?.name ?? '',
       fingerprint: identity?.fingerprint ?? null,
-      identityProblem: known && 'problem' in known ? known.problem : null,
+      identityProblem: known && 'problem' in known ? known.problem : this.identityProblem,
       nodes: this.deps.nodes.list().map((n) => this.info(n)),
       main: { version: this.deps.version, outputs: this.deps.localOutputs() },
       pairing:
@@ -710,6 +719,9 @@ export class NodeService implements EngineTransport {
    * would otherwise be told five times a second.
    */
   private changed(): void {
+    // Quitting: nobody is told any more, and the status reads the library, which closes last (Session
+    // 23: stopping the worker in close() set this timer again, and it read the closed library).
+    if (this.closing) return;
     this.changeTimer ??= setTimeout(() => {
       this.changeTimer = null;
       this.deps.changed(this.status());
