@@ -42,8 +42,14 @@ export interface NodeServiceDeps {
   screens: ScreenRepo;
   settings: { get(name: string): unknown };
   spawn(): LinkWorker;
-  /** Main's certificate and id, made the first time a node is paired. */
-  identity(): { cert: string; key: string; fingerprint: string; id: string; name: string };
+  /**
+   * Main's certificate and id, made the first time a node is paired; or, when the kept one could
+   * not be read (Session 23, ./identity.ts), why there is none.
+   */
+  identity():
+    { cert: string; key: string; fingerprint: string; id: string; name: string } | { problem: string };
+  /** An admin's choice: a new identity in place of one that could not be read. */
+  newIdentity(): void;
   version: string;
   /** Where nodes can reach Main: numbers, then its local name. */
   addresses(): string[];
@@ -155,6 +161,15 @@ export class NodeService implements EngineTransport {
   private startWorker(): void {
     if (this.worker) return;
     const identity = this.deps.identity();
+    if ('problem' in identity) {
+      // No identity to give the link: nothing listens, and the operator is told (status).
+      if (this.state !== 'failed' || this.message !== identity.problem) {
+        this.state = 'failed';
+        this.message = identity.problem;
+        this.changed();
+      }
+      return;
+    }
     this.state = 'starting';
     this.message = null;
     const worker = this.deps.spawn();
@@ -475,9 +490,32 @@ export class NodeService implements EngineTransport {
   }
 
   startPairing(): NodesResult {
+    const identity = this.deps.identity();
+    if ('problem' in identity) return { ok: false, message: identity.problem };
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     this.setOffer({ code, expiresAt: this.deps.now() + NODE_PAIRING_TTL_MS });
     this.deps.log('info', 'Nodes: offering a code to pair a node');
+    return { ok: true, status: this.status() };
+  }
+
+  /** An admin's choice (Session 23): a new identity, then the link starts; each node must be paired again. */
+  newIdentity(): NodesResult {
+    const identity = this.deps.identity();
+    if (!('problem' in identity))
+      return { ok: false, message: 'This computer’s identity for its nodes is fine: nothing to replace.' };
+    try {
+      this.deps.newIdentity();
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : String(error) };
+    }
+    this.deps.log(
+      'info',
+      'Nodes: a new identity was made, as an admin asked; each node must be paired again',
+    );
+    this.state = 'off';
+    this.message = null;
+    this.updateWorker();
+    this.changed();
     return { ok: true, status: this.status() };
   }
 
@@ -617,13 +655,15 @@ export class NodeService implements EngineTransport {
   }
 
   status(): NodesStatus {
-    const identity = this.worker || this.deps.nodes.list().length > 0 ? this.deps.identity() : null;
+    const known = this.worker || this.deps.nodes.list().length > 0 ? this.deps.identity() : null;
+    const identity = known && !('problem' in known) ? known : null;
     return {
       state: this.state,
       port: this.boundPort ?? this.port,
       message: this.message,
       mainName: identity?.name ?? '',
       fingerprint: identity?.fingerprint ?? null,
+      identityProblem: known && 'problem' in known ? known.problem : null,
       nodes: this.deps.nodes.list().map((n) => this.info(n)),
       main: { version: this.deps.version, outputs: this.deps.localOutputs() },
       pairing:

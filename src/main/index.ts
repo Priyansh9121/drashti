@@ -191,12 +191,12 @@ import { isInside } from './media/media-protocol';
 import { rendererDir } from './windows/renderer';
 import { pageAlive, sendToPage } from './windows/send';
 import { quietTests, startQuietTests } from './windows/quiet';
-import { knownRole, readRole, writeRole } from './role';
+import { readRole, startingRole, writeRole } from './role';
 import { startNode } from './node-mode/node-app';
 import { NodeRepo } from './db/nodes';
 import { NodeService } from './nodes/node-service';
 import { spawnLinkWorker } from './nodes/link-worker';
-import { loadOrMakeIdentity } from './nodes/identity';
+import { type IdentityLoad, loadIdentity, makeNewIdentity } from './nodes/identity';
 import { RECENT_DAYS, WantedMedia } from './nodes/wanted-media';
 import { startPerfNodes } from './nodes/perf-nodes';
 import type { NodeOutputStatus, ScreenThumb } from '../shared/nodes';
@@ -651,10 +651,19 @@ async function runPerformanceTestWithStream(ctx: PerfRun): ReturnType<typeof run
  * the very first start (a computer with a library is a Main). Self-tests and
  * end-to-end tests start as Main unless DRASHTI_ROLE says otherwise.
  */
+/** What the start found that the person at the computer should read (Session 23: a role file that could not be read). */
+const startNotes: string[] = [];
+
 function boot(): void {
   const userData = app.getPath('userData');
   const selfTesting = process.env['DRASHTI_SELFTEST'] !== undefined;
-  let role = nodeSelfTest ? 'node' : selfTesting ? 'main' : knownRole(userData, process.env['DRASHTI_ROLE']);
+  const starting = startingRole(userData, process.env['DRASHTI_ROLE'], {
+    log: (line) => {
+      log.warn(line);
+    },
+  });
+  if (starting.note) startNotes.push(starting.note);
+  let role = nodeSelfTest ? 'node' : selfTesting ? 'main' : starting.role;
   if (role === null) {
     if (process.env['DRASHTI_TEST_NO_WIZARD'] === '1') role = 'main';
     else {
@@ -688,6 +697,7 @@ function startNodeMode(): void {
   });
   const node = startNode({
     userData: app.getPath('userData'),
+    startNotes,
     version: appVersion(),
     updateBase,
     installer: defaultInstaller({
@@ -813,6 +823,7 @@ function start(): void {
   let startNotice = restored.restored
     ? `Library restored from “${restored.from}”. The library from before is kept in Drashti’s data folder, in Backups/${restored.keptIn}.`
     : restored.message;
+  for (const note of startNotes) startNotice = startNotice ? `${startNotice}\n\n${note}` : note;
   let opened = openLibrary();
   if ('error' in opened && restored.restored) {
     // The restored library will not open: put back the one from before the restore, and say so.
@@ -2359,7 +2370,8 @@ function start(): void {
   wantedMedia = wanted;
   const mainName = () =>
     testComputerName ?? localName()?.replace(/\.local$/u, '') ?? hostname().replace(/\.local$/u, '');
-  let identityCache: ReturnType<typeof loadOrMakeIdentity> | null = null;
+  /** Main's identity for its nodes, read (or made) once, when a node is paired or being paired. */
+  let identityLoad: IdentityLoad | null = null;
   /** How each of Main's own outputs draws (they report every few seconds), for the dashboard. */
   const localReports = new Map<string, { droppedFrames: number; paintedRev: number }>();
   const nodes = new NodeService({
@@ -2374,14 +2386,31 @@ function start(): void {
         log.info(`[node link worker] ${line}`);
       }),
     identity: () => {
-      identityCache ??= loadOrMakeIdentity(userDataDir, mainName());
+      if (!identityLoad) {
+        identityLoad = loadIdentity(userDataDir, mainName(), {
+          log: (line) => {
+            log.warn(line);
+          },
+        });
+        // Could not be read (Session 23): the operator is told now, and Screens > Nodes says it too.
+        if (!identityLoad.ok) {
+          const text = identityLoad.problem;
+          if (startNoticeTaken) sendToOperator(IPC.app.notice, { text });
+          else startNotice = startNotice ? `${startNotice}\n\n${text}` : text;
+        }
+      }
+      if (!identityLoad.ok) return { problem: identityLoad.problem };
+      const kept = identityLoad.identity;
       return {
-        cert: identityCache.certPem,
-        key: identityCache.keyPem,
-        fingerprint: identityCache.fingerprint,
-        id: identityCache.id,
+        cert: kept.certPem,
+        key: kept.keyPem,
+        fingerprint: kept.fingerprint,
+        id: kept.id,
         name: mainName(),
       };
+    },
+    newIdentity: () => {
+      identityLoad = { ok: true, identity: makeNewIdentity(userDataDir, mainName()) };
     },
     version: appVersion(),
     // Listening on this computer only (tests, the performance check), this computer is the only address.
@@ -2463,6 +2492,7 @@ function start(): void {
   handle(IPC.nodes.cancelPairing, (e) => (fromOperator(e) ? nodes.cancelPairing() : notNodesOperator));
   handle(IPC.nodes.rename, (e, id, name) => (fromOperator(e) ? nodes.rename(id, name) : notNodesOperator));
   handle(IPC.nodes.remove, (e, id) => (fromOperator(e) ? nodes.remove(id) : notNodesOperator));
+  handle(IPC.nodes.newIdentity, (e) => (fromOperator(e) ? nodes.newIdentity() : notNodesOperator));
   handle(IPC.nodes.everything, (e, id, on) =>
     fromOperator(e) ? nodes.setEverything(id, on) : notNodesOperator,
   );

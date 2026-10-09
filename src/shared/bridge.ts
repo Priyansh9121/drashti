@@ -443,6 +443,8 @@ export interface DrashtiBridge {
     cancelPairing(): Promise<NodesResult>;
     rename(nodeId: string, name: string): Promise<NodesResult>;
     remove(nodeId: string): Promise<NodesResult>;
+    /** A new identity for the nodes, in place of one that could not be read (admin; Session 23). */
+    newIdentity(): Promise<NodesResult>;
     everything(nodeId: string, on: boolean): Promise<NodesResult>;
     /** Reload one output: on Main (nodeId null) or on a node. */
     reload(nodeId: string | null, screenId: string): Promise<NodesResult>;

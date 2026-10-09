@@ -155,6 +155,7 @@ export const ADMIN_CHANNELS: readonly InvokeChannel[] = [
   IPC.nodes.cancelPairing,
   IPC.nodes.rename,
   IPC.nodes.remove,
+  IPC.nodes.newIdentity,
   IPC.nodes.everything,
   IPC.nodes.reload,
   // The PINs themselves.
