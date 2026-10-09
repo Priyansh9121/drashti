@@ -515,6 +515,7 @@ test('on air, and on air again, with the preview watched and a picture standing 
   await goLive();
   await waitLive(win, userData, 'live', 30_000);
   expect(streamLog(userData)).not.toContain('no picture from its page');
+  expect(streamLog(userData)).toContain('the newest frame goes at once');
   await win.evaluate(async () => {
     await (globalThis as PageGlobals).drashti.stream.end({ confirmed: true });
   });
