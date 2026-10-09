@@ -130,6 +130,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.nodes.cancelPairing,
   IPC.nodes.rename,
   IPC.nodes.remove,
+  IPC.nodes.newIdentity,
   IPC.nodes.everything,
   IPC.nodes.reload,
   IPC.screens.assignNodeDisplay,

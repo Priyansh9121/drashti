@@ -232,6 +232,8 @@ export interface NodeView {
   /** Updating this node to Main's version (Session 14). */
   update: UpdateView;
   /** A line to show for a while (Session 17: "Diagnostics saved on the Desktop: …"), or null. */
+  /** What the start found (a file that could not be read, and what was done): until Drashti quits (Session 23). */
+  startNotes: string[];
   notice: string | null;
 }
 
@@ -332,6 +334,11 @@ export interface NodesStatus {
   pairing: NodePairingOffer | null;
   /** Main itself: its version, and how its own outputs draw. */
   main: { version: string; outputs: NodeOutputStatus[] };
+  /**
+   * Main's identity for its nodes could not be read (Session 23): what to tell the operator. Until
+   * an admin makes a new identity (nodes.newIdentity), nothing follows and no node can pair.
+   */
+  identityProblem: string | null;
 }
 
 export type NodesResult = { ok: true; status: NodesStatus } | { ok: false; message: string };

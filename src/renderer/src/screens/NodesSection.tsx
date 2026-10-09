@@ -175,6 +175,52 @@ function NodeCard({
   );
 }
 
+/**
+ * Main's identity for its nodes could not be read (Session 23): nothing follows until an admin makes
+ * a new one, after which each node is paired again.
+ */
+function IdentityHold({ problem }: { problem: string }) {
+  const [asking, setAsking] = useState(false);
+  return (
+    <Notice
+      tone="danger"
+      title="The nodes cannot follow this computer"
+      data-testid="nodes-identity-problem"
+      actions={
+        <Button
+          variant="secondary"
+          onClick={() => {
+            setAsking(true);
+          }}
+        >
+          Make a new identity…
+        </Button>
+      }
+    >
+      {problem}
+      {asking && (
+        <ConfirmDialog
+          title="Make a new identity for the nodes?"
+          confirmLabel="Make a new identity"
+          onCancel={() => {
+            setAsking(false);
+          }}
+          onConfirm={() => {
+            setAsking(false);
+            void nodesAction(() => window.drashti.nodes.newIdentity());
+          }}
+          testId="nodes-new-identity-confirm"
+        >
+          <p>
+            Every node paired with this computer must then be paired again: on each node, press Unpair…, then
+            pair it with a new code from here. The old identity stays in Drashti's data folder.
+          </p>
+        </ConfirmDialog>
+      )}
+    </Notice>
+  );
+}
+
 export function NodesSection({ groups }: { groups: ScreenGroupConfig[] }) {
   const status = useNodes((s) => s.status);
   const error = useNodes((s) => s.error);
@@ -199,7 +245,10 @@ export function NodesSection({ groups }: { groups: ScreenGroupConfig[] }) {
         displays, following this computer, with its own copies of the pictures and videos.
       </p>
       {error && <Notice tone="danger">{error}</Notice>}
-      {status?.message && <Notice tone="warning">{status.message}</Notice>}
+      {status?.identityProblem && <IdentityHold problem={status.identityProblem} />}
+      {status?.message && status.message !== status.identityProblem && (
+        <Notice tone="warning">{status.message}</Notice>
+      )}
       {status?.pairing && <PairingCard pairing={status.pairing} />}
       {status && status.nodes.length > 0 && (
         <ul className="space-y-2">

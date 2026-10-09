@@ -1,10 +1,11 @@
 import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { z } from 'zod';
 import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
 import { ENGINE_STATE_VERSION } from '../../shared/engine/state';
 import type { NodeScreen } from '../../shared/nodes';
 import { nodeScreenListSchema } from '../../shared/nodes-schema';
+import { readState, readStateTwice, setAside } from '../state-file';
 import type { PinnedMain } from './link-client';
 
 /*
@@ -43,6 +44,11 @@ const fileSchema = z.object({
   pairedAt: z.string().max(40),
 });
 
+const parseNodeFile = (raw: unknown): NodeFile | null => {
+  const parsed = fileSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
+};
+
 function writeWhole(file: string, text: string): void {
   const temp = `${file}.writing`;
   writeFileSync(temp, text, { mode: 0o600 });
@@ -59,12 +65,29 @@ export class NodeStore {
   }
 
   read(): NodeFile | null {
-    try {
-      const parsed = fileSchema.safeParse(JSON.parse(readFileSync(this.file, 'utf8')));
-      return parsed.success ? parsed.data : null;
-    } catch {
-      return null;
-    }
+    const read = readState(this.file, parseNodeFile);
+    return read.status === 'ok' ? read.value : null;
+  }
+
+  /**
+   * The pairing at the start (Session 23): one that is there but cannot be read is not taken for
+   * none (pairing again would have written over it). It is read once more after a moment, then set
+   * aside with the date, and the note says so: the node starts unpaired, and is paired again.
+   */
+  load(o: { log: (message: string) => void; now?: Date; retryMs?: number }): {
+    paired: NodeFile | null;
+    note: string | null;
+  } {
+    const read = readStateTwice(this.file, parseNodeFile, o.retryMs);
+    if (read.status === 'ok') return { paired: read.value, note: null };
+    if (read.status === 'missing') return { paired: null, note: null };
+    const moved = setAside(this.file, o.now);
+    const kept = moved ? `kept as “${basename(moved)}”` : 'left where it is';
+    o.log(`Node: node.json could not be read (${read.reason}); ${kept}. Starting unpaired`);
+    return {
+      paired: null,
+      note: `This node's pairing with Main could not be read, so it starts unpaired. The file was ${kept} in Drashti's data folder. Pair it with Main again: a new code from Main's Screens, Nodes.`,
+    };
   }
 
   write(state: NodeFile): void {

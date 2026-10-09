@@ -543,6 +543,8 @@ export const IPC = {
     rename: 'nodes:rename',
     /** Remove (unpair) a node: cut off at once, its screens gone. */
     remove: 'nodes:remove',
+    /** An admin makes a new identity for the nodes, in place of one that could not be read (Session 23). */
+    newIdentity: 'nodes:new-identity',
     /** Copy every picture and video to this node ("Get everything ready"), or only the week's. */
     everything: 'nodes:everything',
     /** Reload one output window, on Main or on a node. */
@@ -896,6 +898,7 @@ export interface InvokeContract {
   [IPC.nodes.cancelPairing]: { args: []; result: NodesResult };
   [IPC.nodes.rename]: { args: [nodeId: string, name: string]; result: NodesResult };
   [IPC.nodes.remove]: { args: [nodeId: string]; result: NodesResult };
+  [IPC.nodes.newIdentity]: { args: []; result: NodesResult };
   [IPC.nodes.everything]: { args: [nodeId: string, on: boolean]; result: NodesResult };
   [IPC.nodes.reload]: { args: [nodeId: string | null, screenId: string]; result: NodesResult };
   [IPC.nodes.identify]: { args: [nodeId: string | null, displayId: number | null]; result: null };

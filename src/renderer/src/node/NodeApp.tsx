@@ -408,6 +408,29 @@ function Media({ view }: { view: NodeView }) {
   );
 }
 
+/** What the start found (a file that could not be read, and what was done; Session 23), until read. */
+function StartNotes({ notes }: { notes: string[] }) {
+  const [read, setRead] = useState<string[]>([]);
+  return (
+    <>
+      {notes
+        .filter((n) => !read.includes(n))
+        .map((note) => (
+          <Notice
+            key={note}
+            tone="warning"
+            data-testid="node-start-note"
+            onDismiss={() => {
+              setRead((r) => [...r, note]);
+            }}
+          >
+            {note}
+          </Notice>
+        ))}
+    </>
+  );
+}
+
 export function NodeApp() {
   const [view, setView] = useState<NodeView | null>(null);
   useEffect(() => {
@@ -431,6 +454,7 @@ export function NodeApp() {
         This computer shows screens for a Main on the local network. It has no show controls and makes no
         sound.
       </p>
+      <StartNotes notes={view.startNotes} />
       {view.notice && (
         <Notice tone={view.notice.startsWith('Could not') ? 'warning' : 'success'} data-testid="node-notice">
           {view.notice}

@@ -60,6 +60,8 @@ import { NodeStore, ShowSaver, type NodeFile } from './node-state';
 
 export interface NodeAppDeps {
   userData: string;
+  /** What the start found that the person at the node should read (Session 23), shown in its window. */
+  startNotes: string[];
   version: string;
   /** Outputs as ordinary windows (development and tests). */
   windowed: boolean;
@@ -100,7 +102,14 @@ const HEALTH_EVERY_MS = 2000;
 
 export function startNode(deps: NodeAppDeps): NodeAppHandle {
   const store = new NodeStore(deps.userData);
-  let paired: NodeFile | null = store.read();
+  const startNotes = [...deps.startNotes];
+  const loaded = store.load({
+    log: (line) => {
+      log.warn(line);
+    },
+  });
+  if (loaded.note) startNotes.push(loaded.note);
+  let paired: NodeFile | null = loaded.paired;
   const host = nodeNameFrom(deps.computerName);
   const localNow = () => Date.now() + deps.clockSkewMs;
 
@@ -532,6 +541,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       mainVersion: link.state === 'refused' ? mainVersion : null,
       update: updates.view(),
       notice,
+      startNotes: [...startNotes],
     };
   };
 

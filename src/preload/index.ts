@@ -288,6 +288,7 @@ const bridge: DrashtiBridge = {
     cancelPairing: () => invoke(IPC.nodes.cancelPairing),
     rename: (nodeId, name) => invoke(IPC.nodes.rename, nodeId, name),
     remove: (nodeId) => invoke(IPC.nodes.remove, nodeId),
+    newIdentity: () => invoke(IPC.nodes.newIdentity),
     everything: (nodeId, on) => invoke(IPC.nodes.everything, nodeId, on),
     reload: (nodeId, screenId) => invoke(IPC.nodes.reload, nodeId, screenId),
     identify: (nodeId, displayId) => invoke(IPC.nodes.identify, nodeId, displayId),
