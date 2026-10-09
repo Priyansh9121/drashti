@@ -39,6 +39,7 @@ import { runNodeWatchdogSelfTest } from '../selftest';
 import { IpcTransport } from '../transport/ipc-transport';
 import type { RendererWatchdog } from '../watchdog';
 import { windowIcon } from '../windows/app-icon';
+import { pageAlive, sendToPage } from '../windows/send';
 import { loadPage } from '../windows/renderer';
 import { secureWebPreferences } from '../windows/web-preferences';
 import { LinkClient, openMediaFromMain, pairWithMain } from './link-client';
@@ -180,7 +181,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   const viewChanged = () => {
     viewTimer ??= setTimeout(() => {
       viewTimer = null;
-      if (nodeWindow && !nodeWindow.isDestroyed()) nodeWindow.webContents.send(IPC.node.changed, view());
+      if (pageAlive(nodeWindow)) sendToPage(nodeWindow, IPC.node.changed, view());
     }, 150);
   };
 
@@ -204,8 +205,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     changed: viewChanged,
     // A screen that stopped waiting for this file (Main was away, say) loads it now.
     landed: (mediaId) => {
-      for (const win of outputWindows.values())
-        if (!win.isDestroyed()) win.webContents.send(IPC.output.mediaReady, { mediaId });
+      for (const win of outputWindows.values()) sendToPage(win, IPC.output.mediaReady, { mediaId });
     },
     log: (level, message) => {
       if (level === 'warn') log.warn(`Node: ${message}`);
@@ -273,7 +273,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   const sendContexts = () => {
     for (const [screenId, win] of outputWindows) {
       const context = contextFor(screenId);
-      if (context && !win.isDestroyed()) win.webContents.send(IPC.output.context, context);
+      if (context) sendToPage(win, IPC.output.context, context);
     }
   };
   const manager = new OutputManager({
@@ -406,8 +406,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         .find((st) => st.displayId === d.id && st.state === 'showing')?.screenId;
       const win = screenId ? outputWindows.get(screenId) : undefined;
       const s = screenId ? screenOf(screenId) : undefined;
-      if (win && s && !win.isDestroyed())
-        win.webContents.send(IPC.output.identify, {
+      if (win && s)
+        sendToPage(win, IPC.output.identify, {
           name: `${n}: ${s.name}`,
           groupName: `${host} · ${s.groupName}`,
           label,

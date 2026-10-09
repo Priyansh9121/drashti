@@ -186,6 +186,7 @@ import { localName } from './network/local-name';
 import { localInterfaceAddresses } from './network/addresses';
 import { isInside } from './media/media-protocol';
 import { rendererDir } from './windows/renderer';
+import { pageAlive, sendToPage } from './windows/send';
 import { quietTests, startQuietTests } from './windows/quiet';
 import { knownRole, readRole, writeRole } from './role';
 import { startNode } from './node-mode/node-app';
@@ -938,8 +939,7 @@ function start(): void {
     mask: (id) => maskRepo.get(id),
     engine,
     changed: (view) => {
-      if (operatorWindow && !operatorWindow.isDestroyed())
-        operatorWindow.webContents.send(IPC.looks.changed, view);
+      sendToPage(operatorWindow, IPC.looks.changed, view);
       network?.hint('looks');
     },
     log: (message) => {
@@ -1050,12 +1050,10 @@ function start(): void {
       return h;
     },
     onChange: () => {
-      if (operatorWindow && !operatorWindow.isDestroyed()) {
-        operatorWindow.webContents.send(IPC.screens.changed, screens.snapshot());
-      }
+      if (pageAlive(operatorWindow)) sendToPage(operatorWindow, IPC.screens.changed, screens.snapshot());
       for (const [screenId, win] of outputWindows) {
         const context = contextFor(screenId);
-        if (context && !win.isDestroyed()) win.webContents.send(IPC.output.context, context);
+        if (context) sendToPage(win, IPC.output.context, context);
       }
       guardOperator();
       sleepGuard.update(manager.status().filter((st) => st.state === 'showing').length);
@@ -1272,8 +1270,9 @@ function start(): void {
   });
 
   // ---- imports ----------------------------------------------------------------
+  // The window's page, not just the window: at quit the page goes first (Session 20).
   const sendToOperator = <C extends EventChannel>(channel: C, payload: EventContract[C]) => {
-    if (operatorWindow && !operatorWindow.isDestroyed()) operatorWindow.webContents.send(channel, payload);
+    sendToPage(operatorWindow, channel, payload);
   };
 
   // ---- streaming -------------------------------------------------------------
@@ -1363,8 +1362,7 @@ function start(): void {
       settings.set('audioOutput', device);
     },
     chosen: (device) => {
-      if (audioWindow && !audioWindow.isDestroyed())
-        audioWindow.webContents.send(IPC.audio.chosen, { device });
+      sendToPage(audioWindow, IPC.audio.chosen, { device });
     },
     status: (status) => {
       sendToOperator(IPC.audio.status, status);
@@ -2457,8 +2455,8 @@ function start(): void {
         const st = manager.status().find((x) => x.displayId === d.id && x.state === 'showing');
         const win = st ? outputWindows.get(st.screenId) : undefined;
         const sc = st ? screenRepo.screen(st.screenId) : null;
-        if (win && sc && !win.isDestroyed())
-          win.webContents.send(IPC.output.identify, {
+        if (win && sc)
+          sendToPage(win, IPC.output.identify, {
             name: `${n}: ${sc.name}`,
             groupName: screenRepo.groupName(sc.groupId) ?? '',
           });
@@ -2858,8 +2856,8 @@ function start(): void {
     if (!fromOperator(e)) return null;
     for (const [screenId, win] of outputWindows) {
       const s = screenRepo.screen(screenId);
-      if (s && !win.isDestroyed()) {
-        win.webContents.send(IPC.output.identify, {
+      if (s) {
+        sendToPage(win, IPC.output.identify, {
           name: s.name,
           groupName: screenRepo.groupName(s.groupId) ?? '',
         });
@@ -2937,10 +2935,8 @@ function start(): void {
   });
   handle(IPC.setup.testTone, (e, device) => {
     const parsed = audioDeviceSchema.nullable().safeParse(device ?? null);
-    if (!fromOperator(e) || !parsed.success || !audioWindow || audioWindow.isDestroyed())
-      return { ok: false };
-    audioWindow.webContents.send(IPC.audio.testTone, { deviceId: parsed.data?.id ?? '' });
-    return { ok: true };
+    if (!fromOperator(e) || !parsed.success) return { ok: false };
+    return { ok: sendToPage(audioWindow, IPC.audio.testTone, { deviceId: parsed.data?.id ?? '' }) };
   });
   handle(IPC.setup.finish, (e, rawPlan, options): SetupResult => {
     if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can set up the screens.' };
@@ -2965,7 +2961,7 @@ function start(): void {
     testCardUntil = Date.now() + TEST_CARD_MS;
     for (const [screenId, win] of outputWindows) {
       const context = contextFor(screenId);
-      if (context && !win.isDestroyed()) win.webContents.send(IPC.output.context, context);
+      if (context) sendToPage(win, IPC.output.context, context);
     }
     log.info(
       `Setup finished: ${outputs ? `${outputs.length} display(s) set` : 'screens kept'}; sound ${sound === 'skip' ? 'kept' : 'chosen'}; theme ${themeId === null ? 'kept' : 'chosen'}`,

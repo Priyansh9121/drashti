@@ -27,6 +27,7 @@ import type { SettingsRepo } from '../db/settings';
 import type { StreamProfileRepo } from '../db/stream-profiles';
 import { NO_SECURE_STORAGE, type StreamKeyStore } from './key-store';
 import type { StreamWorker } from './stream-worker';
+import { pageAlive } from '../windows/send';
 import type { WorkerStatus } from './worker/protocol';
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -398,7 +399,7 @@ export class StreamService {
   /** Give each window watching the preview a port to the stream's page. */
   private pairPreviews(): void {
     const program = this.program;
-    if (!program || program.isDestroyed() || !this.programReady) return;
+    if (!pageAlive(program) || !this.programReady) return;
     for (const contents of this.watchers.values()) {
       if (contents.isDestroyed()) continue;
       const { port1, port2 } = new MessageChannelMain();
@@ -437,7 +438,7 @@ export class StreamService {
   /** Something the page draws or opens changed. */
   contextChanged(): void {
     const program = this.program;
-    if (program && !program.isDestroyed() && this.programReady) {
+    if (pageAlive(program) && this.programReady) {
       const context = this.context();
       const [w, h] = program.getContentSize();
       if (w !== context.width || h !== context.height) program.setContentSize(context.width, context.height);
@@ -558,7 +559,7 @@ export class StreamService {
   private pairEncoder(): void {
     const program = this.program;
     const worker = this.worker;
-    if (!worker || !program || program.isDestroyed() || !this.programReady) return;
+    if (!worker || !pageAlive(program) || !this.programReady) return;
     const { port1, port2 } = new MessageChannelMain();
     worker.sendFrames(port1);
     program.webContents.postMessage(IPC.stream.port, { role: 'encoder' }, [port2]);

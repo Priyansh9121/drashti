@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { EngineCommand } from '../../src/shared/engine/commands';
@@ -210,4 +212,20 @@ test('the Stream panel, its settings and the stream group in Screens: accessible
   await expect(win.locator('[data-testid="display-row"] option', { hasText: 'Stream' })).toHaveCount(0);
   await expectNoSeriousA11yIssues(win, 'Screens with the stream group');
   await app.close();
+});
+
+test('quitting with the Stream panel’s preview open leaves no uncaught error in the log', async () => {
+  // As Drashti quits, the operator window's page goes before the window; the preview's watcher then
+  // told that page the stream had changed, and Electron threw "Object has been destroyed" (Session 20).
+  const { app, userData } = await launchApp(FAKE);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.getByTestId('open-stream').click();
+  await streamPage(app);
+  await expect(win.getByTestId('stream-preview')).toBeVisible();
+  await app.close();
+  const log = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  expect(log).toContain("The stream's page opens");
+  expect(log).not.toContain('Uncaught exception');
+  expect(log).not.toContain('Object has been destroyed');
 });
