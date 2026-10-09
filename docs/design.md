@@ -132,7 +132,7 @@ Simple Mode (`src/renderer/src/simple/`) is for a volunteer who has never used D
 - **Nothing that changes anything.** No editing, removing, importing, themes, screens, sound or backups. Don't add a control here that changes the library or the setup. The main process refuses those requests in Simple Mode anyway (`src/main/simple-mode.ts`).
 - **Undo comes first.** Back undoes the last Next exactly, and Put it back undoes Clear all. Every new action in Simple Mode needs a way to undo it, in one press.
 - **The way out is small, at the top, and asks first** (Session 20). **Switch to Pro Mode…** (`secondary`, `md`) sits at the right end of the header, far from the big buttons, and opens the same question as View > Switch to Pro Mode…: the word **pro**, or a PIN with roles on, so nobody leaves by accident. Windows hides the menu bar, so Simple Mode shows its own way out. Don't make it bigger or move it near the big buttons.
-- **Which mode Drashti starts in** (Session 20, `startingMode` in `src/shared/mode.ts`): after a quit on purpose, Pro Mode, or Simple Mode with roles on; after an unexpected stop, the mode it was in. It is the same answer restart recovery uses: did the last run quit cleanly?
+- **Which mode Drashti starts in** (Session 20, `startingMode` in `src/shared/mode.ts`): after an unexpected stop less than 3 hours before the start, the mode it was in; otherwise (a quit on purpose, or a stop 3 hours or more before, Session 21), Pro Mode, or Simple Mode with roles on. It is the same answer restart recovery uses (`recentStop` from `startupRecovery`): did the last run stop unexpectedly, within `RECOVERY_MAX_AGE_MS`?
 - It fits 1280 × 720 with nothing scrolling, its way out at the top (`tests/e2e/simple-mode.spec.ts`).
 
 ## 11. The slide editor

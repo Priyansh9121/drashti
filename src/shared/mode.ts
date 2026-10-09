@@ -27,16 +27,18 @@ export const isOperatorMode = (value: unknown): value is OperatorMode =>
   value === 'pro' || value === 'simple';
 
 /**
- * The mode Drashti starts in (Session 20). After a clean quit: Pro Mode, or Simple Mode with roles on
- * (Pro Mode then takes a PIN). After an unexpected stop: the mode it was in, so a volunteer in the
- * middle of a sabha carries on where they were (admin locked, as after every start).
+ * The mode Drashti starts in (Session 20). After an unexpected stop less than 3 hours before the start
+ * (restart recovery's own limit, RECOVERY_MAX_AGE_MS): the mode it was in, so a volunteer in the middle
+ * of a sabha carries on where they were (admin locked, as after every start). Otherwise, after a clean
+ * quit or a stop longer ago (Session 21): Pro Mode, or Simple Mode with roles on (Pro Mode then takes a
+ * PIN).
  */
 export function startingMode(last: {
-  cleanQuit: boolean;
+  recentStop: boolean;
   rolesOn: boolean;
   wasIn: OperatorMode;
 }): OperatorMode {
-  if (!last.cleanQuit) return last.wasIn;
+  if (last.recentStop) return last.wasIn;
   return last.rolesOn ? 'simple' : 'pro';
 }
 

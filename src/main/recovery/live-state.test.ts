@@ -6,6 +6,7 @@ import type { EngineState } from '../../shared/engine/state';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import { textSlide } from '../engine/testing';
 import type { RecoveryFiles } from './live-state';
+import { startingMode } from '../../shared/mode';
 import { RECOVERY_MAX_AGE_MS } from '../../shared/recovery';
 import { LiveStateWriter, savedFrom, startupRecovery, toRestore } from './live-state';
 
@@ -308,7 +309,7 @@ describe('how the last run ended', () => {
   const now = () => new Date(clock);
   const nothingLive = initialEngineState();
   const startFinds = () => startupRecovery(files, { now: now() });
-  const clean = { cleanQuit: true, putBack: null, tooOld: null };
+  const clean = { cleanQuit: true, recentStop: false, putBack: null, tooOld: null };
   /** A run of Drashti: it starts (saving the show it starts with), and the tests change, quit or stop it. */
   async function begin(state: EngineState = nothingLive) {
     const writer = new LiveStateWriter(files, { throttleMs: 10, now });
@@ -340,6 +341,7 @@ describe('how the last run ended', () => {
     clock += 30_000;
     const found = startFinds();
     expect(found.cleanQuit).toBe(false);
+    expect(found.recentStop).toBe(true);
     expect(found.tooOld).toBeNull();
     expect(found.putBack).toMatchObject({
       slide: { presentationId: 'p1', slideIndex: 2 },
@@ -357,7 +359,7 @@ describe('how the last run ended', () => {
     second.stop();
     clock += 60_000;
     // That run stopped unexpectedly (so Drashti comes back in the mode it was in), with nothing live.
-    expect(startFinds()).toEqual({ cleanQuit: false, putBack: null, tooOld: null });
+    expect(startFinds()).toEqual({ cleanQuit: false, recentStop: true, putBack: null, tooOld: null });
   });
 
   it('a crash, a start that puts the show back and quits cleanly, then a start: nothing comes back', async () => {
@@ -385,6 +387,7 @@ describe('how the last run ended', () => {
     });
     const late = startupRecovery(files, { now: new Date(savedAt + RECOVERY_MAX_AGE_MS) });
     expect(late.cleanQuit).toBe(false);
+    expect(late.recentStop).toBe(false);
     expect(late.putBack).toBeNull();
     expect(late.tooOld).toMatchObject({
       slide: { slideIndex: 2 },
@@ -428,8 +431,62 @@ describe('how the last run ended', () => {
     writeFileSync(files.state, JSON.stringify({ ...raw, savedAt: 'not a time' }));
     expect(startFinds()).toMatchObject({
       cleanQuit: false,
+      recentStop: false,
       putBack: null,
       tooOld: { slide: { slideIndex: 2 } },
+    });
+  });
+
+  /*
+   * Session 21: the starting mode uses the same 3-hour answer as putting the show back. Before, a crash in
+   * Simple Mode made the next start open in Simple Mode however long ago it was, though nothing came back.
+   */
+  describe('the mode after an unexpected stop', () => {
+    const cases = (['simple', 'pro'] as const).flatMap((wasIn) =>
+      [false, true].flatMap((rolesOn) => [false, true].map((showLive) => ({ wasIn, rolesOn, showLive }))),
+    );
+    /** A run that stops dead, with a show live or not; returns when it last saved (the stop). */
+    async function crashed(showLive: boolean): Promise<number> {
+      const run = await begin();
+      if (showLive) await saved(run, live({ blackout: true }));
+      run.stop();
+      await run.settle();
+      return clock;
+    }
+
+    it.each(cases)(
+      'just under 3 hours later: the mode it was in ($wasIn; PINs on: $rolesOn; a show live: $showLive)',
+      async ({ wasIn, rolesOn, showLive }) => {
+        const stoppedAt = await crashed(showLive);
+        const found = startupRecovery(files, { now: new Date(stoppedAt + RECOVERY_MAX_AGE_MS - 1) });
+        expect(found).toMatchObject({ cleanQuit: false, recentStop: true, tooOld: null });
+        expect(found.putBack !== null).toBe(showLive);
+        expect(startingMode({ recentStop: found.recentStop, rolesOn, wasIn })).toBe(wasIn);
+      },
+    );
+
+    it.each(cases)(
+      '3 hours or more later: as after a clean quit ($wasIn; PINs on: $rolesOn; a show live: $showLive)',
+      async ({ wasIn, rolesOn, showLive }) => {
+        const stoppedAt = await crashed(showLive);
+        for (const after of [RECOVERY_MAX_AGE_MS, RECOVERY_MAX_AGE_MS + 1, 3 * 24 * HOUR]) {
+          const found = startupRecovery(files, { now: new Date(stoppedAt + after) });
+          expect(found).toMatchObject({ cleanQuit: false, recentStop: false, putBack: null });
+          expect(found.tooOld !== null).toBe(showLive);
+          expect(startingMode({ recentStop: found.recentStop, rolesOn, wasIn })).toBe(
+            rolesOn ? 'simple' : 'pro',
+          );
+        }
+      },
+    );
+
+    it('a stop whose time cannot be read starts like a clean quit', async () => {
+      await crashed(false);
+      const raw = JSON.parse(readFileSync(files.state, 'utf8')) as Record<string, unknown>;
+      writeFileSync(files.state, JSON.stringify({ ...raw, savedAt: 'not a time' }));
+      const found = startFinds();
+      expect(found).toEqual({ cleanQuit: false, recentStop: false, putBack: null, tooOld: null });
+      expect(startingMode({ recentStop: found.recentStop, rolesOn: false, wasIn: 'simple' })).toBe('pro');
     });
   });
 
@@ -454,6 +511,7 @@ describe('how the last run ended', () => {
       clock += 60_000;
       expect(startFinds()).toMatchObject({
         cleanQuit: false,
+        recentStop: true,
         putBack: { blackout: true, slide: { slideIndex: 2 } },
       });
     });
