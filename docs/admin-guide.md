@@ -236,6 +236,8 @@ After installing a font, quit Drashti and start it again. Then look at a few of 
 
 ![The node saying where its diagnostics went](screenshots/node-diagnostics-saved.png)
 
+**The Stream panel says "The stream server's certificate could not be checked".** Drashti checks that it is really talking to YouTube before it sends anything, and that check failed. Look first at the computer's date, time and time zone: a wrong date is the usual cause. If they are right, the network may be one that inspects secure connections (a filter, or a hotel or office network): ask whoever runs it, or stream from the other computer. Drashti never turns the check off. (Drashti 1.0.0-alpha.0 on a Mac always failed it; Drashti since Session 23 does not.)
+
 **When Drashti stops unexpectedly** (a crash, a power cut, a forced quit). Drashti saves what is on the screens as it changes, and every minute. Started again within **3 hours**, it puts it all back by itself (the slide, the background, black-out, the sound, timers, messages, props, the Look) and a note at the top says what it put back. Started 3 hours or more after the stop, it puts nothing on the screens, and the note says what was live and when. After a quit on purpose, nothing is put back, whatever happened in between.
 
 **Falling back to ProPresenter.** ProPresenter stays installed, untouched, until Drashti has run four weeks of sabhas on that computer without falling back (PLAN.md, section 5.1). Every sabha has a named fallback operator who has practised it (under a minute):

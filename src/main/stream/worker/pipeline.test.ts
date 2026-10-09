@@ -113,7 +113,7 @@ describe.skipIf(!existsSync(ffmpeg))('the stream pipeline, with FFmpeg', () => {
       },
     });
     const current = () => seen.status;
-    await p.start({ ffmpeg, platform: process.platform, preset, encoder: null });
+    await p.start({ ffmpeg, platform: process.platform, preset, encoder: null, caFile: null });
     const { stop, fed } = feed(p);
     // When the connection dropped, in the recording's own time (the seconds fed since it started).
     let droppedAt = 0;
@@ -177,7 +177,7 @@ describe.skipIf(!existsSync(ffmpeg))('the stream pipeline, with FFmpeg', () => {
     });
     const current = () => seen.status;
     const KEEP_FREE = 2 * 1024 ** 3;
-    await p.start({ ffmpeg, platform: process.platform, preset, encoder: null });
+    await p.start({ ffmpeg, platform: process.platform, preset, encoder: null, caFile: null });
     const { stop } = feed(p);
     try {
       // Recording alone: nothing goes on air.
@@ -247,7 +247,7 @@ describe.skipIf(!existsSync(ffmpeg))('the stream pipeline, with FFmpeg', () => {
         if (listening && listeners < 3) listen();
       });
     };
-    await p.start({ ffmpeg, platform: process.platform, preset, encoder: null });
+    await p.start({ ffmpeg, platform: process.platform, preset, encoder: null, caFile: null });
     const { stop } = feed(p);
     try {
       listen();
@@ -296,7 +296,7 @@ describe.skipIf(!existsSync(ffmpeg))('the stream pipeline, with FFmpeg', () => {
       readdirSync(dir)
         .filter((f) => f.endsWith('.mkv'))
         .sort();
-    await p.start({ ffmpeg, platform: process.platform, preset, encoder: null });
+    await p.start({ ffmpeg, platform: process.platform, preset, encoder: null, caFile: null });
     let feeding = feed(p);
     const stop = () => {
       feeding.stop();

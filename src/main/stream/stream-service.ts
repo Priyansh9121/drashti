@@ -27,6 +27,7 @@ import type { SettingsRepo } from '../db/settings';
 import type { StreamProfileRepo } from '../db/stream-profiles';
 import { NO_SECURE_STORAGE, type StreamKeyStore } from './key-store';
 import type { StreamWorker } from './stream-worker';
+import { MAC_AUTHORITIES, streamAuthorities } from './tls';
 import { pageAlive } from '../windows/send';
 import type { WorkerStatus } from './worker/protocol';
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -536,7 +537,20 @@ export class StreamService {
       }
     });
     const preset = STREAM_PRESETS[this.activeProfile().preset];
-    worker.send({ type: 'start', ffmpeg, platform: this.deps.platform, preset, encoder: this.encoderName });
+    const caFile = streamAuthorities(this.deps.platform, existsSync);
+    if (this.deps.platform === 'darwin' && caFile === null)
+      this.deps.log(
+        'warn',
+        `${MAC_AUTHORITIES} is missing: a secure stream (rtmps://) cannot have its server's certificate checked, so it will not go on air`,
+      );
+    worker.send({
+      type: 'start',
+      ffmpeg,
+      platform: this.deps.platform,
+      preset,
+      encoder: this.encoderName,
+      caFile,
+    });
     this.updateProgram();
     this.pairEncoder();
     return worker;

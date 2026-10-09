@@ -111,6 +111,14 @@ export function consumerTake(
 /** A plain-language reason the connection stopped, from FFmpeg's last words (already without the key). */
 export function connectionMessage(lastLines: readonly string[]): string {
   const text = lastLines.join(' ').toLowerCase();
+  // First: FFmpeg also says "input/output error" after a certificate it could not check (OpenSSL on a
+  // Mac, GnuTLS on Windows).
+  if (
+    /certificate verify failed|unable to get local issuer|self[- ]signed certificate|certificate has expired|certificate is not yet valid|peer certificate failed verification|unable to verify peer certificate/u.test(
+      text,
+    )
+  )
+    return 'The stream server’s certificate could not be checked, so nothing was sent. Check that this computer’s date and time are right.';
   if (/(resolve|name or service|getaddrinfo|nodename)/u.test(text))
     return 'This computer cannot find YouTube’s address: the internet may be down.';
   if (/(timed out|timeout)/u.test(text)) return 'The connection to YouTube timed out.';
@@ -122,8 +130,46 @@ export function connectionMessage(lastLines: readonly string[]): string {
   return 'The connection to YouTube stopped.';
 }
 
+/**
+ * FFmpeg's arguments for sending the encoded stream (Matroska on its input) to
+ * an address. A secure address (rtmps://) is checked against this authorities
+ * file when there is one (macOS: the system's; see ../tls.ts).
+ */
+export function connectionArgs(target: string, caFile: string | null): string[] {
+  const secure = /^rtmps:\/\//iu.test(target) && caFile !== null;
+  return [
+    '-hide_banner',
+    '-loglevel',
+    'warning',
+    '-nostats',
+    '-progress',
+    'pipe:2',
+    '-stats_period',
+    '1',
+    '-f',
+    'matroska',
+    '-i',
+    'pipe:0',
+    '-map',
+    '0',
+    '-c',
+    'copy',
+    '-f',
+    'flv',
+    '-flvflags',
+    'no_duration_filesize',
+    // A connection that goes quiet for 10 s is treated as dropped.
+    '-rw_timeout',
+    '10000000',
+    ...(secure ? ['-ca_file', caFile] : []),
+    target,
+  ];
+}
+
 export class StreamPipeline {
   private ffmpeg = '';
+  /** The certificate authorities a secure connection is checked against (null: FFmpeg's own). */
+  private caFile: string | null = null;
   private preset: StreamPreset | null = null;
   private encoder: EncoderChoice | null = null;
   private encoderName: string | null = null;
@@ -215,8 +261,10 @@ export class StreamPipeline {
     platform: NodeJS.Platform;
     preset: StreamPreset;
     encoder: string | null;
+    caFile: string | null;
   }): Promise<void> {
     this.ffmpeg = options.ffmpeg;
+    this.caFile = options.caFile;
     this.preset = options.preset;
     this.encoderName = options.encoder;
     this.statusTimer ??= setInterval(() => {
@@ -593,36 +641,10 @@ export class StreamPipeline {
     this.pushLines = [];
     this.pushProgress = null;
     const target = `${wanted.url.replace(/\/+$/u, '')}/${wanted.key}`;
-    const child = spawn(
-      this.ffmpeg,
-      [
-        '-hide_banner',
-        '-loglevel',
-        'warning',
-        '-nostats',
-        '-progress',
-        'pipe:2',
-        '-stats_period',
-        '1',
-        '-f',
-        'matroska',
-        '-i',
-        'pipe:0',
-        '-map',
-        '0',
-        '-c',
-        'copy',
-        '-f',
-        'flv',
-        '-flvflags',
-        'no_duration_filesize',
-        // A connection that goes quiet for 10 s is treated as dropped.
-        '-rw_timeout',
-        '10000000',
-        target,
-      ],
-      { stdio: 'pipe', windowsHide: true },
-    );
+    const child = spawn(this.ffmpeg, connectionArgs(target, this.caFile), {
+      stdio: 'pipe',
+      windowsHide: true,
+    });
     belowNormal(child.pid);
     this.pusher = child;
     this.pushConsumer = newConsumer();
