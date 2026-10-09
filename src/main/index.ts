@@ -163,6 +163,7 @@ import { PdfPictures, pictureSize } from './pictures/pdf-pictures';
 import { openGalleryWindow } from './windows/gallery-window';
 import { createOperatorWindow } from './windows/operator-window';
 import { StopList } from './lifecycle';
+import { hearRenderErrors } from './render-errors-ipc';
 import { quitDetail, RendererWatchdog, shouldConfirmQuit } from './watchdog';
 import { applySessionSecurity, secureWebContents } from './windows/security';
 import { StreamProfileRepo } from './db/stream-profiles';
@@ -380,6 +381,9 @@ const testVersion = app.isPackaged ? undefined : process.env['DRASHTI_TEST_VERSI
 const appVersion = () => testVersion ?? app.getVersion();
 const nodeClockSkewMs = app.isPackaged ? 0 : Number(process.env['DRASHTI_TEST_CLOCK_SKEW_MS'] ?? 0) || 0;
 const nodePortOverride = Number(process.env['DRASHTI_NODE_PORT'] ?? 0) || null;
+// Tests only (never a packaged Drashti): a test can make an output draw an element that throws, to see a
+// render error caught, logged and the output reloaded (Session 23; globalThis.drashtiTestRenderError).
+const testRenderErrors = !app.isPackaged && process.env['DRASHTI_TEST_RENDER_ERRORS'] === '1';
 // Tests only: the computer's name as Main and its nodes show it (screenshots never show a runner's own).
 const testComputerName = app.isPackaged ? undefined : process.env['DRASHTI_TEST_COMPUTER_NAME'];
 // Tests only: copies to nodes at this rate (bytes a second), so a copy can be watched while it goes.
@@ -405,7 +409,8 @@ const watchdog = new RendererWatchdog((e) => {
   });
   if (watchdogHistory.length > 200) watchdogHistory.splice(0, watchdogHistory.length - 200);
   const text = `Watchdog: ${e.window} ${e.kind}${e.reason ? ` (${e.reason})` : ''}`;
-  if (e.kind === 'crashed' || e.kind === 'hung' || e.kind === 'gave-up') log.warn(text);
+  if (e.kind === 'crashed' || e.kind === 'hung' || e.kind === 'gave-up' || e.kind === 'render-error')
+    log.warn(text);
   else log.info(text);
 });
 // Screens never sleep or dim while an output is showing.
@@ -1022,6 +1027,8 @@ function start(): void {
 
   // ---- outputs ----------------------------------------------------------
   const outputWindows = new Map<string, BrowserWindow>();
+  /** Each output's name, as the watchdog and the log call it. */
+  const outputNames = new Map<string, string>();
   /** Until when the setup wizard's test slide shows on every output (ms since the epoch). */
   let testCardUntil = 0;
   const contextFor = (screenId: string): OutputContext | null => {
@@ -1062,6 +1069,7 @@ function start(): void {
       );
       const { window, handle: h } = createOutputWindow(config, display, { windowed: windowedOutputs });
       outputWindows.set(config.id, window);
+      outputNames.set(config.id, `output "${config.name}"`);
       watchdog.watch(window.webContents, `output "${config.name}"`);
       window.on('closed', () => {
         if (outputWindows.get(config.id) === window) outputWindows.delete(config.id);
@@ -2519,6 +2527,35 @@ function start(): void {
       localReports.set(screenId, { droppedFrames: r.droppedFrames, paintedRev: r.paintedRev });
     return null;
   });
+  // Render errors in any window (Session 23): logged; an output draws black and is reloaded once.
+  hearRenderErrors({
+    log: (line) => {
+      log.warn(line);
+    },
+    watchdog,
+    windowOf: (sender) => {
+      const screenId = manager.screenIdFor(sender.id);
+      const output = screenId ? outputWindows.get(screenId) : undefined;
+      if (screenId && output && !output.isDestroyed())
+        return { name: outputNames.get(screenId) ?? 'an output', output: output.webContents };
+      if (operatorWindow && !operatorWindow.isDestroyed() && sender.id === operatorWindow.webContents.id)
+        return { name: 'operator', output: null };
+      if (streaming.isProgram(sender)) return { name: "the stream's page", output: null };
+      return { name: 'a window', output: null };
+    },
+  });
+  if (testRenderErrors)
+    (globalThis as { drashtiTestRenderError?: (screenId?: string) => number }).drashtiTestRenderError = (
+      screenId,
+    ) => {
+      let sent = 0;
+      for (const [id, win] of outputWindows)
+        if (screenId === undefined || id === screenId) {
+          sendToPage(win, IPC.output.testThrow, {});
+          sent++;
+        }
+      return sent;
+    };
   handle(IPC.screens.assignNodeDisplay, (e, groupId, nodeId, displayId) =>
     fromOperator(e) ? screens.assignNodeDisplay(groupId, nodeId, displayId) : notAllowed,
   );

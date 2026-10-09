@@ -24,6 +24,7 @@ import type { DisplayInfo, OutputContext, OutputReport, ScreenConfig } from '../
 import type { DiagnosticsInput } from '../diagnostics';
 import { saveNodeDiagnostics } from '../diagnostics';
 import { handle } from '../ipc/handle';
+import { hearRenderErrors } from '../render-errors-ipc';
 import { log } from '../log';
 import { handleMediaRequest, mediaRequestOf } from '../media/media-protocol';
 import {
@@ -231,6 +232,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
 
   // ---- outputs on the displays Main assigned ------------------------------------------------
   const outputWindows = new Map<string, BrowserWindow>();
+  /** Each output's name, as the watchdog and the log call it. */
+  const outputNames = new Map<string, string>();
   const reports = new Map<string, OutputReport>();
   const screenOf = (id: string): NodeScreen | undefined => paired?.screens.find((s) => s.screenId === id);
   const asConfig = (s: NodeScreen): ScreenConfig => ({
@@ -292,6 +295,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       log.info(`Node: opening output "${config.name}" on ${display.label || display.id}`);
       const { window, handle: h } = createOutputWindow(config, display, { windowed: deps.windowed });
       outputWindows.set(config.id, window);
+      outputNames.set(config.id, `output "${config.name}"`);
       deps.watchdog.watch(window.webContents, `output "${config.name}"`);
       window.on('closed', () => {
         if (outputWindows.get(config.id) === window) outputWindows.delete(config.id);
@@ -614,6 +618,22 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   handle(IPC.output.getContext, (event) => {
     const screenId = manager.screenIdFor(event.sender.id);
     return screenId ? contextFor(screenId) : null;
+  });
+  // Render errors in the node's windows (Session 23): logged; an output draws black and is reloaded once.
+  hearRenderErrors({
+    log: (line) => {
+      log.warn(`Node: ${line}`);
+    },
+    watchdog: deps.watchdog,
+    windowOf: (sender) => {
+      const screenId = manager.screenIdFor(sender.id);
+      const output = screenId ? outputWindows.get(screenId) : undefined;
+      if (screenId && output && !output.isDestroyed())
+        return { name: outputNames.get(screenId) ?? 'an output', output: output.webContents };
+      if (nodeWindow && !nodeWindow.isDestroyed() && sender.id === nodeWindow.webContents.id)
+        return { name: "the node's window", output: null };
+      return { name: 'a window', output: null };
+    },
   });
   handle(IPC.output.report, (event, raw) => {
     const screenId = manager.screenIdFor(event.sender.id);

@@ -128,6 +128,38 @@ describe('RendererWatchdog', () => {
   });
 });
 
+describe('a render error (Session 23)', () => {
+  it('reloads the window once, through the same reload a crash gets; again only after a minute', () => {
+    dog.renderError(contents, 'output "Main Hall"', 'Error: boom');
+    expect(kinds()).toEqual(['render-error']);
+    expect(contents.reloads).toBe(0);
+    clock.advance(100);
+    expect(contents.reloads).toBe(1);
+    expect(kinds()).toEqual(['render-error', 'reloaded']);
+    // It fails again as it draws after the reload: logged, not reloaded again within the minute.
+    clock.advance(5000);
+    dog.renderError(contents, 'output "Main Hall"', 'Error: boom');
+    clock.advance(10_000);
+    expect(contents.reloads).toBe(1);
+    expect(kinds()).toEqual(['render-error', 'reloaded', 'render-error']);
+    // A minute after the reload, once more.
+    clock.advance(50_000);
+    dog.renderError(contents, 'output "Main Hall"', 'Error: boom');
+    clock.advance(100);
+    expect(contents.reloads).toBe(2);
+  });
+
+  it('each window has its own minute, and a window gone is not reloaded', () => {
+    const other = new FakeContents();
+    dog.renderError(contents, 'output "Main Hall"', 'Error: boom');
+    dog.renderError(other, 'output "Stage"', 'Error: boom');
+    other.destroyed = true;
+    clock.advance(100);
+    expect(contents.reloads).toBe(1);
+    expect(other.reloads).toBe(0);
+  });
+});
+
 describe('shouldConfirmQuit', () => {
   it('asks only while outputs are showing, once, unless switched off', () => {
     expect(shouldConfirmQuit(2, false, false)).toBe(true);

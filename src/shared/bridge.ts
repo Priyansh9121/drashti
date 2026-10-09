@@ -77,6 +77,7 @@ import type { Mask, MaskResult } from './masks';
 import type { Macro, MacroCountdownView, MacroInput, MacroResult, MacroRunResult } from './macros';
 import type { MidiResult, MidiSettings } from './midi';
 import type { SearchResult } from './search';
+import type { RenderErrorReport } from './render-errors';
 import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes';
 import type { TimerFields, TimerResult } from './timers';
 import type {
@@ -97,6 +98,8 @@ import type {
 export interface DrashtiBridge {
   app: {
     getInfo(): Promise<AppInfo>;
+    /** A render error in this window, for the main process's log (Session 23; any of Drashti's windows). */
+    renderError(report: RenderErrorReport): Promise<null>;
     /** Edit > Undo was chosen (operator window). */
     onUndo(listener: () => void): () => void;
     /** Edit > Redo was chosen (operator window). */
@@ -618,6 +621,8 @@ export interface DrashtiBridge {
     report(report: OutputReport): Promise<null>;
     /** On a node: a media file's copy has just landed (load it again if it could not be loaded). */
     onMediaReady(listener: (mediaId: string) => void): () => void;
+    /** Tests only (a packaged Drashti never sends it): draw an element that throws (Session 23). */
+    onTestThrow(listener: () => void): () => void;
   };
   /** For the hidden window that draws a PDF's pages as pictures (Session 15). */
   pictures: {

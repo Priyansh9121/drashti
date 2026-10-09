@@ -95,6 +95,7 @@ Every list, panel and dialog shows:
 - **empty**: what goes here and how to add it (`EmptyState`);
 - **loading**: when it waits for the main process (`Loading`), never a blank;
 - **error**: what failed and what to do (`ErrorState` or a `Notice`), in plain words a volunteer understands, never a code;
+- **a window that fails as it draws** (Session 23): the operator's and a node's window show `ErrorState` with one primary button that reloads that window alone ("Reload the operator window"), and say the screens keep their picture (`WindowBoundary`). A screen (an output, the stream's picture) never shows words: it draws plain black (`SceneBoundary`) and tries again with the next change;
 - **long names**: cut off neatly (`Truncate`) and shown in full on hover.
 
 ## 8. Keyboard and screen readers

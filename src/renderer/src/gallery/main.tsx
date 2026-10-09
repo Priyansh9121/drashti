@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import '../render/fonts.css';
 import '../styles/app.css';
 import { Gallery } from './Gallery';
+import { reportRenderError } from '../ui/render-errors';
 
 /*
  * The component gallery, for development: every shared component in each of
@@ -12,7 +13,12 @@ import { Gallery } from './Gallery';
  */
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');
-createRoot(root).render(
+const sendError = (report: Parameters<typeof window.drashti.app.renderError>[0]) =>
+  window.drashti.app.renderError(report);
+createRoot(root, {
+  onUncaughtError: reportRenderError('component gallery', 'uncaught', sendError),
+  onCaughtError: reportRenderError('component gallery', 'caught', sendError),
+}).render(
   <StrictMode>
     <Gallery />
   </StrictMode>,

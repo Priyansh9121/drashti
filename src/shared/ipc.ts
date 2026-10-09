@@ -77,6 +77,7 @@ import type { Mask, MaskResult } from './masks';
 import type { Macro, MacroCountdownView, MacroInput, MacroResult, MacroRunResult } from './macros';
 import type { MidiResult, MidiSettings } from './midi';
 import type { SearchResult } from './search';
+import type { RenderErrorReport } from './render-errors';
 import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes';
 import type { TimerFields, TimerResult } from './timers';
 import type {
@@ -118,6 +119,8 @@ export const IPC = {
     modeChanged: 'app:mode-changed',
     /** main -> operator: View > Switch to Pro Mode… was chosen; ask for the word. */
     askLeaveSimple: 'app:ask-leave-simple',
+    /** Any of Drashti's windows: a render error, for the log (Session 23). */
+    renderError: 'app:render-error',
   },
   /**
    * Roles (Session 14, shared/roles.ts): an admin PIN and an operator PIN.
@@ -582,6 +585,8 @@ export const IPC = {
     report: 'output:report',
     /** main -> output (on a node): a media file's copy has just landed; load it if it could not be before. */
     mediaReady: 'output:media-ready',
+    /** main -> output, tests only (never sent by a packaged Drashti): draw an element that throws (Session 23). */
+    testThrow: 'output:test-throw',
   },
   pictures: {
     /** The hidden window that draws a PDF's pages (Session 15) asks what to draw (that window only). */
@@ -602,6 +607,7 @@ export interface InvokeContract {
   [IPC.pictures.done]: { args: [done: PicturesDone]; result: null };
   [IPC.pictures.asset]: { args: [kind: PictureAssetKind, name: string]; result: Uint8Array | null };
   [IPC.app.getInfo]: { args: []; result: AppInfo };
+  [IPC.app.renderError]: { args: [report: RenderErrorReport]; result: null };
   [IPC.app.recovery]: { args: []; result: RecoveryNotice | null };
   [IPC.app.dismissRecovery]: { args: []; result: null };
   [IPC.app.startNotice]: { args: []; result: string | null };
@@ -941,6 +947,7 @@ export interface EventContract {
   [IPC.output.context]: OutputContext;
   [IPC.output.identify]: { name: string; groupName: string; label?: string };
   [IPC.output.mediaReady]: { mediaId: string };
+  [IPC.output.testThrow]: Record<string, never>;
   [IPC.audio.chosen]: { device: AudioDevice | null };
   [IPC.audio.testTone]: { deviceId: string };
   [IPC.setup.open]: { at: number };

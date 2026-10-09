@@ -7,11 +7,13 @@ import { connectEngine, useEngine } from '../engine/engine-store';
 import { engineNow } from '../render/clock';
 import { preloadFonts } from '../render/fonts';
 import { PlacedInParent } from '../render/Placed';
+import { SceneBoundary } from '../render/SceneBoundary';
 import { Scene } from '../render/Scene';
 import { StageScreen } from '../render/StageScreen';
 import { connectOutput, useOutput } from './output-store';
 import { Preloader } from './Preloader';
 import { DisplayNumber, TestCard } from './SetupCards';
+import { reportRenderError } from '../ui/render-errors';
 
 function IdentifyOverlay() {
   const identify = useOutput((s) => s.identify);
@@ -68,6 +70,11 @@ function usePaintTiming(root: React.RefObject<HTMLDivElement | null>) {
   }, [rev, sentAt, root]);
 }
 
+/** Tests only: an element that throws as it renders (Session 23; a packaged Drashti never asks for it). */
+function ThrowForTests(): never {
+  throw new Error('A test asked this output to fail as it drew');
+}
+
 /** The revision this window last painted, and frames that came late, for its reports. */
 let paintedRevNow = -1;
 const late: number[] = [];
@@ -110,8 +117,17 @@ function useFrameReports(refreshHz: number) {
 function Output() {
   const context = useOutput((s) => s.context);
   const state = useEngine((s) => s.state);
+  const rev = useEngine((s) => s.rev);
   const [fontsReady, setFontsReady] = useState(false);
+  const [testThrow, setTestThrow] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(
+    () =>
+      window.drashti.output.onTestThrow(() => {
+        setTestThrow(true);
+      }),
+    [],
+  );
   usePaintTiming(rootRef);
   useFrameReports(context?.display?.refreshHz ?? 60);
   useEffect(() => {
@@ -143,13 +159,16 @@ function Output() {
       data-fonts={fontsReady ? 'ready' : 'loading'}
     >
       {state && fontsReady && (
-        <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
-          {stage ? (
-            <StageScreen state={state} look={look} canvas={canvas} />
-          ) : (
-            <Scene state={state} canvas={canvas} scaling={scaling} look={look} matte={matte} />
-          )}
-        </PlacedInParent>
+        <SceneBoundary resetKey={rev}>
+          <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
+            {stage ? (
+              <StageScreen state={state} look={look} canvas={canvas} />
+            ) : (
+              <Scene state={state} canvas={canvas} scaling={scaling} look={look} matte={matte} />
+            )}
+            {testThrow && <ThrowForTests />}
+          </PlacedInParent>
+        </SceneBoundary>
       )}
       {/* Stage screens show no pictures, so they load none ahead. */}
       {state && !stage && <Preloader next={state.next} />}
@@ -163,7 +182,12 @@ const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');
 // The setup wizard's Identify: only a display's number across it, for a few seconds (no show).
 const identify = new URLSearchParams(location.search).get('identify');
-createRoot(root).render(
+const sendError = (report: Parameters<typeof window.drashti.app.renderError>[0]) =>
+  window.drashti.app.renderError(report);
+createRoot(root, {
+  onUncaughtError: reportRenderError('output', 'uncaught', sendError),
+  onCaughtError: reportRenderError('output', 'caught', sendError),
+}).render(
   <StrictMode>
     {identify ? (
       <DisplayNumber number={identify} label={new URLSearchParams(location.search).get('label') ?? ''} />
