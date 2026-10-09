@@ -1,4 +1,4 @@
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { ChildProcess } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -19,7 +19,15 @@ import {
   relaunchApp,
   type PageGlobals,
 } from './helpers';
-import { freePort, readFlv, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
+import {
+  freePort,
+  readFlv,
+  rtmpListener,
+  setUpStream as setUp,
+  streamPage,
+  TEST_KEY,
+  testFfmpeg,
+} from './stream-helpers';
 
 /*
  * Going live and recording, against FFmpeg listening for RTMP on this
@@ -42,57 +50,6 @@ test.afterEach(() => {
 const bridge = (win: Page) => ({
   status: () => win.evaluate(() => (globalThis as PageGlobals).drashti.stream.status()),
 });
-
-async function streamPage(app: ElectronApplication): Promise<Page> {
-  const isStream = (p: Page) => p.url().includes('stream.html');
-  return app.windows().find(isStream) ?? app.waitForEvent('window', { predicate: isStream });
-}
-
-/** The profile in use sends to the local listener, with the fake camera (or none) and microphone and the test key. */
-async function setUp(
-  app: ElectronApplication,
-  win: Page,
-  port: number,
-  folder: string,
-  withCamera = true,
-): Promise<void> {
-  await app.evaluate(({ dialog }, into) => {
-    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [into] });
-  }, folder);
-  await win.getByTestId('open-stream').click();
-  await streamPage(app);
-  await expect
-    .poll(async () => {
-      const s = await bridge(win).status();
-      return s.inputs.cameras.length > 0 && s.inputs.microphones.length > 0;
-    })
-    .toBe(true);
-  const result = await win.evaluate(
-    async ({ port, key, withCamera }) => {
-      const d = (globalThis as PageGlobals).drashti;
-      const s = await d.stream.status();
-      const { profiles, activeId } = await d.stream.profiles();
-      const p = profiles.find((x) => x.id === activeId);
-      if (!p) return 'no profile';
-      const saved = await d.stream.saveProfile(p.id, {
-        name: 'Local test',
-        url: `rtmp://127.0.0.1:${port}/live2`,
-        preset: 'weak',
-        camera: withCamera ? (s.inputs.cameras[0] ?? null) : null,
-        sound: s.inputs.microphones[0] ?? null,
-        soundDelayMs: 0,
-        mixOwnSound: false,
-      });
-      if (!saved.ok) return saved.message;
-      const kept = await d.stream.setKey(p.id, key);
-      if (!kept.ok) return kept.message;
-      const folder = await d.stream.pickFolder();
-      return folder.ok ? 'ok' : folder.message;
-    },
-    { port, key: TEST_KEY, withCamera },
-  );
-  expect(result).toBe('ok');
-}
 
 const live = (s: StreamStatus) => s.live.state;
 
@@ -520,6 +477,52 @@ test('on air, and on air again, with the preview watched and a picture standing 
     await (globalThis as PageGlobals).drashti.stream.end({ confirmed: true });
   });
   await app.close();
+});
+
+test('a quit on purpose while on air and recording: the next start is off air, not recording, and says nothing stopped', async () => {
+  // Session 23: the library closed before the stream service saved that the stream had ended, so the
+  // save threw, stream-state.json kept "live", and a start within 5 minutes went live again by itself.
+  test.setTimeout(150_000);
+  const port = await freePort();
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-quit-stream-'));
+  listeners.push(rtmpListener(ffmpeg ?? '', port, join(dir, 'before.flv')));
+  const { app, userData } = await launchApp(FAKE);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await setUp(app, win, port, dir);
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    await d.stream.startRecording();
+    await d.stream.goLive({ confirmed: true });
+  });
+  await waitLive(win, userData, 'live', 30_000);
+  const stateFile = join(userData, 'stream-state.json');
+  const saved = () =>
+    existsSync(stateFile)
+      ? (JSON.parse(readFileSync(stateFile, 'utf8')) as { live: boolean; recording: boolean })
+      : null;
+  await expect.poll(saved).toMatchObject({ live: true, recording: true });
+  await app.close();
+  expect(saved()).toMatchObject({ live: false, recording: false });
+  const log = () => readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  expect(log()).not.toContain('Uncaught exception');
+
+  // Started again at once: nothing goes on air or records by itself, and nothing says it stopped.
+  listeners.push(rtmpListener(ffmpeg ?? '', port, join(dir, 'after.flv')));
+  const again = await relaunchApp(userData, FAKE);
+  const win2 = await operatorPage(again.app);
+  await operatorReady(win2);
+  // The stream resumes (when it does) as the operator window finishes loading: give it time to.
+  await win2.waitForTimeout(5000);
+  const after = await bridge(win2).status();
+  expect(after.live.state).toBe('off');
+  expect(after.recording.state).toBe('off');
+  expect(after.resume).toBeNull();
+  await expect(win2.getByRole('alert').filter({ hasText: 'stopped unexpectedly' })).toHaveCount(0);
+  expect(log()).not.toContain('starts again by itself');
+  expect(readdirSync(dir).filter((f) => f.endsWith('.mkv'))).toHaveLength(1);
+  await again.app.close();
+  expect(log()).not.toContain('Uncaught exception');
 });
 
 test('after a crash on air: back on air by itself within 5 minutes, in a new recording file; later, only offered', async () => {

@@ -150,6 +150,10 @@ export class StreamService {
   /** After an unexpected stop: what was going on, to go live again or offer to. */
   private resume: StreamStatus['resume'] = null;
   private heartbeat: NodeJS.Timeout | null = null;
+  /** Drashti is quitting: the stream's page is never opened again (a new window would stop the quit). */
+  private closing = false;
+  /** The profile last saved with the state, for a save made when the library can no longer be read. */
+  private savedProfileId: string | null = null;
   private profilesVersion = 0;
 
   constructor(private readonly deps: StreamServiceDeps) {
@@ -195,6 +199,11 @@ export class StreamService {
   /** On air or recording: the profile in use and its inputs stay as they are. */
   inUse(): boolean {
     return this.liveWanted || this.recordWanted;
+  }
+
+  /** On air (or getting there) and recording, as the operator asked: for the quit question. */
+  wanted(): { live: boolean; recording: boolean } {
+    return { live: this.liveWanted, recording: this.recordWanted };
   }
 
   saveProfile(rawId: unknown, rawInput: unknown): StreamProfilesResult {
@@ -331,6 +340,7 @@ export class StreamService {
 
   /** The Program window is open while the preview is watched, or the stream is live or recording. */
   private updateProgram(): void {
+    if (this.closing) return;
     const wanted = this.watchers.size > 0 || this.inUse();
     if (wanted && (!this.program || this.program.isDestroyed())) {
       void this.openProgram();
@@ -776,13 +786,23 @@ export class StreamService {
 
   /** What is going on, kept on disk (no key): after a crash, Drashti knows to go live again. */
   private saveState(): void {
-    const state: SavedStream = {
-      live: this.liveWanted,
-      recording: this.recordWanted,
-      profileId: this.activeProfile().id,
-      at: this.deps.now(),
-    };
     try {
+      let profileId: string;
+      try {
+        profileId = this.activeProfile().id;
+      } catch (error) {
+        // The library could not be read (Session 23: at quit it had closed first): the stream's own
+        // state matters more than its profile, so keep the profile last saved.
+        if (this.savedProfileId === null) throw error;
+        profileId = this.savedProfileId;
+      }
+      this.savedProfileId = profileId;
+      const state: SavedStream = {
+        live: this.liveWanted,
+        recording: this.recordWanted,
+        profileId,
+        at: this.deps.now(),
+      };
       const tmp = `${this.deps.stateFile}.tmp`;
       writeFileSync(tmp, JSON.stringify(state));
       renameSync(tmp, this.deps.stateFile);
@@ -795,9 +815,11 @@ export class StreamService {
    * At the start: if Drashti stopped while on air or recording (no End, no
    * Stop), go live and record again by itself when that was under 5 minutes
    * ago, with the same profile; after that, only offer to. A new recording
-   * file starts either way; the old one stays as it is and plays.
+   * file starts either way; the old one stays as it is and plays. Never after
+   * a quit on purpose (`cleanQuit`, from restart recovery: Session 23), even if
+   * the file still says live.
    */
-  resumeAfterStop(): string | null {
+  resumeAfterStop(options: { cleanQuit: boolean }): string | null {
     let saved: SavedStream;
     try {
       saved = savedStreamSchema.parse(JSON.parse(readFileSync(this.deps.stateFile, 'utf8')));
@@ -805,6 +827,18 @@ export class StreamService {
       return null;
     }
     if (!saved.live && !saved.recording) return null;
+    if (options.cleanQuit) {
+      this.deps.log(
+        'info',
+        'The stream was in use when Drashti last quit on purpose: it does not start again',
+      );
+      try {
+        writeFileSync(this.deps.stateFile, JSON.stringify({ ...saved, live: false, recording: false }));
+      } catch {
+        // Read as a clean quit next time too.
+      }
+      return null;
+    }
     const profile = this.deps.profiles.get(saved.profileId);
     if (!profile) return null;
     if (this.activeProfile().id !== profile.id) this.deps.settings.set(PROFILE_SETTING, profile.id);
@@ -873,8 +907,17 @@ export class StreamService {
     this.changed();
   }
 
+  /**
+   * Drashti is going to quit (its quit was confirmed): from now on nothing opens the stream's page
+   * again, or the new window would stop the quit and leave Drashti running unseen, on air (Session 23).
+   */
+  quitting(): void {
+    this.closing = true;
+  }
+
   /** Close everything (Drashti is quitting on purpose: the stream ends, and is not resumed). */
   close(): void {
+    this.closing = true;
     if (this.liveWanted || this.recordWanted) {
       this.liveWanted = false;
       this.recordWanted = false;

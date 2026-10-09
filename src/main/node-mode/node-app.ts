@@ -70,6 +70,8 @@ export interface NodeAppDeps {
   computerName: string;
   /** Restart as Main (the role file is written first). */
   restartAsMain(): void;
+  /** Something to stop as Drashti quits, in the one ordered list (../lifecycle.ts, Session 23). */
+  atQuit(name: string, stop: () => unknown): void;
   /** Where releases are, and how this computer installs one (Session 14: matching Main's version). */
   updateBase: string;
   installer: Installer;
@@ -162,7 +164,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     },
     ...(deps.updateRate ? { bytesPerSecond: deps.updateRate } : {}),
   });
-  app.on('will-quit', () => {
+  deps.atQuit('updates (an install at quit)', () => {
     updates.quit();
   });
   /** A line the node's window shows for a while (diagnostics saved, say), as Main's live controls do. */
@@ -660,13 +662,17 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     nodeWindow = null;
     app.quit();
   });
-  app.on('will-quit', () => {
+  deps.atQuit('the link to Main', () => {
     if (healthTimer) clearInterval(healthTimer);
     if (thumbTimer) clearInterval(thumbTimer);
     healthTimer = null;
     client?.stop();
+  });
+  deps.atQuit('the last picture on disk', () => {
     saver.flush();
-    void cache.close();
+  });
+  deps.atQuit('the media copies', () => cache.close());
+  deps.atQuit('outputs', () => {
     manager.closeAll();
   });
 

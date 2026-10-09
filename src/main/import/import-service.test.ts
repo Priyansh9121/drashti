@@ -196,6 +196,30 @@ describe('ImportService', () => {
     await expect(waiting).resolves.toEqual({ ok: false, message: 'Drashti is quitting.' });
     expect(workers[0]?.killed).toBe(true);
   });
+
+  it('at quit, records the run cut short while the library is open, and never touches it after (Session 23)', async () => {
+    const { service, mocks, workers } = setup();
+    const running = service.start(['/a']);
+    service.stop();
+    await expect(running).resolves.toEqual({ ok: false, message: 'Drashti is quitting.' });
+    expect(mocks.failRun).toHaveBeenCalledTimes(1);
+    expect(mocks.failRun.mock.calls[0]?.[2]).toBe('Drashti quit before the import finished.');
+    // The library closes now; the killed worker's last words and exit come after it.
+    mocks.failRun.mockImplementation(() => {
+      throw new TypeError('The database connection is not open');
+    });
+    mocks.onFinished.mockImplementation(() => {
+      throw new TypeError('The database connection is not open');
+    });
+    const w = workers[0];
+    w?.emit({ type: 'failed', runId: w.runId, message: 'killed' });
+    w?.exit(1);
+    expect(mocks.failRun).toHaveBeenCalledTimes(1);
+    expect(mocks.onFinished).not.toHaveBeenCalled();
+    // Nothing new starts while Drashti quits.
+    void service.start(['/b']);
+    expect(workers).toHaveLength(1);
+  });
 });
 
 describe('ImportService and pictures (Session 15)', () => {

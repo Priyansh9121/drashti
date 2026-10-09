@@ -120,11 +120,34 @@ export class RendererWatchdog {
   }
 }
 
-/** Should closing the operator window ask first? Only while screens are showing something. */
+/**
+ * Should closing the operator window ask first? Only while screens are showing something, or (since
+ * Session 23) the stream is on air or recording.
+ */
 export function shouldConfirmQuit(
   outputsShowing: number,
   alreadyConfirmed: boolean,
   disabled: boolean,
+  streamInUse = false,
 ): boolean {
-  return !disabled && !alreadyConfirmed && outputsShowing > 0;
+  return !disabled && !alreadyConfirmed && (outputsShowing > 0 || streamInUse);
+}
+
+const andList = (items: string[]) =>
+  items.length < 2 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items.at(-1) ?? ''}`;
+
+/** What the quit question says: the screens showing, and the stream on air or recording (Session 23). */
+export function quitDetail(showing: number, stream: { live: boolean; recording: boolean }): string {
+  if (!stream.live && !stream.recording)
+    return `${showing} screen(s) are showing. If Drashti quits, they go black.`;
+  const doing = stream.live
+    ? `the stream is ${stream.recording ? 'on air and recording' : 'on air'}`
+    : 'Drashti is recording';
+  const said = showing > 0 ? `${showing} screen(s) are showing, and ${doing}` : doing;
+  const ends = [
+    ...(showing > 0 ? ['the screens go black'] : []),
+    ...(stream.live ? ['the stream ends'] : []),
+    ...(stream.recording ? ['the recording stops'] : []),
+  ];
+  return `${said.charAt(0).toUpperCase()}${said.slice(1)}. If Drashti quits, ${andList(ends)}.`;
 }

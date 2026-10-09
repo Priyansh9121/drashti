@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { WatchdogEvent, WatchTarget } from './watchdog';
-import { RendererWatchdog, shouldConfirmQuit } from './watchdog';
+import { quitDetail, RendererWatchdog, shouldConfirmQuit } from './watchdog';
 
 class FakeContents extends EventEmitter implements WatchTarget {
   reloads = 0;
@@ -134,5 +134,27 @@ describe('shouldConfirmQuit', () => {
     expect(shouldConfirmQuit(0, false, false)).toBe(false);
     expect(shouldConfirmQuit(2, true, false)).toBe(false);
     expect(shouldConfirmQuit(2, false, true)).toBe(false);
+  });
+
+  it('asks while the stream is on air or recording, with no screen showing (Session 23)', () => {
+    expect(shouldConfirmQuit(0, false, false, true)).toBe(true);
+    expect(shouldConfirmQuit(0, true, false, true)).toBe(false);
+    expect(shouldConfirmQuit(0, false, true, true)).toBe(false);
+  });
+});
+
+describe('quitDetail', () => {
+  const off = { live: false, recording: false };
+  it('names the screens, and the stream when it is on air or recording', () => {
+    expect(quitDetail(2, off)).toBe('2 screen(s) are showing. If Drashti quits, they go black.');
+    expect(quitDetail(0, { live: true, recording: false })).toBe(
+      'The stream is on air. If Drashti quits, the stream ends.',
+    );
+    expect(quitDetail(0, { live: false, recording: true })).toBe(
+      'Drashti is recording. If Drashti quits, the recording stops.',
+    );
+    expect(quitDetail(3, { live: true, recording: true })).toBe(
+      '3 screen(s) are showing, and the stream is on air and recording. If Drashti quits, the screens go black, the stream ends and the recording stops.',
+    );
   });
 });
