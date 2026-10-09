@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -6,7 +6,8 @@ import type { EngineState } from '../../shared/engine/state';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import { textSlide } from '../engine/testing';
 import type { RecoveryFiles } from './live-state';
-import { LiveStateWriter, savedFrom, toRestore } from './live-state';
+import { RECOVERY_MAX_AGE_MS } from '../../shared/recovery';
+import { LiveStateWriter, savedFrom, startupRecovery, toRestore } from './live-state';
 
 let dir: string;
 let files: RecoveryFiles;
@@ -58,7 +59,8 @@ async function saved(writer: LiveStateWriter, state: EngineState) {
 describe('restart recovery', () => {
   it('keeps the slide on screen (not just the cursor), the background and black-out', () => {
     expect(savedFrom(live({ blackout: true }), 'run-1', new Date(0))).toEqual({
-      version: 1,
+      // 2 since Session 20 (saved from the run's start); 1 is still read.
+      version: 2,
       session: 'run-1',
       engineVersion: ENGINE_STATE_VERSION,
       savedAt: '1970-01-01T00:00:00.000Z',
@@ -205,7 +207,8 @@ describe('restart recovery', () => {
         timers: [{ id: 't', startedAt: 1, elapsedMs: 0 }],
       }),
     );
-    expect(toRestore(files)).toMatchObject({
+    // Five minutes after it was saved (the time is the test's own, not the real clock).
+    expect(toRestore(files, null, new Date('2026-09-01T10:05:00.000Z'))).toMatchObject({
       slide: { slideIndex: 1 },
       audio: null,
       props: [],
@@ -227,7 +230,10 @@ describe('restart recovery', () => {
         blackout: false,
       }),
     );
-    expect(toRestore(files)).toMatchObject({ slide: { slideIndex: 1 }, playlist: null });
+    expect(toRestore(files, null, new Date('2026-09-01T10:05:00.000Z'))).toMatchObject({
+      slide: { slideIndex: 1 },
+      playlist: null,
+    });
   });
 
   it('puts back what was live after an unexpected stop', async () => {
@@ -286,5 +292,175 @@ describe('restart recovery', () => {
     expect(toRestore(files)).toMatchObject({ slide: { slideIndex: 2 }, background: null });
     writeFileSync(files.state, JSON.stringify({ ...raw, background: { kind: 'media', mediaId: '../x' } }));
     expect(toRestore(files)?.background).toBeNull();
+  });
+});
+
+/*
+ * Session 20: how the last run ended, in each order of events, with the time injected. Every run saves the
+ * show from its start (start), and a clean quit saves it once more before its mark, so the saved file always
+ * names the last run. Before, a run that changed nothing saved nothing: after a clean quit, such a run made
+ * the next start put the show of the run before it back, as after a crash (seen on 9 Oct 2026).
+ */
+describe('how the last run ended', () => {
+  const HOUR = 60 * 60 * 1000;
+  // A clock of the tests' own: never compared with the real one.
+  let clock = 0;
+  const now = () => new Date(clock);
+  const nothingLive = initialEngineState();
+  const startFinds = () => startupRecovery(files, { now: now() });
+  const clean = { cleanQuit: true, putBack: null, tooOld: null };
+  /** A run of Drashti: it starts (saving the show it starts with), and the tests change, quit or stop it. */
+  async function begin(state: EngineState = nothingLive) {
+    const writer = new LiveStateWriter(files, { throttleMs: 10, now });
+    writer.start(state);
+    await pause(30);
+    await writer.settle();
+    return writer;
+  }
+  beforeEach(() => {
+    clock = new Date(2026, 9, 9, 18, 0).getTime();
+  });
+
+  it('a clean quit, then a start that changes nothing and quits, then a start: nothing comes back (the 9 Oct order)', async () => {
+    const first = await begin();
+    await saved(first, live({ blackout: true }));
+    first.markClean();
+    clock += 2 * 60_000;
+    expect(startFinds()).toEqual(clean);
+    const second = await begin();
+    clock += 90_000;
+    second.markClean();
+    expect(startFinds()).toEqual(clean);
+  });
+
+  it('a crash, then a start: the show comes back', async () => {
+    const first = await begin();
+    await saved(first, live({ blackout: true }));
+    first.stop();
+    clock += 30_000;
+    const found = startFinds();
+    expect(found.cleanQuit).toBe(false);
+    expect(found.tooOld).toBeNull();
+    expect(found.putBack).toMatchObject({
+      slide: { presentationId: 'p1', slideIndex: 2 },
+      background,
+      blackout: true,
+    });
+  });
+
+  it('a clean quit, then a start that changes nothing and crashes, then a start: nothing comes back', async () => {
+    const first = await begin();
+    await saved(first, live());
+    first.markClean();
+    clock += 60_000;
+    const second = await begin();
+    second.stop();
+    clock += 60_000;
+    // That run stopped unexpectedly (so Drashti comes back in the mode it was in), with nothing live.
+    expect(startFinds()).toEqual({ cleanQuit: false, putBack: null, tooOld: null });
+  });
+
+  it('a crash, a start that puts the show back and quits cleanly, then a start: nothing comes back', async () => {
+    const first = await begin();
+    await saved(first, live({ blackout: true }));
+    first.stop();
+    clock += 60_000;
+    expect(startFinds().putBack).not.toBeNull();
+    // The second run starts with the show put back, and quits on purpose.
+    const second = await begin(live({ blackout: true }));
+    clock += 60_000;
+    second.markClean();
+    expect(startFinds()).toEqual(clean);
+  });
+
+  it('a show saved 3 hours or more before the start is named, not put back; just under, it comes back', async () => {
+    const first = await begin();
+    await saved(first, live({ blackout: true }));
+    first.stop();
+    const savedAt = clock;
+    expect(
+      startupRecovery(files, { now: new Date(savedAt + RECOVERY_MAX_AGE_MS - 1) }).putBack,
+    ).toMatchObject({
+      blackout: true,
+    });
+    const late = startupRecovery(files, { now: new Date(savedAt + RECOVERY_MAX_AGE_MS) });
+    expect(late.cleanQuit).toBe(false);
+    expect(late.putBack).toBeNull();
+    expect(late.tooOld).toMatchObject({
+      slide: { slideIndex: 2 },
+      blackout: true,
+      savedAt: new Date(savedAt).toISOString(),
+    });
+    expect(RECOVERY_MAX_AGE_MS).toBe(3 * HOUR);
+  });
+
+  it('saves the show again every minute while it runs, so a slide up for hours still comes back after a crash', async () => {
+    const writer = new LiveStateWriter(files, { throttleMs: 10, aliveMs: 20, now });
+    writer.start(live());
+    await pause(40);
+    // Four hours on the same slide, then a crash.
+    clock += 4 * HOUR;
+    await pause(60);
+    writer.stop();
+    await writer.settle();
+    expect(JSON.parse(readFileSync(files.state, 'utf8'))).toMatchObject({ savedAt: now().toISOString() });
+    clock += 5 * 60_000;
+    expect(startFinds().putBack).toMatchObject({ slide: { slideIndex: 2 } });
+  });
+
+  it('a clean quit saves the show as it is, under this run, before its mark: even straight after the start', () => {
+    const writer = new LiveStateWriter(files, { throttleMs: 10, now });
+    // Quit before the start's own save has landed (it waits 10 ms): the quit saves it.
+    writer.start(live());
+    writer.markClean();
+    const savedNow = JSON.parse(readFileSync(files.state, 'utf8')) as { session: string; version: number };
+    const mark = JSON.parse(readFileSync(files.cleanMark, 'utf8')) as { session: string };
+    expect(savedNow).toMatchObject({ version: 2, session: writer.session });
+    expect(mark.session).toBe(writer.session);
+    expect(readdirSync(dir).sort()).toEqual(['live-state.clean', 'live-state.json']);
+  });
+
+  it('cannot put back a show whose time it cannot read', async () => {
+    const first = await begin();
+    await saved(first, live());
+    first.stop();
+    const raw = JSON.parse(readFileSync(files.state, 'utf8')) as Record<string, unknown>;
+    writeFileSync(files.state, JSON.stringify({ ...raw, savedAt: 'not a time' }));
+    expect(startFinds()).toMatchObject({
+      cleanQuit: false,
+      putBack: null,
+      tooOld: { slide: { slideIndex: 2 } },
+    });
+  });
+
+  describe('with files saved before Session 20', () => {
+    /** A show saved by that Drashti (version 1), and a clean-quit mark written `markAfterMs` after it. */
+    function oldFiles(markSession: string, markAfterMs: number) {
+      const show = { ...savedFrom(live({ blackout: true }), 'run-1', now()), version: 1 };
+      writeFileSync(files.state, JSON.stringify(show));
+      writeFileSync(files.cleanMark, JSON.stringify({ session: markSession }));
+      const markAt = (clock + markAfterMs) / 1000;
+      utimesSync(files.cleanMark, markAt, markAt);
+    }
+
+    it('a clean quit, then a run that changed nothing and quit (the files on the dev Mac): a clean start, nothing comes back', () => {
+      oldFiles('run-2', 90_000);
+      clock += 60 * 60_000;
+      expect(startFinds()).toEqual(clean);
+    });
+
+    it('a crash after a clean quit before it: the show comes back, as it always did', () => {
+      oldFiles('run-0', -60 * 60_000);
+      clock += 60_000;
+      expect(startFinds()).toMatchObject({
+        cleanQuit: false,
+        putBack: { blackout: true, slide: { slideIndex: 2 } },
+      });
+    });
+
+    it('the run that saved it quit cleanly: a clean start', () => {
+      oldFiles('run-1', 1000);
+      expect(startFinds()).toEqual(clean);
+    });
   });
 });

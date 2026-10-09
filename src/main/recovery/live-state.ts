@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { rename, rm, writeFile } from 'node:fs/promises';
 import { z } from 'zod';
 import { audioChoiceSchema, messageSchema, musicStartSchema, propSchema } from '../../shared/engine/commands';
@@ -16,6 +16,7 @@ import type {
 import { ENGINE_STATE_VERSION } from '../../shared/engine/state';
 import { maskSchema } from '../../shared/masks';
 import { hexColorSchema, idSchema } from '../../shared/model-schema';
+import { RECOVERY_MAX_AGE_MS } from '../../shared/recovery';
 
 /*
  * Restart recovery (PLAN.md Phase 1). What is live is saved to a small file
@@ -26,10 +27,18 @@ import { hexColorSchema, idSchema } from '../../shared/model-schema';
  * unexpectedly (a crash, a power cut), and the same slide, background and
  * black-out go back on the screens. (Two files, so a save still in flight
  * at quit can never undo the clean-quit mark.)
+ *
+ * Since Session 20 every run saves the show from its start, again every
+ * minute while it runs, and once more as it quits on purpose, so the saved
+ * file always names the last run. Before, a run that changed nothing saved
+ * nothing, and its clean quit made the next start take the show of the run
+ * before it for a crash. And a show saved RECOVERY_MAX_AGE_MS or more
+ * before the start is named in the notice but not put back.
  */
 
 export interface SavedLive {
-  version: 1;
+  /** 2 since Session 20: saved from the run's start, every minute, and as it quits. */
+  version: 1 | 2;
   /** Which run of Drashti saved it. */
   session: string;
   /** The engine state version the background was saved with; another version is not restored. */
@@ -85,7 +94,7 @@ const tickerSchema: z.ZodType<TickerLayer> = z.object({
 });
 
 const savedSchema = z.object({
-  version: z.literal(1),
+  version: z.union([z.literal(1), z.literal(2)]),
   session: z.string().min(1).max(64),
   engineVersion: z.number(),
   savedAt: z.string(),
@@ -137,7 +146,7 @@ const markSchema = z.object({ session: z.string().min(1).max(64) });
 export function savedFrom(state: EngineState, session: string, now = new Date()): SavedLive {
   const slide = state.layers.slide;
   return {
-    version: 1,
+    version: 2,
     session,
     engineVersion: ENGINE_STATE_VERSION,
     savedAt: now.toISOString(),
@@ -186,19 +195,46 @@ export interface RecoveryFiles {
   cleanMark: string;
 }
 
+/** What a start finds about the run before it (Session 20): one answer for restart recovery and the starting mode. */
+export interface StartupRecovery {
+  /**
+   * The last run quit on purpose, or there is no saved show to judge it by (a first start, or a file
+   * that cannot be read). False only after an unexpected stop: a crash, a power cut, a forced quit.
+   */
+  cleanQuit: boolean;
+  /** What to put back on the screens: the last run's show, when it stopped unexpectedly less than RECOVERY_MAX_AGE_MS before this start. */
+  putBack: SavedLive | null;
+  /** The last run's show, when it stopped unexpectedly RECOVERY_MAX_AGE_MS or more before this start: named, never put back. */
+  tooOld: SavedLive | null;
+}
+
+type Saved = z.infer<typeof savedSchema>;
+
 /**
- * What to put back at startup: the saved state when the run that saved it
- * did not quit cleanly and something was live; otherwise null. A background
- * saved by another engine version is left out (its shape may differ). A
- * Look other than `startLookId` (the one Drashti starts with) counts as
- * something live.
+ * Whether the run that saved the show quit on purpose. Since Session 20 the saved file always names the
+ * last run, so the clean-quit mark names the same run exactly when it quit cleanly. A file saved before
+ * Session 20 (version 1) can name an earlier run than the last: a run that changed nothing saved nothing.
+ * A clean-quit mark written after such a show was saved means a later run quit on purpose; and that
+ * Drashti always saved a show it put back after a crash, so the show's own run had quit cleanly too.
  */
-export function toRestore(files: RecoveryFiles, startLookId: string | null = null): SavedLive | null {
-  const saved = savedSchema.safeParse(readJson(files.state));
-  if (!saved.success) return null;
+function quitCleanly(files: RecoveryFiles, saved: Saved): boolean {
   const mark = markSchema.safeParse(readJson(files.cleanMark));
-  if (mark.success && mark.data.session === saved.data.session) return null;
-  const s = saved.data;
+  if (!mark.success) return false;
+  if (mark.data.session === saved.session) return true;
+  if (saved.version !== 1) return false;
+  try {
+    return statSync(files.cleanMark).mtimeMs > Date.parse(saved.savedAt);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The show worth putting back from a saved state, or null when nothing was live. A background saved by
+ * another engine version is left out (its shape may differ). A Look other than `startLookId` (the one
+ * Drashti starts with) counts as something live.
+ */
+function liveIn(s: Saved, startLookId: string | null): SavedLive | null {
   // The layers' shapes belong to one engine version: from another, only the slide and cursors come back.
   const same = s.engineVersion === ENGINE_STATE_VERSION;
   const layer = <T>(schema: z.ZodType<T>, value: unknown, none: T): T => {
@@ -231,7 +267,36 @@ export function toRestore(files: RecoveryFiles, startLookId: string | null = nul
     s.lookId !== null && s.lookId !== startLookId,
   ].some(Boolean);
   if (!anything) return null;
-  return { ...s, version: 1, background, logo, audio, props, messages, ticker, masks, stageMessage, timers };
+  return { ...s, background, logo, audio, props, messages, ticker, masks, stageMessage, timers };
+}
+
+/**
+ * What the start finds, read once before this run saves anything: whether the last run quit cleanly,
+ * and what it left live when it did not. A show saved RECOVERY_MAX_AGE_MS or more before `now` is not
+ * put back (nor one whose time cannot be read).
+ */
+export function startupRecovery(
+  files: RecoveryFiles,
+  options: { startLookId?: string | null; now?: Date } = {},
+): StartupRecovery {
+  const saved = savedSchema.safeParse(readJson(files.state));
+  if (!saved.success || quitCleanly(files, saved.data))
+    return { cleanQuit: true, putBack: null, tooOld: null };
+  const show = liveIn(saved.data, options.startLookId ?? null);
+  if (!show) return { cleanQuit: false, putBack: null, tooOld: null };
+  const age = (options.now ?? new Date()).getTime() - Date.parse(show.savedAt);
+  return age < RECOVERY_MAX_AGE_MS
+    ? { cleanQuit: false, putBack: show, tooOld: null }
+    : { cleanQuit: false, putBack: null, tooOld: show };
+}
+
+/** What to put back at startup (see startupRecovery), or null. */
+export function toRestore(
+  files: RecoveryFiles,
+  startLookId: string | null = null,
+  now = new Date(),
+): SavedLive | null {
+  return startupRecovery(files, { startLookId, now }).putBack;
 }
 
 export interface LiveStateWriterOptions {
@@ -239,6 +304,13 @@ export interface LiveStateWriterOptions {
   throttleMs?: number;
   /** While a slide is moving on by itself, save again this often (its time left goes down). */
   heartbeatMs?: number;
+  /**
+   * From start() on, save the show again this often (Session 20; a minute), so its time says when
+   * Drashti was last running: the age limit counts from there.
+   */
+  aliveMs?: number;
+  /** The clock (tests). */
+  now?: () => Date;
   log?: (message: string) => void;
 }
 
@@ -253,6 +325,7 @@ export class LiveStateWriter {
   private writing: Promise<void> = Promise.resolve();
   private readonly throttleMs: number;
   private heartbeat: NodeJS.Timeout | null = null;
+  private alive: NodeJS.Timeout | null = null;
   private latest: EngineState | null = null;
 
   constructor(
@@ -260,6 +333,19 @@ export class LiveStateWriter {
     private readonly options: LiveStateWriterOptions = {},
   ) {
     this.throttleMs = options.throttleMs ?? 250;
+  }
+
+  /**
+   * This run takes the saved file over from its start (Session 20): the show is saved at once, after
+   * the start has read what the run before left, and again every `aliveMs` until Drashti quits.
+   */
+  start(state: EngineState): void {
+    this.update(state);
+    if (this.alive) return;
+    this.alive = setInterval(() => {
+      if (this.latest) this.update(this.latest);
+    }, this.options.aliveMs ?? 60_000);
+    this.alive.unref();
   }
 
   /** The live state changed. */
@@ -280,7 +366,7 @@ export class LiveStateWriter {
       const next = this.pending;
       this.pending = null;
       if (next) {
-        const saved = savedFrom(next, this.session);
+        const saved = savedFrom(next, this.session, this.now());
         this.writing = this.writing.then(() => this.write(saved));
       }
     }, this.throttleMs);
@@ -289,6 +375,21 @@ export class LiveStateWriter {
   /** Wait for writes already started (tests). */
   async settle(): Promise<void> {
     await this.writing;
+  }
+
+  private now(): Date {
+    return this.options.now?.() ?? new Date();
+  }
+
+  /** No more saves: what a crash leaves (tests). */
+  stop(): void {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    if (this.heartbeat) clearInterval(this.heartbeat);
+    this.heartbeat = null;
+    if (this.alive) clearInterval(this.alive);
+    this.alive = null;
+    this.pending = null;
   }
 
   private async write(saved: SavedLive): Promise<void> {
@@ -304,15 +405,22 @@ export class LiveStateWriter {
   }
 
   /**
-   * Drashti is quitting on purpose: write the clean-quit mark now,
-   * synchronously, so it is on disk before the process ends.
+   * Drashti is quitting on purpose: save the show as it is now and write the
+   * clean-quit mark, synchronously, so both are on disk before the process
+   * ends and name this run (Session 20: even a run that changed nothing).
    */
   markClean(): void {
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = null;
-    if (this.heartbeat) clearInterval(this.heartbeat);
-    this.heartbeat = null;
-    this.pending = null;
+    this.stop();
+    if (this.latest) {
+      const state = `${this.files.state}.${randomUUID()}.tmp`;
+      try {
+        writeFileSync(state, JSON.stringify(savedFrom(this.latest, this.session, this.now())));
+        renameSync(state, this.files.state);
+      } catch (error) {
+        rmSync(state, { force: true });
+        this.options.log?.(`Could not save the live state at quit: ${(error as Error).message}`);
+      }
+    }
     const partial = `${this.files.cleanMark}.${randomUUID()}.tmp`;
     try {
       writeFileSync(partial, JSON.stringify({ session: this.session }));

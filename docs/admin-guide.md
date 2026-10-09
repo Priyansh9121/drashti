@@ -234,6 +234,8 @@ After installing a font, quit Drashti and start it again. Then look at a few of 
 
 ![The node saying where its diagnostics went](screenshots/node-diagnostics-saved.png)
 
+**When Drashti stops unexpectedly** (a crash, a power cut, a forced quit). Drashti saves what is on the screens as it changes, and every minute. Started again within **3 hours**, it puts it all back by itself (the slide, the background, black-out, the sound, timers, messages, props, the Look) and a note at the top says what it put back. Started 3 hours or more after the stop, it puts nothing on the screens, and the note says what was live and when. After a quit on purpose, nothing is put back, whatever happened in between.
+
 **Falling back to ProPresenter.** ProPresenter stays installed, untouched, until Drashti has run four weeks of sabhas on that computer without falling back (PLAN.md, section 5.1). Every sabha has a named fallback operator who has practised it (under a minute):
 
 1. Quit Drashti (**Cmd+Q**, or close its window on Windows). It asks first if screens are showing: confirm.
