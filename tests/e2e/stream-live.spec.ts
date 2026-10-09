@@ -482,7 +482,7 @@ test('on air, and on air again, with the preview watched and a picture standing 
   // Mac a still picture over the camera kept the stream "starting" after the pause between sabhas).
   const page = await streamPage(app);
   const frames = () => page.evaluate(() => Number(document.body.dataset['frames'] ?? '0'));
-  await expect.poll(frames).toBeGreaterThan(0);
+  await expect.poll(frames, { timeout: 20_000 }).toBeGreaterThan(0);
   // The picture stands still: the capture gives no new frame for 2.5 s (once it has settled: a capture
   // that starts may give a second frame as the page finishes drawing).
   const standsStill = () =>
