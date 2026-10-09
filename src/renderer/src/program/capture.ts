@@ -32,12 +32,14 @@ let generation = 0;
 let encoderFrames = 0;
 let encoderFailed = false;
 /**
- * The capture's newest frame (Session 18). A capture gives a frame only when the picture changes, so one
- * already running for the preview gave an encoder paired while the picture stood still (a still slide over
- * the camera, between two sabhas) nothing at all, and the stream never went on air: a new encoder now gets
- * this frame at once.
+ * The capture's newest frame (Session 18). A capture gives a frame only when the window paints, and a
+ * still picture is not painted again: a capture already running for the preview gave an encoder paired
+ * while the picture stood still (a still slide over the camera, between two sabhas) nothing at all, and
+ * the stream never went on air. A new encoder now gets this frame at once; when there is none (a capture
+ * just begun on a still picture), the page has the window paint until one comes (wantFrame).
  */
 let latest: VideoFrame | null = null;
+let nudging: ReturnType<typeof setInterval> | null = null;
 /** Frames go to the encoder one after another, in order (the newest, given to a new encoder, first). */
 let sending: Promise<void> = Promise.resolve();
 
@@ -52,6 +54,36 @@ const why = (error: unknown) =>
   error instanceof Error ? `${error.name}: ${error.message}`.slice(0, 200) : String(error).slice(0, 200);
 
 const previewHeight = () => Math.round((PREVIEW_WIDTH * size.height) / size.width);
+
+/** Change one unseen spot (a corner pixel, at most 1/255 darker), so the window paints the picture again. */
+function nudge(): void {
+  let spot = document.getElementById('capture-nudge');
+  if (!spot) {
+    spot = document.createElement('div');
+    spot.id = 'capture-nudge';
+    spot.setAttribute('aria-hidden', 'true');
+    spot.style.cssText =
+      'position:fixed;left:0;top:0;width:1px;height:1px;pointer-events:none;z-index:2147483647;background:rgba(0,0,0,0)';
+    document.body.appendChild(spot);
+  }
+  spot.dataset['on'] = spot.dataset['on'] === '1' ? '0' : '1';
+  spot.style.background = spot.dataset['on'] === '1' ? 'rgba(0,0,0,0.004)' : 'rgba(0,0,0,0)';
+}
+
+/** Until the capture gives a frame, the window paints every 250 ms (a still picture gives none of itself). */
+function wantFrame(): void {
+  if (nudging || !track) return;
+  const since = frames;
+  nudge();
+  nudging = setInterval(() => {
+    if (frames === since && track) {
+      nudge();
+      return;
+    }
+    if (nudging) clearInterval(nudging);
+    nudging = null;
+  }, 250);
+}
 
 /** A small JPEG of the frame, for the operator's preview. */
 async function sendPreview(frame: VideoFrame): Promise<void> {
@@ -180,6 +212,8 @@ async function capture(): Promise<void> {
   });
   document.body.dataset['capture'] = 'on';
   const reader = new MediaStreamTrackProcessor({ track: video }).readable.getReader();
+  // Its first frame, even when the picture stands still.
+  wantFrame();
   let mineFrames = 0;
   for (;;) {
     const { value: frame, done } = await reader.read();
@@ -264,7 +298,7 @@ export function startCapture(level: () => number, sound: () => MediaStreamTrack 
         void toEncoder(still).finally(() => {
           still.close();
         });
-      }
+      } else wantFrame();
     } else return;
     port.start();
     update();
