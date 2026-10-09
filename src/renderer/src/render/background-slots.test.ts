@@ -172,6 +172,24 @@ describe('background slots', () => {
     expect(late).toMatchObject({ shown: { key: 'U@50' }, leaving: null, incoming: null, fade: null });
   });
 
+  it('Back during a dissolve: the picture going away comes back whole, at once (Session 23)', () => {
+    const faded = video('F', 100, { fade: { at: 100, durationMs: 1000 } });
+    const s = run(
+      { type: 'layer', layer: a },
+      { type: 'ready', key: slotKey(a) },
+      { type: 'layer', layer: faded },
+      { type: 'ready', key: slotKey(faded), at: 100 },
+      { type: 'layer', layer: a },
+    );
+    // Never the same picture twice (leaving and loading again): it is simply back.
+    expect(s).toEqual({
+      shown: { key: slotKey(a), layer: a, state: 'ready' },
+      incoming: null,
+      leaving: null,
+      fade: null,
+    });
+  });
+
   it('a window that joins during a dissolve shows its background whole, never fading in from black (Session 23)', () => {
     const faded = video('F', 100, { fade: { at: 100, durationMs: 1000 } });
     // The first background this window hears of, part-way through the slide's dissolve.

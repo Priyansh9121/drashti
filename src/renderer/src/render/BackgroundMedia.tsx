@@ -130,11 +130,16 @@ function ImageSlot({
   );
 }
 
-/** Set the dissolve's opacities on a background's pictures: the old one out, the new one in. */
+/**
+ * Set the dissolve's opacities on a background's pictures: the old one out, the new one in. A picture
+ * not in a dissolve is whole (Session 23: one left with an opacity from a dissolve stayed dim).
+ */
 function setFade(root: HTMLElement | null, start: number | null, ms: number): number {
   const p = start === null ? 1 : Math.min(1, Math.max(0, (engineNow() - start) / ms));
-  for (const el of root?.querySelectorAll<HTMLElement>('[data-bg-fade]') ?? [])
-    el.style.opacity = String(el.dataset['bgFade'] === 'out' ? 1 - p : p);
+  for (const el of root?.querySelectorAll<HTMLElement>('[data-bg-wrap]') ?? []) {
+    const role = el.dataset['bgFade'];
+    el.style.opacity = role === undefined ? '' : String(role === 'out' ? 1 - p : p);
+  }
   return p;
 }
 
@@ -237,6 +242,7 @@ function BackgroundPlayer({
         return (
           <div
             key={`${slot.key}#${slot.attempt ?? 0}`}
+            data-bg-wrap=""
             data-bg-fade={slot === slots.leaving ? 'out' : slot === slots.shown && fading ? 'in' : undefined}
             style={{
               position: 'absolute',

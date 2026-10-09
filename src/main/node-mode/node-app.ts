@@ -92,6 +92,8 @@ export interface NodeAppDeps {
 
 /** What the node's menu can do (Session 17). */
 export interface NodeAppHandle {
+  /** A self-test's end is not the quit an update waits for. */
+  holdUpdate: () => void;
   saveDiagnostics: () => void;
   runSelfTest: () => Promise<SelfTestResult>;
   crashWindow: () => void;
@@ -303,7 +305,14 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         .map((st) => st.screenId)
         .filter((id) => {
           const w = outputWindows.get(id);
-          return w !== undefined && !w.isDestroyed() && w.isVisible() && !w.isMinimized();
+          // Never a page that has crashed and waits for the watchdog (or that it gave up on).
+          return (
+            w !== undefined &&
+            !w.isDestroyed() &&
+            !w.webContents.isCrashed() &&
+            w.isVisible() &&
+            !w.isMinimized()
+          );
         }),
     stuck: (screenId, reason) => {
       const w = outputWindows.get(screenId);
@@ -624,6 +633,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     return { ok: true, view: view() };
   });
   handle(IPC.node.useAsMain, () => {
+    // Drashti starts again at once: an update waits for a quit of its own (as on Main).
+    updates.holdForNextQuit();
     deps.restartAsMain();
     return { ok: true };
   });
@@ -812,6 +823,9 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   };
   const showingOutputs = () => [...outputWindows.values()].filter((w) => !w.isDestroyed());
   return {
+    holdUpdate: () => {
+      updates.holdForNextQuit();
+    },
     saveDiagnostics,
     runSelfTest: () =>
       runNodeWatchdogSelfTest({

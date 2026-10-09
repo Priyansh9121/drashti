@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { relaunchApp } from './helpers';
+import { relaunchApp, type PageGlobals } from './helpers';
 import { COMMON, launchMain, launchNode, nodesStatus, nodeWindow, pairNode } from './nodes';
 
 /*
@@ -78,4 +78,35 @@ test('Main’s identity for its nodes cannot be read: kept aside, never remade b
   } finally {
     await node.app.close();
   }
+});
+
+test('with no node paired, an identity that cannot be read is said in Screens as soon as pairing is tried, and can be made again', async () => {
+  test.setTimeout(90_000);
+  const main = await launchMain();
+  // Pairing once makes the identity; nothing is paired.
+  await main.win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    await d.nodes.startPairing();
+    await d.nodes.cancelPairing();
+  });
+  const { port, userData } = main;
+  await main.app.close();
+  const identity = join(userData, 'node-link', 'identity.json');
+  writeFileSync(identity, readFileSync(identity, 'utf8').slice(0, 40));
+
+  const again = await launchMain({}, { port, userData });
+  await again.win.getByRole('button', { name: 'Screens', exact: true }).click();
+  await again.win.getByTestId('pair-node').click();
+  // Refused, and from then on Screens says why, with the way out.
+  const hold = again.win.getByTestId('nodes-identity-problem');
+  await expect(hold).toBeVisible();
+  await hold.getByRole('button', { name: 'Make a new identity…' }).click();
+  await again.win
+    .getByTestId('nodes-new-identity-confirm')
+    .getByRole('button', { name: 'Make a new identity' })
+    .click();
+  await expect(hold).toHaveCount(0);
+  await again.win.getByTestId('pair-node').click();
+  await expect.poll(async () => (await nodesStatus(again.win)).pairing?.code ?? '').toMatch(/^\d{6}$/u);
+  await again.app.close();
 });

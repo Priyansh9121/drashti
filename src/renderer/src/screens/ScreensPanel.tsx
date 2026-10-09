@@ -20,6 +20,7 @@ import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { EmptyState, Loading } from '../ui/States';
 import { Checkbox } from '../ui/Toggle';
+import { nodesAction } from '../nodes/nodes-store';
 import { cancelCover, connectScreens, screensAction, useScreens } from './screens-store';
 import type { LookInfo } from '../../../shared/looks';
 import { useEngine } from '../engine/engine-store';
@@ -132,7 +133,7 @@ function ScreenRow({
             <Button
               size="sm"
               data-testid="screen-try-again"
-              onClick={() => void window.drashti.nodes.reload(null, screen.id)}
+              onClick={() => void nodesAction(() => window.drashti.nodes.reload(null, screen.id))}
             >
               Try again
             </Button>
