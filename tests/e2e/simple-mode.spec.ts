@@ -10,6 +10,7 @@ import {
   killApp,
   launchApp,
   operatorPage,
+  operatorReady,
   outputPages,
   relaunchApp,
   setUpScreen,
@@ -30,6 +31,23 @@ const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 const state = (win: Page) =>
   win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state);
+const modeOf = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.app.getMode());
+
+/**
+ * Wait until this run has saved the show under its own name, as every run does from its start
+ * (Session 20): only then does a stop dead count as this run's.
+ */
+async function thisRunSaved(userData: string): Promise<void> {
+  const sessionIn = (file: string) => {
+    try {
+      return (JSON.parse(readFileSync(join(userData, file), 'utf8')) as { session?: string }).session ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const before = sessionIn('live-state.clean');
+  await expect.poll(() => [null, before].includes(sessionIn('live-state.json'))).toBe(false);
+}
 
 /** The audience and stage output pages. */
 async function screens(app: ElectronApplication): Promise<{ audience: Page; stage: Page }> {
@@ -314,7 +332,7 @@ test('leaving Simple Mode takes the word typed on purpose', async () => {
   await app.close();
 });
 
-test('Simple Mode fits a 1280 x 720 operator display', async () => {
+test('Simple Mode fits a 1280 x 720 operator display, its way out at the top', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
@@ -347,8 +365,100 @@ test('Simple Mode fits a 1280 x 720 operator display', async () => {
     });
     const live = document.querySelector('[data-testid="live-preview"]')?.getBoundingClientRect();
     if (!live || live.bottom > vh || live.width < 320) out.push('the live picture does not fit');
+    // Session 20: the way out, at the top, well away from the big buttons.
+    const leave = document.querySelector('[data-testid="simple-leave"]');
+    const lr = leave?.getBoundingClientRect();
+    const bigTop = Math.min(...boxes.map(({ r }) => r.top));
+    if (!leave || !lr || lr.left < 0 || lr.top < 0 || lr.right > vw)
+      out.push('Switch to Pro Mode… is cut off');
+    else if (lr.bottom > bigTop - 100) out.push('Switch to Pro Mode… is near the big buttons');
+    if (leave && leave.scrollWidth > leave.clientWidth + 1)
+      out.push('Switch to Pro Mode…: its words do not fit');
     return out;
   });
   expect(problems).toEqual([]);
+  await app.close();
+});
+
+test('Drashti starts in Pro Mode after a clean quit, comes back in Simple Mode after a crash in it, and starts in Simple Mode with PINs on', async () => {
+  test.setTimeout(150_000);
+  // Simple Mode, then a clean quit: the next start is in Pro Mode (Session 20).
+  const first = await launchApp();
+  let win = await operatorPage(first.app);
+  await operatorReady(win);
+  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  await first.app.close();
+  let run = await relaunchApp(first.userData);
+  win = await operatorPage(run.app);
+  await operatorReady(win);
+  expect(await modeOf(win)).toBe('pro');
+  await expect(win.getByTestId('simple-mode')).toHaveCount(0);
+
+  // Simple Mode, then a crash with nothing on the screens: back in Simple Mode. How the last run ended
+  // decides, not whether anything was live.
+  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  await thisRunSaved(first.userData);
+  await killApp(run.app);
+  run = await relaunchApp(first.userData);
+  win = await operatorPage(run.app);
+  await operatorReady(win);
+  expect(await modeOf(win)).toBe('simple');
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  await expect(win.getByTestId('recovery-notice')).toHaveCount(0);
+
+  // With PINs on (out of Simple Mode with its own button first), a clean quit starts in Simple Mode.
+  await win.getByTestId('simple-leave').click();
+  await win.getByTestId('leave-simple').getByRole('textbox').fill('pro');
+  await win.getByTestId('leave-simple-switch').click();
+  await expect.poll(() => modeOf(win)).toBe('pro');
+  const pins = await win.evaluate(() =>
+    (globalThis as PageGlobals).drashti.roles.setPins({ admin: '481526', operator: '937402' }),
+  );
+  expect(pins.ok).toBe(true);
+  await run.app.close();
+  run = await relaunchApp(first.userData);
+  win = await operatorPage(run.app);
+  await operatorReady(win);
+  expect(await modeOf(win)).toBe('simple');
+  await run.app.close();
+});
+
+test('Switch to Pro Mode… on Simple Mode’s own screen asks for the word, by mouse and by keyboard alone', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  const leave = win.getByTestId('simple-leave');
+  const dialog = win.getByTestId('leave-simple');
+
+  // By mouse: a wrong word keeps Simple Mode, and so does Stay in Simple Mode.
+  await leave.click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('textbox').fill('yes');
+  await dialog.getByRole('button', { name: 'Switch to Pro Mode' }).click();
+  await expect(dialog).toContainText('Type pro to switch to Pro Mode.');
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Stay in Simple Mode' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(await modeOf(win)).toBe('simple');
+
+  // By keyboard alone: Tab to it, Enter, a wrong word and Enter, then pro and Enter.
+  for (let i = 0; i < 60 && !(await leave.evaluate((el) => el === document.activeElement)); i++)
+    await win.keyboard.press('Tab');
+  await expect(leave).toBeFocused();
+  await win.keyboard.press('Enter');
+  await expect(dialog).toBeVisible();
+  await win.keyboard.type('nope');
+  await win.keyboard.press('Enter');
+  await expect(dialog).toContainText('Type pro to switch to Pro Mode.');
+  expect(await modeOf(win)).toBe('simple');
+  for (let i = 0; i < 4; i++) await win.keyboard.press('Backspace');
+  await win.keyboard.type('pro');
+  await win.keyboard.press('Enter');
+  await expect(win.getByTestId('simple-mode')).toHaveCount(0);
+  expect(await modeOf(win)).toBe('pro');
   await app.close();
 });

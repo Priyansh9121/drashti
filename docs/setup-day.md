@@ -73,7 +73,7 @@ ProPresenter stays installed and untouched all day. Drashti only reads its files
 
 - [ ] **File**, **Roles and PINs…**: an admin PIN and an operator PIN.
 - [ ] Give the operator PIN to the operators; keep the admin PIN with the admins. **Never write a PIN in the shared notebook.**
-- [ ] Check: quit and start Drashti; it opens in Simple Mode, and the operator PIN switches to Pro Mode.
+- [ ] Check: quit and start Drashti; it opens in Simple Mode, and **Switch to Pro Mode…** (top right) with the operator PIN switches to Pro Mode.
 
 ## 7. The stream (the computer that streams)
 
@@ -95,7 +95,7 @@ On each computer:
 - [ ] **A video background on every screen** for a minute, with a dissolve to another: smooth on every screen, the node's too, and in step. The first video after installing or updating can stutter for a second while the computer prepares its graphics: put one up once before each first sabha.
 - [ ] **The node in step**: a dissolve and a video side by side on Main's screen and the node's.
 - [ ] **(operators)** **A whole sabha rehearsed**: in Pro Mode by an operator, and in Simple Mode by a volunteer who has not used Drashti before. Write down anything they found hard.
-- [ ] **By keyboard alone** in Simple Mode: Tab to each big button, and Enter.
+- [ ] **By keyboard alone** in Simple Mode: Tab to each big button, and Enter; and to **Switch to Pro Mode…** at the top right.
 - [ ] **A screen reader**, if anyone at the mandir uses one (this needs a person who uses it every day): VoiceOver on the Mac (**Cmd+F5**) or Narrator or NVDA on Windows. Check the regions are announced (header, playlists, library, slides, live, show controls, status), the buttons say what they do, the dialogs say their names, and Simple Mode's buttons can be found and pressed. On a phone, VoiceOver or TalkBack on the remote: Next and Back, and the tabs.
 - [ ] **On the Windows PC: Windows' own text size at 200%** (Windows 11: **Settings**, **Accessibility**, **Text size**; Windows 10: **Settings**, **Ease of Access**, **Display**, **Make text bigger**; 200%, then **Apply**): the operator window's buttons, lists and dialogs still fit and can be read, and nothing is cut off. Set it back afterwards if the operators prefer.
 - [ ] **The fallback drill**: the named fallback operator quits Drashti and opens ProPresenter. Time it: it should take under a minute.

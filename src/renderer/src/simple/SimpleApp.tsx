@@ -41,8 +41,9 @@ import { useNodes } from '../nodes/nodes-store';
  * The playlist, what is on the screens and what comes next, and big
  * buttons: Next and Back, Black out, Logo, Clear all (and Put it back after
  * it). Nothing here can change the library, the screens or the sound; the
- * main process refuses that too. Leaving takes View > Switch to Pro Mode…
- * and typing the word.
+ * main process refuses that too. Leaving takes Switch to Pro Mode… (a small
+ * button at the top right since Session 20, or the View menu) and typing the
+ * word.
  */
 
 const playable = (i: PlaylistItemInfo) =>
@@ -164,9 +165,9 @@ function PlaylistColumn() {
 }
 
 /**
- * The way out (View > Switch to Pro Mode… opens it): typing the word on
- * purpose, or with roles on (Session 14) a PIN: the operator PIN, or the
- * admin PIN, which also unlocks setting up.
+ * The way out (Switch to Pro Mode…, at the top right or in the View menu,
+ * opens it): typing the word on purpose, or with roles on (Session 14) a PIN:
+ * the operator PIN, or the admin PIN, which also unlocks setting up.
  */
 function LeaveSimpleDialog() {
   const asking = useMode((s) => s.askingToLeave);
@@ -370,6 +371,17 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
         <div className="min-w-0 flex-1">
           <LiveStatus />
         </div>
+        {/* The way out on Simple Mode's own screen (Session 20), small and far from the big buttons:
+            Windows hides the menu bar. It asks the same question as View > Switch to Pro Mode…. */}
+        <Button
+          className="shrink-0"
+          data-testid="simple-leave"
+          onClick={() => {
+            useMode.setState({ askingToLeave: true });
+          }}
+        >
+          Switch to Pro Mode…
+        </Button>
       </header>
       <RecoveryBanner />
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(18rem,26rem)_minmax(0,1fr)]">
