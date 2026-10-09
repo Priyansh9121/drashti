@@ -186,7 +186,11 @@ async function goLive(build: string, caFile: string | null, want: 'live' | 'refu
   }
 }
 
-describe.skipIf(!existsSync(ffmpeg)).each(builds)('going live over RTMPS with FFmpeg $label', ({ path }) => {
+// Without FFmpeg (CI's Ubuntu checks) there is no build to try: say so, rather than have no suite at all.
+if (builds.length === 0)
+  it.skip('going live over RTMPS needs the bundled FFmpeg (node scripts/fetch-ffmpeg.mjs)', () => undefined);
+
+describe.each(builds)('going live over RTMPS with FFmpeg $label', ({ path }) => {
   it('refuses a server whose authority it was not given, and says why in plain words', async () => {
     dir = mkdtempSync(join(tmpdir(), 'drashti-rtmps-'));
     const r = await goLive(path, null, 'refused');
