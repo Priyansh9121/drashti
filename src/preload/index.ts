@@ -49,6 +49,7 @@ ipcRenderer.on(IPC.stream.port, (event, payload: { role: 'preview' | 'encoder' }
 const bridge: DrashtiBridge = {
   app: {
     getInfo: () => invoke(IPC.app.getInfo),
+    renderError: (report) => invoke(IPC.app.renderError, report),
     onUndo: (listener) =>
       on(IPC.app.undo, () => {
         listener();
@@ -438,6 +439,10 @@ const bridge: DrashtiBridge = {
     onMediaReady: (listener) =>
       on(IPC.output.mediaReady, ({ mediaId }) => {
         listener(mediaId);
+      }),
+    onTestThrow: (listener) =>
+      on(IPC.output.testThrow, () => {
+        listener();
       }),
   },
   pictures: {

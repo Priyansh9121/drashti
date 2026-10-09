@@ -7,11 +7,13 @@ import type { ProgramContext } from '../../../shared/stream';
 import { connectEngine, useEngine } from '../engine/engine-store';
 import { preloadFonts } from '../render/fonts';
 import { PlacedInParent } from '../render/Placed';
+import { SceneBoundary } from '../render/SceneBoundary';
 import { applyCameraChoice, listDevices } from './camera';
 import { setCaptureSize, startCapture, stopEncoder, stopPreview } from './capture';
 import { useProgram } from './program-store';
 import { ProgramView } from './ProgramView';
 import { StreamSound } from './sound';
+import { reportRenderError } from '../ui/render-errors';
 
 /*
  * The stream's page: the Program, drawn off screen at the stream's size.
@@ -41,6 +43,7 @@ function Program() {
   const cameraState = useProgram((s) => s.camera);
   const soundState = useProgram((s) => s.sound);
   const state = useEngine((s) => s.state);
+  const rev = useEngine((s) => s.rev);
   // The stream group's languages in the live Look (switching the Look changes them on air).
   const languages = groupLookIn(state?.look, context?.groupId).languages;
   const [fontsReady, setFontsReady] = useState(false);
@@ -78,15 +81,18 @@ function Program() {
       data-fonts={fontsReady ? 'ready' : 'loading'}
     >
       {state && fontsReady && context && (
-        <PlacedInParent content={CANVAS} mode="fit" className="absolute inset-0">
-          <ProgramView
-            state={state}
-            layout={context.layout}
-            languages={languages}
-            canvas={CANVAS}
-            camera={camera}
-          />
-        </PlacedInParent>
+        // The stream's picture: black if it fails as it draws, until the next change (Session 23).
+        <SceneBoundary resetKey={rev}>
+          <PlacedInParent content={CANVAS} mode="fit" className="absolute inset-0">
+            <ProgramView
+              state={state}
+              layout={context.layout}
+              languages={languages}
+              canvas={CANVAS}
+              camera={camera}
+            />
+          </PlacedInParent>
+        </SceneBoundary>
       )}
     </div>
   );
@@ -102,7 +108,12 @@ startCapture(
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');
-createRoot(root).render(
+const sendError = (report: Parameters<typeof window.drashti.app.renderError>[0]) =>
+  window.drashti.app.renderError(report);
+createRoot(root, {
+  onUncaughtError: reportRenderError("stream's page", 'uncaught', sendError),
+  onCaughtError: reportRenderError("stream's page", 'caught', sendError),
+}).render(
   <StrictMode>
     <Program />
   </StrictMode>,

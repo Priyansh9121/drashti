@@ -7,7 +7,8 @@ export interface WatchTarget {
   isDestroyed(): boolean;
 }
 
-export type WatchdogEventKind = 'crashed' | 'reloaded' | 'unresponsive' | 'responsive' | 'hung' | 'gave-up';
+export type WatchdogEventKind =
+  'crashed' | 'reloaded' | 'unresponsive' | 'responsive' | 'hung' | 'gave-up' | 'render-error';
 
 export interface WatchdogEvent {
   window: string;
@@ -47,6 +48,8 @@ const realTimers: Timers = {
  */
 export class RendererWatchdog {
   readonly events: WatchdogEvent[] = [];
+  /** When each window was last reloaded after a render error. */
+  private readonly renderReloads = new Map<string, number>();
 
   constructor(
     private readonly onEvent: (e: WatchdogEvent) => void = () => undefined,
@@ -58,6 +61,25 @@ export class RendererWatchdog {
     this.events.push(e);
     if (this.events.length > 200) this.events.shift();
     this.onEvent(e);
+  }
+
+  /**
+   * A window's page failed as it drew, and said so (Session 23): its process is healthy, so nothing
+   * else would notice. It is reloaded through the same reload a crash gets, once: again only after a
+   * minute, so a page that fails every time it draws is never reloaded over and over (an output
+   * shows black meanwhile, and tries again with each change).
+   */
+  renderError(target: WatchTarget, name: string, reason: string): void {
+    this.record(name, 'render-error', reason);
+    const now = this.timers.now();
+    const last = this.renderReloads.get(name);
+    if (last !== undefined && now - last < 60_000) return;
+    this.renderReloads.set(name, now);
+    this.timers.setTimeout(() => {
+      if (target.isDestroyed()) return;
+      target.reload();
+      this.record(name, 'reloaded');
+    }, 100);
   }
 
   watch(target: WatchTarget, name: string, options: WatchdogOptions = {}): void {

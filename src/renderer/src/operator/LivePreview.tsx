@@ -3,6 +3,7 @@ import { useEngine } from '../engine/engine-store';
 import { preloadFonts } from '../render/fonts';
 import { PlacedInParent } from '../render/Placed';
 import { Scene } from '../render/Scene';
+import { SceneBoundary } from '../render/SceneBoundary';
 import { useFirstGroupLook, useScreens } from '../screens/screens-store';
 import { LANG_NAMES } from '../../../shared/themes';
 import { Badge, LiveBadge } from '../ui/Badge';
@@ -19,6 +20,7 @@ import { useNow } from '../render/useNow';
  */
 export function LivePreview() {
   const state = useEngine((s) => s.state);
+  const rev = useEngine((s) => s.rev);
   // As the first audience group shows it in the live Look (its layers, languages and slide style).
   const audience = useFirstGroupLook('audience');
   const shownAs = audience?.look.languages
@@ -51,17 +53,21 @@ export function LivePreview() {
         data-a11y-picture
         aria-hidden="true"
       >
-        <PlacedInParent content={canvas} mode="fit" className="relative aspect-video w-full">
-          {state && (
-            <Scene
-              state={state}
-              canvas={canvas}
-              scaling={scaling}
-              annotate
-              {...(audience ? { look: audience.look } : {})}
-            />
-          )}
-        </PlacedInParent>
+        {/* The same scene as the outputs: if it fails as it draws, the preview is black (the rest of
+            the window carries on) and tries again with the next change (Session 23). */}
+        <SceneBoundary resetKey={rev} fallbackClassName="aspect-video w-full bg-black">
+          <PlacedInParent content={canvas} mode="fit" className="relative aspect-video w-full">
+            {state && (
+              <Scene
+                state={state}
+                canvas={canvas}
+                scaling={scaling}
+                annotate
+                {...(audience ? { look: audience.look } : {})}
+              />
+            )}
+          </PlacedInParent>
+        </SceneBoundary>
       </div>
       {shownAs && state?.layers.slide?.slide.kirtan && (
         <p className="text-xs text-muted" data-testid="preview-languages">
