@@ -21,6 +21,7 @@ ProPresenter stays installed and untouched all day. Drashti only reads its files
 
 - [ ] Install Drashti from its download link (`docs/parallel-run.md`, section 2: the Apple-silicon or the Intel Mac's, or the Windows PC's). On the Mac, allow it once in **Privacy & Security**; on Windows, **More info**, **Run anyway**.
 - [ ] On the first start, choose **Main** on the first computer, and **Node** on the second if it will be one.
+- [ ] Drashti shows its own logo, not a blue atom: in the Dock and Cmd+Tab on a Mac, in the taskbar and the Start menu on Windows. If a Mac still shows an older picture, restart it.
 - [ ] Write down the version on each, from the right of the status bar along the bottom of the window (a node's is in Main's screens dashboard, once it is paired). They must be the same.
 
 ## 2. Bring in the library (Main)

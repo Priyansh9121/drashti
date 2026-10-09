@@ -1,0 +1,5 @@
+{
+  "source": "build/icon.svg",
+  "sha256": "c5e4129ced7b6ae8d3375bf6481e820ff12aff901a79eb216a276989b4f56a0b",
+  "madeBy": "scripts/make-icons.mjs"
+}

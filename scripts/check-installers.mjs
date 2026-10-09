@@ -13,6 +13,11 @@
 //            with its Start menu entry; the installed Drashti must start (the same two self-tests);
 //            then it is uninstalled silently and must be gone.
 //
+// Each must carry Drashti's own icon (Session 19), never Electron's: on a Mac the app's icon (Info.plist's
+// CFBundleIconFile) and the disk image's are build/icon.icns; on Windows the installer, Drashti.exe, its
+// uninstaller and the copy its windows show carry build/icon.ico's pictures, and the Start menu entry
+// opens Drashti.exe with its icon.
+//
 //   node scripts/check-installers.mjs
 import { spawn, spawnSync } from 'node:child_process';
 import {
@@ -26,6 +31,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
+import { iconFiles, macAppIcon, windowsProgramIcon } from './icon-checks.mjs';
 import { makeTempRoot, removeTempRoot } from './temp-root.mjs';
 
 const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
@@ -34,6 +40,8 @@ const { files } = JSON.parse(readFileSync(join('build', 'downloads.json'), 'utf8
 const mine = files.filter((f) => f.platform === process.platform);
 const TIMEOUT_MS = 240_000;
 const results = [];
+/** Drashti's icons (scripts/make-icons.mjs), and Electron's own, which nothing may still carry. */
+const ICONS = iconFiles('.');
 
 const run = (command, args, options = {}) => {
   const r = spawnSync(command, args, { encoding: 'utf8', timeout: 300_000, ...options });
@@ -157,11 +165,26 @@ function checkMacApp(name, app, arch) {
   const kind = /Authority=Developer ID Application/u.test(run('codesign', ['-dvv', app]).out)
     ? 'a Developer ID'
     : 'ad hoc';
+  record(name, macAppIcon(app, ICONS));
   pass(
     name,
     `holds Drashti ${shown} for ${archs}, with its FFmpeg for ${ffArchs}, signed (${kind}) all through`,
   );
   return true;
+}
+
+/** A check's answer, recorded. */
+const record = (name, { ok, why }) => (ok ? pass(name, why) : fail(name, why));
+
+/** Where a Windows shortcut leads and the icon it shows ("<file>,<index>"; no file: the target's own). */
+function shortcut(lnk) {
+  const said = run('powershell.exe', [
+    '-NoProfile',
+    '-Command',
+    `$s = (New-Object -ComObject WScript.Shell).CreateShortcut('${lnk.replace(/'/gu, "''")}'); "$($s.TargetPath)|$($s.IconLocation)"`,
+  ]).out;
+  const [target = '', icon = ''] = said.split('|');
+  return { target, iconFile: icon.replace(/,-?\d+$/u, '') };
 }
 
 async function checkDmg(f) {
@@ -192,12 +215,19 @@ async function checkDmg(f) {
       run('hdiutil', ['detach', mount, '-force']);
       return fail(f.name, 'it does not hold Drashti.app beside a link to Applications');
     }
+    // The disk image's own icon in Finder, read before it closes.
+    const volumeIcon = join(mount, '.VolumeIcon.icns');
+    const volumeIconWas = existsSync(volumeIcon) ? readFileSync(volumeIcon) : null;
     // Dragged to Applications, as a person would (here, a folder of its own).
     const copied = run('ditto', [join(mount, 'Drashti.app'), join(apps, 'Drashti.app')]);
     const detached = run('hdiutil', ['detach', mount]).ok || run('hdiutil', ['detach', mount, '-force']).ok;
     if (!copied.ok) return fail(f.name, `Drashti.app could not be copied out: ${copied.out.slice(-300)}`);
     if (!detached) console.log('  (the disk image would not close; carrying on)');
     pass(f.name, 'opens, with Drashti.app beside a link to Applications, and copies out');
+    if (!volumeIconWas) fail(f.name, 'the disk image has no icon of its own (.VolumeIcon.icns)');
+    else if (!volumeIconWas.equals(ICONS.icns))
+      fail(f.name, "the disk image's own icon is not build/icon.icns");
+    else pass(f.name, "the disk image shows Drashti's icon (build/icon.icns) when it is opened");
     const app = join(apps, 'Drashti.app');
     if (!checkMacApp(f.name, app, f.arch)) return;
     const gatekeeper = run('spctl', ['--assess', '--type', 'execute', '-vv', app])
@@ -243,6 +273,7 @@ async function checkWindows(f) {
   const exe = join(installDir, 'Drashti.exe');
   if (existsSync(exe))
     return fail(f.name, `Drashti is installed already at ${installDir}: not installing over it`);
+  record(f.name, windowsProgramIcon(setup, 'the installer', ICONS));
   const installed = run(setup, ['/S'], { timeout: 600_000 });
   if (!installed.ok || !existsSync(exe))
     return fail(
@@ -267,6 +298,21 @@ async function checkWindows(f) {
       fail(f.name, `the installed Drashti.exe says version ${shown}, not ${version}`);
     else if (!existsSync(menu)) fail(f.name, 'no Drashti in the Start menu');
     else pass(f.name, `installs Drashti ${shown} into ${installDir}, with a Start menu entry`);
+    record(f.name, windowsProgramIcon(exe, 'Drashti.exe', ICONS));
+    record(f.name, windowsProgramIcon(join(installDir, 'Uninstall Drashti.exe'), 'its uninstaller', ICONS));
+    const windowIcon = join(installDir, 'resources', 'icon.ico');
+    if (!existsSync(windowIcon) || !readFileSync(windowIcon).equals(ICONS.ico))
+      fail(f.name, `the icon its windows show (${windowIcon}) is not build/icon.ico`);
+    else pass(f.name, "its windows show Drashti's icon (resources\\icon.ico: build/icon.ico)");
+    if (existsSync(menu)) {
+      const entry = shortcut(menu);
+      const same = (a, b) => resolve(a).toLowerCase() === resolve(b).toLowerCase();
+      if (!entry.target || !same(entry.target, exe))
+        fail(f.name, `the Start menu entry opens ${entry.target || 'nothing'}`);
+      else if (entry.iconFile && !same(entry.iconFile, exe))
+        fail(f.name, `the Start menu entry shows the icon of ${entry.iconFile}, not Drashti.exe's`);
+      else pass(f.name, 'the Start menu entry opens Drashti.exe and shows its icon');
+    }
     await starts(f.name, exe, [], installDir);
   } finally {
     // Uninstalled as a person would (Settings, Apps), silently; the uninstaller finishes on its own.

@@ -15,6 +15,28 @@ import { KIRTAN, PLAYLIST, setUpPlaceholderShow, WELCOME } from './placeholder-s
 
 const snapshot = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
 
+/**
+ * The icons a page names (Session 19), each fetched and opened as a picture in the phone's own browser:
+ * by rel and sizes, its status, type and size in pixels.
+ */
+function pageIcons(phone: Page, path: string): Promise<Record<string, string>> {
+  return phone.evaluate(async (path) => {
+    const page = new URL(path, location.href);
+    const html = await (await fetch(page)).text();
+    const links = new DOMParser()
+      .parseFromString(html, 'text/html')
+      .querySelectorAll<HTMLLinkElement>('link[rel="icon"], link[rel="apple-touch-icon"]');
+    const out: Record<string, string> = {};
+    for (const link of links) {
+      const response = await fetch(new URL(link.getAttribute('href') ?? '', page));
+      const picture = await createImageBitmap(await response.blob());
+      out[`${link.rel} ${link.getAttribute('sizes') ?? ''}`.trim()] =
+        `${String(response.status)} ${response.headers.get('content-type') ?? ''} ${String(picture.width)}x${String(picture.height)}`;
+    }
+    return out;
+  }, path);
+}
+
 /** Where the show is, as the engine says: the live presentation and slide position. */
 async function where(win: Page) {
   const { state } = await snapshot(win);
@@ -39,6 +61,13 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await pairByQr(p, base, code, '/remote');
       await expect(p.getByTestId('connection')).toHaveText('Connected');
       await expect(p.getByTestId('remote')).toBeVisible();
+      // Drashti's icon on every page a phone opens: for the Home Screen (Add to Home Screen) and the tab.
+      for (const path of ['/remote', '/stage', '/announce', '/'])
+        expect(await pageIcons(p, path), path).toEqual({
+          'icon 32x32': '200 image/png 32x32',
+          'icon 192x192': '200 image/png 192x192',
+          'apple-touch-icon': '200 image/png 180x180',
+        });
       await expectNoSeriousA11yIssues(p, `the remote on a phone (${engine})`);
       const size = p.viewportSize();
       await p.setViewportSize({ width: 375, height: 812 });

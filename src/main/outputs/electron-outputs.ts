@@ -1,6 +1,7 @@
 import { BrowserWindow, type Display, screen } from 'electron';
 import type { DisplayInfo, ScreenConfig } from '../../shared/screens';
 import { log } from '../log';
+import { windowIcon } from '../windows/app-icon';
 import { loadPage } from '../windows/renderer';
 import { secureWebPreferences } from '../windows/web-preferences';
 import type { OutputWindow } from './output-manager';
@@ -117,6 +118,7 @@ export function createOutputWindow(
         show: false,
         title: `Drashti output - ${config.name}`,
         backgroundColor: '#000000',
+        ...windowIcon(),
         webPreferences: { ...secureWebPreferences(), backgroundThrottling: false },
       })
     : new BrowserWindow({
@@ -137,6 +139,7 @@ export function createOutputWindow(
         enableLargerThanScreen: true,
         roundedCorners: false,
         thickFrame: false,
+        ...windowIcon(),
         webPreferences: { ...secureWebPreferences(), backgroundThrottling: false },
       });
   if (!options.windowed) {
@@ -219,6 +222,7 @@ export function showDisplayNumber(
     show: false,
     title: `Drashti display ${number}`,
     backgroundColor: '#000000',
+    ...windowIcon(),
     webPreferences: secureWebPreferences(),
   });
   if (!options.windowed) win.setAlwaysOnTop(true, 'screen-saver');

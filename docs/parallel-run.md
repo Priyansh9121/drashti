@@ -38,12 +38,13 @@ If a link says **Not Found**, no version has been published yet. Whoever looks a
 1. Open the downloaded `.dmg` (in **Downloads**) and drag **Drashti** into **Applications**.
 2. Open Drashti from Applications. The first time, macOS says it could not verify Drashti, because it is not signed yet. Click **Done**, then open **System Settings**, then **Privacy & Security**, scroll down to **Security**, and click **Open Anyway** next to the message about Drashti. Confirm with your password (or Touch ID), and click **Open Anyway** once more. (On macOS 13 or 14 you can instead right-click Drashti in Applications and choose **Open**.)
 3. This is only needed once. Eject the Drashti disk in Finder's sidebar; the `.dmg` can go in the Bin.
+4. Drashti has its own logo: you see it in Applications, in the Dock while Drashti is open, and when you switch apps with Cmd+Tab. If the Dock or Finder still shows a different picture, restart the Mac.
 
 **On the Windows PC:**
 
 1. Open the downloaded `Drashti-windows-setup.exe`. If the browser says it is not commonly downloaded, keep it (in Edge: **…**, **Keep**, then **Show more**, **Keep anyway**).
 2. Windows says "Windows protected your PC", because the build is not signed yet. Click **More info**, then **Run anyway**.
-3. It installs for the current user, with no administrator password, and Drashti appears in the Start menu.
+3. It installs for the current user, with no administrator password, and Drashti appears in the Start menu with its own logo, which the taskbar shows too while Drashti is open.
 4. Section 6 of `docs/windows-checks.md` has checks for this install; do them now and write down what you see (the rest of that file comes in section 11 of this guide).
 
 When Drashti starts the first time, its library holds two sample presentations. Your own library comes in the next step.
