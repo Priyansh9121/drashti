@@ -1184,7 +1184,7 @@ function start(): void {
   // cleanly (which also decides the starting mode) and, if not, its show. A restored library starts
   // with nothing live (the saved state belongs to the library before it).
   const startup: StartupRecovery = restored.restored
-    ? { cleanQuit: true, putBack: null, tooOld: null }
+    ? { cleanQuit: true, recentStop: false, putBack: null, tooOld: null }
     : startupRecovery(recoveryFiles, { startLookId: lookRepo.firstId() });
   const saved = startup.putBack;
   if (saved) {
@@ -1447,18 +1447,24 @@ function start(): void {
   // The mode is kept in the library's settings as it changes. Since Session 20 a start after a clean
   // quit begins in Pro Mode, or in Simple Mode with roles on (Pro Mode takes a PIN); after an
   // unexpected stop Drashti comes back in the mode it was in, so the operator carries on (admin
-  // locked). The same answer as restart recovery's: did the last run quit cleanly?
+  // locked). The same answer as restart recovery's: did the last run stop unexpectedly, less than
+  // RECOVERY_MAX_AGE_MS ago? A stop longer ago starts like a clean quit (Session 21).
   const savedMode = settings.get('operatorMode');
   const wasIn: OperatorMode = isOperatorMode(savedMode) ? savedMode : 'pro';
-  let mode: OperatorMode = startingMode({ cleanQuit: startup.cleanQuit, rolesOn: roles.on(), wasIn });
+  let mode: OperatorMode = startingMode({ recentStop: startup.recentStop, rolesOn: roles.on(), wasIn });
   if (mode !== wasIn) settings.set('operatorMode', mode);
   if (mode === 'simple')
     log.info(
-      startup.cleanQuit
-        ? 'Roles are on: starting in Simple Mode'
-        : 'Starting in Simple Mode, as before the unexpected stop',
+      startup.recentStop
+        ? 'Starting in Simple Mode, as before the unexpected stop'
+        : 'Roles are on: starting in Simple Mode',
     );
-  else if (wasIn === 'simple') log.info('Starting in Pro Mode after a clean quit');
+  else if (wasIn === 'simple')
+    log.info(
+      startup.cleanQuit
+        ? 'Starting in Pro Mode after a clean quit'
+        : 'Starting in Pro Mode: the unexpected stop was 3 hours or more ago',
+    );
   simpleNow = () => mode === 'simple';
   // While it is on, every request that would change the library, screens or sound is refused here.
   lockChannels(

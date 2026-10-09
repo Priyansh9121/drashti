@@ -1,8 +1,9 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
+import { RECOVERY_MAX_AGE_MS } from '../../src/shared/recovery';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
 import {
@@ -33,20 +34,30 @@ const state = (win: Page) =>
   win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state);
 const modeOf = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.app.getMode());
 
+/** The run named in one of the restart-recovery files, or null. */
+function sessionIn(userData: string, file: string): string | null {
+  try {
+    return (JSON.parse(readFileSync(join(userData, file), 'utf8')) as { session?: string }).session ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Wait until this run has saved the show under its own name, as every run does from its start
- * (Session 20): only then does a stop dead count as this run's.
+ * (Session 20): only then does a stop dead count as this run's. `lastRun` is the run before it, when
+ * that one stopped dead too.
  */
-async function thisRunSaved(userData: string): Promise<void> {
-  const sessionIn = (file: string) => {
-    try {
-      return (JSON.parse(readFileSync(join(userData, file), 'utf8')) as { session?: string }).session ?? null;
-    } catch {
-      return null;
-    }
-  };
-  const before = sessionIn('live-state.clean');
-  await expect.poll(() => [null, before].includes(sessionIn('live-state.json'))).toBe(false);
+async function thisRunSaved(userData: string, lastRun: string | null = null): Promise<void> {
+  const before = [null, lastRun, sessionIn(userData, 'live-state.clean')];
+  await expect.poll(() => before.includes(sessionIn(userData, 'live-state.json'))).toBe(false);
+}
+
+/** Move the saved show's time back, as a run that stopped dead `ms` before the next start leaves it. */
+function stoppedAgo(userData: string, ms: number): void {
+  const file = join(userData, 'live-state.json');
+  const saved = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+  writeFileSync(file, JSON.stringify({ ...saved, savedAt: new Date(Date.now() - ms).toISOString() }));
 }
 
 /** The audience and stage output pages. */
@@ -380,8 +391,8 @@ test('Simple Mode fits a 1280 x 720 operator display, its way out at the top', a
   await app.close();
 });
 
-test('Drashti starts in Pro Mode after a clean quit, comes back in Simple Mode after a crash in it, and starts in Simple Mode with PINs on', async () => {
-  test.setTimeout(150_000);
+test('Drashti starts in Pro Mode after a clean quit, comes back in Simple Mode after a crash in it, in Pro Mode after a crash 3 hours or more before, and in Simple Mode with PINs on', async () => {
+  test.setTimeout(180_000);
   // Simple Mode, then a clean quit: the next start is in Pro Mode (Session 20).
   const first = await launchApp();
   let win = await operatorPage(first.app);
@@ -400,6 +411,7 @@ test('Drashti starts in Pro Mode after a clean quit, comes back in Simple Mode a
   await win.getByRole('button', { name: 'Simple Mode' }).click();
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await thisRunSaved(first.userData);
+  const crashedRun = sessionIn(first.userData, 'live-state.json');
   await killApp(run.app);
   run = await relaunchApp(first.userData);
   win = await operatorPage(run.app);
@@ -408,11 +420,19 @@ test('Drashti starts in Pro Mode after a clean quit, comes back in Simple Mode a
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await expect(win.getByTestId('recovery-notice')).toHaveCount(0);
 
-  // With PINs on (out of Simple Mode with its own button first), a clean quit starts in Simple Mode.
-  await win.getByTestId('simple-leave').click();
-  await win.getByTestId('leave-simple').getByRole('textbox').fill('pro');
-  await win.getByTestId('leave-simple-switch').click();
-  await expect.poll(() => modeOf(win)).toBe('pro');
+  // A crash in Simple Mode 3 hours or more before the start counts like a clean quit (Session 21):
+  // restart recovery's own limit, for the mode too.
+  await thisRunSaved(first.userData, crashedRun);
+  await killApp(run.app);
+  stoppedAgo(first.userData, RECOVERY_MAX_AGE_MS + 60_000);
+  run = await relaunchApp(first.userData);
+  win = await operatorPage(run.app);
+  await operatorReady(win);
+  expect(await modeOf(win)).toBe('pro');
+  await expect(win.getByTestId('simple-mode')).toHaveCount(0);
+  await expect(win.getByTestId('recovery-notice')).toHaveCount(0);
+
+  // With PINs on, a clean quit starts in Simple Mode.
   const pins = await win.evaluate(() =>
     (globalThis as PageGlobals).drashti.roles.setPins({ admin: '481526', operator: '937402' }),
   );

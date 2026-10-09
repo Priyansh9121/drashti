@@ -202,6 +202,12 @@ export interface StartupRecovery {
    * that cannot be read). False only after an unexpected stop: a crash, a power cut, a forced quit.
    */
   cleanQuit: boolean;
+  /**
+   * The last run stopped unexpectedly less than RECOVERY_MAX_AGE_MS before this start, so Drashti carries
+   * on where it was: the show put back and the mode it was in. A stop that long ago or longer (or one whose
+   * time cannot be read) starts like a clean quit, live or not (Session 21).
+   */
+  recentStop: boolean;
   /** What to put back on the screens: the last run's show, when it stopped unexpectedly less than RECOVERY_MAX_AGE_MS before this start. */
   putBack: SavedLive | null;
   /** The last run's show, when it stopped unexpectedly RECOVERY_MAX_AGE_MS or more before this start: named, never put back. */
@@ -272,8 +278,9 @@ function liveIn(s: Saved, startLookId: string | null): SavedLive | null {
 
 /**
  * What the start finds, read once before this run saves anything: whether the last run quit cleanly,
- * and what it left live when it did not. A show saved RECOVERY_MAX_AGE_MS or more before `now` is not
- * put back (nor one whose time cannot be read).
+ * and what it left live when it did not. A stop RECOVERY_MAX_AGE_MS or more before `now` (or one whose
+ * time cannot be read) is not a recent one: its show is not put back, and the mode starts as after a
+ * clean quit.
  */
 export function startupRecovery(
   files: RecoveryFiles,
@@ -281,13 +288,15 @@ export function startupRecovery(
 ): StartupRecovery {
   const saved = savedSchema.safeParse(readJson(files.state));
   if (!saved.success || quitCleanly(files, saved.data))
-    return { cleanQuit: true, putBack: null, tooOld: null };
+    return { cleanQuit: true, recentStop: false, putBack: null, tooOld: null };
+  // Saved every minute while it ran, so the last save is the stop, within a minute.
+  const age = (options.now ?? new Date()).getTime() - Date.parse(saved.data.savedAt);
+  const recentStop = age < RECOVERY_MAX_AGE_MS;
   const show = liveIn(saved.data, options.startLookId ?? null);
-  if (!show) return { cleanQuit: false, putBack: null, tooOld: null };
-  const age = (options.now ?? new Date()).getTime() - Date.parse(show.savedAt);
-  return age < RECOVERY_MAX_AGE_MS
-    ? { cleanQuit: false, putBack: show, tooOld: null }
-    : { cleanQuit: false, putBack: null, tooOld: show };
+  if (!show) return { cleanQuit: false, recentStop, putBack: null, tooOld: null };
+  return recentStop
+    ? { cleanQuit: false, recentStop, putBack: show, tooOld: null }
+    : { cleanQuit: false, recentStop, putBack: null, tooOld: show };
 }
 
 /** What to put back at startup (see startupRecovery), or null. */
