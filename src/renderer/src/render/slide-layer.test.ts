@@ -31,6 +31,20 @@ describe('the slide layer on a screen', () => {
     expect(nextShowing(fading, null, 2100)).toEqual(none);
   });
 
+  it('a slide still waiting for its pictures never becomes the one going away: what is on screen does (Session 23)', () => {
+    const a = layer('a', 1000);
+    const b = layer('b', 2000, { kind: 'dissolve', durationMs: 800 });
+    const c = layer('c', 2100, { kind: 'dissolve', durationMs: 800 });
+    // b waits for its pictures: a is still the slide on screen.
+    const waiting = nextShowing({ on: a, off: null, fade: null }, b, 2010);
+    expect(waiting).toEqual({ on: b, off: a, fade: { ms: 800, start: null } });
+    // c comes before b has begun to fade in: it dissolves from a, never from b (which was never seen).
+    expect(nextShowing(waiting, c, 2110)).toEqual({ on: c, off: a, fade: { ms: 800, start: null } });
+    // Once b had begun, b is what goes.
+    const begun = { ...waiting, fade: { ms: 800, start: 2000 } };
+    expect(nextShowing(begun, c, 2110)).toEqual({ on: c, off: b, fade: { ms: 800, start: null } });
+  });
+
   it('works out how far a dissolve is from the clock', () => {
     expect(fadeAt({ ms: 1000, start: 5000 }, 4000)).toBe(0);
     expect(fadeAt({ ms: 1000, start: 5000 }, 5250)).toBe(0.25);

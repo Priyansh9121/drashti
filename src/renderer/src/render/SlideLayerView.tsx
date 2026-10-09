@@ -40,7 +40,13 @@ export function nextShowing(prev: Showing, layer: SlideLayer | null, now: number
   if (prev.on && keyOf(prev.on) === keyOf(layer)) return { ...prev, on: layer };
   const t = layer.transition;
   if (t?.kind === 'dissolve' && t.durationMs > 0 && now < layer.shownAt + t.durationMs)
-    return { on: layer, off: prev.on, fade: { ms: t.durationMs, start: null } };
+    return {
+      on: layer,
+      // What goes away is what is on screen: a slide still waiting for its pictures had not begun to
+      // show, and the one before it was still up, whole (Session 23).
+      off: prev.fade?.start === null ? prev.off : prev.on,
+      fade: { ms: t.durationMs, start: null },
+    };
   return { on: layer, off: null, fade: null };
 }
 

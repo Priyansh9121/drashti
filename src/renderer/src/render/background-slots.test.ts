@@ -124,20 +124,69 @@ describe('background slots', () => {
       leaving: null,
       fade: null,
     });
-    // Another background while dissolving: the dissolve ends where it is.
-    s = run(
+  });
+
+  it('a dissolve cut short by another background carries on to its end: never left part-way, dim (Session 23)', () => {
+    const faded = video('F', 100, { fade: { at: 100, durationMs: 1000 } });
+    const third = video('T', 500, { fade: { at: 500, durationMs: 1000 } });
+    let s = run(
       { type: 'layer', layer: a },
       { type: 'ready', key: slotKey(a) },
       { type: 'layer', layer: faded },
       { type: 'ready', key: slotKey(faded), at: 100 },
-      { type: 'layer', layer: b },
+      { type: 'layer', layer: third },
     );
+    // The dissolve on screen goes on (both pictures add up to the whole), the third loads meanwhile.
     expect(s).toMatchObject({
       shown: { key: slotKey(faded) },
-      incoming: { key: slotKey(b) },
-      leaving: null,
-      fade: null,
+      leaving: { key: slotKey(a) },
+      incoming: { key: slotKey(third), state: 'loading' },
+      fade: { start: 100, ms: 1000 },
     });
+    // Ready before that dissolve is over: it waits for it (no jump back up of the half-faded picture)...
+    s = slotsReducer(s, { type: 'ready', key: slotKey(third), at: 600 });
+    expect(s).toMatchObject({
+      shown: { key: slotKey(faded) },
+      leaving: { key: slotKey(a) },
+      incoming: { key: slotKey(third), state: 'ready' },
+      fade: { start: 100, ms: 1000 },
+    });
+    // ...then dissolves in from the second, now whole, as the first dissolve ends.
+    s = slotsReducer(s, { type: 'faded', start: 100 });
+    expect(s).toMatchObject({
+      shown: { key: slotKey(third) },
+      leaving: { key: slotKey(faded) },
+      incoming: null,
+      fade: { start: 1100, ms: 1000 },
+    });
+    // If its own dissolve is over by then, it simply replaces it.
+    const late = run(
+      { type: 'layer', layer: a },
+      { type: 'ready', key: slotKey(a) },
+      { type: 'layer', layer: faded },
+      { type: 'ready', key: slotKey(faded), at: 100 },
+      { type: 'layer', layer: video('U', 50, { fade: { at: 50, durationMs: 500 } }) },
+      { type: 'ready', key: slotKey(video('U', 50)), at: 600 },
+      { type: 'faded', start: 100 },
+    );
+    expect(late).toMatchObject({ shown: { key: 'U@50' }, leaving: null, incoming: null, fade: null });
+  });
+
+  it('a window that joins during a dissolve shows its background whole, never fading in from black (Session 23)', () => {
+    const faded = video('F', 100, { fade: { at: 100, durationMs: 1000 } });
+    // The first background this window hears of, part-way through the slide's dissolve.
+    let s = run(
+      { type: 'layer', layer: faded, joined: true },
+      { type: 'ready', key: slotKey(faded), at: 400 },
+    );
+    expect(s).toMatchObject({ shown: { key: slotKey(faded) }, leaving: null, fade: null });
+    // A window that was already there, with no background before it: it fades in with the slide, as before.
+    s = run(
+      { type: 'layer', layer: null, joined: true },
+      { type: 'layer', layer: faded },
+      { type: 'ready', key: slotKey(faded), at: 400 },
+    );
+    expect(s.fade).toEqual({ start: 400, ms: 1000 });
   });
 
   it('tries a background again when its copy lands on a node, after it had failed (Session 13)', () => {

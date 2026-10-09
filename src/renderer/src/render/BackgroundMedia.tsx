@@ -200,7 +200,8 @@ function BackgroundPlayer({
   const [seen, setSeen] = useState<BackgroundLayer | null | undefined>(undefined);
   if (seen !== layer) {
     setSeen(layer);
-    dispatch({ type: 'layer', layer });
+    // The first time: this window has just opened, perhaps part-way through a dissolve (Session 23).
+    dispatch({ type: 'layer', layer, joined: seen === undefined });
   }
   const rootRef = useRef<HTMLDivElement>(null);
   useFade(rootRef, slots, dispatch);

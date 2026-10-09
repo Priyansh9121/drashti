@@ -17,6 +17,11 @@ export interface Slot {
   state: 'loading' | 'ready' | 'failed';
   /** How many times it has been tried again (a node's copy that landed late); left out the first time. */
   attempt?: number;
+  /**
+   * The first background a window heard of, as it opened (Session 23): shown whole, never faded in
+   * from black, even part-way through the slide's dissolve.
+   */
+  joined?: true;
 }
 
 export interface Slots {
@@ -31,7 +36,8 @@ export interface Slots {
 }
 
 export type SlotEvent =
-  | { type: 'layer'; layer: BackgroundLayer | null }
+  /** `joined`: the first the window hears of the layer (it has just opened or reloaded). */
+  | { type: 'layer'; layer: BackgroundLayer | null; joined?: boolean }
   /** `at`: when it became ready, to time its dissolve. */
   | { type: 'ready'; key: string; at?: number }
   | { type: 'failed'; key: string }
@@ -53,6 +59,23 @@ export function retryAfterLanding(shown: Slot | null, landed: number): string | 
   return shown?.state === 'failed' && landed > (shown.attempt ?? 0) ? shown.key : null;
 }
 
+/**
+ * A background that is ready goes on screen: dissolving in over the one there, when it came with a slide
+ * that dissolves and that dissolve is not over at `at` (from where the slide began, or from `at` if it was
+ * not ready then); otherwise at once.
+ */
+function arrive(slots: Slots, ready: Slot, at: number | undefined): Slots {
+  const fade = ready.joined ? undefined : ready.layer.fade;
+  if (fade && at !== undefined && at < fade.at + fade.durationMs)
+    return {
+      shown: ready,
+      incoming: null,
+      leaving: slots.shown?.state === 'ready' ? slots.shown : null,
+      fade: { start: Math.max(fade.at, at), ms: fade.durationMs },
+    };
+  return { shown: ready, incoming: null, leaving: null, fade: null };
+}
+
 export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
   switch (event.type) {
     case 'layer': {
@@ -62,33 +85,33 @@ export function slotsReducer(slots: Slots, event: SlotEvent): Slots {
       // The same playback: new settings (fit, loop), and whatever was loading is not wanted any more.
       if (slots.shown?.key === key) return { ...slots, shown: { ...slots.shown, layer }, incoming: null };
       if (slots.incoming?.key === key) return { ...slots, incoming: { ...slots.incoming, layer } };
-      // Something new: a dissolve still running ends where it is.
+      // Something new, loading out of sight. A dissolve still running carries on to its end, and the new
+      // one follows it (Session 23): ended where it was, the picture stayed part-way through, dim.
+      const shown = slots.shown?.state === 'ready' ? slots.shown : null;
       return {
-        shown: slots.shown?.state === 'ready' ? slots.shown : null,
-        incoming: { key, layer, state: 'loading' },
-        leaving: null,
-        fade: null,
+        shown,
+        incoming: { key, layer, state: 'loading', ...(event.joined ? { joined: true as const } : {}) },
+        leaving: shown && slots.fade ? slots.leaving : null,
+        fade: shown ? slots.fade : null,
       };
     }
     case 'ready': {
       const incoming = slots.incoming;
       if (incoming?.key !== event.key) return slots;
       const ready: Slot = { ...incoming, state: 'ready' };
-      // It came with a slide that dissolves: it dissolves in from where the slide began (or from now,
-      // if it was not ready then), unless that is all over already.
-      const fade = incoming.layer.fade;
-      const at = event.at;
-      if (fade && at !== undefined && at < fade.at + fade.durationMs)
-        return {
-          shown: ready,
-          incoming: null,
-          leaving: slots.shown?.state === 'ready' ? slots.shown : null,
-          fade: { start: Math.max(fade.at, at), ms: fade.durationMs },
-        };
-      return { shown: ready, incoming: null, leaving: null, fade: null };
+      // A dissolve still on screen finishes first (the picture part-way through never jumps back up);
+      // this one follows it ('faded').
+      if (slots.fade) return { ...slots, incoming: ready };
+      return arrive(slots, ready, event.at);
     }
-    case 'faded':
-      return slots.fade?.start === event.start ? { ...slots, leaving: null, fade: null } : slots;
+    case 'faded': {
+      if (slots.fade?.start !== event.start) return slots;
+      const done = { ...slots, leaving: null, fade: null };
+      // A background that became ready meanwhile comes now, from where that dissolve ended.
+      return done.incoming?.state === 'ready'
+        ? arrive(done, done.incoming, slots.fade.start + slots.fade.ms)
+        : done;
+    }
     case 'retry': {
       // Loading again out of sight; nothing is on screen meanwhile, as before.
       const failed = slots.shown?.key === event.key && slots.shown.state === 'failed' ? slots.shown : null;
