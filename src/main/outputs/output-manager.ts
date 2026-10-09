@@ -35,6 +35,8 @@ const sameKey = (a: DisplayKey, b: DisplayKey) =>
 export class OutputManager {
   private readonly open = new Map<string, { window: OutputWindow; displayId: number }>();
   private statuses: ScreenStatus[] = [];
+  /** Screens whose window the watchdog gave up on (Session 23): not "showing" until it reports again. */
+  private readonly stopped = new Set<string>();
 
   constructor(private readonly deps: OutputManagerDeps) {}
 
@@ -74,15 +76,27 @@ export class OutputManager {
       else this.open.set(screen.id, { window: this.deps.openWindow(screen, display), displayId: display.id });
     }
 
+    // A window closed is no longer given up on: a new one starts afresh.
+    for (const id of this.stopped) if (!this.open.has(id)) this.stopped.delete(id);
     this.statuses = screens.map((s) => {
       if (!s.enabled) return { screenId: s.id, state: 'disabled', displayId: null };
       if (!s.displayKey) return { screenId: s.id, state: 'unassigned', displayId: null };
       const entry = this.open.get(s.id);
+      if (entry && this.stopped.has(s.id))
+        return { screenId: s.id, state: 'stopped', displayId: entry.displayId };
       return entry
         ? { screenId: s.id, state: 'showing', displayId: entry.displayId }
         : { screenId: s.id, state: 'missing-display', displayId: null };
     });
     this.deps.onChange();
+  }
+
+  /** The watchdog gave up on this screen's window, or it is drawing again (Session 23). */
+  setStopped(screenId: string, stopped: boolean): void {
+    if (this.stopped.has(screenId) === stopped) return;
+    if (stopped) this.stopped.add(screenId);
+    else this.stopped.delete(screenId);
+    this.reconcile();
   }
 
   status(): ScreenStatus[] {

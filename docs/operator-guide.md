@@ -98,7 +98,7 @@ A clear button is lit, with a dot, while its layer is on the screens.
 
 **A mistake on the screens.** Put the right slide up with a click, or press **←** (the slide before). After **Clear all** by mistake, press **Put it back** at once.
 
-**A screen is black or frozen.** Open the screens dashboard: its picture shows what that screen really shows. Pro Mode can **Reload** it there. If a whole output computer stopped (a node offline), carry on: its screens keep their last picture, and it comes back by itself when the network does.
+**A screen is black or frozen.** Open the screens dashboard: its picture shows what that screen really shows. Pro Mode can **Reload** it there. Drashti also restarts a screen that stops drawing by itself, within about 10 seconds. If the status line says **stopped**, that screen kept failing: Drashti tries it again every few minutes, and **Try again** in Screens tries at once. If a whole output computer stopped (a node offline), carry on: its screens keep their last picture, and it comes back by itself when the network does.
 
 **No sound.** Check the status bar: it says where the sound goes and warns when the chosen output is missing (Drashti then plays on the computer's own speakers). Check the mixer's channel.
 

@@ -219,6 +219,34 @@ export async function runWatchdogSelfTest(ctx: SelfTestContext): Promise<SelfTes
       `frame ${restored.hash === next.hash ? 'matches' : 'differs'}, new process ${restored.pid !== next.pid ? 'yes' : 'no'}`,
     );
 
+    // 4b. Hang the output (Session 23): stuck in a loop and taking no input, so Chromium's own
+    // "unresponsive" never comes. Its reports stop, and it must be noticed and restarted.
+    const beforeHang = ctx.watchdog.events.length;
+    const hungPid = output.webContents.getOSProcessId();
+    void output.webContents.executeJavaScript('for (;;) {}').catch(() => undefined);
+    const noticed = await waitFor(
+      () =>
+        ctx.watchdog.events.slice(beforeHang).some((e) => e.window.startsWith('output') && e.kind === 'hung'),
+      40_000,
+    );
+    check(
+      'a hung output (stuck in a loop, taking no input) is noticed and restarted',
+      noticed &&
+        (await waitFor(() =>
+          ctx.watchdog.events
+            .slice(beforeHang)
+            .some((e) => e.window.startsWith('output') && e.kind === 'reloaded'),
+        )),
+      noticed ? '' : 'no hung event within 40 s',
+    );
+    const revAfterHang = String(ctx.engineRev());
+    const backAfterHang = noticed && (await waitFor(async () => (await paintedRev(output)) === revAfterHang));
+    const afterHang = backAfterHang ? await steadyFrame(output) : null;
+    check(
+      'the restarted output shows the live slide again',
+      afterHang !== null && afterHang.hash === next.hash && afterHang.pid !== hungPid,
+    );
+
     // 5. Crash the audio player: the watchdog reloads it and it follows the show again.
     if (audio) {
       const audioReloadsBefore = reloads(ctx, 'audio player');

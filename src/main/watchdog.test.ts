@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { WatchdogEvent, WatchTarget } from './watchdog';
-import { quitDetail, RendererWatchdog, shouldConfirmQuit } from './watchdog';
+import { quitDetail, RendererWatchdog, RETRY_AGAIN_MS, RETRY_FIRST_MS, shouldConfirmQuit } from './watchdog';
 
 class FakeContents extends EventEmitter implements WatchTarget {
   reloads = 0;
@@ -76,6 +76,57 @@ describe('RendererWatchdog', () => {
     clock.advance(5000);
     expect(contents.reloads).toBe(3);
     expect(kinds().at(-1)).toBe('gave-up');
+  });
+
+  it('after giving up, tries again 2 minutes later, then every 10 minutes it gives up again (Session 23)', () => {
+    const crashLoop = () => {
+      for (let i = 0; i < 4; i++) {
+        contents.emit('render-process-gone', {}, { reason: 'crashed' });
+        clock.advance(10);
+      }
+    };
+    crashLoop();
+    expect(kinds().at(-1)).toBe('gave-up');
+    const reloadsWhenGivenUp = contents.reloads;
+    clock.advance(RETRY_FIRST_MS - 1000);
+    expect(contents.reloads).toBe(reloadsWhenGivenUp);
+    clock.advance(1000);
+    expect(contents.reloads).toBe(reloadsWhenGivenUp + 1);
+    expect(events.at(-1)).toMatchObject({ kind: 'retried', reason: '2 minutes after giving up' });
+    // Still crashing: given up on again, and this time tried again after 10 minutes.
+    crashLoop();
+    expect(kinds().at(-1)).toBe('gave-up');
+    const again = contents.reloads;
+    clock.advance(RETRY_FIRST_MS);
+    expect(contents.reloads).toBe(again);
+    clock.advance(RETRY_AGAIN_MS - RETRY_FIRST_MS);
+    expect(contents.reloads).toBe(again + 1);
+    expect(events.at(-1)).toMatchObject({ kind: 'retried', reason: '10 minutes after giving up' });
+  });
+
+  it('Try again tries at once, and its crash count starts afresh', () => {
+    for (let i = 0; i < 4; i++) contents.emit('render-process-gone', {}, { reason: 'crashed' });
+    expect(kinds().at(-1)).toBe('gave-up');
+    const before = contents.reloads;
+    expect(dog.retryNow(contents, 'Try again')).toBe(true);
+    expect(contents.reloads).toBe(before + 1);
+    expect(events.at(-1)).toMatchObject({ kind: 'retried', reason: 'Try again' });
+    // One crash now is an ordinary one: reloaded after the first back-off.
+    contents.emit('render-process-gone', {}, { reason: 'crashed' });
+    clock.advance(100);
+    expect(contents.reloads).toBe(before + 2);
+    // The timer for the retry it no longer needs never fires.
+    clock.advance(RETRY_FIRST_MS);
+    expect(contents.reloads).toBe(before + 2);
+    expect(dog.retryNow(new FakeContents())).toBe(false);
+  });
+
+  it('a window judged stuck from outside is crashed into the reload', () => {
+    dog.stuck(contents, 'operator', 'no report for 7 s');
+    expect(contents.crashes).toBe(1);
+    expect(events[0]).toMatchObject({ kind: 'hung', reason: 'no report for 7 s' });
+    clock.advance(100);
+    expect(contents.reloads).toBe(1);
   });
 
   it('forgets crashes older than a minute', () => {

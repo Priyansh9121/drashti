@@ -35,6 +35,7 @@ const STATE: Record<ScreenState, { text: string; tone: BadgeTone }> = {
   unassigned: { text: 'No display', tone: 'neutral' },
   disabled: { text: 'Off', tone: 'neutral' },
   'node-offline': { text: 'Node offline', tone: 'warning' },
+  stopped: { text: 'Stopped', tone: 'danger' },
 };
 
 const timeOf = (iso: string | null) =>
