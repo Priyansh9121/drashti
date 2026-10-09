@@ -3,7 +3,8 @@
  * with big buttons for running a sabha from a playlist; nothing in it can
  * change the library, the screens or the sound, and the main process
  * refuses such requests while it is on. Leaving it takes a deliberate step:
- * View > Switch to Pro Mode…, then typing the word below.
+ * Switch to Pro Mode… (on Simple Mode's own screen, or in the View menu),
+ * then typing the word below.
  */
 
 export type OperatorMode = 'pro' | 'simple';
@@ -20,10 +21,24 @@ export type ModeResult = { ok: true; mode: OperatorMode } | { ok: false; message
 
 /** What a request that would change something gets while Simple Mode is on. */
 export const SIMPLE_MODE_REFUSAL =
-  'Simple Mode is on, so this cannot be changed. An admin can switch to Pro Mode from the View menu.';
+  'Simple Mode is on, so this cannot be changed. On the Drashti computer, Switch to Pro Mode… leaves it.';
 
 export const isOperatorMode = (value: unknown): value is OperatorMode =>
   value === 'pro' || value === 'simple';
+
+/**
+ * The mode Drashti starts in (Session 20). After a clean quit: Pro Mode, or Simple Mode with roles on
+ * (Pro Mode then takes a PIN). After an unexpected stop: the mode it was in, so a volunteer in the
+ * middle of a sabha carries on where they were (admin locked, as after every start).
+ */
+export function startingMode(last: {
+  cleanQuit: boolean;
+  rolesOn: boolean;
+  wasIn: OperatorMode;
+}): OperatorMode {
+  if (!last.cleanQuit) return last.wasIn;
+  return last.rolesOn ? 'simple' : 'pro';
+}
 
 /**
  * Engine commands Simple Mode refuses, wherever they come from (the window,

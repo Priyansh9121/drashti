@@ -199,8 +199,13 @@ test('leaving Simple Mode takes a PIN: the operator PIN for Pro Mode, the admin 
   await leave.getByTestId('leave-simple-switch').click();
   await expect.poll(() => mode(win)).toBe('pro');
   await expect(win.getByTestId('role-chip')).toHaveAttribute('data-role', 'operator');
+  // Simple Mode's own Switch to Pro Mode… (Session 20) asks the same: a wrong PIN keeps Simple Mode.
   await win.getByRole('button', { name: 'Simple Mode' }).click();
-  await chooseMenuItem(app, 'switch-mode');
+  await win.getByTestId('simple-leave').click();
+  await leave.getByTestId('leave-simple-pin').fill('000000');
+  await leave.getByTestId('leave-simple-switch').click();
+  await expect(leave).toContainText('That PIN is not right');
+  expect(await mode(win)).toBe('simple');
   await leave.getByTestId('leave-simple-pin').fill(ADMIN);
   await leave.getByTestId('leave-simple-switch').click();
   await expect.poll(() => mode(win)).toBe('pro');

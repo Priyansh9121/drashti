@@ -19,7 +19,7 @@ On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows 
 
 Do these about 30 minutes before the sabha starts.
 
-1. **Switch on and start Drashti.** If the screen shows Simple Mode (big buttons), choose **View**, then **Switch to Pro Mode…**, and type the **operator PIN** (or the word **pro** if PINs are not set).
+1. **Switch on and start Drashti.** Without PINs it opens in Pro Mode. If the screen shows Simple Mode (big buttons, as it does with PINs set), press **Switch to Pro Mode…** at the top right, and type the **operator PIN** (or the word **pro** if PINs are not set).
 2. **Check the screens.** Click the screens line in the status bar (for example "3 screens showing"). The **screens dashboard** shows a small picture of what every screen really shows, the hall's, the stage's and the second computer's (the node). Every node should say **Online** and its pictures and videos **ready** (for example "14 of 14 ready"). **Identify** puts a screen's number on it if you are not sure which is which.
 
    ![The screens dashboard](screenshots/screens-dashboard-1280x720.png)
@@ -104,7 +104,7 @@ A clear button is lit, with a dot, while its layer is on the screens.
 
 **The stream says Reconnecting.** Do nothing: Drashti tries again by itself and the recording carries on. The hall's screens are not affected.
 
-**Drashti closed by itself.** Start it again: it puts back what was on the screens (the slide, background, sound, timers, messages and props) and says so at the top. If it was on air less than 5 minutes ago, it goes live again by itself. This happens only within 3 hours of the stop: started later than that (the next morning, say), Drashti puts nothing on the screens, and the note at the top says what was live and when. After Drashti was quit on purpose, it always starts with nothing on the screens.
+**Drashti closed by itself.** Start it again: it puts back what was on the screens (the slide, background, sound, timers, messages and props) and says so at the top. If it was on air less than 5 minutes ago, it goes live again by itself. This happens only within 3 hours of the stop: started later than that (the next morning, say), Drashti puts nothing on the screens, and the note at the top says what was live and when. Either way it comes back in the mode it was in (Pro Mode or Simple Mode). After Drashti was quit on purpose, it always starts with nothing on the screens.
 
 **When to fall back to ProPresenter.** If Drashti cannot keep the screens right, the named fallback operator quits Drashti (**Cmd+Q**, or close its window on Windows) and opens ProPresenter, as practised (`docs/parallel-run.md`, section 9). Then save diagnostics (below) for whoever looks after Drashti.
 

@@ -44,6 +44,7 @@ import {
   isOperatorMode,
   SIMPLE_MODE_REFUSAL,
   SIMPLE_MODE_REFUSED_COMMANDS,
+  startingMode,
 } from '../shared/mode';
 import { groupLookIn, NO_LOOK } from '../shared/looks';
 import { DEFAULT_THEME } from '../shared/themes';
@@ -1443,17 +1444,21 @@ function start(): void {
   });
 
   // ---- Simple Mode ----------------------------------------------------------------
-  // Remembered in the library's settings, so Drashti (and restart recovery) comes back in it.
+  // The mode is kept in the library's settings as it changes. Since Session 20 a start after a clean
+  // quit begins in Pro Mode, or in Simple Mode with roles on (Pro Mode takes a PIN); after an
+  // unexpected stop Drashti comes back in the mode it was in, so the operator carries on (admin
+  // locked). The same answer as restart recovery's: did the last run quit cleanly?
   const savedMode = settings.get('operatorMode');
-  let mode: OperatorMode = isOperatorMode(savedMode) ? savedMode : 'pro';
-  // With roles on, a clean start begins in Simple Mode (Pro Mode takes a PIN); after an unexpected
-  // stop the show comes back in the mode it was in, so the operator carries on (admin locked).
-  if (roles.on() && mode === 'pro' && saved === null) {
-    mode = 'simple';
-    settings.set('operatorMode', mode);
-    log.info('Roles are on: starting in Simple Mode');
-  }
-  if (mode === 'simple') log.info('Starting in Simple Mode');
+  const wasIn: OperatorMode = isOperatorMode(savedMode) ? savedMode : 'pro';
+  let mode: OperatorMode = startingMode({ cleanQuit: startup.cleanQuit, rolesOn: roles.on(), wasIn });
+  if (mode !== wasIn) settings.set('operatorMode', mode);
+  if (mode === 'simple')
+    log.info(
+      startup.cleanQuit
+        ? 'Roles are on: starting in Simple Mode'
+        : 'Starting in Simple Mode, as before the unexpected stop',
+    );
+  else if (wasIn === 'simple') log.info('Starting in Pro Mode after a clean quit');
   simpleNow = () => mode === 'simple';
   // While it is on, every request that would change the library, screens or sound is refused here.
   lockChannels(
