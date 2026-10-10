@@ -227,7 +227,9 @@ test('the kirtan library, screens’ languages, templates and the setup wizard',
   await editor.getByTestId('words-mode-tab-tracks').click();
   await editor.getByTestId('track-slide').nth(1).getByRole('textbox', { name: 'Slide 2, English' }).fill('');
   await shot(win, 'words-by-language');
+  // A line was emptied: closing asks first (Session 25).
   await editor.getByRole('button', { name: 'Cancel' }).click();
+  await win.getByTestId('keep-changes').getByRole('button', { name: 'Throw them away' }).click();
 
   // Screens: two groups, each with its own languages; and an output showing them.
   await win.evaluate(async () => {
