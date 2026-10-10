@@ -153,7 +153,9 @@ test('after a crash a running timer, a message and the sound come back, carrying
     const s = (await d.engine.snapshot()).state;
     return { timer: s.timers[0]?.startedAt ?? 0, audio: s.layers.audio?.startedAt ?? 0 };
   }, tuneId);
-  // Saved (within a quarter of a second), then stopped dead.
+  // Saved, the sound too, then stopped dead. The show is saved within a quarter of a second of a
+  // change, counted from the first of several in a row: on a slow computer the timer and the message
+  // can be saved before the sound starts, so waiting for those two alone could stop it a moment too soon.
   const stateFile = join(first.userData, 'live-state.json');
   await expect
     .poll(() => {
@@ -161,10 +163,15 @@ test('after a crash a running timer, a message and the sound come back, carrying
       const saved = JSON.parse(readFileSync(stateFile, 'utf8')) as {
         messages?: unknown[];
         timers?: unknown[];
+        audio?: unknown;
       };
-      return [saved.messages?.length, saved.timers?.length];
+      return [
+        saved.messages?.length,
+        saved.timers?.length,
+        saved.audio !== undefined && saved.audio !== null,
+      ];
     })
-    .toEqual([1, 1]);
+    .toEqual([1, 1, true]);
   await killApp(first.app);
 
   const second = await relaunchApp(first.userData);
