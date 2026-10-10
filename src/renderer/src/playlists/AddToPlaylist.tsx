@@ -2,6 +2,7 @@ import type { KeyboardEvent, MouseEvent } from 'react';
 import { create } from 'zustand';
 import type { NewItem } from '../../../shared/playlists';
 import { Button } from '../ui/Button';
+import { cx } from '../ui/cx';
 import { ListPlus } from '../ui/icons';
 import type { MenuPlace } from '../ui/Menu';
 import { isMenuKey, Menu, menuBelow, menuPlace } from '../ui/Menu';
@@ -27,21 +28,29 @@ function useOpenName(): string | null {
   });
 }
 
-/** On the chosen library row, while a playlist is open. */
-export function AddToPlaylistButton({ pick }: { pick: Pick }) {
+/** How much taller the chosen row is while a playlist is open: a line for Add to playlist under it. */
+export const ADD_LINE_HEIGHT = 36;
+
+/** Whether a playlist is open (the chosen library row then has its Add to playlist line). */
+export const usePlaylistOpen = (): boolean => usePlaylists((s) => s.openId !== null);
+
+/** On a line under the chosen library row (so its name keeps its room), while a playlist is open. */
+export function AddToPlaylistButton({ pick, className }: { pick: Pick; className?: string }) {
   const playlist = useOpenName();
   const dragging = useDragging((s) => s.on);
   if (playlist === null || dragging) return null;
   return (
-    <Button
-      size="sm"
-      icon={ListPlus}
-      data-testid="add-to-playlist"
-      title={`Add to “${playlist}”, after its chosen item`}
-      onClick={() => void addToOpenPlaylist(pick())}
-    >
-      Add to playlist
-    </Button>
+    <div className={cx('flex shrink-0 justify-end', className)}>
+      <Button
+        size="sm"
+        icon={ListPlus}
+        data-testid="add-to-playlist"
+        title={`Add to “${playlist}”, after its chosen item`}
+        onClick={() => void addToOpenPlaylist(pick())}
+      >
+        Add to playlist
+      </Button>
+    </div>
   );
 }
 

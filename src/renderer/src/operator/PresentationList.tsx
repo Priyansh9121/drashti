@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import type { DragEvent, KeyboardEvent } from 'react';
+import type { DragEvent, KeyboardEvent, ReactNode } from 'react';
 import type { PresentationSummary } from '../../../shared/library';
 import { actionFor, LIBRARY_KEYMAP } from '../../../shared/keymap';
 import { LANGS } from '../../../shared/model';
@@ -21,7 +21,13 @@ import { SearchResults } from '../library/SearchResults';
 import { applyFilters, filtering, KirtanFilters, toggleFilters, useFilters } from '../library/KirtanFilters';
 import { newFromWords } from '../library/words-store';
 import { MediaList } from '../library/MediaList';
-import { AddToPlaylistButton, LibraryRowMenu, rowMenu } from '../playlists/AddToPlaylist';
+import {
+  ADD_LINE_HEIGHT,
+  AddToPlaylistButton,
+  LibraryRowMenu,
+  rowMenu,
+  usePlaylistOpen,
+} from '../playlists/AddToPlaylist';
 import { startDrag } from '../playlists/drag';
 import { Badge, LiveBadge } from '../ui/Badge';
 import { Button, IconButton } from '../ui/Button';
@@ -67,7 +73,7 @@ const PresentationRow = memo(function PresentationRow({
 }) {
   const pick = pickPresentations(p.id);
   return (
-    <div className={`${rowClass({ selected, marked })} flex h-full items-center gap-1.5 pr-1.5`}>
+    <div className={`${rowClass({ selected, marked })} flex h-full flex-col`}>
       <button
         type="button"
         draggable
@@ -88,7 +94,7 @@ const PresentationRow = memo(function PresentationRow({
             pick().map((i) => i.presentationId),
           );
         }}
-        className="flex h-full min-w-0 flex-1 items-center gap-2 pl-2.5 text-left"
+        className="flex min-h-0 w-full flex-1 items-center gap-2 px-2.5 text-left"
       >
         <span className="min-w-0 flex-1">
           <Truncate text={p.name} className="text-sm font-medium" />
@@ -102,7 +108,7 @@ const PresentationRow = memo(function PresentationRow({
         </span>
         {live && <LiveBadge />}
       </button>
-      {selected && <AddToPlaylistButton pick={pick} />}
+      {selected && <AddToPlaylistButton pick={pick} className="px-1.5 pb-1.5" />}
     </div>
   );
 });
@@ -124,11 +130,11 @@ function ImportMenu() {
 }
 
 /** Search titles and slide text; Esc empties the box, Enter opens the first result. */
-function SearchBox() {
+function SearchBox({ help }: { help: ReactNode }) {
   const query = useSearch((s) => s.query);
   const filtersOn = useFilters((s) => s.open || filtering(s.f));
   return (
-    <div className="flex gap-1.5 px-3 pb-2">
+    <div className="flex items-center gap-1.5 px-3 pb-2">
       <span className="relative flex min-w-0 flex-1 items-center">
         <Search size={14} aria-hidden="true" className="pointer-events-none absolute left-2 text-faint" />
         <TextInput
@@ -165,6 +171,7 @@ function SearchBox() {
       <Button size="md" icon={Plus} title="A new presentation from pasted words" onClick={newFromWords}>
         New…
       </Button>
+      {help}
     </div>
   );
 }
@@ -201,9 +208,16 @@ export function PresentationList({ platform }: { platform: string }) {
     });
     return out;
   }, [presentations]);
+  // The chosen row is taller while a playlist is open: Add to playlist has a line under it.
+  const playlistOpen = usePlaylistOpen();
   const heights = useMemo(
-    () => rows.map((r) => (r.kind === 'heading' ? HEADING_HEIGHT : ITEM_HEIGHT)),
-    [rows],
+    () =>
+      rows.map((r) =>
+        r.kind === 'heading'
+          ? HEADING_HEIGHT
+          : ITEM_HEIGHT + (playlistOpen && r.p.id === selectedId ? ADD_LINE_HEIGHT : 0),
+      ),
+    [rows, playlistOpen, selectedId],
   );
   const layout = useMemo(() => layoutRows(heights), [heights]);
   const { start, end } = visibleRows(layout, view.top, view.height, MARGIN);
@@ -298,14 +312,14 @@ export function PresentationList({ platform }: { platform: string }) {
           ]}
         />
         <ImportMenu />
-        {help.button}
       </div>
       {help.card}
-      {tab !== 'shastra' && <SearchBox />}
+      {/* What is this? sits in the search row (or the Shastra tab's first row): the tabs keep their words. */}
+      {tab !== 'shastra' && <SearchBox help={help.button} />}
       {tab === 'presentations' && <KirtanFilters />}
       <TabPanel group="library" id={tab} className="flex min-h-0 flex-1 flex-col">
         {tab === 'shastra' ? (
-          <ShastraPanel />
+          <ShastraPanel help={help.button} />
         ) : searching ? (
           <SearchResults />
         ) : tab === 'media' ? (

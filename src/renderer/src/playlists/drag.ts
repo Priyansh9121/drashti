@@ -29,13 +29,14 @@ export function startDrag(e: DragEvent, kind: DragKind, ids: readonly string[]):
   e.dataTransfer.setData(TYPES[kind], JSON.stringify(ids));
   e.dataTransfer.effectAllowed = kind === 'items' ? 'move' : 'copy';
   useDragging.setState({ on: true });
-  // Over when it ends or drops, or (should the row it came from be gone) at the next mouse move.
+  // Over when it ends (after the drop has been placed: a reset at the drop itself would bring the
+  // buttons back, and move the rows, before the list reads where it landed), or, should the row it
+  // came from be gone, at the next mouse move.
   const over = () => {
     useDragging.setState({ on: false });
-    for (const type of ['dragend', 'drop', 'mousemove'] as const)
-      window.removeEventListener(type, over, true);
+    for (const type of ['dragend', 'mousemove'] as const) window.removeEventListener(type, over, true);
   };
-  for (const type of ['dragend', 'drop', 'mousemove'] as const) window.addEventListener(type, over, true);
+  for (const type of ['dragend', 'mousemove'] as const) window.addEventListener(type, over, true);
 }
 
 /** What is being dragged, if it is something of Drashti's. */

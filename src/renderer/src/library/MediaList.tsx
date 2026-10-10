@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { openMarkers } from '../markers/MarkersDialog';
 import type { MediaSummary } from '../../../shared/playlists';
-import { AddToPlaylistButton, rowMenu } from '../playlists/AddToPlaylist';
+import { ADD_LINE_HEIGHT, AddToPlaylistButton, rowMenu, usePlaylistOpen } from '../playlists/AddToPlaylist';
 import { startDrag } from '../playlists/drag';
 import { MissingBadge } from '../ui/Badge';
 import type { Icon } from '../ui/icons';
@@ -149,50 +149,49 @@ const MediaRow = memo(function MediaRow({
   const KindIcon = mediaKindIcon[m.kind];
   const pick = pickMedia(m.id);
   return (
-    <div
-      className={`${rowClass({ marked })} flex h-full items-center gap-1.5 pr-1.5`}
-      data-testid="media-row"
-    >
-      <button
-        type="button"
-        draggable
-        data-testid="media-item"
-        data-marked={marked ? 'true' : undefined}
-        aria-pressed={marked}
-        onClick={(e) => {
-          clickMedia(m.id, { toggle: platform === 'darwin' ? e.metaKey : e.ctrlKey, range: e.shiftKey });
-        }}
-        {...rowMenu(m.name, pick)}
-        onDragStart={(e) => {
-          startDrag(
-            e,
-            'media',
-            pick().map((i) => i.mediaId),
-          );
-          if (!useMedia.getState().marked.includes(m.id)) clickMedia(m.id, { toggle: false, range: false });
-        }}
-        className="flex h-full min-w-0 flex-1 items-center gap-2 pl-2.5 text-left"
-      >
-        <KindIcon size={16} aria-hidden="true" className="shrink-0 text-muted" />
-        <span className="min-w-0 flex-1">
-          <Truncate text={m.name} className="text-sm" />
-          <MediaNote m={m} job={job} />
-        </span>
-        {m.missing && <MissingBadge />}
-      </button>
-      {chosen && <AddToPlaylistButton pick={pick} />}
-      <ConvertControl m={m} job={job} />
-      {(m.kind === 'video' || m.kind === 'audio') && !m.missing && m.unplayable === null && (
-        <IconButton
-          icon={Bookmark}
-          label={`Start, end and markers of ${m.name}`}
-          size="sm"
-          data-testid="media-markers"
-          onClick={() => {
-            openMarkers(m);
+    <div className={`${rowClass({ marked })} flex h-full flex-col`} data-testid="media-row">
+      <div className="flex min-h-0 flex-1 items-center gap-1.5 pr-1.5">
+        <button
+          type="button"
+          draggable
+          data-testid="media-item"
+          data-marked={marked ? 'true' : undefined}
+          aria-pressed={marked}
+          onClick={(e) => {
+            clickMedia(m.id, { toggle: platform === 'darwin' ? e.metaKey : e.ctrlKey, range: e.shiftKey });
           }}
-        />
-      )}
+          {...rowMenu(m.name, pick)}
+          onDragStart={(e) => {
+            startDrag(
+              e,
+              'media',
+              pick().map((i) => i.mediaId),
+            );
+            if (!useMedia.getState().marked.includes(m.id)) clickMedia(m.id, { toggle: false, range: false });
+          }}
+          className="flex h-full min-w-0 flex-1 items-center gap-2 pl-2.5 text-left"
+        >
+          <KindIcon size={16} aria-hidden="true" className="shrink-0 text-muted" />
+          <span className="min-w-0 flex-1">
+            <Truncate text={m.name} className="text-sm" />
+            <MediaNote m={m} job={job} />
+          </span>
+          {m.missing && <MissingBadge />}
+        </button>
+        <ConvertControl m={m} job={job} />
+        {(m.kind === 'video' || m.kind === 'audio') && !m.missing && m.unplayable === null && (
+          <IconButton
+            icon={Bookmark}
+            label={`Start, end and markers of ${m.name}`}
+            size="sm"
+            data-testid="media-markers"
+            onClick={() => {
+              openMarkers(m);
+            }}
+          />
+        )}
+      </div>
+      {chosen && <AddToPlaylistButton pick={pick} className="px-1.5 pb-1.5" />}
     </div>
   );
 });
@@ -205,7 +204,14 @@ export function MediaList({ platform }: { platform: string }) {
   const anchorId = useMedia((s) => s.anchorId);
   const listRef = useRef<HTMLUListElement>(null);
   const [view, setView] = useState({ top: 0, height: 800 });
-  const layout = useMemo(() => layoutRows(media.map(() => ROW_HEIGHT)), [media]);
+  // The chosen row is taller while a playlist is open: Add to playlist has a line under it.
+  const playlistOpen = usePlaylistOpen();
+  const chosenId = anchorId !== null && marked.includes(anchorId) ? anchorId : null;
+  const heights = useMemo(
+    () => media.map((m) => ROW_HEIGHT + (playlistOpen && m.id === chosenId ? ADD_LINE_HEIGHT : 0)),
+    [media, playlistOpen, chosenId],
+  );
+  const layout = useMemo(() => layoutRows(heights), [heights]);
   const { start, end } = visibleRows(layout, view.top, view.height, MARGIN);
   const markedSet = new Set(marked);
   const jobs = useConvert((s) => s.jobs);
@@ -273,7 +279,7 @@ export function MediaList({ platform }: { platform: string }) {
           return (
             <li
               key={m.id}
-              style={{ position: 'absolute', top: layout.offsets[i], left: 8, right: 8, height: ROW_HEIGHT }}
+              style={{ position: 'absolute', top: layout.offsets[i], left: 8, right: 8, height: heights[i] }}
               className="pb-1"
               aria-setsize={media.length}
               aria-posinset={i + 1}
@@ -281,7 +287,7 @@ export function MediaList({ platform }: { platform: string }) {
               <MediaRow
                 m={m}
                 marked={markedSet.has(m.id)}
-                chosen={anchorId === m.id && markedSet.has(m.id)}
+                chosen={m.id === chosenId}
                 platform={platform}
                 job={jobFor(jobs, m.id)}
               />
