@@ -244,7 +244,7 @@ export function macInstaller(isSigned: () => boolean, updater: SquirrelUpdater):
             ok: false,
             cause: error instanceof Error ? error.message : 'unknown',
             message:
-              'The Mac would not take the update. Choose Show the file, then after the sabha quit Drashti, open the file and drag Drashti into Applications.',
+              'The Mac would not take the update. After the sabha, install it by hand: download it again from the download link in the admin guide, quit Drashti, open the file and drag Drashti into Applications.',
           });
         });
         updater.setFeedURL({ url: `http://127.0.0.1:${String(port)}/feed` });

@@ -743,7 +743,11 @@ export function MacroEditor() {
       {ask && ask.why !== 'remove' && (
         <KeepChangesDialog
           name={<>the macro “{e.name}”</>}
-          lost={`You changed ${plural(Math.max(1, settingsChanged(s.saved, e)), 'setting')}.`}
+          lost={
+            s.saved === null
+              ? 'This new macro is not saved yet.'
+              : `You changed ${plural(Math.max(1, settingsChanged(s.saved, e)), 'setting')}.`
+          }
           note="Saving changes only the macro: nothing on the screens changes until it runs."
           onKeepEditing={() => {
             setAsk(null);

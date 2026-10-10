@@ -14,10 +14,11 @@ export function UndoBar({ platform }: { platform: string }) {
   const said = useUndo((s) => s.said);
   return (
     <>
-      <div role="status" className="sr-only" data-testid="undo-said">
-        {/* A step said again ("Moved … up" twice) differs by a space, so it is read again. */}
-        {said.text}
-        {said.count % 2 === 1 ? ' ' : ''}
+      {/* Two lines in turn: each step is written into the one left empty, so a screen reader reads
+          it even when it says the same as the last ("Moved … up" twice). */}
+      <div className="sr-only" data-testid="undo-said">
+        <div role="status">{said.count % 2 === 0 ? said.text : ''}</div>
+        <div role="status">{said.count % 2 === 1 ? said.text : ''}</div>
       </div>
       {last && (
         <div

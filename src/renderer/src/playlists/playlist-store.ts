@@ -8,6 +8,7 @@ import type {
   PlaylistResult,
   TimerCue,
 } from '../../../shared/playlists';
+import { POSITION_MAX } from '../../../shared/playlists';
 import { useEngine } from '../engine/engine-store';
 import { leaveItem, showItem, useLibrary } from '../library/library-store';
 import { describeSome, pushRemoval } from '../library/undo';
@@ -450,12 +451,16 @@ export async function addToOpenPlaylist(items: NewItem[]): Promise<string[]> {
 }
 
 /**
- * Undo a move: each item back in its old place among the rest, from the top down (which puts back
- * a move of several items too), and chosen again.
+ * Undo a move: every moved item first goes after the rest (which are then in their old order), then
+ * each back to its old place, from the top down, and chosen again. Put back one at a time from where
+ * they were dropped instead, an item still above its old place would push one already back down.
  */
 async function putBack(playlistId: string, places: readonly { id: string; at: number }[]): Promise<void> {
-  for (const { id, at } of [...places].sort((a, b) => a.at - b.at))
-    if (!settled(await api().moveItems(playlistId, [id], at))) break;
+  const ids = places.map((p) => p.id);
+  const ok = settled(await api().moveItems(playlistId, ids, POSITION_MAX));
+  if (ok)
+    for (const { id, at } of [...places].sort((a, b) => a.at - b.at))
+      if (!settled(await api().moveItems(playlistId, [id], at))) break;
   if (usePlaylists.getState().openId !== playlistId) await openPlaylist(playlistId);
   else await loadItems();
   usePlaylists.setState({ marked: places.map((p) => p.id), anchorId: places[0]?.id ?? null });

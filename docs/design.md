@@ -93,7 +93,7 @@ Use these; don't restyle native elements in a panel. Each is in the gallery.
 
 **What sits over what** (z-index): the splitter 10, notices and the recovery banner 30, dialogs and the slide editor 40, menus 50, tooltips 60.
 
-**Menus** show the focus ring on the choice that has the focus, give the focus back to what opened them when they close (unless a choice put it somewhere else, such as a name to type), and keep Esc to themselves: over a dialog or the slide editor, Esc closes only the menu (Session 25).
+**Menus** show the focus ring on the choice that has the focus, give the focus back to what opened them when they close (unless a choice put it somewhere else, such as a name to type), and keep Esc to themselves: over a dialog or the slide editor, Esc closes only the menu. While one is open, the keyboard is in it (the menu itself when nothing in it can be chosen), and its keys (the arrows, Home, End, Page Up and Down, Space and Enter) never reach the show: Space chooses, as Enter does (Session 25).
 
 ## 7. Every place has its states
 

@@ -131,12 +131,16 @@ body.web {
  * is at least 44 × 44 CSS pixels (docs/design.md), whatever its size class says. Outside any layer,
  * so it wins over Tailwind's sizes; min-height and min-width only ever make a control larger.
  */
-html:has(> body.web),
-html:has(> body.stage-display),
 body.web,
 body.stage-display {
   overscroll-behavior: none;
   touch-action: manipulation;
+}
+/* The page's own scroller too, where a pull at the top would reload: a rule of its own, so a
+   browser without :has() still keeps the one above. */
+html:has(> body.web),
+html:has(> body.stage-display) {
+  overscroll-behavior: none;
 }
 body.web
   :is(

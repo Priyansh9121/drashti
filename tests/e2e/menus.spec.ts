@@ -88,3 +88,33 @@ test('Esc in a menu over the slide editor closes only the menu', async () => {
   await expect(editor).toHaveCount(0);
   await app.close();
 });
+
+test('a menu with nothing to choose still holds the keyboard: the arrows never move the show', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  // No playlist open: a presentation's menu has only "Add to playlist (open a playlist first)", off.
+  const row = win.getByTestId('presentation-list').getByRole('button').first();
+  await row.click();
+  await expect(win.getByTestId('slide-grid')).toBeVisible();
+  await row.focus();
+  await win.keyboard.press('Shift+F10');
+  const menu = win.getByRole('menu');
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole('menuitem')).toBeDisabled();
+  // The menu itself has the keyboard (and a screen reader says where it is).
+  await expect(menu).toBeFocused();
+  // Arrows and Space in the menu: nothing goes up on the screens.
+  for (const key of ['ArrowDown', 'ArrowUp', 'Space']) await win.keyboard.press(key);
+  const live = () =>
+    win.evaluate(
+      async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.live.presentationId,
+    );
+  expect(await live()).toBeNull();
+  await win.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await expect(row).toBeFocused();
+  expect(await live()).toBeNull();
+  await app.close();
+});
