@@ -23,7 +23,7 @@ import { convert, connectConversions, jobFor, useConvert } from './convert-store
 import { leaveItem, loadMedia, selectPresentation, useLibrary, useMedia } from './library-store';
 import { showTexts } from '../shastra/shastra-store';
 import { openCalendar } from '../calendar/calendar-store';
-import { useLinks } from '../links/link-store';
+import { lastPart, useLinks } from '../links/link-store';
 
 /*
  * The migration report (PLAN.md 4.4): what came across, what did not, and a
@@ -360,8 +360,9 @@ export function ImportReportDialog({ platform }: { platform: string }) {
             </Button>
           }
         >
-          Downloaded from a link and saved in <strong>{savedIn}</strong>. Drashti copied them into its
-          library; the saved files stay where they are.
+          Downloaded from a link and saved in <strong>{lastPart(savedIn)}</strong>. Drashti copied them into
+          its library; the saved files stay where they are.
+          <Truncate text={savedIn} className="mt-0.5 text-xs text-muted" />
         </Notice>
       )}
       <p className="text-sm" data-testid="report-summary">
