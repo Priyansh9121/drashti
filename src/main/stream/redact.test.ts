@@ -17,4 +17,17 @@ describe('redacting FFmpeg’s words', () => {
     );
     expect(redact('rtmp://127.0.0.1:1935/live2')).toBe('rtmp://127.0.0.1:1935/live2');
   });
+
+  it('leaves a line already redacted as it is: the key shows hidden once, not "[stream key] key]"', () => {
+    // FFmpeg's connection lines are redacted, then redacted again on their way to the log.
+    const line = `[tls @ 0x2] Connection to rtmps://a.rtmps.youtube.com/live2/${KEY}`;
+    for (const keys of [[KEY], []]) {
+      const twice = redact(redact(line, keys), keys);
+      expect(twice).toBe(`[tls @ 0x2] Connection to rtmps://a.rtmps.youtube.com/live2/${HIDDEN_KEY}`);
+      expect(twice.split(HIDDEN_KEY)).toHaveLength(2);
+    }
+    expect(redact(`rtmp://127.0.0.1:1935/live2/${HIDDEN_KEY}: Broken pipe`)).toBe(
+      `rtmp://127.0.0.1:1935/live2/${HIDDEN_KEY}: Broken pipe`,
+    );
+  });
 });
