@@ -472,7 +472,8 @@ function ItemBody({ item, live }: { item: PlaylistItemInfo; live: boolean }) {
           <span
             data-label
             title={item.label}
-            className="min-w-0 flex-1 truncate text-2xs font-bold tracking-wider text-muted uppercase"
+            // A name the operator typed, perhaps in Gujarati or Hindi: as typed, never capitals or spaced letters.
+            className="min-w-0 flex-1 truncate text-xs font-bold text-muted"
           >
             {item.label}
           </span>

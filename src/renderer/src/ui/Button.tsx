@@ -15,9 +15,10 @@ export type ButtonSize = 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
 
 const variants: Record<ButtonVariant, string> = {
   primary: 'bg-accent-strong text-white border-accent-strong hover:brightness-110',
-  secondary: 'bg-panel-2 text-fg border-field/60 hover:bg-panel-3 hover:border-field',
+  // Its edge is the solid field colour: at least 3:1 wherever a control sits (Session 25; 2.13:1 at 60%).
+  secondary: 'bg-panel-2 text-fg border-field hover:bg-panel-3 hover:border-muted',
   ghost: 'bg-transparent text-muted border-transparent hover:bg-panel-2 hover:text-fg',
-  danger: 'bg-transparent text-danger border-danger/50 hover:bg-danger-bg hover:border-danger',
+  danger: 'bg-transparent text-danger border-danger/70 hover:bg-danger-bg hover:border-danger',
   // On the screens now, or "on" (black-out): the live colour, always with words saying so.
   live: 'bg-live text-white border-live hover:brightness-110',
   warning: 'bg-warning-bg text-warning-fg border-warning/60 hover:border-warning',

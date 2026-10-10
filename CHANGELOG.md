@@ -25,6 +25,12 @@ Show controls
 - Simple Mode now says Black-out, as Pro Mode and the phones do, and all three show it with the same picture, a filled screen. On a phone, Clear all now shows the eraser, as in Pro Mode.
 - A screen reader hears whether Black-out and Logo are on once, not twice.
 
+Menus, buttons and names
+
+- In a menu, the choice the keyboard is on now shows the focus ring. Closing a menu puts the keyboard back where it was, and Esc in a menu closes only the menu, even in the slide editor.
+- The edges of secondary and danger buttons are stronger, so every button's edge can be seen on every panel.
+- Playlist headers and library names are shown as they were typed, no longer in spaced capitals, which broke Hindi and Gujarati letters.
+
 ## 1.0.0-alpha.1 (10 Oct 2026)
 
 Fixes for streaming from a Mac, for quitting while on air, and for screens that go blank or stop. Update after a sabha, never on the day of one.
