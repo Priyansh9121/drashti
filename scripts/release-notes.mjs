@@ -2,7 +2,9 @@
 // This version's notes, for the Release workflow: the section of CHANGELOG.md headed "## <version>"
 // (a date in brackets may follow), up to the next heading. They go into drashti-update.json, which
 // Help > Check for Updates… shows, and are the GitHub release's text. A version with no section, an
-// empty one, or one longer than Drashti's update check reads stops the release with a plain message.
+// empty one, one longer than Drashti's update check reads, or one that is not the newest version in
+// CHANGELOG.md stops the release with a plain message. Changes not released yet wait above it, under
+// "## Unreleased".
 //
 //   node scripts/release-notes.mjs [--out <file>]    the section for package.json's version
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
@@ -15,6 +17,15 @@ import { fileURLToPath } from 'node:url';
 export const NOTES_MAX = 4000;
 
 const HEADING = /^## +(\S+)(?: +\(.*\))? *$/u;
+
+/** The newest version in `changelog`: its first heading that names one ("## Unreleased" does not). */
+export function newestVersion(changelog) {
+  for (const line of changelog.split(/\r?\n/u)) {
+    const version = HEADING.exec(line)?.[1];
+    if (version && /^\d/u.test(version)) return version;
+  }
+  return null;
+}
 
 /** The section of `changelog` for `version`, without its heading. */
 export function releaseNotes(changelog, version) {
@@ -53,7 +64,13 @@ if (ranDirectly()) {
     if (!existsSync('CHANGELOG.md'))
       throw new Error('There is no CHANGELOG.md here: run this from the app’s folder.');
     const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
-    const notes = releaseNotes(readFileSync('CHANGELOG.md', 'utf8'), version);
+    const changelog = readFileSync('CHANGELOG.md', 'utf8');
+    const notes = releaseNotes(changelog, version);
+    const newest = newestVersion(changelog);
+    if (newest !== version)
+      throw new Error(
+        `CHANGELOG.md’s newest version is ${String(newest)}, but package.json says ${version}. Release the newest: set package.json’s version to ${String(newest)}, or move ${version}’s section to the top (only "## Unreleased" may sit above it).`,
+      );
     if (out) writeFileSync(out, `${notes}\n`);
     console.log(`Drashti ${version}'s notes (${String(notes.length)} characters):\n\n${notes}`);
   } catch (error) {
