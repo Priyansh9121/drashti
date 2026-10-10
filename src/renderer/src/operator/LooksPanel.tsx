@@ -40,7 +40,7 @@ export function LooksPanel() {
                 if (!live) void dispatch({ type: 'setLook', lookId: look.id });
               }}
               className={cx(
-                'inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors',
+                'inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-lg border px-3 text-sm font-medium',
                 live
                   ? 'border-live bg-live text-white'
                   : 'border-line-strong bg-panel-2 text-fg hover:bg-panel-3',

@@ -143,10 +143,12 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
   const playing = (await state(win)).layers.background;
   expect(playing).toMatchObject({ kind: 'media', mediaId: show.videoMediaId });
 
-  // Black out (the clicker's "." key) and back: exactly what was there, the stage carrying on.
+  // Black-out (the clicker's "." key) and back: exactly what was there, the stage carrying on. One
+  // spelling in every mode, and its state in words, said once (Session 25).
   await win.keyboard.press('.');
   await expect(audience.getByTestId('blackout')).toBeVisible();
-  await expect(win.getByTestId('simple-blackout')).toHaveAttribute('aria-pressed', 'true');
+  await expect(win.getByTestId('simple-blackout')).toHaveAccessibleName('Black-out is on');
+  await expect(win.getByTestId('simple-blackout')).not.toHaveAttribute('aria-pressed');
   await expect(stage.getByTestId('stage-view')).toContainText('AUDIENCE SCREENS BLACK');
   await win.keyboard.press('b');
   await expect(audience.getByTestId('blackout')).toHaveCount(0);

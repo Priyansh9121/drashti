@@ -41,11 +41,16 @@ const squareSizes: Record<ButtonSize, string> = {
 };
 
 const base =
-  'inline-flex shrink-0 select-none items-center justify-center border font-medium whitespace-nowrap transition-[background-color,border-color,color,filter] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100';
+  'inline-flex shrink-0 select-none items-center justify-center border font-medium whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100';
+/**
+ * A short colour change on hover and focus. Never on a show control (Session 25): Black-out, Logo,
+ * the clears, Next and Back change in the same frame as the screens, so `instant` leaves it out.
+ */
+const fade = 'transition-[background-color,border-color,color,filter]';
 
 /** The class names of a button, for the odd element that must look like one. */
 export function buttonClass(variant: ButtonVariant = 'secondary', size: ButtonSize = 'md'): string {
-  return cx(base, variants[variant], sizes[size]);
+  return cx(base, fade, variants[variant], sizes[size]);
 }
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -57,6 +62,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   iconEnd?: Icon;
   /** The keyboard shortcut, shown as a key hint after the words. */
   kbd?: string;
+  /** A show control: its state (on, lit) changes at once, with no colour fade. */
+  instant?: boolean;
   ref?: Ref<HTMLButtonElement>;
   children?: ReactNode;
 }
@@ -67,6 +74,7 @@ export function Button({
   icon: IconBefore,
   iconEnd: IconAfter,
   kbd,
+  instant = false,
   className,
   children,
   type = 'button',
@@ -74,7 +82,11 @@ export function Button({
 }: ButtonProps) {
   const iconPx = iconSizes[size];
   return (
-    <button type={type} className={cx(base, variants[variant], sizes[size], className)} {...props}>
+    <button
+      type={type}
+      className={cx(base, !instant && fade, variants[variant], sizes[size], className)}
+      {...props}
+    >
       {IconBefore && <IconBefore size={iconPx} aria-hidden="true" className="shrink-0" />}
       {children}
       {IconAfter && <IconAfter size={iconPx} aria-hidden="true" className="shrink-0" />}
@@ -113,7 +125,7 @@ export function IconButton({
       <button
         type={type}
         aria-label={label}
-        className={cx(base, variants[variant], squareSizes[size], 'px-0', className)}
+        className={cx(base, fade, variants[variant], squareSizes[size], 'px-0', className)}
         {...props}
       >
         <IconShape size={iconSizes[size]} aria-hidden="true" />

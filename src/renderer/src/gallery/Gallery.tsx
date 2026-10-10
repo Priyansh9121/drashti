@@ -7,7 +7,7 @@ import { ConfirmDialog, Dialog } from '../ui/Dialog';
 import { KeepChangesDialog, savesLive } from '../ui/KeepChanges';
 import { ColorInput, Field, NumberInput, Select, Slider, Textarea, TextInput } from '../ui/Field';
 import {
-  Ban,
+  BlackOut,
   Eraser,
   FolderPlus,
   Image,
@@ -115,7 +115,8 @@ function ButtonsSection() {
         </Button>
         <Button
           variant={blackout ? 'live' : 'secondary'}
-          aria-pressed={blackout}
+          instant
+          icon={BlackOut}
           kbd="B"
           onClick={() => setBlackout(!blackout)}
         >
@@ -137,8 +138,8 @@ function ButtonsSection() {
         <Button size="xxl" variant="primary" iconEnd={SkipForward}>
           Next
         </Button>
-        <Button size="xl" variant="secondary" icon={Ban}>
-          Black out
+        <Button size="xl" variant="secondary" instant icon={BlackOut}>
+          Black-out
         </Button>
         <Button size="xl" variant="live" icon={Stamp}>
           Logo is on

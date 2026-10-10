@@ -2,7 +2,7 @@
 
 These are the rules for Drashti's operator UI. Later sessions follow them, and change this file when a rule changes. The tokens are in `src/renderer/src/styles/app.css`, the shared components in `src/renderer/src/ui/`, and the **component gallery** shows each one in every state: **Diagnostics > Component Gallery** (start Drashti with `DRASHTI_DIAGNOSTICS=1`), or `/gallery.html` under `pnpm dev`. Any new shared component goes into the gallery too. `tests/e2e/design.spec.ts` runs the accessibility checks on the gallery.
 
-Write our own code. The design skills in the workspace (`ui-ux-pro-max-skill/`, `bencium-*`, `skills/`) are for ideas only; nothing is copied into `app/` from them, from 21st.dev or from anywhere else.
+Write our own code. Design ideas may come from outside the workspace (Priyansh's All Skills collection, read as data), but nothing is copied into `app/` from there, from 21st.dev or from anywhere else. Brand matters (colours, the mark, the voice) are decided in the skills review's identity work and Session 26.
 
 ## 1. What the UI is for
 
@@ -43,9 +43,11 @@ Anything on the screens now uses the `live` colour **and** says so in words: the
 - a live slide thumbnail has a `live` border **and** a LIVE label in its caption;
 - a live row in a list (presentation, playlist item) has a `LiveBadge`;
 - a layer clear is lit when its layer has something up: `live` edge and a dot, and the words "On screen" read out (`aria-label`);
-- a button that is "on" (black-out, a prop shown) uses the `live` variant **and** changes its words ("Black-out is on", "Hide").
+- a button that is "on" (black-out, a prop shown) uses the `live` variant **and** changes its words ("Black-out is on", "Hide"). It says its state once: words that change, with no `aria-pressed` besides; or, where the words cannot change (the remote's half-width buttons), fixed words with `aria-pressed` and the state in words beside it (the preview's badge).
 
 Nothing else uses `live`: errors use `danger` and warnings `warning`.
+
+**Show controls change at once** (Session 25). Next, Back, Black-out, Logo, Clear all, Put it back, the layer clears, the Looks and masks buttons, the live thumbnail's border and caption, and Simple Mode's playlist rows take their new state in the same frame as the screens: no colour fade (`Button`'s `instant`), and the live slide is scrolled into view at once, never smoothly. Hover and focus on other controls may keep their short colour change. One name, **Black-out**, with its hyphen everywhere (a unit test checks), and one glyph, a filled screen (`BlackOut` in `ui/icons.ts`), in Pro Mode, Simple Mode and on the phones; Clear all is the eraser everywhere.
 
 ## 4. Type
 
@@ -87,7 +89,9 @@ Use these; don't restyle native elements in a panel. Each is in the gallery.
 | `Progress`                                                                        | A long task's progress.                                                                                                                                                                                                                         |
 | `Splitter`                                                                        | The handle between panels: drag it, or use the arrow keys (Shift for bigger steps), Home and End, and Enter for the default.                                                                                                                    |
 
-**Icons** are Lucide (ISC, `LICENSES/icons/`). Import them only from `ui/icons.ts`, and add a new one there. Use 14 px in small controls, 16 px by default, and larger in Simple Mode. An icon is decoration (`aria-hidden`) unless it is the whole button, and then the button has a label.
+**Icons** are Lucide (ISC, `LICENSES/icons/`). Import them only from `ui/icons.ts`, and add a new one there (`BlackOut` is Lucide's rectangle, filled).
+
+**What sits over what** (z-index): the splitter 10, notices and the recovery banner 30, dialogs and the slide editor 40, menus 50, tooltips 60. Use 14 px in small controls, 16 px by default, and larger in Simple Mode. An icon is decoration (`aria-hidden`) unless it is the whole button, and then the button has a label.
 
 ## 7. Every place has its states
 
@@ -128,9 +132,9 @@ The columns are resized with `Splitter`s and the sizes are remembered on the com
 
 Simple Mode (`src/renderer/src/simple/`) is for a volunteer who has never used Drashti:
 
-- **One screen, nothing to find.** The playlist sits on the left with its headers. In the middle are what's live and what's next. The big buttons run along the bottom: Back, Next (the biggest, `primary`), Black out, Logo, and Clear all. After Clear all, that button turns into **Put it back** (`warning`).
+- **One screen, nothing to find.** The playlist sits on the left with its headers. In the middle are what's live and what's next. The big buttons run along the bottom: Back, Next (the biggest, `primary`), Black-out, Logo, and Clear all. After Clear all, that button turns into **Put it back** (`warning`).
 - **Big targets.** The buttons are `xl` and `xxl` (64 and 96 px high), playlist rows are at least 56 px, and text is at least 16 px except the key hints.
-- **States in words.** Black out and Logo use the `live` variant when on, and their words change ("Black out is on", "Logo is on"). The live playlist row has a LiveBadge.
+- **States in words.** Black-out and Logo use the `live` variant when on, and their words change ("Black-out is on", "Logo is on"), read out once (no `aria-pressed` besides). The live playlist row has a LiveBadge.
 - **Nothing that changes anything.** No editing, removing, importing, themes, screens, sound or backups. Don't add a control here that changes the library or the setup. The main process refuses those requests in Simple Mode anyway (`src/main/simple-mode.ts`).
 - **Undo comes first.** Back undoes the last Next exactly, and Put it back undoes Clear all. Every new action in Simple Mode needs a way to undo it, in one press.
 - **The way out is small, at the top, and asks first** (Session 20). **Switch to Pro Mode…** (`secondary`, `md`) sits at the right end of the header, far from the big buttons, and opens the same question as View > Switch to Pro Mode…: the word **pro**, or a PIN with roles on, so nobody leaves by accident. Windows hides the menu bar, so Simple Mode shows its own way out. Don't make it bigger or move it near the big buttons.

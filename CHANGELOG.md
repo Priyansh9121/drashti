@@ -19,6 +19,12 @@ Typed changes
 - The question is the same everywhere: Keep editing (what Enter and Esc do), Save changes, or Throw them away. It says how much would be lost.
 - When the presentation being changed is on the screens, the question says so: saving then changes the screens at once.
 
+Show controls
+
+- Next, Back, Black-out, Logo, Clear all, Put it back and the clears now change in the same moment as the screens, with no fade. The live slide's border, and the scroll to bring it into view, are instant too.
+- Simple Mode now says Black-out, as Pro Mode and the phones do, and all three show it with the same picture, a filled screen. On a phone, Clear all now shows the eraser, as in Pro Mode.
+- A screen reader hears whether Black-out and Logo are on once, not twice.
+
 ## 1.0.0-alpha.1 (10 Oct 2026)
 
 Fixes for streaming from a Mac, for quitting while on air, and for screens that go blank or stop. Update after a sabha, never on the day of one.

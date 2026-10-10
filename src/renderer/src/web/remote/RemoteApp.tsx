@@ -19,13 +19,12 @@ import { Badge, LiveBadge } from '../../ui/Badge';
 import { Button } from '../../ui/Button';
 import { cx } from '../../ui/cx';
 import {
-  Ban,
+  BlackOut,
   BookOpen,
   ChevronLeft,
   ChevronRight,
   Eraser,
   FileText,
-  Layers,
   ListMusic,
   Pause,
   Play,
@@ -231,6 +230,7 @@ function QuickActions({ state }: { state: EngineState | null }) {
       <Button
         size="lg"
         className="min-h-12"
+        instant
         icon={Eraser}
         disabled={!state?.layers.slide}
         onClick={() => void tap(post('/api/v1/clear/slide'))}
@@ -240,7 +240,8 @@ function QuickActions({ state }: { state: EngineState | null }) {
       <Button
         size="lg"
         className="min-h-12"
-        icon={Layers}
+        instant
+        icon={Eraser}
         onClick={() => void tap(post('/api/v1/clear/all'))}
       >
         Clear all
@@ -248,8 +249,10 @@ function QuickActions({ state }: { state: EngineState | null }) {
       <Button
         size="lg"
         className="min-h-12"
-        icon={Ban}
+        instant
+        icon={BlackOut}
         variant={blackout ? 'live' : 'secondary'}
+        // Its name stays "Black-out" and aria-pressed says whether it is on (the preview's badge says it in words).
         aria-pressed={blackout}
         onClick={() => void tap(post('/api/v1/blackout', { on: !blackout }))}
       >
@@ -258,6 +261,7 @@ function QuickActions({ state }: { state: EngineState | null }) {
       <Button
         size="lg"
         className="min-h-12"
+        instant
         icon={Stamp}
         variant={logoOn ? 'live' : 'secondary'}
         aria-pressed={logoOn}
@@ -269,6 +273,7 @@ function QuickActions({ state }: { state: EngineState | null }) {
       <Button
         size="lg"
         className="min-h-12"
+        instant
         icon={RotateCcw}
         variant={state?.canPutBack ? 'warning' : 'secondary'}
         disabled={!state?.canPutBack}
@@ -1095,6 +1100,7 @@ function BackNext({ wide }: { wide: boolean }) {
       <div className="grid grid-cols-2 gap-3">
         <Button
           size="xl"
+          instant
           icon={ChevronLeft}
           onClick={() => void tap(post('/api/v1/trigger/back'))}
           data-testid="remote-back"
@@ -1104,6 +1110,7 @@ function BackNext({ wide }: { wide: boolean }) {
         <Button
           size="xl"
           variant="primary"
+          instant
           iconEnd={ChevronRight}
           onClick={() => void next()}
           data-testid="remote-next-button"
