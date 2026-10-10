@@ -31,6 +31,13 @@ Menus, buttons and names
 - The edges of secondary and danger buttons are stronger, so every button's edge can be seen on every panel.
 - Playlist headers and library names are shown as they were typed, no longer in spaced capitals, which broke Hindi and Gujarati letters.
 
+Phones and tablets
+
+- On the remote, the announcements page and the stage display, two quick taps never zoom the page, and pulling down at the top never reloads it.
+- Every button and field on a phone's page is now at least 44 pixels each way, including Show notes, the music and marker buttons, and Dismiss.
+- The remote's words are larger, 16 pixels or more, apart from the tab bar's labels and the small LIVE-style badges.
+- In the operator window, a notice's Dismiss is a larger target.
+
 ## 1.0.0-alpha.1 (10 Oct 2026)
 
 Fixes for streaming from a Mac, for quitting while on air, and for screens that go blank or stop. Update after a sabha, never on the day of one.

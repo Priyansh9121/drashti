@@ -125,6 +125,34 @@ body.web {
   -webkit-text-size-adjust: 100%;
 }
 
+/*
+ * Touched, not clicked (Session 25): on the phones' and tablets' pages (the stage display too) two
+ * quick taps on Next never zoom the page, and a pull at the top never reloads it; and every control
+ * is at least 44 × 44 CSS pixels (docs/design.md), whatever its size class says. Outside any layer,
+ * so it wins over Tailwind's sizes; min-height and min-width only ever make a control larger.
+ */
+html:has(> body.web),
+html:has(> body.stage-display),
+body.web,
+body.stage-display {
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+body.web
+  :is(
+    button,
+    a[href],
+    select,
+    textarea,
+    input:not([type='checkbox'], [type='radio'], [type='hidden']),
+    [role='button'],
+    [role='tab']
+  ) {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+  touch-action: manipulation;
+}
+
 /* Printing the announcements poster: only the poster, large, black on white. */
 @media print {
   body * {

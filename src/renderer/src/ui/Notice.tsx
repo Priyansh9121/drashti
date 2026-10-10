@@ -67,7 +67,8 @@ export function Notice({
           type="button"
           aria-label="Dismiss"
           onClick={onDismiss}
-          className="-mt-0.5 -mr-1 shrink-0 rounded-sm p-0.5 opacity-80 hover:opacity-100"
+          // 24 × 24 at least (WCAG 2.5.8); on the phones' pages 44 (app.css).
+          className="-mt-1 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm hover:bg-black/20"
         >
           <X size={14} aria-hidden="true" />
         </button>

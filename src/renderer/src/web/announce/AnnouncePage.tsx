@@ -257,7 +257,7 @@ export function AnnouncePage() {
             aria-describedby="announce-count"
             className="w-full rounded-lg border border-field bg-panel-2 p-3 text-lg text-fg placeholder:text-faint"
           />
-          <span id="announce-count" className="block text-right text-sm text-muted">
+          <span id="announce-count" className="block text-right text-base text-muted">
             {text.length} of {ANNOUNCEMENT_TEXT_MAX}
           </span>
         </label>
@@ -310,7 +310,7 @@ export function AnnouncePage() {
       </form>
       {sent.length > 0 && (
         <section className="space-y-2" aria-labelledby="sent-title">
-          <h2 id="sent-title" className="text-sm font-bold tracking-wider text-muted uppercase">
+          <h2 id="sent-title" className="text-base font-bold tracking-wider text-muted uppercase">
             What you sent
           </h2>
           <ul className="space-y-2">
