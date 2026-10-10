@@ -256,7 +256,7 @@ export function NoticeArea() {
           onClick={() => {
             useNotice.setState({ text: null });
           }}
-          className="-mr-1 shrink-0 rounded-sm p-0.5"
+          className="-my-0.5 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm hover:bg-panel-2"
         >
           <X size={14} aria-hidden="true" />
         </button>

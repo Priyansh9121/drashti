@@ -118,7 +118,7 @@ function LivePicture({ state }: { state: EngineState | null }) {
   return (
     <section className="space-y-2" aria-labelledby="live-title">
       <div className="flex items-center gap-2">
-        <h2 id="live-title" className="flex-1 text-sm font-bold tracking-wider text-muted uppercase">
+        <h2 id="live-title" className="flex-1 text-base font-bold tracking-wider text-muted uppercase">
           On the screens
         </h2>
         {state?.blackout ? (
@@ -149,7 +149,7 @@ function LivePicture({ state }: { state: EngineState | null }) {
 function NextLine({ state }: { state: EngineState | null }) {
   const next = state?.next ?? null;
   return (
-    <div className="flex items-center gap-3 text-sm" data-testid="remote-next">
+    <div className="flex items-center gap-3 text-base" data-testid="remote-next">
       <span className="shrink-0 font-bold tracking-wider text-muted uppercase">Next</span>
       {!next && <span className="text-muted">Nothing after this</span>}
       {next?.kind === 'media' && <span className="truncate text-fg">{next.label}</span>}
@@ -180,11 +180,11 @@ function Notes({ state }: { state: EngineState | null }) {
   return (
     <section className="space-y-2" aria-labelledby="notes-title" data-testid="remote-notes-section">
       <div className="flex items-center gap-2">
-        <h2 id="notes-title" className="flex-1 text-sm font-bold tracking-wider text-muted uppercase">
+        <h2 id="notes-title" className="flex-1 text-base font-bold tracking-wider text-muted uppercase">
           Notes
         </h2>
         <Button
-          size="sm"
+          size="lg"
           icon={FileText}
           aria-expanded={open}
           aria-controls="remote-notes"
@@ -343,7 +343,7 @@ function SlideThumb({
             </div>
           </PlacedInParent>
         </div>
-        <span className="flex items-center gap-1.5 px-2 py-1.5 text-sm">
+        <span className="flex items-center gap-1.5 px-2 py-1.5 text-base">
           <span
             aria-hidden="true"
             className="h-3 w-1.5 shrink-0 rounded-sm"
@@ -415,7 +415,7 @@ function Slides() {
         )}
       </div>
       {!isLiveItem && !item && (
-        <p className="text-sm text-muted" data-testid="remote-slides-hint">
+        <p className="text-base text-muted" data-testid="remote-slides-hint">
           Not on the screens. Tap a slide to put it up.
         </p>
       )}
@@ -457,7 +457,7 @@ function Playlist() {
   const live = useEngine((s) => s.state?.live.playlist ?? null);
   return (
     <section className="space-y-3" aria-labelledby="playlist-title">
-      <h2 id="playlist-title" className="text-sm font-bold tracking-wider text-muted uppercase">
+      <h2 id="playlist-title" className="text-base font-bold tracking-wider text-muted uppercase">
         Playlist
       </h2>
       {playlists && playlists.length > 0 ? (
@@ -481,7 +481,7 @@ function Playlist() {
         {(items ?? []).map((i) => {
           if (i.kind === 'header')
             return (
-              <li key={i.id} className="pt-2 text-sm font-bold text-muted">
+              <li key={i.id} className="pt-2 text-base font-bold text-muted">
                 {i.label}
               </li>
             );
@@ -556,7 +556,7 @@ function LibraryRow({
       >
         <span className="min-w-0 flex-1">
           <span className="block truncate text-base text-fg">{name}</span>
-          {detail && <span className="block truncate text-sm text-muted">{detail}</span>}
+          {detail && <span className="block truncate text-base text-muted">{detail}</span>}
         </span>
         {live && <LiveBadge />}
       </button>
@@ -597,7 +597,7 @@ function Library() {
   const searching = library.query !== '';
   return (
     <section className="space-y-3" aria-labelledby="library-title" data-testid="remote-library">
-      <h2 id="library-title" className="text-sm font-bold tracking-wider text-muted uppercase">
+      <h2 id="library-title" className="text-base font-bold tracking-wider text-muted uppercase">
         Library
       </h2>
       <input
@@ -638,7 +638,7 @@ function Library() {
               ))}
             </ul>
             {library.more && (
-              <p className="text-sm text-muted">
+              <p className="text-base text-muted">
                 More were found than are listed: add a word to narrow it down.
               </p>
             )}
@@ -702,7 +702,7 @@ function SidePanel() {
               data-testid={`remote-side-${t.id}`}
               onClick={() => useRemote.setState({ side: t.id })}
               className={cx(
-                'flex min-h-11 items-center justify-center gap-2 rounded-lg text-sm',
+                'flex min-h-11 items-center justify-center gap-2 rounded-lg text-base',
                 on ? 'bg-panel-3 text-fg' : 'text-muted',
               )}
             >
@@ -765,10 +765,10 @@ function MessageRow({ template, shown }: { template: MessageTemplate; shown: boo
         <span className="min-w-0 flex-1 truncate text-base text-fg">{template.name}</span>
         {shown && <Badge tone="live">On the screens</Badge>}
       </div>
-      <p className="text-sm text-muted">{template.template}</p>
+      <p className="text-base text-muted">{template.template}</p>
       {fields.map((name) => (
         <label key={name} className="block space-y-1">
-          <span className="block text-sm text-muted">{name}</span>
+          <span className="block text-base text-muted">{name}</span>
           <input
             value={values[name] ?? ''}
             onChange={(e) => setValues({ ...values, [name]: e.target.value })}
@@ -813,7 +813,7 @@ function Looks() {
   if (!looks || looks.length < 2) return null;
   return (
     <section className="space-y-2" aria-labelledby="looks-title">
-      <h2 id="looks-title" className="text-sm font-bold tracking-wider text-muted uppercase">
+      <h2 id="looks-title" className="text-base font-bold tracking-wider text-muted uppercase">
         Looks
       </h2>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" data-testid="remote-looks">
@@ -847,11 +847,11 @@ function Music() {
   const paused = music?.pausedAtMs !== undefined;
   return (
     <section className="space-y-2" aria-labelledby="music-title" data-testid="remote-music">
-      <h2 id="music-title" className="text-sm font-bold tracking-wider text-muted uppercase">
+      <h2 id="music-title" className="text-base font-bold tracking-wider text-muted uppercase">
         Music
       </h2>
       {music && (
-        <p className="truncate text-sm" role="status">
+        <p className="truncate text-base" role="status">
           {paused ? 'Paused: ' : ''}
           {music.title} <span className="text-muted">({music.music?.name})</span>
         </p>
@@ -891,7 +891,7 @@ function Markers() {
     void tap(post(`/api/v1/markers/${encodeURIComponent(id)}/jump`, { layer }));
   return (
     <section className="space-y-2" aria-labelledby="markers-title" data-testid="remote-markers">
-      <h2 id="markers-title" className="text-sm font-bold tracking-wider text-muted uppercase">
+      <h2 id="markers-title" className="text-base font-bold tracking-wider text-muted uppercase">
         Jump to a marker
       </h2>
       <div className="flex flex-wrap gap-2">
@@ -916,7 +916,7 @@ function Macros() {
   if (!macros || macros.length === 0) return null;
   return (
     <section className="space-y-2" aria-labelledby="macros-title">
-      <h2 id="macros-title" className="text-sm font-bold tracking-wider text-muted uppercase">
+      <h2 id="macros-title" className="text-base font-bold tracking-wider text-muted uppercase">
         Macros
       </h2>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" data-testid="remote-macros">
@@ -949,7 +949,7 @@ function Shastra() {
   const example = texts[0] ? `${texts[0].abbreviation} 1` : 'SD 14';
   return (
     <section className="space-y-2" aria-labelledby="shastra-title">
-      <h2 id="shastra-title" className="text-sm font-bold tracking-wider text-muted uppercase">
+      <h2 id="shastra-title" className="text-base font-bold tracking-wider text-muted uppercase">
         Shastra
       </h2>
       <form
@@ -976,7 +976,7 @@ function Shastra() {
           Show
         </Button>
       </form>
-      <p className="text-sm text-muted">{texts.map((t) => `${t.abbreviation}: ${t.name}`).join(' · ')}</p>
+      <p className="text-base text-muted">{texts.map((t) => `${t.abbreviation}: ${t.name}`).join(' · ')}</p>
     </section>
   );
 }
@@ -993,7 +993,7 @@ function TimersAndMessages() {
       <Music />
       <Markers />
       <section className="space-y-2" aria-labelledby="timers-title">
-        <h2 id="timers-title" className="text-sm font-bold tracking-wider text-muted uppercase">
+        <h2 id="timers-title" className="text-base font-bold tracking-wider text-muted uppercase">
           Timers
         </h2>
         {timers.length === 0 ? (
@@ -1007,7 +1007,7 @@ function TimersAndMessages() {
         )}
       </section>
       <section className="space-y-2" aria-labelledby="messages-title">
-        <h2 id="messages-title" className="text-sm font-bold tracking-wider text-muted uppercase">
+        <h2 id="messages-title" className="text-base font-bold tracking-wider text-muted uppercase">
           Messages
         </h2>
         {!templates || templates.length === 0 ? (
@@ -1079,6 +1079,8 @@ function TabRow({ tabs, testId, label }: { tabs: typeof TABS; testId: string; la
             role="tab"
             aria-selected={on}
             data-testid={`${testId}-${t.id}`}
+            // A word under its icon in the tab bar: 12 px, the one place the phone's text is under 16 (design.md).
+            data-small-label
             onClick={() => useRemote.setState({ tab: t.id })}
             className={cx(
               'flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-lg text-xs',
@@ -1148,7 +1150,7 @@ function Layout() {
       <header className="flex shrink-0 items-center gap-3 border-b border-line bg-panel px-4 py-3">
         <div className="min-w-0 flex-1">
           <p className="text-base font-bold tracking-wide text-fg">Drashti remote</p>
-          <p className="truncate text-sm text-muted">{device?.name ?? current()?.name ?? ''}</p>
+          <p className="truncate text-base text-muted">{device?.name ?? current()?.name ?? ''}</p>
         </div>
         <ConnectionChip />
       </header>

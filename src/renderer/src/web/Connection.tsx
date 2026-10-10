@@ -34,7 +34,7 @@ export function ConnectionChip({ className }: { className?: string }) {
       data-state={state}
       title={reason ?? undefined}
       className={cx(
-        'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm whitespace-nowrap',
+        'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-base whitespace-nowrap',
         state === 'online'
           ? 'border-success/60 bg-success-bg text-success-fg'
           : state === 'connecting'

@@ -113,7 +113,7 @@ export function PairPage() {
           </Button>
         </form>
       )}
-      <p className="text-sm text-muted">
+      <p className="text-base text-muted">
         Ask the operator for a code: in Drashti, Phones, then Pair a device. A code works once, for two
         minutes. This phone must be on the same Wi-Fi as the computer running Drashti.
       </p>

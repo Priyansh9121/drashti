@@ -34,6 +34,7 @@ export function Badge({
   return (
     <span
       title={title}
+      data-badge
       className={cx(
         'inline-flex shrink-0 items-center gap-1 rounded-sm border px-1.5 text-2xs leading-4 font-bold tracking-wide whitespace-nowrap uppercase',
         tones[tone],
