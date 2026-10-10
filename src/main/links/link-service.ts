@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { rename, rm } from 'node:fs/promises';
 import { basename, join, relative, sep } from 'node:path';
 import { formatBytes } from '../../shared/format';
@@ -171,10 +171,26 @@ export class LinkService {
 
   /** Remove the part-file and work folders (what was saved under a real name stays). */
   private async clearTemps(): Promise<void> {
-    for (const path of this.temps) await rm(path, { recursive: true, force: true }).catch(() => undefined);
+    for (const path of [...this.temps, ...this.unpacking()])
+      await rm(path, { recursive: true, force: true }).catch(() => undefined);
     this.temps.clear();
     this.part = null;
     this.saveRecord();
+  }
+
+  /**
+   * Work folders in the folder being saved to: one made the moment before a stop or a quit is not in
+   * the record yet. Known by their name only, so nothing else is ever touched.
+   */
+  private unpacking(): string[] {
+    if (this.part === null && this.temps.size === 0) return [];
+    try {
+      return readdirSync(this.state.folder)
+        .filter((name) => name.startsWith('.drashti-unpacking-'))
+        .map((name) => join(this.state.folder, name));
+    } catch {
+      return [];
+    }
   }
 
   // ---- the download process ----------------------------------------------------
@@ -572,6 +588,7 @@ export class LinkService {
   /** Drashti is quitting: stop, and remove every part-file now. */
   close(): void {
     this.endWorker();
+    for (const path of this.unpacking()) this.temps.add(path);
     for (const path of this.temps) {
       try {
         rmSync(path, { recursive: true, force: true });
