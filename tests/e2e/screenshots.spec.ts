@@ -62,6 +62,22 @@ async function shot(page: Page, name: string, hide: Locator[] = [], whole = fals
   });
 }
 
+/** A picture of part of the page: the box around these parts (Session 25's close-ups for the guides). */
+async function part(page: Page, name: string, parts: Locator[]) {
+  mkdirSync(folder, { recursive: true });
+  await page.waitForTimeout(700);
+  const boxes = (await Promise.all(parts.map((p) => p.boundingBox()))).filter((b) => b !== null);
+  const x = Math.min(...boxes.map((b) => b.x));
+  const y = Math.min(...boxes.map((b) => b.y));
+  const clip = {
+    x,
+    y,
+    width: Math.max(...boxes.map((b) => b.x + b.width)) - x,
+    height: Math.max(...boxes.map((b) => b.y + b.height)) - y,
+  };
+  await page.screenshot({ path: join(folder, `${name}.png`), scale: 'css', clip });
+}
+
 /** The placeholder sabha running: the kirtan's verse live, a message on the screens and a timer going. */
 async function running(win: Page) {
   const show = await setUpPlaceholderShow(win);
@@ -101,7 +117,14 @@ test('the operator window and its panels', async () => {
   await win.getByRole('button', { name: 'Edit words' }).click();
   await expect(win.getByTestId('words-text')).not.toHaveValue('Loading…');
   await shot(win, 'edit-words');
-  await win.getByTestId('words-editor').getByRole('button', { name: 'Cancel' }).click();
+  // Closing with the words changed asks first; the kirtan is on the screens, and the question says
+  // saving changes them at once (Session 25).
+  const words = win.getByTestId('words-text');
+  await words.fill(`${await words.inputValue()}\nPlaceholder line added`);
+  await win.keyboard.press('Escape');
+  await expect(win.getByTestId('keep-changes')).toBeVisible();
+  await shot(win, 'keep-changes');
+  await win.getByTestId('keep-changes').getByRole('button', { name: 'Throw them away' }).click();
 
   await win.getByRole('button', { name: 'Themes', exact: true }).click();
   await expect(win.getByTestId('theme-editor')).toBeVisible();
@@ -112,6 +135,30 @@ test('the operator window and its panels', async () => {
   await expect(win.getByTestId('sound-output')).toBeVisible();
   await shot(win, 'screens');
   await win.getByRole('button', { name: 'Close screens' }).click();
+
+  // The keys sheet (Help > Keyboard Shortcuts…, or ?; Session 25).
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await chooseMenuItem(app, 'keyboard-shortcuts');
+  await expect(win.getByTestId('keys-sheet')).toBeVisible();
+  await shot(win, 'keys-sheet');
+  await win.keyboard.press('Escape');
+
+  // What is this? on the Looks panel: its words under the heading, in the live column.
+  await toTop();
+  await win.getByTestId('what-is-this-looks').click();
+  await expect(win.getByTestId('what-is-this')).toBeVisible();
+  await part(win, 'what-is-this', [win.getByRole('complementary', { name: 'Live' })]);
+  await win.getByRole('button', { name: 'Got it' }).click();
+
+  // The playlist without dragging: the chosen item's Up and Down, and Add to playlist on the
+  // library's chosen row.
+  await win.getByTestId('presentation-list').getByRole('button').first().click();
+  await win.getByTestId('playlist-item').filter({ hasText: KIRTAN }).click();
+  await expect(win.getByTestId('playlist-item-moves')).toBeVisible();
+  await win.getByTestId('presentation-list').getByRole('button').first().click();
+  await expect(win.getByTestId('add-to-playlist')).toBeVisible();
+  await expect(win.getByTestId('playlist-item-moves')).toBeVisible();
+  await part(win, 'playlist-up-down', [win.getByTestId('playlists'), win.getByTestId('library-drop')]);
   await app.close();
 });
 
