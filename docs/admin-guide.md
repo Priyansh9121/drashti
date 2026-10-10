@@ -272,3 +272,34 @@ Session 15 measured Drashti's heaviest cases on CI's computers, which have no re
 The performance check (section 12) on each mandir computer says whether that computer keeps up, and its **video cases** say whether it shows a video background smoothly (`docs/parallel-run.md`, section 11; the setup-day checklist, section 8).
 
 **Ahead of other programs (Windows).** On Windows, Drashti runs ahead of other programs (above normal priority), so the screens' video never keeps a slide change waiting. Session 15's tests seemed to show a price on a PC with no graphics chip when a new video dissolves in every few seconds, but they compared it with below normal, where CI's computer starts programs. Session 17 compared it with normal, where the mandir PC starts Drashti (two cores, no graphics chip, three runs each way): ahead of other programs, Drashti never stopped answering for more than about 30 ms with dissolves (at normal, up to 105 to 186 ms), kept a few more of the video's frames and finished the import sooner; at normal, 9 in 10 slide changes were a little quicker (20 to 29 ms against 34 to 50 ms). With three screens and the music the two were alike, and with the stream encoded on the processor as well both were overloaded (the stream held only 3 to 12 frames a second): the PC that streams needs a graphics encoder either way. Run the video cases on the PC both ways (the checklist says how) and decide: to set it back to normal on that computer, untick **File**, **Run Ahead of Other Programs** (press **Alt** for the menu; admin only; a node has it in its own **File** menu). It changes at once and stays for every start after, on that computer only (restoring a library elsewhere does not bring it). Tick it again to go back. The log says which it runs at (`Main process priority …`).
+
+---
+
+## 14. Import from a Link
+
+**File**, **Import from a Link…** (or, in the library, **Import…**, then **From a link…**) saves what a link holds in a folder you choose, then imports it through the normal import, with its report. Nothing goes straight into Drashti: the files stay in that folder, where Drashti never moves or deletes them, and the import copies them into the library as every import does. It is an admin's, in Pro Mode; Simple Mode never shows it.
+
+1. **Which kind of link.** **Dropbox**: a shared link to a file or a folder. **YouTube** is shown, but cannot be chosen in this version (see below).
+2. **Paste the link.** In Dropbox, use **Share**, then **Copy link**. Drashti takes only `https` links to Dropbox's own addresses, and says plainly when a link is not one.
+3. **What it holds** shows next: a file's name and size, or a folder's name (Dropbox sends a folder as one zip, which Drashti unpacks).
+4. **Save in.** The first time, a folder called **Drashti downloads** in **Movies** (Mac) or **Videos** (Windows). **Choose…** picks another; Drashti remembers it.
+5. **Download.**
+
+![Import from a Link](screenshots/import-link-dropbox.png)
+
+What it does with them:
+
+- **Only PowerPoint files (`.pptx`) and MP4 videos are imported.** Everything else is saved too, and listed under **Not taken** with the reason.
+- **Videos at 1080p at most.** A video above 1080p goes into the library as a **1080p copy**, made by Drashti's own conversion; the original stays in the folder as it came. One that cannot be made 1080p is listed under Not taken.
+- **PowerPoint files** become slides of pictures, as a `.pptx` dropped on the library does: PowerPoint or Keynote on that computer saves it as PDF first. With neither, the report says so, and how to save it as PDF by hand.
+- **On air or recording, a download waits**, asking nothing of Dropbox, and carries on afterwards by itself. **Closing the window never stops it**: the status bar shows how it goes, and a press on that opens the window again. **Stop** stops it and keeps nothing.
+- **Drashti keeps 2 GB free** on the disk it saves to: a download that would leave less does not start, and one going stops.
+- **A folder's zip is unpacked only if all of it is safe**: if any file in it would land outside its folder, or it holds a link to elsewhere on the computer, nothing in it is unpacked. At most 10,000 files, as Dropbox itself allows. Nothing unpacked is ever run.
+- **The import report says where the files were saved**, with **Show in Finder** (**Show in Explorer** on Windows).
+- **The log** keeps only the kind of link, the sizes and how it went: never the link, a title or a file name.
+
+![The report of a link's files](screenshots/import-link-report.png)
+
+**What may be downloaded.** Only the mandir's own videos and files, or those whose owner allows the mandir to use them. Ask before using anyone else's. For YouTube, YouTube's own terms say the rest (youtube.com/t/terms): they forbid downloading, except as YouTube allows or with written permission from YouTube and the rights holders.
+
+**YouTube.** Not in this version: downloading from YouTube now means running YouTube's own code on the mandir's computer, and that waits for a decision. For the mandir's own channel, whoever owns it can download its uploads in **YouTube Studio** (studio.youtube.com): **Content**, choose the video, its **Menu** (three dots), **Download**. YouTube's help says this gives an MP4 at 720p or 360p, depending on the video, at most five times a day for each video (support.google.com/youtube/answer/56100, read 11 Oct 2026). Then import that file as any other: drag it onto the library.

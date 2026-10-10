@@ -2,7 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
@@ -24,6 +24,8 @@ import { launchMain, launchNode, nodeCode, nodeView, pairNode, typePairing } fro
 import { releaseServer } from './release-server';
 import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
 import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
+import { makeZip } from '../../src/main/import/testing/zip-writer';
+import { dropboxStandIn, folderLink } from './dropbox-stand-in';
 
 /*
  * The screenshots in docs/screenshots/, with placeholder content only. Taken
@@ -1412,4 +1414,105 @@ test('PDF and PowerPoint as pictures: the import report and the slides (Session 
   await shot(win, 'pictures-slides');
   await shot(output, 'output-pictures-page');
   await app.close();
+});
+
+test('Import from a Link: each state of the dialog, the status bar and the report (Session 25b)', async () => {
+  test.setTimeout(300_000);
+  const ffmpeg = testFfmpeg();
+  test.skip(!ffmpeg, 'FFmpeg is not fetched here');
+  const work = mkdtempSync(join(tmpdir(), 'drashti-shots-link-'));
+  const video = join(work, 'big.mp4');
+  const made = spawnSync(ffmpeg ?? '', [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-f',
+    'lavfi',
+    '-i',
+    'testsrc2=s=3840x2160:r=25',
+    '-t',
+    '1',
+    '-c:v',
+    'libx264',
+    '-preset',
+    'ultrafast',
+    '-pix_fmt',
+    'yuv420p',
+    video,
+  ]);
+  expect(made.status, made.stderr.toString()).toBe(0);
+  const zip = makeZip([
+    {
+      name: 'Placeholder deck.pptx',
+      data: makeTestPptx([{ color: '1E3A8A', text: 'Placeholder slide', notes: 'Placeholder note' }]),
+    },
+    { name: 'Videos/Placeholder 2160p.mp4', data: readFileSync(video) },
+    { name: 'Read me.txt', data: 'placeholder words' },
+  ]);
+  const standIn = await dropboxStandIn(
+    {},
+    { shotAAAAAAAAAAA: { name: 'Placeholder sabha folder.zip', body: zip, type: 'application/zip' } },
+  );
+  try {
+    const chosen = join(work, 'Sabha downloads');
+    const { app } = await launchApp({
+      DRASHTI_TEST_LINK_ORIGIN: standIn.origin,
+      DRASHTI_TEST_DOWNLOADS_DIR: join(work, 'Videos'),
+      DRASHTI_TEST_ON_AIR_HOOK: '1',
+      DRASHTI_TEST_NO_CONVERTER: '1',
+    });
+    const win = await operatorPage(app);
+    await win.setViewportSize({ width: 1280, height: 720 });
+    await operatorReady(win);
+    await app.evaluate(({ dialog, shell }, folder) => {
+      dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
+      shell.showItemInFolder = () => undefined;
+    }, chosen);
+    await chooseMenuItem(app, 'import-from-link');
+    const dialog = win.getByTestId('link-dialog');
+    await expect(dialog).toBeVisible();
+    await shot(win, 'import-link-kind');
+    await win.getByTestId('link-kind-dropbox').click();
+    await win.getByTestId('link-text').fill('https://example.net/placeholder/clip.mp4');
+    await expect(dialog).toContainText('not a Dropbox link');
+    await shot(win, 'import-link-refused');
+    await win.getByTestId('link-text').fill(folderLink('shotAAAAAAAAAAA'));
+    await expect(win.getByTestId('link-name')).toHaveText('Placeholder sabha folder');
+    await win.getByTestId('link-choose-folder').click();
+    await expect(win.getByTestId('link-folder')).toHaveText(chosen);
+    await shot(win, 'import-link-dropbox');
+    // On air: it waits, and the status bar shows it.
+    await app.evaluate(() => {
+      (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(true);
+    });
+    await win.getByTestId('link-download').click();
+    await expect(win.getByTestId('link-going')).toHaveAttribute('data-phase', 'waiting');
+    await shot(win, 'import-link-waiting');
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(win.getByTestId('link-status')).toBeVisible();
+    await win.waitForTimeout(500);
+    await win.screenshot({
+      path: join(folder, 'import-link-status.png'),
+      scale: 'css',
+      clip: { x: 0, y: 720 - 64, width: 1280, height: 64 },
+    });
+    await win.getByTestId('link-status').click();
+    await app.evaluate(() => {
+      (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(false);
+    });
+    // Saved, a video made 1080p, the .txt not taken; then the report says where they were saved.
+    const report = win.getByTestId('import-report');
+    await expect(report).toBeVisible({ timeout: 180_000 });
+    await expect(report.getByTestId('report-saved-in')).toBeVisible();
+    await shot(win, 'import-link-report');
+    await report.getByRole('button', { name: 'Close', exact: true }).first().click();
+    await chooseMenuItem(app, 'import-from-link');
+    await expect(win.getByTestId('link-fitted-item')).toBeVisible();
+    await expect(win.getByTestId('link-not-taken-item')).toBeVisible();
+    await shot(win, 'import-link-saved');
+    await app.close();
+  } finally {
+    await standIn.close();
+  }
 });
