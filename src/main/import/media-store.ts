@@ -12,6 +12,7 @@ import { fileNameOf } from './media-resolver';
 import type { MediaProbe } from './probe';
 import { probeMedia } from './probe';
 import { extOf, mediaKindOf } from './scan';
+import { fileProblem } from '../plain-errors';
 
 /*
  * Drashti's media folder. Every file is stored once, under its sha256
@@ -137,7 +138,7 @@ export class MediaStore {
         issue: {
           severity: 'error',
           code: 'unreadable',
-          message: `Could not read ${name}: ${(error as Error).message}`,
+          message: `Could not read ${name}. ${fileProblem(error)}`,
           fix: { kind: 'import-again', sourcePath: path },
         },
       };
@@ -174,7 +175,7 @@ export class MediaStore {
           issue: {
             severity: 'error',
             code: 'copy-failed',
-            message: `Could not copy ${name} into the media folder: ${(error as Error).message}`,
+            message: `Could not copy ${name} into the media folder. ${fileProblem(error)}`,
             fix: { kind: 'import-again', sourcePath: path },
           },
         };

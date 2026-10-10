@@ -21,6 +21,7 @@ export function MasksPanel() {
   }, []);
   return (
     <Panel
+      help="masks"
       title="Masks"
       icon={Frame}
       collapsible

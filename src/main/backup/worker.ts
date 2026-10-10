@@ -90,12 +90,12 @@ async function run(message: Extract<ToBackupWorker, { type: 'start' }>): Promise
       error instanceof BackupStopped
         ? error.message
         : code === 'ENOSPC'
-          ? 'The backup drive is full.'
+          ? 'The backup drive is full: free some space on it, or choose another drive.'
           : code === 'EACCES' || code === 'EPERM'
-            ? 'Drashti may not write to the backup folder.'
+            ? 'Drashti may not write to the backup folder: choose another folder, or ask the admin.'
             : code === 'ENOENT'
-              ? 'The backup folder went away while it was being written (was the drive taken out?).'
-              : 'Something went wrong while backing up.';
+              ? 'The backup folder went away while it was being written (was the drive taken out?): connect it again, and back up again.'
+              : 'The backup stopped. Back up again; if it stops again, choose Help, then Save Diagnostics…, and tell the admin.';
     post({ type: 'failed', code, message });
   }
 }

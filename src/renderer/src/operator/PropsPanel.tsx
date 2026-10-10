@@ -234,6 +234,7 @@ export function PropsPanel() {
   };
   return (
     <Panel
+      help="props"
       title="Props"
       icon={Sticker}
       collapsible

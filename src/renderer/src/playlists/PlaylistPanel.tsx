@@ -71,6 +71,8 @@ import {
   toggleFolder,
   usePlaylists,
 } from './playlist-store';
+import { plural } from '../ui/text';
+import { useWhatIsThis } from '../help/WhatIsThis';
 
 /** A name edited in place: Enter or leaving the field keeps it, Esc goes back. */
 function RenameField({
@@ -179,6 +181,7 @@ function PlaylistTree({ platform }: { platform: string }) {
   const renaming = usePlaylists((s) => s.renaming);
   const [menu, setMenu] = useState<{ at: MenuPlace; node: PlaylistNode } | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null);
+  const help = useWhatIsThis('playlists');
 
   // The rows to show: everything not inside a shut folder, with how deep it is.
   /** Folders' names, for a screen reader: a playlist in a folder says which. */
@@ -219,7 +222,9 @@ function PlaylistTree({ platform }: { platform: string }) {
             { label: 'New folder', icon: FolderPlus, onSelect: () => void createNode(true) },
           ]}
         />
+        {help.button}
       </div>
+      {help.card}
       <TabPanel group="playlist-view" id="playlists" className="flex min-h-0 flex-1 flex-col">
         {/* An empty tree is no tree: the note stands on its own until there are playlists. */}
         {tree.length === 0 && (
@@ -316,7 +321,7 @@ function PlaylistTree({ platform }: { platform: string }) {
                     <Badge
                       tone="warning"
                       data-testid="node-placeholders"
-                      title={`${node.placeholders} item(s) not found at import`}
+                      title={`${plural(node.placeholders, 'item')} not found at import`}
                     >
                       {node.placeholders} missing
                     </Badge>
@@ -368,6 +373,9 @@ function ViewTabs() {
       group="playlist-view"
       label="Playlists or templates"
       size="sm"
+      // In a narrow column (or large text) the tabs give way, their words whole in a tooltip, so New
+      // and What is this? beside them stay in reach.
+      shrink
       className="min-w-0 flex-1"
       value={view}
       onChange={setView}

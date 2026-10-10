@@ -8,6 +8,7 @@ import type { MaskLayer } from '../shared/engine/state';
 import type { Db } from './db/database';
 import { PresentationRepo } from './db/presentations';
 import type { PerfCheck } from './perftest';
+import { plural } from '../shared/text';
 
 /*
  * The performance check's heavy cases (Session 15: speed on modest
@@ -293,7 +294,7 @@ export function startScenario(name: PerfScenario, deps: ScenarioDeps): ScenarioR
             detail: kept.map(percent).join(', '),
           },
         ],
-        summary: `scenario ${name}: ${String(counts.length)} screen(s), video frames shown ${kept.map(percent).join(', ')} of ${String(fps)} a second`,
+        summary: `scenario ${name}: ${plural(counts.length, 'screen')}, video frames shown ${kept.map(percent).join(', ')} of ${String(fps)} a second`,
       };
     },
   };

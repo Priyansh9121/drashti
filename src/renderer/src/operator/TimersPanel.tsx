@@ -214,6 +214,7 @@ export function TimersPanel() {
   };
   return (
     <Panel
+      help="timers"
       title="Timers"
       icon={Timer}
       collapsible

@@ -50,6 +50,7 @@ import type { PreviewSource } from './previews';
 import type { ServerOptions } from './server';
 import { hashToken, newPairingCode, newToken } from './tokens';
 import type { FromNetworkWorker } from './worker/protocol';
+import { COULD_NOT } from './messages';
 
 /*
  * The local network, as the main process runs it (README "The local
@@ -431,8 +432,8 @@ export class NetworkService implements EngineTransport {
         question.kind === 'media'
           ? null
           : question.kind === 'pair'
-            ? { ok: false, status: 500, message: 'Something went wrong in Drashti.' }
-            : deny(500, 'Something went wrong in Drashti.');
+            ? { ok: false, status: 500, message: COULD_NOT }
+            : deny(500, COULD_NOT);
     }
     await Promise.resolve();
     worker.send({ type: 'answer', id, answer });

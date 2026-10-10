@@ -229,7 +229,8 @@ describe('shouldConfirmQuit', () => {
 describe('quitDetail', () => {
   const off = { live: false, recording: false };
   it('names the screens, and the stream when it is on air or recording', () => {
-    expect(quitDetail(2, off)).toBe('2 screen(s) are showing. If Drashti quits, they go black.');
+    expect(quitDetail(2, off)).toBe('2 screens are showing. If Drashti quits, they go black.');
+    expect(quitDetail(1, off)).toBe('1 screen is showing. If Drashti quits, it goes black.');
     expect(quitDetail(0, { live: true, recording: false })).toBe(
       'The stream is on air. If Drashti quits, the stream ends.',
     );
@@ -237,7 +238,7 @@ describe('quitDetail', () => {
       'Drashti is recording. If Drashti quits, the recording stops.',
     );
     expect(quitDetail(3, { live: true, recording: true })).toBe(
-      '3 screen(s) are showing, and the stream is on air and recording. If Drashti quits, the screens go black, the stream ends and the recording stops.',
+      '3 screens are showing, and the stream is on air and recording. If Drashti quits, the screens go black, the stream ends and the recording stops.',
     );
   });
 });

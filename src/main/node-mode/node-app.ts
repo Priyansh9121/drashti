@@ -47,6 +47,7 @@ import { secureWebPreferences } from '../windows/web-preferences';
 import { LinkClient, openMediaFromMain, pairWithMain } from './link-client';
 import { MediaCache } from './media-cache';
 import { NodeStore, ShowSaver, type NodeFile } from './node-state';
+import { plural } from '../../shared/text';
 
 /*
  * Drashti as a Node (Session 13): no library, no show controls and no sound.
@@ -731,7 +732,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       defaultId: 0,
       cancelId: 0,
       message: 'Quit Drashti?',
-      detail: `${showing} screen(s) on this node are showing. If Drashti quits, they go black.`,
+      detail: `${plural(showing, 'screen')} on this node ${showing === 1 ? 'is' : 'are'} showing. If Drashti quits, ${showing === 1 ? 'it goes' : 'they go'} black.`,
     };
     const choice = nodeWindow
       ? dialog.showMessageBoxSync(nodeWindow, options)

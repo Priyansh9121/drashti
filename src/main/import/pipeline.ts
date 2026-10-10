@@ -62,6 +62,7 @@ import {
 } from './deck-converters';
 import { notesForPages, picturesIssues, picturesPresentation, type PptxSlide } from './pictures';
 import { extractZip } from './zip';
+import { plural } from '../../shared/text';
 
 /*
  * One import run (PLAN.md 4.4): find the files, read each into the
@@ -440,7 +441,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       issues.push({
         severity: 'info',
         code: 'markers-read',
-        message: `Start and end points or markers were read for ${String(marked)} video(s) or sound(s). The older formats' markers follow the community notes on them and are not yet checked against real files: look them over (the media item's Markers).`,
+        message: `Start and end points or markers were read for ${plural(marked, 'video or sound', 'videos or sounds')}. The older formats' markers follow the community notes on them and are not yet checked against real files: look them over (the media item's Markers).`,
         fix: null,
       });
     return { ids, issues, count: ids.length };
@@ -579,7 +580,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           issues.push({
             severity: 'warning',
             code: 'invalid-element',
-            message: `${dropped} slide element(s) could not be read and were left out.`,
+            message: `${plural(dropped, 'slide element')} could not be read and ${dropped === 1 ? 'was' : 'were'} left out.`,
             fix: null,
           });
         }
@@ -968,7 +969,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           issues.push({
             severity: 'warning',
             code: 'invalid-element',
-            message: `${dropped} prop element(s) could not be read and were left out.`,
+            message: `${plural(dropped, 'prop element')} could not be read and ${dropped === 1 ? 'was' : 'were'} left out.`,
             fix: null,
           });
         const item: NewImportItem = {

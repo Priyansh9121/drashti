@@ -235,7 +235,7 @@ describe('parsePp7: presentations', () => {
       }),
     );
     expect(p.issues.find((i) => i.code === 'unknown-fields')?.message).toBe(
-      '2 field(s) in this file are from a format version the importer does not know; they were not imported.',
+      '2 fields in this file are from a format version the importer does not know; they were not imported.',
     );
   });
 

@@ -27,7 +27,7 @@ export class WindowBoundary extends Component<Props, { failed: boolean }> {
     return (
       <div className="flex h-full items-center justify-center bg-ink" data-window-error="">
         <ErrorState
-          title="Something went wrong in this window"
+          title="This window stopped working"
           action={
             <Button
               variant="primary"

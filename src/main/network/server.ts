@@ -35,6 +35,7 @@ import { RateLimiter, WrongCodeLimiter } from './limits';
 import { PreviewMaker, type PreviewSource } from './previews';
 import { hashToken } from './tokens';
 import { apiQuery, apiSegments, listWebFiles, safeRequestPath, type WebFile } from './web-files';
+import { COULD_NOT } from './messages';
 
 /*
  * Drashti's network server: HTTP and WebSocket on one port. It runs in a
@@ -567,7 +568,7 @@ export class NetworkServer {
       if (error instanceof HttpError) this.json(res, error.status, { ok: false, message: error.message });
       else {
         this.host.log('warn', `A network request failed: ${(error as Error).message}`);
-        this.json(res, 500, { ok: false, message: 'Something went wrong in Drashti.' });
+        this.json(res, 500, { ok: false, message: COULD_NOT });
       }
     }
   }

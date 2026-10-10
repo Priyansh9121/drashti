@@ -166,8 +166,12 @@ export class UpdateService {
       return this.answer();
     } catch (error) {
       this.phase = 'error';
-      this.message = `Could not look for updates (${error instanceof Error ? error.message : 'no answer'}). Is the internet connected?`;
-      this.deps.log('warn', 'Updates: could not look for updates');
+      this.message =
+        'Could not look for updates. Check that this computer is on the internet, then choose Check now again.';
+      this.deps.log(
+        'warn',
+        `Updates: could not look for updates (${error instanceof Error ? error.message : 'no answer'})`,
+      );
       return this.answer();
     }
   }
@@ -271,6 +275,7 @@ export class UpdateService {
     const ready = await this.deps.installer.prepare(file, m.version);
     if (!ready.ok) {
       this.message = ready.message;
+      if (ready.cause) this.deps.log('warn', `Updates: the update was not taken (${ready.cause})`);
       return this.answer();
     }
     const fileInfo = this.fileFor(m);

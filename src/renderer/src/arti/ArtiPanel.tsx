@@ -43,6 +43,7 @@ export function ArtiPanel() {
   const now = useNow(60_000) + offset;
   return (
     <Panel
+      help="arti"
       title="Arti"
       icon={Flame}
       collapsible

@@ -25,6 +25,7 @@ import { EmptyState, Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { themeFromPresentation } from '../themes/themes-store';
 import { chooseArrangement, goLive, playItem, useNotice } from './actions';
+import { useWhatIsThis } from '../help/WhatIsThis';
 
 /**
  * Thumbnail widths the operator can choose (px). The default fits three slides
@@ -362,6 +363,7 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
   );
   const playlist = useMemo(() => (item ? { playlistId: item.playlistId, itemId: item.id } : null), [item]);
   const [thumb, setThumb] = usePersistentState('slides.thumb', THUMB.initial, isThumbSize);
+  const help = useWhatIsThis('slides');
   if (!doc || !order)
     return selectedId && !doc ? (
       <Loading label="Opening the presentation…" className="flex-1" />
@@ -395,6 +397,7 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
         <h2 className="min-w-48 flex-[1_1_12rem] text-base font-bold">
           <Truncate text={doc.name} />
         </h2>
+        {help.button}
         {doc.passage ? (
           // A Shastra passage is made from its text: its words and slides are not edited here.
           <span className="text-xs text-muted" data-testid="passage-note">
@@ -460,6 +463,7 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
           }}
         />
       </div>
+      {help.card && <div className="shrink-0 pt-2">{help.card}</div>}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-6">
         {order.slides.length === 0 && (
           <EmptyState icon={Presentation} title="No slides yet">

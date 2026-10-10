@@ -45,6 +45,7 @@ export function IdlePanel() {
   const settings = view?.settings;
   return (
     <Panel
+      help="idle"
       title="Idle rotation"
       icon={GalleryHorizontalEnd}
       collapsible

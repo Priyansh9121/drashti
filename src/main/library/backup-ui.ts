@@ -7,6 +7,7 @@ import type { TaskProgress } from '../../shared/app-info';
 import type { Db } from '../db/database';
 import { diskFreeBytes } from '../import/media-store';
 import { backupLibrary, checkBackup, filesIn, LIBRARY_FILE, requestRestore, sameDisk } from './backup';
+import { fileProblem } from '../plain-errors';
 
 /*
  * File > Back Up Library… and Restore Library…: the questions the operator
@@ -58,7 +59,7 @@ async function guarded(ui: BackupUi, what: string, flow: (ui: BackupUi) => Promi
     await flow(ui);
   } catch (error) {
     ui.log.warn(`${what} stopped unexpectedly (${errorCode(error)})`);
-    ui.notice(`${what} stopped: something went wrong (${errorCode(error)}).`);
+    ui.notice(`${what} stopped. ${fileProblem(error)}`);
   }
 }
 

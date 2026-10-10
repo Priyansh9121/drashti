@@ -25,7 +25,10 @@ import { join } from 'node:path';
 export interface Installer {
   mode: 'at-quit' | 'by-hand';
   /** Get it ready to install when Drashti quits (a Mac: Squirrel.Mac takes it now). */
-  prepare(file: string, version: string): Promise<{ ok: true } | { ok: false; message: string }>;
+  prepare(
+    file: string,
+    version: string,
+  ): Promise<{ ok: true } | { ok: false; message: string; /** For the log only. */ cause?: string }>;
   /** Drashti is quitting, and an admin said to install: start it (Windows: the installer), unless refused. */
   atQuit(file: string): { ok: true } | { ok: false; message: string };
 }
@@ -239,7 +242,9 @@ export function macInstaller(isSigned: () => boolean, updater: SquirrelUpdater):
         updater.on('error', (error: unknown) => {
           resolve({
             ok: false,
-            message: `The Mac would not take the update (${error instanceof Error ? error.message : 'unknown'}).`,
+            cause: error instanceof Error ? error.message : 'unknown',
+            message:
+              'The Mac would not take the update. Choose Show the file, then after the sabha quit Drashti, open the file and drag Drashti into Applications.',
           });
         });
         updater.setFeedURL({ url: `http://127.0.0.1:${String(port)}/feed` });

@@ -629,7 +629,7 @@ function unknownIssue(unknown: number): ImportIssue[] {
         {
           severity: 'info',
           code: 'unknown-fields',
-          message: `${unknown} field(s) in this file are from a format version the importer does not know; they were not imported.`,
+          message: `${unknown === 1 ? 'One field' : `${String(unknown)} fields`} in this file ${unknown === 1 ? 'is' : 'are'} from a format version the importer does not know; ${unknown === 1 ? 'it was' : 'they were'} not imported.`,
           fix: null,
         },
       ]
