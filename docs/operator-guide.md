@@ -60,6 +60,12 @@ Do these about 30 minutes before the sabha starts.
 - **Closing with changes asks first.** Edit words, the slide editor and the other editors ask "Keep your changes …?" before anything typed is lost: **Keep editing** (Enter or Esc), **Save changes**, or **Throw them away**. When the presentation is on the screens, it says so: saving then changes the screens at once.
 - **Changing the playlist without dragging:** choose a presentation, a picture or video, or a Shastra passage in the library and press **Add to playlist** beside it; it goes after the playlist's chosen item. To move an item, choose it and press **Up** or **Down** beside it (or **Alt+↑** / **Alt+↓**). **Cmd+Z** (Ctrl+Z) takes back the last add or move. Dragging works too.
 
+![Up and Down under the chosen playlist item, and Add to playlist under the library's chosen presentation](screenshots/playlist-up-down.png)
+
+![What is this? opened on the Looks panel](screenshots/what-is-this.png)
+
+![Closing Edit words with a line typed: the question, while the kirtan is on the screens](screenshots/keep-changes.png)
+
 **Covering and clearing:**
 
 | Key or button                   | What it does                                                                                                                     |
@@ -121,3 +127,5 @@ A clear button is lit, with a dot, while its layer is on the screens.
 ## 5. Keys at a glance
 
 In Drashti, **Help**, then **Keyboard Shortcuts…** (or press **?** when no field is chosen) lists every key, as your computer writes it. The full key card, including the slide editor's keys, is at the end of `docs/parallel-run.md`. Going live, ending the stream and recording have no keys: always the buttons, and always a question first.
+
+![The keys sheet](screenshots/keys-sheet.png)
