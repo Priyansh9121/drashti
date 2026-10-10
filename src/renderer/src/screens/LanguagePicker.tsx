@@ -92,7 +92,7 @@ export function LanguagePicker({
                     <IconButton
                       icon={ArrowUp}
                       size="sm"
-                      label={`${LANG_NAMES[lang]} earlier`}
+                      label={`Up: ${LANG_NAMES[lang]}`}
                       disabled={at === 0}
                       onClick={() => {
                         move(lang, -1);
@@ -101,7 +101,7 @@ export function LanguagePicker({
                     <IconButton
                       icon={ArrowDown}
                       size="sm"
-                      label={`${LANG_NAMES[lang]} later`}
+                      label={`Down: ${LANG_NAMES[lang]}`}
                       disabled={at === chosen.length - 1}
                       onClick={() => {
                         move(lang, 1);

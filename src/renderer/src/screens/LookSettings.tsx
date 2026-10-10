@@ -9,7 +9,7 @@ import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { ConfirmDialog } from '../ui/Dialog';
 import { Select, TextInput } from '../ui/Field';
-import { ArrowLeft, ArrowRight, CopyPlus, Plus, Trash2 } from '../ui/icons';
+import { ArrowDown, ArrowUp, CopyPlus, Plus, Trash2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { cx } from '../ui/cx';
@@ -129,19 +129,19 @@ export function LooksSection({
         </Button>
         <Button
           size="sm"
-          icon={ArrowLeft}
+          icon={ArrowUp}
           disabled={at <= 0}
           onClick={() => void lookAction(() => looks().move(chosen.id, at - 1))}
         >
-          Earlier
+          Up
         </Button>
         <Button
           size="sm"
-          icon={ArrowRight}
+          icon={ArrowDown}
           disabled={at >= list.length - 1}
           onClick={() => void lookAction(() => looks().move(chosen.id, at + 1))}
         >
-          Later
+          Down
         </Button>
         <Button
           size="sm"

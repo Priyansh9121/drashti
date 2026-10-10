@@ -412,6 +412,55 @@ export async function addItems(playlistId: string, at: number | null, items: New
   return result.ids;
 }
 
+/** An item's name, as its row shows it. */
+export function itemName(item: PlaylistItemInfo): string {
+  return item.kind === 'presentation' ? (item.presentationName ?? item.label) : item.label;
+}
+
+/**
+ * Library items into a playlist (dropped there, or Add to playlist) as one Undo step: Undo takes
+ * them out again.
+ */
+export async function addFromLibrary(
+  playlistId: string,
+  at: number | null,
+  items: NewItem[],
+): Promise<string[]> {
+  const ids = await addItems(playlistId, at, items);
+  if (ids.length === 0) return ids;
+  const names = usePlaylists
+    .getState()
+    .items.filter((i) => ids.includes(i.id))
+    .map(itemName);
+  pushRemoval({
+    text: `Added ${describeSome(names, ids.length, 'item')} to “${nodeOf(playlistId)?.name ?? 'the playlist'}”`,
+    restore: async () => {
+      if (settled(await api().removeItems(ids))) await reload();
+    },
+  });
+  return ids;
+}
+
+/** Add to the open playlist, after its chosen item, or at the end when none is chosen (Add to playlist). */
+export async function addToOpenPlaylist(items: NewItem[]): Promise<string[]> {
+  const { openId, items: now, marked } = usePlaylists.getState();
+  if (!openId) return [];
+  const last = now.findLastIndex((i) => marked.includes(i.id));
+  return addFromLibrary(openId, last >= 0 ? last + 1 : null, items);
+}
+
+/**
+ * Undo a move: each item back in its old place among the rest, from the top down (which puts back
+ * a move of several items too), and chosen again.
+ */
+async function putBack(playlistId: string, places: readonly { id: string; at: number }[]): Promise<void> {
+  for (const { id, at } of [...places].sort((a, b) => a.at - b.at))
+    if (!settled(await api().moveItems(playlistId, [id], at))) break;
+  if (usePlaylists.getState().openId !== playlistId) await openPlaylist(playlistId);
+  else await loadItems();
+  usePlaylists.setState({ marked: places.map((p) => p.id), anchorId: places[0]?.id ?? null });
+}
+
 /** A header after the marked items (or at the end), named for the operator to change. */
 export async function addHeader(): Promise<void> {
   const { openId, items, marked } = usePlaylists.getState();
@@ -428,13 +477,52 @@ export async function renameHeader(id: string, label: string): Promise<void> {
   if (settled(await api().renameHeader(id, label))) await loadItems();
 }
 
-/** Move items so they land before the item now at `at` (the end when it is past the last). */
+/** Move items (dragged) so they land before the item now at `at` (the end when it is past the last): one Undo step. */
 export async function moveItems(ids: string[], at: number): Promise<void> {
   const { openId, items } = usePlaylists.getState();
   if (!openId || ids.length === 0) return;
   // The position among the items that stay.
   const to = items.slice(0, at).filter((i) => !ids.includes(i.id)).length;
-  if (settled(await api().moveItems(openId, ids, to))) await loadItems();
+  const places = items.flatMap((i, index) => (ids.includes(i.id) ? [{ id: i.id, at: index }] : []));
+  if (!settled(await api().moveItems(openId, ids, to))) return;
+  await loadItems();
+  // Dropped where they were: nothing to undo.
+  const order = (list: readonly PlaylistItemInfo[]) => list.map((i) => i.id).join(' ');
+  if (order(usePlaylists.getState().items) === order(items)) return;
+  pushRemoval({
+    text: `Moved ${describeSome(
+      items.filter((i) => ids.includes(i.id)).map(itemName),
+      places.length,
+      'item',
+    )}`,
+    restore: () => putBack(openId, places),
+  });
+}
+
+/** Moves one at a time, each from the order the last one left (a held Alt+↑ never moves from an old order). */
+let moving: Promise<unknown> = Promise.resolve();
+
+/**
+ * One item up or down a place (its Up and Down buttons, Alt+↑ ↓), chosen, as one Undo step that the
+ * Undo bar says ("Moved “…” up"). False when it can go no further.
+ */
+export function moveItemBy(id: string, step: -1 | 1): Promise<boolean> {
+  const run = moving.then(async () => {
+    const { openId, items } = usePlaylists.getState();
+    const from = items.findIndex((i) => i.id === id);
+    const item = items[from];
+    if (!openId || !item || from + step < 0 || from + step >= items.length) return false;
+    if (!settled(await api().moveItems(openId, [id], from + step))) return false;
+    await loadItems();
+    usePlaylists.setState({ marked: [id], anchorId: id });
+    pushRemoval({
+      text: `Moved “${itemName(item)}” ${step < 0 ? 'up' : 'down'}`,
+      restore: () => putBack(openId, [{ id, at: from }]),
+    });
+    return true;
+  });
+  moving = run.catch(() => undefined);
+  return run;
 }
 
 /** Remove the marked items; Undo brings them back where they were. */

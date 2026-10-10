@@ -10,6 +10,8 @@ import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import {
   Timer,
+  ArrowDown,
+  ArrowUp,
   BookOpen,
   AlertTriangle,
   BookTemplate,
@@ -34,7 +36,7 @@ import { rowClass } from '../ui/ListRow';
 import { EmptyState } from '../ui/States';
 import { TabPanel, Tabs } from '../ui/Tabs';
 import { Truncate } from '../ui/Truncate';
-import { dragKind, droppedIds, startDrag } from './drag';
+import { dragKind, droppedIds, startDrag, useDragging } from './drag';
 import {
   AddSlotDialog,
   EditSlotDialog,
@@ -43,14 +45,16 @@ import {
   TimerCuesDialog,
 } from './TemplateDialogs';
 import {
+  addFromLibrary,
   addHeader,
-  addItems,
   clickItem,
   closePlaylist,
   createNode,
   dismissProblem,
   fillPlaceholder,
+  itemName,
   markedItems,
+  moveItemBy,
   moveItems,
   newFromTemplate,
   openPlaylist,
@@ -291,7 +295,7 @@ function PlaylistTree({ platform }: { platform: string }) {
                     setDropOn(null);
                     if (node.isFolder || !fromLibrary(e)) return;
                     e.preventDefault();
-                    void addItems(node.id, null, droppedItems(e));
+                    void addFromLibrary(node.id, null, droppedItems(e));
                   }}
                   className={cx(
                     rowClass({ selected: selectedNodeId === node.id, dropTarget: dropOn === node.id }),
@@ -635,6 +639,65 @@ function CuesLine({ cues }: { cues: readonly TimerCue[] }) {
   );
 }
 
+/**
+ * After a move the keyboard stays where it was: on the item, or on its Up or Down (on the item once
+ * that is off). Only if it is still in that row, or was lost as the row moved: never taken back from
+ * where the operator has gone since.
+ */
+function keepFocus(id: string, on: 'item' | 'up' | 'down'): void {
+  requestAnimationFrame(() => {
+    const row = document.querySelector(`[data-item-row="${CSS.escape(id)}"]`);
+    const now = document.activeElement;
+    if (!row || (now !== null && now !== document.body && !row.contains(now))) return;
+    const button =
+      on === 'item' ? null : row.querySelector<HTMLElement>(`[data-move="${on}"]:not(:disabled)`);
+    (button ?? row.querySelector<HTMLElement>('[data-testid="playlist-item"]'))?.focus();
+  });
+}
+
+/** Up and Down on the chosen item: it moves a place, as one Undo step, without dragging (Alt+↑ ↓ too). */
+function MoveButtons({
+  name,
+  first,
+  last,
+  onMove,
+}: {
+  name: string;
+  first: boolean;
+  last: boolean;
+  onMove: (step: -1 | 1, on: 'up' | 'down') => void;
+}) {
+  return (
+    <span
+      role="group"
+      aria-label={`Move “${name}”`}
+      data-testid="playlist-item-moves"
+      className="flex shrink-0 gap-1"
+    >
+      <Button
+        size="sm"
+        icon={ArrowUp}
+        data-move="up"
+        disabled={first}
+        title="Up a place (Alt+↑)"
+        onClick={() => onMove(-1, 'up')}
+      >
+        Up
+      </Button>
+      <Button
+        size="sm"
+        icon={ArrowDown}
+        data-move="down"
+        disabled={last}
+        title="Down a place (Alt+↓)"
+        onClick={() => onMove(1, 'down')}
+      >
+        Down
+      </Button>
+    </span>
+  );
+}
+
 function PlaylistItems({ platform, openId }: { platform: string; openId: string }) {
   const node = usePlaylists(
     (s) => s.tree.find((n) => n.id === openId) ?? s.templates.find((n) => n.id === openId),
@@ -642,6 +705,8 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
   const isTemplate = usePlaylists(templateOpen);
   const items = usePlaylists((s) => s.items);
   const marked = usePlaylists((s) => s.marked);
+  const anchorId = usePlaylists((s) => s.anchorId);
+  const dragging = useDragging((s) => s.on);
   const renaming = usePlaylists((s) => s.renaming);
   const [spot, setSpot] = useState<DropSpot | null>(null);
   const [menu, setMenu] = useState<{ at: MenuPlace; item: PlaylistItemInfo } | null>(null);
@@ -696,7 +761,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
     }
     if ('fill' in where)
       void fillPlaceholder(where.fill, droppedIds(e, kind === 'passages' ? 'passages' : 'presentations'));
-    else void addItems(openId, where.at, droppedItems(e));
+    else void addFromLibrary(openId, where.at, droppedItems(e));
   };
 
   const lineAt = spot && 'at' in spot ? spot.at : null;
@@ -833,8 +898,25 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
               : item.hint === null
                 ? 'border-dashed border-line-strong!'
                 : 'border-dashed border-warning/70! bg-warning-bg/60';
+          const move = (step: -1 | 1, on: 'item' | 'up' | 'down') => {
+            void moveItemBy(item.id, step).then((moved) => {
+              if (moved || on === 'item') keepFocus(item.id, on);
+            });
+          };
           return (
-            <li key={item.id} data-item-index={index} className={`rounded-md ${line}`}>
+            <li
+              key={item.id}
+              data-item-index={index}
+              data-item-row={item.id}
+              className={cx('flex items-center gap-1 rounded-md', line)}
+              onKeyDown={(e) => {
+                const action = actionFor(e.nativeEvent, platform, LIBRARY_KEYMAP);
+                if (action !== 'moveItemUp' && action !== 'moveItemDown') return;
+                e.preventDefault();
+                const on = (e.target as HTMLElement).dataset['move'];
+                move(action === 'moveItemUp' ? -1 : 1, on === 'up' || on === 'down' ? on : 'item');
+              }}
+            >
               <button
                 type="button"
                 draggable
@@ -845,6 +927,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                 data-live={isLive ? 'true' : undefined}
                 aria-pressed={isMarked}
                 aria-current={shownItem === item.id ? 'true' : undefined}
+                aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
                 aria-label={
                   item.kind !== 'placeholder'
                     ? undefined
@@ -880,23 +963,27 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                   void removeMarkedItems();
                 }}
                 onDragStart={(e) => {
-                  if (!usePlaylists.getState().marked.includes(item.id))
-                    clickItem(item.id, { toggle: false, range: false });
-                  startDrag(
-                    e,
-                    'items',
-                    markedItems().map((i) => i.id),
-                  );
+                  const ours = usePlaylists.getState().marked.includes(item.id);
+                  startDrag(e, 'items', ours ? markedItems().map((i) => i.id) : [item.id]);
+                  if (!ours) clickItem(item.id, { toggle: false, range: false });
                 }}
                 className={cx(
                   rowClass({ selected: shownItem === item.id, marked: isMarked, dropTarget: filling }),
-                  'px-2.5',
+                  'min-w-0 flex-1 px-2.5',
                   item.kind === 'header' ? 'min-h-8 pt-2 pb-1' : 'min-h-11 py-1.5',
                   look,
                 )}
               >
                 <ItemBody item={item} live={isLive} />
               </button>
+              {isMarked && anchorId === item.id && !dragging && (
+                <MoveButtons
+                  name={itemName(item)}
+                  first={index === 0}
+                  last={index === items.length - 1}
+                  onMove={move}
+                />
+              )}
             </li>
           );
         })}
@@ -908,7 +995,8 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
             )}
           >
             <EmptyState icon={ListPlus} title="This playlist is empty" compact>
-              Drag presentations or media here from the library.
+              Drag presentations, media or Shastra passages here from the library, or choose one there and
+              press Add to playlist.
             </EmptyState>
           </li>
         )}

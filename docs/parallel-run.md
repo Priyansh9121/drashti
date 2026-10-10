@@ -116,7 +116,7 @@ Each step has **Skip this step**, which keeps things as they are. To set up by h
 
 If an output ever covers the controls by mistake, press **Cmd+Shift+U** (Mac) or **Ctrl+Shift+U** (Windows) to uncover them. It works even when Drashti is not the active app.
 
-**Looks.** A Look says what each screen group shows: which layers (the background, slides, props, messages, the ticker, the Masks layer), a kirtan's languages, and whether slides are drawn as designed or only their words, as a lower third (messages then show along the top). Drashti starts with one Look, **Standard**, which shows exactly what the screens showed before. In Screens, under **Looks**, **New Look** or **Duplicate** makes another, for example "Gujarati only" or "Lower thirds"; choose a Look there to see and change each group's settings in it. To switch the live Look in a sabha, use **Looks** under the live picture: every screen changes at once. The first Look in the list is the one Drashti starts with (**Earlier** and **Later** move a Look), and after an unexpected stop the Look that was live comes back. Simple Mode keeps whichever Look is live and cannot switch it.
+**Looks.** A Look says what each screen group shows: which layers (the background, slides, props, messages, the ticker, the Masks layer), a kirtan's languages, and whether slides are drawn as designed or only their words, as a lower third (messages then show along the top). Drashti starts with one Look, **Standard**, which shows exactly what the screens showed before. In Screens, under **Looks**, **New Look** or **Duplicate** makes another, for example "Gujarati only" or "Lower thirds"; choose a Look there to see and change each group's settings in it. To switch the live Look in a sabha, use **Looks** under the live picture: every screen changes at once. The first Look in the list is the one Drashti starts with (**Up** and **Down** move a Look), and after an unexpected stop the Look that was live comes back. Simple Mode keeps whichever Look is live and cannot switch it.
 
 **Stage layouts.** A stage screen shows the **Standard** stage view unless its group's Look gives it a layout of its own. In Screens, under a stage group, **Edit stage layouts…** opens the editor: **Duplicate** Standard, then drag the boxes where the performers want them (current and next slide, notes, clock, timers, the stage message, what's coming up in the playlist, the time left on a video or song, whether the hall is blacked out, or some fixed words), set each one's size and colour, and **Save**. Then choose it under **Stage layout** for the stage group. Ask the performers what they need to see.
 
@@ -404,31 +404,32 @@ Once per computer, during these evenings:
 
 On the Mac, **Cmd** is the ⌘ key; on Windows, use **Ctrl** instead. These keys are provisional: they will be changed to the ones the operators use in ProPresenter once the setup checklist comes back.
 
-| Key                                            | What it does                                                                                     |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| **Space**, **→**, **↓** or **Page Down**       | Next slide (on into the next playlist item at the end; from the arti's time, the arti)           |
-| **←**, **↑** or **Page Up**                    | Previous slide (in Simple Mode, Back: undoes the last Next exactly)                              |
-| **Shift+→** or **Shift+↓**                     | Next playlist item                                                                               |
-| **Shift+←** or **Shift+↑**                     | Previous playlist item                                                                           |
-| **B** or **.**                                 | Black-out on or off                                                                              |
-| **L**                                          | The logo instead of the picture, and back                                                        |
-| **F1**                                         | Clear all                                                                                        |
-| **F2**                                         | Clear the slide (the background stays)                                                           |
-| **F3**                                         | Clear the background                                                                             |
-| **F4**                                         | Clear props                                                                                      |
-| **F5**                                         | Clear messages                                                                                   |
-| **F6**                                         | Clear the sound                                                                                  |
-| **F7**                                         | Clear the Masks layer (a screen's own mask, set in its Look, stays)                              |
-| **F8**                                         | Clear the ticker (announcements scrolling along the bottom)                                      |
-| **Cmd+F** / **Ctrl+F**                         | Search the library                                                                               |
-| **Shift+F10** or the Menu key (in a list)      | The menu of a playlist, folder or item, as a right-click (on a Mac laptop: **Fn+Shift+F10**)     |
-| **Tab** / **Shift+Tab**                        | Move through the window, region by region; **Enter** presses what has the focus (Space is Next)  |
-| **Delete** or **Backspace** (in a list)        | Remove the marked presentations, playlists or items (asks first for presentations and playlists) |
-| **Cmd+Z** / **Ctrl+Z**                         | Undo the last removal, words edit or theme (in Simple Mode: put back what Clear all took down)   |
-| **Cmd+Enter** / **Ctrl+Enter** (editing words) | Save the words                                                                                   |
-| **Cmd+Shift+S** / **Ctrl+Shift+S**             | Open Screens                                                                                     |
-| **Cmd+Shift+U** / **Ctrl+Shift+U**             | Uncover the controls (works from anywhere)                                                       |
-| **Esc**                                        | Cancel editing words or a question, or empty the search box                                      |
+| Key                                            | What it does                                                                                                          |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **Space**, **→**, **↓** or **Page Down**       | Next slide (on into the next playlist item at the end; from the arti's time, the arti)                                |
+| **←**, **↑** or **Page Up**                    | Previous slide (in Simple Mode, Back: undoes the last Next exactly)                                                   |
+| **Shift+→** or **Shift+↓**                     | Next playlist item                                                                                                    |
+| **Shift+←** or **Shift+↑**                     | Previous playlist item                                                                                                |
+| **B** or **.**                                 | Black-out on or off                                                                                                   |
+| **L**                                          | The logo instead of the picture, and back                                                                             |
+| **F1**                                         | Clear all                                                                                                             |
+| **F2**                                         | Clear the slide (the background stays)                                                                                |
+| **F3**                                         | Clear the background                                                                                                  |
+| **F4**                                         | Clear props                                                                                                           |
+| **F5**                                         | Clear messages                                                                                                        |
+| **F6**                                         | Clear the sound                                                                                                       |
+| **F7**                                         | Clear the Masks layer (a screen's own mask, set in its Look, stays)                                                   |
+| **F8**                                         | Clear the ticker (announcements scrolling along the bottom)                                                           |
+| **Cmd+F** / **Ctrl+F**                         | Search the library                                                                                                    |
+| **Shift+F10** or the Menu key (in a list)      | The menu of a playlist, folder or item, as a right-click (on a Mac laptop: **Fn+Shift+F10**)                          |
+| **Tab** / **Shift+Tab**                        | Move through the window, region by region; **Enter** presses what has the focus (Space is Next)                       |
+| **Delete** or **Backspace** (in a list)        | Remove the marked presentations, playlists or items (asks first for presentations and playlists)                      |
+| **Alt+↑** / **Alt+↓** (a playlist's item)      | Move the item up or down a place (on a Mac, **Alt** is the ⌥ Option key)                                              |
+| **Cmd+Z** / **Ctrl+Z**                         | Undo the last removal, words edit, theme, or playlist add or move (in Simple Mode: put back what Clear all took down) |
+| **Cmd+Enter** / **Ctrl+Enter** (editing words) | Save the words                                                                                                        |
+| **Cmd+Shift+S** / **Ctrl+Shift+S**             | Open Screens                                                                                                          |
+| **Cmd+Shift+U** / **Ctrl+Shift+U**             | Uncover the controls (works from anywhere)                                                                            |
+| **Esc**                                        | Cancel editing words or a question, or empty the search box                                                           |
 
 The screens dashboard has no key: click the screens line at the bottom left of the window (it opens in Simple Mode too). Going live, ending the stream and recording have no keys: use the buttons in the **Stream** panel (each going live or ending asks first). Switching the Look and running a macro have no keys either: use their buttons under the live picture, or a MIDI pad mapped to a macro. The arti prompt has no keys of its own: from its time, Next puts the arti up.
 

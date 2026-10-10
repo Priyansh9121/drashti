@@ -152,7 +152,7 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 
 - **Missing is a state, not a blank.** In Edit words, By language, a slide with nothing in a language shows that field with a dashed `warning` border, a `warning` tint and a **Missing** badge by the language's name (the field's own label says "(missing)" for screen readers). An empty field is never shown as if it were a line with no words.
 - **A kirtan's languages are named, never flagged by colour alone.** Track names are the words Gujarati, Hindi, English and Transliteration (`LANG_NAMES`); short tags (GU, HI, EN, TR) appear only as badges on library rows.
-- **Choosing a screen's languages** (`screens/LanguagePicker.tsx`): two radio buttons, "All, in each slide's order" and "Only these, in this order"; then one row per language with a tick box and, when ticked, Earlier and Later arrows (icon buttons with those words as labels). The last language ticked cannot be unticked. The same picker goes in Screens and the setup wizard.
+- **Choosing a screen's languages** (`screens/LanguagePicker.tsx`): two radio buttons, "All, in each slide's order" and "Only these, in this order"; then one row per language with a tick box and, when ticked, Up and Down arrows (icon buttons with those words as labels). The last language ticked cannot be unticked. The same picker goes in Screens and the setup wizard.
 - **Previews say whose languages they show.** The live and next previews draw a kirtan's slide in the first audience group's languages, and under the live picture a line says so ("As “Hall” shows it: Gujarati, Transliteration"); thumbnails always show every language.
 - Both the Kirtan dialog and Edit words, By language, fit at 1280 × 720, with each field at least 180 px wide when all four languages are side by side (`tests/e2e/kirtans.spec.ts`).
 
@@ -200,7 +200,7 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 ## 17. Looks
 
 - **Switching is a show action, so it sits with the live controls.** The Looks panel under Next is one button per Look, in the list's order. The live Look's button is `live` (red, white text) with a white dot and `aria-pressed="true"`; the others are plain. A Look is never switched by a key alone: it takes a click (or a phone's tap, or the API).
-- **Changing a Look is setup, so it lives in Screens.** At the top of Screen groups, the Looks are tabs (`Tabs`, `sm`), the live one with a **Live** badge. Below the tabs: the chosen Look's name (a field, saved on Enter or leaving it), **Duplicate**, **Earlier** and **Later** (the first is the one Drashti starts with), and **Remove** (`danger`, asking first, and saying whether the screens will change). Each group card then shows "In the Look “…”" with that group's settings: layers as tick boxes, how slides are drawn, and the languages picker. Stage groups show only their languages; the stream group only its languages.
+- **Changing a Look is setup, so it lives in Screens.** At the top of Screen groups, the Looks are tabs (`Tabs`, `sm`), the live one with a **Live** badge. Below the tabs: the chosen Look's name (a field, saved on Enter or leaving it), **Duplicate**, **Up** and **Down** (the first is the one Drashti starts with), and **Remove** (`danger`, asking first, and saying whether the screens will change). Each group card then shows "In the Look “…”" with that group's settings: layers as tick boxes, how slides are drawn, and the languages picker. Stage groups show only their languages; the stream group only its languages.
 - **Simple Mode never shows either.** It keeps the live Look.
 
 ## 18. Stage layouts
@@ -223,7 +223,7 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 ## 21. Macros and MIDI
 
 - **A macro is a coloured button.** In the Macros panel each macro is a two-column button with a strip of its colour and its name; a click runs it at once (it is a show action, like Next). Its colour is chosen from a few that read on the dark panels.
-- **The macro editor lists actions as plain sentences in order**: the action's name, then its choices (a Look, a prop, a template and its fields…), with Earlier, Later and Remove as icon buttons with those words as their labels. Only actions a macro may do are offered.
+- **The macro editor lists actions as plain sentences in order**: the action's name, then its choices (a Look, a prop, a template and its fields…), with Up, Down and Remove as icon buttons with those words as their labels. Only actions a macro may do are offered.
 - **MIDI says what it heard.** The MIDI dialog shows the device and whether it is connected (in words), every action with what it is mapped to ("Note 36, channel 1") and Learn, and a live line with the last note or controller the controller sent, so an operator can see the pad is reaching Drashti.
 
 ## 22. Shastra
@@ -251,7 +251,7 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 
 - **Start is the panel's one primary button**, and turns into **Stop** (`live`, with the words) while it runs, with a line saying it stops by itself when a slide or picture goes up. Where it shows is said in words from the live Look ("Hall (once started), Lobby (always)"), or how to make it show.
 - **The pictures are shown whole** on black (never cropped: a darshan picture is not trimmed), and dissolve into the next over a second and a half. A quote is centred, each language in its own font, the attribution under it in muted grey after a dash.
-- **Set up is setup** (Pro Mode): the chosen pictures in order with Earlier and Later as labelled icon buttons, the library's pictures as ticks with thumbnails, the seconds, the quote of the day, and the quotes (each with its languages as badges, Edit and Remove asking first). Its subtitle says only authorised pictures and quotes are used.
+- **Set up is setup** (Pro Mode): the chosen pictures in order with Up and Down as labelled icon buttons, the library's pictures as ticks with thumbnails, the seconds, the quote of the day, and the quotes (each with its languages as badges, Edit and Remove asking first). Its subtitle says only authorised pictures and quotes are used.
 
 ## 26. Output nodes and the screens dashboard
 
@@ -297,7 +297,7 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 ## 31. Music (audio playlists)
 
 - **A panel in the live column**, like the arti's: which list (a select, with rename and remove beside it), then the transport in one row (previous, **Play** or **Pause** as the one `primary` button, next), then loop and shuffle as small toggles whose state is `aria-pressed` and an accent colour with words in their labels, never colour alone. What plays is a status line above, with its time left ("Paused: …" while paused).
-- **Tracks are compact rows**: the number (or a play mark in `live` for the one playing), the name, its length, and Earlier, Later and take-out buttons. A track that cannot play says so in words and cannot be clicked. **Add sounds…** opens a dialog of the library's sounds to tick.
+- **Tracks are compact rows**: the number (or a play mark in `live` for the one playing), the name, its length, and Up, Down and take-out buttons. A track that cannot play says so in words and cannot be clicked. **Add sounds…** opens a dialog of the library's sounds to tick.
 - **Simple Mode gets one strip**, between the previews and the key hints: the list's name and what plays, and one large button, **Play music** or **Pause music**. Nothing else about music shows there, and it still fits 1280 × 720 with nothing scrolling.
 - The panel, the add dialog and Simple Mode's strip pass the accessibility checks at 1280 × 720 (`tests/e2e/music.spec.ts`).
 

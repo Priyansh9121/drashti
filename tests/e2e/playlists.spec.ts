@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cocoaRtf, pp6Playlist, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
+import type { PageGlobals } from './helpers';
 import { chooseMenuItem, importAndGetIds, launchApp, operatorPage } from './helpers';
 import { makeTestImage } from './test-media';
 
@@ -176,7 +177,8 @@ test('playlists: imported ones with their placeholders, and building one by drag
   await undo.getByRole('button', { name: /Undo/ }).click();
   await expect(items).toHaveCount(4);
   await expect(items.nth(2).locator('[data-label]')).toHaveText('Placeholder Song One');
-  await expect(undo).toHaveCount(0);
+  // Adds and moves are Undo steps too (Session 25): the one before the removal, the header dragged up, is next.
+  await expect(undo).toContainText('Moved “Placeholder Dhun”');
 
   // Removing the playlist asks first; Undo brings it back with its items.
   await panel.getByTestId('playlists-back').click();
@@ -206,6 +208,113 @@ test('playlists: imported ones with their placeholders, and building one by drag
   await expect(presentations.getByRole('button')).toHaveCount(4);
   await undo.getByRole('button', { name: /Undo/ }).click();
   await expect(tree.getByTestId('playlist-node')).toHaveCount(3);
+
+  await app.close();
+});
+
+test('a playlist built and put in order with the keyboard alone: Add to playlist, Alt+↑ ↓, Up and Down, and Undo', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-playlist-keys-'));
+  const one = join(dir, 'Placeholder Keys One.pro6');
+  const two = join(dir, 'Placeholder Keys Two.pro6');
+  writeFileSync(one, song('E2E-KEYS-ONE', 'Placeholder keys one'));
+  writeFileSync(two, song('E2E-KEYS-TWO', 'Placeholder keys two'));
+  const picture = await makeTestImage(win, join(dir, 'Placeholder Keys Picture.png'));
+  await importAndGetIds(win, [one, two, picture]);
+
+  // No mouse from here on: focus a control, then keys.
+  const panel = win.getByTestId('playlists');
+  const items = panel.getByTestId('playlist-item');
+  await panel.getByRole('button', { name: 'New playlist or folder' }).focus();
+  await win.keyboard.press('Enter');
+  await expect(win.getByRole('menuitem', { name: 'New playlist' })).toBeFocused();
+  await win.keyboard.press('Enter');
+  await expect(panel.getByTestId('rename-field')).toBeFocused();
+  await win.keyboard.press('ControlOrMeta+A');
+  await win.keyboard.type('Placeholder Keyboard Sabha');
+  await win.keyboard.press('Enter');
+  const node = panel.getByTestId('playlist-node').filter({ hasText: /^Placeholder Keyboard Sabha/u });
+  const playlistId = (await node.getAttribute('data-node-id')) ?? '';
+  await node.focus();
+  await win.keyboard.press('Enter');
+  await expect(panel.getByTestId('playlist-title')).toHaveText('Placeholder Keyboard Sabha');
+  // An empty playlist names both ways to fill it.
+  await expect(panel.getByTestId('playlist-items')).toContainText(/drag/iu);
+  await expect(panel.getByTestId('playlist-items')).toContainText('Add to playlist');
+
+  // A presentation: choose its row (Enter), then Add to playlist beside it (Tab, Enter).
+  const library = win.getByTestId('presentation-list');
+  const row = (name: string) => library.getByRole('button', { name: new RegExp(`^${name}`, 'u') });
+  await row('Placeholder Keys One').focus();
+  await win.keyboard.press('Enter');
+  await win.keyboard.press('Tab');
+  const add = win.getByRole('button', { name: 'Add to playlist' });
+  await expect(add).toBeFocused();
+  await win.keyboard.press('Enter');
+  await expect(items).toHaveCount(1);
+  // Another from its row's menu (Shift+F10): it goes after the chosen item, the one just added.
+  await row('Placeholder Keys Two').focus();
+  await win.keyboard.press('Shift+F10');
+  await expect(win.getByRole('menuitem', { name: 'Add to “Placeholder Keyboard Sabha”' })).toBeFocused();
+  await win.keyboard.press('Enter');
+  await expect(items).toHaveCount(2);
+  // A picture, from the Media tab.
+  await win.getByTestId('library-tab-presentations').focus();
+  await win.keyboard.press('ArrowRight');
+  await expect(win.getByTestId('library-tab-media')).toHaveAttribute('aria-selected', 'true');
+  await win.getByTestId('media-item').filter({ hasText: 'Placeholder Keys Picture' }).focus();
+  await win.keyboard.press('Enter');
+  await win.keyboard.press('Tab');
+  await expect(add).toBeFocused();
+  await win.keyboard.press('Enter');
+  // In this order in the library, and in the window's list (which follows a moment later).
+  const inOrder = async (...names: string[]) => {
+    await expect
+      .poll(() =>
+        win.evaluate(
+          async (id) => (await (globalThis as PageGlobals).drashti.playlists.items(id)).map((i) => i.label),
+          playlistId,
+        ),
+      )
+      .toEqual(names);
+    await expect.poll(async () => (await labels(items)).map((l) => l.replace(/^\w+:/u, ''))).toEqual(names);
+  };
+  await inOrder('Placeholder Keys One', 'Placeholder Keys Two', 'Placeholder Keys Picture.png');
+  const undo = win.getByTestId('undo-removal');
+  await expect(undo).toContainText('Added “Placeholder Keys Picture.png” to “Placeholder Keyboard Sabha”');
+
+  // Alt+↑ twice on the picture: it moves up, keeps the keyboard, and each move is said.
+  const picked = items.filter({ hasText: 'Placeholder Keys Picture' });
+  await picked.focus();
+  await win.keyboard.press('Alt+ArrowUp');
+  await inOrder('Placeholder Keys One', 'Placeholder Keys Picture.png', 'Placeholder Keys Two');
+  await expect(picked).toBeFocused();
+  await expect(win.getByTestId('undo-said')).toHaveText(/^Moved “Placeholder Keys Picture\.png” up/u);
+  await win.keyboard.press('Alt+ArrowUp');
+  await inOrder('Placeholder Keys Picture.png', 'Placeholder Keys One', 'Placeholder Keys Two');
+  await expect(picked).toBeFocused();
+  // At the top, Up is off; Tab reaches Down, which moves it down and keeps the keyboard.
+  const chosen = panel.getByTestId('playlist-item-moves');
+  await expect(chosen.getByRole('button', { name: 'Up' })).toBeDisabled();
+  await win.keyboard.press('Tab');
+  await expect(chosen.getByRole('button', { name: 'Down' })).toBeFocused();
+  await win.keyboard.press('Enter');
+  await inOrder('Placeholder Keys One', 'Placeholder Keys Picture.png', 'Placeholder Keys Two');
+  await expect(chosen.getByRole('button', { name: 'Down' })).toBeFocused();
+  await win.keyboard.press('Alt+ArrowDown');
+  await inOrder('Placeholder Keys One', 'Placeholder Keys Two', 'Placeholder Keys Picture.png');
+  await expect(undo).toContainText('Moved “Placeholder Keys Picture.png” down');
+
+  // Undo (the bar's button, from the keyboard) takes back only the last move.
+  await undo.getByRole('button', { name: /Undo/u }).focus();
+  await win.keyboard.press('Enter');
+  await inOrder('Placeholder Keys One', 'Placeholder Keys Picture.png', 'Placeholder Keys Two');
+  await expect(undo).toContainText('Moved “Placeholder Keys Picture.png” down');
+  // And Edit › Undo the one before.
+  await chooseMenuItem(app, 'undo');
+  await inOrder('Placeholder Keys Picture.png', 'Placeholder Keys One', 'Placeholder Keys Two');
 
   await app.close();
 });

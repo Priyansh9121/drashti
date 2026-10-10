@@ -94,7 +94,7 @@ The **setup wizard** sets the screens, their languages, the sound and the defaul
 
 **Screen groups.** Each group is a set of screens that show the same: "Main Hall", "Stage", "Lobby". A group shows **the audience picture** or **the stage view (performers)**, or is **key and fill** for a video switcher. In **Screens**, each display has **Use this display**; each screen has its canvas size and scaling (for an LED wall that is not 1920 × 1080); **Identify screens** puts each screen's name on it.
 
-**Looks.** A Look says what every group shows: which layers, a kirtan's languages and their order, and whether slides are drawn as designed or as a lower third. One Look is live at a time, and the operators switch it under the live picture. In **Screens**, under **Looks**: **New Look**, **Duplicate**, rename, **Earlier**/**Later**, **Remove**; choose a Look there to see and change each group's settings in it. Drashti starts with the **first** Look in the list after a clean quit, so keep the everyday Look first.
+**Looks.** A Look says what every group shows: which layers, a kirtan's languages and their order, and whether slides are drawn as designed or as a lower third. One Look is live at a time, and the operators switch it under the live picture. In **Screens**, under **Looks**: **New Look**, **Duplicate**, rename, **Up**/**Down**, **Remove**; choose a Look there to see and change each group's settings in it. Drashti starts with the **first** Look in the list after a clean quit, so keep the everyday Look first.
 
 ![Looks in Screens](screenshots/screens-looks.png)
 

@@ -171,6 +171,10 @@ async function perform(action: OperatorAction, ui: { openScreens: () => void }):
     case 'removeSelected':
       requestRemoval();
       return;
+    // The playlist item that has the keyboard moves itself (PlaylistPanel).
+    case 'moveItemUp':
+    case 'moveItemDown':
+      return;
     case 'findInLibrary': {
       const box = document.getElementById('library-search');
       if (box instanceof HTMLInputElement) {
@@ -215,6 +219,8 @@ async function performSimple(action: OperatorAction, start: () => Promise<void>)
     case 'openScreens':
     case 'findInLibrary':
     case 'removeSelected':
+    case 'moveItemUp':
+    case 'moveItemDown':
       return;
     default:
       return perform(action, { openScreens: () => undefined });
