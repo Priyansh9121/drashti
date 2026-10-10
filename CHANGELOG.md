@@ -1,0 +1,43 @@
+# What changed in Drashti
+
+Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters.
+
+## 1.0.0-alpha.1
+
+Fixes for streaming from a Mac, for quitting while on air, and for screens that go blank or stop. Update after a sabha, never on the day of one.
+
+Streaming and quitting
+
+- A Mac can now go live to YouTube. In 1.0.0-alpha.0 the Mac could not check YouTube's secure connection, so the stream never went on air. Windows was not affected.
+- If the stream server's certificate cannot be checked, the Stream panel now says so in plain words, instead of saying the connection dropped.
+- Quitting while the stream is on air or recording now ends the stream, stops the recording and quits. Before, Drashti could keep running with no window, still on air and recording.
+- The quit question now says when the stream is on air or recording, and what will stop.
+- After a quit on purpose, Drashti starts again off air and not recording. Only after a crash does the stream come back by itself (within 5 minutes, as before).
+
+Screens
+
+- A screen that fails while drawing now goes black and comes back by itself, instead of staying blank for the rest of the sabha. If the operator window fails, it offers to reload itself, without touching the screens.
+- A screen that freezes is now noticed and restarted.
+- A screen Drashti has given up on is tried again after 2 minutes, then every 10 minutes. Meanwhile it shows as Stopped in Screens and the status bar, with Try again.
+- Dissolves no longer dim, flash or start from black: when slides change quickly, a background dissolving in carries on to its end; a slide still loading its pictures never flashes up; and a screen that opens part-way through a dissolve shows the background whole.
+
+Starting up, and output nodes
+
+- After an unexpected stop 3 hours or more before Drashti starts again, it now starts as after a normal quit (in Pro Mode, or Simple Mode when PINs are on), not in Simple Mode.
+- If the file that lets the nodes recognise Main is damaged, Drashti no longer quietly makes a new one, which stopped every node following. It says so when it starts, and Screens › Nodes offers Make a new identity… (an admin's); then pair each node again.
+- A computer that cannot read whether it is Main or a node now starts as what it last ran as, and says so, instead of waiting at a question with nobody there to answer it. A node that cannot read its pairing says so in its window.
+- Some rare errors when quitting during an import, or with a node paired, are fixed.
+- In Drashti's log, a hidden stream key now reads [stream key] once, not "[stream key] key]". The key itself was never written.
+
+Updating
+
+- Windows: Download, then turn on "Install it when Drashti quits". It installs as Drashti quits after the sabha.
+- Mac: Download, then Show the file. After the sabha, quit Drashti, open the file and drag Drashti into Applications.
+- Update the output nodes to the same version the same evening.
+
+## 1.0.0-alpha.0 (9 Oct 2026)
+
+The first release of Drashti, for trying it at the mandir beside the presentation software already in use.
+
+- Installers for Macs (Apple silicon and Intel) and for Windows.
+- Help › Check for Updates… finds later versions.

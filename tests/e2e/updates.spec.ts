@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { ElectronApplication } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -19,13 +20,26 @@ import { releaseServer } from './release-server';
  * quit, never in Simple Mode; a node refused for its version offers Main's.
  */
 
+/** The lines of some text that show, as the dialog shows them (its blank lines and indents aside). */
+const lines = (text: string) =>
+  text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+
 const menuHas = (app: ElectronApplication, id: string) =>
   app.evaluate(({ Menu }, itemId) => Menu.getApplicationMenu()?.getMenuItemById(itemId) !== null, id);
 
-test('an update is offered, downloads (waiting while on air), and installs only at quit; Simple Mode never sees it', async () => {
+test('an update is offered with what changed, downloads (waiting while on air), and installs only at quit; Simple Mode never sees it', async () => {
   test.setTimeout(120_000);
   const installer = randomBytes(2 * 1024 * 1024);
-  const release = await releaseServer({ '9.9.9': installer }, '9.9.9');
+  // Its notes are this version's CHANGELOG.md section, taken out as the Release workflow does for drashti-update.json.
+  const notesFile = join(mkdtempSync(join(tmpdir(), 'drashti-update-notes-')), 'release-notes.md');
+  execFileSync(process.execPath, [join('scripts', 'release-notes.mjs'), '--out', notesFile], {
+    cwd: join(__dirname, '..', '..'),
+  });
+  const notes = readFileSync(notesFile, 'utf8').trim();
+  const release = await releaseServer({ '9.9.9': installer }, '9.9.9', notes);
   const installLog = join(mkdtempSync(join(tmpdir(), 'drashti-update-e2e-')), 'install.json');
   try {
     const { app } = await launchApp({
@@ -43,6 +57,10 @@ test('an update is offered, downloads (waiting while on air), and installs only 
     await expect(dialog).toBeVisible();
     await dialog.getByTestId('updates-check').click();
     await expect(dialog.getByTestId('updates-offer')).toContainText('Drashti 9.9.9');
+    // What changed, line by line, its first line first.
+    const shown = dialog.getByTestId('updates-notes');
+    await expect(shown).toBeVisible();
+    expect(lines(await shown.innerText())).toEqual(lines(notes));
     await expectNoSeriousA11yIssues(win, 'updates, one offered');
     // On air: the download waits, and nothing is fetched until the stream is off air.
     await app.evaluate(() => {

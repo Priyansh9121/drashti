@@ -86,7 +86,11 @@ export function UpdatesDialog() {
                 {offer.size > 0 ? ` (${formatBytes(offer.size)})` : ''}
               </span>
             </p>
-            {offer.notes && <p className="whitespace-pre-line text-muted">{offer.notes}</p>}
+            {offer.notes && (
+              <p className="whitespace-pre-line text-muted" data-testid="updates-notes">
+                {offer.notes}
+              </p>
+            )}
             {view.phase === 'available' && (
               <Button
                 variant="primary"

@@ -9,6 +9,8 @@
 //   SOURCES.md            where every part's source is, and the written offer for the rest
 //
 //   node scripts/release-assets.mjs --dir <folder of installers> --repo <owner/name> [--notes <file>]
+//
+// The Release workflow's notes are this version's section of CHANGELOG.md (scripts/release-notes.mjs).
 import { createHash } from 'node:crypto';
 import {
   createReadStream,
@@ -24,6 +26,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { NOTES_MAX } from './release-notes.mjs';
 
 const arg = (name, fallback = null) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -35,7 +38,10 @@ if (!dir) throw new Error('--dir <folder of installers> is needed');
 const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
 const tag = `v${version}`;
 const notesFile = arg('notes');
-const notes = notesFile && existsSync(notesFile) ? readFileSync(notesFile, 'utf8').trim().slice(0, 4000) : '';
+if (notesFile && !existsSync(notesFile)) throw new Error(`The notes file ${notesFile} is not there`);
+const notes = notesFile ? readFileSync(notesFile, 'utf8').trim() : '';
+// Cut short, they would differ from the release page; longer, every Drashti so far refuses the update.
+if (notes.length > NOTES_MAX) throw new Error(`The notes are over ${String(NOTES_MAX)} characters`);
 const download = (name) => `https://github.com/${repo}/releases/download/${tag}/${encodeURIComponent(name)}`;
 
 const hash = async (file, algorithm, encoding) => {
