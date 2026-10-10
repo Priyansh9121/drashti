@@ -43,6 +43,8 @@ export interface MenuActions {
   scheduledBackups: () => void;
   /** Help > Check for Updates… (Session 14, Pro Mode only). */
   checkForUpdates: () => void;
+  /** Help > Keyboard Shortcuts… (Session 25, Pro Mode only): the keys sheet. */
+  keyboardShortcuts: () => void;
   /** File > Run Ahead of Other Programs (Windows only, Pro Mode, admin; Session 16): null elsewhere. */
   priority: PriorityItem | null;
   /** Only when DRASHTI_DIAGNOSTICS=1: for the manual watchdog check. */
@@ -160,6 +162,18 @@ export function installMenu(actions: MenuActions): void {
   template.push({
     role: 'help',
     submenu: [
+      // The keys sheet, Pro Mode's (Simple Mode keeps its key line). No accelerator: ? is the page's key,
+      // and a menu's would get round the guards for fields and dialogs.
+      ...(simple
+        ? []
+        : [
+            {
+              id: 'keyboard-shortcuts',
+              label: 'Keyboard Shortcuts…',
+              click: actions.keyboardShortcuts,
+            } as MenuItemConstructorOptions,
+            { type: 'separator' } as MenuItemConstructorOptions,
+          ]),
       { id: 'save-diagnostics', label: 'Save Diagnostics…', click: actions.saveDiagnostics },
       // Simple Mode never sees updates.
       ...(simple

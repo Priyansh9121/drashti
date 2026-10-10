@@ -120,6 +120,8 @@ export interface DrashtiBridge {
     onModeChanged(listener: (mode: OperatorMode) => void): () => void;
     /** View > Switch to Pro Mode… was chosen: ask for the word (or, with roles on, a PIN). */
     onAskLeaveSimple(listener: () => void): () => void;
+    /** Help > Keyboard Shortcuts… was chosen (Pro Mode). */
+    onShowKeys(listener: () => void): () => void;
   };
   /** Scheduled backups (Session 14, operator window). */
   backups: {
