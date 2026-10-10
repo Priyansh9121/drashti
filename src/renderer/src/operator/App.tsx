@@ -57,6 +57,7 @@ import { connectRoles } from '../roles/roles-store';
 import { AdminPinDialog, RolesDialog } from '../roles/RolesDialogs';
 import { BackupsDialog } from '../backups/BackupsDialog';
 import { UpdatesDialog } from '../updates/UpdatesDialog';
+import { LinkDialog } from '../links/LinkDialog';
 import { KeysSheet, showKeysSheet } from './KeysSheet';
 import { MarkerJumps, MarkersDialog } from '../markers/MarkersDialog';
 import { SimpleApp } from '../simple/SimpleApp';
@@ -272,6 +273,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <RolesDialog />
       <BackupsDialog />
       <UpdatesDialog />
+      <LinkDialog platform={platform} />
       <KeysSheet platform={platform} />
       <MarkersDialog />
       <AdminPinDialog />

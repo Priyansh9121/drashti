@@ -93,6 +93,15 @@ describe('this version’s notes from CHANGELOG.md', () => {
     expect(notes).not.toMatch(/^#|\*\*|__|`|\]\(/mu);
   });
 
+  it('waiting under "## Unreleased" in this repository’s CHANGELOG.md, still fit in one release (Session 25b)', () => {
+    // Caught here, not when the next release is made: what waits becomes that release's notes as it is.
+    const changelog = readFileSync(join(app, 'CHANGELOG.md'), 'utf8');
+    if (!/^## Unreleased\s*$/mu.test(changelog)) return;
+    const waiting = releaseNotes(changelog, 'Unreleased');
+    expect(waiting.length).toBeLessThanOrEqual(NOTES_MAX);
+    expect(waiting).not.toMatch(/^#|\*\*|__|`|\]\(/mu);
+  });
+
   it('as the Release workflow runs it: written to a file, or a plain message and a failure', () => {
     const dir = mkdtempSync(join(tmpdir(), 'drashti-release-notes-'));
     const run = (...args: string[]) =>

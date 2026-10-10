@@ -20,6 +20,8 @@ export { Blend, Frame, KeyboardMusic, LayoutTemplate, SwatchBook, Zap } from 'lu
 export { BookOpen, CalendarDays, Flame, GalleryHorizontalEnd, Quote } from 'lucide-react';
 // Roles and PINs, scheduled backups, updates, music and markers (Session 14).
 export { Bookmark, Download, LockOpen, RefreshCw, ShieldCheck, Shuffle } from 'lucide-react';
+// Import from a Link (Session 25b): a link, Dropbox (a cloud) and YouTube (a played video).
+export { Cloud, Link2, MonitorPlay } from 'lucide-react';
 export {
   AlertTriangle,
   AlignCenter,

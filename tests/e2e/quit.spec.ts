@@ -1,11 +1,12 @@
 import { expect, test } from '@playwright/test';
 import { type ChildProcess, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { networkOn } from './devices';
-import { importAndGetIds, type PageGlobals } from './helpers';
+import { dropboxStandIn, fileLink } from './dropbox-stand-in';
+import { importAndGetIds, launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
 import { launchMain, launchNode, pairNode } from './nodes';
 import { releaseServer } from './release-server';
 import { freePort, rtmpListener, setUpStream, testFfmpeg } from './stream-helpers';
@@ -57,8 +58,8 @@ function processes(): { pid: number; ppid: number; name: string }[] {
     .map((m) => ({ pid: Number(m[1]), ppid: Number(m[2]), name: m[3] ?? '' }));
 }
 
-/** The FFmpeg processes started under this process (by its workers). */
-function ffmpegUnder(root: number): number[] {
+/** Every process under this one (its helpers, workers and what they started). */
+function under(root: number): { pid: number; ppid: number; name: string }[] {
   const all = processes();
   const mine = new Set([root]);
   for (let grew = true; grew;) {
@@ -69,7 +70,14 @@ function ffmpegUnder(root: number): number[] {
         grew = true;
       }
   }
-  return all.filter((p) => mine.has(p.pid) && /ffmpeg/iu.test(p.name)).map((p) => p.pid);
+  return all.filter((p) => mine.has(p.pid) && p.pid !== root);
+}
+
+/** The FFmpeg processes started under this process (by its workers). */
+function ffmpegUnder(root: number): number[] {
+  return under(root)
+    .filter((p) => /ffmpeg/iu.test(p.name))
+    .map((p) => p.pid);
 }
 
 const alive = (pid: number) => {
@@ -227,5 +235,68 @@ test('quitting with everything going on: each service stops in order, cleanly, w
   } finally {
     release.close();
     await node.app.close();
+  }
+});
+
+test('quitting during a download from a link (Session 25b): nothing of it is left behind', async () => {
+  test.setTimeout(120_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-quit-link-'));
+  const chosen = join(dir, 'Chosen folder');
+  // Placeholder bytes, sent slowly: still downloading when Drashti quits.
+  const standIn = await dropboxStandIn(
+    {
+      slowAAAAAAAAAAA: {
+        name: 'Placeholder clip.mp4',
+        body: randomBytes(16 * 1024 * 1024),
+        type: 'video/mp4',
+        slowMs: 50,
+      },
+    },
+    {},
+  );
+  try {
+    const { app, userData } = await launchApp({
+      DRASHTI_TEST_LINK_ORIGIN: standIn.origin,
+      DRASHTI_TEST_DOWNLOADS_DIR: dir,
+    });
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
+    }, chosen);
+    const view = () => win.evaluate(() => (globalThis as PageGlobals).drashti.links.view());
+    await win.evaluate(
+      (link) => (globalThis as PageGlobals).drashti.links.look('dropbox', link),
+      fileLink('slowAAAAAAAAAAA', 'Placeholder clip.mp4'),
+    );
+    await expect.poll(async () => (await view()).phase).toBe('looked');
+    await win.evaluate(async () => {
+      const links = (globalThis as PageGlobals).drashti.links;
+      await links.pickFolder();
+      const started = await links.download();
+      if (!started.ok) throw new Error(started.message);
+    });
+    // Downloading: some bytes are in its part-file (under a hidden name), more on the way.
+    await expect
+      .poll(async () => (await view()).progress?.done ?? 0, { timeout: 30_000 })
+      .toBeGreaterThan(256 * 1024);
+    const parts = readdirSync(chosen);
+    expect(parts).toHaveLength(1);
+    expect(parts[0]).toMatch(/^\.drashti-download-.+\.part$/u);
+
+    const mainPid = await app.evaluate(() => process.pid);
+    const helpers = under(mainPid).map((p) => p.pid);
+    expect(helpers.length).toBeGreaterThan(0);
+    await app.close();
+
+    // Nothing of the download is left: no part-file, no record of one, and no process of Drashti's.
+    expect(readdirSync(chosen)).toEqual([]);
+    expect(existsSync(join(userData, 'link-downloads.json'))).toBe(false);
+    await expect.poll(() => helpers.filter(alive), { timeout: 15_000 }).toEqual([]);
+    const log = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+    expect(log).not.toContain('Uncaught exception');
+    expect(log).not.toContain('did not stop cleanly');
+  } finally {
+    await standIn.close();
   }
 });

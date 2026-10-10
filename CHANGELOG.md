@@ -38,6 +38,10 @@ Phones and tablets
 - The remote's words are larger, 16 pixels or more, apart from the tab bar's labels and the small LIVE-style badges.
 - In the operator window, a notice's Dismiss is a larger target.
 
+Import from a link
+
+- File › Import from a Link… (or Import, then From a link…) saves a Dropbox file or folder in a folder you choose, then imports its PowerPoint files and MP4 videos; everything else stays in the folder. Downloads wait while the stream is on air or recording, and carry on if you close the window. YouTube is shown but not offered yet.
+
 Help
 
 - Help › Keyboard Shortcuts… (or the ? key) lists every key, grouped by what you are doing, as your computer writes them. The keys may still change after the setup day.

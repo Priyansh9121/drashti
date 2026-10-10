@@ -161,6 +161,13 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.updates.setInstallOnQuit,
   IPC.updates.setAutoCheck,
   IPC.updates.showFile,
+  // Import from a Link (Session 25b): Simple Mode never sees it.
+  IPC.links.look,
+  IPC.links.pickFolder,
+  IPC.links.download,
+  IPC.links.stop,
+  IPC.links.reset,
+  IPC.links.showSaved,
   // Roles (Session 14): Simple Mode sets no PIN and unlocks nothing; leaving it takes a PIN (app:set-mode).
   IPC.roles.setPins,
   IPC.roles.changePin,

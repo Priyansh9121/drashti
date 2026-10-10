@@ -1,6 +1,7 @@
 import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
 import type { RolesResult, RolesView } from './roles';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
+import type { LinkKind, LinkResult, LinkView } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
 import type { MarkersResult, MediaMarkers } from './markers';
@@ -180,6 +181,26 @@ export const IPC = {
     changed: 'updates:changed',
     /** main -> operator: Help > Check for Updates… was chosen. */
     open: 'updates:open',
+  },
+  /**
+   * Import from a Link (Session 25b, shared/links.ts): an admin's, in Pro
+   * Mode; Simple Mode never sees it. Looking at a link, choosing the folder
+   * and downloading are an admin's; stopping is anyone's in Pro Mode.
+   */
+  links: {
+    view: 'links:view',
+    look: 'links:look',
+    pickFolder: 'links:pick-folder',
+    download: 'links:download',
+    stop: 'links:stop',
+    /** Start again with a new link. */
+    reset: 'links:reset',
+    /** Show where the files were saved (Finder, Explorer). */
+    showSaved: 'links:show-saved',
+    /** main -> operator: how the download stands changed. */
+    changed: 'links:changed',
+    /** main -> operator: File > Import from a Link… was chosen. */
+    open: 'links:open',
   },
   /**
    * Audio playlists (Session 14, shared/music.ts): changing them is the
@@ -652,6 +673,13 @@ export interface InvokeContract {
   [IPC.updates.setInstallOnQuit]: { args: [on: boolean]; result: UpdateResult };
   [IPC.updates.setAutoCheck]: { args: [on: boolean]; result: UpdateResult };
   [IPC.updates.showFile]: { args: []; result: null };
+  [IPC.links.view]: { args: []; result: LinkView };
+  [IPC.links.look]: { args: [kind: LinkKind, link: string]; result: LinkResult };
+  [IPC.links.pickFolder]: { args: []; result: LinkResult };
+  [IPC.links.download]: { args: []; result: LinkResult };
+  [IPC.links.stop]: { args: []; result: LinkResult };
+  [IPC.links.reset]: { args: []; result: LinkResult };
+  [IPC.links.showSaved]: { args: []; result: null };
   [IPC.engine.subscribe]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.snapshot]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.command]: { args: [command: EngineCommand]; result: CommandResult };
@@ -940,6 +968,8 @@ export interface EventContract {
   [IPC.updates.changed]: UpdateView;
   [IPC.music.changed]: MusicView;
   [IPC.updates.open]: { at: number };
+  [IPC.links.changed]: LinkView;
+  [IPC.links.open]: { at: number };
   [IPC.app.showKeys]: { at: number };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.looks.changed]: LooksView;

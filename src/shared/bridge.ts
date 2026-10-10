@@ -35,6 +35,7 @@ import type {
 import type { TranslitStyle } from './translit';
 import type { ModeResult, OperatorMode } from './mode';
 import type { RolesResult, RolesView } from './roles';
+import type { LinkKind, LinkResult, LinkView } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
 import type { MarkersResult, MediaMarkers } from './markers';
@@ -159,6 +160,19 @@ export interface DrashtiBridge {
     showFile(): Promise<null>;
     onChanged(listener: (view: UpdateView) => void): () => void;
     /** Help > Check for Updates… was chosen. */
+    onOpen(listener: () => void): () => void;
+  };
+  /** Import from a Link (Session 25b, operator window, Pro Mode). */
+  links: {
+    view(): Promise<LinkView>;
+    look(kind: LinkKind, link: string): Promise<LinkResult>;
+    pickFolder(): Promise<LinkResult>;
+    download(): Promise<LinkResult>;
+    stop(): Promise<LinkResult>;
+    reset(): Promise<LinkResult>;
+    showSaved(): Promise<null>;
+    onChanged(listener: (view: LinkView) => void): () => void;
+    /** File > Import from a Link… was chosen. */
     onOpen(listener: () => void): () => void;
   };
   /** Roles (Session 14): an admin PIN and an operator PIN (operator window). */

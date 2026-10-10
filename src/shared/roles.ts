@@ -139,6 +139,10 @@ export const ADMIN_CHANNELS: readonly InvokeChannel[] = [
   IPC.stream.setKey,
   IPC.stream.removeKey,
   IPC.stream.pickFolder,
+  // Import from a Link (Session 25b): looking at a link, choosing the folder, downloading.
+  IPC.links.look,
+  IPC.links.pickFolder,
+  IPC.links.download,
   // Updates: downloading, installing when Drashti quits, the daily look.
   IPC.updates.download,
   IPC.updates.setInstallOnQuit,
