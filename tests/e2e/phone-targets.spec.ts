@@ -50,13 +50,27 @@ const smallText = (page: Page) =>
 
 /** No double-tap zoom on the page and its controls, and no pull-to-reload. */
 const touch = (page: Page) =>
-  page.evaluate(() => ({
-    page: getComputedStyle(document.body).touchAction,
-    overscroll: getComputedStyle(document.documentElement).overscrollBehaviorY,
-    controls: [
-      ...new Set([...document.querySelectorAll('button')].map((b) => getComputedStyle(b).touchAction)),
-    ],
-  }));
+  page.evaluate(async () => {
+    const computed: unknown = getComputedStyle(document.documentElement).overscrollBehaviorY;
+    // An engine that does not know the property (Playwright's WebKit on Windows) drops it: there the
+    // page's own stylesheet is checked for the rule instead (a real iPhone is still owed).
+    const shipped = async () => {
+      const sheets = [...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')];
+      const texts = await Promise.all(sheets.map(async (l) => (await fetch(l.href)).text()));
+      return texts.some((t) =>
+        /html:has\(\s*>\s*body\.web\s*\)[^{]*\{[^}]*overscroll-behavior:\s*none/u.test(t),
+      )
+        ? 'none'
+        : 'missing';
+    };
+    return {
+      page: getComputedStyle(document.body).touchAction,
+      overscroll: typeof computed === 'string' ? computed : await shipped(),
+      controls: [
+        ...new Set([...document.querySelectorAll('button')].map((b) => getComputedStyle(b).touchAction)),
+      ],
+    };
+  });
 
 const HARDENED = { page: 'manipulation', overscroll: 'none', controls: ['manipulation'] };
 
