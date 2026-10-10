@@ -90,3 +90,6 @@ export const anotherLink = () => act(() => window.drashti.links.reset());
 /** A download, unpacking, conversion or import is going on (or waiting). */
 export const linkBusy = (view: LinkView | null): boolean =>
   view !== null && ['waiting', 'downloading', 'unpacking', 'converting', 'importing'].includes(view.phase);
+
+/** A folder's own name, the last part of its path (either system's). */
+export const lastPart = (path: string): string => path.split(/[\\/]/u).filter(Boolean).pop() ?? path;

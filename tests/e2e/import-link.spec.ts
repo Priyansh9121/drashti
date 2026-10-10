@@ -180,6 +180,7 @@ test('Dropbox: a file link and a folder link are saved in the chosen folder, the
   await expect(win.getByTestId('link-not-taken-item')).toHaveCount(1);
   await expect(win.getByTestId('link-not-taken-item')).toContainText('Read me.txt');
   await expect(win.getByTestId('link-not-taken-item')).toContainText('not imported');
+  await expectNoSeriousA11yIssues(win, 'the Import from a Link dialog, done', '[data-testid="link-dialog"]');
   // The PowerPoint went through the PowerPoint route (which says so plainly with no Keynote or PowerPoint
   // here), and the video into the library.
   await expect(report).toBeVisible({ timeout: 60_000 });

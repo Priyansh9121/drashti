@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { formatBytes } from '../../../shared/format';
 import { checkLink, type LinkKind, type LinkView, YOUTUBE_NOT_YET } from '../../../shared/links';
 import { useMode } from '../operator/mode-store';
+import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Dialog } from '../ui/Dialog';
@@ -19,6 +20,7 @@ import {
   chooseKind,
   closeLinkDialog,
   connectLinks,
+  lastPart,
   linkBusy,
   lookAtLink,
   pickSaveFolder,
@@ -79,13 +81,20 @@ function KindChoice({ kind, locked }: { kind: LinkKind | null; locked: boolean }
               'flex items-start gap-2 rounded-lg border px-3 py-2 text-left',
               on ? 'border-accent bg-panel-3' : 'border-field bg-panel-2',
               usable && !on && 'hover:border-muted',
-              !k.ready && 'cursor-not-allowed',
+              // Shown, but not offered yet: a dashed edge, and it says so.
+              !k.ready && 'cursor-not-allowed border-dashed',
             )}
           >
             <KindIcon size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-muted" />
             <span className="min-w-0">
-              <span className={cx('block text-sm font-medium', k.ready ? 'text-fg' : 'text-muted')}>
+              <span
+                className={cx(
+                  'flex items-center gap-1.5 text-sm font-medium',
+                  k.ready ? 'text-fg' : 'text-muted',
+                )}
+              >
                 {k.label}
+                {!k.ready && <Badge>Not yet</Badge>}
               </span>
               <span className="block text-xs text-muted" data-testid={`link-kind-${k.id}-hint`}>
                 {k.hint}
@@ -245,9 +254,9 @@ function Saved({ view, platform }: { view: LinkView; platform: string }) {
     <div className="space-y-3" data-testid="link-saved">
       <div className="space-y-1">
         <p className="text-sm">
-          Saved {plural(saved.files.length, 'file')} in{' '}
-          <strong data-testid="link-saved-folder">{saved.folder}</strong>.
+          Saved {plural(saved.files.length, 'file')} in <strong>{lastPart(saved.folder)}</strong>:
         </p>
+        <Truncate text={saved.folder} className="text-xs text-muted" data-testid="link-saved-folder" />
         <ul
           className="max-h-32 list-disc overflow-auto pl-5 text-xs text-muted"
           data-testid="link-saved-files"
