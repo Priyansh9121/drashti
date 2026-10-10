@@ -11,8 +11,15 @@ export interface Release {
   close: () => void;
 }
 
-/** GitHub Releases' paths: the newest at /latest/download/, a version at /download/v<version>/. */
-export async function releaseServer(versions: Record<string, Buffer>, latest: string): Promise<Release> {
+/**
+ * GitHub Releases' paths: the newest at /latest/download/, a version at /download/v<version>/. Every
+ * version's notes are `notes` when given (a CHANGELOG.md section), or a placeholder line.
+ */
+export async function releaseServer(
+  versions: Record<string, Buffer>,
+  latest: string,
+  notes?: string,
+): Promise<Release> {
   let served = 0;
   const kind = process.platform === 'win32' ? 'nsis' : 'zip';
   // The release's names, which never change (build/downloads.json); the version is in the path.
@@ -28,7 +35,7 @@ export async function releaseServer(versions: Record<string, Buffer>, latest: st
       app: 'drashti',
       version: v,
       releasedAt: '2026-10-06T00:00:00Z',
-      notes: `Placeholder notes for ${v}.`,
+      notes: notes ?? `Placeholder notes for ${v}.`,
       source: `${base}/tag/v${v}`,
       files: [
         {

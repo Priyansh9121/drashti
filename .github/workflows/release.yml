@@ -5,7 +5,10 @@ name: Release
 # signed ad hoc), the update manifest Drashti's update check reads (drashti-update.json), checksums, and
 # FFmpeg's source. The installers have names that never change (build/downloads.json, Session 18), so
 # https://github.com/<owner>/<repo>/releases/latest/download/<name> always gives the newest; each is
-# installed on its runner as a person would, and the Drashti it installs must start.
+# installed on its runner as a person would, and the Drashti it installs must start. The release's notes
+# are this version's section of CHANGELOG.md (scripts/release-notes.mjs): what Help > Check for Updates…
+# shows (in drashti-update.json) and the release page's text. With no section for package.json's version
+# the run stops at its first step.
 #
 # It publishes a GitHub release only when started by hand with "publish" ticked, from main. Otherwise
 # (publish off, or a push to the scratch branch release-dry-run) it builds and checks everything and
@@ -49,6 +52,8 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - name: This version's notes are in CHANGELOG.md
+        run: node scripts/release-notes.mjs
       - run: pnpm install --frozen-lockfile
       - name: Cache FFmpeg downloads
         uses: actions/cache@v6
@@ -115,8 +120,10 @@ jobs:
           mkdir -p release-files
           find downloaded -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' \) -exec cp {} release-files/ \;
           ls -la release-files
-      - name: The update manifest, checksums and FFmpeg's source
-        run: node scripts/release-assets.mjs --dir release-files --repo "$GITHUB_REPOSITORY"
+      - name: This version's notes, from CHANGELOG.md
+        run: node scripts/release-notes.mjs --out release-notes.md
+      - name: The update manifest (with the notes), checksums and FFmpeg's source
+        run: node scripts/release-assets.mjs --dir release-files --repo "$GITHUB_REPOSITORY" --notes release-notes.md
       - name: What the update check will read
         run: cat release-files/drashti-update.json
       - uses: actions/upload-artifact@v7
@@ -135,6 +142,9 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
       - uses: actions/download-artifact@v7
         with:
           name: release-files
@@ -147,6 +157,8 @@ jobs:
           if gh release view "v$version" >/dev/null 2>&1; then
             echo "v$version is already released: bump the version first."; exit 1
           fi
+          # The release page's text is the notes the update check shows: this version's CHANGELOG.md section.
+          node scripts/release-notes.mjs --out release-notes.md
           # Not marked as a pre-release, so releases/latest (what Drashti checks) finds it.
           gh release create "v$version" release-files/* --target "$GITHUB_SHA" --title "Drashti $version" \
-            --notes "Drashti $version. Installers for macOS (Apple silicon and Intel) and Windows; drashti-update.json is what Drashti's update check reads; SOURCES.md says where every part's source is."
+            --notes-file release-notes.md
