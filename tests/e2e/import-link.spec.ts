@@ -1,5 +1,6 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import Database from 'better-sqlite3';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -194,5 +195,77 @@ test('Dropbox: a file link and a folder link are saved in the chosen folder, the
   for (const r of standIn.requests)
     expect(r.host).toMatch(/^(www\.dropbox\.com|uc\w+\.dl\.dropboxusercontent\.com)$/u);
   expect(existsSync(join(downloads, 'Drashti downloads'))).toBe(false);
+  await app.close();
+});
+
+test('Dropbox: a video above 1080p ends as a 1080p copy in the library, the original untouched in the folder', async () => {
+  test.setTimeout(240_000);
+  const work = mkdtempSync(join(tmpdir(), 'drashti-link-e2e-'));
+  const media = join(work, 'made');
+  mkdirSync(media);
+  const big = makeVideo(join(media, 'big.mp4'), '3840x2160');
+  standIn = await dropboxStandIn(
+    { bigAAAAAAAAAAAA: { name: 'Placeholder 2160p.mp4', body: big, type: 'video/mp4' } },
+    {},
+  );
+  const chosen = join(work, 'Chosen folder');
+  const { app, userData } = await launchApp({
+    DRASHTI_TEST_LINK_ORIGIN: standIn.origin,
+    DRASHTI_TEST_DOWNLOADS_DIR: join(work, 'Videos'),
+  });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await app.evaluate(({ dialog, shell }, folder) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
+    // Show in Finder (Explorer): what it would show.
+    shell.showItemInFolder = (path) => {
+      (globalThis as { shown?: string[] }).shown = [
+        ...((globalThis as { shown?: string[] }).shown ?? []),
+        path,
+      ];
+    };
+  }, chosen);
+
+  // From the library's Import menu this time.
+  await win.getByRole('button', { name: 'Import…' }).click();
+  await win.getByRole('menuitem', { name: 'From a link…' }).click();
+  await win.getByTestId('link-kind-dropbox').click();
+  await win.getByTestId('link-text').fill(fileLink('bigAAAAAAAAAAAA', 'Placeholder 2160p.mp4'));
+  await expect(win.getByTestId('link-name')).toHaveText('Placeholder 2160p.mp4');
+  await win.getByTestId('link-choose-folder').click();
+  await expect(win.getByTestId('link-folder')).toHaveText(chosen);
+  await win.getByTestId('link-download').click();
+
+  // Saved; made 1080p for the library; imported.
+  await expect(win.getByTestId('link-fitted-item')).toHaveText('Placeholder 2160p.mp4', { timeout: 120_000 });
+  const report = win.getByTestId('import-report');
+  await expect(report).toBeVisible({ timeout: 60_000 });
+  await expect(report.getByTestId('report-item').first()).toHaveAttribute('data-outcome', 'imported');
+  // The report says where the files were saved, and shows them.
+  await expect(report.getByTestId('report-saved-in')).toContainText(chosen);
+  await report.getByTestId('report-show-saved').click();
+  await expect
+    .poll(() => app.evaluate(() => (globalThis as { shown?: string[] }).shown ?? []))
+    .toEqual([join(chosen, 'Placeholder 2160p.mp4')]);
+
+  // The original, 2160p, is in the folder as it came.
+  expect(readdirSync(chosen)).toEqual(['Placeholder 2160p.mp4']);
+  expect(readFileSync(join(chosen, 'Placeholder 2160p.mp4')).equals(big)).toBe(true);
+  // The library's copy is 1080p (H.264), and no copy is left in Drashti's work folder.
+  const db = new Database(join(userData, 'drashti.sqlite'), { readonly: true });
+  const row = db.prepare('SELECT path FROM media WHERE name = ?').get('Placeholder 2160p.mp4') as
+    { path: string } | undefined;
+  db.close();
+  expect(row).toBeDefined();
+  const stored = spawnSync(ffmpeg ?? '', [
+    '-hide_banner',
+    '-i',
+    join(userData, 'Media', row?.path ?? ''),
+  ]).stderr.toString();
+  expect(stored).toMatch(/Video: h264/u);
+  expect(stored).toMatch(/1920x1080/u);
+  expect(
+    existsSync(join(userData, 'Link downloads')) ? readdirSync(join(userData, 'Link downloads')) : [],
+  ).toEqual([]);
   await app.close();
 });

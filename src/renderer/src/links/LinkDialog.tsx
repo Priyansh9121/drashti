@@ -210,10 +210,17 @@ function Going({ view }: { view: LinkView }) {
     words = p.total
       ? `Downloading: ${formatBytes(p.done)} of ${formatBytes(p.total)}.`
       : `Downloading: ${formatBytes(p.done)}.`;
+  else if (view.phase === 'converting')
+    words = view.waitingFor
+      ? `A video above 1080p waits to be made 1080p: ${view.waitingFor}. It goes on by itself afterwards.`
+      : `Making a video above 1080p a 1080p copy for the library${fraction !== null ? `: ${String(Math.round(fraction * 100))}%` : '…'}`;
   return (
     <div className="space-y-2" role="status" data-testid="link-going" data-phase={view.phase}>
       {fraction !== null && view.phase !== 'importing' && (
-        <Progress value={fraction} label="Downloading the link" />
+        <Progress
+          value={fraction}
+          label={view.phase === 'converting' ? 'Making the video 1080p' : 'Downloading the link'}
+        />
       )}
       <p className="text-sm text-muted" data-testid="link-going-words">
         {words}
@@ -250,6 +257,22 @@ function Saved({ view, platform }: { view: LinkView; platform: string }) {
           ))}
         </ul>
       </div>
+      {view.fitted.length > 0 && (
+        <div className="space-y-1" data-testid="link-fitted">
+          <p className="text-sm font-medium">Made 1080p</p>
+          <p className="text-xs text-muted">
+            Above 1080p, so the library has a 1080p copy of each. The originals stay in the folder as they
+            were.
+          </p>
+          <ul className="max-h-24 list-disc overflow-auto pl-5 text-xs">
+            {view.fitted.map((f) => (
+              <li key={f} data-testid="link-fitted-item">
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {view.notTaken.length > 0 && (
         <div className="space-y-1" data-testid="link-not-taken">
           <p className="text-sm font-medium">Not taken</p>
@@ -267,7 +290,7 @@ function Saved({ view, platform }: { view: LinkView; platform: string }) {
           size="sm"
           icon={FolderOpen}
           data-testid="link-show-saved"
-          onClick={() => void window.drashti.links.showSaved()}
+          onClick={() => void window.drashti.links.showSaved(null)}
         >
           {platform === 'darwin' ? 'Show in Finder' : 'Show in Explorer'}
         </Button>

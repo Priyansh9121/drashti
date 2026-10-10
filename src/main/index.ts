@@ -114,6 +114,7 @@ import { adminRefusals } from './roles/admin-lock';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
 import { LinkService } from './links/link-service';
+import { LINK_MAX_HEIGHT } from '../shared/links';
 import { spawnDownloadWorker } from './links/spawn-worker';
 import { AudioOutput } from './audio/audio-output';
 import { saveDiagnostics } from './diagnostics';
@@ -2226,6 +2227,18 @@ function start(): void {
       else log.info(message);
     },
     record: join(userDataDir, 'link-downloads.json'),
+    workDir: join(userDataDir, 'Link downloads'),
+    // A Dropbox video above 1080p: Drashti's own conversion makes a 1080p copy first (it waits while on air).
+    fitVideo: (path, outDir, report) =>
+      conversions.fitHeight(path, outDir, {
+        maxHeight: LINK_MAX_HEIGHT,
+        waiting: (note) => {
+          report(note === null ? null : 'the stream is on air or recording', null);
+        },
+        progress: (fraction) => {
+          report(null, fraction);
+        },
+      }),
     route: { testOrigin: testLinkOrigin, guard: testLinkGuard || testLinkOrigin !== null },
   });
   stops.add('links', () => {
@@ -2245,8 +2258,8 @@ function start(): void {
   handle(IPC.links.download, (e) => (fromOperator(e) ? links.download() : notLinksOperator));
   handle(IPC.links.stop, (e) => (fromOperator(e) ? links.stop() : notLinksOperator));
   handle(IPC.links.reset, (e) => (fromOperator(e) ? links.reset() : notLinksOperator));
-  handle(IPC.links.showSaved, (e) => {
-    const saved = links.savedPath();
+  handle(IPC.links.showSaved, (e, runId) => {
+    const saved = links.savedPath(typeof runId === 'string' ? runId : null);
     if (fromOperator(e) && saved) shell.showItemInFolder(saved);
     return null;
   });

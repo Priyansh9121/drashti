@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -243,5 +244,81 @@ describe.skipIf(!existsSync(ffmpeg))('converting media, with FFmpeg', () => {
     service.convert(['m']);
     await until(() => jobs.some((j) => j.state === 'failed'));
     expect(jobs.find((j) => j.state === 'failed')?.message).toContain('2 GB');
+  }, 120_000);
+
+  it('makes a downloaded video above 1080p a 1080p copy (Session 25b), waiting while the stream is on, the original untouched', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-convert-'));
+    const source = join(dir, 'Placeholder 2160p.mp4');
+    make([
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=s=3840x2160:r=25',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=r=48000',
+      '-t',
+      '1',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-pix_fmt',
+      'yuv420p',
+      '-c:a',
+      'aac',
+      '-shortest',
+      source,
+    ]);
+    const before = await sha256File(source);
+    db = openDatabase(join(dir, 'drashti.sqlite'));
+    let busy: string | null = 'Waits while the stream is on air or recording.';
+    service = new ConvertService({
+      db,
+      mediaDir: join(dir, 'Media'),
+      ffmpegPath: () => ffmpeg,
+      busy: () => busy,
+      freeBytes: () => 100 * 1024 ** 3,
+      changed: () => undefined,
+      libraryChanged: () => undefined,
+      log: () => undefined,
+    });
+    const out = join(dir, 'copies');
+    const notes: (string | null)[] = [];
+    let most = 0;
+    const done = service.fitHeight(source, out, {
+      maxHeight: 1080,
+      waiting: (note) => notes.push(note),
+      progress: (fraction) => (most = Math.max(most, fraction ?? 0)),
+    });
+    // On air: nothing is made, and it says why.
+    await sleep(2500);
+    expect(existsSync(join(out, 'Placeholder 2160p.mp4'))).toBe(false);
+    expect(notes).toContain(busy);
+    busy = null;
+    const result = await done;
+    expect(result).toEqual({ ok: true, copy: join(out, 'Placeholder 2160p.mp4') });
+    const made = describeFile(join(out, 'Placeholder 2160p.mp4'));
+    expect(made).toMatch(/Video: h264/u);
+    expect(made).toMatch(/1920x1080/u);
+    expect(made).toMatch(/Audio: aac/u);
+    expect(most).toBeGreaterThan(0);
+    // Nothing else is left in the copies' folder, and the original is as it was.
+    expect(readdirSync(out)).toEqual(['Placeholder 2160p.mp4']);
+    expect(await sha256File(source)).toEqual(before);
+    // A video at 1080p or less needs no copy.
+    expect(
+      await service.fitHeight(join(out, 'Placeholder 2160p.mp4'), join(dir, 'more'), { maxHeight: 1080 }),
+    ).toEqual({
+      ok: true,
+      copy: null,
+    });
+    // Drashti quitting stops one waiting, with a plain answer.
+    busy = 'Waits while the stream is on air or recording.';
+    const waiting = service.fitHeight(source, join(dir, 'later'), { maxHeight: 1080 });
+    await sleep(1500);
+    service.close();
+    expect(await waiting).toEqual({ ok: false, message: 'Stopped: Drashti is quitting.' });
   }, 120_000);
 });

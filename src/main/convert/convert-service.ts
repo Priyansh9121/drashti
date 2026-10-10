@@ -1,8 +1,9 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
+import { rename } from 'node:fs/promises';
 import { constants, setPriority } from 'node:os';
-import { basename, extname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import { z } from 'zod';
 import type { ConversionJob, ConvertResult } from '../../shared/convert';
 import { isHevc } from '../../shared/convert';
@@ -110,9 +111,41 @@ interface Running {
   stop: Stop | null;
 }
 
+/** Making a file no taller than a height (Session 25b): a downloaded video above 1080p, before its import. */
+export interface FitOptions {
+  maxHeight: number;
+  /** How far it has got (0 to 1), when it can be told. */
+  progress?(fraction: number | null): void;
+  /** Why it waits (the stream on air or recording), or null when it goes on. */
+  waiting?(note: string | null): void;
+}
+
+/** The copy made (null: it was no taller already), or why none could be. */
+export type FitResult = { ok: true; copy: string | null } | { ok: false; message: string };
+
+interface FileJob {
+  id: string;
+  source: string;
+  dest: string;
+  info: MediaInfo;
+  options: FitOptions;
+  note: string | null;
+  resolve(result: FitResult): void;
+}
+
+interface RunningFile {
+  job: FileJob;
+  child: ChildProcess | null;
+  tmp: string;
+  stop: Stop | null;
+}
+
 export class ConvertService {
   private jobs: ConversionJob[] = [];
   private running: Running | null = null;
+  /** Files waiting to be made no taller than a height (after the library's own jobs), and the one going. */
+  private files: FileJob[] = [];
+  private runningFile: RunningFile | null = null;
   private readonly timer: NodeJS.Timeout;
 
   constructor(private readonly deps: ConvertDeps) {
@@ -236,6 +269,17 @@ export class ConvertService {
 
   private watch(): void {
     const busy = this.deps.busy();
+    const file = this.runningFile;
+    if (file) {
+      if (busy && file.child && !file.stop) {
+        file.stop = 'wait';
+        file.child.kill();
+      } else if (file.child && !file.stop && this.deps.freeBytes(dirname(file.job.dest)) < KEEP_FREE_BYTES) {
+        file.stop = 'space';
+        file.child.kill();
+      }
+      return;
+    }
     const running = this.running;
     if (running) {
       if (busy && running.child && !running.stop) {
@@ -253,7 +297,10 @@ export class ConvertService {
       return;
     }
     const next = this.jobs.find((j) => j.state === 'waiting');
-    if (!next) return;
+    if (!next) {
+      this.nextFile(busy);
+      return;
+    }
     if (busy) {
       if (next.note !== busy) {
         for (const j of this.jobs) if (j.state === 'waiting') j.note = busy;
@@ -419,9 +466,166 @@ export class ConvertService {
     this.watch();
   }
 
+  // ---- making a file no taller than a height (Session 25b) -----------------------------
+
+  /**
+   * Make a video taller than `maxHeight` that tall, as a copy in `outDir` with the same name (H.264 and
+   * AAC in MP4), one file at a time with the library's own conversions, waiting while the stream is on
+   * air or recording. The original is never changed. A video no taller already needs no copy.
+   */
+  async fitHeight(source: string, outDir: string, options: FitOptions): Promise<FitResult> {
+    const ffmpeg = this.deps.ffmpegPath();
+    if (!ffmpeg)
+      return {
+        ok: false,
+        message:
+          'Drashti’s copy of FFmpeg is missing, so it cannot make the video smaller. Install Drashti again.',
+      };
+    const info = await readInfo(ffmpeg, source);
+    if (!info.video || info.video.still)
+      return { ok: false, message: 'FFmpeg could not find a video in it to make smaller.' };
+    if (info.video.height <= options.maxHeight) return { ok: true, copy: null };
+    const dest = join(outDir, basename(source, extname(source)) + '.mp4');
+    return new Promise((resolve) => {
+      this.files.push({ id: randomUUID(), source, dest, info, options, note: null, resolve });
+      this.watch();
+    });
+  }
+
+  /** Start the next file waiting (none while the stream is on: each says why it waits). */
+  private nextFile(busy: string | null): void {
+    const next = this.files[0];
+    if (!next) return;
+    if (busy) {
+      for (const f of this.files)
+        if (f.note !== busy) {
+          f.note = busy;
+          f.options.waiting?.(busy);
+        }
+      return;
+    }
+    this.files.shift();
+    void this.runFile(next);
+  }
+
+  private async runFile(job: FileJob): Promise<void> {
+    const ffmpeg = this.deps.ffmpegPath();
+    const height = String(job.options.maxHeight);
+    const done = (result: FitResult) => {
+      this.runningFile = null;
+      job.resolve(result);
+      this.watch();
+    };
+    if (!ffmpeg) {
+      done({ ok: false, message: 'Drashti’s copy of FFmpeg is missing. Install Drashti again.' });
+      return;
+    }
+    if (job.note !== null) {
+      job.note = null;
+      job.options.waiting?.(null);
+    }
+    const out = dirname(job.dest);
+    try {
+      mkdirSync(out, { recursive: true });
+    } catch {
+      done({ ok: false, message: 'Drashti could not write in its own folder: ask the admin.' });
+      return;
+    }
+    const size = existsSync(job.source) ? statSync(job.source).size : 0;
+    const free = this.deps.freeBytes(out);
+    if (free - size < KEEP_FREE_BYTES) {
+      done({
+        ok: false,
+        message: `Only ${gb(free)} is free on this computer’s disk, and Drashti keeps 2 GB free. Free up some space, then import it again.`,
+      });
+      return;
+    }
+    const tmp = join(out, `.${job.id}.mp4`);
+    const running: RunningFile = { job, child: null, tmp, stop: null };
+    this.runningFile = running;
+    job.options.progress?.(0);
+    const child = spawn(
+      ffmpeg,
+      convertArgs('mp4', job.source, tmp, job.info, { maxHeight: job.options.maxHeight }),
+      {
+        windowsHide: true,
+      },
+    );
+    running.child = child;
+    try {
+      if (child.pid !== undefined) setPriority(child.pid, constants.priority.PRIORITY_LOW);
+    } catch {
+      // Not allowed here: it runs at normal priority.
+    }
+    const reader = new ProgressReader(
+      (p) => {
+        if (job.info.durationMs && p.outTimeMs !== null)
+          job.options.progress?.(Math.max(0, Math.min(1, p.outTimeMs / job.info.durationMs)));
+      },
+      () => undefined,
+    );
+    child.stderr.on('data', (d: Buffer) => {
+      reader.push(d.toString());
+    });
+    const code = await new Promise<number | null>((resolve) => {
+      child.on('error', () => {
+        resolve(-1);
+      });
+      child.on('exit', resolve);
+    });
+    if (code !== 0 || running.stop) {
+      removeQuietly(tmp);
+      const stop = running.stop;
+      if (stop === 'wait') {
+        // On air: it starts again from the beginning afterwards.
+        this.runningFile = null;
+        this.files.unshift(job);
+        this.deps.log(
+          'info',
+          `A video waiting to be made ${height}p stopped while the stream is on: it starts again afterwards`,
+        );
+        this.watch();
+        return;
+      }
+      if (stop === 'cancel') {
+        done({ ok: false, message: 'Stopped: Drashti is quitting.' });
+        return;
+      }
+      this.deps.log(
+        'warn',
+        `A video could not be made ${height}p (${stop === 'space' ? 'less than 2 GB free' : 'FFmpeg failed'})`,
+      );
+      done({
+        ok: false,
+        message:
+          stop === 'space'
+            ? 'Stopped: this computer’s disk has less than 2 GB free. Free up some space, then import it again.'
+            : `FFmpeg could not make it ${height}p.`,
+      });
+      return;
+    }
+    try {
+      await rename(tmp, job.dest);
+    } catch {
+      removeQuietly(tmp);
+      done({ ok: false, message: 'Drashti could not keep the smaller copy: ask the admin.' });
+      return;
+    }
+    this.deps.log('info', `A video was made ${height}p for its import`);
+    job.options.progress?.(1);
+    done({ ok: true, copy: job.dest });
+  }
+
   /** Stop (Drashti is quitting): a conversion going is let go of, its part-file removed. */
   close(): void {
     clearInterval(this.timer);
+    for (const f of this.files.splice(0)) f.resolve({ ok: false, message: 'Stopped: Drashti is quitting.' });
+    const file = this.runningFile;
+    if (file?.child) {
+      file.stop = 'cancel';
+      file.child.kill();
+    }
+    if (file) removeQuietly(file.tmp);
     const running = this.running;
     if (running?.child) {
       running.stop = 'cancel';

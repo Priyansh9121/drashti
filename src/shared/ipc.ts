@@ -679,7 +679,7 @@ export interface InvokeContract {
   [IPC.links.download]: { args: []; result: LinkResult };
   [IPC.links.stop]: { args: []; result: LinkResult };
   [IPC.links.reset]: { args: []; result: LinkResult };
-  [IPC.links.showSaved]: { args: []; result: null };
+  [IPC.links.showSaved]: { args: [runId: string | null]; result: null };
   [IPC.engine.subscribe]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.snapshot]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.command]: { args: [command: EngineCommand]; result: CommandResult };

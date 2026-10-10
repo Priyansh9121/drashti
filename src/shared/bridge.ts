@@ -170,7 +170,8 @@ export interface DrashtiBridge {
     download(): Promise<LinkResult>;
     stop(): Promise<LinkResult>;
     reset(): Promise<LinkResult>;
-    showSaved(): Promise<null>;
+    /** Show where the files were saved: an import run's (its report), or the dialog's download (null). */
+    showSaved(runId: string | null): Promise<null>;
     onChanged(listener: (view: LinkView) => void): () => void;
     /** File > Import from a Link… was chosen. */
     onOpen(listener: () => void): () => void;
