@@ -253,7 +253,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <StatusBar info={info} onOpenScreens={openScreens} onOpenCalendar={openCalendar} />
       <NoticeArea />
 
-      <ImportReportDialog />
+      <ImportReportDialog platform={platform} />
       <RemoveConfirm undoKey={shortcutText('undo', platform)} />
       <RemovePlaylistConfirm undoKey={shortcutText('undo', platform)} />
       <WordsEditor platform={platform} />

@@ -128,6 +128,7 @@ async function harness(over: Partial<LinkServiceDeps> = {}): Promise<Harness> {
     changed: (view) => views.push(view),
     log: (_level, message) => logs.push(message),
     record,
+    workDir: join(root, 'Link downloads'),
     route: { testOrigin: origin, guard: true },
     pollMs: 20,
     ...over,
@@ -281,6 +282,60 @@ describe('Import from a Link: Dropbox', () => {
       'dropbox.com',
     ])
       expect(log).not.toContain(secret);
+  });
+
+  it('makes a video above 1080p a 1080p copy first (step 4): the copy is imported, the original stays', async () => {
+    const asked: string[] = [];
+    let waitSaid = false;
+    const h = await harness({
+      fitVideo: async (path, outDir, report) => {
+        asked.push(path);
+        report('the stream is on air or recording', null);
+        waitSaid = true;
+        report(null, 0.5);
+        const copy = join(outDir, 'Placeholder 1080p.mp4');
+        mkdirSync(outDir, { recursive: true });
+        writeFileSync(copy, 'placeholder 1080p copy');
+        return Promise.resolve({ ok: true, copy });
+      },
+    });
+    h.service.look('dropbox', FOLDER_LINK);
+    await until(() => h.service.view().phase === 'looked');
+    h.service.download();
+    await until(() => h.service.view().phase === 'done');
+    const video = join(h.folder, 'Placeholder folder', 'Videos', 'Placeholder 1080p.mp4');
+    expect(asked).toEqual([video]);
+    expect(waitSaid).toBe(true);
+    expect(h.views.some((v) => v.phase === 'converting' && v.waitingFor !== null)).toBe(true);
+    // The PowerPoint as it is; the video's copy, not the original.
+    expect(h.imported[0]?.[0]).toBe(join(h.folder, 'Placeholder folder', 'Placeholder deck.pptx'));
+    expect(h.imported[0]?.[1]).toMatch(/Link downloads/u);
+    expect(h.service.view().fitted).toEqual(['Videos/Placeholder 1080p.mp4']);
+    // The original is untouched in the folder, and the copy is gone once the import has taken it.
+    expect(readFileSync(video).equals(VIDEO)).toBe(true);
+    expect(
+      existsSync(join(h.folder, '..', 'Link downloads'))
+        ? readdirSync(join(h.folder, '..', 'Link downloads'))
+        : [],
+    ).toEqual([]);
+  });
+
+  it('lists a video it could not make 1080p as not taken, and imports the rest', async () => {
+    const h = await harness({
+      fitVideo: () => Promise.resolve({ ok: false, message: 'FFmpeg could not make it 1080p.' }),
+    });
+    h.service.look('dropbox', FOLDER_LINK);
+    await until(() => h.service.view().phase === 'looked');
+    h.service.download();
+    await until(() => h.service.view().phase === 'done');
+    expect(h.imported).toEqual([[join(h.folder, 'Placeholder folder', 'Placeholder deck.pptx')]]);
+    expect(h.service.view().notTaken.map((n) => n.name)).toEqual([
+      'Read me.txt',
+      'Videos/Placeholder 1080p.mp4',
+    ]);
+    expect(h.service.view().notTaken[1]?.reason).toMatch(
+      /above 1080p.*could not make it 1080p.*not imported/u,
+    );
   });
 
   it('clears part-files and work folders a crash left behind, and nothing else', async () => {

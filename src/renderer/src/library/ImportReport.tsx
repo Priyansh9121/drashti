@@ -23,6 +23,7 @@ import { convert, connectConversions, jobFor, useConvert } from './convert-store
 import { leaveItem, loadMedia, selectPresentation, useLibrary, useMedia } from './library-store';
 import { showTexts } from '../shastra/shastra-store';
 import { openCalendar } from '../calendar/calendar-store';
+import { useLinks } from '../links/link-store';
 
 /*
  * The migration report (PLAN.md 4.4): what came across, what did not, and a
@@ -235,8 +236,10 @@ const choiceLabel: Record<ConflictChoice, string> = {
   skip: 'Skip',
 };
 
-export function ImportReportDialog() {
+export function ImportReportDialog({ platform }: { platform: string }) {
   const report = useImports((s) => s.report);
+  // Imported from a link (Session 25b): where its files were saved.
+  const savedIn = useLinks((s) => (report ? (s.savedFor[report.id] ?? null) : null));
   const [runs, setRuns] = useState<ImportRunSummary[]>([]);
   const reportId = report?.id;
   useEffect(() => {
@@ -341,6 +344,26 @@ export function ImportReportDialog() {
         )
       }
     >
+      {savedIn && (
+        <Notice
+          tone="info"
+          role="none"
+          data-testid="report-saved-in"
+          actions={
+            <Button
+              size="sm"
+              icon={FolderOpen}
+              data-testid="report-show-saved"
+              onClick={() => void window.drashti.links.showSaved(report.id)}
+            >
+              {platform === 'darwin' ? 'Show in Finder' : 'Show in Explorer'}
+            </Button>
+          }
+        >
+          Downloaded from a link and saved in <strong>{savedIn}</strong>. Drashti copied them into its
+          library; the saved files stay where they are.
+        </Notice>
+      )}
       <p className="text-sm" data-testid="report-summary">
         {cameAcross.length > 0 ? `Came across: ${cameAcross.join(' · ')}.` : 'Nothing new came across.'}{' '}
         {outcomes.length > 0 && <span className="text-muted">{outcomes.join(' · ')}.</span>}

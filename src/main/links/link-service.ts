@@ -6,6 +6,7 @@ import { formatBytes } from '../../shared/format';
 import {
   checkLink,
   LINK_KEEP_FREE_BYTES,
+  LINK_MAX_HEIGHT,
   type LinkKind,
   type LinkResult,
   type LinkShape,
@@ -60,6 +61,18 @@ export interface LinkServiceDeps {
   log(level: 'info' | 'warn', message: string): void;
   /** The file listing part-files and work folders, to clear after a crash. */
   record: string;
+  /** Drashti's own folder for 1080p copies made for an import (emptied at each start and after each import). */
+  workDir: string;
+  /**
+   * Make a video above 1080p a 1080p copy in `outDir` (Drashti's own conversion: it waits while the
+   * stream is on air or recording); `copy` null: it is 1080p or less already. Reports why it waits, or
+   * how far it has got.
+   */
+  fitVideo?(
+    path: string,
+    outDir: string,
+    report: (waitingFor: string | null, fraction: number | null) => void,
+  ): Promise<{ ok: true; copy: string | null } | { ok: false; message: string }>;
   /** Tests only: where requests go instead, and the guard. */
   route: WorkerRoute;
   /** How often to look at the stream while downloading (ms). */
@@ -83,9 +96,12 @@ export class LinkService {
   private timer: NodeJS.Timeout | null = null;
   private held = false;
   private downloadedBytes = 0;
+  /** Import runs from a link: where to show their files (the last few). */
+  private readonly byRun = new Map<string, string>();
 
   constructor(private readonly deps: LinkServiceDeps) {
     this.clearLeftovers();
+    rmSync(deps.workDir, { recursive: true, force: true });
     this.state = {
       phase: 'idle',
       kind: null,
@@ -97,12 +113,13 @@ export class LinkService {
       message: null,
       saved: null,
       notTaken: [],
+      fitted: [],
       runId: null,
     };
   }
 
   view(): LinkView {
-    return { ...this.state, notTaken: [...this.state.notTaken] };
+    return { ...this.state, notTaken: [...this.state.notTaken], fitted: [...this.state.fitted] };
   }
 
   /** A download, an unpack, a conversion or an import is going on (or waiting). */
@@ -245,6 +262,7 @@ export class LinkService {
         message: check.message,
         saved: null,
         notTaken: [],
+        fitted: [],
         runId: null,
       });
       return this.refuse(check.message);
@@ -260,6 +278,7 @@ export class LinkService {
       message: null,
       saved: null,
       notTaken: [],
+      fitted: [],
       runId: null,
     });
     this.startWorker('look').post({ type: 'look', link: check.url, route: this.deps.route });
@@ -295,6 +314,7 @@ export class LinkService {
       message: null,
       saved: null,
       notTaken: [],
+      fitted: [],
       runId: null,
     });
     return this.answer();
@@ -349,6 +369,7 @@ export class LinkService {
       message: null,
       saved: null,
       notTaken: [],
+      fitted: [],
       runId: null,
     });
     this.deps.log('info', `Links: a ${this.kindWord()} ${checked.shape} download starts`);
@@ -438,7 +459,8 @@ export class LinkService {
 
   /** Saved under real names: list them, then import what is taken. */
   private async saved(folder: string, paths: string[], bytes: number): Promise<void> {
-    const files = paths.map((p) => relative(folder, p).split(sep).join('/'));
+    const inFolder = (p: string) => relative(folder, p).split(sep).join('/');
+    const files = paths.map(inFolder);
     const taken = paths.filter((p) => takenKind(p) !== null);
     const notTaken = files
       .filter((f) => takenKind(f) === null)
@@ -448,17 +470,61 @@ export class LinkService {
       `Links: a ${this.kindWord()} download was saved (${String(files.length)} ${files.length === 1 ? 'file' : 'files'}, ${formatBytes(bytes)}); ${String(taken.length)} to import, ${String(notTaken.length)} not taken`,
     );
     this.set({ phase: 'importing', waitingFor: null, progress: null, saved: { folder, files }, notTaken });
-    if (taken.length === 0) {
+    // Videos above 1080p: a 1080p copy is imported instead (the original stays in the folder).
+    const work = join(this.deps.workDir, randomUUID());
+    const prepared: string[] = [];
+    const fitted: string[] = [];
+    for (const path of taken) {
+      if (takenKind(path) !== 'video' || !this.deps.fitVideo) {
+        prepared.push(path);
+        continue;
+      }
+      this.set({ phase: 'converting', waitingFor: null, progress: null });
+      const fit = await this.deps.fitVideo(
+        path,
+        join(work, String(prepared.length)),
+        (waitingFor, fraction) => {
+          this.set({
+            waitingFor,
+            progress: fraction === null ? null : { done: Math.round(fraction * 100), total: 100 },
+          });
+        },
+      );
+      if (!fit.ok) {
+        this.deps.log(
+          'warn',
+          `Links: a video above ${String(LINK_MAX_HEIGHT)}p could not be made ${String(LINK_MAX_HEIGHT)}p, so it was not imported`,
+        );
+        notTaken.push({
+          name: inFolder(path),
+          reason: `It is above ${String(LINK_MAX_HEIGHT)}p, and Drashti could not make it ${String(LINK_MAX_HEIGHT)}p (${fit.message.replace(/\.$/u, '')}), so it was not imported.`,
+        });
+        continue;
+      }
+      if (fit.copy) fitted.push(inFolder(path));
+      prepared.push(fit.copy ?? path);
+    }
+    this.set({ phase: 'importing', waitingFor: null, progress: null, notTaken, fitted });
+    if (prepared.length === 0) {
+      await rm(work, { recursive: true, force: true }).catch(() => undefined);
       this.set({
         phase: 'done',
         message:
-          'Saved. Nothing in it is a PowerPoint file (.pptx) or an MP4 video, so nothing was imported.',
+          taken.length === 0
+            ? 'Saved. Nothing in it is a PowerPoint file (.pptx) or an MP4 video, so nothing was imported.'
+            : 'Saved, but nothing in it could be imported: see Not taken.',
       });
       return;
     }
-    const result = await this.deps.importFiles(taken);
+    const result = await this.deps.importFiles(prepared);
+    // The import has copied the 1080p copies into the library: they are not needed now.
+    await rm(work, { recursive: true, force: true }).catch(() => undefined);
     if (result.ok) {
       this.deps.log('info', 'Links: the saved files went to the import');
+      const shown = paths[0] ?? folder;
+      this.byRun.set(result.runId, shown);
+      for (const old of [...this.byRun.keys()].slice(0, Math.max(0, this.byRun.size - 20)))
+        this.byRun.delete(old);
       this.set({ phase: 'done', runId: result.runId });
     } else {
       this.deps.log('warn', 'Links: the saved files could not be imported');
@@ -491,8 +557,12 @@ export class LinkService {
     return this.answer();
   }
 
-  /** Where the files were saved: the first file, to show in Finder or Explorer. */
-  savedPath(): string | null {
+  /**
+   * Where the files were saved (the first of them, to show in Finder or Explorer): for an import run's
+   * report, or the download in the dialog.
+   */
+  savedPath(runId: string | null): string | null {
+    if (runId !== null) return this.byRun.get(runId) ?? null;
     const saved = this.state.saved;
     if (!saved) return null;
     const first = saved.files[0];

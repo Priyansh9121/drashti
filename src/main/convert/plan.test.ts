@@ -71,4 +71,13 @@ describe('what a file becomes', () => {
     expect(webm).not.toContain('-c:a');
     expect(convertArgs('m4a', 'in.aiff', 'out.m4a', parseFfmpegInfo(AIFF)).join(' ')).toContain('-vn');
   });
+
+  it('makes a video no taller than asked (Session 25b), keeping its shape, with even sizes', () => {
+    const args = convertArgs('mp4', 'in.mp4', 'out.mp4', parseFfmpegInfo(PRORES), { maxHeight: 1080 });
+    expect(args[args.indexOf('-vf') + 1]).toBe("scale=-2:'trunc(min(ih,1080)/2)*2',format=yuv420p");
+    expect(args).toContain('libx264');
+    // With no limit, the size stays as it was.
+    const as = convertArgs('mp4', 'in.mov', 'out.mp4', parseFfmpegInfo(PRORES));
+    expect(as[as.indexOf('-vf') + 1]).toBe('scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p');
+  });
 });

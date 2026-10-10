@@ -41,6 +41,7 @@ Phones and tablets
 Import from a link
 
 - File › Import from a Link… (or Import, then From a link…) saves a Dropbox file or folder in a folder you choose, then imports its PowerPoint files and MP4 videos; everything else stays in the folder. Downloads wait while the stream is on air or recording, and carry on if you close the window. YouTube is shown but not offered yet.
+- A Dropbox video above 1080p goes into the library as a 1080p copy; the original stays in the folder as it came. The import report says where the files were saved, with Show in Finder (Show in Explorer on Windows).
 
 Help
 

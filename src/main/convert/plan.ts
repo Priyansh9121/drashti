@@ -83,10 +83,22 @@ export function chooseTarget(kind: 'image' | 'video' | 'audio', info: MediaInfo)
   return hasAlpha(info) ? 'webm-alpha' : 'mp4';
 }
 
-/** FFmpeg's arguments to make `output` from `input` (progress on stderr). */
-export function convertArgs(target: ConvertTarget, input: string, output: string, info: MediaInfo): string[] {
+/**
+ * FFmpeg's arguments to make `output` from `input` (progress on stderr). `maxHeight` (Session 25b): a
+ * video taller than that is made that tall, keeping its shape (a downloaded 2160p video becomes 1080p).
+ */
+export function convertArgs(
+  target: ConvertTarget,
+  input: string,
+  output: string,
+  info: MediaInfo,
+  options: { maxHeight?: number } = {},
+): string[] {
   const head = ['-hide_banner', '-loglevel', 'error', '-nostats', '-progress', 'pipe:2', '-y', '-i', input];
-  const even = 'scale=trunc(iw/2)*2:trunc(ih/2)*2';
+  const even =
+    options.maxHeight === undefined
+      ? 'scale=trunc(iw/2)*2:trunc(ih/2)*2'
+      : `scale=-2:'trunc(min(ih,${String(options.maxHeight)})/2)*2'`;
   switch (target) {
     case 'mp4':
       return [

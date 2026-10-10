@@ -156,6 +156,8 @@ export interface LinkView {
   saved: { folder: string; files: string[] } | null;
   /** Files saved but not imported, with why. */
   notTaken: NotTaken[];
+  /** Videos above 1080p whose 1080p copy was imported (the originals stay in the folder). */
+  fitted: string[];
   /** The import run of what was saved, once it started (its report). */
   runId: string | null;
 }
@@ -177,6 +179,9 @@ export function takenKind(name: string): 'powerpoint' | 'video' | null {
   if (lower.endsWith('.mp4')) return 'video';
   return null;
 }
+
+/** The tallest video taken from a Dropbox link (PLAN §7): taller ones are made this tall first. */
+export const LINK_MAX_HEIGHT = 1080;
 
 /** Why a saved file is not imported. */
 export const NOT_TAKEN_REASON = 'Not a PowerPoint file (.pptx) or an MP4 video, so it was not imported.';
