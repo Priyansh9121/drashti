@@ -122,6 +122,16 @@ test('the phone pages at 390 × 844: every target 44 px or more, no double-tap z
       expect.soft(await smallText(page), `text under 16 px on the remote's ${tab} tab`).toEqual([]);
     }
     expect.soft(await touch(page)).toEqual(HARDENED);
+    // The 44 px floor never shrinks what is bigger by design: Back and Next stay 64 px, the actions 48.
+    const tall = async (testId: string) => (await page.getByTestId(testId).boundingBox())?.height ?? 0;
+    await page.getByTestId('remote-tab-show').click();
+    expect.soft(await tall('remote-back'), 'Back').toBeGreaterThanOrEqual(64);
+    expect.soft(await tall('remote-next-button'), 'Next').toBeGreaterThanOrEqual(64);
+    const actions = await page
+      .getByTestId('remote-actions')
+      .getByRole('button')
+      .evaluateAll((buttons) => buttons.map((b) => Math.round(b.getBoundingClientRect().height)));
+    expect.soft(Math.min(...actions), 'the quick actions').toBeGreaterThanOrEqual(48);
     // A tap that cannot be done (Back with nothing on the screens) shows a notice: its Dismiss too.
     await page.getByTestId('remote-tab-show').click();
     await page.getByTestId('remote-back').click();
