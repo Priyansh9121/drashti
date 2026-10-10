@@ -4,6 +4,7 @@ import { Badge, LiveBadge, MissingBadge, UnplayableBadge } from '../ui/Badge';
 import type { ButtonSize, ButtonVariant } from '../ui/Button';
 import { Button, IconButton } from '../ui/Button';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
+import { KeepChangesDialog, savesLive } from '../ui/KeepChanges';
 import { ColorInput, Field, NumberInput, Select, Slider, Textarea, TextInput } from '../ui/Field';
 import {
   Ban,
@@ -239,7 +240,7 @@ function RowsSection() {
 }
 
 function OverlaysSection() {
-  const [dialog, setDialog] = useState<'center' | 'right' | 'confirm' | null>(null);
+  const [dialog, setDialog] = useState<'center' | 'right' | 'confirm' | 'keep' | null>(null);
   const [menu, setMenu] = useState<MenuPlace | null>(null);
   const entries: MenuEntry[] = [
     { label: 'Open', icon: Monitor, onSelect: () => undefined },
@@ -255,6 +256,7 @@ function OverlaysSection() {
         <Button variant="danger" onClick={() => setDialog('confirm')}>
           Ask before removing
         </Button>
+        <Button onClick={() => setDialog('keep')}>Ask before losing changes</Button>
       </Row>
       <Row label="Menus">
         <MenuButton label="Playlist" entries={entries} icon={MoreHorizontal} title="Playlist actions" />
@@ -318,6 +320,16 @@ function OverlaysSection() {
         >
           <p>You can bring it back with Undo (⌘Z).</p>
         </ConfirmDialog>
+      )}
+      {dialog === 'keep' && (
+        <KeepChangesDialog
+          name="the words of “Placeholder Kirtan”"
+          lost="You changed 3 lines."
+          live={savesLive('Placeholder Kirtan')}
+          onKeepEditing={() => setDialog(null)}
+          onSave={() => setDialog(null)}
+          onThrowAway={() => setDialog(null)}
+        />
       )}
     </Section>
   );

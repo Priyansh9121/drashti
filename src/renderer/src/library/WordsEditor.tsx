@@ -1,12 +1,14 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { TrackSlide } from '../../../shared/kirtans';
 import { parseLyrics } from '../../../shared/lyrics';
 import type { Lang } from '../../../shared/model';
 import { LANG_NAMES } from '../../../shared/themes';
+import { useEngine } from '../engine/engine-store';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Dialog } from '../ui/Dialog';
+import { KeepChangesDialog, linesChanged, SAVES_LIBRARY, savesLive } from '../ui/KeepChanges';
 import { Textarea, TextInput } from '../ui/Field';
 import { Notice } from '../ui/Notice';
 import { TabPanel, Tabs } from '../ui/Tabs';
@@ -136,6 +138,17 @@ function ByLanguage({ tracks, shown }: { tracks: TrackWords; shown: TrackChoice 
 export function WordsEditor({ platform }: { platform: string }) {
   const state = useWords();
   const { open, text, name, legacyFonts, loading, saving, problem, tracks, mode, shown } = state;
+  const [asking, setAsking] = useState(false);
+  // A question left from an editor closed some other way never shows on the next one.
+  const [askedFor, setAskedFor] = useState(open);
+  if (askedFor !== open) {
+    setAskedFor(open);
+    setAsking(false);
+  }
+  // Its slide is on the screens now: saving changes them at once (the engine refreshes the live slide).
+  const live = useEngine(
+    (s) => open?.mode === 'edit' && s.state?.layers.slide?.presentationId === open.presentationId,
+  );
   if (!open) return null;
   const byLanguage = mode === 'tracks' && tracks !== null;
   const readOnly = !byLanguage && legacyFonts.length > 0;
@@ -149,11 +162,24 @@ export function WordsEditor({ platform }: { platform: string }) {
     }
   };
   const editsCount = byLanguage ? trackEdits(tracks, state.typed).length : 0;
+  // A new presentation's name or words typed count as changes too.
+  const unsaved = changed || (open.mode === 'new' && name.trim() !== '');
+  /** Close, Esc and Cancel: asking first when something typed would be lost. */
+  const requestClose = () => {
+    if (unsaved && !readOnly) setAsking(true);
+    else closeWords();
+  };
+  const lost =
+    open.mode === 'new'
+      ? 'The new presentation is not made yet.'
+      : byLanguage
+        ? `You changed ${plural(editsCount, 'line')} of its languages.`
+        : `You changed ${plural(Math.max(1, linesChanged(state.loadedText, text)), 'line')}.`;
   return (
     <Dialog
       title={title}
       size="lg"
-      onClose={closeWords}
+      onClose={requestClose}
       closeLabel={readOnly ? 'Close' : 'Cancel'}
       closeButton={false}
       testId="words-editor"
@@ -171,7 +197,7 @@ export function WordsEditor({ platform }: { platform: string }) {
                 <Count text={text} />
               ))}
           </span>
-          <Button onClick={closeWords}>{readOnly ? 'Close' : 'Cancel'}</Button>
+          <Button onClick={requestClose}>{readOnly ? 'Close' : 'Cancel'}</Button>
           {!readOnly && (
             <Button
               variant="primary"
@@ -272,6 +298,26 @@ export function WordsEditor({ platform }: { platform: string }) {
         </AllWordsPanel>
       )}
       {problem && <Notice tone="danger">{problem}</Notice>}
+      {asking && (
+        <KeepChangesDialog
+          name={open.mode === 'new' ? 'the new presentation' : <>the words of “{open.name}”</>}
+          lost={lost}
+          live={live && open.mode === 'edit' ? savesLive(open.name) : undefined}
+          note={!live && open.mode === 'edit' ? SAVES_LIBRARY : undefined}
+          saving={saving}
+          onKeepEditing={() => {
+            setAsking(false);
+          }}
+          onSave={() => {
+            setAsking(false);
+            void saveWords();
+          }}
+          onThrowAway={() => {
+            setAsking(false);
+            closeWords();
+          }}
+        />
+      )}
     </Dialog>
   );
 }

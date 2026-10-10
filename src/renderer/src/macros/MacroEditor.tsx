@@ -20,6 +20,8 @@ import { loadTree, usePlaylists } from '../playlists/playlist-store';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
+import { KeepChangesDialog, settingsChanged } from '../ui/KeepChanges';
+import { plural } from '../ui/text';
 import { ColorInput, Field, NumberInput, Select, TextInput } from '../ui/Field';
 import { ArrowDown, ArrowUp, Clock, Plus, Trash2, X } from '../ui/icons';
 import { Notice } from '../ui/Notice';
@@ -514,6 +516,12 @@ export function MacroEditor() {
     else if (to) show(to);
     else startNew();
   };
+  /** What the question was asked for: closing, or another macro (or a new one). */
+  const leave = (was: { why: 'close' } | { why: 'switch'; to: string | null }) => {
+    if (was.why === 'close') closeMacros();
+    else if (was.to) show(was.to);
+    else startNew();
+  };
   return (
     <Dialog
       title="Macros"
@@ -714,29 +722,45 @@ export function MacroEditor() {
           }}
         />
       </div>
-      {ask && (
+      {ask?.why === 'remove' && (
         <ConfirmDialog
-          title={ask.why === 'remove' ? `Remove “${e.name}”?` : 'Throw away the changes?'}
-          confirmLabel={ask.why === 'remove' ? 'Remove' : 'Throw away'}
+          title={`Remove “${e.name}”?`}
+          confirmLabel="Remove"
           onCancel={() => {
             setAsk(null);
           }}
           onConfirm={() => {
-            const was = ask;
             setAsk(null);
-            if (was.why === 'remove') void remove();
-            else if (was.why === 'close') closeMacros();
-            else if (was.to) show(was.to);
-            else startNew();
+            void remove();
           }}
           testId="macro-confirm"
         >
           <p>
-            {ask.why === 'remove'
-              ? 'Slides that run it when they go up no longer run anything, and MIDI mapped to it does nothing.'
-              : 'The changes to this macro have not been saved.'}
+            Slides that run it when they go up no longer run anything, and MIDI mapped to it does nothing.
           </p>
         </ConfirmDialog>
+      )}
+      {ask && ask.why !== 'remove' && (
+        <KeepChangesDialog
+          name={<>the macro “{e.name}”</>}
+          lost={`You changed ${plural(Math.max(1, settingsChanged(s.saved, e)), 'setting')}.`}
+          note="Saving changes only the macro: nothing on the screens changes until it runs."
+          onKeepEditing={() => {
+            setAsk(null);
+          }}
+          onSave={() => {
+            const was = ask;
+            setAsk(null);
+            void save().then((ok) => {
+              if (ok) leave(was);
+            });
+          }}
+          onThrowAway={() => {
+            const was = ask;
+            setAsk(null);
+            leave(was);
+          }}
+        />
       )}
     </Dialog>
   );

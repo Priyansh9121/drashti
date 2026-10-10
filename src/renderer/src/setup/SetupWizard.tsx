@@ -1,4 +1,4 @@
-import { useEffect, useId } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { describeDisplay } from '../../../shared/display-match';
 import { shortcutText } from '../../../shared/keymap';
 import { LANG_NAMES } from '../../../shared/themes';
@@ -7,6 +7,7 @@ import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
+import { KeepChangesDialog } from '../ui/KeepChanges';
 import { Field, Select } from '../ui/Field';
 import { Monitor, ScanEye, Volume2 } from '../ui/icons';
 import { Kbd } from '../ui/Kbd';
@@ -447,7 +448,24 @@ export function SetupWizard({ platform }: { platform: string }) {
   const problem = useSetup((s) => s.problem);
   const askCover = useSetup((s) => s.askCover);
   const finished = useSetup((s) => s.finished);
+  const pins = useSetup((s) => s.pins);
+  const [asking, setAsking] = useState(false);
+  // A question left from a wizard closed some other way never shows on the next one.
+  const [askedFor, setAskedFor] = useState(open);
+  if (askedFor !== open) {
+    setAskedFor(open);
+    setAsking(false);
+  }
   if (!open) return null;
+  // PINs typed and not set yet (nothing is set until Finish): closing asks before they are lost.
+  const typedPins =
+    finished || pins === 'skip'
+      ? 0
+      : [pins.admin || pins.adminAgain, pins.operator || pins.operatorAgain].filter((p) => p !== '').length;
+  const requestClose = () => {
+    if (typedPins > 0) setAsking(true);
+    else closeSetup();
+  };
   const name = STEPS[step] ?? 'Welcome';
   const last = step === STEPS.length - 1;
   const skippable =
@@ -458,7 +476,7 @@ export function SetupWizard({ platform }: { platform: string }) {
         title="Set up Drashti"
         subtitle={<StepList step={step} />}
         size="xl"
-        onClose={closeSetup}
+        onClose={requestClose}
         closeLabel="Close the setup"
         testId="setup-wizard"
         bodyClassName="space-y-4"
@@ -535,6 +553,20 @@ export function SetupWizard({ platform }: { platform: string }) {
         )}
         {problem && <Notice tone="danger">{problem}</Notice>}
       </Dialog>
+      {asking && (
+        <KeepChangesDialog
+          name="the setup"
+          lost={`You typed ${typedPins === 1 ? 'a PIN' : 'two PINs'}, and nothing is set until Finish.`}
+          note="To keep them, choose Keep editing and go on to Finish."
+          onKeepEditing={() => {
+            setAsking(false);
+          }}
+          onThrowAway={() => {
+            setAsking(false);
+            closeSetup();
+          }}
+        />
+      )}
       {askCover && (
         <ConfirmDialog
           title="Cover the Drashti controls?"

@@ -18,6 +18,8 @@ import { useFirstGroupLook } from '../screens/screens-store';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
+import { KeepChangesDialog, settingsChanged } from '../ui/KeepChanges';
+import { plural } from '../ui/text';
 import { ColorInput, Field, NumberInput, Select, Textarea, TextInput } from '../ui/Field';
 import { CopyPlus, Plus, Trash2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
@@ -450,28 +452,46 @@ export function StageLayoutEditor() {
         </aside>
       )}
 
-      {ask && (
+      {ask?.why === 'remove' && (
         <ConfirmDialog
-          title={ask.why === 'remove' ? `Remove “${e?.name ?? ''}”?` : 'Throw away the changes?'}
-          confirmLabel={ask.why === 'remove' ? 'Remove' : 'Throw away'}
+          title={`Remove “${e?.name ?? ''}”?`}
+          confirmLabel="Remove"
           onCancel={() => {
             setAsk(null);
           }}
           onConfirm={() => {
-            const was = ask;
             setAsk(null);
-            if (was.why === 'remove') void remove();
-            else if (was.why === 'close') closeStageLayouts();
-            else show(was.to);
+            void remove();
           }}
           testId="stage-layout-confirm"
         >
-          <p>
-            {ask.why === 'remove'
-              ? 'Stage groups that use it in a Look show the Standard stage screen instead.'
-              : 'The changes to this layout have not been saved.'}
-          </p>
+          <p>Stage groups that use it in a Look show the Standard stage screen instead.</p>
         </ConfirmDialog>
+      )}
+      {ask && ask.why !== 'remove' && (
+        <KeepChangesDialog
+          name={<>the stage layout “{e?.name ?? ''}”</>}
+          lost={`You changed ${plural(Math.max(1, settingsChanged(s.saved, e)), 'setting')}.`}
+          live="Saving changes the stage screens at once wherever the live Look uses this layout."
+          onKeepEditing={() => {
+            setAsk(null);
+          }}
+          onSave={() => {
+            const was = ask;
+            setAsk(null);
+            void save().then((ok) => {
+              if (!ok) return;
+              if (was.why === 'close') closeStageLayouts();
+              else show(was.to);
+            });
+          }}
+          onThrowAway={() => {
+            const was = ask;
+            setAsk(null);
+            if (was.why === 'close') closeStageLayouts();
+            else show(was.to);
+          }}
+        />
       )}
     </Dialog>
   );

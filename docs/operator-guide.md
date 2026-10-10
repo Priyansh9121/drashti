@@ -56,6 +56,7 @@ Do these about 30 minutes before the sabha starts.
 - A **Shastra passage**: in the **Shastra** tab, type its reference (for example `SD 14` or `Vach G.Pr. 1`) and press Enter; its slides appear in the middle like a presentation's.
 - To find any kirtan quickly: **Cmd+F** (Ctrl+F), type a few letters of its title or its words, and press Enter.
 - A playlist, folder or item has a menu (rename, remove, timers when it goes up, and more): right-click it, or press **Shift+F10** with the keyboard on it (on a Mac laptop, **Fn+Shift+F10**).
+- **Closing with changes asks first.** Edit words, the slide editor and the other editors ask "Keep your changes …?" before anything typed is lost: **Keep editing** (Enter or Esc), **Save changes**, or **Throw them away**. When the presentation is on the screens, it says so: saving then changes the screens at once.
 - **Changing the playlist without dragging:** choose a presentation, a picture or video, or a Shastra passage in the library and press **Add to playlist** beside it; it goes after the playlist's chosen item. To move an item, choose it and press **Up** or **Down** beside it (or **Alt+↑** / **Alt+↓**). **Cmd+Z** (Ctrl+Z) takes back the last add or move. Dragging works too.
 
 **Covering and clearing:**

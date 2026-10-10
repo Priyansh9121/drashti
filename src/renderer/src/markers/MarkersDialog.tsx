@@ -8,8 +8,10 @@ import { useEngine } from '../engine/engine-store';
 import { useNotice } from '../operator/actions';
 import { Button, IconButton } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
+import { KeepChangesDialog } from '../ui/KeepChanges';
 import { Field, TextInput } from '../ui/Field';
 import { Bookmark, X } from '../ui/icons';
+import { plural } from '../ui/text';
 
 /*
  * Playback markers (Session 14, shared/markers.ts): a video's or sound's
@@ -55,7 +57,28 @@ function MarkersForm({ media, start }: { media: MediaSummary; start: MediaMarker
   const [markers, setMarkers] = useState<PlaybackMarker[]>(start.markers);
   const [name, setName] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
+  // On the screens or the sound now: saving moves its points at once (the engine refreshes them).
+  const playing = useEngine((s) => {
+    const layers = s.state?.layers;
+    const bg = layers?.background;
+    return (bg?.kind === 'media' && bg.mediaId === media.id) || layers?.audio?.mediaId === media.id;
+  });
   const shown = () => Math.round((preview.current?.currentTime ?? 0) * 1000);
+  // What closing now would lose: each part typed or changed since it opened.
+  const markersMoved =
+    markers.filter((m) => !start.markers.some((x) => x.id === m.id && x.name === m.name && x.atMs === m.atMs))
+      .length + start.markers.filter((x) => !markers.some((m) => m.id === x.id)).length;
+  const lostParts = [
+    ...(startText !== timeText(start.startMs) ? ['the start'] : []),
+    ...(endText !== timeText(start.endMs) ? ['the end'] : []),
+    ...(markersMoved > 0 ? [plural(markersMoved, 'marker')] : []),
+    ...(name.trim() !== '' ? ['a new marker’s name'] : []),
+  ];
+  const requestClose = () => {
+    if (lostParts.length > 0) setAsking(true);
+    else close();
+  };
   const save = async () => {
     const startMs = startText.trim() === '' ? null : parseMarkerTime(startText);
     const endMs = endText.trim() === '' ? null : parseMarkerTime(endText);
@@ -76,12 +99,12 @@ function MarkersForm({ media, start }: { media: MediaSummary; start: MediaMarker
     <Dialog
       title={`Start, end and markers: ${media.name}`}
       size="md"
-      onClose={close}
+      onClose={requestClose}
       closeLabel="Close markers"
       testId="markers-dialog"
       footer={
         <>
-          <Button onClick={close}>Cancel</Button>
+          <Button onClick={requestClose}>Cancel</Button>
           <Button variant="primary" type="submit" form="markers-form" data-testid="markers-save">
             Save
           </Button>
@@ -199,6 +222,28 @@ function MarkersForm({ media, start }: { media: MediaSummary; start: MediaMarker
           </p>
         )}
       </form>
+      {asking && (
+        <KeepChangesDialog
+          name={<>the markers of “{media.name}”</>}
+          lost={`You changed ${lostParts.join(', ').replace(/, ([^,]*)$/u, ' and $1')}.`}
+          live={
+            playing
+              ? `“${media.name}” is playing now: saving moves its start, end and markers at once.`
+              : undefined
+          }
+          onKeepEditing={() => {
+            setAsking(false);
+          }}
+          onSave={() => {
+            setAsking(false);
+            void save();
+          }}
+          onThrowAway={() => {
+            setAsking(false);
+            close();
+          }}
+        />
+      )}
     </Dialog>
   );
 }

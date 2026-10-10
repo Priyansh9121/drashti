@@ -10,6 +10,9 @@ import { SlideView } from '../render/SlideView';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ConfirmDialog, useFocusTrap } from '../ui/Dialog';
+import { KeepChangesDialog, SAVES_LIBRARY, savesLive } from '../ui/KeepChanges';
+import { plural } from '../ui/text';
+import { useEngine } from '../engine/engine-store';
 import {
   ArrowDown,
   ArrowUp,
@@ -99,6 +102,12 @@ function Editor({ platform, name }: { platform: string; name: string }) {
   const problem = useEditor((s) => s.problem);
   const saving = useEditor((s) => s.saving);
   const askDiscard = useEditor((s) => s.askDiscard);
+  const steps = useEditor((s) => s.past.length);
+  // Its slide is on the screens now: saving changes them at once.
+  const presentationId = useEditor((s) => s.open?.presentationId);
+  const live = useEngine(
+    (e) => presentationId !== undefined && e.state?.layers.slide?.presentationId === presentationId,
+  );
   const conflict = useEditor((s) => s.conflict);
   const canUndo = useEditor((s) => s.past.length > 0 && !s.editing);
   const canRedo = useEditor((s) => s.future.length > 0 && !s.editing);
@@ -316,18 +325,22 @@ function Editor({ platform, name }: { platform: string; name: string }) {
         />
       )}
       {askDiscard && (
-        <ConfirmDialog
-          title="Throw away the changes?"
-          confirmLabel="Throw them away"
-          cancelLabel="Keep editing"
-          testId="discard-confirm"
-          onCancel={() => {
+        <KeepChangesDialog
+          name={<>the slides of “{name}”</>}
+          lost={`You made ${plural(Math.max(1, steps), 'change')}.`}
+          live={live ? savesLive(name) : undefined}
+          note={live ? undefined : SAVES_LIBRARY}
+          saving={saving}
+          onKeepEditing={() => {
             useEditor.setState({ askDiscard: false });
           }}
-          onConfirm={closeSlideEditor}
-        >
-          <p>The changes to these slides have not been saved. Nothing on the screens has changed.</p>
-        </ConfirmDialog>
+          onSave={() => {
+            useEditor.setState({ askDiscard: false });
+            finishTextEditing();
+            void saveSlides();
+          }}
+          onThrowAway={closeSlideEditor}
+        />
       )}
       {conflict && (
         <ConfirmDialog

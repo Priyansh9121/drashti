@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { PresentationDoc } from '../../../shared/library';
 import { KIRTAN_LANGS, LANGS } from '../../../shared/model';
 import { LANG_NAMES } from '../../../shared/themes';
@@ -8,10 +8,12 @@ import { useLibrary } from '../library/library-store';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
+import { KeepChangesDialog, settingsChanged } from '../ui/KeepChanges';
 import { Languages } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { Loading } from '../ui/States';
+import { plural } from '../ui/text';
 import { closeKirtan, draftChanged, makeKirtan, notKirtan, saveDraft, useKirtan } from './kirtan-store';
 import { MakeTransliteration } from './MakeTransliteration';
 import { KirtanDetailsForm } from './KirtanDetailsForm';
@@ -67,15 +69,35 @@ export function KirtanDialog() {
   const saving = useKirtan((s) => s.saving);
   const problem = useKirtan((s) => s.problem);
   const changed = useKirtan(draftChanged);
+  const draft = useKirtan((s) => s.draft);
+  const saved = useKirtan((s) => s.saved);
   const doc = useLibrary((s) => (s.doc?.id === open?.presentationId ? s.doc : null));
+  /** Asking before the typed details are lost; then what closing was for (Edit words by language). */
+  const [asking, setAsking] = useState<{ then: () => void } | null>(null);
+  // A question left from a dialog closed some other way never shows on the next one.
+  const [askedFor, setAskedFor] = useState(open);
+  if (askedFor !== open) {
+    setAskedFor(open);
+    setAsking(null);
+  }
   if (!open) return null;
   const kirtan = doc?.kirtan ?? null;
+  /** Close (then go on), asking first when typed details would be lost. */
+  const requestClose = (then: () => void = () => undefined) => {
+    if (changed) setAsking({ then });
+    else {
+      closeKirtan();
+      then();
+    }
+  };
   return (
     <Dialog
       title={`Kirtan: “${open.name}”`}
       subtitle="Its words in up to four languages, slide by slide."
       size="md"
-      onClose={closeKirtan}
+      onClose={() => {
+        requestClose();
+      }}
       testId="kirtan-dialog"
       bodyClassName="space-y-5"
       footer={
@@ -93,8 +115,7 @@ export function KirtanDialog() {
             <Button
               icon={Languages}
               onClick={() => {
-                closeKirtan();
-                void editWords(open.presentationId, open.name, 'tracks');
+                requestClose(() => void editWords(open.presentationId, open.name, 'tracks'));
               }}
             >
               Edit words by language
@@ -154,6 +175,32 @@ export function KirtanDialog() {
         </div>
       )}
       {problem && <Notice tone="danger">{problem}</Notice>}
+      {asking && (
+        <KeepChangesDialog
+          name={<>the details of “{open.name}”</>}
+          lost={`You changed ${plural(Math.max(1, settingsChanged(saved, draft)), 'detail')}.`}
+          note="Its details never change what the screens show."
+          saving={saving}
+          onKeepEditing={() => {
+            setAsking(null);
+          }}
+          onSave={() => {
+            const { then } = asking;
+            setAsking(null);
+            void saveDraft().then((ok) => {
+              if (!ok) return;
+              closeKirtan();
+              then();
+            });
+          }}
+          onThrowAway={() => {
+            const { then } = asking;
+            setAsking(null);
+            closeKirtan();
+            then();
+          }}
+        />
+      )}
     </Dialog>
   );
 }

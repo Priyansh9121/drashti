@@ -151,7 +151,7 @@ test('the slide editor', async () => {
   await clickSlide(win, 960, 420);
   await shot(win, 'slide-editor-1280x720');
   await editor.getByRole('button', { name: 'Cancel' }).click();
-  await win.getByTestId('discard-confirm').getByRole('button', { name: 'Throw them away' }).click();
+  await win.getByTestId('keep-changes').getByRole('button', { name: 'Throw them away' }).click();
   await app.close();
 });
 
@@ -765,7 +765,7 @@ test('Looks, stage layouts, masks, key and fill, macros, MIDI and the slide edit
   await expect(editor.getByTestId('group-box')).toBeVisible();
   await shot(win, 'slide-editor-together');
   await editor.getByRole('button', { name: 'Cancel' }).click();
-  await win.getByTestId('discard-confirm').getByRole('button', { name: 'Throw them away' }).click();
+  await win.getByTestId('keep-changes').getByRole('button', { name: 'Throw them away' }).click();
 
   // The phone remote's More tab: Looks and macros.
   const { base } = await networkOn(win);
