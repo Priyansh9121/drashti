@@ -318,3 +318,45 @@ test('a playlist built and put in order with the keyboard alone: Add to playlist
 
   await app.close();
 });
+
+test('a header typed in Hindi or Gujarati keeps its letters: no capitals and no spaced letters, in both modes', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  // Placeholder words: "sample heading" in Hindi, and "sample" in Gujarati.
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const made = await d.playlists.create('Placeholder Script Sabha', null, false);
+    if (!made.ok) throw new Error(made.message);
+    const [id = ''] = made.ids;
+    await d.playlists.addItems(id, null, [
+      { kind: 'header', label: 'नमूना शीर्षक' },
+      { kind: 'header', label: 'નમૂના' },
+    ]);
+  });
+  const panel = win.getByTestId('playlists');
+  await panel
+    .getByTestId('playlist-node')
+    .filter({ hasText: /^Placeholder Script Sabha/u })
+    .click();
+  const drawn = (labels: Locator) =>
+    labels.evaluateAll((els) =>
+      els.map((el) => {
+        const style = getComputedStyle(el);
+        return `${el.textContent.trim()}|${style.textTransform}|${style.letterSpacing}`;
+      }),
+    );
+  const headers = panel.getByTestId('playlist-item').locator('[data-label]');
+  await expect(headers).toHaveCount(2);
+  expect(await drawn(headers)).toEqual(['नमूना शीर्षक|none|normal', 'નમૂના|none|normal']);
+
+  // Simple Mode's playlist, the same.
+  await chooseMenuItem(app, 'switch-mode');
+  await win.getByTestId('simple-playlist').selectOption({ label: 'Placeholder Script Sabha' });
+  await expect(win.getByTestId('simple-header')).toHaveCount(2);
+  expect(await drawn(win.getByTestId('simple-header'))).toEqual([
+    'नमूना शीर्षक|none|normal',
+    'નમૂના|none|normal',
+  ]);
+  await app.close();
+});

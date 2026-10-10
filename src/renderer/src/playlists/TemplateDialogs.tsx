@@ -96,7 +96,7 @@ function SaveTemplate({ playlistId }: { playlistId: string }) {
         {items.map((item) => {
           if (item.kind === 'header')
             return (
-              <li key={item.id} className="pt-2 text-2xs font-bold tracking-wider text-muted uppercase">
+              <li key={item.id} className="pt-2 text-xs font-bold text-muted">
                 {item.label}
               </li>
             );

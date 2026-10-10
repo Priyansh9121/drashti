@@ -10,7 +10,10 @@ import { Kbd } from './Kbd';
 /*
  * Small menus: one under a button, or one at the pointer (right-click).
  * They close on a choice, a click elsewhere, or Esc. The arrow keys, Home
- * and End move through the choices.
+ * and End move through the choices, and the one with the focus shows the
+ * focus ring. Closing gives the focus back to what opened the menu (unless
+ * a choice or a click put it somewhere else), and Esc closes only the menu,
+ * never the dialog or editor under it (Session 25).
  */
 
 export interface MenuEntry {
@@ -47,6 +50,19 @@ export function Menu({
   useEffect(() => {
     close.current = onClose;
   });
+  // What had the focus when it opened (read before the first choice takes it).
+  const [opener] = useState(() =>
+    document.activeElement instanceof HTMLElement ? document.activeElement : null,
+  );
+  useLayoutEffect(
+    () => () => {
+      // Still in the menu as it goes (or lost): back to what opened it.
+      const now = document.activeElement;
+      const lost = now === null || now === document.body || (ref.current?.contains(now) ?? false);
+      if (lost && opener?.isConnected) opener.focus();
+    },
+    [opener],
+  );
 
   useLayoutEffect(() => {
     const box = ref.current?.getBoundingClientRect();
@@ -62,8 +78,11 @@ export function Menu({
     const outside = (e: MouseEvent) => {
       if (!ref.current?.contains(e.target as Node)) close.current();
     };
+    // Esc is the menu's alone: heard on the window before anything on the page (a dialog's own Esc,
+    // the slide editor's "let go of the selection"), and taken no further.
     const keys = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.preventDefault();
         e.stopPropagation();
         close.current();
       }
@@ -72,11 +91,11 @@ export function Menu({
       close.current();
     };
     document.addEventListener('mousedown', outside, true);
-    document.addEventListener('keydown', keys, true);
+    window.addEventListener('keydown', keys, true);
     window.addEventListener('blur', blur);
     return () => {
       document.removeEventListener('mousedown', outside, true);
-      document.removeEventListener('keydown', keys, true);
+      window.removeEventListener('keydown', keys, true);
       window.removeEventListener('blur', blur);
     };
   }, []);
@@ -118,7 +137,7 @@ export function Menu({
               role="menuitem"
               disabled={entry.disabled}
               className={cx(
-                'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-panel-3 focus-visible:bg-panel-3 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40',
+                'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-panel-3 focus-visible:bg-panel-3 disabled:cursor-not-allowed disabled:opacity-40',
                 entry.danger ? 'text-danger' : 'text-fg',
               )}
               onClick={() => {

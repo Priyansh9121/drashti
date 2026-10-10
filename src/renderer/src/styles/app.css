@@ -5,7 +5,7 @@
  *
  * Dark by default, because sabhas run in dim halls. Colours are named for
  * their job, not their hue. Every pair used for text meets 4.5:1, and every
- * control boundary 3:1 (checked in docs/design.md).
+ * control boundary 3:1 (docs/design.md; src/main/contrast.test.ts measures them).
  */
 @theme {
   /* The bundled Noto fonts: Latin, Gujarati and Devanagari (400, 500 and 700 only). */

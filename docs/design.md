@@ -32,7 +32,7 @@ Colours are named for their **job**, never their hue (`bg-panel`, `text-muted`, 
 | `danger`, `danger-strong`, `danger-bg`, `danger-fg` | Removing and deleting; something failed                                    |
 | `guide`                                             | The slide editor's snapping guides (never text)                            |
 
-**Contrast** (WCAG 2.2 AA, measured): `fg` 15:1 and `muted` 7:1 on panels, and `faint` at least 4.5:1 on every surface. White on `live` is 5.0:1, white on `accent-strong` 5.2:1, `field` edges 3.2 to 3.5:1, and the focus ring 5.3 to 7:1. Text is never quieter than `faint`. Never put text on a surface with an opacity modifier (`text-fg/60`), because axe measures the mix. Run the accessibility checks after any colour change.
+**Contrast** (WCAG 2.2 AA, measured by `src/main/contrast.test.ts` from `app.css` and `ui/Button.tsx`, which fails on any pair below its rule): `fg` 12.4 to 16.3:1 and `muted` 6.2 to 8.2:1 on the four surfaces, and `faint` at least 4.5:1 on every surface. White on `live` is 5.0:1, white on `accent-strong` 5.2:1. Edges of controls are at least 3:1 where controls sit (`ink`, `panel`, `panel-2`): `field` 3.2 to 3.7:1, so a secondary button's edge is solid `field` (it was `field` at 60%, 2.1:1, until Session 25) and a danger button's is `danger` at 70% (4.1:1); the focus ring 5.3 to 7:1. The same test reports, without failing yet, how far apart the primary, LIVE and ON AIR colours are (CIEDE2000, with usual and red-green colour vision): the primary and ON AIR are 0.5 apart for a deuteranope, and Session 26's colours set a floor. Text is never quieter than `faint`. Never put text on a surface with an opacity modifier (`text-fg/60`), because axe measures the mix. Run the accessibility checks after any colour change.
 
 Group colours (Verse, Chorus…) come from the presentation, so they are shown as a swatch beside the group's name, never behind text.
 
@@ -54,7 +54,7 @@ Nothing else uses `live`: errors use `danger` and warnings `warning`.
 - **The fonts are bundled Noto Sans, Noto Sans Gujarati and Noto Sans Devanagari** (`--font-sans`), so names in English, Gujarati and Hindi all look right offline. The weights are **400, 500 and 700**; use `font-normal`, `font-medium` and `font-bold`. `font-semibold` (600) is not bundled and renders as 700.
 - Body text is 14 px (`text-sm`); small text 12 px (`text-xs`); the smallest is 11 px (`text-2xs`, for badges and panel titles only). Dialog titles are `text-lg`, page titles `text-2xl`. Simple Mode uses `text-xl` to `text-3xl`.
 - Line height is at least 1.45 (the body default), even in one-line rows: Gujarati and Devanagari marks sit above and below the line, and a tight line cuts them off.
-- Panel titles and section titles are 11 px bold capitals with wide tracking (`SectionTitle`, `Panel`). Nothing else is in capitals.
+- Panel titles and section titles are 11 px bold capitals with wide tracking (`SectionTitle`, `Panel`). Nothing else is in capitals, and never a name someone typed (a playlist's header, a library's name): capitals do nothing to Gujarati or Hindi, and spaced letters break Devanagari's joining line, so typed names are shown as typed, 12 px bold at least (Session 25).
 - Numbers that change (timers, counts) use `tabular-nums`.
 
 ## 5. Space, size and corners
@@ -89,9 +89,11 @@ Use these; don't restyle native elements in a panel. Each is in the gallery.
 | `Progress`                                                                        | A long task's progress.                                                                                                                                                                                                                         |
 | `Splitter`                                                                        | The handle between panels: drag it, or use the arrow keys (Shift for bigger steps), Home and End, and Enter for the default.                                                                                                                    |
 
-**Icons** are Lucide (ISC, `LICENSES/icons/`). Import them only from `ui/icons.ts`, and add a new one there (`BlackOut` is Lucide's rectangle, filled).
+**Icons** are Lucide (ISC, `LICENSES/icons/`). Import them only from `ui/icons.ts`, and add a new one there (`BlackOut` is Lucide's rectangle, filled). Use 14 px in small controls, 16 px by default, and larger in Simple Mode. An icon is decoration (`aria-hidden`) unless it is the whole button, and then the button has a label.
 
-**What sits over what** (z-index): the splitter 10, notices and the recovery banner 30, dialogs and the slide editor 40, menus 50, tooltips 60. Use 14 px in small controls, 16 px by default, and larger in Simple Mode. An icon is decoration (`aria-hidden`) unless it is the whole button, and then the button has a label.
+**What sits over what** (z-index): the splitter 10, notices and the recovery banner 30, dialogs and the slide editor 40, menus 50, tooltips 60.
+
+**Menus** show the focus ring on the choice that has the focus, give the focus back to what opened them when they close (unless a choice put it somewhere else, such as a name to type), and keep Esc to themselves: over a dialog or the slide editor, Esc closes only the menu (Session 25).
 
 ## 7. Every place has its states
 

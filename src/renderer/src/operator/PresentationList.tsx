@@ -337,10 +337,7 @@ export function PresentationList({ platform }: { platform: string }) {
               if (row.kind === 'heading') {
                 return (
                   <li key={`library:${row.library}`} style={place}>
-                    <h3
-                      data-testid="library-heading"
-                      className="px-1 pt-3 pb-1 text-2xs font-bold tracking-wider text-muted uppercase"
-                    >
+                    <h3 data-testid="library-heading" className="px-1 pt-3 pb-1 text-xs font-bold text-muted">
                       {row.library}
                     </h3>
                   </li>

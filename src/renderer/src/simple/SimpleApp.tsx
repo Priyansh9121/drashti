@@ -129,7 +129,7 @@ function PlaylistColumn() {
             return (
               <li
                 key={item.id}
-                className="px-2 pt-3 pb-1 text-xs font-bold tracking-wider text-muted uppercase"
+                className="px-2 pt-3 pb-1 text-base font-bold text-muted"
                 data-testid="simple-header"
               >
                 <Truncate text={item.label} />

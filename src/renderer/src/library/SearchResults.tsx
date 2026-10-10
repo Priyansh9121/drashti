@@ -56,7 +56,7 @@ function HitRow({ hit, query, selected }: { hit: SearchHit; query: string; selec
           {FIELD_NAMES[hit.match.field]}: <Marked line={hit.match.value} query={query} />
         </span>
       )}
-      <span className="block text-2xs tracking-wider text-muted uppercase">{hit.libraryName}</span>
+      <span className="block text-xs text-muted">{hit.libraryName}</span>
     </button>
   );
 }
