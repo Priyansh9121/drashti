@@ -32,6 +32,8 @@ export interface MenuActions {
   uncoverControls: { accelerator: string | null; run: () => void };
   /** Help > Save diagnostics: one file on the Desktop to send after a problem. */
   saveDiagnostics: () => void;
+  /** File > Import from a Link… (Session 25b, Pro Mode, an admin's): YouTube or Dropbox. */
+  importFromLink: () => void;
   /** File > Back Up Library… and Restore Library…. */
   backUpLibrary: () => void;
   restoreLibrary: () => void;
@@ -72,6 +74,8 @@ export function installMenu(actions: MenuActions): void {
           {
             label: 'File',
             submenu: [
+              { id: 'import-from-link', label: 'Import from a Link…', click: actions.importFromLink },
+              { type: 'separator' },
               { id: 'backup-library', label: 'Back Up Library…', click: actions.backUpLibrary },
               { id: 'restore-library', label: 'Restore Library…', click: actions.restoreLibrary },
               { id: 'scheduled-backups', label: 'Scheduled Backups…', click: actions.scheduledBackups },

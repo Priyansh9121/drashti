@@ -113,6 +113,8 @@ import { RolesService } from './roles/roles-service';
 import { adminRefusals } from './roles/admin-lock';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
+import { LinkService } from './links/link-service';
+import { spawnDownloadWorker } from './links/spawn-worker';
 import { AudioOutput } from './audio/audio-output';
 import { saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
@@ -335,12 +337,18 @@ let artiClockOffset = artiTestClock ? Number(process.env['DRASHTI_TEST_ARTI_OFFS
 const scheduleNow = () => Date.now() + artiClockOffset;
 // Tests only (never a packaged Drashti): updates come from this server instead of GitHub Releases, and
 // install by writing what they would run into a file; a download goes at this rate; and a test can say
-// the stream is on air (globalThis.drashtiTestOnAir), for updates only.
+// the stream is on air (globalThis.drashtiTestOnAir), for updates and link downloads only.
 const testUpdateBase = app.isPackaged ? undefined : process.env['DRASHTI_UPDATE_URL'];
 const updateBase = testUpdateBase ?? UPDATE_BASE;
 const testInstallLog = app.isPackaged ? undefined : process.env['DRASHTI_TEST_UPDATE_INSTALL'];
 const testUpdateRate = app.isPackaged ? null : Number(process.env['DRASHTI_TEST_UPDATE_RATE'] ?? 0) || null;
 let testOnAir = false;
+// Tests only (never a packaged Drashti): Import from a Link asks this local stand-in instead of Dropbox,
+// saves into this folder by default, and (the guard, which every e2e run sets) refuses any request to
+// anywhere but 127.0.0.1.
+const testLinkOrigin = app.isPackaged ? null : (process.env['DRASHTI_TEST_LINK_ORIGIN'] ?? null);
+const testLinkGuard = !app.isPackaged && process.env['DRASHTI_TEST_LINK_GUARD'] === '1';
+const testDownloadsDir = app.isPackaged ? null : (process.env['DRASHTI_TEST_DOWNLOADS_DIR'] ?? null);
 if (!app.isPackaged && process.env['DRASHTI_TEST_ON_AIR_HOOK'] === '1')
   (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir = (on) => {
     testOnAir = on;
@@ -2180,6 +2188,68 @@ function start(): void {
     if (fromOperator(e) && file) shell.showItemInFolder(file);
     return null;
   });
+  // ---- Import from a Link (Session 25b): saved in a folder an admin chooses, then the normal import ----
+  const links = new LinkService({
+    spawn: spawnDownloadWorker,
+    onAir: () => streaming.inUse() || testOnAir,
+    freeBytes: diskFreeBytes,
+    defaultFolder: join(testDownloadsDir ?? app.getPath('videos'), 'Drashti downloads'),
+    lastFolder: {
+      get: () => {
+        const folder = settings.get('links.folder');
+        return typeof folder === 'string' && isAbsolute(folder) ? folder : null;
+      },
+      set: (folder) => {
+        settings.set('links.folder', folder);
+      },
+    },
+    pickFolder: async (current) => {
+      if (!operatorWindow) return null;
+      const picked = await dialog.showOpenDialog(operatorWindow, {
+        title: 'Save Downloads In',
+        message: 'Choose where the downloaded files are saved. Drashti never moves or deletes them.',
+        defaultPath: current,
+        buttonLabel: 'Choose',
+        properties: ['openDirectory', 'createDirectory', 'promptToCreate'],
+      });
+      return picked.canceled ? null : (picked.filePaths[0] ?? null);
+    },
+    importFiles: async (paths) => {
+      const result = await imports.start(paths, {});
+      return result.ok ? { ok: true, runId: result.run.id } : { ok: false, message: result.message };
+    },
+    changed: (view) => {
+      sendToOperator(IPC.links.changed, view);
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+    record: join(userDataDir, 'link-downloads.json'),
+    route: { testOrigin: testLinkOrigin, guard: testLinkGuard || testLinkOrigin !== null },
+  });
+  stops.add('links', () => {
+    links.close();
+  });
+  const notLinksOperator = {
+    ok: false as const,
+    message: 'Only the operator window can import from a link.',
+  };
+  handle(IPC.links.view, () => links.view());
+  handle(IPC.links.look, (e, kind, link) =>
+    fromOperator(e) && (kind === 'dropbox' || kind === 'youtube') && typeof link === 'string'
+      ? links.look(kind, link)
+      : notLinksOperator,
+  );
+  handle(IPC.links.pickFolder, (e) => (fromOperator(e) ? links.pickFolder() : notLinksOperator));
+  handle(IPC.links.download, (e) => (fromOperator(e) ? links.download() : notLinksOperator));
+  handle(IPC.links.stop, (e) => (fromOperator(e) ? links.stop() : notLinksOperator));
+  handle(IPC.links.reset, (e) => (fromOperator(e) ? links.reset() : notLinksOperator));
+  handle(IPC.links.showSaved, (e) => {
+    const saved = links.savedPath();
+    if (fromOperator(e) && saved) shell.showItemInFolder(saved);
+    return null;
+  });
   if (artiTestClock)
     (globalThis as { drashtiArtiClock?: (wallMs: number) => void }).drashtiArtiClock = (wallMs) => {
       artiClockOffset = wallMs - Date.now();
@@ -3335,6 +3405,12 @@ function start(): void {
       if (mode === 'pro')
         requireAdmin('restore the library', () => {
           void restore(backupUi);
+        });
+    },
+    importFromLink: () => {
+      if (mode === 'pro')
+        requireAdmin('import from a link', () => {
+          sendToOperator(IPC.links.open, { at: Date.now() });
         });
     },
     rolesAndPins: () => {

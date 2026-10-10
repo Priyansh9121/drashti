@@ -32,7 +32,8 @@ import { startDrag } from '../playlists/drag';
 import { Badge, LiveBadge } from '../ui/Badge';
 import { Button, IconButton } from '../ui/Button';
 import { TextInput } from '../ui/Field';
-import { FileText, FolderOpen, Import, ListFilter, Plus, Search, Upload } from '../ui/icons';
+import { FileText, FolderOpen, Import, Link2, ListFilter, Plus, Search, Upload } from '../ui/icons';
+import { openLinkDialog } from '../links/link-store';
 import { MenuButton } from '../ui/Menu';
 import { Notice } from '../ui/Notice';
 import { rowClass } from '../ui/ListRow';
@@ -113,7 +114,10 @@ const PresentationRow = memo(function PresentationRow({
   );
 });
 
-/** Import files or a folder: an icon beside the tabs (its name and tooltip say Import…), so the row fits. */
+/**
+ * Import files, a folder, or from a link (Session 25b): an icon beside the tabs (its name and tooltip
+ * say Import…), so the row fits.
+ */
 function ImportMenu() {
   return (
     <MenuButton
@@ -124,6 +128,7 @@ function ImportMenu() {
       entries={[
         { label: 'Files…', icon: FileText, onSelect: () => void importWithDialog('files') },
         { label: 'A folder…', icon: FolderOpen, onSelect: () => void importWithDialog('folder') },
+        { label: 'From a link…', icon: Link2, onSelect: openLinkDialog },
       ]}
     />
   );

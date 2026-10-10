@@ -20,6 +20,8 @@ export interface ZipEntry {
   /** Where the entry's local header starts. */
   offset: number;
   isDirectory: boolean;
+  /** Its Unix file mode, when a Mac or Linux zip recorded one (a symbolic link is 0o120000). */
+  unixMode: number | null;
 }
 
 export class ZipError extends Error {
@@ -84,6 +86,7 @@ async function listOpen(fh: FileHandle): Promise<ZipEntry[]> {
   let p = 0;
   for (let e = 0; e < count; e++) {
     if (p + 46 > cd.length || cd.readUInt32LE(p) !== CENTRAL) throw new ZipError('Broken central directory.');
+    const madeBy = cd.readUInt16LE(p + 4);
     const flags = cd.readUInt16LE(p + 8);
     const method = cd.readUInt16LE(p + 10);
     let compressedSize = cd.readUInt32LE(p + 20);
@@ -91,6 +94,7 @@ async function listOpen(fh: FileHandle): Promise<ZipEntry[]> {
     const nameLength = cd.readUInt16LE(p + 28);
     const extraLength = cd.readUInt16LE(p + 30);
     const commentLength = cd.readUInt16LE(p + 32);
+    const external = cd.readUInt32LE(p + 38);
     let offset = cd.readUInt32LE(p + 42);
     const rawName = cd.subarray(p + 46, p + 46 + nameLength);
     // Bit 11: the name is UTF-8; otherwise it is in the DOS code page (read as Latin-1).
@@ -114,7 +118,16 @@ async function listOpen(fh: FileHandle): Promise<ZipEntry[]> {
       x += 4 + len;
     }
     if (flags & 0x1) throw new ZipError('Encrypted ZIP archives are not supported.');
-    entries.push({ name, method, compressedSize, size, offset, isDirectory: name.endsWith('/') });
+    entries.push({
+      name,
+      method,
+      compressedSize,
+      size,
+      offset,
+      isDirectory: name.endsWith('/'),
+      // Made on Unix (3): the mode is in the external attributes' high half.
+      unixMode: madeBy >> 8 === 3 ? external >>> 16 : null,
+    });
     p += 46 + nameLength + extraLength + commentLength;
   }
   return entries;
@@ -182,19 +195,46 @@ export async function extractZip(
         });
         continue;
       }
-      const local = await readAt(fh, entry.offset, 30);
-      if (local.length < 30 || local.readUInt32LE(0) !== LOCAL)
-        throw new ZipError(`Broken entry ${entry.name}.`);
-      const dataStart = entry.offset + 30 + local.readUInt16LE(26) + local.readUInt16LE(28);
       await mkdir(dirname(target), { recursive: true });
-      const raw = Readable.from(chunks(fh, dataStart, entry.compressedSize));
-      const out = createWriteStream(target);
-      if (entry.method === 8) await pipeline(raw, createInflateRaw(), limit(entry.size), out);
-      else await pipeline(raw, limit(entry.size), out);
+      await writeEntry(fh, entry, target);
       result.files.push(target);
       result.bytes += entry.size;
     }
     return result;
+  } finally {
+    await fh.close();
+  }
+}
+
+/**
+ * Stream one stored or deflated entry to `target`, stopping one that inflates bigger than it says.
+ * `exclusive`: never write over a file already there. The file gets no execute bits.
+ */
+export async function writeEntry(
+  fh: FileHandle,
+  entry: ZipEntry,
+  target: string,
+  options: { exclusive?: boolean } = {},
+): Promise<void> {
+  if (entry.method !== 0 && entry.method !== 8)
+    throw new ZipError(`Compression method ${String(entry.method)} is not supported.`);
+  const local = await readAt(fh, entry.offset, 30);
+  if (local.length < 30 || local.readUInt32LE(0) !== LOCAL) throw new ZipError(`Broken entry ${entry.name}.`);
+  const dataStart = entry.offset + 30 + local.readUInt16LE(26) + local.readUInt16LE(28);
+  const raw = Readable.from(chunks(fh, dataStart, entry.compressedSize));
+  const out = createWriteStream(target, { flags: options.exclusive ? 'wx' : 'w', mode: 0o644 });
+  if (entry.method === 8) await pipeline(raw, createInflateRaw(), limit(entry.size), out);
+  else await pipeline(raw, limit(entry.size), out);
+}
+
+/** Open a zip, list its entries, and hand both to `use` (the file is closed afterwards). */
+export async function withZip<T>(
+  path: string,
+  use: (entries: ZipEntry[], fh: FileHandle) => Promise<T>,
+): Promise<T> {
+  const fh = await open(path, 'r');
+  try {
+    return await use(await listOpen(fh), fh);
   } finally {
     await fh.close();
   }

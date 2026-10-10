@@ -17,6 +17,7 @@ import { nodeWarnings } from '../../../shared/nodes';
 import { useNow } from '../render/useNow';
 import { BackupWarning } from '../backups/BackupsDialog';
 import { UpdateStatus } from '../updates/UpdatesDialog';
+import { LinkStatus } from '../links/LinkDialog';
 
 /*
  * The status bar along the very bottom: the screens connected, where the
@@ -224,6 +225,7 @@ export function StatusBar({
       <NodeWarnings />
       <BackupWarning />
       <UpdateStatus />
+      <LinkStatus />
       <SoundStatus onOpen={onOpenScreens} />
       <TodayStatus onOpen={onOpenCalendar} />
       <div aria-live="polite" className="flex min-w-0 flex-1 items-center gap-3">

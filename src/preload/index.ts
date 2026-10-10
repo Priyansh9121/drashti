@@ -122,6 +122,20 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
+  links: {
+    view: () => invoke(IPC.links.view),
+    look: (kind, link) => invoke(IPC.links.look, kind, link),
+    pickFolder: () => invoke(IPC.links.pickFolder),
+    download: () => invoke(IPC.links.download),
+    stop: () => invoke(IPC.links.stop),
+    reset: () => invoke(IPC.links.reset),
+    showSaved: () => invoke(IPC.links.showSaved),
+    onChanged: (listener) => on(IPC.links.changed, listener),
+    onOpen: (listener) =>
+      on(IPC.links.open, () => {
+        listener();
+      }),
+  },
   roles: {
     view: () => invoke(IPC.roles.view),
     unlock: (pin) => invoke(IPC.roles.unlock, pin),
