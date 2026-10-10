@@ -48,7 +48,8 @@ test('the operator window reaches the show engine through the typed bridge', asy
     (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'toggleBlackout' }),
   );
   expect(result).toEqual({ ok: true, changed: true, rev: rev + 1 });
-  await expect(win.getByTestId('blackout-button')).toHaveAttribute('aria-pressed', 'true');
+  // Its state in words, said once (no aria-pressed besides, Session 25).
+  await expect(win.getByTestId('blackout-button')).toHaveAccessibleName(/^Black-out is on/u);
 
   // Invalid input is rejected by the main process, not trusted.
   const bad = await win.evaluate(() =>

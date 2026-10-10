@@ -8,6 +8,7 @@ import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import type { Icon } from '../ui/icons';
 import {
+  BlackOut,
   Eraser,
   Image,
   Layers,
@@ -17,7 +18,6 @@ import {
   ScrollText,
   Stamp,
   Sticker,
-  Square,
   Type,
 } from '../ui/icons';
 import { Kbd } from '../ui/Kbd';
@@ -30,7 +30,10 @@ import { Tooltip } from '../ui/Tooltip';
  * when there is nothing to clear. Its key (F2 to F8) is on the button from
  * 1440 px wide, and in its tooltip at any width. Right after Clear all,
  * Put it back takes Clear all's place (nothing is left to clear then), so
- * the bar keeps its width and fits at 1280 px.
+ * the bar keeps its width and fits at 1280 px. Every one changes in the same
+ * frame as the screens, with no colour fade (Session 25). Logo and
+ * Black-out say they are on in words ("Black-out is on"), read out once:
+ * no aria-pressed besides.
  */
 
 const clears: { action: OperatorAction; layer: LayerName; label: string; icon: Icon }[] = [
@@ -60,6 +63,7 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
         <Button
           variant="warning"
           size="lg"
+          instant
           icon={RotateCcw}
           data-testid="put-back"
           onClick={() => void dispatch({ type: 'putBack' })}
@@ -70,6 +74,7 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
         <Button
           variant="primary"
           size="lg"
+          instant
           icon={Eraser}
           kbd={shortcutText('clearAll', platform)}
           disabled={!anything}
@@ -100,7 +105,7 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
                 }}
                 aria-label={`Clear ${c.label.toLowerCase()}${on ? ' (on screen)' : ''}`}
                 className={cx(
-                  'relative inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors',
+                  'relative inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium',
                   on
                     ? 'border-live bg-panel-2 text-fg hover:bg-panel-3'
                     : 'cursor-not-allowed border-line bg-transparent text-faint',
@@ -123,8 +128,8 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
       <Button
         variant={logo ? 'live' : 'secondary'}
         size="lg"
+        instant
         icon={Stamp}
-        aria-pressed={logo !== null}
         kbd={shortcutText('toggleLogo', platform)}
         onClick={() => {
           run('toggleLogo');
@@ -136,8 +141,8 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
       <Button
         variant={blackout ? 'live' : 'secondary'}
         size="lg"
-        icon={Square}
-        aria-pressed={blackout}
+        instant
+        icon={BlackOut}
         kbd={shortcutText('toggleBlackout', platform)}
         onClick={() => {
           run('toggleBlackout');

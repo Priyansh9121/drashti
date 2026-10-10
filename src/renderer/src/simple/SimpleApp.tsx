@@ -12,7 +12,16 @@ import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Dialog } from '../ui/Dialog';
 import { Field, Select, TextInput } from '../ui/Field';
-import { Ban, ListMusic, Presentation, RotateCcw, SkipBack, SkipForward, Stamp, Eraser } from '../ui/icons';
+import {
+  BlackOut,
+  ListMusic,
+  Presentation,
+  RotateCcw,
+  SkipBack,
+  SkipForward,
+  Stamp,
+  Eraser,
+} from '../ui/icons';
 import { Kbd } from '../ui/Kbd';
 import { readPersisted, writePersisted } from '../ui/persist';
 import { EmptyState } from '../ui/States';
@@ -39,7 +48,7 @@ import { useNodes } from '../nodes/nodes-store';
 /*
  * Simple Mode (PLAN.md section 3): one uncluttered screen for a volunteer.
  * The playlist, what is on the screens and what comes next, and big
- * buttons: Next and Back, Black out, Logo, Clear all (and Put it back after
+ * buttons: Next and Back, Black-out, Logo, Clear all (and Put it back after
  * it). Nothing here can change the library, the screens or the sound; the
  * main process refuses that too. Leaving takes Switch to Pro Mode… (a small
  * button at the top right since Session 20, or the View menu) and typing the
@@ -142,7 +151,7 @@ function PlaylistColumn() {
                   if (openId) void playItem(openId, item.id);
                 }}
                 className={cx(
-                  'flex min-h-14 w-full items-center gap-3 rounded-lg border-2 px-3 py-2 text-left text-base transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                  'flex min-h-14 w-full items-center gap-3 rounded-lg border-2 px-3 py-2 text-left text-base disabled:cursor-not-allowed disabled:opacity-50',
                   isLive ? 'border-live bg-panel-3' : 'border-transparent bg-panel-2 hover:border-field',
                 )}
               >
@@ -267,6 +276,7 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
     >
       <Button
         size="xxl"
+        instant
         icon={SkipBack}
         onClick={() => run('previous')}
         className="flex-1"
@@ -277,6 +287,7 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
       <Button
         size="xxl"
         variant="primary"
+        instant
         iconEnd={SkipForward}
         onClick={() => run('next')}
         className="flex-[2]"
@@ -289,19 +300,19 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
           <Button
             size="xl"
             variant={blackout ? 'live' : 'secondary'}
-            icon={Ban}
-            aria-pressed={blackout}
+            instant
+            icon={BlackOut}
             data-testid="simple-blackout"
             onClick={() => run('toggleBlackout')}
             className="flex-1"
           >
-            {blackout ? 'Black out is on' : 'Black out'}
+            {blackout ? 'Black-out is on' : 'Black-out'}
           </Button>
           <Button
             size="xl"
             variant={logo ? 'live' : 'secondary'}
+            instant
             icon={Stamp}
-            aria-pressed={logo !== null}
             data-testid="simple-logo"
             onClick={() => run('toggleLogo')}
             className="flex-1"
@@ -313,6 +324,7 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
           <Button
             size="xl"
             variant="warning"
+            instant
             icon={RotateCcw}
             data-testid="simple-put-back"
             onClick={() => run('undo')}
@@ -320,7 +332,13 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
             Put it back
           </Button>
         ) : (
-          <Button size="xl" icon={Eraser} data-testid="simple-clear-all" onClick={() => run('clearAll')}>
+          <Button
+            size="xl"
+            instant
+            icon={Eraser}
+            data-testid="simple-clear-all"
+            onClick={() => run('clearAll')}
+          >
             Clear all
           </Button>
         )}
@@ -398,7 +416,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
           <MusicStrip />
           <p className="mt-auto px-3 pt-3 text-xs leading-6 text-muted">
             Keys: Next <Kbd>{key('next')}</Kbd> or Page Down · Back <Kbd>{key('previous')}</Kbd> or Page Up ·
-            Black out <Kbd>{key('toggleBlackout')}</Kbd> or <Kbd>.</Kbd> · Logo <Kbd>{key('toggleLogo')}</Kbd>{' '}
+            Black-out <Kbd>{key('toggleBlackout')}</Kbd> or <Kbd>.</Kbd> · Logo <Kbd>{key('toggleLogo')}</Kbd>{' '}
             · Clear all <Kbd>{key('clearAll')}</Kbd> · Put it back <Kbd>{key('undo')}</Kbd>
           </p>
         </main>

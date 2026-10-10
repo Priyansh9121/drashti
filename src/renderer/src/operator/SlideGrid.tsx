@@ -1,5 +1,5 @@
 import { isPassageId } from '../../../shared/shastra';
-import { memo, useEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import type { PlaylistCursor } from '../../../shared/engine/state';
 import type { BackgroundCue, PresentationDoc, SlideInfo } from '../../../shared/library';
 import { type OrderedSlide, playOrder } from '../../../shared/order';
@@ -82,8 +82,9 @@ const Thumb = memo(function Thumb({
   firstOfRun: boolean;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (live) ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  // The live slide comes into view in the same frame it turns live: never a smooth scroll (Session 25).
+  useLayoutEffect(() => {
+    if (live) ref.current?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
   }, [live]);
   useEffect(() => {
     if (found) ref.current?.scrollIntoView({ block: 'center' });
@@ -108,7 +109,8 @@ const Thumb = memo(function Thumb({
           if (!isPassageId(presentationId)) void openSlideEditor(presentationId, presentationName, info.id);
         }}
         className={cx(
-          'group w-full overflow-hidden rounded-lg border-2 bg-black text-left transition-colors',
+          // The border turns live with the caption, in one frame: no fade.
+          'group w-full overflow-hidden rounded-lg border-2 bg-black text-left',
           live ? 'border-live' : found ? 'border-accent' : 'border-line hover:border-field',
         )}
       >

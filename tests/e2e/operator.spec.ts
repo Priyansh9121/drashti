@@ -96,7 +96,8 @@ test('operator: pick a presentation, go live by click and keyboard, clear layers
   // Black-out (B) covers everything and comes off again without losing the slide.
   await win.keyboard.press('b');
   await expect(output.getByTestId('blackout')).toHaveCount(1);
-  await expect(win.getByTestId('blackout-button')).toHaveAttribute('aria-pressed', 'true');
+  await expect(win.getByTestId('blackout-button')).toHaveAccessibleName(/^Black-out is on/u);
+  await expect(win.getByTestId('blackout-button')).not.toHaveAttribute('aria-pressed');
   await outputCaughtUp();
   await win.getByTestId('blackout-button').click();
   await expect(output.getByTestId('blackout')).toHaveCount(0);

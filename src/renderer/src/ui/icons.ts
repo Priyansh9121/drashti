@@ -4,6 +4,10 @@
  * so the set stays small and consistent. An icon is never the only label:
  * buttons have text, or an aria-label and a tooltip (IconButton).
  */
+import { createElement, forwardRef } from 'react';
+import type { LucideIcon, LucideProps } from 'lucide-react';
+import { RectangleHorizontal } from 'lucide-react';
+
 export type { LucideIcon as Icon } from 'lucide-react';
 export { Camera, CircleDot, HardDrive, KeyRound, Mic, Radio, Video, Wifi, WifiOff } from 'lucide-react';
 // The local network: phones and tablets, pairing by QR code, the announcements poster.
@@ -120,3 +124,11 @@ export {
   Wand2,
   X,
 } from 'lucide-react';
+
+/**
+ * Black-out (Session 25): a screen filled in, as the design lab draws it. One shape for black-out in
+ * Pro Mode, Simple Mode and on phones; never used for anything else.
+ */
+export const BlackOut = forwardRef<SVGSVGElement, LucideProps>(function BlackOut(props, ref) {
+  return createElement(RectangleHorizontal, { ...props, ref, fill: 'currentColor' });
+}) as LucideIcon;
