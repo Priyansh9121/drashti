@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { DragEvent } from 'react';
+import type { DragEvent, ReactNode } from 'react';
 import type { ShastraHit, ShastraItemRow, ShastraSectionNode } from '../../../shared/shastra';
 import { useLibrary } from '../library/library-store';
 import { AddToPlaylistButton, rowMenu } from '../playlists/AddToPlaylist';
@@ -40,13 +40,13 @@ const pickPassage = (passageId: string) => () => [{ kind: 'shastra' as const, pa
 
 function HitRow({ hit, selected }: { hit: ShastraHit; selected: boolean }) {
   return (
-    <div className="flex items-center gap-1.5">
+    <div>
       <button
         type="button"
         draggable
         data-testid="shastra-hit"
         aria-current={selected ? 'true' : undefined}
-        className={`${rowClass({ selected })} min-w-0 flex-1 px-2.5 py-1.5`}
+        className={`${rowClass({ selected })} px-2.5 py-1.5`}
         onDragStart={(e) => {
           dragPassage(e, hit.passageId);
         }}
@@ -60,20 +60,20 @@ function HitRow({ hit, selected }: { hit: ShastraHit; selected: boolean }) {
           {hit.snippet}
         </span>
       </button>
-      {selected && <AddToPlaylistButton pick={pickPassage(hit.passageId)} />}
+      {selected && <AddToPlaylistButton pick={pickPassage(hit.passageId)} className="pt-1" />}
     </div>
   );
 }
 
 function ItemRow({ item, selected }: { item: ShastraItemRow; selected: boolean }) {
   return (
-    <div className="flex items-center gap-1.5">
+    <div>
       <button
         type="button"
         draggable
         data-testid="shastra-item"
         aria-current={selected ? 'true' : undefined}
-        className={`${rowClass({ selected })} flex min-w-0 flex-1 items-baseline gap-2 px-2.5 py-1`}
+        className={`${rowClass({ selected })} flex items-baseline gap-2 px-2.5 py-1`}
         onDragStart={(e) => {
           dragPassage(e, item.passageId);
         }}
@@ -85,7 +85,7 @@ function ItemRow({ item, selected }: { item: ShastraItemRow; selected: boolean }
         <span className="w-10 shrink-0 text-right text-sm font-medium tabular-nums">{item.number}</span>
         <span className="min-w-0 truncate text-xs text-muted">{item.title}</span>
       </button>
-      {selected && <AddToPlaylistButton pick={pickPassage(item.passageId)} />}
+      {selected && <AddToPlaylistButton pick={pickPassage(item.passageId)} className="pt-1" />}
     </div>
   );
 }
@@ -133,7 +133,8 @@ function SectionRows({
   );
 }
 
-export function ShastraPanel() {
+/** The Shastra tab; `help` is the library's What is this?, at the end of its first row. */
+export function ShastraPanel({ help }: { help?: ReactNode }) {
   const texts = useShastra((s) => s.texts);
   const loaded = useShastra((s) => s.loaded);
   const reference = useShastra((s) => s.reference);
@@ -151,7 +152,7 @@ export function ShastraPanel() {
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="shastra-panel">
       <form
-        className="flex gap-1.5 px-3 pb-2"
+        className="flex items-center gap-1.5 px-3 pb-2"
         onSubmit={(e) => {
           e.preventDefault();
           void openReference();
@@ -173,6 +174,7 @@ export function ShastraPanel() {
         <Button type="submit" size="md" data-testid="shastra-show">
           Show
         </Button>
+        {help}
       </form>
       {problem && (
         <p

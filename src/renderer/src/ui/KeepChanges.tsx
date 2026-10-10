@@ -39,6 +39,7 @@ export function KeepChangesDialog({
   return (
     <Dialog
       title={<>Keep your changes to {name}?</>}
+      titleWraps
       role="alertdialog"
       size="sm"
       onClose={onKeepEditing}

@@ -668,7 +668,10 @@ function keepFocus(id: string, on: 'item' | 'up' | 'down'): void {
   });
 }
 
-/** Up and Down on the chosen item: it moves a place, as one Undo step, without dragging (Alt+↑ ↓ too). */
+/**
+ * Up and Down on the chosen item, on a line under it so its name keeps its room: it moves a place,
+ * as one Undo step, without dragging (Alt+↑ ↓ too).
+ */
 function MoveButtons({
   name,
   first,
@@ -685,7 +688,7 @@ function MoveButtons({
       role="group"
       aria-label={`Move “${name}”`}
       data-testid="playlist-item-moves"
-      className="flex shrink-0 gap-1"
+      className="mt-1 mb-1 flex justify-end gap-1"
     >
       <Button
         size="sm"
@@ -921,7 +924,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
               key={item.id}
               data-item-index={index}
               data-item-row={item.id}
-              className={cx('flex items-center gap-1 rounded-md', line)}
+              className={cx('rounded-md', line)}
               onKeyDown={(e) => {
                 const action = actionFor(e.nativeEvent, platform, LIBRARY_KEYMAP);
                 if (action !== 'moveItemUp' && action !== 'moveItemDown') return;
@@ -982,7 +985,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                 }}
                 className={cx(
                   rowClass({ selected: shownItem === item.id, marked: isMarked, dropTarget: filling }),
-                  'min-w-0 flex-1 px-2.5',
+                  'px-2.5',
                   item.kind === 'header' ? 'min-h-8 pt-2 pb-1' : 'min-h-11 py-1.5',
                   look,
                 )}

@@ -101,6 +101,7 @@ export function Dialog({
   footer,
   children,
   bodyClassName,
+  titleWraps = false,
   bodyFocusable = false,
   describedBy,
   className,
@@ -123,6 +124,8 @@ export function Dialog({
   footer?: ReactNode;
   children: ReactNode;
   bodyClassName?: string;
+  /** The title wraps onto more lines instead of being cut off (a question naming something long). */
+  titleWraps?: boolean;
   /** Its body is text only and may scroll: it takes the focus, so the keyboard can scroll it. */
   bodyFocusable?: boolean;
   /** The id of the text that explains it (alert dialogs). */
@@ -162,7 +165,10 @@ export function Dialog({
         <div data-testid={panelTestId} className="flex min-h-0 flex-1 flex-col">
           <header className="flex shrink-0 items-start gap-3 border-b border-line px-5 py-3">
             <div className="min-w-0 flex-1">
-              <h2 id={titleId} className="truncate text-lg leading-snug font-bold">
+              <h2
+                id={titleId}
+                className={cx('text-lg leading-snug font-bold', titleWraps ? 'break-words' : 'truncate')}
+              >
                 {title}
               </h2>
               {subtitle && <div className="mt-0.5 text-xs text-muted">{subtitle}</div>}
