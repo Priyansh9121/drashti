@@ -41,9 +41,7 @@ const smallText = (page: Page) =>
       .filter(
         (el) =>
           el.offsetParent !== null &&
-          [...el.childNodes].some(
-            (n) => n.nodeType === Node.TEXT_NODE && n.textContent?.trim(),
-          ) &&
+          [...el.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && n.textContent?.trim()) &&
           el.closest('[data-small-label], [data-badge], [aria-hidden="true"]') === null &&
           parseFloat(getComputedStyle(el).fontSize) < 16,
       )
