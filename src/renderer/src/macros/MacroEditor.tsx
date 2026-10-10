@@ -655,14 +655,14 @@ export function MacroEditor() {
                 <span className="flex-1" />
                 <IconButton
                   icon={ArrowUp}
-                  label="Earlier"
+                  label="Up"
                   size="sm"
                   disabled={i === 0}
                   onClick={() => move(i, -1)}
                 />
                 <IconButton
                   icon={ArrowDown}
-                  label="Later"
+                  label="Down"
                   size="sm"
                   disabled={i === e.actions.length - 1}
                   onClick={() => move(i, 1)}

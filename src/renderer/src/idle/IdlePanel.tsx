@@ -252,13 +252,13 @@ function IdleForm() {
                   <IconButton
                     icon={ArrowUp}
                     size="sm"
-                    label={`Earlier: ${nameOf(id) ?? ''}`}
+                    label={`Up: ${nameOf(id) ?? ''}`}
                     onClick={() => move(id, -1)}
                   />
                   <IconButton
                     icon={ArrowDown}
                     size="sm"
-                    label={`Later: ${nameOf(id) ?? ''}`}
+                    label={`Down: ${nameOf(id) ?? ''}`}
                     onClick={() => move(id, 1)}
                   />
                 </li>

@@ -31,6 +31,8 @@ export type OperatorAction =
   | 'openScreens'
   | 'uncoverControls'
   | 'removeSelected'
+  | 'moveItemUp'
+  | 'moveItemDown'
   | 'findInLibrary'
   | 'undo';
 
@@ -75,6 +77,9 @@ export const KEYMAP: readonly KeyBinding[] = [
   // Removing presentations or playlists asks first; Undo brings back any removal. In Simple Mode,
   // which removes nothing, Undo puts back what Clear all took down.
   { action: 'removeSelected', keys: ['Delete', 'Backspace'], label: 'Remove', scope: 'library' },
+  // A playlist's chosen item up or down a place, as its Up and Down buttons do (Session 25): no one has to drag.
+  { action: 'moveItemUp', keys: ['Alt+ArrowUp'], label: 'Move up', scope: 'library' },
+  { action: 'moveItemDown', keys: ['Alt+ArrowDown'], label: 'Move down', scope: 'library' },
   { action: 'findInLibrary', keys: ['Mod+F'], label: 'Search' },
   { action: 'undo', keys: ['Mod+Z'], label: 'Undo', menuOnly: true },
 ];

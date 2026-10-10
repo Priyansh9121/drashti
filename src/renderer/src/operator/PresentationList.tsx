@@ -21,6 +21,7 @@ import { SearchResults } from '../library/SearchResults';
 import { applyFilters, filtering, KirtanFilters, toggleFilters, useFilters } from '../library/KirtanFilters';
 import { newFromWords } from '../library/words-store';
 import { MediaList } from '../library/MediaList';
+import { AddToPlaylistButton, LibraryRowMenu, rowMenu } from '../playlists/AddToPlaylist';
 import { startDrag } from '../playlists/drag';
 import { Badge, LiveBadge } from '../ui/Badge';
 import { Button, IconButton } from '../ui/Button';
@@ -41,6 +42,15 @@ const HEADING_HEIGHT = 30;
 /** Drawn beyond the visible part of the list, so scrolling never shows a gap. */
 const MARGIN = 600;
 
+/** What a presentation row adds to a playlist: the marked ones when it is one of them, else itself. */
+const pickPresentations = (id: string) => () => {
+  const { marked, presentations } = useLibrary.getState();
+  const ids = marked.includes(id)
+    ? presentations.filter((x) => marked.includes(x.id)).map((x) => x.id)
+    : [id];
+  return ids.map((presentationId) => ({ kind: 'presentation' as const, presentationId }));
+};
+
 const PresentationRow = memo(function PresentationRow({
   p,
   selected,
@@ -54,40 +64,45 @@ const PresentationRow = memo(function PresentationRow({
   live: boolean;
   platform: string;
 }) {
+  const pick = pickPresentations(p.id);
   return (
-    <button
-      type="button"
-      draggable
-      aria-current={selected ? 'true' : undefined}
-      data-marked={marked ? 'true' : undefined}
-      onClick={(e) => {
-        clickPresentation(p.id, {
-          toggle: platform === 'darwin' ? e.metaKey : e.ctrlKey,
-          range: e.shiftKey,
-        });
-      }}
-      onDragStart={(e) => {
-        // Drags the marked presentations when this is one of them, else just this one.
-        const { marked: now, presentations } = useLibrary.getState();
-        const ids = now.includes(p.id)
-          ? presentations.filter((x) => now.includes(x.id)).map((x) => x.id)
-          : [p.id];
-        startDrag(e, 'presentations', ids);
-      }}
-      className={`${rowClass({ selected, marked })} flex h-full items-center gap-2 px-2.5`}
-    >
-      <span className="min-w-0 flex-1">
-        <Truncate text={p.name} className="text-sm font-medium" />
-        <span className="flex items-center gap-1 text-xs text-muted">
-          {p.slideCount} {p.slideCount === 1 ? 'slide' : 'slides'}
-          {p.kirtanTracks &&
-            LANGS.filter((l) => p.kirtanTracks?.includes(l)).map((l) => (
-              <Badge key={l}>{LANG_SHORT[l]}</Badge>
-            ))}
+    <div className={`${rowClass({ selected, marked })} flex h-full items-center gap-1.5 pr-1.5`}>
+      <button
+        type="button"
+        draggable
+        aria-current={selected ? 'true' : undefined}
+        data-marked={marked ? 'true' : undefined}
+        onClick={(e) => {
+          clickPresentation(p.id, {
+            toggle: platform === 'darwin' ? e.metaKey : e.ctrlKey,
+            range: e.shiftKey,
+          });
+        }}
+        {...rowMenu(p.name, pick)}
+        onDragStart={(e) => {
+          // Drags the marked presentations when this is one of them, else just this one.
+          startDrag(
+            e,
+            'presentations',
+            pick().map((i) => i.presentationId),
+          );
+        }}
+        className="flex h-full min-w-0 flex-1 items-center gap-2 pl-2.5 text-left"
+      >
+        <span className="min-w-0 flex-1">
+          <Truncate text={p.name} className="text-sm font-medium" />
+          <span className="flex items-center gap-1 text-xs text-muted">
+            {p.slideCount} {p.slideCount === 1 ? 'slide' : 'slides'}
+            {p.kirtanTracks &&
+              LANGS.filter((l) => p.kirtanTracks?.includes(l)).map((l) => (
+                <Badge key={l}>{LANG_SHORT[l]}</Badge>
+              ))}
+          </span>
         </span>
-      </span>
-      {live && <LiveBadge />}
-    </button>
+        {live && <LiveBadge />}
+      </button>
+      {selected && <AddToPlaylistButton pick={pick} />}
+    </div>
   );
 });
 
@@ -357,6 +372,7 @@ export function PresentationList({ platform }: { platform: string }) {
           </ul>
         )}
       </TabPanel>
+      <LibraryRowMenu />
       {dropProblem && (
         <Notice tone="warning" compact className="mx-3 mb-2" onDismiss={() => setDropProblem(null)}>
           {dropProblem}

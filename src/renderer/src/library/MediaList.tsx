@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { openMarkers } from '../markers/MarkersDialog';
 import type { MediaSummary } from '../../../shared/playlists';
+import { AddToPlaylistButton, rowMenu } from '../playlists/AddToPlaylist';
 import { startDrag } from '../playlists/drag';
 import { MissingBadge } from '../ui/Badge';
 import type { Icon } from '../ui/icons';
@@ -124,18 +125,29 @@ function MediaNote({ m, job }: { m: MediaSummary; job: ConversionJob | undefined
   );
 }
 
+/** What a media row adds to a playlist: the marked ones when it is one of them, else itself. */
+const pickMedia = (id: string) => () => {
+  const { marked, media } = useMedia.getState();
+  const ids = marked.includes(id) ? media.filter((x) => marked.includes(x.id)).map((x) => x.id) : [id];
+  return ids.map((mediaId) => ({ kind: 'media' as const, mediaId }));
+};
+
 const MediaRow = memo(function MediaRow({
   m,
   marked,
+  chosen,
   platform,
   job,
 }: {
   m: MediaSummary;
   marked: boolean;
+  /** The one last clicked: it shows Add to playlist. */
+  chosen: boolean;
   platform: string;
   job: ConversionJob | undefined;
 }) {
   const KindIcon = mediaKindIcon[m.kind];
+  const pick = pickMedia(m.id);
   return (
     <div
       className={`${rowClass({ marked })} flex h-full items-center gap-1.5 pr-1.5`}
@@ -150,11 +162,14 @@ const MediaRow = memo(function MediaRow({
         onClick={(e) => {
           clickMedia(m.id, { toggle: platform === 'darwin' ? e.metaKey : e.ctrlKey, range: e.shiftKey });
         }}
+        {...rowMenu(m.name, pick)}
         onDragStart={(e) => {
-          const { marked: now, media } = useMedia.getState();
-          const ids = now.includes(m.id) ? media.filter((x) => now.includes(x.id)).map((x) => x.id) : [m.id];
-          if (!now.includes(m.id)) clickMedia(m.id, { toggle: false, range: false });
-          startDrag(e, 'media', ids);
+          startDrag(
+            e,
+            'media',
+            pick().map((i) => i.mediaId),
+          );
+          if (!useMedia.getState().marked.includes(m.id)) clickMedia(m.id, { toggle: false, range: false });
         }}
         className="flex h-full min-w-0 flex-1 items-center gap-2 pl-2.5 text-left"
       >
@@ -165,6 +180,7 @@ const MediaRow = memo(function MediaRow({
         </span>
         {m.missing && <MissingBadge />}
       </button>
+      {chosen && <AddToPlaylistButton pick={pick} />}
       <ConvertControl m={m} job={job} />
       {(m.kind === 'video' || m.kind === 'audio') && !m.missing && m.unplayable === null && (
         <IconButton
@@ -186,6 +202,7 @@ export function MediaList({ platform }: { platform: string }) {
   const media = useMedia((s) => s.media);
   const loaded = useMedia((s) => s.loaded);
   const marked = useMedia((s) => s.marked);
+  const anchorId = useMedia((s) => s.anchorId);
   const listRef = useRef<HTMLUListElement>(null);
   const [view, setView] = useState({ top: 0, height: 800 });
   const layout = useMemo(() => layoutRows(media.map(() => ROW_HEIGHT)), [media]);
@@ -261,7 +278,13 @@ export function MediaList({ platform }: { platform: string }) {
               aria-setsize={media.length}
               aria-posinset={i + 1}
             >
-              <MediaRow m={m} marked={markedSet.has(m.id)} platform={platform} job={jobFor(jobs, m.id)} />
+              <MediaRow
+                m={m}
+                marked={markedSet.has(m.id)}
+                chosen={anchorId === m.id && markedSet.has(m.id)}
+                platform={platform}
+                job={jobFor(jobs, m.id)}
+              />
             </li>
           );
         })}

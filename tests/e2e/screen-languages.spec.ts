@@ -58,8 +58,8 @@ test('each screen shows its own languages of a kirtan, closed up; other slides i
   await stream.getByRole('checkbox', { name: 'Gujarati' }).uncheck();
   await stream.getByRole('checkbox', { name: 'Hindi' }).uncheck();
   // Already transliteration then English; put English first, then back.
-  await stream.getByRole('button', { name: 'English earlier' }).click();
-  await stream.getByRole('button', { name: 'English later' }).click();
+  await stream.getByRole('button', { name: 'Up: English' }).click();
+  await stream.getByRole('button', { name: 'Down: English' }).click();
   // The stage: Gujarati only, and its stage view.
   const stage = groups.nth(2);
   await stage.getByTestId('group-role').selectOption('stage');

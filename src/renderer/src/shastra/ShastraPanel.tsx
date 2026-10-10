@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { DragEvent } from 'react';
 import type { ShastraHit, ShastraItemRow, ShastraSectionNode } from '../../../shared/shastra';
 import { useLibrary } from '../library/library-store';
+import { AddToPlaylistButton, rowMenu } from '../playlists/AddToPlaylist';
 import { startDrag } from '../playlists/drag';
 import { Button } from '../ui/Button';
 import { TextInput } from '../ui/Field';
@@ -34,47 +35,58 @@ function dragPassage(e: DragEvent, passageId: string): void {
   startDrag(e, 'passages', [passageId]);
 }
 
+/** A passage, as a playlist item (Add to playlist, or its row's menu). */
+const pickPassage = (passageId: string) => () => [{ kind: 'shastra' as const, passageId }];
+
 function HitRow({ hit, selected }: { hit: ShastraHit; selected: boolean }) {
   return (
-    <button
-      type="button"
-      draggable
-      data-testid="shastra-hit"
-      aria-current={selected ? 'true' : undefined}
-      className={`${rowClass({ selected })} px-2.5 py-1.5`}
-      onDragStart={(e) => {
-        dragPassage(e, hit.passageId);
-      }}
-      onClick={() => {
-        void showPassage(hit.passageId);
-      }}
-    >
-      <span className="block truncate text-sm font-medium">{hit.reference}</span>
-      <span className="block truncate text-xs text-muted" data-testid="shastra-hit-line">
-        {hit.snippet}
-      </span>
-    </button>
+    <div className="flex items-center gap-1.5">
+      <button
+        type="button"
+        draggable
+        data-testid="shastra-hit"
+        aria-current={selected ? 'true' : undefined}
+        className={`${rowClass({ selected })} min-w-0 flex-1 px-2.5 py-1.5`}
+        onDragStart={(e) => {
+          dragPassage(e, hit.passageId);
+        }}
+        onClick={() => {
+          void showPassage(hit.passageId);
+        }}
+        {...rowMenu(hit.reference, pickPassage(hit.passageId))}
+      >
+        <span className="block truncate text-sm font-medium">{hit.reference}</span>
+        <span className="block truncate text-xs text-muted" data-testid="shastra-hit-line">
+          {hit.snippet}
+        </span>
+      </button>
+      {selected && <AddToPlaylistButton pick={pickPassage(hit.passageId)} />}
+    </div>
   );
 }
 
 function ItemRow({ item, selected }: { item: ShastraItemRow; selected: boolean }) {
   return (
-    <button
-      type="button"
-      draggable
-      data-testid="shastra-item"
-      aria-current={selected ? 'true' : undefined}
-      className={`${rowClass({ selected })} flex items-baseline gap-2 px-2.5 py-1`}
-      onDragStart={(e) => {
-        dragPassage(e, item.passageId);
-      }}
-      onClick={() => {
-        void showPassage(item.passageId);
-      }}
-    >
-      <span className="w-10 shrink-0 text-right text-sm font-medium tabular-nums">{item.number}</span>
-      <span className="min-w-0 truncate text-xs text-muted">{item.title}</span>
-    </button>
+    <div className="flex items-center gap-1.5">
+      <button
+        type="button"
+        draggable
+        data-testid="shastra-item"
+        aria-current={selected ? 'true' : undefined}
+        className={`${rowClass({ selected })} flex min-w-0 flex-1 items-baseline gap-2 px-2.5 py-1`}
+        onDragStart={(e) => {
+          dragPassage(e, item.passageId);
+        }}
+        onClick={() => {
+          void showPassage(item.passageId);
+        }}
+        {...rowMenu(`${item.number} ${item.title}`, pickPassage(item.passageId))}
+      >
+        <span className="w-10 shrink-0 text-right text-sm font-medium tabular-nums">{item.number}</span>
+        <span className="min-w-0 truncate text-xs text-muted">{item.title}</span>
+      </button>
+      {selected && <AddToPlaylistButton pick={pickPassage(item.passageId)} />}
+    </div>
   );
 }
 
