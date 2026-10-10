@@ -3346,6 +3346,9 @@ function start(): void {
     checkForUpdates: () => {
       if (mode === 'pro') sendToOperator(IPC.updates.open, { at: Date.now() });
     },
+    keyboardShortcuts: () => {
+      if (mode === 'pro') sendToOperator(IPC.app.showKeys, { at: Date.now() });
+    },
     priority: (() => {
       const item = priorityItem((text) => {
         rebuildMenu();

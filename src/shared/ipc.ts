@@ -121,6 +121,8 @@ export const IPC = {
     askLeaveSimple: 'app:ask-leave-simple',
     /** Any of Drashti's windows: a render error, for the log (Session 23). */
     renderError: 'app:render-error',
+    /** main -> operator: Help > Keyboard Shortcuts… was chosen (Session 25). */
+    showKeys: 'app:show-keys',
   },
   /**
    * Roles (Session 14, shared/roles.ts): an admin PIN and an operator PIN.
@@ -938,6 +940,7 @@ export interface EventContract {
   [IPC.updates.changed]: UpdateView;
   [IPC.music.changed]: MusicView;
   [IPC.updates.open]: { at: number };
+  [IPC.app.showKeys]: { at: number };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.looks.changed]: LooksView;
   [IPC.stageLayouts.changed]: StageLayout[];

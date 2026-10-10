@@ -34,7 +34,8 @@ export type OperatorAction =
   | 'moveItemUp'
   | 'moveItemDown'
   | 'findInLibrary'
-  | 'undo';
+  | 'undo'
+  | 'showKeys';
 
 export interface KeyBinding {
   action: OperatorAction;
@@ -82,6 +83,35 @@ export const KEYMAP: readonly KeyBinding[] = [
   { action: 'moveItemDown', keys: ['Alt+ArrowDown'], label: 'Move down', scope: 'library' },
   { action: 'findInLibrary', keys: ['Mod+F'], label: 'Search' },
   { action: 'undo', keys: ['Mod+Z'], label: 'Undo', menuOnly: true },
+  // The keys sheet (Help > Keyboard Shortcuts…, Session 25): Pro Mode only, as no field has the focus.
+  { action: 'showKeys', keys: ['?'], label: 'This list of keys' },
+];
+
+/**
+ * The keys sheet, built from KEYMAP and grouped by what the operator is doing (Session 25): every
+ * action once (a unit test checks), so the sheet never drifts from the keys.
+ */
+export const KEY_GROUPS: readonly { title: string; actions: readonly OperatorAction[] }[] = [
+  { title: 'Running the show', actions: ['next', 'previous', 'nextItem', 'previousItem'] },
+  {
+    title: 'Clearing the screens',
+    actions: [
+      'clearAll',
+      'clearSlide',
+      'clearBackground',
+      'clearProps',
+      'clearMessages',
+      'clearAudio',
+      'clearMasks',
+      'clearTicker',
+    ],
+  },
+  { title: 'Covering the picture', actions: ['toggleBlackout', 'toggleLogo'] },
+  {
+    title: 'The library and playlists',
+    actions: ['findInLibrary', 'moveItemUp', 'moveItemDown', 'removeSelected', 'undo'],
+  },
+  { title: 'Screens, and this list', actions: ['openScreens', 'uncoverControls', 'showKeys'] },
 ];
 
 /** Keys the page listens for everywhere (not scoped to a list, not owned by the menu). */
@@ -135,6 +165,22 @@ export function actionFor(
   return null;
 }
 
+/** A binding's key, written for people as this computer shows it: "→", "Page Down", "⌘⇧S" or "Ctrl+Shift+S". */
+export function keyText(binding: string, platform: string): string {
+  const { key, mod, shift, alt } = parse(binding);
+  const names: Record<string, string> = {
+    ArrowRight: '→',
+    ArrowLeft: '←',
+    ArrowUp: '↑',
+    ArrowDown: '↓',
+    PageDown: 'Page Down',
+    PageUp: 'Page Up',
+  };
+  const name = names[key] ?? key;
+  if (platform === 'darwin') return `${mod ? '⌘' : ''}${alt ? '⌥' : ''}${shift ? '⇧' : ''}${name}`;
+  return [mod ? 'Ctrl' : '', alt ? 'Alt' : '', shift ? 'Shift' : '', name].filter(Boolean).join('+');
+}
+
 /** The first key of an action, written for people, e.g. "F2", "Space", "⌘⇧S" or "Ctrl+Shift+S". */
 export function shortcutText(
   action: OperatorAction,
@@ -142,12 +188,7 @@ export function shortcutText(
   keymap: readonly KeyBinding[] = KEYMAP,
 ): string {
   const first = keymap.find((b) => b.action === action)?.keys[0];
-  if (!first) return '';
-  const { key, mod, shift, alt } = parse(first);
-  const arrows: Record<string, string> = { ArrowRight: '→', ArrowLeft: '←', ArrowUp: '↑', ArrowDown: '↓' };
-  const name = arrows[key] ?? key;
-  if (platform === 'darwin') return `${mod ? '⌘' : ''}${alt ? '⌥' : ''}${shift ? '⇧' : ''}${name}`;
-  return [mod ? 'Ctrl' : '', alt ? 'Alt' : '', shift ? 'Shift' : '', name].filter(Boolean).join('+');
+  return first ? keyText(first, platform) : '';
 }
 
 /** Electron accelerator for a binding key, e.g. "Mod+Shift+U" -> "CommandOrControl+Shift+U". */

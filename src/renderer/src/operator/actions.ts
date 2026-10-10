@@ -114,11 +114,17 @@ export async function chooseArrangement(presentationId: string, arrangementId: s
  * starts it (a presentation at its first slide); once it is live, Next and
  * Previous go along it, and on into the next or previous playlist item.
  */
-export function runAction(action: OperatorAction, ui: { openScreens: () => void }): Promise<void> {
+/** What a key opens in the operator window: Screens, and the keys sheet. */
+interface OperatorUi {
+  openScreens: () => void;
+  showKeys: () => void;
+}
+
+export function runAction(action: OperatorAction, ui: OperatorUi): Promise<void> {
   return inTurn(() => perform(action, ui));
 }
 
-async function perform(action: OperatorAction, ui: { openScreens: () => void }): Promise<void> {
+async function perform(action: OperatorAction, ui: OperatorUi): Promise<void> {
   const live = useEngine.getState().state?.live;
   const { selectedId, doc, item } = useLibrary.getState();
   const somethingLive = live?.presentationId != null || live?.playlist != null;
@@ -186,6 +192,9 @@ async function perform(action: OperatorAction, ui: { openScreens: () => void }):
     case 'undo':
       await undoRemoval();
       return;
+    case 'showKeys':
+      ui.showKeys();
+      return;
   }
 }
 
@@ -216,13 +225,15 @@ async function performSimple(action: OperatorAction, start: () => Promise<void>)
       return dispatch({ type: 'back' });
     case 'undo':
       return dispatch({ type: 'putBack' });
+    // Simple Mode keeps its key line; the keys sheet is Pro Mode's.
     case 'openScreens':
     case 'findInLibrary':
     case 'removeSelected':
     case 'moveItemUp':
     case 'moveItemDown':
+    case 'showKeys':
       return;
     default:
-      return perform(action, { openScreens: () => undefined });
+      return perform(action, { openScreens: () => undefined, showKeys: () => undefined });
   }
 }

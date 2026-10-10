@@ -57,6 +57,7 @@ import { connectRoles } from '../roles/roles-store';
 import { AdminPinDialog, RolesDialog } from '../roles/RolesDialogs';
 import { BackupsDialog } from '../backups/BackupsDialog';
 import { UpdatesDialog } from '../updates/UpdatesDialog';
+import { KeysSheet, showKeysSheet } from './KeysSheet';
 import { MarkerJumps, MarkersDialog } from '../markers/MarkersDialog';
 import { SimpleApp } from '../simple/SimpleApp';
 import { SetupWizard } from '../setup/SetupWizard';
@@ -105,6 +106,8 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     const offProgress = window.drashti.app.onProgress((next) => {
       useTaskProgress.setState({ progress: next });
     });
+    // Help > Keyboard Shortcuts… (Pro Mode).
+    const offKeys = window.drashti.app.onShowKeys(showKeysSheet);
     // How a restore went, told once as the page opens.
     void window.drashti.app.startNotice().then((text) => {
       if (text) useNotice.setState({ text });
@@ -122,6 +125,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
       offRedo();
       offNotice();
       offProgress();
+      offKeys();
       window.removeEventListener('dragover', ignoreDrop);
       window.removeEventListener('drop', ignoreDrop);
     };
@@ -149,7 +153,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
   }, []);
   const run = useCallback(
     (action: OperatorAction) => {
-      void runAction(action, { openScreens });
+      void runAction(action, { openScreens, showKeys: showKeysSheet });
     },
     [openScreens],
   );
@@ -268,6 +272,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <RolesDialog />
       <BackupsDialog />
       <UpdatesDialog />
+      <KeysSheet platform={platform} />
       <MarkersDialog />
       <AdminPinDialog />
       {dashboardOpen && (

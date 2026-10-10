@@ -79,6 +79,10 @@ const bridge: DrashtiBridge = {
       on(IPC.app.askLeaveSimple, () => {
         listener();
       }),
+    onShowKeys: (listener) =>
+      on(IPC.app.showKeys, () => {
+        listener();
+      }),
   },
   backups: {
     view: () => invoke(IPC.backups.view),

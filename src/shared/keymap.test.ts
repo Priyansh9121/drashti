@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { acceleratorFor, actionFor, KEYMAP, keyMatches, shortcutText, toAccelerator } from './keymap';
+import {
+  acceleratorFor,
+  actionFor,
+  KEY_GROUPS,
+  KEYMAP,
+  keyMatches,
+  keyText,
+  shortcutText,
+  toAccelerator,
+} from './keymap';
 
 const press = (
   key: string,
@@ -88,5 +97,24 @@ describe('keymap', () => {
     expect(toAccelerator('Mod+Shift+S')).toBe('CommandOrControl+Shift+S');
     expect(toAccelerator('F2')).toBe('F2');
     expect(acceleratorFor('next')).toBe('ArrowRight');
+  });
+
+  // The keys sheet (Help > Keyboard Shortcuts…, Session 25) is built from KEYMAP, grouped by what the
+  // operator is doing: every action once, so it can never drift from the keys.
+  it('puts every action in the keys sheet, once, and nothing that is not a key', () => {
+    const listed = KEY_GROUPS.flatMap((g) => g.actions);
+    expect([...listed].sort()).toEqual(KEYMAP.map((b) => b.action).sort());
+    expect(new Set(listed).size).toBe(listed.length);
+    for (const g of KEY_GROUPS) expect(g.actions.length).toBeGreaterThan(0);
+  });
+
+  it('writes each key as the computer shows it', () => {
+    expect(keyText('Mod+F', 'darwin')).toBe('⌘F');
+    expect(keyText('Mod+F', 'win32')).toBe('Ctrl+F');
+    expect(keyText('Alt+ArrowUp', 'darwin')).toBe('⌥↑');
+    expect(keyText('Alt+ArrowUp', 'win32')).toBe('Alt+↑');
+    expect(keyText('PageDown', 'win32')).toBe('Page Down');
+    expect(keyText('?', 'darwin')).toBe('?');
+    expect(actionFor(press('?', { shiftKey: true }), 'darwin')).toBe('showKeys');
   });
 });

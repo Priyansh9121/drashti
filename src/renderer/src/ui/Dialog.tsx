@@ -101,6 +101,7 @@ export function Dialog({
   footer,
   children,
   bodyClassName,
+  bodyFocusable = false,
   describedBy,
   className,
   testId,
@@ -122,6 +123,8 @@ export function Dialog({
   footer?: ReactNode;
   children: ReactNode;
   bodyClassName?: string;
+  /** Its body is text only and may scroll: it takes the focus, so the keyboard can scroll it. */
+  bodyFocusable?: boolean;
   /** The id of the text that explains it (alert dialogs). */
   describedBy?: string;
   className?: string;
@@ -169,7 +172,12 @@ export function Dialog({
               <IconButton icon={X} label={closeLabel} onClick={onClose} tooltipSide="bottom" />
             )}
           </header>
-          <div className={cx('min-h-0 flex-1 overflow-y-auto px-5 py-4', bodyClassName)}>{children}</div>
+          <div
+            className={cx('min-h-0 flex-1 overflow-y-auto px-5 py-4', bodyClassName)}
+            {...(bodyFocusable ? { tabIndex: 0, role: 'region', 'aria-labelledby': titleId } : {})}
+          >
+            {children}
+          </div>
           {footer && (
             <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-line px-5 py-3">
               {footer}

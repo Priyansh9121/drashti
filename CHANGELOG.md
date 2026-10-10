@@ -38,6 +38,10 @@ Phones and tablets
 - The remote's words are larger, 16 pixels or more, apart from the tab bar's labels and the small LIVE-style badges.
 - In the operator window, a notice's Dismiss is a larger target.
 
+Help
+
+- Help › Keyboard Shortcuts… (or the ? key) lists every key, grouped by what you are doing, as your computer writes them. The keys may still change after the setup day.
+
 ## 1.0.0-alpha.1 (10 Oct 2026)
 
 Fixes for streaming from a Mac, for quitting while on air, and for screens that go blank or stop. Update after a sabha, never on the day of one.
