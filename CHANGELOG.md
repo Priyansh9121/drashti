@@ -8,8 +8,8 @@ Easier for volunteers' hands, in today's look.
 
 Playlists
 
-- Build a playlist without dragging: choose a presentation, a picture or video, or a Shastra passage in the library and press Add to playlist beside it, or choose Add to the playlist in its menu (right-click). It goes after the playlist's chosen item, or at the end.
-- Move a playlist item with the Up and Down buttons beside it, or with Alt+↑ and Alt+↓ (Option on a Mac). Dragging still works.
+- Build a playlist without dragging: choose a presentation, a picture or video, or a Shastra passage in the library and press Add to playlist under it, or choose Add to the playlist in its menu (right-click). It goes after the playlist's chosen item, or at the end.
+- Move a playlist item with the Up and Down buttons under it, or with Alt+↑ and Alt+↓ (Option on a Mac). Dragging still works.
 - Undo now takes back adding and moving playlist items, one step at a time.
 - Looks, macro actions, music tracks, idle pictures and a screen's languages now say Up and Down, not Earlier and Later.
 

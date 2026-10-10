@@ -58,7 +58,7 @@ Do these about 30 minutes before the sabha starts.
 - A playlist, folder or item has a menu (rename, remove, timers when it goes up, and more): right-click it, or press **Shift+F10** with the keyboard on it (on a Mac laptop, **Fn+Shift+F10**).
 - **What is this?** The small **?** on a panel's heading says in two or three sentences what the panel is for and what to do first. **Got it** closes it.
 - **Closing with changes asks first.** Edit words, the slide editor and the other editors ask "Keep your changes …?" before anything typed is lost: **Keep editing** (Enter or Esc), **Save changes**, or **Throw them away**. When the presentation is on the screens, it says so: saving then changes the screens at once.
-- **Changing the playlist without dragging:** choose a presentation, a picture or video, or a Shastra passage in the library and press **Add to playlist** beside it; it goes after the playlist's chosen item. To move an item, choose it and press **Up** or **Down** beside it (or **Alt+↑** / **Alt+↓**). **Cmd+Z** (Ctrl+Z) takes back the last add or move. Dragging works too.
+- **Changing the playlist without dragging:** choose a presentation, a picture or video, or a Shastra passage in the library and press **Add to playlist** under it; it goes after the playlist's chosen item. To move an item, choose it and press **Up** or **Down** under it (or **Alt+↑** / **Alt+↓**). **Cmd+Z** (Ctrl+Z) takes back the last add or move. Dragging works too.
 
 ![Up and Down under the chosen playlist item, and Add to playlist under the library's chosen presentation](screenshots/playlist-up-down.png)
 
