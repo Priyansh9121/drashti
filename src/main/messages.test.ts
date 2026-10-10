@@ -72,6 +72,18 @@ describe('messages people see', () => {
       expect(words).toMatch(/^[A-Z].*\.$/u);
     }
     expect(fileProblem(coded('ENOSPC'))).toContain('free some space');
+    // What to do depends on what Drashti was doing: reading what it was given, writing where the
+    // person chose, or writing in its own folder (where choosing another drive is no way out).
+    for (const use of ['read', 'write', 'own'] as const)
+      for (const code of ['ENOSPC', 'EACCES', 'ENOENT', 'EROFS', 'EBUSY', 'EIO']) {
+        const words = fileProblem(coded(code), use);
+        expect(words).not.toContain(code);
+        expect(words).toMatch(/^[A-Z].*\.$/u);
+      }
+    expect(fileProblem(coded('EACCES'), 'read')).toContain('copy it to the Desktop');
+    expect(fileProblem(coded('ENOSPC'), 'own')).not.toContain('another drive');
+    expect(fileProblem(coded('EROFS'), 'own')).not.toContain('another drive');
+    expect(fileProblem(coded('ENOSPC'), 'read')).toContain('Try again');
     expect(fileProblem(new Error('placeholder'))).toContain('Try again');
     expect(fileProblem('not an error')).toContain('Try again');
   });

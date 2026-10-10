@@ -207,7 +207,15 @@ export function ShastraPanel() {
           />
         </span>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2" aria-live="polite">
+      {/* What a search found, said once: the list itself is not read out (nor its Add to playlist). */}
+      <p className="sr-only" role="status" data-testid="shastra-found">
+        {query.trim() === '' || hits === null
+          ? ''
+          : hits.length === 0
+            ? 'No passage found'
+            : `${plural(hits.length, 'passage')} found`}
+      </p>
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {query.trim() !== '' ? (
           hits === null ? null : hits.length === 0 ? (
             <EmptyState icon={Search} title="Nothing found" compact>

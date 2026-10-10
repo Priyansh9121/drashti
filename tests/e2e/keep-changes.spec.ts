@@ -300,3 +300,28 @@ test('the macro, stage layout and mask editors ask the same question, and Save c
   expect(await listed('masks')).not.toContain('Placeholder keep mask');
   await app.close();
 });
+
+test('the slide editor asks before words still being typed in a text box are lost (Cancel)', async () => {
+  const { app, win } = await start();
+  await win.setViewportSize({ width: 1600, height: 900 });
+  await win
+    .getByTestId('presentation-list')
+    .getByRole('button', { name: /^Language test slides/u })
+    .click();
+  await win.getByTestId('edit-slides').click();
+  const editor = win.getByTestId('slide-editor');
+  await expect(editor.getByTestId('editor-canvas')).toBeVisible();
+  // Type in the slide's words (double-click a text box), then Cancel straight away.
+  await editor.getByTestId('editor-slide').locator('[data-element]').first().dblclick();
+  await expect(editor.locator('[contenteditable="true"]')).toBeVisible();
+  await win.keyboard.press('End');
+  await win.keyboard.type(' placeholder typed');
+  await editor.getByRole('button', { name: 'Cancel' }).click();
+  await enterKeepsEditing(win, editor);
+  // Still there, and Cancel asks again.
+  await editor.getByRole('button', { name: 'Cancel' }).click();
+  await expect(win.getByTestId('keep-changes')).toBeVisible();
+  await answer(win, 'Throw them away');
+  await expect(editor).toHaveCount(0);
+  await app.close();
+});

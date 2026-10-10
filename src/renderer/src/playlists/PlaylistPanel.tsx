@@ -650,14 +650,18 @@ function CuesLine({ cues }: { cues: readonly TimerCue[] }) {
 
 /**
  * After a move the keyboard stays where it was: on the item, or on its Up or Down (on the item once
- * that is off). Only if it is still in that row, or was lost as the row moved: never taken back from
- * where the operator has gone since.
+ * that is off). Only when it was lost (the row moved, or the button went off): never taken back from
+ * where the operator has gone since, even beside it (Tab from the item to Down).
  */
 function keepFocus(id: string, on: 'item' | 'up' | 'down'): void {
   requestAnimationFrame(() => {
     const row = document.querySelector(`[data-item-row="${CSS.escape(id)}"]`);
     const now = document.activeElement;
-    if (!row || (now !== null && now !== document.body && !row.contains(now))) return;
+    const lost =
+      now === null ||
+      now === document.body ||
+      (now instanceof HTMLButtonElement && now.disabled && (row?.contains(now) ?? false));
+    if (!row || !lost) return;
     const button =
       on === 'item' ? null : row.querySelector<HTMLElement>(`[data-move="${on}"]:not(:disabled)`);
     (button ?? row.querySelector<HTMLElement>('[data-testid="playlist-item"]'))?.focus();

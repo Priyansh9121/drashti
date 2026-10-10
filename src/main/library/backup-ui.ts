@@ -7,6 +7,7 @@ import type { TaskProgress } from '../../shared/app-info';
 import type { Db } from '../db/database';
 import { diskFreeBytes } from '../import/media-store';
 import { backupLibrary, checkBackup, filesIn, LIBRARY_FILE, requestRestore, sameDisk } from './backup';
+import type { FileUse } from '../plain-errors';
 import { fileProblem } from '../plain-errors';
 
 /*
@@ -54,20 +55,25 @@ let busy = false;
 export const handBackupRunning = (): boolean => busy;
 
 /** Run one of the flows; anything unexpected is told to the operator, and logged by its code only. */
-async function guarded(ui: BackupUi, what: string, flow: (ui: BackupUi) => Promise<void>): Promise<void> {
+async function guarded(
+  ui: BackupUi,
+  what: string,
+  use: FileUse,
+  flow: (ui: BackupUi) => Promise<void>,
+): Promise<void> {
   try {
     await flow(ui);
   } catch (error) {
     ui.log.warn(`${what} stopped unexpectedly (${errorCode(error)})`);
-    ui.notice(`${what} stopped. ${fileProblem(error)}`);
+    ui.notice(`${what} stopped. ${fileProblem(error, use)}`);
   }
 }
 
 /** Back up the library (and the media, if the operator wants) into a folder they choose. */
-export const backUp = (ui: BackupUi) => guarded(ui, 'Backing up', backUpFlow);
+export const backUp = (ui: BackupUi) => guarded(ui, 'Backing up', 'write', backUpFlow);
 
 /** Restore the library from a backup folder: checked, asked once, then done at a restart. */
-export const restore = (ui: BackupUi) => guarded(ui, 'Restoring', restoreFlow);
+export const restore = (ui: BackupUi) => guarded(ui, 'Restoring', 'read', restoreFlow);
 
 async function backUpFlow(ui: BackupUi): Promise<void> {
   if (busy) {

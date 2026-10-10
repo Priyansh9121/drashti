@@ -27,7 +27,7 @@ Show controls
 
 Menus, buttons and names
 
-- In a menu, the choice the keyboard is on now shows the focus ring. Closing a menu puts the keyboard back where it was, and Esc in a menu closes only the menu, even in the slide editor.
+- In a menu, the choice the keyboard is on now shows the focus ring. Closing a menu puts the keyboard back where it was, and Esc in a menu closes only the menu, even in the slide editor. While a menu is open, the arrow keys and Space work the menu, never the slides.
 - The edges of secondary and danger buttons are stronger, so every button's edge can be seen on every panel.
 - Playlist headers and library names are shown as they were typed, no longer in spaced capitals, which broke Hindi and Gujarati letters.
 

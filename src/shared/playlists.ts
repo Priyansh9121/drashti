@@ -144,7 +144,9 @@ export const newItemsSchema: z.ZodType<NewItem[]> = z
   )
   .min(1)
   .max(500);
-export const positionSchema = z.number().int().min(0).max(100_000);
+/** The furthest place a position can name: past the end, which is where it lands. */
+export const POSITION_MAX = 100_000;
+export const positionSchema = z.number().int().min(0).max(POSITION_MAX);
 export const templateRequestSchema: z.ZodType<TemplateRequest> = z
   .object({ name: z.string().trim().min(1).max(200), slots: z.array(id).max(1000) })
   .strict();

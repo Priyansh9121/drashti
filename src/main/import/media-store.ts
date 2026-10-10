@@ -138,7 +138,7 @@ export class MediaStore {
         issue: {
           severity: 'error',
           code: 'unreadable',
-          message: `Could not read ${name}. ${fileProblem(error)}`,
+          message: `Could not read ${name}. ${fileProblem(error, 'read')}`,
           fix: { kind: 'import-again', sourcePath: path },
         },
       };
@@ -175,7 +175,7 @@ export class MediaStore {
           issue: {
             severity: 'error',
             code: 'copy-failed',
-            message: `Could not copy ${name} into the media folder. ${fileProblem(error)}`,
+            message: `Could not copy ${name} into the media folder. ${fileProblem(error, 'own')}`,
             fix: { kind: 'import-again', sourcePath: path },
           },
         };

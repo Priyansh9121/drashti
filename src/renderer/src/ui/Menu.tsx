@@ -32,6 +32,20 @@ export interface MenuPlace {
   y: number;
 }
 
+/** Keys a menu keeps to itself: they move through it, or press a choice, never the show's slides. */
+const MENU_KEYS = new Set([
+  'ArrowDown',
+  'ArrowUp',
+  'ArrowLeft',
+  'ArrowRight',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+  ' ',
+  'Enter',
+]);
+
 /** A menu at a point on the screen, kept inside the window. */
 export function Menu({
   at,
@@ -71,7 +85,9 @@ export function Menu({
       x: Math.max(4, Math.min(at.x, window.innerWidth - box.width - 4)),
       y: Math.max(4, Math.min(at.y, window.innerHeight - box.height - 4)),
     });
-    ref.current?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
+    // The first choice, or (when none can be chosen) the menu itself: the keyboard is always in the
+    // menu while it is open, never left on the row where the arrows would move the show.
+    (ref.current?.querySelector<HTMLButtonElement>('button:not([disabled])') ?? ref.current)?.focus();
   }, [at]);
 
   useEffect(() => {
@@ -85,6 +101,12 @@ export function Menu({
         e.preventDefault();
         e.stopPropagation();
         close.current();
+        return;
+      }
+      // While it is open, the show's moving keys never act from outside it: back into the menu.
+      if (MENU_KEYS.has(e.key) && !ref.current?.contains(e.target as Node)) {
+        e.preventDefault();
+        ref.current?.focus();
       }
     };
     const blur = () => {
@@ -101,6 +123,21 @@ export function Menu({
   }, []);
 
   const move = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Tab') {
+      // Tab leaves the menu, as a click elsewhere would.
+      close.current();
+      return;
+    }
+    // The menu's own keys never also act on the show (Session 15, and Session 25 for a menu with
+    // nothing to choose). Enter presses the choice that has the focus, as a button does; so does
+    // Space here, instead of being Next.
+    const onChoice = e.target !== ref.current;
+    if (onChoice && e.key === ' ') {
+      e.preventDefault();
+      (e.target as HTMLElement).click();
+      return;
+    }
+    if (MENU_KEYS.has(e.key) && !(onChoice && e.key === 'Enter')) e.preventDefault();
     const buttons = [...(ref.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? [])];
     if (buttons.length === 0) return;
     const i = buttons.indexOf(document.activeElement as HTMLButtonElement);
@@ -109,12 +146,7 @@ export function Menu({
     else if (e.key === 'ArrowUp') next = (i - 1 + buttons.length) % buttons.length;
     else if (e.key === 'Home') next = 0;
     else if (e.key === 'End') next = buttons.length - 1;
-    else if (e.key === 'Tab') {
-      // Tab leaves the menu, as a click elsewhere would.
-      close.current();
-      return;
-    } else return;
-    e.preventDefault();
+    else return;
     buttons[next]?.focus();
   };
 
@@ -123,6 +155,7 @@ export function Menu({
       ref={ref}
       role="menu"
       aria-label={label}
+      tabIndex={-1}
       onKeyDown={move}
       style={{ position: 'fixed', left: place.x, top: place.y }}
       className="z-50 min-w-48 rounded-lg border border-line-strong bg-panel-2 p-1 shadow-overlay"

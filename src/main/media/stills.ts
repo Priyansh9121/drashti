@@ -42,6 +42,6 @@ export async function saveStill(mediaDir: string, sha256: string, bytes: unknown
     return { ok: true };
   } catch (error) {
     await rm(partial, { force: true }).catch(() => undefined);
-    return { ok: false, message: `Could not keep the still frame. ${fileProblem(error)}` };
+    return { ok: false, message: `Could not keep the still frame. ${fileProblem(error, 'own')}` };
   }
 }

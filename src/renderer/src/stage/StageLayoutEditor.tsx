@@ -471,7 +471,11 @@ export function StageLayoutEditor() {
       {ask && ask.why !== 'remove' && (
         <KeepChangesDialog
           name={<>the stage layout “{e?.name ?? ''}”</>}
-          lost={`You changed ${plural(Math.max(1, settingsChanged(s.saved, e)), 'setting')}.`}
+          lost={
+            s.saved === null
+              ? 'This new layout is not saved yet.'
+              : `You changed ${plural(Math.max(1, settingsChanged(s.saved, e)), 'setting')}.`
+          }
           live="Saving changes the stage screens at once wherever the live Look uses this layout."
           onKeepEditing={() => {
             setAsk(null);

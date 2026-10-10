@@ -391,7 +391,11 @@ export function MaskEditor() {
       {ask && ask.why !== 'remove' && (
         <KeepChangesDialog
           name={<>the mask “{e.name}”</>}
-          lost={`You changed ${plural(Math.max(1, settingsChanged(s.saved, e)), 'setting')}.`}
+          lost={
+            s.saved === null
+              ? 'This new mask is not saved yet.'
+              : `You changed ${plural(Math.max(1, settingsChanged(s.saved, e)), 'setting')}.`
+          }
           live="Saving changes the screens at once wherever this mask is showing."
           onKeepEditing={() => {
             setAsk(null);

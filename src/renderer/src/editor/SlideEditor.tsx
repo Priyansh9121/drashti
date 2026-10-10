@@ -235,7 +235,15 @@ function Editor({ platform, name }: { platform: string; name: string }) {
           Picture or video
         </Button>
         <span className="mx-1 h-6 w-px bg-line" aria-hidden="true" />
-        <Button onClick={requestClose}>Cancel</Button>
+        <Button
+          onClick={() => {
+            // Words still being typed count as a change: keep them first, so closing asks.
+            finishTextEditing();
+            requestClose();
+          }}
+        >
+          Cancel
+        </Button>
         <Button
           variant="primary"
           kbd={`${mod}S`}
