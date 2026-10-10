@@ -243,6 +243,22 @@ describe('Import from a Link: Dropbox', () => {
     expect(h.imported).toEqual([]);
   });
 
+  it('stopping also clears a work folder made the moment before (not yet in the record)', async () => {
+    const h = await harness();
+    h.service.look('dropbox', FOLDER_LINK);
+    await until(() => h.service.view().phase === 'looked');
+    h.air.on = true;
+    h.service.download();
+    await until(() => h.service.view().phase === 'waiting');
+    // As the download process makes it, just before Stop: its message never arrives.
+    mkdirSync(join(h.folder, '.drashti-unpacking-placeholder'));
+    writeFileSync(join(h.folder, '.drashti-unpacking-placeholder', 'half.mp4'), 'x');
+    writeFileSync(join(h.folder, 'keep me.mp4'), 'already here');
+    h.service.stop();
+    await until(() => !existsSync(join(h.folder, '.drashti-unpacking-placeholder')));
+    expect(readdirSync(h.folder)).toEqual(['keep me.mp4']);
+  });
+
   it('refuses to start when the size known up front would leave less than 2 GB free', async () => {
     const h = await harness({ freeBytes: () => 2 * 1024 ** 3 + 1000 });
     h.service.look('dropbox', FILE_LINK);
