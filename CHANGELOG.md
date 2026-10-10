@@ -13,7 +13,7 @@ Playlists
 - Undo now takes back adding and moving playlist items, one step at a time.
 - Looks, macro actions, music tracks, idle pictures and a screen's languages now say Up and Down, not Earlier and Later.
 
-## 1.0.0-alpha.1
+## 1.0.0-alpha.1 (10 Oct 2026)
 
 Fixes for streaming from a Mac, for quitting while on air, and for screens that go blank or stop. Update after a sabha, never on the day of one.
 
