@@ -18,6 +18,7 @@ export function MacrosPanel() {
   }, []);
   return (
     <Panel
+      help="macros"
       title="Macros"
       icon={Zap}
       collapsible

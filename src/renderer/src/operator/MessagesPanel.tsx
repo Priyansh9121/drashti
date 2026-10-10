@@ -247,6 +247,7 @@ export function MessagesPanel() {
   };
   return (
     <Panel
+      help="messages"
       title="Messages"
       icon={MessageSquare}
       collapsible

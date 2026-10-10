@@ -195,8 +195,11 @@ export class ImportService {
     try {
       worker = this.deps.spawn();
     } catch (error) {
-      const message = `Could not start the import: ${error instanceof Error ? error.message : String(error)}`;
-      this.deps.log('warn', message);
+      const message = 'Could not start the import. Try again; if it happens again, restart Drashti.';
+      this.deps.log(
+        'warn',
+        `Could not start the import: ${error instanceof Error ? error.message : String(error)}`,
+      );
       this.recordFailure(job, message);
       job.resolve({ ok: false, message });
       this.deps.onFinished(null);

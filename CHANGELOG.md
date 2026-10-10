@@ -41,6 +41,8 @@ Phones and tablets
 Help
 
 - Help › Keyboard Shortcuts… (or the ? key) lists every key, grouped by what you are doing, as your computer writes them. The keys may still change after the setup day.
+- A small ? on each panel's heading in Pro Mode says what the panel is for and what to do first, in two or three sentences.
+- Error messages now say what to do next, in plain words: for example "The drive is full: free some space, or choose another drive." They no longer show the computer's own error codes or "Something went wrong" alone, and a phone is told to try again or tell the operator.
 
 ## 1.0.0-alpha.1 (10 Oct 2026)
 

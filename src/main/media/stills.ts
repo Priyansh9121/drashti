@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import type { SaveStillResult } from '../../shared/media';
 import { STILL_MAX_BYTES } from '../../shared/media';
 import { stillPath } from './media-protocol';
+import { fileProblem } from '../plain-errors';
 
 /*
  * Still frames for thumbnails. Main cannot decode video, so the operator
@@ -41,6 +42,6 @@ export async function saveStill(mediaDir: string, sha256: string, bytes: unknown
     return { ok: true };
   } catch (error) {
     await rm(partial, { force: true }).catch(() => undefined);
-    return { ok: false, message: `Could not keep the still frame: ${(error as Error).message}` };
+    return { ok: false, message: `Could not keep the still frame. ${fileProblem(error)}` };
   }
 }

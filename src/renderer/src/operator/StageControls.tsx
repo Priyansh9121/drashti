@@ -45,6 +45,7 @@ export function StageMessageControl() {
   const [text, setText] = useState('');
   return (
     <Panel
+      help="stage"
       title="Stage screen"
       icon={Tv}
       collapsible

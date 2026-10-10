@@ -167,7 +167,7 @@ describe('ImportService', () => {
     });
     await expect(service.start(['/a'])).resolves.toEqual({
       ok: false,
-      message: 'Could not start the import: no such file',
+      message: 'Could not start the import. Try again; if it happens again, restart Drashti.',
     });
     expect(mocks.failRun).toHaveBeenCalledTimes(1);
   });

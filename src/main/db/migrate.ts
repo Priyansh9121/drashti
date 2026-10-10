@@ -34,6 +34,7 @@ import { up as macroSchedules } from './migrations/032-macro-schedules';
 import { up as audioPlaylists } from './migrations/033-audio-playlists';
 import { up as playbackMarkers } from './migrations/034-playback-markers';
 import { up as pictures } from './migrations/035-pictures';
+import { plural } from '../../shared/text';
 
 export interface Migration {
   version: number;
@@ -122,7 +123,9 @@ export function migrate(
         if (m.rebuildsTable) {
           const broken = db.pragma('foreign_key_check') as unknown[];
           if (broken.length > 0)
-            throw new Error(`Migration ${m.version} would leave ${broken.length} broken reference(s).`);
+            throw new Error(
+              `Migration ${m.version} would leave ${plural(broken.length, 'broken reference')}.`,
+            );
         }
         db.pragma(`user_version = ${m.version}`);
       })();

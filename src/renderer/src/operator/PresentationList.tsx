@@ -34,6 +34,7 @@ import { EmptyState } from '../ui/States';
 import { TabPanel, Tabs } from '../ui/Tabs';
 import { Truncate } from '../ui/Truncate';
 import { layoutRows, scrollToShow, visibleRows } from '../ui/virtual';
+import { useWhatIsThis } from '../help/WhatIsThis';
 
 /** Rows in the list: a presentation, or a heading where a library starts. Fixed heights, so only rows in view are drawn. */
 type Row = { kind: 'heading'; library: string } | { kind: 'item'; p: PresentationSummary; index: number };
@@ -186,6 +187,7 @@ export function PresentationList({ platform }: { platform: string }) {
   const tab = useLibraryTab((s) => s.tab);
   const setTab = setLibraryTab;
   const searching = useSearch((s) => s.query.trim() !== '');
+  const help = useWhatIsThis('library');
 
   // A heading where a library starts, when there is more than one (templates stay apart).
   const rows = useMemo(() => {
@@ -296,7 +298,9 @@ export function PresentationList({ platform }: { platform: string }) {
           ]}
         />
         <ImportMenu />
+        {help.button}
       </div>
+      {help.card}
       {tab !== 'shastra' && <SearchBox />}
       {tab === 'presentations' && <KirtanFilters />}
       <TabPanel group="library" id={tab} className="flex min-h-0 flex-1 flex-col">

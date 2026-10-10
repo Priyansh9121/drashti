@@ -1,5 +1,7 @@
 import { useId } from 'react';
 import type { ReactNode } from 'react';
+import type { PanelHelpId } from '../../../shared/panel-help';
+import { useWhatIsThis } from '../help/WhatIsThis';
 import type { DataAttributes } from './cx';
 import { cx } from './cx';
 import type { Icon } from './icons';
@@ -15,12 +17,14 @@ export function SectionTitle({ children, className }: { children: ReactNode; cla
 
 /**
  * A panel with a header: its title (a heading, which also names the region),
- * an icon, and actions on the right. A collapsible panel folds away to its
- * header, and remembers that when `remember` names it.
+ * an icon, "What is this?" (its words in shared/panel-help.ts) and actions on
+ * the right. A collapsible panel folds away to its header, and remembers that
+ * when `remember` names it.
  */
 export function Panel({
   title,
   icon: IconShape,
+  help: topic,
   actions,
   collapsible = false,
   remember,
@@ -32,6 +36,8 @@ export function Panel({
 }: {
   title: string;
   icon?: Icon;
+  /** "What is this?": which words of shared/panel-help.ts it opens (every operator panel has some). */
+  help?: PanelHelpId;
   actions?: ReactNode;
   collapsible?: boolean;
   /** A name to remember whether it is folded (per computer). */
@@ -48,6 +54,7 @@ export function Panel({
     (v): v is boolean => typeof v === 'boolean',
   );
   const shown = !collapsible || open;
+  const help = useWhatIsThis(topic ?? null);
   const heading = (
     <span className="flex min-w-0 items-center gap-1.5">
       {IconShape && <IconShape size={14} aria-hidden="true" className="shrink-0 text-muted" />}
@@ -81,8 +88,10 @@ export function Panel({
             heading
           )}
         </h2>
+        {help.button}
         {shown && actions && <div className="flex shrink-0 items-center gap-1">{actions}</div>}
       </header>
+      {help.card}
       {shown && (
         <div id={`${id}-body`} className={cx('min-h-0 flex-1', bodyClassName)}>
           {children}

@@ -78,6 +78,7 @@ export function MusicPanel() {
   const paused = playing?.pausedAtMs !== undefined;
   return (
     <Panel
+      help="music"
       title="Music"
       icon={ListMusic}
       collapsible

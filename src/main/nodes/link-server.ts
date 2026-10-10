@@ -389,7 +389,11 @@ export class LinkServer {
         this.json(res, error.status, { ok: false, message: error.message, ...error.extra });
       else {
         this.host.log('warn', `A node request failed: ${(error as Error).message}`);
-        this.json(res, 500, { ok: false, message: 'Something went wrong on Main.' });
+        this.json(res, 500, {
+          ok: false,
+          message:
+            'Main could not answer that. Try again; if it happens again, choose Help, then Save Diagnostics… on Main, and tell the admin.',
+        });
       }
     }
   }

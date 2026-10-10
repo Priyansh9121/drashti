@@ -19,6 +19,7 @@ export function LooksPanel() {
   }, []);
   return (
     <Panel
+      help="looks"
       title="Looks"
       icon={SwatchBook}
       collapsible

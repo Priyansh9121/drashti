@@ -10,6 +10,7 @@ import { Badge, LiveBadge } from '../ui/Badge';
 import { cx } from '../ui/cx';
 import { Timer } from '../ui/icons';
 import { useNow } from '../render/useNow';
+import { useWhatIsThis } from '../help/WhatIsThis';
 
 /**
  * What the audience sees, drawn by the same Scene component the outputs use,
@@ -21,6 +22,7 @@ import { useNow } from '../render/useNow';
 export function LivePreview() {
   const state = useEngine((s) => s.state);
   const rev = useEngine((s) => s.rev);
+  const help = useWhatIsThis('live');
   // As the first audience group shows it in the live Look (its layers, languages and slide style).
   const audience = useFirstGroupLook('audience');
   const shownAs = audience?.look.languages
@@ -43,7 +45,9 @@ export function LivePreview() {
           On the screens now
         </h2>
         {blackout ? <Badge tone="live">Black-out</Badge> : somethingUp ? <LiveBadge /> : null}
+        {help.button}
       </div>
+      {help.card && <div className="-mx-3">{help.card}</div>}
       <div
         className={cx(
           'overflow-hidden rounded-lg border-2 bg-black',

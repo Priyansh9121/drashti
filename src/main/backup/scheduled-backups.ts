@@ -4,6 +4,7 @@ import type { BackupRun, BackupSchedule, BackupsResult, ScheduledBackupsView } f
 import { backupScheduleSchema, NO_BACKUP_SCHEDULE, SCHEDULED_FOLDER } from '../../shared/backups';
 import { nextScheduleTime, scheduleTimes } from '../../shared/schedule';
 import type { BackupWorker } from './spawn-backup-worker';
+import { plural } from '../../shared/text';
 
 /*
  * Scheduled backups (shared/backups.ts) as the main process runs them: the
@@ -232,7 +233,7 @@ export class ScheduledBackups {
         this.finish(
           at,
           'done',
-          `in ${SCHEDULED_FOLDER}, “${message.folder}”${message.removed > 0 ? `; ${String(message.removed)} older one(s) removed` : ''}.`,
+          `in ${SCHEDULED_FOLDER}, “${message.folder}”${message.removed > 0 ? `; ${plural(message.removed, 'older one')} removed` : ''}.`,
           { copied: message.copied, files: message.files },
         );
         end();

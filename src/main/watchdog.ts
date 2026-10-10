@@ -1,3 +1,5 @@
+import { plural } from '../shared/text';
+
 /** The parts of Electron's WebContents the watchdog needs (easy to fake in tests). */
 export interface WatchTarget {
   on(event: 'render-process-gone', listener: (event: unknown, details: { reason: string }) => void): unknown;
@@ -206,17 +208,20 @@ export function shouldConfirmQuit(
   return !disabled && !alreadyConfirmed && (outputsShowing > 0 || streamInUse);
 }
 
+/** "1 screen is showing", "3 screens are showing". */
+const screensShowing = (n: number) => `${plural(n, 'screen')} ${n === 1 ? 'is' : 'are'} showing`;
+
 const andList = (items: string[]) =>
   items.length < 2 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items.at(-1) ?? ''}`;
 
 /** What the quit question says: the screens showing, and the stream on air or recording (Session 23). */
 export function quitDetail(showing: number, stream: { live: boolean; recording: boolean }): string {
   if (!stream.live && !stream.recording)
-    return `${showing} screen(s) are showing. If Drashti quits, they go black.`;
+    return `${screensShowing(showing)}. If Drashti quits, ${showing === 1 ? 'it goes' : 'they go'} black.`;
   const doing = stream.live
     ? `the stream is ${stream.recording ? 'on air and recording' : 'on air'}`
     : 'Drashti is recording';
-  const said = showing > 0 ? `${showing} screen(s) are showing, and ${doing}` : doing;
+  const said = showing > 0 ? `${screensShowing(showing)}, and ${doing}` : doing;
   const ends = [
     ...(showing > 0 ? ['the screens go black'] : []),
     ...(stream.live ? ['the stream ends'] : []),
