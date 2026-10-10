@@ -41,6 +41,18 @@ test('the component gallery opens from the Diagnostics menu and passes the acces
   await expectNoSeriousA11yIssues(gallery, 'a confirmation');
   await gallery.keyboard.press('Escape');
 
+  // Losing typed changes: Keep editing is focused, so Enter and Esc keep editing (Session 25).
+  await gallery.getByRole('button', { name: 'Ask before losing changes' }).click();
+  const keep = gallery.getByRole('alertdialog', {
+    name: 'Keep your changes to the words of “Placeholder Kirtan”?',
+  });
+  await expect(keep.getByRole('button', { name: 'Keep editing' })).toBeFocused();
+  await expect(keep.getByRole('button', { name: 'Save changes' })).toBeVisible();
+  await expect(keep.getByRole('button', { name: 'Throw them away' })).toBeVisible();
+  await expectNoSeriousA11yIssues(gallery, 'the question before losing changes');
+  await gallery.keyboard.press('Escape');
+  await expect(keep).toHaveCount(0);
+
   // The splitter moves with the keyboard.
   const handle = gallery.getByRole('separator', { name: 'Resize the example panel' });
   await handle.focus();

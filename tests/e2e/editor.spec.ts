@@ -210,15 +210,19 @@ test('Cancel keeps nothing: Esc lets go of the selection, then asks before throw
   await expect(editor.getByTestId('selection')).toHaveCount(1);
   await win.keyboard.press('Delete');
   await expect(elements).toHaveCount(count - 1);
-  // Nothing is selected now: Esc would close, so it asks first.
+  // Nothing is selected now: Esc would close, so it asks first, with Keep editing focused (Session
+  // 25: the one question every editor asks): Enter keeps editing, and nothing is saved.
   await win.keyboard.press('Escape');
-  const confirm = win.getByTestId('discard-confirm');
+  const confirm = win.getByTestId('keep-changes');
   await expect(confirm).toBeVisible();
-  await confirm.getByRole('button', { name: 'Keep editing' }).click();
+  await expect(confirm.getByRole('button', { name: 'Keep editing' })).toBeFocused();
+  await expect(confirm.getByRole('button', { name: 'Save changes' })).toBeVisible();
+  await win.keyboard.press('Enter');
   await expect(confirm).toHaveCount(0);
   await expect(editor).toBeVisible();
+  await expect(elements).toHaveCount(count - 1);
   await editor.getByRole('button', { name: 'Cancel' }).click();
-  await win.getByTestId('discard-confirm').getByRole('button', { name: 'Throw them away' }).click();
+  await win.getByTestId('keep-changes').getByRole('button', { name: 'Throw them away' }).click();
   await expect(editor).toHaveCount(0);
   // Opened again: everything is still there.
   await win.getByTestId('edit-slides').click();

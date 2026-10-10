@@ -13,6 +13,12 @@ Playlists
 - Undo now takes back adding and moving playlist items, one step at a time.
 - Looks, macro actions, music tracks, idle pictures and a screen's languages now say Up and Down, not Earlier and Later.
 
+Typed changes
+
+- Closing Edit words, the Kirtan dialog, playback markers or a theme with changes not saved now asks first. So do the setup wizard with PINs typed, and the slide, macro, stage layout and mask editors, which asked before with two buttons.
+- The question is the same everywhere: Keep editing (what Enter and Esc do), Save changes, or Throw them away. It says how much would be lost.
+- When the presentation being changed is on the screens, the question says so: saving then changes the screens at once.
+
 ## 1.0.0-alpha.1 (10 Oct 2026)
 
 Fixes for streaming from a Mac, for quitting while on air, and for screens that go blank or stop. Update after a sabha, never on the day of one.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Lang, RenderSlide, TextRun } from '../../../shared/model';
 import { LANGS } from '../../../shared/model';
 import type { Theme, ThemeFields, ThemeLangStyle } from '../../../shared/themes';
@@ -11,6 +11,7 @@ import { SlideView } from '../render/SlideView';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
+import { KeepChangesDialog, settingsChanged } from '../ui/KeepChanges';
 import { ColorInput, Field, NumberInput, Select, TextInput } from '../ui/Field';
 import { Palette, Plus, Trash2 } from '../ui/icons';
 import { ListRow } from '../ui/ListRow';
@@ -77,16 +78,27 @@ function previewSlide(t: ThemeFields): RenderSlide {
 
 const percent = (n: number) => Math.round(n * 1000) / 10;
 
+/** A theme's unsaved changes, for the sheet to ask about before they are lost. */
+interface PendingTheme {
+  name: string;
+  count: number;
+  save: () => Promise<boolean>;
+}
+
 function ThemeEditor({
   theme,
   isDefault,
   onSaved,
   onRemoved,
+  onPending,
 }: {
   theme: Theme;
   isDefault: boolean;
-  onSaved: (id: string) => void;
+  /** Resolves once the list shows the saved theme. */
+  onSaved: (id: string) => Promise<void>;
   onRemoved: () => void;
+  /** Told of the changes not saved yet (null: none), as they change. */
+  onPending: (pending: PendingTheme | null) => void;
 }) {
   const [draft, setDraft] = useState<ThemeFields>(theme);
   const [problem, setProblem] = useState<string | null>(null);
@@ -112,8 +124,18 @@ function ThemeEditor({
     const { id: _id, ...fields } = draft as Theme;
     const result = await window.drashti.themes.save(theme.id, fields);
     setProblem(result.ok ? null : result.message);
-    if (result.ok) onSaved(result.id);
+    if (result.ok) await onSaved(result.id);
+    return result.ok;
   };
+  useEffect(() => {
+    onPending(changed ? { name: theme.name, count: settingsChanged(theme, draft), save } : null);
+  });
+  useEffect(
+    () => () => {
+      onPending(null);
+    },
+    [onPending],
+  );
   const apply = async () => {
     if (changed) await save();
     const result = await window.drashti.themes.apply(theme.id, targets);
@@ -387,6 +409,17 @@ function Panel({ initial }: { initial: string | null }) {
   const [themes, setThemes] = useState<Theme[] | null>(null);
   const [defaultId, setDefaultId] = useState<string | null>(null);
   const [chosen, setChosen] = useState<string | null>(initial);
+  // The theme being changed and not saved, and the question asked before it is lost (closing, or
+  // choosing or making another), with what to do after.
+  const pending = useRef<PendingTheme | null>(null);
+  const onPending = useCallback((p: PendingTheme | null) => {
+    pending.current = p;
+  }, []);
+  const [asking, setAsking] = useState<{ theme: PendingTheme; then: () => void } | null>(null);
+  const leave = (then: () => void) => {
+    if (pending.current) setAsking({ theme: pending.current, then });
+    else then();
+  };
   const show = (list: { themes: Theme[]; defaultId: string }, pick?: string) => {
     setThemes(list.themes);
     setDefaultId(list.defaultId);
@@ -419,12 +452,19 @@ function Panel({ initial }: { initial: string | null }) {
       title="Themes"
       placement="right"
       size="xl"
-      onClose={closeThemes}
+      onClose={() => {
+        leave(closeThemes);
+      }}
       closeLabel="Close themes"
       panelTestId="themes-panel"
       bodyClassName="flex min-h-0 p-0"
       headerActions={
-        <Button icon={Plus} onClick={() => void make()}>
+        <Button
+          icon={Plus}
+          onClick={() => {
+            leave(() => void make());
+          }}
+        >
           New theme
         </Button>
       }
@@ -447,7 +487,10 @@ function Panel({ initial }: { initial: string | null }) {
                   title={t.name}
                   trailing={t.id === defaultId ? <Badge tone="info">Default</Badge> : undefined}
                   onClick={() => {
-                    setChosen(t.id);
+                    if (t.id !== chosen)
+                      leave(() => {
+                        setChosen(t.id);
+                      });
                   }}
                 />
               </li>
@@ -459,8 +502,9 @@ function Panel({ initial }: { initial: string | null }) {
                 key={theme.id}
                 theme={theme}
                 isDefault={theme.id === defaultId}
-                onSaved={(id) => void reload(id)}
+                onSaved={(id) => reload(id)}
                 onRemoved={() => void reload()}
+                onPending={onPending}
               />
             ) : (
               <EmptyState icon={Palette} title="No theme chosen">
@@ -469,6 +513,29 @@ function Panel({ initial }: { initial: string | null }) {
             )}
           </div>
         </>
+      )}
+      {asking && (
+        <KeepChangesDialog
+          name={<>the theme “{asking.theme.name}”</>}
+          lost={`You changed ${plural(Math.max(1, asking.theme.count), 'setting')}.`}
+          note="Saving changes only the theme: presentations change when it is applied to them."
+          onKeepEditing={() => {
+            setAsking(null);
+          }}
+          onSave={() => {
+            const { theme: was, then } = asking;
+            setAsking(null);
+            void was.save().then((ok) => {
+              if (ok) then();
+            });
+          }}
+          onThrowAway={() => {
+            const { then } = asking;
+            setAsking(null);
+            pending.current = null;
+            then();
+          }}
+        />
       )}
     </Dialog>
   );

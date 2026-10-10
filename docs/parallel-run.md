@@ -429,7 +429,7 @@ On the Mac, **Cmd** is the ⌘ key; on Windows, use **Ctrl** instead. These keys
 | **Cmd+Enter** / **Ctrl+Enter** (editing words) | Save the words                                                                                                        |
 | **Cmd+Shift+S** / **Ctrl+Shift+S**             | Open Screens                                                                                                          |
 | **Cmd+Shift+U** / **Ctrl+Shift+U**             | Uncover the controls (works from anywhere)                                                                            |
-| **Esc**                                        | Cancel editing words or a question, or empty the search box                                                           |
+| **Esc**                                        | Close a dialog or a question, or empty the search box. With typed changes it asks first: **Enter** keeps editing      |
 
 The screens dashboard has no key: click the screens line at the bottom left of the window (it opens in Simple Mode too). Going live, ending the stream and recording have no keys: use the buttons in the **Stream** panel (each going live or ending asks first). Switching the Look and running a macro have no keys either: use their buttons under the live picture, or a MIDI pad mapped to a macro. The arti prompt has no keys of its own: from its time, Next puts the arti up.
 

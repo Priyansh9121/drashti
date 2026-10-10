@@ -7,6 +7,8 @@ import { useScreens } from '../screens/screens-store';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
+import { KeepChangesDialog, settingsChanged } from '../ui/KeepChanges';
+import { plural } from '../ui/text';
 import { Field, NumberInput, Select, TextInput } from '../ui/Field';
 import { CopyPlus, Plus, Trash2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
@@ -143,6 +145,12 @@ export function MaskEditor() {
   const go = (to: string) => {
     if (dirty) setAsk({ why: 'switch', to });
     else show(to);
+  };
+  /** What the question was asked for: closing, another mask, or a new one (''). */
+  const leave = (was: { why: 'close' } | { why: 'switch'; to: string }) => {
+    if (was.why === 'close') closeMasks();
+    else if (was.to === '') startNew({ width: e.width, height: e.height });
+    else show(was.to);
   };
   return (
     <Dialog
@@ -361,29 +369,46 @@ export function MaskEditor() {
         )}
       </aside>
 
-      {ask && (
+      {ask?.why === 'remove' && (
         <ConfirmDialog
-          title={ask.why === 'remove' ? `Remove “${e.name}”?` : 'Throw away the changes?'}
-          confirmLabel={ask.why === 'remove' ? 'Remove' : 'Throw away'}
+          title={`Remove “${e.name}”?`}
+          confirmLabel="Remove"
           onCancel={() => {
             setAsk(null);
           }}
           onConfirm={() => {
-            const was = ask;
             setAsk(null);
-            if (was.why === 'remove') void remove();
-            else if (was.why === 'close') closeMasks();
-            else if (was.to === '') startNew({ width: e.width, height: e.height });
-            else show(was.to);
+            void remove();
           }}
           testId="mask-confirm"
         >
           <p>
-            {ask.why === 'remove'
-              ? 'It comes off the screens if it is up, and every Look that gave it to a group shows that group’s whole picture.'
-              : 'The changes to this mask have not been saved.'}
+            It comes off the screens if it is up, and every Look that gave it to a group shows that group’s
+            whole picture.
           </p>
         </ConfirmDialog>
+      )}
+      {ask && ask.why !== 'remove' && (
+        <KeepChangesDialog
+          name={<>the mask “{e.name}”</>}
+          lost={`You changed ${plural(Math.max(1, settingsChanged(s.saved, e)), 'setting')}.`}
+          live="Saving changes the screens at once wherever this mask is showing."
+          onKeepEditing={() => {
+            setAsk(null);
+          }}
+          onSave={() => {
+            const was = ask;
+            setAsk(null);
+            void save().then((ok) => {
+              if (ok) leave(was);
+            });
+          }}
+          onThrowAway={() => {
+            const was = ask;
+            setAsk(null);
+            leave(was);
+          }}
+        />
       )}
     </Dialog>
   );
