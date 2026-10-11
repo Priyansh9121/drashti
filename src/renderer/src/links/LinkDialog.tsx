@@ -182,12 +182,17 @@ function LinkField({ kind, view, locked }: { kind: LinkKind; view: LinkView; loc
   );
 }
 
-/** What the link holds, as Dropbox says before the download. */
+/** Why it waits, and that it goes on: the same words for a download and for YouTube's look. */
+const waitWords = (view: LinkView): string =>
+  `Waiting: ${view.waitingFor ?? 'the stream is on air or recording'}. It goes on by itself afterwards.`;
+
+/** What the link holds, as Dropbox (or yt-dlp, for YouTube) says before the download. */
 function Holds({ view }: { view: LinkView }) {
   if (view.phase === 'looking')
     return (
+      // YouTube's look waits while the stream is on air or recording, as a download does.
       <p className="text-sm text-muted" role="status" data-testid="link-looking">
-        Looking at the link…
+        {view.waitingFor !== null ? waitWords(view) : 'Looking at the link…'}
       </p>
     );
   const look = view.look;
@@ -425,8 +430,7 @@ function Going({ view }: { view: LinkView }) {
   const fraction = p?.total ? p.done / p.total : null;
   const most = heightLabel(view.maxHeight);
   let words = STATUS[view.phase] ?? '';
-  if (view.phase === 'waiting')
-    words = `Waiting: ${view.waitingFor ?? 'the stream is on air or recording'}. It goes on by itself afterwards.`;
+  if (view.phase === 'waiting') words = waitWords(view);
   else if (view.phase === 'downloading' && p) {
     const what = view.choice
       ? view.choice.type === 'mp3'

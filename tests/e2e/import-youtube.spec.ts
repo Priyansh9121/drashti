@@ -168,6 +168,45 @@ test('YouTube: details, quality up to the setting, the tick each time, MP4 and M
   await app.close();
 });
 
+test('YouTube: on air, looking at a link waits; a look going stops (yt-dlp and its child) and looks again afterwards', async () => {
+  test.setTimeout(180_000);
+  const { app, win, log } = await open({ lookMs: 10_000 }, { DRASHTI_TEST_ON_AIR_HOOK: '1' });
+  const looking = win.getByTestId('link-looking');
+  const looks = () =>
+    (existsSync(log) ? readFileSync(log, 'utf8') : '')
+      .split('\n')
+      .filter((l) => l.startsWith('start look'))
+      .map((l) => l.split(' '))
+      .map((p) => ({ pid: Number(p[4]), child: Number(p[6]) }));
+  // On air: the link is checked, but nothing of YouTube's runs; the dialog says it waits, as a download does.
+  await setOnAir(app, true);
+  await win.getByTestId('link-kind-youtube').click();
+  await win.getByTestId('link-text').fill(LINK);
+  await expect(looking).toHaveText(
+    'Waiting: the stream is on air or recording. It goes on by itself afterwards.',
+  );
+  await win.waitForTimeout(1500);
+  expect(looks()).toEqual([]);
+  // Off air: it looks. On air again while it looks: yt-dlp (and the child it started) stop, and it waits.
+  await setOnAir(app, false);
+  await expect.poll(() => looks().length, { timeout: 30_000 }).toBe(1);
+  await expect(looking).toHaveText('Looking at the link…');
+  await setOnAir(app, true);
+  await expect(looking).toContainText('Waiting: the stream is on air or recording');
+  const [first] = looks();
+  await expect
+    .poll(() => [first?.pid ?? 0, first?.child ?? 0].filter(alive), { timeout: 15_000 })
+    .toEqual([]);
+  await win.waitForTimeout(1500);
+  expect(looks()).toHaveLength(1);
+  await expect(win.getByTestId('link-name')).toHaveCount(0);
+  // Off air: it looks again by itself, and the video's details come.
+  await setOnAir(app, false);
+  await expect(win.getByTestId('link-name')).toHaveText('Placeholder video', { timeout: 60_000 });
+  expect(looks()).toHaveLength(2);
+  await app.close();
+});
+
 test('YouTube: with the highest video quality at 2160p, 2160p can be picked (4320p still cannot)', async () => {
   test.setTimeout(180_000);
   const { app, win } = await open({});
