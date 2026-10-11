@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // After scripts/package-release.mjs: when the release was signed, check that every program in it is,
-// FFmpeg included, and (on a Mac) that the camera and sound input are allowed and Gatekeeper accepts
+// FFmpeg, yt-dlp and Deno included, and (on a Mac) that the camera and sound input are allowed and Gatekeeper accepts
 // it; when it was not signed, say so and check nothing.
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -36,6 +36,20 @@ if (process.platform === 'darwin') {
       /Authority=Developer ID Application/u.test(ffmpeg.stderr),
     );
     check(`${dir}: FFmpeg runs under the hardened runtime`, /flags=.*runtime/u.test(ffmpeg.stderr));
+    // YouTube's two programs (Session 25c), signed by Drashti's own Developer ID, not as they came.
+    const appTeam = /^TeamIdentifier=(.*)$/mu.exec(run('codesign', ['-dvv', app]).stderr)?.[1];
+    for (const [what, file] of [
+      ['yt-dlp', join(app, 'Contents', 'Resources', 'yt-dlp', 'yt-dlp_macos')],
+      ['Deno', join(app, 'Contents', 'Resources', 'deno', 'deno')],
+    ]) {
+      const signing = run('codesign', ['-dv', '--verbose=2', file]).stderr;
+      check(
+        `${dir}: ${what} is signed with Drashti's Developer ID`,
+        /Authority=Developer ID Application/u.test(signing) &&
+          /^TeamIdentifier=(.*)$/mu.exec(signing)?.[1] === appTeam,
+      );
+      check(`${dir}: ${what} runs under the hardened runtime`, /flags=.*runtime/u.test(signing));
+    }
     const ents = run('codesign', ['-d', '--entitlements', ':-', app]).stdout;
     check(`${dir}: the camera is allowed`, ents.includes('com.apple.security.device.camera'));
     check(`${dir}: the sound input is allowed`, ents.includes('com.apple.security.device.audio-input'));
@@ -53,6 +67,8 @@ if (process.platform === 'darwin') {
   const files = [
     join(unpacked, 'Drashti.exe'),
     join(unpacked, 'resources', 'ffmpeg', 'ffmpeg.exe'),
+    join(unpacked, 'resources', 'yt-dlp', 'yt-dlp.exe'),
+    join(unpacked, 'resources', 'deno', 'deno.exe'),
     ...readdirSync(out)
       .filter((f) => f.endsWith('.exe'))
       .map((f) => join(out, f)),

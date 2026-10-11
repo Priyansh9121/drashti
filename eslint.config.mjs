@@ -28,6 +28,8 @@ export default defineConfig(
     'coverage/**',
     'playwright-report/**',
     'test-results/**',
+    // The bundled programs (FFmpeg, yt-dlp, Deno), fetched, never ours to lint.
+    'vendor/**',
     'node_modules/**',
   ]),
   js.configs.recommended,

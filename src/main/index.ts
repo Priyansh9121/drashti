@@ -176,6 +176,8 @@ import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } fro
 import { StreamService } from './stream/stream-service';
 import { findFfmpeg } from './stream/ffmpeg-path';
 import { ffmpegSelfTest } from './stream/ffmpeg-selftest';
+import { youtubeSelfTest } from './links/youtube-selftest';
+import { findYoutubeTools } from './links/youtube-tools';
 import { spawnStreamWorker } from './stream/stream-worker';
 import { ConvertService } from './convert/convert-service';
 import { diskFreeBytes } from './import/media-store';
@@ -789,10 +791,26 @@ function start(): void {
       arch: process.arch,
       override: process.env['DRASHTI_FFMPEG'],
     });
-    void ffmpegSelfTest(path, process.platform).then((result) => {
+    // And YouTube's two programs (Session 25c): yt-dlp and Deno run, and Deno is sandboxed.
+    const tools = findYoutubeTools({
+      packaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      appPath: app.getAppPath(),
+      platform: process.platform,
+      arch: process.arch,
+    });
+    void (async () => {
+      const ffmpeg = await ffmpegSelfTest(path, process.platform);
+      const youtube = await youtubeSelfTest(tools, process.platform);
+      const result = {
+        ...ffmpeg,
+        ffmpegPassed: ffmpeg.passed,
+        youtube,
+        passed: ffmpeg.passed && youtube.passed,
+      };
       process.stdout.write(`DRASHTI_SELFTEST_RESULT ${JSON.stringify(result)}\n`);
       exitNow(result.passed ? 0 : 1);
-    });
+    })();
     return;
   }
   const permissionLog = logPermissions

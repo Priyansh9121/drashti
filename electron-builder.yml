@@ -37,11 +37,20 @@ mac:
   hardenedRuntime: true
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.inherit.plist
-  # The bundled FFmpeg (scripts/fetch-ffmpeg.mjs), a separate program: LICENSES/ffmpeg/.
+  # The bundled FFmpeg (scripts/fetch-ffmpeg.mjs), a separate program: LICENSES/ffmpeg/. And YouTube's
+  # two programs (scripts/fetch-youtube-tools.mjs, Session 25c): yt-dlp, unpacked (one universal folder,
+  # its framework's symbolic links kept), and Deno: LICENSES/yt-dlp/ and LICENSES/deno/. Signed with the
+  # rest of the app.
   extraResources:
     - from: vendor/ffmpeg/darwin-${arch}
       to: ffmpeg
       filter: [ffmpeg]
+    - from: vendor/yt-dlp/darwin-${arch}
+      to: yt-dlp
+      filter: ['**/*', '!SOURCE.txt']
+    - from: vendor/deno/darwin-${arch}
+      to: deno
+      filter: [deno]
   # macOS asks the operator before Drashti may use a camera or a sound input (for the stream).
   extendInfo:
     NSCameraUsageDescription: Drashti uses the camera or capture card you choose for the stream to YouTube.
@@ -65,6 +74,12 @@ win:
     - from: vendor/ffmpeg/win32-${arch}
       to: ffmpeg
       filter: [ffmpeg.exe]
+    - from: vendor/yt-dlp/win32-${arch}
+      to: yt-dlp
+      filter: ['**/*', '!SOURCE.txt']
+    - from: vendor/deno/win32-${arch}
+      to: deno
+      filter: [deno.exe]
     - from: build/icon.ico
       to: icon.ico
 nsis:
