@@ -9,8 +9,9 @@
 // Like the one-file yt-dlp (and as yt-dlp starts Deno and FFmpeg), it starts a child process of its own,
 // which lives until it ends: a test can see that stopping it stops that too.
 // What it is told to do comes in DRASHTI_FAKE_YT_DLP_CONFIG (JSON): title, duration, heights, live
-// (yt-dlp's live_status), failWith (a line for its error output, then it fails), steps, stepMs, and log (a
-// file it notes each start, resume and finish in).
+// (yt-dlp's live_status), failWith (a line for its error output, then it fails), steps, stepMs, lookMs (how
+// long a look takes before it answers: 0, at once, to begin with), and log (a file it notes each start,
+// resume and finish in).
 const { spawn, spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -46,6 +47,13 @@ function main() {
   }
 
   if (looking) {
+    // A look takes this long, as yt-dlp's does while it asks YouTube and runs its code in Deno.
+    setTimeout(() => {
+      look();
+    }, config.lookMs ?? 0);
+    return;
+  }
+  function look() {
     const heights = config.heights ?? [720, 1080, 1440, 2160, 4320];
     const duration = config.duration ?? 65;
     const formats = [
@@ -69,7 +77,6 @@ function main() {
       })}\n`,
     );
     end(0);
-    return;
   }
 
   const dir = value('-P');

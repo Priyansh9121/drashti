@@ -37,7 +37,10 @@ import { killTree } from './youtube-tools';
  *
  * - Closing the dialog never stops a download: the status bar shows it.
  * - It waits while the stream is on air or recording, asking nothing of
- *   Dropbox meanwhile, and carries on afterwards.
+ *   Dropbox meanwhile, and carries on afterwards. So does looking at a
+ *   YouTube link, which runs yt-dlp, Deno and YouTube's code (since
+ *   1.0.0-alpha.3); looking at a Dropbox link asks for a few headers only,
+ *   and never waits.
  * - A stopped or failed download leaves nothing under a real name: it is
  *   written under a hidden name first, and those are listed in a small file
  *   so a crash's leftovers are cleared at the next start.
@@ -96,6 +99,7 @@ export interface LinkServiceDeps {
 }
 
 const WAITING_FOR = 'the stream is on air or recording';
+const LOOK_WAITS = 'Links: looking at a YouTube link waits while the stream is on air or recording';
 const ACTIVE = new Set<LinkView['phase']>(['waiting', 'downloading', 'unpacking', 'converting', 'importing']);
 /** Only these are ever cleared at a start (never anything else a record might name). */
 const OURS = /^\.drashti-(download-[0-9a-f-]+\.part|unpacking-.+|youtube-[0-9a-f-]+)$/u;
@@ -309,7 +313,7 @@ export class LinkService {
         if (this.job === 'look') {
           this.endWorker();
           this.deps.log('info', `Links: a ${this.kindWord()} link could not be looked at (${m.code})`);
-          this.set({ phase: 'idle', look: null, message: m.message });
+          this.set({ phase: 'idle', look: null, waitingFor: null, message: m.message });
           return;
         }
         void this.failed(m.message, m.code);
@@ -323,7 +327,10 @@ export class LinkService {
 
   // ---- looking -------------------------------------------------------------------
 
-  /** Check a pasted link for the kind chosen, and ask Dropbox what it holds. */
+  /**
+   * Check a pasted link for the kind chosen, and ask Dropbox (or yt-dlp, for YouTube) what it holds. YouTube's
+   * look waits while the stream is on air or recording, as a download does.
+   */
   look(kind: LinkKind, text: string): LinkResult {
     if (this.busy) return this.refuse('A download is going on. Wait for it to finish, or stop it first.');
     const check = checkLink(kind, text);
@@ -335,6 +342,7 @@ export class LinkService {
         kind,
         link: null,
         look: null,
+        waitingFor: null,
         message: check.message,
         saved: null,
         notTaken: [],
@@ -353,6 +361,7 @@ export class LinkService {
         kind,
         link: null,
         look: null,
+        waitingFor: null,
         message: run.message,
         saved: null,
         runId: null,
@@ -360,13 +369,14 @@ export class LinkService {
       return this.refuse(run.message);
     }
     this.checked = { url: check.url, shape: check.shape };
+    this.held = run !== null && this.deps.onAir();
     this.set({
       phase: 'looking',
       kind,
       link: check.url,
       look: null,
       progress: null,
-      waitingFor: null,
+      waitingFor: this.held ? WAITING_FOR : null,
       message: null,
       saved: null,
       notTaken: [],
@@ -377,7 +387,10 @@ export class LinkService {
     const worker = this.startWorker('look');
     if (run?.ok) {
       this.toolsWork = run.cwd;
+      if (this.held) this.deps.log('info', LOOK_WAITS);
+      worker.post({ type: 'hold', on: this.held });
       worker.post({ type: 'yt-look', link: check.url, launch: run.launch, cwd: run.cwd });
+      this.watch();
     } else worker.post({ type: 'look', link: check.url, route: this.deps.route });
     return this.answer();
   }
@@ -393,6 +406,7 @@ export class LinkService {
     this.set({
       phase: 'looked',
       look: { shape: 'video', name: m.details.title, size: null, video: m.details },
+      waitingFor: null,
       message: null,
     });
   }
@@ -632,7 +646,10 @@ export class LinkService {
     }
   }
 
-  /** While downloading or unpacking: hold whenever the stream is on air or recording. */
+  /**
+   * While looking at a YouTube link, downloading or unpacking: hold whenever the stream is on air or
+   * recording.
+   */
   private watch(): void {
     this.stopWatching();
     this.timer = setInterval(() => {
@@ -640,7 +657,11 @@ export class LinkService {
       if (on === this.held || !this.worker) return;
       this.held = on;
       this.worker.post({ type: 'hold', on });
-      if (on) {
+      if (this.job === 'look') {
+        // Still looking: only the words change.
+        this.deps.log('info', on ? LOOK_WAITS : 'Links: looking at the YouTube link carries on');
+        this.set({ waitingFor: on ? WAITING_FOR : null });
+      } else if (on) {
         this.deps.log('info', 'Links: the download waits while the stream is on air or recording');
         this.set({ phase: 'waiting', waitingFor: WAITING_FOR });
       } else {
@@ -793,7 +814,7 @@ export class LinkService {
   stop(): LinkResult {
     if (this.job === 'look') {
       this.endWorker();
-      this.set({ phase: 'idle', message: null });
+      this.set({ phase: 'idle', waitingFor: null, message: null });
       return this.answer();
     }
     if (this.state.phase === 'importing' || this.state.phase === 'converting')

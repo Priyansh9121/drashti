@@ -254,6 +254,19 @@ describe('Import from a Link: Dropbox', () => {
     expect(h.logs.join('\n')).toMatch(/waits while the stream is on air or recording/u);
   });
 
+  it('looks at a link even while on air (asking Dropbox only its name and size): only the download waits', async () => {
+    const h = await harness();
+    h.air.on = true;
+    expect(h.service.look('dropbox', FILE_LINK).ok).toBe(true);
+    expect(h.service.view().waitingFor).toBeNull();
+    await until(() => h.service.view().phase === 'looked');
+    expect(h.service.view().look).toEqual({
+      shape: 'file',
+      name: 'Placeholder clip.mp4',
+      size: VIDEO.length,
+    });
+  });
+
   it('stops when told, keeping nothing', async () => {
     const h = await harness();
     h.service.look('dropbox', FILE_LINK);
@@ -598,6 +611,41 @@ describe.skipIf(!existsSync(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     expect(starts(h.fakeLog)).toHaveLength(2);
     expect(readFileSync(h.fakeLog, 'utf8')).toMatch(/^resume \d+$/mu);
     expect(files(h.folder)).toEqual(['Placeholder video.mp4']);
+  });
+
+  it('a look waits while on air, never starting yt-dlp; one going stops (its child too), then looks again', async () => {
+    const h = await youtube({ lookMs: 1500 });
+    const looks = () =>
+      (existsSync(h.fakeLog) ? readFileSync(h.fakeLog, 'utf8') : '')
+        .split('\n')
+        .filter((l) => l.startsWith('start look'))
+        .map((l) => l.split(' '));
+    h.air.on = true;
+    expect(h.service.look('youtube', LINK).ok).toBe(true);
+    expect(h.service.view().phase).toBe('looking');
+    expect(h.service.view().waitingFor).toMatch(/on air or recording/u);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(looks()).toEqual([]);
+    // Off air: it looks. On air again while it looks: yt-dlp and its child stop, and it waits.
+    h.air.on = false;
+    await until(() => looks().length === 1);
+    expect(h.service.view().waitingFor).toBeNull();
+    h.air.on = true;
+    await until(() => h.service.view().waitingFor !== null);
+    const [first] = looks();
+    await until(() => !alive(Number(first?.[4])) && !alive(Number(first?.[6])), 10_000);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(h.service.view().phase).toBe('looking');
+    expect(looks()).toHaveLength(1);
+    // Off air: it looks again, and the details come.
+    h.air.on = false;
+    await until(() => h.service.view().phase === 'looked', 30_000);
+    expect(h.service.view().waitingFor).toBeNull();
+    expect(h.service.view().look?.name).toBe('Placeholder video');
+    expect(looks()).toHaveLength(2);
+    const log = h.logs.join('\n');
+    expect(log).toContain('Links: looking at a YouTube link waits while the stream is on air or recording');
+    expect(log).toContain('Links: looking at the YouTube link carries on');
   });
 
   it('a quit stops yt-dlp and all it started, and leaves no part-file', async () => {
