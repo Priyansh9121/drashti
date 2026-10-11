@@ -23,6 +23,7 @@ import { convert, connectConversions, jobFor, useConvert } from './convert-store
 import { leaveItem, loadMedia, selectPresentation, useLibrary, useMedia } from './library-store';
 import { showTexts } from '../shastra/shastra-store';
 import { openCalendar } from '../calendar/calendar-store';
+import { heightLabel } from '../../../shared/links';
 import { lastPart, useLinks } from '../links/link-store';
 
 /*
@@ -360,9 +361,16 @@ export function ImportReportDialog({ platform }: { platform: string }) {
             </Button>
           }
         >
-          Downloaded from a link and saved in <strong>{lastPart(savedIn)}</strong>. Drashti copied them into
-          its library; the saved files stay where they are.
-          <Truncate text={savedIn} className="mt-0.5 text-xs text-muted" />
+          Downloaded from a link and saved in <strong>{lastPart(savedIn.folder)}</strong>. Drashti copied them
+          into its library; the saved files stay where they are.
+          {savedIn.fitted.length > 0 && (
+            <span className="mt-1 block" data-testid="report-fitted">
+              Above {heightLabel(savedIn.maxHeight)}, so the library has a {heightLabel(savedIn.maxHeight)}{' '}
+              copy made by Drashti (the saved original is as it came):{' '}
+              {savedIn.fitted.map(lastPart).join(', ')}.
+            </span>
+          )}
+          <Truncate text={savedIn.folder} className="mt-0.5 text-xs text-muted" />
         </Notice>
       )}
       <p className="text-sm" data-testid="report-summary">
