@@ -39,6 +39,9 @@ const out = resolve('release', version);
 const { files } = JSON.parse(readFileSync(join('build', 'downloads.json'), 'utf8'));
 const mine = files.filter((f) => f.platform === process.platform);
 const TIMEOUT_MS = 240_000;
+// Under Rosetta every program is translated the first time it runs (the app, then yt-dlp and Deno in the
+// FFmpeg self-test: Session 25c): more time there.
+const EMULATED_TIMEOUT_MS = 480_000;
 const results = [];
 /** Drashti's icons (scripts/make-icons.mjs), and Electron's own, which nothing may still carry. */
 const ICONS = iconFiles('.');
@@ -58,6 +61,7 @@ const pass = (name, what) => {
 
 /** Start Drashti for one of its self-tests (DRASHTI_SELFTEST), with a data folder of its own. */
 function selfTest(mode, command, args) {
+  const limit = command === 'arch' ? EMULATED_TIMEOUT_MS : TIMEOUT_MS;
   const root = makeTempRoot();
   const env = {
     ...process.env,
@@ -71,7 +75,7 @@ function selfTest(mode, command, args) {
     let log = '';
     child.stdout.on('data', (d) => (log += d.toString()));
     child.stderr.on('data', (d) => (log += d.toString()));
-    const timer = setTimeout(() => child.kill('SIGKILL'), TIMEOUT_MS);
+    const timer = setTimeout(() => child.kill('SIGKILL'), limit);
     child.on('exit', (code) => {
       clearTimeout(timer);
       removeTempRoot(root);
