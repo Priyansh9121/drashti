@@ -86,6 +86,8 @@ export const pickSaveFolder = () => act(() => window.drashti.links.pickFolder())
 export const startDownload = () => act(() => window.drashti.links.download());
 export const stopDownload = () => act(() => window.drashti.links.stop());
 export const anotherLink = () => act(() => window.drashti.links.reset());
+/** The admin's highest video quality, for YouTube and Dropbox (Session 25c). */
+export const setMaxHeight = (height: number) => act(() => window.drashti.links.setMaxHeight(height));
 
 /** A download, unpacking, conversion or import is going on (or waiting). */
 export const linkBusy = (view: LinkView | null): boolean =>

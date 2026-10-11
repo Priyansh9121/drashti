@@ -130,6 +130,7 @@ const bridge: DrashtiBridge = {
     stop: () => invoke(IPC.links.stop),
     reset: () => invoke(IPC.links.reset),
     showSaved: (runId) => invoke(IPC.links.showSaved, runId),
+    setMaxHeight: (height) => invoke(IPC.links.setMaxHeight, height),
     onChanged: (listener) => on(IPC.links.changed, listener),
     onOpen: (listener) =>
       on(IPC.links.open, () => {

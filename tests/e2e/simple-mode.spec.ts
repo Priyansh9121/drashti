@@ -259,6 +259,8 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
         // Session 25b: Import from a Link (a made-up link).
         link: await d.links.look('dropbox', 'https://www.dropbox.com/scl/fi/placeholder/x.mp4?dl=0'),
         linkDownload: await d.links.download(),
+        // Session 25c: the highest video quality, an admin's setting.
+        linkQuality: await d.links.setMaxHeight(2160),
       };
     },
     { welcomeId: show.welcomeId, logoId: show.logoPropId },
@@ -289,6 +291,7 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
     setup: no,
     link: no,
     linkDownload: no,
+    linkQuality: no,
   });
 
   // A forced stop: Drashti comes back in Simple Mode, with the show put back.

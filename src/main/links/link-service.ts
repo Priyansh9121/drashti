@@ -5,8 +5,10 @@ import { basename, join, relative, sep } from 'node:path';
 import { formatBytes } from '../../shared/format';
 import {
   checkLink,
+  heightLabel,
+  isLinkHeight,
   LINK_KEEP_FREE_BYTES,
-  LINK_MAX_HEIGHT,
+  type LinkHeight,
   type LinkKind,
   type LinkResult,
   type LinkShape,
@@ -61,16 +63,19 @@ export interface LinkServiceDeps {
   log(level: 'info' | 'warn', message: string): void;
   /** The file listing part-files and work folders, to clear after a crash. */
   record: string;
-  /** Drashti's own folder for 1080p copies made for an import (emptied at each start and after each import). */
+  /** Drashti's own folder for copies made for an import (emptied at each start and after each import). */
   workDir: string;
+  /** The admin's highest video quality (Session 25c), kept with the library's settings. */
+  maxHeight: { get(): LinkHeight; set(height: LinkHeight): void };
   /**
-   * Make a video above 1080p a 1080p copy in `outDir` (Drashti's own conversion: it waits while the
-   * stream is on air or recording); `copy` null: it is 1080p or less already. Reports why it waits, or
-   * how far it has got.
+   * Make a video taller than `maxHeight` a copy that tall in `outDir` (Drashti's own conversion: it waits
+   * while the stream is on air or recording); `copy` null: it is that tall or less already. Reports why
+   * it waits, or how far it has got.
    */
   fitVideo?(
     path: string,
     outDir: string,
+    maxHeight: number,
     report: (waitingFor: string | null, fraction: number | null) => void,
   ): Promise<{ ok: true; copy: string | null } | { ok: false; message: string }>;
   /** Tests only: where requests go instead, and the guard. */
@@ -115,6 +120,7 @@ export class LinkService {
       notTaken: [],
       fitted: [],
       runId: null,
+      maxHeight: deps.maxHeight.get(),
     };
   }
 
@@ -336,6 +342,20 @@ export class LinkService {
     return this.answer();
   }
 
+  // ---- the highest video quality (an admin's) ------------------------------------
+
+  /** Set the highest video quality, for YouTube and Dropbox (Session 25c). */
+  setMaxHeight(height: unknown): LinkResult {
+    if (!isLinkHeight(height)) return this.refuse('Choose 1080p, 1440p, 2160p (4K) or 4320p (8K).');
+    if (this.busy) return this.refuse('Change it once the download going on has finished.');
+    if (height !== this.state.maxHeight) {
+      this.deps.maxHeight.set(height);
+      this.deps.log('info', `Links: the highest video quality is now ${heightLabel(height)}`);
+      this.set({ maxHeight: height });
+    }
+    return this.answer();
+  }
+
   // ---- where to save -------------------------------------------------------------
 
   async pickFolder(): Promise<LinkResult> {
@@ -486,7 +506,9 @@ export class LinkService {
       `Links: a ${this.kindWord()} download was saved (${String(files.length)} ${files.length === 1 ? 'file' : 'files'}, ${formatBytes(bytes)}); ${String(taken.length)} to import, ${String(notTaken.length)} not taken`,
     );
     this.set({ phase: 'importing', waitingFor: null, progress: null, saved: { folder, files }, notTaken });
-    // Videos above 1080p: a 1080p copy is imported instead (the original stays in the folder).
+    // Videos above the highest quality: a copy that tall is imported instead (the original stays in the folder).
+    const maxHeight = this.state.maxHeight;
+    const most = heightLabel(maxHeight);
     const work = join(this.deps.workDir, randomUUID());
     const prepared: string[] = [];
     const fitted: string[] = [];
@@ -499,6 +521,7 @@ export class LinkService {
       const fit = await this.deps.fitVideo(
         path,
         join(work, String(prepared.length)),
+        maxHeight,
         (waitingFor, fraction) => {
           this.set({
             waitingFor,
@@ -509,11 +532,11 @@ export class LinkService {
       if (!fit.ok) {
         this.deps.log(
           'warn',
-          `Links: a video above ${String(LINK_MAX_HEIGHT)}p could not be made ${String(LINK_MAX_HEIGHT)}p, so it was not imported`,
+          `Links: a video above ${most} could not be made ${most}, so it was not imported`,
         );
         notTaken.push({
           name: inFolder(path),
-          reason: `It is above ${String(LINK_MAX_HEIGHT)}p, and Drashti could not make it ${String(LINK_MAX_HEIGHT)}p (${fit.message.replace(/\.$/u, '')}), so it was not imported.`,
+          reason: `It is above ${most}, and Drashti could not make it ${most} (${fit.message.replace(/\.$/u, '')}), so it was not imported.`,
         });
         continue;
       }
@@ -533,7 +556,7 @@ export class LinkService {
       return;
     }
     const result = await this.deps.importFiles(prepared);
-    // The import has copied the 1080p copies into the library: they are not needed now.
+    // The import has copied the copies into the library: they are not needed now.
     await rm(work, { recursive: true, force: true }).catch(() => undefined);
     if (result.ok) {
       this.deps.log('info', 'Links: the saved files went to the import');

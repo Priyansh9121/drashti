@@ -172,6 +172,8 @@ export interface DrashtiBridge {
     reset(): Promise<LinkResult>;
     /** Show where the files were saved: an import run's (its report), or the dialog's download (null). */
     showSaved(runId: string | null): Promise<null>;
+    /** The admin's highest video quality, for YouTube and Dropbox (Session 25c): 1080, 1440, 2160 or 4320. */
+    setMaxHeight(height: number): Promise<LinkResult>;
     onChanged(listener: (view: LinkView) => void): () => void;
     /** File > Import from a Link… was chosen. */
     onOpen(listener: () => void): () => void;

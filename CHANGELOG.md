@@ -2,6 +2,12 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## Unreleased
+
+Import from a Link
+
+- A new admin setting in File › Import from a Link…: Highest video quality (1080p, 1440p, 2160p (4K) or 4320p (8K)), 1080p to begin with. It is kept with the library, so a backup keeps it. A Dropbox video taller than it is imported as a copy that tall, as 1080p videos were before; the original stays in the folder as it came.
+
 ## 1.0.0-alpha.2 (11 Oct 2026)
 
 Easier for volunteers' hands, and importing from a Dropbox link. Update after a sabha, never on the day of one.

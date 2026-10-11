@@ -270,3 +270,56 @@ test('Dropbox: a video above 1080p ends as a 1080p copy in the library, the orig
   ).toEqual([]);
   await app.close();
 });
+
+test('Dropbox: with the highest video quality at 2160p, a 2160p video is imported as it is, with no copy', async () => {
+  test.setTimeout(240_000);
+  const work = mkdtempSync(join(tmpdir(), 'drashti-link-e2e-'));
+  const media = join(work, 'made');
+  mkdirSync(media);
+  const big = makeVideo(join(media, 'big.mp4'), '3840x2160');
+  standIn = await dropboxStandIn(
+    { bigAAAAAAAAAAAA: { name: 'Placeholder 2160p.mp4', body: big, type: 'video/mp4' } },
+    {},
+  );
+  const chosen = join(work, 'Chosen folder');
+  const { app, userData } = await launchApp({
+    DRASHTI_TEST_LINK_ORIGIN: standIn.origin,
+    DRASHTI_TEST_DOWNLOADS_DIR: join(work, 'Videos'),
+  });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await app.evaluate(({ dialog }, folder) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
+  }, chosen);
+
+  // The admin's setting, in the dialog: 1080p to begin with, then 2160p (4K).
+  await chooseMenuItem(app, 'import-from-link');
+  const quality = win.getByTestId('link-max-height');
+  await expect(quality).toHaveValue('1080');
+  await expect(quality.locator('option')).toHaveText(['1080p', '1440p', '2160p (4K)', '4320p (8K)']);
+  await quality.selectOption('2160');
+  await expect(quality).toHaveValue('2160');
+  await win.getByTestId('link-kind-dropbox').click();
+  await win.getByTestId('link-text').fill(fileLink('bigAAAAAAAAAAAA', 'Placeholder 2160p.mp4'));
+  await expect(win.getByTestId('link-holds')).toContainText('videos at 2160p (4K) at most');
+  await win.getByTestId('link-choose-folder').click();
+  await win.getByTestId('link-download').click();
+
+  // Saved and imported as it came: nothing made smaller.
+  await expect(win.getByTestId('link-saved')).toBeVisible({ timeout: 120_000 });
+  const report = win.getByTestId('import-report');
+  await expect(report).toBeVisible({ timeout: 60_000 });
+  await expect(report.getByTestId('report-item').first()).toHaveAttribute('data-outcome', 'imported');
+  await expect(win.getByTestId('link-fitted')).toHaveCount(0);
+  const db = new Database(join(userData, 'drashti.sqlite'), { readonly: true });
+  const row = db.prepare('SELECT path FROM media WHERE name = ?').get('Placeholder 2160p.mp4') as
+    { path: string } | undefined;
+  // Kept with the library's settings, so a backup keeps it.
+  const setting = db.prepare("SELECT value FROM app_meta WHERE key = 'setting.links.maxHeight'").get() as
+    { value: string } | undefined;
+  db.close();
+  expect(setting?.value).toBe('2160');
+  expect(row).toBeDefined();
+  expect(readFileSync(join(userData, 'Media', row?.path ?? '')).equals(big)).toBe(true);
+  await app.close();
+});

@@ -114,7 +114,7 @@ import { adminRefusals } from './roles/admin-lock';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
 import { LinkService } from './links/link-service';
-import { LINK_MAX_HEIGHT } from '../shared/links';
+import { DEFAULT_LINK_MAX_HEIGHT, isLinkHeight } from '../shared/links';
 import { spawnDownloadWorker } from './links/spawn-worker';
 import { AudioOutput } from './audio/audio-output';
 import { saveDiagnostics } from './diagnostics';
@@ -2246,10 +2246,21 @@ function start(): void {
     },
     record: join(userDataDir, 'link-downloads.json'),
     workDir: join(userDataDir, 'Link downloads'),
-    // A Dropbox video above 1080p: Drashti's own conversion makes a 1080p copy first (it waits while on air).
-    fitVideo: (path, outDir, report) =>
+    // The admin's highest video quality (Session 25c), kept with the library's settings.
+    maxHeight: {
+      get: () => {
+        const height = settings.get('links.maxHeight');
+        return isLinkHeight(height) ? height : DEFAULT_LINK_MAX_HEIGHT;
+      },
+      set: (height) => {
+        settings.set('links.maxHeight', height);
+      },
+    },
+    // A Dropbox video taller than that: Drashti's own conversion makes a copy that tall first (it waits
+    // while on air).
+    fitVideo: (path, outDir, maxHeight, report) =>
       conversions.fitHeight(path, outDir, {
-        maxHeight: LINK_MAX_HEIGHT,
+        maxHeight,
         waiting: (note) => {
           report(note === null ? null : 'the stream is on air or recording', null);
         },
@@ -2276,6 +2287,9 @@ function start(): void {
   handle(IPC.links.download, (e) => (fromOperator(e) ? links.download() : notLinksOperator));
   handle(IPC.links.stop, (e) => (fromOperator(e) ? links.stop() : notLinksOperator));
   handle(IPC.links.reset, (e) => (fromOperator(e) ? links.reset() : notLinksOperator));
+  handle(IPC.links.setMaxHeight, (e, height) =>
+    fromOperator(e) ? links.setMaxHeight(height) : notLinksOperator,
+  );
   handle(IPC.links.showSaved, (e, runId) => {
     const saved = links.savedPath(typeof runId === 'string' ? runId : null);
     if (fromOperator(e) && saved) shell.showItemInFolder(saved);

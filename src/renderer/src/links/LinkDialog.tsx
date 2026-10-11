@@ -1,12 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatBytes } from '../../../shared/format';
-import { checkLink, type LinkKind, type LinkView, YOUTUBE_NOT_YET } from '../../../shared/links';
+import {
+  checkLink,
+  heightLabel,
+  LINK_HEIGHTS,
+  type LinkKind,
+  type LinkView,
+  YOUTUBE_NOT_YET,
+} from '../../../shared/links';
 import { useMode } from '../operator/mode-store';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Dialog } from '../ui/Dialog';
-import { Field, TextInput } from '../ui/Field';
+import { Field, Select, TextInput } from '../ui/Field';
 import { Cloud, Download, FolderOpen, Link2, MonitorPlay } from '../ui/icons';
 import type { Icon } from '../ui/icons';
 import { Notice } from '../ui/Notice';
@@ -24,6 +31,7 @@ import {
   linkBusy,
   lookAtLink,
   pickSaveFolder,
+  setMaxHeight,
   startDownload,
   stopDownload,
   useLinks,
@@ -172,8 +180,8 @@ function Holds({ view }: { view: LinkView }) {
         {look.shape === 'folder' ? '. Dropbox sends it as one zip, which Drashti unpacks.' : '.'}
       </p>
       <p className="text-xs text-muted">
-        Only PowerPoint files (.pptx) and MP4 videos are imported, videos at 1080p at most. Everything else is
-        saved, and listed as not taken.
+        Only PowerPoint files (.pptx) and MP4 videos are imported, videos at {heightLabel(view.maxHeight)} at
+        most. Everything else is saved, and listed as not taken.
       </p>
     </div>
   );
@@ -201,10 +209,36 @@ function SaveIn({ view, locked }: { view: LinkView; locked: boolean }) {
   );
 }
 
+/**
+ * The admin's highest video quality, for YouTube and Dropbox both (Session 25c): kept with the library's
+ * settings. Drashti has no Settings window, so it lives here, as the Updates dialog keeps its daily look.
+ */
+function HighestQuality({ view, locked }: { view: LinkView; locked: boolean }) {
+  return (
+    <Field
+      label="Highest video quality"
+      hint="An admin’s setting, for YouTube and Dropbox. A Dropbox video taller than this is imported as a copy this tall (the original stays as it came); a YouTube quality above it cannot be picked."
+    >
+      <Select
+        data-testid="link-max-height"
+        value={String(view.maxHeight)}
+        disabled={locked}
+        className="w-44"
+        onChange={(e) => void setMaxHeight(Number(e.target.value))}
+      >
+        {LINK_HEIGHTS.map((h) => (
+          <option key={h} value={h}>
+            {heightLabel(h)}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  );
+}
+
 const STATUS: Partial<Record<LinkView['phase'], string>> = {
   downloading: 'Downloading',
   unpacking: 'Unpacking the folder…',
-  converting: 'Making a video 1080p…',
   importing: 'Importing what was saved…',
 };
 
@@ -212,6 +246,7 @@ const STATUS: Partial<Record<LinkView['phase'], string>> = {
 function Going({ view }: { view: LinkView }) {
   const p = view.progress;
   const fraction = p?.total ? p.done / p.total : null;
+  const most = heightLabel(view.maxHeight);
   let words = STATUS[view.phase] ?? '';
   if (view.phase === 'waiting')
     words = `Waiting: ${view.waitingFor ?? 'the stream is on air or recording'}. It goes on by itself afterwards.`;
@@ -221,14 +256,14 @@ function Going({ view }: { view: LinkView }) {
       : `Downloading: ${formatBytes(p.done)}.`;
   else if (view.phase === 'converting')
     words = view.waitingFor
-      ? `A video above 1080p waits to be made 1080p: ${view.waitingFor}. It goes on by itself afterwards.`
-      : `Making a video above 1080p a 1080p copy for the library${fraction !== null ? `: ${String(Math.round(fraction * 100))}%` : '…'}`;
+      ? `A video above ${most} waits to be made ${most}: ${view.waitingFor}. It goes on by itself afterwards.`
+      : `Making a video above ${most} a ${most} copy for the library${fraction !== null ? `: ${String(Math.round(fraction * 100))}%` : '…'}`;
   return (
     <div className="space-y-2" role="status" data-testid="link-going" data-phase={view.phase}>
       {fraction !== null && view.phase !== 'importing' && (
         <Progress
           value={fraction}
-          label={view.phase === 'converting' ? 'Making the video 1080p' : 'Downloading the link'}
+          label={view.phase === 'converting' ? `Making the video ${most}` : 'Downloading the link'}
         />
       )}
       <p className="text-sm text-muted" data-testid="link-going-words">
@@ -268,10 +303,10 @@ function Saved({ view, platform }: { view: LinkView; platform: string }) {
       </div>
       {view.fitted.length > 0 && (
         <div className="space-y-1" data-testid="link-fitted">
-          <p className="text-sm font-medium">Made 1080p</p>
+          <p className="text-sm font-medium">Made {heightLabel(view.maxHeight)}</p>
           <p className="text-xs text-muted">
-            Above 1080p, so the library has a 1080p copy of each. The originals stay in the folder as they
-            were.
+            Above {heightLabel(view.maxHeight)}, so the library has a {heightLabel(view.maxHeight)} copy of
+            each. The originals stay in the folder as they were.
           </p>
           <ul className="max-h-24 list-disc overflow-auto pl-5 text-xs">
             {view.fitted.map((f) => (
@@ -369,6 +404,7 @@ export function LinkDialog({ platform }: { platform: string }) {
     >
       <div className="space-y-4" data-testid="link-body" data-phase={view.phase}>
         <KindChoice kind={kind} locked={locked} />
+        <HighestQuality view={view} locked={busy} />
         {kind && (
           // A new kind starts the link box afresh.
           <LinkField
@@ -420,7 +456,7 @@ export function LinkStatus() {
         : view.phase === 'unpacking'
           ? 'Unpacking a download'
           : view.phase === 'converting'
-            ? 'Making a downloaded video 1080p'
+            ? `Making a downloaded video ${heightLabel(view.maxHeight)}`
             : view.phase === 'importing'
               ? 'Importing a download'
               : view.phase === 'failed'
