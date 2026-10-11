@@ -9,3 +9,4 @@ vendor
 pnpm-lock.yaml
 tools/audit
 src/main/import/formats/pp7-descriptor.json
+LICENSES/deno/crates.md
