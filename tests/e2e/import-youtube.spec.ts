@@ -61,6 +61,8 @@ async function open(config: Record<string, unknown>, extra: Record<string, strin
     ...extra,
   });
   const win = await operatorPage(app);
+  // The smallest operator display Drashti is made for: the dialog must work at 1280 x 720.
+  await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
   await app.evaluate(({ dialog }, folder) => {
     dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
@@ -118,6 +120,9 @@ test('YouTube: details, quality up to the setting, the tick each time, MP4 and M
     .poll(async () => (await view(win)).progress?.done ?? 0, { timeout: 60_000 })
     .toBeGreaterThan(3000);
   await expect(win.getByTestId('link-going-words')).toContainText('Downloading the MP4, 1080p');
+  // While it goes, the choices step aside: the progress and Stop stay in view at 1280 x 720.
+  await expect(win.getByTestId('link-youtube')).toHaveCount(0);
+  await expect(win.getByTestId('link-stop')).toBeInViewport();
   await setOnAir(app, true);
   await expect(win.getByTestId('link-going')).toHaveAttribute('data-phase', 'waiting');
   const [first] = fakeStarts(log);

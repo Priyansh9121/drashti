@@ -262,7 +262,7 @@ const about = (bytes: number | null) => (bytes === null ? '' : `about ${formatBy
  * A YouTube video's choices (Session 25c): MP4 or MP3; for MP4 the qualities it offers, those above the
  * admin's setting shown but not to be picked, with why; and the permission tick, each time.
  */
-function YouTubeChoices({ video, view, locked }: { video: VideoDetails; view: LinkView; locked: boolean }) {
+function YouTubeChoices({ video, view }: { video: VideoDetails; view: LinkView }) {
   const choice = useLinks((s) => s.choice);
   const allowed = video.heights.filter((h) => h.height <= view.maxHeight);
   const above = video.heights.some((h) => h.height > view.maxHeight);
@@ -282,7 +282,7 @@ function YouTubeChoices({ video, view, locked }: { video: VideoDetails; view: Li
           types.map((t) => t.id),
           choice.type,
           (t) => {
-            if (!locked) choose({ type: t });
+            choose({ type: t });
           },
         )}
       >
@@ -294,11 +294,10 @@ function YouTubeChoices({ video, view, locked }: { video: VideoDetails; view: Li
               type="button"
               role="radio"
               aria-checked={on}
-              aria-disabled={locked || undefined}
               tabIndex={radioTabIndex(on, i, true)}
               data-testid={`link-type-${t.id}`}
               onClick={() => {
-                if (!locked) choose({ type: t.id });
+                choose({ type: t.id });
               }}
               className={cx(
                 'rounded-lg border px-3 py-2 text-left text-sm',
@@ -324,7 +323,7 @@ function YouTubeChoices({ video, view, locked }: { video: VideoDetails; view: Li
               allowed.map((h) => h.height),
               height ?? 0,
               (h) => {
-                if (!locked) choose({ height: h });
+                choose({ height: h });
               },
               // The heights above the setting come first and cannot be picked: find the chosen one's button.
               (h, group) => group.querySelector<HTMLElement>(`[data-testid="link-quality-${String(h)}"]`),
@@ -339,13 +338,13 @@ function YouTubeChoices({ video, view, locked }: { video: VideoDetails; view: Li
                   type="button"
                   role="radio"
                   aria-checked={on}
-                  aria-disabled={!usable || locked || undefined}
+                  aria-disabled={!usable || undefined}
                   disabled={!usable}
                   tabIndex={usable ? radioTabIndex(on, allowed.indexOf(h), height !== null) : -1}
                   data-testid={`link-quality-${String(h.height)}`}
                   aria-describedby={usable ? undefined : 'link-quality-above'}
                   onClick={() => {
-                    if (usable && !locked) choose({ height: h.height });
+                    if (usable) choose({ height: h.height });
                   }}
                   className={cx(
                     'rounded-md border px-2.5 py-1.5 text-left text-sm',
@@ -378,7 +377,6 @@ function YouTubeChoices({ video, view, locked }: { video: VideoDetails; view: Li
       <Checkbox
         label={PERMISSION_WORDS}
         checked={choice.permission}
-        disabled={locked}
         data-testid="link-permission"
         onChange={(e) => {
           choose({ permission: e.target.checked });
@@ -607,9 +605,9 @@ export function LinkDialog({ platform }: { platform: string }) {
           />
         )}
         <Holds view={view} />
-        {view.look?.video && !finished && (
-          <YouTubeChoices video={view.look.video} view={view} locked={busy} />
-        )}
+        {/* While it downloads, the progress says what was chosen: the choices step aside, so the progress
+            and Stop stay in view. */}
+        {view.look?.video && !finished && !busy && <YouTubeChoices video={view.look.video} view={view} />}
         {view.look && !finished && <SaveIn view={view} locked={locked} />}
         {busy && <Going view={view} />}
         {(view.phase === 'failed' || view.phase === 'stopped') && view.message && (
