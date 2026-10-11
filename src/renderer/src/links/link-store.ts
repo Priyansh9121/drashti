@@ -1,5 +1,13 @@
 import { create } from 'zustand';
 import type { LinkKind, LinkResult, LinkView } from '../../../shared/links';
+
+/** Where an import run's files were saved from a link, and the videos imported as smaller copies. */
+export interface SavedFrom {
+  folder: string;
+  /** Saved videos taller than the highest quality: the library has a copy `maxHeight` tall of each. */
+  fitted: string[];
+  maxHeight: number;
+}
 import { useEngine } from '../engine/engine-store';
 import { openReport, useImports } from '../library/import-store';
 
@@ -16,8 +24,8 @@ interface LinkStore {
   kind: LinkKind | null;
   /** What the main process last refused, in words. */
   error: string | null;
-  /** Import runs from a link: where their files were saved. */
-  savedFor: Record<string, string>;
+  /** Import runs from a link: where their files were saved, and which videos were made smaller first. */
+  savedFor: Record<string, SavedFrom>;
 }
 
 export const useLinks = create<LinkStore>(() => ({
@@ -37,17 +45,30 @@ const somethingLive = () => useEngine.getState().state?.live.presentationId != n
 function heard(view: LinkView): void {
   useLinks.setState((s) => ({
     view,
-    savedFor: view.runId && view.saved ? { ...s.savedFor, [view.runId]: view.saved.folder } : s.savedFor,
+    savedFor:
+      view.runId && view.saved
+        ? {
+            ...s.savedFor,
+            [view.runId]: { folder: view.saved.folder, fitted: view.fitted, maxHeight: view.maxHeight },
+          }
+        : s.savedFor,
   }));
   // The import of what was saved ended: its report comes up, as an import's does (unless the show is on).
+  // Never over the link dialog: while that is open, it offers the report itself (See the import report).
   if (view.phase === 'done' && view.runId && view.runId !== reported) {
     reported = view.runId;
     const runId = view.runId;
     void window.drashti.library.getImportReport(runId).then((report) => {
       if (report) useImports.setState({ finished: report });
-      if (!somethingLive()) void openReport(runId);
+      if (!somethingLive() && !useLinks.getState().open) void openReport(runId);
     });
   }
+}
+
+/** The import report of what a link saved: the link dialog closes first, so the report is never under it. */
+export function seeLinkReport(runId: string): void {
+  closeLinkDialog();
+  void openReport(runId);
 }
 
 export function connectLinks(): void {

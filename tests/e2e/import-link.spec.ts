@@ -119,9 +119,13 @@ test('Dropbox: a file link and a folder link are saved in the chosen folder, the
   await win.getByTestId('link-kind-dropbox').click();
   await expect(win.getByTestId('link-kind-dropbox')).toHaveAttribute('aria-checked', 'true');
 
-  // A link that is not Dropbox's is refused plainly.
+  // A link that is not Dropbox's is refused plainly, its help said once (Session 25b's report: it was twice).
+  const help = dialog.getByText('In Dropbox, use Share, then Copy link.', { exact: true });
+  await expect(help).toBeVisible();
   await win.getByTestId('link-text').fill('https://example.net/scl/fi/abc/x.mp4');
   await expect(dialog).toContainText('not a Dropbox link');
+  await expect(dialog).toContainText('use Share, then Copy link, and paste that here');
+  await expect(help).toHaveCount(0);
 
   // The file link: what it holds, before anything is downloaded.
   await win.getByTestId('link-text').fill(fileLink('clipAAAAAAAAAAA', 'Placeholder clip.mp4'));
@@ -157,8 +161,13 @@ test('Dropbox: a file link and a folder link are saved in the chosen folder, the
   await expect(win.getByTestId('link-saved')).toBeVisible({ timeout: 60_000 });
   await expect(win.getByTestId('link-saved-folder')).toHaveText(chosen);
   expect(readFileSync(join(chosen, 'Placeholder clip.mp4')).equals(clip)).toBe(true);
+  // With the dialog open, the report waits to be asked for: it never opens over the dialog.
   const report = win.getByTestId('import-report');
-  await expect(report).toBeVisible({ timeout: 60_000 });
+  await expect(win.getByTestId('link-open-report')).toBeVisible({ timeout: 60_000 });
+  await expect(report).toHaveCount(0);
+  await win.getByTestId('link-open-report').click();
+  await expect(report).toBeVisible();
+  await expect(dialog).toHaveCount(0);
   await expect(report.getByTestId('report-item').first()).toHaveAttribute('data-outcome', 'imported');
   await report.getByRole('button', { name: 'Close', exact: true }).first().click();
   await expect.poll(async () => (await listMedia(win)).map((m) => m.name)).toContain('Placeholder clip.mp4');
@@ -171,6 +180,11 @@ test('Dropbox: a file link and a folder link are saved in the chosen folder, the
   await expect(win.getByTestId('link-name')).toHaveText('Placeholder folder');
   await expect(win.getByTestId('link-holds')).toContainText('A folder');
   await win.getByTestId('link-download').click();
+  // Closed while it goes: then the report comes up by itself when the import ends, as an import's does.
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(report).toBeVisible({ timeout: 60_000 });
+  await report.getByRole('button', { name: 'Close', exact: true }).first().click();
+  await chooseMenuItem(app, 'import-from-link');
   await expect(win.getByTestId('link-saved')).toBeVisible({ timeout: 60_000 });
   const folder = join(chosen, 'Placeholder folder');
   await expect(win.getByTestId('link-saved-folder')).toHaveText(folder);
@@ -183,7 +197,8 @@ test('Dropbox: a file link and a folder link are saved in the chosen folder, the
   await expectNoSeriousA11yIssues(win, 'the Import from a Link dialog, done', '[data-testid="link-dialog"]');
   // The PowerPoint went through the PowerPoint route (which says so plainly with no Keynote or PowerPoint
   // here), and the video into the library.
-  await expect(report).toBeVisible({ timeout: 60_000 });
+  await win.getByTestId('link-open-report').click();
+  await expect(report).toBeVisible();
   const items = report.getByTestId('report-item');
   await expect(items).toHaveCount(2);
   await expect(items.filter({ hasText: 'Placeholder deck' })).toContainText('no Keynote or PowerPoint');
@@ -240,8 +255,12 @@ test('Dropbox: a video above 1080p ends as a 1080p copy in the library, the orig
   // Saved; made 1080p for the library; imported.
   await expect(win.getByTestId('link-fitted-item')).toHaveText('Placeholder 2160p.mp4', { timeout: 120_000 });
   const report = win.getByTestId('import-report');
+  await win.getByTestId('link-open-report').click();
   await expect(report).toBeVisible({ timeout: 60_000 });
   await expect(report.getByTestId('report-item').first()).toHaveAttribute('data-outcome', 'imported');
+  // The report says which video is a copy made 1080p (Session 25b's report: it did not).
+  await expect(report.getByTestId('report-fitted')).toContainText('1080p copy');
+  await expect(report.getByTestId('report-fitted')).toContainText('Placeholder 2160p.mp4');
   // The report says where the files were saved, and shows them.
   await expect(report.getByTestId('report-saved-in')).toContainText(chosen);
   await report.getByTestId('report-show-saved').click();
@@ -308,7 +327,10 @@ test('Dropbox: with the highest video quality at 2160p, a 2160p video is importe
   // Saved and imported as it came: nothing made smaller.
   await expect(win.getByTestId('link-saved')).toBeVisible({ timeout: 120_000 });
   const report = win.getByTestId('import-report');
+  await expect(win.getByTestId('link-fitted')).toHaveCount(0);
+  await win.getByTestId('link-open-report').click({ timeout: 60_000 });
   await expect(report).toBeVisible({ timeout: 60_000 });
+  await expect(report.getByTestId('report-fitted')).toHaveCount(0);
   await expect(report.getByTestId('report-item').first()).toHaveAttribute('data-outcome', 'imported');
   await expect(win.getByTestId('link-fitted')).toHaveCount(0);
   const db = new Database(join(userData, 'drashti.sqlite'), { readonly: true });

@@ -21,7 +21,6 @@ import { Progress } from '../ui/Progress';
 import { radioKeys, radioTabIndex } from '../ui/radio';
 import { plural } from '../ui/text';
 import { Truncate } from '../ui/Truncate';
-import { openReport } from '../library/import-store';
 import {
   anotherLink,
   chooseKind,
@@ -31,6 +30,7 @@ import {
   linkBusy,
   lookAtLink,
   pickSaveFolder,
+  seeLinkReport,
   setMaxHeight,
   startDownload,
   stopDownload,
@@ -138,11 +138,13 @@ function LinkField({ kind, view, locked }: { kind: LinkKind; view: LinkView; loc
   const shownError =
     !locked && settled === text && settled.trim() !== '' && !settledCheck.ok ? settledCheck.message : null;
   const lookError = view.phase === 'idle' ? view.message : null;
+  const error = shownError ?? lookError;
   return (
     <Field
       label={`Paste the ${kind === 'dropbox' ? 'Dropbox' : 'YouTube'} link`}
-      hint={kind === 'dropbox' ? 'In Dropbox, use Share, then Copy link.' : undefined}
-      error={shownError ?? lookError}
+      // The help, until a problem is said (which carries its own help: never the same line twice).
+      hint={kind === 'dropbox' && error === null ? 'In Dropbox, use Share, then Copy link.' : undefined}
+      error={error}
     >
       <TextInput
         data-testid="link-text"
@@ -339,7 +341,7 @@ function Saved({ view, platform }: { view: LinkView; platform: string }) {
           {platform === 'darwin' ? 'Show in Finder' : 'Show in Explorer'}
         </Button>
         {view.runId && (
-          <Button size="sm" data-testid="link-open-report" onClick={() => void openReport(view.runId ?? '')}>
+          <Button size="sm" data-testid="link-open-report" onClick={() => seeLinkReport(view.runId ?? '')}>
             See the import report
           </Button>
         )}
