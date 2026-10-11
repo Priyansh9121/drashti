@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkLink, downloadHostAllowed } from './links';
+import { checkLink, chosenHeight, downloadHostAllowed, type VideoDetails } from './links';
 
 /*
  * Made-up links only (PLAN §6): no real Dropbox file or folder is named here.
@@ -166,5 +166,31 @@ describe('where a Dropbox download may be sent on to', () => {
       'not a link',
     ])
       expect(downloadHostAllowed(bad), bad).toBe(false);
+  });
+});
+
+describe('the YouTube quality a download asks for (Session 25c)', () => {
+  const video: VideoDetails = {
+    title: 'Placeholder video',
+    duration: 65,
+    heights: [4320, 2160, 1440, 1080, 720].map((height) => ({ height, bytes: null })),
+    soundBytes: null,
+  };
+
+  it('is the tallest the setting allows until one is picked', () => {
+    expect(chosenHeight(video, 1080, null)).toBe(1080);
+    expect(chosenHeight(video, 2160, null)).toBe(2160);
+    expect(chosenHeight({ ...video, heights: [{ height: 720, bytes: null }] }, 1080, null)).toBe(720);
+  });
+
+  it('is the one picked while the video offers it and the setting allows it, else the tallest allowed', () => {
+    expect(chosenHeight(video, 1080, 720)).toBe(720);
+    // The setting was lowered after 2160p was picked.
+    expect(chosenHeight(video, 1080, 2160)).toBe(1080);
+    expect(chosenHeight(video, 1080, 999)).toBe(1080);
+  });
+
+  it('is none when every height is above the setting', () => {
+    expect(chosenHeight({ ...video, heights: [{ height: 2160, bytes: null }] }, 1080, null)).toBeNull();
   });
 });
