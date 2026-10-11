@@ -179,6 +179,17 @@ test('YouTube: with the highest video quality at 2160p, 2160p can be picked (432
   await expect(win.getByTestId('link-quality-1440')).toHaveAttribute('aria-checked', 'true');
   await win.getByTestId('link-quality-2160').click();
   await expect(win.getByTestId('link-quality-2160')).toHaveAttribute('aria-checked', 'true');
+  // The arrow keys move among the qualities that can be picked, and the focus goes with them (the one above
+  // the setting, listed first, is skipped).
+  await win.getByTestId('link-quality-2160').focus();
+  await win.keyboard.press('ArrowDown');
+  await expect(win.getByTestId('link-quality-1440')).toHaveAttribute('aria-checked', 'true');
+  await expect(win.getByTestId('link-quality-1440')).toBeFocused();
+  await win.keyboard.press('End');
+  await expect(win.getByTestId('link-quality-720')).toBeFocused();
+  await win.keyboard.press('Home');
+  await expect(win.getByTestId('link-quality-2160')).toBeFocused();
+  await expect(win.getByTestId('link-quality-2160')).toHaveAttribute('aria-checked', 'true');
   await app.close();
 });
 

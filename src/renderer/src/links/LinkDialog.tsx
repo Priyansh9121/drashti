@@ -325,6 +325,8 @@ function YouTubeChoices({ video, view, locked }: { video: VideoDetails; view: Li
               (h) => {
                 if (!locked) choose({ height: h });
               },
+              // The heights above the setting come first and cannot be picked: find the chosen one's button.
+              (h, group) => group.querySelector<HTMLElement>(`[data-testid="link-quality-${String(h)}"]`),
             )}
           >
             {video.heights.map((h) => {
