@@ -17,7 +17,11 @@ import { makeTempRoot, removeTempRoot } from './temp-root.mjs';
 
 const app = join(dirname(fileURLToPath(import.meta.url)), '..');
 const packaged = process.argv.includes('--packaged');
-const TIMEOUT_MS = 120_000;
+const TIMEOUT_MS = 180_000;
+// Under Rosetta (the Intel app on CI's Apple-silicon Mac) every program is translated the first time it
+// runs: the app alone took 84 s to start in Session 25c's first run, and yt-dlp's and Deno's first runs
+// come on top. Native runs take seconds.
+const EMULATED_TIMEOUT_MS = 480_000;
 
 /** Each packaged app: [label, command, arguments]. */
 function packagedApps() {
@@ -43,6 +47,7 @@ function packagedApps() {
 }
 
 function check(label, command, args) {
+  const limit = command === 'arch' ? EMULATED_TIMEOUT_MS : TIMEOUT_MS;
   const root = makeTempRoot();
   const env = { ...process.env, DRASHTI_SELFTEST: 'ffmpeg', DRASHTI_USER_DATA_DIR: join(root, 'data') };
   delete env['ELECTRON_RUN_AS_NODE'];
@@ -51,13 +56,15 @@ function check(label, command, args) {
     let out = '';
     child.stdout.on('data', (d) => (out += d.toString()));
     child.stderr.on('data', (d) => (out += d.toString()));
-    const timer = setTimeout(() => child.kill('SIGKILL'), TIMEOUT_MS);
+    const timer = setTimeout(() => child.kill('SIGKILL'), limit);
     child.on('exit', (code) => {
       clearTimeout(timer);
       removeTempRoot(root);
       const line = out.split('\n').find((l) => l.startsWith('DRASHTI_SELFTEST_RESULT '));
       if (!line) {
-        console.log(`${label}: no result (exit ${code})\n${out.slice(-2000)}`);
+        const said =
+          code === null ? `stopped after ${String(limit / 1000)} s without a result` : `exit ${code}`;
+        console.log(`${label}: no result (${said})\n${out.slice(-2000)}`);
         resolve(false);
         return;
       }
