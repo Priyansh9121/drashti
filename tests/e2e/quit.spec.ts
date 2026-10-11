@@ -300,3 +300,69 @@ test('quitting during a download from a link (Session 25b): nothing of it is lef
     await standIn.close();
   }
 });
+
+test('quitting during a YouTube download (Session 25c): no part-file, and no yt-dlp, Deno or FFmpeg left', async () => {
+  test.setTimeout(120_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-quit-youtube-'));
+  const chosen = join(dir, 'Chosen folder');
+  const log = join(dir, 'fake.log');
+  // The fake yt-dlp (never the real one), slow: still downloading when Drashti quits.
+  const { app, userData } = await launchApp({
+    DRASHTI_TEST_FAKE_YT_DLP: join(__dirname, 'fake-yt-dlp.cjs'),
+    DRASHTI_TEST_FAKE_YT_DLP_CONFIG: JSON.stringify({
+      log,
+      title: 'Placeholder video',
+      steps: 400,
+      stepMs: 50,
+    }),
+    DRASHTI_TEST_DOWNLOADS_DIR: dir,
+  });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await app.evaluate(({ dialog }, folder) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
+  }, chosen);
+  const view = () => win.evaluate(() => (globalThis as PageGlobals).drashti.links.view());
+  await win.evaluate(() =>
+    (globalThis as PageGlobals).drashti.links.look('youtube', 'https://youtu.be/AAAAAAAAAAA'),
+  );
+  await expect.poll(async () => (await view()).phase, { timeout: 60_000 }).toBe('looked');
+  await win.evaluate(async () => {
+    const links = (globalThis as PageGlobals).drashti.links;
+    await links.pickFolder();
+    const started = await links.download({ type: 'mp4', height: 1080, permission: true });
+    if (!started.ok) throw new Error(started.message);
+  });
+  await expect
+    .poll(async () => (await view()).progress?.done ?? 0, { timeout: 30_000 })
+    .toBeGreaterThan(2000);
+  // yt-dlp writes under a hidden name in the folder chosen.
+  const parts = readdirSync(chosen);
+  expect(parts).toHaveLength(1);
+  expect(parts[0]).toMatch(/^\.drashti-youtube-[0-9a-f-]+$/u);
+  expect(readdirSync(join(chosen, parts[0] ?? '')).some((n) => n.endsWith('.part'))).toBe(true);
+  // The fake and the child it started (as yt-dlp starts Deno and FFmpeg), both running.
+  const started = readFileSync(log, 'utf8')
+    .split('\n')
+    .filter((l) => l.startsWith('start download'))
+    .map((l) => l.split(' '))
+    .flatMap((p) => [Number(p[4]), Number(p[6])]);
+  expect(started).toHaveLength(2);
+  expect(started.filter(alive)).toEqual(started);
+
+  const mainPid = await app.evaluate(() => process.pid);
+  const helpers = under(mainPid).map((p) => p.pid);
+  for (const pid of started) expect(helpers).toContain(pid);
+  await app.close();
+
+  // Nothing of it is left: no part-file or work folder, and no yt-dlp (the fake), no child of it.
+  expect(readdirSync(chosen)).toEqual([]);
+  await expect.poll(() => started.filter(alive), { timeout: 15_000 }).toEqual([]);
+  await expect.poll(() => helpers.filter(alive), { timeout: 15_000 }).toEqual([]);
+  expect(
+    existsSync(join(userData, 'Link downloads')) ? readdirSync(join(userData, 'Link downloads')) : [],
+  ).toEqual([]);
+  const drashtiLog = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  expect(drashtiLog).not.toContain('Uncaught exception');
+  expect(drashtiLog).not.toContain('did not stop cleanly');
+});

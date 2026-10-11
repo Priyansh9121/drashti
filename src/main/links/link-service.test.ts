@@ -11,6 +11,7 @@ import { ADMIN_REFUSAL, isAdminChannel } from '../../shared/roles';
 import { lockAdminChannels, lockChannels, refusalFor, refusedNow } from '../ipc/handle';
 import { adminRefusals } from '../roles/admin-lock';
 import { SIMPLE_MODE_LOCKED, simpleModeRefusals } from '../simple-mode';
+import { toolEnv, toolFolders } from './youtube-tools';
 import { makeZip } from '../import/testing/zip-writer';
 import { nodeGet } from './http';
 import { LinkService, type LinkServiceDeps, type LinkWorker } from './link-service';
@@ -28,6 +29,16 @@ const FILE_LINK =
 const FOLDER_LINK =
   'https://www.dropbox.com/scl/fo/abc123placeholder/def456placeholder?rlkey=placeholderkey&dl=0';
 const VIDEO = Buffer.from('placeholder mp4 bytes '.repeat(5000));
+/** YouTube's tests: the fake yt-dlp (run by Electron as Node) and Drashti's own FFmpeg for its placeholders. */
+const APP = join(__dirname, '..', '..', '..');
+const FAKE = join(APP, 'tests', 'e2e', 'fake-yt-dlp.cjs');
+const FFMPEG = join(
+  APP,
+  'vendor',
+  'ffmpeg',
+  `${process.platform}-${process.arch}`,
+  process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg',
+);
 const ZIP = makeZip([
   { name: 'Placeholder deck.pptx', data: 'placeholder pptx' },
   { name: 'Videos/Placeholder 1080p.mp4', data: VIDEO, deflate: true },
@@ -461,5 +472,156 @@ describe('the highest video quality (Session 25c)', () => {
     expect(asked).toEqual([2160]);
     expect(h.service.view().fitted).toEqual([]);
     expect(h.imported[0]?.[1]).toBe(join(h.folder, 'Placeholder folder', 'Videos', 'Placeholder 1080p.mp4'));
+  });
+});
+
+describe.skipIf(!existsSync(FFMPEG))('YouTube (Session 25c), with the fake yt-dlp', () => {
+  /** The link service with YouTube's programs: the fake yt-dlp, told what to do. */
+  async function youtube(config: Record<string, unknown> = {}) {
+    const log = join(mkdtempSync(join(tmpdir(), 'drashti-fake-log-')), 'fake.log');
+    const h = await harness({
+      youtubeLaunch: (work) => ({
+        ok: true,
+        launch: {
+          command: process.execPath,
+          prefix: [FAKE],
+          env: {
+            ...toolEnv(toolFolders(work), process.platform),
+            ELECTRON_RUN_AS_NODE: '1',
+            DRASHTI_FAKE_YT_DLP_CONFIG: JSON.stringify({ log, steps: 4, stepMs: 20, ...config }),
+          },
+          deno: 'deno',
+          ffmpeg: FFMPEG,
+        },
+      }),
+    });
+    return { ...h, fakeLog: log };
+  }
+  const LINK = 'https://youtu.be/AAAAAAAAAAA?si=placeholderShare';
+  const starts = (log: string) =>
+    (existsSync(log) ? readFileSync(log, 'utf8') : '')
+      .split('\n')
+      .filter((l) => l.startsWith('start download'));
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  it('looks, refuses a download without the tick or above the setting, then saves under the title', async () => {
+    const h = await youtube();
+    h.service.look('youtube', LINK);
+    await until(() => h.service.view().phase === 'looked');
+    const look = h.service.view().look;
+    expect(look?.name).toBe('Placeholder video');
+    expect(look?.video?.heights.map((x) => x.height)).toEqual([4320, 2160, 1440, 1080, 720]);
+    // The tick, each time; the qualities offered, never above the setting.
+    const say = (r: ReturnType<LinkService['download']>) => (r.ok ? '' : r.message);
+    expect(say(h.service.download())).toContain('Tick the box first: This video is the mandir’s own');
+    expect(say(h.service.download({ type: 'mp4', height: 1080, permission: false }))).toContain(
+      'Tick the box',
+    );
+    expect(say(h.service.download({ type: 'mp4', height: 2160, permission: true }))).toContain(
+      'Above 1080p, the highest video quality an admin allows',
+    );
+    expect(say(h.service.download({ type: 'mp4', height: 999, permission: true }))).toContain(
+      'qualities this video offers',
+    );
+    expect(h.service.view().phase).toBe('looked');
+    expect(h.service.download({ type: 'mp4', height: 1080, permission: true }).ok).toBe(true);
+    expect(h.service.view().choice).toEqual({ type: 'mp4', height: 1080 });
+    await until(() => h.service.view().phase === 'done', 30_000);
+    expect(files(h.folder)).toEqual(['Placeholder video.mp4']);
+    expect(h.imported).toEqual([[join(h.folder, 'Placeholder video.mp4')]]);
+    // The same video again, as MP3, then MP4: never over a file already there.
+    for (const type of ['mp3', 'mp4'] as const) {
+      h.service.reset();
+      h.service.look('youtube', LINK);
+      await until(() => h.service.view().phase === 'looked');
+      expect(h.service.download({ type, height: type === 'mp4' ? 720 : null, permission: true }).ok).toBe(
+        true,
+      );
+      await until(() => h.service.view().phase === 'done', 30_000);
+    }
+    expect(files(h.folder)).toEqual([
+      'Placeholder video (2).mp4',
+      'Placeholder video.mp3',
+      'Placeholder video.mp4',
+    ]);
+    // No hidden work folder left in the folder, and Drashti's own work folders are empty.
+    expect(readdirSync(h.folder).filter((n) => n.startsWith('.'))).toEqual([]);
+    expect(readdirSync(join(h.folder, '..', 'Link downloads'))).toEqual([]);
+  });
+
+  it('logs the kind, the sizes and the outcome only: never the link, the id, the title or a file name', async () => {
+    const h = await youtube({ title: 'Placeholder secret title' });
+    h.service.look('youtube', LINK);
+    await until(() => h.service.view().phase === 'looked');
+    h.service.download({ type: 'mp4', height: 720, permission: true });
+    await until(() => h.service.view().phase === 'done', 30_000);
+    const log = h.logs.join('\n');
+    expect(log).toContain('Links: looked at a YouTube video link (up to 4320p (8K))');
+    expect(log).toMatch(/Links: a YouTube video download starts \(MP4, 720p, about [\d.]+ [KMG]B\)/u);
+    for (const secret of [
+      'AAAAAAAAAAA',
+      'youtu',
+      'placeholderShare',
+      'Placeholder secret title',
+      '.mp4',
+      h.folder,
+    ])
+      expect(log).not.toContain(secret);
+  });
+
+  it('waits while on air, never starting yt-dlp; stops one going (its child too), then carries on', async () => {
+    const h = await youtube({ steps: 30, stepMs: 60 });
+    h.service.look('youtube', LINK);
+    await until(() => h.service.view().phase === 'looked');
+    h.air.on = true;
+    h.service.download({ type: 'mp4', height: 720, permission: true });
+    expect(h.service.view().phase).toBe('waiting');
+    await new Promise((r) => setTimeout(r, 300));
+    expect(starts(h.fakeLog)).toEqual([]);
+    h.air.on = false;
+    await until(() => (h.service.view().progress?.done ?? 0) > 3000);
+    h.air.on = true;
+    await until(() => h.service.view().phase === 'waiting');
+    const [first] = starts(h.fakeLog).map((l) => l.split(' '));
+    const pid = Number(first?.[4]);
+    const child = Number(first?.[6]);
+    await until(() => !alive(pid) && !alive(child), 10_000);
+    h.air.on = false;
+    await until(() => h.service.view().phase === 'done', 60_000);
+    expect(starts(h.fakeLog)).toHaveLength(2);
+    expect(readFileSync(h.fakeLog, 'utf8')).toMatch(/^resume \d+$/mu);
+    expect(files(h.folder)).toEqual(['Placeholder video.mp4']);
+  });
+
+  it('a quit stops yt-dlp and all it started, and leaves no part-file', async () => {
+    const h = await youtube({ steps: 200, stepMs: 60 });
+    h.service.look('youtube', LINK);
+    await until(() => h.service.view().phase === 'looked');
+    h.service.download({ type: 'mp4', height: 720, permission: true });
+    await until(() => (h.service.view().progress?.done ?? 0) > 1000);
+    expect(readdirSync(h.folder).some((n) => n.startsWith('.drashti-youtube-'))).toBe(true);
+    h.service.close();
+    const [first] = starts(h.fakeLog).map((l) => l.split(' '));
+    await until(() => !alive(Number(first?.[4])) && !alive(Number(first?.[6])), 10_000);
+    expect(readdirSync(h.folder)).toEqual([]);
+  });
+
+  it('says plainly why a video cannot be had, and when YouTube’s programs are missing', async () => {
+    const h = await youtube({ live: 'is_live' });
+    h.service.look('youtube', LINK);
+    await until(() => h.service.view().phase === 'idle' && h.service.view().message !== null);
+    expect(h.service.view().message).toBe('That is a live stream still going. Download it after it ends.');
+    const missing = await harness({
+      youtubeLaunch: () => ({ ok: false, message: 'Drashti’s copy of yt-dlp or Deno is missing.' }),
+    });
+    const r = missing.service.look('youtube', LINK);
+    expect(r.ok ? '' : r.message).toBe('Drashti’s copy of yt-dlp or Deno is missing.');
   });
 });

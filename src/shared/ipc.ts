@@ -1,7 +1,7 @@
 import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
 import type { RolesResult, RolesView } from './roles';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
-import type { LinkKind, LinkResult, LinkView } from './links';
+import type { LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
 import type { MarkersResult, MediaMarkers } from './markers';
@@ -678,7 +678,7 @@ export interface InvokeContract {
   [IPC.links.view]: { args: []; result: LinkView };
   [IPC.links.look]: { args: [kind: LinkKind, link: string]; result: LinkResult };
   [IPC.links.pickFolder]: { args: []; result: LinkResult };
-  [IPC.links.download]: { args: []; result: LinkResult };
+  [IPC.links.download]: { args: [choice?: YouTubeChoice | null]; result: LinkResult };
   [IPC.links.stop]: { args: []; result: LinkResult };
   [IPC.links.reset]: { args: []; result: LinkResult };
   [IPC.links.showSaved]: { args: [runId: string | null]; result: null };

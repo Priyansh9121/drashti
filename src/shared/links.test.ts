@@ -79,9 +79,70 @@ describe('checking a pasted Dropbox link', () => {
     expect(message(checkLink('dropbox', 'placeholder words'))).toMatch(/not a link/u);
     expect(message(checkLink('dropbox', `${FILE}&x=${'a'.repeat(3000)}`))).toMatch(/too long/u);
   });
+});
 
-  it('never offers YouTube yet (it waits for a decision)', () => {
-    expect(message(checkLink('youtube', 'https://www.youtube.com/watch?v=AAAAAAAAAAA'))).toMatch(/YouTube/u);
+describe('checking a pasted YouTube link (Session 25c)', () => {
+  // A made-up video id (eleven As) and made-up share codes: no real video is named here.
+  const ID = 'AAAAAAAAAAA';
+  const VIDEO = `https://www.youtube.com/watch?v=${ID}`;
+
+  it('takes the addresses YouTube’s Share button gives for one video, as the video’s own page', () => {
+    for (const link of [
+      `https://youtu.be/${ID}?si=placeholderShare`,
+      `https://www.youtube.com/watch?v=${ID}`,
+      `https://youtube.com/watch?v=${ID}&t=42s`,
+      `https://m.youtube.com/watch?v=${ID}`,
+      `https://music.youtube.com/watch?v=${ID}&si=placeholderShare`,
+      `https://youtube.com/shorts/${ID}?si=placeholderShare`,
+      `https://www.youtube.com/live/${ID}?si=placeholderShare`,
+      `  https://youtu.be/${ID}  `,
+    ]) {
+      const r = ok(checkLink('youtube', link));
+      expect(r, link).not.toBeNull();
+      expect(r?.shape).toBe('video');
+      expect(r?.url).toBe(VIDEO);
+    }
+  });
+
+  it('takes only the video from a link that also names a playlist', () => {
+    expect(
+      ok(checkLink('youtube', `https://www.youtube.com/watch?v=${ID}&list=PLplaceholder&index=3`))?.url,
+    ).toBe(VIDEO);
+    expect(ok(checkLink('youtube', `https://youtu.be/${ID}?list=PLplaceholder`))?.url).toBe(VIDEO);
+  });
+
+  it('says plainly what a playlist, a channel and other pages are', () => {
+    expect(message(checkLink('youtube', 'https://www.youtube.com/playlist?list=PLplaceholder'))).toMatch(
+      /That is a playlist\. Drashti downloads one video at a time/u,
+    );
+    for (const page of [
+      'https://www.youtube.com/@placeholderchannel',
+      'https://www.youtube.com/channel/UCplaceholder',
+      'https://www.youtube.com/results?search_query=placeholder',
+      'https://www.youtube.com/',
+      'https://studio.youtube.com/video/AAAAAAAAAAA/edit',
+    ])
+      expect(message(checkLink('youtube', page)), page).toMatch(/not a video/u);
+  });
+
+  it('refuses http, other sites, look-alikes, odd ids and Dropbox links', () => {
+    expect(message(checkLink('youtube', `http://youtu.be/${ID}`))).toMatch(/https:\/\//u);
+    expect(message(checkLink('youtube', `https://youtube.com.example.net/watch?v=${ID}`))).toMatch(
+      /not a YouTube link/u,
+    );
+    expect(message(checkLink('youtube', `https://example.net/watch?v=${ID}`))).toMatch(/not a YouTube link/u);
+    expect(message(checkLink('youtube', `https://placeholder@youtu.be/${ID}`))).toMatch(
+      /not a YouTube link/u,
+    );
+    expect(message(checkLink('youtube', `https://youtu.be:8443/${ID}`))).toMatch(/not a YouTube link/u);
+    for (const id of ['AAAAAAAAAA', 'AAAAAAAAAAAA', 'AAAAAAAAAA!', ''])
+      expect(message(checkLink('youtube', `https://www.youtube.com/watch?v=${id}`)), id).toMatch(
+        /does not name a video/u,
+      );
+    expect(message(checkLink('youtube', FILE))).toMatch(/Dropbox link, not a YouTube link/u);
+    expect(message(checkLink('youtube', `${VIDEO}&x=${'a'.repeat(3000)}`))).toMatch(
+      /too long to be one from YouTube/u,
+    );
   });
 });
 

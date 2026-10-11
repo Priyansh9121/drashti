@@ -109,12 +109,11 @@ test('Dropbox: a file link and a folder link are saved in the chosen folder, the
   const win = await operatorPage(app);
   await operatorReady(win);
 
-  // File > Import from a Link…: which kind first; YouTube shows, but cannot be picked yet, and says why.
+  // File > Import from a Link…: which kind first (YouTube's own test is import-youtube.spec.ts).
   await chooseMenuItem(app, 'import-from-link');
   const dialog = win.getByTestId('link-dialog');
   await expect(dialog).toBeVisible();
-  await expect(win.getByTestId('link-kind-youtube')).toBeDisabled();
-  await expect(win.getByTestId('link-kind-youtube-hint')).toContainText('YouTube Studio');
+  await expect(win.getByTestId('link-kind-youtube-hint')).toContainText('only the mandir’s own');
   await expect(win.getByTestId('link-text')).toHaveCount(0);
   await win.getByTestId('link-kind-dropbox').click();
   await expect(win.getByTestId('link-kind-dropbox')).toHaveAttribute('aria-checked', 'true');

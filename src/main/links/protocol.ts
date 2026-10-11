@@ -1,4 +1,7 @@
+import type { VideoDetails, YouTubeType } from '../../shared/links';
 import type { LinkErrorCode } from './http';
+import type { YoutubeProblemCode } from './youtube';
+import type { YtDlpLaunch } from './youtube-run';
 
 /*
  * Messages between the main process and the download process (Session 25b).
@@ -24,7 +27,19 @@ export type ToWorker =
       maxFiles: number;
       maxBytes: number;
     }
-  /** The stream went on air (or off): wait (or go on). */
+  /** YouTube (Session 25c): ask yt-dlp for the video's details, in `cwd` (a Drashti work folder). */
+  | { type: 'yt-look'; link: string; launch: YtDlpLaunch; cwd: string }
+  /** YouTube: download it into `workDir` (a hidden folder in the folder chosen). */
+  | {
+      type: 'yt-download';
+      link: string;
+      launch: YtDlpLaunch;
+      cwd: string;
+      workDir: string;
+      choice: { type: YouTubeType; height: number | null };
+      keepFree: number;
+    }
+  /** The stream went on air (or off): wait (or go on). A YouTube download stops, and starts again. */
   | { type: 'hold'; on: boolean }
   | { type: 'stop' };
 
@@ -35,4 +50,10 @@ export type FromWorker =
   /** The hidden folder a zip is unpacked into first (cleared after a crash). */
   | { type: 'work-folder'; path: string }
   | { type: 'unpacked'; folder: string; files: string[]; bytes: number }
-  | { type: 'failed'; code: LinkErrorCode | 'unpack'; message: string };
+  /** YouTube: the video's details. */
+  | { type: 'yt-looked'; details: VideoDetails }
+  /** YouTube: yt-dlp is running as this process (null: it ended), for the main process to stop at a quit. */
+  | { type: 'tool'; pid: number | null }
+  /** YouTube: downloaded, as this file in the work folder. */
+  | { type: 'yt-downloaded'; file: string; bytes: number }
+  | { type: 'failed'; code: LinkErrorCode | 'unpack' | YoutubeProblemCode; message: string };

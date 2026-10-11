@@ -177,7 +177,7 @@ import { StreamService } from './stream/stream-service';
 import { findFfmpeg } from './stream/ffmpeg-path';
 import { ffmpegSelfTest } from './stream/ffmpeg-selftest';
 import { youtubeSelfTest } from './links/youtube-selftest';
-import { findYoutubeTools } from './links/youtube-tools';
+import { findYoutubeTools, toolFolders, youtubeLaunch } from './links/youtube-tools';
 import { spawnStreamWorker } from './stream/stream-worker';
 import { ConvertService } from './convert/convert-service';
 import { diskFreeBytes } from './import/media-store';
@@ -2268,6 +2268,34 @@ function start(): void {
           report(null, fraction);
         },
       }),
+    // YouTube (Session 25c): Drashti's own yt-dlp and Deno; in tests only ever the fake (never the real one).
+    youtubeLaunch: (work) =>
+      youtubeLaunch(
+        {
+          packaged: app.isPackaged,
+          platform: process.platform,
+          testing: !app.isPackaged && Object.keys(process.env).some((k) => k.startsWith('DRASHTI_TEST_')),
+          fake: app.isPackaged ? null : (process.env['DRASHTI_TEST_FAKE_YT_DLP'] ?? null),
+          fakeConfig: app.isPackaged ? null : (process.env['DRASHTI_TEST_FAKE_YT_DLP_CONFIG'] ?? null),
+          execPath: process.execPath,
+          tools: findYoutubeTools({
+            packaged: app.isPackaged,
+            resourcesPath: process.resourcesPath,
+            appPath: app.getAppPath(),
+            platform: process.platform,
+            arch: process.arch,
+          }),
+          ffmpeg: findFfmpeg({
+            packaged: app.isPackaged,
+            resourcesPath: process.resourcesPath,
+            appPath: app.getAppPath(),
+            platform: process.platform,
+            arch: process.arch,
+            override: process.env['DRASHTI_FFMPEG'],
+          }),
+        },
+        toolFolders(work),
+      ),
     route: { testOrigin: testLinkOrigin, guard: testLinkGuard || testLinkOrigin !== null },
   });
   stops.add('links', () => {
@@ -2284,7 +2312,7 @@ function start(): void {
       : notLinksOperator,
   );
   handle(IPC.links.pickFolder, (e) => (fromOperator(e) ? links.pickFolder() : notLinksOperator));
-  handle(IPC.links.download, (e) => (fromOperator(e) ? links.download() : notLinksOperator));
+  handle(IPC.links.download, (e, choice) => (fromOperator(e) ? links.download(choice) : notLinksOperator));
   handle(IPC.links.stop, (e) => (fromOperator(e) ? links.stop() : notLinksOperator));
   handle(IPC.links.reset, (e) => (fromOperator(e) ? links.reset() : notLinksOperator));
   handle(IPC.links.setMaxHeight, (e, height) =>

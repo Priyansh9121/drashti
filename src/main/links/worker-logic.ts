@@ -3,6 +3,7 @@ import { fetchToFile, lookAt } from './download';
 import { type Get, LinkError, linkMessage } from './http';
 import type { FromWorker, ToWorker } from './protocol';
 import { unpackFolderZip } from './unzip';
+import { youtubeWorker } from './youtube-worker';
 
 /*
  * What the download process does with each message (Session 25b). Kept apart
@@ -27,13 +28,23 @@ export function linkWorker(
 ): (message: ToWorker) => void {
   let held = false;
   const stop = new AbortController();
+  // YouTube (Session 25c): yt-dlp, run from this process.
+  const youtube = youtubeWorker(post, (dir) => deps.freeBytes(dir));
   return (m) => {
     switch (m.type) {
       case 'hold':
         held = m.on;
+        youtube.hold(m.on);
         return;
       case 'stop':
         stop.abort();
+        youtube.stop();
+        return;
+      case 'yt-look':
+        youtube.look(m);
+        return;
+      case 'yt-download':
+        youtube.download(m);
         return;
       case 'look':
         lookAt(m.link, deps.get, { ...m.route, signal: stop.signal }).then(
