@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import type { YtDlpLaunch } from './youtube-run';
 
 /*
  * The two programs YouTube in Import from a Link runs (Session 25c), fetched
@@ -165,4 +166,67 @@ export function killTree(pid: number, platform: NodeJS.Platform = process.platfo
       // Gone already.
     }
   }
+}
+
+/** Where YouTube's programs come from this time (Session 25c). */
+export interface LaunchPlace {
+  packaged: boolean;
+  platform: NodeJS.Platform;
+  /** Any DRASHTI_TEST_ switch is on (ignored in a packaged Drashti, as every test switch is). */
+  testing: boolean;
+  /** Tests only: the fake yt-dlp's script (DRASHTI_TEST_FAKE_YT_DLP), run by Electron as Node. */
+  fake: string | null;
+  /** Tests only: what the fake is told to do (DRASHTI_TEST_FAKE_YT_DLP_CONFIG, JSON). */
+  fakeConfig: string | null;
+  execPath: string;
+  tools: YoutubeTools | null;
+  ffmpeg: string | null;
+}
+
+/**
+ * How yt-dlp is started: Drashti's own, with the environment built for it. With any test switch on,
+ * never the real one: the fake when a test gives one, else nothing (YouTube says it is off for tests).
+ * A packaged Drashti ignores the test switches and always runs its own.
+ */
+export function youtubeLaunch(
+  place: LaunchPlace,
+  folders: ToolFolders,
+): { ok: true; launch: YtDlpLaunch } | { ok: false; message: string } {
+  const env = toolEnv(folders, place.platform);
+  if (!place.ffmpeg)
+    return {
+      ok: false,
+      message:
+        'Drashti’s copy of FFmpeg is missing, so it cannot download from YouTube. Install Drashti again.',
+    };
+  if (!place.packaged && place.fake)
+    return {
+      ok: true,
+      launch: {
+        command: place.execPath,
+        prefix: [place.fake],
+        env: {
+          ...env,
+          ELECTRON_RUN_AS_NODE: '1',
+          ...(place.fakeConfig ? { DRASHTI_FAKE_YT_DLP_CONFIG: place.fakeConfig } : {}),
+        },
+        deno: place.tools?.deno ?? 'deno',
+        ffmpeg: place.ffmpeg,
+      },
+    };
+  if (!place.packaged && place.testing)
+    return {
+      ok: false,
+      message: 'YouTube downloads are off in this test run: tests never start the real yt-dlp.',
+    };
+  if (!place.tools)
+    return {
+      ok: false,
+      message:
+        'Drashti’s copy of yt-dlp or Deno is missing, so it cannot download from YouTube. Install Drashti again.',
+    };
+  return {
+    ok: true,
+    launch: { command: place.tools.ytDlp, prefix: [], env, deno: place.tools.deno, ffmpeg: place.ffmpeg },
+  };
 }

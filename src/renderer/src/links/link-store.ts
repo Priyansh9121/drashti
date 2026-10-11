@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { LinkKind, LinkResult, LinkView } from '../../../shared/links';
+import type { LinkKind, LinkResult, LinkView, YouTubeType } from '../../../shared/links';
 
 /** Where an import run's files were saved from a link, and the videos imported as smaller copies. */
 export interface SavedFrom {
@@ -26,7 +26,11 @@ interface LinkStore {
   error: string | null;
   /** Import runs from a link: where their files were saved, and which videos were made smaller first. */
   savedFor: Record<string, SavedFrom>;
+  /** A YouTube video's choices before Download (Session 25c): the tick starts unticked each time. */
+  choice: { type: YouTubeType; height: number | null; permission: boolean };
 }
+
+const NO_CHOICE = { type: 'mp4' as const, height: null, permission: false };
 
 export const useLinks = create<LinkStore>(() => ({
   view: null,
@@ -34,6 +38,7 @@ export const useLinks = create<LinkStore>(() => ({
   kind: null,
   error: null,
   savedFor: {},
+  choice: NO_CHOICE,
 }));
 
 let connected = false;
@@ -42,9 +47,14 @@ let reported: string | null = null;
 
 const somethingLive = () => useEngine.getState().state?.live.presentationId != null;
 
+/** The main process's view: another video looked at starts its choices afresh, the tick unticked. */
+function takeView(view: LinkView): void {
+  useLinks.setState((s) => ({ view, choice: view.link !== s.view?.link ? NO_CHOICE : s.choice }));
+}
+
 function heard(view: LinkView): void {
+  takeView(view);
   useLinks.setState((s) => ({
-    view,
     savedFor:
       view.runId && view.saved
         ? {
@@ -76,9 +86,7 @@ export function connectLinks(): void {
   connected = true;
   window.drashti.links.onChanged(heard);
   window.drashti.links.onOpen(openLinkDialog);
-  void window.drashti.links.view().then((view) => {
-    useLinks.setState({ view });
-  });
+  void window.drashti.links.view().then(takeView);
 }
 
 export function openLinkDialog(): void {
@@ -97,14 +105,26 @@ export function chooseKind(kind: LinkKind): void {
 /** Run a request; its view (when it has one) and refusal land in the store. */
 async function act(run: () => Promise<LinkResult>): Promise<boolean> {
   const result = await run();
-  if (result.view) useLinks.setState({ view: result.view });
+  if (result.view) takeView(result.view);
   useLinks.setState({ error: result.ok ? null : result.message });
   return result.ok;
 }
 
 export const lookAtLink = (kind: LinkKind, link: string) => act(() => window.drashti.links.look(kind, link));
 export const pickSaveFolder = () => act(() => window.drashti.links.pickFolder());
-export const startDownload = () => act(() => window.drashti.links.download());
+/** Download: a YouTube video with its choices (the tick is needed again for the next one). */
+export async function startDownload(): Promise<boolean> {
+  const { view, choice } = useLinks.getState();
+  const youtube = view?.look?.video !== undefined;
+  const ok = await act(() => window.drashti.links.download(youtube ? choice : null));
+  if (ok && youtube) useLinks.setState((s) => ({ choice: { ...s.choice, permission: false } }));
+  return ok;
+}
+
+/** Change a YouTube video's choices before Download. */
+export function choose(change: Partial<LinkStore['choice']>): void {
+  useLinks.setState((s) => ({ choice: { ...s.choice, ...change }, error: null }));
+}
 export const stopDownload = () => act(() => window.drashti.links.stop());
 export const anotherLink = () => act(() => window.drashti.links.reset());
 /** The admin's highest video quality, for YouTube and Dropbox (Session 25c). */

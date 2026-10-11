@@ -1501,9 +1501,11 @@ test('Import from a Link: each state of the dialog, the status bar and the repor
     await app.evaluate(() => {
       (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(false);
     });
-    // Saved, a video made 1080p, the .txt not taken; then the report says where they were saved.
+    // Saved, a video made 1080p, the .txt not taken; then the report says where they were saved (with the
+    // dialog open, the report waits for See the import report).
     const report = win.getByTestId('import-report');
-    await expect(report).toBeVisible({ timeout: 180_000 });
+    await win.getByTestId('link-open-report').click({ timeout: 180_000 });
+    await expect(report).toBeVisible();
     await expect(report.getByTestId('report-saved-in')).toBeVisible();
     await shot(win, 'import-link-report');
     await report.getByRole('button', { name: 'Close', exact: true }).first().click();
@@ -1515,4 +1517,73 @@ test('Import from a Link: each state of the dialog, the status bar and the repor
   } finally {
     await standIn.close();
   }
+});
+
+test('Import from a Link, YouTube: the choices, the tick, downloading and a refusal (Session 25c)', async () => {
+  test.setTimeout(300_000);
+  test.skip(!testFfmpeg(), 'FFmpeg is not fetched here');
+  const work = mkdtempSync(join(tmpdir(), 'drashti-shots-youtube-'));
+  const chosen = join(work, 'Sabha downloads');
+  const fake = join(__dirname, 'fake-yt-dlp.cjs');
+  const link = 'https://youtu.be/AAAAAAAAAAA?si=placeholderShare';
+  const launch = async (config: Record<string, unknown>) => {
+    const { app } = await launchApp({
+      DRASHTI_TEST_FAKE_YT_DLP: fake,
+      DRASHTI_TEST_FAKE_YT_DLP_CONFIG: JSON.stringify({
+        title: 'Placeholder sabha video',
+        duration: 3725,
+        ...config,
+      }),
+      DRASHTI_TEST_DOWNLOADS_DIR: join(work, 'Videos'),
+    });
+    const win = await operatorPage(app);
+    await win.setViewportSize({ width: 1280, height: 720 });
+    await operatorReady(win);
+    await app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
+    }, chosen);
+    await chooseMenuItem(app, 'import-from-link');
+    await win.getByTestId('link-kind-youtube').click();
+    return { app, win };
+  };
+  // The choices: MP4 at the qualities the video offers, those above the admin's 1080p not to be picked.
+  const first = await launch({ steps: 400, stepMs: 200 });
+  await first.win.getByTestId('link-text').fill(link);
+  await expect(first.win.getByTestId('link-name')).toHaveText('Placeholder sabha video', { timeout: 60_000 });
+  await first.win.getByTestId('link-choose-folder').click();
+  await expect(first.win.getByTestId('link-folder')).toHaveText(chosen);
+  await shot(first.win, 'import-link-youtube');
+  // The tick, and Download wakes; then downloading.
+  await first.win.getByTestId('link-permission').check();
+  await expect(first.win.getByTestId('link-download')).toBeEnabled();
+  await shot(first.win, 'import-link-youtube-ticked');
+  await first.win.getByTestId('link-download').click();
+  await expect(first.win.getByTestId('link-going-words')).toContainText('Downloading the MP4, 1080p', {
+    timeout: 60_000,
+  });
+  await first.win.waitForTimeout(1500);
+  await shot(first.win, 'import-link-youtube-going');
+  await first.win.getByTestId('link-stop').click();
+  // MP3: the best sound, no quality to choose.
+  await expect(first.win.getByTestId('link-message')).toContainText('Stopped. Nothing was kept.');
+  await first.win.getByTestId('link-type-mp3').click();
+  await expect(first.win.getByTestId('link-mp3-words')).toBeVisible();
+  await shot(first.win, 'import-link-youtube-mp3');
+  // The admin's setting at 2160p (4K): 2160p can be picked, 4320p (8K) still cannot.
+  await first.win.getByTestId('link-type-mp4').click();
+  await first.win.getByTestId('link-max-height').selectOption('2160');
+  await expect(first.win.getByTestId('link-quality-2160')).toBeEnabled();
+  await first.win.getByTestId('link-quality-2160').click();
+  await shot(first.win, 'import-link-youtube-2160');
+  await first.app.close();
+  // A video that needs signing in: plain words, and the YouTube Studio way.
+  const refused = await launch({
+    failWith: 'ERROR: [youtube] AAAAAAAAAAA: Private video. Sign in if you have been granted access',
+  });
+  await refused.win.getByTestId('link-text').fill(link);
+  await expect(refused.win.getByTestId('link-dialog')).toContainText('Drashti never signs in to YouTube', {
+    timeout: 60_000,
+  });
+  await shot(refused.win, 'import-link-youtube-refused');
+  await refused.app.close();
 });

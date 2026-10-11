@@ -35,7 +35,7 @@ import type {
 import type { TranslitStyle } from './translit';
 import type { ModeResult, OperatorMode } from './mode';
 import type { RolesResult, RolesView } from './roles';
-import type { LinkKind, LinkResult, LinkView } from './links';
+import type { LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
 import type { MarkersResult, MediaMarkers } from './markers';
@@ -167,7 +167,8 @@ export interface DrashtiBridge {
     view(): Promise<LinkView>;
     look(kind: LinkKind, link: string): Promise<LinkResult>;
     pickFolder(): Promise<LinkResult>;
-    download(): Promise<LinkResult>;
+    /** Download what was looked at: a YouTube video with its type, quality and the permission tick. */
+    download(choice?: YouTubeChoice | null): Promise<LinkResult>;
     stop(): Promise<LinkResult>;
     reset(): Promise<LinkResult>;
     /** Show where the files were saved: an import run's (its report), or the dialog's download (null). */

@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatBytes } from '../../../shared/format';
 import {
+  aboveTheSetting,
   checkLink,
   heightLabel,
   LINK_HEIGHTS,
   type LinkKind,
   type LinkView,
-  YOUTUBE_NOT_YET,
+  PERMISSION_WORDS,
+  type VideoDetails,
 } from '../../../shared/links';
 import { useMode } from '../operator/mode-store';
 import { Badge } from '../ui/Badge';
@@ -20,9 +22,11 @@ import { Notice } from '../ui/Notice';
 import { Progress } from '../ui/Progress';
 import { radioKeys, radioTabIndex } from '../ui/radio';
 import { plural } from '../ui/text';
+import { Checkbox } from '../ui/Toggle';
 import { Truncate } from '../ui/Truncate';
 import {
   anotherLink,
+  choose,
   chooseKind,
   closeLinkDialog,
   connectLinks,
@@ -42,11 +46,19 @@ import {
  * of link, the link, what it holds, where to save, Download. The files are
  * saved in that folder (Drashti never moves or deletes them), then imported
  * through the normal import. Closing this never stops a download: the status
- * bar shows it, and a press on that opens this again.
+ * bar shows it, and a press on that opens this again. YouTube (Session 25c):
+ * MP4 or MP3, the quality up to the admin's setting, and the permission tick
+ * each time.
  */
 
 const KINDS: { id: LinkKind; label: string; hint: string; icon: Icon; ready: boolean }[] = [
-  { id: 'youtube', label: 'YouTube', hint: YOUTUBE_NOT_YET, icon: MonitorPlay, ready: false },
+  {
+    id: 'youtube',
+    label: 'YouTube',
+    hint: 'One video, as MP4 or MP3: only the mandir’s own, or one its owner allows us to use.',
+    icon: MonitorPlay,
+    ready: true,
+  },
   {
     id: 'dropbox',
     label: 'Dropbox',
@@ -143,7 +155,13 @@ function LinkField({ kind, view, locked }: { kind: LinkKind; view: LinkView; loc
     <Field
       label={`Paste the ${kind === 'dropbox' ? 'Dropbox' : 'YouTube'} link`}
       // The help, until a problem is said (which carries its own help: never the same line twice).
-      hint={kind === 'dropbox' && error === null ? 'In Dropbox, use Share, then Copy link.' : undefined}
+      hint={
+        error !== null
+          ? undefined
+          : kind === 'dropbox'
+            ? 'In Dropbox, use Share, then Copy link.'
+            : 'On YouTube, use Share, then Copy.'
+      }
       error={error}
     >
       <TextInput
@@ -151,7 +169,7 @@ function LinkField({ kind, view, locked }: { kind: LinkKind; view: LinkView; loc
         data-autofocus
         value={text}
         disabled={locked}
-        placeholder="https://www.dropbox.com/…"
+        placeholder={kind === 'dropbox' ? 'https://www.dropbox.com/…' : 'https://youtu.be/…'}
         spellCheck={false}
         autoComplete="off"
         onChange={(e) => {
@@ -173,6 +191,23 @@ function Holds({ view }: { view: LinkView }) {
     );
   const look = view.look;
   if (!look) return null;
+  if (look.video)
+    return (
+      <div className="space-y-1 text-sm" data-testid="link-holds">
+        <p>
+          A video: <strong data-testid="link-name">{look.name}</strong>
+          {look.video.duration !== null && (
+            <span data-testid="link-duration"> ({formatDuration(look.video.duration)})</span>
+          )}
+          .
+        </p>
+        <p className="text-xs text-muted">
+          Drashti saves the video itself, with no adverts: YouTube sends its adverts apart from the video. A
+          sponsor message the maker speaks in the video is part of it: set markers to start and end the video
+          round it.
+        </p>
+      </div>
+    );
   return (
     <div className="space-y-1 text-sm" data-testid="link-holds">
       <p>
@@ -207,6 +242,145 @@ function SaveIn({ view, locked }: { view: LinkView; locked: boolean }) {
         </Button>
       </div>
       <p className="text-xs text-faint">Drashti never moves or deletes what it saves there.</p>
+    </div>
+  );
+}
+
+/** 1:05, 12:00, 1:02:03. */
+function formatDuration(seconds: number): string {
+  const s = Math.round(seconds);
+  const two = (n: number) => String(n).padStart(2, '0');
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return h > 0 ? `${String(h)}:${two(m)}:${two(s % 60)}` : `${String(m)}:${two(s % 60)}`;
+}
+
+const about = (bytes: number | null) => (bytes === null ? '' : `about ${formatBytes(bytes)}`);
+
+/**
+ * A YouTube video's choices (Session 25c): MP4 or MP3; for MP4 the qualities it offers, those above the
+ * admin's setting shown but not to be picked, with why; and the permission tick, each time.
+ */
+function YouTubeChoices({ video, view, locked }: { video: VideoDetails; view: LinkView; locked: boolean }) {
+  const choice = useLinks((s) => s.choice);
+  const allowed = video.heights.filter((h) => h.height <= view.maxHeight);
+  const above = video.heights.some((h) => h.height > view.maxHeight);
+  // Until one is picked: the tallest the setting allows.
+  const height = choice.height ?? allowed[0]?.height ?? null;
+  const types = [
+    { id: 'mp4' as const, label: 'MP4', hint: 'The video' },
+    { id: 'mp3' as const, label: 'MP3', hint: 'Its sound only' },
+  ];
+  return (
+    <div className="space-y-3" data-testid="link-youtube">
+      <div
+        role="radiogroup"
+        aria-label="Save it as"
+        className="grid grid-cols-2 gap-2"
+        onKeyDown={radioKeys(
+          types.map((t) => t.id),
+          choice.type,
+          (t) => {
+            if (!locked) choose({ type: t });
+          },
+        )}
+      >
+        {types.map((t, i) => {
+          const on = choice.type === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              aria-disabled={locked || undefined}
+              tabIndex={radioTabIndex(on, i, true)}
+              data-testid={`link-type-${t.id}`}
+              onClick={() => {
+                if (!locked) choose({ type: t.id });
+              }}
+              className={cx(
+                'rounded-lg border px-3 py-2 text-left text-sm',
+                on ? 'border-accent bg-panel-3' : 'border-field bg-panel-2',
+              )}
+            >
+              <span className="font-medium">{t.label}</span>{' '}
+              <span className="text-xs text-muted">{t.hint}</span>
+            </button>
+          );
+        })}
+      </div>
+      {choice.type === 'mp4' ? (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-muted" id="link-quality-label">
+            Quality
+          </p>
+          <div
+            role="radiogroup"
+            aria-labelledby="link-quality-label"
+            className="flex flex-wrap gap-2"
+            onKeyDown={radioKeys(
+              allowed.map((h) => h.height),
+              height ?? 0,
+              (h) => {
+                if (!locked) choose({ height: h });
+              },
+            )}
+          >
+            {video.heights.map((h) => {
+              const usable = h.height <= view.maxHeight;
+              const on = usable && h.height === height;
+              return (
+                <button
+                  key={h.height}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  aria-disabled={!usable || locked || undefined}
+                  disabled={!usable}
+                  tabIndex={usable ? radioTabIndex(on, allowed.indexOf(h), height !== null) : -1}
+                  data-testid={`link-quality-${String(h.height)}`}
+                  aria-describedby={usable ? undefined : 'link-quality-above'}
+                  onClick={() => {
+                    if (usable && !locked) choose({ height: h.height });
+                  }}
+                  className={cx(
+                    'rounded-md border px-2.5 py-1.5 text-left text-sm',
+                    on ? 'border-accent bg-panel-3' : 'border-field bg-panel-2',
+                    !usable && 'cursor-not-allowed border-dashed text-muted',
+                  )}
+                >
+                  {heightLabel(h.height)}
+                  {h.bytes !== null && <span className="ml-1 text-xs text-muted">{about(h.bytes)}</span>}
+                </button>
+              );
+            })}
+          </div>
+          {above && (
+            <p className="text-xs text-muted" id="link-quality-above" data-testid="link-quality-above">
+              {aboveTheSetting(view.maxHeight)}
+            </p>
+          )}
+          {allowed.length === 0 && (
+            <p className="text-xs text-warning-fg">
+              Every quality this video offers is above the setting: an admin can raise it, or save the MP3.
+            </p>
+          )}
+        </div>
+      ) : (
+        <p className="text-xs text-muted" data-testid="link-mp3-words">
+          The best sound the video has{video.soundBytes !== null ? `, ${about(video.soundBytes)}` : ''}.
+        </p>
+      )}
+      <Checkbox
+        label={PERMISSION_WORDS}
+        checked={choice.permission}
+        disabled={locked}
+        data-testid="link-permission"
+        onChange={(e) => {
+          choose({ permission: e.target.checked });
+        }}
+      />
     </div>
   );
 }
@@ -252,11 +426,17 @@ function Going({ view }: { view: LinkView }) {
   let words = STATUS[view.phase] ?? '';
   if (view.phase === 'waiting')
     words = `Waiting: ${view.waitingFor ?? 'the stream is on air or recording'}. It goes on by itself afterwards.`;
-  else if (view.phase === 'downloading' && p)
+  else if (view.phase === 'downloading' && p) {
+    const what = view.choice
+      ? view.choice.type === 'mp3'
+        ? 'Downloading the MP3'
+        : `Downloading the MP4, ${heightLabel(view.choice.height ?? 0)}`
+      : 'Downloading';
+    const of = view.choice ? 'of about' : 'of';
     words = p.total
-      ? `Downloading: ${formatBytes(p.done)} of ${formatBytes(p.total)}.`
-      : `Downloading: ${formatBytes(p.done)}.`;
-  else if (view.phase === 'converting')
+      ? `${what}: ${formatBytes(Math.min(p.done, p.total))} ${of} ${formatBytes(p.total)}.`
+      : `${what}: ${formatBytes(p.done)}.`;
+  } else if (view.phase === 'converting')
     words = view.waitingFor
       ? `A video above ${most} waits to be made ${most}: ${view.waitingFor}. It goes on by itself afterwards.`
       : `Making a video above ${most} a ${most} copy for the library${fraction !== null ? `: ${String(Math.round(fraction * 100))}%` : '…'}`;
@@ -355,6 +535,7 @@ export function LinkDialog({ platform }: { platform: string }) {
   const view = useLinks((s) => s.view);
   const chosen = useLinks((s) => s.kind);
   const error = useLinks((s) => s.error);
+  const choice = useLinks((s) => s.choice);
   const simple = useMode((s) => s.mode === 'simple');
   useEffect(() => {
     connectLinks();
@@ -365,10 +546,16 @@ export function LinkDialog({ platform }: { platform: string }) {
   // While a download goes (or once one is finished) the dialog shows that one's kind and link.
   const kind = busy || finished || view.phase === 'looked' ? (view.kind ?? chosen) : chosen;
   const locked = busy || finished;
+  const video = view.look?.video;
+  // YouTube: a quality the setting allows (or the MP3), and the tick, each time.
+  const youtubeReady =
+    !video ||
+    (choice.permission && (choice.type === 'mp3' || video.heights.some((h) => h.height <= view.maxHeight)));
   const canDownload =
     !busy &&
     view.saved === null &&
     view.look !== null &&
+    youtubeReady &&
     (view.phase === 'looked' || view.phase === 'failed' || view.phase === 'stopped');
   return (
     <Dialog
@@ -417,6 +604,9 @@ export function LinkDialog({ platform }: { platform: string }) {
           />
         )}
         <Holds view={view} />
+        {view.look?.video && !finished && (
+          <YouTubeChoices video={view.look.video} view={view} locked={busy} />
+        )}
         {view.look && !finished && <SaveIn view={view} locked={locked} />}
         {busy && <Going view={view} />}
         {(view.phase === 'failed' || view.phase === 'stopped') && view.message && (
@@ -454,7 +644,7 @@ export function LinkStatus() {
     view.phase === 'waiting'
       ? 'Download waits: on air or recording'
       : view.phase === 'downloading'
-        ? `Downloading from a link${percent}`
+        ? `Downloading from ${view.kind === 'youtube' ? 'YouTube' : 'a link'}${percent}`
         : view.phase === 'unpacking'
           ? 'Unpacking a download'
           : view.phase === 'converting'

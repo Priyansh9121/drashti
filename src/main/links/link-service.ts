@@ -4,6 +4,7 @@ import { rename, rm } from 'node:fs/promises';
 import { basename, join, relative, sep } from 'node:path';
 import { formatBytes } from '../../shared/format';
 import {
+  aboveTheSetting,
   checkLink,
   heightLabel,
   isLinkHeight,
@@ -16,11 +17,16 @@ import {
   MAX_ZIP_BYTES,
   MAX_ZIP_FILES,
   NOT_TAKEN_REASON,
+  PERMISSION_WORDS,
   takenKind,
+  type YouTubeChoice,
 } from '../../shared/links';
 import { fileProblem } from '../plain-errors';
 import { claimFile, safeName } from './names';
 import type { FromWorker, ToWorker, WorkerRoute } from './protocol';
+import { choiceWords } from './youtube';
+import type { YtDlpLaunch } from './youtube-run';
+import { killTree } from './youtube-tools';
 
 /*
  * Import from a Link, the main process's side (Session 25b). One link at a
@@ -78,6 +84,11 @@ export interface LinkServiceDeps {
     maxHeight: number,
     report: (waitingFor: string | null, fraction: number | null) => void,
   ): Promise<{ ok: true; copy: string | null } | { ok: false; message: string }>;
+  /**
+   * YouTube (Session 25c): how yt-dlp is started, with its home, temporary folder and Deno's cache in
+   * `work` (a Drashti work folder, emptied afterwards); or why it cannot be.
+   */
+  youtubeLaunch?(work: string): { ok: true; launch: YtDlpLaunch } | { ok: false; message: string };
   /** Tests only: where requests go instead, and the guard. */
   route: WorkerRoute;
   /** How often to look at the stream while downloading (ms). */
@@ -87,7 +98,7 @@ export interface LinkServiceDeps {
 const WAITING_FOR = 'the stream is on air or recording';
 const ACTIVE = new Set<LinkView['phase']>(['waiting', 'downloading', 'unpacking', 'converting', 'importing']);
 /** Only these are ever cleared at a start (never anything else a record might name). */
-const OURS = /^\.drashti-(download-[0-9a-f-]+\.part|unpacking-.+)$/u;
+const OURS = /^\.drashti-(download-[0-9a-f-]+\.part|unpacking-.+|youtube-[0-9a-f-]+)$/u;
 
 const KIND_WORD: Record<LinkKind, string> = { dropbox: 'Dropbox', youtube: 'YouTube' };
 
@@ -103,6 +114,10 @@ export class LinkService {
   private downloadedBytes = 0;
   /** Import runs from a link: where to show their files (the last few). */
   private readonly byRun = new Map<string, string>();
+  /** YouTube: yt-dlp's process while it runs (stopped with all it started at a stop or a quit). */
+  private toolPid: number | null = null;
+  /** YouTube: the Drashti work folder of a look or download (its home, temporary folder, Deno's cache). */
+  private toolsWork: string | null = null;
 
   constructor(private readonly deps: LinkServiceDeps) {
     this.clearLeftovers();
@@ -121,6 +136,7 @@ export class LinkService {
       fitted: [],
       runId: null,
       maxHeight: deps.maxHeight.get(),
+      choice: null,
     };
   }
 
@@ -226,10 +242,36 @@ export class LinkService {
     this.worker = null;
     this.job = null;
     this.stopWatching();
+    // yt-dlp, and the Deno and FFmpeg it started, stop with the download process.
+    if (this.toolPid !== null) killTree(this.toolPid);
+    this.toolPid = null;
     if (worker) {
       worker.post({ type: 'stop' });
       worker.kill();
     }
+    this.clearToolsWork();
+  }
+
+  /** The work folder yt-dlp and Deno ran in: emptied once they have stopped. */
+  private clearToolsWork(): void {
+    if (this.toolsWork) rmSync(this.toolsWork, { recursive: true, force: true });
+    this.toolsWork = null;
+  }
+
+  /** A new work folder for yt-dlp and Deno, and how to start yt-dlp with it. */
+  private youtubeRun(): { ok: true; launch: YtDlpLaunch; cwd: string } | { ok: false; message: string } {
+    if (!this.deps.youtubeLaunch)
+      return { ok: false, message: 'YouTube downloads are not available in this Drashti.' };
+    this.clearToolsWork();
+    const work = join(this.deps.workDir, `youtube-${randomUUID()}`);
+    for (const dir of ['home', 'temp', 'deno']) mkdirSync(join(work, dir), { recursive: true });
+    const launch = this.deps.youtubeLaunch(work);
+    if (!launch.ok) {
+      rmSync(work, { recursive: true, force: true });
+      return launch;
+    }
+    // The caller keeps it as this.toolsWork once its download process has started.
+    return { ok: true, launch: launch.launch, cwd: work };
   }
 
   private heard(m: FromWorker): void {
@@ -237,11 +279,14 @@ export class LinkService {
       case 'looked':
         this.looked(m);
         return;
-      case 'progress':
+      case 'progress': {
         this.downloadedBytes = m.done;
-        if (this.state.phase === 'downloading') this.set({ progress: { done: m.done, total: m.total } });
-        else this.state = { ...this.state, progress: { done: m.done, total: m.total } };
+        // YouTube's total is the estimate taken when it started (yt-dlp knows each part's only).
+        const progress = { done: m.done, total: m.total ?? this.state.progress?.total ?? null };
+        if (this.state.phase === 'downloading') this.set({ progress });
+        else this.state = { ...this.state, progress };
         return;
+      }
       case 'downloaded':
         void this.downloaded(m);
         return;
@@ -250,6 +295,15 @@ export class LinkService {
         return;
       case 'unpacked':
         void this.unpacked(m);
+        return;
+      case 'tool':
+        this.toolPid = m.pid;
+        return;
+      case 'yt-looked':
+        this.ytLooked(m);
+        return;
+      case 'yt-downloaded':
+        void this.ytDownloaded(m);
         return;
       case 'failed':
         if (this.job === 'look') {
@@ -289,6 +343,22 @@ export class LinkService {
       });
       return this.refuse(check.message);
     }
+    // YouTube: yt-dlp asks for the video's details (in the download process, at low priority).
+    const run = kind === 'youtube' ? this.youtubeRun() : null;
+    if (run && !run.ok) {
+      this.endWorker();
+      this.checked = null;
+      this.set({
+        phase: 'idle',
+        kind,
+        link: null,
+        look: null,
+        message: run.message,
+        saved: null,
+        runId: null,
+      });
+      return this.refuse(run.message);
+    }
     this.checked = { url: check.url, shape: check.shape };
     this.set({
       phase: 'looking',
@@ -302,9 +372,29 @@ export class LinkService {
       notTaken: [],
       fitted: [],
       runId: null,
+      choice: null,
     });
-    this.startWorker('look').post({ type: 'look', link: check.url, route: this.deps.route });
+    const worker = this.startWorker('look');
+    if (run?.ok) {
+      this.toolsWork = run.cwd;
+      worker.post({ type: 'yt-look', link: check.url, launch: run.launch, cwd: run.cwd });
+    } else worker.post({ type: 'look', link: check.url, route: this.deps.route });
     return this.answer();
+  }
+
+  private ytLooked(m: Extract<FromWorker, { type: 'yt-looked' }>): void {
+    this.endWorker();
+    if (!this.checked || this.state.phase !== 'looking') return;
+    const tallest = m.details.heights[0]?.height;
+    this.deps.log(
+      'info',
+      `Links: looked at a YouTube video link (${tallest === undefined ? 'sound only' : `up to ${heightLabel(tallest)}`})`,
+    );
+    this.set({
+      phase: 'looked',
+      look: { shape: 'video', name: m.details.title, size: null, video: m.details },
+      message: null,
+    });
   }
 
   private looked(m: Extract<FromWorker, { type: 'looked' }>): void {
@@ -338,6 +428,7 @@ export class LinkService {
       notTaken: [],
       fitted: [],
       runId: null,
+      choice: null,
     });
     return this.answer();
   }
@@ -370,11 +461,12 @@ export class LinkService {
 
   // ---- downloading ---------------------------------------------------------------
 
-  download(): LinkResult {
+  download(choice?: unknown): LinkResult {
     if (this.busy) return this.refuse('A download is going on already.');
     const checked = this.checked;
     const look = this.state.look;
     if (this.state.phase !== 'looked' || !checked || !look) return this.refuse('Paste a link first.');
+    if (look.video) return this.youtubeDownload(checked.url, look.video, choice);
     const folder = this.state.folder;
     try {
       mkdirSync(folder, { recursive: true });
@@ -422,6 +514,122 @@ export class LinkService {
     });
     this.watch();
     return this.answer();
+  }
+
+  /** Is this a choice of the qualities the video offers, within the setting, with the tick ticked? */
+  private youtubeChoice(
+    video: NonNullable<NonNullable<LinkView['look']>['video']>,
+    raw: unknown,
+  ): { ok: true; choice: YouTubeChoice; bytes: number | null } | { ok: false; message: string } {
+    const c = (typeof raw === 'object' && raw !== null ? raw : {}) as Partial<YouTubeChoice>;
+    if (c.permission !== true) return { ok: false, message: `Tick the box first: ${PERMISSION_WORDS}.` };
+    if (c.type === 'mp3')
+      return { ok: true, choice: { type: 'mp3', height: null, permission: true }, bytes: video.soundBytes };
+    if (c.type !== 'mp4') return { ok: false, message: 'Choose MP4 (the video) or MP3 (its sound only).' };
+    const offered = video.heights.find((h) => h.height === c.height);
+    if (!offered) return { ok: false, message: 'Choose one of the qualities this video offers.' };
+    if (offered.height > this.state.maxHeight)
+      return { ok: false, message: aboveTheSetting(this.state.maxHeight) };
+    return {
+      ok: true,
+      choice: { type: 'mp4', height: offered.height, permission: true },
+      bytes: offered.bytes,
+    };
+  }
+
+  /** YouTube: yt-dlp downloads into a hidden folder in the folder chosen (Session 25c). */
+  private youtubeDownload(
+    link: string,
+    video: NonNullable<NonNullable<LinkView['look']>['video']>,
+    raw: unknown,
+  ): LinkResult {
+    const picked = this.youtubeChoice(video, raw);
+    if (!picked.ok) return this.refuse(picked.message);
+    const folder = this.state.folder;
+    try {
+      mkdirSync(folder, { recursive: true });
+    } catch (error) {
+      this.deps.log(
+        'warn',
+        `Links: the folder to save in could not be made (${String((error as NodeJS.ErrnoException).code)})`,
+      );
+      return this.refuse(`Drashti could not save there. ${fileProblem(error, 'write')}`);
+    }
+    const free = this.deps.freeBytes(folder);
+    if (picked.bytes !== null && free - picked.bytes < LINK_KEEP_FREE_BYTES)
+      return this.refuse(
+        `Saving it (about ${formatBytes(picked.bytes)}) would leave less than 2 GB free on that disk, which Drashti keeps free for the show. Free up some space, choose another folder, or a lower quality.`,
+      );
+    if (free < LINK_KEEP_FREE_BYTES)
+      return this.refuse(
+        'That disk has less than 2 GB free, which Drashti keeps free for the show. Free up some space, or choose another folder.',
+      );
+    const run = this.youtubeRun();
+    if (!run.ok) return this.refuse(run.message);
+    // yt-dlp's part-files and its finished file stay under a hidden name until Drashti names the file.
+    this.part = join(folder, `.drashti-youtube-${randomUUID()}`);
+    mkdirSync(this.part, { recursive: true });
+    this.remember(this.part);
+    this.downloadedBytes = 0;
+    this.held = this.deps.onAir();
+    const choice = { type: picked.choice.type, height: picked.choice.height };
+    this.set({
+      phase: this.held ? 'waiting' : 'downloading',
+      waitingFor: this.held ? WAITING_FOR : null,
+      progress: { done: 0, total: picked.bytes },
+      message: null,
+      saved: null,
+      notTaken: [],
+      fitted: [],
+      runId: null,
+      choice,
+    });
+    this.deps.log(
+      'info',
+      `Links: a YouTube video download starts (${choiceWords(choice)}${picked.bytes !== null ? `, about ${formatBytes(picked.bytes)}` : ''})`,
+    );
+    if (this.held) this.deps.log('info', 'Links: the download waits while the stream is on air or recording');
+    const worker = this.startWorker('download');
+    // startWorker cleared the work folder the look used: this download has its own.
+    this.toolsWork = run.cwd;
+    worker.post({ type: 'hold', on: this.held });
+    worker.post({
+      type: 'yt-download',
+      link,
+      launch: run.launch,
+      cwd: run.cwd,
+      workDir: this.part,
+      choice,
+      keepFree: LINK_KEEP_FREE_BYTES,
+    });
+    this.watch();
+    return this.answer();
+  }
+
+  /** YouTube: downloaded. The file takes the video's title as a safe name, never over a file there. */
+  private async ytDownloaded(m: Extract<FromWorker, { type: 'yt-downloaded' }>): Promise<void> {
+    const work = this.part;
+    const look = this.state.look;
+    if (!work || !look) return;
+    this.endWorker();
+    const folder = this.state.folder;
+    const ext = m.file.toLowerCase().endsWith('.mp3') ? 'mp3' : 'mp4';
+    try {
+      const title = look.name.replace(/[\\/]/gu, '-');
+      const target = await claimFile(folder, safeName(`${title}.${ext}`, `YouTube video.${ext}`));
+      await rename(m.file, target);
+      await rm(work, { recursive: true, force: true });
+      this.temps.delete(work);
+      this.part = null;
+      this.saveRecord();
+      await this.saved(folder, [target], m.bytes);
+    } catch (error) {
+      this.deps.log(
+        'warn',
+        `Links: the download could not be given its name (${String((error as NodeJS.ErrnoException).code)})`,
+      );
+      await this.failed(`The download could not be saved. ${fileProblem(error, 'write')}`, 'name');
+    }
   }
 
   /** While downloading or unpacking: hold whenever the stream is on air or recording. */
@@ -497,10 +705,12 @@ export class LinkService {
   private async saved(folder: string, paths: string[], bytes: number): Promise<void> {
     const inFolder = (p: string) => relative(folder, p).split(sep).join('/');
     const files = paths.map(inFolder);
-    const taken = paths.filter((p) => takenKind(p) !== null);
-    const notTaken = files
-      .filter((f) => takenKind(f) === null)
-      .map((name) => ({ name, reason: NOT_TAKEN_REASON }));
+    // From YouTube: the one file Drashti named (its MP4 or MP3). From Dropbox: its PowerPoints and MP4s.
+    const youtube = this.state.kind === 'youtube';
+    const taken = youtube ? paths : paths.filter((p) => takenKind(p) !== null);
+    const notTaken = youtube
+      ? []
+      : files.filter((f) => takenKind(f) === null).map((name) => ({ name, reason: NOT_TAKEN_REASON }));
     this.deps.log(
       'info',
       `Links: a ${this.kindWord()} download was saved (${String(files.length)} ${files.length === 1 ? 'file' : 'files'}, ${formatBytes(bytes)}); ${String(taken.length)} to import, ${String(notTaken.length)} not taken`,
