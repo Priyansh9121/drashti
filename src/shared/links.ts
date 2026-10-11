@@ -191,6 +191,16 @@ export interface YouTubeChoice {
   permission: boolean;
 }
 
+/**
+ * The height an MP4 download asks for: the one picked, while the video offers it and the setting allows
+ * it; else the tallest the setting allows (the video's heights are tallest first); none when every one is
+ * above the setting.
+ */
+export function chosenHeight(video: VideoDetails, maxHeight: number, picked: number | null): number | null {
+  if (picked !== null && picked <= maxHeight && video.heights.some((h) => h.height === picked)) return picked;
+  return video.heights.find((h) => h.height <= maxHeight)?.height ?? null;
+}
+
 /** The permission tick's words: each time, before Download wakes (PLAN §7). */
 export const PERMISSION_WORDS = 'This video is the mandir’s own, or its owner allows us to use it';
 

@@ -3,6 +3,7 @@ import { formatBytes } from '../../../shared/format';
 import {
   aboveTheSetting,
   checkLink,
+  chosenHeight,
   heightLabel,
   LINK_HEIGHTS,
   type LinkKind,
@@ -265,8 +266,8 @@ function YouTubeChoices({ video, view, locked }: { video: VideoDetails; view: Li
   const choice = useLinks((s) => s.choice);
   const allowed = video.heights.filter((h) => h.height <= view.maxHeight);
   const above = video.heights.some((h) => h.height > view.maxHeight);
-  // Until one is picked: the tallest the setting allows.
-  const height = choice.height ?? allowed[0]?.height ?? null;
+  // Until one is picked (or once the setting is below the one picked): the tallest the setting allows.
+  const height = chosenHeight(video, view.maxHeight, choice.height);
   const types = [
     { id: 'mp4' as const, label: 'MP4', hint: 'The video' },
     { id: 'mp3' as const, label: 'MP3', hint: 'Its sound only' },

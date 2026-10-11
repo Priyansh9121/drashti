@@ -1,5 +1,11 @@
 import { create } from 'zustand';
-import type { LinkKind, LinkResult, LinkView, YouTubeType } from '../../../shared/links';
+import {
+  chosenHeight,
+  type LinkKind,
+  type LinkResult,
+  type LinkView,
+  type YouTubeType,
+} from '../../../shared/links';
 
 /** Where an import run's files were saved from a link, and the videos imported as smaller copies. */
 export interface SavedFrom {
@@ -115,8 +121,11 @@ export const pickSaveFolder = () => act(() => window.drashti.links.pickFolder())
 /** Download: a YouTube video with its choices (the tick is needed again for the next one). */
 export async function startDownload(): Promise<boolean> {
   const { view, choice } = useLinks.getState();
-  const youtube = view?.look?.video !== undefined;
-  const ok = await act(() => window.drashti.links.download(youtube ? choice : null));
+  const video = view?.look?.video;
+  // The height the dialog shows as chosen (the tallest allowed, until one is picked).
+  const asked = video ? { ...choice, height: chosenHeight(video, view.maxHeight, choice.height) } : null;
+  const ok = await act(() => window.drashti.links.download(asked));
+  const youtube = video !== undefined;
   if (ok && youtube) useLinks.setState((s) => ({ choice: { ...s.choice, permission: false } }));
   return ok;
 }
