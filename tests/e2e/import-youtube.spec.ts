@@ -74,7 +74,7 @@ async function open(config: Record<string, unknown>, extra: Record<string, strin
 
 test('YouTube: details, quality up to the setting, the tick each time, MP4 and MP3 saved and imported; on air holds it back', async () => {
   test.setTimeout(300_000);
-  const { app, win, chosen, log } = await open({ steps: 24, stepMs: 150 }, { DRASHTI_TEST_ON_AIR_HOOK: '1' });
+  const { app, win, chosen, log } = await open({ steps: 60, stepMs: 150 }, { DRASHTI_TEST_ON_AIR_HOOK: '1' });
   const dialog = win.getByTestId('link-dialog');
 
   // YouTube can be picked now.
