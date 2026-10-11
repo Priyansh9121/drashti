@@ -279,27 +279,47 @@ The performance check (section 12) on each mandir computer says whether that com
 
 **File**, **Import from a Link…** (or, in the library, **Import…**, then **From a link…**) saves what a link holds in a folder you choose, then imports it through the normal import, with its report. Nothing goes straight into Drashti: the files stay in that folder, where Drashti never moves or deletes them, and the import copies them into the library as every import does. It is an admin's, in Pro Mode; Simple Mode never shows it.
 
-1. **Which kind of link.** **Dropbox**: a shared link to a file or a folder. **YouTube** is shown, but cannot be chosen in this version (see below).
-2. **Paste the link.** In Dropbox, use **Share**, then **Copy link**. Drashti takes only `https` links to Dropbox's own addresses, and says plainly when a link is not one.
-3. **What it holds** shows next: a file's name and size, or a folder's name (Dropbox sends a folder as one zip, which Drashti unpacks).
-4. **Save in.** The first time, a folder called **Drashti downloads** in **Movies** (Mac) or **Videos** (Windows). **Choose…** picks another; Drashti remembers it.
-5. **Download.**
+1. **Which kind of link.** **YouTube**: one video, as MP4 (the video) or MP3 (its sound only). **Dropbox**: a shared link to a file or a folder.
+2. **Paste the link.** On YouTube, use **Share**, then **Copy**; in Dropbox, **Share**, then **Copy link**. Drashti takes only `https` links to their own addresses, and says plainly when a link is not one. A YouTube playlist is refused (Drashti downloads one video at a time); a video's link copied while it played in a playlist takes only that video.
+3. **What it holds** shows next. For YouTube, the video's title and length (Drashti asks YouTube, through yt-dlp: nothing is downloaded yet). For Dropbox, a file's name and size, or a folder's name (Dropbox sends a folder as one zip, which Drashti unpacks).
+4. **For YouTube, choose** **MP4** or **MP3**, and for an MP4 its **quality**: the heights the video offers (720p, 1080p, 1440p, 2160p (4K), 4320p (8K)), each with about how big the file will be. Those above **Highest video quality** (below) are shown, but cannot be picked, and the window says why. An MP3 takes the best sound the video has.
+5. **Tick "This video is the mandir's own, or its owner allows us to use it".** Each time: **Download** stays off until it is ticked.
+6. **Save in.** The first time, a folder called **Drashti downloads** in **Movies** (Mac) or **Videos** (Windows). **Choose…** picks another; Drashti remembers it.
+7. **Download.**
 
-![Import from a Link](screenshots/import-link-dropbox.png)
+![Import from a Link, a YouTube video](screenshots/import-link-youtube.png)
+
+![Import from a Link, a Dropbox folder](screenshots/import-link-dropbox.png)
+
+**Highest video quality** (in the same window): an admin's setting for YouTube and Dropbox both, **1080p** to begin with; **1440p**, **2160p (4K)** and **4320p (8K)** can be chosen. It is kept with the library, so a backup keeps it. A YouTube quality above it cannot be picked; a Dropbox video taller than it is imported as a copy that tall (the original stays in the folder as it came). Taller videos make bigger files, and need a stronger computer to play smoothly.
 
 What it does with them:
 
-- **Only PowerPoint files (`.pptx`) and MP4 videos are imported.** Everything else is saved too, and listed under **Not taken** with the reason.
-- **Videos at 1080p at most.** A video above 1080p goes into the library as a **1080p copy**, made by Drashti's own conversion; the original stays in the folder as it came. One that cannot be made 1080p is listed under Not taken.
+- **From YouTube, the one file**: the video's title, made safe as a file name (`Placeholder video.mp4`), never over a file already there (`Placeholder video (2).mp4`). It goes to the library as any MP4 or MP3 does.
+- **From Dropbox, only PowerPoint files (`.pptx`) and MP4 videos are imported.** Everything else is saved too, and listed under **Not taken** with the reason.
+- **Videos no taller than Highest video quality.** A Dropbox video above it goes into the library as a **copy that tall** (1080p to begin with), made by Drashti's own conversion; the original stays in the folder as it came. One that cannot be made that tall is listed under Not taken.
+- **Above 1080p, YouTube sends VP9 or AV1, not H.264.** Drashti saves that in the MP4 as it comes, and plays it (checked with 2160p VP9 and AV1 on a Mac). A slower computer may not play 4K smoothly; anything Drashti cannot play, the import offers to convert.
 - **PowerPoint files** become slides of pictures, as a `.pptx` dropped on the library does: PowerPoint or Keynote on that computer saves it as PDF first. With neither, the report says so, and how to save it as PDF by hand.
-- **On air or recording, a download waits**, asking nothing of Dropbox, and carries on afterwards by itself. **Closing the window never stops it**: the status bar shows how it goes, and a press on that opens the window again. **Stop** stops it and keeps nothing.
-- **Drashti keeps 2 GB free** on the disk it saves to: a download that would leave less does not start, and one going stops.
+- **On air or recording, a download waits**, asking nothing of Dropbox or YouTube, and carries on afterwards by itself. A YouTube download already going stops, and starts again afterwards from where it got to. **Closing the window never stops it**: the status bar shows how it goes, and a press on that opens the window again. **Stop** stops it and keeps nothing.
+- **Drashti keeps 2 GB free** on the disk it saves to: a download that would leave less (by its size, or YouTube's estimate) does not start, and one going stops.
 - **A folder's zip is unpacked only if all of it is safe**: if any file in it would land outside its folder, or it holds a link to elsewhere on the computer, nothing in it is unpacked. At most 10,000 files, as Dropbox itself allows. Nothing unpacked is ever run.
 - **The import report says where the files were saved**, with **Show in Finder** (**Show in Explorer** on Windows).
-- **The log** keeps only the kind of link, the sizes and how it went: never the link, a title or a file name.
+- **The log** keeps only the kind of link, the sizes and how it went: never the link, the video, a title or a file name.
 
 ![The report of a link's files](screenshots/import-link-report.png)
 
-**What may be downloaded.** Only the mandir's own videos and files, or those whose owner allows the mandir to use them. Ask before using anyone else's. For YouTube, YouTube's own terms say the rest (youtube.com/t/terms): they forbid downloading, except as YouTube allows or with written permission from YouTube and the rights holders.
+**What may be downloaded.** Only the mandir's own videos and files, or those whose owner allows the mandir to use them: that is what the tick says, each time. Ask before using anyone else's. For YouTube, YouTube's own terms say the rest (youtube.com/t/terms): they forbid downloading, except as YouTube allows or with written permission from YouTube and the rights holders.
 
-**YouTube.** Not in this version: downloading from YouTube now means running YouTube's own code on the mandir's computer, and that waits for a decision. For the mandir's own channel, whoever owns it can download its uploads in **YouTube Studio** (studio.youtube.com): **Content**, choose the video, its **Menu** (three dots), **Download**. YouTube's help says this gives an MP4 at 720p or 360p, depending on the video, at most five times a day for each video (support.google.com/youtube/answer/56100, read 11 Oct 2026). Then import that file as any other: drag it onto the library.
+**No adverts.** A downloaded video holds only the video: YouTube sends its adverts apart from it, and Drashti takes only the video's own picture and sound. Drashti shows no adverts anywhere, and asks no outside service (such as SponsorBlock) about a video. A sponsor message the maker speaks in the video is part of the video: set its **markers** (start and end) to play the video round it.
+
+**How YouTube works in Drashti.** Drashti holds no YouTube downloading code of its own: it runs **yt-dlp**, a separate program that comes with Drashti, and yt-dlp runs YouTube's own player code in **Deno**, which comes with Drashti too and may not read any file, reach any address or start any program. Neither uses anything of this computer's: no browser, no signed-in account, no cookies, no settings, no proxy. **Drashti never signs in to YouTube.** If YouTube changes how it sends videos (it does, often), downloads may stop working until a newer Drashti brings a newer yt-dlp: **Help › Check for Updates…**. Drashti never updates yt-dlp by itself.
+
+When a video cannot be had, the window says why in plain words, with what to do:
+
+- **It needs signing in** (private, for members, or age-restricted): Drashti never signs in. For the mandir's own, use YouTube Studio (below).
+- **YouTube asked to prove the computer is not a robot**: try again later, or use YouTube Studio.
+- **Not shown in this country**, or **not on YouTube any more**.
+- **A live stream still going** (or not started): download it after it ends.
+- **YouTube did not give the video**: if that keeps happening with videos that play on YouTube, a newer Drashti may be needed.
+
+**YouTube Studio, for the mandir's own.** Whoever owns the mandir's channel can always download its uploads in **YouTube Studio** (studio.youtube.com): **Content**, choose the video, its **Menu** (three dots), **Download**. YouTube's help says this gives an MP4 at 720p or 360p, depending on the video, at most five times a day for each video (support.google.com/youtube/answer/56100, read 11 Oct 2026). Then import that file as any other: drag it onto the library.
