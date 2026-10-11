@@ -106,16 +106,22 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # The FFmpeg Drashti bundles: pinned builds, checked against their SHA-256 (never in git).
-      - name: Cache FFmpeg downloads
+      - name: Cache FFmpeg, yt-dlp and Deno downloads
         uses: actions/cache@v6
         with:
           path: ~/.cache/drashti
-          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs') }}
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs', 'scripts/fetch-youtube-tools.mjs') }}
       - name: Fetch FFmpeg
         run: node scripts/fetch-ffmpeg.mjs
       - name: Fetch FFmpeg for Intel Macs too (both Mac builds are packaged here)
         if: runner.os == 'macOS' && env.QUICK != 'true'
         run: node scripts/fetch-ffmpeg.mjs --target darwin-x64
+      # YouTube's two programs (Session 25c): yt-dlp and Deno, pinned and checked the same way.
+      - name: Fetch yt-dlp and Deno
+        run: node scripts/fetch-youtube-tools.mjs
+      - name: Fetch yt-dlp and Deno for Intel Macs too
+        if: runner.os == 'macOS' && env.QUICK != 'true'
+        run: node scripts/fetch-youtube-tools.mjs --target darwin-x64
       - name: Unit tests (inside Electron's Node)
         if: env.QUICK != 'true'
         run: pnpm test
@@ -195,7 +201,7 @@ jobs:
           path: docs/screenshots
           if-no-files-found: error
           retention-days: 7
-      - name: Drashti finds and runs its FFmpeg (built app)
+      - name: Drashti finds and runs its FFmpeg, yt-dlp and Deno (built app)
         if: env.QUICK != 'true'
         run: node scripts/check-ffmpeg.mjs
       # Playwright cannot follow app.relaunch(): back up, restore and restart for real.
@@ -208,7 +214,7 @@ jobs:
       - name: Restart after a restore (packaged app)
         if: env.QUICK != 'true'
         run: node scripts/check-relaunch.mjs --packaged
-      - name: Drashti finds and runs its FFmpeg (each packaged app)
+      - name: Drashti finds and runs its FFmpeg, yt-dlp and Deno (each packaged app)
         if: env.QUICK != 'true'
         run: node scripts/check-ffmpeg.mjs --packaged
       - name: Upload installers

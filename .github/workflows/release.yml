@@ -55,16 +55,21 @@ jobs:
       - name: This version's notes are in CHANGELOG.md
         run: node scripts/release-notes.mjs
       - run: pnpm install --frozen-lockfile
-      - name: Cache FFmpeg downloads
+      - name: Cache FFmpeg, yt-dlp and Deno downloads
         uses: actions/cache@v6
         with:
           path: ~/.cache/drashti
-          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs') }}
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs', 'scripts/fetch-youtube-tools.mjs') }}
       - name: Fetch FFmpeg
         run: node scripts/fetch-ffmpeg.mjs
       - name: Fetch FFmpeg for Intel Macs too
         if: runner.os == 'macOS'
         run: node scripts/fetch-ffmpeg.mjs --target darwin-x64
+      - name: Fetch yt-dlp and Deno (Session 25c)
+        run: node scripts/fetch-youtube-tools.mjs
+      - name: Fetch yt-dlp and Deno for Intel Macs too
+        if: runner.os == 'macOS'
+        run: node scripts/fetch-youtube-tools.mjs --target darwin-x64
       - run: pnpm build
       - name: Package (signed when the certificates are given)
         shell: bash
@@ -86,7 +91,7 @@ jobs:
         run: node scripts/package-release.mjs
       - name: Check the signatures (when signed)
         run: node scripts/verify-signing.mjs
-      - name: Each packaged app finds and runs its FFmpeg
+      - name: Each packaged app finds and runs its FFmpeg, yt-dlp and Deno
         run: node scripts/check-ffmpeg.mjs --packaged
       - name: Restart after a restore (packaged app)
         run: node scripts/check-relaunch.mjs --packaged

@@ -5,9 +5,9 @@
 //
 //   macOS    each .dmg is opened (hdiutil), Drashti.app is dragged out of it (ditto) into a folder of
 //            its own (never /Applications), and the disk image is closed. The app must be built for
-//            the processor its name says, with an FFmpeg for that processor inside, and must start:
-//            its FFmpeg self-test and its watchdog self-test (an Intel Mac's app under Rosetta, when
-//            this Mac has it). Each .zip, what Drashti's own updates install, is opened the same way
+//            the processor its name says, with an FFmpeg, a yt-dlp and a Deno for that processor inside
+//            (signed with the rest of the app), and must start: its FFmpeg self-test (with yt-dlp and
+//            Deno) and its watchdog self-test (an Intel Mac's app under Rosetta, when this Mac has it). Each .zip, what Drashti's own updates install, is opened the same way
 //            and must hold the same app for the same processor. What Gatekeeper says is printed.
 //   Windows  the setup .exe installs silently (/S) into the usual place (%LOCALAPPDATA%\Programs\Drashti),
 //            with its Start menu entry; the installed Drashti must start (the same two self-tests);
@@ -108,10 +108,25 @@ async function starts(name, command, args, appDir, emulated = false) {
   const ffmpeg = await selfTest('ffmpeg', command, args);
   const f = ffmpeg.result;
   if (!f) fail(name, `no FFmpeg self-test result (exit ${String(ffmpeg.code)})\n${ffmpeg.log.slice(-1500)}`);
-  else if (!f.passed) fail(name, `its FFmpeg self-test failed (${String(f.path)})`);
+  else if (!(f.ffmpegPassed ?? f.passed)) fail(name, `its FFmpeg self-test failed (${String(f.path)})`);
   else if (!within(f.path, appDir))
     fail(name, `it ran an FFmpeg from outside the installed app: ${String(f.path)}`);
   else pass(name, `starts, and runs its own FFmpeg (${f.version}; streams with ${f.chosen ?? 'nothing'})`);
+  // YouTube's two programs (Session 25c): its own yt-dlp and Deno run, and Deno is sandboxed.
+  const y = f?.youtube;
+  if (f && !y) fail(name, 'its self-test says nothing of yt-dlp and Deno');
+  else if (y && !y.passed)
+    fail(
+      name,
+      `its yt-dlp and Deno check failed: yt-dlp ${String(y.ytDlp.version)}, Deno ${String(y.deno.version)}, Deno as yt-dlp starts it: ${JSON.stringify(y.sandbox)}`,
+    );
+  else if (y && (!within(y.ytDlp.path, appDir) || !within(y.deno.path, appDir)))
+    fail(name, `it ran a yt-dlp or Deno from outside the installed app: ${y.ytDlp.path}, ${y.deno.path}`);
+  else if (y)
+    pass(
+      name,
+      `runs its own yt-dlp (${y.ytDlp.version}) and Deno (${y.deno.version}); Deno, started as yt-dlp starts it, could not read a file, reach 127.0.0.1 or start a program`,
+    );
   const watchdog = await selfTest('watchdog', command, args);
   const w = watchdog.result;
   const failed = (w?.checks ?? []).filter((c) => !c.ok);
@@ -162,13 +177,39 @@ function checkMacApp(name, app, arch) {
     );
     return false;
   }
-  const kind = /Authority=Developer ID Application/u.test(run('codesign', ['-dvv', app]).out)
-    ? 'a Developer ID'
-    : 'ad hoc';
+  const appSigning = run('codesign', ['-dvv', app]).out;
+  const kind = /Authority=Developer ID Application/u.test(appSigning) ? 'a Developer ID' : 'ad hoc';
+  // YouTube's two programs (Session 25c): there, for this processor, and signed with the rest of the app
+  // (the same Team ID, or none for ad hoc: Deno as it comes carries its maker's own).
+  const team = (text) => /^TeamIdentifier=(.*)$/mu.exec(text)?.[1] ?? 'none';
+  const resources = join(app, 'Contents', 'Resources');
+  const ytDlp = join(resources, 'yt-dlp', 'yt-dlp_macos');
+  const deno = join(resources, 'deno', 'deno');
+  const ytArchs = existsSync(ytDlp) ? run('lipo', ['-archs', ytDlp]).out : 'missing';
+  const denoArchs = existsSync(deno) ? run('lipo', ['-archs', deno]).out : 'missing';
+  if (!ytArchs.split(' ').includes(MAC_ARCH[arch]) || denoArchs !== MAC_ARCH[arch]) {
+    fail(name, `its yt-dlp is for ${ytArchs} and its Deno for ${denoArchs}, not ${MAC_ARCH[arch]}`);
+    return false;
+  }
+  for (const [what, file] of [
+    ['yt-dlp', ytDlp],
+    ["yt-dlp's Python", join(resources, 'yt-dlp', '_internal', 'Python.framework')],
+    ['Deno', deno],
+  ]) {
+    const verified = run('codesign', ['--verify', '--strict', file]);
+    const signedBy = team(run('codesign', ['-dvv', file]).out);
+    if (!verified.ok || signedBy !== team(appSigning)) {
+      fail(
+        name,
+        `${what} is not signed with the rest of the app (its Team ID: ${signedBy}; the app's: ${team(appSigning)}): ${verified.out.slice(-300)}`,
+      );
+      return false;
+    }
+  }
   record(name, macAppIcon(app, ICONS));
   pass(
     name,
-    `holds Drashti ${shown} for ${archs}, with its FFmpeg for ${ffArchs}, signed (${kind}) all through`,
+    `holds Drashti ${shown} for ${archs}, with its FFmpeg for ${ffArchs}, yt-dlp for ${ytArchs} and Deno for ${denoArchs}, signed (${kind}) all through, yt-dlp and Deno with the rest`,
   );
   return true;
 }
@@ -321,6 +362,11 @@ async function checkWindows(f) {
     for (let i = 0; i < 60 && existsSync(exe); i++)
       spawnSync('powershell.exe', ['-NoProfile', '-Command', 'Start-Sleep 1']);
     if (existsSync(exe)) fail(f.name, 'the silent uninstall left Drashti.exe behind');
+    else if (
+      existsSync(join(installDir, 'resources', 'yt-dlp')) ||
+      existsSync(join(installDir, 'resources', 'deno'))
+    )
+      fail(f.name, 'the silent uninstall left yt-dlp or Deno behind');
     else pass(f.name, 'uninstalls silently');
   }
 }
