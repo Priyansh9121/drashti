@@ -4,7 +4,13 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { LinkView } from '../../shared/links';
+import { IPC } from '../../shared/ipc';
+import { DEFAULT_LINK_MAX_HEIGHT, type LinkHeight, type LinkView } from '../../shared/links';
+import { SIMPLE_MODE_REFUSAL } from '../../shared/mode';
+import { ADMIN_REFUSAL, isAdminChannel } from '../../shared/roles';
+import { lockAdminChannels, lockChannels, refusalFor, refusedNow } from '../ipc/handle';
+import { adminRefusals } from '../roles/admin-lock';
+import { SIMPLE_MODE_LOCKED, simpleModeRefusals } from '../simple-mode';
 import { makeZip } from '../import/testing/zip-writer';
 import { nodeGet } from './http';
 import { LinkService, type LinkServiceDeps, type LinkWorker } from './link-service';
@@ -103,6 +109,8 @@ interface Harness {
   views: LinkView[];
   air: { on: boolean };
   record: string;
+  /** The library's stored highest video quality. */
+  stored: { maxHeight: LinkHeight };
 }
 
 async function harness(over: Partial<LinkServiceDeps> = {}): Promise<Harness> {
@@ -114,6 +122,7 @@ async function harness(over: Partial<LinkServiceDeps> = {}): Promise<Harness> {
   const views: LinkView[] = [];
   const air = { on: false };
   const record = join(root, 'link-downloads.json');
+  const stored: { maxHeight: LinkHeight } = { maxHeight: DEFAULT_LINK_MAX_HEIGHT };
   const service = new LinkService({
     spawn: inProcessWorker,
     onAir: () => air.on,
@@ -129,11 +138,17 @@ async function harness(over: Partial<LinkServiceDeps> = {}): Promise<Harness> {
     log: (_level, message) => logs.push(message),
     record,
     workDir: join(root, 'Link downloads'),
+    maxHeight: {
+      get: () => stored.maxHeight,
+      set: (height) => {
+        stored.maxHeight = height;
+      },
+    },
     route: { testOrigin: origin, guard: true },
     pollMs: 20,
     ...over,
   });
-  return { service, folder, logs, imported, views, air, record };
+  return { service, folder, logs, imported, views, air, record, stored };
 }
 
 async function until(check: () => boolean, ms = 10_000): Promise<void> {
@@ -304,8 +319,9 @@ describe('Import from a Link: Dropbox', () => {
     const asked: string[] = [];
     let waitSaid = false;
     const h = await harness({
-      fitVideo: async (path, outDir, report) => {
+      fitVideo: async (path, outDir, maxHeight, report) => {
         asked.push(path);
+        expect(maxHeight).toBe(1080);
         report('the stream is on air or recording', null);
         waitSaid = true;
         report(null, 0.5);
@@ -366,5 +382,84 @@ describe('Import from a Link: Dropbox', () => {
     writeFileSync(record, JSON.stringify([part, work, other]));
     await harness({ record });
     expect(readdirSync(root)).toEqual(['keep me.mp4']);
+  });
+});
+
+describe('the highest video quality (Session 25c)', () => {
+  it('starts at 1080p, is kept with the library’s settings, and is said in the log', async () => {
+    const h = await harness();
+    expect(h.service.view().maxHeight).toBe(1080);
+    const r = h.service.setMaxHeight(2160);
+    expect(r.ok).toBe(true);
+    expect(h.stored.maxHeight).toBe(2160);
+    expect(h.service.view().maxHeight).toBe(2160);
+    expect(h.views.at(-1)?.maxHeight).toBe(2160);
+    expect(h.logs).toContain('Links: the highest video quality is now 2160p (4K)');
+  });
+
+  it('is read back from the library when Drashti starts', async () => {
+    const h = await harness({ maxHeight: { get: () => 4320, set: () => undefined } });
+    expect(h.service.view().maxHeight).toBe(4320);
+  });
+
+  it('refuses a quality that is not offered, and any change while a download is going on', async () => {
+    const h = await harness();
+    for (const bad of [720, 1081, '2160', null]) {
+      const r = h.service.setMaxHeight(bad);
+      expect(r.ok).toBe(false);
+      expect(r.ok ? '' : r.message).toContain('Choose 1080p, 1440p, 2160p (4K) or 4320p (8K)');
+    }
+    expect(h.stored.maxHeight).toBe(1080);
+    h.air.on = true;
+    h.service.look('dropbox', FILE_LINK);
+    await until(() => h.service.view().phase === 'looked');
+    h.service.download();
+    expect(h.service.view().phase).toBe('waiting');
+    const busy = h.service.setMaxHeight(1440);
+    expect(busy.ok).toBe(false);
+    expect(busy.ok ? '' : busy.message).toContain('once the download');
+    expect(h.stored.maxHeight).toBe(1080);
+    h.service.stop();
+  });
+
+  it('is an admin’s request, refused in Simple Mode and while admin is locked', () => {
+    expect(isAdminChannel(IPC.links.setMaxHeight)).toBe(true);
+    expect(SIMPLE_MODE_LOCKED).toContain(IPC.links.setMaxHeight);
+    const sound = () => ({ chosen: null, devices: [], state: 'default' as const, checked: true });
+    let simple = true;
+    let locked = false;
+    lockChannels(() => simple, simpleModeRefusals(sound));
+    lockAdminChannels(
+      () => locked,
+      adminRefusals(sound),
+      () => undefined,
+    );
+    expect(refusedNow(IPC.links.setMaxHeight)).toBe(true);
+    expect(refusalFor(IPC.links.setMaxHeight)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+    simple = false;
+    locked = true;
+    expect(refusedNow(IPC.links.setMaxHeight)).toBe(true);
+    expect(refusalFor(IPC.links.setMaxHeight)?.()).toEqual({ ok: false, message: ADMIN_REFUSAL });
+    locked = false;
+    expect(refusedNow(IPC.links.setMaxHeight)).toBe(false);
+  });
+
+  it('is what a Dropbox video taller than it is made: at 2160p a 2160p video needs no copy', async () => {
+    const asked: number[] = [];
+    const h = await harness({
+      fitVideo: (_path, _outDir, maxHeight) => {
+        asked.push(maxHeight);
+        // As ConvertService.fitHeight answers: no copy when the video is that tall or less.
+        return Promise.resolve({ ok: true, copy: maxHeight >= 2160 ? null : 'unused' });
+      },
+    });
+    h.service.setMaxHeight(2160);
+    h.service.look('dropbox', FOLDER_LINK);
+    await until(() => h.service.view().phase === 'looked');
+    h.service.download();
+    await until(() => h.service.view().phase === 'done');
+    expect(asked).toEqual([2160]);
+    expect(h.service.view().fitted).toEqual([]);
+    expect(h.imported[0]?.[1]).toBe(join(h.folder, 'Placeholder folder', 'Videos', 'Placeholder 1080p.mp4'));
   });
 });

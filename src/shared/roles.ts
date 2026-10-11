@@ -139,10 +139,12 @@ export const ADMIN_CHANNELS: readonly InvokeChannel[] = [
   IPC.stream.setKey,
   IPC.stream.removeKey,
   IPC.stream.pickFolder,
-  // Import from a Link (Session 25b): looking at a link, choosing the folder, downloading.
+  // Import from a Link (Session 25b): looking at a link, choosing the folder, downloading; and the
+  // highest video quality, for YouTube and Dropbox (Session 25c).
   IPC.links.look,
   IPC.links.pickFolder,
   IPC.links.download,
+  IPC.links.setMaxHeight,
   // Updates: downloading, installing when Drashti quits, the daily look.
   IPC.updates.download,
   IPC.updates.setInstallOnQuit,

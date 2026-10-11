@@ -197,6 +197,8 @@ export const IPC = {
     reset: 'links:reset',
     /** Show where the files were saved (Finder, Explorer). */
     showSaved: 'links:show-saved',
+    /** The admin's highest video quality, for YouTube and Dropbox (Session 25c). */
+    setMaxHeight: 'links:set-max-height',
     /** main -> operator: how the download stands changed. */
     changed: 'links:changed',
     /** main -> operator: File > Import from a Link… was chosen. */
@@ -680,6 +682,7 @@ export interface InvokeContract {
   [IPC.links.stop]: { args: []; result: LinkResult };
   [IPC.links.reset]: { args: []; result: LinkResult };
   [IPC.links.showSaved]: { args: [runId: string | null]; result: null };
+  [IPC.links.setMaxHeight]: { args: [height: number]; result: LinkResult };
   [IPC.engine.subscribe]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.snapshot]: { args: []; result: EngineSnapshotMessage };
   [IPC.engine.command]: { args: [command: EngineCommand]; result: CommandResult };

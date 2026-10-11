@@ -125,7 +125,7 @@ export type LinkPhase =
   | 'waiting'
   | 'downloading'
   | 'unpacking'
-  /** A video above 1080p being made 1080p before it is imported (Session 25b step 4). */
+  /** A video above the highest quality being made that tall before it is imported (Session 25b step 4). */
   | 'converting'
   | 'importing'
   | 'done'
@@ -156,8 +156,10 @@ export interface LinkView {
   saved: { folder: string; files: string[] } | null;
   /** Files saved but not imported, with why. */
   notTaken: NotTaken[];
-  /** Videos above 1080p whose 1080p copy was imported (the originals stay in the folder). */
+  /** Videos above the highest quality whose copy that tall was imported (the originals stay in the folder). */
   fitted: string[];
+  /** The admin's highest video quality, for YouTube and Dropbox. */
+  maxHeight: LinkHeight;
   /** The import run of what was saved, once it started (its report). */
   runId: string | null;
 }
@@ -180,8 +182,23 @@ export function takenKind(name: string): 'powerpoint' | 'video' | null {
   return null;
 }
 
-/** The tallest video taken from a Dropbox link (PLAN §7): taller ones are made this tall first. */
-export const LINK_MAX_HEIGHT = 1080;
+/**
+ * The admin's "Highest video quality" (Session 25c, PLAN §7), one setting for YouTube and Dropbox both:
+ * a Dropbox video taller than it is made that tall before it is imported, and a YouTube quality above
+ * it is shown but cannot be picked. Kept with the library's settings, so a backup keeps it.
+ */
+export const LINK_HEIGHTS = [1080, 1440, 2160, 4320] as const;
+export type LinkHeight = (typeof LINK_HEIGHTS)[number];
+/** To begin with (PLAN §7). */
+export const DEFAULT_LINK_MAX_HEIGHT: LinkHeight = 1080;
+export const isLinkHeight = (value: unknown): value is LinkHeight => LINK_HEIGHTS.some((h) => h === value);
+
+/** A height as people say it: 1080p, 1440p, 2160p (4K), 4320p (8K). */
+export function heightLabel(height: number): string {
+  if (height === 2160) return '2160p (4K)';
+  if (height === 4320) return '4320p (8K)';
+  return `${String(height)}p`;
+}
 
 /** Why a saved file is not imported. */
 export const NOT_TAKEN_REASON = 'Not a PowerPoint file (.pptx) or an MP4 video, so it was not imported.';
