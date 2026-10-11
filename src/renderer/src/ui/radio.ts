@@ -7,11 +7,16 @@ import type { KeyboardEvent } from 'react';
  * arrow keys do nothing.
  */
 
-/** The group's onKeyDown: choose the next or previous choice with the arrows, and focus it. */
+/**
+ * The group's onKeyDown: choose the next or previous choice with the arrows, and focus it. `element`
+ * finds a choice's button when the group also shows choices that cannot be picked (YouTube's qualities
+ * above the setting): then the n-th radio is not the n-th choice.
+ */
 export function radioKeys<T>(
   choices: readonly T[],
   current: T,
   choose: (choice: T) => void,
+  element?: (choice: T, group: HTMLElement) => HTMLElement | null,
 ): (e: KeyboardEvent<HTMLElement>) => void {
   return (e) => {
     const i = Math.max(0, choices.indexOf(current));
@@ -24,7 +29,10 @@ export function radioKeys<T>(
     if (next < 0 || choice === undefined) return;
     e.preventDefault();
     choose(choice);
-    e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]')[next]?.focus();
+    (element
+      ? element(choice, e.currentTarget)
+      : e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]')[next]
+    )?.focus();
   };
 }
 
