@@ -4,7 +4,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 ## 1.0.0-alpha.2 (11 Oct 2026)
 
-Easier for volunteers' hands, in today's look.
+Easier for volunteers' hands, and importing from a Dropbox link. Update after a sabha, never on the day of one.
 
 Playlists
 
