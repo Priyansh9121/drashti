@@ -359,3 +359,7 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **A built-in theme says so** above its preview (an `info` notice), and its Save button says **Save as a copy**: the copy is chosen in the list after saving. Apply, delete and the default work on it as on any other.
 - **Applying is three choices**, in the editor's last rows: **Apply to N presentations** (those marked in the library), a playlist select with **Apply to its presentations**, and **Make it the default for new presentations** (in its place, once it is: "New presentations start with this theme.").
 - **Built-in themes keep 7:1.** Words in any language, and the reference line, are at least 7:1 against the theme's background, a shadow only behind light words (`src/shared/builtin-themes.test.ts`).
+
+## 38. The Picture editor and sharpness
+
+- **The preview is the screens' picture** (Session 26e): zoom, move, brightness, contrast, colour and sharpness show in it as they will on the screens. The editor's preview draws sharpness at once with a filter; the screens draw the picture's sharpened copy (Session 26f), made once in the background after **Save**, and the picture unsharpened until it is ready, never blank. The copy's pixels match the preview's (`tests/e2e/picture-looks.spec.ts`).

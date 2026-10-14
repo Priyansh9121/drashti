@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   autoLevels,
+  copyStep,
   cssFilter,
   fillZoom,
   framed,
@@ -10,6 +11,7 @@ import {
   moveRoom,
   PLAIN,
   sharpenKernel,
+  sharpenPixels,
   sharpenStep,
   ZOOM_GLIDE_MS,
 } from './picture-look';
@@ -75,6 +77,41 @@ describe('a picture’s look', () => {
     expect(sharpenKernel(50)).toEqual([0, -0.5, 0, -0.5, 3, -0.5, 0, -0.5, 0]);
     // A kernel that keeps a flat picture as it is.
     expect(sharpenKernel(80).reduce((a, b) => a + b, 0)).toBeCloseTo(1);
+  });
+
+  it('sharpens a picture’s own pixels with the kernel the screens’ filter had: edges duplicated, alpha kept', () => {
+    // Four pixels across, one down: grey 96, 96, 160, 160, the last half see-through.
+    const rgba = (...greys: [number, number][]) =>
+      new Uint8ClampedArray(greys.flatMap(([v, a]) => [v, v, v, a]));
+    const src = rgba([96, 255], [96, 255], [160, 255], [160, 128]);
+    const out = sharpenPixels(src, 4, 1, 50);
+    // At 50 %: centre 3, each side −0.5 (above and below are the pixel itself, duplicated at the edge).
+    // 3·96 − 0.5·(96 + 96 + 96 + 96) = 96; 3·96 − 0.5·(96 + 160 + 96 + 96) = 64; 3·160 − 0.5·(96 + 160·3) = 192.
+    expect([...out]).toEqual([...rgba([96, 255], [64, 255], [192, 255], [160, 128])]);
+    // The source is left as it was, and nothing is sharpened at 0 %.
+    expect([...src]).toEqual([...rgba([96, 255], [96, 255], [160, 255], [160, 128])]);
+    expect([...sharpenPixels(src, 4, 1, 0)]).toEqual([...src]);
+    // Past black and white it stops there.
+    const hard = sharpenPixels(rgba([0, 255], [255, 255]), 2, 1, 100);
+    expect([hard[0], hard[4]]).toEqual([0, 255]);
+    // Down a column as across a row.
+    const down = sharpenPixels(rgba([96, 255], [160, 255]), 1, 2, 50);
+    expect([down[0], down[4]]).toEqual([64, 192]);
+  });
+
+  it('draws the sharpened copy only once one at its sharpness is ready, else the picture unsharpened', () => {
+    // No look, no sharpening, or no copy yet: the picture itself (unsharpened meanwhile).
+    expect(copyStep(null)).toBe(0);
+    expect(copyStep({ ...PLAIN, brightness: 0.2 })).toBe(0);
+    expect(copyStep({ ...PLAIN, sharpness: 0.5 })).toBe(0);
+    // The copy of an older sharpness (the new one being made): not that one either.
+    expect(copyStep({ ...PLAIN, sharpness: 0.5, copy: 80 })).toBe(0);
+    expect(copyStep({ ...PLAIN, sharpness: 0.5, copy: 50 })).toBe(50);
+    // The copy's step never comes from a kept look.
+    expect(lookOf(JSON.stringify({ ...PLAIN, sharpness: 0.5, copy: 50 }))).toEqual({
+      ...PLAIN,
+      sharpness: 0.5,
+    });
   });
 
   it('a live zoom glides from where it was to where it goes, by the engine’s clock, then holds', () => {

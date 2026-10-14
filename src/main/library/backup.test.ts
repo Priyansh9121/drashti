@@ -61,6 +61,9 @@ describe('backing up the library', () => {
     // A conversion going on: not the library's yet, so not backed up.
     mkdirSync(join(dir, 'Media', '.converting'));
     writeFileSync(join(dir, 'Media', '.converting', 'job.mp4'), 'part');
+    // Pictures' sharpened copies (Session 26f): made again after a restore, so left out.
+    mkdirSync(join(dir, 'Media', 'sharpened'));
+    writeFileSync(join(dir, 'Media', 'sharpened', `${'ab'.repeat(32)}-50.jpg`), 'placeholder copy');
     const into = mkdtempSync(join(tmpdir(), 'drashti-backups-'));
     const now = new Date(2026, 8, 29, 18, 30);
     const progress: [number, number][] = [];

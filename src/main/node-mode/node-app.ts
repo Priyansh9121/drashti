@@ -6,7 +6,8 @@ import { EngineMirror } from '../../shared/engine/mirror';
 import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import { IPC } from '../../shared/ipc';
-import { MEDIA_SCHEME } from '../../shared/media';
+import { copyMediaId, MEDIA_SCHEME, mediaUrl } from '../../shared/media';
+import { sharpenStep } from '../../shared/picture-look';
 import { mediaInState } from '../../shared/node-media';
 import {
   DEFAULT_NODE_PORT,
@@ -208,7 +209,12 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     const s = mirror.state;
     if (!s) return [];
     const m = mediaInState(s);
-    return [...m.now, ...m.next];
+    // A picture's sharpened copy that Main has ready (Session 26f) is fetched as soon as the picture is.
+    const copies = [...m.now, ...m.next].flatMap((id) => {
+      const look = s.pictures[id];
+      return look?.copy && look.copy === sharpenStep(look.sharpness) ? [copyMediaId(id, look.copy)] : [];
+    });
+    return [...m.now, ...m.next, ...copies];
   };
   const cache = new MediaCache({
     dir: cacheDir,
@@ -229,7 +235,13 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     },
   });
   protocol.handle(MEDIA_SCHEME, async (request) => {
-    const asked = mediaRequestOf(request.url);
+    let asked = mediaRequestOf(request.url);
+    // A picture's sharpened copy (Session 26f) is a file of its own here, copied from Main as media is.
+    if (asked?.what === 'sharp') {
+      const id = copyMediaId(asked.mediaId, asked.step);
+      request = new Request(mediaUrl(id), { method: request.method, headers: request.headers });
+      asked = { what: 'media', mediaId: id };
+    }
     // On the screens before its copy arrived: fetched at once, and the screen's request waits for it
     // (the picture before it stays up meanwhile) for as long as it is on the screens and can still
     // come. Requests for files already here never wait behind it.

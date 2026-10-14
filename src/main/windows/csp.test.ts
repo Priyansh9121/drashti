@@ -60,7 +60,21 @@ describe('page security policies', () => {
     for (const [name, values] of policy) expect(values, name).not.toContain('drashti-media:');
   });
 
-  for (const page of pages.filter((p) => !NETWORK_PAGES.has(p) && p !== 'pdf.html')) {
+  // The hidden window that makes pictures' sharpened copies (Session 26f): the pictures come through the
+  // bridge, so it names no library media and plays none.
+  it('sharpen.html (sharpened copies): app scripts only, no fetching, no media', () => {
+    const policy = policyOf(readFileSync(join(RENDERER, 'sharpen.html'), 'utf8'));
+    expect(policy.get('default-src')).toEqual(["'self'"]);
+    expect(policy.get('script-src')).toEqual(["'self'"]);
+    expect(policy.get('connect-src')).toEqual(["'self'"]);
+    expect(policy.get('media-src')).toEqual(["'none'"]);
+    expect(policy.get('object-src')).toEqual(["'none'"]);
+    expect(policy.get('base-uri')).toEqual(["'none'"]);
+    expect(policy.get('form-action')).toEqual(["'none'"]);
+    for (const [name, values] of policy) expect(values, name).not.toContain('drashti-media:');
+  });
+
+  for (const page of pages.filter((p) => !NETWORK_PAGES.has(p) && p !== 'pdf.html' && p !== 'sharpen.html')) {
     it(`${page}: app scripts only, no fetching, media only as images and media`, () => {
       const policy = policyOf(readFileSync(join(RENDERER, page), 'utf8'));
       expect(policy.get('default-src')).toEqual(["'self'"]);

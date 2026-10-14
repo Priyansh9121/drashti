@@ -3,6 +3,7 @@ import { isAbsolute, join } from 'node:path';
 import type { MediaUsage, UsedIn } from '../../shared/media-removal';
 import { USED_IN_NAMES } from '../../shared/media-removal';
 import { stillPath } from '../media/media-protocol';
+import { removeCopiesOf } from '../media/sharpened';
 import type { Db } from '../db/database';
 
 /*
@@ -15,8 +16,8 @@ import type { Db } from '../db/database';
  *   props, themes, macros and the idle rotation keep pointing at it: while it
  *   is deleted they treat it as a missing file (nothing in its place), except
  *   that what is on the screens now stays up until it is changed.
- * - Once it can no longer be undone (Drashti starting again), its file and
- *   still frame go, and the row stays as a missing file, so what pointed at
+ * - Once it can no longer be undone (Drashti starting again), its file,
+ *   still frame and sharpened copies go, and the row stays as a missing file, so what pointed at
  *   it still loads and saves as with any missing file. Importing the same
  *   file again brings it back to life everywhere (media-store.ts).
  */
@@ -159,7 +160,11 @@ export class MediaRemoval {
       forget.run(r.id);
       // Another row with the same bytes would share the file (never, one row per sha256), so it can go.
       await rm(join(mediaDir, r.path), { force: true }).catch(() => undefined);
-      if (r.sha256) await rm(join(mediaDir, stillPath(r.sha256)), { force: true }).catch(() => undefined);
+      if (r.sha256) {
+        await rm(join(mediaDir, stillPath(r.sha256)), { force: true }).catch(() => undefined);
+        // Its sharpened copies (Session 26f) go with it.
+        await removeCopiesOf(mediaDir, r.sha256);
+      }
       gone++;
     }
     return gone;

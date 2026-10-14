@@ -24,7 +24,7 @@ import { type LibraryChange, listedKirtan } from '../shared/library';
 import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/import-schema';
 import { type EventChannel, type EventContract, IPC } from '../shared/ipc';
 import { acceleratorFor } from '../shared/keymap';
-import { MEDIA_ID_PATTERN, MEDIA_SCHEME } from '../shared/media';
+import { copyMediaId, copyOfId, MEDIA_ID_PATTERN, MEDIA_SCHEME } from '../shared/media';
 import { NOT_USED } from '../shared/media-removal';
 import { mediaUpNow } from '../shared/node-media';
 import { MediaRemoval } from './library/media-removal';
@@ -127,12 +127,13 @@ import { log, logFiles, startLogFile } from './log';
 import { LiveStateWriter, startupRecovery, type StartupRecovery } from './recovery/live-state';
 import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES } from './media/media-protocol';
 import { saveStill } from './media/stills';
+import { SharpenedCopies } from './media/sharpened';
 import { installMenu, installNodeMenu } from './menu';
 import { runPerformanceTest } from './perftest';
 import { registerPlaylistIpc } from './playlists/playlist-ipc';
 import { nodeWatch, SmartFolders } from './playlists/smart-folders';
 import { RepeatSlides } from './playlists/repeat-slides';
-import { framed, PLAIN, type PictureLook, pictureLookSchema } from '../shared/picture-look';
+import { framed, PLAIN, type PictureLook, pictureLookSchema, sharpenStep } from '../shared/picture-look';
 import { TrimSaves } from './convert/trim-saves';
 import { saveRequestSchema } from '../shared/trim';
 import { isRepeatId } from '../shared/repeat';
@@ -173,6 +174,7 @@ import { SleepGuard } from './outputs/sleep-guard';
 import { IpcTransport } from './transport/ipc-transport';
 import { AUDIO_PARTITION, createAudioWindow } from './windows/audio-window';
 import { createPicturesWindow } from './pictures/pictures-window';
+import { createSharpenWindow } from './pictures/sharpen-window';
 import { PdfPictures, pictureSize } from './pictures/pdf-pictures';
 import { openGalleryWindow } from './windows/gallery-window';
 import { createOperatorWindow } from './windows/operator-window';
@@ -558,7 +560,8 @@ type PerfRun = Parameters<typeof runPerformanceTest>[0] & {
   stream: StreamService;
   network: NetworkService;
   nodes: NodeService;
-  library: { db: Db; mediaDir: string };
+  /** `sharpened`: every picture's sharpened copy made (Session 26f). */
+  library: { db: Db; mediaDir: string; sharpened: () => Promise<void> };
   operatorContents: () => Electron.WebContents | null;
   music: MusicService;
   engine: ShowEngine;
@@ -574,6 +577,7 @@ function runPerformanceTestWithScenario(ctx: PerfRun): ReturnType<typeof runPerf
     ffmpeg: ctx.ffmpegPath(),
     engine: ctx.engine,
     outputs: ctx.outputs,
+    sharpened: ctx.library.sharpened,
   });
   return runPerformanceTestWithNodes({ ...ctx, scenario });
 }
@@ -1033,7 +1037,49 @@ function start(): void {
   mkdirSync(mediaDir, { recursive: true });
   const media = new MediaRepo(db);
   mediaLength = (mediaId) => media.lengthOf(mediaId);
-  pictureLook = (mediaId) => media.look(mediaId);
+  // ---- pictures' sharpened copies (Session 26f): made once each, drawn by every screen ----------
+  const sharpened = new SharpenedCopies({
+    mediaDir,
+    wanted: () => media.sharpenWants(),
+    open: (gone) => {
+      const win = createSharpenWindow(gone);
+      return {
+        id: win.webContents.id,
+        destroy: () => {
+          if (!win.isDestroyed()) win.destroy();
+        },
+      };
+    },
+    // A copy is ready (or went): the screens, the thumbnails and the nodes' lists follow.
+    changed: () => {
+      looksChanged();
+      wantedMedia?.invalidate();
+      nodeService?.libraryChanged();
+    },
+    log: (message) => {
+      log.info(message);
+    },
+  });
+  stops.add('sharpened copies', () => {
+    sharpened.close();
+  });
+  handle(IPC.sharpen.next, (e) => sharpened.next(e.sender.id));
+  handle(IPC.sharpen.made, (e, key, bytes) => sharpened.made(e.sender.id, key, bytes));
+  /** A look as the screens and thumbnails get it: with its sharpened copy, once that is ready. */
+  const shownLook = (mediaId: string, look: PictureLook | null): PictureLook | null => {
+    const step = look ? sharpenStep(look.sharpness) : 0;
+    if (!look || step === 0) return look;
+    const ready = sharpened.readyStep(media.file(mediaId)?.sha256 ?? null);
+    return ready === step ? { ...look, copy: step } : look;
+  };
+  const shownLooks = (): Record<string, PictureLook> =>
+    Object.fromEntries(
+      Object.entries(media.looks()).flatMap(([id, look]) => {
+        const shown = shownLook(id, look);
+        return shown ? [[id, shown]] : [];
+      }),
+    );
+  pictureLook = (mediaId) => shownLook(mediaId, media.look(mediaId));
   mediaMarkers = (mediaId) => media.markersOf(mediaId);
   // Playback markers (Session 14): kept with the file; what plays it follows at once.
   handle(IPC.media.markers, (_e, mediaId) =>
@@ -1059,12 +1105,12 @@ function start(): void {
   // ---- A picture's look (Session 26e): kept with the picture, the same wherever it shows ----
   const looksChanged = () => {
     engine.refreshPictures();
-    sendToOperator(IPC.media.looksChanged, media.looks());
+    sendToOperator(IPC.media.looksChanged, shownLooks());
   };
   handle(IPC.media.look, (_e, mediaId) =>
     typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId) ? media.look(mediaId) : null,
   );
-  handle(IPC.media.looks, () => media.looks());
+  handle(IPC.media.looks, () => shownLooks());
   handle(IPC.media.setLook, (e, mediaId, raw) => {
     if (!fromOperator(e) || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId))
       return { ok: false as const, message: 'Only the operator window can change a picture.' };
@@ -1073,6 +1119,8 @@ function start(): void {
     if (!media.setLook(mediaId, look ? framed(look.data) : null))
       return { ok: false as const, message: 'Only a picture in the library has a look.' };
     looksChanged();
+    // Its sharpened copy made (again), or gone with its sharpness (Session 26f).
+    void sharpened.refresh();
     log.info('Pictures: a picture’s look was kept');
     return { ok: true as const };
   });
@@ -1103,6 +1151,7 @@ function start(): void {
         const found = media.file(id);
         return found?.deleted && !mediaUpNow(engine.current).has(id) ? { ...found, missing: true } : found;
       },
+      sharpened: (sha256, step) => sharpened.relativePath(sha256, step),
       warn: (message) => {
         log.warn(message);
       },
@@ -1464,6 +1513,10 @@ function start(): void {
     })
     .catch((error: unknown) => {
       log.warn('Media: could not remove the files of deleted media', error);
+    })
+    // The pictures' sharpened copies (Session 26f): any missing made, any no picture wants removed.
+    .finally(() => {
+      void sharpened.refresh();
     });
   /** After media is deleted or brought back: everything that shows media reads again. */
   const mediaRemovalChanged = () => {
@@ -1756,6 +1809,8 @@ function start(): void {
       // What the nodes should copy may have changed.
       wantedMedia?.invalidate();
       nodeService?.libraryChanged();
+      // A sharpened picture's file may have come back, or gone (Session 26f).
+      void sharpened.refresh();
       // A sound in an audio playlist may have been converted, found or lost.
       if (musicService) sendToOperator(IPC.music.changed, musicService.view());
     };
@@ -2748,6 +2803,14 @@ function start(): void {
       },
       mediaSource: (mediaId) => {
         if (!MEDIA_ID_PATTERN.test(mediaId)) return null;
+        // A picture's sharpened copy (Session 26f): its preview is made from the copy, once it is ready.
+        const copy = copyOfId(mediaId);
+        if (copy) {
+          const found = media.file(copy.mediaId);
+          const relative = found && !found.missing ? sharpened.relativePath(found.sha256, copy.step) : null;
+          const path = relative ? join(mediaDir, relative) : null;
+          return path && isInside(mediaDir, path) ? { path, kind: 'image' as const } : null;
+        }
         const row = media.kindAndFile(mediaId);
         if (!row || row.missing || row.kind === 'audio' || row.path === '') return null;
         const path = join(mediaDir, row.path);
@@ -2790,12 +2853,39 @@ function start(): void {
 
   // ---- output nodes (Session 13) ----------------------------------------------------------------
   const nodeRepo = new NodeRepo(db);
-  const wanted = new WantedMedia(db, () => {
-    const idle = settings.get('idleRotation') as { pictures?: unknown } | undefined;
-    return Array.isArray(idle?.pictures)
-      ? idle.pictures.filter((p): p is string => typeof p === 'string')
-      : [];
-  });
+  const wanted = new WantedMedia(
+    db,
+    () => {
+      const idle = settings.get('idleRotation') as { pictures?: unknown } | undefined;
+      return Array.isArray(idle?.pictures)
+        ? idle.pictures.filter((p): p is string => typeof p === 'string')
+        : [];
+    },
+    Date.now,
+    // A picture's sharpened copy (Session 26f), once it is ready: one more file for the node, copied as
+    // media is, right after the picture's own.
+    {
+      want: (mediaId) => {
+        const look = media.look(mediaId);
+        const step = look ? sharpenStep(look.sharpness) : 0;
+        const found = step > 0 ? media.file(mediaId) : null;
+        const file = found && !found.missing ? sharpened.fileOf(found.sha256, step) : null;
+        return file
+          ? { id: copyMediaId(mediaId, step), sha256: file.hash, bytes: file.bytes, ext: file.ext }
+          : null;
+      },
+      source: (copyId) => {
+        const copy = copyOfId(copyId);
+        const found = copy ? media.file(copy.mediaId) : null;
+        if (!copy || !found || found.missing) return null;
+        const relative = sharpened.relativePath(found.sha256, copy.step);
+        const file = sharpened.fileOf(found.sha256, copy.step);
+        return relative && file
+          ? { path: join(mediaDir, relative), sha256: file.hash, bytes: file.bytes, ext: file.ext }
+          : null;
+      },
+    },
+  );
   wantedMedia = wanted;
   const mainName = () =>
     testComputerName ?? localName()?.replace(/\.local$/u, '') ?? hostname().replace(/\.local$/u, '');
@@ -3899,7 +3989,14 @@ function start(): void {
         stream: streaming,
         network: net,
         nodes,
-        library: { db: libraryDb, mediaDir },
+        library: {
+          db: libraryDb,
+          mediaDir,
+          sharpened: async () => {
+            await sharpened.refresh();
+            await sharpened.idle();
+          },
+        },
         operatorContents: () =>
           operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow.webContents : null,
         music,

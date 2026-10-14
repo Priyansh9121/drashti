@@ -26,6 +26,28 @@ export function stillUrl(mediaId: string, version = 0): string {
   return `${MEDIA_SCHEME}://still/${mediaId}${version > 0 ? `?v=${version}` : ''}`;
 }
 
+/**
+ * The URL of a picture's sharpened copy (Session 26f), made once at the sharpness `step` of its look (5 to
+ * 100): the screens draw it in place of the picture, so none of them draws a filter. A later try gets a URL of
+ * its own, as mediaUrl's does. The main process reads only the path.
+ */
+export function sharpenedUrl(mediaId: string, step: number, attempt = 0): string {
+  return `${MEDIA_SCHEME}://sharp/${mediaId}/${String(step)}${attempt > 0 ? `?try=${attempt}` : ''}`;
+}
+
+/**
+ * A sharpened copy as one more file of its own (a node copies it as it copies media, a phone's preview is
+ * made from it): the picture's id and the step. Never a library id: those are UUIDs, without "_".
+ */
+export const copyMediaId = (mediaId: string, step: number): string => `${mediaId}_s${String(step)}`;
+
+/** The picture and step a copy's id names, or null for any other id. */
+export function copyOfId(id: string): { mediaId: string; step: number } | null {
+  const m = /^([A-Za-z0-9-]{1,100})_s(\d{1,3})$/u.exec(id);
+  const step = Number(m?.[2]);
+  return m?.[1] && step >= 5 && step <= 100 && step % 5 === 0 ? { mediaId: m[1], step } : null;
+}
+
 /** Stills are at most this wide (thumbnails are smaller), and this many bytes. */
 export const STILL_WIDTH = 480;
 export const STILL_MAX_BYTES = 1024 * 1024;

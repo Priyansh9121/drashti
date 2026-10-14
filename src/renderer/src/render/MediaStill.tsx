@@ -27,7 +27,7 @@ export function MediaStill({
   // A picture's thumbnail follows its look (Session 26e).
   return media === 'image' ? (
     <Looked mediaId={mediaId} showing={null} style={style}>
-      {(s) => <img src={mediaUrl(mediaId)} alt="" draggable={false} style={s} />}
+      {(s, copy) => <img src={copy?.url ?? mediaUrl(mediaId)} alt="" draggable={false} style={s} />}
     </Looked>
   ) : (
     <VideoStill mediaId={mediaId} style={style} />

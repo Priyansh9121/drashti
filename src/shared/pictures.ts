@@ -97,3 +97,12 @@ export function tidyNotes(text: string): string {
     .trim()
     .slice(0, 4000);
 }
+
+/** One picture for the hidden window that makes sharpened copies (Session 26f): its file's bytes, the percent, and what to hand back. */
+export interface SharpenJobView {
+  key: string;
+  data: Uint8Array;
+  percent: number;
+  type: 'image/jpeg' | 'image/png';
+  maxPixels: number;
+}

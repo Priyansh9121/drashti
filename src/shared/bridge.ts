@@ -40,7 +40,7 @@ import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
 import type { MediaRemovalResult, MediaUsage } from './media-removal';
 import type { MarkersResult, MediaMarkers } from './markers';
-import type { PictureAssetKind, PictureJob, PicturePage, PicturesDone } from './pictures';
+import type { PictureAssetKind, PictureJob, PicturePage, PicturesDone, SharpenJobView } from './pictures';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { Lang, RenderSlide, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
@@ -712,5 +712,12 @@ export interface DrashtiBridge {
     page(page: PicturePage): Promise<boolean>;
     done(done: PicturesDone): Promise<null>;
     asset(kind: PictureAssetKind, name: string): Promise<Uint8Array | null>;
+  };
+  /** The hidden window that makes pictures' sharpened copies (Session 26f); that window only. */
+  sharpen: {
+    /** The next picture to make a copy of (null: none left). */
+    next(): Promise<SharpenJobView | null>;
+    /** The copy as made (null: it could not be). False: not this window's to make. */
+    made(key: string, bytes: Uint8Array | null): Promise<boolean>;
   };
 }

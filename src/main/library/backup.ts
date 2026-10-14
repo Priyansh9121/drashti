@@ -22,6 +22,7 @@ import { z } from 'zod';
 import { fileStamp } from '../../shared/format';
 import type { Db } from '../db/database';
 import { CONVERTING_DIR } from '../import/media-store';
+import { SHARPENED_DIR } from '../media/sharpened';
 
 /*
  * Backing up and restoring the library. A backup is a folder: the database,
@@ -114,8 +115,14 @@ const errorCode = (error: unknown): string | undefined =>
   error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : undefined;
 
 /**
+ * A media folder's folders that a backup leaves out: conversions going on (not the library's yet) and
+ * pictures' sharpened copies (Session 26f: made again from the pictures after a restore).
+ */
+const LEFT_OUT = new Set([CONVERTING_DIR, SHARPENED_DIR]);
+
+/**
  * The files in a folder and below (regular files only, symbolic links not followed), with their sizes.
- * A media folder's conversions going on are left out: they are not the library's yet.
+ * A media folder's conversions going on and sharpened copies are left out.
  */
 export async function filesIn(dir: string): Promise<{ path: string; bytes: number }[]> {
   const found: { path: string; bytes: number }[] = [];
@@ -130,7 +137,7 @@ export async function filesIn(dir: string): Promise<{ path: string; bytes: numbe
     for (const entry of entries) {
       const full = join(at, entry.name);
       if (entry.isDirectory()) {
-        if (at === dir && entry.name === CONVERTING_DIR) continue;
+        if (at === dir && LEFT_OUT.has(entry.name)) continue;
         await walk(full);
       } else if (entry.isFile())
         try {

@@ -31,6 +31,7 @@ Deleting
 Pictures and videos
 
 - The Picture editor: zoom, move, brightness, contrast, colour, sharpness and Auto, kept with the picture, so it looks the same on every screen, node, the stream and the thumbnails (the file is never changed). From LIVE, zoom the picture on the screens for that showing; Keep this zoom saves it.
+- Sharpness is made once per picture: a sharpened copy, made in the background after Save, is what every screen, node and phone shows, so a sharpened picture comes up at once on any computer. Until the copy is ready the picture shows unsharpened.
 - A video's start and end on a timeline, and Save as MP4…: that part saved as its own file, copied as it is (the picture and sound unchanged) from the clean frame at or just before the start, which it names first.
 
 ## 1.0.0-alpha.3 (11 Oct 2026)

@@ -105,6 +105,8 @@ export default defineConfig({
           announce: resolve('src/renderer/announce.html'),
           // The hidden window that draws a PDF's pages as pictures (Session 15).
           pdf: resolve('src/renderer/pdf.html'),
+          // The hidden window that makes pictures' sharpened copies (Session 26f).
+          sharpen: resolve('src/renderer/sharpen.html'),
         },
       },
     },

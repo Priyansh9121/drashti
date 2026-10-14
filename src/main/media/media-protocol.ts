@@ -7,8 +7,9 @@ import { extOf } from '../import/scan';
 
 /*
  * The main-process side of drashti-media://. A window asks for
- * drashti-media://media/<id> (the file) or drashti-media://still/<id> (its
- * still frame, for thumbnails); the library says which file that is, and it
+ * drashti-media://media/<id> (the file), drashti-media://still/<id> (its
+ * still frame, for thumbnails) or drashti-media://sharp/<id>/<step> (a
+ * picture's sharpened copy, Session 26f); the library says which file that is, and it
  * is streamed with byte ranges, so video can seek. Whatever the library
  * says, nothing outside the media folder is served: every refusal is a 404.
  */
@@ -33,6 +34,8 @@ export interface MediaProtocolDeps {
   /** The media folder. */
   mediaDir: string;
   lookup: (mediaId: string) => MediaFileRow | null;
+  /** A picture's sharpened copy at a step, relative to the media folder, if it is ready (Session 26f). */
+  sharpened?: (sha256: string, step: number) => string | null;
   /** Told about refusals that point at a broken or tampered library. */
   warn?: (message: string) => void;
 }
@@ -98,10 +101,11 @@ export function isInside(dir: string, file: string): boolean {
   return rel !== '' && !isAbsolute(rel) && rel.split(sep)[0] !== '..';
 }
 
-export interface MediaRequest {
-  what: 'media' | 'still';
-  mediaId: string;
-}
+export type MediaRequest =
+  | { what: 'media'; mediaId: string }
+  | { what: 'still'; mediaId: string }
+  /** A picture's sharpened copy (Session 26f), made at a step of 5 %. */
+  | { what: 'sharp'; mediaId: string; step: number };
 
 /** What a drashti-media:// URL asks for, or null if it is not a URL Drashti makes. */
 export function mediaRequestOf(url: string): MediaRequest | null {
@@ -112,9 +116,17 @@ export function mediaRequestOf(url: string): MediaRequest | null {
     return null;
   }
   const what = parsed.hostname;
-  if (parsed.protocol !== `${MEDIA_SCHEME}:` || (what !== 'media' && what !== 'still')) return null;
+  if (parsed.protocol !== `${MEDIA_SCHEME}:`) return null;
+  if (what === 'sharp') {
+    const m = /^\/([^/]+)\/(\d{1,3})$/u.exec(parsed.pathname);
+    const step = Number(m?.[2]);
+    return m?.[1] && MEDIA_ID_PATTERN.test(m[1]) && step >= 5 && step <= 100 && step % 5 === 0
+      ? { what, mediaId: m[1], step }
+      : null;
+  }
   const mediaId = parsed.pathname.slice(1);
-  return MEDIA_ID_PATTERN.test(mediaId) ? { what, mediaId } : null;
+  if (!MEDIA_ID_PATTERN.test(mediaId)) return null;
+  return what === 'media' || what === 'still' ? { what, mediaId } : null;
 }
 
 export interface ByteRange {
@@ -156,15 +168,22 @@ const SHA256 = /^[0-9a-f]{64}$/;
 
 /** The file a request asks for, if it is a regular file inside the media folder. */
 async function fileFor(
-  { what, mediaId }: MediaRequest,
+  asked: MediaRequest,
   deps: MediaProtocolDeps,
 ): Promise<{ path: string; size: number } | null> {
+  const { mediaId } = asked;
   const found = deps.lookup(mediaId);
   if (!found || found.missing) return null;
   let row: { path: string };
-  if (what === 'media') row = found;
-  else if (found.sha256 && SHA256.test(found.sha256)) row = { path: stillPath(found.sha256) };
-  else return null;
+  const sha = found.sha256 && SHA256.test(found.sha256) ? found.sha256 : null;
+  if (asked.what === 'media') row = found;
+  else if (!sha) return null;
+  else if (asked.what === 'still') row = { path: stillPath(sha) };
+  else {
+    const copy = deps.sharpened?.(sha, asked.step) ?? null;
+    if (!copy) return null;
+    row = { path: copy };
+  }
   if (row.path === '') return null;
   // Library paths are relative to the media folder; anything else was not written by Drashti.
   if (isAbsolute(row.path)) {

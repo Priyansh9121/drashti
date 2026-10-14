@@ -142,6 +142,25 @@ export class MediaRepo {
     return out;
   }
 
+  /**
+   * Pictures whose looks sharpen them (Session 26f), for their sharpened copies: the file and the sharpness.
+   * Deleted ones too, until their files go (Undo puts them back as they were).
+   */
+  sharpenWants(): { mediaId: string; sha256: string; path: string; sharpness: number }[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, sha256, path, look FROM media
+          WHERE kind = 'image' AND look IS NOT NULL AND sha256 IS NOT NULL AND missing = 0 AND path <> ''`,
+      )
+      .all() as { id: string; sha256: string; path: string; look: string }[];
+    return rows.flatMap((r) => {
+      const look = lookOf(r.look);
+      return look && look.sharpness > 0
+        ? [{ mediaId: r.id, sha256: r.sha256, path: r.path, sharpness: look.sharpness }]
+        : [];
+    });
+  }
+
   file(mediaId: string): MediaFileRow | null {
     const row = this.fileStmt.get(mediaId);
     return row

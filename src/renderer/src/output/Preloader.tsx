@@ -3,7 +3,9 @@ import type { PreloadMedia } from '../../../shared/engine/preload';
 import { mediaToPreload } from '../../../shared/engine/preload';
 import type { UpNext } from '../../../shared/engine/state';
 import { mediaUrl } from '../../../shared/media';
+import type { PictureLook } from '../../../shared/picture-look';
 import { useMediaAttempt } from '../render/media-attempts';
+import { useSharpCopy } from '../render/picture-looks';
 
 type LoadState = 'loading' | 'ready' | 'failed';
 
@@ -52,18 +54,39 @@ function PreloadVideo({ mediaId, attempt }: { mediaId: string; attempt: number }
   );
 }
 
+/**
+ * A picture's sharpened copy (Session 26f) loaded ahead, held until the slide shows it; the picture itself
+ * is loaded ahead until the copy is in, in case it never comes.
+ */
+function PreloadPicture({ mediaId, look }: { mediaId: string; look: PictureLook | null }) {
+  const attempt = useMediaAttempt(mediaId);
+  const copy = useSharpCopy(mediaId, look);
+  return copy ? (
+    <span data-preload={mediaId} data-state="ready" data-sharpened={copy.id} />
+  ) : (
+    <PreloadImage key={attempt} mediaId={mediaId} attempt={attempt} />
+  );
+}
+
 /** One file to load ahead; a node's copy that lands late is loaded again (a new element, a new URL). */
-function PreloadOne({ media }: { media: PreloadMedia }) {
+function PreloadOne({ media, look }: { media: PreloadMedia; look: PictureLook | null }) {
   const attempt = useMediaAttempt(media.mediaId);
   return media.media === 'image' ? (
-    <PreloadImage key={attempt} mediaId={media.mediaId} attempt={attempt} />
+    <PreloadPicture mediaId={media.mediaId} look={look} />
   ) : (
     <PreloadVideo key={attempt} mediaId={media.mediaId} attempt={attempt} />
   );
 }
 
 /** Loads what Next will show (PLAN.md 4.3), so its images and videos are never a frame late. */
-export function Preloader({ next }: { next: UpNext | null }) {
+export function Preloader({
+  next,
+  pictures = {},
+}: {
+  next: UpNext | null;
+  /** The pictures' looks (Session 26e): a sharpened one is loaded ahead as its copy. */
+  pictures?: Record<string, PictureLook>;
+}) {
   const wanted: PreloadMedia[] = useMemo(() => mediaToPreload(next), [next]);
   return (
     <div
@@ -81,7 +104,7 @@ export function Preloader({ next }: { next: UpNext | null }) {
       }}
     >
       {wanted.map((m) => (
-        <PreloadOne key={`${m.media}:${m.mediaId}`} media={m} />
+        <PreloadOne key={`${m.media}:${m.mediaId}`} media={m} look={pictures[m.mediaId] ?? null} />
       ))}
     </div>
   );
