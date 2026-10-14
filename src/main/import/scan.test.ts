@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { formatOf, mediaKindOf, scanPaths } from './scan';
+import { formatOf, importableExtensions, mediaKindOf, scanPaths } from './scan';
 
 function tree(files: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), 'drashti-scan-'));
@@ -81,5 +81,31 @@ describe('scanPaths', () => {
     }
     const result = await scanPaths([root]);
     expect(result.files.map((f) => relative(root, f.path))).toEqual([join('a', 'Song.txt')]);
+  });
+});
+
+describe('what the Import… menu’s Files… offers (Session 26a)', () => {
+  it('is every extension Drashti imports, and nothing it does not', () => {
+    const offered = importableExtensions();
+    expect(new Set(offered).size).toBe(offered.length);
+    for (const ext of offered) expect(formatOf(`/a/x.${ext}`), ext).not.toBe('unknown');
+    for (const ext of [
+      'pptx',
+      'key',
+      'pdf',
+      'png',
+      'heic',
+      'mp4',
+      'mov',
+      'mp3',
+      'wav',
+      'pro6',
+      'pro6x',
+      'pro',
+      'probundle',
+      'txt',
+    ])
+      expect(offered).toContain(ext);
+    expect(offered).not.toContain('docx');
   });
 });

@@ -38,7 +38,7 @@ async function importGroupsKirtan(win: Page): Promise<void> {
 async function openGroupsKirtan(win: Page): Promise<void> {
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: new RegExp(GROUPS_KIRTAN) })
+    .getByRole('button', { name: new RegExp(`^${GROUPS_KIRTAN}`) })
     .click();
   await expect(win.getByTestId('slide-thumb')).toHaveCount(10);
 }

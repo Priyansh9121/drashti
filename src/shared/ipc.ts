@@ -272,6 +272,14 @@ export const IPC = {
     importProgress: 'library:import-progress',
     /** main -> operator: presentations, props, messages or themes were added or changed. */
     changed: 'library:changed',
+    /**
+     * View › Show Shastra, Templates and Kirtan Details (Session 26a): whether the operator window shows
+     * them (off to begin with, kept with the library's settings); setting it is an admin's.
+     */
+    extras: 'library:extras',
+    setExtras: 'library:set-extras',
+    /** main -> operator: the switch changed. */
+    extrasChanged: 'library:extras-changed',
   },
   /** Kirtans: their words by language and their details; changing them is for the operator window only. */
   kirtans: {
@@ -754,6 +762,11 @@ export interface InvokeContract {
     result: SaveSlidesResult;
   };
   [IPC.library.getDefaultTransition]: { args: []; result: Transition };
+  [IPC.library.extras]: { args: []; result: boolean };
+  [IPC.library.setExtras]: {
+    args: [on: boolean];
+    result: { ok: true; on: boolean } | { ok: false; message: string };
+  };
   [IPC.library.setDefaultTransition]: {
     args: [transition: Transition];
     result: { ok: true; transition: Transition } | { ok: false; message: string };
@@ -971,6 +984,7 @@ export interface EventContract {
   [IPC.engine.message]: EngineMessage;
   [IPC.library.importProgress]: ImportProgress;
   [IPC.library.changed]: { at: number; what: LibraryChange };
+  [IPC.library.extrasChanged]: { on: boolean };
   [IPC.playlists.changed]: { at: number };
   [IPC.app.undo]: { at: number };
   [IPC.app.redo]: { at: number };

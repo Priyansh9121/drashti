@@ -16,6 +16,7 @@ import {
   outputPage,
   QUIET,
   setUpScreen,
+  showExtras,
 } from './helpers';
 import { KIRTAN, NOTE_ONE, placeholderTalk, PLAYLIST, setUpPlaceholderShow, TALK } from './placeholder-show';
 import { freePort, rtmpListener, TEST_KEY, testFfmpeg } from './stream-helpers';
@@ -207,6 +208,8 @@ test('the slide editor', async () => {
 test('the kirtan library, screens’ languages, templates and the setup wizard', async () => {
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' });
   const win = await operatorPage(app);
+  await operatorReady(win);
+  await showExtras(win);
   await win.setViewportSize({ width: 1600, height: 900 });
   await win
     .getByTestId('presentation-list')
@@ -843,6 +846,7 @@ test('Shastra, timers in the running order, the arti prompt, Samvat and tithi, a
   });
   const win = await operatorPage(app);
   await operatorReady(win);
+  await showExtras(win);
   await win.setViewportSize({ width: 1600, height: 900 });
   await running(win);
   // The made-up texts and a made-up calendar for today, generated pictures, placeholder quotes.

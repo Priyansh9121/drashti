@@ -2,7 +2,7 @@ import type { Dirent } from 'node:fs';
 import { lstat, readdir, stat } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import type { ImportFormat } from '../../shared/import';
-import { pictureSourceOf } from '../../shared/pictures';
+import { PICTURE_EXTENSIONS, pictureSourceOf } from '../../shared/pictures';
 
 export type MediaKind = 'image' | 'video' | 'audio';
 
@@ -19,6 +19,14 @@ const PP7 = new Set(['pro', 'probundle', 'proplaylist']);
 /** Clutter that operating systems leave in folders: never content. */
 const IGNORED = new Set(['thumbs.db', 'desktop.ini', 'icon\r']);
 const IGNORED_DIRS = new Set(['__macosx', '$recycle.bin', 'system volume information']);
+
+/**
+ * Every extension Drashti imports (Session 26a: the Import… menu's Files… offers just these): text,
+ * media, ProPresenter 6 and 7 files and their bundles and playlists, and PDF, PowerPoint and Keynote.
+ */
+export function importableExtensions(): string[] {
+  return ['txt', ...Object.keys(MEDIA), ...PP6, ...PP7, ...PICTURE_EXTENSIONS];
+}
 
 export function extOf(path: string): string {
   return extname(path).slice(1).toLowerCase();

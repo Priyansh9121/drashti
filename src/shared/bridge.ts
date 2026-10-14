@@ -256,6 +256,11 @@ export interface DrashtiBridge {
     ): Promise<SaveSlidesResult>;
     /** The transition for presentations without their own (a cut, until it is changed). */
     getDefaultTransition(): Promise<Transition>;
+    /** View › Show Shastra, Templates and Kirtan Details (Session 26a): off to begin with. */
+    extras(): Promise<boolean>;
+    /** An admin's (the View menu does it too). */
+    setExtras(on: boolean): Promise<{ ok: true; on: boolean } | { ok: false; message: string }>;
+    onExtrasChanged(listener: (on: boolean) => void): () => void;
     setDefaultTransition(
       transition: Transition,
     ): Promise<{ ok: true; transition: Transition } | { ok: false; message: string }>;

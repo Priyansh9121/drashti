@@ -49,6 +49,11 @@ export interface MenuActions {
   keyboardShortcuts: () => void;
   /** File > Run Ahead of Other Programs (Windows only, Pro Mode, admin; Session 16): null elsewhere. */
   priority: PriorityItem | null;
+  /**
+   * View > Show Shastra, Templates and Kirtan Details (Session 26a, Pro Mode, an admin's): ticked when
+   * the operator window shows them (off to begin with).
+   */
+  extras: { shown: boolean; toggle: () => void };
   /** Only when DRASHTI_DIAGNOSTICS=1: for the manual watchdog check. */
   diagnostics: {
     crashOperator: () => void;
@@ -131,6 +136,14 @@ export function installMenu(actions: MenuActions): void {
                 id: 'set-up-screens',
                 label: 'Set Up Screens…',
                 click: actions.setUpScreens,
+              } as MenuItemConstructorOptions,
+              { type: 'separator' } as MenuItemConstructorOptions,
+              {
+                id: 'show-extras',
+                label: 'Show Shastra, Templates and Kirtan Details',
+                type: 'checkbox',
+                checked: actions.extras.shown,
+                click: actions.extras.toggle,
               } as MenuItemConstructorOptions,
             ]),
         { type: 'separator' },

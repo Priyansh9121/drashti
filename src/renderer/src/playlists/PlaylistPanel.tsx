@@ -75,6 +75,7 @@ import {
 import { plural } from '../ui/text';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { RowDelete } from '../ui/RowDelete';
+import { useExtras } from '../library/extras-store';
 
 /** A name edited in place: Enter or leaving the field keeps it, Esc goes back. */
 function RenameField({
@@ -386,9 +387,21 @@ function PlaylistTree({ platform }: { platform: string }) {
   );
 }
 
-/** The week's playlists, or the sabha templates (kept apart, so a template is never run by mistake). */
+/**
+ * The week's playlists, or the sabha templates (kept apart, so a template is never run by mistake).
+ * Templates only with View › Show Shastra, Templates and Kirtan Details (Session 26a); otherwise a
+ * heading.
+ */
 function ViewTabs() {
   const view = usePlaylists((s) => s.view);
+  const extras = useExtras((s) => s.on);
+  if (!extras)
+    return (
+      <h2 className="flex min-w-0 flex-1 items-center gap-1.5 px-1 text-sm font-bold">
+        <ListMusic size={15} aria-hidden="true" className="shrink-0 text-muted" />
+        Playlists
+      </h2>
+    );
   return (
     <Tabs
       group="playlist-view"
@@ -743,6 +756,8 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
     (s) => s.tree.find((n) => n.id === openId) ?? s.templates.find((n) => n.id === openId),
   );
   const isTemplate = usePlaylists(templateOpen);
+  // Slots and templates only with View › Show Shastra, Templates and Kirtan Details (Session 26a).
+  const extras = useExtras((s) => s.on);
   const items = usePlaylists((s) => s.items);
   const marked = usePlaylists((s) => s.marked);
   const anchorId = usePlaylists((s) => s.anchorId);
@@ -853,13 +868,17 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
           icon={MoreHorizontal}
           entries={[
             { label: 'Add a header', icon: ListPlus, onSelect: () => void addHeader() },
-            {
-              label: 'Add a slot…',
-              icon: SquareDashed,
-              onSelect: () => {
-                usePlaylists.setState({ addingSlot: true });
-              },
-            },
+            ...(extras
+              ? [
+                  {
+                    label: 'Add a slot…',
+                    icon: SquareDashed,
+                    onSelect: () => {
+                      usePlaylists.setState({ addingSlot: true });
+                    },
+                  },
+                ]
+              : []),
             ...(isTemplate
               ? [
                   {
@@ -869,16 +888,18 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                     onSelect: () => void newFromTemplate(openId),
                   },
                 ]
-              : [
-                  {
-                    label: 'Save as template…',
-                    icon: BookTemplate,
-                    separatorBefore: true,
-                    onSelect: () => {
-                      usePlaylists.setState({ savingTemplate: openId });
+              : extras
+                ? [
+                    {
+                      label: 'Save as template…',
+                      icon: BookTemplate,
+                      separatorBefore: true,
+                      onSelect: () => {
+                        usePlaylists.setState({ savingTemplate: openId });
+                      },
                     },
-                  },
-                ]),
+                  ]
+                : []),
             {
               label: isTemplate ? 'Rename template…' : 'Rename playlist…',
               icon: Pencil,

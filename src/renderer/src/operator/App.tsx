@@ -4,6 +4,7 @@ import { connectEngine } from '../engine/engine-store';
 import { ImportReportDialog } from '../library/ImportReport';
 import { importPaths, watchImports } from '../library/import-store';
 import { loadLibrary, watchLibrary } from '../library/library-store';
+import { connectExtras } from '../library/extras-store';
 import { RemoveConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
 import { MediaRemoveConfirm } from '../library/media-removal';
 import { UndoBar } from '../library/UndoBar';
@@ -84,6 +85,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     watchImports();
     watchPlaylists();
     watchProps();
+    connectExtras();
     connectMode();
     connectRoles();
     void startMidi();

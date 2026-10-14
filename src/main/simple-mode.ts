@@ -21,6 +21,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.newFromWords,
   IPC.library.saveSlides,
   IPC.library.setDefaultTransition,
+  IPC.library.setExtras,
   IPC.library.restoreRevision,
   IPC.library.importPaths,
   IPC.library.pickImportPaths,

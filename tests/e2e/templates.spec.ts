@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, operatorReady } from './helpers';
+import { launchApp, operatorPage, operatorReady, showExtras } from './helpers';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
 
@@ -44,6 +44,8 @@ const itemTexts = (win: Page) =>
 test('a template from a playlist, a playlist from the template, a slot filled from its category, and run', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
+  await operatorReady(win);
+  await showExtras(win);
   const { playlistId } = await weekPlaylist(win);
 
   // The example templates are there, apart from the playlists.
@@ -153,6 +155,8 @@ test('a template from a playlist, a playlist from the template, a slot filled fr
 test('an example template makes a playlist of slots, with a slot added by hand', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
+  await operatorReady(win);
+  await showExtras(win);
   await win.getByTestId('playlist-view-tab-templates').click();
   await win.getByRole('button', { name: 'New playlist from Example: Ravi Sabha' }).click();
   await win.getByRole('textbox', { name: 'Playlist name' }).press('Enter');
@@ -181,6 +185,8 @@ for (const [width, height] of [
   test(`the template dialogs fit at ${width} x ${height}`, async () => {
     const { app } = await launchApp();
     const win = await operatorPage(app);
+    await operatorReady(win);
+    await showExtras(win);
     await win.setViewportSize({ width, height });
     await weekPlaylist(win);
     await win.getByTestId('playlist-node').first().click();
@@ -201,6 +207,7 @@ test('timers in templates: an item starts a countdown as it goes up, kept by the
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
+  await showExtras(win);
   await win.setViewportSize({ width: 1280, height: 720 });
   const { playlistId } = await weekPlaylist(win);
   const timerId = await win.evaluate(async () => {

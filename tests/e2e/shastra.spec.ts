@@ -7,7 +7,15 @@ import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { apiCall, device, NETWORK_ENV, networkOn, pairByQr, pairingCode, pairToken } from './devices';
 import type { PageGlobals } from './helpers';
-import { dropFiles, launchApp, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
+import {
+  dropFiles,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  outputPages,
+  setUpScreen,
+  showExtras,
+} from './helpers';
 
 /*
  * The Shastra module (Session 12), with the made-up texts in docs/examples
@@ -57,6 +65,7 @@ test('a text loads from its file, again unchanged, and updated; references, nons
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
+  await showExtras(win);
   await win.setViewportSize({ width: 1280, height: 720 });
   const files = exampleFiles();
 
@@ -204,6 +213,7 @@ test('a long passage goes on over several slides and Next goes on to the next it
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
+  await showExtras(win);
   await win.setViewportSize({ width: 1280, height: 720 });
   const files = exampleFiles();
   await load(win, [files.granth, files.vachan]);
@@ -315,6 +325,7 @@ test('each group shows its own languages, Sanskrit in either script, and a lower
   const { app } = await launchApp(TWO_OUTPUTS);
   const win = await operatorPage(app);
   await operatorReady(win);
+  await showExtras(win);
   await load(win, [exampleFiles().granth]);
   const hallId = await setUpScreen(win, 'Placeholder hall', 0);
   const sideId = await setUpScreen(win, 'Placeholder side', 1);
@@ -366,6 +377,7 @@ test('the remote and the API put up a reference', async () => {
   const { app } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
   await operatorReady(win);
+  await showExtras(win);
   await load(win, [exampleFiles().granth, exampleFiles().vachan]);
   const { port, base } = await networkOn(win);
   const token = await pairToken(win, port, 'remote', 'Placeholder script');

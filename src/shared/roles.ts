@@ -84,6 +84,7 @@ export const ADMIN_CHANNELS: readonly InvokeChannel[] = [
   IPC.library.removePresentations,
   IPC.library.restorePresentations,
   IPC.library.setDefaultTransition,
+  IPC.library.setExtras,
   IPC.kirtans.setTranslitStyle,
   IPC.media.convert,
   IPC.media.undoConversion,

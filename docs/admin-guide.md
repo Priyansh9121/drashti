@@ -184,9 +184,11 @@ Section 7 of `docs/parallel-run.md` has the steps: **Phones** in the header, **L
 
 ## 9. Shastra texts and calendars
 
+**Shown or hidden.** The operator window starts without the **Shastra** tab, the **Templates** beside the playlists and the library's **kirtan filters** (Category, Kavi, Raag, Occasion): volunteers rarely need them. **View › Show Shastra, Templates and Kirtan Details** (an admin's, in Pro Mode; on Windows press Alt for the menu bar) brings all three back, and turning it off hides them again. It is kept with the library, so a backup keeps it. Hiding them changes nothing else: Shastra texts, templates and kirtan details stay as they were, playlists that hold a passage still run it, the remote's library and macros and the API that name a passage keep working, and search still finds kirtans by their kavi, raag and occasion.
+
 Drashti comes with no scripture text and no calendar: an admin loads files prepared from a source BAPS or the mandir has authorised. The file formats are in `docs/shastra-format.md` and `docs/calendar-format.md`, with made-up examples in `docs/examples/`.
 
-**Shastra texts.** Drag the file onto the library, or in the **Shastra** tab use **Texts…**, then **Load a text…**. Loading a text again (the same abbreviation) updates it, and its passages in playlists keep working. **Texts…** also removes one. Themes has a style for each language of a text, Sanskrit's two scripts included.
+**Shastra texts.** Drag the file onto the library, or (with the Shastra tab shown) in the **Shastra** tab use **Texts…**, then **Load a text…**. Loading a text again (the same abbreviation) updates it, and its passages in playlists keep working. **Texts…** also removes one. Themes has a style for each language of a text, Sanskrit's two scripts included.
 
 ![Shastra texts](screenshots/shastra-texts.png)
 
@@ -277,7 +279,7 @@ The performance check (section 12) on each mandir computer says whether that com
 
 ## 14. Import from a Link
 
-**File**, **Import from a Link…** (or, in the library, **Import…**, then **From a link…**) saves what a link holds in a folder you choose, then imports it through the normal import, with its report. Nothing goes straight into Drashti: the files stay in that folder, where Drashti never moves or deletes them, and the import copies them into the library as every import does. It is an admin's, in Pro Mode; Simple Mode never shows it.
+**File**, **Import from a Link…** (or, in the library, **Import…**, then **From a Link…**) saves what a link holds in a folder you choose, then imports it through the normal import, with its report. Nothing goes straight into Drashti: the files stay in that folder, where Drashti never moves or deletes them, and the import copies them into the library as every import does. It is an admin's, in Pro Mode; Simple Mode never shows it.
 
 1. **Which kind of link.** **YouTube**: one video, as MP4 (the video) or MP3 (its sound only). **Dropbox**: a shared link to a file or a folder.
 2. **Paste the link.** On YouTube, use **Share**, then **Copy**; in Dropbox, **Share**, then **Copy link**. Drashti takes only `https` links to their own addresses, and says plainly when a link is not one. A YouTube playlist is refused (Drashti downloads one video at a time); a video's link copied while it played in a playlist takes only that video.
