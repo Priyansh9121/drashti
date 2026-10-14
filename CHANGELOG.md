@@ -2,6 +2,12 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## Unreleased
+
+Import from a Link
+
+- A Dropbox folder link unpacks now. Dropbox's zips list an empty entry named "/", and Drashti refused the whole folder for it ("would leave the folder"); that entry is skipped, and everything that would really leave the folder is still refused.
+
 ## 1.0.0-alpha.3 (11 Oct 2026)
 
 Downloading from YouTube, inside Drashti and with no adverts. Update after a sabha, never on the day of one.

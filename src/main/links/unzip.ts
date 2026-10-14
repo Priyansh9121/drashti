@@ -10,7 +10,9 @@ import { claimFolder, safeName } from './names';
  * saved, and only if all of it is safe:
  *
  * - no entry may name a path outside that folder (../, /, C:) and none may be
- *   a symbolic link: if one does, nothing at all is unpacked;
+ *   a symbolic link: if one does, nothing at all is unpacked. An empty entry
+ *   that names only the folder itself ("/", "./" or nothing) is skipped:
+ *   Dropbox's folder zips start with a directory named "/" (Session 26a);
  * - at most so many files and so many bytes, and never so many that less than
  *   the space Drashti keeps free would be left;
  * - names are made safe for both systems, and nothing gets execute bits:
@@ -34,8 +36,22 @@ export interface UnpackLimits {
   held?(): boolean;
 }
 
+/**
+ * Which rule stopped an unpack, as a short code for the log (never a name from the zip): a path
+ * leaving the folder, a link, too many files, too many bytes, too little space left, a packing
+ * Drashti cannot read, a damaged zip, a file that could not be written, or stopped.
+ */
+export type UnzipRule =
+  'leave' | 'link' | 'count' | 'size' | 'space' | 'method' | 'damaged' | 'write' | 'stopped';
+
 export type UnpackResult =
-  { ok: true; folder: string; files: string[]; bytes: number } | { ok: false; message: string };
+  | { ok: true; folder: string; files: string[]; bytes: number }
+  | { ok: false; message: string; rule: UnzipRule };
+
+interface Refusal {
+  message: string;
+  rule: UnzipRule;
+}
 
 /** OS clutter in a zip: never content. */
 const clutter = (name: string) => name.startsWith('__MACOSX/') || name.split('/').pop() === '.DS_Store';
@@ -43,27 +59,72 @@ const clutter = (name: string) => name.startsWith('__MACOSX/') || name.split('/'
 const S_IFMT = 0o170000;
 const S_IFLNK = 0o120000;
 
+/** A name that is only the folder itself: "/", "./", "." or nothing (any slashes either way). */
+const namesRoot = (name: string) =>
+  name
+    .replace(/\\/gu, '/')
+    .split('/')
+    .every((part) => part === '' || part === '.');
+
+/**
+ * An entry to skip: empty, and naming only the folder itself. Dropbox's folder zips list a spurious
+ * directory "/" (usethis.r-lib.org/reference/use_course_details.html, read 14 Oct 2026); `entryPath`
+ * rightly refuses a name starting with "/", which refused every Dropbox folder (PLAN §6).
+ */
+const onlyTheFolder = (e: ZipEntry) => e.size === 0 && namesRoot(e.name);
+
+const isLink = (e: ZipEntry) => e.unixMode !== null && (e.unixMode & S_IFMT) === S_IFLNK;
+
 /** Why this zip may not be unpacked at all, or null. */
-function refusal(entries: ZipEntry[], limits: UnpackLimits, parent: string): string | null {
+function refusal(entries: ZipEntry[], limits: UnpackLimits, parent: string): Refusal | null {
   for (const e of entries) {
-    if (entryPath(parent, e.name) === null)
-      return 'The folder’s zip has a file whose path would leave the folder, so nothing in it was unpacked.';
-    if (e.unixMode !== null && (e.unixMode & S_IFMT) === S_IFLNK)
-      return 'The folder’s zip holds a link to somewhere else on the computer, so nothing in it was unpacked.';
+    // A link is refused whatever it is called.
+    if (isLink(e))
+      return {
+        rule: 'link',
+        message:
+          'The folder’s zip holds a link to somewhere else on the computer, so nothing in it was unpacked.',
+      };
+    if (onlyTheFolder(e)) continue;
+    // Anything else naming the folder itself (a file called "/") has nowhere to go inside it.
+    if (entryPath(parent, e.name) === null || (!e.isDirectory && namesRoot(e.name)))
+      return {
+        rule: 'leave',
+        message:
+          'The folder’s zip has a file whose path would leave the folder, so nothing in it was unpacked.',
+      };
   }
-  const files = entries.filter((e) => !e.isDirectory && !clutter(e.name));
+  const files = filesIn(entries);
   if (files.length > limits.maxFiles)
-    return `The folder holds more than ${String(limits.maxFiles)} files, too many to unpack at once.`;
+    return {
+      rule: 'count',
+      message: `The folder holds more than ${String(limits.maxFiles)} files, too many to unpack at once.`,
+    };
   const bytes = files.reduce((sum, e) => sum + e.size, 0);
   if (bytes > limits.maxBytes)
-    return `The folder is too big to unpack (${formatBytes(bytes)}; at most ${formatBytes(limits.maxBytes)}).`;
+    return {
+      rule: 'size',
+      message: `The folder is too big to unpack (${formatBytes(bytes)}; at most ${formatBytes(limits.maxBytes)}).`,
+    };
   const free = limits.freeBytes(parent);
   if (free - bytes < limits.keepFree)
-    return `Unpacking the folder (${formatBytes(bytes)}) would leave less than ${formatBytes(limits.keepFree)} free on the disk, which Drashti keeps free for the show. Free up some space, then try again.`;
+    return {
+      rule: 'space',
+      message: `Unpacking the folder (${formatBytes(bytes)}) would leave less than ${formatBytes(limits.keepFree)} free on the disk, which Drashti keeps free for the show. Free up some space, then try again.`,
+    };
   const odd = files.find((e) => e.method !== 0 && e.method !== 8);
-  if (odd) return 'The folder’s zip is packed in a way Drashti cannot unpack.';
+  if (odd) return { rule: 'method', message: 'The folder’s zip is packed in a way Drashti cannot unpack.' };
   return null;
 }
+
+/** The files to unpack: no folders, no OS clutter, and not the folder itself. */
+const filesIn = (entries: ZipEntry[]) =>
+  entries.filter((e) => !e.isDirectory && !clutter(e.name) && !onlyTheFolder(e));
+
+/** A damaged zip's errors: the zip reader's own, or zlib's (a deflated entry that does not inflate). */
+const damaged = (error: unknown) =>
+  error instanceof Error &&
+  (error.name === 'ZipError' || ((error as NodeJS.ErrnoException).code ?? '').startsWith('Z_'));
 
 /** Safe, distinct paths inside the folder for each file (both systems, case-blind). */
 function placeFiles(files: ZipEntry[]): Map<ZipEntry, string[]> {
@@ -100,8 +161,8 @@ export async function unpackFolderZip(
   try {
     return await withZip(zip, async (entries, fh) => {
       const refused = refusal(entries, limits, parent);
-      if (refused) return { ok: false as const, message: refused };
-      const files = entries.filter((e) => !e.isDirectory && !clutter(e.name));
+      if (refused) return { ok: false as const, ...refused };
+      const files = filesIn(entries);
       const places = placeFiles(files);
       const work = await mkdtemp(join(parent, '.drashti-unpacking-'));
       pending.work = work;
@@ -124,11 +185,13 @@ export async function unpackFolderZip(
     });
   } catch (error) {
     const stopped = limits.signal?.aborted === true;
+    const broken = !stopped && damaged(error);
     return {
       ok: false,
+      rule: stopped ? 'stopped' : broken ? 'damaged' : 'write',
       message: stopped
         ? 'Stopped while unpacking. Nothing was kept.'
-        : `The folder’s zip could not be unpacked${error instanceof Error && error.name === 'ZipError' ? ' (it is damaged)' : ''}. Nothing was kept.`,
+        : `The folder’s zip could not be unpacked${broken ? ' (it is damaged)' : ''}. Nothing was kept.`,
     };
   } finally {
     if (pending.work !== null)

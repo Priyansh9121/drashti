@@ -12,7 +12,7 @@ import { lockAdminChannels, lockChannels, refusalFor, refusedNow } from '../ipc/
 import { adminRefusals } from '../roles/admin-lock';
 import { SIMPLE_MODE_LOCKED, simpleModeRefusals } from '../simple-mode';
 import { toolEnv, toolFolders } from './youtube-tools';
-import { makeZip } from '../import/testing/zip-writer';
+import { makeDropboxLikeZip, makeZip } from '../import/testing/zip-writer';
 import { nodeGet } from './http';
 import { LinkService, type LinkServiceDeps, type LinkWorker } from './link-service';
 import type { FromWorker, ToWorker } from './protocol';
@@ -47,6 +47,8 @@ const ZIP = makeZip([
 
 let server: Server | null = null;
 let requests = 0;
+/** What the stand-in serves for a folder link (the plain zip unless a test says otherwise). */
+let folderZip = ZIP;
 
 async function standIn(): Promise<string> {
   requests = 0;
@@ -68,7 +70,7 @@ async function standIn(): Promise<string> {
         'Content-Type': 'application/zip',
         'Content-Disposition': 'attachment; filename="Placeholder folder.zip"',
       });
-      res.end(ZIP);
+      res.end(folderZip);
     } else {
       res.writeHead(404);
       res.end();
@@ -79,6 +81,7 @@ async function standIn(): Promise<string> {
 }
 
 afterEach(async () => {
+  folderZip = ZIP;
   const s = server;
   server = null;
   if (s) {
@@ -216,6 +219,44 @@ describe('Import from a Link: Dropbox', () => {
       'Placeholder folder/Read me.txt',
       'Placeholder folder/Videos/Placeholder 1080p.mp4',
     ]);
+  });
+
+  it('unpacks a folder zipped as Dropbox zips it (a "/" entry, loose parts, data descriptors) and imports it', async () => {
+    folderZip = makeDropboxLikeZip([
+      { path: 'Opening.mp4', data: VIDEO },
+      { path: 'Week 1/Decks/Placeholder deck.pptx', data: 'placeholder pptx' },
+      { path: 'Week 1/Videos/Deep/પ્રવચન 1.mp4', data: VIDEO },
+      { path: 'Week 2/Read me.txt', data: 'placeholder words' },
+    ]);
+    const h = await harness();
+    h.service.look('dropbox', FOLDER_LINK);
+    await until(() => h.service.view().phase === 'looked');
+    h.service.download();
+    await until(() => h.service.view().phase === 'done' || h.service.view().phase === 'failed');
+    expect(h.service.view().message ?? '').not.toMatch(/leave/u);
+    expect(h.service.view().phase).toBe('done');
+    expect(files(join(h.folder, 'Placeholder folder'))).toEqual([
+      'Opening.mp4',
+      'Week 1/Decks/Placeholder deck.pptx',
+      'Week 1/Videos/Deep/પ્રવચન 1.mp4',
+      'Week 2/Read me.txt',
+    ]);
+    expect(h.imported[0]?.length).toBe(3);
+  });
+
+  it('logs which rule refused an unpack, as a short code and never a name', async () => {
+    folderZip = makeZip([
+      { name: 'Fine.mp4', data: 'x' },
+      { name: '../Placeholder secret name.mp4', data: 'y' },
+    ]);
+    const h = await harness();
+    h.service.look('dropbox', FOLDER_LINK);
+    await until(() => h.service.view().phase === 'looked');
+    h.service.download();
+    await until(() => h.service.view().phase === 'failed');
+    expect(h.service.view().message).toMatch(/would leave the folder/u);
+    expect(h.logs).toContain('Links: a Dropbox download stopped (unpack: leave)');
+    expect(h.logs.join('\n')).not.toContain('secret');
   });
 
   it('saves a file link under Dropbox’s name, never over a file already there', async () => {
