@@ -68,6 +68,8 @@ Do these about 30 minutes before the sabha starts.
 - **After an import:** the import report offers **Add to playlist**: everything that import brought in, in its order, into the open playlist, another, or a new one named after the file or folder. In **Import from a Link…**, **When it's imported, add it to:** (the open playlist to begin with) does the same by itself when the download's import ends, even with the dialog closed. Undo takes it out again.
 - **Changing the playlist without dragging:** choose a presentation, a picture or video, or a Shastra passage in the library and press **Add to playlist** under it; it goes after the playlist's chosen item. To move an item, choose it and press **Up** or **Down** under it (or **Alt+↑** / **Alt+↓**). **Cmd+Z** (Ctrl+Z) takes back the last add or move. Dragging works too: a presentation, a picture or video, or a search result, onto the open playlist (an empty one too) or onto a playlist's name in the list. Files dragged from the Finder (Explorer on Windows) onto the open playlist are imported and go where you drop them, in the order you dragged them.
 
+![Repeat Slides going round: LIVE says so, with Stop (Esc)](screenshots/repeat-slides-1280x720.png)
+
 ![Up and Down under the chosen playlist item, and Add to playlist under the library's chosen presentation](screenshots/playlist-up-down.png)
 
 ![What is this? opened on the Looks panel](screenshots/what-is-this.png)
@@ -100,6 +102,8 @@ A clear button is lit, with a dot, while its layer is on the screens.
 **Announcements from phones.** While the network is on, **Announcements** in the header says how many are waiting. Open it, read each one, fix a typo with **Edit**, then **Approve** it into the ticker or as a message, or **Reject** it.
 
 **Zooming the picture on the screens** (Pro Mode). While a picture is up (a picture item, or a slide that is a picture, such as a PDF or PowerPoint page), scroll or pinch over the **LIVE** picture to zoom it and drag it to move it, or use **+** and **−** under it; every screen follows smoothly, together. It lasts for that showing: the next slide comes up as it is kept. **Reset** goes back; **Keep this zoom** saves it with the picture, so it shows that way wherever it shows from then on. An admin sets a picture's zoom and enhancements once in the **Picture editor** (`docs/admin-guide.md`, section 10).
+
+![The picture on the screens zoomed from LIVE, with Keep this zoom](screenshots/live-zoom.png)
 
 **Markers.** While a video or a sound with markers plays, its markers are buttons under the live picture: a press jumps every screen and the sound there together. A video's start and end (where it plays from and to) are set on its timeline: **Start, end and markers…** in its card's menu, or its row in **Media** (`docs/admin-guide.md`, section 10).
 

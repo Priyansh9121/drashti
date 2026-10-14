@@ -96,6 +96,8 @@ The **setup wizard** sets the screens, their languages, the sound and the defaul
 
 **YouTube, the third screen.** Its card holds the stream's settings: what it shows (**Camera and words**: the camera, with the slide's words as a lower third; or **Slides**, as the hall sees them), the camera (or capture card), the sound input (the mixer's line in) and a kirtan's languages. They are the same settings as in the **Stream** panel and the setup wizard's Stream step: a change in one shows in the others. Opening Screens starts nothing: the card's preview is a still of what the stream would show, until the stream is on air or recording, or **Find cameras and sound inputs** is pressed (that turns the stream's picture and the camera on while Screens is open; nothing goes on air). The stream key, the profiles, **Go Live** and recording stay in the Stream panel: the card's **Stream panel** button goes there. The stream's screen group is there from the first start (a library from before keeps its group and its name), and it cannot be deleted.
 
+![Screens: the projector, the stage screen and YouTube](screenshots/screens-cards.png)
+
 **Screen groups.** Each group is a set of screens that show the same: "Main Hall", "Stage", "Lobby". A group shows **the audience picture** or **the stage view (performers)**, or is **key and fill** for a video switcher. In **Screens**, each display has **Use this display**; each screen has its canvas size and scaling (for an LED wall that is not 1920 × 1080); **Identify screens** puts each screen's name on it.
 
 **Looks.** A Look says what every group shows: which layers, a kirtan's languages and their order, and whether slides are drawn as designed or as a lower third. One Look is live at a time, and the operators switch it under the live picture. In **Screens**, under **Looks**: **New Look**, **Duplicate**, rename, **Up**/**Down**, **Remove**; choose a Look there to see and change each group's settings in it. Drashti starts with the **first** Look in the list after a clean quit, so keep the everyday Look first.
@@ -220,7 +222,11 @@ Drashti comes with no scripture text and no calendar: an admin loads files prepa
 
 **A video's start and end on a timeline** (Session 26e). For a video the same dialog (from its row in **Media**, **Start, end and markers…** in its playlist card's menu, or under it when its card is chosen) has a **timeline**: stills along it, the part chosen bright and the rest dimmed, a handle at the start and the end to drag (or move with the arrow keys, Shift for whole seconds), the play head, and a click on the stills to move the preview there. **Play the part** plays from the start and stops at the end; **I** and **O** set the start and the end at the play head; its new length is beside the old ("11:02 → 4:00"). Playing follows the start and end as before, and the file is never changed. Markers stay.
 
+![A video's start and end on its timeline, and the clean frame Save as MP4 starts from](screenshots/video-timeline.png)
+
 **The Picture editor** (Session 26e), from a picture's row in **Media** (its sliders button), **Picture editor…** in its playlist card's menu or under its card when chosen, or a slide's right-click when the slide has a picture (a PDF or PowerPoint page, say): **Zoom** 100 to 400 % (or scroll over the picture), drag to move it, **Fit**, **Fill** (as big as covers the screen), **Reset**; **Brightness**, **Contrast**, **Colour** and **Sharpness**; and **Auto**, which sets the brightness and contrast from the picture's own darkest and brightest. **Hold for before** shows it as it was taken. **Save** keeps it with the picture (in the library, not the file, which is never changed), so it looks the same wherever it shows: every screen, a node's screens, the stream's picture, key and fill's fill, a phone's picture, and the thumbnails. **As it was taken** puts it back. Videos: not yet.
+
+![The Picture editor](screenshots/picture-editor.png)
 
 **Save as MP4…** saves the part between the start and the end as a new file where you choose, named to begin with "<name> (4m 00s).mp4", never over a file already there (a free name beside it instead). Nothing is re-encoded: every picture and sound stream is copied as it is, so the quality is exactly the original's; the turn of a phone's video and the file's details are kept, and the file starts playing as it downloads. A copy can only begin at a clean frame (a keyframe), so it begins at the one at or just before the start, and the dialog says which before you save ("Saved from 0:41.2, the nearest clean frame"; the timeline marks it). A video whose picture or sound an MP4 cannot hold (VP8, ProRes, Vorbis…) says so plainly: convert it first. **Also add it to the library** (off to begin with) imports the saved file too. It runs as converting does: in the background, FFmpeg at the lowest priority, waiting while the stream is on air or recording and carrying on afterwards, keeping 2 GB free, shown in the status bar with **Stop**; a stop, a failure or quitting leaves nothing under the real name. It is an admin's, as converting is.
 
@@ -324,6 +330,8 @@ What it does with them:
 
 ![The report of a link's files](screenshots/import-link-report.png)
 
+![A Dropbox folder as one playlist, a header for each folder inside it](screenshots/dropbox-playlist.png)
+
 **What may be downloaded.** Only the mandir's own videos and files, or those whose owner allows the mandir to use them: that is what the tick says, each time. Ask before using anyone else's. For YouTube, YouTube's own terms say the rest (youtube.com/t/terms): they forbid downloading, except as YouTube allows or with written permission from YouTube and the rights holders.
 
 **No adverts.** A downloaded video holds only the video: YouTube sends its adverts apart from it, and Drashti takes only the video's own picture and sound. Drashti shows no adverts anywhere, and asks no outside service (such as SponsorBlock) about a video. A sponsor message the maker speaks in the video is part of the video: set its **markers** (start and end) to play the video round it.
@@ -353,10 +361,22 @@ A **smart playlist** follows a folder on this computer (Session 26c): what Drash
 - **At most 2,000 files.** A folder holding more is refused when the playlist is made; one that grows past it is said so, and nothing more is added or marked until some files go.
 - **Simple Mode** sees what the folder brings, and can neither make a smart playlist nor remove its missing items. Deleting a smart playlist stops it following its folder; Undo starts it again. The folder itself is never changed: Drashti only reads it.
 
+![A smart playlist following a folder, with a header for the folder inside it](screenshots/smart-playlist.png)
+
 ## 16. Themes
 
 **Themes** (in the header) holds how a presentation's words look: a style for each language (font, size, weight, colour and shadow), where the first text box sits, and what is behind the words. Each theme is shown as a preview with a placeholder line in Gujarati, transliteration, Hindi and English.
 
 **The built-in themes** (Session 26): **Midnight**, **Plum and Flame**, **Saffron**, **Maroon and Gold**, **Forest**, **Ocean**, **Ivory** (dark words on cream), **Charcoal**, **High Contrast White on Black** and **High Contrast Black on White**, beside **Drashti default**. Each is a colour behind the words (never a picture), with Drashti's own fonts for every language and a shadow behind light words. Every word, and a Shastra passage's reference line, is at least 7:1 against its background, for a dim hall or a washed-out projector. They are marked **Built in**: change one and press **Save as a copy**, and the change goes into a theme of your own while the built-in one stays as it is. A built-in theme can be deleted; it does not come back.
+
+![Themes, with the built-in ones](screenshots/themes-builtin.png)
+
+|                                                                                                                  |                                                                                                                  |
+| ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| ![Midnight](screenshots/theme-midnight.png) Midnight                                                             | ![Plum and Flame](screenshots/theme-plum-and-flame.png) Plum and Flame                                           |
+| ![Saffron](screenshots/theme-saffron.png) Saffron                                                                | ![Maroon and Gold](screenshots/theme-maroon-and-gold.png) Maroon and Gold                                        |
+| ![Forest](screenshots/theme-forest.png) Forest                                                                   | ![Ocean](screenshots/theme-ocean.png) Ocean                                                                      |
+| ![Ivory](screenshots/theme-ivory.png) Ivory                                                                      | ![Charcoal](screenshots/theme-charcoal.png) Charcoal                                                             |
+| ![High Contrast White on Black](screenshots/theme-high-contrast-white-on-black.png) High Contrast White on Black | ![High Contrast Black on White](screenshots/theme-high-contrast-black-on-white.png) High Contrast Black on White |
 
 **Applying one.** **Apply to N presentations** applies it to the presentations marked in the library (Cmd/Ctrl-click to mark more). **Apply to its presentations** applies it to every presentation in the playlist chosen beside it (a deck's pages are pictures, so a deck is left as it is). The words never change, and **Undo** puts the look back. **Make it the default for new presentations** gives it to every presentation made in Drashti from then on, as the setup wizard's Theme step does.
