@@ -129,6 +129,8 @@ describe('sharpened copies', () => {
     await again.copies.idle();
     expect(again.windows.opened).toBe(0);
     expect(again.copies.readyStep(SHA_B)).toBe(35);
+    // Its hash worked out by then (a node copies it by it), and no file left open.
+    expect(again.copies.fileOf(SHA_B, 35)).toMatchObject({ bytes: 9, ext: 'png' });
   });
 
   it('are made again when Sharpness changes, and go when it is back at 0', async () => {
