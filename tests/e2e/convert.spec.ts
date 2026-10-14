@@ -141,8 +141,18 @@ test('convert all: each kind becomes what Drashti plays, the original stays, wha
     await win.evaluate((id) => (globalThis as PageGlobals).drashti.media.convert([id]), hevc),
   ).toMatchObject({ ok: true });
 
-  // The media list offers Convert all.
+  // The media list offers Convert all, once the HEVC video's own conversion has ended (while one goes the
+  // bar says so instead; a slow computer takes a while: Session 26, a Windows runner).
   await win.getByRole('tab', { name: 'Media' }).click();
+  await expect
+    .poll(
+      async () =>
+        (await win.evaluate(() => (globalThis as PageGlobals).drashti.media.conversions())).find(
+          (j) => j.mediaId === hevc,
+        )?.state,
+      { timeout: 120_000 },
+    )
+    .toBe('done');
   const bar = win.getByTestId('convert-bar');
   await expect(bar).toContainText('5 files Drashti cannot play');
   await expectNoSeriousA11yIssues(win, 'the media list with files to convert');
