@@ -1,5 +1,5 @@
 import { extname, isAbsolute, join } from 'node:path';
-import { MEDIA_ID_PATTERN } from '../../shared/media';
+import { copyOfId, MEDIA_ID_PATTERN } from '../../shared/media';
 import { isInside } from '../media/media-protocol';
 import type { EngineState } from '../../shared/engine/state';
 import type { MediaWant } from '../../shared/nodes';
@@ -18,7 +18,17 @@ import type { Db } from '../db/database';
  * Pictures and videos only: sound is never needed on a node. Files that are
  * missing, or that Drashti cannot play, are left out. Everything but the
  * first part changes only with the library, so it is kept until then.
+ * A picture's sharpened copy (Session 26f), once it is ready, comes right
+ * after the picture: one more file, copied as the rest are.
  */
+
+/** Pictures' sharpened copies, as files a node copies (Session 26f). */
+export interface CopyFiles {
+  /** A picture's copy, if it has one ready. */
+  want(mediaId: string): MediaWant | null;
+  /** A copy a node asked for, by its id (shared/media.ts copyMediaId). */
+  source(copyId: string): { path: string; sha256: string; bytes: number; ext: string } | null;
+}
 
 export const RECENT_DAYS = 7;
 
@@ -42,6 +52,7 @@ export class WantedMedia {
     private readonly db: Db,
     private readonly extra: () => string[] = () => [],
     private readonly now: () => number = Date.now,
+    private readonly copies: CopyFiles | null = null,
   ) {}
 
   /** The library changed (presentations, playlists, media, props, settings): read it again when next asked. */
@@ -75,6 +86,10 @@ export class WantedMedia {
     mediaDir: string,
   ): { path: string; sha256: string; bytes: number; ext: string } | null {
     if (!MEDIA_ID_PATTERN.test(mediaId)) return null;
+    if (copyOfId(mediaId)) {
+      const copy = this.copies?.source(mediaId) ?? null;
+      return copy && isInside(mediaDir, copy.path) ? copy : null;
+    }
     const want = this.file(mediaId);
     const row = want
       ? (this.db.prepare('SELECT path FROM media WHERE id = ?').get(mediaId) as { path: string } | undefined)
@@ -174,7 +189,10 @@ export class WantedMedia {
       if (seen.has(id)) continue;
       seen.add(id);
       const want = this.file(id);
-      if (want) out.push(want);
+      if (!want) continue;
+      out.push(want);
+      const copy = this.copies?.want(id) ?? null;
+      if (copy) out.push(copy);
     }
     return out;
   }

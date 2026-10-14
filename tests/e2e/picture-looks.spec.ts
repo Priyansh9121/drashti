@@ -1,6 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
@@ -14,7 +14,9 @@ import { canvasPixels } from './pixels';
  * kept with the picture and drawn alike on two screens and the thumbnails;
  * the live zoom from LIVE, on two screens, and Keep this zoom; each
  * enhancement checked in the screens' pixels; and a node following.
- * Pictures generated here only.
+ * Sharpness (Session 26f) is a sharpened copy made once per picture: the
+ * screens and a node draw it with no filter in their pages, and its pixels
+ * match the editor's preview. Pictures generated here only.
  */
 
 /** A picture drawn in the page: a colour, or two side by side, or a band of each across. */
@@ -69,6 +71,23 @@ const drawn = (page: Page) =>
       filter: (el as HTMLElement).style.filter,
     })),
   );
+
+/** What a page draws for its pictures' sharpening: the copies it draws, and its SVG filters (none, Session 26f). */
+const sharpening = (page: Page) =>
+  page.evaluate(() => ({
+    // A node's later try at a copy that landed late has a URL of its own (?try=N): the same copy.
+    copies: [...document.querySelectorAll('[data-look-picture][data-sharpened] img')].map((img) =>
+      (img.getAttribute('src') ?? '').replace(/\?try=\d+$/u, ''),
+    ),
+    svg:
+      document.querySelectorAll('filter, feConvolveMatrix').length +
+      [...document.querySelectorAll<HTMLElement>('[style]')].filter((el) => el.style.filter.includes('url('))
+        .length,
+  }));
+
+/** The look as the library gives it to the thumbnails (with its copy's step once that is ready). */
+const libraryLook = (win: Page, id: string) =>
+  win.evaluate(async (id) => (await (globalThis as PageGlobals).drashti.media.looks())[id] ?? null, id);
 
 async function twoScreens(extra: Record<string, string> = {}) {
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '2', ...extra });
@@ -134,9 +153,12 @@ test('the Picture editor: zoom, move, enhance and Auto, kept with the picture, a
   const [a, b] = [await drawn(screens[0]), await drawn(screens[1])];
   expect(a).toEqual(b);
   expect(a[0]?.transform).toMatch(/scale\(2\)/u);
-  expect(a[0]?.filter).toMatch(
-    /^brightness\(1\.2\) contrast\(1\.1\) saturate\(1\.3\) url\("?#drashti-sharpen-50"?\)$/u,
-  );
+  // Its brightness, contrast and colour by CSS filters; its sharpness is its sharpened copy (Session 26f).
+  expect(a[0]?.filter).toBe('brightness(1.2) contrast(1.1) saturate(1.3)');
+  for (const s of screens)
+    await expect
+      .poll(() => sharpening(s), { timeout: 30_000 })
+      .toEqual({ copies: [`drashti-media://sharp/${splitId}/50`], svg: 0 });
   // The thumbnails follow: its card in a playlist.
   await win.evaluate(async (id) => {
     const d = (globalThis as PageGlobals).drashti;
@@ -294,6 +316,220 @@ test('each enhancement in the screens’ pixels, the same on two screens', async
       return Math.max(Math.abs((c?.[0] ?? 0) - (c?.[1] ?? 0)), Math.abs((c?.[1] ?? 0) - (c?.[2] ?? 0)));
     })
     .toBeLessThanOrEqual(8);
+  await app.close();
+});
+
+test('a sharpened picture: its copy on two screens and a node, with no filter in their pages', async () => {
+  test.setTimeout(240_000);
+  const main = await launchMain({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '2' });
+  const node = await launchNode();
+  try {
+    const nodeId = await pairNode(main, node);
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-sharpened-'));
+    const picture = await makePicture(main.win, join(dir, 'Placeholder sharpened.png'), [
+      '#606060',
+      '#a0a0a0',
+    ]);
+    const [pictureId = ''] = await importAndGetIds(main.win, [picture]);
+    await setUpScreen(main.win, 'Main Hall', 0);
+    await setUpScreen(main.win, 'Side Hall', 1);
+    await expect.poll(() => outputPages(main.app).length).toBe(2);
+    // The node shows the main hall too, on its second display.
+    const groupId = await main.win.evaluate(
+      async () =>
+        (await (globalThis as PageGlobals).drashti.screens.get()).groups.find((g) => g.name === 'Main Hall')
+          ?.id ?? '',
+    );
+    const displays = () =>
+      main.win.evaluate(
+        async (id) =>
+          (
+            (await (globalThis as PageGlobals).drashti.screens.get()).nodes.find((n) => n.id === id)
+              ?.displays ?? []
+          ).map((d) => d.id),
+        nodeId,
+      );
+    await expect.poll(async () => (await displays()).length).toBeGreaterThanOrEqual(2);
+    const displayId = (await displays())[1] ?? -1;
+    expect(
+      (
+        await main.win.evaluate(
+          ({ groupId, nodeId, displayId }) =>
+            (globalThis as PageGlobals).drashti.screens.assignNodeDisplay(groupId, nodeId, displayId),
+          { groupId, nodeId, displayId },
+        )
+      ).ok,
+    ).toBe(true);
+    await background(main.win, pictureId);
+    await expect.poll(() => outputPages(node.app).length).toBeGreaterThan(0);
+    const pages = [...outputPages(main.app), ...outputPages(node.app)];
+    // Unsharpened until its copy is ready: drawn, never blank.
+    await main.win.evaluate(
+      (id) =>
+        (globalThis as PageGlobals).drashti.media.setLook(id, {
+          zoom: 1,
+          x: 0,
+          y: 0,
+          brightness: 0.1,
+          contrast: 0,
+          colour: 0,
+          sharpness: 0.5,
+        }),
+      pictureId,
+    );
+    // Made once, by Main; the node copies it as it copies media.
+    await expect
+      .poll(async () => (await libraryLook(main.win, pictureId))?.copy, { timeout: 60_000 })
+      .toBe(50);
+    for (const page of pages) {
+      await expect
+        .poll(() => sharpening(page), { timeout: 60_000 })
+        .toEqual({ copies: [`drashti-media://sharp/${pictureId}/50`], svg: 0 });
+      expect((await drawn(page))[0]?.filter).toBe('brightness(1.1)');
+    }
+    expect(readdirSync(join(main.userData, 'Media', 'sharpened'))).toHaveLength(1);
+    // Sharpness back at 0: the picture itself again, and its copy goes.
+    await main.win.evaluate(
+      (id) =>
+        (globalThis as PageGlobals).drashti.media.setLook(id, {
+          zoom: 1,
+          x: 0,
+          y: 0,
+          brightness: 0.1,
+          contrast: 0,
+          colour: 0,
+          sharpness: 0,
+        }),
+      pictureId,
+    );
+    for (const page of pages)
+      await expect.poll(() => sharpening(page), { timeout: 30_000 }).toEqual({ copies: [], svg: 0 });
+    await expect.poll(() => readdirSync(join(main.userData, 'Media', 'sharpened'))).toHaveLength(0);
+  } finally {
+    await node.app.close();
+    await main.app.close();
+  }
+});
+
+test('a sharpened copy’s pixels match the Picture editor’s preview', async () => {
+  test.setTimeout(240_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-sharpened-pixels-'));
+  // Drawn one picture pixel to one screen pixel in the preview: as wide as its frame is made, in this
+  // window's own pixels.
+  const ratio = await win.evaluate(() => window.devicePixelRatio);
+  const [W, H] = [320 * ratio, 180 * ratio];
+  const base64 = await win.evaluate(
+    ({ W, H }) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('no 2d context');
+      ctx.fillStyle = '#606060';
+      ctx.fillRect(0, 0, W / 2, H);
+      ctx.fillStyle = '#a0a0a0';
+      ctx.fillRect(W / 2, 0, W / 2, H);
+      return canvas.toDataURL('image/png').split(',')[1] ?? '';
+    },
+    { W, H },
+  );
+  const file = join(dir, 'Placeholder edge.png');
+  writeFileSync(file, Buffer.from(base64, 'base64'));
+  const [id = ''] = await importAndGetIds(win, [file]);
+  await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.media.setLook(id, {
+        zoom: 1,
+        x: 0,
+        y: 0,
+        brightness: 0,
+        contrast: 0,
+        colour: 0,
+        sharpness: 0.5,
+      }),
+    id,
+  );
+  await expect.poll(async () => (await libraryLook(win, id))?.copy, { timeout: 60_000 }).toBe(50);
+  // The copy's own pixels, along a row across the edge.
+  const across = Array.from({ length: 12 }, (_, i) => W / 2 - 6 + i);
+  const copyRow = await win.evaluate(
+    async ({ id, across, H }) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = `drashti-media://sharp/${id}/50`;
+      await img.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return [];
+      ctx.drawImage(img, 0, 0);
+      return across.map((x) => ctx.getImageData(x, H / 2, 1, 1).data[0] ?? -1);
+    },
+    { id, across, H },
+  );
+  // Sharpened: darker and lighter than either grey beside the edge.
+  expect(Math.min(...copyRow)).toBeLessThan(0x60 - 12);
+  expect(Math.max(...copyRow)).toBeGreaterThan(0xa0 + 12);
+
+  // The editor's preview, its frame 320 by 180 and on whole pixels, as the screen draws it.
+  await win.getByRole('tab', { name: 'Media' }).click();
+  await win
+    .getByTestId('media-row')
+    .filter({ hasText: 'Placeholder edge' })
+    .getByTestId('media-picture')
+    .click();
+  const editor = win.getByTestId('picture-editor');
+  await expect(editor).toBeVisible();
+  const frame = editor.getByTestId('pe-frame');
+  await frame.evaluate((el, ratio) => {
+    const f = el as HTMLElement;
+    f.style.width = '320px';
+    f.style.height = '180px';
+    f.style.borderWidth = '0';
+    const r = f.getBoundingClientRect();
+    const snap = (v: number) => (Math.ceil(v * ratio) - v * ratio) / ratio;
+    f.style.marginLeft = `${String(snap(r.left))}px`;
+    f.style.marginTop = `${String(snap(r.top))}px`;
+  }, ratio);
+  const previewRow = async () => {
+    const box = await frame.boundingBox();
+    if (!box) throw new Error('no frame');
+    const png = (await win.screenshot({ clip: box, scale: 'device' })).toString('base64');
+    return win.evaluate(
+      async ({ png, across, H }) => {
+        const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0));
+        const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return [];
+        ctx.drawImage(bitmap, 0, 0);
+        return across.map((x) => ctx.getImageData(x, H / 2, 1, 1).data[0] ?? -1);
+      },
+      { png, across, H },
+    );
+  };
+  // Held at Before, the preview is the picture itself, pixel for pixel: the two are drawn alike.
+  await editor.getByTestId('pe-before').dispatchEvent('pointerdown');
+  await expect(editor.getByTestId('pe-picture')).toHaveCSS('filter', 'none');
+  const plain = await previewRow();
+  for (const [i, x] of across.entries())
+    expect(Math.abs((plain[i] ?? -99) - (x < W / 2 ? 0x60 : 0xa0)), `pixel ${String(x)}`).toBeLessThanOrEqual(
+      2,
+    );
+  await editor.getByTestId('pe-before').dispatchEvent('pointerup');
+  await expect(editor.getByTestId('pe-picture')).toHaveCSS('filter', /url/u);
+  // Sharpened by its filter, the preview matches the copy within step 12's tolerance: 6 at each point,
+  // 8 at the darkest and lightest.
+  const preview = await previewRow();
+  for (const [i, v] of copyRow.entries())
+    expect(Math.abs((preview[i] ?? -99) - v), `pixel ${String(across[i])}`).toBeLessThanOrEqual(6);
+  expect(Math.abs(Math.min(...preview) - Math.min(...copyRow))).toBeLessThanOrEqual(8);
+  expect(Math.abs(Math.max(...preview) - Math.max(...copyRow))).toBeLessThanOrEqual(8);
   await app.close();
 });
 

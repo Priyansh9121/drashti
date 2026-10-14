@@ -6,7 +6,7 @@ import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
 import type { MediaRemovalResult, MediaUsage } from './media-removal';
 import type { MarkersResult, MediaMarkers } from './markers';
-import type { PictureAssetKind, PictureJob, PicturePage, PicturesDone } from './pictures';
+import type { PictureAssetKind, PictureJob, PicturePage, PicturesDone, SharpenJobView } from './pictures';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { IdleResult, IdleSettings, IdleView, QuoteFields, QuoteResult } from './idle';
 import type {
@@ -694,6 +694,12 @@ export const IPC = {
     /** pdf.js's own data (fonts a PDF names without embedding them, and its decoders), by kind and name. */
     asset: 'pictures:asset',
   },
+  sharpen: {
+    /** The hidden window that makes sharpened copies (Session 26f) asks for the next picture (that window only). */
+    next: 'sharpen:next',
+    /** And hands back each copy as made. */
+    made: 'sharpen:made',
+  },
 } as const;
 
 /** Request/response channels: arguments and result for each. */
@@ -702,6 +708,8 @@ export interface InvokeContract {
   [IPC.pictures.page]: { args: [page: PicturePage]; result: boolean };
   [IPC.pictures.done]: { args: [done: PicturesDone]; result: null };
   [IPC.pictures.asset]: { args: [kind: PictureAssetKind, name: string]; result: Uint8Array | null };
+  [IPC.sharpen.next]: { args: []; result: SharpenJobView | null };
+  [IPC.sharpen.made]: { args: [key: string, bytes: Uint8Array | null]; result: boolean };
   [IPC.app.getInfo]: { args: []; result: AppInfo };
   [IPC.app.renderError]: { args: [report: RenderErrorReport]; result: null };
   [IPC.app.recovery]: { args: []; result: RecoveryNotice | null };

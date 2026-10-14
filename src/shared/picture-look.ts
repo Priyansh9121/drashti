@@ -8,8 +8,10 @@ import { z } from 'zod';
  * thumbnails. The file is never changed. Videos: not now.
  *
  * The enhancements are the screens' own filters (CSS brightness, contrast
- * and saturate, and a sharpening convolution), so a picture costs the same
- * to show however it is enhanced.
+ * and saturate), so a picture costs the same to show however it is
+ * enhanced. Sharpening is made once per picture instead (Session 26f): a
+ * sharpened copy, with the kernel below, that the screens draw in its place;
+ * a convolution filter took up to a second a change without a graphics chip.
  */
 
 export interface PictureLook {
@@ -25,6 +27,11 @@ export interface PictureLook {
   colour: number;
   /** 0 to 1: sharper. */
   sharpness: number;
+  /**
+   * Given to the screens and thumbnails only, never kept (Session 26f): the step of the picture's sharpened
+   * copy that is ready, drawn in place of the picture (absent while it is being made: drawn unsharpened).
+   */
+  copy?: number;
 }
 
 export const PLAIN: PictureLook = {
@@ -142,10 +149,58 @@ const round3 = (v: number) => Math.round(v * 1000) / 1000;
 /** Sharpening in steps of 5 %: one filter each, made once per page. */
 export const sharpenStep = (sharpness: number): number => Math.round(clamp(sharpness, 0, 1) * 20) * 5;
 
+/**
+ * The step of a look's sharpened copy that the screens draw in place of the picture (Session 26f), or 0: the
+ * picture itself, unsharpened (no sharpening, or its copy at this sharpness not ready yet).
+ */
+export function copyStep(look: PictureLook | null | undefined): number {
+  const step = look ? sharpenStep(look.sharpness) : 0;
+  return step > 0 && look?.copy === step ? step : 0;
+}
+
 /** The 3 × 3 kernel of a sharpening of `percent` (0 to 100): the centre lifted, its four sides lowered. */
 export function sharpenKernel(percent: number): number[] {
   const a = clamp(percent, 0, 100) / 100;
   return [0, -a, 0, -a, 1 + 4 * a, -a, 0, -a, 0];
+}
+
+/**
+ * A picture's pixels sharpened as the screens' filter sharpened them (Session 26f): the kernel of
+ * `percent`, each colour from its pixel and the four beside it, a pixel past the edge taken as the edge's
+ * own, the colours not premultiplied and the alpha kept. `src` is RGBA, as ImageData holds it; it is left as
+ * it was. The sharpened copy is made with it once per picture, so no screen draws a filter.
+ */
+export function sharpenPixels(
+  src: Uint8ClampedArray,
+  width: number,
+  height: number,
+  percent: number,
+): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(src);
+  const a = clamp(percent, 0, 100) / 100;
+  if (a === 0) return out;
+  const centre = 1 + 4 * a;
+  const row = width * 4;
+  for (let y = 0; y < height; y++) {
+    const up = (y > 0 ? y - 1 : y) * row;
+    const down = (y < height - 1 ? y + 1 : y) * row;
+    const here = y * row;
+    for (let x = 0; x < width; x++) {
+      const at = here + x * 4;
+      const left = here + (x > 0 ? x - 1 : x) * 4;
+      const right = here + (x < width - 1 ? x + 1 : x) * 4;
+      const above = up + x * 4;
+      const below = down + x * 4;
+      for (let c = 0; c < 3; c++) {
+        const v =
+          centre * (src[at + c] ?? 0) -
+          a * ((src[left + c] ?? 0) + (src[right + c] ?? 0) + (src[above + c] ?? 0) + (src[below + c] ?? 0));
+        // Uint8ClampedArray rounds half to even and stops at 0 and 255.
+        out[at + c] = v;
+      }
+    }
+  }
+  return out;
 }
 
 /**

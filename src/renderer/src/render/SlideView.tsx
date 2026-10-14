@@ -313,7 +313,7 @@ function MediaView({ el, media, startedAt }: { el: MediaElement; media: MediaMod
   if (usePreviewsOnly())
     return el.kind === 'image' ? (
       <Looked mediaId={el.mediaId} showing={showing} style={mediaStyle(el)}>
-        {(style) => <PreviewPicture mediaId={el.mediaId} style={style} />}
+        {(style, copy) => <PreviewPicture mediaId={copy?.id ?? el.mediaId} style={style} />}
       </Looked>
     ) : (
       <PreviewPicture mediaId={el.mediaId} style={mediaStyle(el)} />
@@ -321,12 +321,12 @@ function MediaView({ el, media, startedAt }: { el: MediaElement; media: MediaMod
   if (el.kind === 'image') {
     return (
       <Looked mediaId={el.mediaId} showing={showing} style={mediaStyle(el)}>
-        {(style) => (
+        {(style, copy) => (
           <img
             key={attempt}
             data-element={el.id}
             data-media-id={el.mediaId}
-            src={mediaUrl(el.mediaId, attempt)}
+            src={copy?.url ?? mediaUrl(el.mediaId, attempt)}
             alt=""
             draggable={false}
             style={style}

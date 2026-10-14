@@ -1,7 +1,7 @@
 import type { BrowserWindow } from 'electron';
 import { spawnSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CommandResult, EngineCommand } from '../shared/engine/commands';
 import type { MaskLayer } from '../shared/engine/state';
@@ -57,6 +57,8 @@ export interface ScenarioDeps {
   ffmpeg: string | null;
   engine: { dispatch(command: EngineCommand): CommandResult };
   outputs: () => BrowserWindow[];
+  /** Every picture's sharpened copy made (Session 26f). */
+  sharpened?: () => Promise<void>;
 }
 
 /** What the slide changes go through (null: the usual three text slides), and how often. */
@@ -162,18 +164,31 @@ function makeEnhancedPicture(deps: ScenarioDeps, name: string, hue: number): str
     throw new Error(`FFmpeg could not make the scenario's picture: ${r.stderr.toString().slice(0, 200)}`);
   const mediaId = randomUUID();
   const look = { zoom: 1.2, x: 0.05, y: 0, brightness: 0.1, contrast: 0.15, colour: 0.3, sharpness: 0.5 };
+  // Its sha256, as an imported picture has: its sharpened copy is named by it (Session 26f).
+  const sha256 = createHash('sha256')
+    .update(readFileSync(join(deps.mediaDir, path)))
+    .digest('hex');
   deps.db
     .prepare(
-      "INSERT INTO media (id, kind, name, path, width, height, look) VALUES (?, 'image', ?, ?, 1920, 1080, ?)",
+      "INSERT INTO media (id, kind, name, path, sha256, width, height, look) VALUES (?, 'image', ?, ?, ?, 1920, 1080, ?)",
     )
-    .run(mediaId, `Placeholder perf ${name}`, path, JSON.stringify(look));
+    .run(mediaId, `Placeholder perf ${name}`, path, sha256, JSON.stringify(look));
   return mediaId;
 }
 
-/** How many pictures each screen draws with a look, and how many of those sharpened (by its filter). */
+/**
+ * How many pictures each screen draws with a look, how many of those from their sharpened copies (Session
+ * 26f), and how many filters the page draws that are not plain CSS ones (none: no SVG filter at all).
+ */
 const LOOKS = `(() => {
   const all = [...document.querySelectorAll('[data-look-picture]')];
-  return { looked: all.length, sharpened: all.filter((el) => el.style.filter.includes('url(')).length };
+  const svg = document.querySelectorAll('filter, feConvolveMatrix').length +
+    [...document.querySelectorAll('[style]')].filter((el) => el.style.filter.includes('url(')).length;
+  return {
+    looked: all.length,
+    sharpened: all.filter((el) => el.hasAttribute('data-sharpened') && el.querySelector('img[src^="drashti-media://sharp/"]')).length,
+    svg,
+  };
 })()`;
 
 /** A mask that shows only an ellipse in the middle: its edge is drawn over the video on every frame. */
@@ -338,7 +353,10 @@ export function startScenario(name: PerfScenario, deps: ScenarioDeps): ScenarioR
       slides = { presentationId, everyMs: 40 };
       return {
         slides,
-        begin: () => Promise.resolve(),
+        // The pictures' sharpened copies are made first (once each, as after their looks are kept).
+        begin: async () => {
+          await deps.sharpened?.();
+        },
         end: async () => {
           const seen = await Promise.all(
             deps.outputs().map(
@@ -346,17 +364,24 @@ export function startScenario(name: PerfScenario, deps: ScenarioDeps): ScenarioR
                 w.webContents.executeJavaScript(LOOKS, true).catch(() => null) as Promise<{
                   looked: number;
                   sharpened: number;
+                  svg: number;
                 } | null>,
             ),
           );
-          const ok = seen.length > 0 && seen.every((s) => s !== null && s.looked > 0 && s.sharpened > 0);
+          const ok =
+            seen.length > 0 &&
+            seen.every((s) => s !== null && s.looked > 0 && s.sharpened > 0 && s.svg === 0);
           return {
             checks: [
               {
-                name: 'every screen drew its picture with its look (zoomed, every enhancement, sharpened)',
+                name: 'every screen drew its picture with its look (zoomed, every enhancement, its sharpened copy, no SVG filter)',
                 ok,
                 detail: seen
-                  .map((s) => (s ? `${String(s.looked)} looked, ${String(s.sharpened)} sharpened` : 'none'))
+                  .map((s) =>
+                    s
+                      ? `${String(s.looked)} looked, ${String(s.sharpened)} sharpened, ${String(s.svg)} SVG filters`
+                      : 'none',
+                  )
                   .join('; '),
               },
             ],

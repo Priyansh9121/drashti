@@ -106,7 +106,13 @@ describe('deleting media from the library', () => {
   it('removes the file only at the next start, never one on the screens; the row stays a missing file', async () => {
     const { db, removal, media } = library();
     const dir = mkdtempSync(join(tmpdir(), 'drashti-media-removal-'));
-    for (const rel of ['aa/pic.png', 'stills/aa.jpg', 'cc/other.png']) {
+    for (const rel of [
+      'aa/pic.png',
+      'stills/aa.jpg',
+      'sharpened/aa-50.jpg',
+      'cc/other.png',
+      'sharpened/cc-50.png',
+    ]) {
       mkdirSync(join(dir, rel, '..'), { recursive: true });
       writeFileSync(join(dir, rel), 'placeholder');
     }
@@ -115,7 +121,10 @@ describe('deleting media from the library', () => {
     expect(await removal.purge(dir, new Set(['other']))).toBe(1);
     expect(existsSync(join(dir, 'aa/pic.png'))).toBe(false);
     expect(existsSync(join(dir, 'stills/aa.jpg'))).toBe(false);
+    // Its sharpened copy goes with it (Session 26f).
+    expect(existsSync(join(dir, 'sharpened/aa-50.jpg'))).toBe(false);
     expect(existsSync(join(dir, 'cc/other.png'))).toBe(true);
+    expect(existsSync(join(dir, 'sharpened/cc-50.png'))).toBe(true);
     expect(media.file('pic')).toMatchObject({ path: '', missing: true, deleted: true });
     // Slides still point at it, as at any missing file; it can no longer be undone.
     expect(db.prepare("SELECT count(*) AS n FROM elements WHERE id = 'e1'").get()).toEqual({ n: 1 });

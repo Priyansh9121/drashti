@@ -106,29 +106,37 @@ function ImageSlot({
     const img = ref.current;
     if (!img) return;
     let live = true;
-    img.src = mediaUrl(mediaId, attempt);
-    img.decode().then(
-      () => {
-        if (live) dispatch({ type: 'ready', key, at: engineNow() });
-      },
-      () => {
-        if (live) dispatch({ type: 'failed', key });
-      },
-    );
+    // The picture the markup names: its sharpened copy, once that is loaded here (Session 26f).
+    const decode = (): void => {
+      const asked = img.src;
+      img.decode().then(
+        () => {
+          if (live) dispatch({ type: 'ready', key, at: engineNow() });
+        },
+        () => {
+          if (!live) return;
+          // Its copy came in meanwhile (a new src): that one is waited for instead.
+          if (img.src !== asked) decode();
+          else dispatch({ type: 'failed', key });
+        },
+      );
+    };
+    decode();
     return () => {
       live = false;
     };
   }, [key, mediaId, attempt, dispatch]);
   // A picture's look (Session 26e), and the live zoom of this background's showing. Its src is in the
-  // markup too, so a picture that gains a look (drawn anew inside it) is never blank.
+  // markup, so a picture that gains a look (drawn anew inside it) is never blank, and its sharpened copy
+  // (Session 26f) takes its place once loaded, the picture staying up until then.
   return (
     <Looked mediaId={mediaId} showing={backgroundShowing(layer.startedAt)} style={style(layer.fit, visible)}>
-      {(s) => (
+      {(s, copy) => (
         <img
           ref={ref}
           alt=""
           draggable={false}
-          src={mediaUrl(mediaId, attempt)}
+          src={copy?.url ?? mediaUrl(mediaId, attempt)}
           data-bg-slot={key}
           data-state={slot.state}
           data-media-id={mediaId}

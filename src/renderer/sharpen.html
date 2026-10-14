@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      The hidden window that makes pictures' sharpened copies (Session 26f). It reads nothing from
+      anywhere: each picture's bytes come through the bridge, and the copy goes back the same way.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; font-src 'none'; media-src 'none'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>Drashti Sharpening</title>
+  </head>
+  <body>
+    <script type="module" src="./src/sharpen/main.ts"></script>
+  </body>
+</html>

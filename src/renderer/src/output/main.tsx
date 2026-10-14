@@ -173,7 +173,7 @@ function Output() {
         </SceneBoundary>
       )}
       {/* Stage screens show no pictures, so they load none ahead. */}
-      {state && !stage && <Preloader next={state.next} />}
+      {state && !stage && <Preloader next={state.next} pictures={state.pictures} />}
       {context && fontsReady && <TestCard context={context} languages={look.languages} />}
       <IdentifyOverlay />
     </div>

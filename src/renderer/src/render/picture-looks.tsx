@@ -1,8 +1,10 @@
-import { createContext, useContext, useLayoutEffect, useRef } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { create } from 'zustand';
+import { copyMediaId, sharpenedUrl } from '../../../shared/media';
 import type { LiveZoom, PictureLook } from '../../../shared/picture-look';
 import {
+  copyStep,
   cssFilter,
   liveZoomAt,
   sharpenKernel,
@@ -10,13 +12,21 @@ import {
   ZOOM_GLIDE_MS,
 } from '../../../shared/picture-look';
 import { engineNow } from './clock';
+import { useMediaAttempt } from './media-attempts';
+import { PreviewsContext } from './previews';
 
 /*
  * A picture drawn with its look (Session 26e, shared/picture-look.ts): zoomed
- * and moved within its box, its brightness, contrast, colour and sharpness
- * by the screens' own filters, and on the screens the live zoom of its
- * showing, gliding there by the engine's clock so every screen is at the
- * same point. A picture with neither is drawn exactly as before.
+ * and moved within its box, its brightness, contrast and colour by the
+ * screens' own CSS filters, and on the screens the live zoom of its showing,
+ * gliding there by the engine's clock so every screen is at the same point.
+ * A picture with neither is drawn exactly as before.
+ *
+ * Its sharpness (Session 26f) is a sharpened copy of the picture, made once
+ * by the main process (src/main/media/sharpened.ts): drawn in its place once
+ * the copy is ready and loaded in this page, the picture itself, unsharpened,
+ * until then, so it is never blank or late. No screen draws a filter for it;
+ * only the Picture editor's own preview does (lookFilter).
  *
  * On the screens (a Scene) the looks come with the engine's state, so every
  * screen, node, phone and the stream draw them alike; in the operator
@@ -52,7 +62,98 @@ export function usePictureLook(mediaId: string): PictureLook | null {
   return screen ? (screen.pictures[mediaId] ?? null) : library;
 }
 
-/** Sharpening filters, made once per page (one for each step of 5 %), as SVG the CSS filter names. */
+/**
+ * Sharpened copies loaded in this page, by URL (Session 26f): held while anything draws them, and a few
+ * seconds after (a picture going from up next to on the screens lets go and takes hold again at once).
+ */
+const COPY_GRACE_MS = 5000;
+const loadedCopies = create<Record<string, true>>(() => ({}));
+const heldCopies = new Map<
+  string,
+  { img: HTMLImageElement; users: number; drop: ReturnType<typeof setTimeout> | null }
+>();
+
+function holdCopy(url: string): () => void {
+  let held = heldCopies.get(url);
+  if (!held) {
+    const img = new Image();
+    const entry = { img, users: 0, drop: null as ReturnType<typeof setTimeout> | null };
+    held = entry;
+    heldCopies.set(url, entry);
+    img.src = url;
+    img.decode().then(
+      () => {
+        if (heldCopies.get(url) === entry) loadedCopies.setState({ [url]: true });
+      },
+      () => {
+        // Not there (a node still copying it, say): the picture stays as it is; a later try is a new URL.
+      },
+    );
+  }
+  const entry = held;
+  entry.users++;
+  if (entry.drop) clearTimeout(entry.drop);
+  entry.drop = null;
+  return () => {
+    entry.users--;
+    if (entry.users > 0) return;
+    entry.drop = setTimeout(() => {
+      if (heldCopies.get(url) !== entry || entry.users > 0) return;
+      heldCopies.delete(url);
+      loadedCopies.setState((s) => {
+        const { [url]: _gone, ...rest } = s;
+        return rest;
+      }, true);
+    }, COPY_GRACE_MS);
+  };
+}
+
+/** A copy's URL once it is loaded in this page (null until then). */
+function useLoadedCopy(url: string | null): string | null {
+  const loaded = loadedCopies((s) => (url ? s[url] === true : false));
+  useEffect(() => (url ? holdCopy(url) : undefined), [url]);
+  return url && loaded ? url : null;
+}
+
+/** On a phone: whether a copy's small preview has loaded (its id), so it is drawn only then. */
+function usePreviewLoaded(id: string | null): boolean {
+  const loader = useContext(PreviewsContext);
+  const [loadedId, setLoadedId] = useState<string | null>(() => (id && loader?.cached(id) ? id : null));
+  useEffect(() => {
+    if (!id || !loader) return;
+    let live = true;
+    void loader.load(id).then((url) => {
+      if (live && url) setLoadedId(id);
+    });
+    return () => {
+      live = false;
+    };
+  }, [id, loader]);
+  return id !== null && loadedId === id;
+}
+
+/** A picture's sharpened copy to draw in its place: its URL (its id on a phone), or null for the picture. */
+export interface SharpCopy {
+  url: string;
+  id: string;
+}
+
+/** The sharpened copy of a picture with this look, once it is ready and loaded here (Session 26f). */
+export function useSharpCopy(mediaId: string, look: PictureLook | null): SharpCopy | null {
+  const step = copyStep(look);
+  const id = step > 0 ? copyMediaId(mediaId, step) : null;
+  const previews = useContext(PreviewsContext) !== null;
+  // On a node, a copy that landed after it was first asked for: asked again (a new URL).
+  const attempt = useMediaAttempt(id ?? '');
+  const url = id && !previews ? sharpenedUrl(mediaId, step, attempt) : null;
+  const loaded = useLoadedCopy(url);
+  const previewLoaded = usePreviewLoaded(previews ? id : null);
+  if (!id) return null;
+  if (previews) return previewLoaded ? { url: '', id } : null;
+  return loaded ? { url: loaded, id } : null;
+}
+
+/** Sharpening filters for the Picture editor's preview, made once per page (one for each step of 5 %), as SVG the CSS filter names. */
 const made = new Set<number>();
 export function sharpenFilter(percent: number): string {
   const id = `drashti-sharpen-${String(percent)}`;
@@ -69,7 +170,10 @@ export function sharpenFilter(percent: number): string {
   return `url(#${id})`;
 }
 
-/** The filter a look's enhancements draw with ('' for none). */
+/**
+ * The filter the Picture editor's preview draws a look's enhancements with, sharpening as an SVG filter (''
+ * for none). The screens draw cssFilter and the sharpened copy instead.
+ */
 export function lookFilter(look: PictureLook | null): string {
   if (!look) return '';
   const step = sharpenStep(look.sharpness);
@@ -90,7 +194,8 @@ function boxOf(style: CSSProperties): CSSProperties {
 
 /**
  * A picture with its look. `style`: the box it is drawn in, as the plain picture had it; `showing`: which
- * showing it is on the screens (its live zoom), or null; `children`: the plain picture, given its style.
+ * showing it is on the screens (its live zoom), or null; `children`: the plain picture, given its style and
+ * the sharpened copy to draw in its place (null: the picture itself).
  */
 export function Looked({
   mediaId,
@@ -101,9 +206,10 @@ export function Looked({
   mediaId: string;
   showing: string | null;
   style: CSSProperties;
-  children: (style: CSSProperties) => ReactNode;
+  children: (style: CSSProperties, copy: SharpCopy | null) => ReactNode;
 }) {
   const look = usePictureLook(mediaId);
+  const copy = useSharpCopy(mediaId, look);
   const screen = useContext(ScreenPictures);
   const z = screen?.liveZoom ?? null;
   const live = z && showing !== null && z.mediaId === mediaId && z.showing === showing ? z : null;
@@ -122,14 +228,15 @@ export function Looked({
       cancelAnimationFrame(frame);
     };
   }, [live]);
-  if (!look && !live) return <>{children(style)}</>;
-  const filter = lookFilter(look);
+  if (!look && !live) return <>{children(style, null)}</>;
+  const filter = cssFilter(look);
   const at = live ? liveZoomAt(live, engineNow()) : (look ?? { zoom: 1, x: 0, y: 0 });
   return (
     <div data-look="" data-media-id={mediaId} style={{ ...boxOf(style), overflow: 'hidden' }}>
       <div
         ref={inner}
         data-look-picture=""
+        data-sharpened={copy ? copy.id : undefined}
         style={{
           position: 'absolute',
           inset: 0,
@@ -138,13 +245,16 @@ export function Looked({
           filter: filter || undefined,
         }}
       >
-        {children({
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          objectFit: style.objectFit,
-        })}
+        {children(
+          {
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: style.objectFit,
+          },
+          copy,
+        )}
       </div>
     </div>
   );

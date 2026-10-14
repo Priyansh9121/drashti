@@ -116,6 +116,43 @@ describe('what a node copies', () => {
   });
 });
 
+describe('a picture’s sharpened copy (Session 26f)', () => {
+  it('comes right after the picture once it is ready, and is served from where the copies are', () => {
+    const { db } = library();
+    const copy = { id: 'slide-pic_s50', sha256: sha(9), bytes: 42, ext: 'jpg' };
+    const wanted = new WantedMedia(
+      db,
+      () => [],
+      () => Date.parse('2026-10-05T10:00:00Z'),
+      {
+        want: (mediaId) => (mediaId === 'slide-pic' ? copy : null),
+        source: (copyId) =>
+          copyId === copy.id
+            ? { path: join('/placeholder/Media', 'sharpened', `${sha(1)}-50.jpg`), ...copy, id: undefined }
+            : null,
+      },
+    );
+    const state = initialEngineState();
+    state.live.playlist = { playlistId: 'live', itemId: 'live-0' };
+    expect(wanted.list(state, false).map((w) => w.id)).toEqual([
+      'slide-pic',
+      'slide-pic_s50',
+      'live-item',
+      'week-item',
+      'prop-pic',
+    ]);
+    expect(wanted.source('slide-pic_s50', '/placeholder/Media')).toMatchObject({
+      path: join('/placeholder/Media', 'sharpened', `${sha(1)}-50.jpg`),
+      sha256: sha(9),
+      bytes: 42,
+      ext: 'jpg',
+    });
+    // A copy outside the media folder, or one that is not ready: none.
+    expect(wanted.source('slide-pic_s55', '/placeholder/Media')).toBeNull();
+    expect(wanted.source('slide-pic_s50', '/elsewhere')).toBeNull();
+  });
+});
+
 describe('a playlist opened on Main (Session 14)', () => {
   it('counts as this week’s once opened, without changing when it last changed', () => {
     const { db } = library();

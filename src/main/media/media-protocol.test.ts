@@ -7,6 +7,7 @@ import {
   playbackCorrection,
   playbackOffset,
   playbackPosition,
+  sharpenedUrl,
   SOUND_LIMITS,
   stillUrl,
 } from '../../shared/media';
@@ -20,6 +21,7 @@ let fileLinks = true;
 const BYTES = Uint8Array.from({ length: 100 }, (_, i) => i);
 const SHA = 'ab'.repeat(32);
 const STILL = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 0xff, 0xd9]);
+const COPY = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 7]);
 
 beforeAll(() => {
   // Not through realpath: on macOS the temp folder is behind a link (/var -> /private/var), as on some machines the media folder may be.
@@ -31,6 +33,8 @@ beforeAll(() => {
   writeFileSync(join(mediaDir, 'ab', 'image.png'), BYTES);
   mkdirSync(join(mediaDir, 'stills'));
   writeFileSync(join(mediaDir, stillPath(SHA)), STILL);
+  mkdirSync(join(mediaDir, 'sharpened'));
+  writeFileSync(join(mediaDir, 'sharpened', `${SHA}-50.png`), COPY);
   writeFileSync(join(mediaDir, 'cd', 'empty.mp4'), new Uint8Array());
   writeFileSync(join(outside, 'secret.txt'), 'not media');
   symlinkSync(outside, join(mediaDir, 'gh'), 'junction');
@@ -62,6 +66,8 @@ beforeAll(() => {
   deps = {
     mediaDir,
     lookup: (id) => rows[id] ?? null,
+    // The copies that are ready (Session 26f): at 50 % for the picture with SHA only.
+    sharpened: (sha256, step) => (sha256 === SHA && step === 50 ? `sharpened/${SHA}-50.png` : null),
     warn: (m) => warnings.push(m),
     warnings,
   };
@@ -94,6 +100,27 @@ describe('drashti-media:// requests', () => {
     for (const id of ['noStill', 'badSha', 'empty', 'missing', 'stale', 'nobody']) {
       expect((await get(stillUrl(id))).status, id).toBe(404);
     }
+  });
+
+  it("serves a picture's sharpened copy once it is ready, at its step only, and only the library's", async () => {
+    const res = await get(sharpenedUrl('image', 50, 2));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toBe('image/png');
+    expect(await bytesOf(res)).toEqual(COPY);
+    // Another step (being made), no copy yet, a missing picture, an id that is not the library's: none.
+    for (const url of [
+      sharpenedUrl('image', 55),
+      sharpenedUrl('noStill', 50),
+      sharpenedUrl('stale', 50),
+      sharpenedUrl('nobody', 50),
+      'drashti-media://sharp/image',
+      'drashti-media://sharp/image/abc',
+      'drashti-media://sharp/image/50/x',
+    ])
+      expect((await get(url)).status, url).toBe(404);
+    // Without the library's copies (a page that has none), none at all.
+    const { sharpened: _sharpened, ...none } = deps;
+    expect((await handleMediaRequest(new Request(sharpenedUrl('image', 50)), none)).status).toBe(404);
   });
 
   it('serves byte ranges, which video seeking needs', async () => {
@@ -188,6 +215,11 @@ describe('media URLs and ranges', () => {
     expect(mediaUrl(id, 2)).toBe(`drashti-media://media/${id}?try=2`);
     expect(mediaRequestOf(mediaUrl(id, 2))).toEqual({ what: 'media', mediaId: id });
     expect(mediaUrl(id, 0)).toBe(mediaUrl(id));
+    // A sharpened copy (Session 26f): the picture's id and the step.
+    expect(sharpenedUrl(id, 35)).toBe(`drashti-media://sharp/${id}/35`);
+    expect(mediaRequestOf(sharpenedUrl(id, 35, 3))).toEqual({ what: 'sharp', mediaId: id, step: 35 });
+    for (const step of ['0', '7', '105', '-5', '5.5', ''])
+      expect(mediaRequestOf(`drashti-media://sharp/${id}/${step}`), step).toBeNull();
     expect(mediaRequestOf('drashti-media://media/a.b')).toBeNull();
     expect(mediaRequestOf('drashti-media://media/a%20b')).toBeNull();
     expect(mediaRequestOf('drashti-media://thumbs/abc')).toBeNull();
