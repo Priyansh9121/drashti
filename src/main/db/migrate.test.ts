@@ -194,6 +194,42 @@ describe('migrations', () => {
     db.close();
   });
 
+  it('upgrade a version 36 library: a deck’s pages leave the Media list, a picture also imported on its own stays (Session 26a)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-db-'));
+    const file = join(dir, 'drashti.sqlite');
+    const v36 = openDatabase(
+      file,
+      MIGRATIONS.filter((m) => m.version <= 36),
+    );
+    const add = v36.prepare(
+      'INSERT INTO media (id, kind, name, path, sha256, source_kind, source_path) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    );
+    add.run('page1', 'image', 'page-0001.png', 'aa/1.png', 'a1', 'drashti', '/decks/Katha.pdf#page=1');
+    add.run('page2', 'image', 'page-0002.png', 'aa/2.png', 'a2', 'drashti', '/decks/Katha.pptx#page=2');
+    // The same picture as page 3 was dropped in on its own later: its report names the shared row.
+    add.run('page3', 'image', 'page-0003.png', 'aa/3.png', 'a3', 'drashti', '/decks/Katha.pdf#page=3');
+    add.run('photo', 'image', 'Darshan.jpg', 'bb/p.jpg', 'b1', 'media', '/pictures/Darshan.jpg');
+    add.run('bg', 'video', 'Loop.mov', 'cc/l.mov', 'c1', 'pp6', '/pp6/Media/Loop.mov');
+    v36.prepare("INSERT INTO import_runs (id, status, paths) VALUES ('r', 'done', '[]')").run();
+    v36
+      .prepare(
+        "INSERT INTO import_items (id, run_id, position, source_path, format, outcome, target_kind, target_id) VALUES ('i', 'r', 0, '/pictures/Same.png', 'media', 'skipped', 'media', 'page3')",
+      )
+      .run();
+    v36.close();
+    const db = openDatabase(file);
+    expect(schemaVersion(db)).toBe(LATEST_VERSION);
+    expect(db.prepare('SELECT id, listed FROM media ORDER BY id').all()).toEqual([
+      { id: 'bg', listed: 1 },
+      { id: 'page1', listed: 0 },
+      { id: 'page2', listed: 0 },
+      { id: 'page3', listed: 1 },
+      { id: 'photo', listed: 1 },
+    ]);
+    expect(db.pragma('integrity_check', { simple: true })).toBe('ok');
+    db.close();
+  });
+
   it('upgrade a version 1 library to the latest schema, keeping its presentations', () => {
     const dir = mkdtempSync(join(tmpdir(), 'drashti-db-'));
     const file = join(dir, 'drashti.sqlite');

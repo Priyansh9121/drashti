@@ -6,7 +6,16 @@ import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
 import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { OutputGlobals, PageGlobals } from './helpers';
-import { dropFiles, launchApp, operatorPage, operatorReady, outputPage, setUpScreen } from './helpers';
+import {
+  dropFiles,
+  importAndGetIds,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  outputPage,
+  setUpScreen,
+} from './helpers';
+import { makeTestImage } from './test-media';
 import { canvasPixels, near } from './pixels';
 
 /*
@@ -159,5 +168,42 @@ test('a PowerPoint file with nothing on the computer to save it as PDF is report
   await expect(item).toHaveAttribute('data-outcome', 'failed');
   await expect(item).toContainText('no Keynote or PowerPoint');
   await expect(item).toContainText('File > Save As, PDF');
+  await app.close();
+});
+
+test('a deck’s pages stay out of the Media list: a PDF and a picture imported, Media shows only the picture (Session 26a)', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp({ DRASHTI_TEST_NO_CONVERTER: '1' });
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-pictures-e2e-'));
+  const pdf = join(dir, 'Placeholder katha.pdf');
+  writeFileSync(
+    pdf,
+    makeTestPdf([
+      { width: 960, height: 540, color: BLUE, text: 'Placeholder page one' },
+      { width: 960, height: 540, color: RED, text: 'Placeholder page two' },
+      { width: 960, height: 540, color: GREEN, text: 'Placeholder page three' },
+    ]),
+  );
+  const picture = await makeTestImage(win, join(dir, 'Placeholder darshan.png'), { color: '#7c2d12' });
+  const ids = await importAndGetIds(win, [pdf, picture]);
+  expect(ids.every((id) => id !== '')).toBe(true);
+  // The deck is a presentation of its three pages...
+  const deck = win
+    .getByTestId('presentation-list')
+    .getByTestId('presentation-row')
+    .filter({ hasText: 'Placeholder katha' });
+  await expect(deck).toContainText('3 slides');
+  await deck.click();
+  await expect(win.getByTestId('slide-thumb')).toHaveCount(3);
+  // ...and Media lists only the picture.
+  await win.getByTestId('library-tab-media').click();
+  const items = win.getByTestId('media-item');
+  await expect(items).toHaveCount(1);
+  await expect(items).toContainText('Placeholder darshan.png');
+  const listed = await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia());
+  expect(listed.map((m) => m.name)).toEqual(['Placeholder darshan.png']);
   await app.close();
 });

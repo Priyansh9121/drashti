@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { openDatabase } from '../db/database';
+import { MediaRepo } from '../db/media';
 import { MediaRemoval } from '../library/media-removal';
 import { MediaStore } from './media-store';
 
@@ -32,6 +33,28 @@ const storedFiles = (mediaDir: string) =>
     .map((e) => e.name);
 
 describe('MediaStore', () => {
+  it('lists only what was imported as media: a page Drashti drew is not, until the same picture is dropped in on its own (Session 26a)', async () => {
+    const { db, store, file } = setup();
+    const page = file('page-0001.png', 'placeholder page bytes');
+    const stage = await store.stage(page);
+    if (!stage.ok) throw new Error('not staged');
+    const drawn = store.addStaged(stage.staged, { kind: 'drashti', path: '/decks/Katha.pdf#page=1' });
+    const listed = () => new MediaRepo(db).list().map((m) => m.id);
+    expect(listed()).toEqual([]);
+    // The same bytes dropped in as a picture: the shared row is listed from then on.
+    const same = file('Placeholder same picture.png', 'placeholder page bytes');
+    const again = await store.importFile(same, { kind: 'media', path: same });
+    expect(again).toMatchObject({ outcome: 'skipped', mediaId: drawn.mediaId });
+    expect(listed()).toEqual([drawn.mediaId]);
+    // And a deck drawing a page already listed leaves it listed.
+    const other = file('Placeholder photo.png', 'placeholder photo bytes');
+    const photo = await store.importFile(other, { kind: 'media', path: other });
+    const stage2 = await store.stage(other);
+    if (!stage2.ok || !('mediaId' in photo)) throw new Error('not staged');
+    store.addStaged(stage2.staged, { kind: 'drashti', path: '/decks/Other.pdf#page=4' });
+    expect(listed().sort()).toEqual([drawn.mediaId, photo.mediaId].sort());
+  });
+
   it('brings deleted media back to life when the same file is imported again, even once its file has gone (Session 26a)', async () => {
     const { db, store, mediaDir, file } = setup();
     const path = file('Placeholder darshan.png', 'placeholder picture bytes');
