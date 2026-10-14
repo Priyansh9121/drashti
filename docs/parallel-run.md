@@ -100,12 +100,13 @@ The first time Drashti starts, the **setup wizard** opens by itself (later, it i
 
 - **Screens**: **Show each display's number on it** puts a big number on every display for a few seconds (not on the one the controls are on), so you can see which output feeds which screens. For each display choose **The audience picture**, **The stage view (performers)** or **Not used**, and the languages a kirtan shows on it (for example Gujarati then transliteration in the hall, Gujarati only on the stage).
 - **Sound**: choose the output that goes to the mixer, and **Play a test tone** to hear it.
+- **Stream** (only on the computer that streams to YouTube): what the stream shows, the camera and the sound input, and a kirtan's languages on the stream. These are YouTube's settings in Screens (below), where they can be changed at any time.
 - **Theme**: the look new presentations start with.
 - **Finish**: everything is set at once, and every screen shows a test slide for a few seconds, in its own languages. If an output would cover the controls, Drashti asks first.
 
 Each step has **Skip this step**, which keeps things as they are. To set up by hand instead, or to change a screen's size later:
 
-1. Click **Screens** (top right).
+1. Click **Screens** (top right). It opens with three cards: **Projector**, **Stage screen** and **YouTube (the stream)**, each with a small picture of what it shows. The displays and the screen groups are below them.
 2. Under **Screen groups**, type a name such as "Main Hall" and click **Add group**.
 3. Under **Connected displays**, find each display that feeds the hall's screens and click **Use this display** next to it. If one of them is the display the Drashti controls are on, Drashti asks first, because the output would cover the controls.
 4. Click **Identify screens**: each screen shows its name for a few seconds, so you can check they are the right ones.
@@ -212,7 +213,7 @@ Only on the computer that streams, and only once the screens and sound work. **T
 1. Plug in the camera (or the capture card) and the cable from the mixer's line out into the computer.
 2. In Drashti press **Stream** (top right), then **Stream settings**.
 3. In **YouTube Studio** choose **Go live**, then **Stream**. Copy the **Stream key** and paste it in Drashti's **Stream key** box, then **Save key**. Drashti keeps it locked away and never shows it again ("A key is saved"). Check the **Address** says `rtmps://a.rtmps.youtube.com/live2`.
-4. Choose the **Camera** and the **Sound input** (the mixer's line in). On a Mac, the first time, macOS asks whether Drashti may use the camera and the microphone: press **Allow**. If Drashti says Windows or macOS is blocking them, follow what it says, then open the Stream panel again.
+4. Choose the **Camera** and the **Sound input** (the mixer's line in). They are also on **YouTube**'s card in **Screens**, with the stream's languages: the same settings, so a change in one shows in the other. On a Mac, the first time, macOS asks whether Drashti may use the camera and the microphone: press **Allow**. If Drashti says Windows or macOS is blocking them, follow what it says, then open the Stream panel again.
 5. **Internet**: **Good internet** (1080p) needs an upload of 8 Mbps or more; otherwise choose **Weak internet** (720p). Ask whoever looks after the mandir's internet, or run a speed test on this computer.
 6. **Save profile**. Back in the Stream panel, the preview shows what the stream will look like, and the bar under it moves with the sound. Talk into a microphone on the mixer: if the lips move after the words are heard, raise **Sound delay** in Stream settings a little at a time.
 7. **Recording**: press **Choose a folder…** and pick a folder on a disk with plenty of space (an hour at Good internet is about 3 GB).
@@ -436,7 +437,7 @@ In **Start, end and markers** (a video's timeline): **I** and **O** set the star
 
 **Transitions** (how a slide comes on; chosen in Pro Mode, for a slide or a presentation in the slide editor, or for a Repeat Slides playlist under its name): **Cut** (at once), **Fade**, **Fade through black**, **Slide** (in from the right) and **Slow zoom** (a fade, then the slide growing slowly while it is up). Every screen runs them at the same moment.
 
-The screens dashboard has no key: click the screens line at the bottom left of the window (it opens in Simple Mode too). Going live, ending the stream and recording have no keys: use the buttons in the **Stream** panel (each going live or ending asks first). Switching the Look and running a macro have no keys either: use their buttons under the live picture, or a MIDI pad mapped to a macro. The arti prompt has no keys of its own: from its time, Next puts the arti up.
+Zooming the picture on the screens has no key either: in Pro Mode, scroll or pinch over the **LIVE** picture while a picture is up, and **Keep this zoom** keeps it for next time. The screens dashboard has no key: click the screens line at the bottom left of the window (it opens in Simple Mode too). Going live, ending the stream and recording have no keys: use the buttons in the **Stream** panel (each going live or ending asks first). Switching the Look and running a macro have no keys either: use their buttons under the live picture, or a MIDI pad mapped to a macro. The arti prompt has no keys of its own: from its time, Next puts the arti up.
 
 In the slide editor:
 
