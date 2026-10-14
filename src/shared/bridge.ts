@@ -176,6 +176,8 @@ export interface DrashtiBridge {
     download(choice?: YouTubeChoice | null): Promise<LinkResult>;
     stop(): Promise<LinkResult>;
     reset(): Promise<LinkResult>;
+    /** A Dropbox folder's PDFs and pictures: into its playlist, each at the end of its folder's part. */
+    addWaiting(): Promise<LinkResult>;
     /** Show where the files were saved: an import run's (its report), or the dialog's download (null). */
     showSaved(runId: string | null): Promise<null>;
     /** The admin's highest video quality, for YouTube and Dropbox (Session 25c): 1080, 1440, 2160 or 4320. */

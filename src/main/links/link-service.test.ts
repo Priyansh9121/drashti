@@ -244,6 +244,50 @@ describe('Import from a Link: Dropbox', () => {
     expect(h.imported[0]?.length).toBe(3);
   });
 
+  it('makes a folder one playlist; its PDFs and pictures wait for the one button (Session 26c)', async () => {
+    folderZip = makeDropboxLikeZip([
+      { path: 'Opening.mp4', data: VIDEO },
+      { path: 'Week 1/Katha.pptx', data: 'placeholder pptx' },
+      { path: 'Week 1/Handout.pdf', data: 'placeholder pdf' },
+      { path: 'Darshan.JPG', data: 'placeholder picture' },
+      { path: 'Read me.txt', data: 'placeholder words' },
+    ]);
+    const made: { name: string; runId: string; files: { path: string; relative: string }[] }[] = [];
+    const later: { playlistId: string; files: { path: string; relative: string }[] }[] = [];
+    const h = await harness({
+      folderPlaylist: (input) => {
+        made.push(input);
+        return { id: 'pl-1', name: 'Placeholder folder' };
+      },
+      addToFolderPlaylist: (input) => {
+        later.push(input);
+        return input.files.length;
+      },
+    });
+    h.service.look('dropbox', FOLDER_LINK);
+    await until(() => h.service.view().phase === 'looked');
+    h.service.download();
+    await until(() => h.service.view().phase === 'done');
+    const view = h.service.view();
+    expect(view.waiting).toEqual(['Darshan.JPG', 'Week 1/Handout.pdf']);
+    expect(view.notTaken.map((n) => n.name)).toEqual(['Read me.txt']);
+    expect(view.playlist).toEqual({ id: 'pl-1', name: 'Placeholder folder' });
+    expect(made).toHaveLength(1);
+    expect(made[0]?.name).toBe('Placeholder folder');
+    expect(made[0]?.files.map((f) => f.relative).sort()).toEqual(['Opening.mp4', 'Week 1/Katha.pptx']);
+    // Only the decks and videos went to the import by themselves.
+    expect(h.imported[0]?.length).toBe(2);
+    // The button: the waiting ones, imported and put in the playlist.
+    expect((await h.service.addWaiting()).ok).toBe(true);
+    expect(h.imported[1]?.map((p) => p.split(/[\\/]/u).slice(-2).join('/')).sort()).toEqual([
+      'Placeholder folder/Darshan.JPG',
+      'Week 1/Handout.pdf',
+    ]);
+    expect(later[0]?.playlistId).toBe('pl-1');
+    expect(h.service.view()).toMatchObject({ waiting: [], waitingAdded: 2, phase: 'done' });
+    expect((await h.service.addWaiting()).ok).toBe(false);
+  });
+
   it('logs which rule refused an unpack, as a short code and never a name', async () => {
     folderZip = makeZip([
       { name: 'Fine.mp4', data: 'x' },

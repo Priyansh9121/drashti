@@ -147,6 +147,7 @@ export const ADMIN_CHANNELS: readonly InvokeChannel[] = [
   IPC.links.look,
   IPC.links.pickFolder,
   IPC.links.download,
+  IPC.links.addWaiting,
   IPC.links.setMaxHeight,
   // Updates: downloading, installing when Drashti quits, the daily look.
   IPC.updates.download,

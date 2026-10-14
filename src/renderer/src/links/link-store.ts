@@ -20,6 +20,7 @@ import { openReport, useImports } from '../library/import-store';
 import { useNotice } from '../operator/actions';
 import type { AddTarget } from '../playlists/add-made';
 import { addMadeTo, defaultTarget } from '../playlists/add-made';
+import { loadTree, openPlaylist } from '../playlists/playlist-store';
 
 /*
  * Import from a Link in the operator window (Session 25b): the dialog's
@@ -85,8 +86,17 @@ function takeView(view: LinkView): void {
   useLinks.setState((s) => ({ view, choice: view.link !== s.view?.link ? NO_CHOICE : s.choice }));
 }
 
+/** The folder playlists already opened (each opens once, as it is made). */
+const openedPlaylists = new Set<string>();
+
 function heard(view: LinkView): void {
   takeView(view);
+  // A Dropbox folder's own playlist (Session 26c): opened as it is made.
+  const made = view.playlist;
+  if (made && !openedPlaylists.has(made.id)) {
+    openedPlaylists.add(made.id);
+    void loadTree().then(() => openPlaylist(made.id));
+  }
   useLinks.setState((s) => ({
     savedFor:
       view.runId && view.saved
@@ -152,7 +162,8 @@ export async function startDownload(): Promise<boolean> {
   const video = view?.look?.video;
   // The height the dialog shows as chosen (the tallest allowed, until one is picked).
   const asked = video ? { ...choice, height: chosenHeight(video, view.maxHeight, choice.height) } : null;
-  const target = addToNow(useLinks.getState());
+  // A folder makes a playlist of its own (Session 26c): nothing else to add it to.
+  const target = view?.look?.shape === 'folder' ? null : addToNow(useLinks.getState());
   const ok = await act(() => window.drashti.links.download(asked));
   if (ok) pendingAdd = target;
   const youtube = video !== undefined;
@@ -165,6 +176,8 @@ export function choose(change: Partial<LinkStore['choice']>): void {
   useLinks.setState((s) => ({ choice: { ...s.choice, ...change }, error: null }));
 }
 export const stopDownload = () => act(() => window.drashti.links.stop());
+/** Add the PDFs and pictures (Session 26c): a folder's waiting files, into its playlist. */
+export const addWaitingFiles = () => act(() => window.drashti.links.addWaiting());
 export const anotherLink = () => {
   useLinks.setState({ addTo: null });
   return act(() => window.drashti.links.reset());

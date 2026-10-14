@@ -196,6 +196,8 @@ export const IPC = {
     stop: 'links:stop',
     /** Start again with a new link. */
     reset: 'links:reset',
+    /** A Dropbox folder's PDFs and pictures, saved and waiting: import them into its playlist (Session 26c). */
+    addWaiting: 'links:add-waiting',
     /** Show where the files were saved (Finder, Explorer). */
     showSaved: 'links:show-saved',
     /** The admin's highest video quality, for YouTube and Dropbox (Session 25c). */
@@ -703,6 +705,7 @@ export interface InvokeContract {
   [IPC.links.download]: { args: [choice?: YouTubeChoice | null]; result: LinkResult };
   [IPC.links.stop]: { args: []; result: LinkResult };
   [IPC.links.reset]: { args: []; result: LinkResult };
+  [IPC.links.addWaiting]: { args: []; result: LinkResult };
   [IPC.links.showSaved]: { args: [runId: string | null]; result: null };
   [IPC.links.setMaxHeight]: { args: [height: number]; result: LinkResult };
   [IPC.engine.subscribe]: { args: []; result: EngineSnapshotMessage };

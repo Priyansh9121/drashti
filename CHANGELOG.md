@@ -6,6 +6,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 Import from a Link
 
+- A Dropbox folder link becomes one playlist, named after it, folder by folder: each folder's videos, then its PowerPoint files, A to Z, a header for each folder inside. Its PDFs and pictures wait for Add the PDFs and pictures.
 - A Dropbox folder link unpacks now. Dropbox's zips list an empty entry named "/", and Drashti refused the whole folder for it ("would leave the folder"); that entry is skipped, and everything that would really leave the folder is still refused.
 
 Playlists
