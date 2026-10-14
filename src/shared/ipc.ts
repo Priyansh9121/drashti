@@ -418,6 +418,8 @@ export const IPC = {
     save: 'themes:save',
     remove: 'themes:remove',
     apply: 'themes:apply',
+    /** The default theme for new presentations (Session 26). */
+    setDefault: 'themes:set-default',
     fromPresentation: 'themes:from-presentation',
     /** A theme from a slide in the slide editor (its first text box, its colour and background). */
     fromSlide: 'themes:from-slide',
@@ -899,6 +901,7 @@ export interface InvokeContract {
   [IPC.themes.list]: { args: []; result: { themes: Theme[]; defaultId: string } };
   [IPC.themes.save]: { args: [themeId: string | null, fields: ThemeFields]; result: ThemeResult };
   [IPC.themes.remove]: { args: [themeId: string]; result: ThemeResult };
+  [IPC.themes.setDefault]: { args: [themeId: string]; result: ThemeResult };
   [IPC.themes.apply]: { args: [themeId: string, presentationIds: string[]]; result: ApplyThemeResult };
   [IPC.themes.fromPresentation]: { args: [presentationId: string]; result: ThemeResult };
   [IPC.themes.fromSlide]: { args: [name: string, slide: ThemeSlide]; result: ThemeResult };

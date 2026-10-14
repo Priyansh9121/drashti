@@ -352,3 +352,11 @@ A **smart playlist** follows a folder on this computer (Session 26c): what Drash
 - **A folder that is not there** (a USB stick taken out, a network drive gone): the playlist says so, keeps every item, and carries on by itself when the folder is back.
 - **At most 2,000 files.** A folder holding more is refused when the playlist is made; one that grows past it is said so, and nothing more is added or marked until some files go.
 - **Simple Mode** sees what the folder brings, and can neither make a smart playlist nor remove its missing items. Deleting a smart playlist stops it following its folder; Undo starts it again. The folder itself is never changed: Drashti only reads it.
+
+## 16. Themes
+
+**Themes** (in the header) holds how a presentation's words look: a style for each language (font, size, weight, colour and shadow), where the first text box sits, and what is behind the words. Each theme is shown as a preview with a placeholder line in Gujarati, transliteration, Hindi and English.
+
+**The built-in themes** (Session 26): **Midnight**, **Plum and Flame**, **Saffron**, **Maroon and Gold**, **Forest**, **Ocean**, **Ivory** (dark words on cream), **Charcoal**, **High Contrast White on Black** and **High Contrast Black on White**, beside **Drashti default**. Each is a colour behind the words (never a picture), with Drashti's own fonts for every language and a shadow behind light words. Every word, and a Shastra passage's reference line, is at least 7:1 against its background, for a dim hall or a washed-out projector. They are marked **Built in**: change one and press **Save as a copy**, and the change goes into a theme of your own while the built-in one stays as it is. A built-in theme can be deleted; it does not come back.
+
+**Applying one.** **Apply to N presentations** applies it to the presentations marked in the library (Cmd/Ctrl-click to mark more). **Apply to its presentations** applies it to every presentation in the playlist chosen beside it (a deck's pages are pictures, so a deck is left as it is). The words never change, and **Undo** puts the look back. **Make it the default for new presentations** gives it to every presentation made in Drashti from then on, as the setup wizard's Theme step does.

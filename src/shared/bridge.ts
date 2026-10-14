@@ -390,6 +390,8 @@ export interface DrashtiBridge {
     save(themeId: string | null, fields: ThemeFields): Promise<ThemeResult>;
     /** Remove a theme; the default one stays. */
     remove(themeId: string): Promise<ThemeResult>;
+    /** Make a theme the default: presentations made in Drashti start with it. */
+    setDefault(themeId: string): Promise<ThemeResult>;
     /** Apply a theme to presentations: their styles change, never their words; one Undo brings them back. */
     apply(themeId: string, presentationIds: string[]): Promise<ApplyThemeResult>;
     /** A theme from a presentation's first text box (an imported template). */

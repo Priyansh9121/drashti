@@ -8,13 +8,14 @@ import { pushRemoval } from '../library/undo';
 import { MediaStill } from '../render/MediaStill';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
+import type { PlaylistNode } from '../../../shared/playlists';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
+import { cx } from '../ui/cx';
 import { Dialog } from '../ui/Dialog';
 import { KeepChangesDialog, settingsChanged } from '../ui/KeepChanges';
 import { ColorInput, Field, NumberInput, Select, TextInput } from '../ui/Field';
 import { Palette, Plus, Trash2 } from '../ui/icons';
-import { ListRow } from '../ui/ListRow';
 import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { EmptyState, Loading } from '../ui/States';
@@ -78,6 +79,42 @@ function previewSlide(t: ThemeFields): RenderSlide {
 
 const percent = (n: number) => Math.round(n * 1000) / 10;
 
+/** A theme drawn: a line in each language under it (a picture background shown as a still). */
+function ThemePreview({ theme, className = '' }: { theme: ThemeFields; className?: string }) {
+  const slide = useMemo(() => previewSlide(theme), [theme]);
+  const bg = theme.background;
+  return (
+    <div
+      className={`overflow-hidden rounded-lg border border-line-strong bg-black ${className}`}
+      data-a11y-picture
+      aria-hidden="true"
+    >
+      <PlacedInParent
+        content={{ width: 1920, height: 1080 }}
+        mode="fit"
+        className="relative aspect-video w-full"
+      >
+        <span className="absolute inset-0">
+          {bg.kind === 'media' && <MediaStill mediaId={bg.mediaId} media={bg.media} fit={bg.fit} />}
+          <SlideView slide={slide} media="still" />
+        </span>
+      </PlacedInParent>
+    </div>
+  );
+}
+
+/** A playlist's presentations a theme can be applied to: not a deck's pages (pictures), nor one removed. */
+async function presentationsIn(playlistId: string): Promise<string[]> {
+  const items = await window.drashti.playlists.items(playlistId);
+  return [
+    ...new Set(
+      items.flatMap((i) =>
+        i.kind === 'presentation' && i.presentationName !== null && !i.deck ? [i.presentationId] : [],
+      ),
+    ),
+  ];
+}
+
 /** A theme's unsaved changes, for the sheet to ask about before they are lost. */
 interface PendingTheme {
   name: string;
@@ -88,12 +125,15 @@ interface PendingTheme {
 function ThemeEditor({
   theme,
   isDefault,
+  playlists,
   onSaved,
   onRemoved,
   onPending,
 }: {
   theme: Theme;
   isDefault: boolean;
+  /** Playlists to apply it to (their presentations). */
+  playlists: PlaylistNode[];
   /** Resolves once the list shows the saved theme. */
   onSaved: (id: string) => Promise<void>;
   onRemoved: () => void;
@@ -109,9 +149,9 @@ function ThemeEditor({
   useEffect(() => {
     void loadMedia();
   }, []);
+  const [playlistId, setPlaylistId] = useState(playlists[0]?.id ?? '');
   // The draft starts as the theme itself (id and all), so the two compare directly.
   const changed = JSON.stringify(draft) !== JSON.stringify(theme);
-  const slide = useMemo(() => previewSlide(draft), [draft]);
   const setLang = (lang: Lang, patch: Partial<ThemeFields['langs'][Lang]>) => {
     setDraft((d) => ({ ...d, langs: { ...d.langs, [lang]: { ...d.langs[lang], ...patch } } }));
   };
@@ -121,7 +161,8 @@ function ThemeEditor({
   const targets = marked.length > 0 ? marked : selectedId ? [selectedId] : [];
 
   const save = async () => {
-    const { id: _id, ...fields } = draft as Theme;
+    const { id: _id, builtIn: _builtIn, ...fields } = draft as Theme;
+    // A built-in theme stays as it is: saving it makes a copy, which the list then shows.
     const result = await window.drashti.themes.save(theme.id, fields);
     setProblem(result.ok ? null : result.message);
     if (result.ok) await onSaved(result.id);
@@ -136,15 +177,15 @@ function ThemeEditor({
     },
     [onPending],
   );
-  const apply = async () => {
+  const apply = async (to: string[], where = '') => {
     if (changed) await save();
-    const result = await window.drashti.themes.apply(theme.id, targets);
+    const result = await window.drashti.themes.apply(theme.id, to);
     if (!result.ok) {
       setProblem(result.message);
       return;
     }
     setProblem(null);
-    setNote(`Applied to ${plural(result.count, 'presentation')}.`);
+    setNote(`Applied to ${plural(result.count, 'presentation')}${where}.`);
     const { revisionId } = result;
     pushRemoval({
       text: `Applied the theme “${draft.name}” to ${plural(result.count, 'presentation')}`,
@@ -156,6 +197,24 @@ function ThemeEditor({
     });
     const shown = useLibrary.getState().selectedId;
     if (shown) await selectPresentation(shown);
+  };
+  const applyToPlaylist = async () => {
+    const playlist = playlists.find((p) => p.id === playlistId);
+    if (!playlist) return;
+    const ids = await presentationsIn(playlist.id);
+    if (ids.length === 0) {
+      setProblem(`“${playlist.name}” has no presentations to apply it to (a deck’s pages are pictures).`);
+      return;
+    }
+    await apply(ids, ` in “${playlist.name}”`);
+  };
+  const makeDefault = async () => {
+    const result = await window.drashti.themes.setDefault(theme.id);
+    setProblem(result.ok ? null : result.message);
+    if (result.ok) {
+      setNote('New presentations start with this theme.');
+      await onSaved(theme.id);
+    }
   };
   const bg = draft.background;
   const pictures = media.filter((m) => m.kind !== 'audio' && !m.missing && m.unplayable === null);
@@ -173,22 +232,12 @@ function ThemeEditor({
           }}
         />
       </Field>
-      <div
-        className="overflow-hidden rounded-lg border border-line-strong bg-black"
-        data-a11y-picture
-        aria-hidden="true"
-      >
-        <PlacedInParent
-          content={{ width: 1920, height: 1080 }}
-          mode="fit"
-          className="relative aspect-video w-full"
-        >
-          <span className="absolute inset-0">
-            {bg.kind === 'media' && <MediaStill mediaId={bg.mediaId} media={bg.media} fit={bg.fit} />}
-            <SlideView slide={slide} media="still" />
-          </span>
-        </PlacedInParent>
-      </div>
+      {theme.builtIn && (
+        <Notice tone="info" data-testid="theme-builtin-note">
+          Built in: it stays as it is. Saving a change makes a copy of your own, here in the list.
+        </Notice>
+      )}
+      <ThemePreview theme={draft} />
       <section className="space-y-2">
         <SectionTitle>Each language</SectionTitle>
         <table className="w-full text-sm" data-testid="theme-langs">
@@ -370,10 +419,10 @@ function ThemeEditor({
         </Notice>
       )}
       <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
-        <Button variant="primary" disabled={!changed} onClick={() => void save()}>
-          Save
+        <Button variant="primary" disabled={!changed} data-testid="theme-save" onClick={() => void save()}>
+          {theme.builtIn ? 'Save as a copy' : 'Save'}
         </Button>
-        <Button disabled={targets.length === 0} onClick={() => void apply()}>
+        <Button disabled={targets.length === 0} onClick={() => void apply(targets)}>
           Apply to {targets.length === 0 ? 'presentations' : plural(targets.length, 'presentation')}
         </Button>
         <span className="min-w-48 flex-1 text-xs text-muted">
@@ -395,6 +444,42 @@ function ThemeEditor({
           </Button>
         )}
       </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Select
+          aria-label="A playlist to apply it to"
+          data-testid="theme-playlist"
+          className="max-w-64"
+          value={playlistId}
+          disabled={playlists.length === 0}
+          onChange={(e) => {
+            setPlaylistId(e.target.value);
+          }}
+        >
+          {playlists.length === 0 && <option value="">No playlists yet</option>}
+          {playlists.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </Select>
+        <Button
+          data-testid="theme-apply-playlist"
+          disabled={playlists.length === 0}
+          onClick={() => void applyToPlaylist()}
+        >
+          Apply to its presentations
+        </Button>
+        <span className="flex-1" />
+        {isDefault ? (
+          <span className="text-xs text-muted" data-testid="theme-is-default">
+            New presentations start with this theme.
+          </span>
+        ) : (
+          <Button data-testid="theme-make-default" onClick={() => void makeDefault()}>
+            Make it the default for new presentations
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -408,6 +493,7 @@ export function ThemesPanel() {
 function Panel({ initial }: { initial: string | null }) {
   const [themes, setThemes] = useState<Theme[] | null>(null);
   const [defaultId, setDefaultId] = useState<string | null>(null);
+  const [playlists, setPlaylists] = useState<PlaylistNode[]>([]);
   const [chosen, setChosen] = useState<string | null>(initial);
   // The theme being changed and not saved, and the question asked before it is lost (closing, or
   // choosing or making another), with what to do after.
@@ -436,6 +522,10 @@ function Panel({ initial }: { initial: string | null }) {
       });
     };
     load();
+    // The playlists a theme can be applied to (not folders or templates).
+    void window.drashti.playlists.tree().then((tree) => {
+      setPlaylists(tree.filter((p) => !p.isFolder && !p.template));
+    });
     return window.drashti.library.onChanged((what) => {
       if (what === 'themes') load();
     });
@@ -443,7 +533,7 @@ function Panel({ initial }: { initial: string | null }) {
   const theme = themes?.find((t) => t.id === chosen) ?? null;
   const make = async () => {
     const base = themes?.find((t) => t.id === defaultId) ?? { ...DEFAULT_THEME };
-    const { id: _id, ...fields } = base as Theme;
+    const { id: _id, builtIn: _builtIn, ...fields } = base as Theme;
     const result = await window.drashti.themes.save(null, { ...fields, name: 'New theme' });
     if (result.ok) await reload(result.id);
   };
@@ -474,25 +564,33 @@ function Panel({ initial }: { initial: string | null }) {
       ) : (
         <>
           <ul
-            className="w-56 shrink-0 space-y-1 overflow-y-auto border-r border-line p-2"
+            className="w-60 shrink-0 space-y-2 overflow-y-auto border-r border-line p-2"
             aria-label="Themes"
           >
             {themes.map((t) => (
               <li key={t.id}>
-                <ListRow
+                <button
+                  type="button"
                   data-testid="theme-item"
                   aria-current={t.id === chosen ? 'true' : undefined}
-                  selected={t.id === chosen}
-                  density="compact"
-                  title={t.name}
-                  trailing={t.id === defaultId ? <Badge tone="info">Default</Badge> : undefined}
+                  className={cx(
+                    'w-full space-y-1.5 rounded-lg border p-1.5 text-left',
+                    t.id === chosen ? 'border-accent bg-panel-3' : 'border-transparent hover:bg-panel-2',
+                  )}
                   onClick={() => {
                     if (t.id !== chosen)
                       leave(() => {
                         setChosen(t.id);
                       });
                   }}
-                />
+                >
+                  <ThemePreview theme={t} />
+                  <span className="flex flex-wrap items-center gap-1.5 px-0.5 text-sm font-medium">
+                    <span className="min-w-0 truncate">{t.name}</span>
+                    {t.id === defaultId && <Badge tone="info">Default</Badge>}
+                    {t.builtIn && <Badge>Built in</Badge>}
+                  </span>
+                </button>
               </li>
             ))}
           </ul>
@@ -502,6 +600,7 @@ function Panel({ initial }: { initial: string | null }) {
                 key={theme.id}
                 theme={theme}
                 isDefault={theme.id === defaultId}
+                playlists={playlists}
                 onSaved={(id) => reload(id)}
                 onRemoved={() => void reload()}
                 onPending={onPending}
@@ -518,7 +617,11 @@ function Panel({ initial }: { initial: string | null }) {
         <KeepChangesDialog
           name={<>the theme “{asking.theme.name}”</>}
           lost={`You changed ${plural(Math.max(1, asking.theme.count), 'setting')}.`}
-          note="Saving changes only the theme: presentations change when it is applied to them."
+          note={
+            themes?.find((t) => t.id === chosen)?.builtIn
+              ? 'Saving makes a copy: the built-in theme stays as it is.'
+              : 'Saving changes only the theme: presentations change when it is applied to them.'
+          }
           onKeepEditing={() => {
             setAsking(null);
           }}

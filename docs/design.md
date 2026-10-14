@@ -352,3 +352,10 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **YouTube's card is the stream's settings**, the same ones the Stream panel and the setup wizard's Stream step show: the layout as the Stream panel's two large choices, what that layout shows under Session 9's rules in a sentence, the camera and sound input, the languages picker, and **Stream panel** (the key, profiles, Go Live, recording). The Stream panel gained the languages under its layout.
 - **Opening Screens starts nothing.** YouTube's preview is a still drawn in the operator window from the engine's state (the camera's place marked "The camera") until the stream is on air or recording, or **Find cameras and sound inputs** is pressed; only then does it watch the stream's own picture, which turns the camera on.
 - They fit at 1280 × 720 (`tests/e2e/youtube-screen.spec.ts`).
+
+## 37. Themes
+
+- **Each theme is a preview** (Session 26): the Themes window's list shows every theme drawn, a placeholder line in Gujarati, transliteration, Hindi and English under it (`aria-hidden`: its name says it), with its name, **Default** (`info`) and **Built in** (`neutral`) badges. The chosen one has the accent edge (`aria-current`).
+- **A built-in theme says so** above its preview (an `info` notice), and its Save button says **Save as a copy**: the copy is chosen in the list after saving. Apply, delete and the default work on it as on any other.
+- **Applying is three choices**, in the editor's last rows: **Apply to N presentations** (those marked in the library), a playlist select with **Apply to its presentations**, and **Make it the default for new presentations** (in its place, once it is: "New presentations start with this theme.").
+- **Built-in themes keep 7:1.** Words in any language, and the reference line, are at least 7:1 against the theme's background, a shadow only behind light words (`src/shared/builtin-themes.test.ts`).

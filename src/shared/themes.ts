@@ -47,6 +47,8 @@ export type ThemeBackground =
 
 export interface Theme {
   id: string;
+  /** One of Drashti's built-in themes (Session 26): saving it makes a copy. */
+  builtIn?: true;
   name: string;
   langs: Record<Lang, ThemeLangStyle>;
   /** How a Shastra passage's reference line looks (presentations have none). */

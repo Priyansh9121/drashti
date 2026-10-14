@@ -2,7 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { openDatabase } from './database';
 import { PresentationRepo } from './presentations';
 import { slideLines } from '../../shared/tracks';
-import { KIRTAN_PRESENTATION_NAME, seedPlaceholders, TEST_LINES, TEST_PRESENTATION_NAME } from './seed';
+import { BUILTIN_THEMES } from '../../shared/builtin-themes';
+import { DEFAULT_THEME } from '../../shared/themes';
+import {
+  KIRTAN_PRESENTATION_NAME,
+  seedBuiltinThemes,
+  seedPlaceholders,
+  TEST_LINES,
+  TEST_PRESENTATION_NAME,
+} from './seed';
+import { ThemeRepo } from './themes';
 
 describe('seedPlaceholders', () => {
   it('adds the two placeholder presentations once', () => {
@@ -51,5 +60,36 @@ describe('seedPlaceholders', () => {
     db.prepare('DELETE FROM presentations').run();
     expect(seedPlaceholders(db)).toBe(false);
     expect(new PresentationRepo(db).list()).toEqual([]);
+  });
+});
+
+describe('seedBuiltinThemes (Session 26)', () => {
+  it('adds the ten built-in themes once, after Drashti default, marked built in; a deleted one stays deleted', () => {
+    const db = openDatabase(':memory:');
+    expect(seedBuiltinThemes(db)).toBe(true);
+    const themes = new ThemeRepo(db);
+    expect(themes.list().map((t) => [t.name, t.builtIn === true])).toEqual([
+      ['Drashti default', false],
+      ...BUILTIN_THEMES.map((b) => [b.fields.name, true]),
+    ]);
+    const charcoal = themes.list().find((t) => t.name === 'Charcoal');
+    expect(charcoal && themes.remove(charcoal.id)).toBe(true);
+    expect(seedBuiltinThemes(db)).toBe(false);
+    expect(themes.list().map((t) => t.name)).not.toContain('Charcoal');
+    expect(themes.list()).toHaveLength(BUILTIN_THEMES.length);
+  });
+
+  it('comes after a library’s own themes when it is upgraded', () => {
+    const db = openDatabase(':memory:');
+    const themes = new ThemeRepo(db);
+    themes.defaultId();
+    themes.create({ ...DEFAULT_THEME, name: 'Placeholder own theme' });
+    seedBuiltinThemes(db);
+    expect(
+      themes
+        .list()
+        .slice(0, 3)
+        .map((t) => t.name),
+    ).toEqual(['Drashti default', 'Placeholder own theme', 'Midnight']);
   });
 });

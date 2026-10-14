@@ -7,16 +7,21 @@ const NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 /** app_meta key holding the default theme's id. */
 const DEFAULT_KEY = 'theme.default';
 
+interface Row {
+  id: string;
+  name: string;
+  definition: string;
+  builtin: string | null;
+}
+
 /** Themes, kept in the library (the themes table), and which one is the default. */
 export class ThemeRepo {
   constructor(private readonly db: Db) {}
 
   list(): Theme[] {
-    const rows = this.db.prepare('SELECT id, name, definition FROM themes ORDER BY rowid').all() as {
-      id: string;
-      name: string;
-      definition: string;
-    }[];
+    const rows = this.db
+      .prepare('SELECT id, name, definition, builtin FROM themes ORDER BY rowid')
+      .all() as Row[];
     return rows.flatMap((r) => {
       const theme = this.parse(r);
       return theme ? [theme] : [];
@@ -24,15 +29,16 @@ export class ThemeRepo {
   }
 
   get(id: string): Theme | null {
-    const row = this.db.prepare('SELECT id, name, definition FROM themes WHERE id = ?').get(id) as
-      { id: string; name: string; definition: string } | undefined;
+    const row = this.db.prepare('SELECT id, name, definition, builtin FROM themes WHERE id = ?').get(id) as
+      Row | undefined;
     return row ? this.parse(row) : null;
   }
 
-  private parse(r: { id: string; name: string; definition: string }): Theme | null {
+  private parse(r: Row): Theme | null {
     try {
       const parsed = themeFieldsSchema.safeParse({ ...(JSON.parse(r.definition) as object), name: r.name });
-      return parsed.success ? { id: r.id, ...parsed.data } : null;
+      if (!parsed.success) return null;
+      return r.builtin === null ? { id: r.id, ...parsed.data } : { id: r.id, builtIn: true, ...parsed.data };
     } catch {
       return null;
     }
@@ -41,12 +47,16 @@ export class ThemeRepo {
   create(
     fields: ThemeFields,
     source: { kind: 'drashti' | 'pp6' | 'pp7'; path: string | null } | null = null,
+    /** One of Drashti's built-in themes, by its key (db/seed.ts only). */
+    builtin: string | null = null,
   ): string {
     const id = randomUUID();
     const { name, ...definition } = fields;
     this.db
-      .prepare('INSERT INTO themes (id, name, definition, source_kind, source_path) VALUES (?, ?, ?, ?, ?)')
-      .run(id, name, JSON.stringify(definition), source?.kind ?? null, source?.path ?? null);
+      .prepare(
+        'INSERT INTO themes (id, name, definition, source_kind, source_path, builtin) VALUES (?, ?, ?, ?, ?, ?)',
+      )
+      .run(id, name, JSON.stringify(definition), source?.kind ?? null, source?.path ?? null, builtin);
     return id;
   }
 
