@@ -93,7 +93,7 @@ test('watchdog self-test: operator crash and reload never touch the output or th
 test('reloading the operator window (Cmd/Ctrl+R) leaves the output page untouched', async () => {
   const { app } = await launchApp();
   const operator = await operatorPage(app);
-  await expect(operator.getByTestId('presentation-list').getByRole('button')).toHaveCount(2);
+  await expect(operator.getByTestId('presentation-list').getByTestId('presentation-row')).toHaveCount(2);
   // Listen first: the output window can open before the call below returns.
   const outputOpened = app.waitForEvent('window', { predicate: (w) => w.url().includes('output.html') });
   await operator.evaluate(async () => {
