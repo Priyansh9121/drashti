@@ -286,10 +286,7 @@ test('a long passage goes on over several slides and Next goes on to the next it
     ['shastra', 'Placeholder Granth 1'],
     ['placeholder', 'Placeholder reading slot'],
   ]);
-  // Filling the slot in the window: it asks for a passage.
-  // (The live playlist may be open: back to the list first.)
-  const back = win.getByTestId('playlists-back');
-  if (await back.isVisible()) await back.click();
+  // Filling the slot in the window: it asks for a passage (the list of playlists is always there, Session 26a).
   await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder from template' }).click();
   await win.getByTestId('playlist-item').filter({ hasText: 'Placeholder reading slot' }).click();
   const fill = win.getByTestId('fill-slot');

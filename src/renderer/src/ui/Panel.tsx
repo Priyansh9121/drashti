@@ -32,6 +32,7 @@ export function Panel({
   className,
   bodyClassName,
   children,
+  nested = false,
   ...data
 }: {
   title: string;
@@ -46,6 +47,8 @@ export function Panel({
   className?: string;
   bodyClassName?: string;
   children: ReactNode;
+  /** Inside a PanelGroup (Session 26a): a sub-heading, set in under the group's. */
+  nested?: boolean;
 } & DataAttributes) {
   const id = useId();
   const [open, setOpen] = usePersistentState<boolean>(
@@ -63,8 +66,9 @@ export function Panel({
   );
   return (
     <section aria-labelledby={`${id}-title`} className={cx('flex min-h-0 flex-col', className)} {...data}>
-      <header className="flex h-9 shrink-0 items-center gap-1 px-3">
-        <h2
+      <header className={cx('flex h-9 shrink-0 items-center gap-1 pr-3', nested ? 'pl-6' : 'pl-3')}>
+        <Heading
+          level={nested ? 3 : 2}
           id={`${id}-title`}
           className="min-w-0 flex-1 text-2xs font-bold tracking-wider text-muted uppercase"
         >
@@ -88,7 +92,7 @@ export function Panel({
           ) : (
             heading
           )}
-        </h2>
+        </Heading>
         {help.button}
         {shown && actions && <div className="flex shrink-0 items-center gap-1">{actions}</div>}
       </header>
@@ -100,4 +104,90 @@ export function Panel({
       )}
     </section>
   );
+}
+
+/** A heading of the level given (panels in a group are a level down). */
+function Heading({
+  level,
+  id,
+  className,
+  children,
+}: {
+  level: 2 | 3;
+  id: string;
+  className: string;
+  children: ReactNode;
+}) {
+  return level === 2 ? (
+    <h2 id={id} className={className}>
+      {children}
+    </h2>
+  ) : (
+    <h3 id={id} className={className}>
+      {children}
+    </h3>
+  );
+}
+
+/**
+ * Panels together under one heading (Session 26a: Audio holds Music and the Arti; More tools holds Macros,
+ * Masks and the Idle rotation, folded away to begin with). It folds as a panel does, and remembers it.
+ */
+export function PanelGroup({
+  title,
+  icon: IconShape,
+  remember,
+  defaultOpen = true,
+  children,
+  ...data
+}: {
+  title: string;
+  icon?: Icon;
+  /** A name to remember whether it is folded (per computer). */
+  remember: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+} & DataAttributes) {
+  const id = useId();
+  const [open, setOpen] = usePersistentState<boolean>(
+    `group.${remember}.open`,
+    defaultOpen,
+    (v): v is boolean => typeof v === 'boolean',
+  );
+  return (
+    <section aria-labelledby={`${id}-title`} className="flex min-h-0 flex-col" {...data}>
+      <header className="flex h-9 shrink-0 items-center gap-1 px-3">
+        <h2 id={`${id}-title`} className="min-w-0 flex-1 text-xs font-bold tracking-wider text-fg uppercase">
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={open ? `${id}-body` : undefined}
+            data-testid={`group-${remember}-toggle`}
+            onClick={() => setOpen(!open)}
+            className="-ml-1 flex min-h-6 items-center gap-0.5 rounded-sm px-1 py-0.5 tracking-wider uppercase hover:text-accent"
+          >
+            {open ? (
+              <ChevronDown size={14} aria-hidden="true" />
+            ) : (
+              <ChevronRight size={14} aria-hidden="true" />
+            )}
+            <span className="flex min-w-0 items-center gap-1.5">
+              {IconShape && <IconShape size={14} aria-hidden="true" className="shrink-0 text-muted" />}
+              <span className="truncate">{title}</span>
+            </span>
+          </button>
+        </h2>
+      </header>
+      {open && (
+        <div id={`${id}-body`} className="divide-y divide-line">
+          {children}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** A plain line under a group's heading, saying what the panel below is for (More tools). */
+export function PanelNote({ children }: { children: ReactNode }) {
+  return <p className="px-6 pt-2 text-xs text-muted">{children}</p>;
 }

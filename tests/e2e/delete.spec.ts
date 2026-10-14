@@ -84,15 +84,17 @@ test('each row has a visible delete (playlist, playlist item, presentation, medi
 
   // A playlist item: out of the playlist only, no question; the keyboard reaches its trash.
   await node('Placeholder Sunday').click();
-  const items = panel.getByTestId('playlist-item');
+  const items = win.getByTestId('open-playlist').getByTestId('playlist-item');
   await expect(items).toHaveCount(2);
   await items.first().click();
-  const itemDelete = panel.getByRole('button', { name: 'Remove “Placeholder Song One” from the playlist' });
+  const itemDelete = win
+    .getByTestId('open-playlist')
+    .getByRole('button', { name: 'Remove “Placeholder Song One” from the playlist' });
   await expect(itemDelete).toBeVisible();
   // Last in its Tab order: after Up (off at the top) and Down.
   await items.first().focus();
   await win.keyboard.press('Tab');
-  await expect(panel.getByRole('button', { name: 'Down' })).toBeFocused();
+  await expect(win.getByTestId('open-playlist').getByRole('button', { name: 'Down' })).toBeFocused();
   await win.keyboard.press('Tab');
   await expect(itemDelete).toBeFocused();
   await win.keyboard.press('Enter');

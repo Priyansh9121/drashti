@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { PANEL_HELP } from '../../src/shared/panel-help';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helpers';
+import { chooseMenuItem, launchApp, openMoreTools, operatorPage, operatorReady } from './helpers';
 
 /*
  * "What is this?" on the operator panels (Session 25): the ? on a panel's heading opens its two or
@@ -15,7 +15,9 @@ test('What is this? opens a panel’s words under its heading, never over the sh
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
 
-  // Every panel and column heading has its ?, one each.
+  // Every panel and column heading has its ?, one each (Macros, Masks and the Idle rotation in More tools,
+  // unfolded: Session 26a).
+  await openMoreTools(win);
   for (const id of Object.keys(PANEL_HELP)) {
     if (id === 'slides') continue; // the slide grid's heading shows once something is chosen
     await expect(win.getByTestId(`what-is-this-${id}`)).toHaveCount(1);

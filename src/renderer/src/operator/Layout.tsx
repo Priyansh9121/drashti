@@ -5,10 +5,11 @@ import { usePersistentState } from '../ui/persist';
 import { Splitter } from '../ui/Splitter';
 
 /*
- * The operator window's columns: the library and playlists on the left, the
- * slides in the middle, and what is live on the right, with splitters
- * between them. Sizes are remembered on this computer, and kept so the
- * middle always has room (down to a 1024-wide window).
+ * The operator window's columns (Session 26a): the playlists and the library
+ * on the left, the open playlist and the chosen item's slides in the middle,
+ * and what is live on the right, with splitters between them. Sizes are
+ * remembered on this computer, and kept so the middle always has room (down
+ * to a 1024-wide window).
  */
 
 const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -17,6 +18,8 @@ const LEFT = { initial: 300, min: 220, max: 520 };
 const RIGHT = { initial: 380, min: 300, max: 620 };
 const MIDDLE_MIN = 400;
 const PLAYLISTS = { initial: 0.42, min: 0.15, max: 0.8 };
+/** The open playlist's share of the centre, above the chosen item's slides (Session 26a). */
+const OPEN_PLAYLIST = { initial: 0.45, min: 0.2, max: 0.75 };
 
 function useWindowWidth(): number {
   const [width, setWidth] = useState(window.innerWidth);
@@ -113,5 +116,44 @@ export function LeftColumn({ top, bottom, foot }: { top: ReactNode; bottom: Reac
       </div>
       {foot}
     </>
+  );
+}
+
+/**
+ * The centre (Session 26a): the open playlist above, the chosen item's slides below, with a splitter
+ * between (remembered, as a share of the height). With no playlist open, the slides have it all.
+ */
+export function CentreColumn({ top, bottom }: { top: ReactNode | null; bottom: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const { height } = useElementSize(ref);
+  const [share, setShare] = usePersistentState('layout.centre', OPEN_PLAYLIST.initial, isNumber);
+  const usable = Math.max(1, height);
+  const topHeight = Math.round(clamp(share, OPEN_PLAYLIST.min, OPEN_PLAYLIST.max) * usable);
+  return (
+    <div ref={ref} className="flex min-h-0 flex-1 flex-col">
+      {top !== null && (
+        <>
+          <div
+            style={{ height: height > 0 ? topHeight : `${OPEN_PLAYLIST.initial * 100}%` }}
+            className="flex min-h-0 shrink-0 flex-col bg-panel"
+            data-testid="centre-playlist"
+          >
+            {top}
+          </div>
+          <Splitter
+            orientation="horizontal"
+            value={topHeight}
+            onChange={(px) => {
+              setShare(px / usable);
+            }}
+            min={Math.round(OPEN_PLAYLIST.min * usable)}
+            max={Math.round(OPEN_PLAYLIST.max * usable)}
+            defaultValue={Math.round(OPEN_PLAYLIST.initial * usable)}
+            label="Resize the playlist and the slides"
+          />
+        </>
+      )}
+      <div className="flex min-h-0 flex-1 flex-col">{bottom}</div>
+    </div>
   );
 }

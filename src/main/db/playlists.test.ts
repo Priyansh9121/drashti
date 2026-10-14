@@ -40,6 +40,25 @@ beforeEach(() => {
 const labels = (id: string) => playlists.itemsOf(id).map((i) => i.label);
 
 describe('playlists the operator edits', () => {
+  it('say on each card what an item is: a deck, its slides, a video’s length (Session 26a)', () => {
+    const id = playlists.create('Placeholder Sunday', null, false) ?? '';
+    db.prepare("UPDATE presentations SET source_kind = 'pictures' WHERE id = ?").run(dhun);
+    db.prepare("UPDATE media SET duration_ms = 65000 WHERE id = 'loop'").run();
+    playlists.addItems(id, null, [
+      { kind: 'presentation', presentationId: hymn },
+      { kind: 'presentation', presentationId: dhun },
+      { kind: 'media', mediaId: 'loop' },
+      { kind: 'media', mediaId: 'prores' },
+    ]);
+    expect(
+      playlists
+        .itemsOf(id)
+        .map((i) =>
+          i.kind === 'presentation' ? [i.slideCount, i.deck] : i.kind === 'media' ? [i.durationMs] : [],
+        ),
+    ).toEqual([[2, false], [1, true], [65000], [null]]);
+  });
+
   it('makes playlists and folders, nested, in order, and renames them', () => {
     const folder = playlists.create('Sabhas', null, true) ?? '';
     const sunday = playlists.create('Ravi Sabha', folder, false) ?? '';
@@ -98,6 +117,9 @@ describe('playlists the operator edits', () => {
         order: { mode: 'arrangement', arrangementId: usual },
         arrangementName: 'Usual',
         timers: [],
+        // What its card says (Session 26a).
+        slideCount: 2,
+        deck: false,
       },
       {
         id: b,
@@ -108,6 +130,8 @@ describe('playlists the operator edits', () => {
         order: { mode: 'all' },
         arrangementName: null,
         timers: [],
+        slideCount: 1,
+        deck: false,
       },
       {
         id: m,
@@ -118,6 +142,7 @@ describe('playlists the operator edits', () => {
         missing: false,
         unplayable: 'ProRes 422 video (QuickTime)',
         timers: [],
+        durationMs: null,
       },
     ]);
   });

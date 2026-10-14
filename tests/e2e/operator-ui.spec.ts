@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { dropFiles, importAndGetIds, launchApp, operatorPage, relaunchApp } from './helpers';
+import { dropFiles, importAndGetIds, launchApp, openMoreTools, operatorPage, relaunchApp } from './helpers';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -106,9 +106,13 @@ test('the operator window and every panel pass the accessibility checks', async 
   await dropFiles(win, win.getByTestId('library-drop'), [join(dir, 'Placeholder Dropped Song.txt')]);
   await expect(win.getByTestId('import-report')).toBeVisible();
   await expectNoSeriousA11yIssues(win, 'the import report');
-  await win.getByRole('button', { name: 'Close' }).click();
+  await win.getByTestId('import-report').getByRole('button', { name: 'Close' }).first().click();
   await showRunning(win);
   await expectNoSeriousA11yIssues(win, 'the operator window');
+  // With the open playlist in the centre (Session 26a), and More tools unfolded.
+  await expect(win.getByTestId('open-playlist')).toBeVisible();
+  await openMoreTools(win);
+  await expectNoSeriousA11yIssues(win, 'More tools, unfolded', '[data-testid="more-tools"]');
 
   // The panels on the right, with their forms open.
   for (const [panel, button] of [
@@ -147,7 +151,7 @@ test('the operator window and every panel pass the accessibility checks', async 
     [
       'the import report',
       () => win.getByTestId('import-result').getByRole('button', { name: 'Report' }).click(),
-      () => win.getByRole('button', { name: 'Close' }).click(),
+      () => win.getByTestId('import-report').getByRole('button', { name: 'Close' }).first().click(),
     ],
     [
       'Remove presentations',
@@ -210,8 +214,9 @@ async function expectLaidOut(win: Page, what: string) {
         }
       });
     }
-    // The side columns' controls stay inside their column (a row of tabs and buttons must fit its width).
-    for (const id of ['column-left', 'column-right']) {
+    // Every column's controls stay inside it (a row of tabs and buttons must fit its width); the centre's
+    // too, with the open playlist above the slides (Session 26a).
+    for (const id of ['column-left', 'column-middle', 'column-right']) {
       const column = document.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect();
       if (!column) continue;
       for (const el of document.querySelectorAll(

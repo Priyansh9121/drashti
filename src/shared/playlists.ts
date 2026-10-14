@@ -66,6 +66,10 @@ export type PlaylistItemInfo =
       arrangementName: string | null;
       /** What it does to timers when it goes up. */
       timers: TimerCue[];
+      /** How many slides it has (Session 26a: a playlist's cards say so). */
+      slideCount?: number;
+      /** It is a deck: a PDF, PowerPoint or Keynote file's pages as pictures (Session 15). */
+      deck?: boolean;
     }
   | {
       id: string;
@@ -78,6 +82,8 @@ export type PlaylistItemInfo =
       /** What the file is, when Drashti cannot play it. */
       unplayable: string | null;
       timers: TimerCue[];
+      /** A video's or sound's length, once Drashti has played it (Session 26a: on its card). */
+      durationMs?: number | null;
     }
   | { id: string; kind: 'header'; label: string; color: string | null }
   /**

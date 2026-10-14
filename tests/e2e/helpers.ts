@@ -281,3 +281,10 @@ export async function showExtras(page: Page): Promise<void> {
   if (!result.ok) throw new Error(result.message);
   await expect(page.getByTestId('library-tab-shastra')).toBeVisible();
 }
+
+/** Unfold More tools (Session 26a: Macros, Masks and the Idle rotation are in it, folded away to begin with). */
+export async function openMoreTools(page: Page): Promise<void> {
+  const toggle = page.getByTestId('group-more-tools-toggle');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+}

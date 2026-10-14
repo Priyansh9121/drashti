@@ -21,6 +21,8 @@ Library
 
 The operator window
 
+- Built round playlists: the playlists at the top left, always there; the open playlist in the middle, its items as cards (a picture, what it is, its length or slides), with Add files… and From a Link…; the chosen item's slides under it.
+- On the right: LIVE, Audio (Music and the Arti together), the stage screen, messages, timers (one tidy line each, running ones first), props, Looks, and More tools (macros, masks, the idle rotation) folded away.
 - The live picture is headed LIVE, and the Next picture under it is gone. What comes next still shows on the stage screen, on phones and tablets, and in Simple Mode.
 - Edit layout… on the Stage screen panel opens the stage layout editor at the layout in use.
 - After an import, the report's Add to playlist puts everything it brought in into the open playlist, another, or a new one named after it. Import from a Link asks the same before Download, the open playlist to begin with.

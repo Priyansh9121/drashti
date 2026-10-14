@@ -220,6 +220,7 @@ const bridge: DrashtiBridge = {
   playlists: {
     tree: () => invoke(IPC.playlists.tree),
     items: (playlistId) => invoke(IPC.playlists.items, playlistId),
+    firstSlides: (presentationIds) => invoke(IPC.playlists.firstSlides, presentationIds),
     opened: (playlistId) => invoke(IPC.playlists.opened, playlistId),
     create: (name, parentId, isFolder) => invoke(IPC.playlists.create, name, parentId, isFolder),
     rename: (playlistId, name) => invoke(IPC.playlists.rename, playlistId, name),

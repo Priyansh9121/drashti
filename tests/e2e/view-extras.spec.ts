@@ -41,7 +41,7 @@ test('Shastra, Templates and the kirtan filters are hidden to begin with; the Vi
   await expect(win.getByRole('menuitem', { name: 'Add a slot…' })).toHaveCount(0);
   await expect(win.getByRole('menuitem', { name: 'Save as template…' })).toHaveCount(0);
   await win.keyboard.press('Escape');
-  await win.getByTestId('playlists-back').click();
+  await win.getByTestId('playlist-close').click();
   await expectNoSeriousA11yIssues(win, 'the operator window with Shastra, Templates and the filters hidden');
 
   // View › Show Shastra, Templates and Kirtan Details: all three come back.

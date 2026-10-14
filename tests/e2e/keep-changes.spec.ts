@@ -4,7 +4,14 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, importAndGetIds, launchApp, operatorPage, operatorReady } from './helpers';
+import {
+  chooseMenuItem,
+  importAndGetIds,
+  launchApp,
+  openMoreTools,
+  operatorPage,
+  operatorReady,
+} from './helpers';
 import { makeTestVideo } from './test-media';
 
 /*
@@ -262,7 +269,8 @@ test('the macro, stage layout and mask editors ask the same question, and Save c
       return list.map((x) => x.name);
     }, what);
 
-  // A macro.
+  // A macro (Macros and Masks are in More tools, Session 26a).
+  await openMoreTools(win);
   await win.getByTestId('macros-panel').getByRole('button', { name: 'Edit' }).click();
   const macros = win.getByTestId('macro-editor');
   await macros.getByTestId('macro-name').fill('Placeholder keep macro');

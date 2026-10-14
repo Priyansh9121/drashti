@@ -11,6 +11,7 @@ import {
   chooseMenuItem,
   dropFiles,
   launchApp,
+  openMoreTools,
   operatorPage,
   operatorReady,
   outputPage,
@@ -609,6 +610,7 @@ test('Looks, stage layouts, masks, key and fill, macros, MIDI and the slide edit
     ...NETWORK_ENV,
   });
   const win = await operatorPage(app);
+  await openMoreTools(win);
   await operatorReady(win);
   await win.setViewportSize({ width: 1600, height: 900 });
   const show = await running(win);
@@ -845,6 +847,7 @@ test('Shastra, timers in the running order, the arti prompt, Samvat and tithi, a
     DRASHTI_TEST_ARTI_CLOCK: '1',
   });
   const win = await operatorPage(app);
+  await openMoreTools(win);
   await operatorReady(win);
   await showExtras(win);
   await win.setViewportSize({ width: 1600, height: 900 });
@@ -1174,6 +1177,7 @@ test('music, markers, macros at set times, scheduled backups, and roles and PINs
   test.setTimeout(240_000);
   const { app } = await launchApp({ DRASHTI_TEST_ARTI_CLOCK: '1' });
   const win = await operatorPage(app);
+  await openMoreTools(win);
   await win.setViewportSize({ width: 1920, height: 1080 });
   await operatorReady(win);
   await running(win);

@@ -5,7 +5,15 @@ import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { apiCall, device, NETWORK_ENV, networkOn, pairByQr, pairingCode, pairToken } from './devices';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, launchApp, operatorPage, operatorReady, outputPage, setUpScreen } from './helpers';
+import {
+  chooseMenuItem,
+  launchApp,
+  openMoreTools,
+  operatorPage,
+  operatorReady,
+  outputPage,
+  setUpScreen,
+} from './helpers';
 
 /*
  * Macros and MIDI (Session 11): a macro made in the editor runs every action
@@ -31,6 +39,8 @@ test('a macro runs every action as one change, from the panel, a slide cue, the 
   test.setTimeout(180_000);
   const { app, userData } = await launchApp(NETWORK_ENV);
   const win = await operatorPage(app);
+  // Macros, Masks and the Idle rotation are in More tools (Session 26a).
+  await openMoreTools(win);
   await operatorReady(win);
   await setUpScreen(win);
   const output = await outputPage(app);
@@ -213,6 +223,8 @@ test('MIDI: only the operator page may use it; Learn maps a note and a controlle
   test.setTimeout(150_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
+  // Macros, Masks and the Idle rotation are in More tools (Session 26a).
+  await openMoreTools(win);
   await operatorReady(win);
   await setUpScreen(win);
   const output = await outputPage(app);
