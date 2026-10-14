@@ -126,7 +126,7 @@ test('search finds titles and slide text in English, Gujarati, Hindi and transli
   await search.focus();
   await search.press('Escape');
   await expect(search).toHaveValue('');
-  await expect(win.getByTestId('presentation-list').getByRole('button')).toHaveCount(7);
+  await expect(win.getByTestId('presentation-list').getByTestId('presentation-row')).toHaveCount(7);
 
   await app.close();
 });

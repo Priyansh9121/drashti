@@ -40,6 +40,7 @@ function setup() {
   });
   return {
     service,
+    db,
     commands,
     setState: (s: EngineState) => {
       state = s;
@@ -48,6 +49,41 @@ function setup() {
 }
 
 describe('audio playlists', () => {
+  it('can be deleted, and a track taken out, with Undo; both go for good when Drashti next starts (Session 26a)', () => {
+    const { service, db } = setup();
+    const made = service.create('Placeholder before sabha');
+    if (!made.ok || !made.id) throw new Error('not made');
+    const id = made.id;
+    service.addTracks(id, ['s1', 's2', 's3'], null);
+    const tracks = () =>
+      service
+        .view()
+        .playlists.find((p) => p.id === id)
+        ?.tracks.map((t) => t.mediaId);
+    const middle = service.view().playlists[0]?.tracks[1]?.id ?? '';
+    expect(service.removeTrack(middle).ok).toBe(true);
+    expect(tracks()).toEqual(['s1', 's3']);
+    // Undo puts it back where it was.
+    expect(service.restoreTrack(middle, 1).ok).toBe(true);
+    expect(tracks()).toEqual(['s1', 's2', 's3']);
+    expect(service.restoreTrack(middle, 1).ok).toBe(false);
+    // The whole list, then Undo: back with its tracks.
+    expect(service.remove(id).ok).toBe(true);
+    expect(service.view().playlists).toHaveLength(0);
+    expect(service.addTracks(id, ['s4'], null).ok).toBe(false);
+    expect(service.restore(id).ok).toBe(true);
+    expect(tracks()).toEqual(['s1', 's2', 's3']);
+    // Marked rows go at the next start: a list deleted and a track taken out.
+    service.removeTrack(service.view().playlists[0]?.tracks[0]?.id ?? '');
+    const other = service.create('Placeholder after sabha');
+    if (!other.ok || !other.id) throw new Error('not made');
+    service.remove(other.id);
+    new AudioPlaylistRepo(db).purge();
+    expect(db.prepare('SELECT COUNT(*) AS n FROM audio_playlists').get()).toEqual({ n: 1 });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM audio_playlist_tracks').get()).toEqual({ n: 2 });
+    expect(tracks()).toEqual(['s2', 's3']);
+  });
+
   it('keep sounds in order (only sounds), move and take them out', () => {
     const { service } = setup();
     const made = service.create('Placeholder before sabha');

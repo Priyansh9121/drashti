@@ -103,7 +103,7 @@ test('playlists: imported ones with their placeholders, and building one by drag
   // Dropping a presentation on the placeholder puts it there.
   await drag(
     win,
-    presentations.getByRole('button', { name: /Placeholder Song Two/ }),
+    presentations.getByRole('button', { name: /^Placeholder Song Two/ }),
     items.nth(2),
     'middle',
   );
@@ -129,7 +129,7 @@ test('playlists: imported ones with their placeholders, and building one by drag
   // Dropping on a playlist in the list adds to its end.
   await drag(
     win,
-    presentations.getByRole('button', { name: /Placeholder Song One/ }),
+    presentations.getByRole('button', { name: /^Placeholder Song One/ }),
     node('Evening Sabha'),
     'middle',
   );
@@ -138,7 +138,7 @@ test('playlists: imported ones with their placeholders, and building one by drag
   await expect(items).toHaveCount(1);
 
   // Drag in a presentation before it, and a picture from the media list after it.
-  await drag(win, presentations.getByRole('button', { name: /Placeholder Song Two/ }), items.first(), 'top');
+  await drag(win, presentations.getByRole('button', { name: /^Placeholder Song Two/ }), items.first(), 'top');
   await win.getByTestId('library-tab-media').click();
   const media = win.getByTestId('media-item').filter({ hasText: 'Placeholder Picture' });
   await expect(media).toContainText('Picture');
@@ -183,12 +183,12 @@ test('playlists: imported ones with their placeholders, and building one by drag
   // Removing the playlist asks first; Undo brings it back with its items.
   await panel.getByTestId('playlists-back').click();
   await node('Evening Sabha').click({ button: 'right' });
-  await win.getByRole('menuitem', { name: 'Remove…' }).click();
+  await win.getByRole('menuitem', { name: 'Delete…' }).click();
   const confirm = win.getByTestId('remove-confirm');
-  await expect(confirm).toContainText('Remove playlist “Evening Sabha”?');
-  await confirm.getByRole('button', { name: 'Remove' }).click();
+  await expect(confirm).toContainText('Delete playlist “Evening Sabha”?');
+  await confirm.getByRole('button', { name: 'Delete' }).click();
   await expect(node('Evening Sabha')).toHaveCount(0);
-  await expect(undo).toContainText('Removed playlist “Evening Sabha”');
+  await expect(undo).toContainText('Deleted playlist “Evening Sabha”');
   await chooseMenuItem(app, 'undo');
   await expect(node('Evening Sabha')).toBeVisible();
   await node('Evening Sabha').click();
@@ -198,14 +198,14 @@ test('playlists: imported ones with their placeholders, and building one by drag
   // the same folder); the library keeps the presentations, and Undo brings it all back.
   await panel.getByTestId('playlists-back').click();
   await node('Services').click({ button: 'right' });
-  await win.getByRole('menuitem', { name: 'Remove…' }).click();
-  await expect(confirm).toContainText('Remove folder “Services”?');
+  await win.getByRole('menuitem', { name: 'Delete…' }).click();
+  await expect(confirm).toContainText('Delete folder “Services”?');
   await expect(confirm).toContainText('The 2 playlists in it go too.');
-  await confirm.getByRole('button', { name: 'Remove' }).click();
+  await confirm.getByRole('button', { name: 'Delete' }).click();
   await expect(tree.getByTestId('playlist-node')).toHaveCount(0);
   await win.getByTestId('library-tab-presentations').click();
   // The two sample presentations a new library starts with, and the two imported.
-  await expect(presentations.getByRole('button')).toHaveCount(4);
+  await expect(presentations.getByTestId('presentation-row')).toHaveCount(4);
   await undo.getByRole('button', { name: /Undo/ }).click();
   await expect(tree.getByTestId('playlist-node')).toHaveCount(3);
 

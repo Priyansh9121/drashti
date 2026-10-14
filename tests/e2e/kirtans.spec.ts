@@ -211,7 +211,7 @@ test('lyrics with lines in two scripts come in as a kirtan, and the editor calls
     { gu: ['બીજી પંક્તિ'], translit: ['Bījī pankti'] },
   ]);
   await expect(
-    win.getByTestId('presentation-list').getByRole('button', { name: /Placeholder Two Scripts/ }),
+    win.getByTestId('presentation-list').getByRole('button', { name: /^Placeholder Two Scripts/ }),
   ).toContainText('GU');
 
   // In the slide editor the box is in several languages, not one of them.
@@ -373,12 +373,12 @@ test('kirtan details: a new category, kavi, raag, occasions and a recording; the
   const filters = win.getByTestId('kirtan-filters');
   await filters.getByTestId('filter-category').selectOption('Placeholder Category');
   await expect(win.getByTestId('filter-count')).toContainText('1 kirtan with these details');
-  await expect(list.getByRole('button', { name: /Sample kirtan/ })).toBeVisible();
-  await expect(list.getByRole('button', { name: /Placeholder Other Kirtan/ })).toHaveCount(0);
+  await expect(list.getByRole('button', { name: /^Sample kirtan/ })).toBeVisible();
+  await expect(list.getByRole('button', { name: /^Placeholder Other Kirtan/ })).toHaveCount(0);
   await filters.getByTestId('filter-category').selectOption('');
   await filters.getByTestId('filter-kavi').selectOption('Placeholder Kavi Two');
-  await expect(list.getByRole('button', { name: /Placeholder Other Kirtan/ })).toBeVisible();
-  await expect(list.getByRole('button', { name: /Sample kirtan/ })).toHaveCount(0);
+  await expect(list.getByRole('button', { name: /^Placeholder Other Kirtan/ })).toBeVisible();
+  await expect(list.getByRole('button', { name: /^Sample kirtan/ })).toHaveCount(0);
   await filters.getByTestId('filter-kavi').selectOption('');
   await filters.getByTestId('filter-occasion').selectOption('Diwali');
   await expect(win.getByTestId('filter-count')).toContainText('1 kirtan');

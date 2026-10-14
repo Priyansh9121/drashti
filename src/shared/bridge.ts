@@ -38,6 +38,7 @@ import type { RolesResult, RolesView } from './roles';
 import type { LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
+import type { MediaRemovalResult, MediaUsage } from './media-removal';
 import type { MarkersResult, MediaMarkers } from './markers';
 import type { PictureAssetKind, PictureJob, PicturePage, PicturesDone } from './pictures';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
@@ -145,6 +146,10 @@ export interface DrashtiBridge {
     addTracks(playlistId: string, mediaIds: string[], at: number | null): Promise<MusicResult>;
     moveTrack(trackId: string, to: number): Promise<MusicResult>;
     removeTrack(trackId: string): Promise<MusicResult>;
+    /** Undo: a playlist removed, back (Session 26a). */
+    restore(playlistId: string): Promise<MusicResult>;
+    /** Undo: a track taken out, back at `at`. */
+    restoreTrack(trackId: string, at: number): Promise<MusicResult>;
     /** Play from a track; with no playlist, play on (paused) or start the last one. */
     play(playlistId: string | null, trackIndex?: number): Promise<MusicResult>;
     onChanged(listener: (view: MusicView) => void): () => void;
@@ -395,6 +400,11 @@ export interface DrashtiBridge {
     onConversions(listener: (jobs: ConversionJob[]) => void): () => void;
     /** Undo a conversion: the original is used again wherever it was moved from. */
     undoConversion(conversionId: string): Promise<{ ok: true } | { ok: false; message: string }>;
+    /** Where media is used, asked before deleting it (Session 26a). */
+    usage(mediaIds: string[]): Promise<MediaUsage>;
+    /** Delete media from the library, taking it out of playlists and music; Undo with restore. */
+    remove(mediaIds: string[]): Promise<MediaRemovalResult>;
+    restore(mediaIds: string[]): Promise<MediaRemovalResult>;
     /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
     markers(mediaId: string): Promise<MediaMarkers>;
     setMarkers(mediaId: string, markers: MediaMarkers): Promise<MarkersResult>;

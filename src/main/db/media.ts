@@ -7,13 +7,21 @@ import type { Db } from './database';
 
 /** The media library, as the main process reads it (the import worker writes it). */
 export class MediaRepo {
-  private readonly fileStmt: Statement<[string], { path: string; missing: number; sha256: string | null }>;
+  private readonly fileStmt: Statement<
+    [string],
+    { path: string; missing: number; sha256: string | null; deleted: number }
+  >;
 
   constructor(private readonly db: Db) {
-    this.fileStmt = db.prepare('SELECT path, missing, sha256 FROM media WHERE id = ?');
+    this.fileStmt = db.prepare(
+      'SELECT path, missing, sha256, deleted_at IS NOT NULL AS deleted FROM media WHERE id = ?',
+    );
   }
 
-  /** Every media item, for the library's media list: by name. */
+  /**
+   * Every media item, for the library's media list: by name. Deleted ones (Session 26a) are left out:
+   * until Undo, everything else treats them as missing files.
+   */
   list(): MediaSummary[] {
     return (
       this.db
@@ -22,7 +30,7 @@ export class MediaRepo {
                   (SELECT c.name FROM media_conversions mc JOIN media c ON c.id = mc.converted_id
                     WHERE mc.original_id = m.id AND mc.undone_at IS NULL
                     ORDER BY mc.created_at DESC LIMIT 1) AS converted_to
-             FROM media m ORDER BY m.name COLLATE NOCASE, m.rowid`,
+             FROM media m WHERE m.deleted_at IS NULL ORDER BY m.name COLLATE NOCASE, m.rowid`,
         )
         .all() as {
         id: string;
@@ -46,15 +54,17 @@ export class MediaRepo {
 
   /** A media item's kind and where its file is (relative to the media folder), for a preview; null for an unknown id. */
   kindAndFile(mediaId: string): { kind: 'image' | 'video' | 'audio'; path: string; missing: boolean } | null {
-    const row = this.db.prepare('SELECT kind, path, missing FROM media WHERE id = ?').get(mediaId) as
-      { kind: 'image' | 'video' | 'audio'; path: string; missing: number } | undefined;
+    const row = this.db
+      .prepare('SELECT kind, path, missing OR deleted_at IS NOT NULL AS missing FROM media WHERE id = ?')
+      .get(mediaId) as { kind: 'image' | 'video' | 'audio'; path: string; missing: number } | undefined;
     return row ? { kind: row.kind, path: row.path, missing: row.missing === 1 } : null;
   }
 
   /** A media item's kind and name, when it is there to play (not missing); null otherwise. */
   kindAndName(mediaId: string): { kind: 'image' | 'video' | 'audio'; name: string } | null {
-    const row = this.db.prepare('SELECT kind, name, missing FROM media WHERE id = ?').get(mediaId) as
-      { kind: 'image' | 'video' | 'audio'; name: string; missing: number } | undefined;
+    const row = this.db
+      .prepare('SELECT kind, name, missing OR deleted_at IS NOT NULL AS missing FROM media WHERE id = ?')
+      .get(mediaId) as { kind: 'image' | 'video' | 'audio'; name: string; missing: number } | undefined;
     return row?.missing === 0 ? { kind: row.kind, name: row.name } : null;
   }
 
@@ -102,6 +112,8 @@ export class MediaRepo {
   /** Where a media item's file is, relative to the media folder; null for an unknown id. */
   file(mediaId: string): MediaFileRow | null {
     const row = this.fileStmt.get(mediaId);
-    return row ? { path: row.path, missing: row.missing === 1, sha256: row.sha256 } : null;
+    return row
+      ? { path: row.path, missing: row.missing === 1, sha256: row.sha256, deleted: row.deleted === 1 }
+      : null;
   }
 }

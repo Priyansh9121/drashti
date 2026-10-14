@@ -364,7 +364,7 @@ export async function confirmRemoveNode(): Promise<void> {
   if (!settled(result) || result.ids.length === 0) return;
   const removed = result.ids;
   pushRemoval({
-    text: `Removed ${pending.folder ? 'folder' : pending.template ? 'template' : 'playlist'} “${pending.name}”`,
+    text: `Deleted ${pending.folder ? 'folder' : pending.template ? 'template' : 'playlist'} “${pending.name}”`,
     restore: async () => {
       await api().restore(removed);
       await loadTree();

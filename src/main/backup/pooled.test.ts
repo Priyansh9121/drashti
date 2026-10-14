@@ -203,11 +203,14 @@ describe('scheduled backups into a shared media folder', () => {
         },
       }),
     );
-    await new Promise((r) => setTimeout(r, 50));
+    // Until it has waited at the gate a while (a fixed 50 ms was too short on a slow Windows runner, which
+    // reached the gate only after it had opened: CI run 38514733328).
+    for (const end = Date.now() + 10_000; waited < 3 && Date.now() < end;)
+      await new Promise((r) => setTimeout(r, 5));
+    expect(waited).toBeGreaterThan(1);
     expect(existsSync(join(w.drive, SCHEDULED_FOLDER, 'Media', 'a1.png'))).toBe(false);
     open = true;
     await done;
-    expect(waited).toBeGreaterThan(1);
     expect(throttled).toBe(3000);
   });
 });

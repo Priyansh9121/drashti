@@ -25,6 +25,9 @@ import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/i
 import { type EventChannel, type EventContract, IPC } from '../shared/ipc';
 import { acceleratorFor } from '../shared/keymap';
 import { MEDIA_ID_PATTERN, MEDIA_SCHEME } from '../shared/media';
+import { NOT_USED } from '../shared/media-removal';
+import { mediaUpNow } from '../shared/node-media';
+import { MediaRemoval } from './library/media-removal';
 import { idSchema } from '../shared/model-schema';
 import { z } from 'zod';
 import type { OutputContext } from '../shared/screens';
@@ -1058,7 +1061,11 @@ function start(): void {
     if (mediaDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, mediaDelayMs));
     const response = await handleMediaRequest(request, {
       mediaDir,
-      lookup: (id) => media.file(id),
+      // Deleted from the library (Session 26a): a missing file, except while it is up (it stays until changed).
+      lookup: (id) => {
+        const found = media.file(id);
+        return found?.deleted && !mediaUpNow(engine.current).has(id) ? { ...found, missing: true } : found;
+      },
       warn: (message) => {
         log.warn(message);
       },
@@ -1413,6 +1420,57 @@ function start(): void {
   }
   // This run takes the saved file over from now on, so a later start knows how this run ended.
   liveWriter.start(engine.current);
+
+  // ---- deleting media (Session 26a) -------------------------------------------------
+  const mediaRemoval = new MediaRemoval(db, {
+    idlePictures: () => idleService?.settings().pictures ?? [],
+    onScreens: () => mediaUpNow(engine.current),
+  });
+  // Deleted before this start, so it can no longer be undone: its files go now, but never one that
+  // recovery has just put back on the screens (that one goes at the next start).
+  void mediaRemoval
+    .purge(mediaDir, mediaUpNow(engine.current))
+    .then((gone) => {
+      if (gone > 0) log.info(`Media: removed the files of ${String(gone)} media item(s) deleted before`);
+    })
+    .catch((error: unknown) => {
+      log.warn('Media: could not remove the files of deleted media', error);
+    });
+  /** After media is deleted or brought back: everything that shows media reads again. */
+  const mediaRemovalChanged = () => {
+    slides.invalidate();
+    engine.refreshNext();
+    libraryChanged(true);
+    sendToOperator(IPC.playlists.changed, { at: Date.now() });
+    network?.hint('playlists');
+    listChanged('props');
+    listChanged('themes');
+  };
+  const mediaIdsSchema = idListSchema.refine((ids) => ids.every((id) => MEDIA_ID_PATTERN.test(id)));
+  handle(IPC.media.usage, (_e, ids) => {
+    const parsed = mediaIdsSchema.safeParse(ids);
+    return parsed.success ? mediaRemoval.usage(parsed.data) : NOT_USED;
+  });
+  handle(IPC.media.remove, (e, ids) => {
+    const parsed = mediaIdsSchema.safeParse(ids);
+    if (!fromOperator(e) || !parsed.success) return { ok: false as const, message: 'Nothing was deleted.' };
+    const removed = mediaRemoval.remove(parsed.data);
+    if (removed.length === 0) return { ok: false as const, message: 'That media is not in the library.' };
+    log.info(`Media: deleted ${String(removed.length)} media item(s)`);
+    mediaRemovalChanged();
+    return { ok: true as const, ids: removed };
+  });
+  handle(IPC.media.restore, (e, ids) => {
+    const parsed = mediaIdsSchema.safeParse(ids);
+    if (!fromOperator(e) || !parsed.success)
+      return { ok: false as const, message: 'Nothing was brought back.' };
+    const back = mediaRemoval.restore(parsed.data);
+    log.info(`Media: brought back ${String(back.length)} deleted media item(s)`);
+    mediaRemovalChanged();
+    return back.length > 0
+      ? { ok: true as const, ids: back }
+      : { ok: false as const, message: 'It can no longer be brought back: its file has gone.' };
+  });
   // Only a quit on purpose is clean (not a crash): the very last step, after the library has closed.
   stops.addLast('clean-quit mark', () => {
     liveWriter.markClean();
@@ -1913,7 +1971,10 @@ function start(): void {
     fromOperator,
     lookFor: (themeId, size) => themeLook(themes.themeOrDefault(themeId), size.width, size.height),
     changed: contentChanged,
-    mediaExists: (mediaId) => media.file(mediaId) !== null,
+    mediaExists: (mediaId) => {
+      const found = media.file(mediaId);
+      return found !== null && found.deleted !== true;
+    },
     settings,
   });
   registerThemesIpc({
@@ -2067,8 +2128,11 @@ function start(): void {
     fromOperator(e) ? scheduler.cancel(key) : scheduler.view(),
   );
   // ---- audio playlists (Session 14): music on the audio layer, independent of the slides ------------
+  const audioPlaylists = new AudioPlaylistRepo(db);
+  // Music deleted, or tracks taken out, before this start can no longer be undone (Session 26a).
+  audioPlaylists.purge();
   const music = new MusicService({
-    repo: new AudioPlaylistRepo(db),
+    repo: audioPlaylists,
     settings: { get: (key) => settings.get(key), set: laterSetting },
     engine: { state: () => engine.current, dispatch: (command) => engine.dispatch(command) },
     changed: (view) => {
@@ -2092,6 +2156,10 @@ function start(): void {
   );
   handle(IPC.music.moveTrack, (e, id, to) => (fromOperator(e) ? music.moveTrack(id, to) : notMusicOperator));
   handle(IPC.music.removeTrack, (e, id) => (fromOperator(e) ? music.removeTrack(id) : notMusicOperator));
+  handle(IPC.music.restore, (e, id) => (fromOperator(e) ? music.restore(id) : notMusicOperator));
+  handle(IPC.music.restoreTrack, (e, id, at) =>
+    fromOperator(e) ? music.restoreTrack(id, at) : notMusicOperator,
+  );
   handle(IPC.music.play, (e, playlistId, trackIndex) => {
     const parsed = musicPlaySchema.safeParse({ playlistId, index: trackIndex ?? 0 });
     if (!fromOperator(e) || !parsed.success) return notMusicOperator;

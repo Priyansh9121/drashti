@@ -87,6 +87,8 @@ export const ADMIN_CHANNELS: readonly InvokeChannel[] = [
   IPC.kirtans.setTranslitStyle,
   IPC.media.convert,
   IPC.media.undoConversion,
+  IPC.media.remove,
+  IPC.media.restore,
   // Themes, the logo, Shastra texts, calendars and the idle rotation.
   IPC.themes.save,
   IPC.themes.remove,

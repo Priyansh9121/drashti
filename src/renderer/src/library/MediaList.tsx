@@ -3,6 +3,9 @@ import { openMarkers } from '../markers/MarkersDialog';
 import type { MediaSummary } from '../../../shared/playlists';
 import { ADD_LINE_HEIGHT, AddToPlaylistButton, rowMenu, usePlaylistOpen } from '../playlists/AddToPlaylist';
 import { afterDrag, startDrag } from '../playlists/drag';
+import { actionFor, LIBRARY_KEYMAP } from '../../../shared/keymap';
+import { RowDelete } from '../ui/RowDelete';
+import { requestMediaRemoval } from './media-removal';
 import { MissingBadge } from '../ui/Badge';
 import type { Icon } from '../ui/icons';
 import { Bookmark, Film, Image, Music, Wand2, X } from '../ui/icons';
@@ -148,9 +151,11 @@ const MediaRow = memo(function MediaRow({
 }) {
   const KindIcon = mediaKindIcon[m.kind];
   const pick = pickMedia(m.id);
+  const remove = () => void requestMediaRemoval(m.id);
   return (
-    <div className={`${rowClass({ marked })} flex h-full flex-col`} data-testid="media-row">
-      <div className="flex min-h-0 flex-1 items-center gap-1.5 pr-1.5">
+    <div className={`${rowClass({ marked })} group relative flex h-full flex-col`} data-testid="media-row">
+      {/* Room at the end for the trash button (below, last in the Tab order). */}
+      <div className="flex min-h-0 flex-1 items-center gap-1.5 pr-10">
         <button
           type="button"
           draggable
@@ -160,7 +165,7 @@ const MediaRow = memo(function MediaRow({
           onClick={(e) => {
             clickMedia(m.id, { toggle: platform === 'darwin' ? e.metaKey : e.ctrlKey, range: e.shiftKey });
           }}
-          {...rowMenu(m.name, pick)}
+          {...rowMenu(m.name, pick, remove)}
           onDragStart={(e) => {
             startDrag(
               e,
@@ -196,6 +201,12 @@ const MediaRow = memo(function MediaRow({
         )}
       </div>
       {chosen && <AddToPlaylistButton pick={pick} className="px-1.5 pb-1.5" />}
+      <RowDelete
+        label={`Delete “${m.name}”`}
+        chosen={chosen}
+        onDelete={remove}
+        className="absolute top-2 right-1.5"
+      />
     </div>
   );
 });
@@ -274,6 +285,12 @@ export function MediaList({ platform }: { platform: string }) {
         className="relative min-h-0 flex-1 overflow-y-auto"
         data-testid="media-list"
         data-count={media.length}
+        onKeyDown={(e) => {
+          // Delete (Backspace on a Mac), as in the presentation list: asks first, then Undo (Session 26a).
+          if (e.repeat || actionFor(e.nativeEvent, platform, LIBRARY_KEYMAP) !== 'removeSelected') return;
+          e.preventDefault();
+          void requestMediaRemoval();
+        }}
         onScroll={(e) => {
           setView({ top: e.currentTarget.scrollTop, height: e.currentTarget.clientHeight });
         }}

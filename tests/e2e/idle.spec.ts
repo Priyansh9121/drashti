@@ -148,7 +148,7 @@ test('a lobby shows the rotation whenever nothing is up; started, the hall shows
   // The first slide up stops it: the hall and the lobby show the slide.
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Sample kirtan/ })
+    .getByRole('button', { name: /^Sample kirtan/ })
     .click();
   await win.getByTestId('slide-thumb').first().click();
   await expect.poll(async () => (await engineState(win)).idle.startedAt).toBeNull();

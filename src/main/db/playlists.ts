@@ -719,7 +719,8 @@ export class PlaylistRepo {
     const presentationName = this.db.prepare(
       'SELECT name FROM presentations WHERE id = ? AND deleted_at IS NULL',
     );
-    const mediaName = this.db.prepare('SELECT name FROM media WHERE id = ?');
+    // Never media deleted from the library (Session 26a).
+    const mediaName = this.db.prepare('SELECT name FROM media WHERE id = ? AND deleted_at IS NULL');
     const insert = this.db.prepare(
       'INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, media_id, label, passage) VALUES (?, ?, 0, ?, ?, ?, ?, ?)',
     );

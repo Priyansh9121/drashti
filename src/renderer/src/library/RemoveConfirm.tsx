@@ -2,7 +2,7 @@ import { cancelRemoveNode, confirmRemoveNode, usePlaylists } from '../playlists/
 import { ConfirmDialog } from '../ui/Dialog';
 import { cancelRemoval, confirmRemoval, useImports } from './import-store';
 
-/** "Remove these presentations?" Cancel has the focus; Undo can bring them back. */
+/** "Delete these presentations?" Cancel has the focus; Undo can bring them back. */
 export function RemoveConfirm({ undoKey }: { undoKey: string }) {
   const pending = useImports((s) => s.confirmRemove);
   if (!pending) return null;
@@ -10,8 +10,8 @@ export function RemoveConfirm({ undoKey }: { undoKey: string }) {
   const what = count === 1 ? `“${pending.names[0] ?? 'this presentation'}”` : `${count} presentations`;
   return (
     <ConfirmDialog
-      title={`Remove ${what}?`}
-      confirmLabel="Remove"
+      title={`Delete ${what}?`}
+      confirmLabel="Delete"
       onCancel={cancelRemoval}
       onConfirm={() => void confirmRemoval()}
       testId="remove-confirm"
@@ -35,14 +35,14 @@ export function RemoveConfirm({ undoKey }: { undoKey: string }) {
   );
 }
 
-/** "Remove this playlist?" or "Remove this folder and the playlists in it?" */
+/** "Delete this playlist?" or "Delete this folder and the playlists in it?" */
 export function RemovePlaylistConfirm({ undoKey }: { undoKey: string }) {
   const pending = usePlaylists((s) => s.confirmRemove);
   if (!pending) return null;
   return (
     <ConfirmDialog
-      title={`Remove ${pending.folder ? 'folder' : 'playlist'} “${pending.name}”?`}
-      confirmLabel="Remove"
+      title={`Delete ${pending.folder ? 'folder' : 'playlist'} “${pending.name}”?`}
+      confirmLabel="Delete"
       onCancel={cancelRemoveNode}
       onConfirm={() => void confirmRemoveNode()}
       testId="remove-confirm"

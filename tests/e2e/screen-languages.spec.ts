@@ -88,7 +88,7 @@ test('each screen shows its own languages of a kirtan, closed up; other slides i
   // The sample kirtan's first slide: one box with Gujarati, Hindi, transliteration and English.
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Sample kirtan/ })
+    .getByRole('button', { name: /^Sample kirtan/ })
     .click();
   await win.getByTestId('slide-thumb').first().click();
   const [hallOut, streamOut, stageOut] = [

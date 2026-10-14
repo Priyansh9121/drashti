@@ -207,8 +207,16 @@ export class MediaStore {
       this.db
         .prepare('UPDATE media SET playable = ?, format = ? WHERE id = ? AND playable IS NULL')
         .run(playableValue(staged.probe), staged.probe.format, existing.id);
+      // Deleted from the library (Session 26a), its file perhaps gone for good: brought back to life,
+      // everywhere that still pointed at it.
+      const revived =
+        this.db
+          .prepare(
+            'UPDATE media SET deleted_at = NULL, path = ?, missing = 0 WHERE id = ? AND deleted_at IS NOT NULL',
+          )
+          .run(staged.rel, existing.id).changes > 0;
       return {
-        outcome: 'skipped',
+        outcome: revived ? 'imported' : 'skipped',
         mediaId: existing.id,
         sha256: staged.sha256,
         bytes: staged.bytes,

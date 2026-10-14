@@ -13,6 +13,11 @@ Playlists
 - Dragging into a playlist is surer: rows no longer change size as a drag starts, which could cancel it. Search results can be dragged in too.
 - Files dragged from the Finder (Explorer on Windows) onto the open playlist, or onto a playlist's name, are imported and added where they land, in the order dragged.
 
+Deleting
+
+- A trash button on the chosen row (and the one under the mouse) deletes a playlist, a presentation, a picture, video or sound, or music, as the Delete key does, and takes an item out of a playlist or a sound out of music. Undo brings each back.
+- Pictures, videos and sounds can be deleted now. Drashti first says where one is used; it leaves playlists and music, and slides show nothing in its place. Its file goes when Drashti next starts.
+
 ## 1.0.0-alpha.3 (11 Oct 2026)
 
 Downloading from YouTube, inside Drashti and with no adverts. Update after a sabha, never on the day of one.

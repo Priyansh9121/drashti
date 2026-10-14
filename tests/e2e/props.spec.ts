@@ -46,7 +46,7 @@ test('props stay up over changing slides, and come down when hidden', async () =
   await expect(propsLayer.nth(1).locator('img')).toHaveCount(1);
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Language test slides/ })
+    .getByRole('button', { name: /^Language test slides/ })
     .click();
   await win.getByTestId('slide-grid').getByTestId('slide-thumb').first().click();
   const slideText = output.locator('[data-layer="slide"]');

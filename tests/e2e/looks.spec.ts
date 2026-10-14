@@ -54,7 +54,7 @@ const bridge = (win: Page) =>
 async function upOnTheScreens(win: Page): Promise<void> {
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Sample kirtan/ })
+    .getByRole('button', { name: /^Sample kirtan/ })
     .click();
   await win.getByTestId('slide-thumb').first().click();
   await win.evaluate(async () => {
@@ -249,7 +249,7 @@ test('a library from before Looks keeps exactly what each group showed', async (
   const [hall, stage] = [await outputFor(app, hallScreen), await outputFor(app, stageScreen)];
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Sample kirtan/ })
+    .getByRole('button', { name: /^Sample kirtan/ })
     .click();
   await win.getByTestId('slide-thumb').first().click();
   await expect(hall.getByTestId('output-root')).toHaveAttribute('data-languages', 'translit,gu');

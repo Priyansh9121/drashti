@@ -154,7 +154,7 @@ test('the operator window and every panel pass the accessibility checks', async 
       async () => {
         await win
           .getByTestId('presentation-list')
-          .getByRole('button', { name: /Placeholder Welcome/ })
+          .getByRole('button', { name: /^Placeholder Welcome/ })
           .click();
         await win.keyboard.press('Delete');
       },

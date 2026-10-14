@@ -146,7 +146,7 @@ test('the fill and the key dissolve together, and paint each change within frame
   const { fill, key } = await keyFillPair(app, win);
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Sample kirtan/ })
+    .getByRole('button', { name: /^Sample kirtan/ })
     .click();
   const presentationId = (await win.getByTestId('slide-grid').getAttribute('data-presentation-id')) ?? '';
   const goLive = (slideIndex: number) =>

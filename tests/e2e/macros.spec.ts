@@ -22,7 +22,7 @@ const snapshot = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).d
 async function sampleKirtan(win: Page): Promise<string> {
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Sample kirtan/ })
+    .getByRole('button', { name: /^Sample kirtan/ })
     .click();
   return (await win.getByTestId('slide-grid').getAttribute('data-presentation-id')) ?? '';
 }
