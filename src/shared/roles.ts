@@ -141,6 +141,7 @@ export const ADMIN_CHANNELS: readonly InvokeChannel[] = [
   IPC.setup.finish,
   // The stream's settings and keys (going live, ending and recording are the operator's).
   IPC.stream.saveProfile,
+  IPC.stream.setInputs,
   IPC.stream.removeProfile,
   IPC.stream.useProfile,
   IPC.stream.setKey,

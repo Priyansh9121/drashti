@@ -497,6 +497,8 @@ function openLibrary(): { db: Db } | { error: unknown } {
     try {
       if (seedPlaceholders(opened)) log.info('Added the placeholder presentations');
       if (seedTemplates(opened)) log.info('Added the example sabha templates');
+      // YouTube is the third screen (Session 26): its card in Screens is there from the start.
+      if (new ScreenRepo(opened).ensureStreamGroup().made) log.info('Made the stream’s screen group');
     } catch (error) {
       opened.close();
       throw error;
@@ -1254,18 +1256,10 @@ function start(): void {
       ? null
       : electronScreen.getDisplayMatching(operatorWindow.getBounds()).id;
   let stream: StreamService | null = null;
-  const screens = new ScreensService(
-    screenRepo,
-    manager,
-    listDisplays,
-    operatorDisplayId,
-    () => stream?.inUse() ?? false,
-    looks,
-    {
-      displays: () => nodeService?.displays() ?? [],
-      screenStatus: () => nodeService?.screenStatus() ?? [],
-    },
-  );
+  const screens = new ScreensService(screenRepo, manager, listDisplays, operatorDisplayId, looks, {
+    displays: () => nodeService?.displays() ?? [],
+    screenStatus: () => nodeService?.screenStatus() ?? [],
+  });
 
   // ---- keeping the operator's controls reachable ----------------------------
   const uncoverAccelerator = acceleratorFor('uncoverControls');
@@ -3485,6 +3479,9 @@ function start(): void {
   });
   handle(IPC.stream.saveProfile, (e, id, input) =>
     fromOperator(e) ? streaming.saveProfile(id, input) : notOperator,
+  );
+  handle(IPC.stream.setInputs, (e, camera, sound) =>
+    fromOperator(e) ? streaming.setInputs(camera, sound) : notOperator,
   );
   handle(IPC.stream.removeProfile, (e, id) => (fromOperator(e) ? streaming.removeProfile(id) : notOperator));
   handle(IPC.stream.useProfile, (e, id) => (fromOperator(e) ? streaming.useProfile(id) : notOperator));

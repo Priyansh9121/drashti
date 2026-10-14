@@ -155,6 +155,11 @@ export interface StreamStatus {
   programOn: boolean;
   layout: StreamLayout;
   profileId: string | null;
+  /**
+   * The camera and sound input of the profile in use (Session 26: Screens' YouTube card shows them without
+   * reading the profiles, which on a Mac reads the keychain).
+   */
+  chosen: { camera: DeviceChoice | null; sound: DeviceChoice | null };
   inputs: ProgramInputs;
   live: {
     state: LiveState;

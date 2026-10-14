@@ -41,11 +41,12 @@ test('each screen shows its own languages of a kirtan, closed up; other slides i
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '2' });
   const win = await operatorPage(app);
   const hallId = await setUpScreen(win, 'Hall', 0);
-  const streamId = await setUpScreen(win, 'Stream', 1);
+  // A lobby screen (an audience group of its own; the stream's group has no display).
+  const streamId = await setUpScreen(win, 'Lobby', 1);
   const stageId = await setUpScreen(win, 'Stage', 2);
   await expect.poll(() => outputPages(app).length).toBe(3);
 
-  // In Screens: the hall shows Gujarati then transliteration; the stream transliteration then English.
+  // In Screens: the hall shows Gujarati then transliteration; the lobby transliteration then English.
   await win.getByRole('button', { name: 'Screens', exact: true }).click();
   const groups = win.getByTestId('screen-group');
   const hall = groups.nth(0).getByTestId('language-picker');
@@ -81,8 +82,10 @@ test('each screen shows its own languages of a kirtan, closed up; other slides i
   });
   expect(chosen).toEqual([
     ['Hall', ['gu', 'translit']],
-    ['Stream', ['translit', 'en']],
+    ['Lobby', ['translit', 'en']],
     ['Stage', ['gu']],
+    // The stream's own group (YouTube in Screens, Session 26): every language, as it started.
+    ['Stream', null],
   ]);
 
   // The sample kirtan's first slide: one box with Gujarati, Hindi, transliteration and English.

@@ -29,7 +29,7 @@ import { GroupLookSettings, LooksSection } from './LookSettings';
 import { connectStageLayouts } from '../stage/stage-layouts-store';
 import { connectMasks } from '../masks/masks-store';
 import { SoundOutput } from './SoundOutput';
-import { StreamGroupCard } from './StreamGroupCard';
+import { ScreenCards } from './ScreenCards';
 import { NodesSection } from './NodesSection';
 import { DisplayRow } from './DisplayRow';
 
@@ -246,7 +246,11 @@ function GroupCard({
     setName(group.name);
   }
   return (
-    <section className="space-y-2 rounded-xl border border-line bg-panel-2 p-3" data-testid="screen-group">
+    <section
+      id={`screen-group-${group.id}`}
+      className="space-y-2 rounded-xl border border-line bg-panel-2 p-3"
+      data-testid="screen-group"
+    >
       <div className="flex flex-wrap items-center gap-2">
         <TextInput
           aria-label="Group name"
@@ -370,7 +374,7 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
   return (
     <Dialog
       title="Screens"
-      subtitle="Where the show goes: screen groups, each display's output, and the sound."
+      subtitle="Where the show goes: the projector, the stage screen and YouTube; each display, and the sound."
       placement="right"
       size="lg"
       onClose={onClose}
@@ -395,6 +399,7 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
       }
     >
       {error && <Notice tone="danger">{error}</Notice>}
+      <ScreenCards look={look} onClose={onClose} />
       <SoundOutput />
       <section className="space-y-2">
         <SectionTitle>Connected displays</SectionTitle>
@@ -450,10 +455,10 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
             it.
           </EmptyState>
         )}
-        {(snapshot?.groups ?? []).map((g) =>
-          g.role === 'stream' ? (
-            <StreamGroupCard key={g.id} group={g} look={look} />
-          ) : (
+        {/* The stream's group is YouTube's card, above. */}
+        {(snapshot?.groups ?? [])
+          .filter((g) => g.role !== 'stream')
+          .map((g) => (
             <GroupCard
               key={g.id}
               group={g}
@@ -462,8 +467,7 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
               nodes={snapshot?.nodes ?? []}
               look={look}
             />
-          ),
-        )}
+          ))}
       </section>
       <CoverConfirm platform={platform} />
     </Dialog>

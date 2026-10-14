@@ -13,14 +13,14 @@ import { Panel } from '../ui/Panel';
 import { Truncate } from '../ui/Truncate';
 import { dispatch } from './actions';
 
-/** What the stage screens show the performers, small. */
-function StagePreview() {
+/** What the stage screens show the performers, small (also on the Stage screen's card in Screens). */
+export function StagePreview({ className = 'w-3/5' }: { className?: string }) {
   const state = useEngine((s) => s.state);
   // As the first stage group shows it in the live Look: its layout and languages.
   const first = useFirstGroupLook('stage');
   return (
     <div
-      className="relative aspect-video w-3/5 overflow-hidden rounded-md border border-line-strong bg-black"
+      className={`relative aspect-video overflow-hidden rounded-md border border-line-strong bg-black ${className}`}
       data-testid="stage-preview"
       data-a11y-picture
       aria-hidden="true"

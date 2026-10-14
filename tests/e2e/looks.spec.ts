@@ -238,9 +238,11 @@ test('a library from before Looks keeps exactly what each group showed', async (
   const snapshot = await win.evaluate(() => (globalThis as PageGlobals).drashti.screens.get());
   const all = ['background', 'slide', 'props', 'messages', 'ticker', 'masks'];
   const standard = { layers: all, slides: 'designed', stageLayoutId: null, maskId: null, idle: 'off' };
+  // And the stream's group, made at the upgrade (YouTube in Screens, Session 26): every language.
   expect(snapshot.groups.map((g) => [g.name, g.role, looks[0]?.groups[g.id]])).toEqual([
     ['Hall', 'audience', { ...standard, languages: ['translit', 'gu'] }],
     ['Stage', 'stage', { ...standard, languages: ['gu'] }],
+    ['Stream', 'stream', { ...standard, languages: null }],
   ]);
   // The screens show what they did: the hall transliteration then Gujarati, the stage Gujarati only.
   await expect.poll(() => outputPages(app).length).toBe(2);

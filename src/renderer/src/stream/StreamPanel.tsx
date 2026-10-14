@@ -1,79 +1,29 @@
 import { useEffect, useRef } from 'react';
-import type { StreamLayout, StreamStatus } from '../../../shared/stream';
+import type { StreamStatus } from '../../../shared/stream';
 import { STREAM_PRESETS } from '../../../shared/stream';
+import { useEngine } from '../engine/engine-store';
+import { connectLooks, useLooks } from '../looks/looks-store';
+import { GroupLookSettings } from '../screens/LookSettings';
+import { connectScreens, useScreens } from '../screens/screens-store';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
-import { radioKeys, radioTabIndex } from '../ui/radio';
 import { Dialog } from '../ui/Dialog';
-import { Camera, Mic, Presentation, Settings } from '../ui/icons';
+import { Camera, Mic, Settings } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { Loading } from '../ui/States';
+import { LAYOUT_SHOWS, LayoutSwitch } from './LayoutSwitch';
 import { usePreview } from './preview';
 import { OnAirControls, RecordingControls } from './StreamControls';
-import { closeStreamPanel, loadProfiles, streamAction, useStream } from './stream-store';
+import { closeStreamPanel, loadProfiles, useStream } from './stream-store';
 
 /*
- * The Stream panel: the Program's live preview, the sound level, the layout,
- * and (from the controls below it) going live and recording. A sheet on the
- * right, beside the show, like Screens.
+ * The Stream panel: the Program's live preview, the sound level, the layout
+ * and languages, and (from the controls below it) going live and recording.
+ * A sheet on the right, beside the show, like Screens. The layout, camera,
+ * sound and languages are the same settings as YouTube's card in Screens
+ * (Session 26): a change in either shows in the other.
  */
-
-const LAYOUTS: { id: StreamLayout; label: string; hint: string; icon: typeof Camera }[] = [
-  {
-    id: 'camera',
-    label: 'Camera and words',
-    hint: 'The camera, with the slide’s words along the bottom',
-    icon: Camera,
-  },
-  { id: 'slides', label: 'Slides', hint: 'The slides as the hall sees them', icon: Presentation },
-];
-
-/** Camera or Slides: switchable at any time, also on air. */
-function LayoutSwitch({ layout }: { layout: StreamLayout }) {
-  return (
-    <div
-      role="radiogroup"
-      aria-label="What the stream shows"
-      className="grid grid-cols-2 gap-2"
-      onKeyDown={radioKeys(
-        LAYOUTS.map((l) => l.id),
-        layout,
-        (id) => void streamAction(() => window.drashti.stream.setLayout(id)),
-      )}
-    >
-      {LAYOUTS.map((l, i) => {
-        const on = l.id === layout;
-        const Icon = l.icon;
-        return (
-          <button
-            key={l.id}
-            type="button"
-            role="radio"
-            aria-checked={on}
-            tabIndex={radioTabIndex(
-              on,
-              i,
-              LAYOUTS.some((x) => x.id === layout),
-            )}
-            data-testid={`stream-layout-${l.id}`}
-            onClick={() => void streamAction(() => window.drashti.stream.setLayout(l.id))}
-            className={cx(
-              'flex items-start gap-2 rounded-lg border px-3 py-2 text-left',
-              on ? 'border-accent bg-panel-3' : 'border-field bg-panel-2 hover:border-muted',
-            )}
-          >
-            <Icon size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-muted" />
-            <span className="min-w-0">
-              <span className="block text-sm font-medium text-fg">{l.label}</span>
-              <span className="block text-xs text-muted">{l.hint}</span>
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 /** The level in words: above 0 dB the sound is clipped (too loud from the mixer). */
 const levelWords = (db: number) => (db <= -60 ? 'Silent' : db > 0 ? 'Too loud' : `${Math.round(db)} dB`);
@@ -116,10 +66,9 @@ const cameraWords: Record<StreamStatus['inputs']['camera'], string> = {
 };
 
 function Inputs({ status }: { status: StreamStatus }) {
-  const profile = useStream((s) => s.profiles?.profiles.find((p) => p.id === status.profileId));
   const rows = [
-    { label: 'Camera', name: profile?.camera?.label, state: status.inputs.camera, icon: Camera },
-    { label: 'Sound input', name: profile?.sound?.label, state: status.inputs.sound, icon: Mic },
+    { label: 'Camera', name: status.chosen.camera?.label, state: status.inputs.camera, icon: Camera },
+    { label: 'Sound input', name: status.chosen.sound?.label, state: status.inputs.sound, icon: Mic },
   ];
   return (
     <ul className="space-y-1 text-sm" data-testid="stream-inputs">
@@ -147,6 +96,24 @@ function Inputs({ status }: { status: StreamStatus }) {
         );
       })}
     </ul>
+  );
+}
+
+/** The stream's languages for a kirtan's words, in the live Look (as on YouTube's card in Screens). */
+function StreamLanguages() {
+  const liveId = useEngine((s) => s.state?.look.id ?? '');
+  const look = useLooks((s) => s.view?.looks.find((l) => l.id === liveId) ?? null);
+  const group = useScreens((s) => s.snapshot?.groups.find((g) => g.role === 'stream') ?? null);
+  useEffect(() => {
+    connectScreens();
+    connectLooks();
+  }, []);
+  if (!look || !group) return null;
+  return (
+    <section className="space-y-2" data-testid="stream-languages">
+      <SectionTitle>Languages</SectionTitle>
+      <GroupLookSettings look={look} groupId={group.id} role="stream" />
+    </section>
   );
 }
 
@@ -216,7 +183,11 @@ export function StreamPanel() {
           <section className="space-y-2">
             <SectionTitle>Layout</SectionTitle>
             <LayoutSwitch layout={status.layout} />
+            <p className="text-xs text-muted" data-testid="stream-shows">
+              {LAYOUT_SHOWS[status.layout]}
+            </p>
           </section>
+          <StreamLanguages />
           <section className="space-y-2">
             <SectionTitle>Inputs</SectionTitle>
             <Inputs status={status} />

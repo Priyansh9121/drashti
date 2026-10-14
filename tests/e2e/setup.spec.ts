@@ -81,8 +81,8 @@ test('on the first start: identify, what each output shows and its languages, a 
   for (const name of ['Hindi', 'Transliteration', 'English'])
     await second.getByRole('checkbox', { name }).uncheck();
   await expectNoSeriousA11yIssues(win, 'the setup wizard, screens');
-  // Nothing has changed yet.
-  expect(await groupsOf(win)).toEqual([]);
+  // Nothing has changed yet: only the stream's group, there from the start (YouTube in Screens).
+  expect(await groupsOf(win)).toEqual([{ name: 'Stream', role: 'stream', languages: null, screens: 0 }]);
   await wizard.getByTestId('setup-next').click();
 
   // Sound: the default output, and a test tone through the audio player.
@@ -94,12 +94,19 @@ test('on the first start: identify, what each output shows and its languages, a 
     .toBe('default');
   await wizard.getByTestId('setup-next').click();
 
-  // The stream's camera and sound input (Chromium's fake ones here); the key can wait.
+  // The stream: YouTube's settings in Screens (Session 26), what it shows, the camera and sound input
+  // (Chromium's fake ones here) and its languages; the key can wait.
   await expect(wizard.getByTestId('setup-step')).toHaveText('Stream');
+  await expect(wizard.getByTestId('setup-stream-layout-camera')).toHaveAttribute('aria-checked', 'true');
+  await wizard.getByTestId('setup-stream-layout-slides').click();
   const camera = wizard.getByTestId('setup-stream-camera');
   await expect(camera.locator('option')).not.toHaveCount(1);
   await camera.selectOption({ index: 1 });
   await wizard.getByTestId('setup-stream-sound').selectOption({ index: 1 });
+  const streamLanguages = wizard.getByTestId('language-picker');
+  await streamLanguages.getByTestId('languages-some').check();
+  for (const name of ['Gujarati', 'Hindi', 'English'])
+    await streamLanguages.getByRole('checkbox', { name }).uncheck();
   await expectNoSeriousA11yIssues(win, 'the setup wizard, stream');
   await wizard.getByTestId('setup-next').click();
 
@@ -118,6 +125,7 @@ test('on the first start: identify, what each output shows and its languages, a 
     'Display 2: The stage view (performers), Gujarati',
   );
   await expect(wizard.getByTestId('setup-summary')).toContainText('Stream: camera fake_device_0');
+  await expect(wizard.getByTestId('setup-summary')).toContainText('the slides, Transliteration');
   await expectNoSeriousA11yIssues(win, 'the setup wizard, finish');
   await wizard.getByTestId('setup-finish').click();
   await expect(wizard.getByTestId('setup-done')).toContainText('A test slide is on 2 screens');
@@ -127,11 +135,14 @@ test('on the first start: identify, what each output shows and its languages, a 
     return [p?.camera?.label ?? null, p?.sound !== null];
   });
   expect(streamInputs).toEqual(['fake_device_0', true]);
-  // Setting up the stream's inputs brings its group into Screens (off screen, every language).
+  expect((await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.status())).layout).toBe(
+    'slides',
+  );
+  // The stream's group, off screen, with the languages chosen for it.
   expect(await groupsOf(win)).toEqual([
     { name: 'Audience', role: 'audience', languages: ['gu', 'translit'], screens: 1 },
     { name: 'Stage', role: 'stage', languages: ['gu'], screens: 1 },
-    { name: 'Stream', role: 'stream', languages: null, screens: 0 },
+    { name: 'Stream', role: 'stream', languages: ['translit'], screens: 0 },
   ]);
 
   // A test slide on every screen, each in its own languages.

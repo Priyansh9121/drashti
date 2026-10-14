@@ -34,6 +34,28 @@ const inputOf = (p: StreamProfile): StreamProfileInput => ({
   mixOwnSound: p.mixOwnSound,
 });
 
+/**
+ * The draft with each field not changed here following what was saved elsewhere since (YouTube's card in
+ * Screens, the setup wizard), so saving the draft never puts an old camera back.
+ */
+function followed(
+  draft: StreamProfileInput,
+  base: StreamProfileInput,
+  saved: StreamProfileInput,
+): StreamProfileInput {
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  const pick = <K extends keyof StreamProfileInput>(k: K) => (same(draft[k], base[k]) ? saved[k] : draft[k]);
+  return {
+    name: pick('name'),
+    url: pick('url'),
+    preset: pick('preset'),
+    camera: pick('camera'),
+    sound: pick('sound'),
+    soundDelayMs: pick('soundDelayMs'),
+    mixOwnSound: pick('mixOwnSound'),
+  };
+}
+
 /** The key: saved (never shown), or a field to paste one into. */
 function KeyField({ profile }: { profile: StreamProfile }) {
   const storage = useStream((s) => s.profiles?.keyStorage);
@@ -161,12 +183,19 @@ function DeviceSelect({
 
 function ProfileForm({ profile, active }: { profile: StreamProfile; active: boolean }) {
   const status = useStream((s) => s.status);
-  const [draft, setDraft] = useState<StreamProfileInput>(() => inputOf(profile));
+  const saved = inputOf(profile);
+  const [draft, setDraft] = useState<StreamProfileInput>(saved);
+  const [base, setBase] = useState(saved);
+  // Saved elsewhere meanwhile: follow it (adjusting state while rendering, as React recommends).
+  if (JSON.stringify(base) !== JSON.stringify(saved)) {
+    setBase(saved);
+    setDraft((d) => followed(d, base, saved));
+  }
   const [error, setError] = useState<string | null>(null);
   const set = (patch: Partial<StreamProfileInput>) => {
     setDraft((d) => ({ ...d, ...patch }));
   };
-  const changed = JSON.stringify(draft) !== JSON.stringify(inputOf(profile));
+  const changed = JSON.stringify(draft) !== JSON.stringify(saved);
   return (
     <div className="space-y-4" data-testid="stream-profile-form">
       <form
