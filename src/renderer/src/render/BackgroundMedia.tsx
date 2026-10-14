@@ -203,9 +203,21 @@ export function BackgroundMedia(props: { layer: BackgroundLayer | null; annotate
   if (!previews) return <BackgroundPlayer {...props} />;
   const layer = props.layer;
   if (layer?.kind !== 'media') return null;
+  // A picture with its look and, once ready, a preview of its sharpened copy (Session 26f), as a slide's
+  // picture is drawn on a phone; a video's still preview as it is.
   return (
     <div data-layer="background" data-kind="media" style={{ position: 'absolute', inset: 0 }}>
-      <PreviewPicture mediaId={layer.mediaId} style={style(layer.fit, true)} />
+      {layer.media === 'image' ? (
+        <Looked
+          mediaId={layer.mediaId}
+          showing={backgroundShowing(layer.startedAt)}
+          style={style(layer.fit, true)}
+        >
+          {(s, copy) => <PreviewPicture mediaId={copy?.id ?? layer.mediaId} style={s} />}
+        </Looked>
+      ) : (
+        <PreviewPicture mediaId={layer.mediaId} style={style(layer.fit, true)} />
+      )}
     </div>
   );
 }
