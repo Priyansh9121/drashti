@@ -171,8 +171,11 @@ async function slideChangesDuringImport(
     const r = await d.engine.dispatch({ type: 'goLive', presentationId: id, slideIndex: slide });
     if (r.ok && r.changed) samples.push({ rev: r.rev, sentAt, during, after });
   };
-  // With slides that change every few seconds (a scenario), fewer before the import begins.
-  for (let i = 0; i < (slides ? 5 : 25); i++) {
+  // With slides that change every few seconds (a scenario), fewer before the import begins. A scenario at
+  // the plain check's pace (enhanced pictures, Session 26f) warms up as the plain check does: 25 changes,
+  // which on CI's Macs are slow at first however light the slides.
+  const sabhaPace = slides !== null && slides.everyMs >= 1000;
+  for (let i = 0; i < (sabhaPace ? 5 : 25); i++) {
     await change(false);
     await wait(every);
   }
@@ -237,7 +240,7 @@ async function slideChangesDuringImport(
   // With slides every few seconds (a scenario), a quick import is over before enough changes came to
   // judge by: they go on after it at the same pace until five have been made since it began (Session 17).
   const since = () => samples.filter((s) => s.during || s.after).length;
-  for (let tries = 0; slides && since() < 5 && tries < 10; tries++) {
+  for (let tries = 0; sabhaPace && since() < 5 && tries < 10; tries++) {
     await change(false, true);
     await wait(every);
   }
@@ -407,7 +410,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
       run.samples.filter((s) => !s.during && !s.after).map((s) => s.sentAt),
       ctx.scenario?.slides.everyMs ?? 40,
     );
-    const wanted = ctx.scenario ? 2 : 10;
+    const wanted = ctx.scenario && ctx.scenario.slides.everyMs >= 1000 ? 2 : 10;
     checks.push(overlapCheck(during.length, run.importMs, wanted, pace));
     // The changes from the import's start: those during it, and, when a quick one was over before five
     // came (a scenario's slides change every 2 s), the next ones after it, under the same load on the
