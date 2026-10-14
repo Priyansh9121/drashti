@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -575,9 +583,10 @@ describe('the highest video quality (Session 25c)', () => {
 
 describe.skipIf(!existsSync(FFMPEG))('YouTube (Session 25c), with the fake yt-dlp', () => {
   /** The link service with YouTube's programs: the fake yt-dlp, told what to do. */
-  async function youtube(config: Record<string, unknown> = {}) {
+  async function youtube(config: Record<string, unknown> = {}, over: Partial<LinkServiceDeps> = {}) {
     const log = join(mkdtempSync(join(tmpdir(), 'drashti-fake-log-')), 'fake.log');
     const h = await harness({
+      ...over,
       youtubeLaunch: (work) => ({
         ok: true,
         launch: {
@@ -744,6 +753,29 @@ describe.skipIf(!existsSync(FFMPEG))('YouTube (Session 25c), with the fake yt-dl
     const [first] = starts(h.fakeLog).map((l) => l.split(' '));
     await until(() => !alive(Number(first?.[4])) && !alive(Number(first?.[6])), 10_000);
     expect(readdirSync(h.folder)).toEqual([]);
+  });
+
+  it('a quit goes on when the stopped programs still hold their work folder (Windows): the next start clears it', async () => {
+    const workDir = join(mkdtempSync(join(tmpdir(), 'drashti-tools-work-')), 'Link downloads');
+    const h = await youtube({ steps: 200, stepMs: 60 }, { workDir });
+    h.service.look('youtube', LINK);
+    await until(() => h.service.view().phase === 'looked');
+    h.service.download({ type: 'mp4', height: 720, permission: true });
+    await until(() => (h.service.view().progress?.done ?? 0) > 1000);
+    // Its work folder cannot be removed yet, as on Windows the moment after its programs were stopped.
+    chmodSync(workDir, 0o555);
+    try {
+      expect(() => {
+        h.service.close();
+      }).not.toThrow();
+    } finally {
+      chmodSync(workDir, 0o755);
+    }
+    const [first] = starts(h.fakeLog).map((l) => l.split(' '));
+    await until(() => !alive(Number(first?.[4])) && !alive(Number(first?.[6])), 10_000);
+    expect(readdirSync(h.folder)).toEqual([]);
+    await harness({ workDir });
+    expect(existsSync(workDir)).toBe(false);
   });
 
   it('says plainly why a video cannot be had, and when YouTube’s programs are missing', async () => {
