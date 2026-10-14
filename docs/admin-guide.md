@@ -329,3 +329,16 @@ When a video cannot be had, the window says why in plain words, with what to do:
 - **YouTube did not give the video**: if that keeps happening with videos that play on YouTube, a newer Drashti may be needed.
 
 **YouTube Studio, for the mandir's own.** Whoever owns the mandir's channel can always download its uploads in **YouTube Studio** (studio.youtube.com): **Content**, choose the video, its **Menu** (three dots), **Download**. YouTube's help says this gives an MP4 at 720p or 360p, depending on the video, at most five times a day for each video (support.google.com/youtube/answer/56100, read 11 Oct 2026). Then import that file as any other: drag it onto the library.
+
+## 15. Smart playlists
+
+A **smart playlist** follows a folder on this computer (Session 26c): what Drashti imports as media or pictures there (videos, pictures, sounds, and PowerPoint, Keynote and PDF decks), in the folders inside it too, joins the playlist by itself. Words files, ProPresenter files and anything else are left alone, as are hidden files.
+
+- **Making one** is an admin's, as importing is: in **Playlists**, **+ New › Smart Playlist from a Folder…**, then choose the folder. The playlist is named after the folder, goes at the top of the list, opens, and fills itself in the folder's order: folder by folder, each folder's videos, then its decks, then its pictures, then its sounds, A to Z (numbers in order), with a **header** before each inside folder's part ("Week 1 › Videos").
+- **While Drashti runs** it looks at the folder when the computer says something changed there, and every 10 seconds besides. **When it starts**, it catches up on what changed while it was closed.
+- **A new file** waits until its size has held still for 3 seconds (a big video still being copied is not taken half-way), is imported as a file dropped on Drashti is, and joins **at the end of its folder's part**: items moved by hand stay where they are. A file that will not import is listed in the import's report, and tried again only when it changes.
+- **A file taken out** of the folder is marked **Not in the folder**, not removed: it still plays, as Drashti keeps its own copy. **Remove the missing** (on the line under the playlist's name) takes those items out, with Undo. Put back unchanged, a file is no longer marked.
+- **A changed file** (its size or time changed, and its bytes differ) is imported again and **replaces its item in place**: a deck keeps its presentation, now with the new pages; a picture, video or sound item points at the new file. Nothing that changes ever touches what is on the screens: a replaced deck that is up stays up until it is taken down.
+- **A folder that is not there** (a USB stick taken out, a network drive gone): the playlist says so, keeps every item, and carries on by itself when the folder is back.
+- **At most 2,000 files.** A folder holding more is refused when the playlist is made; one that grows past it is said so, and nothing more is added or marked until some files go.
+- **Simple Mode** sees what the folder brings, and can neither make a smart playlist nor remove its missing items. Deleting a smart playlist stops it following its folder; Undo starts it again. The folder itself is never changed: Drashti only reads it.

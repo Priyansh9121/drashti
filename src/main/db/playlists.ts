@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { ImportSource } from '../../shared/library';
-import type { ItemOrder, NewItem, PlaylistItemInfo, PlaylistNode } from '../../shared/playlists';
+import type {
+  ItemOrder,
+  NewItem,
+  PlaylistItemInfo,
+  PlaylistKind,
+  PlaylistNode,
+} from '../../shared/playlists';
 import { SHASTRA_SLOT, timerCuesSchema, type TimerCue } from '../../shared/playlists';
 import type { PassageKey } from '../../shared/shastra';
 import { parsePassageId, passageId, passageKeySchema } from '../../shared/shastra';
@@ -35,6 +41,8 @@ interface ItemRow {
   presentation_slides: number | null;
   presentation_source: string | null;
   media_duration: number | null;
+  /** In a smart playlist, 1 when its file is gone from the folder (Session 26c). */
+  smart_gone: number;
 }
 
 /** Stored timer cues; none when they do not read. */
@@ -90,6 +98,7 @@ function itemInfo(r: ItemRow, passageThere: (key: PassageKey) => boolean): Playl
         timers: cuesOf(r.timers),
         slideCount: r.presentation_slides ?? 0,
         deck: r.presentation_source === 'pictures',
+        ...(r.smart_gone === 1 ? { gone: true } : {}),
       };
     }
     case 'media':
@@ -103,6 +112,7 @@ function itemInfo(r: ItemRow, passageThere: (key: PassageKey) => boolean): Playl
         unplayable: r.media_playable === 0 ? (r.media_format ?? 'a kind of file Drashti cannot play') : null,
         timers: cuesOf(r.timers),
         durationMs: r.media_duration !== null && r.media_duration > 0 ? r.media_duration : null,
+        ...(r.smart_gone === 1 ? { gone: true } : {}),
       };
     case 'header':
       return { id: r.id, kind: 'header', label: r.label, color: r.color };
@@ -316,7 +326,7 @@ export class PlaylistRepo {
   tree(templates = false): PlaylistNode[] {
     const rows = this.db
       .prepare(
-        `SELECT p.id, p.name, p.is_folder, p.parent_id, p.source_kind,
+        `SELECT p.id, p.name, p.is_folder, p.parent_id, p.source_kind, p.kind,
                 (SELECT COUNT(*) FROM playlist_items i WHERE i.playlist_id = p.id AND i.deleted_at IS NULL) AS item_count,
                 (SELECT COUNT(*) FROM playlist_items i
                   WHERE i.playlist_id = p.id AND i.deleted_at IS NULL AND i.kind = 'placeholder') AS placeholders
@@ -328,6 +338,7 @@ export class PlaylistRepo {
       is_folder: number;
       parent_id: string | null;
       source_kind: string | null;
+      kind: PlaylistKind;
       item_count: number;
       placeholders: number;
     }[];
@@ -340,6 +351,7 @@ export class PlaylistRepo {
           id: r.id,
           name: r.name,
           isFolder: r.is_folder === 1,
+          kind: r.kind,
           parentId: r.parent_id,
           itemCount: r.item_count,
           placeholders: r.placeholders,
@@ -362,7 +374,8 @@ export class PlaylistRepo {
                   i.passage, i.timers,
                   p.name AS presentation_name, p.deleted_at AS presentation_deleted, a.name AS arrangement_name,
                   m.kind AS media_kind, m.missing AS media_missing, m.playable AS media_playable, m.format AS media_format,
-                  p.slide_count AS presentation_slides, p.source_kind AS presentation_source, m.duration_ms AS media_duration
+                  p.slide_count AS presentation_slides, p.source_kind AS presentation_source, m.duration_ms AS media_duration,
+                  EXISTS (SELECT 1 FROM smart_files sf WHERE sf.item_id = i.id AND sf.state = 'missing') AS smart_gone
              FROM playlist_items i
              LEFT JOIN presentations p ON p.id = i.presentation_id
              LEFT JOIN arrangements a ON a.id = i.arrangement_id
@@ -498,6 +511,43 @@ export class PlaylistRepo {
       )
       .run(id, name);
     return id;
+  }
+
+  /**
+   * A smart playlist following `folder` (Session 26c), at the top of the list, not in a folder. Its id.
+   */
+  createSmart(name: string, folder: string): string {
+    const id = this.createAtTop(name);
+    this.db
+      .prepare("UPDATE playlists SET kind = 'smart', settings = ? WHERE id = ?")
+      .run(JSON.stringify({ folder }), id);
+    return id;
+  }
+
+  /**
+   * Point an item at what its file became, in place (Session 26c: a smart playlist's changed file). A media
+   * item takes the new media's name; nothing changes for a different kind of item.
+   */
+  retarget(itemId: string, to: NewItem): boolean {
+    if (to.kind === 'media')
+      return (
+        this.db
+          .prepare(
+            `UPDATE playlist_items SET media_id = @to, label = (SELECT name FROM media WHERE id = @to)
+              WHERE id = @item AND kind = 'media' AND EXISTS (SELECT 1 FROM media WHERE id = @to)`,
+          )
+          .run({ to: to.mediaId, item: itemId }).changes === 1
+      );
+    if (to.kind === 'presentation')
+      return (
+        this.db
+          .prepare(
+            `UPDATE playlist_items SET presentation_id = @to
+              WHERE id = @item AND kind = 'presentation' AND EXISTS (SELECT 1 FROM presentations WHERE id = @to)`,
+          )
+          .run({ to: to.presentationId, item: itemId }).changes === 1
+      );
+    return false;
   }
 
   /** Copy items into a playlist at its end (headers, presentations, media and slots), in one go. */

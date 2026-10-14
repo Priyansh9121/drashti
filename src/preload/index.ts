@@ -242,10 +242,14 @@ const bridge: DrashtiBridge = {
     addSlot: (playlistId, at, slot) => invoke(IPC.playlists.addSlot, playlistId, at, slot),
     editSlot: (itemId, slot) => invoke(IPC.playlists.editSlot, itemId, slot),
     setTimers: (itemId, cues) => invoke(IPC.playlists.setTimers, itemId, cues),
+    smartViews: () => invoke(IPC.playlists.smartViews),
+    createSmart: () => invoke(IPC.playlists.createSmart),
+    removeMissing: (playlistId) => invoke(IPC.playlists.removeMissing, playlistId),
     onChanged: (listener) =>
       on(IPC.playlists.changed, () => {
         listener();
       }),
+    onSmartChanged: (listener) => on(IPC.playlists.smartChanged, listener),
   },
   props: {
     list: () => invoke(IPC.props.list),

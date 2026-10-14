@@ -90,6 +90,8 @@ export const ADMIN_CHANNELS: readonly InvokeChannel[] = [
   IPC.media.undoConversion,
   IPC.media.remove,
   IPC.media.restore,
+  // A smart playlist (Session 26c) imports what its folder holds: made as importing is.
+  IPC.playlists.createSmart,
   // Themes, the logo, Shastra texts, calendars and the idle rotation.
   IPC.themes.save,
   IPC.themes.remove,

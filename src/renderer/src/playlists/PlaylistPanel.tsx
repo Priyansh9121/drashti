@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Folder,
   FolderPlus,
+  FolderSync,
   ListMusic,
   ListPlus,
   MoreHorizontal,
@@ -40,6 +41,7 @@ import {
 import {
   addFromLibrary,
   createNode,
+  createSmartPlaylist,
   dismissProblem,
   importIntoPlaylist,
   newFromTemplate,
@@ -128,7 +130,8 @@ function PlaylistTree({ platform }: { platform: string }) {
     <>
       <div className="flex h-11 shrink-0 items-center gap-1 px-3">
         <ViewTabs />
-        {/* + New (Session 26a: words, not just an icon): a playlist or a folder. */}
+        {/* + New (Session 26a: words, not just an icon): a playlist, a folder, or a smart playlist
+            following a folder on the computer (Session 26c: an admin's, as importing is). */}
         <MenuButton
           label="New"
           title="New playlist or folder"
@@ -137,6 +140,12 @@ function PlaylistTree({ platform }: { platform: string }) {
           entries={[
             { label: 'New playlist', icon: ListPlus, onSelect: () => void createNode(false) },
             { label: 'New folder', icon: FolderPlus, onSelect: () => void createNode(true) },
+            {
+              label: 'Smart Playlist from a Folder…',
+              icon: FolderSync,
+              separatorBefore: true,
+              onSelect: () => void createSmartPlaylist(),
+            },
           ]}
         >
           New
@@ -184,6 +193,7 @@ function PlaylistTree({ platform }: { platform: string }) {
                   type="button"
                   data-testid="playlist-node"
                   data-kind={node.isFolder ? 'folder' : 'playlist'}
+                  data-playlist-kind={node.kind}
                   data-node-id={node.id}
                   data-open={openId === node.id ? 'true' : undefined}
                   aria-expanded={node.isFolder ? open : undefined}
@@ -240,9 +250,16 @@ function PlaylistTree({ platform }: { platform: string }) {
                     {node.isFolder ? open ? <ChevronDown size={14} /> : <ChevronRight size={14} /> : null}
                   </span>
                   <span aria-hidden="true" className="shrink-0 text-muted">
-                    {node.isFolder ? <Folder size={15} /> : <ListMusic size={15} />}
+                    {node.isFolder ? (
+                      <Folder size={15} />
+                    ) : node.kind === 'smart' ? (
+                      <FolderSync size={15} />
+                    ) : (
+                      <ListMusic size={15} />
+                    )}
                   </span>
                   <Truncate text={node.name} className={cx('flex-1', node.isFolder && 'font-medium')} />
+                  {node.kind === 'smart' && <span className="sr-only">, a smart playlist</span>}
                   {node.parentId !== null && (
                     <span className="sr-only">, in {nameOf.get(node.parentId) ?? 'a folder'}</span>
                   )}

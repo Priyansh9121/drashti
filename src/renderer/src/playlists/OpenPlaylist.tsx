@@ -5,6 +5,7 @@ import { formatDuration } from '../../../shared/format';
 import { actionFor, LIBRARY_KEYMAP } from '../../../shared/keymap';
 import type { RenderSlide } from '../../../shared/model';
 import type { PlaylistItemInfo, TimerCue } from '../../../shared/playlists';
+import { SMART_MAX_FILES } from '../../../shared/playlists';
 import { useEngine } from '../engine/engine-store';
 import { leaveItem, selectPresentation, useLibrary } from '../library/library-store';
 import { mediaKindIcon, mediaProblem } from '../library/MediaList';
@@ -13,7 +14,7 @@ import { chooseAddTo, openLinkDialog } from '../links/link-store';
 import { MediaStill } from '../render/MediaStill';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
-import { LiveBadge, MissingBadge, UnplayableBadge } from '../ui/Badge';
+import { Badge, LiveBadge, MissingBadge, UnplayableBadge } from '../ui/Badge';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import {
@@ -23,6 +24,7 @@ import {
   BookOpen,
   BookTemplate,
   FilePlus,
+  FolderSync,
   Link2,
   ListMusic,
   ListPlus,
@@ -40,9 +42,11 @@ import { Notice } from '../ui/Notice';
 import { rowClass } from '../ui/ListRow';
 import { RowDelete } from '../ui/RowDelete';
 import { EmptyState } from '../ui/States';
+import { Truncate } from '../ui/Truncate';
 import { plural } from '../ui/text';
 import { afterDrag, dragKind, droppedIds, droppedPaths, hasFiles, startDrag, useDragging } from './drag';
 import { droppedItems, isRemoveKey, RenameField } from './playlist-shared';
+import { useSmart } from './smart-store';
 import {
   addFromLibrary,
   addHeader,
@@ -57,6 +61,7 @@ import {
   newFromTemplate,
   pickItem,
   removeMarkedItems,
+  removeMissingItems,
   renameHeader,
   renameNode,
   requestRemoveNode,
@@ -234,9 +239,70 @@ function ItemBody({ item, live }: { item: PlaylistItemInfo; live: boolean }) {
         )}
         {item.kind !== 'placeholder' && <CuesLine cues={item.timers} />}
       </span>
+      {/* A smart playlist's item whose file is gone from the folder (Session 26c): it still plays. */}
+      {(item.kind === 'media' || item.kind === 'presentation') && item.gone && (
+        <Badge
+          tone="warning"
+          data-testid="item-gone"
+          title="Its file is no longer in the folder this playlist follows. It still plays: Drashti keeps its own copy."
+        >
+          Not in the folder
+        </Badge>
+      )}
       {item.kind === 'media' && (item.missing ? <MissingBadge /> : problem && <UnplayableBadge />)}
       {liveBadge}
     </span>
+  );
+}
+
+/** How following the folder goes, in words. */
+function smartState(view: { state: string; adding: number }): string {
+  if (view.state === 'folder-gone')
+    return 'The folder is not there (a USB stick taken out?). Its items stay, and it carries on when the folder is back.';
+  if (view.state === 'too-many')
+    return `The folder holds more than ${SMART_MAX_FILES.toLocaleString('en')} videos, pictures, sounds and decks: nothing more is added until some are moved out.`;
+  if (view.adding > 0) return `Adding ${plural(view.adding, 'file')}…`;
+  return 'What goes in the folder joins by itself.';
+}
+
+/**
+ * A smart playlist's settings (Session 26c): the folder it follows, how that goes, and the one button
+ * for the items whose files are gone.
+ */
+function SmartBar({ playlistId }: { playlistId: string }) {
+  const view = useSmart((s) => s.views[playlistId]);
+  if (!view) return null;
+  return (
+    <div
+      data-testid="smart-bar"
+      data-state={view.state}
+      className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-3 py-1.5 text-xs"
+    >
+      <span className="text-muted">Follows</span>
+      <Truncate
+        text={view.folder}
+        className="min-w-24 max-w-full flex-1 font-medium"
+        data-testid="smart-folder"
+      />
+      <span
+        role="status"
+        data-testid="smart-state"
+        className={view.state === 'following' ? 'text-muted' : 'text-warning-fg'}
+      >
+        {smartState(view)}
+      </span>
+      {view.missing > 0 && (
+        <Button
+          size="sm"
+          icon={Trash2}
+          data-testid="smart-remove-missing"
+          title="Take out the items whose files are no longer in the folder"
+          onClick={() => void removeMissingItems(playlistId)}
+        >
+          Remove the missing ({view.missing})
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -478,7 +544,11 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
       onDrop={onDrop}
     >
       <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-3 py-2">
-        <ListMusic size={16} aria-hidden="true" className="shrink-0 text-muted" />
+        {node?.kind === 'smart' ? (
+          <FolderSync size={16} aria-hidden="true" className="shrink-0 text-muted" />
+        ) : (
+          <ListMusic size={16} aria-hidden="true" className="shrink-0 text-muted" />
+        )}
         {renaming === openId && renameIn === 'centre' ? (
           <span className="min-w-40 flex-1">
             <RenameField
@@ -587,6 +657,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
           onClick={closePlaylist}
         />
       </div>
+      {node?.kind === 'smart' && <SmartBar playlistId={openId} />}
       {isTemplate && (
         <Notice
           tone="info"

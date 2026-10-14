@@ -230,6 +230,44 @@ describe('migrations', () => {
     db.close();
   });
 
+  it('upgrade a version 37 library: every playlist is a normal one, and smart playlists can follow folders (Session 26c)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-db-'));
+    const file = join(dir, 'drashti.sqlite');
+    const v37 = openDatabase(
+      file,
+      MIGRATIONS.filter((m) => m.version <= 37),
+    );
+    const add = v37.prepare(
+      'INSERT INTO playlists (id, parent_id, name, is_folder, position, is_template) VALUES (?, ?, ?, ?, ?, ?)',
+    );
+    add.run('f', null, 'Folder', 1, 0, 0);
+    add.run('p', 'f', 'Sunday', 0, 0, 0);
+    add.run('t', null, 'Template', 0, 1, 1);
+    v37.close();
+    const db = openDatabase(file);
+    expect(schemaVersion(db)).toBe(LATEST_VERSION);
+    expect(db.prepare('SELECT id, kind, settings FROM playlists ORDER BY id').all()).toEqual([
+      { id: 'f', kind: 'normal', settings: null },
+      { id: 'p', kind: 'normal', settings: null },
+      { id: 't', kind: 'normal', settings: null },
+    ]);
+    // A smart playlist's settings are JSON; its files go with it.
+    expect(() =>
+      db.prepare("UPDATE playlists SET kind = 'smart', settings = 'not json' WHERE id = 'p'").run(),
+    ).toThrow();
+    expect(() => db.prepare("UPDATE playlists SET kind = 'clever' WHERE id = 'p'").run()).toThrow();
+    db.prepare(
+      `UPDATE playlists SET kind = 'smart', settings = '{"folder":"/placeholder"}' WHERE id = 'p'`,
+    ).run();
+    db.prepare(
+      "INSERT INTO smart_files (playlist_id, relative, size, mtime_ms, item_id, state) VALUES ('p', 'A.jpg', 1, 2, NULL, 'failed')",
+    ).run();
+    db.prepare("DELETE FROM playlists WHERE id = 'p'").run();
+    expect(db.prepare('SELECT COUNT(*) AS n FROM smart_files').get()).toEqual({ n: 0 });
+    expect(db.pragma('integrity_check', { simple: true })).toBe('ok');
+    db.close();
+  });
+
   it('upgrade a version 1 library to the latest schema, keeping its presentations', () => {
     const dir = mkdtempSync(join(tmpdir(), 'drashti-db-'));
     const file = join(dir, 'drashti.sqlite');

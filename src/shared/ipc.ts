@@ -68,6 +68,7 @@ import type {
   PlaylistItemInfo,
   PlaylistNode,
   PlaylistResult,
+  SmartPlaylistView,
   TemplateRequest,
   TimerCue,
 } from './playlists';
@@ -363,8 +364,16 @@ export const IPC = {
     editSlot: 'playlists:edit-slot',
     /** What an item does to timers when it goes up (Session 12). */
     setTimers: 'playlists:set-timers',
+    /** Smart playlists (Session 26c): how following each one's folder goes. */
+    smartViews: 'playlists:smart-views',
+    /** A smart playlist from a folder an admin chooses (a dialog). */
+    createSmart: 'playlists:create-smart',
+    /** Take a smart playlist's missing items out (their files are gone from the folder). */
+    removeMissing: 'playlists:remove-missing',
     /** main -> operator: playlists changed. */
     changed: 'playlists:changed',
+    /** main -> operator: how following the smart playlists' folders goes changed. */
+    smartChanged: 'playlists:smart-changed',
   },
   /** Props; changing them is for the operator window only (showing one goes through the engine). */
   props: {
@@ -764,6 +773,9 @@ export interface InvokeContract {
     result: PlaylistResult;
   };
   [IPC.playlists.setTimers]: { args: [itemId: string, cues: TimerCue[]]; result: PlaylistResult };
+  [IPC.playlists.smartViews]: { args: []; result: SmartPlaylistView[] };
+  [IPC.playlists.createSmart]: { args: []; result: PlaylistResult };
+  [IPC.playlists.removeMissing]: { args: [playlistId: string]; result: PlaylistResult };
   [IPC.library.getPresentation]: { args: [id: string]; result: PresentationDoc | null };
   [IPC.library.slidesForEdit]: { args: [presentationId: string]; result: EditSlidesResult };
   [IPC.library.saveSlides]: {
@@ -995,6 +1007,7 @@ export interface EventContract {
   [IPC.library.changed]: { at: number; what: LibraryChange };
   [IPC.library.extrasChanged]: { on: boolean };
   [IPC.playlists.changed]: { at: number };
+  [IPC.playlists.smartChanged]: SmartPlaylistView[];
   [IPC.app.undo]: { at: number };
   [IPC.app.redo]: { at: number };
   [IPC.app.notice]: { text: string };

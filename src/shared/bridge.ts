@@ -68,6 +68,7 @@ import type {
   PlaylistItemInfo,
   PlaylistNode,
   PlaylistResult,
+  SmartPlaylistView,
   TemplateRequest,
   TimerCue,
 } from './playlists';
@@ -355,7 +356,14 @@ export interface DrashtiBridge {
       at: number | null,
       slot: { label: string; category: string | null },
     ): Promise<PlaylistResult>;
+    /** Smart playlists (Session 26c): how following each one's folder goes. */
+    smartViews(): Promise<SmartPlaylistView[]>;
+    /** A smart playlist from a folder an admin chooses in a dialog (none made: no ids). */
+    createSmart(): Promise<PlaylistResult>;
+    /** Take a smart playlist's missing items out (their files are gone from its folder). */
+    removeMissing(playlistId: string): Promise<PlaylistResult>;
     onChanged(listener: () => void): () => void;
+    onSmartChanged(listener: (views: SmartPlaylistView[]) => void): () => void;
   };
   /** Props: a logo or a fixed line over whatever slide is live. Showing one goes through the engine. */
   props: {

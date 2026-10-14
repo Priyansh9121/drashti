@@ -8,10 +8,38 @@ import { z } from 'zod';
  * placeholder). Folders hold playlists and other folders.
  */
 
+/**
+ * What a playlist is (migration 38): one the operator builds ('normal'), one that follows a folder on the
+ * computer ('smart', Session 26c), or one that goes round its slides by itself ('repeat', Session 26d).
+ */
+export type PlaylistKind = 'normal' | 'smart' | 'repeat';
+
+/** The most files a smart playlist follows (Session 26c): past that, it says so and adds nothing more. */
+export const SMART_MAX_FILES = 2000;
+
+/** A smart playlist as the window shows it (Session 26c): the folder it follows, and how the following goes. */
+export interface SmartPlaylistView {
+  playlistId: string;
+  /** The folder it follows, on this computer. */
+  folder: string;
+  /**
+   * 'following': all is well. 'folder-gone': the folder is not there (a USB stick taken out); the playlist
+   * keeps its items and carries on when it is back. 'too-many': the folder holds more than SMART_MAX_FILES
+   * files Drashti takes; nothing more is added or marked until some go.
+   */
+  state: 'following' | 'folder-gone' | 'too-many';
+  /** New or changed files waiting for their size to hold still, or being imported. */
+  adding: number;
+  /** Items whose files are gone from the folder (marked, not removed). */
+  missing: number;
+}
+
 export interface PlaylistNode {
   id: string;
   name: string;
   isFolder: boolean;
+  /** Its kind (a folder is always 'normal'). */
+  kind: PlaylistKind;
   parentId: string | null;
   /** Items (for a playlist) that are not removed. */
   itemCount: number;
@@ -70,6 +98,8 @@ export type PlaylistItemInfo =
       slideCount?: number;
       /** It is a deck: a PDF, PowerPoint or Keynote file's pages as pictures (Session 15). */
       deck?: boolean;
+      /** In a smart playlist: its file is gone from the folder (Session 26c). */
+      gone?: boolean;
     }
   | {
       id: string;
@@ -84,6 +114,8 @@ export type PlaylistItemInfo =
       timers: TimerCue[];
       /** A video's or sound's length, once Drashti has played it (Session 26a: on its card). */
       durationMs?: number | null;
+      /** In a smart playlist: its file is gone from the folder (Session 26c). */
+      gone?: boolean;
     }
   | { id: string; kind: 'header'; label: string; color: string | null }
   /**

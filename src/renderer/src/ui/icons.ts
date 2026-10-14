@@ -24,6 +24,8 @@ export { Bookmark, Download, LockOpen, RefreshCw, ShieldCheck, Shuffle } from 'l
 export { Cloud, Link2, MonitorPlay } from 'lucide-react';
 // Session 26a: the open playlist's Add files…, Audio, More tools and Repeat Slides.
 export { FilePlus, Repeat2, Wrench } from 'lucide-react';
+// Session 26c: a smart playlist, following a folder.
+export { FolderSync } from 'lucide-react';
 export {
   AlertTriangle,
   AlignCenter,
