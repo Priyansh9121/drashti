@@ -13,6 +13,8 @@ On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows 
 - **Right column:** the live picture, headed **LIVE** (what the hall sees now), then **Audio** (Music and the Arti), the **Stage screen**, **Messages**, **Timers** (one line each: start or pause, reset, show on the screens, Edit), **Props** and **Looks**, and **More tools**, folded away: Macros, Masks and the Idle rotation, each with a line saying what it is.
 - **Along the bottom:** the **clear buttons** for each layer, **Logo** and **Black-out**, then the **status bar** (the version, the screens, imports, warnings).
 
+![The open playlist in the middle: its items as cards, a header before each part](screenshots/playlist-cards.png)
+
 ---
 
 ## 1. Before the sabha
