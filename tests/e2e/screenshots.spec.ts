@@ -1,4 +1,3 @@
-import { BUILTIN_THEMES } from '../../src/shared/builtin-themes';
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
@@ -6,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { BUILTIN_THEMES } from '../../src/shared/builtin-themes';
 import type { PageGlobals } from './helpers';
 import { device, networkOn, NETWORK_ENV, pairByQr, pairingCode, TABLET } from './devices';
 import {

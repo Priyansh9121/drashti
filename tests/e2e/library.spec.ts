@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { BUILTIN_THEMES } from '../../src/shared/builtin-themes';
 import { launchApp, operatorPage, type PageGlobals } from './helpers';
 
 test('a new install has the placeholder presentations in a database in userData', async () => {
@@ -37,7 +38,8 @@ test('the props, messages and themes lists follow changes made elsewhere, with n
   const win = await operatorPage(app);
   await win.getByRole('button', { name: 'Themes', exact: true }).click();
   const themes = win.getByTestId('themes-panel').getByTestId('theme-item');
-  await expect(themes).toHaveCount(1);
+  // Drashti default and the built-in themes (Session 26).
+  await expect(themes).toHaveCount(1 + BUILTIN_THEMES.length);
   const made = await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     const message = await d.messages.create({
