@@ -88,6 +88,8 @@ export interface SharpenDeps {
   /** A copy is ready, or one went: the screens and thumbnails look again. */
   changed(): void;
   log(message: string): void;
+  /** How a picture's file is read (tests); by default from the disk, refusing one over MAX_SOURCE_BYTES. */
+  read?: (file: string) => Promise<Uint8Array>;
 }
 
 interface Ready {
@@ -126,6 +128,8 @@ export class SharpenedCopies {
   private win: SharpenWindow | null = null;
   /** The window was told nothing is left: its page has stopped asking. */
   private finishing = false;
+  /** A picture is being read to give the window: busy, as while a copy is being made. */
+  private reading = false;
   private current: { job: Job; timer: NodeJS.Timeout } | null = null;
   private scanned: Promise<void> | null = null;
   private refreshing: Promise<void> = Promise.resolve();
@@ -295,7 +299,7 @@ export class SharpenedCopies {
   }
 
   private settle(): void {
-    if (this.current || this.queue.length > 0) return;
+    if (this.current || this.reading || this.queue.length > 0) return;
     if (this.win) {
       this.win.destroy();
       this.win = null;
@@ -307,19 +311,31 @@ export class SharpenedCopies {
   }
 
   /** The window asks for the next picture (null: none left, and the window goes). */
+  /** Whether this is the window's page (it may go while a picture is read). */
+  private isWindow(senderId: number): boolean {
+    return this.win?.id === senderId;
+  }
+
   async next(senderId: number): Promise<SharpenJob | null> {
-    if (this.win?.id !== senderId || this.current) return null;
+    if (!this.isWindow(senderId) || this.current || this.reading) return null;
     for (let job = this.queue.shift(); job; job = this.queue.shift()) {
       const file = join(this.deps.mediaDir, job.want.path);
-      let data: Buffer;
+      let data: Uint8Array;
+      this.reading = true;
       try {
-        const s = await stat(file);
-        if (s.size > MAX_SOURCE_BYTES) throw new Error('the picture is over 256 MB');
-        data = await readFile(file);
+        data = await (this.deps.read ?? readPicture)(file);
       } catch (error) {
         this.failed.add(keyOf(job));
         this.deps.log(`Sharpened copies: a picture could not be read (${String(error)})`);
         continue;
+      } finally {
+        this.reading = false;
+      }
+      // The window went while the picture was read (its process ended): the picture waits for the next one.
+      if (!this.isWindow(senderId)) {
+        this.queue.unshift(job);
+        this.start();
+        return null;
       }
       const timer = setTimeout(() => {
         const win = this.win;
@@ -330,7 +346,7 @@ export class SharpenedCopies {
       this.current = { job, timer };
       return {
         key: keyOf(job),
-        data: new Uint8Array(data),
+        data,
         percent: job.step,
         type: job.ext === 'jpg' ? 'image/jpeg' : 'image/png',
         maxPixels: MAX_COPY_PIXELS,
@@ -414,6 +430,13 @@ export class SharpenedCopies {
     this.win = null;
     this.settle();
   }
+}
+
+/** A picture's file as the window is given it: refused when over MAX_SOURCE_BYTES. */
+async function readPicture(file: string): Promise<Uint8Array> {
+  const s = await stat(file);
+  if (s.size > MAX_SOURCE_BYTES) throw new Error('the picture is over 256 MB');
+  return readFile(file);
 }
 
 /** Remove every copy of a picture's file (it is gone from the library for good). */
