@@ -99,6 +99,10 @@ test('a video trimmed on its timeline and saved as an MP4, copied as it is from 
   await win.getByTestId('media-markers').first().click();
   const dialog = win.getByTestId('markers-dialog');
   await expect(dialog.getByTestId('timeline')).toBeVisible({ timeout: 30_000 });
+  // Stills along it, drawn from the video.
+  await expect(dialog.getByTestId('timeline').locator('img[data-still]')).not.toHaveCount(0, {
+    timeout: 30_000,
+  });
   await expect(dialog.getByTestId('markers-length')).toHaveText('0:10 → 0:10');
   await dialog.getByTestId('markers-start').fill('0:02.4');
   await dialog.getByTestId('markers-end').fill('0:06.0');

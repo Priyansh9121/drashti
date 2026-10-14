@@ -26,6 +26,8 @@ export function useStills(src: string, durationMs: number | null): (string | nul
     const still = { wanted: true };
     const gone = () => !still.wanted;
     const video = document.createElement('video');
+    // Drawn into a canvas and read back: the media protocol allows it (as the stills do).
+    video.crossOrigin = 'anonymous';
     video.muted = true;
     video.preload = 'auto';
     video.src = src;
