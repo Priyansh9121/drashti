@@ -124,6 +124,8 @@ function setup(db: Db = openDatabase(':memory:'), maxFiles?: number) {
     now: () => clock.now,
     scanMs: 3_600_000,
     settleMs: 3000,
+    // The test looks at the folder itself, when it says; nothing looks again by itself.
+    schedule: () => () => undefined,
     ...(maxFiles === undefined ? {} : { maxFiles }),
   });
   services.push(service);
