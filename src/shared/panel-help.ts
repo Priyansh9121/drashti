@@ -31,9 +31,9 @@ export const PANEL_HELP = {
     guide: '**Starting.**',
   },
   live: {
-    title: 'On the screens now',
-    text: 'What the hall sees this moment, and below it what Next will bring. Nothing here changes the screens: the slides, Next and the buttons along the bottom do.',
-    guide: '**live picture**',
+    title: 'LIVE',
+    text: 'What the hall sees this moment. Nothing here changes the screens: the slides, Next and the buttons along the bottom do.',
+    guide: 'headed **LIVE**',
   },
   looks: {
     title: 'Looks',

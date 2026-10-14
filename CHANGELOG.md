@@ -19,6 +19,12 @@ Library
 - Import… is a button under the search box now: Files…, A Folder… or From a Link…. Files… offers everything Drashti imports.
 - A PDF, PowerPoint or Keynote file's pages no longer fill the Media list: they are its presentation's slides. Media lists the pictures, videos and sounds you imported.
 
+The operator window
+
+- The live picture is headed LIVE, and the Next picture under it is gone. What comes next still shows on the stage screen, on phones and tablets, and in Simple Mode.
+- Edit layout… on the Stage screen panel opens the stage layout editor at the layout in use.
+- After an import, the report's Add to playlist puts everything it brought in into the open playlist, another, or a new one named after it. Import from a Link asks the same before Download, the open playlist to begin with.
+
 Deleting
 
 - A trash button on the chosen row (and the one under the mouse) deletes a playlist, a presentation, a picture, video or sound, or music, as the Delete key does, and takes an item out of a playlist or a sound out of music. Undo brings each back.

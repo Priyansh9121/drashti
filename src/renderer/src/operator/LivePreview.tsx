@@ -41,8 +41,9 @@ export function LivePreview() {
   return (
     <section aria-labelledby="live-preview-title" className="space-y-2 px-3 pt-3">
       <div className="flex h-6 items-center gap-2">
+        {/* LIVE (Session 26a: it said "On the screens now", with a Next preview under it). */}
         <h2 id="live-preview-title" className="flex-1 text-2xs font-bold tracking-wider text-muted uppercase">
-          On the screens now
+          LIVE
         </h2>
         {blackout ? <Badge tone="live">Black-out</Badge> : somethingUp ? <LiveBadge /> : null}
         {help.button}

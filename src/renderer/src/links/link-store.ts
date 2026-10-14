@@ -15,7 +15,11 @@ export interface SavedFrom {
   maxHeight: number;
 }
 import { useEngine } from '../engine/engine-store';
+import { itemsMadeBy } from '../../../shared/import-items';
 import { openReport, useImports } from '../library/import-store';
+import { useNotice } from '../operator/actions';
+import type { AddTarget } from '../playlists/add-made';
+import { addMadeTo, defaultTarget } from '../playlists/add-made';
 
 /*
  * Import from a Link in the operator window (Session 25b): the dialog's
@@ -34,6 +38,11 @@ interface LinkStore {
   savedFor: Record<string, SavedFrom>;
   /** A YouTube video's choices before Download (Session 25c): the tick starts unticked each time. */
   choice: { type: YouTubeType; height: number | null; permission: boolean };
+  /**
+   * When it's imported, add it to (Session 26a): chosen before Download; null until the operator picks one,
+   * which means the open playlist when one is open, else no playlist.
+   */
+  addTo: AddTarget | null;
 }
 
 const NO_CHOICE = { type: 'mp4' as const, height: null, permission: false };
@@ -45,7 +54,25 @@ export const useLinks = create<LinkStore>(() => ({
   error: null,
   savedFor: {},
   choice: NO_CHOICE,
+  addTo: null,
 }));
+
+/** The playlist a download's import goes into, chosen as Download was pressed; done once its import ends. */
+let pendingAdd: AddTarget | null = null;
+
+/** Where the dialog says it will add what is imported. */
+export const addToNow = (s: { addTo: AddTarget | null }): AddTarget => s.addTo ?? defaultTarget();
+
+/** The import of a download ended: what it made goes into the playlist chosen for it. */
+async function addImported(runId: string): Promise<void> {
+  const target = pendingAdd;
+  pendingAdd = null;
+  if (!target || target.kind === 'none') return;
+  const report = await window.drashti.library.getImportReport(runId);
+  if (!report) return;
+  const name = await addMadeTo(target, itemsMadeBy(report.items, report.paths));
+  if (name) useNotice.setState({ text: `What the link brought in was added to “${name}”.` });
+}
 
 let connected = false;
 /** The run whose report was already opened (each opens once). */
@@ -74,6 +101,7 @@ function heard(view: LinkView): void {
   if (view.phase === 'done' && view.runId && view.runId !== reported) {
     reported = view.runId;
     const runId = view.runId;
+    void addImported(runId);
     void window.drashti.library.getImportReport(runId).then((report) => {
       if (report) useImports.setState({ finished: report });
       if (!somethingLive() && !useLinks.getState().open) void openReport(runId);
@@ -124,7 +152,9 @@ export async function startDownload(): Promise<boolean> {
   const video = view?.look?.video;
   // The height the dialog shows as chosen (the tallest allowed, until one is picked).
   const asked = video ? { ...choice, height: chosenHeight(video, view.maxHeight, choice.height) } : null;
+  const target = addToNow(useLinks.getState());
   const ok = await act(() => window.drashti.links.download(asked));
+  if (ok) pendingAdd = target;
   const youtube = video !== undefined;
   if (ok && youtube) useLinks.setState((s) => ({ choice: { ...s.choice, permission: false } }));
   return ok;
@@ -135,7 +165,15 @@ export function choose(change: Partial<LinkStore['choice']>): void {
   useLinks.setState((s) => ({ choice: { ...s.choice, ...change }, error: null }));
 }
 export const stopDownload = () => act(() => window.drashti.links.stop());
-export const anotherLink = () => act(() => window.drashti.links.reset());
+export const anotherLink = () => {
+  useLinks.setState({ addTo: null });
+  return act(() => window.drashti.links.reset());
+};
+
+/** Where what the link brings in goes, once imported (before Download). */
+export function chooseAddTo(target: AddTarget): void {
+  useLinks.setState({ addTo: target });
+}
 /** The admin's highest video quality, for YouTube and Dropbox (Session 25c). */
 export const setMaxHeight = (height: number) => act(() => window.drashti.links.setMaxHeight(height));
 

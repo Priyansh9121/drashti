@@ -27,7 +27,6 @@ import { Header } from './Header';
 import { LayerBar } from './LayerBar';
 import { Columns, LeftColumn } from './Layout';
 import { LivePreview } from './LivePreview';
-import { NextPreview } from './NextPreview';
 import { PresentationList } from './PresentationList';
 import { SlideGrid } from './SlideGrid';
 import { RecoveryBanner } from './RecoveryBanner';
@@ -236,7 +235,6 @@ function ProApp({ info }: { info: AppInfo | null }) {
           <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
             <LivePreview />
             <MarkerJumps />
-            <NextPreview />
             <div className="mt-3 divide-y divide-line border-t border-line">
               <LooksPanel />
               <MacrosPanel />

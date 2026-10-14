@@ -25,9 +25,12 @@ import { radioKeys, radioTabIndex } from '../ui/radio';
 import { plural } from '../ui/text';
 import { Checkbox } from '../ui/Toggle';
 import { Truncate } from '../ui/Truncate';
+import { usePlaylists } from '../playlists/playlist-store';
+import { AddTargetSelect, defaultTarget, nameAfter } from '../playlists/add-made';
 import {
   anotherLink,
   choose,
+  chooseAddTo,
   chooseKind,
   closeLinkDialog,
   connectLinks,
@@ -248,6 +251,33 @@ function SaveIn({ view, locked }: { view: LinkView; locked: boolean }) {
         </Button>
       </div>
       <p className="text-xs text-faint">Drashti never moves or deletes what it saves there.</p>
+    </div>
+  );
+}
+
+/**
+ * When it's imported, add it to (Session 26a): the open playlist to begin with (when one is open), another,
+ * a new one named after the file or folder, or none. Done when the download's import ends, even with the
+ * dialog closed.
+ */
+function AddWhenImported({ view }: { view: LinkView }) {
+  const addTo = useLinks((s) => s.addTo);
+  // Read so the default follows the playlist opened meanwhile.
+  usePlaylists((s) => s.openId);
+  const target = addTo ?? defaultTarget();
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-medium text-muted" id="link-add-to-label">
+        When it’s imported, add it to:
+      </p>
+      <AddTargetSelect
+        value={target}
+        onChange={chooseAddTo}
+        newName={nameAfter(view.look?.name ?? 'Download')}
+        label="When it’s imported, add it to"
+        noneLabel="No playlist"
+        testId="link-add-to"
+      />
     </div>
   );
 }
@@ -613,6 +643,7 @@ export function LinkDialog({ platform }: { platform: string }) {
             and Stop stay in view. */}
         {view.look?.video && !finished && !busy && <YouTubeChoices video={view.look.video} view={view} />}
         {view.look && !finished && <SaveIn view={view} locked={locked} />}
+        {view.look && !finished && !busy && <AddWhenImported view={view} />}
         {busy && <Going view={view} />}
         {(view.phase === 'failed' || view.phase === 'stopped') && view.message && (
           <Notice tone={view.phase === 'failed' ? 'warning' : 'info'} role="alert" data-testid="link-message">

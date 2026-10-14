@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cocoaRtf, pp6Playlist, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
+import type { PageGlobals } from './helpers';
 import {
   importAndGetIds,
   killApp,
@@ -98,7 +99,8 @@ test('a sabha from a playlist: the repeated chorus, headers stepped over, a pict
   const { app } = await launchApp({ DRASHTI_TEST_MEDIA_DELAY_MS: '400' });
   const win = await operatorPage(app);
   const files = await sabhaFiles(win);
-  await importAndGetIds(win, files.songs);
+  const songIds = await importAndGetIds(win, files.songs);
+  const secondSongId = songIds[files.songs.findIndex((f) => f.endsWith('Placeholder Second Song.pro6'))];
   await importAndGetIds(win, [files.playlist]);
   await setUpScreen(win);
   const output = await outputPage(app);
@@ -117,7 +119,21 @@ test('a sabha from a playlist: the repeated chorus, headers stepped over, a pict
   // Space starts it; Next plays it through, the chorus each time.
   const slideText = output.locator('[data-layer="slide"]');
   const liveText = win.getByTestId('live-text');
-  const next = win.getByTestId('next-preview');
+  // What Next brings, as the engine says it (the operator window's Next preview went in Session 26a; the
+  // stage screen's Next and the remote's show it still).
+  const upNext = () =>
+    win.evaluate(async () => {
+      const n = (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.next;
+      if (!n) return null;
+      return n.kind === 'media'
+        ? { kind: n.kind, media: n.media, label: n.label }
+        : {
+            kind: n.kind,
+            presentationId: n.presentationId,
+            slideIndex: n.slideIndex,
+            nextItem: n.itemId !== null,
+          };
+    });
   await win.keyboard.press('Space');
   await expect(liveText).toContainText('slide 1 of 4');
   await expect(items.nth(1)).toHaveAttribute('data-live', 'true');
@@ -135,8 +151,7 @@ test('a sabha from a playlist: the repeated chorus, headers stepped over, a pict
   ]);
 
   // On the last slide, the picture comes next (the header before it is stepped over), and the output has it loaded.
-  await expect(next).toHaveAttribute('data-kind', 'media');
-  await expect(win.getByTestId('next-caption')).toHaveText('Picture: Placeholder Welcome');
+  await expect.poll(upNext).toEqual({ kind: 'media', media: 'image', label: 'Placeholder Welcome' });
   await expect(output.locator('[data-testid="preload"] img[data-state="ready"]')).toHaveCount(1);
 
   // Next: the picture goes up as the background and the slide comes off; the grid follows the show.
@@ -148,7 +163,9 @@ test('a sabha from a playlist: the repeated chorus, headers stepped over, a pict
   await expect(liveText).toHaveText('Live: Placeholder Welcome');
 
   // The next song's first slide is next, with its logo loaded ahead.
-  await expect(win.getByTestId('next-caption')).toHaveText('Placeholder Second Song, slide 1 (next item)');
+  await expect
+    .poll(upNext)
+    .toEqual({ kind: 'slide', presentationId: secondSongId, slideIndex: 0, nextItem: true });
   await expect(output.locator('[data-testid="preload"] img[data-state="ready"]')).toHaveCount(1);
   // Watch the output as the next slide goes in: its logo must be loaded the moment the slide is,
   // before anything is painted (with media this slow, only a logo loaded ahead can be).
@@ -189,7 +206,7 @@ test('a sabha from a playlist: the repeated chorus, headers stepped over, a pict
   await win.keyboard.press('ArrowRight');
   await expect(slideText).toHaveText('Placeholder second song, second line');
   // The end of the playlist: nothing after it, and Next stays put.
-  await expect(next).toHaveAttribute('data-kind', 'none');
+  await expect.poll(upNext).toBeNull();
   await win.keyboard.press('ArrowRight');
   await expect(slideText).toHaveText('Placeholder second song, second line');
 

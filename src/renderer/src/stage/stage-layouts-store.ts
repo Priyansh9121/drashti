@@ -68,7 +68,18 @@ export const isDirty = (s: StageLayoutsStore): boolean => s.editing !== s.saved;
 export function openStageLayouts(id: string = STANDARD): void {
   connectStageLayouts();
   useStageLayouts.setState({ open: true, problem: null });
-  show(id);
+  if (useStageLayouts.getState().layouts !== null || id === STANDARD) {
+    show(id);
+    return;
+  }
+  // Not read yet (opened from the stage panel before anything listed them, Session 26a): that layout
+  // once they are, unless the operator has moved on meanwhile.
+  show(STANDARD);
+  void window.drashti.stageLayouts.list().then((layouts) => {
+    useStageLayouts.setState({ layouts });
+    const s = useStageLayouts.getState();
+    if (s.open && s.shownId === STANDARD && s.editing === null) show(id);
+  });
 }
 
 export function closeStageLayouts(): void {
