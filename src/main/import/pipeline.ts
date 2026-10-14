@@ -60,6 +60,7 @@ import {
   findConverters,
   noConverterMessage,
 } from './deck-converters';
+import { standInPdf } from './stand-in-converter';
 import { notesForPages, picturesIssues, picturesPresentation, type PptxSlide } from './pictures';
 import { extractZip } from './zip';
 import { plural } from '../../shared/text';
@@ -120,8 +121,11 @@ export interface PipelineContext {
   tempDir?: string;
   /** Draws a PDF's pages as pictures (the main process does, in a window; Session 15). */
   drawPdf?: (pdf: string, outDir: string) => Promise<PicturesResult>;
-  /** Whether Keynote or PowerPoint may save PowerPoint and Keynote files as PDF (default yes). */
-  converters?: boolean;
+  /**
+   * Whether Keynote or PowerPoint may save PowerPoint and Keynote files as PDF (default yes), or
+   * 'stand-in' (tests only: ./stand-in-converter.ts saves PowerPoint files as PDF in their place).
+   */
+  converters?: boolean | 'stand-in';
 }
 
 type SourceKind = 'text' | 'pp6' | 'pp7' | 'pictures';
@@ -683,8 +687,14 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         }
         slides = checked.slides;
         const apps =
-          ctx.converters === false ? [] : convertersFor(source, process.platform, await findConverters());
-        if (apps.length === 0) {
+          ctx.converters === false || ctx.converters === 'stand-in'
+            ? []
+            : convertersFor(source, process.platform, await findConverters());
+        if (ctx.converters === 'stand-in' && source === 'pptx') {
+          // Tests only: saved as PDF as PowerPoint would (Session 26a, so CI can make decks).
+          pdf = await standInPdf(file.path, slides, work);
+          converter = 'powerpoint';
+        } else if (apps.length === 0) {
           fail('pictures-no-converter', noConverterMessage(source));
           return;
         }

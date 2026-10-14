@@ -19,8 +19,11 @@ export interface StartMessage {
   userDataDir: string;
   /** The schema version the main process opened; the worker refuses any other. */
   schemaVersion: number;
-  /** Whether Keynote or PowerPoint may be asked to save files as PDF (tests can say no). */
-  converters?: boolean;
+  /**
+   * Whether Keynote or PowerPoint may be asked to save files as PDF (tests can say no), or 'stand-in':
+   * tests only, a stand-in saves PowerPoint files as PDF (./stand-in-converter.ts).
+   */
+  converters?: boolean | 'stand-in';
 }
 
 export interface CancelMessage {

@@ -233,7 +233,14 @@ export async function dropFiles(
   page: Page,
   target: Locator,
   paths: string[],
-  { overlay = true }: { overlay?: boolean } = {},
+  {
+    overlay = true,
+    at,
+  }: {
+    overlay?: boolean;
+    /** Where on the target it lands (the top, middle or bottom of it); by default nowhere in particular. */
+    at?: 'top' | 'middle' | 'bottom';
+  } = {},
 ): Promise<void> {
   await page.evaluate(() => {
     const input = document.createElement('input');
@@ -251,9 +258,16 @@ export async function dropFiles(
     input.remove();
     return dt;
   });
-  await target.dispatchEvent('dragenter', { dataTransfer });
-  await target.dispatchEvent('dragover', { dataTransfer });
+  const box = at ? await target.boundingBox() : null;
+  const point = box
+    ? {
+        clientX: box.x + box.width / 2,
+        clientY: box.y + (at === 'top' ? 3 : at === 'bottom' ? box.height - 3 : box.height / 2),
+      }
+    : {};
+  await target.dispatchEvent('dragenter', { dataTransfer, ...point });
+  await target.dispatchEvent('dragover', { dataTransfer, ...point });
   if (overlay) await expect(page.getByTestId('drop-overlay')).toBeVisible();
-  await target.dispatchEvent('drop', { dataTransfer });
+  await target.dispatchEvent('drop', { dataTransfer, ...point });
   await expect(page.getByTestId('drop-overlay')).toHaveCount(0);
 }

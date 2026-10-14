@@ -8,6 +8,11 @@ Import from a Link
 
 - A Dropbox folder link unpacks now. Dropbox's zips list an empty entry named "/", and Drashti refused the whole folder for it ("would leave the folder"); that entry is skipped, and everything that would really leave the folder is still refused.
 
+Playlists
+
+- Dragging into a playlist is surer: rows no longer change size as a drag starts, which could cancel it. Search results can be dragged in too.
+- Files dragged from the Finder (Explorer on Windows) onto the open playlist, or onto a playlist's name, are imported and added where they land, in the order dragged.
+
 ## 1.0.0-alpha.3 (11 Oct 2026)
 
 Downloading from YouTube, inside Drashti and with no adverts. Update after a sabha, never on the day of one.

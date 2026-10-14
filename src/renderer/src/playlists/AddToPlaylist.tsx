@@ -37,10 +37,12 @@ export const usePlaylistOpen = (): boolean => usePlaylists((s) => s.openId !== n
 /** On a line under the chosen library row (so its name keeps its room), while a playlist is open. */
 export function AddToPlaylistButton({ pick, className }: { pick: Pick; className?: string }) {
   const playlist = useOpenName();
+  // Hidden while a drag is under way, keeping its room (a row that changes size as a drag starts
+  // cancels it: drag.ts).
   const dragging = useDragging((s) => s.on);
-  if (playlist === null || dragging) return null;
+  if (playlist === null) return null;
   return (
-    <div className={cx('flex shrink-0 justify-end', className)}>
+    <div className={cx('flex shrink-0 justify-end', dragging && 'invisible', className)}>
       <Button
         size="sm"
         icon={ListPlus}
