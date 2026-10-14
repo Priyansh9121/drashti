@@ -88,7 +88,10 @@ interface Followed {
   /** New or changed files waiting for their size to hold still, by path inside the folder. */
   pending: Map<string, Seen>;
   view: SmartPlaylistView;
-  busy: boolean;
+  /** The look going, if one is. */
+  running: Promise<void> | null;
+  /** One more look, asked for while one was going: it runs after it, and those who asked wait for it. */
+  again: Promise<void> | null;
   /** A look again soon (a file event, or a file settling), and how to cancel it. */
   soon: (() => void) | null;
   stopWatching: (() => void) | null;
@@ -261,24 +264,37 @@ export class SmartFolders {
     for (const r of back) await this.scan(r.id);
   }
 
-  /** Look at a playlist's folder once: what is new and settled is imported, what is gone is marked. */
-  async scan(playlistId: string): Promise<void> {
+  /**
+   * Look at a playlist's folder: what is new and settled is imported, what is gone is marked. Asked while
+   * a look is going, it looks once more after it (however many ask meanwhile), and resolves after that.
+   */
+  scan(playlistId: string): Promise<void> {
     const f = this.followed.get(playlistId);
-    if (!f || f.busy || this.stopped) return;
-    f.busy = true;
-    try {
-      await this.scanOnce(playlistId, f);
-    } catch (error) {
-      this.deps.log(
-        'warn',
-        `Smart playlists: a followed folder could not be read (${(error as Error).name})`,
-      );
-    } finally {
-      f.busy = false;
+    if (!f || this.stopped) return Promise.resolve();
+    if (f.running) {
+      f.again ??= f.running.then(() => {
+        f.again = null;
+        return this.scan(playlistId);
+      });
+      return f.again;
     }
-    // Files waiting to settle: look again once they could have (unless it was stopped or deleted meanwhile).
-    if (f.pending.size > 0 && this.followed.get(playlistId) === f)
-      this.soon(playlistId, f, this.deps.settleMs);
+    const look = async () => {
+      try {
+        await this.scanOnce(playlistId, f);
+      } catch (error) {
+        this.deps.log(
+          'warn',
+          `Smart playlists: a followed folder could not be read (${(error as Error).name})`,
+        );
+      } finally {
+        f.running = null;
+      }
+      // Files waiting to settle: look again once they could have (unless it was stopped or deleted meanwhile).
+      if (f.pending.size > 0 && this.followed.get(playlistId) === f)
+        this.soon(playlistId, f, this.deps.settleMs);
+    };
+    f.running = look();
+    return f.running;
   }
 
   private smartPlaylists(): { id: string; folder: string }[] {
@@ -295,7 +311,8 @@ export class SmartFolders {
     const f: Followed = {
       folder,
       pending: new Map(),
-      busy: false,
+      running: null,
+      again: null,
       soon: null,
       stopWatching: null,
       view: { playlistId, folder, state: 'following', adding: 0, missing: this.missingCount(playlistId) },

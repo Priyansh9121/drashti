@@ -48,8 +48,11 @@ function setup(db: Db = openDatabase(':memory:'), maxFiles?: number) {
   const imports: { paths: string[]; options: ImportOptions }[] = [];
   const views: SmartPlaylistView[][] = [];
   const clock = { now: 1_000_000 };
+  /** While set, an import waits for it (a look held part-way). */
+  const held: { gate: Promise<void> | null } = { gate: null };
   const importFiles = async (paths: string[], options: ImportOptions) => {
     imports.push({ paths, options });
+    if (held.gate) await held.gate;
     const items: ImportItemReport[] = [];
     for (const path of paths) {
       const bytes = await readFile(path).catch(() => null);
@@ -142,7 +145,7 @@ function setup(db: Db = openDatabase(':memory:'), maxFiles?: number) {
         i.kind === 'header' ? `# ${i.label}` : `${i.label}${'gone' in i && i.gone ? ' (gone)' : ''}`,
       );
   const view = (id: string) => service.views().find((v) => v.playlistId === id);
-  return { db, playlists, presentations, service, imports, views, clock, settle, shown, view };
+  return { db, playlists, presentations, service, imports, views, clock, held, settle, shown, view };
 }
 
 const folder = () => join(root, 'Sabha');
@@ -292,6 +295,34 @@ describe('a smart playlist following a folder', () => {
     await put('B.jpg', 'picture b');
     await settle(id);
     expect(view(id)).toMatchObject({ state: 'following', missing: 0 });
+    expect(shown(id)).toEqual(['A.jpg', 'B.jpg']);
+  });
+
+  it('a look asked for while one is going waits for it, then looks again (a file can arrive meanwhile)', async () => {
+    await put('A.jpg', 'picture a');
+    const { service, settle, shown, view, clock, held } = setup();
+    const made = await service.create(folder());
+    const id = made.ok ? made.id : '';
+    // A look held part-way, in its import of A.
+    let open: () => void = () => undefined;
+    held.gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    await service.scan(id);
+    clock.now += 3000;
+    const first = service.scan(id);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    // B arrives while it is going, and another look is asked for.
+    await put('B.jpg', 'picture b');
+    const second = service.scan(id);
+    held.gate = null;
+    open();
+    await Promise.all([first, second]);
+    // The second look began after the first had ended: it saw B, waiting to hold still.
+    expect(shown(id)).toEqual(['A.jpg']);
+    expect(view(id)).toMatchObject({ adding: 1 });
+    clock.now += 3000;
+    await settle(id);
     expect(shown(id)).toEqual(['A.jpg', 'B.jpg']);
   });
 
