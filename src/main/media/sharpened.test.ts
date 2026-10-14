@@ -38,8 +38,8 @@ afterEach(() => {
 const jpeg = (fill: number) => Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, fill, fill, 0xff, 0xd9]);
 const png = (fill: number) => Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, fill]);
 
-/** A library and the hidden window, as the service sees them. */
-function setUp(wanted: CopyWant[]) {
+/** A library and the hidden window, as the service sees them. `read`: how a picture's file is read. */
+function setUp(wanted: CopyWant[], read?: (file: string) => Promise<Uint8Array>) {
   const log: string[] = [];
   const windows = { opened: 0, destroyed: 0, id: 0 };
   let changed = 0;
@@ -63,6 +63,7 @@ function setUp(wanted: CopyWant[]) {
       changed++;
     },
     log: (m) => log.push(m),
+    read,
   });
   /** The window makes every copy asked for: `make` gives its bytes (null: it could not). */
   const drain = async (
@@ -205,6 +206,32 @@ describe('sharpened copies', () => {
     await t.copies.refresh();
     await t.drain();
     expect(t.copies.readyStep(SHA_A)).toBe(90);
+  });
+
+  it('keep their window while it is being given a picture, however the library changes meanwhile', async () => {
+    // The picture's file is read slowly (a big one, a busy disk): the test says when it is in.
+    let readIn: () => void = () => undefined;
+    const slow = new Promise<void>((resolve) => {
+      readIn = resolve;
+    });
+    const t = setUp([A(0.5)], async (file) => {
+      await slow;
+      return new Uint8Array(readFileSync(file));
+    });
+    await t.copies.refresh();
+    const asked = t.copies.next(t.windows.id);
+    // Meanwhile nothing is wanted any more: the window must not go while it is being given the picture.
+    t.library.wanted = [];
+    await t.copies.refresh();
+    expect(t.windows.destroyed).toBe(0);
+    readIn();
+    const job = await asked;
+    if (!job) throw new Error('a job expected');
+    expect(await t.copies.made(t.windows.id, job.key, jpeg(1))).toBe(true);
+    // Not wanted by then: thrown away, and the window goes.
+    await t.copies.idle();
+    expect(copiesOnDisk()).toEqual([]);
+    expect(t.windows.destroyed).toBe(1);
   });
 
   it('answer only their own window, and skip a picture whose file is missing', async () => {
