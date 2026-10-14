@@ -74,6 +74,7 @@ import type {
 } from './playlists';
 import type { RepeatSettings } from './repeat';
 import type { KeyframeResult, SaveJob, SaveRequest, SaveResult } from './trim';
+import type { PictureLook } from './picture-look';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { PropFields, PropInfo, PropResult } from './props';
 import type { GroupLookPatch, LookResult, LooksView } from './looks';
@@ -327,6 +328,16 @@ export const IPC = {
     reportLength: 'media:report-length',
     /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
     markers: 'media:markers',
+    /**
+     * A picture's look (Session 26e): read one, every one (the thumbnails), keep one (the Picture editor),
+     * and keep the live zoom as the picture's (Keep this zoom).
+     */
+    look: 'media:look',
+    looks: 'media:looks',
+    setLook: 'media:set-look',
+    keepLiveZoom: 'media:keep-live-zoom',
+    /** main -> operator: a picture's look changed. */
+    looksChanged: 'media:looks-changed',
     setMarkers: 'media:set-markers',
     /** Where media is used, asked before deleting it (Session 26a). */
     usage: 'media:usage',
@@ -863,6 +874,13 @@ export interface InvokeContract {
     result: { ok: true } | { ok: false; message: string };
   };
   [IPC.media.keyframe]: { args: [mediaId: string, startMs: number]; result: KeyframeResult };
+  [IPC.media.look]: { args: [mediaId: string]; result: PictureLook | null };
+  [IPC.media.looks]: { args: []; result: Record<string, PictureLook> };
+  [IPC.media.setLook]: {
+    args: [mediaId: string, look: PictureLook | null];
+    result: { ok: true } | { ok: false; message: string };
+  };
+  [IPC.media.keepLiveZoom]: { args: []; result: { ok: true } | { ok: false; message: string } };
   [IPC.media.saveTrim]: { args: [request: SaveRequest]; result: SaveResult };
   [IPC.media.saves]: { args: []; result: SaveJob[] };
   [IPC.media.stopSave]: { args: [jobId: string]; result: boolean };
@@ -1075,6 +1093,7 @@ export interface EventContract {
   [IPC.stream.changed]: StreamStatus;
   [IPC.media.conversionsChanged]: ConversionJob[];
   [IPC.media.savesChanged]: SaveJob[];
+  [IPC.media.looksChanged]: Record<string, PictureLook>;
   [IPC.stream.port]: { role: 'preview' | 'encoder' };
   [IPC.stream.context]: ProgramContext;
   [IPC.network.changed]: NetworkStatus;

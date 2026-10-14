@@ -37,6 +37,7 @@ import { up as pictures } from './migrations/035-pictures';
 import { up as deletingMedia } from './migrations/036-deleting-media';
 import { up as deckPages } from './migrations/037-deck-pages';
 import { up as playlistKinds } from './migrations/038-playlist-kinds';
+import { up as pictureLooks } from './migrations/039-picture-looks';
 import { plural } from '../../shared/text';
 
 export interface Migration {
@@ -94,6 +95,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 36, name: 'deleting media and music with Undo', up: deletingMedia },
   { version: 37, name: 'a deck’s pages out of the Media list', up: deckPages },
   { version: 38, name: 'smart and repeat playlists', up: playlistKinds },
+  { version: 39, name: 'picture looks', up: pictureLooks },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

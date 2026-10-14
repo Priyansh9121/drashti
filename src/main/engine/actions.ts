@@ -1,6 +1,7 @@
 import type { CalendarDay } from '../../shared/calendar';
 import type { IdleState, Quote } from '../../shared/idle';
 import type { LiveLook } from '../../shared/looks';
+import type { LiveZoom, PictureLook } from '../../shared/picture-look';
 import type { RenderSlide, Transition } from '../../shared/model';
 import type { TimerDefinition, TimerRun } from '../../shared/timers';
 import type {
@@ -83,5 +84,8 @@ export type EngineAction =
   | { type: 'advance/set'; autoAdvance: { startedAt: number; durationMs: number } | null }
   /** Repeat Slides going round, or stopped (Session 26d). */
   | { type: 'repeat/set'; repeat: RepeatRun | null }
+  /** The looks of the pictures in use, and the live zoom (Session 26e). */
+  | { type: 'pictures/set'; pictures: Record<string, PictureLook> }
+  | { type: 'zoom/set'; liveZoom: LiveZoom | null }
   /** The live Look, every group's settings resolved from the library. */
   | { type: 'look/set'; look: LiveLook };

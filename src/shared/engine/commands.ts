@@ -94,6 +94,17 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
     slideIndex: z.number().int().min(0).max(100_000).optional(),
   }),
   z.object({ type: z.literal('stopRepeat') }),
+  /**
+   * The picture on the screens zoomed (1 to 4) and moved (fractions of its frame) from LIVE, for this
+   * showing only (Session 26e; Pro Mode's); reset glides back to its kept look.
+   */
+  z.object({
+    type: z.literal('zoomLive'),
+    zoom: z.number().min(1).max(4),
+    x: z.number().min(-1.5).max(1.5),
+    y: z.number().min(-1.5).max(1.5),
+  }),
+  z.object({ type: z.literal('resetLiveZoom') }),
   z.object({ type: z.literal('next') }),
   z.object({ type: z.literal('previous') }),
   /**
@@ -175,7 +186,8 @@ export type EngineErrorCode =
   | 'nothing-cued'
   | 'no-music'
   | 'unknown-marker'
-  | 'not-repeating';
+  | 'not-repeating'
+  | 'no-picture';
 
 export type CommandResult =
   { ok: true; changed: boolean; rev: number } | { ok: false; error: EngineErrorCode; message: string };

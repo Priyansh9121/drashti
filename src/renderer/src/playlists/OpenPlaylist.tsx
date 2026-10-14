@@ -28,6 +28,7 @@ import {
   FolderSync,
   Link2,
   Repeat2,
+  SlidersHorizontal,
   ListMusic,
   ListPlus,
   MoreHorizontal,
@@ -50,6 +51,7 @@ import { afterDrag, dragKind, droppedIds, droppedPaths, hasFiles, startDrag, use
 import { droppedItems, isRemoveKey, RenameField } from './playlist-shared';
 import { useSmart } from './smart-store';
 import { markersMedia, openMarkers } from '../markers/MarkersDialog';
+import { openPictureEditor } from '../pictures/PictureEditor';
 import { RepeatBar } from './RepeatBar';
 import {
   addFromLibrary,
@@ -348,6 +350,19 @@ function itemMenu(item: PlaylistItemInfo): MenuEntry[] {
           },
         ]
       : [];
+  // A picture's zoom and enhancements (Session 26e).
+  if (item.kind === 'media' && item.media === 'image' && !item.missing && item.unplayable === null)
+    return [
+      {
+        label: 'Picture editor…',
+        icon: SlidersHorizontal,
+        onSelect: () => {
+          openPictureEditor({ id: item.mediaId, name: item.label });
+        },
+      },
+      ...timers,
+      remove,
+    ];
   // A video's or sound's start, end and markers, on its timeline (Session 26e).
   if (item.kind === 'media' && item.media !== 'image' && !item.missing && item.unplayable === null)
     return [

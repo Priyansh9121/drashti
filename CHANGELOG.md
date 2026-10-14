@@ -4,40 +4,26 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 ## Unreleased
 
-Import from a Link
+The operator window
 
-- A Dropbox folder link becomes one playlist, named after it, folder by folder: each folder's videos, then its PowerPoint files, A to Z, a header for each folder inside. Its PDFs and pictures wait for Add the PDFs and pictures.
-- A Dropbox folder link unpacks now. Dropbox's zips list an empty entry named "/", and Drashti refused the whole folder for it ("would leave the folder"); that entry is skipped, and everything that would really leave the folder is still refused.
+- Built round playlists: the playlists at the top left; the open playlist in the middle, its items as cards, with Add files… and From a Link…; the chosen item's slides below. On the right: LIVE (no Next picture under it), Audio (Music and the Arti), the stage screen with Edit layout…, messages, tidier timers, props, Looks, and More tools folded away.
+- The library starts plainer: Shastra, Templates and the kirtan filters come back with View › Show Shastra, Templates and Kirtan Details. Import… (Files…, A Folder…, From a Link…) sits under the search box, and a deck's pages no longer fill the Media list.
 
 Playlists
 
-- Repeat Slides: a playlist whose pictures and slides go round by themselves, the last back to the first (15 s each with a 1 s fade, to begin with). Esc or Stop ends it and the slide stays up; black-out and the logo cover it while it goes on. Any slide can now come on by Fade through black, Slide or Slow zoom too.
-- A smart playlist follows a folder on the computer: + New › Smart Playlist from a Folder…. What Drashti imports as media or pictures there, subfolders too, joins it by itself, in the folder's order. A file taken away is marked, not removed (one button takes the missing out); a changed one replaces its item; a folder that is gone (a USB stick taken out) is said so, and the playlist carries on when it is back.
-- Dragging into a playlist is surer: rows no longer change size as a drag starts, which could cancel it. Search results can be dragged in too.
-- Files dragged from the Finder (Explorer on Windows) onto the open playlist, or onto a playlist's name, are imported and added where they land, in the order dragged.
-
-Videos
-
-- A video's start and end on a timeline: stills along it, handles to drag, I and O at the play head, its new length beside the old. Save as MP4… saves that part as its own file, copied as it is (the picture and sound unchanged) from the clean frame at or just before the start, which it names first.
-
-Library
-
-- The library starts plainer: no Shastra tab, no Templates beside the playlists and no kirtan filters. An admin brings them back with View › Show Shastra, Templates and Kirtan Details. Nothing in them is lost, and search still finds kirtans by kavi, raag and occasion.
-- Import… is a button under the search box now: Files…, A Folder… or From a Link…. Files… offers everything Drashti imports.
-- A PDF, PowerPoint or Keynote file's pages no longer fill the Media list: they are its presentation's slides. Media lists the pictures, videos and sounds you imported.
-
-The operator window
-
-- Built round playlists: the playlists at the top left, always there; the open playlist in the middle, its items as cards (a picture, what it is, its length or slides), with Add files… and From a Link…; the chosen item's slides under it.
-- On the right: LIVE, Audio (Music and the Arti together), the stage screen, messages, timers (one tidy line each, running ones first), props, Looks, and More tools (macros, masks, the idle rotation) folded away.
-- The live picture is headed LIVE, and the Next picture under it is gone. What comes next still shows on the stage screen, on phones and tablets, and in Simple Mode.
-- Edit layout… on the Stage screen panel opens the stage layout editor at the layout in use.
-- After an import, the report's Add to playlist puts everything it brought in into the open playlist, another, or a new one named after it. Import from a Link asks the same before Download, the open playlist to begin with.
+- Repeat Slides: pictures and slides that go round by themselves (15 s each with a 1 s fade, to begin with). Esc or Stop ends it and the slide stays up; black-out and the logo cover it while it goes on. Any slide can now come on by Fade through black, Slide or Slow zoom too.
+- A smart playlist follows a folder on the computer: what goes into it joins by itself, in the folder's order. A file taken away is marked, a changed one replaced, and a folder that is gone (a USB stick taken out) is said so.
+- A Dropbox folder link unpacks now (Dropbox's zips hold an empty "/" entry, which was refused), and becomes one playlist, folder by folder with a header for each; its PDFs and pictures wait for one button.
+- Dragging into a playlist is surer, search results can be dragged too, and files dragged from the Finder or Explorer onto a playlist are imported into it. After any import, Add to playlist puts what it brought into a playlist.
 
 Deleting
 
-- A trash button on the chosen row (and the one under the mouse) deletes a playlist, a presentation, a picture, video or sound, or music, as the Delete key does, and takes an item out of a playlist or a sound out of music. Undo brings each back.
-- Pictures, videos and sounds can be deleted now. Drashti first says where one is used; it leaves playlists and music, and slides show nothing in its place. Its file goes when Drashti next starts.
+- A trash button on the chosen row deletes a playlist, a presentation, media or music, as the Delete key does, with Undo. Pictures, videos and sounds can be deleted now: Drashti first says where one is used.
+
+Pictures and videos
+
+- The Picture editor: zoom, move, brightness, contrast, colour, sharpness and Auto, kept with the picture, so it looks the same on every screen, node, the stream and the thumbnails (the file is never changed). From LIVE, zoom the picture on the screens for that showing; Keep this zoom saves it.
+- A video's start and end on a timeline, and Save as MP4…: that part saved as its own file, copied as it is (the picture and sound unchanged) from the clean frame at or just before the start, which it names first.
 
 ## 1.0.0-alpha.3 (11 Oct 2026)
 

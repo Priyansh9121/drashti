@@ -12,6 +12,7 @@ import { Badge, LiveBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Repeat2, Square, Timer } from '../ui/icons';
+import { LiveZoomControls, ZoomablePreview } from './LiveZoom';
 import { useNow } from '../render/useNow';
 import { useWhatIsThis } from '../help/WhatIsThis';
 
@@ -62,21 +63,23 @@ export function LivePreview() {
         data-a11y-picture
         aria-hidden="true"
       >
-        {/* The same scene as the outputs: if it fails as it draws, the preview is black (the rest of
+        <ZoomablePreview>
+          {/* The same scene as the outputs: if it fails as it draws, the preview is black (the rest of
             the window carries on) and tries again with the next change (Session 23). */}
-        <SceneBoundary resetKey={rev} fallbackClassName="aspect-video w-full bg-black">
-          <PlacedInParent content={canvas} mode="fit" className="relative aspect-video w-full">
-            {state && (
-              <Scene
-                state={state}
-                canvas={canvas}
-                scaling={scaling}
-                annotate
-                {...(audience ? { look: audience.look } : {})}
-              />
-            )}
-          </PlacedInParent>
-        </SceneBoundary>
+          <SceneBoundary resetKey={rev} fallbackClassName="aspect-video w-full bg-black">
+            <PlacedInParent content={canvas} mode="fit" className="relative aspect-video w-full">
+              {state && (
+                <Scene
+                  state={state}
+                  canvas={canvas}
+                  scaling={scaling}
+                  annotate
+                  {...(audience ? { look: audience.look } : {})}
+                />
+              )}
+            </PlacedInParent>
+          </SceneBoundary>
+        </ZoomablePreview>
       </div>
       {shownAs && state?.layers.slide?.slide.kirtan && (
         <p className="text-xs text-muted" data-testid="preview-languages">
@@ -84,6 +87,7 @@ export function LivePreview() {
         </p>
       )}
       {state?.autoAdvance && <TimeLeft count={state.autoAdvance} />}
+      <LiveZoomControls />
     </section>
   );
 }

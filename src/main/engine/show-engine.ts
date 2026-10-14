@@ -32,6 +32,16 @@ import type { BackgroundCue } from '../../shared/library';
 import type { LiveLook } from '../../shared/looks';
 import { CUT, type Transition } from '../../shared/model';
 import { repeatPlaylistOf, repeatPresentationId } from '../../shared/repeat';
+import { mediaInState } from '../../shared/node-media';
+import {
+  backgroundShowing,
+  framed,
+  type LiveZoom,
+  liveZoomAt,
+  PLAIN,
+  type PictureLook,
+  slideShowing,
+} from '../../shared/picture-look';
 import { elapsedAt, type TimerDefinition, type TimerRun } from '../../shared/timers';
 import { remapPosition } from '../../shared/order';
 import type { EngineAction } from './actions';
@@ -123,6 +133,8 @@ export interface EngineOptions {
   ) => { ok: true; commands: EngineCommand[] } | { ok: false; message: string };
   /** A Repeat Slides playlist's name (Session 26d), or null when it is not one. */
   repeatName?: (playlistId: string) => string | null;
+  /** A picture's look (Session 26e), or null: shown as it is. */
+  pictureLook?: (mediaId: string) => PictureLook | null;
 }
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
@@ -825,6 +837,41 @@ export class ShowEngine {
     return NO_CHANGE;
   }
 
+  /** The picture a live zoom zooms (Session 26e): a slide's own picture, else the background picture. */
+  private zoomTarget(state: EngineState): { mediaId: string; showing: string } | null {
+    const slide = state.layers.slide;
+    const picture = slide?.slide.elements.find((e) => e.kind === 'image');
+    if (slide && picture?.kind === 'image')
+      return { mediaId: picture.mediaId, showing: slideShowing(slide.shownAt) };
+    const bg = state.layers.background;
+    if (bg?.kind === 'media' && bg.media === 'image')
+      return { mediaId: bg.mediaId, showing: backgroundShowing(bg.startedAt) };
+    return null;
+  }
+
+  /** The looks of the pictures on the screens and coming next (Session 26e). */
+  private picturesFor(state: EngineState): Record<string, PictureLook> {
+    const look = this.options.pictureLook;
+    if (!look) return {};
+    const { now, next } = mediaInState(state);
+    const out: Record<string, PictureLook> = {};
+    for (const id of [...now, ...next]) {
+      const found = look(id);
+      if (found) out[id] = found;
+    }
+    return out;
+  }
+
+  /** A picture's look changed in the library (the Picture editor, Keep this zoom): the screens follow at once. */
+  refreshPictures(): CommandResult {
+    return this.atOnce(() => this.apply([{ type: 'pictures/set', pictures: this.picturesFor(this.state) }]));
+  }
+
+  /** The live zoom ends (kept as the picture's look, say): the screens show its kept look. */
+  clearLiveZoom(): CommandResult {
+    return this.apply([{ type: 'zoom/set', liveZoom: null }]);
+  }
+
   /** A Repeat Slides playlist going round, as the state names it. */
   private repeatRun(playlistId: string): RepeatRun {
     return { playlistId, name: this.options.repeatName?.(playlistId) ?? 'Repeat Slides' };
@@ -1123,6 +1170,26 @@ export class ShowEngine {
         return this.playItem(command.playlistId, command.itemId);
       case 'startRepeat':
         return this.startRepeat(command.playlistId, command.slideIndex ?? 0);
+      case 'zoomLive':
+      case 'resetLiveZoom': {
+        // The picture on the screens: the slide's own picture, else the background picture.
+        const target = this.zoomTarget(this.state);
+        if (!target)
+          return { ok: false, error: 'no-picture', message: 'No picture is on the screens to zoom.' };
+        const kept = this.options.pictureLook?.(target.mediaId) ?? PLAIN;
+        const z = this.state.liveZoom;
+        const now = this.now();
+        const from =
+          z?.mediaId === target.mediaId && z.showing === target.showing
+            ? liveZoomAt(z, now)
+            : { zoom: kept.zoom, x: kept.x, y: kept.y };
+        const to =
+          command.type === 'resetLiveZoom'
+            ? { zoom: kept.zoom, x: kept.x, y: kept.y }
+            : framed({ ...kept, zoom: command.zoom, x: command.x, y: command.y });
+        const liveZoom: LiveZoom = { ...target, zoom: to.zoom, x: to.x, y: to.y, from, at: now };
+        return { ok: true, actions: [{ type: 'zoom/set', liveZoom }] };
+      }
       case 'stopRepeat':
         // The slide on the screens stays up; it no longer moves on.
         return this.state.repeat
@@ -1360,6 +1427,13 @@ export class ShowEngine {
     // slide cleared ends it (Stop and Esc leave its slide up).
     if (next.repeat && next.layers.slide?.presentationId !== repeatPresentationId(next.repeat.playlistId))
       next = reduce(next, { type: 'repeat/set', repeat: null });
+    // A live zoom lasts for that showing only (Session 26e): another slide or background ends it.
+    const zoomed = next.liveZoom;
+    if (zoomed) {
+      const target = this.zoomTarget(next);
+      if (target?.mediaId !== zoomed.mediaId || target.showing !== zoomed.showing)
+        next = reduce(next, { type: 'zoom/set', liveZoom: null });
+    }
     // The idle rotation, once started, stops by itself when a slide or a picture goes up (so a later
     // Clear all does not bring it back).
     if (
@@ -1387,6 +1461,14 @@ export class ShowEngine {
     const audio = this.caughtUp(next.layers.audio);
     if (audio !== next.layers.audio)
       next = reduce(next, audio ? { type: 'audio/set', audio } : { type: 'layer/clear', layer: 'audio' });
+    // The pictures on the screens and coming next carry their looks (Session 26e).
+    if (
+      next.layers !== prev.layers ||
+      next.next !== prev.next ||
+      next.idle !== prev.idle ||
+      next.logo !== prev.logo
+    )
+      next = reduce(next, { type: 'pictures/set', pictures: this.picturesFor(next) });
     next = this.keepUndo(prev, next, cause);
     next = this.withAutoAdvance(prev, next);
     if (next === prev) return this.unchanged();
