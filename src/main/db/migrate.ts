@@ -35,6 +35,7 @@ import { up as audioPlaylists } from './migrations/033-audio-playlists';
 import { up as playbackMarkers } from './migrations/034-playback-markers';
 import { up as pictures } from './migrations/035-pictures';
 import { up as deletingMedia } from './migrations/036-deleting-media';
+import { up as deckPages } from './migrations/037-deck-pages';
 import { plural } from '../../shared/text';
 
 export interface Migration {
@@ -90,6 +91,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 34, name: 'playback markers', up: playbackMarkers },
   { version: 35, name: 'PDF, PowerPoint and Keynote as pictures', up: pictures, rebuildsTable: true },
   { version: 36, name: 'deleting media and music with Undo', up: deletingMedia },
+  { version: 37, name: 'a deck’s pages out of the Media list', up: deckPages },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

@@ -13,6 +13,10 @@ Playlists
 - Dragging into a playlist is surer: rows no longer change size as a drag starts, which could cancel it. Search results can be dragged in too.
 - Files dragged from the Finder (Explorer on Windows) onto the open playlist, or onto a playlist's name, are imported and added where they land, in the order dragged.
 
+Library
+
+- A PDF, PowerPoint or Keynote file's pages no longer fill the Media list: they are its presentation's slides. Media lists the pictures, videos and sounds you imported.
+
 Deleting
 
 - A trash button on the chosen row (and the one under the mouse) deletes a playlist, a presentation, a picture, video or sound, or music, as the Delete key does, and takes an item out of a playlist or a sound out of music. Undo brings each back.

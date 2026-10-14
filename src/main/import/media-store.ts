@@ -207,6 +207,10 @@ export class MediaStore {
       this.db
         .prepare('UPDATE media SET playable = ?, format = ? WHERE id = ? AND playable IS NULL')
         .run(playableValue(staged.probe), staged.probe.format, existing.id);
+      // Imported as media this time (a deck's page dropped in on its own): it shows in the Media list
+      // from now on (migration 37, Session 26a).
+      if (source.kind !== 'drashti')
+        this.db.prepare('UPDATE media SET listed = 1 WHERE id = ? AND listed = 0').run(existing.id);
       // Deleted from the library (Session 26a), its file perhaps gone for good: brought back to life,
       // everywhere that still pointed at it.
       const revived =
@@ -227,8 +231,8 @@ export class MediaStore {
     const id = randomUUID();
     this.db
       .prepare(
-        `INSERT INTO media (id, kind, name, path, sha256, bytes, playable, format, source_kind, source_path, source_ref, source_imported_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO media (id, kind, name, path, sha256, bytes, playable, format, source_kind, source_path, source_ref, source_imported_at, listed)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -243,6 +247,8 @@ export class MediaStore {
         source.path,
         source.ref ?? null,
         new Date().toISOString(),
+        // A page Drashti drew from a deck is the deck's, not the Media list's (migration 37).
+        source.kind === 'drashti' ? 0 : 1,
       );
     return {
       outcome: 'imported',
