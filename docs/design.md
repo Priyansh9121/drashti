@@ -363,3 +363,7 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 ## 38. The Picture editor and sharpness
 
 - **The preview is the screens' picture** (Session 26e): zoom, move, brightness, contrast, colour and sharpness show in it as they will on the screens. The editor's preview draws sharpness at once with a filter; the screens draw the picture's sharpened copy (Session 26f), made once in the background after **Save**, and the picture unsharpened until it is ready, never blank. The copy's pixels match the preview's (`tests/e2e/picture-looks.spec.ts`).
+
+## 39. Word lyrics in the import report
+
+- **A Word document of lyrics** (`.docx`, Session 26f) imports as a text file's lyrics do, and its report line says what it left out in plain words: its formatting (info: "the slides take their theme’s look"), pictures, tables "and the words in them", hidden words (warnings where words or pictures were lost). A legacy font is named as for any presentation. An old Word document (`.doc`) is listed under **Not imported** with what to do: save it as a Word Document (`.docx`). A damaged or password-protected file is a **Problem** saying what to do in Word.

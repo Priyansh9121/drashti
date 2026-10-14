@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { copyFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { makeOldWordDoc, makeTestDocx } from '../../src/main/import/testing/make-docx';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import type { PageGlobals } from './helpers';
 import { chooseMenuItem, dropFiles, launchApp, operatorPage } from './helpers';
@@ -137,6 +138,91 @@ test('drag lyrics onto the library, read the report, go live, remove and undo, i
     async () => (await (globalThis as PageGlobals).drashti.library.listImportRuns()).length,
   );
   expect(runs).toBe(4);
+  await app.close();
+});
+
+test('Word lyrics (Session 26f): Files… offers a .docx and imports it as lyrics in English, Gujarati and Hindi; an old .doc says what to do', async () => {
+  const work = mkdtempSync(join(tmpdir(), 'drashti-word-'));
+  const song = join(work, 'Placeholder Word Song.docx');
+  writeFileSync(
+    song,
+    makeTestDocx([
+      '[Verse 1]',
+      'Placeholder English line',
+      'નમૂના ગુજરાતી પંક્તિ',
+      '',
+      'नमूना हिंदी पंक्ति',
+      '',
+      { runs: [{ text: 'Placeholder bold line', bold: true }] },
+      { table: [['Placeholder cell']] },
+    ]),
+  );
+  const old = join(work, 'Placeholder Old Order.doc');
+  writeFileSync(old, makeOldWordDoc());
+
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  const list = win.getByTestId('presentation-list');
+  await expect(list.getByTestId('presentation-row')).toHaveCount(2);
+  // Import… › Files…: the dialog (answered here by the test) offers .docx, never .doc.
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showOpenDialog = (...args: unknown[]) => {
+      const options = args.at(-1) as { filters?: { extensions: string[] }[] };
+      (globalThis as { offered?: string[] }).offered = (options.filters ?? []).flatMap((f) => f.extensions);
+      return Promise.resolve({ canceled: false, filePaths: [path] });
+    };
+  }, song);
+  await win.getByRole('button', { name: 'Import…' }).click();
+  await win.getByRole('menuitem', { name: 'Files…' }).click();
+  await expect(list.getByRole('button', { name: /^Placeholder Word Song/ })).toBeVisible();
+  const offered = await app.evaluate(() => (globalThis as { offered?: string[] }).offered ?? []);
+  expect(offered).toContain('docx');
+  expect(offered).not.toContain('doc');
+
+  // Its slides: a paragraph a line, an empty paragraph a new slide, each line in its own language.
+  const slides = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const found = (await d.library.listPresentations()).find((p) => p.name === 'Placeholder Word Song');
+    const doc = found ? await d.library.getPresentation(found.id) : null;
+    return (doc?.groups ?? []).map((g) => [
+      g.name,
+      g.slides.map((s) =>
+        s.slide.elements.flatMap((e) =>
+          e.kind === 'text' ? (e.runs ?? [{ text: e.text, lang: e.lang }]).map((r) => [r.text, r.lang]) : [],
+        ),
+      ),
+    ]);
+  });
+  expect(slides).toEqual([
+    [
+      'Verse 1',
+      [
+        [
+          ['Placeholder English line\n', 'en'],
+          ['નમૂના ગુજરાતી પંક્તિ', 'gu'],
+        ],
+        [['नमूना हिंदी पंक्ति', 'hi']],
+        [['Placeholder bold line', 'en']],
+      ],
+    ],
+  ]);
+  // The report says what was left out (under "Imported with notes", and again under "Imported").
+  const report = win.getByTestId('import-report');
+  await expect(report).toBeVisible();
+  const notes = report.getByTestId('report-item').first();
+  await expect(notes).toContainText(
+    'Its formatting (bold, colours, sizes, alignment) was left out: the slides take their theme’s look.',
+  );
+  await expect(notes).toContainText('A table was left out, and the words in it.');
+  await report.getByRole('button', { name: 'Close' }).first().click();
+  await expect(report).toHaveCount(0);
+  await dropFiles(win, win.getByTestId('library-drop'), [old]);
+  await expect(report).toBeVisible();
+  const refused = report.getByTestId('report-item').filter({ hasText: 'Placeholder Old Order.doc' });
+  await expect(refused).toHaveAttribute('data-outcome', 'unsupported');
+  await expect(refused).toContainText(
+    'An old Word document (.doc) is not read: open it in Word and save it as a Word Document (.docx), then import that.',
+  );
   await app.close();
 });
 

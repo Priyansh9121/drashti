@@ -28,6 +28,10 @@ Deleting
 
 - A trash button on the chosen row deletes a playlist, a presentation, media or music, as the Delete key does, with Undo. Pictures, videos and sounds can be deleted now: Drashti first says where one is used.
 
+Importing
+
+- Lyrics in a Word document (.docx) import as a text file's do: each paragraph a line, an empty paragraph a new slide, Gujarati, Hindi and English as written. Formatting, pictures and tables are left out, and the report says so. An old .doc says to save it as .docx first.
+
 Pictures and videos
 
 - The Picture editor: zoom, move, brightness, contrast, colour, sharpness and Auto, kept with the picture, so it looks the same on every screen, node, the stream and the thumbnails (the file is never changed). From LIVE, zoom the picture on the screens for that showing; Keep this zoom saves it.
