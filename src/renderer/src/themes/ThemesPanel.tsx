@@ -32,9 +32,14 @@ const SAMPLE: Record<Lang, string> = {
   'sa-gu': 'નમૂના શ્લોકઃ',
 };
 
-/** A slide showing a line in each language under the theme. */
-function previewSlide(t: ThemeFields): RenderSlide {
-  const runs: TextRun[] = (['gu', 'translit', 'hi', 'en'] as const).map((lang, i, all) => ({
+/** A kirtan's languages: the list's small previews show these. */
+const KIRTAN_LANGS: readonly Lang[] = ['gu', 'translit', 'hi', 'en'];
+/** Every language, Sanskrit's two scripts too: the theme being changed shows them all. */
+const EVERY_LANG: readonly Lang[] = [...KIRTAN_LANGS, 'sa', 'sa-gu'];
+
+/** A slide showing a line in each of these languages under the theme. */
+function previewSlide(t: ThemeFields, langs: readonly Lang[]): RenderSlide {
+  const runs: TextRun[] = langs.map((lang, i, all) => ({
     text: i < all.length - 1 ? `${SAMPLE[lang]}\n` : SAMPLE[lang],
     lang,
     font: t.langs[lang].font,
@@ -82,14 +87,16 @@ const percent = (n: number) => Math.round(n * 1000) / 10;
 /** A theme drawn: a line in each language under it (a picture background shown as a still). */
 function ThemePreview({
   theme,
+  langs = KIRTAN_LANGS,
   className = '',
   testId,
 }: {
   theme: ThemeFields;
+  langs?: readonly Lang[];
   className?: string;
   testId?: string;
 }) {
-  const slide = useMemo(() => previewSlide(theme), [theme]);
+  const slide = useMemo(() => previewSlide(theme, langs), [theme, langs]);
   const bg = theme.background;
   return (
     <div
@@ -246,7 +253,7 @@ function ThemeEditor({
           Built in: it stays as it is. Saving a change makes a copy of your own, here in the list.
         </Notice>
       )}
-      <ThemePreview theme={draft} testId="theme-editor-preview" />
+      <ThemePreview theme={draft} langs={EVERY_LANG} testId="theme-editor-preview" />
       <section className="space-y-2">
         <SectionTitle>Each language</SectionTitle>
         <table className="w-full text-sm" data-testid="theme-langs">

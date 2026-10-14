@@ -67,6 +67,8 @@ test('ten built-in themes, each a preview in every language; given once (a delet
   await items.filter({ hasText: 'Midnight' }).click();
   const editor = panel.getByTestId('theme-editor');
   await expect(editor.getByTestId('theme-builtin-note')).toBeVisible();
+  // The theme being changed shows every language, Sanskrit in both its scripts too.
+  await expect(editor.getByTestId('theme-editor-preview').locator('[data-run][data-lang]')).toHaveCount(6);
   await editor.getByRole('spinbutton', { name: 'English size' }).fill('96');
   await expect(editor.getByTestId('theme-save')).toHaveText('Save as a copy');
   await editor.getByTestId('theme-save').click();
