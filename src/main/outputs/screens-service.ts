@@ -75,8 +75,6 @@ export class ScreensService {
     private readonly listDisplays: () => DisplayInfo[],
     /** The display the operator window is on (null when outputs cannot cover it, e.g. windowed outputs). */
     private readonly operatorDisplayId: () => number | null = () => null,
-    /** The stream is on air or recording (its group cannot go). */
-    private readonly streamInUse: () => boolean = () => false,
     /** Each group's languages live in the Looks. */
     private readonly looks: ScreenLooks = memoryScreenLooks(),
     /** Output nodes' displays and screens. */
@@ -160,8 +158,9 @@ export class ScreensService {
   deleteGroup(rawId: unknown): ScreensResult {
     const id = idSchema.safeParse(rawId);
     if (!id.success) return this.fail('That group no longer exists.');
-    if (this.repo.groupRole(id.data) === 'stream' && this.streamInUse())
-      return this.fail('The stream group is in use: end the stream and stop recording first.');
+    // YouTube's card in Screens is always there (Session 26): its group stays.
+    if (this.repo.groupRole(id.data) === 'stream')
+      return this.fail('The stream’s group stays: it is YouTube in Screens.');
     if (!this.repo.deleteGroup(id.data)) return this.fail('That group no longer exists.');
     this.looks.groupGone(id.data);
     return this.done();

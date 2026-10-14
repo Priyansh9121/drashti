@@ -111,6 +111,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   // The stream: Simple Mode shows ON AIR and REC, and can neither start, end nor change it.
   IPC.stream.setLayout,
   IPC.stream.saveProfile,
+  IPC.stream.setInputs,
   IPC.stream.removeProfile,
   IPC.stream.useProfile,
   IPC.stream.setKey,

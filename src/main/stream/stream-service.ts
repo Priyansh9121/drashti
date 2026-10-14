@@ -244,6 +244,23 @@ export class StreamService {
     return before.url !== after.url || before.preset !== after.preset;
   }
 
+  /**
+   * The camera and sound input of the profile in use, as Screens' YouTube card and the setup wizard set
+   * them (also on air: they may change then, as in the profile's settings).
+   */
+  setInputs(rawCamera: unknown, rawSound: unknown): StreamResult {
+    const camera = deviceChoiceSchema.nullable().safeParse(rawCamera);
+    const sound = deviceChoiceSchema.nullable().safeParse(rawSound);
+    if (!camera.success || !sound.success)
+      return { ok: false, message: 'Choose a camera and a sound input.' };
+    const { id, hasKey: _hasKey, ...input } = this.activeProfile();
+    this.deps.profiles.update(id, { ...input, camera: camera.data, sound: sound.data });
+    this.contextChanged();
+    this.profilesVersion++;
+    this.changed();
+    return { ok: true, status: this.status() };
+  }
+
   removeProfile(rawId: unknown): StreamProfilesResult {
     const id = z.string().max(100).safeParse(rawId);
     if (!id.success || !this.deps.profiles.get(id.data))
@@ -494,6 +511,7 @@ export class StreamService {
       programOn: this.program !== null && this.programReady,
       layout: this.layout,
       profileId: profile.id,
+      chosen: { camera: profile.camera, sound: profile.sound },
       inputs: {
         ...this.inputs,
         camera: this.systemBlocked.camera ? 'blocked' : this.inputs.camera,

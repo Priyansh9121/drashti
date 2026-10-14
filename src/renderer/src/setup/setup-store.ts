@@ -4,7 +4,7 @@ import type { AudioDevice } from '../../../shared/audio';
 import type { Lang } from '../../../shared/model';
 import type { DisplayInfo } from '../../../shared/screens';
 import type { OutputUse, SetupPlan } from '../../../shared/setup';
-import type { DeviceChoice } from '../../../shared/stream';
+import type { DeviceChoice, StreamLayout } from '../../../shared/stream';
 import type { Theme } from '../../../shared/themes';
 import { useScreens } from '../screens/screens-store';
 
@@ -16,6 +16,13 @@ import { useScreens } from '../screens/screens-store';
  */
 
 export const STEPS = ['Welcome', 'Screens', 'Sound', 'Stream', 'Theme', 'PINs', 'Finish'] as const;
+
+export interface StreamChoice {
+  layout: StreamLayout;
+  camera: DeviceChoice | null;
+  sound: DeviceChoice | null;
+  languages: Lang[] | null;
+}
 
 /** Two PINs to turn roles on at Finish (Session 14), each typed twice; or 'skip' to leave roles as they are. */
 export type PinChoice =
@@ -39,8 +46,11 @@ interface SetupView {
   /** The sound output chosen (null: the system default), or 'skip'. */
   sound: AudioDevice | null | 'skip';
   themes: Theme[];
-  /** The stream's camera and sound input (for the profile in use), or 'skip' to keep them. */
-  stream: { camera: DeviceChoice | null; sound: DeviceChoice | null } | 'skip';
+  /**
+   * The stream's settings, as YouTube's card in Screens has them (Session 26): its layout, the camera and
+   * sound input of the profile in use and a kirtan's languages; or 'skip' to keep them.
+   */
+  stream: StreamChoice | 'skip';
   /** The default theme chosen, or null to keep it. */
   themeId: string | null;
   /** PINs to turn roles on with, or 'skip' (always skipped once roles are on). */
@@ -191,21 +201,18 @@ export async function finishSetup(coverOperator = false): Promise<void> {
     return;
   }
   useScreens.setState({ snapshot: result.snapshot });
-  // The stream's inputs go on the profile in use (its key can be added later, in Stream settings).
+  // The stream's settings, where YouTube's card in Screens keeps them: the inputs on the profile in use
+  // (its key can be added later, in Stream settings), the layout, and the languages in the live Look.
   if (s.stream !== 'skip') {
-    const { profiles, activeId } = await window.drashti.stream.profiles();
-    const p = profiles.find((x) => x.id === activeId);
-    if (p) {
-      const saved = await window.drashti.stream.saveProfile(p.id, {
-        name: p.name,
-        url: p.url,
-        preset: p.preset,
-        camera: s.stream.camera,
-        sound: s.stream.sound,
-        soundDelayMs: p.soundDelayMs,
-        mixOwnSound: p.mixOwnSound,
-      });
-      if (!saved.ok) useSetup.setState({ problem: saved.message });
+    const stream = s.stream;
+    const group = result.snapshot.groups.find((g) => g.role === 'stream');
+    for (const step of [
+      () => window.drashti.stream.setInputs(stream.camera, stream.sound),
+      () => window.drashti.stream.setLayout(stream.layout),
+      ...(group ? [() => window.drashti.screens.setGroupLanguages(group.id, stream.languages)] : []),
+    ]) {
+      const done = await step();
+      if (!done.ok) useSetup.setState({ problem: done.message });
     }
   }
   // Roles on, last: whoever finished the setup is the admin from now (admin unlocked for a while).

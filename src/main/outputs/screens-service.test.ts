@@ -69,7 +69,6 @@ beforeEach(() => {
     outputs,
     () => [hall],
     () => operatorDisplay,
-    () => false,
     looks,
   );
 });
@@ -147,11 +146,19 @@ describe('ScreensService', () => {
     expect(service.setGroupRole('gone', 'audience')).toMatchObject({ ok: false });
   });
 
-  it('keeps one stream group: off screen, with its languages, and gone only while the stream is off', () => {
+  it('keeps one stream group: off screen, listed last, with its languages, and never deleted (YouTube, Session 26)', () => {
+    service.createGroup('Hall');
     const stream = repo.ensureStreamGroup();
-    expect(repo.ensureStreamGroup().id).toBe(stream.id);
-    expect(repo.groups().filter((g) => g.role === 'stream')).toHaveLength(1);
-    expect(repo.groups().find((g) => g.id === stream.id)?.name).toBe('Stream');
+    expect(stream.made).toBe(true);
+    expect(repo.ensureStreamGroup()).toEqual({ id: stream.id, made: false });
+    service.createGroup('Side room');
+    // Listed after every other group, whenever it was made.
+    expect(repo.groups().map((g) => [g.name, g.role])).toEqual([
+      ['Hall', 'audience'],
+      ['Side room', 'audience'],
+      ['Stream', 'stream'],
+    ]);
+    expect(repo.groupIds().map((g) => g.role)).toEqual(['audience', 'audience', 'stream']);
     // It has no displays, and keeps its role.
     expect(service.assignDisplay(stream.id, 2)).toMatchObject({ ok: false });
     expect(service.setGroupRole(stream.id, 'audience')).toMatchObject({ ok: false });
@@ -159,30 +166,21 @@ describe('ScreensService', () => {
     looks.groupsChanged();
     expect(service.setGroupLanguages(stream.id, ['translit', 'en']).ok).toBe(true);
     expect(looks.liveLanguages(stream.id)).toEqual(['translit', 'en']);
-    // While the stream is on air or recording it stays; afterwards it can go (and comes back when needed).
-    let inUse = true;
-    const guarded = new ScreensService(
-      repo,
-      new OutputManager({
-        listDisplays: () => [hall],
-        screens: () => repo.screens(),
-        saveDisplayKey: () => undefined,
-        openWindow: (): OutputWindow => ({
-          webContentsId: 99,
-          setBounds: () => undefined,
-          close: () => undefined,
-          isDestroyed: () => false,
-        }),
-        onChange: () => undefined,
-      }),
-      () => [hall],
-      () => null,
-      () => inUse,
-    );
-    expect(guarded.deleteGroup(stream.id)).toMatchObject({ ok: false });
-    inUse = false;
-    expect(guarded.deleteGroup(stream.id).ok).toBe(true);
-    expect(repo.streamGroup()).toBeNull();
+    // It is YouTube in Screens: it stays.
+    expect(service.deleteGroup(stream.id)).toMatchObject({
+      ok: false,
+      message: 'The stream’s group stays: it is YouTube in Screens.',
+    });
+    expect(repo.streamGroup()).toEqual({ id: stream.id });
+  });
+
+  it('a library that had its stream group keeps it and its name', () => {
+    const id = repo.createGroup('Stream', 'audience');
+    const stream = repo.ensureStreamGroup();
+    expect(repo.groupName(stream.id)).toBe('Stream 2');
+    repo.renameGroup(id, 'Hall');
+    expect(repo.ensureStreamGroup()).toEqual({ id: stream.id, made: false });
+    expect(repo.groupName(stream.id)).toBe('Stream 2');
   });
 
   it('sets the languages a group shows of a kirtan in the live Look, in order, or all of them', () => {
@@ -233,7 +231,6 @@ describe('ScreensService', () => {
       outputs,
       () => [hall, stageTv],
       () => null,
-      () => false,
       l,
     );
     s.createGroup('Switcher');
@@ -355,7 +352,6 @@ describe('the setup wizard’s outputs, applied at Finish', () => {
         outputs,
         () => [hall, stageTv],
         () => operatorDisplay,
-        () => false,
         l,
       ),
     };

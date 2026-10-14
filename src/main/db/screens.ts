@@ -33,6 +33,9 @@ interface ScreenRow {
   node_id: string | null;
 }
 
+/** Groups in Screens' order, the stream's (YouTube, Session 26) after the rest. */
+const STREAM_LAST = "role = 'stream', position, rowid";
+
 function parseKey(json: string | null): DisplayKey | null {
   if (!json) return null;
   try {
@@ -98,7 +101,7 @@ export class ScreenRepo {
 
   groups(): ScreenGroupConfig[] {
     const groups = this.db
-      .prepare('SELECT id, name, role FROM screen_groups ORDER BY position, rowid')
+      .prepare(`SELECT id, name, role FROM screen_groups ORDER BY ${STREAM_LAST}`)
       .all() as { id: string; name: string; role: ScreenRole }[];
     const screens = this.allScreens();
     return groups.map((g) => ({ ...g, screens: screens.filter((s) => s.groupId === g.id) }));
@@ -106,7 +109,7 @@ export class ScreenRepo {
 
   /** Every group's id and role, in order (cheap: no screens). */
   groupIds(): { id: string; role: ScreenRole }[] {
-    return this.db.prepare('SELECT id, role FROM screen_groups ORDER BY position, rowid').all() as {
+    return this.db.prepare(`SELECT id, role FROM screen_groups ORDER BY ${STREAM_LAST}`).all() as {
       id: string;
       role: ScreenRole;
     }[];
@@ -155,7 +158,10 @@ export class ScreenRepo {
     return id ? { id } : null;
   }
 
-  /** The stream's group, made (named "Stream", every language in every Look) the first time it is needed. */
+  /**
+   * The stream's group, made (named "Stream", every language in every Look) when the library opens: at the
+   * first start, or the first after an upgrade (Session 26). One already there keeps its name.
+   */
   ensureStreamGroup(): { id: string; made: boolean } {
     const found = this.streamGroup();
     if (found) return { id: found.id, made: false };

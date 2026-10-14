@@ -48,6 +48,7 @@ import type { RecoveryNotice } from './recovery';
 import type { SetupPlan, SetupResult, SetupState } from './setup';
 import type { ConversionJob, ConvertResult } from './convert';
 import type {
+  DeviceChoice,
   ProgramContext,
   ProgramInputs,
   StreamLayout,
@@ -475,6 +476,8 @@ export interface DrashtiBridge {
     watchPreview(on: boolean): Promise<null>;
     profiles(): Promise<StreamProfiles>;
     saveProfile(id: string | null, input: StreamProfileInput): Promise<StreamProfilesResult>;
+    /** The camera and sound input of the profile in use (without reading the profiles). */
+    setInputs(camera: DeviceChoice | null, sound: DeviceChoice | null): Promise<StreamResult>;
     removeProfile(id: string): Promise<StreamProfilesResult>;
     useProfile(id: string): Promise<StreamProfilesResult>;
     /** The key is kept in the system's secure storage and never comes back. */

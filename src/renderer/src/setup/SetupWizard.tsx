@@ -15,8 +15,10 @@ import { Notice } from '../ui/Notice';
 import { Loading } from '../ui/States';
 import { plural } from '../ui/text';
 import type { DeviceChoice } from '../../../shared/stream';
+import { useFirstGroupLook } from '../screens/screens-store';
+import { LAYOUT_SHOWS, LayoutSwitch } from '../stream/LayoutSwitch';
 import { useStream, watchProgram } from '../stream/stream-store';
-import type { OutputChoice, PinChoice } from './setup-store';
+import type { OutputChoice, PinChoice, StreamChoice } from './setup-store';
 import { PinInput } from '../roles/RolesDialogs';
 import {
   chooseOutput,
@@ -199,13 +201,27 @@ function SoundStep() {
   );
 }
 
-/** The stream's camera and sound input: optional, and the key can wait. */
+/**
+ * The stream: the same settings as YouTube's card in Screens (Session 26), what it shows, the camera and
+ * sound input and a kirtan's languages, applied at Finish. Optional, and the key can wait.
+ */
 function StreamStep() {
   const stream = useSetup((s) => s.stream);
   const status = useStreamStatus();
+  const live = useFirstGroupLook('stream');
   useEffect(() => watchProgram(), []);
-  const chosen = stream === 'skip' ? { camera: null, sound: null } : stream;
-  const set = (patch: Partial<{ camera: DeviceChoice | null; sound: DeviceChoice | null }>) => {
+  if (!status) return <Loading />;
+  // As the stream has them now, until something is chosen here.
+  const chosen: StreamChoice =
+    stream === 'skip'
+      ? {
+          layout: status.layout,
+          camera: status.chosen.camera,
+          sound: status.chosen.sound,
+          languages: live?.look.languages ? [...live.look.languages] : null,
+        }
+      : stream;
+  const set = (patch: Partial<StreamChoice>) => {
     useSetup.setState({ stream: { ...chosen, ...patch } });
   };
   const pick = (
@@ -215,34 +231,49 @@ function StreamStep() {
     value: DeviceChoice | null,
     none: string,
     key: 'camera' | 'sound',
-  ) => (
-    <Field label={label} className="min-w-0 flex-1">
-      <Select
-        data-testid={testId}
-        value={value?.id ?? ''}
-        onChange={(e) => {
-          set({ [key]: devices.find((d) => d.id === e.target.value) ?? null });
-        }}
-      >
-        <option value="">{none}</option>
-        {devices.map((d) => (
-          <option key={d.id} value={d.id}>
-            {d.label}
-          </option>
-        ))}
-      </Select>
-    </Field>
-  );
+  ) => {
+    // The one in use stays listed, so it is not lost by accident.
+    const all = value && !devices.some((d) => d.id === value.id) ? [...devices, value] : devices;
+    return (
+      <Field label={label} className="min-w-0 flex-1">
+        <Select
+          data-testid={testId}
+          value={value?.id ?? ''}
+          onChange={(e) => {
+            set({ [key]: all.find((d) => d.id === e.target.value) ?? null });
+          }}
+        >
+          <option value="">{none}</option>
+          {all.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.label}
+              {devices.some((x) => x.id === d.id) ? '' : ' (not connected)'}
+            </option>
+          ))}
+        </Select>
+      </Field>
+    );
+  };
   return (
     <div className="space-y-3">
       <p className="text-sm">
-        Only for the computer that streams the sabha to YouTube. Choose the camera (or capture card) and the
-        sound input (the mixer’s line in). The stream key can be added later, in Stream settings.
+        Only for the computer that streams the sabha to YouTube. These are YouTube’s settings in Screens,
+        where they can be changed at any time: what the stream shows, the camera (or capture card), the sound
+        input (the mixer’s line in) and a kirtan’s languages. The stream key can be added later, in Stream
+        settings.
       </p>
       {stream === 'skip' && (
-        <Notice tone="info">Skipped: the stream’s camera and sound stay as they are.</Notice>
+        <Notice tone="info">Nothing chosen here yet: the stream’s settings stay as they are.</Notice>
       )}
-      {!status?.programOn ? (
+      <LayoutSwitch
+        layout={chosen.layout}
+        testId="setup-stream-layout"
+        onChoose={(layout) => {
+          set({ layout });
+        }}
+      />
+      <p className="text-xs text-muted">{LAYOUT_SHOWS[chosen.layout]}</p>
+      {!status.programOn ? (
         <Loading label="Looking for cameras and sound inputs…" />
       ) : (
         <div className="flex flex-wrap gap-3">
@@ -257,7 +288,14 @@ function StreamStep() {
           )}
         </div>
       )}
-      {status?.inputs.message && <Notice tone="warning">{status.inputs.message}</Notice>}
+      {status.inputs.message && <Notice tone="warning">{status.inputs.message}</Notice>}
+      <LanguagePicker
+        label="A kirtan’s languages on the stream"
+        value={chosen.languages}
+        onChange={(languages) => {
+          set({ languages });
+        }}
+      />
     </div>
   );
 }
@@ -424,7 +462,7 @@ function FinishStep() {
           Stream:{' '}
           {state.stream === 'skip'
             ? 'stays as it is'
-            : `camera ${state.stream.camera?.label ?? 'none'}, sound input ${state.stream.sound?.label ?? 'none'}`}
+            : `camera ${state.stream.camera?.label ?? 'none'}, sound input ${state.stream.sound?.label ?? 'none'}; ${state.stream.layout === 'slides' ? 'the slides' : 'the camera and words'}, ${state.stream.languages ? state.stream.languages.map((l) => LANG_NAMES[l]).join(', ') : 'every language'}`}
         </li>
         <li>Default theme: {themeName ?? 'stays as it is'}</li>
         <li>

@@ -203,9 +203,9 @@ test('the Stream panel, its settings and the stream group in Screens: accessible
   await settings.getByRole('button', { name: 'Close stream settings' }).click();
   await win.getByRole('button', { name: 'Close stream' }).click();
 
-  // Screens: the stream group, off screen, with its languages, camera and sound input.
+  // Screens: YouTube's card (the stream group, off screen), with its languages, camera and sound input.
   await win.getByRole('button', { name: 'Screens', exact: true }).click();
-  const card = win.getByTestId('stream-group');
+  const card = win.getByTestId('screens-card-youtube');
   await expect(card).toBeVisible();
   await expect(card.getByTestId('screens-stream-camera')).not.toHaveValue('');
   // No display can be given to it.

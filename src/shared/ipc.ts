@@ -48,6 +48,7 @@ import type { RecoveryNotice } from './recovery';
 import type { SetupPlan, SetupResult, SetupState } from './setup';
 import type { ConversionJob, ConvertResult } from './convert';
 import type {
+  DeviceChoice,
   ProgramContext,
   ProgramInputs,
   StreamLayout,
@@ -562,6 +563,8 @@ export const IPC = {
     watchPreview: 'stream:watch-preview',
     profiles: 'stream:profiles',
     saveProfile: 'stream:save-profile',
+    /** The camera and sound input of the profile in use (Screens' YouTube card, the setup wizard). */
+    setInputs: 'stream:set-inputs',
     removeProfile: 'stream:remove-profile',
     useProfile: 'stream:use-profile',
     /** Keep a profile's key (never sent back to any window). */
@@ -990,6 +993,10 @@ export interface InvokeContract {
   [IPC.stream.saveProfile]: {
     args: [id: string | null, input: StreamProfileInput];
     result: StreamProfilesResult;
+  };
+  [IPC.stream.setInputs]: {
+    args: [camera: DeviceChoice | null, sound: DeviceChoice | null];
+    result: StreamResult;
   };
   [IPC.stream.removeProfile]: { args: [id: string]; result: StreamProfilesResult };
   [IPC.stream.useProfile]: { args: [id: string]; result: StreamProfilesResult };

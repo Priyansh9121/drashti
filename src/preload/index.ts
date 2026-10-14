@@ -370,6 +370,7 @@ const bridge: DrashtiBridge = {
     watchPreview: (watch) => invoke(IPC.stream.watchPreview, watch),
     profiles: () => invoke(IPC.stream.profiles),
     saveProfile: (id, input) => invoke(IPC.stream.saveProfile, id, input),
+    setInputs: (camera, sound) => invoke(IPC.stream.setInputs, camera, sound),
     removeProfile: (id) => invoke(IPC.stream.removeProfile, id),
     useProfile: (id) => invoke(IPC.stream.useProfile, id),
     setKey: (id, key) => invoke(IPC.stream.setKey, id, key),

@@ -16,6 +16,10 @@ Playlists
 - A Dropbox folder link unpacks now (Dropbox's zips hold an empty "/" entry, which was refused), and becomes one playlist, folder by folder with a header for each; its PDFs and pictures wait for one button.
 - Dragging into a playlist is surer, search results can be dragged too, and files dragged from the Finder or Explorer onto a playlist are imported into it. After any import, Add to playlist puts what it brought into a playlist.
 
+Screens
+
+- Screens opens with three cards: the projector, the stage screen and YouTube (the stream), each with a small preview and what it shows. YouTube's card holds the stream's layout, camera, sound input and languages, the same settings the Stream panel shows (now with the languages too) and the setup wizard sets. Opening Screens starts nothing.
+
 Deleting
 
 - A trash button on the chosen row deletes a playlist, a presentation, media or music, as the Delete key does, with Undo. Pictures, videos and sounds can be deleted now: Drashti first says where one is used.
