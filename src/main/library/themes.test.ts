@@ -6,9 +6,11 @@ import type { ContentRows } from '../db/content';
 import { readContent } from '../db/content';
 import { openDatabase } from '../db/database';
 import { PresentationRepo } from '../db/presentations';
+import { seedBuiltinThemes } from '../db/seed';
 import { ThemeRepo } from '../db/themes';
 import { LYRICS_STYLE } from '../import/formats/text';
 import { applyTheme, themeFromContent, themeLook } from './themes';
+import { saveTheme } from './themes-ipc';
 
 /* Placeholder words only. */
 
@@ -227,5 +229,42 @@ describe('themes in the library', () => {
     expect(repo.remove(def)).toBe(false);
     expect(repo.remove(id)).toBe(true);
     expect(repo.themeOrDefault(id).id).toBe(def);
+  });
+});
+
+describe('built-in themes in the library (Session 26)', () => {
+  it('saving a built-in one makes a copy, named so unless it was renamed; the built-in stays as it was', () => {
+    const db = openDatabase(':memory:');
+    seedBuiltinThemes(db);
+    const repo = new ThemeRepo(db);
+    const midnight = must(repo.list().find((t) => t.name === 'Midnight'));
+    const { id: _id, builtIn: _builtIn, ...fields } = midnight;
+    const bigger = { ...fields, langs: { ...fields.langs, en: { ...fields.langs.en, size: 96 } } };
+    const saved = saveTheme(repo, midnight.id, bigger);
+    expect(saved.ok && saved.id !== midnight.id).toBe(true);
+    const copy = must(repo.get(saved.ok ? saved.id : ''));
+    expect([copy.name, copy.builtIn, copy.langs.en.size]).toEqual(['Midnight (copy)', undefined, 96]);
+    expect(repo.get(midnight.id)).toEqual(midnight);
+    // Saved again: a second copy is named apart; renamed, it keeps its new name.
+    const again = saveTheme(repo, midnight.id, bigger);
+    expect(repo.get(again.ok ? again.id : '')?.name).toBe('Midnight (copy 2)');
+    const renamed = saveTheme(repo, midnight.id, { ...bigger, name: 'Placeholder hall night' });
+    expect(repo.get(renamed.ok ? renamed.id : '')?.name).toBe('Placeholder hall night');
+    // The copy is the library's own: saving it changes it in place.
+    expect(saveTheme(repo, copy.id, { ...bigger, name: 'Placeholder copy' })).toEqual({
+      ok: true,
+      id: copy.id,
+    });
+  });
+
+  it('a built-in one can be removed, and made the default for new presentations', () => {
+    const db = openDatabase(':memory:');
+    seedBuiltinThemes(db);
+    const repo = new ThemeRepo(db);
+    const ocean = must(repo.list().find((t) => t.name === 'Ocean'));
+    expect(repo.setDefault(ocean.id)).toBe(true);
+    expect(repo.themeOrDefault(null).name).toBe('Ocean');
+    const ivory = must(repo.list().find((t) => t.name === 'Ivory'));
+    expect(repo.remove(ivory.id)).toBe(true);
   });
 });

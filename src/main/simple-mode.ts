@@ -53,6 +53,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.props.setLogo,
   IPC.themes.save,
   IPC.themes.remove,
+  IPC.themes.setDefault,
   IPC.themes.apply,
   IPC.themes.fromPresentation,
   IPC.themes.fromSlide,

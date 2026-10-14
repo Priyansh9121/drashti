@@ -1,7 +1,9 @@
+import { BUILTIN_THEMES } from '../../shared/builtin-themes';
 import type { KirtanLang, Lang, TextElement, TextStyle } from '../../shared/model';
 import type { Db } from './database';
 import { PlaylistRepo } from './playlists';
 import { PresentationRepo } from './presentations';
+import { ThemeRepo } from './themes';
 
 /*
  * Placeholder content for a new install. All text here was written for
@@ -156,6 +158,29 @@ export function seedPlaceholders(db: Db): boolean {
       source: { kind: 'drashti', path: null, ref: 'seed:sample-kirtan', importedAt: null },
     });
     db.prepare('INSERT INTO app_meta (key, value) VALUES (?, ?)').run(SEED_KEY, new Date().toISOString());
+  })();
+  return true;
+}
+
+export const BUILTIN_THEMES_KEY = 'seed.builtin-themes';
+
+/**
+ * Add Drashti's ten built-in themes once per library (Session 26, shared/builtin-themes.ts), after
+ * Drashti default and the library's own themes, each marked with its key. Returns false when they were
+ * added before: one deleted since stays deleted.
+ */
+export function seedBuiltinThemes(db: Db): boolean {
+  const done = db.prepare('SELECT 1 FROM app_meta WHERE key = ?').get(BUILTIN_THEMES_KEY);
+  if (done) return false;
+  const themes = new ThemeRepo(db);
+  db.transaction(() => {
+    // Drashti default stays the first in the list.
+    themes.defaultId();
+    for (const { key, fields } of BUILTIN_THEMES) themes.create(fields, { kind: 'drashti', path: null }, key);
+    db.prepare('INSERT INTO app_meta (key, value) VALUES (?, ?)').run(
+      BUILTIN_THEMES_KEY,
+      new Date().toISOString(),
+    );
   })();
   return true;
 }

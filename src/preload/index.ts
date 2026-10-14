@@ -264,6 +264,7 @@ const bridge: DrashtiBridge = {
     list: () => invoke(IPC.themes.list),
     save: (themeId, fields) => invoke(IPC.themes.save, themeId, fields),
     remove: (themeId) => invoke(IPC.themes.remove, themeId),
+    setDefault: (themeId) => invoke(IPC.themes.setDefault, themeId),
     apply: (themeId, presentationIds) => invoke(IPC.themes.apply, themeId, presentationIds),
     fromPresentation: (presentationId) => invoke(IPC.themes.fromPresentation, presentationId),
     fromSlide: (name, slide) => invoke(IPC.themes.fromSlide, name, slide),

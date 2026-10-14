@@ -99,7 +99,7 @@ import { UpdateService } from './update/update-service';
 import { defaultInstaller } from './update/installer';
 import { UPDATE_BASE } from '../shared/updates';
 import { midiSettingsSchema, NO_MIDI } from '../shared/midi';
-import { seedPlaceholders, seedTemplates } from './db/seed';
+import { seedBuiltinThemes, seedPlaceholders, seedTemplates } from './db/seed';
 import { ShowEngine } from './engine/show-engine';
 import { runEngineCommand } from './ipc/engine-ipc';
 import {
@@ -497,6 +497,7 @@ function openLibrary(): { db: Db } | { error: unknown } {
     try {
       if (seedPlaceholders(opened)) log.info('Added the placeholder presentations');
       if (seedTemplates(opened)) log.info('Added the example sabha templates');
+      if (seedBuiltinThemes(opened)) log.info('Added the built-in themes');
       // YouTube is the third screen (Session 26): its card in Screens is there from the start.
       if (new ScreenRepo(opened).ensureStreamGroup().made) log.info('Made the stream’s screen group');
     } catch (error) {

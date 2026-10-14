@@ -97,6 +97,7 @@ export const ADMIN_CHANNELS: readonly InvokeChannel[] = [
   // Themes, the logo, Shastra texts, calendars and the idle rotation.
   IPC.themes.save,
   IPC.themes.remove,
+  IPC.themes.setDefault,
   IPC.themes.apply,
   IPC.themes.fromPresentation,
   IPC.themes.fromSlide,

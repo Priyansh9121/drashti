@@ -20,6 +20,10 @@ Screens
 
 - Screens opens with three cards: the projector, the stage screen and YouTube (the stream), each with a small preview and what it shows. YouTube's card holds the stream's layout, camera, sound input and languages, the same settings the Stream panel shows (now with the languages too) and the setup wizard sets. Opening Screens starts nothing.
 
+Themes
+
+- Ten built-in themes beside Drashti default (Midnight, Plum and Flame, Saffron, Maroon and Gold, Forest, Ocean, Ivory, Charcoal and two high-contrast ones), every word at least 7:1 against its background; changing one makes a copy. Themes shows each as a preview, and applies one to a playlist's presentations or makes it the default for new ones.
+
 Deleting
 
 - A trash button on the chosen row deletes a playlist, a presentation, media or music, as the Delete key does, with Undo. Pictures, videos and sounds can be deleted now: Drashti first says where one is used.

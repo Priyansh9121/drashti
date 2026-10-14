@@ -32,6 +32,37 @@ export interface ThemesIpcDeps {
 const onlyOperator = { ok: false as const, message: 'Only the operator window can change themes.' };
 const ids = z.array(idSchema).min(1).max(10_000);
 
+/** A copy's name: "(copy)" after the built-in theme's own, then "(copy 2)" and on, away from those taken. */
+function copyName(name: string, taken: ReadonlySet<string>): string {
+  for (let n = 1; ; n++) {
+    const tail = n === 1 ? ' (copy)' : ` (copy ${String(n)})`;
+    const made = `${name.slice(0, 80 - tail.length)}${tail}`;
+    if (!taken.has(made)) return made;
+  }
+}
+
+/**
+ * Save a theme: a new one (id null) or one of the library's in place. Saving one of Drashti's built-in
+ * themes makes a copy (Session 26), named after it unless it was renamed; the built-in stays as it was.
+ */
+export function saveTheme(themes: ThemeRepo, themeId: unknown, fields: unknown): ThemeResult {
+  const f = themeFieldsSchema.safeParse(fields);
+  if (!f.success)
+    return { ok: false, message: 'That theme is not complete: check its sizes, colours and box.' };
+  if (themeId === null) return { ok: true, id: themes.create(f.data, { kind: 'drashti', path: null }) };
+  const id = idSchema.safeParse(themeId);
+  const was = id.success ? themes.get(id.data) : null;
+  if (!was) return { ok: false, message: 'That theme no longer exists.' };
+  if (was.builtIn) {
+    const taken = new Set(themes.list().map((t) => t.name));
+    const name = f.data.name === was.name ? copyName(was.name, taken) : f.data.name;
+    return { ok: true, id: themes.create({ ...f.data, name }, { kind: 'drashti', path: null }) };
+  }
+  return themes.update(was.id, f.data)
+    ? { ok: true, id: was.id }
+    : { ok: false, message: 'That theme no longer exists.' };
+}
+
 export function registerThemesIpc({
   themes,
   presentations,
@@ -44,17 +75,19 @@ export function registerThemesIpc({
 
   handle(IPC.themes.save, (e, themeId, fields): ThemeResult => {
     if (!fromOperator(e)) return onlyOperator;
-    const f = themeFieldsSchema.safeParse(fields);
-    if (!f.success)
-      return { ok: false, message: 'That theme is not complete: check its sizes, colours and box.' };
-    const id =
-      themeId === null
-        ? themes.create(f.data, { kind: 'drashti', path: null })
-        : idSchema.safeParse(themeId).data;
-    if (id === undefined || (themeId !== null && !themes.update(id, f.data)))
+    const saved = saveTheme(themes, themeId, fields);
+    if (saved.ok) themesChanged();
+    return saved;
+  });
+
+  // The default for new presentations (Session 26: in the Themes window too, not only the setup wizard).
+  handle(IPC.themes.setDefault, (e, themeId): ThemeResult => {
+    if (!fromOperator(e)) return onlyOperator;
+    const id = idSchema.safeParse(themeId);
+    if (!id.success || !themes.setDefault(id.data))
       return { ok: false, message: 'That theme no longer exists.' };
     themesChanged();
-    return { ok: true, id };
+    return { ok: true, id: id.data };
   });
 
   handle(IPC.themes.remove, (e, themeId): ThemeResult => {
