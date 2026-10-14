@@ -181,9 +181,15 @@ test('Dropbox: a file link and a folder link are saved in the chosen folder, the
   await win.getByTestId('link-text').fill(folderLink('foldAAAAAAAAAAA'));
   await expect(win.getByTestId('link-name')).toHaveText('Placeholder folder');
   await expect(win.getByTestId('link-holds')).toContainText('A folder');
+  // Held on air until the dialog is closed, so it is closed while it goes (a quick runner could finish
+  // the import first, and then the dialog, not the report, offers it: CI run 38600932674).
+  await setOnAir(app, true);
   await win.getByTestId('link-download').click();
+  await expect(win.getByTestId('link-going')).toHaveAttribute('data-phase', 'waiting');
   // Closed while it goes: then the report comes up by itself when the import ends, as an import's does.
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await setOnAir(app, false);
   await expect(report).toBeVisible({ timeout: 60_000 });
   await report.getByRole('button', { name: 'Close', exact: true }).first().click();
   await chooseMenuItem(app, 'import-from-link');
