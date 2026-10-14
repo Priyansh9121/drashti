@@ -275,8 +275,16 @@ export class LinkService {
 
   /** The work folder yt-dlp and Deno ran in: emptied once they have stopped. */
   private clearToolsWork(): void {
-    if (this.toolsWork) rmSync(this.toolsWork, { recursive: true, force: true });
+    const work = this.toolsWork;
     this.toolsWork = null;
+    if (!work) return;
+    try {
+      rmSync(work, { recursive: true, force: true });
+    } catch {
+      // Still held by the programs the moment after they were stopped (Windows): again once they have
+      // gone, and the next start clears the work folder anyway.
+      void rm(work, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }).catch(() => undefined);
+    }
   }
 
   /** A new work folder for yt-dlp and Deno, and how to start yt-dlp with it. */
