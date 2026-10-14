@@ -99,7 +99,7 @@ A clear button is lit, with a dot, while its layer is on the screens.
 
 **Announcements from phones.** While the network is on, **Announcements** in the header says how many are waiting. Open it, read each one, fix a typo with **Edit**, then **Approve** it into the ticker or as a message, or **Reject** it.
 
-**Markers.** While a video or a sound with markers plays, its markers are buttons under the live picture: a press jumps every screen and the sound there together.
+**Markers.** While a video or a sound with markers plays, its markers are buttons under the live picture: a press jumps every screen and the sound there together. A video's start and end (where it plays from and to) are set on its timeline: **Start, end and markers…** in its card's menu, or its row in **Media** (`docs/admin-guide.md`, section 10).
 
 ![Markers under the live picture](screenshots/marker-jumps.png)
 

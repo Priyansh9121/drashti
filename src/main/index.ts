@@ -17,7 +17,7 @@ import {
 import { mkdirSync, mkdtempSync, readdirSync, statSync } from 'node:fs';
 import { release as osRelease, tmpdir } from 'node:os';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
-import { basename, isAbsolute, join } from 'node:path';
+import { basename, dirname, isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
 import type { ImportResult } from '../shared/import';
 import { type LibraryChange, listedKirtan } from '../shared/library';
@@ -132,6 +132,8 @@ import { runPerformanceTest } from './perftest';
 import { registerPlaylistIpc } from './playlists/playlist-ipc';
 import { nodeWatch, SmartFolders } from './playlists/smart-folders';
 import { RepeatSlides } from './playlists/repeat-slides';
+import { TrimSaves } from './convert/trim-saves';
+import { saveRequestSchema } from '../shared/trim';
 import { isRepeatId } from '../shared/repeat';
 import {
   applyPendingRestore,
@@ -187,7 +189,7 @@ import { ffmpegSelfTest } from './stream/ffmpeg-selftest';
 import { youtubeSelfTest } from './links/youtube-selftest';
 import { findYoutubeTools, toolFolders, youtubeLaunch } from './links/youtube-tools';
 import { spawnStreamWorker } from './stream/stream-worker';
-import { ConvertService } from './convert/convert-service';
+import { ConvertService, readInfo } from './convert/convert-service';
 import { diskFreeBytes } from './import/media-store';
 import { startPerfStream } from './stream/perf-stream';
 import { confirmedSchema } from '../shared/stream-schema';
@@ -1896,6 +1898,86 @@ function start(): void {
       ? conversions.undo(id)
       : { ok: false as const, message: 'Only the operator window can convert.' },
   );
+  // ---- Save as MP4… (Session 26e): a video's part copied as it is, run as converting is ----
+  const saveFfmpeg = () =>
+    findFfmpeg({
+      packaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      appPath: app.getAppPath(),
+      platform: process.platform,
+      arch: process.arch,
+      override: process.env['DRASHTI_FFMPEG'],
+    });
+  const saves = new TrimSaves({
+    video: (mediaId) => {
+      const row = media.kindAndFile(mediaId);
+      const named = media.kindAndName(mediaId);
+      return row?.kind === 'video' && !row.missing && named
+        ? { path: join(mediaDir, row.path), name: named.name }
+        : null;
+    },
+    ffmpegPath: () => saveFfmpeg(),
+    readInfo: async (file) => {
+      const ffmpeg = saveFfmpeg();
+      return ffmpeg ? readInfo(ffmpeg, file) : { durationMs: null, video: null, audio: null };
+    },
+    pickDest: async (defaultName) => {
+      if (!operatorWindow) return null;
+      const last = settings.get('trim.folder');
+      const folder =
+        typeof last === 'string' && isAbsolute(last) ? last : (testDownloadsDir ?? app.getPath('videos'));
+      const picked = await dialog.showSaveDialog(operatorWindow, {
+        title: 'Save as MP4',
+        defaultPath: join(folder, defaultName),
+        buttonLabel: 'Save',
+        filters: [{ name: 'MP4 video', extensions: ['mp4'] }],
+      });
+      if (picked.canceled || !picked.filePath) return null;
+      const path = picked.filePath.toLowerCase().endsWith('.mp4')
+        ? picked.filePath
+        : `${picked.filePath}.mp4`;
+      settings.set('trim.folder', dirname(path));
+      return path;
+    },
+    saveCopy: (source, dest, info, copy) => conversions.saveCopy(source, dest, info, copy),
+    cancelFile: (id) => conversions.cancelFile(id),
+    importFile: async (path) => (await imports.start([path], {})).ok,
+    changed: (jobs) => {
+      sendToOperator(IPC.media.savesChanged, jobs);
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+    readRate: !app.isPackaged && process.env['DRASHTI_TEST_SAVE_READRATE'] === '1',
+  });
+  const notSaving = { ok: false as const, message: 'Only the operator window can save a video’s part.' };
+  handle(IPC.media.keyframe, async (e, mediaId, startMs) => {
+    const id = idSchema.safeParse(mediaId);
+    const at = z
+      .number()
+      .int()
+      .min(0)
+      .max(24 * 3600 * 1000)
+      .safeParse(startMs);
+    if (!fromOperator(e) || !id.success || !at.success) return notSaving;
+    return saves.keyframe(id.data, at.data);
+  });
+  handle(IPC.media.saveTrim, async (e, request) => {
+    const r = saveRequestSchema.safeParse(request);
+    if (!fromOperator(e)) return notSaving;
+    if (!r.success) return { ok: false as const, message: 'Its end must come after its start.' };
+    return saves.save(r.data);
+  });
+  handle(IPC.media.saves, () => saves.list());
+  handle(IPC.media.stopSave, (e, jobId) =>
+    fromOperator(e) && typeof jobId === 'string' ? saves.stop(jobId) : false,
+  );
+  handle(IPC.media.showSave, (e, jobId) => {
+    const path = saves.list().find((j) => j.id === jobId)?.path ?? null;
+    if (fromOperator(e) && path) shell.showItemInFolder(path);
+    return null;
+  });
 
   const importPaths = async (rawPaths: unknown, rawOptions: unknown): Promise<ImportResult> => {
     const paths = importPathsSchema.safeParse(rawPaths);

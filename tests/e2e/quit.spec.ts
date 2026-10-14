@@ -301,6 +301,80 @@ test('quitting during a download from a link (Session 25b): nothing of it is lef
   }
 });
 
+test('quitting during Save as MP4 (Session 26e): no file under its name, no part-file, and no FFmpeg left', async () => {
+  test.skip(!ffmpeg, 'needs the bundled FFmpeg');
+  test.setTimeout(120_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-quit-save-'));
+  const source = join(dir, 'Placeholder long.mp4');
+  const made = spawnSync(ffmpeg ?? '', [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-f',
+    'lavfi',
+    '-i',
+    'testsrc2=s=320x180:r=25',
+    '-t',
+    '20',
+    '-c:v',
+    'libx264',
+    '-preset',
+    'ultrafast',
+    '-pix_fmt',
+    'yuv420p',
+    source,
+  ]);
+  expect(made.status).toBe(0);
+  const out = join(dir, 'Saved');
+  mkdirSync(out);
+  // The save reads no faster than the video plays (a test switch): still going when Drashti quits.
+  const { app, userData } = await launchApp({ DRASHTI_TEST_SAVE_READRATE: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const [mediaId = ''] = await importAndGetIds(win, [source]);
+  await app.evaluate(
+    ({ dialog }, path) => {
+      dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath: path });
+    },
+    join(out, 'Placeholder long (0m 18s).mp4'),
+  );
+  const started = await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.media.saveTrim({
+        mediaId: id,
+        startMs: null,
+        endMs: 18_000,
+        addToLibrary: false,
+      }),
+    mediaId,
+  );
+  expect(started).toMatchObject({ ok: true });
+  // Saving: into a part-file under a hidden name, FFmpeg running.
+  await expect
+    .poll(
+      async () =>
+        (await win.evaluate(() => (globalThis as PageGlobals).drashti.media.saves()))[0]?.progress ?? 0,
+      {
+        timeout: 30_000,
+      },
+    )
+    .toBeGreaterThan(0.05);
+  const parts = readdirSync(out);
+  expect(parts).toHaveLength(1);
+  expect(parts[0]).toMatch(/^\..+\.mp4$/u);
+  const mainPid = await app.evaluate(() => process.pid);
+  const running = ffmpegUnder(mainPid);
+  expect(running.length).toBeGreaterThan(0);
+  await app.close();
+  // Nothing of it is left: no file under its name, no part-file, no FFmpeg.
+  expect(readdirSync(out)).toEqual([]);
+  await expect.poll(() => running.filter(alive), { timeout: 15_000 }).toEqual([]);
+  const log = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  expect(log).not.toContain('Uncaught exception');
+  expect(log).not.toContain('did not stop cleanly');
+});
+
 test('quitting during a YouTube download (Session 25c): no part-file, and no yt-dlp, Deno or FFmpeg left', async () => {
   test.setTimeout(120_000);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-quit-youtube-'));

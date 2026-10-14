@@ -16,6 +16,10 @@ Playlists
 - Dragging into a playlist is surer: rows no longer change size as a drag starts, which could cancel it. Search results can be dragged in too.
 - Files dragged from the Finder (Explorer on Windows) onto the open playlist, or onto a playlist's name, are imported and added where they land, in the order dragged.
 
+Videos
+
+- A video's start and end on a timeline: stills along it, handles to drag, I and O at the play head, its new length beside the old. Save as MP4… saves that part as its own file, copied as it is (the picture and sound unchanged) from the clean frame at or just before the start, which it names first.
+
 Library
 
 - The library starts plainer: no Shastra tab, no Templates beside the playlists and no kirtan filters. An admin brings them back with View › Show Shastra, Templates and Kirtan Details. Nothing in them is lost, and search still finds kirtans by kavi, raag and occasion.

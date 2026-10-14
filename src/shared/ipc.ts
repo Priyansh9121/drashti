@@ -73,6 +73,7 @@ import type {
   TimerCue,
 } from './playlists';
 import type { RepeatSettings } from './repeat';
+import type { KeyframeResult, SaveJob, SaveRequest, SaveResult } from './trim';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { PropFields, PropInfo, PropResult } from './props';
 import type { GroupLookPatch, LookResult, LooksView } from './looks';
@@ -311,6 +312,17 @@ export const IPC = {
     undoConversion: 'media:undo-conversion',
     /** main -> operator: the conversions changed. */
     conversionsChanged: 'media:conversions-changed',
+    /**
+     * Save as MP4… (Session 26e): where a part saved from a start begins (its keyframe), saving the part
+     * (an admin's), the saves going and ended, stopping one, and showing a saved file in the Finder.
+     */
+    keyframe: 'media:keyframe',
+    saveTrim: 'media:save-trim',
+    saves: 'media:saves',
+    stopSave: 'media:stop-save',
+    showSave: 'media:show-save',
+    /** main -> operator: the saves changed. */
+    savesChanged: 'media:saves-changed',
     /** An output or the audio player learned how long a file is, as it played it (stage screens show the time left). */
     reportLength: 'media:report-length',
     /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
@@ -850,6 +862,11 @@ export interface InvokeContract {
     args: [conversionId: string];
     result: { ok: true } | { ok: false; message: string };
   };
+  [IPC.media.keyframe]: { args: [mediaId: string, startMs: number]; result: KeyframeResult };
+  [IPC.media.saveTrim]: { args: [request: SaveRequest]; result: SaveResult };
+  [IPC.media.saves]: { args: []; result: SaveJob[] };
+  [IPC.media.stopSave]: { args: [jobId: string]; result: boolean };
+  [IPC.media.showSave]: { args: [jobId: string]; result: null };
   [IPC.audio.getOutput]: { args: []; result: AudioOutputStatus };
   [IPC.audio.setOutput]: { args: [device: AudioDevice | null]; result: AudioOutputStatus };
   [IPC.audio.reportDevices]: { args: [devices: AudioDevice[], state: AudioOutputState]; result: null };
@@ -1057,6 +1074,7 @@ export interface EventContract {
   [IPC.audio.status]: AudioOutputStatus;
   [IPC.stream.changed]: StreamStatus;
   [IPC.media.conversionsChanged]: ConversionJob[];
+  [IPC.media.savesChanged]: SaveJob[];
   [IPC.stream.port]: { role: 'preview' | 'encoder' };
   [IPC.stream.context]: ProgramContext;
   [IPC.network.changed]: NetworkStatus;

@@ -124,6 +124,9 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.media.setMarkers,
   IPC.media.cancelConversion,
   IPC.media.undoConversion,
+  // Save as MP4… (Session 26e) is Pro Mode's.
+  IPC.media.saveTrim,
+  IPC.media.stopSave,
   IPC.network.setOn,
   IPC.network.setPort,
   IPC.network.startPairing,
