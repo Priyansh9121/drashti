@@ -316,7 +316,11 @@ export class LinkService {
           this.set({ phase: 'idle', look: null, waitingFor: null, message: m.message });
           return;
         }
-        void this.failed(m.message, m.code);
+        // An unpack says which of its rules stopped it (Session 26a: "unpack" alone left no clue).
+        void this.failed(
+          m.message,
+          m.rule === 'stopped' ? 'stopped' : m.rule ? `${m.code}: ${m.rule}` : m.code,
+        );
         return;
     }
   }

@@ -2,6 +2,7 @@ import type { VideoDetails, YouTubeType } from '../../shared/links';
 import type { LinkErrorCode } from './http';
 import type { YoutubeProblemCode } from './youtube';
 import type { YtDlpLaunch } from './youtube-run';
+import type { UnzipRule } from './unzip';
 
 /*
  * Messages between the main process and the download process (Session 25b).
@@ -56,4 +57,10 @@ export type FromWorker =
   | { type: 'tool'; pid: number | null }
   /** YouTube: downloaded, as this file in the work folder. */
   | { type: 'yt-downloaded'; file: string; bytes: number }
-  | { type: 'failed'; code: LinkErrorCode | 'unpack' | YoutubeProblemCode; message: string };
+  | {
+      type: 'failed';
+      code: LinkErrorCode | 'unpack' | YoutubeProblemCode;
+      message: string;
+      /** For an unpack: which rule stopped it (a short code for the log, never a name). */
+      rule?: UnzipRule;
+    };

@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
-import { makeZip } from '../../src/main/import/testing/zip-writer';
+import { makeDropboxLikeZip, makeZip } from '../../src/main/import/testing/zip-writer';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { dropboxStandIn, fileLink, folderLink, type StandIn } from './dropbox-stand-in';
 import { chooseMenuItem, launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
@@ -210,6 +210,75 @@ test('Dropbox: a file link and a folder link are saved in the chosen folder, the
   for (const r of standIn.requests)
     expect(r.host).toMatch(/^(www\.dropbox\.com|uc\w+\.dl\.dropboxusercontent\.com)$/u);
   expect(existsSync(join(downloads, 'Drashti downloads'))).toBe(false);
+  await app.close();
+});
+
+test('Dropbox: a folder zipped as Dropbox zips it (a "/" entry, loose parts, data descriptors) is unpacked with its subfolders and imported', async () => {
+  test.setTimeout(240_000);
+  const work = mkdtempSync(join(tmpdir(), 'drashti-link-e2e-'));
+  const media = join(work, 'made');
+  mkdirSync(media);
+  const clip = makeVideo(join(media, 'clip.mp4'), '640x360');
+  // Another video (the library shares a file's row with any other of the same bytes).
+  const opening = makeVideo(join(media, 'opening.mp4'), '320x180');
+  // Placeholder names with spaces, Gujarati and Hindi, three folders deep (PLAN §6).
+  const zip = makeDropboxLikeZip([
+    { path: 'Opening video.mp4', data: opening },
+    {
+      path: 'Week 1/Decks/Placeholder katha.pptx',
+      data: makeTestPptx([{ color: '7C2D12', text: 'Placeholder slide', notes: '' }]),
+    },
+    { path: 'Week 1/Videos/Deep folder/પ્રવચન ભાગ 1.mp4', data: clip },
+    { path: 'Week 2/सभा नोट्स.txt', data: 'placeholder words' },
+  ]);
+  standIn = await dropboxStandIn(
+    {},
+    { foldBBBBBBBBBBB: { name: 'Placeholder Dropbox folder.zip', body: zip, type: 'application/zip' } },
+  );
+  const chosen = join(work, 'Chosen folder');
+  const { app } = await launchApp({
+    DRASHTI_TEST_LINK_ORIGIN: standIn.origin,
+    DRASHTI_TEST_DOWNLOADS_DIR: join(work, 'Videos'),
+    DRASHTI_TEST_NO_CONVERTER: '1',
+  });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await app.evaluate(({ dialog }, folder) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
+  }, chosen);
+  await chooseMenuItem(app, 'import-from-link');
+  await win.getByTestId('link-kind-dropbox').click();
+  await win.getByTestId('link-text').fill(folderLink('foldBBBBBBBBBBB'));
+  await expect(win.getByTestId('link-holds')).toContainText('A folder');
+  await win.getByTestId('link-choose-folder').click();
+  await win.getByTestId('link-download').click();
+
+  // Unpacked (alpha.3 refused it: "would leave the folder"), every subfolder kept.
+  await expect(win.getByTestId('link-saved')).toBeVisible({ timeout: 120_000 });
+  await expect(win.getByTestId('link-dialog')).not.toContainText('would leave the folder');
+  const folder = join(chosen, 'Placeholder Dropbox folder');
+  expect(filesIn(folder)).toEqual(
+    [
+      'Opening video.mp4',
+      'Week 1/Decks/Placeholder katha.pptx',
+      'Week 1/Videos/Deep folder/પ્રવચન ભાગ 1.mp4',
+      'Week 2/सभा नोट्स.txt',
+    ].sort(),
+  );
+  expect(readFileSync(join(folder, 'Week 1', 'Videos', 'Deep folder', 'પ્રવચન ભાગ 1.mp4')).equals(clip)).toBe(
+    true,
+  );
+  await expect(win.getByTestId('link-not-taken-item')).toHaveCount(1);
+  // Both videos reach the library, and the deck goes through the import (no converter here, so it says so).
+  await expect
+    .poll(async () => (await listMedia(win)).map((m) => m.name).sort(), { timeout: 60_000 })
+    .toEqual(expect.arrayContaining(['Opening video.mp4', 'પ્રવચન ભાગ 1.mp4']));
+  await win.getByTestId('link-open-report').click({ timeout: 60_000 });
+  const report = win.getByTestId('import-report');
+  await expect(report.getByTestId('report-item')).toHaveCount(3);
+  await expect(report.getByTestId('report-item').filter({ hasText: 'Placeholder katha' })).toContainText(
+    'no Keynote or PowerPoint',
+  );
   await app.close();
 });
 

@@ -92,7 +92,7 @@ export function linkWorker(
           post(
             result.ok
               ? { type: 'unpacked', folder: result.folder, files: result.files, bytes: result.bytes }
-              : { type: 'failed', code: 'unpack', message: result.message },
+              : { type: 'failed', code: 'unpack', message: result.message, rule: result.rule },
           );
         });
         return;
