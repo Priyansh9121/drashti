@@ -133,6 +133,8 @@ There are three columns between a header and a footer:
 
 The columns are resized with `Splitter`s and the sizes are remembered on the computer (`ui/persist.ts`). Everything fits at 1280 × 720 with nothing cut off or overlapping, every control inside its column. Simple Mode is one screen with big buttons, and fits at 1280 × 720 too.
 
+![The operator window at 1600 × 900: the playlists, the open playlist's cards above the chosen deck's slides, and the right column](screenshots/operator-playlist-1600x900.png)
+
 ## 10. Simple Mode
 
 Simple Mode (`src/renderer/src/simple/`) is for a volunteer who has never used Drashti:
