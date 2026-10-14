@@ -57,7 +57,7 @@ test('slides move on by themselves, loop at the end, and Next starts the new sli
   const words = output.locator('[data-layer="slide"]');
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Placeholder Timed/ })
+    .getByRole('button', { name: /^Placeholder Timed/ })
     .click();
   await win.getByTestId('slide-thumb').first().click();
   await expect(words).toHaveText('Placeholder one');

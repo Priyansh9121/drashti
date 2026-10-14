@@ -63,7 +63,7 @@ test('a stage screen follows Next with the current and next text, notes, clock a
   // Live on slide 1: now, next, the notes and the clock; no pictures on the stage.
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Placeholder Stage Song/ })
+    .getByRole('button', { name: /^Placeholder Stage Song/ })
     .click();
   const grid = win.getByTestId('slide-grid');
   await expect(grid).toHaveAttribute('data-presentation-id', presentationId);

@@ -127,7 +127,7 @@ test('axe at 1280 x 720 on Themes, the words editor and the slide editor’s pic
   await win.getByRole('button', { name: 'Close themes' }).click();
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Language test slides/u })
+    .getByRole('button', { name: /^Language test slides/u })
     .click();
   await win.getByRole('button', { name: 'Edit words' }).click();
   await expect(win.getByTestId('words-editor')).toBeVisible();

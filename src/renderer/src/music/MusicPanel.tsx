@@ -21,12 +21,11 @@ import {
   SkipBack,
   SkipForward,
   Trash2,
-  X,
 } from '../ui/icons';
 import { Panel } from '../ui/Panel';
 import { Checkbox } from '../ui/Toggle';
 import { Truncate } from '../ui/Truncate';
-import { connectMusic, musicAction, useMusic } from './music-store';
+import { connectMusic, deleteMusic, musicAction, takeOutTrack, useMusic } from './music-store';
 
 /*
  * Audio playlists (Session 14) in the live column: music on the audio layer,
@@ -145,7 +144,13 @@ export function MusicPanel() {
               </Select>
             )}
             <IconButton icon={Pencil} label="Rename" size="sm" onClick={() => setRenaming(true)} />
-            <IconButton icon={Trash2} label="Remove this music" size="sm" onClick={() => setRemoving(true)} />
+            <IconButton
+              icon={Trash2}
+              label={`Delete music “${shown.name}”`}
+              size="sm"
+              data-testid="music-delete"
+              onClick={() => setRemoving(true)}
+            />
           </div>
           <div className="flex items-center gap-1.5" role="group" aria-label="Play the music">
             <IconButton
@@ -204,15 +209,16 @@ export function MusicPanel() {
       <AddSoundsDialog playlistId={shown?.id ?? null} />
       {removing && shown && (
         <ConfirmDialog
-          title={`Remove “${shown.name}”?`}
-          confirmLabel="Remove"
+          title={`Delete music “${shown.name}”?`}
+          confirmLabel="Delete"
           onCancel={() => setRemoving(false)}
           onConfirm={() => {
             setRemoving(false);
-            void musicAction(() => window.drashti.music.remove(shown.id));
+            void deleteMusic(shown.id, shown.name);
           }}
         >
-          The list goes; its sounds stay in the library. If it is playing, the music stops.
+          The list goes; its sounds stay in the library. If it is playing, the music stops. Undo brings it
+          back.
         </ConfirmDialog>
       )}
     </Panel>
@@ -300,10 +306,11 @@ function Tracks({ playlist, playingIndex }: { playlist: MusicPlaylist; playingIn
               onClick={() => void musicAction(() => window.drashti.music.moveTrack(t.id, i + 1))}
             />
             <IconButton
-              icon={X}
-              label={`Take ${t.name} out`}
+              icon={Trash2}
+              label={`Remove “${t.name}” from the music`}
               size="sm"
-              onClick={() => void musicAction(() => window.drashti.music.removeTrack(t.id))}
+              data-testid="music-track-delete"
+              onClick={() => void takeOutTrack(t.id, i, t.name, playlist.name)}
             />
           </li>
         );

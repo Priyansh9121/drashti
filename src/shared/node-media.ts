@@ -11,6 +11,18 @@ function fromElements(elements: readonly SlideElement[], out: Set<string>): void
   for (const e of elements) if (e.kind === 'image' || e.kind === 'video') out.add(e.mediaId);
 }
 
+/**
+ * Every media id up now: drawn on the screens, or sounding on the audio layer (with the music's other
+ * tracks). Media deleted from the library stays served while it is up (Session 26a).
+ */
+export function mediaUpNow(state: EngineState): Set<string> {
+  const out = new Set(mediaInState(state).now);
+  const audio = state.layers.audio;
+  if (audio?.mediaId) out.add(audio.mediaId);
+  for (const t of audio?.music?.tracks ?? []) out.add(t.mediaId);
+  return out;
+}
+
 /** Media ids drawn now (`now`) and those Next would bring (`next`), each once, `now` first. */
 export function mediaInState(state: EngineState): { now: string[]; next: string[] } {
   const now = new Set<string>();

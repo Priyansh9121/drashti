@@ -6,6 +6,11 @@ import type { Db } from './database';
  * Audio playlists in the library (migration 33): a name, whether they go
  * round again and shuffle, and their tracks in order, each a sound from the
  * media library (the same sound can be in one twice).
+ *
+ * Removing a playlist or a track only marks it (migration 36, Session 26a),
+ * so Undo can bring it back; marked ones are gone for good when Drashti next
+ * starts (`purge`). A sound removed from the library leaves every playlist
+ * while it is removed.
  */
 
 interface PlaylistRow {
@@ -38,6 +43,7 @@ export class AudioPlaylistRepo {
         `SELECT t.id, t.playlist_id, t.media_id, m.name, m.duration_ms, m.missing, m.playable
            FROM audio_playlist_tracks t JOIN media m ON m.id = t.media_id
           WHERE t.playlist_id IN (${ids.map(() => '?').join(', ')})
+            AND t.deleted_at IS NULL AND m.deleted_at IS NULL
           ORDER BY t.playlist_id, t.position, t.rowid`,
       )
       .all(...ids) as TrackRow[];
@@ -57,7 +63,9 @@ export class AudioPlaylistRepo {
 
   list(): MusicPlaylist[] {
     const rows = this.db
-      .prepare('SELECT id, name, loop, shuffle FROM audio_playlists ORDER BY position, rowid')
+      .prepare(
+        'SELECT id, name, loop, shuffle FROM audio_playlists WHERE deleted_at IS NULL ORDER BY position, rowid',
+      )
       .all() as PlaylistRow[];
     const tracks = this.tracksOf(rows.map((r) => r.id));
     return rows.map((r) => ({
@@ -92,7 +100,20 @@ export class AudioPlaylistRepo {
   }
 
   remove(id: string): boolean {
-    return this.db.prepare('DELETE FROM audio_playlists WHERE id = ?').run(id).changes === 1;
+    return (
+      this.db
+        .prepare(`UPDATE audio_playlists SET deleted_at = ${NOW} WHERE id = ? AND deleted_at IS NULL`)
+        .run(id).changes === 1
+    );
+  }
+
+  /** Undo a removal. */
+  restore(id: string): boolean {
+    return (
+      this.db
+        .prepare('UPDATE audio_playlists SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL')
+        .run(id).changes === 1
+    );
   }
 
   setOptions(id: string, options: { loop: boolean; shuffle: boolean }): boolean {
@@ -106,7 +127,9 @@ export class AudioPlaylistRepo {
   private order(playlistId: string): string[] {
     return (
       this.db
-        .prepare('SELECT id FROM audio_playlist_tracks WHERE playlist_id = ? ORDER BY position, rowid')
+        .prepare(
+          'SELECT id FROM audio_playlist_tracks WHERE playlist_id = ? AND deleted_at IS NULL ORDER BY position, rowid',
+        )
         .all(playlistId) as { id: string }[]
     ).map((r) => r.id);
   }
@@ -119,8 +142,13 @@ export class AudioPlaylistRepo {
   /** Add sounds from the library at a place (the end when null); returns how many went in (sounds only). */
   addTracks(playlistId: string, mediaIds: readonly string[], at: number | null): number {
     return this.db.transaction(() => {
-      if (!this.db.prepare('SELECT 1 FROM audio_playlists WHERE id = ?').get(playlistId)) return 0;
-      const isSound = this.db.prepare("SELECT 1 FROM media WHERE id = ? AND kind = 'audio'");
+      if (
+        !this.db.prepare('SELECT 1 FROM audio_playlists WHERE id = ? AND deleted_at IS NULL').get(playlistId)
+      )
+        return 0;
+      const isSound = this.db.prepare(
+        "SELECT 1 FROM media WHERE id = ? AND kind = 'audio' AND deleted_at IS NULL",
+      );
       const insert = this.db.prepare(
         'INSERT INTO audio_playlist_tracks (id, playlist_id, media_id, position) VALUES (?, ?, ?, 0)',
       );
@@ -143,7 +171,7 @@ export class AudioPlaylistRepo {
   moveTrack(trackId: string, to: number): boolean {
     return this.db.transaction(() => {
       const row = this.db
-        .prepare('SELECT playlist_id FROM audio_playlist_tracks WHERE id = ?')
+        .prepare('SELECT playlist_id FROM audio_playlist_tracks WHERE id = ? AND deleted_at IS NULL')
         .get(trackId) as { playlist_id: string } | undefined;
       if (!row) return false;
       const rest = this.order(row.playlist_id).filter((id) => id !== trackId);
@@ -154,6 +182,31 @@ export class AudioPlaylistRepo {
   }
 
   removeTrack(trackId: string): boolean {
-    return this.db.prepare('DELETE FROM audio_playlist_tracks WHERE id = ?').run(trackId).changes === 1;
+    return (
+      this.db
+        .prepare(`UPDATE audio_playlist_tracks SET deleted_at = ${NOW} WHERE id = ? AND deleted_at IS NULL`)
+        .run(trackId).changes === 1
+    );
+  }
+
+  /** Undo taking a track out: back at `at` among the tracks there now. */
+  restoreTrack(trackId: string, at: number): boolean {
+    return this.db.transaction(() => {
+      if (
+        this.db
+          .prepare(
+            'UPDATE audio_playlist_tracks SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL',
+          )
+          .run(trackId).changes !== 1
+      )
+        return false;
+      return this.moveTrack(trackId, at);
+    })();
+  }
+
+  /** Drashti is starting: what was removed before can no longer be undone, so it goes for good. */
+  purge(): void {
+    this.db.prepare('DELETE FROM audio_playlist_tracks WHERE deleted_at IS NOT NULL').run();
+    this.db.prepare('DELETE FROM audio_playlists WHERE deleted_at IS NOT NULL').run();
   }
 }

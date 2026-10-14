@@ -60,7 +60,7 @@ test('Standard is the stage screen as before; a layout made in the editor puts e
   const stage = await outputFor(app, stageId);
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Sample kirtan/ })
+    .getByRole('button', { name: /^Sample kirtan/ })
     .click();
   await win.getByTestId('slide-thumb').first().click();
 

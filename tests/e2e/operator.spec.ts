@@ -31,7 +31,7 @@ test('operator: pick a presentation, go live by click and keyboard, clear layers
   const { app } = await launchApp();
   const win = await operatorPage(app);
   const list = win.getByTestId('presentation-list');
-  await expect(list.getByRole('button')).toHaveCount(2);
+  await expect(list.getByTestId('presentation-row')).toHaveCount(2);
   await oneScreen(win);
   const output = await outputPage(app);
   await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
@@ -61,7 +61,7 @@ test('operator: pick a presentation, go live by click and keyboard, clear layers
   await outputCaughtUp(false);
 
   // The first presentation is selected; its three slides are shown as thumbnails.
-  await list.getByRole('button', { name: /Language test slides/ }).click();
+  await list.getByRole('button', { name: /^Language test slides/ }).click();
   const thumbs = win.getByTestId('slide-thumb');
   await expect(thumbs).toHaveCount(3);
 
@@ -104,7 +104,7 @@ test('operator: pick a presentation, go live by click and keyboard, clear layers
   await expect(output.locator('[data-lang="en"]')).toHaveText('Third test slide');
 
   // Choosing another presentation and pressing Space starts it at slide 1.
-  await list.getByRole('button', { name: /Sample kirtan/ }).click();
+  await list.getByRole('button', { name: /^Sample kirtan/ }).click();
   await expect(thumbs).toHaveCount(3);
   await win.keyboard.press('Space');
   await expect(win.getByTestId('live-text')).toHaveText('Live: Sample kirtan (placeholder) · slide 1 of 3');

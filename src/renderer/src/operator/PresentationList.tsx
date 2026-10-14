@@ -37,6 +37,7 @@ import { openLinkDialog } from '../links/link-store';
 import { MenuButton } from '../ui/Menu';
 import { Notice } from '../ui/Notice';
 import { rowClass } from '../ui/ListRow';
+import { RowDelete } from '../ui/RowDelete';
 import { EmptyState } from '../ui/States';
 import { TabPanel, Tabs } from '../ui/Tabs';
 import { Truncate } from '../ui/Truncate';
@@ -73,11 +74,15 @@ const PresentationRow = memo(function PresentationRow({
   platform: string;
 }) {
   const pick = pickPresentations(p.id);
+  const remove = () => {
+    requestRemoval(p.id);
+  };
   return (
-    <div className={`${rowClass({ selected, marked })} flex h-full flex-col`}>
+    <div className={`${rowClass({ selected, marked })} group relative flex h-full flex-col`}>
       <button
         type="button"
         draggable
+        data-testid="presentation-row"
         aria-current={selected ? 'true' : undefined}
         data-marked={marked ? 'true' : undefined}
         onClick={(e) => {
@@ -86,7 +91,7 @@ const PresentationRow = memo(function PresentationRow({
             range: e.shiftKey,
           });
         }}
-        {...rowMenu(p.name, pick)}
+        {...rowMenu(p.name, pick, remove)}
         onDragStart={(e) => {
           // Drags the marked presentations when this is one of them, else just this one.
           startDrag(
@@ -95,7 +100,8 @@ const PresentationRow = memo(function PresentationRow({
             pick().map((i) => i.presentationId),
           );
         }}
-        className="flex min-h-0 w-full flex-1 items-center gap-2 px-2.5 text-left"
+        // Room at the end for the trash button, shown or not, so the row never changes as it shows.
+        className="flex min-h-0 w-full flex-1 items-center gap-2 pr-10 pl-2.5 text-left"
       >
         <span className="min-w-0 flex-1">
           <Truncate text={p.name} className="text-sm font-medium" />
@@ -110,6 +116,13 @@ const PresentationRow = memo(function PresentationRow({
         {live && <LiveBadge />}
       </button>
       {selected && <AddToPlaylistButton pick={pick} className="px-1.5 pb-1.5" />}
+      {/* Last in the Tab order (after Add to playlist), at the end of the name's line (Session 26a). */}
+      <RowDelete
+        label={`Delete “${p.name}”`}
+        chosen={selected}
+        onDelete={remove}
+        className="absolute top-3.5 right-1.5"
+      />
     </div>
   );
 });

@@ -60,7 +60,7 @@ test('several elements resize and turn together, each change one Undo; copy and 
 
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Placeholder Together/ })
+    .getByRole('button', { name: /^Placeholder Together/ })
     .click();
   await win.getByTestId('edit-slides').click();
   const editor = win.getByTestId('slide-editor');
@@ -171,7 +171,7 @@ test('several elements resize and turn together, each change one Undo; copy and 
   // Into another presentation (the sample kirtan): the same words, languages and look.
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Sample kirtan/ })
+    .getByRole('button', { name: /^Sample kirtan/ })
     .click();
   const sampleId = (await win.getByTestId('slide-grid').getAttribute('data-presentation-id')) ?? '';
   await win.getByTestId('edit-slides').click();

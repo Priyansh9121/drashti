@@ -107,7 +107,7 @@ test('edit a slide: a Gujarati word in its own font and size, a shape and a pict
   await importKirtan(win, 'Placeholder Editor Kirtan', '[Verse]\nનમૂના પંક્તિ\nNamūnā pankti\n', [picture]);
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Placeholder Editor Kirtan/ })
+    .getByRole('button', { name: /^Placeholder Editor Kirtan/ })
     .click();
   await win.getByTestId('slide-thumb').first().click();
   const slideLayer = output.locator('[data-layer="slide"]');

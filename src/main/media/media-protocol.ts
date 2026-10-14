@@ -18,6 +18,8 @@ export interface MediaFileRow {
   /** Relative to the media folder ('' while the file is missing). */
   path: string;
   missing: boolean;
+  /** Deleted from the library (Session 26a): served only while it is on the screens. */
+  deleted?: boolean;
   /** The file's sha256, which names its still frame; null while missing. */
   sha256: string | null;
 }

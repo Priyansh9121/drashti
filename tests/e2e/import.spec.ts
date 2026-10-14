@@ -59,7 +59,7 @@ test('a big import runs in its own process: every slide change still reaches the
 
   const { app } = await launchApp();
   const win = await operatorPage(app);
-  await expect(win.getByTestId('presentation-list').getByRole('button')).toHaveCount(2);
+  await expect(win.getByTestId('presentation-list').getByTestId('presentation-row')).toHaveCount(2);
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     const created = await d.screens.createGroup('Main Hall');
@@ -210,7 +210,7 @@ test('a big import runs in its own process: every slide change still reaches the
   // The operator's library lists everything, drawing only the rows in view, and the report was kept.
   const list = win.getByTestId('presentation-list');
   await expect(list).toHaveAttribute('data-count', String(SONGS + 2));
-  expect(await list.getByRole('button').count()).toBeLessThan(60);
+  expect(await list.getByTestId('presentation-row').count()).toBeLessThan(60);
   const runId = run.result.run.id;
   const stored = await win.evaluate(async (id) => {
     const d = (globalThis as PageGlobals).drashti;
@@ -227,7 +227,7 @@ test('a big import runs in its own process: every slide change still reaches the
   // An imported presentation plays like any other.
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Placeholder Song 007/ })
+    .getByRole('button', { name: /^Placeholder Song 007/ })
     .click();
   await expect(win.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toHaveText(
     'Placeholder Song 007',
@@ -262,7 +262,7 @@ test('a big import runs in its own process: every slide change still reaches the
   expect(replaced.ok && replaced.run.totals).toMatchObject({ replaced: 1, presentations: 1, slides: 1 });
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Placeholder Song 001/ })
+    .getByRole('button', { name: /^Placeholder Song 001/ })
     .click();
   await expect(win.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toHaveText(
     'Placeholder Song 001',

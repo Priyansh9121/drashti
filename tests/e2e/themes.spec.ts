@@ -87,7 +87,7 @@ test('an imported template becomes a theme from its first text box', async () =>
   await importAndGetIds(win, [template]);
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Placeholder Evening Look/ })
+    .getByRole('button', { name: /^Placeholder Evening Look/ })
     .click();
   await win.getByTestId('slide-grid').getByRole('button', { name: 'Make a theme from this' }).click();
   const panel = win.getByTestId('themes-panel');

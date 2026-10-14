@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { openDatabase } from '../db/database';
+import { MediaRemoval } from '../library/media-removal';
 import { MediaStore } from './media-store';
 
 const GiB = 1024 ** 3;
@@ -31,6 +32,33 @@ const storedFiles = (mediaDir: string) =>
     .map((e) => e.name);
 
 describe('MediaStore', () => {
+  it('brings deleted media back to life when the same file is imported again, even once its file has gone (Session 26a)', async () => {
+    const { db, store, mediaDir, file } = setup();
+    const path = file('Placeholder darshan.png', 'placeholder picture bytes');
+    const first = await store.importFile(path, { kind: 'media', path });
+    if (!('mediaId' in first)) throw new Error('not imported');
+    const removal = new MediaRemoval(db, { idlePictures: () => [], onScreens: () => new Set() });
+    removal.remove([first.mediaId]);
+    // Imported again before the next start: the same item, no longer deleted.
+    const again = await store.importFile(path, { kind: 'media', path });
+    expect(again).toMatchObject({ outcome: 'imported', mediaId: first.mediaId });
+    expect(db.prepare('SELECT deleted_at FROM media').get()).toEqual({ deleted_at: null });
+    // Deleted, gone for good at a start (its file removed), then imported again: back with a file.
+    removal.remove([first.mediaId]);
+    expect(await removal.purge(mediaDir, new Set())).toBe(1);
+    expect(storedFiles(mediaDir)).toEqual([]);
+    const third = await store.importFile(path, { kind: 'media', path });
+    expect(third).toMatchObject({ outcome: 'imported', mediaId: first.mediaId });
+    expect(db.prepare("SELECT path <> '' AS has, missing, deleted_at FROM media").get()).toEqual({
+      has: 1,
+      missing: 0,
+      deleted_at: null,
+    });
+    expect(storedFiles(mediaDir)).toHaveLength(1);
+    // Imported once more, nothing deleted: as before, skipped.
+    expect(await store.importFile(path, { kind: 'media', path })).toMatchObject({ outcome: 'skipped' });
+  });
+
   it('copies a media file in under its sha256 and records where it came from', async () => {
     const { db, store, mediaDir, file } = setup();
     const path = file('Background Loop.MP4', 'placeholder video bytes');

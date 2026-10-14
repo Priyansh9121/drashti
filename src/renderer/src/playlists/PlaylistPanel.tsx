@@ -74,6 +74,7 @@ import {
 } from './playlist-store';
 import { plural } from '../ui/text';
 import { useWhatIsThis } from '../help/WhatIsThis';
+import { RowDelete } from '../ui/RowDelete';
 
 /** A name edited in place: Enter or leaving the field keeps it, Esc goes back. */
 function RenameField({
@@ -151,7 +152,7 @@ function nodeMenu(node: PlaylistNode): MenuEntry[] {
       { label: 'New playlist from this', icon: ListPlus, onSelect: () => void newFromTemplate(node.id) },
       rename,
       {
-        label: 'Remove…',
+        label: 'Delete…',
         icon: Trash2,
         danger: true,
         separatorBefore: true,
@@ -159,7 +160,7 @@ function nodeMenu(node: PlaylistNode): MenuEntry[] {
       },
     ];
   const remove = {
-    label: 'Remove…',
+    label: 'Delete…',
     icon: Trash2,
     danger: true,
     separatorBefore: true,
@@ -313,7 +314,7 @@ function PlaylistTree({ platform }: { platform: string }) {
                   }}
                   className={cx(
                     rowClass({ selected: selectedNodeId === node.id, dropTarget: dropOn === node.id }),
-                    'flex min-h-8 min-w-0 items-center gap-1.5 py-1 pr-9 text-sm',
+                    'flex min-h-8 min-w-0 items-center gap-1.5 py-1 pr-16 text-sm',
                   )}
                 >
                   <span aria-hidden="true" className="flex w-4 shrink-0 justify-center text-muted">
@@ -339,6 +340,17 @@ function PlaylistTree({ platform }: { platform: string }) {
                     <span className="shrink-0 text-xs text-muted tabular-nums">{node.itemCount}</span>
                   )}
                 </button>
+                {/* Delete, as the Delete key does on the row: shown on the chosen row (a Tab stop) and
+                    under the mouse (Session 26a). */}
+                <RowDelete
+                  label={`Delete ${node.isFolder ? 'folder' : 'playlist'} “${node.name}”`}
+                  chosen={selectedNodeId === node.id}
+                  className="absolute right-8"
+                  onDelete={() => {
+                    selectNode(node.id);
+                    requestRemoveNode(node.id);
+                  }}
+                />
                 {/* For the mouse: the keyboard opens the same menu on the playlist itself (Shift+F10 or
                   the Menu key), which keeps one Tab stop a row. */}
                 <span className="absolute right-1 opacity-0 group-hover:opacity-100" aria-hidden="true">
@@ -873,7 +885,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
               onSelect: () => startRenaming(openId),
             },
             {
-              label: isTemplate ? 'Remove template…' : 'Remove playlist…',
+              label: isTemplate ? 'Delete template…' : 'Delete playlist…',
               icon: Trash2,
               danger: true,
               separatorBefore: true,
@@ -947,7 +959,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
               key={item.id}
               data-item-index={index}
               data-item-row={item.id}
-              className={cx('rounded-md', line)}
+              className={cx('group relative rounded-md', line)}
               onKeyDown={(e) => {
                 const action = actionFor(e.nativeEvent, platform, LIBRARY_KEYMAP);
                 if (action !== 'moveItemUp' && action !== 'moveItemDown') return;
@@ -1013,13 +1025,14 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                 }}
                 className={cx(
                   rowClass({ selected: shownItem === item.id, marked: isMarked, dropTarget: filling }),
-                  'px-2.5',
+                  'pr-10 pl-2.5',
                   item.kind === 'header' ? 'min-h-8 pt-2 pb-1' : 'min-h-11 py-1.5',
                   look,
                 )}
               >
                 <ItemBody item={item} live={isLive} />
               </button>
+
               {isMarked && anchorId === item.id && (
                 <MoveButtons
                   name={itemName(item)}
@@ -1029,6 +1042,18 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                   onMove={move}
                 />
               )}
+              {/* Out of the playlist only (the library keeps it), as Delete does on the item; Undo puts it
+                  back (Session 26a). Last in the Tab order, after Up and Down. */}
+              <RowDelete
+                label={`Remove “${itemName(item)}” from the playlist`}
+                chosen={isMarked && anchorId === item.id}
+                className={cx('absolute right-1.5', item.kind === 'header' ? 'top-0.5' : 'top-2')}
+                onDelete={() => {
+                  if (!usePlaylists.getState().marked.includes(item.id))
+                    clickItem(item.id, { toggle: false, range: false });
+                  void removeMarkedItems();
+                }}
+              />
             </li>
           );
         })}

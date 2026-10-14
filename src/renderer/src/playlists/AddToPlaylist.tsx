@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import type { NewItem } from '../../../shared/playlists';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
-import { ListPlus } from '../ui/icons';
+import { ListPlus, Trash2 } from '../ui/icons';
 import type { MenuPlace } from '../ui/Menu';
 import { isMenuKey, Menu, menuBelow, menuPlace } from '../ui/Menu';
 import { useDragging } from './drag';
@@ -56,21 +56,26 @@ export function AddToPlaylistButton({ pick, className }: { pick: Pick; className
   );
 }
 
-const useRowMenu = create<{ menu: { at: MenuPlace; label: string; pick: Pick } | null }>(() => ({
+const useRowMenu = create<{
+  menu: { at: MenuPlace; label: string; pick: Pick; onDelete?: () => void } | null;
+}>(() => ({
   menu: null,
 }));
 
-/** A library row's right-click and Shift+F10 (or Menu key): its menu, with Add to playlist. */
-export function rowMenu(label: string, pick: Pick) {
+/**
+ * A library row's right-click and Shift+F10 (or Menu key): its menu, with Add to playlist, and
+ * Delete… when the row can be deleted (as its trash button and the Delete key do).
+ */
+export function rowMenu(label: string, pick: Pick, onDelete?: () => void) {
   return {
     onContextMenu: (e: MouseEvent<HTMLElement>) => {
       e.preventDefault();
-      useRowMenu.setState({ menu: { at: menuPlace(e), label, pick } });
+      useRowMenu.setState({ menu: { at: menuPlace(e), label, pick, onDelete } });
     },
     onKeyDown: (e: KeyboardEvent<HTMLElement>) => {
       if (!isMenuKey(e)) return;
       e.preventDefault();
-      useRowMenu.setState({ menu: { at: menuBelow(e.currentTarget), label, pick } });
+      useRowMenu.setState({ menu: { at: menuBelow(e.currentTarget), label, pick, onDelete } });
     },
   };
 }
@@ -97,6 +102,9 @@ export function LibraryRowMenu() {
               icon: ListPlus,
               onSelect: () => void addToOpenPlaylist(menu.pick()),
             },
+        ...(menu.onDelete
+          ? [{ label: 'Delete…', icon: Trash2, danger: true, separatorBefore: true, onSelect: menu.onDelete }]
+          : []),
       ]}
       onClose={() => {
         useRowMenu.setState({ menu: null });

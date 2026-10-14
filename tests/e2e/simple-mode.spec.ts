@@ -192,6 +192,9 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
     'New timer',
   ])
     await expect(win.getByRole('button', { name, exact: true })).toHaveCount(0);
+  // No trash button anywhere (Session 26a's visible deletes are Pro Mode's).
+  await expect(win.getByTestId('row-delete')).toHaveCount(0);
+  await expect(win.getByRole('button', { name: /^(Delete|Remove) / })).toHaveCount(0);
   await expect(win.getByRole('textbox', { name: 'Search presentations' })).toHaveCount(0);
   // ...or on a key...
   await win.keyboard.press(`${mod}+Shift+s`);

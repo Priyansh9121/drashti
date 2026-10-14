@@ -210,7 +210,7 @@ test('the kirtan library, screens’ languages, templates and the setup wizard',
   await win.setViewportSize({ width: 1600, height: 900 });
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Sample kirtan/ })
+    .getByRole('button', { name: /^Sample kirtan/ })
     .click();
 
   // The Kirtan dialog, with details filled in.

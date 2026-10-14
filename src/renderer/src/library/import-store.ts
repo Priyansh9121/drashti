@@ -125,10 +125,20 @@ export function dismissFinished(): void {
 
 // ---- removing presentations -------------------------------------------------
 
-/** Ask before removing the marked presentations (Delete in the list). */
-export function requestRemoval(): void {
+/**
+ * Ask before removing the marked presentations (Delete in the list), or `of` (a row's trash button or
+ * menu: the marked ones when it is one of them, else that one).
+ */
+export function requestRemoval(of?: string): void {
   const { marked, selectedId, presentations } = useLibrary.getState();
-  const ids = marked.length > 0 ? marked : selectedId ? [selectedId] : [];
+  const ids =
+    of !== undefined && !marked.includes(of)
+      ? [of]
+      : marked.length > 0
+        ? marked
+        : selectedId
+          ? [selectedId]
+          : [];
   if (ids.length === 0) return;
   const names = ids.map((id) => presentations.find((p) => p.id === id)?.name ?? '').filter((n) => n !== '');
   const liveId = useEngine.getState().state?.live.presentationId ?? null;
@@ -147,7 +157,7 @@ export async function confirmRemoval(): Promise<void> {
   if (result.ok && result.ids.length > 0) {
     const ids = result.ids;
     pushRemoval({
-      text: `Removed ${describeSome(pending.names, ids.length, 'presentation')}`,
+      text: `Deleted ${describeSome(pending.names, ids.length, 'presentation')}`,
       restore: () => restorePresentations(ids),
     });
   }

@@ -22,7 +22,7 @@ test('smoke: launch, go live on slide 1, the output window shows it', async () =
 
   await operator
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Language test slides/ })
+    .getByRole('button', { name: /^Language test slides/ })
     .click();
   await operator.getByTestId('slide-thumb').first().click();
 

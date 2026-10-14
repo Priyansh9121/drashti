@@ -346,7 +346,7 @@ test("an audio cue plays on the audio layer with the cue's volume and looping; C
   const audio = await audioPage(app);
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Placeholder Dhun/ })
+    .getByRole('button', { name: /^Placeholder Dhun/ })
     .click();
   await expect(win.getByTestId('slide-thumb').nth(0).getByTestId('thumb-audio')).toHaveText(
     'Placeholder audio',

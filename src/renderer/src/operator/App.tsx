@@ -5,6 +5,7 @@ import { ImportReportDialog } from '../library/ImportReport';
 import { importPaths, watchImports } from '../library/import-store';
 import { loadLibrary, watchLibrary } from '../library/library-store';
 import { RemoveConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
+import { MediaRemoveConfirm } from '../library/media-removal';
 import { UndoBar } from '../library/UndoBar';
 import { WordsEditor } from '../library/WordsEditor';
 import { KirtanDialog } from '../kirtans/KirtanDialog';
@@ -256,6 +257,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <ImportReportDialog platform={platform} />
       <RemoveConfirm undoKey={shortcutText('undo', platform)} />
       <RemovePlaylistConfirm undoKey={shortcutText('undo', platform)} />
+      <MediaRemoveConfirm undoKey={shortcutText('undo', platform)} />
       <WordsEditor platform={platform} />
       <KirtanDialog />
       <SetupWizard platform={platform} />

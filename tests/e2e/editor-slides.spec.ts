@@ -50,7 +50,7 @@ test('slides and groups: added, copied, moved and removed; labels, notes, cues, 
   const [id = ''] = await importAndGetIds(win, [words, picture, clip]);
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Placeholder Slides Kirtan/ })
+    .getByRole('button', { name: /^Placeholder Slides Kirtan/ })
     .click();
   await win.getByTestId('edit-slides').click();
   const editor = win.getByTestId('slide-editor');
@@ -194,7 +194,7 @@ test('Drashti’s own default transition is a cut until it is changed, and stays
   });
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Sample kirtan/ })
+    .getByRole('button', { name: /^Sample kirtan/ })
     .click();
   await win.getByTestId('edit-slides').click();
   const editor = win.getByTestId('slide-editor');

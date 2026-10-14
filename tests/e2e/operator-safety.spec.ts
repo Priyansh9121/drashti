@@ -7,7 +7,7 @@ test("an output on the operator's display needs consent, and Uncover gets the co
   needsRealScreen();
   const { app } = await launchApp();
   const op = await operatorPage(app);
-  await expect(op.getByTestId('presentation-list').getByRole('button')).toHaveCount(2);
+  await expect(op.getByTestId('presentation-list').getByTestId('presentation-row')).toHaveCount(2);
   const operatorDisplay = await app.evaluate(({ BrowserWindow, screen }) => {
     const win = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('index.html'));
     return win ? screen.getDisplayMatching(win.getBounds()).id : -1;

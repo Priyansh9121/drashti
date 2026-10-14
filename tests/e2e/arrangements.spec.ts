@@ -35,7 +35,7 @@ test('the arrangement sets the order: a repeated chorus shows and plays each tim
   const output = await outputPage(app);
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Placeholder Arranged Song/ })
+    .getByRole('button', { name: /^Placeholder Arranged Song/ })
     .click();
   const grid = win.getByTestId('slide-grid');
   await expect(grid.getByTestId('arrangement')).toHaveValue(/.+/);
@@ -74,7 +74,7 @@ test('the arrangement sets the order: a repeated chorus shows and plays each tim
   await win.reload();
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Placeholder Arranged Song/ })
+    .getByRole('button', { name: /^Placeholder Arranged Song/ })
     .click();
   await expect(win.getByTestId('slide-grid').getByTestId('arrangement')).toHaveValue('');
   await app.close();

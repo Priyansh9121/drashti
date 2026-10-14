@@ -433,6 +433,11 @@ export class ConvertService {
     const convertedId = existing?.id ?? randomUUID();
     const conversionId = randomUUID();
     const moved = db.transaction(() => {
+      // The same bytes deleted from the library before (Session 26a): back, with its file.
+      if (existing)
+        db.prepare(
+          "UPDATE media SET deleted_at = NULL, path = ?, missing = 0 WHERE id = ? AND (deleted_at IS NOT NULL OR path = '')",
+        ).run(rel, existing.id);
       if (!existing)
         db.prepare(
           `INSERT INTO media (id, kind, name, path, sha256, bytes, playable, format, converted_from, source_kind, source_path)

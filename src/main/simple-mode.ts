@@ -154,6 +154,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.music.addTracks,
   IPC.music.moveTrack,
   IPC.music.removeTrack,
+  IPC.music.restore,
+  IPC.media.remove,
+  IPC.media.restore,
+  IPC.music.restoreTrack,
   // Updates (Session 14): Simple Mode never sees them.
   IPC.updates.check,
   IPC.updates.download,

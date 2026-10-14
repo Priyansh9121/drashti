@@ -4,6 +4,7 @@ import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsV
 import type { LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
+import type { MediaRemovalResult, MediaUsage } from './media-removal';
 import type { MarkersResult, MediaMarkers } from './markers';
 import type { PictureAssetKind, PictureJob, PicturePage, PicturesDone } from './pictures';
 import type { CalendarResult, CalendarView } from './calendar';
@@ -218,6 +219,10 @@ export const IPC = {
     addTracks: 'music:add-tracks',
     moveTrack: 'music:move-track',
     removeTrack: 'music:remove-track',
+    /** Undo: bring back a playlist removed (Session 26a: removing is kept until Drashti next starts). */
+    restore: 'music:restore',
+    /** Undo: bring back a track taken out, at its place. */
+    restoreTrack: 'music:restore-track',
     /** Play a playlist from a track; with none, the one paused plays on or the last one starts (either mode). */
     play: 'music:play',
     /** main -> operator: the audio playlists changed. */
@@ -299,6 +304,11 @@ export const IPC = {
     /** A video's or sound's start and end points and markers (Session 14); setting them is the operator's. */
     markers: 'media:markers',
     setMarkers: 'media:set-markers',
+    /** Where media is used, asked before deleting it (Session 26a). */
+    usage: 'media:usage',
+    /** Delete media from the library (with what it is in), and Undo it. */
+    remove: 'media:remove',
+    restore: 'media:restore',
   },
   audio: {
     /** The sound output: the operator's choice, the outputs found, and where sound plays. */
@@ -668,6 +678,8 @@ export interface InvokeContract {
   };
   [IPC.music.moveTrack]: { args: [trackId: string, to: number]; result: MusicResult };
   [IPC.music.removeTrack]: { args: [trackId: string]; result: MusicResult };
+  [IPC.music.restore]: { args: [playlistId: string]; result: MusicResult };
+  [IPC.music.restoreTrack]: { args: [trackId: string, at: number]; result: MusicResult };
   [IPC.music.play]: { args: [playlistId: string | null, trackIndex?: number]; result: MusicResult };
   [IPC.updates.check]: { args: []; result: UpdateResult };
   [IPC.updates.download]: { args: []; result: UpdateResult };
@@ -785,6 +797,9 @@ export interface InvokeContract {
   [IPC.media.reportLength]: { args: [mediaId: string, durationMs: number]; result: null };
   [IPC.media.markers]: { args: [mediaId: string]; result: MediaMarkers };
   [IPC.media.setMarkers]: { args: [mediaId: string, markers: MediaMarkers]; result: MarkersResult };
+  [IPC.media.usage]: { args: [mediaIds: string[]]; result: MediaUsage };
+  [IPC.media.remove]: { args: [mediaIds: string[]]; result: MediaRemovalResult };
+  [IPC.media.restore]: { args: [mediaIds: string[]]; result: MediaRemovalResult };
   [IPC.media.undoConversion]: {
     args: [conversionId: string];
     result: { ok: true } | { ok: false; message: string };

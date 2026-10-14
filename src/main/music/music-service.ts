@@ -109,6 +109,22 @@ export class MusicService {
     return this.done();
   }
 
+  /** Undo: a playlist removed, back with its tracks (until Drashti next starts, Session 26a). */
+  restore(rawId: unknown): MusicResult {
+    const id = idSchema.safeParse(rawId);
+    if (!id.success || !this.deps.repo.restore(id.data)) return gone;
+    this.deps.log('Music: brought back an audio playlist');
+    return this.done(id.data);
+  }
+
+  /** Undo: a track taken out, back at its place. */
+  restoreTrack(rawTrackId: unknown, rawAt: unknown): MusicResult {
+    const id = idSchema.safeParse(rawTrackId);
+    const at = typeof rawAt === 'number' && Number.isInteger(rawAt) ? rawAt : 0;
+    if (!id.success || !this.deps.repo.restoreTrack(id.data, at)) return gone;
+    return this.done();
+  }
+
   /**
    * Play: an audio playlist from one of its tracks (its playable ones, in
    * order or shuffled); with no playlist, the one paused plays on, or the

@@ -43,7 +43,7 @@ test('edit the words: fix a word, add a verse, move a group; the live slide foll
 
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Placeholder Editable Song/ })
+    .getByRole('button', { name: /^Placeholder Editable Song/ })
     .click();
   const grid = win.getByTestId('slide-grid');
   await expect(grid).toHaveAttribute('data-presentation-id', presentationId);
@@ -106,7 +106,7 @@ test('a new presentation from pasted words, with a repeated chorus sung each tim
   const grid = win.getByTestId('slide-grid');
   await expect(grid.getByRole('heading', { level: 2 })).toHaveText('Placeholder Pasted Kirtan');
   await expect(
-    win.getByTestId('presentation-list').getByRole('button', { name: /Placeholder Pasted Kirtan/ }),
+    win.getByTestId('presentation-list').getByRole('button', { name: /^Placeholder Pasted Kirtan/ }),
   ).toHaveAttribute('aria-current', 'true');
   // The chorus comes again at the end, as written.
   await expect
@@ -138,7 +138,7 @@ test('words typed in a legacy font open read-only, naming the font, and cannot b
   await importAndGetIds(win, [old]);
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Placeholder Legacy Kirtan/ })
+    .getByRole('button', { name: /^Placeholder Legacy Kirtan/ })
     .click();
   await win.getByTestId('slide-grid').getByRole('button', { name: 'Edit words' }).click();
   const editor = win.getByTestId('words-editor');

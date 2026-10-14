@@ -29,7 +29,7 @@ test('drag lyrics onto the library, read the report, go live, remove and undo, i
   const { app } = await launchApp();
   const win = await operatorPage(app);
   const list = win.getByTestId('presentation-list');
-  await expect(list.getByRole('button')).toHaveCount(2);
+  await expect(list.getByTestId('presentation-row')).toHaveCount(2);
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     const created = await d.screens.createGroup('Main Hall');
@@ -55,7 +55,7 @@ test('drag lyrics onto the library, read the report, go live, remove and undo, i
   await expect(report.getByTestId('report-item')).toHaveCount(1);
   await report.getByTestId('report-item').getByRole('button', { name: 'Open' }).click();
   await expect(report).toHaveCount(0);
-  await expect(list.getByRole('button', { name: /Placeholder Song One/ })).toHaveAttribute(
+  await expect(list.getByRole('button', { name: /^Placeholder Song One/ })).toHaveAttribute(
     'aria-current',
     'true',
   );
@@ -74,25 +74,25 @@ test('drag lyrics onto the library, read the report, go live, remove and undo, i
   await expect(output.locator('[data-run][data-lang="translit"]')).toHaveText('Namūnānī ṭek');
 
   // Remove it with the Delete key: Drashti asks first, and warns that it is live.
-  const item = list.getByRole('button', { name: /Placeholder Song One/ });
+  const item = list.getByRole('button', { name: /^Placeholder Song One/ });
   await item.focus();
   await win.keyboard.press('Delete');
   const confirm = win.getByTestId('remove-confirm');
-  await expect(confirm).toContainText('Remove “Placeholder Song One”?');
+  await expect(confirm).toContainText('Delete “Placeholder Song One”?');
   await expect(confirm).toContainText('on the screens now');
   await confirm.getByRole('button', { name: 'Cancel' }).click();
-  await expect(list.getByRole('button')).toHaveCount(3);
+  await expect(list.getByTestId('presentation-row')).toHaveCount(3);
   await item.focus();
   await win.keyboard.press('Backspace');
-  await confirm.getByRole('button', { name: 'Remove' }).click();
-  await expect(list.getByRole('button')).toHaveCount(2);
-  await expect(win.getByTestId('undo-removal')).toContainText('Removed “Placeholder Song One”');
+  await confirm.getByRole('button', { name: 'Delete' }).click();
+  await expect(list.getByTestId('presentation-row')).toHaveCount(2);
+  await expect(win.getByTestId('undo-removal')).toContainText('Deleted “Placeholder Song One”');
   // The slide stays on the screens.
   await expect(output.locator('[data-run][data-lang="gu"]')).toHaveText('નમૂનાની ટેક');
 
   // Undo brings it back, with its slides.
   await win.getByTestId('undo-removal').getByRole('button', { name: /Undo/ }).click();
-  await expect(list.getByRole('button', { name: /Placeholder Song One/ })).toHaveAttribute(
+  await expect(list.getByRole('button', { name: /^Placeholder Song One/ })).toHaveAttribute(
     'aria-current',
     'true',
   );
@@ -105,10 +105,10 @@ test('drag lyrics onto the library, read the report, go live, remove and undo, i
   // Edit > Undo does the same (the menu owns Cmd/Ctrl+Z, so text fields keep their own undo).
   await item.focus();
   await win.keyboard.press('Delete');
-  await confirm.getByRole('button', { name: 'Remove' }).click();
-  await expect(list.getByRole('button')).toHaveCount(2);
+  await confirm.getByRole('button', { name: 'Delete' }).click();
+  await expect(list.getByTestId('presentation-row')).toHaveCount(2);
   await chooseMenuItem(app, 'undo');
-  await expect(list.getByRole('button')).toHaveCount(3);
+  await expect(list.getByTestId('presentation-row')).toHaveCount(3);
 
   // The file changes and is dropped again. A slide is live, so the report waits to be opened.
   writeFileSync(songOne, '[Verse 1]\nPlaceholder song one, rewritten\n');
@@ -120,7 +120,7 @@ test('drag lyrics onto the library, read the report, go live, remove and undo, i
   const changed = report.getByTestId('report-item').filter({ hasText: 'Placeholder Song One' });
   await expect(changed).toHaveAttribute('data-outcome', 'conflict');
   await changed.getByRole('button', { name: 'Keep both' }).click();
-  await expect(list.getByRole('button', { name: /Placeholder Song One \(2\)/ })).toBeVisible();
+  await expect(list.getByRole('button', { name: /^Placeholder Song One \(2\)/ })).toBeVisible();
   await expect(result).toContainText('Imported 1 presentation');
 
   // The Import… button opens a system dialog (answered here by the test).
@@ -130,7 +130,7 @@ test('drag lyrics onto the library, read the report, go live, remove and undo, i
   }, songTwo);
   await win.getByRole('button', { name: 'Import…' }).click();
   await win.getByRole('menuitem', { name: 'Files…' }).click();
-  await expect(list.getByRole('button', { name: /Placeholder Song Two/ })).toBeVisible();
+  await expect(list.getByRole('button', { name: /^Placeholder Song Two/ })).toBeVisible();
 
   // Every run was kept, with its report.
   const runs = await win.evaluate(
@@ -173,7 +173,7 @@ test('drag a .pro6 presentation in: its text goes live, and missing media is fou
 
   const { app } = await launchApp();
   const win = await operatorPage(app);
-  await expect(win.getByTestId('presentation-list').getByRole('button')).toHaveCount(2);
+  await expect(win.getByTestId('presentation-list').getByTestId('presentation-row')).toHaveCount(2);
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     const created = await d.screens.createGroup('Main Hall');
@@ -208,7 +208,7 @@ test('drag a .pro6 presentation in: its text goes live, and missing media is fou
   // Its text goes live like any other presentation's.
   await win
     .getByTestId('presentation-list')
-    .getByRole('button', { name: /Placeholder Hymn/ })
+    .getByRole('button', { name: /^Placeholder Hymn/ })
     .click();
   await expect(win.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toHaveText(
     'Placeholder Hymn',
@@ -230,11 +230,11 @@ test('a file dropped anywhere on the window is imported, and a failed import sho
   const { app } = await launchApp();
   const win = await operatorPage(app);
   const list = win.getByTestId('presentation-list');
-  await expect(list.getByRole('button')).toHaveCount(2);
+  await expect(list.getByTestId('presentation-row')).toHaveCount(2);
 
   // Onto the slide grid, not the list (Session 16): imported all the same.
   await dropFiles(win, win.getByTestId('slide-grid'), [songOne], { overlay: false });
-  await expect(list.getByRole('button', { name: /Placeholder Song One/ })).toHaveCount(1);
+  await expect(list.getByRole('button', { name: /^Placeholder Song One/ })).toHaveCount(1);
   const report = win.getByTestId('import-report');
   await expect(report).toBeVisible();
   await report.getByRole('button', { name: 'Close' }).click();

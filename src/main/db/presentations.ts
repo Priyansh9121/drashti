@@ -354,7 +354,9 @@ export class PresentationRepo {
     const cueRows = this.db
       .prepare(
         `SELECT c.slide_id, c.kind, c.label, c.props, c.media_id,
-                m.name AS media_name, m.kind AS media_kind, m.missing AS media_missing,
+                m.name AS media_name, m.kind AS media_kind,
+                -- Deleted media (Session 26a) is a missing file until it is undone.
+                CASE WHEN m.deleted_at IS NOT NULL THEN 1 ELSE m.missing END AS media_missing,
                 m.playable AS media_playable, m.format AS media_format
            FROM slide_cues c JOIN slides s ON s.id = c.slide_id JOIN slide_groups g ON g.id = s.group_id
            LEFT JOIN media m ON m.id = c.media_id
