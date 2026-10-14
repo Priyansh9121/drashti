@@ -129,7 +129,7 @@ The **setup wizard** sets the screens, their languages, the sound and the defaul
 
 **Restoring.** **File**, then **Restore Library…**, and choose a backup folder (for a scheduled one, a "Drashti backup …" folder inside "Drashti scheduled backups"). Drashti asks first, keeps the library it has as well (in `Backups/` in its data folder), and restarts: the screens go black for a moment, so **never restore during a sabha**. If the backup turns out to be damaged, Drashti says so after the restart and keeps the library it had.
 
-**What a backup does not hold:** the PINs, the stream key (it is in the computer's own secure storage), and Main's certificate for the node. After restoring onto a new computer: set the PINs and the stream key again, pair the node again, and in **Screens** choose each screen's display again (the backup remembers the old computer's displays).
+**What a backup does not hold:** the PINs, the stream key (it is in the computer's own secure storage), Main's certificate for the node, and the pictures' sharpened copies (Drashti makes them again after a restore, a moment each). After restoring onto a new computer: set the PINs and the stream key again, pair the node again, and in **Screens** choose each screen's display again (the backup remembers the old computer's displays).
 
 ---
 
@@ -225,8 +225,6 @@ Drashti comes with no scripture text and no calendar: an admin loads files prepa
 ![A video's start and end on its timeline, and the clean frame Save as MP4 starts from](screenshots/video-timeline.png)
 
 **The Picture editor** (Session 26e), from a picture's row in **Media** (its sliders button), **Picture editor…** in its playlist card's menu or under its card when chosen, or a slide's right-click when the slide has a picture (a PDF or PowerPoint page, say): **Zoom** 100 to 400 % (or scroll over the picture), drag to move it, **Fit**, **Fill** (as big as covers the screen), **Reset**; **Brightness**, **Contrast**, **Colour** and **Sharpness**; and **Auto**, which sets the brightness and contrast from the picture's own darkest and brightest. **Hold for before** shows it as it was taken. **Save** keeps it with the picture (in the library, not the file, which is never changed), so it looks the same wherever it shows: every screen, a node's screens, the stream's picture, key and fill's fill, a phone's picture, and the thumbnails. **As it was taken** puts it back. Videos: not yet. **Sharpness** is made once (Session 26f): after **Save**, Drashti makes a sharpened copy of the picture in the background, which every screen then shows; until it is ready (a moment, longer for a very large photo) the screens show the picture with the rest of its look, unsharpened. A node gets the copy as it gets the picture. Backups leave the copies out: Drashti makes them again after a restore.
-
-**Sharpness needs the graphics chip.** Brightness, contrast, colour and the zoom cost nothing to show on any computer. Sharpening is drawn by the computer's graphics chip: on one drawing without it (a virtual machine, a remote-desktop session, or a graphics driver Chromium turns off) a sharpened picture can take half a second to a second to come up each time it goes live. There, leave **Sharpness** at 0 %. The Performance workflow's `enhanced-pictures` check shows it: on CI's machines, which have no graphics chip of their own, it misses its frame budgets.
 
 ![The Picture editor](screenshots/picture-editor.png)
 
