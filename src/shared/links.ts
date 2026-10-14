@@ -257,6 +257,12 @@ export interface LinkView {
   runId: string | null;
   /** A YouTube download's type and height, once it starts. */
   choice: { type: YouTubeType; height: number | null } | null;
+  /** A Dropbox folder's own playlist (Session 26c), made when its import ended; opened as it is made. */
+  playlist: { id: string; name: string } | null;
+  /** A folder's PDFs and pictures, saved but not added yet (paths inside it): one button adds them. */
+  waiting: string[];
+  /** How many of those the button added, once it has. */
+  waitingAdded: number | null;
 }
 
 /** A refusal from Simple Mode or the admin lock carries no view; the service's own refusals do. */
@@ -268,6 +274,14 @@ export const LINK_KEEP_FREE_BYTES = 2 * 1024 ** 3;
 /** Dropbox's own limits for a folder downloaded as a zip (its help pages, read 11 Oct 2026). */
 export const MAX_ZIP_FILES = 10_000;
 export const MAX_ZIP_BYTES = 250 * 1024 ** 3;
+
+/**
+ * A Dropbox folder's PDFs and pictures (Session 26c, PLAN §7): saved, then added with one button, not by
+ * themselves.
+ */
+export function waitingKind(name: string): boolean {
+  return /\.(pdf|jpe?g|png|webp|heic)$/iu.test(name);
+}
 
 /** What is imported from a Dropbox link: PowerPoint files and MP4 videos (PLAN §7). */
 export function takenKind(name: string): 'powerpoint' | 'video' | null {

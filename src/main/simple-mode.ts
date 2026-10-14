@@ -172,6 +172,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.links.download,
   IPC.links.stop,
   IPC.links.reset,
+  IPC.links.addWaiting,
   IPC.links.showSaved,
   IPC.links.setMaxHeight,
   // Roles (Session 14): Simple Mode sets no PIN and unlocks nothing; leaving it takes a PIN (app:set-mode).

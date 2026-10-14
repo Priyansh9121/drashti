@@ -485,6 +485,21 @@ export class PlaylistRepo {
     return id;
   }
 
+  /**
+   * A new playlist at the top of the list, not in a folder (Session 26c: a Dropbox folder's playlist, opened
+   * as it is made). Its id.
+   */
+  createAtTop(name: string): string {
+    const id = randomUUID();
+    this.db
+      .prepare(
+        `INSERT INTO playlists (id, parent_id, name, is_folder, position, is_template)
+         VALUES (?, NULL, ?, 0, (SELECT COALESCE(MIN(position), 0) - 1 FROM playlists WHERE parent_id IS NULL), 0)`,
+      )
+      .run(id, name);
+    return id;
+  }
+
   /** Copy items into a playlist at its end (headers, presentations, media and slots), in one go. */
   private copyItems(to: string, items: readonly CopyItem[]): void {
     const insert = this.db.prepare(

@@ -29,6 +29,7 @@ import { NOT_USED } from '../shared/media-removal';
 import { mediaUpNow } from '../shared/node-media';
 import { MediaRemoval } from './library/media-removal';
 import { importableExtensions } from './import/scan';
+import { addToFolderParts, makeFolderPlaylist } from './playlists/folder-playlist';
 import { idSchema } from '../shared/model-schema';
 import { z } from 'zod';
 import type { OutputContext } from '../shared/screens';
@@ -2258,6 +2259,20 @@ function start(): void {
   });
   // ---- Import from a Link (Session 25b): saved in a folder an admin chooses, then the normal import ----
   const links = new LinkService({
+    // A Dropbox folder as one playlist (Session 26c, src/main/playlists/folder-playlist.ts).
+    folderPlaylist: ({ name, runId, files }) => {
+      const made = makeFolderPlaylist(playlists, name, importRepo.report(runId)?.items ?? [], files);
+      if (made) sendToOperator(IPC.playlists.changed, { at: Date.now() });
+      return made;
+    },
+    addToFolderPlaylist: ({ playlistId, runId, files }) => {
+      const added = addToFolderParts(playlists, playlistId, importRepo.report(runId)?.items ?? [], files);
+      if (added > 0) {
+        engine.refreshNext();
+        sendToOperator(IPC.playlists.changed, { at: Date.now() });
+      }
+      return added;
+    },
     spawn: spawnDownloadWorker,
     onAir: () => streaming.inUse() || testOnAir,
     freeBytes: diskFreeBytes,
@@ -2364,6 +2379,7 @@ function start(): void {
   handle(IPC.links.download, (e, choice) => (fromOperator(e) ? links.download(choice) : notLinksOperator));
   handle(IPC.links.stop, (e) => (fromOperator(e) ? links.stop() : notLinksOperator));
   handle(IPC.links.reset, (e) => (fromOperator(e) ? links.reset() : notLinksOperator));
+  handle(IPC.links.addWaiting, (e) => (fromOperator(e) ? links.addWaiting() : notLinksOperator));
   handle(IPC.links.setMaxHeight, (e, height) =>
     fromOperator(e) ? links.setMaxHeight(height) : notLinksOperator,
   );

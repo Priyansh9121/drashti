@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
@@ -211,5 +211,55 @@ test('a Dropbox file link, and a YouTube download, each land in the open playlis
   await expect
     .poll(() => labels(win), { timeout: 180_000 })
     .toEqual(['Placeholder katha', 'Placeholder video.mp4']);
+  await app.close();
+});
+
+test('a folder imported with Import › A Folder… goes into a playlist in its folders’ order, with headers (Session 26c)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  const root = join(mkdtempSync(join(tmpdir(), 'drashti-add-folder-')), 'Placeholder Sabha');
+  for (const sub of ['', 'Week 2', 'Week 10/Deep']) mkdirSync(join(root, sub), { recursive: true });
+  await makeTestImage(win, join(root, 'b cover.png'), { color: '#1e3a8a' });
+  await makeTestImage(win, join(root, 'A cover.png'), { color: '#7c2d12' });
+  await makeTestImage(win, join(root, 'Week 2', 'Darshan.png'), { color: '#365314' });
+  await makeTestImage(win, join(root, 'Week 10', 'Deep', 'Late.png'), { color: '#581c87' });
+  writeFileSync(join(root, 'Week 2', 'Placeholder words.txt'), 'Placeholder line one\n');
+  await app.evaluate(({ dialog }, folder) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
+  }, root);
+  await win.getByRole('button', { name: 'Import…' }).click();
+  await win.getByRole('menuitem', { name: 'A Folder…' }).click();
+  const report = win.getByTestId('import-report');
+  await expect(report).toBeVisible({ timeout: 60_000 });
+  // No playlist open: a new one, named after the folder.
+  await expect(report.getByTestId('report-add-target')).toHaveValue('new');
+  await report.getByTestId('report-add-button').click();
+  await expect(report.getByTestId('report-added')).toContainText('Added to “Placeholder Sabha”');
+  await report.getByRole('button', { name: 'Close', exact: true }).first().click();
+  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Sabha' }).click();
+  const shown = () =>
+    win
+      .getByTestId('open-playlist')
+      .getByTestId('playlist-item')
+      .evaluateAll((els) =>
+        els.map((e) => {
+          const label = e.querySelector('[data-label]')?.textContent.trim() ?? '';
+          return e.getAttribute('data-kind') === 'header' ? `# ${label}` : label;
+        }),
+      );
+  // Folder by folder, depth first, A→Z with numbers in order (2 before 10), presentations before pictures.
+  await expect
+    .poll(shown)
+    .toEqual([
+      'A cover.png',
+      'b cover.png',
+      '# Week 2',
+      'Placeholder words',
+      'Darshan.png',
+      '# Week 10 › Deep',
+      'Late.png',
+    ]);
   await app.close();
 });

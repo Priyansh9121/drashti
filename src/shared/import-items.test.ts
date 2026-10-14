@@ -46,6 +46,24 @@ describe('what an import made, as playlist items', () => {
     ]);
   });
 
+  it('puts a folder’s in its folders’ order, a header before each subfolder (Session 26c)', () => {
+    const report = [
+      item('/in/Sabha/Week 1/Katha 10.pptx', { kind: 'presentation', id: 'k10' }),
+      item('/in/Sabha/Week 1/Katha 2.pptx', { kind: 'presentation', id: 'k2' }),
+      item('/in/Sabha/Opening.mp4', { kind: 'media', id: 'open' }),
+      item('/in/Sabha/Week 1/Clip.mp4', { kind: 'media', id: 'clip' }),
+      item('/in/Sabha/Lyrics.txt', { kind: 'presentation', id: 'words' }),
+    ];
+    expect(itemsMadeBy(report, ['/in/Sabha'])).toEqual([
+      { kind: 'media', mediaId: 'open' },
+      { kind: 'presentation', presentationId: 'words' },
+      { kind: 'header', label: 'Week 1' },
+      { kind: 'media', mediaId: 'clip' },
+      { kind: 'presentation', presentationId: 'k2' },
+      { kind: 'presentation', presentationId: 'k10' },
+    ]);
+  });
+
   it('leaves out what failed or was not imported, and anything not a presentation or media; each once', () => {
     const report = [
       item('/in/a.png', { kind: 'media', id: 'm-a' }),

@@ -19,6 +19,7 @@ import {
   NOT_TAKEN_REASON,
   PERMISSION_WORDS,
   takenKind,
+  waitingKind,
   type YouTubeChoice,
 } from '../../shared/links';
 import { fileProblem } from '../plain-errors';
@@ -27,6 +28,8 @@ import type { FromWorker, ToWorker, WorkerRoute } from './protocol';
 import { choiceWords } from './youtube';
 import type { YtDlpLaunch } from './youtube-run';
 import { killTree } from './youtube-tools';
+import type { FolderFile } from '../playlists/folder-playlist';
+import { kindRank, partsInFolderOrder } from '../../shared/folder-order';
 
 /*
  * Import from a Link, the main process's side (Session 25b). One link at a
@@ -96,6 +99,17 @@ export interface LinkServiceDeps {
   route: WorkerRoute;
   /** How often to look at the stream while downloading (ms). */
   pollMs?: number;
+  /**
+   * A Dropbox folder's own playlist (Session 26c), when its import ended: in the folder's order, at the top
+   * of the list. Its id and name, or null when nothing came in.
+   */
+  folderPlaylist?(input: {
+    name: string;
+    runId: string;
+    files: FolderFile[];
+  }): { id: string; name: string } | null;
+  /** Its PDFs and pictures, imported by the one button: each at the end of its folder's part. How many. */
+  addToFolderPlaylist?(input: { playlistId: string; runId: string; files: FolderFile[] }): number;
 }
 
 const WAITING_FOR = 'the stream is on air or recording';
@@ -139,6 +153,9 @@ export class LinkService {
       notTaken: [],
       fitted: [],
       runId: null,
+      playlist: null,
+      waiting: [],
+      waitingAdded: null,
       maxHeight: deps.maxHeight.get(),
       choice: null,
     };
@@ -352,6 +369,9 @@ export class LinkService {
         notTaken: [],
         fitted: [],
         runId: null,
+        playlist: null,
+        waiting: [],
+        waitingAdded: null,
       });
       return this.refuse(check.message);
     }
@@ -386,6 +406,9 @@ export class LinkService {
       notTaken: [],
       fitted: [],
       runId: null,
+      playlist: null,
+      waiting: [],
+      waitingAdded: null,
       choice: null,
     });
     const worker = this.startWorker('look');
@@ -446,6 +469,9 @@ export class LinkService {
       notTaken: [],
       fitted: [],
       runId: null,
+      playlist: null,
+      waiting: [],
+      waitingAdded: null,
       choice: null,
     });
     return this.answer();
@@ -517,6 +543,9 @@ export class LinkService {
       notTaken: [],
       fitted: [],
       runId: null,
+      playlist: null,
+      waiting: [],
+      waitingAdded: null,
     });
     this.deps.log('info', `Links: a ${this.kindWord()} ${checked.shape} download starts`);
     if (this.held) this.deps.log('info', 'Links: the download waits while the stream is on air or recording');
@@ -600,6 +629,9 @@ export class LinkService {
       notTaken: [],
       fitted: [],
       runId: null,
+      playlist: null,
+      waiting: [],
+      waitingAdded: null,
       choice,
     });
     this.deps.log(
@@ -732,24 +764,48 @@ export class LinkService {
     const files = paths.map(inFolder);
     // From YouTube: the one file Drashti named (its MP4 or MP3). From Dropbox: its PowerPoints and MP4s.
     const youtube = this.state.kind === 'youtube';
+    // A Dropbox folder (Session 26c): it becomes a playlist of its own, and its PDFs and pictures wait for
+    // the one button.
+    const isFolder = !youtube && this.checked?.shape === 'folder';
     const taken = youtube ? paths : paths.filter((p) => takenKind(p) !== null);
+    // Listed in the folder's order, as they will go in.
+    const waiting = isFolder
+      ? partsInFolderOrder(
+          files.filter((f) => takenKind(f) === null && waitingKind(f)),
+          (f) => f,
+          kindRank,
+        ).flatMap((part) => part.entries)
+      : [];
     const notTaken = youtube
       ? []
-      : files.filter((f) => takenKind(f) === null).map((name) => ({ name, reason: NOT_TAKEN_REASON }));
+      : files
+          .filter((f) => takenKind(f) === null && !waiting.includes(f))
+          .map((name) => ({ name, reason: NOT_TAKEN_REASON }));
     this.deps.log(
       'info',
       `Links: a ${this.kindWord()} download was saved (${String(files.length)} ${files.length === 1 ? 'file' : 'files'}, ${formatBytes(bytes)}); ${String(taken.length)} to import, ${String(notTaken.length)} not taken`,
     );
-    this.set({ phase: 'importing', waitingFor: null, progress: null, saved: { folder, files }, notTaken });
+    this.set({
+      phase: 'importing',
+      waitingFor: null,
+      progress: null,
+      saved: { folder, files },
+      notTaken,
+      waiting,
+      waitingAdded: null,
+    });
     // Videos above the highest quality: a copy that tall is imported instead (the original stays in the folder).
     const maxHeight = this.state.maxHeight;
     const most = heightLabel(maxHeight);
     const work = join(this.deps.workDir, randomUUID());
     const prepared: string[] = [];
     const fitted: string[] = [];
+    // What the import is given, and where each one is in the folder (a 1080p copy is its original's).
+    const given: FolderFile[] = [];
     for (const path of taken) {
       if (takenKind(path) !== 'video' || !this.deps.fitVideo) {
         prepared.push(path);
+        given.push({ path, relative: inFolder(path) });
         continue;
       }
       this.set({ phase: 'converting', waitingFor: null, progress: null });
@@ -777,6 +833,7 @@ export class LinkService {
       }
       if (fit.copy) fitted.push(inFolder(path));
       prepared.push(fit.copy ?? path);
+      given.push({ path: fit.copy ?? path, relative: inFolder(path) });
     }
     this.set({ phase: 'importing', waitingFor: null, progress: null, notTaken, fitted });
     if (prepared.length === 0) {
@@ -785,7 +842,9 @@ export class LinkService {
         phase: 'done',
         message:
           taken.length === 0
-            ? 'Saved. Nothing in it is a PowerPoint file (.pptx) or an MP4 video, so nothing was imported.'
+            ? waiting.length > 0
+              ? 'Saved. It has no PowerPoint file (.pptx) or MP4 video; its PDFs and pictures wait for Add the PDFs and pictures.'
+              : 'Saved. Nothing in it is a PowerPoint file (.pptx) or an MP4 video, so nothing was imported.'
             : 'Saved, but nothing in it could be imported: see Not taken.',
       });
       return;
@@ -799,11 +858,63 @@ export class LinkService {
       this.byRun.set(result.runId, shown);
       for (const old of [...this.byRun.keys()].slice(0, Math.max(0, this.byRun.size - 20)))
         this.byRun.delete(old);
-      this.set({ phase: 'done', runId: result.runId });
+      // A folder: its own playlist, in its folders' order (made where the import's report says what each became).
+      const playlist =
+        isFolder && this.deps.folderPlaylist
+          ? this.deps.folderPlaylist({
+              name: this.state.look?.name ?? 'Dropbox folder',
+              runId: result.runId,
+              files: given,
+            })
+          : null;
+      if (playlist)
+        this.deps.log('info', `Links: a Dropbox folder became a playlist of ${String(given.length)} file(s)`);
+      this.set({ phase: 'done', runId: result.runId, playlist });
     } else {
       this.deps.log('warn', 'Links: the saved files could not be imported');
       this.set({ phase: 'failed', message: `Saved, but not imported: ${result.message}` });
     }
+  }
+
+  /**
+   * Add the PDFs and pictures (Session 26c): a folder's waiting files, imported, then each at the end of its
+   * folder's part of the folder's playlist (made now if the folder had nothing else).
+   */
+  async addWaiting(): Promise<LinkResult> {
+    const saved = this.state.saved;
+    const waiting = this.state.waiting;
+    if (!saved || waiting.length === 0 || this.busy) return this.refuse('Nothing is waiting to be added.');
+    this.set({ phase: 'importing', waitingFor: null, progress: null, message: null });
+    const files = waiting.map((relativePath) => ({
+      path: join(saved.folder, ...relativePath.split('/')),
+      relative: relativePath,
+    }));
+    const result = await this.deps.importFiles(files.map((f) => f.path));
+    if (!result.ok) {
+      this.deps.log('warn', 'Links: a folder’s PDFs and pictures could not be imported');
+      this.set({ phase: 'done', message: `Not added: ${result.message}` });
+      return this.answer();
+    }
+    const playlistId = this.state.playlist?.id ?? null;
+    let added = 0;
+    let playlist = this.state.playlist;
+    if (playlistId && this.deps.addToFolderPlaylist)
+      added = this.deps.addToFolderPlaylist({ playlistId, runId: result.runId, files });
+    else if (!playlistId && this.deps.folderPlaylist) {
+      playlist = this.deps.folderPlaylist({
+        name: this.state.look?.name ?? 'Dropbox folder',
+        runId: result.runId,
+        files,
+      });
+      added = playlist ? files.length : 0;
+    }
+    this.deps.log(
+      'info',
+      `Links: added a folder’s PDFs and pictures (${String(added)} of ${String(files.length)})`,
+    );
+    this.byRun.set(result.runId, files[0]?.path ?? saved.folder);
+    this.set({ phase: 'done', runId: result.runId, playlist, waiting: [], waitingAdded: added });
+    return this.answer();
   }
 
   private async failed(message: string, code: string): Promise<void> {

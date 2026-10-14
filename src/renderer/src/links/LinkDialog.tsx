@@ -17,7 +17,7 @@ import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Dialog } from '../ui/Dialog';
 import { Field, Select, TextInput } from '../ui/Field';
-import { Cloud, Download, FolderOpen, Link2, MonitorPlay } from '../ui/icons';
+import { Cloud, Download, FolderOpen, Link2, ListPlus, MonitorPlay } from '../ui/icons';
 import type { Icon } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { Progress } from '../ui/Progress';
@@ -30,6 +30,7 @@ import { AddTargetSelect, defaultTarget, nameAfter } from '../playlists/add-made
 import {
   anotherLink,
   choose,
+  addWaitingFiles,
   chooseAddTo,
   chooseKind,
   closeLinkDialog,
@@ -264,6 +265,14 @@ function AddWhenImported({ view }: { view: LinkView }) {
   const addTo = useLinks((s) => s.addTo);
   // Read so the default follows the playlist opened meanwhile.
   usePlaylists((s) => s.openId);
+  // A folder becomes a playlist of its own (Session 26c), named after it.
+  if (view.look?.shape === 'folder')
+    return (
+      <p className="text-xs text-muted" data-testid="link-folder-playlist">
+        When it’s imported, the folder becomes a playlist of its own, “{view.look.name}”, in its folders’
+        order: each folder’s videos, then its PowerPoint files, with a header for each folder inside.
+      </p>
+    );
   const target = addTo ?? defaultTarget();
   return (
     <div className="space-y-1">
@@ -509,9 +518,12 @@ function Saved({ view, platform }: { view: LinkView; platform: string }) {
           Saved {plural(saved.files.length, 'file')} in <strong>{lastPart(saved.folder)}</strong>:
         </p>
         <Truncate text={saved.folder} className="text-xs text-muted" data-testid="link-saved-folder" />
+        {/* A long list scrolls: the keyboard can reach it to scroll it (Session 26c, a folder's many files). */}
         <ul
           className="max-h-32 list-disc overflow-auto pl-5 text-xs text-muted"
           data-testid="link-saved-files"
+          tabIndex={0}
+          aria-label="The files saved"
         >
           {saved.files.map((f) => (
             <li key={f}>{f}</li>
@@ -525,7 +537,11 @@ function Saved({ view, platform }: { view: LinkView; platform: string }) {
             Above {heightLabel(view.maxHeight)}, so the library has a {heightLabel(view.maxHeight)} copy of
             each. The originals stay in the folder as they were.
           </p>
-          <ul className="max-h-24 list-disc overflow-auto pl-5 text-xs">
+          <ul
+            className="max-h-24 list-disc overflow-auto pl-5 text-xs"
+            tabIndex={0}
+            aria-label="Made smaller"
+          >
             {view.fitted.map((f) => (
               <li key={f} data-testid="link-fitted-item">
                 {f}
@@ -534,10 +550,50 @@ function Saved({ view, platform }: { view: LinkView; platform: string }) {
           </ul>
         </div>
       )}
+      {view.playlist && (
+        <p className="text-sm" data-testid="link-playlist">
+          The folder is now the playlist <strong>{view.playlist.name}</strong>, in its folders’ order: open in
+          the middle of the window.
+        </p>
+      )}
+      {view.waiting.length > 0 && (
+        <div className="space-y-1.5" data-testid="link-waiting">
+          <p className="text-sm font-medium">Saved, not added yet</p>
+          <p className="text-xs text-muted">
+            PDFs and pictures go in only when you say: each at the end of its folder’s part of the playlist.
+          </p>
+          <ul
+            className="max-h-32 list-disc overflow-auto pl-5 text-xs"
+            tabIndex={0}
+            aria-label="Saved, not added yet"
+          >
+            {view.waiting.map((f) => (
+              <li key={f} data-testid="link-waiting-item">
+                {f}
+              </li>
+            ))}
+          </ul>
+          <Button
+            size="sm"
+            icon={ListPlus}
+            disabled={linkBusy(view)}
+            data-testid="link-add-waiting"
+            onClick={() => void addWaitingFiles()}
+          >
+            Add the PDFs and pictures
+          </Button>
+        </div>
+      )}
+      {view.waitingAdded !== null && (
+        <p className="text-sm" role="status" data-testid="link-waiting-added">
+          Added {plural(view.waitingAdded, 'PDF or picture', 'PDFs and pictures')}
+          {view.playlist ? ` to “${view.playlist.name}”` : ''}.
+        </p>
+      )}
       {view.notTaken.length > 0 && (
         <div className="space-y-1" data-testid="link-not-taken">
           <p className="text-sm font-medium">Not taken</p>
-          <ul className="max-h-32 overflow-auto text-xs">
+          <ul className="max-h-32 overflow-auto text-xs" tabIndex={0} aria-label="Not taken">
             {view.notTaken.map((n) => (
               <li key={n.name} data-testid="link-not-taken-item">
                 <span className="text-fg">{n.name}</span>: <span className="text-muted">{n.reason}</span>

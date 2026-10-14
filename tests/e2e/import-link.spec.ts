@@ -5,12 +5,15 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { makeTestPdf } from '../../src/main/import/testing/make-pdf';
 import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
 import { makeDropboxLikeZip, makeZip } from '../../src/main/import/testing/zip-writer';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { dropboxStandIn, fileLink, folderLink, type StandIn } from './dropbox-stand-in';
+import { dropboxStandIn, fileLink, folderLink, type StandIn, type StandInFile } from './dropbox-stand-in';
 import { chooseMenuItem, launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { mouseDrag } from './mouse-drag';
 import { testFfmpeg } from './stream-helpers';
+import { makeTestImage } from './test-media';
 
 /*
  * Import from a Link (Session 25b), Dropbox: a local stand-in serves made-up
@@ -411,5 +414,139 @@ test('Dropbox: with the highest video quality at 2160p, a 2160p video is importe
   expect(setting?.value).toBe('2160');
   expect(row).toBeDefined();
   expect(readFileSync(join(userData, 'Media', row?.path ?? '')).equals(big)).toBe(true);
+  await app.close();
+});
+
+test('Dropbox: a folder link becomes one playlist, folder by folder, with headers; its PDFs and pictures wait for one button (Session 26c)', async () => {
+  test.setTimeout(300_000);
+  const work = mkdtempSync(join(tmpdir(), 'drashti-link-e2e-'));
+  const media = join(work, 'made');
+  mkdirSync(media);
+  // Every video different (the library shares the rows of files with the same bytes).
+  const video = (name: string, size: string) => makeVideo(join(media, name), size);
+  const deck = (text: string) => makeTestPptx([{ color: '1E3A8A', text, notes: '' }]);
+  // Served once the zip is made (it holds a picture, which needs the window to draw it).
+  const folders: Record<string, StandInFile> = {};
+  standIn = await dropboxStandIn({}, folders);
+  const chosen = join(work, 'Chosen folder');
+  const { app } = await launchApp({
+    DRASHTI_TEST_LINK_ORIGIN: standIn.origin,
+    DRASHTI_TEST_DOWNLOADS_DIR: join(work, 'Videos'),
+    // The stand-in saves the .pptx files as PDF, as PowerPoint would (CI has no PowerPoint).
+    DRASHTI_TEST_DECK_CONVERTER: '1',
+  });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await app.evaluate(({ dialog }, folder) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
+  }, chosen);
+  const picture = await makeTestImage(win, join(media, 'Darshan.png'), { color: '#7c2d12' });
+  const zip = makeDropboxLikeZip([
+    { path: 'Opening video.mp4', data: video('a.mp4', '320x180') },
+    { path: 'Welcome.pptx', data: deck('Placeholder welcome') },
+    { path: 'Read me.txt', data: 'placeholder words' },
+    {
+      path: 'Notice.pdf',
+      data: makeTestPdf([{ width: 960, height: 540, color: [20, 83, 45], text: 'Notice' }]),
+    },
+    { path: 'Week 1/Katha 10.pptx', data: deck('Placeholder katha ten') },
+    { path: 'Week 1/Katha 2.pptx', data: deck('Placeholder katha two') },
+    {
+      path: 'Week 1/Handout.pdf',
+      data: makeTestPdf([{ width: 960, height: 540, color: [88, 28, 135], text: 'Handout' }]),
+    },
+    { path: 'Week 1/Videos/Clip b.mp4', data: video('b.mp4', '352x198') },
+    { path: 'Week 1/Videos/Clip A.mp4', data: video('c.mp4', '384x216') },
+    { path: 'Week 1/Videos/Deep/Third.mp4', data: video('d.mp4', '416x234') },
+    // A folder with only a picture: it gets a part, and its header, when the button adds it.
+    { path: 'Week 2/Darshan.png', data: readFileSync(picture) },
+  ]);
+  folders['foldCCCCCCCCCCC'] = { name: 'Placeholder Sabha folder.zip', body: zip, type: 'application/zip' };
+  // A playlist already named like the folder: the new one is "… (2)".
+  await win.evaluate(() =>
+    (globalThis as PageGlobals).drashti.playlists.create('Placeholder Sabha folder', null, false),
+  );
+  await chooseMenuItem(app, 'import-from-link');
+  await win.getByTestId('link-kind-dropbox').click();
+  await win.getByTestId('link-text').fill(folderLink('foldCCCCCCCCCCC'));
+  await expect(win.getByTestId('link-holds')).toContainText('A folder');
+  await expect(win.getByTestId('link-folder-playlist')).toContainText('a playlist of its own');
+  await win.getByTestId('link-choose-folder').click();
+  await win.getByTestId('link-download').click();
+
+  // Made at the top of the list, and opened, in the folders' order with a header for each subfolder.
+  const title = win.getByTestId('open-playlist').getByTestId('playlist-title');
+  await expect(title).toHaveText('Placeholder Sabha folder (2)', { timeout: 180_000 });
+  await expect(win.getByTestId('playlist-node').first()).toContainText('Placeholder Sabha folder (2)');
+  const items = win.getByTestId('open-playlist').getByTestId('playlist-item');
+  const shown = () =>
+    items.evaluateAll((els) =>
+      els.map((e) => {
+        const label = e.querySelector('[data-label]')?.textContent.trim() ?? '';
+        return e.getAttribute('data-kind') === 'header' ? `# ${label}` : label;
+      }),
+    );
+  await expect
+    .poll(shown, { timeout: 60_000 })
+    .toEqual([
+      'Opening video.mp4',
+      'Welcome',
+      '# Week 1',
+      'Katha 2',
+      'Katha 10',
+      '# Week 1 › Videos',
+      'Clip A.mp4',
+      'Clip b.mp4',
+      '# Week 1 › Videos › Deep',
+      'Third.mp4',
+    ]);
+  // The PDFs and pictures wait (the .txt is not taken), until the one button.
+  await expect(win.getByTestId('link-waiting-item')).toHaveText([
+    'Notice.pdf',
+    'Week 1/Handout.pdf',
+    'Week 2/Darshan.png',
+  ]);
+  await expect(win.getByTestId('link-not-taken-item')).toHaveCount(1);
+  await expect(win.getByTestId('link-not-taken-item')).toContainText('Read me.txt');
+  await expectNoSeriousA11yIssues(
+    win,
+    'the link dialog with its waiting PDFs',
+    '[data-testid="link-dialog"]',
+  );
+  await win.getByTestId('link-add-waiting').click();
+  await expect(win.getByTestId('link-waiting-added')).toContainText('Added 3 PDFs and pictures', {
+    timeout: 120_000,
+  });
+  // Each at the end of its folder's part.
+  await expect
+    .poll(shown, { timeout: 30_000 })
+    .toEqual([
+      'Opening video.mp4',
+      'Welcome',
+      'Notice',
+      '# Week 1',
+      'Katha 2',
+      'Katha 10',
+      'Handout',
+      '# Week 1 › Videos',
+      'Clip A.mp4',
+      'Clip b.mp4',
+      '# Week 1 › Videos › Deep',
+      'Third.mp4',
+      '# Week 2',
+      'Darshan.png',
+    ]);
+  const report = win.getByTestId('import-report');
+  if (await report.isVisible())
+    await report.getByRole('button', { name: 'Close', exact: true }).first().click();
+  await win.getByTestId('link-dialog').getByRole('button', { name: 'Close', exact: true }).click();
+
+  // Every item can be moved: a video up with Alt+↑, and a header dragged to the top.
+  await items.filter({ hasText: 'Third.mp4' }).click();
+  await win.keyboard.press('Alt+ArrowUp');
+  await expect.poll(async () => (await shown()).indexOf('Third.mp4')).toBe(10);
+  await mouseDrag(win, items.filter({ hasText: 'Week 1 › Videos › Deep' }), items.first(), 'top');
+  await expect.poll(async () => (await shown())[0]).toBe('# Week 1 › Videos › Deep');
   await app.close();
 });
