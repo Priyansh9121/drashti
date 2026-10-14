@@ -457,7 +457,8 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
           max={THUMB.max}
           step={10}
           format={(v) => `${v}`}
-          className="w-28"
+          // Room for its track (96 px at least) and its value (40 px): narrower, the value stuck out.
+          className="w-40"
           onChange={(e) => {
             setThumb(Number(e.target.value));
           }}

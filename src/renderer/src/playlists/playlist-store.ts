@@ -37,6 +37,11 @@ interface PlaylistView {
   anchorId: string | null;
   /** The playlist, folder or header being renamed in place. */
   renaming: string | null;
+  /**
+   * Where a playlist is renamed (Session 26a): on its row in the list, or the open playlist's title in the
+   * centre. Only one name field opens.
+   */
+  renameIn: 'tree' | 'centre';
   /** Playlists or folders waiting for the operator to confirm removing them. */
   confirmRemove: { ids: string[]; name: string; folder: boolean; template: boolean; inside: number } | null;
   /** The last problem, until the next change works. */
@@ -64,6 +69,7 @@ export const usePlaylists = create<PlaylistView>(() => ({
   marked: [],
   anchorId: null,
   renaming: null,
+  renameIn: 'tree',
   confirmRemove: null,
   problem: null,
   savingTemplate: null,
@@ -303,12 +309,13 @@ export async function createNode(isFolder: boolean, parentId: string | null = ne
   usePlaylists.setState((s) => ({
     selectedNodeId: id,
     renaming: id,
+    renameIn: 'tree',
     closed: s.closed.filter((c) => c !== parentId),
   }));
 }
 
-export function startRenaming(id: string): void {
-  usePlaylists.setState({ renaming: id });
+export function startRenaming(id: string, where: 'tree' | 'centre' = 'tree'): void {
+  usePlaylists.setState({ renaming: id, renameIn: where });
 }
 
 export function stopRenaming(): void {

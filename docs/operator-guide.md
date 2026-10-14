@@ -8,9 +8,9 @@ On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows 
 
 **The window, left to right:**
 
-- **Left column:** at the top the **Playlists**, and below them the **Library**: Presentations and Media, with the search box and, under it, **Import…** (files, a folder, or from a link) and **New…** (a presentation from pasted words). The Shastra tab, the Templates and the kirtan filters show only when an admin turns on **View › Show Shastra, Templates and Kirtan Details**.
-- **Middle:** the **slides** of whatever you clicked, in the order they play.
-- **Right column:** the live picture, headed **LIVE** (what the hall sees now), and the panels: Looks, Macros, Stage screen, Props, Masks, Messages, Timers, Music, Arti and the Idle rotation.
+- **Left column:** at the top the **Playlists**, as many as you like, in folders: **+ New** makes one, and the chosen one shows **Rename** and **Delete** at its end. Below them the **Library**: Presentations and Media, with the search box and, under it, **Import…** (files, a folder, or from a link) and **New…** (a presentation from pasted words). Drag the line between them to give either more room; Drashti remembers it. The Shastra tab, the Templates and the kirtan filters show only when an admin turns on **View › Show Shastra, Templates and Kirtan Details**.
+- **Middle:** the **open playlist** at the top: its name, **Add files…**, **From a Link…** and its menu (**⋯**), then its items as cards, each with a picture, its name, what it is (a presentation, a deck, a video, a picture, a sound, a header) and its length or how many slides. Drag a card to move it, or drop presentations, pictures, videos or files anywhere on it. Below it, the **slides** of the item you clicked, in the order they play. With no playlist open (**×** closes it), the slides of the presentation chosen in the library fill the middle.
+- **Right column:** the live picture, headed **LIVE** (what the hall sees now), then **Audio** (Music and the Arti), the **Stage screen**, **Messages**, **Timers** (one line each: start or pause, reset, show on the screens, Edit), **Props** and **Looks**, and **More tools**, folded away: Macros, Masks and the Idle rotation, each with a line saying what it is.
 - **Along the bottom:** the **clear buttons** for each layer, **Logo** and **Black-out**, then the **status bar** (the version, the screens, imports, warnings).
 
 ---
@@ -24,13 +24,13 @@ Do these about 30 minutes before the sabha starts.
 
    ![The screens dashboard](screenshots/screens-dashboard-1280x720.png)
 
-3. **Open tonight's playlist.** Under **Playlists** click it. If it is a playlist from an earlier week, open it now (a click is enough): the second computer then copies its pictures and videos in good time.
+3. **Open tonight's playlist.** Under **Playlists** click it: it opens in the middle. If it is a playlist from an earlier week, open it now (a click is enough): the second computer then copies its pictures and videos in good time.
 4. **Check the sound.** Play a sound from the playlist, or press **Play** in the **Music** panel, and check the mixer hears it. The status bar always says where the sound goes; a warning there means the chosen output is not connected.
 5. **Music before the sabha.** In the **Music** panel, choose the list and press **Play**. It plays one sound after another with short fades, apart from the slides, until a slide's own sound takes over or you press **Pause**.
 
    ![The Music panel](screenshots/music-panel.png)
 
-6. **Darshan pictures and quotes on the screens** (if the admin set up the idle rotation): press **Start** in the **Idle rotation** panel. It stops by itself when the first slide goes up.
+6. **Darshan pictures and quotes on the screens** (if the admin set up the idle rotation): unfold **More tools** and press **Start** in the **Idle rotation** panel. It stops by itself when the first slide goes up.
 7. **A countdown for the start** (if wanted): in **Timers**, press **Start** beside the countdown (for example one named "Sabha starts in"), and **Show on the screens** to put it on the hall's screens: they show "Sabha starts in 4:59".
 8. **The stream** (only on the computer that streams, and only if tonight's sabha is streamed): press **Stream** in the header, choose **Camera and words** or **Slides**, press **Record** if it should be recorded, then **Go live…** and **Go live**. The header says **ON AIR** (and **REC**). Section 6 of `docs/parallel-run.md` has the details.
 9. **Phones** (if a phone remote or a stage tablet is used): press **Phones**, check **Let paired phones and tablets connect** is on, and check each phone says **Connected**.
@@ -90,7 +90,7 @@ A clear button is lit, with a dot, while its layer is on the screens.
 
 **Looks.** If the admin made more than one Look ("Gujarati only", "Lower thirds"), switch between them in **Looks**: every screen changes at once.
 
-**Macros.** A macro's button (in **Macros**) does several things at once, as the admin set it up ("Arti": Clear all, the arti prop, the sound, the stage message). Some run by themselves at a time: a strip near the top then counts down ten seconds; press **Cancel** to stop it that time.
+**Macros.** A macro's button (in **Macros**, under **More tools**) does several things at once, as the admin set it up ("Arti": Clear all, the arti prop, the sound, the stage message). Some run by themselves at a time: a strip near the top then counts down ten seconds; press **Cancel** to stop it that time.
 
 **Announcements from phones.** While the network is on, **Announcements** in the header says how many are waiting. Open it, read each one, fix a typo with **Edit**, then **Approve** it into the ticker or as a message, or **Reject** it.
 

@@ -10,7 +10,8 @@ import { Panel } from '../ui/Panel';
  * as one change. Pro Mode only (Simple Mode runs no macros). Edit opens the
  * macro editor.
  */
-export function MacrosPanel() {
+/** `nested`: inside a panel group (Session 26a: Audio, More tools). */
+export function MacrosPanel({ nested = false }: { nested?: boolean } = {}) {
   const macros = useMacros((s) => s.macros);
   const [midi, setMidi] = useState(false);
   useEffect(() => {
@@ -18,6 +19,7 @@ export function MacrosPanel() {
   }, []);
   return (
     <Panel
+      nested={nested}
       help="macros"
       title="Macros"
       icon={Zap}

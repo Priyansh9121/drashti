@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helpers';
+import { chooseMenuItem, launchApp, openMoreTools, operatorPage, operatorReady } from './helpers';
 
 /*
  * Macros that run by themselves (Session 14), on the schedules' test clock:
@@ -33,6 +33,8 @@ test('a macro runs at its time after a countdown, in Simple Mode too; Cancel sto
   test.setTimeout(120_000);
   const { app } = await launchApp({ DRASHTI_TEST_ARTI_CLOCK: '1' });
   const win = await operatorPage(app);
+  // Macros, Masks and the Idle rotation are in More tools (Session 26a).
+  await openMoreTools(win);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
   const made = await win.evaluate(() =>

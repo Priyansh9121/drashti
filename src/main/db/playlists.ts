@@ -32,6 +32,9 @@ interface ItemRow {
   media_missing: number | null;
   media_playable: number | null;
   media_format: string | null;
+  presentation_slides: number | null;
+  presentation_source: string | null;
+  media_duration: number | null;
 }
 
 /** Stored timer cues; none when they do not read. */
@@ -85,6 +88,8 @@ function itemInfo(r: ItemRow, passageThere: (key: PassageKey) => boolean): Playl
         order,
         arrangementName: order.mode === 'arrangement' ? r.arrangement_name : null,
         timers: cuesOf(r.timers),
+        slideCount: r.presentation_slides ?? 0,
+        deck: r.presentation_source === 'pictures',
       };
     }
     case 'media':
@@ -97,6 +102,7 @@ function itemInfo(r: ItemRow, passageThere: (key: PassageKey) => boolean): Playl
         missing: r.media_missing === 1,
         unplayable: r.media_playable === 0 ? (r.media_format ?? 'a kind of file Drashti cannot play') : null,
         timers: cuesOf(r.timers),
+        durationMs: r.media_duration !== null && r.media_duration > 0 ? r.media_duration : null,
       };
     case 'header':
       return { id: r.id, kind: 'header', label: r.label, color: r.color };
@@ -355,7 +361,8 @@ export class PlaylistRepo {
           `SELECT i.id, i.kind, i.label, i.color, i.hint, i.category, i.presentation_id, i.media_id, i.order_mode, i.arrangement_id,
                   i.passage, i.timers,
                   p.name AS presentation_name, p.deleted_at AS presentation_deleted, a.name AS arrangement_name,
-                  m.kind AS media_kind, m.missing AS media_missing, m.playable AS media_playable, m.format AS media_format
+                  m.kind AS media_kind, m.missing AS media_missing, m.playable AS media_playable, m.format AS media_format,
+                  p.slide_count AS presentation_slides, p.source_kind AS presentation_source, m.duration_ms AS media_duration
              FROM playlist_items i
              LEFT JOIN presentations p ON p.id = i.presentation_id
              LEFT JOIN arrangements a ON a.id = i.arrangement_id

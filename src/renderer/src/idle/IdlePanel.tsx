@@ -28,7 +28,8 @@ import { connectIdle, openIdle, useIdle } from './idle-store';
  * Mode). Once started it stops by itself when a slide or a picture goes up.
  */
 
-export function IdlePanel() {
+/** `nested`: inside a panel group (Session 26a: Audio, More tools). */
+export function IdlePanel({ nested = false }: { nested?: boolean } = {}) {
   const running = useEngine((s) => s.state?.idle.startedAt != null);
   const items = useEngine((s) => s.state?.idle.items.length ?? 0);
   const look = useEngine((s) => s.state?.look ?? null);
@@ -45,6 +46,7 @@ export function IdlePanel() {
   const settings = view?.settings;
   return (
     <Panel
+      nested={nested}
       help="idle"
       title="Idle rotation"
       icon={GalleryHorizontalEnd}

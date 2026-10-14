@@ -7,7 +7,15 @@ import { idleFrame, type IdleState } from '../../src/shared/idle';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  openMoreTools,
+  operatorPage,
+  operatorReady,
+  outputPages,
+  setUpScreen,
+} from './helpers';
 import { makeTestImage } from './test-media';
 
 /*
@@ -48,6 +56,8 @@ test('a lobby shows the rotation whenever nothing is up; started, the hall shows
   test.setTimeout(180_000);
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '2' });
   const win = await operatorPage(app);
+  // Macros, Masks and the Idle rotation are in More tools (Session 26a).
+  await openMoreTools(win);
   await operatorReady(win);
   await win.setViewportSize({ width: 1280, height: 720 });
   const hallId = await setUpScreen(win, 'Hall', 0);

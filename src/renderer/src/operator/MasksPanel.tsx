@@ -13,7 +13,8 @@ import { dispatch } from './actions';
  * F7 or Clear all. Pro Mode only. A group's own mask (its screens' shape) is
  * set in Screens, in each Look, and is never cleared.
  */
-export function MasksPanel() {
+/** `nested`: inside a panel group (Session 26a: Audio, More tools). */
+export function MasksPanel({ nested = false }: { nested?: boolean } = {}) {
   const masks = useMasks((s) => s.masks);
   const up = useEngine((s) => s.state?.layers.masks ?? null);
   useEffect(() => {
@@ -21,6 +22,7 @@ export function MasksPanel() {
   }, []);
   return (
     <Panel
+      nested={nested}
       help="masks"
       title="Masks"
       icon={Frame}

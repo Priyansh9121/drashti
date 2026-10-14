@@ -42,7 +42,7 @@ import type { MediaRemovalResult, MediaUsage } from './media-removal';
 import type { MarkersResult, MediaMarkers } from './markers';
 import type { PictureAssetKind, PictureJob, PicturePage, PicturesDone } from './pictures';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
-import type { Lang, Transition } from './model';
+import type { Lang, RenderSlide, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
 import type { SetupPlan, SetupResult, SetupState } from './setup';
@@ -318,6 +318,8 @@ export interface DrashtiBridge {
   playlists: {
     tree(): Promise<PlaylistNode[]>;
     items(playlistId: string): Promise<PlaylistItemInfo[]>;
+    /** Presentations' first slides, for the open playlist's cards (Session 26a). */
+    firstSlides(presentationIds: string[]): Promise<Record<string, RenderSlide | null>>;
     /** The operator opened it: it counts as this week's for output nodes (Session 14). */
     opened(playlistId: string): Promise<null>;
     create(name: string, parentId: string | null, isFolder: boolean): Promise<PlaylistResult>;

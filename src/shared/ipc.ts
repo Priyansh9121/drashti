@@ -42,7 +42,7 @@ import type {
 } from './kirtans';
 import type { TranslitStyle } from './translit';
 import type { ModeResult, OperatorMode } from './mode';
-import type { Lang, Transition } from './model';
+import type { Lang, RenderSlide, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
 import type { SetupPlan, SetupResult, SetupState } from './setup';
@@ -335,6 +335,8 @@ export const IPC = {
   playlists: {
     tree: 'playlists:tree',
     items: 'playlists:items',
+    /** Presentations' first slides, for the open playlist's cards (Session 26a). */
+    firstSlides: 'playlists:first-slides',
     /** The operator opened a playlist: it counts as this week's for output nodes (Session 14). */
     opened: 'playlists:opened',
     /** The rest change playlists (operator window only). */
@@ -716,6 +718,10 @@ export interface InvokeContract {
   [IPC.library.legacyPresentations]: { args: []; result: { id: string; name: string }[] };
   [IPC.playlists.tree]: { args: []; result: PlaylistNode[] };
   [IPC.playlists.items]: { args: [playlistId: string]; result: PlaylistItemInfo[] };
+  [IPC.playlists.firstSlides]: {
+    args: [presentationIds: string[]];
+    result: Record<string, RenderSlide | null>;
+  };
   [IPC.playlists.opened]: { args: [playlistId: string]; result: null };
   [IPC.playlists.create]: {
     args: [name: string, parentId: string | null, isFolder: boolean];

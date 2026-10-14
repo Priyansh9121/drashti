@@ -81,18 +81,20 @@ async function start() {
   const dir = await setUp(win);
   const panel = win.getByTestId('playlists');
   const node = (name: string) => panel.getByTestId('playlist-node').filter({ hasText: name });
-  const items = panel.getByTestId('playlist-item');
+  const items = win.getByTestId('open-playlist').getByTestId('playlist-item');
   const presentation = (name: string) =>
     win.getByTestId('presentation-list').getByRole('button', { name: new RegExp(`^${name}`, 'u') });
   await expect(node('Placeholder Empty')).toBeVisible();
-  return { app, win, dir, panel, node, items, presentation };
+  return { app, win, dir, node, items, presentation };
 }
 
 test('dragging presentations and a .pptx deck into an empty open playlist and a full one, from a chosen row and an unchosen one', async () => {
-  const { app, win, panel, node, items, presentation } = await start();
+  const { app, win, node, items, presentation } = await start();
   await node('Placeholder Empty').click();
-  await expect(panel.getByTestId('playlist-title')).toHaveText('Placeholder Empty');
-  const list = panel.getByTestId('playlist-items');
+  await expect(win.getByTestId('open-playlist').getByTestId('playlist-title')).toHaveText(
+    'Placeholder Empty',
+  );
+  const list = win.getByTestId('open-playlist').getByTestId('playlist-items');
   await expect(list).toHaveAttribute('data-count', '0');
 
   // The chosen row (it has Add to playlist under it), into the empty playlist: what Priyansh did.
@@ -100,6 +102,8 @@ test('dragging presentations and a .pptx deck into an empty open playlist and a 
   await expect(win.getByTestId('add-to-playlist')).toBeVisible();
   await mouseDrag(win, presentation('Placeholder Katha'), list, 'middle');
   await expect.poll(() => labels(items)).toEqual(['presentation:Placeholder Katha']);
+  // Its card says what it is and how many slides (Session 26a).
+  await expect(items.first().getByTestId('item-what')).toHaveText('Deck · 2 slides');
 
   // An unchosen row, with the chosen one above it, to the end.
   await mouseDrag(win, presentation('Placeholder Song One'), items.last(), 'bottom');
@@ -114,7 +118,7 @@ test('dragging presentations and a .pptx deck into an empty open playlist and a 
     ]);
   // A chosen row again, now that a playlist item is chosen (it has Up and Down under it).
   await items.first().click();
-  await expect(panel.getByTestId('playlist-item-moves')).toBeVisible();
+  await expect(win.getByTestId('open-playlist').getByTestId('playlist-item-moves')).toBeVisible();
   await presentation('Placeholder Song Three').click();
   await mouseDrag(win, presentation('Placeholder Song Three'), items.first(), 'top');
   await expect
@@ -125,13 +129,17 @@ test('dragging presentations and a .pptx deck into an empty open playlist and a 
       'presentation:Placeholder Song Two',
       'presentation:Placeholder Song One',
     ]);
+  // Anywhere on the open playlist (Session 26a): dropped on its name, it goes at the end.
+  await mouseDrag(win, presentation('Placeholder Katha'), win.getByTestId('playlist-title'), 'middle');
+  await expect.poll(async () => (await labels(items)).at(-1)).toBe('presentation:Placeholder Katha');
+  await expect(items).toHaveCount(5);
   await app.close();
 });
 
 test('dragging pictures from Media, chosen and unchosen, and onto a playlist’s row in the list', async () => {
-  const { app, win, panel, node, items, presentation } = await start();
+  const { app, win, node, items, presentation } = await start();
   await node('Placeholder Empty').click();
-  const list = panel.getByTestId('playlist-items');
+  const list = win.getByTestId('open-playlist').getByTestId('playlist-items');
   await win.getByTestId('library-tab-media').click();
   const picture = (name: string) => win.getByTestId('media-item').filter({ hasText: name });
   // A chosen picture (Add to playlist under it), into the empty playlist.
@@ -139,6 +147,7 @@ test('dragging pictures from Media, chosen and unchosen, and onto a playlist’s
   await expect(win.getByTestId('add-to-playlist')).toBeVisible();
   await mouseDrag(win, picture('Placeholder Picture A'), list, 'middle');
   await expect.poll(() => labels(items)).toEqual(['media:Placeholder Picture A.png']);
+  await expect(items.first().getByTestId('item-what')).toHaveText('Picture');
   // An unchosen picture below the chosen one: starting the drag chooses it.
   await mouseDrag(win, picture('Placeholder Picture B'), items.last(), 'bottom');
   await expect
@@ -155,7 +164,7 @@ test('dragging pictures from Media, chosen and unchosen, and onto a playlist’s
     ]);
 
   // Onto a playlist's row in the list (no playlist open): it goes at the end.
-  await panel.getByTestId('playlists-back').click();
+  await win.getByTestId('playlist-close').click();
   await mouseDrag(win, picture('Placeholder Picture B'), node('Placeholder Other'), 'middle');
   await expect(node('Placeholder Other')).toContainText('1');
   await win.getByTestId('library-tab-presentations').click();
@@ -170,18 +179,18 @@ test('dragging pictures from Media, chosen and unchosen, and onto a playlist’s
 });
 
 test('a search result can be dragged into a playlist', async () => {
-  const { app, win, panel, node, items } = await start();
+  const { app, win, node, items } = await start();
   await node('Placeholder Empty').click();
   await win.getByTestId('library-search').fill('Bravo');
   const hit = win.getByTestId('search-hit').filter({ hasText: 'Placeholder Song Two' });
   await expect(hit).toBeVisible();
-  await mouseDrag(win, hit, panel.getByTestId('playlist-items'), 'middle');
+  await mouseDrag(win, hit, win.getByTestId('open-playlist').getByTestId('playlist-items'), 'middle');
   await expect.poll(() => labels(items)).toEqual(['presentation:Placeholder Song Two']);
   await app.close();
 });
 
 test('reordering a playlist by dragging, from the chosen item and an unchosen one, with Undo, Up and Down, and Alt+arrows', async () => {
-  const { app, win, panel, node, items } = await start();
+  const { app, win, node, items } = await start();
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     const tree = await d.playlists.tree();
@@ -204,11 +213,11 @@ test('reordering a playlist by dragging, from the chosen item and an unchosen on
   await expect.poll(() => labels(items)).toEqual([one, two, three]);
   // The chosen item (Up and Down under it) to the end.
   await items.first().click();
-  await expect(panel.getByTestId('playlist-item-moves')).toBeVisible();
+  await expect(win.getByTestId('open-playlist').getByTestId('playlist-item-moves')).toBeVisible();
   await mouseDrag(win, items.first(), items.last(), 'bottom');
   await expect.poll(() => labels(items)).toEqual([two, three, one]);
   // An unchosen item below the chosen one (whose Up and Down hide as the drag starts) to the top.
-  await expect(panel.getByTestId('playlist-item-moves')).toBeVisible();
+  await expect(win.getByTestId('open-playlist').getByTestId('playlist-item-moves')).toBeVisible();
   await mouseDrag(win, items.nth(1), items.first(), 'top');
   await expect.poll(() => labels(items)).toEqual([three, two, one]);
   // Undo takes the move back.
@@ -216,7 +225,11 @@ test('reordering a playlist by dragging, from the chosen item and an unchosen on
   await expect.poll(() => labels(items)).toEqual([two, three, one]);
   // Up and Down, and Alt+arrows, still move the chosen item.
   await items.nth(2).click();
-  await panel.getByTestId('playlist-item-moves').getByRole('button', { name: 'Up' }).click();
+  await win
+    .getByTestId('open-playlist')
+    .getByTestId('playlist-item-moves')
+    .getByRole('button', { name: 'Up' })
+    .click();
   await expect.poll(() => labels(items)).toEqual([two, one, three]);
   await win.keyboard.press('Alt+ArrowUp');
   await expect.poll(() => labels(items)).toEqual([one, two, three]);
@@ -226,9 +239,9 @@ test('reordering a playlist by dragging, from the chosen item and an unchosen on
 });
 
 test('files from the Finder or Explorer dropped on the open playlist are imported and added where they land, in order', async () => {
-  const { app, win, dir, panel, node, items, presentation } = await start();
+  const { app, win, dir, node, items, presentation } = await start();
   await node('Placeholder Empty').click();
-  const list = panel.getByTestId('playlist-items');
+  const list = win.getByTestId('open-playlist').getByTestId('playlist-items');
   await presentation('Placeholder Song One').click();
   await mouseDrag(win, presentation('Placeholder Song One'), list, 'middle');
   await mouseDrag(win, presentation('Placeholder Song Two'), items.last(), 'bottom');

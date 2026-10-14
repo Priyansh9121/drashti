@@ -57,7 +57,8 @@ function TimeLeft() {
   );
 }
 
-export function MusicPanel() {
+/** `nested`: inside a panel group (Session 26a: Audio, More tools). */
+export function MusicPanel({ nested = false }: { nested?: boolean } = {}) {
   const view = useMusic((s) => s.view);
   const shownId = useMusic((s) => s.shownId);
   const playing = useMusicPlaying();
@@ -77,6 +78,7 @@ export function MusicPanel() {
   const paused = playing?.pausedAtMs !== undefined;
   return (
     <Panel
+      nested={nested}
       help="music"
       title="Music"
       icon={ListMusic}

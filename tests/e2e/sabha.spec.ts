@@ -90,8 +90,8 @@ async function sabhaFiles(win: Page) {
 async function openSunday(win: Page) {
   const panel = win.getByTestId('playlists');
   await panel.getByTestId('playlist-node').filter({ hasText: 'Sunday' }).click();
-  await expect(panel.getByTestId('playlist-title')).toHaveText('Sunday');
-  return panel.getByTestId('playlist-item');
+  await expect(win.getByTestId('open-playlist').getByTestId('playlist-title')).toHaveText('Sunday');
+  return win.getByTestId('open-playlist').getByTestId('playlist-item');
 }
 
 test('a sabha from a playlist: the repeated chorus, headers stepped over, a picture, on into the next song', async () => {
@@ -235,7 +235,7 @@ test('after a crash the playlist and the place in it come back, and Next carries
   const output = await outputPage(again.app);
   await expect(output.locator('[data-layer="slide"]')).toHaveText('Placeholder chorus');
   // The playlist opens by itself at the song, marked live.
-  const items2 = win2.getByTestId('playlists').getByTestId('playlist-item');
+  const items2 = win2.getByTestId('open-playlist').getByTestId('playlist-item');
   await expect(items2.nth(1)).toHaveAttribute('data-live', 'true');
   await expect(win2.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toHaveText(
     'Placeholder Sung Song',

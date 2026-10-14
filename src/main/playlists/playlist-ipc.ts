@@ -1,5 +1,6 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { IPC } from '../../shared/ipc';
+import type { RenderSlide } from '../../shared/model';
 import type { PlaylistResult } from '../../shared/playlists';
 import {
   idListSchema,
@@ -27,12 +28,20 @@ export interface PlaylistIpcDeps {
   changed: () => void;
   /** The operator opened a playlist (Session 14: it counts as this week's for nodes). */
   opened: (playlistId: string) => void;
+  /** A presentation's first slide in its order, for a playlist card (Session 26a); null when it has none. */
+  firstSlide: (presentationId: string) => RenderSlide | null;
 }
 
 const refused: PlaylistResult = { ok: false, message: 'Only the operator window can change playlists.' };
 const failed = (message: string): PlaylistResult => ({ ok: false, message });
 
-export function registerPlaylistIpc({ repo, fromOperator, changed, opened }: PlaylistIpcDeps): void {
+export function registerPlaylistIpc({
+  repo,
+  fromOperator,
+  changed,
+  opened,
+  firstSlide,
+}: PlaylistIpcDeps): void {
   /** Run a change for the operator window, then tell everyone when something changed. */
   const change = (event: IpcMainInvokeEvent, run: () => PlaylistResult): PlaylistResult => {
     if (!fromOperator(event)) return refused;
@@ -45,6 +54,11 @@ export function registerPlaylistIpc({ repo, fromOperator, changed, opened }: Pla
   handle(IPC.playlists.items, (_e, playlistId) => {
     const id = playlistIdSchema.safeParse(playlistId);
     return id.success ? repo.itemsOf(id.data) : [];
+  });
+  handle(IPC.playlists.firstSlides, (_e, presentationIds) => {
+    const ids = idListSchema.max(500).safeParse(presentationIds);
+    if (!ids.success) return {};
+    return Object.fromEntries(ids.data.map((id) => [id, firstSlide(id)]));
   });
   // Opening is not a change to the playlist: Simple Mode's picker counts too.
   handle(IPC.playlists.opened, (e, playlistId) => {

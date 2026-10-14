@@ -4,10 +4,10 @@ import type { TimerFields, TimerKind, TimerState } from '../../../shared/timers'
 import { formatDuration, parseDuration, TIMER_KIND_NAMES, TIMER_KINDS } from '../../../shared/timers';
 import { useEngine } from '../engine/engine-store';
 import { TimerText } from '../render/TimerText';
-import { Button } from '../ui/Button';
+import { Button, IconButton } from '../ui/Button';
 import { Select, TextInput } from '../ui/Field';
 import { Checkbox } from '../ui/Toggle';
-import { CalendarDays, Plus, Timer } from '../ui/icons';
+import { CalendarDays, Monitor, Pause, Play, Plus, RotateCcw, Square, Timer } from '../ui/icons';
 import { openCalendar } from '../calendar/calendar-store';
 import { Panel } from '../ui/Panel';
 import { EmptyState } from '../ui/States';
@@ -141,6 +141,10 @@ function TimerForm({ initial, onDone }: { initial: TimerState | null; onDone: ()
   );
 }
 
+/**
+ * One compact row a timer (Session 26a, tidied): its name and time, then Start (or Pause, or Stop for a
+ * clock), Reset, Show on the screens, and Edit for the rest.
+ */
 function TimerRow({ t, shown, onEdit }: { t: TimerState; shown: boolean; onEdit: () => void }) {
   const running = t.startedAt !== null;
   const counts = t.kind === 'countdown' || t.kind === 'countup';
@@ -149,56 +153,57 @@ function TimerRow({ t, shown, onEdit }: { t: TimerState; shown: boolean; onEdit:
       data-testid="timer-row"
       data-timer-id={t.id}
       data-running={running ? 'true' : undefined}
-      className="rounded-md border border-line bg-panel-2 px-2.5 py-2"
+      // relative: its words for a screen reader (sr-only, absolute) stay inside the scrolling column.
+      className="relative flex items-center gap-1 rounded-md border border-line bg-panel-2 py-1 pr-1 pl-2.5"
     >
-      <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1">
-          <Truncate text={t.name} className="text-sm font-medium" />
-          <span className="block text-xs text-muted">{TIMER_KIND_NAMES[t.kind]}</span>
-        </span>
-        <span className="text-lg font-bold tabular-nums" data-testid="timer-value">
-          <TimerText timer={t} />
-        </span>
-      </div>
-      <div className="mt-1 flex flex-wrap gap-1">
-        {running ? (
-          <Button
-            size="sm"
-            onClick={() => void dispatch({ type: counts ? 'pauseTimer' : 'resetTimer', timerId: t.id })}
-          >
-            {counts ? 'Pause' : 'Stop'}
-          </Button>
-        ) : (
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => void dispatch({ type: 'startTimer', timerId: t.id })}
-          >
-            Start
-          </Button>
-        )}
-        {counts && (
-          <Button size="sm" onClick={() => void dispatch({ type: 'resetTimer', timerId: t.id })}>
-            Reset
-          </Button>
-        )}
-        <Button
-          variant={shown ? 'live' : 'secondary'}
+      <span className="min-w-0 flex-1">
+        <Truncate text={t.name} className="text-sm font-medium" />
+        <span className="sr-only">, {TIMER_KIND_NAMES[t.kind]}</span>
+      </span>
+      <span className="px-1 font-bold tabular-nums" data-testid="timer-value">
+        <TimerText timer={t} />
+      </span>
+      {running ? (
+        <IconButton
+          icon={counts ? Pause : Square}
+          label={counts ? 'Pause' : 'Stop'}
           size="sm"
-          onClick={() =>
-            void dispatch(
-              shown
-                ? { type: 'hideMessage', messageId: `timer:${t.id}` }
-                : { type: 'showMessage', message: timerMessage(t) },
-            )
-          }
-        >
-          {shown ? 'Take off the screens' : 'Show on the screens'}
-        </Button>
-        <Button variant="ghost" size="sm" onClick={onEdit}>
-          Edit
-        </Button>
-      </div>
+          onClick={() => void dispatch({ type: counts ? 'pauseTimer' : 'resetTimer', timerId: t.id })}
+        />
+      ) : (
+        <IconButton
+          icon={Play}
+          label="Start"
+          variant="primary"
+          size="sm"
+          onClick={() => void dispatch({ type: 'startTimer', timerId: t.id })}
+        />
+      )}
+      {counts && (
+        <IconButton
+          icon={RotateCcw}
+          label="Reset"
+          size="sm"
+          onClick={() => void dispatch({ type: 'resetTimer', timerId: t.id })}
+        />
+      )}
+      <IconButton
+        icon={Monitor}
+        label={shown ? 'Take off the screens' : 'Show on the screens'}
+        variant={shown ? 'live' : 'ghost'}
+        aria-pressed={shown}
+        size="sm"
+        onClick={() =>
+          void dispatch(
+            shown
+              ? { type: 'hideMessage', messageId: `timer:${t.id}` }
+              : { type: 'showMessage', message: timerMessage(t) },
+          )
+        }
+      />
+      <Button variant="ghost" size="sm" onClick={onEdit}>
+        Edit
+      </Button>
     </li>
   );
 }
@@ -241,20 +246,22 @@ export function TimersPanel() {
       }
     >
       {editing === 'new' && <TimerForm initial={null} onDone={done} />}
-      <ul className="space-y-1.5">
-        {timers.map((t) =>
-          editing === t.id ? (
-            <li key={t.id}>
-              <TimerForm initial={t} onDone={done} />
-            </li>
-          ) : (
-            <TimerRow
-              key={t.id}
-              t={t}
-              shown={messages.some((m) => m.id === `timer:${t.id}`)}
-              onEdit={() => setEditing(t.id)}
-            />
-          ),
+      <ul className="space-y-1">
+        {/* Running timers first (Session 26a), the rest in their order. */}
+        {[...timers.filter((t) => t.startedAt !== null), ...timers.filter((t) => t.startedAt === null)].map(
+          (t) =>
+            editing === t.id ? (
+              <li key={t.id}>
+                <TimerForm initial={t} onDone={done} />
+              </li>
+            ) : (
+              <TimerRow
+                key={t.id}
+                t={t}
+                shown={messages.some((m) => m.id === `timer:${t.id}`)}
+                onEdit={() => setEditing(t.id)}
+              />
+            ),
         )}
       </ul>
       {timers.length === 0 && editing !== 'new' && (

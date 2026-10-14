@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, operatorReady } from './helpers';
+import { launchApp, openMoreTools, operatorPage, operatorReady } from './helpers';
 
 /*
  * Every panel and dialog Session 12 added passes the accessibility checks at
@@ -28,6 +28,8 @@ test('the new panels and dialogs pass the accessibility checks at 1280 x 720', a
   test.setTimeout(150_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
+  // Macros, Masks and the Idle rotation are in More tools (Session 26a).
+  await openMoreTools(win);
   await operatorReady(win);
   await win.setViewportSize({ width: 1280, height: 720 });
   const file = join(mkdtempSync(join(tmpdir(), 'drashti-a11y-')), 'placeholder-calendar.json');

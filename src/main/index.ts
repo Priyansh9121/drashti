@@ -2951,6 +2951,7 @@ function start(): void {
   registerPlaylistIpc({
     repo: playlists,
     fromOperator,
+    firstSlide: (presentationId) => slides.order(presentationId)?.slides[0]?.slide ?? null,
     changed: () => {
       // A live item's order may have changed, and what comes next may be different.
       engine.reorderLive();

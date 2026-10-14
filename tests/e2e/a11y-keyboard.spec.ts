@@ -45,7 +45,14 @@ function focusOf(page: Page): Promise<Focus | null> {
       r.right > 0 &&
       r.top < innerHeight &&
       r.left < innerWidth;
-    const name = (el.getAttribute('aria-label') ?? el.textContent).trim().replace(/\s+/gu, ' ').slice(0, 60);
+    // What a screen reader says: its label, or its words without the parts hidden from it (a playlist card's
+    // picture holds its slide's words, Session 26a).
+    const shown = el.cloneNode(true) as HTMLElement;
+    for (const hidden of shown.querySelectorAll('[aria-hidden="true"]')) hidden.remove();
+    const name = (el.getAttribute('aria-label') ?? shown.textContent)
+      .trim()
+      .replace(/\s+/gu, ' ')
+      .slice(0, 60);
     return {
       name,
       region,

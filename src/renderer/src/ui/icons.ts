@@ -22,6 +22,8 @@ export { BookOpen, CalendarDays, Flame, GalleryHorizontalEnd, Quote } from 'luci
 export { Bookmark, Download, LockOpen, RefreshCw, ShieldCheck, Shuffle } from 'lucide-react';
 // Import from a Link (Session 25b): a link, Dropbox (a cloud) and YouTube (a played video).
 export { Cloud, Link2, MonitorPlay } from 'lucide-react';
+// Session 26a: the open playlist's Add files…, Audio, More tools and Repeat Slides.
+export { FilePlus, Repeat2, Wrench } from 'lucide-react';
 export {
   AlertTriangle,
   AlignCenter,

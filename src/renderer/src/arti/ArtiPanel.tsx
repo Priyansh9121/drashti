@@ -33,7 +33,8 @@ function nextText(at: number, now: number): string {
   return `${String(d.getFullYear())}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`;
 }
 
-export function ArtiPanel() {
+/** `nested`: inside a panel group (Session 26a: Audio, More tools). */
+export function ArtiPanel({ nested = false }: { nested?: boolean } = {}) {
   const schedules = useArti((s) => s.view?.schedules ?? null);
   const offset = useArti((s) => s.view?.offsetMs ?? 0);
   useEffect(() => {
@@ -43,6 +44,7 @@ export function ArtiPanel() {
   const now = useNow(60_000) + offset;
   return (
     <Panel
+      nested={nested}
       help="arti"
       title="Arti"
       icon={Flame}

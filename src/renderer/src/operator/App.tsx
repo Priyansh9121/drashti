@@ -15,7 +15,7 @@ import { redo as redoEdit, undo as undoEdit, useEditor } from '../editor/editor-
 import { ThemesPanel } from '../themes/ThemesPanel';
 import { undoRemoval } from '../library/undo';
 import { PlaylistPanel } from '../playlists/PlaylistPanel';
-import { loadTree, watchPlaylists } from '../playlists/playlist-store';
+import { loadTree, usePlaylists, watchPlaylists } from '../playlists/playlist-store';
 import { ScreensPanel } from '../screens/ScreensPanel';
 import { ScreensDashboard } from '../nodes/ScreensDashboard';
 import { closeDashboard, useNodes } from '../nodes/nodes-store';
@@ -25,7 +25,10 @@ import type { OperatorAction } from '../../../shared/keymap';
 import { shortcutText } from '../../../shared/keymap';
 import { Header } from './Header';
 import { LayerBar } from './LayerBar';
-import { Columns, LeftColumn } from './Layout';
+import { CentreColumn, Columns, LeftColumn } from './Layout';
+import { OpenPlaylist } from '../playlists/OpenPlaylist';
+import { PanelGroup, PanelNote } from '../ui/Panel';
+import { Music, Wrench } from '../ui/icons';
 import { LivePreview } from './LivePreview';
 import { PresentationList } from './PresentationList';
 import { SlideGrid } from './SlideGrid';
@@ -145,6 +148,7 @@ export function App() {
 
 function ProApp({ info }: { info: AppInfo | null }) {
   const [screensOpen, setScreensOpen] = useState(false);
+  const openId = usePlaylists((s) => s.openId);
   const dashboardOpen = useNodes((s) => s.dashboard);
   const streamOpen = useStream((s) => s.panelOpen);
   const networkOpen = useNetwork((s) => s.open);
@@ -227,25 +231,47 @@ function ProApp({ info }: { info: AppInfo | null }) {
           />
         }
         middle={
-          <main aria-label="Slides" className="flex min-h-0 flex-1 flex-col">
-            <SlideGrid />
+          // The open playlist above the chosen item's slides (Session 26a); no playlist open, the slides alone.
+          <main aria-label="Playlist and slides" className="flex min-h-0 flex-1 flex-col">
+            <CentreColumn top={openId ? <OpenPlaylist platform={platform} /> : null} bottom={<SlideGrid />} />
           </main>
         }
         right={
           <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
             <LivePreview />
             <MarkerJumps />
+            {/* Session 26a's order: LIVE, Audio, the stage screen, messages, timers, props, Looks, then More
+                tools folded away. */}
             <div className="mt-3 divide-y divide-line border-t border-line">
-              <LooksPanel />
-              <MacrosPanel />
+              <PanelGroup title="Audio" icon={Music} remember="audio" data-testid="audio-group">
+                <MusicPanel nested />
+                <ArtiPanel nested />
+              </PanelGroup>
               <StageMessageControl />
-              <PropsPanel />
-              <MasksPanel />
               <MessagesPanel />
               <TimersPanel />
-              <MusicPanel />
-              <ArtiPanel />
-              <IdlePanel />
+              <PropsPanel />
+              <LooksPanel />
+              <PanelGroup
+                title="More tools"
+                icon={Wrench}
+                remember="more-tools"
+                defaultOpen={false}
+                data-testid="more-tools"
+              >
+                <div>
+                  <PanelNote>A macro does several things at one press, as an admin set it up.</PanelNote>
+                  <MacrosPanel nested />
+                </div>
+                <div>
+                  <PanelNote>A mask hides part of a screen, such as a corner a banner covers.</PanelNote>
+                  <MasksPanel nested />
+                </div>
+                <div>
+                  <PanelNote>The idle rotation shows pictures and quotes while nothing else is up.</PanelNote>
+                  <IdlePanel nested />
+                </div>
+              </PanelGroup>
             </div>
           </aside>
         }

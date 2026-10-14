@@ -88,14 +88,14 @@ test('playlists: imported ones with their placeholders, and building one by drag
     tree
       .getByTestId('playlist-node')
       .filter({ hasText: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`, 'u') });
-  const items = panel.getByTestId('playlist-item');
+  const items = win.getByTestId('open-playlist').getByTestId('playlist-item');
   const presentations = win.getByTestId('presentation-list');
 
   // The imported folder and playlist, with the item the import could not find counted.
   await expect(node('Services')).toHaveAttribute('data-kind', 'folder');
   await expect(node('Sunday').getByTestId('node-placeholders')).toHaveText('1 missing');
   await node('Sunday').click();
-  await expect(panel.getByTestId('playlist-title')).toHaveText('Sunday');
+  await expect(win.getByTestId('open-playlist').getByTestId('playlist-title')).toHaveText('Sunday');
   await expect
     .poll(() => labels(items))
     .toEqual(['header:Opening', 'presentation:Placeholder Song One', 'placeholder:Not Here']);
@@ -114,13 +114,14 @@ test('playlists: imported ones with their placeholders, and building one by drag
   await expect(win.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toHaveText(
     'Placeholder Song One',
   );
-  await panel.getByTestId('playlists-back').click();
+  await win.getByTestId('playlist-close').click();
   await expect(node('Sunday').getByTestId('node-placeholders')).toHaveCount(0);
 
   // A new playlist, named in place.
   await panel.getByRole('button', { name: 'New playlist or folder' }).click();
   await win.getByRole('menuitem', { name: 'New playlist' }).click();
-  const rename = panel.getByTestId('rename-field');
+  // One name field at a time: a playlist's in the list, or a header's in the open playlist.
+  const rename = win.getByTestId('rename-field');
   await expect(rename).toBeFocused();
   await rename.fill('Evening Sabha');
   await rename.press('Enter');
@@ -152,7 +153,7 @@ test('playlists: imported ones with their placeholders, and building one by drag
     ]);
 
   // A header, named in place, then dragged to the top.
-  await panel.getByRole('button', { name: 'Playlist actions' }).click();
+  await win.getByRole('button', { name: 'Playlist actions' }).click();
   await win.getByRole('menuitem', { name: 'Add a header' }).click();
   await expect(rename).toBeFocused();
   await rename.fill('Placeholder Dhun');
@@ -181,7 +182,7 @@ test('playlists: imported ones with their placeholders, and building one by drag
   await expect(undo).toContainText('Moved “Placeholder Dhun”');
 
   // Removing the playlist asks first; Undo brings it back with its items.
-  await panel.getByTestId('playlists-back').click();
+  await win.getByTestId('playlist-close').click();
   await node('Evening Sabha').click({ button: 'right' });
   await win.getByRole('menuitem', { name: 'Delete…' }).click();
   const confirm = win.getByTestId('remove-confirm');
@@ -196,7 +197,7 @@ test('playlists: imported ones with their placeholders, and building one by drag
 
   // Removing a folder takes its playlists with it (the new one was made beside Sunday, in
   // the same folder); the library keeps the presentations, and Undo brings it all back.
-  await panel.getByTestId('playlists-back').click();
+  await win.getByTestId('playlist-close').click();
   await node('Services').click({ button: 'right' });
   await win.getByRole('menuitem', { name: 'Delete…' }).click();
   await expect(confirm).toContainText('Delete folder “Services”?');
@@ -226,7 +227,7 @@ test('a playlist built and put in order with the keyboard alone: Add to playlist
 
   // No mouse from here on: focus a control, then keys.
   const panel = win.getByTestId('playlists');
-  const items = panel.getByTestId('playlist-item');
+  const items = win.getByTestId('open-playlist').getByTestId('playlist-item');
   await panel.getByRole('button', { name: 'New playlist or folder' }).focus();
   await win.keyboard.press('Enter');
   await expect(win.getByRole('menuitem', { name: 'New playlist' })).toBeFocused();
@@ -239,10 +240,14 @@ test('a playlist built and put in order with the keyboard alone: Add to playlist
   const playlistId = (await node.getAttribute('data-node-id')) ?? '';
   await node.focus();
   await win.keyboard.press('Enter');
-  await expect(panel.getByTestId('playlist-title')).toHaveText('Placeholder Keyboard Sabha');
+  await expect(win.getByTestId('open-playlist').getByTestId('playlist-title')).toHaveText(
+    'Placeholder Keyboard Sabha',
+  );
   // An empty playlist names both ways to fill it.
-  await expect(panel.getByTestId('playlist-items')).toContainText(/drag/iu);
-  await expect(panel.getByTestId('playlist-items')).toContainText('Add to playlist');
+  await expect(win.getByTestId('open-playlist').getByTestId('playlist-items')).toContainText(/drag/iu);
+  await expect(win.getByTestId('open-playlist').getByTestId('playlist-items')).toContainText(
+    'Add to playlist',
+  );
 
   // A presentation: choose its row (Enter), then Add to playlist beside it (Tab, Enter).
   const library = win.getByTestId('presentation-list');
@@ -296,7 +301,7 @@ test('a playlist built and put in order with the keyboard alone: Add to playlist
   await inOrder('Placeholder Keys Picture.png', 'Placeholder Keys One', 'Placeholder Keys Two');
   await expect(picked).toBeFocused();
   // At the top, Up is off; Tab reaches Down, which moves it down and keeps the keyboard.
-  const chosen = panel.getByTestId('playlist-item-moves');
+  const chosen = win.getByTestId('open-playlist').getByTestId('playlist-item-moves');
   await expect(chosen.getByRole('button', { name: 'Up' })).toBeDisabled();
   await win.keyboard.press('Tab');
   await expect(chosen.getByRole('button', { name: 'Down' })).toBeFocused();
@@ -346,7 +351,7 @@ test('a header typed in Hindi or Gujarati keeps its letters: no capitals and no 
         return `${el.textContent.trim()}|${style.textTransform}|${style.letterSpacing}`;
       }),
     );
-  const headers = panel.getByTestId('playlist-item').locator('[data-label]');
+  const headers = win.getByTestId('open-playlist').getByTestId('playlist-item').locator('[data-label]');
   await expect(headers).toHaveCount(2);
   expect(await drawn(headers)).toEqual(['नमूना शीर्षक|none|normal', 'નમૂના|none|normal']);
 

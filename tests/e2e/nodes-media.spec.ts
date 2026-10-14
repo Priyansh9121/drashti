@@ -195,7 +195,7 @@ test('a playlist from an earlier week is copied once it is opened on Main (Sessi
     // Opening it on Main is enough: it now counts as this week's, and its picture is copied.
     const tree = main.win.getByTestId('playlists').getByTestId('playlist-tree');
     await tree.getByTestId('playlist-node').filter({ hasText: 'Placeholder Earlier Week' }).click();
-    await expect(main.win.getByTestId('playlists').getByTestId('playlist-title')).toHaveText(
+    await expect(main.win.getByTestId('open-playlist').getByTestId('playlist-title')).toHaveText(
       'Placeholder Earlier Week',
     );
     await expect.poll(() => existsSync(join(cacheDir, `${sha(old)}.png`)), { timeout: 30_000 }).toBe(true);

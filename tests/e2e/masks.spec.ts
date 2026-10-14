@@ -2,7 +2,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
+import { launchApp, openMoreTools, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
 import { canvasPixels, near } from './pixels';
 
 /*
@@ -44,6 +44,8 @@ test('a group’s own mask hides the right pixels on its screens only, the inver
   test.setTimeout(150_000);
   const { app } = await launchApp(TWO_OUTPUTS);
   const win = await operatorPage(app);
+  // Macros, Masks and the Idle rotation are in More tools (Session 26a).
+  await openMoreTools(win);
   await operatorReady(win);
   const hallId = await setUpScreen(win, 'Hall', 0);
   const sideId = await setUpScreen(win, 'Side', 1);
