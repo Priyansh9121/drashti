@@ -141,7 +141,7 @@ async function start(message: StartMessage): Promise<void> {
             refocus: () => {
               post({ type: 'refocus' });
             },
-            converters: message.converters !== false,
+            converters: message.converters ?? true,
             onWrote: (wrote) => {
               post({ type: 'wrote', runId: message.runId, ...wrote });
             },

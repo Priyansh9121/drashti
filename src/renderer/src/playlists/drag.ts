@@ -18,11 +18,33 @@ const TYPES = {
 export type DragKind = keyof typeof TYPES;
 
 /**
- * A drag of Drashti's is under way. Rows show no Add to playlist, Up or Down meanwhile: Chromium
- * cancels a drag whose row changes under the pointer as it starts (a row marked by the drag would
- * grow those buttons over the place it was grabbed).
+ * A drag of Drashti's is under way. Rows hide their Add to playlist, Up and Down meanwhile, keeping
+ * their room: Chromium cancels a drag whose row changes under the pointer as it starts (a row marked
+ * by the drag would grow those buttons over the place it was grabbed), so nothing may change size,
+ * and nothing is chosen, until the drag is over (Session 26a).
  */
 export const useDragging = create<{ on: boolean }>(() => ({ on: false }));
+
+/**
+ * Do something once the drag is over (choosing the row it came from, say): done at dragstart, it
+ * would move rows under the pointer as the drag starts, which cancels it.
+ */
+export function afterDrag(then: () => void): void {
+  const done = () => {
+    window.removeEventListener('dragend', done, true);
+    then();
+  };
+  window.addEventListener('dragend', done, true);
+}
+
+/** Files dragged in from the Finder or Explorer. */
+export const hasFiles = (e: DragEvent): boolean => e.dataTransfer.types.includes('Files');
+
+/** The paths of files dropped from the Finder or Explorer (none that Drashti cannot tell). */
+export const droppedPaths = (e: DragEvent): string[] =>
+  Array.from(e.dataTransfer.files)
+    .map((f) => window.drashti.files.pathFor(f))
+    .filter((p) => p !== '');
 
 /** Call first in a dragstart handler, before anything that changes what the rows show. */
 export function startDrag(e: DragEvent, kind: DragKind, ids: readonly string[]): void {

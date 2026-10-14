@@ -9,7 +9,9 @@ import type {
   TimerCue,
 } from '../../../shared/playlists';
 import { POSITION_MAX } from '../../../shared/playlists';
+import { itemsMadeBy } from '../../../shared/import-items';
 import { useEngine } from '../engine/engine-store';
+import { importPaths } from '../library/import-store';
 import { leaveItem, showItem, useLibrary } from '../library/library-store';
 import { describeSome, pushRemoval } from '../library/undo';
 
@@ -440,6 +442,33 @@ export async function addFromLibrary(
     },
   });
   return ids;
+}
+
+/**
+ * Files from the Finder or Explorer dropped on a playlist (Session 26a): imported as files dropped
+ * anywhere are (the same rules: Pro Mode, an admin's with roles on), then everything the import made
+ * added before the item that was at `at` when they landed (at the end when none), in the order dropped.
+ */
+export async function importIntoPlaylist(
+  playlistId: string,
+  at: number | null,
+  paths: string[],
+): Promise<void> {
+  if (paths.length === 0) return;
+  const before = () => {
+    const { openId, items } = usePlaylists.getState();
+    return openId === playlistId && at !== null ? (items[at]?.id ?? null) : null;
+  };
+  const beforeId = before();
+  const result = await importPaths(paths);
+  if (!result?.ok) return;
+  const report = await window.drashti.library.getImportReport(result.run.id);
+  const made = itemsMadeBy(report?.items ?? [], paths);
+  if (made.length === 0) return;
+  // The import may have taken a while: the place is found again by the item it went before.
+  const { openId, items } = usePlaylists.getState();
+  const index = openId === playlistId && beforeId !== null ? items.findIndex((i) => i.id === beforeId) : -1;
+  await addFromLibrary(playlistId, index >= 0 ? index : null, made);
 }
 
 /** Add to the open playlist, after its chosen item, or at the end when none is chosen (Add to playlist). */

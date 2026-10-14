@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { openMarkers } from '../markers/MarkersDialog';
 import type { MediaSummary } from '../../../shared/playlists';
 import { ADD_LINE_HEIGHT, AddToPlaylistButton, rowMenu, usePlaylistOpen } from '../playlists/AddToPlaylist';
-import { startDrag } from '../playlists/drag';
+import { afterDrag, startDrag } from '../playlists/drag';
 import { MissingBadge } from '../ui/Badge';
 import type { Icon } from '../ui/icons';
 import { Bookmark, Film, Image, Music, Wand2, X } from '../ui/icons';
@@ -167,7 +167,11 @@ const MediaRow = memo(function MediaRow({
               'media',
               pick().map((i) => i.mediaId),
             );
-            if (!useMedia.getState().marked.includes(m.id)) clickMedia(m.id, { toggle: false, range: false });
+            // Chosen once the drag is over: choosing it now would move the rows under the pointer.
+            if (!useMedia.getState().marked.includes(m.id))
+              afterDrag(() => {
+                clickMedia(m.id, { toggle: false, range: false });
+              });
           }}
           className="flex h-full min-w-0 flex-1 items-center gap-2 pl-2.5 text-left"
         >

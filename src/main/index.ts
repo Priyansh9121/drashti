@@ -1723,8 +1723,15 @@ function start(): void {
       mediaDir,
       userDataDir,
       schemaVersion: LATEST_VERSION,
-      // Tests only (never a packaged Drashti): as if no Keynote or PowerPoint were installed.
-      converters: app.isPackaged || process.env['DRASHTI_TEST_NO_CONVERTER'] !== '1',
+      // Tests only (never a packaged Drashti): as if no Keynote or PowerPoint were installed, or with a
+      // stand-in that saves PowerPoint files as PDF (Session 26a).
+      converters: app.isPackaged
+        ? true
+        : process.env['DRASHTI_TEST_NO_CONVERTER'] === '1'
+          ? false
+          : process.env['DRASHTI_TEST_DECK_CONVERTER'] === '1'
+            ? 'stand-in'
+            : true,
     },
     drawPdf: (pdf, outDir, signal) => pdfPictures.draw(pdf, outDir, signal),
     onProgress: (progress) => {

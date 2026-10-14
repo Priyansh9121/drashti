@@ -36,7 +36,7 @@ import { rowClass } from '../ui/ListRow';
 import { EmptyState } from '../ui/States';
 import { TabPanel, Tabs } from '../ui/Tabs';
 import { Truncate } from '../ui/Truncate';
-import { dragKind, droppedIds, startDrag, useDragging } from './drag';
+import { afterDrag, dragKind, droppedIds, droppedPaths, hasFiles, startDrag, useDragging } from './drag';
 import {
   AddSlotDialog,
   EditSlotDialog,
@@ -52,6 +52,7 @@ import {
   createNode,
   dismissProblem,
   fillPlaceholder,
+  importIntoPlaylist,
   itemName,
   markedItems,
   moveItemBy,
@@ -288,7 +289,7 @@ function PlaylistTree({ platform }: { platform: string }) {
                     requestRemoveNode(node.id);
                   }}
                   onDragOver={(e) => {
-                    if (node.isFolder || !fromLibrary(e)) return;
+                    if (node.isFolder || (!fromLibrary(e) && !hasFiles(e))) return;
                     e.preventDefault();
                     e.dataTransfer.dropEffect = 'copy';
                     setDropOn(node.id);
@@ -298,7 +299,15 @@ function PlaylistTree({ platform }: { platform: string }) {
                   }}
                   onDrop={(e) => {
                     setDropOn(null);
-                    if (node.isFolder || !fromLibrary(e)) return;
+                    if (node.isFolder) return;
+                    // Files from the Finder or Explorer: imported, then added at its end (Session 26a).
+                    if (hasFiles(e)) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void importIntoPlaylist(node.id, null, droppedPaths(e));
+                      return;
+                    }
+                    if (!fromLibrary(e)) return;
                     e.preventDefault();
                     void addFromLibrary(node.id, null, droppedItems(e));
                   }}
@@ -676,11 +685,14 @@ function MoveButtons({
   name,
   first,
   last,
+  hidden,
   onMove,
 }: {
   name: string;
   first: boolean;
   last: boolean;
+  /** While a drag is under way: hidden, keeping its room (drag.ts). */
+  hidden: boolean;
   onMove: (step: -1 | 1, on: 'up' | 'down') => void;
 }) {
   return (
@@ -688,7 +700,7 @@ function MoveButtons({
       role="group"
       aria-label={`Move “${name}”`}
       data-testid="playlist-item-moves"
-      className="mt-1 mb-1 flex justify-end gap-1"
+      className={cx('mt-1 mb-1 flex justify-end gap-1', hidden && 'invisible')}
     >
       <Button
         size="sm"
@@ -759,7 +771,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
 
   const onDragOver = (e: DragEvent) => {
     const kind = dragKind(e);
-    if (!kind) return;
+    if (!kind && !hasFiles(e)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = kind === 'items' ? 'move' : 'copy';
     const next = spotFor(e);
@@ -767,6 +779,17 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
   };
   const onDrop = (e: DragEvent) => {
     const kind = dragKind(e);
+    // Files from the Finder or Explorer: imported as anywhere, then added where they landed, in the
+    // order dropped (Session 26a). The window's own drop, which only imports, never sees them.
+    if (!kind && hasFiles(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+      const where = spotFor(e);
+      setSpot(null);
+      const at = 'at' in where ? where.at : items.findIndex((i) => i.id === where.fill);
+      void importIntoPlaylist(openId, at, droppedPaths(e));
+      return;
+    }
     if (!kind) return;
     e.preventDefault();
     const where = spotFor(e);
@@ -981,7 +1004,12 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                 onDragStart={(e) => {
                   const ours = usePlaylists.getState().marked.includes(item.id);
                   startDrag(e, 'items', ours ? markedItems().map((i) => i.id) : [item.id]);
-                  if (!ours) clickItem(item.id, { toggle: false, range: false });
+                  // Chosen once the drag is over: choosing it now would move Up and Down (and the
+                  // rows) under the pointer as the drag starts.
+                  if (!ours)
+                    afterDrag(() => {
+                      clickItem(item.id, { toggle: false, range: false });
+                    });
                 }}
                 className={cx(
                   rowClass({ selected: shownItem === item.id, marked: isMarked, dropTarget: filling }),
@@ -992,11 +1020,12 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
               >
                 <ItemBody item={item} live={isLive} />
               </button>
-              {isMarked && anchorId === item.id && !dragging && (
+              {isMarked && anchorId === item.id && (
                 <MoveButtons
                   name={itemName(item)}
                   first={index === 0}
                   last={index === items.length - 1}
+                  hidden={dragging}
                   onMove={move}
                 />
               )}
@@ -1011,8 +1040,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
             )}
           >
             <EmptyState icon={ListPlus} title="This playlist is empty" compact>
-              Drag presentations, media or Shastra passages here from the library, or choose one there and
-              press Add to playlist.
+              Drag presentations, media or files here, or choose one in the library and press Add to playlist.
             </EmptyState>
           </li>
         )}

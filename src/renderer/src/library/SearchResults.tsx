@@ -3,6 +3,7 @@ import type { SearchHit } from '../../../shared/search';
 import { KIRTAN_FIELD_NAMES as FIELD_NAMES, searchWords } from '../../../shared/search';
 import { hideLegacy, openHit, showLegacy, useLibrary, useSearch } from './library-store';
 import { clickPresentation } from './library-store';
+import { startDrag } from '../playlists/drag';
 import { Button } from '../ui/Button';
 import { Search } from '../ui/icons';
 import { rowClass } from '../ui/ListRow';
@@ -38,6 +39,11 @@ function HitRow({ hit, query, selected }: { hit: SearchHit; query: string; selec
       type="button"
       data-testid="search-hit"
       aria-current={selected ? 'true' : undefined}
+      // Dragged into a playlist as its row in the list is (Session 26a: search results could not be).
+      draggable
+      onDragStart={(e) => {
+        startDrag(e, 'presentations', [hit.presentationId]);
+      }}
       onClick={() => {
         openHit(hit);
       }}
