@@ -88,6 +88,8 @@ export const ADMIN_CHANNELS: readonly InvokeChannel[] = [
   IPC.kirtans.setTranslitStyle,
   IPC.media.convert,
   IPC.media.undoConversion,
+  // Save as MP4… (Session 26e): it makes a file, and may import it, as converting does.
+  IPC.media.saveTrim,
   IPC.media.remove,
   IPC.media.restore,
   // A smart playlist (Session 26c) imports what its folder holds: made as importing is.

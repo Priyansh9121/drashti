@@ -1,17 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
+import { formatDuration } from '../../../shared/format';
 import type { MediaMarkers, PlaybackMarker } from '../../../shared/markers';
 import { markerTime, parseMarkerTime } from '../../../shared/markers';
 import { mediaUrl } from '../../../shared/media';
-import type { MediaSummary } from '../../../shared/playlists';
+import type { MediaSummary, PlaylistItemInfo } from '../../../shared/playlists';
 import { useEngine } from '../engine/engine-store';
 import { useNotice } from '../operator/actions';
 import { Button, IconButton } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { KeepChangesDialog } from '../ui/KeepChanges';
 import { Field, TextInput } from '../ui/Field';
-import { Bookmark, X } from '../ui/icons';
+import { Bookmark, Download, Play, X } from '../ui/icons';
 import { plural } from '../ui/text';
+import { Checkbox } from '../ui/Toggle';
+import { showSave, stopSave, useSaves } from './save-store';
+import { Timeline } from './Timeline';
 
 /*
  * Playback markers (Session 14, shared/markers.ts): a video's or sound's
@@ -19,6 +23,11 @@ import { plural } from '../ui/text';
  * the library (its Markers button), and jumps to them from the live
  * preview. The preview here is silent, as every window but the audio player
  * is: times can be typed, or taken from where the preview is.
+ *
+ * Session 26e: a video's start and end on a timeline (Timeline.tsx), the
+ * part played, I and O for the play head, its new length beside the old,
+ * and Save as MP4... (the part copied as it is from the clean frame at or
+ * before its start, which the dialog says first).
  */
 
 export const useMarkersDialog = create<{ media: MediaSummary | null }>(() => ({ media: null }));
@@ -26,6 +35,17 @@ export const useMarkersDialog = create<{ media: MediaSummary | null }>(() => ({ 
 export function openMarkers(media: MediaSummary): void {
   useMarkersDialog.setState({ media });
 }
+
+/** A playlist's media item as this dialog takes it (Session 26e: it opens from a card and the slide grid too). */
+export const markersMedia = (item: Extract<PlaylistItemInfo, { kind: 'media' }>): MediaSummary => ({
+  id: item.mediaId,
+  name: item.label,
+  kind: item.media,
+  missing: item.missing,
+  unplayable: item.unplayable,
+  format: null,
+  convertedTo: null,
+});
 
 const close = () => {
   useMarkersDialog.setState({ media: null });
@@ -50,10 +70,40 @@ export function MarkersDialog() {
 
 const timeText = (ms: number | null) => (ms === null ? '' : markerTime(ms));
 
+/** Where a part saved from `startMs` begins: the clean frame at or before it (asked once typing stops). */
+function useKeyframe(mediaId: string, startMs: number, video: boolean): number | null {
+  const [found, setFound] = useState<{ startMs: number; atMs: number | null } | null>(null);
+  useEffect(() => {
+    // From the very beginning: no clean frame to look for.
+    if (!video || startMs <= 0) return;
+    let live = true;
+    const t = setTimeout(() => {
+      void window.drashti.media.keyframe(mediaId, startMs).then((r) => {
+        if (live) setFound({ startMs, atMs: r.ok ? r.atMs : null });
+      });
+    }, 300);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [mediaId, startMs, video]);
+  if (startMs <= 0) return 0;
+  return found?.startMs === startMs ? found.atMs : null;
+}
+
 function MarkersForm({ media, start }: { media: MediaSummary; start: MediaMarkers }) {
   const preview = useRef<HTMLVideoElement & HTMLAudioElement>(null);
   const [startText, setStartText] = useState(timeText(start.startMs));
   const [endText, setEndText] = useState(timeText(start.endMs));
+  const isVideo = media.kind === 'video';
+  // The video's length (once its preview knows it), and where the preview is.
+  const [durationMs, setDurationMs] = useState<number | null>(null);
+  const [playheadMs, setPlayheadMs] = useState(0);
+  // Playing the part chosen: it stops at the end.
+  const [playingPart, setPlayingPart] = useState(false);
+  const [addToLibrary, setAddToLibrary] = useState(false);
+  const [saveId, setSaveId] = useState<string | null>(null);
+  const saveJob = useSaves((s) => (saveId ? (s.jobs.find((j) => j.id === saveId) ?? null) : null));
   const [markers, setMarkers] = useState<PlaybackMarker[]>(start.markers);
   const [name, setName] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
@@ -65,6 +115,37 @@ function MarkersForm({ media, start }: { media: MediaSummary; start: MediaMarker
     return (bg?.kind === 'media' && bg.mediaId === media.id) || layers?.audio?.mediaId === media.id;
   });
   const shown = () => Math.round((preview.current?.currentTime ?? 0) * 1000);
+  // The part chosen, as the timeline draws it (what cannot be read yet: the whole).
+  const typedStart = startText.trim() === '' ? 0 : parseMarkerTime(startText);
+  const typedEnd = endText.trim() === '' ? durationMs : parseMarkerTime(endText);
+  const partStart = Math.max(0, typedStart ?? 0);
+  const partEnd = Math.max(
+    partStart,
+    Math.min(durationMs ?? Number.MAX_SAFE_INTEGER, typedEnd ?? durationMs ?? 0),
+  );
+  const keyframeMs = useKeyframe(media.id, partStart, isVideo);
+  const playPart = () => {
+    const v = preview.current;
+    if (!v) return;
+    v.currentTime = partStart / 1000;
+    setPlayingPart(true);
+    void v.play();
+  };
+  const saveMp4 = async () => {
+    setProblem(null);
+    if ((startText.trim() !== '' && typedStart === null) || (endText.trim() !== '' && typedEnd === null)) {
+      setProblem('Write a time as minutes and seconds, for example 1:05.5.');
+      return;
+    }
+    const result = await window.drashti.media.saveTrim({
+      mediaId: media.id,
+      startMs: startText.trim() === '' ? null : typedStart,
+      endMs: endText.trim() === '' ? null : typedEnd,
+      addToLibrary,
+    });
+    if (!result.ok) setProblem(result.message);
+    else if (result.job) setSaveId(result.job.id);
+  };
   // What closing now would lose: each part typed or changed since it opened.
   const markersMoved =
     markers.filter((m) => !start.markers.some((x) => x.id === m.id && x.name === m.name && x.atMs === m.atMs))
@@ -98,7 +179,7 @@ function MarkersForm({ media, start }: { media: MediaSummary; start: MediaMarker
   return (
     <Dialog
       title={`Start, end and markers: ${media.name}`}
-      size="md"
+      size={isVideo ? 'lg' : 'md'}
       onClose={requestClose}
       closeLabel="Close markers"
       testId="markers-dialog"
@@ -118,6 +199,18 @@ function MarkersForm({ media, start }: { media: MediaSummary; start: MediaMarker
           e.preventDefault();
           void save();
         }}
+        onKeyDown={(e) => {
+          // I and O: the start or the end at the play head (not while typing in a box).
+          const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+          if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+          if (e.key === 'i' || e.key === 'I') {
+            e.preventDefault();
+            setStartText(markerTime(shown()));
+          } else if (e.key === 'o' || e.key === 'O') {
+            e.preventDefault();
+            setEndText(markerTime(shown()));
+          }
+        }}
       >
         <Player
           ref={preview}
@@ -127,7 +220,56 @@ function MarkersForm({ media, start }: { media: MediaSummary; start: MediaMarker
           preload="metadata"
           aria-label={`Preview of ${media.name} (silent)`}
           className={media.kind === 'video' ? 'max-h-56 w-full rounded-md bg-black' : 'w-full'}
+          onLoadedMetadata={(e) => {
+            const d = e.currentTarget.duration;
+            if (Number.isFinite(d) && d > 0) setDurationMs(Math.round(d * 1000));
+          }}
+          onTimeUpdate={(e) => {
+            const now = Math.round(e.currentTarget.currentTime * 1000);
+            setPlayheadMs(now);
+            // Playing the part: it stops at its end.
+            if (playingPart && now >= partEnd) {
+              e.currentTarget.pause();
+              setPlayingPart(false);
+            }
+          }}
+          onPause={() => {
+            setPlayingPart(false);
+          }}
         />
+        {isVideo && durationMs !== null && (
+          <div className="space-y-2">
+            <Timeline
+              src={mediaUrl(media.id)}
+              durationMs={durationMs}
+              startMs={partStart}
+              endMs={partEnd}
+              playheadMs={playheadMs}
+              keyframeMs={keyframeMs}
+              onStart={(ms) => {
+                setStartText(ms <= 0 ? '' : markerTime(ms));
+              }}
+              onEnd={(ms) => {
+                setEndText(ms >= durationMs ? '' : markerTime(ms));
+              }}
+              onSeek={(ms) => {
+                if (preview.current) preview.current.currentTime = ms / 1000;
+              }}
+            />
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+              <Button type="button" size="sm" icon={Play} data-testid="markers-play-part" onClick={playPart}>
+                Play the part
+              </Button>
+              <span data-testid="markers-length" className="tabular-nums">
+                {formatDuration(durationMs)} → <strong>{formatDuration(partEnd - partStart)}</strong>
+              </span>
+              <span className="text-xs text-muted">
+                <kbd className="font-sans font-bold">I</kbd> and <kbd className="font-sans font-bold">O</kbd>:
+                the start or the end at the play head
+              </span>
+            </div>
+          </div>
+        )}
         <p className="text-xs text-muted">
           It plays between its start and end points wherever it is used (a background video loops between
           them), and the markers can be jumped to while it plays, from under the live picture or a phone. The
@@ -216,6 +358,73 @@ function MarkersForm({ media, start }: { media: MediaSummary; start: MediaMarker
             </Button>
           </div>
         </section>
+        {isVideo && (
+          <section className="space-y-2 rounded-md border border-line p-3" aria-label="Save as MP4">
+            <p className="text-sm" data-testid="markers-keyframe">
+              {partStart <= 0
+                ? 'Saved from the beginning.'
+                : keyframeMs === null
+                  ? 'Finding the nearest clean frame…'
+                  : keyframeMs >= partStart
+                    ? `Saved from ${markerTime(keyframeMs)}, a clean frame.`
+                    : `Saved from ${markerTime(keyframeMs)}, the nearest clean frame.`}{' '}
+              <span className="text-muted">
+                The part is copied as it is (the picture and the sound unchanged), so it begins at a clean
+                frame, at or just before the start.
+              </span>
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <Checkbox
+                label="Also add it to the library"
+                data-testid="markers-add-to-library"
+                checked={addToLibrary}
+                onChange={(e) => {
+                  setAddToLibrary(e.target.checked);
+                }}
+              />
+              <span className="flex-1" />
+              <Button
+                type="button"
+                icon={Download}
+                data-testid="markers-save-mp4"
+                disabled={saveJob?.state === 'saving' || saveJob?.state === 'waiting'}
+                onClick={() => void saveMp4()}
+              >
+                Save as MP4…
+              </Button>
+            </div>
+            {saveJob && (
+              <div
+                className="flex flex-wrap items-center gap-2 text-sm"
+                data-testid="markers-save-state"
+                data-state={saveJob.state}
+                role="status"
+              >
+                <span className="min-w-0 flex-1">
+                  {saveJob.state === 'waiting'
+                    ? `Waiting to save “${saveJob.name}”${saveJob.note ? `: ${saveJob.note}` : ''}`
+                    : saveJob.state === 'saving'
+                      ? `Saving “${saveJob.name}”… ${String(Math.round((saveJob.progress ?? 0) * 100))}%`
+                      : saveJob.state === 'done'
+                        ? `Saved “${saveJob.name}”${saveJob.added ? ', and added to the library' : ''}.`
+                        : saveJob.state === 'stopped'
+                          ? 'Stopped: nothing was kept.'
+                          : `Could not save it: ${saveJob.message ?? ''}`}
+                </span>
+                {(saveJob.state === 'saving' || saveJob.state === 'waiting') && (
+                  <Button type="button" size="sm" onClick={() => void stopSave(saveJob.id)}>
+                    Stop
+                  </Button>
+                )}
+                {saveJob.state === 'done' && (
+                  <Button type="button" size="sm" onClick={() => void showSave(saveJob.id)}>
+                    Show the file
+                  </Button>
+                )}
+              </div>
+            )}
+          </section>
+        )}
         {problem && (
           <p role="alert" className="text-sm text-danger-fg" data-testid="markers-problem">
             {problem}

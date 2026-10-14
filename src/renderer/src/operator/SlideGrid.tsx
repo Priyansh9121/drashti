@@ -17,7 +17,8 @@ import { Badge, MissingBadge, UnplayableBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Field, Select, Slider } from '../ui/Field';
-import { LayoutGrid, Music, Palette, Pencil, Presentation, SquarePen } from '../ui/icons';
+import { Bookmark, LayoutGrid, Music, Palette, Pencil, Presentation, SquarePen } from '../ui/icons';
+import { markersMedia, openMarkers } from '../markers/MarkersDialog';
 import { openSlideEditor } from '../editor/editor-store';
 import { openKirtan } from '../kirtans/kirtan-store';
 import { usePersistentState } from '../ui/persist';
@@ -321,6 +322,20 @@ function ItemView({ item }: { item: ShownItem }) {
               ? 'Plays on the audio layer; the picture stays as it is.'
               : 'Goes up as the background, and takes the slide off.'}
           </p>
+          {/* A video's or sound's start, end and markers, on its timeline (Session 26e). */}
+          {item.media !== 'image' && !item.missing && item.unplayable === null && (
+            <Button
+              size="sm"
+              icon={Bookmark}
+              className="mt-2"
+              data-testid="item-markers"
+              onClick={() => {
+                openMarkers(markersMedia(item));
+              }}
+            >
+              Start, end and markers…
+            </Button>
+          )}
         </section>
       );
     }

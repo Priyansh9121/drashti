@@ -10,6 +10,7 @@ import { AlertTriangle, CalendarDays, Info, Volume2, X } from '../ui/icons';
 import { Progress } from '../ui/Progress';
 import { plural } from '../ui/text';
 import { Truncate } from '../ui/Truncate';
+import { cx } from '../ui/cx';
 import { useNotice, useTaskProgress } from './actions';
 import { ScreensSummary } from './StatusLine';
 import { connectNodes, openDashboard, useNodes } from '../nodes/nodes-store';
@@ -18,6 +19,7 @@ import { useNow } from '../render/useNow';
 import { BackupWarning } from '../backups/BackupsDialog';
 import { UpdateStatus } from '../updates/UpdatesDialog';
 import { LinkStatus } from '../links/LinkDialog';
+import { showSave, stopSave, useSaves } from '../markers/save-store';
 
 /*
  * The status bar along the very bottom: the screens connected, where the
@@ -142,6 +144,73 @@ function ImportStatus() {
   return null;
 }
 
+/**
+ * Save as MP4… (Session 26e): the save going, or waiting (on air, or for a conversion), with Stop; and the
+ * last one ended, until dismissed.
+ */
+function SaveStatus({ platform }: { platform: string }) {
+  const jobs = useSaves((s) => s.jobs);
+  const going = jobs.find((j) => j.state === 'saving') ?? jobs.find((j) => j.state === 'waiting');
+  if (going) {
+    const text =
+      going.state === 'waiting'
+        ? `Waiting to save “${going.name}”${going.note ? `: ${going.note}` : ''}`
+        : `Saving “${going.name}”`;
+    return (
+      <div data-testid="save-progress" data-state={going.state} className="flex min-w-0 items-center gap-2">
+        <Truncate text={text} />
+        {going.state === 'saving' && (
+          <Progress value={going.progress ?? 0} label="Saving as MP4" className="w-24 shrink-0" />
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-5"
+          data-testid="save-stop"
+          onClick={() => void stopSave(going.id)}
+        >
+          Stop
+        </Button>
+      </div>
+    );
+  }
+  const last = jobs.at(-1);
+  if (!last || dismissed.has(last.id)) return null;
+  const dismiss = () => {
+    dismissed.add(last.id);
+    useSaves.setState({ jobs: [...jobs] });
+  };
+  return (
+    <div
+      data-testid="save-result"
+      data-state={last.state}
+      className={cx('flex min-w-0 items-center gap-1.5', last.state === 'failed' && 'text-warning-fg')}
+    >
+      {last.state === 'failed' && <AlertTriangle size={13} aria-label="Problem" className="shrink-0" />}
+      <Truncate
+        text={
+          last.state === 'done'
+            ? `Saved “${last.name}”${last.added ? ', and added to the library' : ''}`
+            : last.state === 'stopped'
+              ? `Stopped saving “${last.name}”: nothing was kept`
+              : `Could not save “${last.name}”: ${last.message ?? ''}`
+        }
+      />
+      {last.state === 'done' && (
+        <Button variant="secondary" size="sm" className="h-5" onClick={() => void showSave(last.id)}>
+          {platform === 'darwin' ? 'Show in Finder' : 'Show in Explorer'}
+        </Button>
+      )}
+      <Button variant="ghost" size="sm" className="h-5" onClick={dismiss}>
+        Dismiss
+      </Button>
+    </div>
+  );
+}
+
+/** Saves the operator dismissed from the status bar (this window only). */
+const dismissed = new Set<string>();
+
 /** A long task such as a backup copying the media. */
 function TaskStatus() {
   const progress = useTaskProgress((s) => s.progress);
@@ -230,6 +299,7 @@ export function StatusBar({
       <TodayStatus onOpen={onOpenCalendar} />
       <div aria-live="polite" className="flex min-w-0 flex-1 items-center gap-3">
         <ImportStatus />
+        <SaveStatus platform={info?.platform ?? 'darwin'} />
         <TaskStatus />
       </div>
       <span data-testid="app-info" className="shrink-0 text-faint">

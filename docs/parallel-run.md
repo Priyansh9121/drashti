@@ -432,6 +432,8 @@ On the Mac, **Cmd** is the ⌘ key; on Windows, use **Ctrl** instead. These keys
 | **Esc**                                        | Stop Repeat Slides going round (its slide stays up). In a dialog, a question or the search box: close it, or empty the box; with typed changes it asks first (**Enter** keeps editing) |
 | **?** (Pro Mode, no field chosen)              | The list of keys (also **Help**, then **Keyboard Shortcuts…**)                                                                                                                         |
 
+In **Start, end and markers** (a video's timeline): **I** and **O** set the start and the end at the play head, and the arrow keys move a handle (with **Shift**, a second at a time).
+
 **Transitions** (how a slide comes on; chosen in Pro Mode, for a slide or a presentation in the slide editor, or for a Repeat Slides playlist under its name): **Cut** (at once), **Fade**, **Fade through black**, **Slide** (in from the right) and **Slow zoom** (a fade, then the slide growing slowly while it is up). Every screen runs them at the same moment.
 
 The screens dashboard has no key: click the screens line at the bottom left of the window (it opens in Simple Mode too). Going live, ending the stream and recording have no keys: use the buttons in the **Stream** panel (each going live or ending asks first). Switching the Look and running a macro have no keys either: use their buttons under the live picture, or a MIDI pad mapped to a macro. The arti prompt has no keys of its own: from its time, Next puts the arti up.

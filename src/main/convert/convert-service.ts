@@ -20,6 +20,7 @@ import {
   TARGET_FORMAT,
 } from './plan';
 import { moveBack, moveMedia, type Moved, presentationsMoved } from './relink';
+import { freeFileName } from './trim';
 
 /*
  * Converting media Drashti cannot play (PLAN.md 4.4), one file at a time,
@@ -76,7 +77,7 @@ const KIND_OF: Record<ConvertTarget, MediaRow['kind']> = {
 };
 
 /** What FFmpeg says the file holds (it prints this and stops: there is no output). */
-function readInfo(ffmpeg: string, file: string): Promise<MediaInfo> {
+export function readInfo(ffmpeg: string, file: string): Promise<MediaInfo> {
   return new Promise((resolve) => {
     const child = spawn(ffmpeg, ['-hide_banner', '-i', file], { windowsHide: true });
     let text = '';
@@ -101,8 +102,8 @@ function removeQuietly(path: string): void {
   }
 }
 
-/** Why a conversion going on was stopped: cancelled, waiting for the stream, or out of disk space. */
-type Stop = 'cancel' | 'wait' | 'space';
+/** Why a conversion going on was stopped: cancelled, Drashti quitting, waiting for the stream, or out of disk space. */
+type Stop = 'cancel' | 'quit' | 'wait' | 'space';
 
 interface Running {
   job: ConversionJob;
@@ -120,15 +121,33 @@ export interface FitOptions {
   waiting?(note: string | null): void;
 }
 
-/** The copy made (null: it was no taller already), or why none could be. */
-export type FitResult = { ok: true; copy: string | null } | { ok: false; message: string };
+/** The copy made (null: it was no taller already), or why none could be (`stopped`: someone stopped it). */
+export type FitResult = { ok: true; copy: string | null } | { ok: false; message: string; stopped?: boolean };
+
+/**
+ * Saving a video's part as an MP4 of its own (Session 26e): FFmpeg copying its streams into a part-file,
+ * named as it should be only once whole, run as converting is (one at a time, the lowest priority, waiting
+ * while on air or recording, keeping 2 GB free).
+ */
+export interface CopyOptions {
+  /** FFmpeg's arguments, writing to `tmp`. */
+  args(tmp: string): string[];
+  /** How long the part saved lasts, for its progress. */
+  lengthMs: number;
+  progress?(fraction: number | null): void;
+  waiting?(note: string | null): void;
+}
 
 interface FileJob {
   id: string;
+  /** A copy no taller than a height (a link's video), or a video's part saved as it is. */
+  kind: 'fit' | 'copy';
   source: string;
   dest: string;
   info: MediaInfo;
   options: FitOptions;
+  /** A part saved: its FFmpeg arguments and length. */
+  copy: CopyOptions | null;
   note: string | null;
   resolve(result: FitResult): void;
 }
@@ -492,9 +511,62 @@ export class ConvertService {
     if (info.video.height <= options.maxHeight) return { ok: true, copy: null };
     const dest = join(outDir, basename(source, extname(source)) + '.mp4');
     return new Promise((resolve) => {
-      this.files.push({ id: randomUUID(), source, dest, info, options, note: null, resolve });
+      this.files.push({
+        id: randomUUID(),
+        kind: 'fit',
+        source,
+        dest,
+        info,
+        options,
+        copy: null,
+        note: null,
+        resolve,
+      });
       this.watch();
     });
+  }
+
+  /**
+   * Save a video's part as `dest` (Session 26e), copying its streams by `copy.args`: queued with the
+   * library's conversions. Its id (to stop it), and how it ended: the file saved (never over one already
+   * there: a free name next to it then), or why not.
+   */
+  saveCopy(
+    source: string,
+    dest: string,
+    info: MediaInfo,
+    copy: CopyOptions,
+  ): { id: string; done: Promise<FitResult> } {
+    const id = randomUUID();
+    const options: FitOptions = {
+      maxHeight: 0,
+      progress: (fraction) => {
+        copy.progress?.(fraction);
+      },
+      waiting: (note) => {
+        copy.waiting?.(note);
+      },
+    };
+    const done = new Promise<FitResult>((resolve) => {
+      this.files.push({ id, kind: 'copy', source, dest, info, options, copy, note: null, resolve });
+      this.watch();
+    });
+    return { id, done };
+  }
+
+  /** Stop a part being saved (or waiting to be): nothing is left of it. False when there is none such. */
+  cancelFile(id: string): boolean {
+    const waiting = this.files.findIndex((f) => f.id === id);
+    if (waiting >= 0) {
+      const [job] = this.files.splice(waiting, 1);
+      job?.resolve({ ok: false, message: 'Stopped.', stopped: true });
+      return true;
+    }
+    const running = this.runningFile;
+    if (running?.job.id !== id) return false;
+    running.stop = 'cancel';
+    running.child?.kill();
+    return true;
   }
 
   /** Start the next file waiting (none while the stream is on: each says why it waits). */
@@ -516,6 +588,8 @@ export class ConvertService {
   private async runFile(job: FileJob): Promise<void> {
     const ffmpeg = this.deps.ffmpegPath();
     const height = String(job.options.maxHeight);
+    const saving = job.copy !== null;
+    const what = saving ? 'saved as an MP4' : `made ${height}p`;
     const done = (result: FitResult) => {
       this.runningFile = null;
       job.resolve(result);
@@ -541,7 +615,7 @@ export class ConvertService {
     if (free - size < KEEP_FREE_BYTES) {
       done({
         ok: false,
-        message: `Only ${gb(free)} is free on this computer’s disk, and Drashti keeps 2 GB free. Free up some space, then import it again.`,
+        message: `Only ${gb(free)} is free on this disk, and Drashti keeps 2 GB free. Free up some space, then ${saving ? 'save it' : 'import it'} again.`,
       });
       return;
     }
@@ -551,7 +625,9 @@ export class ConvertService {
     job.options.progress?.(0);
     const child = spawn(
       ffmpeg,
-      convertArgs('mp4', job.source, tmp, job.info, { maxHeight: job.options.maxHeight }),
+      job.copy
+        ? job.copy.args(tmp)
+        : convertArgs('mp4', job.source, tmp, job.info, { maxHeight: job.options.maxHeight }),
       {
         windowsHide: true,
       },
@@ -562,12 +638,17 @@ export class ConvertService {
     } catch {
       // Not allowed here: it runs at normal priority.
     }
+    const lengthMs = job.copy ? job.copy.lengthMs : job.info.durationMs;
+    // What FFmpeg says when it fails (a stream an MP4 cannot hold, say), for the log's reason.
+    let said = '';
     const reader = new ProgressReader(
       (p) => {
-        if (job.info.durationMs && p.outTimeMs !== null)
-          job.options.progress?.(Math.max(0, Math.min(1, p.outTimeMs / job.info.durationMs)));
+        if (lengthMs && p.outTimeMs !== null)
+          job.options.progress?.(Math.max(0, Math.min(1, p.outTimeMs / lengthMs)));
       },
-      () => undefined,
+      (line) => {
+        if (said.length < 2000) said += `${line}\n`;
+      },
     );
     child.stderr.on('data', (d: Buffer) => {
       reader.push(d.toString());
@@ -587,38 +668,61 @@ export class ConvertService {
         this.files.unshift(job);
         this.deps.log(
           'info',
-          `A video waiting to be made ${height}p stopped while the stream is on: it starts again afterwards`,
+          `A video waiting to be ${what} stopped while the stream is on: it starts again afterwards`,
         );
         this.watch();
         return;
       }
-      if (stop === 'cancel') {
-        done({ ok: false, message: 'Stopped: Drashti is quitting.' });
+      if (stop === 'quit') {
+        done({ ok: false, message: 'Stopped: Drashti is quitting.', stopped: true });
         return;
       }
+      if (stop === 'cancel') {
+        this.deps.log('info', `A video being ${what} was stopped`);
+        done({ ok: false, message: 'Stopped.', stopped: true });
+        return;
+      }
+      // A stream an MP4 cannot hold (the check before is by the first picture and sound only).
+      const unheld = /not currently supported in container|Could not find tag for codec/u.test(said);
       this.deps.log(
         'warn',
-        `A video could not be made ${height}p (${stop === 'space' ? 'less than 2 GB free' : 'FFmpeg failed'})`,
+        `A video could not be ${what} (${stop === 'space' ? 'less than 2 GB free' : unheld ? 'a stream an MP4 cannot hold' : 'FFmpeg failed'})`,
       );
       done({
         ok: false,
         message:
           stop === 'space'
-            ? 'Stopped: this computer’s disk has less than 2 GB free. Free up some space, then import it again.'
-            : `FFmpeg could not make it ${height}p.`,
+            ? `Stopped: this disk has less than 2 GB free. Free up some space, then ${saving ? 'save it' : 'import it'} again.`
+            : unheld
+              ? 'One of its streams is of a kind an MP4 cannot hold, so it cannot be saved as an MP4 without converting it.'
+              : saving
+                ? 'FFmpeg could not save it as an MP4.'
+                : `FFmpeg could not make it ${height}p.`,
       });
       return;
     }
+    // Never over a file already there: one that came since it was named gets a free name beside it.
+    const dest = saving
+      ? join(dirname(job.dest), freeFileName(dirname(job.dest), basename(job.dest)))
+      : job.dest;
     try {
-      await rename(tmp, job.dest);
+      await rename(tmp, dest);
     } catch {
       removeQuietly(tmp);
-      done({ ok: false, message: 'Drashti could not keep the smaller copy: ask the admin.' });
+      done({
+        ok: false,
+        message: saving
+          ? 'Drashti could not save it there: choose another folder.'
+          : 'Drashti could not keep the smaller copy: ask the admin.',
+      });
       return;
     }
-    this.deps.log('info', `A video was made ${height}p for its import`);
+    this.deps.log(
+      'info',
+      saving ? 'A video’s part was saved as an MP4' : `A video was made ${height}p for its import`,
+    );
     job.options.progress?.(1);
-    done({ ok: true, copy: job.dest });
+    done({ ok: true, copy: dest });
   }
 
   /** Stop (Drashti is quitting): a conversion going is let go of, its part-file removed. */
@@ -627,7 +731,7 @@ export class ConvertService {
     for (const f of this.files.splice(0)) f.resolve({ ok: false, message: 'Stopped: Drashti is quitting.' });
     const file = this.runningFile;
     if (file?.child) {
-      file.stop = 'cancel';
+      file.stop = 'quit';
       file.child.kill();
     }
     if (file) removeQuietly(file.tmp);

@@ -6,6 +6,7 @@ import { importPaths, watchImports } from '../library/import-store';
 import { loadLibrary, watchLibrary } from '../library/library-store';
 import { connectExtras } from '../library/extras-store';
 import { connectSmart } from '../playlists/smart-store';
+import { connectSaves } from '../markers/save-store';
 import { RemoveConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
 import { MediaRemoveConfirm } from '../library/media-removal';
 import { UndoBar } from '../library/UndoBar';
@@ -90,6 +91,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     watchProps();
     connectExtras();
     connectSmart();
+    connectSaves();
     connectMode();
     connectRoles();
     void startMidi();

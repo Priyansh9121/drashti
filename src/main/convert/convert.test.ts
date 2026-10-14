@@ -16,6 +16,7 @@ import type { ConversionJob } from '../../shared/convert';
 import { type Db, openDatabase } from '../db/database';
 import { sha256File } from '../import/media-store';
 import { ConvertService } from './convert-service';
+import { trimArgs } from './trim';
 
 /*
  * Converting with the real FFmpeg (where it has been fetched: macOS and
@@ -320,5 +321,78 @@ describe.skipIf(!existsSync(ffmpeg))('converting media, with FFmpeg', () => {
     await sleep(1500);
     service.close();
     expect(await waiting).toEqual({ ok: false, message: 'Stopped: Drashti is quitting.' });
+  }, 120_000);
+
+  it('saves a video’s part as an MP4 (Session 26e): waiting while the stream is on, copied as it is, and a stop leaves nothing', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-convert-'));
+    const source = join(dir, 'Placeholder clip.mp4');
+    make([
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=s=320x180:r=25',
+      '-t',
+      '4',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-g',
+      '25',
+      '-pix_fmt',
+      'yuv420p',
+      source,
+    ]);
+    const before = await sha256File(source);
+    db = openDatabase(join(dir, 'drashti.sqlite'));
+    let busy: string | null = 'Waits while the stream is on air or recording.';
+    service = new ConvertService({
+      db,
+      mediaDir: join(dir, 'Media'),
+      ffmpegPath: () => ffmpeg,
+      busy: () => busy,
+      freeBytes: () => 100 * 1024 ** 3,
+      changed: () => undefined,
+      libraryChanged: () => undefined,
+      log: () => undefined,
+    });
+    const out = join(dir, 'saved');
+    mkdirSync(out);
+    const info = {
+      durationMs: 4000,
+      video: { codec: 'h264', pixFmt: 'yuv420p', width: 320, height: 180, still: false },
+      audio: null,
+    };
+    const notes: (string | null)[] = [];
+    const saved = service.saveCopy(source, join(out, 'Part.mp4'), info, {
+      args: (tmp) => trimArgs(source, tmp, 1000, 3000),
+      lengthMs: 2000,
+      waiting: (note) => notes.push(note),
+    });
+    // On air: nothing is made, and it says why; then it goes on by itself.
+    await sleep(2500);
+    expect(readdirSync(out)).toEqual([]);
+    expect(notes).toContain(busy);
+    busy = null;
+    expect(await saved.done).toEqual({ ok: true, copy: join(out, 'Part.mp4') });
+    expect(describeFile(join(out, 'Part.mp4'))).toMatch(/Duration: 00:00:02\.0/u);
+    expect(await sha256File(source)).toEqual(before);
+    // Saved again under a name taken meanwhile: beside it, never over it.
+    const again = service.saveCopy(source, join(out, 'Part.mp4'), info, {
+      args: (tmp) => trimArgs(source, tmp, 1000, 3000),
+      lengthMs: 2000,
+    });
+    expect(await again.done).toEqual({ ok: true, copy: join(out, 'Part (2).mp4') });
+    // Stopped while it waits: nothing is left.
+    busy = 'Waits while the stream is on air or recording.';
+    const stopped = service.saveCopy(source, join(out, 'Stopped.mp4'), info, {
+      args: (tmp) => trimArgs(source, tmp, 0, 4000),
+      lengthMs: 4000,
+    });
+    await sleep(1200);
+    expect(service.cancelFile(stopped.id)).toBe(true);
+    expect(await stopped.done).toEqual({ ok: false, message: 'Stopped.', stopped: true });
+    expect(readdirSync(out).sort()).toEqual(['Part (2).mp4', 'Part.mp4']);
+    expect(service.cancelFile('no such save')).toBe(false);
   }, 120_000);
 });

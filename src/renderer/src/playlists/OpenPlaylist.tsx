@@ -22,6 +22,7 @@ import {
   ArrowDown,
   ArrowUp,
   BookOpen,
+  Bookmark,
   BookTemplate,
   FilePlus,
   FolderSync,
@@ -48,6 +49,7 @@ import { plural } from '../ui/text';
 import { afterDrag, dragKind, droppedIds, droppedPaths, hasFiles, startDrag, useDragging } from './drag';
 import { droppedItems, isRemoveKey, RenameField } from './playlist-shared';
 import { useSmart } from './smart-store';
+import { markersMedia, openMarkers } from '../markers/MarkersDialog';
 import { RepeatBar } from './RepeatBar';
 import {
   addFromLibrary,
@@ -346,6 +348,19 @@ function itemMenu(item: PlaylistItemInfo): MenuEntry[] {
           },
         ]
       : [];
+  // A video's or sound's start, end and markers, on its timeline (Session 26e).
+  if (item.kind === 'media' && item.media !== 'image' && !item.missing && item.unplayable === null)
+    return [
+      {
+        label: 'Start, end and markers…',
+        icon: Bookmark,
+        onSelect: () => {
+          openMarkers(markersMedia(item));
+        },
+      },
+      ...timers,
+      remove,
+    ];
   if (item.kind === 'presentation' && item.presentationName !== null)
     return [
       {

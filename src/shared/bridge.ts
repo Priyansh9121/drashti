@@ -73,6 +73,7 @@ import type {
   TimerCue,
 } from './playlists';
 import type { RepeatSettings } from './repeat';
+import type { KeyframeResult, SaveJob, SaveRequest, SaveResult } from './trim';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { PropFields, PropInfo, PropResult } from './props';
 import type { GroupLookPatch, LookResult, LooksView } from './looks';
@@ -421,6 +422,15 @@ export interface DrashtiBridge {
     onConversions(listener: (jobs: ConversionJob[]) => void): () => void;
     /** Undo a conversion: the original is used again wherever it was moved from. */
     undoConversion(conversionId: string): Promise<{ ok: true } | { ok: false; message: string }>;
+    /** Save as MP4… (Session 26e): where a part saved from `startMs` begins (its keyframe). */
+    keyframe(mediaId: string, startMs: number): Promise<KeyframeResult>;
+    /** Save the part as an MP4 where the operator chooses (a save dialog), in the background. */
+    saveTrim(request: SaveRequest): Promise<SaveResult>;
+    saves(): Promise<SaveJob[]>;
+    onSaves(listener: (jobs: SaveJob[]) => void): () => void;
+    stopSave(jobId: string): Promise<boolean>;
+    /** Show a saved file in the Finder (Explorer on Windows). */
+    showSave(jobId: string): Promise<null>;
     /** Where media is used, asked before deleting it (Session 26a). */
     usage(mediaIds: string[]): Promise<MediaUsage>;
     /** Delete media from the library, taking it out of playlists and music; Undo with restore. */
