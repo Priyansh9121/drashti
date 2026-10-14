@@ -28,6 +28,7 @@ export type OperatorAction =
   | 'clearMasks'
   | 'toggleBlackout'
   | 'toggleLogo'
+  | 'stopRepeat'
   | 'openScreens'
   | 'uncoverControls'
   | 'removeSelected'
@@ -71,6 +72,9 @@ export const KEYMAP: readonly KeyBinding[] = [
   { action: 'toggleBlackout', keys: ['B', '.'], label: 'Black-out' },
   // The logo instead of the picture, and back (the prop marked as the logo in Pro Mode).
   { action: 'toggleLogo', keys: ['L'], label: 'Logo' },
+  // Repeat Slides going round stops, its slide staying up (Session 26d). Not while a dialog, a menu, the
+  // slide editor or a field has the keyboard: they keep Esc for themselves.
+  { action: 'stopRepeat', keys: ['Escape'], label: 'Stop Repeat Slides' },
   { action: 'openScreens', keys: ['Mod+Shift+S'], label: 'Screens' },
   // Turns off any output covering the operator window. Not Ctrl+Shift+Esc (Windows Task Manager)
   // and not plain Esc (too easy to press by accident when a single screen is covered on purpose).
@@ -92,7 +96,7 @@ export const KEYMAP: readonly KeyBinding[] = [
  * action once (a unit test checks), so the sheet never drifts from the keys.
  */
 export const KEY_GROUPS: readonly { title: string; actions: readonly OperatorAction[] }[] = [
-  { title: 'Running the show', actions: ['next', 'previous', 'nextItem', 'previousItem'] },
+  { title: 'Running the show', actions: ['next', 'previous', 'nextItem', 'previousItem', 'stopRepeat'] },
   {
     title: 'Clearing the screens',
     actions: [

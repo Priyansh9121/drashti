@@ -95,6 +95,9 @@ export const REMOTE_COMMANDS = [
   'musicPrevious',
   // A jump to a marker of the background video or the sound playing (Session 14).
   'jumpToMarker',
+  // Repeat Slides (Session 26d): start one going round, and stop it (its slide staying up).
+  'startRepeat',
+  'stopRepeat',
 ] as const;
 
 /** A presentation as a Remote lists the library (Session 18): no files, nothing to change it with. */

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Outline, Shadow, SlideElement, TextRun, TextStyle, Transition } from './model';
-import { MAX_AUTO_ADVANCE_MS, MAX_TRANSITION_MS } from './model';
+import { MAX_AUTO_ADVANCE_MS, MAX_TRANSITION_MS, TRANSITION_KINDS } from './model';
 
 /*
  * Runtime schemas for the content model. Used to validate anything that
@@ -37,8 +37,13 @@ export const outlineSchema: z.ZodType<Outline> = z.object({
 const rotationSchema = num.min(-36_000).max(36_000).optional();
 
 export const transitionSchema: z.ZodType<Transition> = z.object({
-  kind: z.enum(['cut', 'dissolve']),
+  kind: z.enum(TRANSITION_KINDS),
   durationMs: num.int().min(0).max(MAX_TRANSITION_MS),
+  spanMs: num
+    .int()
+    .min(0)
+    .max(MAX_AUTO_ADVANCE_MS + MAX_TRANSITION_MS)
+    .optional(),
 });
 
 /** How long a slide stays up before the next one comes on by itself. */

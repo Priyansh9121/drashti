@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { Transition } from '../../../shared/model';
-import { CUT } from '../../../shared/model';
+import {
+  CUT,
+  TRANSITION_KINDS,
+  TRANSITION_NAMES,
+  type Transition,
+  type TransitionKind,
+} from '../../../shared/model';
 import type { EditDoc, EditSlide } from '../../../shared/slide-edit';
 import { slidesOf } from '../../../shared/slide-edit';
 import { useMedia } from '../library/library-store';
@@ -92,7 +97,10 @@ function Seconds({
 
 const DISSOLVE: Transition = { kind: 'dissolve', durationMs: 800 };
 
-/** A transition: one of the choices, with a length for a dissolve. `none` is "as the default". */
+/**
+ * A transition: one of the choices, with a length for any but a cut (Session 26d added fade through
+ * black, slide and slow zoom). `none` is "as the default".
+ */
 function TransitionField({
   label,
   value,
@@ -116,15 +124,25 @@ function TransitionField({
           value={choice}
           onChange={(e) => {
             const v = e.target.value;
-            onChange(v === 'none' ? null : v === 'cut' ? CUT : value?.kind === 'dissolve' ? value : DISSOLVE);
+            if (v === 'none') onChange(null);
+            else if (v === 'cut') onChange(CUT);
+            else
+              onChange({
+                kind: v as TransitionKind,
+                durationMs: value && value.kind !== 'cut' ? value.durationMs : DISSOLVE.durationMs,
+              });
           }}
         >
           {noneLabel !== null && <option value="none">{noneLabel}</option>}
           <option value="cut">Cut (at once)</option>
-          <option value="dissolve">Dissolve</option>
+          {TRANSITION_KINDS.filter((k) => k !== 'cut').map((k) => (
+            <option key={k} value={k}>
+              {TRANSITION_NAMES[k]}
+            </option>
+          ))}
         </Select>
       </Field>
-      {value?.kind === 'dissolve' && (
+      {value && value.kind !== 'cut' && (
         <div className="pl-2">
           <Seconds
             label="Taking"
@@ -133,7 +151,7 @@ function TransitionField({
             max={10}
             testId={`${testId}-seconds`}
             onChange={(durationMs) => {
-              onChange({ kind: 'dissolve', durationMs });
+              onChange({ kind: value.kind, durationMs });
             }}
           />
         </div>
@@ -142,7 +160,12 @@ function TransitionField({
   );
 }
 
-const describe = (t: Transition) => (t.kind === 'cut' ? 'a cut' : `a dissolve of ${t.durationMs / 1000} s`);
+const describe = (t: Transition) =>
+  t.kind === 'cut'
+    ? 'a cut'
+    : t.kind === 'dissolve'
+      ? `a dissolve of ${t.durationMs / 1000} s`
+      : `${TRANSITION_NAMES[t.kind].toLowerCase()} of ${t.durationMs / 1000} s`;
 
 /** What Drashti does for presentations without a transition of their own (a setting, saved at once). */
 function useDefaultTransition(): [Transition | null, (t: Transition) => void] {

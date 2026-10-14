@@ -14,6 +14,7 @@ import type {
   MessageItem,
   PlaylistCursor,
   PropItem,
+  RepeatRun,
   TickerItem,
   TickerLayer,
   UpcomingItem,
@@ -80,5 +81,7 @@ export type EngineAction =
   | { type: 'mask/set'; mask: MaskLayer }
   /** Restart recovery: the count as it was, with the time it had left. */
   | { type: 'advance/set'; autoAdvance: { startedAt: number; durationMs: number } | null }
+  /** Repeat Slides going round, or stopped (Session 26d). */
+  | { type: 'repeat/set'; repeat: RepeatRun | null }
   /** The live Look, every group's settings resolved from the library. */
   | { type: 'look/set'; look: LiveLook };

@@ -4,7 +4,7 @@ import '../render/fonts.css';
 import '../styles/app.css';
 import { groupLookIn } from '../../../shared/looks';
 import { connectEngine, useEngine } from '../engine/engine-store';
-import { engineNow } from '../render/clock';
+import { engineNow, holdClock } from '../render/clock';
 import { preloadFonts } from '../render/fonts';
 import { PlacedInParent } from '../render/Placed';
 import { SceneBoundary } from '../render/SceneBoundary';
@@ -128,6 +128,8 @@ function Output() {
       }),
     [],
   );
+  // Tests only: the clock held at one moment, so two screens can be compared (Session 26d).
+  useEffect(() => window.drashti.output.onTestClock(holdClock), []);
   usePaintTiming(rootRef);
   useFrameReports(context?.display?.refreshHz ?? 60);
   useEffect(() => {

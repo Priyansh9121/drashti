@@ -11,6 +11,7 @@ Import from a Link
 
 Playlists
 
+- Repeat Slides: a playlist whose pictures and slides go round by themselves, the last back to the first (15 s each with a 1 s fade, to begin with). Esc or Stop ends it and the slide stays up; black-out and the logo cover it while it goes on. Any slide can now come on by Fade through black, Slide or Slow zoom too.
 - A smart playlist follows a folder on the computer: + New › Smart Playlist from a Folder…. What Drashti imports as media or pictures there, subfolders too, joins it by itself, in the folder's order. A file taken away is marked, not removed (one button takes the missing out); a changed one replaces its item; a folder that is gone (a USB stick taken out) is said so, and the playlist carries on when it is back.
 - Dragging into a playlist is surer: rows no longer change size as a drag starts, which could cancel it. Search results can be dragged in too.
 - Files dragged from the Finder (Explorer on Windows) onto the open playlist, or onto a playlist's name, are imported and added where they land, in the order dragged.

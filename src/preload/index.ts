@@ -245,6 +245,8 @@ const bridge: DrashtiBridge = {
     smartViews: () => invoke(IPC.playlists.smartViews),
     createSmart: () => invoke(IPC.playlists.createSmart),
     removeMissing: (playlistId) => invoke(IPC.playlists.removeMissing, playlistId),
+    createRepeat: (parentId) => invoke(IPC.playlists.createRepeat, parentId),
+    setRepeat: (playlistId, settings) => invoke(IPC.playlists.setRepeat, playlistId, settings),
     onChanged: (listener) =>
       on(IPC.playlists.changed, () => {
         listener();
@@ -480,6 +482,10 @@ const bridge: DrashtiBridge = {
     onTestThrow: (listener) =>
       on(IPC.output.testThrow, () => {
         listener();
+      }),
+    onTestClock: (listener) =>
+      on(IPC.output.testClock, ({ at }) => {
+        listener(at);
       }),
   },
   pictures: {

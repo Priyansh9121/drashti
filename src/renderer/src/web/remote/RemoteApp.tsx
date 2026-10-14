@@ -28,7 +28,9 @@ import {
   ListMusic,
   Pause,
   Play,
+  Repeat2,
   RotateCcw,
+  Square,
   Stamp,
   Timer,
   Tv,
@@ -142,6 +144,29 @@ function LivePicture({ state }: { state: EngineState | null }) {
           {state && <Scene state={state} canvas={CANVAS} scaling="fit" />}
         </PlacedInParent>
       </div>
+      {/* Repeat Slides going round (Session 26d): which, and Stop (its slide stays up). */}
+      {state?.repeat && (
+        <div
+          role="status"
+          data-testid="remote-repeating"
+          className="flex items-center gap-2 rounded-lg border border-line bg-panel-2 py-1 pr-1 pl-3"
+        >
+          <Repeat2 size={18} aria-hidden="true" className="shrink-0 text-muted" />
+          <span className="min-w-0 flex-1 truncate text-base">
+            <span className="font-bold">Repeating</span> · {state.repeat.name}
+          </span>
+          <Button
+            size="lg"
+            className="min-h-12"
+            instant
+            icon={Square}
+            data-testid="remote-repeat-stop"
+            onClick={() => void tap(post('/api/v1/repeat/stop'))}
+          >
+            Stop
+          </Button>
+        </div>
+      )}
     </section>
   );
 }

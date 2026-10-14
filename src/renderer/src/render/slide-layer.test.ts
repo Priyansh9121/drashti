@@ -18,14 +18,22 @@ describe('the slide layer on a screen', () => {
     const shown = nextShowing(none, a, 1000);
     expect(shown).toEqual({ on: a, off: null, fade: null });
     const b = layer('b', 2000, { kind: 'dissolve', durationMs: 800 });
-    expect(nextShowing(shown, b, 2010)).toEqual({ on: b, off: a, fade: { ms: 800, start: null } });
+    expect(nextShowing(shown, b, 2010)).toEqual({
+      on: b,
+      off: a,
+      fade: { kind: 'dissolve', ms: 800, start: null },
+    });
     // A screen that hears of it after the dissolve has finished just shows it.
     expect(nextShowing(shown, b, 2900)).toEqual({ on: b, off: null, fade: null });
   });
 
   it('does not fade again for the same slide with new content, and clears at once', () => {
     const b = layer('b', 2000, { kind: 'dissolve', durationMs: 800 });
-    const fading = { on: b, off: layer('a', 1000), fade: { ms: 800, start: 2000 } };
+    const fading = {
+      on: b,
+      off: layer('a', 1000),
+      fade: { kind: 'dissolve' as const, ms: 800, start: 2000 },
+    };
     const edited = { ...b, notes: 'Placeholder note' };
     expect(nextShowing(fading, edited, 2100)).toEqual({ ...fading, on: edited });
     expect(nextShowing(fading, null, 2100)).toEqual(none);
@@ -37,12 +45,31 @@ describe('the slide layer on a screen', () => {
     const c = layer('c', 2100, { kind: 'dissolve', durationMs: 800 });
     // b waits for its pictures: a is still the slide on screen.
     const waiting = nextShowing({ on: a, off: null, fade: null }, b, 2010);
-    expect(waiting).toEqual({ on: b, off: a, fade: { ms: 800, start: null } });
+    expect(waiting).toEqual({ on: b, off: a, fade: { kind: 'dissolve', ms: 800, start: null } });
     // c comes before b has begun to fade in: it dissolves from a, never from b (which was never seen).
-    expect(nextShowing(waiting, c, 2110)).toEqual({ on: c, off: a, fade: { ms: 800, start: null } });
+    expect(nextShowing(waiting, c, 2110)).toEqual({
+      on: c,
+      off: a,
+      fade: { kind: 'dissolve', ms: 800, start: null },
+    });
     // Once b had begun, b is what goes.
-    const begun = { ...waiting, fade: { ms: 800, start: 2000 } };
-    expect(nextShowing(begun, c, 2110)).toEqual({ on: c, off: b, fade: { ms: 800, start: null } });
+    const begun = { ...waiting, fade: { kind: 'dissolve' as const, ms: 800, start: 2000 } };
+    expect(nextShowing(begun, c, 2110)).toEqual({
+      on: c,
+      off: b,
+      fade: { kind: 'dissolve', ms: 800, start: null },
+    });
+  });
+
+  it('runs every transition that takes time, each by its kind; a cut, or one of no length, just shows (Session 26d)', () => {
+    const a = layer('a', 1000);
+    const shown = nextShowing(none, a, 1000);
+    for (const kind of ['fade-black', 'slide', 'zoom'] as const) {
+      const b = layer('b', 2000, { kind, durationMs: 1000 });
+      expect(nextShowing(shown, b, 2010)).toEqual({ on: b, off: a, fade: { kind, ms: 1000, start: null } });
+    }
+    expect(nextShowing(shown, layer('b', 2000, { kind: 'slide', durationMs: 0 }), 2010).fade).toBeNull();
+    expect(nextShowing(shown, layer('b', 2000, { kind: 'cut', durationMs: 0 }), 2010).fade).toBeNull();
   });
 
   it('works out how far a dissolve is from the clock', () => {

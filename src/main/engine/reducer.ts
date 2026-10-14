@@ -169,6 +169,8 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       return sameData(state.autoAdvance, action.autoAdvance)
         ? state
         : { ...state, autoAdvance: action.autoAdvance };
+    case 'repeat/set':
+      return sameData(state.repeat, action.repeat) ? state : { ...state, repeat: action.repeat };
     case 'prop/show': {
       const props = upsert(state.layers.props, action.prop);
       return props ? withLayers(state, { props }) : state;

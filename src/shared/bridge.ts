@@ -72,6 +72,7 @@ import type {
   TemplateRequest,
   TimerCue,
 } from './playlists';
+import type { RepeatSettings } from './repeat';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { PropFields, PropInfo, PropResult } from './props';
 import type { GroupLookPatch, LookResult, LooksView } from './looks';
@@ -362,6 +363,9 @@ export interface DrashtiBridge {
     createSmart(): Promise<PlaylistResult>;
     /** Take a smart playlist's missing items out (their files are gone from its folder). */
     removeMissing(playlistId: string): Promise<PlaylistResult>;
+    /** A new Repeat Slides playlist (Session 26d) in a folder or at the top level, and its settings. */
+    createRepeat(parentId: string | null): Promise<PlaylistResult>;
+    setRepeat(playlistId: string, settings: RepeatSettings): Promise<PlaylistResult>;
     onChanged(listener: () => void): () => void;
     onSmartChanged(listener: (views: SmartPlaylistView[]) => void): () => void;
   };
@@ -672,6 +676,8 @@ export interface DrashtiBridge {
     onMediaReady(listener: (mediaId: string) => void): () => void;
     /** Tests only (a packaged Drashti never sends it): draw an element that throws (Session 23). */
     onTestThrow(listener: () => void): () => void;
+    /** Tests only (a packaged Drashti never sends it): hold the clock at a moment, or let it go (Session 26d). */
+    onTestClock(listener: (at: number | null) => void): () => void;
   };
   /** For the hidden window that draws a PDF's pages as pictures (Session 15). */
   pictures: {

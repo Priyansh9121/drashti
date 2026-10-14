@@ -77,6 +77,7 @@ describe('restart recovery', () => {
       stageMessage: null,
       timers: [],
       autoAdvance: null,
+      repeat: null,
       lookId: null,
       masks: null,
     });

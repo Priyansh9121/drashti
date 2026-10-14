@@ -65,10 +65,23 @@ export interface SlideLayer {
   /** The slide's notes, for the stage screen. */
   notes: string;
   /**
-   * How it came on: a dissolve from the slide before, from shownAt for its
-   * duration (outputs that join later show it finished). Left out for a cut.
+   * How it came on: a fade (a dissolve), a fade through black, a slide in or
+   * a slow zoom from the slide before, from shownAt for its duration (outputs
+   * that join later show it finished). Left out for a cut.
    */
   transition?: Transition;
+}
+
+/**
+ * A Repeat Slides playlist going round by itself (Session 26d, shared/repeat.ts): its slides are those of
+ * `repeat:<playlistId>`, each up for its seconds (autoAdvance counts them), the last back to the first.
+ * Anything else going up, Clear all, the slide cleared, Stop or Esc ends it, and the slide stays up;
+ * black-out and the logo cover it while it carries on underneath.
+ */
+export interface RepeatRun {
+  playlistId: string;
+  /** Its name, for LIVE, a stage screen and a phone ("Repeating · Lobby pictures"). */
+  name: string;
 }
 
 /** A sound for the audio layer, as a slide's audio cue or the operator asks for it. */
@@ -307,6 +320,8 @@ export interface EngineState {
    * (main-process clock) for durationMs. Windows show the time left.
    */
   autoAdvance: { startedAt: number; durationMs: number } | null;
+  /** A Repeat Slides playlist going round (Session 26d), or null. */
+  repeat: RepeatRun | null;
   /**
    * The live Look (shared/looks.ts): each screen group's layers, languages
    * and slide style. Switching it changes every group at once.
@@ -335,6 +350,7 @@ export function initialEngineState(): EngineState {
     stageMessage: null,
     timers: [],
     autoAdvance: null,
+    repeat: null,
     look: NO_LOOK,
   };
 }

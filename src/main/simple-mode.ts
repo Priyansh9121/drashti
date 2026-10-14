@@ -77,6 +77,9 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   // Smart playlists (Session 26c): Simple Mode sees what their folders bring, and changes no setup.
   IPC.playlists.createSmart,
   IPC.playlists.removeMissing,
+  // Repeat Slides (Session 26d): Simple Mode starts and stops it (engine commands), and changes no setting.
+  IPC.playlists.createRepeat,
+  IPC.playlists.setRepeat,
   IPC.shastra.remove,
   // The arti: Simple Mode answers the prompt (put up, not now, cancel) and changes no schedule.
   IPC.arti.save,

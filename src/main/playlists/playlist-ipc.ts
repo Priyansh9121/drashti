@@ -2,6 +2,7 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { IPC } from '../../shared/ipc';
 import type { RenderSlide } from '../../shared/model';
 import type { PlaylistResult, SmartPlaylistView } from '../../shared/playlists';
+import { repeatSettingsSchema } from '../../shared/repeat';
 import {
   idListSchema,
   itemOrderSchema,
@@ -123,6 +124,9 @@ export function registerPlaylistIpc({
       const where = positionSchema.nullable().safeParse(at);
       const list = newItemsSchema.safeParse(items);
       if (!id.success || !where.success || !list.success) return failed('Those items cannot be added.');
+      // A Repeat Slides playlist takes no videos or sounds (Session 26d), and says so.
+      const refused = repo.refusal(id.data, list.data);
+      if (refused !== null) return failed(refused);
       const added = repo.addItems(id.data, where.data, list.data);
       return added.length > 0
         ? { ok: true, ids: added }
@@ -229,6 +233,29 @@ export function registerPlaylistIpc({
       return repo.setTimers(id.data, c.data)
         ? { ok: true, ids: [id.data] }
         : failed('Only a presentation, media or passage item runs timers when it goes up.');
+    }),
+  );
+  // ---- Repeat Slides (Session 26d) --------------------------------------------------------
+  handle(IPC.playlists.createRepeat, (e, parentId) =>
+    change(e, () => {
+      const parent = playlistIdSchema.nullable().safeParse(parentId);
+      if (!parent.success) return failed('That folder no longer exists.');
+      const id = repo.createRepeat('Repeat Slides', parent.data);
+      return id ? { ok: true, ids: [id] } : failed('That folder no longer exists.');
+    }),
+  );
+  handle(IPC.playlists.setRepeat, (e, playlistId, settings) =>
+    change(e, () => {
+      const id = playlistIdSchema.safeParse(playlistId);
+      const s = repeatSettingsSchema.safeParse(settings);
+      if (!id.success) return failed('That playlist no longer exists.');
+      if (!s.success)
+        return failed(
+          'Each slide is up for 3 to 600 seconds, and a transition takes 0.3 to 3 seconds, never more than half of that.',
+        );
+      return repo.setRepeatSettings(id.data, s.data)
+        ? { ok: true, ids: [id.data] }
+        : failed('That Repeat Slides playlist no longer exists.');
     }),
   );
   // ---- smart playlists (Session 26c) -----------------------------------------------------

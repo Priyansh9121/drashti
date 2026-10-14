@@ -1,22 +1,27 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { SlideLayer } from '../../../shared/engine/state';
 import { languageView } from '../../../shared/language-view';
 import type { SlideStyle } from '../../../shared/looks';
-import type { Lang } from '../../../shared/model';
+import type { Lang, TransitionKind } from '../../../shared/model';
+import { SLOW_ZOOM_SCALE } from '../../../shared/model';
 import { hasPicture, lowerThird } from '../../../shared/program';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { LowerThird } from './LowerThird';
 import { Placed } from './Placed';
 import { SlideView } from './SlideView';
-import { engineNow } from './clock';
+import { clockHeld, engineNow, onClockJump } from './clock';
+import { takesTime, transitionFrame, zoomSpan } from './transition-frame';
 
 /*
  * The slide layer on a screen, with its transition (PLAN.md 5.2, Session
- * 7). A cut shows the new slide at once. A dissolve fades the old slide out
- * and the new one in, the new one added light for light over the old
- * (plus-lighter, in a group of their own), so where both are the same the
- * picture never dips, and nothing goes black. The fade is timed from the
+ * 7). A cut shows the new slide at once. A dissolve (a fade) fades the old
+ * slide out and the new one in, the new one added light for light over the
+ * old (plus-lighter, in a group of their own), so where both are the same
+ * the picture never dips, and nothing goes black. Session 26d added a fade
+ * through black, a slide in from the right and a slow zoom
+ * (transition-frame.ts draws each). Every transition is timed from the
  * engine's shownAt, so every screen is at the same point; it starts once
  * the new slide's pictures and videos are ready (until then the old slide
  * stays), and a screen that comes along after it has finished shows the
@@ -27,25 +32,25 @@ const keyOf = (l: SlideLayer) => `${l.slide.id}@${l.shownAt}`;
 
 interface Showing {
   on: SlideLayer | null;
-  /** The slide going away while `on` dissolves in. */
+  /** The slide going away while `on` comes in. */
   off: SlideLayer | null;
-  /** The dissolve's length, and when it started (null: the new slide's media is still loading). */
-  fade: { ms: number; start: number | null } | null;
+  /** The transition's kind and length, and when it started (null: the new slide's media is still loading). */
+  fade: { kind: TransitionKind; ms: number; start: number | null } | null;
 }
 
 /** What to show for a new state of the layer. */
 export function nextShowing(prev: Showing, layer: SlideLayer | null, now: number): Showing {
   if (!layer) return { on: null, off: null, fade: null };
-  // The same slide with new content (an edit): no new fade.
+  // The same slide with new content (an edit): no new transition.
   if (prev.on && keyOf(prev.on) === keyOf(layer)) return { ...prev, on: layer };
   const t = layer.transition;
-  if (t?.kind === 'dissolve' && t.durationMs > 0 && now < layer.shownAt + t.durationMs)
+  if (takesTime(t) && now < layer.shownAt + t.durationMs)
     return {
       on: layer,
       // What goes away is what is on screen: a slide still waiting for its pictures had not begun to
       // show, and the one before it was still up, whole (Session 23).
       off: prev.fade?.start === null ? prev.off : prev.on,
-      fade: { ms: t.durationMs, start: null },
+      fade: { kind: t.kind, ms: t.durationMs, start: null },
     };
   return { on: layer, off: null, fade: null };
 }
@@ -75,6 +80,46 @@ function mediaReady(root: HTMLElement): true | Promise<void> {
     Promise.all(waits).then(() => undefined),
     new Promise<void>((resolve) => setTimeout(resolve, MEDIA_WAIT_MS)),
   ]);
+}
+
+/**
+ * A slide that came on by a slow zoom grows slowly about its middle while it is up, from when it came on,
+ * by the engine's clock (Session 26d). The browser runs it (a transform, off the page's own work), kept at
+ * the engine's time; anything else is drawn as it is.
+ */
+function Zoomed({ layer, children }: { layer: SlideLayer; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const t = layer.transition;
+  const span = t?.kind === 'zoom' ? zoomSpan(t) : 0;
+  const shownAt = layer.shownAt;
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (span <= 0 || !el || typeof el.animate !== 'function') return;
+    const zoom = el.animate([{ transform: 'scale(1)' }, { transform: `scale(${String(SLOW_ZOOM_SCALE)})` }], {
+      duration: span,
+      fill: 'forwards',
+      easing: 'linear',
+    });
+    const keep = () => {
+      const at = Math.min(span, Math.max(0, engineNow() - shownAt));
+      zoom.currentTime = at;
+      // Held (a test), or finished: it stays where it is. (Playing a finished one would start it again.)
+      if (clockHeld() || at >= span) zoom.pause();
+      else zoom.play();
+    };
+    keep();
+    const off = onClockJump(keep);
+    return () => {
+      off();
+      zoom.cancel();
+    };
+  }, [span, shownAt]);
+  if (span <= 0) return <>{children}</>;
+  return (
+    <div ref={ref} data-zoom="" style={{ position: 'absolute', inset: 0, transformOrigin: '50% 50%' }}>
+      {children}
+    </div>
+  );
 }
 
 /**
@@ -163,16 +208,17 @@ export function SlideLayerView({
     };
   }, [waiting, on, onKey]);
 
-  // Run the fade, frame by frame, from the clock every screen shares.
+  // Run the transition, frame by frame, from the clock every screen shares.
   const start = fade?.start ?? null;
   const ms = fade?.ms ?? 0;
+  const kind = fade?.kind ?? 'cut';
+  const blackRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (start === null) return;
     let frame = 0;
     const tick = () => {
       const p = fadeAt({ ms, start }, engineNow());
-      if (inRef.current) inRef.current.style.opacity = String(p);
-      if (outRef.current) outRef.current.style.opacity = String(1 - p);
+      paint(kind, p);
       rootRef.current?.setAttribute('data-fade', p.toFixed(3));
       if (p >= 1) {
         setShowing((s) => (s.fade?.start === start ? { on: s.on, off: null, fade: null } : s));
@@ -184,19 +230,33 @@ export function SlideLayerView({
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [start, ms]);
+  }, [start, ms, kind]);
 
-  // After every render, before it is painted: where the fade is now (the frames between renders set it too).
+  /** The two slides and the black as the transition has them at `p` (nothing set when not in one). */
+  function paint(k: TransitionKind | null, p: number) {
+    const frame = k === null ? null : transitionFrame(k, p);
+    const set = (el: HTMLDivElement | null, opacity: string, transform: string) => {
+      if (!el) return;
+      el.style.opacity = opacity;
+      el.style.transform = transform;
+    };
+    set(inRef.current, frame ? String(frame.in.opacity) : '', frame?.in.transform ?? '');
+    set(outRef.current, frame ? String(frame.out.opacity) : '', frame?.out.transform ?? '');
+    if (blackRef.current) blackRef.current.style.opacity = frame ? String(frame.black) : '0';
+  }
+
+  // After every render, before it is painted: where the transition is now (the frames between renders set
+  // it too).
   const fading = fade !== null;
   useLayoutEffect(() => {
-    const p = start !== null ? fadeAt({ ms, start }, engineNow()) : 0;
-    if (inRef.current) inRef.current.style.opacity = fading ? String(p) : '';
-    if (outRef.current) outRef.current.style.opacity = fading ? String(1 - p) : '';
+    paint(fading ? kind : null, start !== null ? fadeAt({ ms, start }, engineNow()) : 0);
   });
 
   if (!on) return null;
   // One list, keyed by slide and time, so the slide going away keeps its elements (its videos play on).
   const shown = fading && off ? [off, on] : [on];
+  // A fade adds the new slide light for light over the old; the others draw it over.
+  const adds = fading && off !== null && transitionFrame(kind, 0).add;
   return (
     <div
       ref={rootRef}
@@ -204,8 +264,15 @@ export function SlideLayerView({
       data-slides={slides}
       data-fading={fading ? 'true' : undefined}
       data-fade-start={fade?.start ?? undefined}
-      // The two slides blend with each other only, then go over the background as one.
-      style={{ position: 'absolute', inset: 0, isolation: fading ? 'isolate' : undefined }}
+      data-transition={fading ? kind : undefined}
+      // The two slides blend with each other only, then go over the background as one; a slide coming
+      // in from the side stays inside the screen.
+      style={{
+        position: 'absolute',
+        inset: 0,
+        isolation: fading ? 'isolate' : undefined,
+        overflow: fading && kind === 'slide' ? 'hidden' : undefined,
+      }}
     >
       {shown.map((l) => {
         const incoming = l === on;
@@ -218,20 +285,30 @@ export function SlideLayerView({
             style={{
               position: 'absolute',
               inset: 0,
-              mixBlendMode: fading && off && incoming ? 'plus-lighter' : undefined,
+              mixBlendMode: adds && incoming ? 'plus-lighter' : undefined,
             }}
           >
-            <DrawnSlide
-              layer={l}
-              canvas={canvas}
-              scaling={scaling}
-              languages={languages}
-              slides={slides}
-              lift={lift}
-            />
+            <Zoomed layer={l}>
+              <DrawnSlide
+                layer={l}
+                canvas={canvas}
+                scaling={scaling}
+                languages={languages}
+                slides={slides}
+                lift={lift}
+              />
+            </Zoomed>
           </div>
         );
       })}
+      {/* A fade through black: black over both, whole half-way. */}
+      {fading && kind === 'fade-black' && (
+        <div
+          ref={blackRef}
+          data-slide-black=""
+          style={{ position: 'absolute', inset: 0, background: '#000', opacity: 0 }}
+        />
+      )}
     </div>
   );
 }

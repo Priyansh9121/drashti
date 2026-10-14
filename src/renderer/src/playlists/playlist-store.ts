@@ -12,7 +12,8 @@ import { POSITION_MAX } from '../../../shared/playlists';
 import { itemsMadeBy } from '../../../shared/import-items';
 import { useEngine } from '../engine/engine-store';
 import { importPaths } from '../library/import-store';
-import { leaveItem, showItem, useLibrary } from '../library/library-store';
+import { leaveItem, showItem, showRepeatSteps, useLibrary } from '../library/library-store';
+import { isRepeatId, repeatPresentationId, type RepeatSettings } from '../../../shared/repeat';
 import { describeSome, pushRemoval } from '../library/undo';
 
 /*
@@ -145,7 +146,12 @@ let watching = false;
 export function watchPlaylists(): void {
   if (watching) return;
   watching = true;
-  window.drashti.playlists.onChanged(() => void reload());
+  window.drashti.playlists.onChanged(() => {
+    void reload();
+    // A Repeat Slides playlist's steps in the grid follow its items and settings.
+    const { selectedId, focusSlideId } = useLibrary.getState();
+    if (selectedId !== null && isRepeatId(selectedId)) void showRepeatSteps(selectedId, focusSlideId);
+  });
   useLibrary.subscribe((s, before) => {
     if (s.presentations !== before.presentations) void reload();
   });
@@ -183,6 +189,14 @@ export async function pickItem(item: PlaylistItemInfo): Promise<void> {
   // A slot to fill: choose what goes there.
   if (item.kind === 'placeholder') {
     usePlaylists.setState({ filling: item });
+    return;
+  }
+  // Repeat Slides (Session 26d): the grid shows all its steps, at this item's first.
+  if (state.tree.find((n) => n.id === openId)?.kind === 'repeat') {
+    await showRepeatSteps(
+      repeatPresentationId(openId),
+      `${item.id}/${item.kind === 'media' ? 'picture' : '0'}`,
+    );
     return;
   }
   await showItem({ ...item, playlistId: openId });
@@ -564,6 +578,27 @@ export function moveItemBy(id: string, step: -1 | 1): Promise<boolean> {
   });
   moving = run.catch(() => undefined);
   return run;
+}
+
+/** + New › Repeat Slides (Session 26d): a Repeat Slides playlist where a new playlist would go, named at once. */
+export async function createRepeatPlaylist(parentId: string | null = newParent()): Promise<void> {
+  const result = await api().createRepeat(parentId);
+  if (!settled(result)) return;
+  const [id] = result.ids;
+  await loadTree();
+  if (!id) return;
+  usePlaylists.setState((s) => ({
+    selectedNodeId: id,
+    renaming: id,
+    renameIn: 'tree',
+    closed: s.closed.filter((c) => c !== parentId),
+  }));
+  await openPlaylist(id);
+}
+
+/** A Repeat Slides playlist's settings changed (Pro Mode): from its next slide. */
+export async function saveRepeatSettings(playlistId: string, settings: RepeatSettings): Promise<void> {
+  if (settled(await api().setRepeat(playlistId, settings))) await loadTree();
 }
 
 /**

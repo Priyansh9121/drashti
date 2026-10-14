@@ -51,6 +51,16 @@ export async function showItem(item: ShownItem): Promise<void> {
   else if (item.kind === 'shastra' && !item.missing) await selectPresentation(item.passageId);
 }
 
+/**
+ * A Repeat Slides playlist's steps in the slide grid (Session 26d), at the slide `focus` (an item's first):
+ * a click on one puts it up and sets it going round from there. The library's own marks stay as they are.
+ */
+export async function showRepeatSteps(presentationId: string, focus: string | null): Promise<void> {
+  useLibrary.setState({ item: null, selectedId: presentationId, focusSlideId: focus });
+  const doc = await window.drashti.library.getPresentation(presentationId);
+  if (useLibrary.getState().selectedId === presentationId) useLibrary.setState({ doc });
+}
+
 /** Back to the library's own selection (the grid no longer shows a playlist item). */
 export function leaveItem(): void {
   if (useLibrary.getState().item) useLibrary.setState({ item: null });

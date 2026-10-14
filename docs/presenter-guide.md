@@ -27,6 +27,7 @@ So it opens like an app, from one tap:
 - **Library**: every presentation in Drashti, by name. Type in the search box to find a talk, a kirtan, or words on a slide. Tap a presentation to see its slides. **Nothing changes on the screens until you tap a slide.** Then that slide goes up, and Next carries on from it.
 - **On the screens** takes you back to the slides that are showing now, after you have looked at another presentation.
 - **Playlist**: the sabha's running order. Tap an item to see its slides.
+- **Repeating** under the live picture: slides are going round by themselves (Repeat Slides). **Stop** ends it, and the slide on the screens stays up.
 
 ![The library, searched for words on a slide](screenshots/phone-remote-search.png)
 

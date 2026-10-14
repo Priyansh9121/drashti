@@ -84,6 +84,16 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   }),
   /** Start a playlist item: a presentation at its first slide, or a picture, video or sound. */
   z.object({ type: z.literal('playItem'), playlistId: id, itemId: id }),
+  /**
+   * Repeat Slides (Session 26d): start a Repeat Slides playlist going round, from its first slide or the
+   * one given; stop it, leaving the slide on the screens.
+   */
+  z.object({
+    type: z.literal('startRepeat'),
+    playlistId: id,
+    slideIndex: z.number().int().min(0).max(100_000).optional(),
+  }),
+  z.object({ type: z.literal('stopRepeat') }),
   z.object({ type: z.literal('next') }),
   z.object({ type: z.literal('previous') }),
   /**
@@ -164,7 +174,8 @@ export type EngineErrorCode =
   | 'unknown-look'
   | 'nothing-cued'
   | 'no-music'
-  | 'unknown-marker';
+  | 'unknown-marker'
+  | 'not-repeating';
 
 export type CommandResult =
   { ok: true; changed: boolean; rev: number } | { ok: false; error: EngineErrorCode; message: string };
