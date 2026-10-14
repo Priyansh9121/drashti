@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
 import { importAndGetIds, launchApp, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
+import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import { launchMain, launchNode, pairNode } from './nodes';
 import { canvasPixels } from './pixels';
 
@@ -530,6 +531,55 @@ test('a sharpened copy’s pixels match the Picture editor’s preview', async (
     expect(Math.abs((preview[i] ?? -99) - v), `pixel ${String(across[i])}`).toBeLessThanOrEqual(6);
   expect(Math.abs(Math.min(...preview) - Math.min(...copyRow))).toBeLessThanOrEqual(8);
   expect(Math.abs(Math.max(...preview) - Math.max(...copyRow))).toBeLessThanOrEqual(8);
+  await app.close();
+});
+
+test('a phone draws a sharpened picture from a small preview of its copy, with no filter', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-phone-sharpened-'));
+  const picture = await makePicture(win, join(dir, 'Placeholder phone picture.png'), ['#606060', '#a0a0a0']);
+  const [pictureId = ''] = await importAndGetIds(win, [picture]);
+  await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.media.setLook(id, {
+        zoom: 1,
+        x: 0,
+        y: 0,
+        brightness: 0.1,
+        contrast: 0,
+        colour: 0,
+        sharpness: 0.5,
+      }),
+    pictureId,
+  );
+  await expect.poll(async () => (await libraryLook(win, pictureId))?.copy, { timeout: 60_000 }).toBe(50);
+  await background(win, pictureId);
+  const { base } = await networkOn(win);
+  const code = await pairingCode(win, 'remote', 'Placeholder phone');
+  const phone = await device('chromium');
+  const p = phone.page;
+  const loads: string[] = [];
+  p.on('request', (r) => loads.push(new URL(r.url()).pathname));
+  try {
+    await pairByQr(p, base, code, '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    // The live picture: the copy's preview, with the rest of its look, and no SVG filter.
+    const copyId = `${pictureId}_s50`;
+    const looked = p.getByTestId('remote-live').locator(`[data-look-picture][data-sharpened="${copyId}"]`);
+    await expect(looked.locator(`img[data-preview="shown"][data-media-id="${copyId}"]`)).toHaveCount(1, {
+      timeout: 30_000,
+    });
+    expect(await looked.evaluate((el) => (el as HTMLElement).style.filter)).toBe('brightness(1.1)');
+    expect((await sharpening(p)).svg).toBe(0);
+    expect(loads).toContain(`/api/v1/media/${copyId}/preview`);
+    // Never a whole file, the copy's or the picture's.
+    expect(loads.filter((path) => path.includes('/media/') && !path.endsWith('/preview'))).toEqual([]);
+  } finally {
+    await phone.close();
+  }
   await app.close();
 });
 
