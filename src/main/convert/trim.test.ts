@@ -74,7 +74,8 @@ describe('a video saved as an MP4 by copying it', () => {
     expect(lengthName(3_725_000)).toBe('1h 02m 05s');
     expect(savedFileName('Placeholder Katha.mov', 240_000)).toBe('Placeholder Katha (4m 00s).mp4');
     expect(savedFileName('a/b:c.mp4', 60_000)).toBe('a-b-c (1m 00s).mp4');
-    const taken = new Set(['/d/Clip (4m 00s).mp4', '/d/Clip (4m 00s) (2).mp4']);
+    // Joined as the computer joins them (with backslashes on Windows), as freeFileName looks them up.
+    const taken = new Set([join('/d', 'Clip (4m 00s).mp4'), join('/d', 'Clip (4m 00s) (2).mp4')]);
     expect(freeFileName('/d', 'Clip (4m 00s).mp4', (p) => taken.has(p))).toBe('Clip (4m 00s) (3).mp4');
     expect(freeFileName('/d', 'New.mp4', (p) => taken.has(p))).toBe('New.mp4');
   });
