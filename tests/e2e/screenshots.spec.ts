@@ -315,7 +315,7 @@ test('the kirtan library, screens’ languages, templates and the setup wizard',
     const d = (globalThis as PageGlobals).drashti;
     for (const [name, i, langs] of [
       ['Hall', 0, ['gu', 'translit']],
-      ['Stream', 1, ['translit', 'en']],
+      ['Lobby', 1, ['translit', 'en']],
     ] as const) {
       const created = await d.screens.createGroup(name);
       if (!created.ok) continue;
@@ -328,6 +328,13 @@ test('the kirtan library, screens’ languages, templates and the setup wizard',
   });
   await win.getByTestId('slide-thumb').first().click();
   await win.getByRole('button', { name: 'Screens', exact: true }).click();
+  // The groups' own settings, below the three cards (Session 26).
+  await win
+    .getByTestId('screen-group')
+    .first()
+    .evaluate((el) => {
+      el.scrollIntoView({ block: 'start' });
+    });
   await shot(win, 'screens-languages');
   await win.getByRole('button', { name: 'Close screens' }).click();
   await shot(win, 'operator-kirtan-languages');
@@ -820,6 +827,10 @@ test('Looks, stage layouts, masks, key and fill, macros, MIDI and the slide edit
 
   await win.getByRole('button', { name: 'Screens', exact: true }).click();
   await expect(win.getByTestId('looks-section')).toBeVisible();
+  // The Looks, below the three cards and the displays (Session 26).
+  await win.getByTestId('looks-section').evaluate((el) => {
+    el.scrollIntoView({ block: 'start' });
+  });
   await shot(win, 'screens-looks', [], true);
   await win.getByTestId('edit-stage-layouts').click();
   const layouts = win.getByTestId('stage-layout-editor');
