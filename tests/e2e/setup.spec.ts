@@ -244,8 +244,8 @@ test('never covers the operator’s display without the confirm step', async () 
   const confirm = win.getByTestId('setup-cover-confirm');
   await expect(confirm).toContainText('Cover the Drashti controls?');
   await confirm.getByRole('button', { name: 'Cancel' }).click();
-  // Nothing changed, and no output covers the controls.
-  expect(await groupsOf(win)).toEqual([]);
+  // Nothing changed (only the stream's group, there from the start), and no output covers the controls.
+  expect(await groupsOf(win)).toEqual([{ name: 'Stream', role: 'stream', languages: null, screens: 0 }]);
   expect(outputPages(app)).toHaveLength(0);
   await wizard.getByTestId('setup-finish').click();
   await confirm.getByRole('button', { name: 'Cover the controls' }).click();
