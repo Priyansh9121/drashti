@@ -228,6 +228,11 @@ test('the open playlist in the middle, its items as cards of every kind (Session
   await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Ravi Sabha' }).click();
   await win.getByTestId('playlist-item').filter({ hasText: 'Placeholder Katha' }).click();
   await expect(win.getByTestId('slide-thumb')).toHaveCount(3);
+  // The playlist as tall as it goes, so every card shows.
+  await win.getByRole('separator', { name: 'Resize the playlist and the slides' }).press('End');
+  await win.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+  });
   await part(win, 'playlist-cards', [win.getByTestId('centre-playlist')]);
   await shot(win, 'operator-playlist-1600x900');
   await app.close();
