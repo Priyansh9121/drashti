@@ -129,6 +129,8 @@ export class SharpenedCopies {
   private current: { job: Job; timer: NodeJS.Timeout } | null = null;
   private scanned: Promise<void> | null = null;
   private refreshing: Promise<void> = Promise.resolve();
+  /** The copies found at start having their hashes worked out. */
+  private hashing: Promise<void> = Promise.resolve();
   private idleWaiters: (() => void)[] = [];
 
   constructor(private readonly deps: SharpenDeps) {}
@@ -157,6 +159,7 @@ export class SharpenedCopies {
   /** Nothing being made or waiting (tests and the performance check wait for this). */
   async idle(): Promise<void> {
     await this.refreshing;
+    await this.hashing;
     if (!this.current && this.queue.length === 0 && !this.win) return;
     await new Promise<void>((resolve) => this.idleWaiters.push(resolve));
   }
@@ -177,7 +180,7 @@ export class SharpenedCopies {
         if (this.ready.has(m[1])) continue;
         this.ready.set(m[1], { step: Number(m[2]), ext: m[3] as 'jpg' | 'png', hash: null, bytes: 0 });
       }
-      void this.hashAll();
+      this.hashing = this.hashAll().catch(() => undefined);
     })();
     return this.scanned;
   }
