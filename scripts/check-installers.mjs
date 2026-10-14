@@ -360,18 +360,21 @@ async function checkWindows(f) {
     }
     await starts(f.name, exe, [], installDir);
   } finally {
-    // Uninstalled as a person would (Settings, Apps), silently; the uninstaller finishes on its own.
+    // Uninstalled as a person would (Settings, Apps), silently; the uninstaller finishes on its own, after
+    // run() returns. It removes Drashti.exe before the thousands of files of yt-dlp and Deno under
+    // resources, so it is done only when those are gone too (dry run 38613284691 looked between the two).
     const uninstaller = join(installDir, 'Uninstall Drashti.exe');
     if (existsSync(uninstaller)) run(uninstaller, ['/S']);
-    for (let i = 0; i < 60 && existsSync(exe); i++)
+    const tools = [join(installDir, 'resources', 'yt-dlp'), join(installDir, 'resources', 'deno')];
+    const left = () => existsSync(exe) || tools.some((t) => existsSync(t));
+    const began = Date.now();
+    for (let i = 0; i < 90 && left(); i++)
       spawnSync('powershell.exe', ['-NoProfile', '-Command', 'Start-Sleep 1']);
-    if (existsSync(exe)) fail(f.name, 'the silent uninstall left Drashti.exe behind');
-    else if (
-      existsSync(join(installDir, 'resources', 'yt-dlp')) ||
-      existsSync(join(installDir, 'resources', 'deno'))
-    )
-      fail(f.name, 'the silent uninstall left yt-dlp or Deno behind');
-    else pass(f.name, 'uninstalls silently');
+    const took = `${String(Math.round((Date.now() - began) / 1000))} s`;
+    if (existsSync(exe)) fail(f.name, `the silent uninstall left Drashti.exe behind (after ${took})`);
+    else if (tools.some((t) => existsSync(t)))
+      fail(f.name, `the silent uninstall left yt-dlp or Deno behind (after ${took})`);
+    else pass(f.name, `uninstalls silently (in ${took})`);
   }
 }
 
