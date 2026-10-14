@@ -2,13 +2,16 @@ import type { ImportIssue } from '../../../shared/import';
 import type { TextElement, TextRun, TextStyle } from '../../../shared/model';
 import { mainLang, mergeRuns, withDetectedLangs } from '../../../shared/text-runs';
 import { decodeText } from '../decode';
+import type { LegacyFontUse } from '../legacy-fonts';
 import { parseLyrics } from '../../../shared/lyrics';
 import type { ParsedArrangement, ParsedGroup, ParsedPresentation, ParsedSlide } from '../model';
 
 /*
  * Plain-text lyrics (the format is in src/shared/lyrics.ts): [Verse 1]
  * lines start groups, blank lines split slides, and a header again with no
- * words repeats that group, so the presentation gets an arrangement.
+ * words repeats that group, so the presentation gets an arrangement. A Word
+ * file's lyrics (Session 26f, ./docx.ts) go through the same code, their
+ * paragraphs as the lines, with the runs each line was typed in.
  */
 
 /** Longest slide text kept (the model's limit for one text element). */
@@ -38,9 +41,21 @@ export function groupColor(name: string): string | null {
   return null;
 }
 
-function slideFromLines(lines: string[], issues: ImportIssue[]): ParsedSlide {
+/**
+ * A Word file's lines as typed (Session 26f): each line's runs, by its text, in the order written (null for
+ * a line with nothing to keep but its words), and the use of legacy fonts for the report.
+ */
+export interface TypedLines {
+  runsOf(line: string): TextRun[] | null;
+  legacy: LegacyFontUse;
+}
+
+function slideFromLines(lines: string[], issues: ImportIssue[], typed?: TypedLines): ParsedSlide {
+  // Every line is taken in turn, kept or not, so the lines after it find their own runs.
+  const typedRuns = typed ? lines.map((line) => typed.runsOf(line)) : null;
   let text = lines.join('\n');
-  if (text.length > MAX_SLIDE_CHARS) {
+  const cut = text.length > MAX_SLIDE_CHARS;
+  if (cut) {
     text = text.slice(0, MAX_SLIDE_CHARS);
     issues.push({
       severity: 'warning',
@@ -49,11 +64,17 @@ function slideFromLines(lines: string[], issues: ImportIssue[]): ParsedSlide {
       fix: null,
     });
   }
-  // One run per line, each with the language of its script; neighbours in the same language merge.
+  // One run per line (a Word file's: its runs as typed, a legacy font's marked), each with the language of
+  // its script; neighbours in the same language merge.
   const kept = text.split('\n');
-  const runs: TextRun[] = mergeRuns(
-    withDetectedLangs(kept.map((line, i) => ({ text: i < kept.length - 1 ? `${line}\n` : line }))),
-  );
+  const asTyped = typed && typedRuns && !cut;
+  const lineRuns = kept.flatMap((line, i): TextRun[] => {
+    const own = (asTyped ? typedRuns[i] : null) ?? [{ text: line }];
+    if (i === kept.length - 1) return own;
+    const last = own.length - 1;
+    return own.map((r, j) => (j === last ? { ...r, text: `${r.text}\n` } : r));
+  });
+  const runs: TextRun[] = mergeRuns(withDetectedLangs(asTyped ? typed.legacy.apply(lineRuns) : lineRuns));
   const element: TextElement = {
     id: 'text',
     kind: 'text',
@@ -62,7 +83,7 @@ function slideFromLines(lines: string[], issues: ImportIssue[]): ParsedSlide {
     lang: mainLang(runs),
     style: LYRICS_STYLE,
   };
-  if (runs.length > 1) element.runs = runs;
+  if (runs.length > 1 || runs.some((r) => r.font !== undefined || r.legacy)) element.runs = runs;
   return { label: '', notes: '', background: null, enabled: true, elements: [element], cues: [] };
 }
 
@@ -75,8 +96,20 @@ export function nameFromFile(fileName: string): string {
 
 export function parseLyricsText(bytes: Uint8Array, fileName: string): ParsedPresentation {
   const decoded = decodeText(bytes);
-  const issues: ImportIssue[] = [...decoded.issues];
-  const parsed = parseLyrics(decoded.text, MAX_SLIDES);
+  return lyricsPresentation(decoded.text, fileName, [...decoded.issues]);
+}
+
+/**
+ * Lyrics as text made into a presentation, by the format's rules (src/shared/lyrics.ts); `issues` so far
+ * (the file's own) are kept. `typed`: a Word file's lines as typed.
+ */
+export function lyricsPresentation(
+  text: string,
+  fileName: string,
+  issues: ImportIssue[],
+  typed?: TypedLines,
+): ParsedPresentation {
+  const parsed = parseLyrics(text, MAX_SLIDES);
   if (parsed.droppedSlides > 0) {
     issues.push({
       severity: 'warning',
@@ -96,7 +129,7 @@ export function parseLyricsText(bytes: Uint8Array, fileName: string): ParsedPres
   const groups: ParsedGroup[] = parsed.groups.map((g) => ({
     name: g.name,
     color: groupColor(g.name),
-    slides: g.slides.map((lines) => slideFromLines(lines, issues)),
+    slides: g.slides.map((lines) => slideFromLines(lines, issues, typed)),
   }));
   // The song as written (with its repeats) is how it is sung: that arrangement is the one played.
   const arrangements: ParsedArrangement[] = parsed.repeats

@@ -10,6 +10,7 @@ import { ImportRepo } from '../db/imports';
 import { PresentationRepo } from '../db/presentations';
 import { MediaStore } from './media-store';
 import { MAX_TEXT_BYTES, runImport } from './pipeline';
+import { makeTestDocx } from './testing/make-docx';
 import { cocoaRtf, pp6Presentation } from './testing/pp6-fixtures';
 
 const SONG_A = '[Verse 1]\nPlaceholder line one\nPlaceholder line two\n\n[Chorus]\nPlaceholder chorus\n';
@@ -109,47 +110,67 @@ describe('runImport', () => {
     t.write('Song A.txt', SONG_A);
     t.write('sub/Song B.txt', SONG_B);
     t.write('media/Loop.mp4', 'placeholder video');
-    t.write('Order of service.docx', 'x');
-    t.write('Other.docx', 'x');
+    // Word lyrics are read now (Session 26f); a damaged one says so, an old .doc says what to do.
+    t.write(
+      'Order of service.docx',
+      makeTestDocx(['[Opening]', 'Placeholder welcome', '', 'Placeholder second']),
+    );
+    t.write('Damaged.docx', 'x');
+    t.write('Old order.doc', 'x');
+    t.write('Notes.odt', 'x');
+    t.write('Other notes.odt', 'x');
     t.write('Old Song.pro6', '<xml/>');
     const { summary, report, progress, wrote } = await t.run([t.source]);
 
     expect(summary.status).toBe('done');
     expect(summary.totals).toMatchObject({
-      files: 6,
-      imported: 3,
-      unsupported: 2,
-      failed: 0,
-      presentations: 2,
-      groups: 3,
-      slides: 5,
+      files: 9,
+      imported: 4,
+      unsupported: 3,
+      failed: 1,
+      presentations: 3,
+      groups: 4,
+      slides: 7,
       media: 1,
     });
-    expect(names(t.db)).toEqual(['Song A', 'Song B']);
+    expect(names(t.db)).toEqual(['Order of service', 'Song A', 'Song B']);
     expect(report?.items.map((i) => [i.format, i.outcome, i.name])).toEqual([
       // Presentations first (playlists will name them), then media, then files it does not read.
+      ['text', 'failed', 'Damaged.docx'],
       ['pp6', 'unsupported', 'Old Song.pro6'],
+      ['text', 'imported', 'Order of service'],
       ['text', 'imported', 'Song A'],
       ['text', 'imported', 'Song B'],
       ['media', 'imported', 'Loop.mp4'],
-      ['unknown', 'unsupported', '.docx files'],
+      ['unknown', 'unsupported', 'Old order.doc'],
+      ['unknown', 'unsupported', '.odt files'],
     ]);
-    expect(report?.items[0]?.message).toBe('Not a presentation or playlist (it holds xml).');
-    expect(report?.items.at(-1)?.message).toBe(
-      '2 files (.docx) not imported: Drashti does not read this type. For example: Order of service.docx, Other.docx.',
+    expect(report?.items[0]?.message).toBe(
+      'This Word file could not be read: it may be damaged. If it opens in Word, save it again there and import that.',
     );
+    expect(report?.items[1]?.message).toBe('Not a presentation or playlist (it holds xml).');
+    expect(report?.items.at(-2)?.message).toBe(
+      'An old Word document (.doc) is not read: open it in Word and save it as a Word Document (.docx), then import that.',
+    );
+    expect(report?.items.at(-1)?.message).toBe(
+      '2 files (.odt) not imported: Drashti does not read this type. For example: Notes.odt, Other notes.odt.',
+    );
+    // A Word file's presentation says where it came from, as a text file's does.
+    const service = t.presentations.get(report?.items[2]?.target?.id ?? '');
+    expect(service?.source).toMatchObject({ kind: 'docx', path: join(t.source, 'Order of service.docx') });
+    expect(service?.groups.map((g) => [g.name, g.slides.length])).toEqual([['Opening', 2]]);
     // Nothing in the report names the other product.
     expect(JSON.stringify(report)).not.toMatch(/propresenter/iu);
 
-    const songA = t.presentations.get(report?.items[1]?.target?.id ?? '');
+    const songA = t.presentations.get(report?.items[3]?.target?.id ?? '');
     expect(songA?.source).toMatchObject({ kind: 'text', path: join(t.source, 'Song A.txt'), ref: null });
     expect(songA?.groups.map((g) => [g.name, g.slides.length])).toEqual([
       ['Verse 1', 1],
       ['Chorus', 1],
     ]);
-    expect(wrote).toHaveLength(2);
+    expect(wrote).toHaveLength(3);
     expect(progress[0]?.phase).toBe('scanning');
-    expect(progress.at(-1)).toMatchObject({ phase: 'finished', done: 6, total: 6 });
+    expect(progress.at(-1)).toMatchObject({ phase: 'finished', done: 9, total: 9 });
     expect(new ImportRepo(t.db).listRuns().map((r) => r.id)).toEqual([summary.id]);
   });
 

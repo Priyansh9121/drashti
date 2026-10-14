@@ -21,11 +21,12 @@ const IGNORED = new Set(['thumbs.db', 'desktop.ini', 'icon\r']);
 const IGNORED_DIRS = new Set(['__macosx', '$recycle.bin', 'system volume information']);
 
 /**
- * Every extension Drashti imports (Session 26a: the Import… menu's Files… offers just these): text,
- * media, ProPresenter 6 and 7 files and their bundles and playlists, and PDF, PowerPoint and Keynote.
+ * Every extension Drashti imports (Session 26a: the Import… menu's Files… offers just these): text and
+ * Word lyrics (Session 26f), media, ProPresenter 6 and 7 files and their bundles and playlists, and PDF,
+ * PowerPoint and Keynote.
  */
 export function importableExtensions(): string[] {
-  return ['txt', ...Object.keys(MEDIA), ...PP6, ...PP7, ...PICTURE_EXTENSIONS];
+  return ['txt', 'docx', ...Object.keys(MEDIA), ...PP6, ...PP7, ...PICTURE_EXTENSIONS];
 }
 
 export function extOf(path: string): string {
@@ -38,7 +39,8 @@ export function mediaKindOf(path: string): MediaKind | null {
 
 export function formatOf(path: string): ImportFormat {
   const ext = extOf(path);
-  if (ext === 'txt') return 'text';
+  // Lyrics: a text file, or a Word document (Session 26f; formats/docx.ts).
+  if (ext === 'txt' || ext === 'docx') return 'text';
   if (MEDIA[ext]) return 'media';
   // PDF, PowerPoint and Keynote files become pictures (Session 15).
   if (pictureSourceOf(ext)) return 'pictures';

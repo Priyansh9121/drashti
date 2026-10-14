@@ -547,7 +547,6 @@ function pendingRestore(): ReturnType<typeof applyPendingRestore> {
 
 const fromOperator = (event: IpcMainInvokeEvent) => event.sender.id === operatorWindow?.webContents.id;
 const idListSchema = z.array(idSchema).min(1).max(10_000);
-/** What the Import files dialog offers (lyrics, the two presentation formats, media). */
 /** What the import's file dialog offers: everything Drashti imports (one list, the scanner's). */
 const IMPORTABLE_EXTENSIONS = importableExtensions();
 const notAllowed = { ok: false as const, message: 'Only the operator window can change the screens.' };
@@ -3346,7 +3345,7 @@ function start(): void {
         : {
             filters: [
               {
-                name: 'Presentations, PDFs, PowerPoint, Keynote, pictures, videos, sounds and lyrics',
+                name: 'Presentations, PDFs, PowerPoint, Keynote, pictures, videos, sounds and lyrics (text or Word)',
                 extensions: IMPORTABLE_EXTENSIONS,
               },
               { name: 'All files', extensions: ['*'] },

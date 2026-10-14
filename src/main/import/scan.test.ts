@@ -22,7 +22,10 @@ describe('formatOf', () => {
     expect(formatOf('/a/x.pro6plx')).toBe('pp6');
     expect(formatOf('/a/x.pro')).toBe('pp7');
     expect(formatOf('/a/x.probundle')).toBe('pp7');
-    expect(formatOf('/a/x.docx')).toBe('unknown');
+    // Word lyrics (Session 26f) are read as lyrics; an old Word document (.doc) is not.
+    expect(formatOf('/a/x.docx')).toBe('text');
+    expect(formatOf('/a/x.DOCX')).toBe('text');
+    expect(formatOf('/a/x.doc')).toBe('unknown');
     expect(formatOf('/ProPresenter/Themes/Clouds/Theme')).toBe('pp7');
     expect(formatOf('/ProPresenter/Playlists/Library')).toBe('pp7');
     expect(formatOf('/ProPresenter/Configuration/Screens')).toBe('unknown');
@@ -43,13 +46,15 @@ describe('scanPaths', () => {
       'Thumbs.db': 'x',
       '__MACOSX/a/Song 1.txt': 'x',
       'notes.docx': 'x',
+      'old notes.doc': 'x',
     });
     const result = await scanPaths([root]);
     expect(result.files.map((f) => [relative(root, f.path), f.format, f.size])).toEqual([
       [join('a', 'Song 1.txt'), 'text', 1],
       [join('a', 'bg.png'), 'media', 3],
       [join('b', 'Song 2.txt'), 'text', 1],
-      ['notes.docx', 'unknown', 1],
+      ['notes.docx', 'text', 1],
+      ['old notes.doc', 'unknown', 1],
     ]);
     expect([...result.mediaByName.keys()]).toEqual(['bg.png']);
     expect(result.missing).toEqual([]);
@@ -104,8 +109,9 @@ describe('what the Import… menu’s Files… offers (Session 26a)', () => {
       'pro',
       'probundle',
       'txt',
+      'docx',
     ])
       expect(offered).toContain(ext);
-    expect(offered).not.toContain('docx');
+    expect(offered).not.toContain('doc');
   });
 });

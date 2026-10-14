@@ -27,8 +27,9 @@ import { importedKirtan, readLatinLines } from './kirtan';
 import { BatchWriter } from './batch';
 import { parsePp6 } from './formats/pp6';
 import { parsePp7, type Pp7Kind, pp7KindOf } from './formats/pp7';
+import { readDocx } from './formats/docx';
 import { parseLyricsText } from './formats/text';
-import { diskFreeBytes, type MediaStore, type StagedMedia } from './media-store';
+import { diskFreeBytes, type MediaStore, sha256File, type StagedMedia } from './media-store';
 import { fileNameOf, pathFromReference, resolveMedia } from './media-resolver';
 import type {
   ParsedMediaRef,
@@ -128,7 +129,10 @@ export interface PipelineContext {
   converters?: boolean | 'stand-in';
 }
 
-type SourceKind = 'text' | 'pp6' | 'pp7' | 'pictures';
+type SourceKind = 'text' | 'docx' | 'pp6' | 'pp7' | 'pictures';
+
+/** A source's format in the report: a Word file's lyrics are lyrics, as a text file's are (Session 26f). */
+const reportFormat = (kind: SourceKind): ImportFormat => (kind === 'docx' ? 'text' : kind);
 
 /** Where a file is being imported from, and where to look for what it names. */
 interface Where {
@@ -162,7 +166,11 @@ const SUPPORT_FILES: Record<string, { format: ImportFormat; message: string }> =
   'cclidata.txt': { format: 'text', message: 'CCLI reporting data, not lyrics: not imported.' },
   librarydata: { format: 'pp7', message: 'Library settings, not a presentation: not imported.' },
 };
-const SUPPORT_EXTENSIONS: Record<string, string> = { pro6dvd: 'DVD clip lists are not imported.' };
+const SUPPORT_EXTENSIONS: Record<string, string> = {
+  pro6dvd: 'DVD clip lists are not imported.',
+  // Session 26f: Word lyrics are read from .docx files only.
+  doc: 'An old Word document (.doc) is not read: open it in Word and save it as a Word Document (.docx), then import that.',
+};
 
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
@@ -471,7 +479,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     hash: string,
   ): Decided | null => {
     const fileName = basename(file.path);
-    const base = { sourcePath: where.sourcePath, format: kind, counts: NO_COUNTS };
+    const base = { sourcePath: where.sourcePath, format: reportFormat(kind), counts: NO_COUNTS };
     const t = performance.now();
     const earlier = presentations.findImported(kind, ref, where.sourcePath);
     const same =
@@ -541,11 +549,11 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     parsed: ParsedPresentation,
     decidedAlready?: Decided,
   ) => {
-    const base = { sourcePath: where.sourcePath, format: kind, counts: NO_COUNTS };
+    const base = { sourcePath: where.sourcePath, format: reportFormat(kind), counts: NO_COUNTS };
     const decided = decidedAlready ?? decideEarlier(file, where, kind, parsed.ref, hash);
     if (!decided) return;
     const { latest, choice } = decided;
-    if (kind === 'text' && slideCount(parsed) === 0) {
+    if ((kind === 'text' || kind === 'docx') && slideCount(parsed) === 0) {
       record({
         ...base,
         outcome: 'failed',
@@ -629,7 +637,14 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           ctx.onWrote?.(wrote);
         },
         failed: (error) => {
-          failed(where, kind, parsed.name, `Could not write this presentation: ${errorText(error)}`, [], at);
+          failed(
+            where,
+            reportFormat(kind),
+            parsed.name,
+            `Could not write this presentation: ${errorText(error)}`,
+            [],
+            at,
+          );
         },
       },
     );
@@ -774,7 +789,28 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
     }
   };
 
+  /** A Word file's lyrics (Session 26f): read from the zip, its words through the text file's code. */
+  const importDocx = async (file: ScannedFile, where: Where) => {
+    const fileName = basename(file.path);
+    let t = performance.now();
+    const read = await readDocx(file.path, file.path);
+    t = time('parse', t);
+    if (!read.ok) {
+      failed(where, 'text', fileName, read.message, [
+        { severity: 'error', code: read.code, message: read.message, fix: null },
+      ]);
+      return;
+    }
+    const { sha256: hash } = await sha256File(file.path);
+    time('read', t);
+    await importPresentation(file, where, 'docx', hash, read.parsed);
+  };
+
   const importText = async (file: ScannedFile, where: Where) => {
+    if (extOf(file.path) === 'docx') {
+      await importDocx(file, where);
+      return;
+    }
     const fileName = basename(file.path);
     if (file.size > MAX_TEXT_BYTES) {
       const message = `${fileName} is ${formatBytes(file.size)}. Lyrics files over 5 MB are not read.`;
@@ -834,7 +870,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
   };
 
   const importPlaylist = async (where: Where, kind: SourceKind, hash: string, doc: ParsedPlaylistDoc) => {
-    const base = { sourcePath: where.sourcePath, format: kind, counts: NO_COUNTS };
+    const base = { sourcePath: where.sourcePath, format: reportFormat(kind), counts: NO_COUNTS };
     const earlier = playlists.findImported(kind, where.sourcePath);
     if (earlier.length > 0 && earlier.every((e) => e.hash === hash)) {
       record({
@@ -936,7 +972,14 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           addToTotals(totals, item);
         },
         failed: (error) => {
-          failed(where, kind, doc.name, `Could not write this playlist: ${errorText(error)}`, [], at);
+          failed(
+            where,
+            reportFormat(kind),
+            doc.name,
+            `Could not write this playlist: ${errorText(error)}`,
+            [],
+            at,
+          );
         },
       },
     );
