@@ -72,6 +72,7 @@ import type {
   TemplateRequest,
   TimerCue,
 } from './playlists';
+import type { RepeatSettings } from './repeat';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { PropFields, PropInfo, PropResult } from './props';
 import type { GroupLookPatch, LookResult, LooksView } from './looks';
@@ -370,6 +371,9 @@ export const IPC = {
     createSmart: 'playlists:create-smart',
     /** Take a smart playlist's missing items out (their files are gone from the folder). */
     removeMissing: 'playlists:remove-missing',
+    /** A new Repeat Slides playlist (Session 26d), and its settings (Pro Mode's). */
+    createRepeat: 'playlists:create-repeat',
+    setRepeat: 'playlists:set-repeat',
     /** main -> operator: playlists changed. */
     changed: 'playlists:changed',
     /** main -> operator: how following the smart playlists' folders goes changed. */
@@ -645,6 +649,12 @@ export const IPC = {
     mediaReady: 'output:media-ready',
     /** main -> output, tests only (never sent by a packaged Drashti): draw an element that throws (Session 23). */
     testThrow: 'output:test-throw',
+    /**
+     * main -> output, tests only (never sent by a packaged Drashti): hold the page's clock at a moment of the
+     * engine's time, or let it go (null), so two screens can be compared part-way through a transition
+     * (Session 26d).
+     */
+    testClock: 'output:test-clock',
   },
   pictures: {
     /** The hidden window that draws a PDF's pages (Session 15) asks what to draw (that window only). */
@@ -776,6 +786,8 @@ export interface InvokeContract {
   [IPC.playlists.smartViews]: { args: []; result: SmartPlaylistView[] };
   [IPC.playlists.createSmart]: { args: []; result: PlaylistResult };
   [IPC.playlists.removeMissing]: { args: [playlistId: string]; result: PlaylistResult };
+  [IPC.playlists.createRepeat]: { args: [parentId: string | null]; result: PlaylistResult };
+  [IPC.playlists.setRepeat]: { args: [playlistId: string, settings: RepeatSettings]; result: PlaylistResult };
   [IPC.library.getPresentation]: { args: [id: string]; result: PresentationDoc | null };
   [IPC.library.slidesForEdit]: { args: [presentationId: string]; result: EditSlidesResult };
   [IPC.library.saveSlides]: {
@@ -1038,6 +1050,7 @@ export interface EventContract {
   [IPC.output.identify]: { name: string; groupName: string; label?: string };
   [IPC.output.mediaReady]: { mediaId: string };
   [IPC.output.testThrow]: Record<string, never>;
+  [IPC.output.testClock]: { at: number | null };
   [IPC.audio.chosen]: { device: AudioDevice | null };
   [IPC.audio.testTone]: { deviceId: string };
   [IPC.setup.open]: { at: number };

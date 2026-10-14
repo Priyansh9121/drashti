@@ -1,4 +1,5 @@
 import { idSchema } from './model-schema';
+import type { RepeatSettings } from './repeat';
 import { passageIdSchema } from './shastra';
 import { z } from 'zod';
 
@@ -40,6 +41,8 @@ export interface PlaylistNode {
   isFolder: boolean;
   /** Its kind (a folder is always 'normal'). */
   kind: PlaylistKind;
+  /** A Repeat Slides playlist's settings (Session 26d); left out for any other kind. */
+  repeat?: RepeatSettings;
   parentId: string | null;
   /** Items (for a playlist) that are not removed. */
   itemCount: number;

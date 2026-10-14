@@ -403,6 +403,11 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
           <span className="text-xs text-muted" data-testid="passage-note">
             Shastra passage{item ? '' : ' · drag it from Shastra onto a playlist to add it'}
           </span>
+        ) : doc.repeat ? (
+          // Repeat Slides (Session 26d): made from its playlist, changed there.
+          <span className="text-xs text-muted" data-testid="repeat-note">
+            Repeat Slides · a slide put up goes round from there
+          </span>
         ) : item?.kind === 'presentation' ? (
           <ItemOrderPicker doc={doc} item={item} />
         ) : (
@@ -422,7 +427,7 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
             Make a theme from this
           </Button>
         )}
-        {!doc.passage && (
+        {!doc.passage && !doc.repeat && (
           <>
             <Button size="sm" icon={Pencil} onClick={() => void editWords(doc.id, doc.name)}>
               Edit words

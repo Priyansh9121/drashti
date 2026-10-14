@@ -131,6 +131,8 @@ import { installMenu, installNodeMenu } from './menu';
 import { runPerformanceTest } from './perftest';
 import { registerPlaylistIpc } from './playlists/playlist-ipc';
 import { nodeWatch, SmartFolders } from './playlists/smart-folders';
+import { RepeatSlides } from './playlists/repeat-slides';
+import { isRepeatId } from '../shared/repeat';
 import {
   applyPendingRestore,
   backupLibrary,
@@ -402,6 +404,7 @@ const nodePortOverride = Number(process.env['DRASHTI_NODE_PORT'] ?? 0) || null;
 // Tests only (never a packaged Drashti): a test can make an output draw an element that throws, to see a
 // render error caught, logged and the output reloaded (Session 23; globalThis.drashtiTestRenderError).
 const testRenderErrors = !app.isPackaged && process.env['DRASHTI_TEST_RENDER_ERRORS'] === '1';
+const testClockHold = !app.isPackaged && process.env['DRASHTI_TEST_CLOCK_HOLD'] === '1';
 // Tests only: the computer's name as Main and its nodes show it (screenshots never show a runner's own).
 const testComputerName = app.isPackaged ? undefined : process.env['DRASHTI_TEST_COMPUTER_NAME'];
 // Tests only: copies to nodes at this rate (bytes a second), so a copy can be watched while it goes.
@@ -877,10 +880,24 @@ function start(): void {
     targets: () => passageTargets(),
     media: (id) => mediaInfo(id),
   });
-  /** What the engine plays: the library's presentations, and passages. */
-  const playable: SlideSource = {
+  /** The library's presentations, and passages. */
+  const presentationsAndPassages: SlideSource = {
     order: (id, arrangementId) => (isPassageId(id) ? shastra.order(id) : slides.order(id, arrangementId)),
   };
+  // Repeat Slides (Session 26d): a Repeat Slides playlist plays as one presentation of its steps.
+  const repeatSlides = new RepeatSlides({
+    playlist: (id) => playlists.repeatPlaylist(id),
+    items: (id) => playlists.playItems(id),
+    slides: presentationsAndPassages,
+  });
+  /** What the engine plays: the library's presentations, passages, and Repeat Slides playlists. */
+  const playable: SlideSource = {
+    order: (id, arrangementId) =>
+      isRepeatId(id) ? repeatSlides.order(id) : presentationsAndPassages.order(id, arrangementId),
+  };
+  /** A presentation, passage or Repeat Slides playlist as a document of slides, or null. */
+  const playableDoc = (id: string) =>
+    isRepeatId(id) ? repeatSlides.doc(id) : isPassageId(id) ? shastra.doc(id) : presentations.get(id);
   // The search index is kept as presentations are written; a library indexed by an older version is redone once.
   const search = new SearchIndex(db);
   const indexStart = performance.now();
@@ -977,6 +994,7 @@ function start(): void {
       mediaMarkers: (mediaId) => mediaMarkers(mediaId),
       macroCommands: (macroId) =>
         macroService?.commands(macroId) ?? { ok: false, message: 'Macros are not ready yet.' },
+      repeatName: (playlistId) => playlists.repeatPlaylist(playlistId)?.name ?? null,
     },
   );
   const stageLayoutRepo = new StageLayoutRepo(db);
@@ -2588,8 +2606,7 @@ function start(): void {
     reads: {
       playlists: () => playlists.tree(),
       items: (playlistId) => playlists.itemsOf(playlistId),
-      presentation: (presentationId) =>
-        isPassageId(presentationId) ? shastra.doc(presentationId) : presentations.get(presentationId),
+      presentation: (presentationId) => playableDoc(presentationId),
       // The presenter's remote (Session 18): the library a page at a time (no files), and searched.
       library: (offset, limit) => {
         const all = presentations.list();
@@ -2881,6 +2898,13 @@ function start(): void {
       return { name: 'a window', output: null };
     },
   });
+  // Tests only (never a packaged Drashti): every output's clock held at one moment of the engine's time, or
+  // let go (null), so two screens can be compared pixel for pixel part-way through a transition (Session 26d).
+  if (testClockHold)
+    (globalThis as { drashtiTestHoldClock?: (at: number | null) => number }).drashtiTestHoldClock = (at) => {
+      for (const win of outputWindows.values()) sendToPage(win, IPC.output.testClock, { at });
+      return outputWindows.size;
+    };
   if (testRenderErrors)
     (globalThis as { drashtiTestRenderError?: (screenId?: string) => number }).drashtiTestRenderError = (
       screenId,
@@ -3042,7 +3066,7 @@ function start(): void {
   handle(IPC.library.getPresentation, (_event, id) => {
     const parsed = idSchema.safeParse(id);
     if (!parsed.success) return null;
-    return isPassageId(parsed.data) ? shastra.doc(parsed.data) : presentations.get(parsed.data);
+    return playableDoc(parsed.data);
   });
   // ---- Shastra texts (Session 12) ----------------------------------------------------
   const textIdSchema = idSchema;

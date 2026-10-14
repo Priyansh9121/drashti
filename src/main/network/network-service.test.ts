@@ -146,6 +146,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
     commands,
     announced,
     statuses,
+    state,
     fromWorker,
     tick: (ms: number) => {
       now += ms;
@@ -337,6 +338,39 @@ describe('the network in the main process', () => {
     expect(service.answer({ address: PHONE, deviceId: remote, op: 'shastra', args: {} }).status).toBe(400);
     expect(
       service.answer({ address: PHONE, deviceId: stage, op: 'shastra', args: { reference: 'PG 14' } }).status,
+    ).toBe(403);
+  });
+
+  it('lets a Remote see Repeat Slides going round, and start and stop it (Session 26d)', () => {
+    const { service, commands, state } = setup();
+    const remote = service.pairForCheck('remote', 'Placeholder phone').id;
+    const stage = service.pairForCheck('stage', 'Placeholder tablet').id;
+    expect(service.answer({ address: PHONE, deviceId: remote, op: 'status', args: {} })).toMatchObject({
+      status: 200,
+      body: { status: { repeating: null } },
+    });
+    state.repeat = { playlistId: 'lobby', name: 'Placeholder Lobby' };
+    expect(service.answer({ address: PHONE, deviceId: remote, op: 'status', args: {} })).toMatchObject({
+      status: 200,
+      body: { status: { repeating: { playlistId: 'lobby', name: 'Placeholder Lobby' } } },
+    });
+    expect(
+      service.answer({ address: PHONE, deviceId: remote, op: 'command', args: { type: 'stopRepeat' } })
+        .status,
+    ).toBe(200);
+    expect(commands.at(-1)).toEqual({ type: 'stopRepeat' });
+    expect(
+      service.answer({
+        address: PHONE,
+        deviceId: remote,
+        op: 'command',
+        args: { type: 'startRepeat', playlistId: 'lobby', slideIndex: 2 },
+      }).status,
+    ).toBe(200);
+    expect(commands.at(-1)).toEqual({ type: 'startRepeat', playlistId: 'lobby', slideIndex: 2 });
+    // A stage display shows it, and runs nothing.
+    expect(
+      service.answer({ address: PHONE, deviceId: stage, op: 'command', args: { type: 'stopRepeat' } }).status,
     ).toBe(403);
   });
 

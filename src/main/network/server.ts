@@ -179,6 +179,13 @@ const ROUTES: Route[] = [
   route('POST', '/api/v1/clear/all', 'command', command('clearAll')),
   route('POST', '/api/v1/clear/:id', 'command', (_b, p) => ({ type: 'clearLayer', layer: p['id'] })),
   route('POST', '/api/v1/put-back', 'command', command('putBack')),
+  // Repeat Slides (Session 26d): a Repeat Slides playlist going round (from a slide of it, if given), and Stop.
+  route('POST', '/api/v1/repeat/stop', 'command', command('stopRepeat')),
+  route('POST', '/api/v1/repeat/:id/start', 'command', (b, p) => ({
+    ...b,
+    type: 'startRepeat',
+    playlistId: p['id'],
+  })),
   route('POST', '/api/v1/blackout', 'command', (b) =>
     typeof b['on'] === 'boolean' ? { type: 'setBlackout', on: b['on'] } : { type: 'toggleBlackout' },
   ),

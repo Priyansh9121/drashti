@@ -168,6 +168,11 @@ export interface PresentationDoc {
    * its words and slides are not edited here. Left out for a presentation.
    */
   passage?: { textId: string; reference: string; key: PassageKey } | null;
+  /**
+   * A Repeat Slides playlist's steps shown as slides (Session 26d): made from the playlist, so they are
+   * changed there, not here. Left out for a presentation.
+   */
+  repeat?: { playlistId: string } | null;
 }
 
 /** A presentation's words as plain text (the lyrics format), for the words editor. */

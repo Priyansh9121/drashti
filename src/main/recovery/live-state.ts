@@ -66,6 +66,8 @@ export interface SavedLive {
    * saved (saved again every second while it counts), and its whole time.
    */
   autoAdvance: { leftMs: number; durationMs: number } | null;
+  /** A Repeat Slides playlist going round (Session 26d): it carries on after the restart. */
+  repeat: { playlistId: string } | null;
   /** The live Look (an id: it comes back whatever the engine version). */
   lookId: string | null;
   /** The mask up on the Masks layer. */
@@ -127,6 +129,8 @@ const savedSchema = z.object({
     .object({ leftMs: z.number().min(0), durationMs: z.number().positive() })
     .nullable()
     .default(null),
+  // Files saved before Repeat Slides have none.
+  repeat: z.object({ playlistId: idSchema }).nullable().default(null),
   // Files saved before Looks have none.
   lookId: idSchema.nullable().default(null),
   masks: z.unknown().default(null),
@@ -175,6 +179,7 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
           durationMs: state.autoAdvance.durationMs,
         }
       : null,
+    repeat: state.repeat ? { playlistId: state.repeat.playlistId } : null,
     lookId: state.look.id === '' ? null : state.look.id,
     masks: state.layers.masks,
   };

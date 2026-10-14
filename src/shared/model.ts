@@ -182,19 +182,49 @@ export interface RenderSlide {
   kirtan?: boolean;
 }
 
-/** How a slide comes onto the screens: at once, or dissolving from the slide before. */
-export type TransitionKind = 'cut' | 'dissolve';
-export const TRANSITION_KINDS: readonly TransitionKind[] = ['cut', 'dissolve'];
+/**
+ * How a slide comes onto the screens: at once (a cut), or from the slide before by a fade (a dissolve:
+ * the new slide added light for light over the old), a fade through black, a slide in from the right, or
+ * a slow zoom (a fade, the slide then zooming in slowly while it is up). The last three came with Repeat
+ * Slides (Session 26d); any slide or presentation can pick them.
+ */
+export type TransitionKind = 'cut' | 'dissolve' | 'fade-black' | 'slide' | 'zoom';
+export const TRANSITION_KINDS = [
+  'cut',
+  'dissolve',
+  'fade-black',
+  'slide',
+  'zoom',
+] as const satisfies readonly TransitionKind[];
+
+/** Each transition's name, as the operator reads it. */
+export const TRANSITION_NAMES: Record<TransitionKind, string> = {
+  cut: 'Cut',
+  dissolve: 'Fade',
+  'fade-black': 'Fade through black',
+  slide: 'Slide',
+  zoom: 'Slow zoom',
+};
 
 export interface Transition {
   kind: TransitionKind;
-  /** How long a dissolve takes (0 for a cut). */
+  /** How long it takes (0 for a cut). */
   durationMs: number;
+  /**
+   * A slow zoom: how long the slide zooms in for, from when it went up. The engine sets it for a slide that
+   * moves on by itself (a Repeat Slides step: its seconds and the next one's transition); left out, SLOW_ZOOM_MS.
+   */
+  spanMs?: number;
 }
+
+/** How long a slow zoom zooms in for when the slide does not move on by itself. */
+export const SLOW_ZOOM_MS = 20_000;
+/** How big a slow zoom makes the slide by the end: 8 % bigger, about its middle. */
+export const SLOW_ZOOM_SCALE = 1.08;
 
 /** The transition every presentation starts with until the operator chooses another. */
 export const CUT: Transition = { kind: 'cut', durationMs: 0 };
 
-/** The longest dissolve and auto-advance Drashti keeps. */
+/** The longest transition and auto-advance Drashti keeps. */
 export const MAX_TRANSITION_MS = 10_000;
 export const MAX_AUTO_ADVANCE_MS = 24 * 60 * 60 * 1000;

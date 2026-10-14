@@ -15,10 +15,12 @@ import { Field, Select, TextInput } from '../ui/Field';
 import {
   BlackOut,
   ListMusic,
+  Play,
   Presentation,
   RotateCcw,
   SkipBack,
   SkipForward,
+  Square,
   Stamp,
   Eraser,
 } from '../ui/icons';
@@ -27,6 +29,7 @@ import { readPersisted, writePersisted } from '../ui/persist';
 import { EmptyState } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { playItem, runSimpleAction, useNotice } from '../operator/actions';
+import { startRepeat, stopRepeat } from '../playlists/repeat-actions';
 import { setMidiHandler } from '../midi/midi-store';
 import { SIMPLE_MODE_REFUSAL } from '../../../shared/mode';
 import { LivePreview } from '../operator/LivePreview';
@@ -91,6 +94,13 @@ function PlaylistColumn() {
     return up ? st.live.playlist.itemId : null;
   });
   const tree = usePlaylists((s) => s.tree);
+  // Repeat Slides (Session 26d): Simple Mode starts and stops it, and its settings stay as they are.
+  const repeat = tree.find((n) => n.id === openId)?.kind === 'repeat';
+  const going = useEngine((s) => openId !== null && s.state?.repeat?.playlistId === openId);
+  // While it goes round, the item whose slide is up (its steps are named by their items).
+  const repeatItem = useEngine((s) =>
+    going ? (s.state?.layers.slide?.slide.id.split('/')[0] ?? null) : null,
+  );
   const pathOf = (id: string): string => {
     const node = tree.find((n) => n.id === id);
     if (!node) return '';
@@ -123,6 +133,32 @@ function PlaylistColumn() {
           </EmptyState>
         )}
       </div>
+      {repeat && openId && (
+        <div className="shrink-0 px-3 pb-2">
+          {going ? (
+            <Button
+              size="lg"
+              icon={Square}
+              className="w-full"
+              data-testid="simple-repeat-stop"
+              onClick={() => void stopRepeat()}
+            >
+              Stop going round (Esc)
+            </Button>
+          ) : (
+            <Button
+              size="lg"
+              variant="primary"
+              icon={Play}
+              className="w-full"
+              data-testid="simple-repeat-start"
+              onClick={() => void startRepeat(openId)}
+            >
+              Start going round
+            </Button>
+          )}
+        </div>
+      )}
       <ol className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3" data-testid="simple-items">
         {items.map((item) => {
           if (item.kind === 'header')
@@ -135,7 +171,7 @@ function PlaylistColumn() {
                 <Truncate text={item.label} />
               </li>
             );
-          const isLive = liveItem === item.id;
+          const isLive = liveItem === item.id || repeatItem === item.id;
           const can = playable(item);
           const KindIcon = item.kind === 'media' ? mediaKindIcon[item.media] : Presentation;
           const name = item.kind === 'presentation' ? (item.presentationName ?? item.label) : item.label;
@@ -148,7 +184,8 @@ function PlaylistColumn() {
                 data-live={isLive ? 'true' : undefined}
                 aria-current={isLive ? 'true' : undefined}
                 onClick={() => {
-                  if (openId) void playItem(openId, item.id);
+                  // In Repeat Slides an item starts it going round from there.
+                  if (openId) void (repeat ? startRepeat(openId, item.id) : playItem(openId, item.id));
                 }}
                 className={cx(
                   'flex min-h-14 w-full items-center gap-3 rounded-lg border-2 px-3 py-2 text-left text-base disabled:cursor-not-allowed disabled:opacity-50',
@@ -352,11 +389,14 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
   const dashboardOpen = useNodes((s) => s.dashboard);
   const items = usePlaylists((s) => s.items);
   const openId = usePlaylists((s) => s.openId);
-  // Next with nothing live starts the playlist at its first item that can play.
+  const repeating = usePlaylists((s) => s.tree.find((n) => n.id === s.openId)?.kind === 'repeat');
+  // Next with nothing live starts the playlist at its first item that can play; a Repeat Slides
+  // playlist (Session 26d) starts going round.
   const start = useCallback(async () => {
+    if (openId && repeating) return startRepeat(openId);
     const first = items.find(playable);
     if (openId && first) await playItem(openId, first.id);
-  }, [items, openId]);
+  }, [items, openId, repeating]);
   const run = useCallback(
     (action: OperatorAction) => {
       void runSimpleAction(action, start);

@@ -6,9 +6,12 @@ import { Scene } from '../render/Scene';
 import { SceneBoundary } from '../render/SceneBoundary';
 import { useFirstGroupLook, useScreens } from '../screens/screens-store';
 import { LANG_NAMES } from '../../../shared/themes';
+import type { RepeatRun } from '../../../shared/engine/state';
+import { stopRepeat } from '../playlists/repeat-actions';
 import { Badge, LiveBadge } from '../ui/Badge';
+import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
-import { Timer } from '../ui/icons';
+import { Repeat2, Square, Timer } from '../ui/icons';
 import { useNow } from '../render/useNow';
 import { useWhatIsThis } from '../help/WhatIsThis';
 
@@ -49,6 +52,7 @@ export function LivePreview() {
         {help.button}
       </div>
       {help.card && <div className="-mx-3">{help.card}</div>}
+      {state?.repeat && <Repeating run={state.repeat} />}
       <div
         className={cx(
           'overflow-hidden rounded-lg border-2 bg-black',
@@ -81,6 +85,25 @@ export function LivePreview() {
       )}
       {state?.autoAdvance && <TimeLeft count={state.autoAdvance} />}
     </section>
+  );
+}
+
+/** Repeat Slides going round (Session 26d): which, and Stop (Esc does the same), the slide staying up. */
+function Repeating({ run }: { run: RepeatRun }) {
+  return (
+    <div
+      role="status"
+      data-testid="live-repeating"
+      className="flex min-h-9 items-center gap-2 rounded-md border border-line bg-panel-2 py-1 pr-1 pl-2 text-xs"
+    >
+      <Repeat2 size={14} aria-hidden="true" className="shrink-0 text-muted" />
+      <span className="min-w-0 flex-1 truncate" title={run.name}>
+        <span className="font-bold">Repeating</span> · {run.name}
+      </span>
+      <Button size="sm" icon={Square} data-testid="live-repeat-stop" onClick={() => void stopRepeat()}>
+        Stop (Esc)
+      </Button>
+    </div>
   );
 }
 

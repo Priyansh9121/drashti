@@ -15,7 +15,10 @@ import {
   ListPlus,
   MoreHorizontal,
   Pencil,
+  Play,
   Plus,
+  Repeat2,
+  Square,
   Trash2,
 } from '../ui/icons';
 import type { MenuEntry, MenuPlace } from '../ui/Menu';
@@ -30,6 +33,8 @@ import { useExtras } from '../library/extras-store';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { plural } from '../ui/text';
 import { droppedPaths, hasFiles } from './drag';
+import { startRepeat, stopRepeat } from './repeat-actions';
+import { useEngine } from '../engine/engine-store';
 import { droppedItems, fromLibrary, isRemoveKey, RenameField } from './playlist-shared';
 import {
   AddSlotDialog,
@@ -41,6 +46,7 @@ import {
 import {
   addFromLibrary,
   createNode,
+  createRepeatPlaylist,
   createSmartPlaylist,
   dismissProblem,
   importIntoPlaylist,
@@ -146,6 +152,8 @@ function PlaylistTree({ platform }: { platform: string }) {
               separatorBefore: true,
               onSelect: () => void createSmartPlaylist(),
             },
+            // Session 26d: its slides go round by themselves.
+            { label: 'Repeat Slides', icon: Repeat2, onSelect: () => void createRepeatPlaylist() },
           ]}
         >
           New
@@ -242,8 +250,10 @@ function PlaylistTree({ platform }: { platform: string }) {
                   }}
                   className={cx(
                     rowClass({ selected: selectedNodeId === node.id, dropTarget: dropOn === node.id }),
-                    // Room for Rename, Delete and the mouse's ⋯ at the end (Session 26a).
-                    'flex min-h-8 min-w-0 items-center gap-1.5 py-1 pr-24 text-sm',
+                    // Room for Rename, Delete and the mouse's ⋯ at the end (Session 26a), and Repeat
+                    // Slides' Start (Session 26d).
+                    'flex min-h-8 min-w-0 items-center gap-1.5 py-1 text-sm',
+                    node.kind === 'repeat' ? 'pr-32' : 'pr-24',
                   )}
                 >
                   <span aria-hidden="true" className="flex w-4 shrink-0 justify-center text-muted">
@@ -254,12 +264,15 @@ function PlaylistTree({ platform }: { platform: string }) {
                       <Folder size={15} />
                     ) : node.kind === 'smart' ? (
                       <FolderSync size={15} />
+                    ) : node.kind === 'repeat' ? (
+                      <Repeat2 size={15} />
                     ) : (
                       <ListMusic size={15} />
                     )}
                   </span>
                   <Truncate text={node.name} className={cx('flex-1', node.isFolder && 'font-medium')} />
                   {node.kind === 'smart' && <span className="sr-only">, a smart playlist</span>}
+                  {node.kind === 'repeat' && <span className="sr-only">, Repeat Slides</span>}
                   {node.parentId !== null && (
                     <span className="sr-only">, in {nameOf.get(node.parentId) ?? 'a folder'}</span>
                   )}
@@ -276,6 +289,8 @@ function PlaylistTree({ platform }: { platform: string }) {
                     <span className="shrink-0 text-xs text-muted tabular-nums">{node.itemCount}</span>
                   )}
                 </button>
+                {/* Repeat Slides: Start, or Stop while it goes round, always shown (Session 26d). */}
+                {node.kind === 'repeat' && <RepeatRowButton playlistId={node.id} name={node.name} />}
                 {/* Delete, as the Delete key does on the row: shown on the chosen row (a Tab stop) and
                     under the mouse (Session 26a). */}
                 <RowRename
@@ -328,6 +343,26 @@ function PlaylistTree({ platform }: { platform: string }) {
         />
       )}
     </>
+  );
+}
+
+/** A Repeat Slides playlist's Start, or its Stop while it goes round (Session 26d). */
+function RepeatRowButton({ playlistId, name }: { playlistId: string; name: string }) {
+  const going = useEngine((s) => s.state?.repeat?.playlistId === playlistId);
+  return (
+    <span className="absolute right-[5.5rem] flex shrink-0">
+      <IconButton
+        icon={going ? Square : Play}
+        label={going ? `Stop “${name}” going round` : `Start “${name}” going round`}
+        size="sm"
+        data-testid={going ? 'repeat-row-stop' : 'repeat-row-start'}
+        className="text-muted hover:text-fg"
+        onClick={(e) => {
+          e.stopPropagation();
+          void (going ? stopRepeat() : startRepeat(playlistId));
+        }}
+      />
+    </span>
   );
 }
 

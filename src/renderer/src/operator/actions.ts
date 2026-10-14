@@ -168,6 +168,10 @@ async function perform(action: OperatorAction, ui: OperatorUi): Promise<void> {
       return dispatch({ type: 'toggleBlackout' });
     case 'toggleLogo':
       return toggleLogo();
+    // Esc does nothing when nothing is repeating.
+    case 'stopRepeat':
+      if (useEngine.getState().state?.repeat) return dispatch({ type: 'stopRepeat' });
+      return;
     case 'openScreens':
       ui.openScreens();
       return;

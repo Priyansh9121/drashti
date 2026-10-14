@@ -818,5 +818,7 @@ export function summary(state: EngineState): Record<string, unknown> {
       running: t.startedAt !== null,
     })),
     stageMessage: state.stageMessage !== null,
+    // Repeat Slides going round (Session 26d), or null.
+    repeating: state.repeat ? { playlistId: state.repeat.playlistId, name: state.repeat.name } : null,
   };
 }

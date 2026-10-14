@@ -26,6 +26,7 @@ import {
   FilePlus,
   FolderSync,
   Link2,
+  Repeat2,
   ListMusic,
   ListPlus,
   MoreHorizontal,
@@ -47,6 +48,7 @@ import { plural } from '../ui/text';
 import { afterDrag, dragKind, droppedIds, droppedPaths, hasFiles, startDrag, useDragging } from './drag';
 import { droppedItems, isRemoveKey, RenameField } from './playlist-shared';
 import { useSmart } from './smart-store';
+import { RepeatBar } from './RepeatBar';
 import {
   addFromLibrary,
   addHeader,
@@ -468,6 +470,9 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
   // The item on the screens now: the playlist's place, while something of it is up (not after Clear all).
   const liveItem = useEngine((s) => {
     const st = s.state;
+    // A Repeat Slides playlist's step on the screens (Session 26d): its slide is named by its item.
+    const step = st?.layers.slide?.presentationId === `repeat:${openId}` ? st.layers.slide : null;
+    if (step) return step.slide.id.split('/')[0] ?? null;
     if (st?.live.playlist?.playlistId !== openId) return null;
     const up = st.layers.slide !== null || st.layers.background !== null || st.layers.audio !== null;
     return up ? st.live.playlist.itemId : null;
@@ -546,6 +551,8 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
       <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-3 py-2">
         {node?.kind === 'smart' ? (
           <FolderSync size={16} aria-hidden="true" className="shrink-0 text-muted" />
+        ) : node?.kind === 'repeat' ? (
+          <Repeat2 size={16} aria-hidden="true" className="shrink-0 text-muted" />
         ) : (
           <ListMusic size={16} aria-hidden="true" className="shrink-0 text-muted" />
         )}
@@ -658,6 +665,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
         />
       </div>
       {node?.kind === 'smart' && <SmartBar playlistId={openId} />}
+      {node?.kind === 'repeat' && node.repeat && <RepeatBar playlistId={openId} settings={node.repeat} />}
       {isTemplate && (
         <Notice
           tone="info"

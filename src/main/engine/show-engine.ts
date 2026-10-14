@@ -18,6 +18,7 @@ import {
   type MusicRun,
   type PlaylistCursor,
   type PropItem,
+  type RepeatRun,
   type TickerItem,
   type TickerLayer,
   UPCOMING_ITEMS,
@@ -30,6 +31,7 @@ import type { IdleState, Quote } from '../../shared/idle';
 import type { BackgroundCue } from '../../shared/library';
 import type { LiveLook } from '../../shared/looks';
 import { CUT, type Transition } from '../../shared/model';
+import { repeatPlaylistOf, repeatPresentationId } from '../../shared/repeat';
 import { elapsedAt, type TimerDefinition, type TimerRun } from '../../shared/timers';
 import { remapPosition } from '../../shared/order';
 import type { EngineAction } from './actions';
@@ -119,6 +121,8 @@ export interface EngineOptions {
   macroCommands?: (
     macroId: string,
   ) => { ok: true; commands: EngineCommand[] } | { ok: false; message: string };
+  /** A Repeat Slides playlist's name (Session 26d), or null when it is not one. */
+  repeatName?: (playlistId: string) => string | null;
 }
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
@@ -143,6 +147,8 @@ export interface RestoreRequest {
   timers?: readonly { id: string; startedAt: number | null; elapsedMs: number }[];
   /** The slide was moving on by itself: it carries on with the time it had left. */
   autoAdvance?: { leftMs: number; durationMs: number } | null;
+  /** A Repeat Slides playlist was going round (Session 26d): it carries on, from the slide that was up. */
+  repeat?: { playlistId: string } | null;
   /** The Look that was live (left out or gone: the one already live stays). */
   lookId?: string | null;
 }
@@ -186,8 +192,11 @@ export class ShowEngine {
   /** This run of the engine: its revisions start from 0 (snapshots say which run they are from). */
   readonly session = randomUUID();
   private readonly listeners = new Set<(state: EngineState) => void>();
-  /** What Clear all took down (from), while the layers are still what it left (to). */
-  private cleared: { from: Layers; to: Layers } | null = null;
+  /**
+   * What Clear all took down (from), while the layers are still what it left (to), and the Repeat Slides
+   * that was going round then (Put it back sets it going again).
+   */
+  private cleared: { from: Layers; to: Layers; repeat: RepeatRun | null } | null = null;
   /** The Nexts Back can undo, latest last. */
   private steps: Step[] = [];
   /** The auto-advance waiting to run, and how to cancel it. */
@@ -327,6 +336,10 @@ export class ShowEngine {
       });
       timers++;
     }
+    // Repeat Slides carries on going round, when its slide came back.
+    const repeating = request.repeat ? this.repeatRun(request.repeat.playlistId) : null;
+    if (slide && repeating && request.slide?.presentationId === repeatPresentationId(repeating.playlistId))
+      actions.push({ type: 'repeat/set', repeat: repeating });
     this.apply(actions);
     // A slide that was moving on by itself carries on with the time it had left.
     const advance = request.autoAdvance;
@@ -647,11 +660,16 @@ export class ShowEngine {
 
   /**
    * How a slide comes on: its own transition, else its presentation's, else
-   * Drashti's default. A dissolve of no length is a cut; a cut is left out.
+   * Drashti's default. Anything of no length is a cut, and a cut is left
+   * out; but a slow zoom of no length still zooms. A slow zoom on a slide
+   * that moves on by itself zooms until the next one has come on.
    */
   private transitionFor(order: PlayOrder, played: PlayedSlide): Transition | undefined {
     const t = played.transition ?? order.transition ?? this.options.defaultTransition?.() ?? CUT;
-    return t.kind === 'dissolve' && t.durationMs > 0 ? t : undefined;
+    if (t.kind === 'cut' || (t.durationMs <= 0 && t.kind !== 'zoom')) return undefined;
+    const { spanMs: _span, ...plain } = t;
+    const up = played.autoAdvanceMs ?? null;
+    return t.kind === 'zoom' && up !== null && up > 0 ? { ...plain, spanMs: up + t.durationMs } : plain;
   }
 
   private showSlide(
@@ -681,7 +699,8 @@ export class ShowEngine {
     ];
     // The slide's background and sound go on their layers; a slide without them leaves those layers as they are.
     // A new background comes on with the slide (dissolving with it); the same file carries on.
-    const fade = transition ? { at, durationMs: transition.durationMs } : undefined;
+    const fade =
+      transition && transition.durationMs > 0 ? { at, durationMs: transition.durationMs } : undefined;
     for (const cue of played.cues) {
       if (cue.kind === 'background') {
         actions.push({ type: 'background/set', background: this.backgroundLayer(cue.background, fade) });
@@ -804,6 +823,31 @@ export class ShowEngine {
       if (started) return started;
     }
     return NO_CHANGE;
+  }
+
+  /** A Repeat Slides playlist going round, as the state names it. */
+  private repeatRun(playlistId: string): RepeatRun {
+    return { playlistId, name: this.options.repeatName?.(playlistId) ?? 'Repeat Slides' };
+  }
+
+  /** A Repeat Slides playlist goes round, from its slide `slideIndex` (Session 26d). */
+  private startRepeat(playlistId: string, slideIndex: number): Resolved {
+    const presentationId = repeatPresentationId(playlistId);
+    const order = this.source.order(presentationId);
+    if (!order)
+      return { ok: false, error: 'unknown-item', message: 'That Repeat Slides playlist no longer exists.' };
+    if (order.slides.length === 0)
+      return {
+        ok: false,
+        error: 'not-playable',
+        message: 'That Repeat Slides playlist has no pictures or slides yet.',
+      };
+    const shown = this.showSlide(presentationId, Math.min(slideIndex, order.slides.length - 1), null, null);
+    if (!shown.ok) return shown;
+    return {
+      ok: true,
+      actions: [...shown.actions, { type: 'repeat/set', repeat: this.repeatRun(playlistId) }],
+    };
   }
 
   private playItem(playlistId: string, itemId: string): Resolved {
@@ -994,6 +1038,8 @@ export class ShowEngine {
         let target = slideIndex + delta;
         // If the presentation got shorter underneath us, Previous goes to its last slide.
         if (delta < 0 && target >= count) target = count - 1;
+        // Repeat Slides goes round by hand too: after the last, the first, and before the first, the last.
+        if (repeatPlaylistOf(presentationId) !== null && count > 0) target = (target + count) % count;
         if (target >= 0 && target < count)
           return this.showSlide(presentationId, target, order.arrangementId, playlist);
       }
@@ -1013,8 +1059,14 @@ export class ShowEngine {
     }
     if (live.presentationId !== null && live.slideIndex !== null) {
       const order = this.source.order(live.presentationId, live.arrangementId);
-      const following = order?.slides[live.slideIndex + 1];
-      if (following) return this.slideUpNext(live.presentationId, live.slideIndex + 1, following, null);
+      // Repeat Slides comes round to its first slide after its last.
+      const index =
+        order && repeatPlaylistOf(live.presentationId) !== null && order.slides.length > 1
+          ? (live.slideIndex + 1) % order.slides.length
+          : live.slideIndex + 1;
+      const following = order?.slides[index];
+      if (following && index !== live.slideIndex)
+        return this.slideUpNext(live.presentationId, index, following, null);
     }
     const at = live.playlist ? this.checkItem(live.playlist) : null;
     if (!at) return null;
@@ -1056,6 +1108,9 @@ export class ShowEngine {
   private resolve(command: EngineCommand): Resolved {
     switch (command.type) {
       case 'goLive': {
+        // One of a Repeat Slides playlist's slides put up: it goes round from there (Session 26d).
+        const repeating = repeatPlaylistOf(command.presentationId);
+        if (repeating !== null) return this.startRepeat(repeating, command.slideIndex);
         // Played from a playlist item: only when the item is that presentation, so Next knows where to go.
         const found = command.playlist ? this.checkItem(command.playlist) : null;
         const playlist =
@@ -1066,6 +1121,13 @@ export class ShowEngine {
       }
       case 'playItem':
         return this.playItem(command.playlistId, command.itemId);
+      case 'startRepeat':
+        return this.startRepeat(command.playlistId, command.slideIndex ?? 0);
+      case 'stopRepeat':
+        // The slide on the screens stays up; it no longer moves on.
+        return this.state.repeat
+          ? { ok: true, actions: [{ type: 'repeat/set', repeat: null }] }
+          : { ok: false, error: 'not-repeating', message: 'Nothing is repeating.' };
       case 'next':
         return this.step(1);
       case 'previous':
@@ -1104,7 +1166,11 @@ export class ShowEngine {
           };
         return {
           ok: true,
-          actions: [{ type: 'show/put', live: this.state.live, layers: this.withLengths(cleared.from) }],
+          actions: [
+            { type: 'show/put', live: this.state.live, layers: this.withLengths(cleared.from) },
+            // Repeat Slides that was going round goes round again.
+            ...(cleared.repeat ? [{ type: 'repeat/set' as const, repeat: cleared.repeat }] : []),
+          ],
         };
       }
       case 'setBlackout':
@@ -1261,7 +1327,8 @@ export class ShowEngine {
       return next;
     }
     if (cause === 'clearAll' || (cause === 'macro' && this.macroClears)) {
-      if (next.layers !== prev.layers) this.cleared = { from: prev.layers, to: next.layers };
+      if (next.layers !== prev.layers)
+        this.cleared = { from: prev.layers, to: next.layers, repeat: prev.repeat };
     } else if (this.cleared && next.layers !== this.cleared.to) {
       this.cleared = null;
     }
@@ -1289,6 +1356,10 @@ export class ShowEngine {
   ): CommandResult {
     const prev = this.state;
     let next = actions.reduce(reduce, prev);
+    // Repeat Slides goes round only while its slides are up: anything else going up, Clear all or the
+    // slide cleared ends it (Stop and Esc leave its slide up).
+    if (next.repeat && next.layers.slide?.presentationId !== repeatPresentationId(next.repeat.playlistId))
+      next = reduce(next, { type: 'repeat/set', repeat: null });
     // The idle rotation, once started, stops by itself when a slide or a picture goes up (so a later
     // Clear all does not bring it back).
     if (
@@ -1426,6 +1497,9 @@ export class ShowEngine {
     if (!slide) return null;
     // A slide on the screens from a presentation that is not the one playing (it cannot move on).
     if (next.live.presentationId !== slide.presentationId) return null;
+    // Repeat Slides moves on only while it is going round: stopped, its slide stays up as it is.
+    const repeating = repeatPlaylistOf(slide.presentationId);
+    if (repeating !== null && next.repeat?.playlistId !== repeating) return null;
     const order = this.source.order(slide.presentationId, next.live.arrangementId);
     const played = order?.slides[slide.slideIndex];
     const ms = played?.autoAdvanceMs ?? null;
@@ -1439,6 +1513,8 @@ export class ShowEngine {
       before.slide.id === slide.slide.id &&
       before.shownAt === slide.shownAt;
     const running = next.autoAdvance;
+    // Repeat Slides' settings changed take effect from the next slide: this one keeps its count.
+    if (same && running && repeating !== null) return running;
     return same && running
       ? { startedAt: running.startedAt, durationMs: ms }
       : { startedAt: this.now(), durationMs: ms };

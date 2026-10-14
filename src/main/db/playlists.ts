@@ -8,6 +8,8 @@ import type {
   PlaylistNode,
 } from '../../shared/playlists';
 import { SHASTRA_SLOT, timerCuesSchema, type TimerCue } from '../../shared/playlists';
+import type { RepeatSettings } from '../../shared/repeat';
+import { DEFAULT_REPEAT, REPEAT_REFUSES, repeatSettingsOf } from '../../shared/repeat';
 import type { PassageKey } from '../../shared/shastra';
 import { parsePassageId, passageId, passageKeySchema } from '../../shared/shastra';
 import { ShastraRepo } from './shastra';
@@ -326,7 +328,7 @@ export class PlaylistRepo {
   tree(templates = false): PlaylistNode[] {
     const rows = this.db
       .prepare(
-        `SELECT p.id, p.name, p.is_folder, p.parent_id, p.source_kind, p.kind,
+        `SELECT p.id, p.name, p.is_folder, p.parent_id, p.source_kind, p.kind, p.settings,
                 (SELECT COUNT(*) FROM playlist_items i WHERE i.playlist_id = p.id AND i.deleted_at IS NULL) AS item_count,
                 (SELECT COUNT(*) FROM playlist_items i
                   WHERE i.playlist_id = p.id AND i.deleted_at IS NULL AND i.kind = 'placeholder') AS placeholders
@@ -339,6 +341,7 @@ export class PlaylistRepo {
       parent_id: string | null;
       source_kind: string | null;
       kind: PlaylistKind;
+      settings: string | null;
       item_count: number;
       placeholders: number;
     }[];
@@ -352,6 +355,7 @@ export class PlaylistRepo {
           name: r.name,
           isFolder: r.is_folder === 1,
           kind: r.kind,
+          ...(r.kind === 'repeat' ? { repeat: repeatSettingsOf(r.settings) } : {}),
           parentId: r.parent_id,
           itemCount: r.item_count,
           placeholders: r.placeholders,
@@ -522,6 +526,48 @@ export class PlaylistRepo {
       .prepare("UPDATE playlists SET kind = 'smart', settings = ? WHERE id = ?")
       .run(JSON.stringify({ folder }), id);
     return id;
+  }
+
+  /**
+   * A new Repeat Slides playlist (Session 26d), last in its folder (or at the top level), going round with
+   * the settings to begin with. Null if that folder is gone.
+   */
+  createRepeat(name: string, parentId: string | null): string | null {
+    const id = this.create(name, parentId, false);
+    if (id)
+      this.db
+        .prepare("UPDATE playlists SET kind = 'repeat', settings = ? WHERE id = ?")
+        .run(JSON.stringify(DEFAULT_REPEAT), id);
+    return id;
+  }
+
+  /** A Repeat Slides playlist's name and settings, or null when it is not one (or is deleted). */
+  repeatPlaylist(id: string): { name: string; settings: RepeatSettings } | null {
+    const row = this.db
+      .prepare("SELECT name, settings FROM playlists WHERE id = ? AND kind = 'repeat' AND deleted_at IS NULL")
+      .get(id) as { name: string; settings: string | null } | undefined;
+    return row ? { name: row.name, settings: repeatSettingsOf(row.settings) } : null;
+  }
+
+  /** Change a Repeat Slides playlist's settings (checked by the caller). */
+  setRepeatSettings(id: string, settings: RepeatSettings): boolean {
+    return (
+      this.db
+        .prepare("UPDATE playlists SET settings = ? WHERE id = ? AND kind = 'repeat' AND deleted_at IS NULL")
+        .run(JSON.stringify(settings), id).changes === 1
+    );
+  }
+
+  /**
+   * Why these items cannot be added to the playlist, or null: a Repeat Slides playlist takes no videos or
+   * sounds (Session 26d).
+   */
+  refusal(playlistId: string, items: readonly NewItem[]): string | null {
+    const media = items.flatMap((i) => (i.kind === 'media' ? [i.mediaId] : []));
+    if (media.length === 0 || this.repeatPlaylist(playlistId) === null) return null;
+    const kind = this.db.prepare('SELECT kind FROM media WHERE id = ?');
+    const moving = media.some((id) => (kind.get(id) as { kind: string } | undefined)?.kind !== 'image');
+    return moving ? REPEAT_REFUSES : null;
   }
 
   /**
@@ -787,7 +833,7 @@ export class PlaylistRepo {
    * gone or something added does not exist.
    */
   addItems(playlistId: string, at: number | null, items: readonly NewItem[]): string[] {
-    if (!this.isOpenPlaylist(playlistId, false)) return [];
+    if (!this.isOpenPlaylist(playlistId, false) || this.refusal(playlistId, items) !== null) return [];
     const presentationName = this.db.prepare(
       'SELECT name FROM presentations WHERE id = ? AND deleted_at IS NULL',
     );

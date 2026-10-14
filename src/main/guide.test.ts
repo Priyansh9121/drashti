@@ -14,6 +14,7 @@ describe("the volunteers' key card (docs/parallel-run.md)", () => {
       ArrowDown: '↓',
       PageDown: 'Page Down',
       PageUp: 'Page Up',
+      Escape: 'Esc',
     };
     const written = (key: string) =>
       key
