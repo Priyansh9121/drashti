@@ -1,12 +1,20 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { formatBytes } from '../../../shared/format';
-import type { ConflictChoice, ImportItemReport, ImportRunSummary } from '../../../shared/import';
+import type {
+  ConflictChoice,
+  ImportItemReport,
+  ImportReport,
+  ImportRunSummary,
+} from '../../../shared/import';
+import { itemsMadeBy } from '../../../shared/import-items';
+import type { AddTarget } from '../playlists/add-made';
+import { AddTargetSelect, addMadeTo, defaultTarget, nameAfter } from '../playlists/add-made';
 import { describeRun } from '../operator/StatusBar';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Select } from '../ui/Field';
-import { ChevronRight, FolderOpen, Wand2 } from '../ui/icons';
+import { ChevronRight, FolderOpen, ListPlus, Wand2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { plural } from '../ui/text';
 import { Truncate } from '../ui/Truncate';
@@ -237,6 +245,53 @@ const choiceLabel: Record<ConflictChoice, string> = {
   skip: 'Skip',
 };
 
+/**
+ * Add to playlist (Session 26a): everything this import made, in the order imported, into the open
+ * playlist, another, or a new one named after the file or folder.
+ */
+function AddImported({ report }: { report: ImportReport }) {
+  const made = itemsMadeBy(report.items, report.paths);
+  const newName = nameAfter(report.paths[0] ?? 'Imported');
+  const [target, setTarget] = useState<AddTarget>(() => {
+    const open = defaultTarget();
+    return open.kind === 'none' ? { kind: 'new', name: newName } : open;
+  });
+  const [added, setAdded] = useState<string | null>(null);
+  if (made.length === 0) return null;
+  const what = made.length === 1 ? 'it' : `all ${String(made.length)}`;
+  return (
+    <div className="space-y-1.5" data-testid="report-add">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm">Add {what} to</span>
+        <AddTargetSelect
+          value={target}
+          onChange={setTarget}
+          newName={newName}
+          label="The playlist to add to"
+          testId="report-add-target"
+        />
+        <Button
+          size="sm"
+          icon={ListPlus}
+          data-testid="report-add-button"
+          onClick={() =>
+            void addMadeTo(target, made).then((name) => {
+              if (name) setAdded(name);
+            })
+          }
+        >
+          Add to playlist
+        </Button>
+      </div>
+      {added && (
+        <p role="status" className="text-xs text-muted" data-testid="report-added">
+          Added to “{added}”. Undo takes {made.length === 1 ? 'it' : 'them'} out again.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function ImportReportDialog({ platform }: { platform: string }) {
   const report = useImports((s) => s.report);
   // Imported from a link (Session 25b): where its files were saved.
@@ -377,6 +432,7 @@ export function ImportReportDialog({ platform }: { platform: string }) {
         {cameAcross.length > 0 ? `Came across: ${cameAcross.join(' · ')}.` : 'Nothing new came across.'}{' '}
         {outcomes.length > 0 && <span className="text-muted">{outcomes.join(' · ')}.</span>}
       </p>
+      <AddImported key={report.id} report={report} />
       {toConvert.length > 0 && (
         <Notice
           tone="info"

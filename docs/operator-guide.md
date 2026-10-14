@@ -10,7 +10,7 @@ On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows 
 
 - **Left column:** at the top the **Playlists**, and below them the **Library**: Presentations and Media, with the search box and, under it, **Import…** (files, a folder, or from a link) and **New…** (a presentation from pasted words). The Shastra tab, the Templates and the kirtan filters show only when an admin turns on **View › Show Shastra, Templates and Kirtan Details**.
 - **Middle:** the **slides** of whatever you clicked, in the order they play.
-- **Right column:** the **live picture** (what the hall sees now), **Next** (what Next will bring), and the panels: Looks, Macros, Stage screen, Props, Masks, Messages, Timers, Music, Arti and the Idle rotation.
+- **Right column:** the live picture, headed **LIVE** (what the hall sees now), and the panels: Looks, Macros, Stage screen, Props, Masks, Messages, Timers, Music, Arti and the Idle rotation.
 - **Along the bottom:** the **clear buttons** for each layer, **Logo** and **Black-out**, then the **status bar** (the version, the screens, imports, warnings).
 
 ---
@@ -50,7 +50,7 @@ Do these about 30 minutes before the sabha starts.
 | A click on a slide                       | That slide, at once                                                                |
 | A click on an item, then **Space**       | That item, from its first slide                                                    |
 
-- **Next**, under the live picture, shows what the next press will bring, so nothing surprises you.
+- What the next press will bring shows on the stage screen (its **Next**), on a presenter's phone or tablet, and in Simple Mode.
 - Pictures and videos in the playlist go up as the **background**; the words of the next presentation go over them. A sound plays through the mixer and leaves the picture as it is.
 - A presentation can play in its own **arrangement** (a chorus sung three times shows three times): choose it above the slides.
 - A **Shastra passage** (with the Shastra tab shown): in the **Shastra** tab, type its reference (for example `SD 14` or `Vach G.Pr. 1`) and press Enter; its slides appear in the middle like a presentation's.
@@ -60,6 +60,7 @@ Do these about 30 minutes before the sabha starts.
 - **Deleting.** The chosen row, and the row under the mouse, show a **trash** button at their end: on a playlist or folder, a presentation, a picture, video or sound in **Media**, and on music and its sounds. It does what the **Delete** key does (Backspace on a Mac). It asks first for a playlist, a presentation or media, and saying where a picture, video or sound is used (which playlists, slides, music, props, themes and macros); a playlist item only leaves its playlist. **Cmd+Z** (Ctrl+Z), or **Undo** in the bar at the bottom of the left column, brings it back. Deleted media leaves playlists and music, and slides show nothing in its place, as with a missing file; what is on the screens stays up until you change it. Its file goes only when Drashti next starts, when Undo can no longer bring it back; importing the same file again brings it back everywhere it was used. With roles on, deleting from the library is an admin's.
 - **What is this?** The small **?** on a panel's heading says in two or three sentences what the panel is for and what to do first. **Got it** closes it.
 - **Closing with changes asks first.** Edit words, the slide editor and the other editors ask "Keep your changes …?" before anything typed is lost: **Keep editing** (Enter or Esc), **Save changes**, or **Throw them away**. When the presentation is on the screens, it says so: saving then changes the screens at once.
+- **After an import:** the import report offers **Add to playlist**: everything that import brought in, in its order, into the open playlist, another, or a new one named after the file or folder. In **Import from a Link…**, **When it's imported, add it to:** (the open playlist to begin with) does the same by itself when the download's import ends, even with the dialog closed. Undo takes it out again.
 - **Changing the playlist without dragging:** choose a presentation, a picture or video, or a Shastra passage in the library and press **Add to playlist** under it; it goes after the playlist's chosen item. To move an item, choose it and press **Up** or **Down** under it (or **Alt+↑** / **Alt+↓**). **Cmd+Z** (Ctrl+Z) takes back the last add or move. Dragging works too: a presentation, a picture or video, or a search result, onto the open playlist (an empty one too) or onto a playlist's name in the list. Files dragged from the Finder (Explorer on Windows) onto the open playlist are imported and go where you drop them, in the order you dragged them.
 
 ![Up and Down under the chosen playlist item, and Add to playlist under the library's chosen presentation](screenshots/playlist-up-down.png)
@@ -83,7 +84,7 @@ A clear button is lit, with a dot, while its layer is on the screens.
 
 **Timers.** In **Timers**: **Start**, **Pause**, **Reset**, and **Show on the screens**. The stage screens show every running timer by themselves.
 
-**The stage message.** Under the live picture, **Stage screen**: type a short message for the performers ("Two minutes left") and send it. Only the stage screens show it, and Clear all leaves it; its own **Clear** takes it off.
+**The stage message.** Under the live picture, **Stage screen**: type a short message for the performers ("Two minutes left") and send it. Only the stage screens show it, and Clear all leaves it; its own **Clear** takes it off. **Edit layout…** beside its picture opens the stage layout editor at the layout the stage screens use now (saving a layout is an admin's).
 
 **Props.** In **Props**, **Show** puts one up (the mandir's name, say) over whatever slide is live; **Hide** or **F4** takes it down.
 

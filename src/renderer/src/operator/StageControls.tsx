@@ -7,7 +7,8 @@ import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { TextInput } from '../ui/Field';
-import { Tv } from '../ui/icons';
+import { LayoutTemplate, Tv } from '../ui/icons';
+import { openStageLayouts, STANDARD } from '../stage/stage-layouts-store';
 import { Panel } from '../ui/Panel';
 import { Truncate } from '../ui/Truncate';
 import { dispatch } from './actions';
@@ -39,6 +40,27 @@ function StagePreview() {
   );
 }
 
+/**
+ * Edit layout… (Session 26a): the stage layout editor, at the layout the stage screens use now (the
+ * live Look's first stage group's), as Screens' Edit stage layouts… opens it. Saving a layout is an
+ * admin's, as there.
+ */
+function EditLayoutButton() {
+  const first = useFirstGroupLook('stage');
+  return (
+    <Button
+      size="sm"
+      icon={LayoutTemplate}
+      data-testid="stage-edit-layout"
+      onClick={() => {
+        openStageLayouts(first?.look.stageLayout?.id ?? STANDARD);
+      }}
+    >
+      Edit layout…
+    </Button>
+  );
+}
+
 /** The stage screen: what the performers see, and a message for them only (the audience never sees it). */
 export function StageMessageControl() {
   const shown = useEngine((s) => s.state?.stageMessage ?? null);
@@ -53,7 +75,10 @@ export function StageMessageControl() {
       bodyClassName="space-y-2 px-3 pb-3"
       data-testid="stage-message-control"
     >
-      <StagePreview />
+      <div className="flex items-end gap-2">
+        <StagePreview />
+        <EditLayoutButton />
+      </div>
       <form
         className="flex gap-2"
         onSubmit={(e) => {
