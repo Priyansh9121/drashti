@@ -15,6 +15,8 @@ Playlists
 
 Library
 
+- The library starts plainer: no Shastra tab, no Templates beside the playlists and no kirtan filters. An admin brings them back with View › Show Shastra, Templates and Kirtan Details. Nothing in them is lost, and search still finds kirtans by kavi, raag and occasion.
+- Import… is a button under the search box now: Files…, A Folder… or From a Link…. Files… offers everything Drashti imports.
 - A PDF, PowerPoint or Keynote file's pages no longer fill the Media list: they are its presentation's slides. Media lists the pictures, videos and sounds you imported.
 
 Deleting

@@ -271,3 +271,13 @@ export async function dropFiles(
   await target.dispatchEvent('drop', { dataTransfer, ...point });
   await expect(page.getByTestId('drop-overlay')).toHaveCount(0);
 }
+
+/**
+ * Turn on View › Show Shastra, Templates and Kirtan Details (Session 26a: off to begin with), as an admin
+ * would, for tests of the Shastra tab, templates and the kirtan filters; waits until the window shows them.
+ */
+export async function showExtras(page: Page): Promise<void> {
+  const result = await page.evaluate(() => (globalThis as PageGlobals).drashti.library.setExtras(true));
+  if (!result.ok) throw new Error(result.message);
+  await expect(page.getByTestId('library-tab-shastra')).toBeVisible();
+}

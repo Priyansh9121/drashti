@@ -8,7 +8,7 @@ On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows 
 
 **The window, left to right:**
 
-- **Left column:** at the top the **Playlists** (and **Templates**), and below them the **Library**: Presentations, Media and Shastra, with the search box.
+- **Left column:** at the top the **Playlists**, and below them the **Library**: Presentations and Media, with the search box and, under it, **Import…** (files, a folder, or from a link) and **New…** (a presentation from pasted words). The Shastra tab, the Templates and the kirtan filters show only when an admin turns on **View › Show Shastra, Templates and Kirtan Details**.
 - **Middle:** the **slides** of whatever you clicked, in the order they play.
 - **Right column:** the **live picture** (what the hall sees now), **Next** (what Next will bring), and the panels: Looks, Macros, Stage screen, Props, Masks, Messages, Timers, Music, Arti and the Idle rotation.
 - **Along the bottom:** the **clear buttons** for each layer, **Logo** and **Black-out**, then the **status bar** (the version, the screens, imports, warnings).
@@ -53,7 +53,7 @@ Do these about 30 minutes before the sabha starts.
 - **Next**, under the live picture, shows what the next press will bring, so nothing surprises you.
 - Pictures and videos in the playlist go up as the **background**; the words of the next presentation go over them. A sound plays through the mixer and leaves the picture as it is.
 - A presentation can play in its own **arrangement** (a chorus sung three times shows three times): choose it above the slides.
-- A **Shastra passage**: in the **Shastra** tab, type its reference (for example `SD 14` or `Vach G.Pr. 1`) and press Enter; its slides appear in the middle like a presentation's.
+- A **Shastra passage** (with the Shastra tab shown): in the **Shastra** tab, type its reference (for example `SD 14` or `Vach G.Pr. 1`) and press Enter; its slides appear in the middle like a presentation's.
 - To find any kirtan quickly: **Cmd+F** (Ctrl+F), type a few letters of its title or its words, and press Enter.
 - A playlist, folder or item has a menu (rename, delete, timers when it goes up, and more): right-click it, or press **Shift+F10** with the keyboard on it (on a Mac laptop, **Fn+Shift+F10**).
 - **Media** lists the pictures, videos and sounds you imported. A PDF, PowerPoint or Keynote file's pages are its presentation's slides, so they stay out of Media (a page you also import on its own shows there).

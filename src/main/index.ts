@@ -28,6 +28,7 @@ import { MEDIA_ID_PATTERN, MEDIA_SCHEME } from '../shared/media';
 import { NOT_USED } from '../shared/media-removal';
 import { mediaUpNow } from '../shared/node-media';
 import { MediaRemoval } from './library/media-removal';
+import { importableExtensions } from './import/scan';
 import { idSchema } from '../shared/model-schema';
 import { z } from 'zod';
 import type { OutputContext } from '../shared/screens';
@@ -534,35 +535,8 @@ function pendingRestore(): ReturnType<typeof applyPendingRestore> {
 const fromOperator = (event: IpcMainInvokeEvent) => event.sender.id === operatorWindow?.webContents.id;
 const idListSchema = z.array(idSchema).min(1).max(10_000);
 /** What the Import files dialog offers (lyrics, the two presentation formats, media). */
-const IMPORTABLE_EXTENSIONS = [
-  'txt',
-  'pro6',
-  'pro6x',
-  'pro6pl',
-  'pro6plx',
-  'pro6template',
-  'pro',
-  'probundle',
-  'proplaylist',
-  'jpg',
-  'jpeg',
-  'png',
-  'gif',
-  'heic',
-  'webp',
-  'mp4',
-  'm4v',
-  'mov',
-  'mp3',
-  'wav',
-  'm4a',
-  'aiff',
-  // PDF, PowerPoint and Keynote files, as pictures (Session 15).
-  'pdf',
-  'pptx',
-  'ppt',
-  'key',
-];
+/** What the import's file dialog offers: everything Drashti imports (one list, the scanner's). */
+const IMPORTABLE_EXTENSIONS = importableExtensions();
 const notAllowed = { ok: false as const, message: 'Only the operator window can change the screens.' };
 
 /**
@@ -3072,7 +3046,10 @@ function start(): void {
         ? {}
         : {
             filters: [
-              { name: 'Lyrics, presentations and media', extensions: IMPORTABLE_EXTENSIONS },
+              {
+                name: 'Presentations, PDFs, PowerPoint, Keynote, pictures, videos, sounds and lyrics',
+                extensions: IMPORTABLE_EXTENSIONS,
+              },
               { name: 'All files', extensions: ['*'] },
             ],
           }),
@@ -3534,6 +3511,22 @@ function start(): void {
   rebuildMenu = () => {
     installMenu(menuActions());
   };
+  // ---- View > Show Shastra, Templates and Kirtan Details (Session 26a) -----------------------------
+  // Hidden, not deleted: their code, data and the remote's library stay; an admin brings them back.
+  const extrasShown = () => settings.get('showExtras') === true;
+  const setExtras = (on: boolean) => {
+    settings.set('showExtras', on);
+    log.info(`View: Shastra, Templates and Kirtan Details ${on ? 'shown' : 'hidden'}`);
+    sendToOperator(IPC.library.extrasChanged, { on });
+    rebuildMenu();
+  };
+  handle(IPC.library.extras, () => extrasShown());
+  handle(IPC.library.setExtras, (e, on) => {
+    if (!fromOperator(e) || typeof on !== 'boolean')
+      return { ok: false as const, message: 'Only the operator window can change what it shows.' };
+    setExtras(on);
+    return { ok: true as const, on };
+  });
   const menuActions = (): Parameters<typeof installMenu>[0] => ({
     mode,
     switchMode,
@@ -3591,6 +3584,17 @@ function start(): void {
     })(),
     useAsNode: () => {
       if (mode === 'pro') requireAdmin('use this computer as a node', useAsNode);
+    },
+    extras: {
+      shown: extrasShown(),
+      toggle: () => {
+        // The tick follows the setting, not the click, until an admin has said so.
+        rebuildMenu();
+        if (mode === 'pro')
+          requireAdmin('show or hide Shastra, Templates and Kirtan Details', () => {
+            setExtras(!extrasShown());
+          });
+      },
     },
     reloadOperator: () => {
       operatorWindow?.webContents.reload();

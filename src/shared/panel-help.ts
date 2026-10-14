@@ -22,7 +22,7 @@ export const PANEL_HELP = {
   },
   library: {
     title: 'The library',
-    text: 'Every presentation, picture, video, sound and Shastra passage on this computer. Type a few letters of a kirtan’s title or words in the search box to find it. Choose one and press Add to playlist to put it in the open playlist.',
+    text: 'Every presentation, picture, video and sound on this computer. Type a few letters of a kirtan’s title or words in the search box to find it. Choose one and press Add to playlist to put it in the open playlist, or bring more in with Import….',
     guide: 'the **Library**',
   },
   slides: {

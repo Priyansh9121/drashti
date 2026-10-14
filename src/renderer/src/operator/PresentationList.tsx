@@ -34,6 +34,7 @@ import { Button, IconButton } from '../ui/Button';
 import { TextInput } from '../ui/Field';
 import { FileText, FolderOpen, Import, Link2, ListFilter, Plus, Search, Upload } from '../ui/icons';
 import { openLinkDialog } from '../links/link-store';
+import { useExtras } from '../library/extras-store';
 import { MenuButton } from '../ui/Menu';
 import { Notice } from '../ui/Notice';
 import { rowClass } from '../ui/ListRow';
@@ -128,29 +129,31 @@ const PresentationRow = memo(function PresentationRow({
 });
 
 /**
- * Import files, a folder, or from a link (Session 25b): an icon beside the tabs (its name and tooltip
- * say Import…), so the row fits.
+ * Import… (Session 26a, in place of the kirtan filters): a labelled button with a menu. Files… takes
+ * everything Drashti imports (presentations, PDF, PowerPoint and Keynote files, pictures, videos,
+ * sounds, lyrics); A Folder… a folder with what is inside it; From a Link… YouTube or Dropbox.
  */
-function ImportMenu() {
+export function ImportMenu() {
   return (
     <MenuButton
       label="Import"
-      title="Import…"
       icon={Import}
       variant="secondary"
+      size="md"
       entries={[
         { label: 'Files…', icon: FileText, onSelect: () => void importWithDialog('files') },
-        { label: 'A folder…', icon: FolderOpen, onSelect: () => void importWithDialog('folder') },
-        { label: 'From a link…', icon: Link2, onSelect: openLinkDialog },
+        { label: 'A Folder…', icon: FolderOpen, onSelect: () => void importWithDialog('folder') },
+        { label: 'From a Link…', icon: Link2, onSelect: openLinkDialog },
       ]}
-    />
+    >
+      Import…
+    </MenuButton>
   );
 }
 
 /** Search titles and slide text; Esc empties the box, Enter opens the first result. */
 function SearchBox({ help }: { help: ReactNode }) {
   const query = useSearch((s) => s.query);
-  const filtersOn = useFilters((s) => s.open || filtering(s.f));
   return (
     <div className="flex items-center gap-1.5 px-3 pb-2">
       <span className="relative flex min-w-0 flex-1 items-center">
@@ -178,18 +181,35 @@ function SearchBox({ help }: { help: ReactNode }) {
           className="w-full pl-7"
         />
       </span>
-      <IconButton
-        icon={ListFilter}
-        label="Filter the kirtans by their details"
-        variant={filtersOn ? 'secondary' : 'ghost'}
-        aria-pressed={filtersOn}
-        data-testid="filter-button"
-        onClick={toggleFilters}
-      />
+      {help}
+    </div>
+  );
+}
+
+/**
+ * Under the search box, where the kirtan filters were (Session 26a): Import…, New… (from pasted words)
+ * and, with View › Show Shastra, Templates and Kirtan Details, the filters' button.
+ */
+function LibraryTools() {
+  const filtersOn = useFilters((s) => s.open || filtering(s.f));
+  const extras = useExtras((s) => s.on);
+  return (
+    <div className="flex shrink-0 flex-wrap items-center gap-1.5 px-3 pb-2" data-testid="library-tools">
+      <ImportMenu />
       <Button size="md" icon={Plus} title="A new presentation from pasted words" onClick={newFromWords}>
         New…
       </Button>
-      {help}
+      {extras && (
+        <IconButton
+          icon={ListFilter}
+          label="Filter the kirtans by their details"
+          variant={filtersOn ? 'secondary' : 'ghost'}
+          aria-pressed={filtersOn}
+          data-testid="filter-button"
+          className="ml-auto"
+          onClick={toggleFilters}
+        />
+      )}
     </div>
   );
 }
@@ -213,6 +233,7 @@ export function PresentationList({ platform }: { platform: string }) {
   const setTab = setLibraryTab;
   const searching = useSearch((s) => s.query.trim() !== '');
   const help = useWhatIsThis('library');
+  const extras = useExtras((s) => s.on);
 
   // A heading where a library starts, when there is more than one (templates stay apart).
   const rows = useMemo(() => {
@@ -322,19 +343,20 @@ export function PresentationList({ platform }: { platform: string }) {
           className="min-w-0 flex-1"
           value={tab}
           onChange={setTab}
-          // Words only: three tabs and the Import icon fit the library column's usual width (narrower, they shrink).
+          // Words only, so the tabs fit the library column's usual width (narrower, they shrink). Shastra only
+          // with View › Show Shastra, Templates and Kirtan Details (Session 26a).
           items={[
             { id: 'presentations', label: 'Presentations' },
             { id: 'media', label: 'Media' },
-            { id: 'shastra', label: 'Shastra' },
+            ...(extras ? [{ id: 'shastra' as const, label: 'Shastra' }] : []),
           ]}
         />
-        <ImportMenu />
       </div>
       {help.card}
       {/* What is this? sits in the search row (or the Shastra tab's first row): the tabs keep their words. */}
       {tab !== 'shastra' && <SearchBox help={help.button} />}
-      {tab === 'presentations' && <KirtanFilters />}
+      {tab !== 'shastra' && <LibraryTools />}
+      {tab === 'presentations' && extras && <KirtanFilters />}
       <TabPanel group="library" id={tab} className="flex min-h-0 flex-1 flex-col">
         {tab === 'shastra' ? (
           <ShastraPanel help={help.button} />

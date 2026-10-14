@@ -183,6 +183,12 @@ const bridge: DrashtiBridge = {
     saveSlides: (presentationId, doc, stamp, force = false) =>
       invoke(IPC.library.saveSlides, presentationId, doc, stamp, force),
     getDefaultTransition: () => invoke(IPC.library.getDefaultTransition),
+    extras: () => invoke(IPC.library.extras),
+    setExtras: (on) => invoke(IPC.library.setExtras, on),
+    onExtrasChanged: (listener) =>
+      on(IPC.library.extrasChanged, ({ on: shown }) => {
+        listener(shown);
+      }),
     setDefaultTransition: (transition) => invoke(IPC.library.setDefaultTransition, transition),
     onChanged: (listener) =>
       on(IPC.library.changed, ({ what }) => {

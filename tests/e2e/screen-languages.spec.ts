@@ -154,7 +154,10 @@ test('each screen shows its own languages of a kirtan, closed up; other slides i
     ]);
 
   // A slide that is not a kirtan's shows in full on every screen.
-  await win.getByTestId('presentation-list').getByRole('button', { name: 'Language test slides' }).click();
+  await win
+    .getByTestId('presentation-list')
+    .getByRole('button', { name: /^Language test slides/ })
+    .click();
   await win.getByTestId('slide-thumb').first().click();
   await expect.poll(async () => (await slideWords(streamOut)).length).toBe(4);
   await expect(stageOut.getByTestId('stage-current').locator('[data-stage-element]')).toHaveCount(4);

@@ -4,7 +4,16 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { dropFiles, importAndGetIds, launchApp, operatorPage, outputPage, setUpScreen } from './helpers';
+import {
+  dropFiles,
+  importAndGetIds,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  outputPage,
+  setUpScreen,
+  showExtras,
+} from './helpers';
 import { makeTestVideo } from './test-media';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
@@ -21,7 +30,12 @@ const saveKey = process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter';
 const KIRTAN = /Sample kirtan/;
 
 async function open(win: Page, name: RegExp | string): Promise<string> {
-  await win.getByTestId('presentation-list').getByRole('button', { name }).click();
+  // By its row (the row's trash button is named after it too: “Delete …”, Session 26a).
+  await win
+    .getByTestId('presentation-list')
+    .getByTestId('presentation-row')
+    .filter({ hasText: name })
+    .click();
   const grid = win.getByTestId('slide-grid');
   await expect(grid.getByRole('heading', { level: 2 })).toBeVisible();
   return (await grid.getAttribute('data-presentation-id')) ?? '';
@@ -301,6 +315,9 @@ test('make transliteration: lines made by Drashti, a line changed by hand kept o
 test('kirtan details: a new category, kavi, raag, occasions and a recording; the library filters by them; search finds kavi and raag', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
+  await operatorReady(win);
+  // The filters are behind View › Show Shastra, Templates and Kirtan Details (Session 26a).
+  await showExtras(win);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-details-'));
   const clip = await makeTestVideo(win, join(dir, 'Placeholder recording.webm'), {
     seconds: 1,
@@ -404,6 +421,9 @@ for (const [width, height] of [
   test(`the kirtan dialog and the words by language fit at ${width} x ${height}`, async () => {
     const { app } = await launchApp();
     const win = await operatorPage(app);
+    await operatorReady(win);
+    // The filters are behind View › Show Shastra, Templates and Kirtan Details (Session 26a).
+    await showExtras(win);
     await win.setViewportSize({ width, height });
     await open(win, KIRTAN);
     await win.getByTestId('kirtan-button').click();

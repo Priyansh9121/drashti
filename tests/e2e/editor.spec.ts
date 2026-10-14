@@ -62,7 +62,12 @@ async function importKirtan(win: Page, name: string, words: string, more: string
 }
 
 async function openEditor(win: Page, name: string | RegExp): Promise<Locator> {
-  await win.getByTestId('presentation-list').getByRole('button', { name }).click();
+  // By its row (the row's trash button is named after it too: “Delete …”, Session 26a).
+  await win
+    .getByTestId('presentation-list')
+    .getByTestId('presentation-row')
+    .filter({ hasText: name })
+    .click();
   await expect(win.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toBeVisible();
   await win.getByTestId('edit-slides').click();
   const editor = win.getByTestId('slide-editor');
