@@ -58,6 +58,8 @@ export interface SmartFolderDeps {
   watch?(dir: string, changed: () => void): (() => void) | null;
   /** The most files a smart playlist follows (SMART_MAX_FILES; tests set fewer). */
   maxFiles?: number;
+  /** Run `run` after `delayMs`, and a way to cancel it (setTimeout when left out; tests look by hand). */
+  schedule?: (delayMs: number, run: () => void) => () => void;
 }
 
 /** A file's size and time, as seen. */
@@ -87,8 +89,8 @@ interface Followed {
   pending: Map<string, Seen>;
   view: SmartPlaylistView;
   busy: boolean;
-  /** A look again soon (a file event, or a file settling). */
-  soon: ReturnType<typeof setTimeout> | null;
+  /** A look again soon (a file event, or a file settling), and how to cancel it. */
+  soon: (() => void) | null;
   stopWatching: (() => void) | null;
 }
 
@@ -305,7 +307,7 @@ export class SmartFolders {
   private unfollow(f: Followed): void {
     f.stopWatching?.();
     f.stopWatching = null;
-    if (f.soon) clearTimeout(f.soon);
+    f.soon?.();
     f.soon = null;
   }
 
@@ -320,11 +322,20 @@ export class SmartFolders {
 
   private soon(playlistId: string, f: Followed, ms: number): void {
     if (f.soon) return;
-    f.soon = setTimeout(() => {
+    const run = () => {
       f.soon = null;
       void this.scan(playlistId);
-    }, ms);
-    f.soon.unref();
+    };
+    const schedule =
+      this.deps.schedule ??
+      ((delayMs: number, then: () => void) => {
+        const t = setTimeout(then, delayMs);
+        t.unref();
+        return () => {
+          clearTimeout(t);
+        };
+      });
+    f.soon = schedule(ms, run);
   }
 
   private setView(f: Followed, change: Partial<SmartPlaylistView>): void {
