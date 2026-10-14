@@ -10,6 +10,7 @@ import { device, networkOn, NETWORK_ENV, pairByQr, pairingCode, TABLET } from '.
 import {
   chooseMenuItem,
   dropFiles,
+  importAndGetIds,
   launchApp,
   openMoreTools,
   operatorPage,
@@ -162,7 +163,73 @@ test('the operator window and its panels', async () => {
   await win.getByTestId('presentation-list').getByRole('button').first().click();
   await expect(win.getByTestId('add-to-playlist')).toBeVisible();
   await expect(win.getByTestId('playlist-item-moves')).toBeVisible();
-  await part(win, 'playlist-up-down', [win.getByTestId('playlists'), win.getByTestId('library-drop')]);
+  // The library on the left and the open playlist in the middle (Session 26b).
+  await part(win, 'playlist-up-down', [win.getByTestId('column-left'), win.getByTestId('centre-playlist')]);
+  await app.close();
+});
+
+test('the open playlist in the middle, its items as cards of every kind (Session 26b)', async () => {
+  // The stand-in saves a .pptx as PDF, as PowerPoint would (CI's runners have no PowerPoint).
+  const { app } = await launchApp({ DRASHTI_TEST_DECK_CONVERTER: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.setViewportSize({ width: 1600, height: 900 });
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-shots-cards-'));
+  const words = join(dir, 'Placeholder Dhun.txt');
+  writeFileSync(words, 'Placeholder dhun line one\nનમૂના ધૂન\n\nPlaceholder dhun line two\n');
+  const deck = join(dir, 'Placeholder Katha.pptx');
+  writeFileSync(
+    deck,
+    makeTestPptx([
+      { color: '7C2D12', text: 'Placeholder katha', notes: '' },
+      { color: '14532D', text: 'Placeholder katha, part two', notes: '' },
+      { color: '1E3A8A', text: 'Placeholder katha, part three', notes: '' },
+    ]),
+  );
+  const picture = await makeTestImage(win, join(dir, 'Placeholder darshan.png'), { color: '#1d4e89' });
+  const clip = await makeTestVideo(win, join(dir, 'Placeholder opening video.webm'), {
+    seconds: 2,
+    width: 320,
+    height: 180,
+    hue: 200,
+  });
+  const tone = makeTestTone(join(dir, 'Placeholder arti tune.wav'), { seconds: 3, hz: 440 });
+  const [wordsId, deckId, pictureId, clipId, toneId] = await importAndGetIds(win, [
+    words,
+    deck,
+    picture,
+    clip,
+    tone,
+  ]);
+  await win.evaluate(
+    async (ids) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const made = await d.playlists.create('Placeholder Ravi Sabha', null, false);
+      const id = made.ok ? (made.ids[0] ?? '') : '';
+      await d.playlists.addItems(id, null, [
+        { kind: 'header', label: 'Welcome' },
+        { kind: 'media', mediaId: ids.clipId },
+        { kind: 'presentation', presentationId: ids.wordsId },
+        { kind: 'header', label: 'Katha' },
+        { kind: 'presentation', presentationId: ids.deckId },
+        { kind: 'media', mediaId: ids.pictureId },
+        { kind: 'media', mediaId: ids.toneId },
+      ]);
+      await d.playlists.create('Placeholder Youth Sabha', null, false);
+    },
+    {
+      wordsId: wordsId ?? '',
+      deckId: deckId ?? '',
+      pictureId: pictureId ?? '',
+      clipId: clipId ?? '',
+      toneId: toneId ?? '',
+    },
+  );
+  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Ravi Sabha' }).click();
+  await win.getByTestId('playlist-item').filter({ hasText: 'Placeholder Katha' }).click();
+  await expect(win.getByTestId('slide-thumb')).toHaveCount(3);
+  await part(win, 'playlist-cards', [win.getByTestId('centre-playlist')]);
+  await shot(win, 'operator-playlist-1600x900');
   await app.close();
 });
 
