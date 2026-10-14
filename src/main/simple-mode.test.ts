@@ -28,6 +28,9 @@ describe('Simple Mode locks', () => {
       IPC.media.saveStill,
       IPC.library.importProgress,
       IPC.app.startNotice,
+      // The saves of a video's part, read for the status bar, and its event (Session 26e).
+      IPC.media.saves,
+      IPC.media.savesChanged,
     ]);
     for (const c of changes) if (!open.has(c)) expect(SIMPLE_MODE_LOCKED, c).toContain(c);
     expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.engine.command);
@@ -60,8 +63,9 @@ describe('Simple Mode locks', () => {
       IPC.media.reportLength,
     ])
       expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
-    // Switching the Look is an engine command: the engine refuses it (from anywhere) in Simple Mode.
-    expect(SIMPLE_MODE_REFUSED_COMMANDS).toEqual(['setLook']);
+    // Switching the Look is an engine command: the engine refuses it (from anywhere) in Simple Mode, as it
+    // does zooming the live picture (Session 26e, Pro Mode's).
+    expect(SIMPLE_MODE_REFUSED_COMMANDS).toEqual(['setLook', 'zoomLive', 'resetLiveZoom']);
   });
 
   it('every Session 12 request that changes something; the arti prompt is still answered', () => {

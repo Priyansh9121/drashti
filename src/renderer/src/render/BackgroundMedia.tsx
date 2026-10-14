@@ -12,6 +12,8 @@ import {
 import { OBJECT_FIT } from './media-style';
 import { type Playback, startPlayback } from './playback';
 import { engineNow } from './clock';
+import { Looked } from './picture-looks';
+import { backgroundShowing } from '../../../shared/picture-look';
 import { PreviewPicture, usePreviewsOnly } from './previews';
 import { useMediaAttempt } from './media-attempts';
 
@@ -117,16 +119,23 @@ function ImageSlot({
       live = false;
     };
   }, [key, mediaId, attempt, dispatch]);
+  // A picture's look (Session 26e), and the live zoom of this background's showing. Its src is in the
+  // markup too, so a picture that gains a look (drawn anew inside it) is never blank.
   return (
-    <img
-      ref={ref}
-      alt=""
-      draggable={false}
-      data-bg-slot={key}
-      data-state={slot.state}
-      data-media-id={mediaId}
-      style={style(layer.fit, visible)}
-    />
+    <Looked mediaId={mediaId} showing={backgroundShowing(layer.startedAt)} style={style(layer.fit, visible)}>
+      {(s) => (
+        <img
+          ref={ref}
+          alt=""
+          draggable={false}
+          src={mediaUrl(mediaId, attempt)}
+          data-bg-slot={key}
+          data-state={slot.state}
+          data-media-id={mediaId}
+          style={s}
+        />
+      )}
+    </Looked>
   );
 }
 

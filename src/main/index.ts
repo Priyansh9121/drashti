@@ -132,6 +132,7 @@ import { runPerformanceTest } from './perftest';
 import { registerPlaylistIpc } from './playlists/playlist-ipc';
 import { nodeWatch, SmartFolders } from './playlists/smart-folders';
 import { RepeatSlides } from './playlists/repeat-slides';
+import { framed, PLAIN, type PictureLook, pictureLookSchema } from '../shared/picture-look';
 import { TrimSaves } from './convert/trim-saves';
 import { saveRequestSchema } from '../shared/trim';
 import { isRepeatId } from '../shared/repeat';
@@ -964,6 +965,8 @@ function start(): void {
   let simpleNow = () => false;
   /** A media file's length, once learned from playing it (the media repo, made further down). */
   let mediaLength: (mediaId: string) => number | null = () => null;
+  /** A picture's look (Session 26e; the media repo, made further down). */
+  let pictureLook: (mediaId: string) => PictureLook | null = () => null;
   /** A video's or sound's start and end points and markers (the media repo, made further down). */
   let mediaMarkers: (mediaId: string) => MediaMarkers | null = () => null;
   /** Macros (made further down, once props, messages and media are): a slide's macro cue runs through it. */
@@ -997,6 +1000,7 @@ function start(): void {
       macroCommands: (macroId) =>
         macroService?.commands(macroId) ?? { ok: false, message: 'Macros are not ready yet.' },
       repeatName: (playlistId) => playlists.repeatPlaylist(playlistId)?.name ?? null,
+      pictureLook: (mediaId) => pictureLook(mediaId),
     },
   );
   const stageLayoutRepo = new StageLayoutRepo(db);
@@ -1026,6 +1030,7 @@ function start(): void {
   mkdirSync(mediaDir, { recursive: true });
   const media = new MediaRepo(db);
   mediaLength = (mediaId) => media.lengthOf(mediaId);
+  pictureLook = (mediaId) => media.look(mediaId);
   mediaMarkers = (mediaId) => media.markersOf(mediaId);
   // Playback markers (Session 14): kept with the file; what plays it follows at once.
   handle(IPC.media.markers, (_e, mediaId) =>
@@ -1047,6 +1052,39 @@ function start(): void {
     engine.refreshMarkers(mediaId);
     log.info(`Markers: set on a media item (${String(parsed.data.markers.length)} marker(s))`);
     return { ok: true as const, markers: media.markersOf(mediaId) ?? NO_MARKERS };
+  });
+  // ---- A picture's look (Session 26e): kept with the picture, the same wherever it shows ----
+  const looksChanged = () => {
+    engine.refreshPictures();
+    sendToOperator(IPC.media.looksChanged, media.looks());
+  };
+  handle(IPC.media.look, (_e, mediaId) =>
+    typeof mediaId === 'string' && MEDIA_ID_PATTERN.test(mediaId) ? media.look(mediaId) : null,
+  );
+  handle(IPC.media.looks, () => media.looks());
+  handle(IPC.media.setLook, (e, mediaId, raw) => {
+    if (!fromOperator(e) || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId))
+      return { ok: false as const, message: 'Only the operator window can change a picture.' };
+    const look = raw === null ? null : pictureLookSchema.safeParse(raw);
+    if (look && !look.success) return { ok: false as const, message: 'That look cannot be kept.' };
+    if (!media.setLook(mediaId, look ? framed(look.data) : null))
+      return { ok: false as const, message: 'Only a picture in the library has a look.' };
+    looksChanged();
+    log.info('Pictures: a picture’s look was kept');
+    return { ok: true as const };
+  });
+  // Keep this zoom: the live zoom kept as the picture's own (its enhancements stay as they were).
+  handle(IPC.media.keepLiveZoom, (e) => {
+    const z = engine.current.liveZoom;
+    if (!fromOperator(e) || !z)
+      return { ok: false as const, message: 'No picture is zoomed on the screens.' };
+    const kept = media.look(z.mediaId) ?? PLAIN;
+    if (!media.setLook(z.mediaId, framed({ ...kept, zoom: z.zoom, x: z.x, y: z.y })))
+      return { ok: false as const, message: 'Only a picture in the library keeps a zoom.' };
+    looksChanged();
+    engine.clearLiveZoom();
+    log.info('Pictures: a live zoom was kept as the picture’s');
+    return { ok: true as const };
   });
   mediaInfo = (mediaId) => {
     const found = media.kindAndName(mediaId);

@@ -1,5 +1,8 @@
 import { isPassageId } from '../../../shared/shastra';
-import { memo, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { isRepeatId } from '../../../shared/repeat';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { MenuPlace } from '../ui/Menu';
+import { Menu, menuPlace } from '../ui/Menu';
 import type { PlaylistCursor } from '../../../shared/engine/state';
 import type { BackgroundCue, PresentationDoc, SlideInfo } from '../../../shared/library';
 import { type OrderedSlide, playOrder } from '../../../shared/order';
@@ -17,7 +20,17 @@ import { Badge, MissingBadge, UnplayableBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Field, Select, Slider } from '../ui/Field';
-import { Bookmark, LayoutGrid, Music, Palette, Pencil, Presentation, SquarePen } from '../ui/icons';
+import {
+  Bookmark,
+  LayoutGrid,
+  Music,
+  Palette,
+  Pencil,
+  Presentation,
+  SlidersHorizontal,
+  SquarePen,
+} from '../ui/icons';
+import { openPictureEditor } from '../pictures/PictureEditor';
 import { markersMedia, openMarkers } from '../markers/MarkersDialog';
 import { openSlideEditor } from '../editor/editor-store';
 import { openKirtan } from '../kirtans/kirtan-store';
@@ -93,6 +106,9 @@ const Thumb = memo(function Thumb({
   }, [found]);
   const background = info.cues.find((c): c is BackgroundCue => c.kind === 'background');
   const sound = info.cues.find((c) => c.kind === 'audio');
+  // A slide with a picture on it (a deck's page, say): its right-click offers the Picture editor (Session 26e).
+  const picture = info.slide.elements.find((e) => e.kind === 'image');
+  const [menu, setMenu] = useState<MenuPlace | null>(null);
   return (
     <li>
       <button
@@ -108,7 +124,14 @@ const Thumb = memo(function Thumb({
         // A double-click opens the slide editor at this slide (the first click put it live); a passage's
         // slides are made from its text, so they have no editor.
         onDoubleClick={() => {
-          if (!isPassageId(presentationId)) void openSlideEditor(presentationId, presentationName, info.id);
+          // A passage's and a Repeat Slides playlist's slides are made from elsewhere: no editor.
+          if (!isPassageId(presentationId) && !isRepeatId(presentationId))
+            void openSlideEditor(presentationId, presentationName, info.id);
+        }}
+        onContextMenu={(e) => {
+          if (picture?.kind !== 'image') return;
+          e.preventDefault();
+          setMenu(menuPlace(e));
         }}
         className={cx(
           // The border turns live with the caption, in one frame: no fade.
@@ -161,6 +184,27 @@ const Thumb = memo(function Thumb({
           {live && <span className="font-bold tracking-wide">LIVE</span>}
         </span>
       </button>
+      {menu && picture?.kind === 'image' && (
+        <Menu
+          at={menu}
+          label={`Slide ${String(position + 1)}`}
+          entries={[
+            {
+              label: 'Picture editor…',
+              icon: SlidersHorizontal,
+              onSelect: () => {
+                openPictureEditor({
+                  id: picture.mediaId,
+                  name: `${presentationName}, slide ${String(position + 1)}`,
+                });
+              },
+            },
+          ]}
+          onClose={() => {
+            setMenu(null);
+          }}
+        />
+      )}
     </li>
   );
 });
@@ -322,6 +366,20 @@ function ItemView({ item }: { item: ShownItem }) {
               ? 'Plays on the audio layer; the picture stays as it is.'
               : 'Goes up as the background, and takes the slide off.'}
           </p>
+          {/* A picture's zoom and enhancements (Session 26e). */}
+          {item.media === 'image' && !item.missing && item.unplayable === null && (
+            <Button
+              size="sm"
+              icon={SlidersHorizontal}
+              className="mt-2"
+              data-testid="item-picture"
+              onClick={() => {
+                openPictureEditor({ id: item.mediaId, name: item.label });
+              }}
+            >
+              Picture editor…
+            </Button>
+          )}
           {/* A video's or sound's start, end and markers, on its timeline (Session 26e). */}
           {item.media !== 'image' && !item.missing && item.unplayable === null && (
             <Button

@@ -1,0 +1,372 @@
+import type { Locator, Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { PageGlobals } from './helpers';
+import { importAndGetIds, launchApp, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
+import { launchMain, launchNode, pairNode } from './nodes';
+import { canvasPixels } from './pixels';
+
+/*
+ * Pictures zoomed and enhanced, on live too (Session 26e): the Picture
+ * editor's zoom, move, brightness, contrast, colour, sharpness and Auto,
+ * kept with the picture and drawn alike on two screens and the thumbnails;
+ * the live zoom from LIVE, on two screens, and Keep this zoom; each
+ * enhancement checked in the screens' pixels; and a node following.
+ * Pictures generated here only.
+ */
+
+/** A picture drawn in the page: a colour, or two side by side, or a band of each across. */
+async function makePicture(page: Page, file: string, colours: string[], across = false) {
+  const base64 = await page.evaluate(
+    ({ colours, across }) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 640;
+      canvas.height = 360;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('no 2d context');
+      colours.forEach((c, i) => {
+        ctx.fillStyle = c;
+        if (across) ctx.fillRect(0, (i * 360) / colours.length, 640, 360 / colours.length);
+        else ctx.fillRect((i * 640) / colours.length, 0, 640 / colours.length, 360);
+      });
+      return canvas.toDataURL('image/png').split(',')[1] ?? '';
+    },
+    { colours, across },
+  );
+  writeFileSync(file, Buffer.from(base64, 'base64'));
+  return file;
+}
+
+/** Move a slider as a hand would (React hears the input). */
+async function slide(range: Locator, value: number) {
+  await range.evaluate((el, v) => {
+    const input = el as HTMLInputElement;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, String(v));
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }, value);
+}
+
+const snapshot = (win: Page) =>
+  win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state);
+
+const background = (win: Page, mediaId: string) =>
+  win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({
+        type: 'setBackground',
+        background: { kind: 'media', mediaId: id, media: 'image', fit: 'fit', loop: false },
+      }),
+    mediaId,
+  );
+
+/** How a screen draws its background picture's look: its move and zoom, and its filters. */
+const drawn = (page: Page) =>
+  page.locator('[data-layer="background"] [data-look-picture]').evaluateAll((els) =>
+    els.map((el) => ({
+      transform: (el as HTMLElement).style.transform,
+      filter: (el as HTMLElement).style.filter,
+    })),
+  );
+
+async function twoScreens(extra: Record<string, string> = {}) {
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '2', ...extra });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await setUpScreen(win, 'Main Hall', 0);
+  await setUpScreen(win, 'Side Hall', 1);
+  await expect.poll(() => outputPages(app).length).toBe(2);
+  const [one, two] = outputPages(app);
+  if (!one || !two) throw new Error('two screens expected');
+  return { app, win, screens: [one, two] as const };
+}
+
+test('the Picture editor: zoom, move, enhance and Auto, kept with the picture, alike on two screens and the thumbnails', async () => {
+  test.setTimeout(240_000);
+  const { app, win, screens } = await twoScreens();
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-picture-looks-'));
+  const split = await makePicture(win, join(dir, 'Placeholder split.png'), ['#3a6ea5', '#a5603a']);
+  const dull = await makePicture(
+    win,
+    join(dir, 'Placeholder dull.png'),
+    ['#606060', '#707070', '#808080', '#909090'],
+    true,
+  );
+  const [splitId = '', dullId = ''] = await importAndGetIds(win, [split, dull]);
+
+  // From the picture's row in Media.
+  await win.getByRole('tab', { name: 'Media' }).click();
+  await win
+    .getByTestId('media-row')
+    .filter({ hasText: 'Placeholder split' })
+    .getByTestId('media-picture')
+    .click();
+  const editor = win.getByTestId('picture-editor');
+  await expect(editor).toBeVisible();
+  await slide(editor.getByTestId('pe-zoom'), 200);
+  await slide(editor.getByTestId('pe-brightness'), 20);
+  await slide(editor.getByTestId('pe-contrast'), 10);
+  await slide(editor.getByTestId('pe-colour'), 30);
+  await slide(editor.getByTestId('pe-sharpness'), 50);
+  // Moved by dragging, a quarter of the frame to the right (as far as the zoom allows).
+  const frame = await editor.getByTestId('pe-frame').boundingBox();
+  if (!frame) throw new Error('no frame');
+  await win.mouse.move(frame.x + frame.width / 2, frame.y + frame.height / 2);
+  await win.mouse.down();
+  await win.mouse.move(frame.x + frame.width * 0.75, frame.y + frame.height / 2, { steps: 5 });
+  await win.mouse.up();
+  await expect(editor.getByTestId('pe-picture')).toHaveCSS(
+    'filter',
+    /brightness\(1\.2\) contrast\(1\.1\) saturate\(1\.3\) url/u,
+  );
+  await editor.getByTestId('pe-save').click();
+  await expect(editor).toHaveCount(0);
+  const look = await win.evaluate((id) => (globalThis as PageGlobals).drashti.media.look(id), splitId);
+  expect(look).toMatchObject({ zoom: 2, brightness: 0.2, contrast: 0.1, colour: 0.3, sharpness: 0.5 });
+  expect(look?.x).toBeGreaterThan(0.2);
+
+  // On the screens: both draw it the same, from the state.
+  await background(win, splitId);
+  expect((await snapshot(win)).pictures[splitId]).toMatchObject({ zoom: 2 });
+  for (const s of screens) await expect.poll(() => drawn(s)).toHaveLength(1);
+  const [a, b] = [await drawn(screens[0]), await drawn(screens[1])];
+  expect(a).toEqual(b);
+  expect(a[0]?.transform).toMatch(/scale\(2\)/u);
+  expect(a[0]?.filter).toMatch(
+    /^brightness\(1\.2\) contrast\(1\.1\) saturate\(1\.3\) url\("?#drashti-sharpen-50"?\)$/u,
+  );
+  // The thumbnails follow: its card in a playlist.
+  await win.evaluate(async (id) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const made = await d.playlists.create('Placeholder pictures', null, false);
+    if (made.ok) await d.playlists.addItems(made.ids[0] ?? '', null, [{ kind: 'media', mediaId: id }]);
+  }, splitId);
+  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder pictures' }).click();
+  await expect(
+    win.getByTestId('open-playlist').getByTestId('playlist-item').locator('[data-look]'),
+  ).toHaveCount(1);
+
+  // Auto, on a dull picture: its contrast up from its own levels.
+  await win
+    .getByTestId('media-row')
+    .filter({ hasText: 'Placeholder dull' })
+    .getByTestId('media-picture')
+    .click();
+  await editor.getByTestId('pe-auto').click();
+  await expect
+    .poll(async () => Number(await editor.getByTestId('pe-contrast').inputValue()))
+    .toBeGreaterThan(20);
+  // Before shows it as it was taken while held.
+  await editor.getByTestId('pe-before').dispatchEvent('pointerdown');
+  await expect(editor.getByTestId('pe-picture')).toHaveCSS('filter', 'none');
+  await editor.getByTestId('pe-before').dispatchEvent('pointerup');
+  await editor.getByTestId('pe-save').click();
+  expect(
+    (await win.evaluate((id) => (globalThis as PageGlobals).drashti.media.look(id), dullId))?.contrast,
+  ).toBeGreaterThan(0.2);
+  await app.close();
+});
+
+test('the live zoom: from LIVE, on two screens in step, for that showing only; Keep this zoom saves it', async () => {
+  test.setTimeout(240_000);
+  const { app, win, screens } = await twoScreens();
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-live-zoom-'));
+  const one = await makePicture(win, join(dir, 'Placeholder one.png'), ['#1d4e89', '#7c2d12']);
+  const two = await makePicture(win, join(dir, 'Placeholder two.png'), ['#14532d']);
+  const [oneId = '', twoId = ''] = await importAndGetIds(win, [one, two]);
+  await background(win, oneId);
+  await expect(win.getByTestId('live-zoom')).toBeVisible();
+  await win.getByTestId('live-zoom-in').click();
+  await win.getByTestId('live-zoom-in').click();
+  await expect.poll(async () => (await snapshot(win)).liveZoom?.zoom).toBeCloseTo(1.5625);
+  // Both screens glide there, and stand at the same place.
+  for (const s of screens)
+    await expect.poll(async () => (await drawn(s))[0]?.transform).toMatch(/scale\(1\.5625\)/u);
+  expect(await drawn(screens[0])).toEqual(await drawn(screens[1]));
+  // Scrolling over the preview zooms, dragging moves.
+  const preview = await win.getByTestId('live-zoomable').boundingBox();
+  if (!preview) throw new Error('no preview');
+  await win.mouse.move(preview.x + preview.width / 2, preview.y + preview.height / 2);
+  await win.mouse.wheel(0, -100);
+  await expect.poll(async () => (await snapshot(win)).liveZoom?.zoom ?? 0).toBeGreaterThan(1.6);
+  await win.mouse.down();
+  await win.mouse.move(preview.x + preview.width * 0.6, preview.y + preview.height / 2, { steps: 5 });
+  await win.mouse.up();
+  await expect.poll(async () => (await snapshot(win)).liveZoom?.x ?? 0).toBeGreaterThan(0.05);
+  // Keep this zoom: the picture's own now; the screens show the same, from its kept look.
+  const live = (await snapshot(win)).liveZoom;
+  await win.getByTestId('live-zoom-keep').click();
+  await expect.poll(async () => (await snapshot(win)).liveZoom).toBeNull();
+  const kept = await win.evaluate((id) => (globalThis as PageGlobals).drashti.media.look(id), oneId);
+  expect(kept?.zoom).toBeCloseTo(live?.zoom ?? 0);
+  expect(kept?.x).toBeCloseTo(live?.x ?? 0);
+  const scaleOf = (t: string | undefined) => Number(/scale\(([\d.]+)\)/u.exec(t ?? '')?.[1] ?? 0);
+  for (const s of screens)
+    await expect.poll(async () => scaleOf((await drawn(s))[0]?.transform)).toBeCloseTo(kept?.zoom ?? 0, 3);
+
+  // A zoom lasts for that showing: the next picture comes up as kept (plain), the zoom gone.
+  await win.getByTestId('live-zoom-in').click();
+  await expect.poll(async () => (await snapshot(win)).liveZoom).not.toBeNull();
+  await background(win, twoId);
+  await expect.poll(async () => (await snapshot(win)).liveZoom).toBeNull();
+  for (const s of screens) await expect.poll(() => drawn(s)).toEqual([]);
+  // Simple Mode: no live zoom.
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  await expect(win.getByTestId('live-zoom')).toHaveCount(0);
+  expect(
+    await win.evaluate(() =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'zoomLive', zoom: 2, x: 0, y: 0 }),
+    ),
+  ).toMatchObject({ ok: false });
+  await app.close();
+});
+
+test('each enhancement in the screens’ pixels, the same on two screens', async () => {
+  test.setTimeout(240_000);
+  const { app, win, screens } = await twoScreens();
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-enhance-pixels-'));
+  // Grey 96 and grey 160 side by side: brightness, contrast and sharpness read from them; a red for colour.
+  const greys = await makePicture(win, join(dir, 'Placeholder greys.png'), ['#606060', '#a0a0a0']);
+  const red = await makePicture(win, join(dir, 'Placeholder red.png'), ['#c03030']);
+  const [greysId = '', redId = ''] = await importAndGetIds(win, [greys, red]);
+  const set = (id: string, change: Record<string, number>) =>
+    win.evaluate(
+      ({ id, change }) =>
+        (globalThis as PageGlobals).drashti.media.setLook(id, {
+          zoom: 1,
+          x: 0,
+          y: 0,
+          brightness: 0,
+          contrast: 0,
+          colour: 0,
+          sharpness: 0,
+          ...change,
+        }),
+      { id, change },
+    );
+  const points = [
+    { x: 480, y: 540 },
+    { x: 1440, y: 540 },
+  ];
+  const both = async (pts = points) => {
+    const [a, b] = [await canvasPixels(screens[0], pts), await canvasPixels(screens[1], pts)];
+    for (const [i, c] of a.entries())
+      for (const k of [0, 1, 2]) expect(Math.abs((c[k] ?? 0) - (b[i]?.[k] ?? 0))).toBeLessThanOrEqual(6);
+    return a;
+  };
+  await background(win, greysId);
+  await expect.poll(async () => (await both())[0]?.[0] ?? 0).toBeGreaterThan(80);
+  const plain = await both();
+  // Brightness +50 %: each grey half as bright again.
+  await set(greysId, { brightness: 0.5 });
+  await expect.poll(async () => (await both())[0]?.[0] ?? 0).toBeGreaterThan((plain[0]?.[0] ?? 0) * 1.35);
+  // Contrast +50 %: the dark one darker, the light one lighter.
+  await set(greysId, { contrast: 0.5 });
+  await expect.poll(async () => (await both())[0]?.[0] ?? 999).toBeLessThan((plain[0]?.[0] ?? 0) - 10);
+  expect((await both())[1]?.[0] ?? 0).toBeGreaterThan((plain[1]?.[0] ?? 0) + 10);
+  // Sharpness: right at the edge between them (a pixel either side, as the screen draws it), the light side
+  // lighter and the dark side darker than either was: read along a line across the edge.
+  await set(greysId, { sharpness: 1 });
+  const across = Array.from({ length: 61 }, (_, i) => ({ x: 930 + i, y: 540 }));
+  const extremes = async (screen: Page) => {
+    const reds = (await canvasPixels(screen, across)).map((c) => c[0] ?? 0);
+    return { most: Math.max(...reds), least: Math.min(...reds) };
+  };
+  for (const screen of screens)
+    await expect
+      .poll(async () => {
+        const { most, least } = await extremes(screen);
+        return most > (plain[1]?.[0] ?? 255) + 12 && least < (plain[0]?.[0] ?? 0) - 12;
+      })
+      .toBe(true);
+  const [e1, e2] = [await extremes(screens[0]), await extremes(screens[1])];
+  expect(Math.abs(e1.most - e2.most)).toBeLessThanOrEqual(8);
+  expect(Math.abs(e1.least - e2.least)).toBeLessThanOrEqual(8);
+  // Colour −100 %: a red becomes grey.
+  await background(win, redId);
+  await set(redId, { colour: -1 });
+  await expect
+    .poll(async () => {
+      const [c] = await both([{ x: 960, y: 540 }]);
+      return Math.max(Math.abs((c?.[0] ?? 0) - (c?.[1] ?? 0)), Math.abs((c?.[1] ?? 0) - (c?.[2] ?? 0)));
+    })
+    .toBeLessThanOrEqual(8);
+  await app.close();
+});
+
+test('a node’s screen draws a picture’s look and the live zoom as Main’s does', async () => {
+  test.setTimeout(240_000);
+  const main = await launchMain();
+  const node = await launchNode();
+  try {
+    const nodeId = await pairNode(main, node);
+    const dir = mkdtempSync(join(tmpdir(), 'drashti-node-look-'));
+    const picture = await makePicture(main.win, join(dir, 'Placeholder node picture.png'), [
+      '#1d4e89',
+      '#7c2d12',
+    ]);
+    const [pictureId = ''] = await importAndGetIds(main.win, [picture]);
+    await main.win.evaluate(
+      (id) =>
+        (globalThis as PageGlobals).drashti.media.setLook(id, {
+          zoom: 1.5,
+          x: 0.1,
+          y: 0,
+          brightness: 0.1,
+          contrast: 0,
+          colour: 0.2,
+          sharpness: 0,
+        }),
+      pictureId,
+    );
+    await setUpScreen(main.win, 'Placeholder Hall', 1);
+    const groupId = await main.win.evaluate(
+      async () =>
+        (await (globalThis as PageGlobals).drashti.screens.get()).groups.find(
+          (g) => g.name === 'Placeholder Hall',
+        )?.id ?? '',
+    );
+    const displays = () =>
+      main.win.evaluate(
+        async (id) =>
+          (
+            (await (globalThis as PageGlobals).drashti.screens.get()).nodes.find((n) => n.id === id)
+              ?.displays ?? []
+          ).map((d) => d.id),
+        nodeId,
+      );
+    await expect.poll(async () => (await displays()).length).toBeGreaterThanOrEqual(2);
+    const displayId = (await displays())[1] ?? -1;
+    expect(
+      (
+        await main.win.evaluate(
+          ({ groupId, nodeId, displayId }) =>
+            (globalThis as PageGlobals).drashti.screens.assignNodeDisplay(groupId, nodeId, displayId),
+          { groupId, nodeId, displayId },
+        )
+      ).ok,
+    ).toBe(true);
+    await background(main.win, pictureId);
+    const nodeOut = await (async () => {
+      await expect.poll(() => outputPages(node.app).length).toBeGreaterThan(0);
+      const [page] = outputPages(node.app);
+      if (!page) throw new Error('no node screen');
+      return page;
+    })();
+    await expect
+      .poll(async () => (await drawn(nodeOut))[0]?.transform ?? '', { timeout: 60_000 })
+      .toMatch(/scale\(1\.5\)/u);
+    expect((await drawn(nodeOut))[0]?.filter).toBe('brightness(1.1) saturate(1.2)');
+    // The live zoom from Main's LIVE: the node's screen follows.
+    await main.win.getByTestId('live-zoom-in').click();
+    await expect
+      .poll(async () => (await drawn(nodeOut))[0]?.transform ?? '', { timeout: 30_000 })
+      .toMatch(/scale\(1\.875\)/u);
+  } finally {
+    await node.app.close();
+    await main.app.close();
+  }
+});

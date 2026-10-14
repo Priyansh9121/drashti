@@ -8,6 +8,7 @@ import type { RenderSlide, SlideElement, Transition } from '../model';
 import type { TimerState } from '../timers';
 import type { PlaybackClip, PlaybackSeek } from '../media';
 import type { PlaybackMarker } from '../markers';
+import type { LiveZoom, PictureLook } from '../picture-look';
 
 /**
  * Show engine state. The main process owns it; every renderer (and, later,
@@ -323,6 +324,13 @@ export interface EngineState {
   /** A Repeat Slides playlist going round (Session 26d), or null. */
   repeat: RepeatRun | null;
   /**
+   * The looks of the pictures on the screens and coming next (Session 26e, shared/picture-look.ts), by media
+   * id: every screen, node, phone and the stream draw them alike. A picture without one is left out.
+   */
+  pictures: Record<string, PictureLook>;
+  /** The picture on the screens zoomed and moved from LIVE, for this showing only (Session 26e), or null. */
+  liveZoom: LiveZoom | null;
+  /**
    * The live Look (shared/looks.ts): each screen group's layers, languages
    * and slide style. Switching it changes every group at once.
    */
@@ -351,6 +359,8 @@ export function initialEngineState(): EngineState {
     timers: [],
     autoAdvance: null,
     repeat: null,
+    pictures: {},
+    liveZoom: null,
     look: NO_LOOK,
   };
 }

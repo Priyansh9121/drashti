@@ -16,6 +16,8 @@ import { OBJECT_FIT } from './media-style';
 import { startPlayback } from './playback';
 import { requestStill, useStill } from './stills';
 import { engineNow } from './clock';
+import { Looked } from './picture-looks';
+import { slideShowing } from '../../../shared/picture-look';
 import { PreviewPicture, usePreviewsOnly } from './previews';
 import { useMediaAttempt } from './media-attempts';
 
@@ -305,19 +307,32 @@ function WindowVideoStill({ mediaId, style }: { mediaId: string; style: CSSPrope
 function MediaView({ el, media, startedAt }: { el: MediaElement; media: MediaMode; startedAt?: number }) {
   // On a node, a copy that landed after this picture was asked for: drawn again (a new element).
   const attempt = useMediaAttempt(el.mediaId);
+  // A picture's look (Session 26e), and on the screens the live zoom of this slide's showing.
+  const showing = startedAt === undefined ? null : slideShowing(startedAt);
   // A phone or tablet: pictures and videos as small previews, and no video plays.
-  if (usePreviewsOnly()) return <PreviewPicture mediaId={el.mediaId} style={mediaStyle(el)} />;
+  if (usePreviewsOnly())
+    return el.kind === 'image' ? (
+      <Looked mediaId={el.mediaId} showing={showing} style={mediaStyle(el)}>
+        {(style) => <PreviewPicture mediaId={el.mediaId} style={style} />}
+      </Looked>
+    ) : (
+      <PreviewPicture mediaId={el.mediaId} style={mediaStyle(el)} />
+    );
   if (el.kind === 'image') {
     return (
-      <img
-        key={attempt}
-        data-element={el.id}
-        data-media-id={el.mediaId}
-        src={mediaUrl(el.mediaId, attempt)}
-        alt=""
-        draggable={false}
-        style={mediaStyle(el)}
-      />
+      <Looked mediaId={el.mediaId} showing={showing} style={mediaStyle(el)}>
+        {(style) => (
+          <img
+            key={attempt}
+            data-element={el.id}
+            data-media-id={el.mediaId}
+            src={mediaUrl(el.mediaId, attempt)}
+            alt=""
+            draggable={false}
+            style={style}
+          />
+        )}
+      </Looked>
     );
   }
   if (media === 'still') return <VideoStill mediaId={el.mediaId} style={mediaStyle(el)} />;

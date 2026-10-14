@@ -7,6 +7,8 @@ import { loadLibrary, watchLibrary } from '../library/library-store';
 import { connectExtras } from '../library/extras-store';
 import { connectSmart } from '../playlists/smart-store';
 import { connectSaves } from '../markers/save-store';
+import { connectPictureLooks } from '../render/picture-looks';
+import { PictureEditor } from '../pictures/PictureEditor';
 import { RemoveConfirm, RemovePlaylistConfirm } from '../library/RemoveConfirm';
 import { MediaRemoveConfirm } from '../library/media-removal';
 import { UndoBar } from '../library/UndoBar';
@@ -92,6 +94,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectExtras();
     connectSmart();
     connectSaves();
+    connectPictureLooks();
     connectMode();
     connectRoles();
     void startMidi();
@@ -308,6 +311,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <LinkDialog platform={platform} />
       <KeysSheet platform={platform} />
       <MarkersDialog />
+      <PictureEditor />
       <AdminPinDialog />
       {dashboardOpen && (
         <ScreensDashboard

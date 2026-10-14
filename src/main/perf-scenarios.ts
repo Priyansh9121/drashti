@@ -23,6 +23,10 @@ import { plural } from '../shared/text';
  * - three-outputs: three outputs (with DRASHTI_WINDOWED_OUTPUTS and two extra
  *   displays) and a 1080p30 background, with the stream, a recording and the
  *   music when those are asked for too.
+ * - enhanced-pictures (Session 26e): slides of 1080p pictures, each zoomed and
+ *   with every enhancement (brightness, contrast, colour, sharpening), changed
+ *   at the plain check's pace through the import: the screens must draw them
+ *   with their looks.
  *
  * The videos are FFmpeg's test pattern with a tone, made by the bundled
  * FFmpeg in the check's throwaway library. Besides the usual checks, each
@@ -40,6 +44,7 @@ export const PERF_SCENARIOS = [
   'video-4k',
   'dissolves-video',
   'three-outputs',
+  'enhanced-pictures',
 ] as const;
 export type PerfScenario = (typeof PERF_SCENARIOS)[number];
 
@@ -128,6 +133,48 @@ function makeVideo(
     .run(mediaId, `Placeholder perf ${name}`, path, v.width, v.height);
   return { mediaId, fps: v.fps };
 }
+
+/** A 1080p picture FFmpeg makes (its test pattern, turned in hue), as a media item with every enhancement. */
+function makeEnhancedPicture(deps: ScenarioDeps, name: string, hue: number): string {
+  if (!deps.ffmpeg) throw new Error('The scenarios need the bundled FFmpeg (node scripts/fetch-ffmpeg.mjs).');
+  mkdirSync(join(deps.mediaDir, 'perf'), { recursive: true });
+  const path = `perf/${name}.jpg`;
+  const r = spawnSync(
+    deps.ffmpeg,
+    [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=size=1920x1080:rate=1',
+      '-frames:v',
+      '1',
+      '-vf',
+      `hue=h=${String(hue)}`,
+      join(deps.mediaDir, path),
+    ],
+    { stdio: 'pipe' },
+  );
+  if (r.status !== 0)
+    throw new Error(`FFmpeg could not make the scenario's picture: ${r.stderr.toString().slice(0, 200)}`);
+  const mediaId = randomUUID();
+  const look = { zoom: 1.2, x: 0.05, y: 0, brightness: 0.1, contrast: 0.15, colour: 0.3, sharpness: 0.5 };
+  deps.db
+    .prepare(
+      "INSERT INTO media (id, kind, name, path, width, height, look) VALUES (?, 'image', ?, ?, 1920, 1080, ?)",
+    )
+    .run(mediaId, `Placeholder perf ${name}`, path, JSON.stringify(look));
+  return mediaId;
+}
+
+/** How many pictures each screen draws with a look, and how many of those sharpened (by its filter). */
+const LOOKS = `(() => {
+  const all = [...document.querySelectorAll('[data-look-picture]')];
+  return { looked: all.length, sharpened: all.filter((el) => el.style.filter.includes('url(')).length };
+})()`;
 
 /** A mask that shows only an ellipse in the middle: its edge is drawn over the video on every frame. */
 const ELLIPSE: MaskLayer = {
@@ -260,6 +307,63 @@ export function startScenario(name: PerfScenario, deps: ScenarioDeps): ScenarioR
         makeVideo(deps, 'video-1080p30', { width: 1920, height: 1080, fps: 30, seconds: 20, hue: 60 }),
       );
       break;
+    }
+    case 'enhanced-pictures': {
+      const pictures = [0, 120, 240].map((hue, i) =>
+        makeEnhancedPicture(deps, `picture-${String(i + 1)}`, hue),
+      );
+      const repo = new PresentationRepo(deps.db);
+      const presentationId = repo.insert({
+        libraryId: repo.ensureLibrary('Default'),
+        name: 'Placeholder perf enhanced pictures',
+        groups: [
+          {
+            name: '',
+            slides: pictures.map((mediaId, i) => ({
+              label: `Placeholder picture ${String(i + 1)}`,
+              elements: [
+                {
+                  id: 'picture',
+                  kind: 'image' as const,
+                  frame: { x: 0, y: 0, width: 1920, height: 1080 },
+                  mediaId,
+                  fit: 'fill' as const,
+                },
+              ],
+            })),
+          },
+        ],
+      });
+      // The plain check's pace (25 changes a second through the import): the pictures are the load.
+      slides = { presentationId, everyMs: 40 };
+      return {
+        slides,
+        begin: () => Promise.resolve(),
+        end: async () => {
+          const seen = await Promise.all(
+            deps.outputs().map(
+              (w) =>
+                w.webContents.executeJavaScript(LOOKS, true).catch(() => null) as Promise<{
+                  looked: number;
+                  sharpened: number;
+                } | null>,
+            ),
+          );
+          const ok = seen.length > 0 && seen.every((s) => s !== null && s.looked > 0 && s.sharpened > 0);
+          return {
+            checks: [
+              {
+                name: 'every screen drew its picture with its look (zoomed, every enhancement, sharpened)',
+                ok,
+                detail: seen
+                  .map((s) => (s ? `${String(s.looked)} looked, ${String(s.sharpened)} sharpened` : 'none'))
+                  .join('; '),
+              },
+            ],
+            summary: `scenario ${name}: ${plural(seen.length, 'screen')}, pictures with looks ${seen.map((s) => String(s?.looked ?? 0)).join(', ')}`,
+          };
+        },
+      };
     }
   }
   return {

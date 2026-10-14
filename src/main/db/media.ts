@@ -1,3 +1,5 @@
+import type { PictureLook } from '../../shared/picture-look';
+import { isPlain, lookOf } from '../../shared/picture-look';
 import type { Statement } from 'better-sqlite3';
 import type { MediaMarkers } from '../../shared/markers';
 import { mediaMarkersSchema } from '../../shared/markers';
@@ -111,6 +113,35 @@ export class MediaRepo {
   }
 
   /** Where a media item's file is, relative to the media folder; null for an unknown id. */
+  /** A picture's look (Session 26e), or null: shown as it is. */
+  look(mediaId: string): PictureLook | null {
+    const row = this.db.prepare('SELECT look FROM media WHERE id = ?').get(mediaId) as
+      { look: string | null } | undefined;
+    return lookOf(row?.look ?? null);
+  }
+
+  /** Keep a picture's look (null, or one that changes nothing: shown as it is). False when it is not a picture. */
+  setLook(mediaId: string, look: PictureLook | null): boolean {
+    const json = look && !isPlain(look) ? JSON.stringify(look) : null;
+    return (
+      this.db.prepare("UPDATE media SET look = ? WHERE id = ? AND kind = 'image'").run(json, mediaId)
+        .changes === 1
+    );
+  }
+
+  /** Every picture's look that changes something, by media id (for the window's thumbnails). */
+  looks(): Record<string, PictureLook> {
+    const rows = this.db
+      .prepare("SELECT id, look FROM media WHERE look IS NOT NULL AND kind = 'image' AND deleted_at IS NULL")
+      .all() as { id: string; look: string }[];
+    const out: Record<string, PictureLook> = {};
+    for (const r of rows) {
+      const look = lookOf(r.look);
+      if (look) out[r.id] = look;
+    }
+    return out;
+  }
+
   file(mediaId: string): MediaFileRow | null {
     const row = this.fileStmt.get(mediaId);
     return row

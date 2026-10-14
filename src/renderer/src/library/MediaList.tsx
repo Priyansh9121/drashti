@@ -8,7 +8,8 @@ import { RowDelete } from '../ui/RowDelete';
 import { requestMediaRemoval } from './media-removal';
 import { MissingBadge } from '../ui/Badge';
 import type { Icon } from '../ui/icons';
-import { Bookmark, Film, Image, Music, Wand2, X } from '../ui/icons';
+import { Bookmark, Film, Image, Music, SlidersHorizontal, Wand2, X } from '../ui/icons';
+import { openPictureEditor } from '../pictures/PictureEditor';
 import { rowClass } from '../ui/ListRow';
 import type { ConversionJob } from '../../../shared/convert';
 import { Button, IconButton } from '../ui/Button';
@@ -152,10 +153,13 @@ const MediaRow = memo(function MediaRow({
   const KindIcon = mediaKindIcon[m.kind];
   const pick = pickMedia(m.id);
   const remove = () => void requestMediaRemoval(m.id);
+  // A picture's zoom and enhancements (Session 26e).
+  const pictureTool = m.kind === 'image' && !m.missing && m.unplayable === null;
   return (
     <div className={`${rowClass({ marked })} group relative flex h-full flex-col`} data-testid="media-row">
-      {/* Room at the end for the trash button (below, last in the Tab order). */}
-      <div className="flex min-h-0 flex-1 items-center gap-1.5 pr-10">
+      {/* Room at the end for the Picture editor and the trash buttons (below, after Add to playlist in the
+          Tab order). */}
+      <div className={`flex min-h-0 flex-1 items-center gap-1.5 ${pictureTool ? 'pr-[4.5rem]' : 'pr-10'}`}>
         <button
           type="button"
           draggable
@@ -201,6 +205,19 @@ const MediaRow = memo(function MediaRow({
         )}
       </div>
       {chosen && <AddToPlaylistButton pick={pick} className="px-1.5 pb-1.5" />}
+      {pictureTool && (
+        <span className="absolute top-2 right-9 flex">
+          <IconButton
+            icon={SlidersHorizontal}
+            label={`Picture editor: ${m.name}`}
+            size="sm"
+            data-testid="media-picture"
+            onClick={() => {
+              openPictureEditor({ id: m.id, name: m.name });
+            }}
+          />
+        </span>
+      )}
       <RowDelete
         label={`Delete “${m.name}”`}
         chosen={chosen}

@@ -46,4 +46,4 @@ export function startingMode(last: {
  * Engine commands Simple Mode refuses, wherever they come from (the window,
  * a phone, the API): Simple Mode keeps the live Look.
  */
-export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = ['setLook'];
+export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = ['setLook', 'zoomLive', 'resetLiveZoom'];

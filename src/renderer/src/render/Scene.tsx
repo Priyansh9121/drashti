@@ -16,6 +16,7 @@ import { engineNow } from './clock';
 import { LANG_FONT_STACK } from './fonts';
 import { Placed } from './Placed';
 import { SlideLayerView } from './SlideLayerView';
+import { ScreenPictures } from './picture-looks';
 import { ElementView } from './SlideView';
 import { TimerText } from './TimerText';
 
@@ -336,94 +337,101 @@ export const Scene = memo(function Scene({
   const idle =
     nothingUp && (look.idle === 'always' || (look.idle === 'started' && state.idle.startedAt !== null));
   const content: CSSProperties = matte === 'key' ? { ...FULL, filter: 'brightness(0) invert(1)' } : FULL;
+  // The pictures' looks and the live zoom, as the state carries them (Session 26e): every screen alike.
+  const pictures = useMemo(
+    () => ({ pictures: state.pictures, liveZoom: state.liveZoom }),
+    [state.pictures, state.liveZoom],
+  );
   return (
-    <div
-      data-testid="scene"
-      data-canvas={`${canvas.width}x${canvas.height}`}
-      data-look-layers={look.layers.join(',')}
-      style={{
-        position: 'relative',
-        width: canvas.width,
-        height: canvas.height,
-        overflow: 'hidden',
-        background: '#000000',
-      }}
-    >
-      <div data-matte={matte ?? undefined} data-off={off ? 'true' : undefined} style={content}>
-        {!off && (
-          <>
-            <div style={FULL}>
-              {background?.kind === 'color' && (
-                <div
-                  data-layer="background"
-                  style={{ position: 'absolute', inset: 0, background: background.color }}
-                />
-              )}
-              <BackgroundMedia layer={background} annotate={annotate} />
-              {idle && <IdleRotation idle={state.idle} languages={look.languages} canvas={canvas} />}
-              <SlideLayerView
-                layer={shown('slide') ? layers.slide : null}
-                canvas={canvas}
-                scaling={scaling}
-                languages={look.languages}
-                slides={look.slides}
-                lift={bandHeight}
-              />
-              {shown('props') && <PropsLayer props={layers.props} canvas={canvas} scaling={scaling} />}
-              {shown('messages') && layers.messages.length > 0 && (
-                <MessageBanner
-                  messages={layers.messages}
-                  timers={state.timers}
-                  calendar={state.calendar}
-                  canvas={canvas}
-                  at={lowerThirds ? 'top' : 'bottom'}
-                  above={lowerThirds ? 0 : bandHeight}
-                />
-              )}
-              {band && <TickerBand ticker={band} canvas={canvas} />}
-            </div>
-            {layerMask && !keyed && <MaskCover mask={layerMask} layer="masks" />}
-            {state.logo && !keyed && (
-              // The logo instead of the picture: drawn over the layers, which carry on underneath, so
-              // taking it down brings back exactly what was there. Black-out covers it in turn.
-              <div
-                data-layer="logo"
-                data-testid="logo"
-                style={{ position: 'absolute', inset: 0, background: '#000000' }}
-              >
-                <Placed
-                  content={{ width: state.logo.width ?? 1920, height: state.logo.height ?? 1080 }}
-                  box={canvas}
-                  mode={scaling}
-                >
+    <ScreenPictures.Provider value={pictures}>
+      <div
+        data-testid="scene"
+        data-canvas={`${canvas.width}x${canvas.height}`}
+        data-look-layers={look.layers.join(',')}
+        style={{
+          position: 'relative',
+          width: canvas.width,
+          height: canvas.height,
+          overflow: 'hidden',
+          background: '#000000',
+        }}
+      >
+        <div data-matte={matte ?? undefined} data-off={off ? 'true' : undefined} style={content}>
+          {!off && (
+            <>
+              <div style={FULL}>
+                {background?.kind === 'color' && (
                   <div
-                    style={{
-                      position: 'relative',
-                      width: state.logo.width ?? 1920,
-                      height: state.logo.height ?? 1080,
-                    }}
-                  >
-                    {state.logo.elements.map((el) => (
-                      <ElementView key={el.id} el={el} />
-                    ))}
-                  </div>
-                </Placed>
+                    data-layer="background"
+                    style={{ position: 'absolute', inset: 0, background: background.color }}
+                  />
+                )}
+                <BackgroundMedia layer={background} annotate={annotate} />
+                {idle && <IdleRotation idle={state.idle} languages={look.languages} canvas={canvas} />}
+                <SlideLayerView
+                  layer={shown('slide') ? layers.slide : null}
+                  canvas={canvas}
+                  scaling={scaling}
+                  languages={look.languages}
+                  slides={look.slides}
+                  lift={bandHeight}
+                />
+                {shown('props') && <PropsLayer props={layers.props} canvas={canvas} scaling={scaling} />}
+                {shown('messages') && layers.messages.length > 0 && (
+                  <MessageBanner
+                    messages={layers.messages}
+                    timers={state.timers}
+                    calendar={state.calendar}
+                    canvas={canvas}
+                    at={lowerThirds ? 'top' : 'bottom'}
+                    above={lowerThirds ? 0 : bandHeight}
+                  />
+                )}
+                {band && <TickerBand ticker={band} canvas={canvas} />}
               </div>
-            )}
-            {groupMask && !keyed && <MaskCover mask={groupMask} layer="look" />}
-          </>
+              {layerMask && !keyed && <MaskCover mask={layerMask} layer="masks" />}
+              {state.logo && !keyed && (
+                // The logo instead of the picture: drawn over the layers, which carry on underneath, so
+                // taking it down brings back exactly what was there. Black-out covers it in turn.
+                <div
+                  data-layer="logo"
+                  data-testid="logo"
+                  style={{ position: 'absolute', inset: 0, background: '#000000' }}
+                >
+                  <Placed
+                    content={{ width: state.logo.width ?? 1920, height: state.logo.height ?? 1080 }}
+                    box={canvas}
+                    mode={scaling}
+                  >
+                    <div
+                      style={{
+                        position: 'relative',
+                        width: state.logo.width ?? 1920,
+                        height: state.logo.height ?? 1080,
+                      }}
+                    >
+                      {state.logo.elements.map((el) => (
+                        <ElementView key={el.id} el={el} />
+                      ))}
+                    </div>
+                  </Placed>
+                </div>
+              )}
+              {groupMask && !keyed && <MaskCover mask={groupMask} layer="look" />}
+            </>
+          )}
+        </div>
+        {/* A key and fill pair's covers go over the key's white too: what a mask hides is never keyed. */}
+        {keyed && !off && layerMask && <MaskCover mask={layerMask} layer="masks" />}
+        {keyed && !off && groupMask && <MaskCover mask={groupMask} layer="look" />}
+        {state.blackout && !keyed && (
+          <div
+            data-layer="blackout"
+            data-testid="blackout"
+            style={{ position: 'absolute', inset: 0, background: '#000000' }}
+          />
         )}
       </div>
-      {/* A key and fill pair's covers go over the key's white too: what a mask hides is never keyed. */}
-      {keyed && !off && layerMask && <MaskCover mask={layerMask} layer="masks" />}
-      {keyed && !off && groupMask && <MaskCover mask={groupMask} layer="look" />}
-      {state.blackout && !keyed && (
-        <div
-          data-layer="blackout"
-          data-testid="blackout"
-          style={{ position: 'absolute', inset: 0, background: '#000000' }}
-        />
-      )}
-    </div>
+    </ScreenPictures.Provider>
   );
 });

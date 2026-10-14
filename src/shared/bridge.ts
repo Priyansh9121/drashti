@@ -74,6 +74,7 @@ import type {
 } from './playlists';
 import type { RepeatSettings } from './repeat';
 import type { KeyframeResult, SaveJob, SaveRequest, SaveResult } from './trim';
+import type { PictureLook } from './picture-look';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
 import type { PropFields, PropInfo, PropResult } from './props';
 import type { GroupLookPatch, LookResult, LooksView } from './looks';
@@ -431,6 +432,16 @@ export interface DrashtiBridge {
     stopSave(jobId: string): Promise<boolean>;
     /** Show a saved file in the Finder (Explorer on Windows). */
     showSave(jobId: string): Promise<null>;
+    /** A picture's look (Session 26e), every picture's, and keeping one (null: shown as it is). */
+    look(mediaId: string): Promise<PictureLook | null>;
+    looks(): Promise<Record<string, PictureLook>>;
+    setLook(
+      mediaId: string,
+      look: PictureLook | null,
+    ): Promise<{ ok: true } | { ok: false; message: string }>;
+    /** Keep this zoom: the live zoom kept as the picture's own. */
+    keepLiveZoom(): Promise<{ ok: true } | { ok: false; message: string }>;
+    onLooks(listener: (looks: Record<string, PictureLook>) => void): () => void;
     /** Where media is used, asked before deleting it (Session 26a). */
     usage(mediaIds: string[]): Promise<MediaUsage>;
     /** Delete media from the library, taking it out of playlists and music; Undo with restore. */
