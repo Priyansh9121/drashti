@@ -1,3 +1,4 @@
+import { BUILTIN_THEMES } from '../../src/shared/builtin-themes';
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
@@ -1666,4 +1667,281 @@ test('Import from a Link, YouTube: the choices, the tick, downloading and a refu
   });
   await shot(refused.win, 'import-link-youtube-refused');
   await refused.app.close();
+});
+
+test('this session’s playlists: a Dropbox folder as one playlist with headers, a smart playlist, and Repeat Slides going round (Session 26c–d)', async () => {
+  test.setTimeout(300_000);
+  const work = mkdtempSync(join(tmpdir(), 'drashti-shots-26-'));
+  const media = join(work, 'made');
+  mkdirSync(media);
+  const ffmpeg = testFfmpeg();
+  const video = (name: string, size: string): Buffer => {
+    const path = join(media, name);
+    const r = spawnSync(ffmpeg ?? '', [
+      '-hide_banner',
+      '-loglevel',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      `testsrc2=s=${size}:r=25`,
+      '-t',
+      '1',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-pix_fmt',
+      'yuv420p',
+      path,
+    ]);
+    if (r.status !== 0) throw new Error(r.stderr.toString());
+    return readFileSync(path);
+  };
+  const deck = (text: string, color: string) => makeTestPptx([{ color, text, notes: '' }]);
+  const folders: Record<string, { name: string; body: Buffer; type: string }> = {};
+  const standIn = await dropboxStandIn({}, folders);
+  try {
+    const { app } = await launchApp({
+      DRASHTI_TEST_LINK_ORIGIN: standIn.origin,
+      DRASHTI_TEST_DOWNLOADS_DIR: join(work, 'Videos'),
+      DRASHTI_TEST_DECK_CONVERTER: '1',
+      DRASHTI_TEST_SMART_SCAN_MS: '1000',
+      DRASHTI_TEST_SMART_SETTLE_MS: '500',
+    });
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await win.setViewportSize({ width: 1280, height: 720 });
+    const { makeDropboxLikeZip } = await import('../../src/main/import/testing/zip-writer');
+    folders['foldSHOTSSHOTSSS'] = {
+      name: 'Placeholder Sabha folder.zip',
+      type: 'application/zip',
+      body: makeDropboxLikeZip([
+        { path: 'Opening video.mp4', data: video('a.mp4', '320x180') },
+        { path: 'Welcome.pptx', data: deck('Placeholder welcome', '1E3A8A') },
+        { path: 'Week 1/Katha 2.pptx', data: deck('Placeholder katha two', '7C2D12') },
+        { path: 'Week 1/Katha 10.pptx', data: deck('Placeholder katha ten', '14532D') },
+        { path: 'Week 1/Videos/Clip A.mp4', data: video('b.mp4', '352x198') },
+      ]),
+    };
+    await app.evaluate(
+      ({ dialog }, folder) => {
+        dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
+      },
+      join(work, 'Chosen'),
+    );
+    await chooseMenuItem(app, 'import-from-link');
+    await win.getByTestId('link-kind-dropbox').click();
+    await win.getByTestId('link-text').fill(folderLink('foldSHOTSSHOTSSS'));
+    await expect(win.getByTestId('link-holds')).toContainText('A folder');
+    await win.getByTestId('link-choose-folder').click();
+    await win.getByTestId('link-download').click();
+    await expect(win.getByTestId('open-playlist').getByTestId('playlist-title')).toHaveText(
+      'Placeholder Sabha folder',
+      { timeout: 180_000 },
+    );
+    await win.keyboard.press('Escape');
+    await expect(win.getByTestId('open-playlist').getByTestId('playlist-item')).toHaveCount(7, {
+      timeout: 60_000,
+    });
+    // Tall enough for every item: the folder's own, then Week 1's, then Week 1 › Videos'.
+    await win.setViewportSize({ width: 1280, height: 1100 });
+    await part(win, 'dropbox-playlist', [win.getByTestId('open-playlist')]);
+    await win.setViewportSize({ width: 1280, height: 720 });
+
+    // A smart playlist following a folder of placeholder pictures.
+    const smart = join(work, 'Placeholder Lobby folder');
+    mkdirSync(join(smart, 'Morning'), { recursive: true });
+    await makeTestImage(win, join(smart, 'Placeholder welcome.png'), { color: '#1d4e89' });
+    await makeTestImage(win, join(smart, 'Morning', 'Placeholder darshan.png'), { color: '#7c2d12' });
+    await app.evaluate(({ dialog }, folder) => {
+      dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
+    }, smart);
+    await win.getByRole('button', { name: 'New playlist or folder' }).click();
+    await win.getByRole('menuitem', { name: 'Smart Playlist from a Folder…' }).click();
+    await expect(win.getByTestId('open-playlist').getByTestId('playlist-item')).toHaveCount(3, {
+      timeout: 60_000,
+    });
+    await part(win, 'smart-playlist', [win.getByTestId('playlists'), win.getByTestId('centre-playlist')]);
+
+    // Repeat Slides going round: LIVE says so, with Stop (Esc).
+    await win.getByRole('button', { name: 'New playlist or folder' }).click();
+    await win.getByRole('menuitem', { name: 'Repeat Slides' }).click();
+    await win.getByRole('textbox', { name: 'Playlist name' }).fill('Placeholder Lobby pictures');
+    await win.keyboard.press('Enter');
+    const repeatId =
+      (await win
+        .getByTestId('playlist-node')
+        .filter({ hasText: 'Placeholder Lobby pictures' })
+        .getAttribute('data-node-id')) ?? '';
+    await win.evaluate(async (id) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const pictures = (await d.library.listMedia()).filter((m) => m.kind === 'image');
+      await d.playlists.addItems(
+        id,
+        null,
+        pictures.map((m) => ({ kind: 'media' as const, mediaId: m.id })),
+      );
+    }, repeatId);
+    await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Lobby pictures' }).click();
+    await win.getByTestId('repeat-start').click();
+    await expect(win.getByTestId('live-repeating')).toBeVisible();
+    // Its card chosen: the slide grid shows every step.
+    await win.getByTestId('open-playlist').getByTestId('playlist-item').first().click();
+    await expect(win.getByTestId('repeat-note')).toBeVisible();
+    await shot(win, 'repeat-slides-1280x720');
+    await part(win, 'repeat-slides-live', [
+      win.getByTestId('live-repeating'),
+      win.getByTestId('live-preview'),
+    ]);
+    await win.getByTestId('live-repeat-stop').click();
+    await app.close();
+  } finally {
+    await standIn.close();
+  }
+});
+
+test('this session’s videos and pictures: the timeline with Save as MP4, the Picture editor, and the live zoom (Session 26e)', async () => {
+  test.setTimeout(240_000);
+  const ffmpeg = testFfmpeg();
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-shots-26e-'));
+  const clip = join(dir, 'Placeholder Katha video.mp4');
+  const made = spawnSync(ffmpeg ?? '', [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-f',
+    'lavfi',
+    '-i',
+    'testsrc2=s=640x360:r=25',
+    '-t',
+    '30',
+    '-c:v',
+    'libx264',
+    '-preset',
+    'ultrafast',
+    '-g',
+    '50',
+    '-pix_fmt',
+    'yuv420p',
+    clip,
+  ]);
+  if (made.status !== 0) throw new Error(made.stderr.toString());
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  // A generated picture with something in it to zoom into: FFmpeg's test pattern, one frame.
+  const picture = join(dir, 'Placeholder darshan.png');
+  const still = spawnSync(ffmpeg ?? '', [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-f',
+    'lavfi',
+    '-i',
+    'testsrc2=s=1280x720',
+    '-frames:v',
+    '1',
+    picture,
+  ]);
+  if (still.status !== 0) throw new Error(still.stderr.toString());
+  const [, pictureId = ''] = await importAndGetIds(win, [clip, picture]);
+  await win.getByRole('tab', { name: 'Media' }).click();
+  await win
+    .getByTestId('media-row')
+    .filter({ hasText: 'Placeholder Katha video' })
+    .getByTestId('media-markers')
+    .click();
+  const markers = win.getByTestId('markers-dialog');
+  await expect(markers.getByTestId('timeline').locator('img[data-still]')).toHaveCount(10, {
+    timeout: 60_000,
+  });
+  await markers.getByTestId('markers-start').fill('0:07.4');
+  await markers.getByTestId('markers-end').fill('0:22.0');
+  await win.setViewportSize({ width: 1280, height: 1150 });
+  await expect(markers.getByTestId('markers-keyframe')).toContainText('the nearest clean frame', {
+    timeout: 20_000,
+  });
+  await markers.getByTestId('markers-keyframe').scrollIntoViewIfNeeded();
+  await shot(win, 'video-timeline');
+  await win.setViewportSize({ width: 1280, height: 720 });
+  // Closing asks about the changed start and end first: they are thrown away.
+  await win.keyboard.press('Escape');
+  await win.getByTestId('keep-changes').getByRole('button', { name: 'Throw them away' }).click();
+  await expect(markers).toHaveCount(0);
+  await win
+    .getByTestId('media-row')
+    .filter({ hasText: 'Placeholder darshan' })
+    .getByTestId('media-picture')
+    .click();
+  const editor = win.getByTestId('picture-editor');
+  await expect(editor).toBeVisible();
+  await editor.getByTestId('pe-zoom').evaluate((el) => {
+    const input = el as HTMLInputElement;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, '160');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await editor.getByTestId('pe-auto').click();
+  await shot(win, 'picture-editor');
+  await editor.getByTestId('pe-save').click();
+  // The live zoom, under LIVE.
+  await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({
+        type: 'setBackground',
+        background: { kind: 'media', mediaId: id, media: 'image', fit: 'fit', loop: false },
+      }),
+    pictureId,
+  );
+  await win.getByTestId('live-zoom-in').click();
+  await expect(win.getByTestId('live-zoom-keep')).toBeVisible();
+  await part(win, 'live-zoom', [win.getByTestId('live-preview'), win.getByTestId('live-zoom')]);
+  await app.close();
+});
+
+test('Screens with its three cards: the projector, the stage screen and YouTube (Session 26 step 13)', async () => {
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '2' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await setUpScreen(win, 'Placeholder hall', 0);
+  await setUpScreen(win, 'Placeholder stage', 1);
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const stage = (await d.screens.get()).groups.find((g) => g.name === 'Placeholder stage');
+    if (stage) await d.screens.setGroupRole(stage.id, 'stage');
+    const kirtan = (await d.library.listPresentations()).find((p) => p.name.startsWith('Sample kirtan'));
+    if (kirtan) await d.engine.dispatch({ type: 'goLive', presentationId: kirtan.id, slideIndex: 0 });
+  });
+  await win.setViewportSize({ width: 1440, height: 1500 });
+  await win.getByRole('button', { name: 'Screens', exact: true }).click();
+  const cards = win.getByTestId('screens-cards');
+  await expect(cards.getByTestId('screens-card-stage').getByTestId('card-shows')).toBeVisible();
+  await expect(cards.getByTestId('youtube-preview')).toHaveAttribute('data-kind', 'still');
+  await part(win, 'screens-cards', [cards]);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await shot(win, 'screens-cards-1280x720');
+  await app.close();
+});
+
+test('every built-in theme, and the Themes window with them (Session 26 step 14)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await win.getByRole('button', { name: 'Themes', exact: true }).click();
+  const panel = win.getByTestId('themes-panel');
+  const items = panel.getByTestId('theme-item');
+  await expect(items).toHaveCount(BUILTIN_THEMES.length + 1);
+  await items.filter({ hasText: 'Midnight' }).click();
+  await shot(win, 'themes-builtin');
+  for (const { key, fields } of BUILTIN_THEMES) {
+    await items.filter({ hasText: fields.name }).first().click();
+    await expect(panel.getByRole('textbox', { name: 'Theme name' })).toHaveValue(fields.name);
+    await part(win, `theme-${key}`, [panel.getByTestId('theme-editor-preview')]);
+  }
+  await app.close();
 });

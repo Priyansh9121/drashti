@@ -80,12 +80,21 @@ function previewSlide(t: ThemeFields): RenderSlide {
 const percent = (n: number) => Math.round(n * 1000) / 10;
 
 /** A theme drawn: a line in each language under it (a picture background shown as a still). */
-function ThemePreview({ theme, className = '' }: { theme: ThemeFields; className?: string }) {
+function ThemePreview({
+  theme,
+  className = '',
+  testId,
+}: {
+  theme: ThemeFields;
+  className?: string;
+  testId?: string;
+}) {
   const slide = useMemo(() => previewSlide(theme), [theme]);
   const bg = theme.background;
   return (
     <div
       className={`overflow-hidden rounded-lg border border-line-strong bg-black ${className}`}
+      data-testid={testId}
       data-a11y-picture
       aria-hidden="true"
     >
@@ -237,7 +246,7 @@ function ThemeEditor({
           Built in: it stays as it is. Saving a change makes a copy of your own, here in the list.
         </Notice>
       )}
-      <ThemePreview theme={draft} />
+      <ThemePreview theme={draft} testId="theme-editor-preview" />
       <section className="space-y-2">
         <SectionTitle>Each language</SectionTitle>
         <table className="w-full text-sm" data-testid="theme-langs">
