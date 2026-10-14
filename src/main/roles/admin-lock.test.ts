@@ -23,6 +23,8 @@ describe('the admin channels', () => {
       IPC.macros.run,
       IPC.playlists.addItems,
       IPC.playlists.create,
+      // A smart playlist's missing items out (Session 26c): the operator's, as removing items is.
+      IPC.playlists.removeMissing,
       IPC.library.saveWords,
       IPC.library.saveSlides,
       IPC.props.save,
@@ -54,6 +56,8 @@ describe('the admin channels', () => {
     expect(refusedNow(IPC.screens.createGroup)).toBe(true);
     expect(refusalFor(IPC.screens.createGroup)?.()).toEqual({ ok: false, message: ADMIN_REFUSAL });
     expect(refusedNow(IPC.playlists.create)).toBe(false);
+    // A smart playlist imports what its folder holds: made by an admin, as importing is (Session 26c).
+    expect(refusalFor(IPC.playlists.createSmart)?.()).toEqual({ ok: false, message: ADMIN_REFUSAL });
     simple = true;
     expect(refusalFor(IPC.screens.createGroup)?.()).toBe('simple');
     simple = false;

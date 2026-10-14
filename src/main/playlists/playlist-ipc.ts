@@ -1,7 +1,7 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { IPC } from '../../shared/ipc';
 import type { RenderSlide } from '../../shared/model';
-import type { PlaylistResult } from '../../shared/playlists';
+import type { PlaylistResult, SmartPlaylistView } from '../../shared/playlists';
 import {
   idListSchema,
   itemOrderSchema,
@@ -30,6 +30,17 @@ export interface PlaylistIpcDeps {
   opened: (playlistId: string) => void;
   /** A presentation's first slide in its order, for a playlist card (Session 26a); null when it has none. */
   firstSlide: (presentationId: string) => RenderSlide | null;
+  /** Smart playlists (Session 26c, smart-folders.ts). */
+  smart?: {
+    /** The folder an admin chooses for a new one (a dialog), or null. */
+    pickFolder(): Promise<string | null>;
+    create(folder: string): Promise<{ ok: true; id: string } | { ok: false; message: string }>;
+    views(): SmartPlaylistView[];
+    removeMissing(playlistId: string): string[];
+    itemsRestored(itemIds: readonly string[]): void;
+    /** Playlists were deleted or brought back. */
+    refresh(): Promise<void>;
+  };
 }
 
 const refused: PlaylistResult = { ok: false, message: 'Only the operator window can change playlists.' };
@@ -41,6 +52,7 @@ export function registerPlaylistIpc({
   changed,
   opened,
   firstSlide,
+  smart,
 }: PlaylistIpcDeps): void {
   /** Run a change for the operator window, then tell everyone when something changed. */
   const change = (event: IpcMainInvokeEvent, run: () => PlaylistResult): PlaylistResult => {
@@ -86,16 +98,23 @@ export function registerPlaylistIpc({
         : failed('That playlist no longer exists.');
     }),
   );
+  // A smart playlist deleted stops following its folder; brought back, it follows it again.
   handle(IPC.playlists.remove, (e, ids) =>
     change(e, () => {
       const list = idListSchema.safeParse(ids);
-      return list.success ? { ok: true, ids: repo.remove(list.data) } : failed('Nothing was removed.');
+      if (!list.success) return failed('Nothing was removed.');
+      const removed = repo.remove(list.data);
+      void smart?.refresh();
+      return { ok: true, ids: removed };
     }),
   );
   handle(IPC.playlists.restore, (e, ids) =>
     change(e, () => {
       const list = idListSchema.safeParse(ids);
-      return list.success ? { ok: true, ids: repo.restore(list.data) } : failed('Nothing was restored.');
+      if (!list.success) return failed('Nothing was restored.');
+      const restored = repo.restore(list.data);
+      void smart?.refresh();
+      return { ok: true, ids: restored };
     }),
   );
   handle(IPC.playlists.addItems, (e, playlistId, at, items) =>
@@ -130,7 +149,11 @@ export function registerPlaylistIpc({
   handle(IPC.playlists.restoreItems, (e, ids) =>
     change(e, () => {
       const list = idListSchema.safeParse(ids);
-      return list.success ? { ok: true, ids: repo.restoreItems(list.data) } : failed('Nothing was restored.');
+      if (!list.success) return failed('Nothing was restored.');
+      const restored = repo.restoreItems(list.data);
+      // A smart playlist's missing items taken out and brought back: missing again.
+      smart?.itemsRestored(restored);
+      return { ok: true, ids: restored };
     }),
   );
   handle(IPC.playlists.fillPlaceholder, (e, itemId, presentationId) =>
@@ -206,6 +229,23 @@ export function registerPlaylistIpc({
       return repo.setTimers(id.data, c.data)
         ? { ok: true, ids: [id.data] }
         : failed('Only a presentation, media or passage item runs timers when it goes up.');
+    }),
+  );
+  // ---- smart playlists (Session 26c) -----------------------------------------------------
+  handle(IPC.playlists.smartViews, () => smart?.views() ?? []);
+  handle(IPC.playlists.createSmart, async (e) => {
+    if (!fromOperator(e)) return refused;
+    if (!smart) return failed('Smart playlists are not available.');
+    const folder = await smart.pickFolder();
+    if (folder === null) return { ok: true, ids: [] };
+    const made = await smart.create(folder);
+    return made.ok ? { ok: true, ids: [made.id] } : failed(made.message);
+  });
+  handle(IPC.playlists.removeMissing, (e, playlistId) =>
+    change(e, () => {
+      const id = playlistIdSchema.safeParse(playlistId);
+      if (!id.success || !smart) return failed('That playlist no longer exists.');
+      return { ok: true, ids: smart.removeMissing(id.data) };
     }),
   );
   handle(IPC.playlists.addSlot, (e, playlistId, at, slot) =>

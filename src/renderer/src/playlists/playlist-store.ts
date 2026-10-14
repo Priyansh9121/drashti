@@ -566,6 +566,37 @@ export function moveItemBy(id: string, step: -1 | 1): Promise<boolean> {
   return run;
 }
 
+/**
+ * + New › Smart Playlist from a Folder… (Session 26c): an admin chooses the folder; the new playlist
+ * opens, and fills itself as its files hold still.
+ */
+export async function createSmartPlaylist(): Promise<void> {
+  const result = await api().createSmart();
+  if (!settled(result)) return;
+  const [id] = result.ids;
+  // The dialog was closed.
+  if (!id) return;
+  await loadTree();
+  await openPlaylist(id);
+}
+
+/** A smart playlist's missing items out (their files are gone from its folder); Undo brings them back. */
+export async function removeMissingItems(playlistId: string): Promise<void> {
+  const result = await api().removeMissing(playlistId);
+  if (!settled(result) || result.ids.length === 0) return;
+  const removed = result.ids;
+  const playlist = nodeOf(playlistId)?.name ?? 'the playlist';
+  pushRemoval({
+    text: `Removed ${describeSome([], removed.length, 'missing item')} from “${playlist}”`,
+    restore: async () => {
+      await api().restoreItems(removed);
+      if (usePlaylists.getState().openId !== playlistId) await openPlaylist(playlistId);
+      await reload();
+    },
+  });
+  await reload();
+}
+
 /** Remove the marked items; Undo brings them back where they were. */
 export async function removeMarkedItems(): Promise<void> {
   const { openId } = usePlaylists.getState();

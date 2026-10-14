@@ -130,6 +130,7 @@ import { saveStill } from './media/stills';
 import { installMenu, installNodeMenu } from './menu';
 import { runPerformanceTest } from './perftest';
 import { registerPlaylistIpc } from './playlists/playlist-ipc';
+import { nodeWatch, SmartFolders } from './playlists/smart-folders';
 import {
   applyPendingRestore,
   backupLibrary,
@@ -2964,16 +2965,68 @@ function start(): void {
         : { ok: false, message: 'That timer no longer exists.' };
     }),
   );
+  const playlistsChanged = () => {
+    // A live item's order may have changed, and what comes next may be different.
+    engine.reorderLive();
+    engine.refreshNext();
+    sendToOperator(IPC.playlists.changed, { at: Date.now() });
+    net.hint('playlists');
+  };
+  // ---- Smart playlists (Session 26c): a playlist that follows a folder on the computer ----
+  /** A test switch (never a packaged Drashti): a positive number of milliseconds, or null. */
+  const testMs = (name: string): number | null => {
+    const ms = app.isPackaged ? Number.NaN : Number(process.env[name]);
+    return Number.isFinite(ms) && ms > 0 ? ms : null;
+  };
+  const smartFolders = new SmartFolders({
+    db: libraryDb,
+    playlists,
+    importFiles: async (paths, options) => {
+      const result = await imports.start(paths, options);
+      return result.ok ? { ok: true, runId: result.run.id } : { ok: false, message: result.message };
+    },
+    report: (runId) => importRepo.report(runId),
+    changed: playlistsChanged,
+    views: (views) => {
+      sendToOperator(IPC.playlists.smartChanged, views);
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+    now: () => Date.now(),
+    scanMs: testMs('DRASHTI_TEST_SMART_SCAN_MS') ?? 10_000,
+    settleMs: testMs('DRASHTI_TEST_SMART_SETTLE_MS') ?? 3000,
+    watch: nodeWatch,
+  });
+  void smartFolders.start();
+  stops.add('smart playlists', () => {
+    smartFolders.stop();
+  });
   registerPlaylistIpc({
     repo: playlists,
     fromOperator,
     firstSlide: (presentationId) => slides.order(presentationId)?.slides[0]?.slide ?? null,
-    changed: () => {
-      // A live item's order may have changed, and what comes next may be different.
-      engine.reorderLive();
-      engine.refreshNext();
-      sendToOperator(IPC.playlists.changed, { at: Date.now() });
-      net.hint('playlists');
+    changed: playlistsChanged,
+    smart: {
+      pickFolder: async () => {
+        if (!operatorWindow) return null;
+        const picked = await dialog.showOpenDialog(operatorWindow, {
+          title: 'Smart Playlist from a Folder',
+          message:
+            'Choose a folder: what Drashti imports there, and in its folders, joins the playlist by itself.',
+          buttonLabel: 'Follow This Folder',
+          properties: ['openDirectory'],
+        });
+        return picked.canceled ? null : (picked.filePaths[0] ?? null);
+      },
+      create: (folder) => smartFolders.create(folder),
+      views: () => smartFolders.views(),
+      removeMissing: (playlistId) => smartFolders.removeMissing(playlistId),
+      itemsRestored: (itemIds) => {
+        smartFolders.itemsRestored(itemIds);
+      },
+      refresh: () => smartFolders.refresh(),
     },
     opened: (playlistId) => {
       // Opened on Main, a playlist from an earlier week counts as this week's: nodes copy its media.
