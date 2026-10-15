@@ -38,7 +38,7 @@ on:
         type: string
         default: ''
       pixels_base:
-        description: 'Quick check: compare what the audience screens show with this earlier commit (a full SHA, branch or tag; tests/e2e/audience-pixels.spec.ts)'
+        description: 'Quick check: compare what the audience screens show with this earlier commit (its full SHA, 40 hexadecimal characters; tests/e2e/audience-pixels.spec.ts)'
         type: string
         default: ''
 
@@ -56,11 +56,12 @@ jobs:
     name: Secret scan (gitleaks, whole history)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           # Every commit of every branch and tag, not just the one being built.
           fetch-depth: 0
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       # The pinned gitleaks finds a planted token and prints it redacted, then the real scan.
@@ -71,15 +72,19 @@ jobs:
     name: Typecheck, lint, unit tests (Ubuntu)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm lint
+      # The workflows' own rules (Session 30): actions pinned by SHA, no kept credentials, no expression in a script.
+      - run: node scripts/check-workflows.mjs
       - name: Unit tests (inside Electron's Node)
         run: pnpm test
 
@@ -102,16 +107,18 @@ jobs:
       # (Ubuntu ran them), no packaging.
       QUICK: ${{ github.event_name == 'workflow_dispatch' && (inputs.specs != '' || inputs.screenshots || inputs.unit != '' || inputs.pixels_base != '') }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # The FFmpeg Drashti bundles: pinned builds, checked against their SHA-256 (never in git).
       - name: Cache FFmpeg, yt-dlp and Deno downloads
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/drashti
           key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs', 'scripts/fetch-youtube-tools.mjs') }}
@@ -132,7 +139,7 @@ jobs:
       # Phones and tablets on the local network: Playwright's own Chromium (Chrome on Android) and
       # WebKit (Safari on an iPhone) talk to the app's server in the end-to-end tests.
       - name: Cache Playwright's browsers
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.os == 'Windows' && '~\AppData\Local\ms-playwright' || '~/Library/Caches/ms-playwright' }}
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
@@ -205,12 +212,17 @@ jobs:
         env:
           BASE: ${{ inputs.pixels_base }}
         run: |
+          # A full commit SHA only (Session 30): a short one, a branch or a tag could name another commit.
+          if ! [[ "$BASE" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::pixels_base must be a full commit SHA: 40 hexadecimal characters (0-9, a-f). A short SHA, a branch or a tag is not taken." >&2
+            exit 1
+          fi
           git fetch --no-tags --depth=1 origin "$BASE"
           pnpm build
           node scripts/audience-pixels.mjs FETCH_HEAD
       - name: Upload the screenshots
         if: env.QUICK == 'true' && inputs.screenshots
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: screenshots-${{ runner.os }}
           path: docs/screenshots
@@ -234,7 +246,7 @@ jobs:
         run: node scripts/check-ffmpeg.mjs --packaged
       - name: Upload installers
         if: env.QUICK != 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: drashti-${{ runner.os }}
           path: |
@@ -247,7 +259,7 @@ jobs:
       # failed in test-results, and that is the only way to see what went wrong.
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-report-${{ runner.os }}
           path: |
