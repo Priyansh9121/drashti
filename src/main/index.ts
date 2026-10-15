@@ -1291,9 +1291,15 @@ function start(): void {
           heartbeat.closed(config.id);
         }
       });
-      // A window that changes size (a windowed output; a display's resolution): copies follow (Session 26g).
+      // A window that changes size (a windowed output; a display's resolution): copies follow (Session 26g),
+      // once it has stopped changing (a window dragged larger sends a resize for every step).
+      let resized: NodeJS.Timeout | null = null;
       window.on('resize', () => {
-        void sharpened.screensChanged();
+        if (resized) clearTimeout(resized);
+        resized = setTimeout(() => {
+          resized = null;
+          void sharpened.screensChanged();
+        }, 500);
       });
       return h;
     },

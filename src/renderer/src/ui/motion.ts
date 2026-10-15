@@ -85,6 +85,13 @@ export function leave(node: Element | null, kind: Leaving): void {
     el.removeAttribute('data-testid');
     el.removeAttribute('data-motion');
   }
+  // A picture of it, never a player: a copied video or sound never loads or plays.
+  for (const media of copy.querySelectorAll<HTMLMediaElement>('video, audio')) {
+    media.removeAttribute('src');
+    media.removeAttribute('autoplay');
+    media.preload = 'none';
+    for (const source of media.querySelectorAll('source')) source.remove();
+  }
   Object.assign(copy.style, {
     position: 'fixed',
     left: `${String(box.left)}px`,
