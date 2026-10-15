@@ -132,6 +132,12 @@ jobs:
         run: node scripts/release-assets.mjs --dir release-files --repo "$GITHUB_REPOSITORY" --notes release-notes.md
       - name: What the update check will read
         run: cat release-files/drashti-update.json
+      # Session 30 (Q2): advisory, never stopping a release: a summary for this log (blocking comes later).
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - name: The dependency audit (advisory)
+        run: |
+          pnpm audit --json > audit.json || true
+          node scripts/audit-summary.mjs audit.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-files
