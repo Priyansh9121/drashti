@@ -6,7 +6,15 @@ import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  outputPages,
+  setUpScreen,
+  outputReady,
+} from './helpers';
 import { makeTestVideo } from './test-media';
 
 /*
@@ -136,6 +144,7 @@ test('a background loops between its points; a jump to a marker lands in step on
   await setUpScreen(win, 'Overflow', 1);
   await expect.poll(() => outputPages(app).length).toBe(2);
   const [a, b] = outputPages(app) as [Page, Page];
+  for (const o of [a, b]) await outputReady(o);
   await win.evaluate(
     (id) =>
       (globalThis as PageGlobals).drashti.engine.dispatch({
@@ -272,6 +281,7 @@ test('a file played once stops at its end point, within two frames, on two scree
   await setUpScreen(win, 'Overflow', 1);
   await expect.poll(() => outputPages(app).length).toBe(2);
   const [a, b] = outputPages(app) as [Page, Page];
+  for (const o of [a, b]) await outputReady(o);
   const audio = await audioPage(app);
   const picture = `[data-layer="background"] video[data-media-id="${mediaId}"]`;
   const sound = `audio[data-media-id="${mediaId}"]`;

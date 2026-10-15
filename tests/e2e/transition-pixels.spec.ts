@@ -5,7 +5,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TransitionKind } from '../../src/shared/model';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  outputPages,
+  setUpScreen,
+  outputReady,
+} from './helpers';
 import { EASE } from '../../src/renderer/src/render/easing';
 import { canvasPixels } from './pixels';
 
@@ -133,6 +141,7 @@ test('each transition is the same on two screens at the same moment, and gives t
   await setUpScreen(win, 'Side Hall', 1);
   await expect.poll(() => outputPages(app).length).toBe(2);
   const [one, two] = outputPages(app);
+  for (const o of [one, two]) if (o) await outputReady(o);
   if (!one || !two) throw new Error('two screens expected');
   const both = [one, two];
   // Once round (cut), so both pictures are loaded and drawn before anything is measured.

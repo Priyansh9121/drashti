@@ -15,6 +15,7 @@ import {
   operatorReady,
   outputPages,
   setUpScreen,
+  outputReady,
 } from './helpers';
 import { makeTestImage } from './test-media';
 import { holdClock } from './placeholder-slides';
@@ -38,6 +39,8 @@ async function outputFor(app: ElectronApplication, screenId: string): Promise<Pa
     })
     .toBe(true);
   if (!found) throw new Error(`no output for ${screenId}`);
+  // Ready to draw the show (Session 27's warm-up): one still warming would lag another.
+  await outputReady(found);
   return found;
 }
 

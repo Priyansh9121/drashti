@@ -7,7 +7,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { OutputGlobals, PageGlobals } from './helpers';
-import { importAndGetIds, killApp, outputPage, setUpScreen } from './helpers';
+import { importAndGetIds, killApp, outputPage, setUpScreen, outputReady } from './helpers';
 import { launchMain, launchNode, pairNode, type MainRun, type NodeRun } from './nodes';
 import { makeTestVideo } from './test-media';
 
@@ -131,7 +131,8 @@ test('a node’s display in a group follows slides, a dissolve and a video in st
     const groupId = await groupOf(main.win, 'Placeholder Hall');
     const mainOut = await outputPage(main.app);
     const nodeOut = await nodeScreenIn(main, node, nodeId, groupId);
-    await expect(nodeOut.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+    // Both ready to draw the show (Session 27's warm-up): Main's still warming missed slide changes.
+    for (const o of [mainOut, nodeOut]) await outputReady(o);
 
     // The node found its clock 4 s off and corrects it: what its windows add is near 0.
     await expect
