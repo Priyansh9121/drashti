@@ -5,8 +5,12 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CommandResult, EngineCommand } from '../shared/engine/commands';
 import type { MaskLayer } from '../shared/engine/state';
+import type { Movement } from '../shared/looks';
+import type { TextStyle, TransitionKind } from '../shared/model';
+import type { PictureLook } from '../shared/picture-look';
 import type { Db } from './db/database';
 import { PresentationRepo } from './db/presentations';
+import { FIRST_BOLD_MARK } from './perf-watch';
 import type { PerfCheck } from './perftest';
 import { plural } from '../shared/text';
 
@@ -27,6 +31,13 @@ import { plural } from '../shared/text';
  *   with every enhancement (brightness, contrast, colour, sharpening), changed
  *   at the plain check's pace through the import: the screens must draw them
  *   with their looks.
+ * - bold-transitions (Session 27): slides of placeholder words and a picture,
+ *   each coming on by another of the Bold kinds (push, wipe, zoom, line by line,
+ *   word by word, the fade) over a picture background, every screen group
+ *   moving Bold from when the measured part begins: each screen must draw nine
+ *   in ten of its transitions' frames (the dissolves' smoothness), and with a
+ *   trace (DRASHTI_PERF_PROFILE) the GPU must make no new pipeline during the
+ *   first Bold transition (the screens warmed it up, render/WarmUp.tsx).
  *
  * The videos are FFmpeg's test pattern with a tone, made by the bundled
  * FFmpeg in the check's throwaway library. Besides the usual checks, each
@@ -45,6 +56,7 @@ export const PERF_SCENARIOS = [
   'dissolves-video',
   'three-outputs',
   'enhanced-pictures',
+  'bold-transitions',
 ] as const;
 export type PerfScenario = (typeof PERF_SCENARIOS)[number];
 
@@ -59,12 +71,16 @@ export interface ScenarioDeps {
   outputs: () => BrowserWindow[];
   /** Every picture's sharpened copy made (Session 26f). */
   sharpened?: () => Promise<void>;
+  /** Every screen group in the live Look to move this way (Session 27). */
+  setMovement?: (movement: Movement) => void;
 }
 
 /** What the slide changes go through (null: the usual three text slides), and how often. */
 export interface ScenarioSlides {
   presentationId: string | null;
   everyMs: number;
+  /** How many slides it goes round (three when left out). */
+  count?: number;
 }
 
 /** As an operator changes slides: every two seconds, not the plain check's 25 a second. */
@@ -138,6 +154,19 @@ function makeVideo(
 
 /** A 1080p picture FFmpeg makes (its test pattern, turned in hue), as a media item with every enhancement. */
 function makeEnhancedPicture(deps: ScenarioDeps, name: string, hue: number): string {
+  return makePicture(deps, name, hue, {
+    zoom: 1.2,
+    x: 0.05,
+    y: 0,
+    brightness: 0.1,
+    contrast: 0.15,
+    colour: 0.3,
+    sharpness: 0.5,
+  });
+}
+
+/** A 1080p JPEG of FFmpeg's test pattern, as a media item in the check's library, with a look or none. */
+function makePicture(deps: ScenarioDeps, name: string, hue: number, look: PictureLook | null): string {
   if (!deps.ffmpeg) throw new Error('The scenarios need the bundled FFmpeg (node scripts/fetch-ffmpeg.mjs).');
   mkdirSync(join(deps.mediaDir, 'perf'), { recursive: true });
   const path = `perf/${name}.jpg`;
@@ -163,7 +192,6 @@ function makeEnhancedPicture(deps: ScenarioDeps, name: string, hue: number): str
   if (r.status !== 0)
     throw new Error(`FFmpeg could not make the scenario's picture: ${r.stderr.toString().slice(0, 200)}`);
   const mediaId = randomUUID();
-  const look = { zoom: 1.2, x: 0.05, y: 0, brightness: 0.1, contrast: 0.15, colour: 0.3, sharpness: 0.5 };
   // Its sha256, as an imported picture has: its sharpened copy is named by it (Session 26f).
   const sha256 = createHash('sha256')
     .update(readFileSync(join(deps.mediaDir, path)))
@@ -172,7 +200,7 @@ function makeEnhancedPicture(deps: ScenarioDeps, name: string, hue: number): str
     .prepare(
       "INSERT INTO media (id, kind, name, path, sha256, width, height, look) VALUES (?, 'image', ?, ?, ?, 1920, 1080, ?)",
     )
-    .run(mediaId, `Placeholder perf ${name}`, path, sha256, JSON.stringify(look));
+    .run(mediaId, `Placeholder perf ${name}`, path, sha256, look ? JSON.stringify(look) : null);
   return mediaId;
 }
 
@@ -190,6 +218,40 @@ const LOOKS = `(() => {
     svg,
   };
 })()`;
+
+/**
+ * Each screen's slide transitions, frame by frame (Session 27): how many there were, the frames drawn while
+ * they ran, for how long, and the longest wait for a frame. The first is marked for a trace (what the GPU
+ * made while it ran: perf-watch.ts, gpuPipelines).
+ */
+const TRANSITIONS = `(() => {
+  const s = { transitions: 0, frames: 0, ms: 0, worst: 0 };
+  window.drashtiTransitionFrames = s;
+  let on = false;
+  let last = 0;
+  let start = 0;
+  const tick = (t) => {
+    const fading = document.querySelector('[data-layer="slide"][data-fading="true"]') !== null;
+    if (fading && !on) {
+      on = true;
+      start = t;
+      last = t;
+      s.transitions += 1;
+      if (s.transitions === 1) performance.mark('${FIRST_BOLD_MARK}');
+    } else if (fading) {
+      s.frames += 1;
+      s.worst = Math.max(s.worst, t - last);
+      last = t;
+    } else if (on) {
+      on = false;
+      s.ms += t - start;
+      if (s.transitions === 1) performance.mark('${FIRST_BOLD_MARK}-end');
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+})()`;
+const TRANSITIONS_READ = `(() => window.drashtiTransitionFrames ?? null)()`;
 
 /** A mask that shows only an ellipse in the middle: its edge is drawn over the video on every frame. */
 const ELLIPSE: MaskLayer = {
@@ -390,6 +452,8 @@ export function startScenario(name: PerfScenario, deps: ScenarioDeps): ScenarioR
         },
       };
     }
+    case 'bold-transitions':
+      return boldTransitions(deps);
   }
   return {
     slides,
@@ -424,6 +488,107 @@ export function startScenario(name: PerfScenario, deps: ScenarioDeps): ScenarioR
           },
         ],
         summary: `scenario ${name}: ${plural(counts.length, 'screen')}, video frames shown ${kept.map(percent).join(', ')} of ${String(fps)} a second`,
+      };
+    },
+  };
+}
+
+const BOLD_WORDS: TextStyle = {
+  fontFamily: null,
+  fontSize: 80,
+  fontWeight: 500,
+  color: '#ffffff',
+  align: 'center',
+  verticalAlign: 'middle',
+  lineHeight: 1.25,
+  shadow: true,
+};
+
+/**
+ * bold-transitions (Session 27): placeholder words and a picture on each slide, each coming on by another
+ * kind, over a picture background; every group moves Bold from the measured part's start, so its first
+ * slide change (to the second slide: a push) is the show's first Bold transition.
+ */
+function boldTransitions(deps: ScenarioDeps): ScenarioRun {
+  const pictures = [0, 120, 240].map((hue, i) =>
+    makePicture(deps, `bold-picture-${String(i + 1)}`, hue, null),
+  );
+  deps.engine.dispatch({
+    type: 'setBackground',
+    background: { kind: 'media', mediaId: pictures[0] ?? '', media: 'image', fit: 'fill', loop: false },
+  });
+  const kinds: TransitionKind[] = ['dissolve', 'push', 'wipe', 'zoom-dissolve', 'lines', 'words'];
+  const repo = new PresentationRepo(deps.db);
+  const presentationId = repo.insert({
+    libraryId: repo.ensureLibrary('Default'),
+    name: 'Placeholder perf Bold slides',
+    groups: [
+      {
+        name: '',
+        slides: kinds.map((kind, i) => ({
+          label: `Placeholder Bold ${String(i + 1)}`,
+          transition: { kind, durationMs: 700 },
+          elements: [
+            {
+              id: 'picture',
+              kind: 'image' as const,
+              frame: { x: 1240, y: 80, width: 600, height: 338 },
+              mediaId: pictures[i % pictures.length] ?? '',
+              fit: 'fill' as const,
+            },
+            {
+              id: 'words',
+              kind: 'text' as const,
+              frame: { x: 96, y: 96, width: 1728, height: 888 },
+              text: `Placeholder words ${String(i + 1)}\nA second placeholder line`,
+              lang: 'en' as const,
+              style: BOLD_WORDS,
+            },
+          ],
+        })),
+      },
+    ],
+  });
+  return {
+    slides: { presentationId, everyMs: 2000, count: kinds.length },
+    begin: async () => {
+      deps.setMovement?.('bold');
+      await Promise.all(
+        deps.outputs().map((w) => w.webContents.executeJavaScript(TRANSITIONS, true).catch(() => undefined)),
+      );
+    },
+    end: async () => {
+      const seen = await Promise.all(
+        deps.outputs().map(
+          (w) =>
+            w.webContents.executeJavaScript(TRANSITIONS_READ, true).catch(() => null) as Promise<{
+              transitions: number;
+              frames: number;
+              ms: number;
+              worst: number;
+            } | null>,
+        ),
+      );
+      // Frames drawn while they ran, against 60 a second over their time.
+      const kept = seen.map((t) => (t && t.ms > 0 ? Math.min(1, t.frames / (t.ms / (1000 / 60))) : 0));
+      const worst = kept.length > 0 ? Math.min(...kept) : 0;
+      const percent = (k: number) => `${String(Math.round(k * 100))}%`;
+      const detail = seen
+        .map((t, i) =>
+          t
+            ? `${plural(t.transitions, 'transition')}, ${percent(kept[i] ?? 0)} of their frames, longest wait ${String(Math.round(t.worst))} ms`
+            : 'none',
+        )
+        .join('; ');
+      return {
+        checks: [
+          {
+            name: "every screen drew 9 in 10 of its Bold transitions' frames (60 a second)",
+            ok: worst >= 0.9 && seen.every((t) => t !== null && t.transitions > 0),
+            detail,
+          },
+        ],
+        summary: `scenario bold-transitions: ${plural(seen.length, 'screen')}, ${detail}`,
       };
     },
   };

@@ -1,7 +1,8 @@
 import { contentTracing } from 'electron';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { createReadStream, mkdirSync, writeFileSync } from 'node:fs';
 import { Session } from 'node:inspector/promises';
 import { join } from 'node:path';
+import { createInterface } from 'node:readline';
 
 /*
  * The performance check's watch on the main process (Session 15). Every
@@ -15,7 +16,9 @@ import { join } from 'node:path';
  * With DRASHTI_PERF_PROFILE=<folder> it also keeps a CPU profile of the main
  * process's JavaScript and a Chromium trace of the processes' main threads,
  * to see what filled a gap that JavaScript did not (the timeline goes there
- * too, as JSON).
+ * too, as JSON). The trace also has each new kind of drawing the GPU made (a
+ * pipeline, with its compile time; Session 27) and the pages' marks, so the
+ * check can say what the GPU made during the first Bold transition.
  */
 
 export interface Gap {
@@ -100,6 +103,7 @@ export class MainWatch {
 export class PerfProfile {
   private session: Session | null = null;
   private tracing = false;
+  private traced = false;
 
   constructor(private readonly folder: string) {}
 
@@ -112,12 +116,29 @@ export class PerfProfile {
     await session.post('Profiler.setSamplingInterval', { interval: 500 });
     await session.post('Profiler.start');
     this.session = session;
-    // Tasks on each process's threads (toplevel), with where they were posted from, and IPC.
+    // Tasks on each process's threads (toplevel), with where they were posted from, and IPC; the GPU's new
+    // pipelines and Dawn's compiling (Session 26g's way of seeing them), and the pages' marks.
     await contentTracing.startRecording({
-      included_categories: ['toplevel', 'toplevel.flow', 'ipc', 'mojom', 'electron', 'v8.execute'],
+      included_categories: [
+        'toplevel',
+        'toplevel.flow',
+        'ipc',
+        'mojom',
+        'electron',
+        'v8.execute',
+        'skia.shaders',
+        'disabled-by-default-skia.shaders',
+        'gpu.dawn',
+        'blink.user_timing',
+      ],
       excluded_categories: ['*'],
     });
     this.tracing = true;
+  }
+
+  /** The GPU's new pipelines in the trace kept (Session 27), or null with none kept. */
+  async pipelines(): Promise<GpuPipelines | null> {
+    return this.traced ? gpuPipelines(join(this.folder, 'trace.json')) : null;
   }
 
   /** Keep both, and the watch's timeline, in the folder. */
@@ -131,6 +152,7 @@ export class PerfProfile {
     if (this.tracing) {
       this.tracing = false;
       await contentTracing.stopRecording(join(this.folder, 'trace.json'));
+      this.traced = true;
     }
     if (watch)
       writeFileSync(
@@ -138,6 +160,45 @@ export class PerfProfile {
         JSON.stringify({ gaps: watch.gaps, events: watch.events }, null, 1),
       );
   }
+}
+
+export interface GpuPipelines {
+  /** New pipelines the GPU made while the check ran, and how long making them took (ms). */
+  made: number;
+  ms: number;
+  /** Those made while a page's first marked transition ran (bold-transitions), or null with no mark. */
+  during: string[] | null;
+}
+
+/** The marks a page sets as its first Bold transition starts, and as it ends with `-end` (bold-transitions). */
+export const FIRST_BOLD_MARK = 'drashti-first-bold-transition';
+
+/**
+ * The GPU's new pipelines in a trace, and those made while the first marked transition ran (Session 27). A
+ * trace has an event a line, so it is read line by line: a long check's trace is far too big to parse whole.
+ */
+export async function gpuPipelines(trace: string, mark = FIRST_BOLD_MARK): Promise<GpuPipelines> {
+  const pipes: { ts: number; dur: number; desc: string }[] = [];
+  let start: number | null = null;
+  let end: number | null = null;
+  for await (const line of createInterface({ input: createReadStream(trace), crlfDelay: Infinity })) {
+    if (!line.includes('createGraphicsPipeline') && !line.includes(mark)) continue;
+    let e: { name?: string; ts?: number; dur?: number; args?: { desc?: string } };
+    try {
+      e = JSON.parse(line.replace(/,\s*$/u, '')) as typeof e;
+    } catch {
+      continue;
+    }
+    const ts = e.ts ?? 0;
+    if (e.name === 'createGraphicsPipeline') pipes.push({ ts, dur: e.dur ?? 0, desc: e.args?.desc ?? '' });
+    else if (e.name === mark) start = start === null ? ts : Math.min(start, ts);
+    else if (e.name === `${mark}-end`) end = end === null ? ts : Math.min(end, ts);
+  }
+  // Up to a fifth of a second after it ended (µs): the GPU draws its last frames a little after the page asks.
+  const until = (end ?? Number.POSITIVE_INFINITY) + 200_000;
+  const from = start;
+  const during = from === null ? null : pipes.filter((p) => p.ts >= from && p.ts <= until).map((p) => p.desc);
+  return { made: pipes.length, ms: Math.round(pipes.reduce((n, p) => n + p.dur, 0) / 1000), during };
 }
 
 /**

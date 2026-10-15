@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { usePractice, useShowRev, useShowState } from '../practice/practice-store';
 import { preloadFonts } from '../render/fonts';
 import { PlacedInParent } from '../render/Placed';
 import { Scene } from '../render/Scene';
 import { SceneBoundary } from '../render/SceneBoundary';
+import { WarmUp } from '../render/WarmUp';
 import { useFirstGroupLook, useScreens } from '../screens/screens-store';
 import { LANG_NAMES } from '../../../shared/themes';
 import type { RepeatRun } from '../../../shared/engine/state';
@@ -15,6 +16,9 @@ import { Repeat2, Square, Timer } from '../ui/icons';
 import { LiveZoomControls, ZoomablePreview } from './LiveZoom';
 import { useNow } from '../render/useNow';
 import { useWhatIsThis } from '../help/WhatIsThis';
+
+/** Tests only: the warm-up stays drawn, to be looked at (DRASHTI_TEST_HOLD_WARM_UP; never when packaged). */
+const HOLD_WARM_UP = new URLSearchParams(location.search).get('warmUp') === 'hold';
 
 /**
  * What the audience sees, drawn by the same Scene component the outputs use,
@@ -44,13 +48,31 @@ export function LivePreview() {
   const somethingUp = state
     ? state.layers.slide !== null || state.layers.background !== null || state.layers.props.length > 0
     : false;
+  // The GPU warmed up, unseen, in the LIVE picture while it would be black (Session 27, render/WarmUp.tsx):
+  // anything up, or put back after a restart, shows at once instead.
+  const drawsSomething =
+    state !== null &&
+    (somethingUp ||
+      state.layers.messages.length > 0 ||
+      state.layers.ticker !== null ||
+      state.layers.masks !== null ||
+      state.logo !== null ||
+      state.idle.startedAt !== null);
+  const [warmed, setWarmed] = useState(false);
+  const warmedUp = useCallback(() => {
+    setWarmed(true);
+  }, []);
+  // Once something has been drawn, it never warms up again.
+  if (drawsSomething && !warmed) setWarmed(true);
+  const warming = !warmed && !drawsSomething && !practising;
   const picture = (
     <>
       {/* The same scene as the outputs: if it fails as it draws, the preview is black (the rest of
             the window carries on) and tries again with the next change (Session 23). */}
       <SceneBoundary resetKey={rev} fallbackClassName="aspect-video w-full bg-black">
         <PlacedInParent content={canvas} mode="fit" className="relative aspect-video w-full">
-          {state && (
+          {warming && <WarmUp canvas={canvas} scaling={scaling} hold={HOLD_WARM_UP} onDone={warmedUp} />}
+          {state && !warming && (
             <Scene
               state={state}
               canvas={canvas}

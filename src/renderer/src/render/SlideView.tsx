@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { mediaUrl, stillUrl } from '../../../shared/media';
+import { stillUrl } from '../../../shared/media';
 import type {
   MediaElement,
   Outline,
@@ -21,6 +21,7 @@ import { slideShowing } from '../../../shared/picture-look';
 import { PreviewPicture, usePreviewsOnly } from './previews';
 import { useMediaAttempt } from './media-attempts';
 import { hasWords, revealLines, wordUnits } from './reveal';
+import { useMediaUrl } from './media-urls';
 
 /**
  * How a slide draws its videos: 'live' plays them (outputs and the live
@@ -366,6 +367,7 @@ function WindowVideoStill({ mediaId, style }: { mediaId: string; style: CSSPrope
 function MediaView({ el, media, startedAt }: { el: MediaElement; media: MediaMode; startedAt?: number }) {
   // On a node, a copy that landed after this picture was asked for: drawn again (a new element).
   const attempt = useMediaAttempt(el.mediaId);
+  const urlOf = useMediaUrl();
   // A picture's look (Session 26e), and on the screens the live zoom of this slide's showing.
   const showing = startedAt === undefined ? null : slideShowing(startedAt);
   // A phone or tablet: pictures and videos as small previews, and no video plays.
@@ -385,7 +387,7 @@ function MediaView({ el, media, startedAt }: { el: MediaElement; media: MediaMod
             key={attempt}
             data-element={el.id}
             data-media-id={el.mediaId}
-            src={copy?.url ?? mediaUrl(el.mediaId, attempt)}
+            src={copy?.url ?? urlOf(el.mediaId, attempt)}
             alt=""
             draggable={false}
             style={style}

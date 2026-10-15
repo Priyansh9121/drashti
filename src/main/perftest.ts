@@ -7,6 +7,7 @@ import type { DrashtiBridge } from '../shared/bridge';
 import type { MainWatch, PerfProfile } from './perf-watch';
 import type { ScenarioRun } from './perf-scenarios';
 import { describePriority } from './priority';
+import { plural } from '../shared/text';
 
 /*
  * Performance self-test, run by hand on the real machines (README,
@@ -158,7 +159,7 @@ interface EditSample {
 async function slideChangesDuringImport(
   folder: string | null,
   forMs: number,
-  slides: { presentationId: string | null; everyMs: number } | null,
+  slides: { presentationId: string | null; everyMs: number; count?: number } | null,
   edits: boolean,
 ) {
   const d = (globalThis as unknown as { drashti: DrashtiBridge }).drashti;
@@ -171,7 +172,7 @@ async function slideChangesDuringImport(
   const samples: { rev: number; sentAt: number; during: boolean; after: boolean }[] = [];
   let slide = 0;
   const change = async (during: boolean, after = false) => {
-    slide = (slide + 1) % 3;
+    slide = (slide + 1) % (slides?.count ?? 3);
     const sentAt = Date.now();
     const r = await d.engine.dispatch({ type: 'goLive', presentationId: id, slideIndex: slide });
     if (r.ok && r.changed) samples.push({ rev: r.rev, sentAt, during, after });
@@ -513,6 +514,8 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
     const scenario = await ctx.scenario?.end();
     ctx.watch?.note('slide changes end');
     await ctx.profile?.stop(ctx.watch ?? null);
+    // With a trace: the GPU's new pipelines while it ran, and during the first Bold transition (Session 27).
+    const gpu = (await ctx.profile?.pipelines().catch(() => null)) ?? null;
     if (!operator.isDestroyed()) operator.webContents.setBackgroundThrottling(true);
     const loopP99 = Math.round(d.loopDelay.percentile(99) / 1e6);
     const loopMax = Math.round(d.loopDelay.max / 1e6);
@@ -553,7 +556,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
       : '';
     const others = ctx.priority?.others();
     const priority = `main process priority ${describePriority()}${ctx.priority ? ` (started at ${ctx.priority.started}${others ? `, its other processes ${others}` : ''})` : ''}`;
-    const summary = `${what}${editsSummary}; ${priority}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}${after.length > 0 ? `; ${line('just after the import', after)}` : ''}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}${scenario ? `; ${scenario.summary}` : ''}`;
+    const summary = `${what}${editsSummary}; ${priority}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}${after.length > 0 ? `; ${line('just after the import', after)}` : ''}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}${scenario ? `; ${scenario.summary}` : ''}${gpu ? `; the GPU made ${plural(gpu.made, 'new pipeline')} (${String(gpu.ms)} ms)${gpu.during ? `, ${String(gpu.during.length)} during the first Bold transition` : ''}` : ''}`;
 
     const totals = run.result.run?.totals;
     if (!noImport) {
@@ -602,6 +605,12 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
       `${slow} of ${judged.length}${which}`,
     );
     if (scenario) checks.push(...scenario.checks);
+    if (gpu?.during)
+      check(
+        'the GPU made no new pipeline during the first Bold transition (the screens warmed it up)',
+        gpu.during.length === 0,
+        gpu.during.slice(0, 6).join(' | '),
+      );
     // Session 15: the main process carries every slide change; a block stops them all.
     if (ctx.watch)
       check(

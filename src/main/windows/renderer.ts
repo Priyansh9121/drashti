@@ -7,12 +7,16 @@ export const rendererDir = (): string => join(__dirname, '../renderer');
 export const devServerUrl = (): string | undefined =>
   app.isPackaged ? undefined : process.env['ELECTRON_RENDERER_URL'];
 
+/** Tests only: pages keep the GPU's warm-up drawn, to be looked at (Session 27). Never when packaged. */
+const holdWarmUp = (): boolean => !app.isPackaged && process.env['DRASHTI_TEST_HOLD_WARM_UP'] === '1';
+
 /** Load one of our HTML pages into a window, from Vite in dev or from disk. */
 export function loadPage(
   win: BrowserWindow,
   page: RendererPage,
-  query: Record<string, string> = {},
+  given: Record<string, string> = {},
 ): Promise<void> {
+  const query = holdWarmUp() ? { ...given, warmUp: 'hold' } : given;
   const dev = devServerUrl();
   if (dev) {
     const url = new URL(`${page}.html`, dev.endsWith('/') ? dev : dev + '/');

@@ -1,6 +1,5 @@
 import { type Dispatch, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
 import type { BackgroundLayer, MediaFit } from '../../../shared/engine/state';
-import { mediaUrl } from '../../../shared/media';
 import {
   NO_SLOTS,
   retryAfterLanding,
@@ -18,6 +17,7 @@ import { Looked } from './picture-looks';
 import { backgroundShowing } from '../../../shared/picture-look';
 import { PreviewPicture, usePreviewsOnly } from './previews';
 import { useMediaAttempt } from './media-attempts';
+import { useMediaUrl } from './media-urls';
 
 function style(fit: MediaFit, visible: boolean) {
   return {
@@ -104,6 +104,7 @@ function ImageSlot({
   const ref = useRef<HTMLImageElement>(null);
   const { key, layer, attempt } = slot;
   const { mediaId } = layer;
+  const urlOf = useMediaUrl();
   useEffect(() => {
     const img = ref.current;
     if (!img) return;
@@ -138,7 +139,7 @@ function ImageSlot({
           ref={ref}
           alt=""
           draggable={false}
-          src={copy?.url ?? mediaUrl(mediaId, attempt)}
+          src={copy?.url ?? urlOf(mediaId, attempt)}
           data-bg-slot={key}
           data-state={slot.state}
           data-media-id={mediaId}

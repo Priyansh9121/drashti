@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { StrictMode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../render/fonts.css';
 import '../styles/app.css';
@@ -10,6 +10,7 @@ import { PlacedInParent } from '../render/Placed';
 import { SceneBoundary } from '../render/SceneBoundary';
 import { Scene } from '../render/Scene';
 import { StageScreen } from '../render/StageScreen';
+import { WarmUp } from '../render/WarmUp';
 import { connectOutput, useOutput } from './output-store';
 import { Preloader } from './Preloader';
 import { DisplayNumber, TestCard } from './SetupCards';
@@ -48,11 +49,11 @@ function IdentifyOverlay() {
  * frame and how long after the main process sent it (same machine clock).
  * Tests read these to check that outputs update within a frame.
  */
-function usePaintTiming(root: React.RefObject<HTMLDivElement | null>) {
+function usePaintTiming(root: React.RefObject<HTMLDivElement | null>, drawing: boolean) {
   const rev = useEngine((s) => s.rev);
   const sentAt = useEngine((s) => s.sentAt);
   useLayoutEffect(() => {
-    if (rev < 0) return;
+    if (rev < 0 || !drawing) return;
     const frame = requestAnimationFrame(() => {
       const el = root.current;
       if (!el) return;
@@ -71,7 +72,7 @@ function usePaintTiming(root: React.RefObject<HTMLDivElement | null>) {
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [rev, sentAt, root]);
+  }, [rev, sentAt, root, drawing]);
 }
 
 /** Tests only: an element that throws as it renders (Session 23; a packaged Drashti never asks for it). */
@@ -87,10 +88,11 @@ const late: number[] = [];
  * Count frames that come more than one and a half frame times after the
  * one before, and tell the main process every few seconds (the screens
  * dashboard shows them). A window nobody can see draws few frames: those
- * are not counted (a gap over a second is not a dropped frame).
+ * are not counted (a gap over a second is not a dropped frame), nor are the GPU's warm-up's (WarmUp).
  */
-function useFrameReports(refreshHz: number) {
+function useFrameReports(refreshHz: number, drawing: boolean) {
   useEffect(() => {
+    if (!drawing) return;
     const frameMs = 1000 / (refreshHz > 0 ? refreshHz : 60);
     // Counting late frames for the screens dashboard: lengths of time on this computer, drawing nothing.
     // eslint-disable-next-line no-restricted-properties -- a frame reporter's own clock: it draws nothing
@@ -119,7 +121,7 @@ function useFrameReports(refreshHz: number) {
       cancelAnimationFrame(raf);
       clearInterval(report);
     };
-  }, [refreshHz]);
+  }, [refreshHz, drawing]);
 }
 
 function Output() {
@@ -127,6 +129,11 @@ function Output() {
   const state = useEngine((s) => s.state);
   const rev = useEngine((s) => s.rev);
   const [fontsReady, setFontsReady] = useState(false);
+  // The GPU warmed up, unseen, before the show is first drawn (Session 27; stage screens only cut).
+  const [warmed, setWarmed] = useState(false);
+  const warmedUp = useCallback(() => {
+    setWarmed(true);
+  }, []);
   const [testThrow, setTestThrow] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(
@@ -138,8 +145,10 @@ function Output() {
   );
   // Tests only: the clock held at one moment, so two screens can be compared (Session 26d).
   useEffect(() => window.drashti.output.onTestClock(holdClock), []);
-  usePaintTiming(rootRef);
-  useFrameReports(context?.display?.refreshHz ?? 60);
+  const stage = context?.role === 'stage';
+  const ready = fontsReady && (warmed || stage);
+  usePaintTiming(rootRef, ready);
+  useFrameReports(context?.display?.refreshHz ?? 60, ready);
   useEffect(() => {
     connectOutput();
     // Fonts first, so the first live slide never shows a fallback font.
@@ -149,7 +158,6 @@ function Output() {
     });
   }, []);
   const canvas = { width: context?.canvasWidth ?? 1920, height: context?.canvasHeight ?? 1080 };
-  const stage = context?.role === 'stage';
   const scaling = context?.scaling ?? 'fit';
   // What this screen shows: its group's settings in the live Look.
   const look = groupLookIn(state?.look, context?.groupId);
@@ -167,9 +175,16 @@ function Output() {
       data-languages={look.languages?.join(',') ?? 'all'}
       data-slides={look.slides}
       data-movement={look.movement}
-      data-fonts={fontsReady ? 'ready' : 'loading'}
+      // Ready to draw the show: its fonts loaded, and the GPU warmed up (WarmUp).
+      data-fonts={ready ? 'ready' : 'loading'}
+      data-warm-up={stage ? 'none' : warmed ? 'done' : 'warming'}
     >
-      {state && fontsReady && (
+      {context && fontsReady && !ready && (
+        <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
+          <WarmUp canvas={canvas} scaling={scaling} matte={matte} hold={HOLD_WARM_UP} onDone={warmedUp} />
+        </PlacedInParent>
+      )}
+      {state && ready && (
         <SceneBoundary resetKey={rev}>
           <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
             {stage ? (
@@ -183,11 +198,14 @@ function Output() {
       )}
       {/* Stage screens show no pictures, so they load none ahead. */}
       {state && !stage && <Preloader next={state.next} pictures={state.pictures} />}
-      {context && fontsReady && <TestCard context={context} languages={look.languages} />}
+      {context && ready && <TestCard context={context} languages={look.languages} />}
       <IdentifyOverlay />
     </div>
   );
 }
+
+/** Tests only: the warm-up stays drawn, to be looked at (DRASHTI_TEST_HOLD_WARM_UP; never when packaged). */
+const HOLD_WARM_UP = new URLSearchParams(location.search).get('warmUp') === 'hold';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');
