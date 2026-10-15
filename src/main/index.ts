@@ -1442,6 +1442,12 @@ function start(): void {
   engine.onChange((state) => {
     liveWriter.update(state);
   });
+  // Translated (an Intel build on an Apple-silicon Mac, x64 on Windows on ARM): said once, as the screens
+  // then draw without warming their GPU up (windows/renderer.ts) and the native build is the one to run.
+  if (app.runningUnderARM64Translation)
+    log.info(
+      'Running translated (Rosetta or x64 emulation): the screens draw without a GPU warm-up; the native build is the one to run here',
+    );
   // ---- events out (Session 28) ----------------------------------------------------
   // Nothing goes until an admin adds an address and ticks a kind; no process runs till then.
   const eventsOut = new EventsOut({
