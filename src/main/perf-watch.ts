@@ -167,8 +167,10 @@ export interface GpuPipelines {
   /** New pipelines the GPU made while the check ran, and how long making them took (ms). */
   made: number;
   ms: number;
-  /** Those made while the test output warmed up (render/WarmUp.tsx), or null with no mark. */
-  warmUp: { made: number; ms: number } | null;
+  /** Those made while the test output warmed up (render/WarmUp.tsx), and how long it took (ms), or null with no mark. */
+  warmUp: { made: number; ms: number; took: number | null } | null;
+  /** Those made after the warm-up ended and before the first Bold transition (its pictures drawn late, say). */
+  between: number | null;
   /** Those made while a page's first marked transition ran (bold-transitions), or null with no mark. */
   during: string[] | null;
 }
@@ -204,12 +206,23 @@ export async function gpuPipelines(trace: string): Promise<GpuPipelines> {
     const until = (marks.get(`${name}-end`) ?? Number.POSITIVE_INFINITY) + 200_000;
     return pipes.filter((p) => p.ts >= from && p.ts <= until);
   };
+  const tookMs = (name: string) => {
+    const from = marks.get(name);
+    const to = marks.get(`${name}-end`);
+    return from === undefined || to === undefined ? null : Math.round((to - from) / 1000);
+  };
   const warm = between(WARM_UP_MARK);
   const bold = between(FIRST_BOLD_MARK);
   return {
     made: pipes.length,
     ms: ms(pipes),
-    warmUp: warm ? { made: warm.length, ms: ms(warm) } : null,
+    warmUp: warm ? { made: warm.length, ms: ms(warm), took: tookMs(WARM_UP_MARK) } : null,
+    between: (() => {
+      const ended = marks.get(`${WARM_UP_MARK}-end`);
+      const bolded = marks.get(FIRST_BOLD_MARK);
+      if (ended === undefined || bolded === undefined) return null;
+      return pipes.filter((p) => p.ts > ended + 200_000 && p.ts < bolded).length;
+    })(),
     during: bold ? bold.map((p) => p.desc) : null,
   };
 }
