@@ -16,6 +16,7 @@ import { useProgram } from './program-store';
 import { ProgramView } from './ProgramView';
 import { StreamSound } from './sound';
 import { reportRenderError } from '../ui/render-errors';
+import { HOLD_WARM_UP, SKIP_WARM_UP } from '../render/warm-up-mode';
 
 /*
  * The stream's page: the Program, drawn off screen at the stream's size.
@@ -51,7 +52,7 @@ function Program() {
   const languages = streamLook.languages;
   const [fontsReady, setFontsReady] = useState(false);
   // The GPU warmed up, unseen, before the show is first drawn (Session 27): the stream is black meanwhile.
-  const [warmed, setWarmed] = useState(false);
+  const [warmed, setWarmed] = useState(SKIP_WARM_UP);
   const warmedUp = useCallback(() => {
     setWarmed(true);
   }, []);
@@ -133,9 +134,6 @@ startCapture(
   () => sound.level(),
   () => sound.track(),
 );
-
-/** Tests only: the warm-up stays drawn, to be looked at (DRASHTI_TEST_HOLD_WARM_UP; never when packaged). */
-const HOLD_WARM_UP = new URLSearchParams(location.search).get('warmUp') === 'hold';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');

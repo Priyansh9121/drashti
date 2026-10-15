@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { BEHIND_MS, CHECK_EVERY_MS, OPEN_GRACE_MS, OutputHeartbeat, REPORT_STALE_MS } from './heartbeat';
+import {
+  BEHIND_MS,
+  CHECK_EVERY_MS,
+  OPEN_GRACE_MS,
+  OutputHeartbeat,
+  REPORT_STALE_MS,
+  WARMING_STALE_MS,
+} from './heartbeat';
 
 /* Hung and stale outputs (Session 23): judged from the reports they already send. */
 
@@ -67,6 +74,18 @@ describe('the outputs’ heartbeat', () => {
     beat.changed(rev);
     run(6000, { hall: () => 0 });
     expect(stuck.map((s) => s.reason)).toEqual([expect.stringMatching(/^painted revision 0 of/u)]);
+  });
+
+  it('a warming output’s reports may come far apart on a slow computer; silent for 30 s, it is stuck', () => {
+    run(OPEN_GRACE_MS, { hall: () => 0 }, true);
+    // A main thread busy for 10 s at a time (the warm-up on an emulated GPU): alive.
+    for (let i = 0; i < 4; i++) {
+      run(10_000);
+      beat.report('hall', 0, true);
+    }
+    expect(stuck).toEqual([]);
+    run(WARMING_STALE_MS + 1000);
+    expect(stuck.map((s) => s.reason)).toEqual([expect.stringMatching(/^no report for 3\d s$/u)]);
   });
 
   it('an output whose reports stop is stuck about 6 s later, once, then given time to come back', () => {
