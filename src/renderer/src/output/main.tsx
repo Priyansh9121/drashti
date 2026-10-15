@@ -91,6 +91,23 @@ const late: number[] = [];
  * are not counted (a gap over a second is not a dropped frame), nor are the GPU's warm-up's (WarmUp).
  */
 function useFrameReports(refreshHz: number, drawing: boolean) {
+  // The report goes every 2 s from the start, warming up or not (Session 27): it is the heartbeat the main
+  // process watches, and a slow computer's warm-up can last past its grace (an output reloaded again and
+  // again under Rosetta). Late frames are counted only once the show is drawn.
+  useEffect(() => {
+    // eslint-disable-next-line no-restricted-syntax -- reports every 2 s: draws nothing
+    const report = setInterval(() => {
+      // eslint-disable-next-line no-restricted-properties -- a frame reporter's own clock: it draws nothing
+      const since = performance.now() - 60_000;
+      while (late.length > 0 && (late[0] ?? 0) < since) late.shift();
+      void window.drashti.output
+        .report({ droppedFrames: late.length, paintedRev: paintedRevNow, warming: !drawing })
+        .catch(() => undefined);
+    }, 2000);
+    return () => {
+      clearInterval(report);
+    };
+  }, [drawing]);
   useEffect(() => {
     if (!drawing) return;
     const frameMs = 1000 / (refreshHz > 0 ? refreshHz : 60);
@@ -108,18 +125,8 @@ function useFrameReports(refreshHz: number, drawing: boolean) {
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    // eslint-disable-next-line no-restricted-syntax -- reports late frames every 2 s: draws nothing
-    const report = setInterval(() => {
-      // eslint-disable-next-line no-restricted-properties -- a frame reporter's own clock: it draws nothing
-      const since = performance.now() - 60_000;
-      while (late.length > 0 && (late[0] ?? 0) < since) late.shift();
-      void window.drashti.output
-        .report({ droppedFrames: late.length, paintedRev: paintedRevNow })
-        .catch(() => undefined);
-    }, 2000);
     return () => {
       cancelAnimationFrame(raf);
-      clearInterval(report);
     };
   }, [refreshHz, drawing]);
 }

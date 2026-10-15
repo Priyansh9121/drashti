@@ -9,11 +9,15 @@ let judged: string[] = [];
 let stuck: { screenId: string; reason: string }[] = [];
 let beat: OutputHeartbeat;
 
-/** Time passes, with a check every second and a report every 2 s from each output in `reporting`. */
-function run(ms: number, reporting: Record<string, () => number> = {}) {
+/**
+ * Time passes, with a check every second and a report every 2 s from each output in `reporting` (still
+ * warming up its GPU when `warming`).
+ */
+function run(ms: number, reporting: Record<string, () => number> = {}, warming = false) {
   for (let t = 0; t < ms; t += CHECK_EVERY_MS) {
     now += CHECK_EVERY_MS;
-    if (now % 2000 === 0) for (const [id, painted] of Object.entries(reporting)) beat.report(id, painted());
+    if (now % 2000 === 0)
+      for (const [id, painted] of Object.entries(reporting)) beat.report(id, painted(), warming);
     beat.check();
   }
 }
@@ -48,6 +52,21 @@ describe('the outputs’ heartbeat', () => {
       run(1000, { hall: () => painted });
     }
     expect(stuck).toEqual([]);
+  });
+
+  it('an output still warming up its GPU is alive, and never judged behind meanwhile (Session 27)', () => {
+    // A slow computer (an Intel build under Rosetta): warming up long past the open grace, the show changing.
+    for (let i = 0; i < 40; i++) {
+      rev++;
+      beat.changed(rev);
+      run(1000, { hall: () => 0 }, true);
+    }
+    expect(stuck).toEqual([]);
+    // Drawing now: judged as any output, behind and all.
+    rev++;
+    beat.changed(rev);
+    run(6000, { hall: () => 0 });
+    expect(stuck.map((s) => s.reason)).toEqual([expect.stringMatching(/^painted revision 0 of/u)]);
   });
 
   it('an output whose reports stop is stuck about 6 s later, once, then given time to come back', () => {

@@ -30,6 +30,8 @@ interface Seen {
   since: number;
   reportAt: number | null;
   paintedRev: number;
+  /** Still warming up its GPU, unseen (Session 27): it runs, and draws the show only once done. */
+  warming: boolean;
 }
 
 export interface HeartbeatDeps {
@@ -52,7 +54,7 @@ export class OutputHeartbeat {
 
   /** An output opened or reloaded: judged again only after the grace. */
   opened(screenId: string): void {
-    this.seen.set(screenId, { since: this.deps.now(), reportAt: null, paintedRev: -1 });
+    this.seen.set(screenId, { since: this.deps.now(), reportAt: null, paintedRev: -1, warming: false });
   }
 
   closed(screenId: string): void {
@@ -69,11 +71,20 @@ export class OutputHeartbeat {
     }
   }
 
-  /** An output's 2-second report. */
-  report(screenId: string, paintedRev: number): void {
-    const s = this.seen.get(screenId) ?? { since: this.deps.now(), reportAt: null, paintedRev: -1 };
+  /**
+   * An output's 2-second report. One still warming up its GPU (a slow computer can take long past the grace)
+   * is running, so alive, but not yet drawing the show: it is not judged behind until it does.
+   */
+  report(screenId: string, paintedRev: number, warming = false): void {
+    const s = this.seen.get(screenId) ?? {
+      since: this.deps.now(),
+      reportAt: null,
+      paintedRev: -1,
+      warming: false,
+    };
     s.reportAt = this.deps.now();
     s.paintedRev = paintedRev;
+    s.warming = warming;
     this.seen.set(screenId, s);
   }
 
@@ -106,7 +117,7 @@ export class OutputHeartbeat {
   private why(s: Seen, now: number): string | null {
     const heardAt = s.reportAt ?? s.since;
     if (now - heardAt > REPORT_STALE_MS) return `no report for ${Math.round((now - heardAt) / 1000)} s`;
-    if (s.reportAt === null || s.paintedRev >= this.deps.engineRev()) return null;
+    if (s.reportAt === null || s.warming || s.paintedRev >= this.deps.engineRev()) return null;
     // The first change it has not painted, and how long before its last report that came.
     const changedAt = this.revAt.get(s.paintedRev + 1);
     if (changedAt === undefined) return null;

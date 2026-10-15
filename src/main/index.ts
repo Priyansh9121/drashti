@@ -3128,10 +3128,10 @@ function start(): void {
   });
   handle(IPC.output.report, (e, raw) => {
     const screenId = manager.screenIdFor(e.sender.id);
-    const r = raw as { droppedFrames?: unknown; paintedRev?: unknown } | null;
+    const r = raw as { droppedFrames?: unknown; paintedRev?: unknown; warming?: unknown } | null;
     if (screenId && typeof r?.droppedFrames === 'number' && typeof r.paintedRev === 'number') {
       localReports.set(screenId, { droppedFrames: r.droppedFrames, paintedRev: r.paintedRev });
-      heartbeat.report(screenId, r.paintedRev);
+      heartbeat.report(screenId, r.paintedRev, r.warming === true);
       // Reporting from a page loaded since it was given up on: it draws again.
       if (loadedSinceStopped.has(screenId)) manager.setStopped(screenId, false);
     }
