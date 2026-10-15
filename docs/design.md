@@ -233,6 +233,7 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 
 - **Switching is a show action, so it sits with the live controls.** The Looks panel under Next is one button per Look, in the list's order. The live Look's button is `live` (red, white text) with a white dot and `aria-pressed="true"`; the others are plain. A Look is never switched by a key alone: it takes a click (or a phone's tap, or the API).
 - **Changing a Look is setup, so it lives in Screens.** At the top of Screen groups, the Looks are tabs (`Tabs`, `sm`), the live one with a **Live** badge. Below the tabs: the chosen Look's name (a field, saved on Enter or leaving it), **Duplicate**, **Up** and **Down** (the first is the one Drashti starts with), and **Remove** (`danger`, asking first, and saying whether the screens will change). Each group card then shows "In the Look “…”" with that group's settings: layers as tick boxes, how slides are drawn, and the languages picker. Stage groups show only their languages; the stream group only its languages, on YouTube's card.
+- **Movement** (Session 27): a select in each group's settings in the Look (every group but the stage's, the stream's too), **Calm** (the default) or **Bold**, with one line under it saying what it does. Admin only, in Screens, so never in Simple Mode.
 - **Simple Mode never shows either.** It keeps the live Look.
 
 ## 18. Stage layouts

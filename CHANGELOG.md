@@ -13,6 +13,7 @@ Diya, Drashti's own look: the lamp's plum and flame.
 - When you close something with typed changes, Save changes now has the focus (Enter saves), except when saving would change what the screens show now: then Keep editing has it. Esc still keeps you editing, and throwing work away is never the default.
 - A backup warning offers Back up now.
 - When a hall screen stops (it kept failing), a red notice at the top of the window names it, in Simple Mode too, with Try again; it goes when the screen is back.
+- Each screen group's Look has a Movement: Calm, as before, or Bold, set by an admin in Screens.
 - A sharpened picture is now sharpened at the size the hall's largest screen shows it (an output computer's screens included), so it looks as sharp there as in the Picture editor, and it is done again when the screens change size.
 - On the phone remote, Black-out and Logo say "Black-out is on" and "Logo is on" while on, as on the computer.
 - New groups are teal for Chorus and indigo for Verse, and no default group colour is red any more, so nothing looks like LIVE. Groups you already have keep their colours.

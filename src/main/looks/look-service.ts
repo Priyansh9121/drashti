@@ -43,6 +43,7 @@ export function liveLook(
       stageLayout: g.stageLayoutId ? stageLayout(g.stageLayoutId) : null,
       mask: g.maskId ? mask(g.maskId) : null,
       idle: g.idle,
+      movement: g.movement,
     };
   return { id: info.id, name: info.name, groups };
 }
@@ -123,7 +124,7 @@ export class LookService implements LookSource {
     const patch = groupLookPatchSchema.safeParse(rawPatch);
     if (!patch.success)
       return this.fail(
-        'A group shows some layers, every language or one to four of them, and slides as designed or as a lower third.',
+        'A group shows some layers, every language or one to four of them, slides as designed or as a lower third, and moves Calm or Bold.',
       );
     const look = lookId.success ? this.deps.repo.get(lookId.data) : null;
     if (!look) return this.fail('That Look no longer exists.');

@@ -166,6 +166,7 @@ function Output() {
       data-look={state?.look.id ?? ''}
       data-languages={look.languages?.join(',') ?? 'all'}
       data-slides={look.slides}
+      data-movement={look.movement}
       data-fonts={fontsReady ? 'ready' : 'loading'}
     >
       {state && fontsReady && (

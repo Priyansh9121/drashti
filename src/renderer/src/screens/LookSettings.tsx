@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { IDLE_WHEN_NAMES, IDLE_WHENS } from '../../../shared/idle';
 import type { GroupLook, LookInfo, LookLayer, SlideStyle } from '../../../shared/looks';
-import { LOOK_LAYER_NAMES, LOOK_LAYERS } from '../../../shared/looks';
+import { LOOK_LAYER_NAMES, LOOK_LAYERS, MOVEMENT_NAMES, MOVEMENTS } from '../../../shared/looks';
 import type { ScreenRole } from '../../../shared/screens';
 import { useEngine } from '../engine/engine-store';
 import { lookAction, useLooks } from '../looks/looks-store';
@@ -307,6 +307,33 @@ export function GroupLookSettings({
             </Button>
           </div>
         </>
+      )}
+      {/* How these screens move (Session 27): every group but the stage's, which always cuts. */}
+      {role !== 'stage' && (
+        <div className="space-y-1">
+          <label className="flex flex-wrap items-center gap-2 text-xs text-muted">
+            Movement
+            <Select
+              aria-label="How these screens move between slides"
+              data-testid="look-movement"
+              value={settings.movement}
+              onChange={(e) => {
+                set({ movement: e.target.value === 'bold' ? 'bold' : 'calm' });
+              }}
+            >
+              {MOVEMENTS.map((m) => (
+                <option key={m} value={m}>
+                  {MOVEMENT_NAMES[m]}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <p className="text-xs text-muted" data-testid="look-movement-note">
+            {settings.movement === 'bold'
+              ? 'Bold: the words can move, wipe and zoom as slides change; pictures only dissolve. Each slide keeps its own transition and length.'
+              : 'Calm: slides fade in place. Each slide keeps its own transition and length.'}
+          </p>
+        </div>
       )}
       {role === 'stage' && (
         <div className="flex flex-wrap items-center gap-2">
