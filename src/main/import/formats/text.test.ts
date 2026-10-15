@@ -28,7 +28,7 @@ describe('parseLyricsText', () => {
       ['Verse 1', ['Placeholder line one\nPlaceholder line two', 'Placeholder line three']],
       ['Chorus', ['Placeholder chorus']],
     ]);
-    expect(p.groups.map((g) => g.color)).toEqual(['#3e63dd', '#e5484d']);
+    expect(p.groups.map((g) => g.color)).toEqual(['#3e63dd', '#12a594']);
     expect(p.arrangements).toEqual([]);
     expect(p.issues).toEqual([]);
     expect(p.ref).toBeNull();
@@ -95,10 +95,11 @@ describe('parseLyricsText', () => {
   it('colours the usual group names', () => {
     expect(groupColor('Verse 2')).toBe('#3e63dd');
     expect(groupColor('Pre-Chorus')).toBe('#f76b15');
-    expect(groupColor('CHORUS')).toBe('#e5484d');
-    expect(groupColor('ટેક')).toBe('#e5484d');
+    // Chorus teal since Session 26g: no red among the defaults, too near LIVE.
+    expect(groupColor('CHORUS')).toBe('#12a594');
+    expect(groupColor('ટેક')).toBe('#12a594');
     expect(groupColor('Bridge')).toBe('#8e4ec6');
-    expect(groupColor('Ending')).toBe('#12a594');
+    expect(groupColor('Ending')).toBe('#00a2c7');
     expect(groupColor('Announcement')).toBeNull();
   });
 });

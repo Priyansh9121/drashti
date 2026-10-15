@@ -153,7 +153,8 @@ test('slides and groups: added, copied, moved and removed; labels, notes, cues, 
   expect(saved).toMatchObject({ transition: { kind: 'dissolve', durationMs: 600 }, loop: true });
   expect(saved.groups?.map((g) => [g.name, g.color, g.slides.map((s) => s.label)])).toEqual([
     ['Verse', '#3e63dd', ['Opening', '']],
-    ['Chorus', '#e5484d', ['']],
+    // Chorus teal (Session 26g: no red among the defaults).
+    ['Chorus', '#12a594', ['']],
     ['Placeholder Bridge', '#8e4ec6', ['Bridge', 'Added']],
   ]);
   expect(saved.groups?.[0]?.slides[0]).toEqual({

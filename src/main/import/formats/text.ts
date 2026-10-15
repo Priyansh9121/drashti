@@ -29,17 +29,9 @@ export const LYRICS_STYLE: TextStyle = {
   shadow: true,
 };
 
-/** The usual colours for the usual group names, so groups stand apart in the slide grid. */
-export function groupColor(name: string): string | null {
-  const n = name.toLowerCase().replace(/[\d\s.:#-]+$/u, '');
-  const starts = (...prefixes: string[]) => prefixes.some((p) => n.startsWith(p));
-  if (starts('verse', 'stanza', 'pad')) return '#3e63dd';
-  if (starts('pre-chorus', 'prechorus')) return '#f76b15';
-  if (starts('chorus', 'refrain', 'tek', 'ટેક', 'टेक')) return '#e5484d';
-  if (starts('bridge')) return '#8e4ec6';
-  if (starts('intro', 'outro', 'ending', 'tag', 'coda')) return '#12a594';
-  return null;
-}
+// The usual colours for the usual group names: shared/group-colors.ts (Session 26g: Chorus teal).
+import { groupColor } from '../../../shared/group-colors';
+export { groupColor };
 
 /**
  * A Word file's lines as typed (Session 26f): each line's runs, by its text, in the order written (null for

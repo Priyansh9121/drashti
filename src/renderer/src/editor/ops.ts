@@ -12,6 +12,7 @@ import type {
   VerticalAlign,
 } from '../../../shared/model';
 import type { EditDoc, EditSlide, SlideLook } from '../../../shared/slide-edit';
+import { newGroupColor } from '../../../shared/group-colors';
 import { mainLang } from '../../../shared/text-runs';
 import { boundsOf, centerOf, normalizeAngle, type Point, rotatePoint } from './geometry';
 
@@ -420,8 +421,8 @@ export function moveSlideBy(doc: EditDoc, slideId: string, step: -1 | 1): EditDo
   return placeSlide(doc, slide, next.id, step < 0 ? next.slides.length : 0);
 }
 
-/** The colours offered for groups: the usual ones for verses, choruses and the like. */
-export const GROUP_COLORS = ['#3e63dd', '#e5484d', '#f76b15', '#8e4ec6', '#12a594', '#ffc53d'] as const;
+/** The colours offered for groups (shared/group-colors.ts): Chorus teal, Verse indigo, no red. */
+export { GROUP_COLORS } from '../../../shared/group-colors';
 
 /** A new group at the end, with one blank slide; returns the slide's id. */
 export function addGroup(
@@ -430,8 +431,7 @@ export function addGroup(
   look: SlideLook | null,
 ): { doc: EditDoc; slideId: string } {
   const slide = newSlide(look);
-  const used = new Set(doc.groups.map((g) => g.color));
-  const color = GROUP_COLORS.find((c) => !used.has(c)) ?? GROUP_COLORS[0];
+  const color = newGroupColor(name, new Set(doc.groups.map((g) => g.color)));
   return {
     doc: { ...doc, groups: [...doc.groups, { id: newId(), name, color, slides: [slide] }] },
     slideId: slide.id,

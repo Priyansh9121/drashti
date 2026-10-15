@@ -117,6 +117,33 @@ describe('motion in the interface is tokens', () => {
       ).toBe(false);
   });
 
+  it('things arrive only in their one-off places, and one after another only on one-off arrivals', () => {
+    // Decision 4 (15 Oct 2026): notices, the first start's words and the empty places' steps; never a
+    // list, a show control or anything repeated.
+    const ARRIVING = new Set([
+      join('ui', 'Dialog.tsx'),
+      join('ui', 'Menu.tsx'),
+      join('ui', 'Notice.tsx'),
+      join('ui', 'States.tsx'),
+      join('help', 'WhatIsThis.tsx'),
+      join('operator', 'StatusBar.tsx'),
+      join('operator', 'RecoveryBanner.tsx'),
+      join('operator', 'StartHere.tsx'),
+      join('setup', 'Welcome.tsx'),
+    ]);
+    const ONE_AFTER_ANOTHER = new Set([join('operator', 'StartHere.tsx'), join('setup', 'Welcome.tsx')]);
+    const arriving: string[] = [];
+    const staggered: string[] = [];
+    for (const file of files(renderer)) {
+      const text = readFileSync(file, 'utf8');
+      const at = relative(renderer, file);
+      if (text.includes('data-motion=') && !ARRIVING.has(at)) arriving.push(at);
+      if (text.includes("'--i'") && !ONE_AFTER_ANOTHER.has(at)) staggered.push(at);
+    }
+    expect(arriving).toEqual([]);
+    expect(staggered).toEqual([]);
+  });
+
   it('the window’s code says no duration, delay or easing of its own', () => {
     const found: string[] = [];
     for (const file of files(renderer)) {

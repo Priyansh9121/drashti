@@ -1,4 +1,5 @@
 import { BUILTIN_THEMES } from '../../shared/builtin-themes';
+import { GROUP_COLOURS } from '../../shared/group-colors';
 import type { KirtanLang, Lang, TextElement, TextStyle } from '../../shared/model';
 import type { Db } from './database';
 import { PlaylistRepo } from './playlists';
@@ -151,7 +152,7 @@ export function seedPlaceholders(db: Db): boolean {
       name: KIRTAN_PRESENTATION_NAME,
       groups: KIRTAN_LINES.map((k) => ({
         name: k.group,
-        color: k.group === 'Chorus' ? '#e5484d' : '#3e63dd',
+        color: k.group === 'Chorus' ? GROUP_COLOURS.teal : GROUP_COLOURS.indigo,
         slides: [{ background: '#000000', elements: [kirtanBox(k.lines)] }],
       })),
       kirtan: { category: 'Kirtan', kavi: 'Placeholder Kavi', raag: 'Placeholder Raag' },
