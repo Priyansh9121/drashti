@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { StreamStatus } from '../../../shared/stream';
-import { STREAM_PRESETS } from '../../../shared/stream';
+import { placeName, STREAM_PRESETS } from '../../../shared/stream';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ConfirmDialog } from '../ui/Dialog';
@@ -8,6 +8,8 @@ import { CircleDot, FolderOpen, HardDrive, Radio, Square, Wifi, WifiOff } from '
 import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { streamAction, useStream } from './stream-store';
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /*
  * Going live and recording. Go Live and End always ask first: a stream is
@@ -64,9 +66,16 @@ const healthWords: Record<StreamStatus['live']['health'], string> = {
 function GoLiveConfirm({ status, onDone }: { status: StreamStatus; onDone: () => void }) {
   const profile = useStream((s) => s.profiles?.profiles.find((p) => p.id === s.profiles?.activeId));
   const preset = profile ? STREAM_PRESETS[profile.preset] : null;
+  // Every place it goes (Session 28), by name (a name twice: how many places).
+  const names = profile ? [profile.url, ...profile.more.map((d) => d.url)].map(placeName) : ['YouTube'];
+  const unique = [...new Set(names)];
+  const where =
+    (unique.length > 1
+      ? `${unique.slice(0, -1).join(', ')} and ${unique.at(-1) ?? ''}`
+      : (unique[0] ?? 'YouTube')) + (unique.length < names.length ? ` (${String(names.length)} places)` : '');
   return (
     <ConfirmDialog
-      title="Go live on YouTube?"
+      title={`Go live on ${where}?`}
       confirmLabel="Go live"
       confirmVariant="primary"
       testId="go-live-confirm"
@@ -177,9 +186,36 @@ export function OnAirControls({ status }: { status: StreamStatus }) {
         </Notice>
       )}
       {live.message && (
-        <Notice tone={live.state === 'reconnecting' ? 'warning' : 'info'}>
+        <Notice tone={live.state === 'reconnecting' || live.health === 'struggling' ? 'warning' : 'info'}>
           <span data-testid="stream-live-message">{live.message}</span>
         </Notice>
+      )}
+      {on && live.destinations.length > 1 && (
+        // Several places (Session 28): each one's own state and what it sends.
+        <ul className="space-y-1 text-sm" data-testid="stream-places">
+          {live.destinations.map((d) => (
+            <li
+              key={d.id}
+              className="flex items-center gap-2"
+              data-testid="stream-place"
+              data-state={d.state}
+            >
+              {d.state === 'live' ? (
+                <Wifi size={14} aria-hidden="true" className="text-success-fg" />
+              ) : (
+                <WifiOff size={14} aria-hidden="true" className="text-warning-fg" />
+              )}
+              <span className="font-medium">{capitalize(d.name)}</span>
+              <span className="text-muted">
+                {d.state === 'live'
+                  ? `on air${d.bitrateKbps !== null ? `, ${(d.bitrateKbps / 1000).toFixed(1)} Mbps` : ''}`
+                  : d.state === 'reconnecting'
+                    ? 'reconnecting'
+                    : 'starting'}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
       {on && (
         <div className="grid grid-cols-3 gap-2">

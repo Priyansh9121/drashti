@@ -39,7 +39,7 @@ port.on('message', (event) => {
       void pipeline.start(message);
       return;
     case 'live':
-      pipeline.goLive(message.url, message.key);
+      pipeline.goLive(message.url, message.key, message.more ?? []);
       return;
     case 'endLive':
       pipeline.endLive();

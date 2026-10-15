@@ -211,3 +211,89 @@ describe.each(builds)('going live over RTMPS with FFmpeg $label', ({ path }) => 
     expect(r.logs.join('\n')).not.toContain(KEY);
   }, 120_000);
 });
+
+describe.skipIf(!existsSync(ffmpeg))('several places at once (Session 28)', () => {
+  it('one encode goes to a plain RTMP place and an RTMPS one; the first dropping leaves the other, the encoder and the recording going, and it comes back by itself', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-several-'));
+    const authority = makeAuthority();
+    const caFile = join(dir, 'made-up-authority.pem');
+    writeFileSync(caFile, authority.caPem);
+    const [plainPort, behindPort] = [await freePort(), await freePort()];
+    const plain = (file: string) => {
+      const child = spawn(
+        ffmpeg,
+        [
+          '-hide_banner',
+          '-loglevel',
+          'error',
+          '-listen',
+          '1',
+          '-i',
+          `rtmp://127.0.0.1:${plainPort}/live2/${KEY}`,
+          '-c',
+          'copy',
+          '-f',
+          'flv',
+          '-y',
+          join(dir, file),
+        ],
+        { stdio: 'ignore' },
+      );
+      children.push(child);
+      return child;
+    };
+    const first = plain('first.flv');
+    listener(behindPort, join(dir, 'secure.flv'));
+    const front = await tlsFront(authority.certPem, authority.keyPem, behindPort);
+    const logs: string[] = [];
+    const seen: { status: WorkerStatus | null } = { status: null };
+    const p = new StreamPipeline({
+      status: (s) => {
+        seen.status = s;
+      },
+      log: (_level, line) => logs.push(line),
+    });
+    await p.start({ ffmpeg, platform: process.platform, preset, encoder: null, caFile });
+    const stop = feed(p);
+    const states = () => seen.status?.destinations.map((d) => d.state).join(' ') ?? '';
+    const secure = () => (existsSync(join(dir, 'secure.flv')) ? statSync(join(dir, 'secure.flv')).size : 0);
+    try {
+      p.record(join(dir, 'recording.mkv'), 1024 ** 2);
+      p.goLive(`rtmp://127.0.0.1:${String(plainPort)}/live2`, KEY, [
+        { id: 'second', url: `rtmps://127.0.0.1:${String(front.port)}/live2`, key: KEY },
+      ]);
+      await until('both on air', () => states() === 'live live', 40_000).catch((error: unknown) => {
+        throw new Error(`${String(error)}\n${logs.join('\n')}`);
+      });
+      expect(seen.status?.destinations.map((d) => [d.id, d.name])).toEqual([
+        ['', 'the stream server'],
+        ['second', 'the stream server'],
+      ]);
+      expect(seen.status?.live).toMatchObject({ state: 'live', health: 'good' });
+      // The plain place drops: it reconnects; the stream is on air still, on the other.
+      first.kill('SIGKILL');
+      await until('the first reconnecting', () => states().startsWith('reconnecting'));
+      expect(seen.status?.live.state).toBe('live');
+      expect(seen.status?.live.health).toBe('struggling');
+      expect(seen.status?.live.message ?? '').toMatch(/^The connection to the stream server/u);
+      // What the other receives keeps growing (FFmpeg writes it 32 KB at a time).
+      const before = secure();
+      await until('the other place still receiving', () => secure() > before, 30_000);
+      // It comes back by itself.
+      plain('first-again.flv');
+      await until('both on air again', () => states() === 'live live', 40_000);
+      await sleep(2000);
+    } finally {
+      p.endLive();
+      p.stopRecording();
+      stop();
+      p.stop();
+    }
+    await sleep(1000);
+    expect(statSync(join(dir, 'first-again.flv')).size).toBeGreaterThan(1000);
+    // One encoder throughout, and one recording.
+    expect(logs.filter((l) => l.startsWith('Encoding started'))).toHaveLength(1);
+    expect(statSync(join(dir, 'recording.mkv')).size).toBeGreaterThan(1000);
+    expect(logs.join('\n')).not.toContain(KEY);
+  }, 150_000);
+});
