@@ -104,8 +104,14 @@ export async function filesCheck(dir) {
   const manifestFile = join(dir, 'drashti-update.json');
   if (!existsSync(manifestFile)) problems.push('drashti-update.json is missing.');
   else {
-    const manifest = JSON.parse(readFileSync(manifestFile, 'utf8'));
-    for (const f of manifest.files ?? []) {
+    let manifest = null;
+    try {
+      manifest = JSON.parse(readFileSync(manifestFile, 'utf8'));
+    } catch {
+      // Said, never thrown: a dry run reports it and carries on.
+      problems.push('drashti-update.json cannot be read (not JSON).');
+    }
+    for (const f of manifest?.files ?? []) {
       const file = join(dir, f.name);
       if (!existsSync(file)) problems.push(`${f.name}, in the update manifest, is not here.`);
       else if (statSync(file).size !== f.size || (await hashOf(file, 'sha512', 'base64')) !== f.sha512)
