@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { DragEvent } from 'react';
 import { create } from 'zustand';
 import { formatDuration } from '../../../shared/format';
@@ -17,6 +17,7 @@ import { SlideView } from '../render/SlideView';
 import { Badge, LiveBadge, MissingBadge, UnplayableBadge } from '../ui/Badge';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
+import { rowTops, slideRows } from '../ui/motion';
 import {
   AlertTriangle,
   ArrowDown,
@@ -483,6 +484,15 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
   // Slots and templates only with View › Show Shastra, Templates and Kirtan Details (Session 26a).
   const extras = useExtras((s) => s.on);
   const items = usePlaylists((s) => s.items);
+  const listRef = useRef<HTMLUListElement>(null);
+  /** Where the rows were before a move (Up, Down, Alt+↑ ↓), until the list is drawn in its new order. */
+  const slideFrom = useRef<Map<string, number> | null>(null);
+  useLayoutEffect(() => {
+    const before = slideFrom.current;
+    if (!before) return;
+    slideFrom.current = null;
+    slideRows(listRef.current, 'data-item-row', before);
+  }, [items]);
   const marked = usePlaylists((s) => s.marked);
   const anchorId = usePlaylists((s) => s.anchorId);
   const dragging = useDragging((s) => s.on);
@@ -712,6 +722,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
         </Notice>
       )}
       <ul
+        ref={listRef}
         aria-label={`Items in ${node?.name ?? 'the playlist'}`}
         data-testid="playlist-items"
         data-count={items.length}
@@ -750,7 +761,10 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
                 ? 'border-dashed border-line-strong!'
                 : 'border-dashed border-warning/70! bg-warning-bg/60';
           const move = (step: -1 | 1, on: 'item' | 'up' | 'down') => {
+            // The rows slide to their new places once the list is drawn in its new order (ui/motion.ts).
+            slideFrom.current = rowTops(listRef.current, 'data-item-row');
             void moveItemBy(item.id, step).then((moved) => {
+              if (!moved) slideFrom.current = null;
               if (moved || on === 'item') keepFocus(item.id, on);
             });
           };

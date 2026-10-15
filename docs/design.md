@@ -10,7 +10,7 @@ Volunteers run a sabha with it in a dim hall, often under pressure. So:
 
 - **Dark by default.** The window is near-black and the panels a little lighter. Nothing bright is on screen unless it means something.
 - **What is on the screens is never in doubt.** "Live" always looks the same (section 3).
-- **Calm.** One accent colour, a few sizes, no decoration. Movement only where it explains something (a panel opening). Reduced motion turns it off.
+- **Calm, and lit by the lamp.** One primary colour (the lamp's plum) on the one next thing to do, a few sizes, and the lamp's light as the only decoration. Movement only where something arrives or leaves (a dialog, a notice, a playlist row moving), each with its token, never on a show control (§3, "Motion"). Reduced motion turns it all off.
 - **Familiar to operators coming from ProPresenter.** The library, playlists and media are on the left, the slides in the middle, and what's live and what's next on the right, with the layer clears along the bottom. The name "ProPresenter" never appears in the UI.
 
 ## 2. Colour
@@ -51,6 +51,14 @@ Anything on the screens now uses the `live` colour **and** says so in words: the
 Nothing else uses `live`: errors use `danger` and warnings `warning`.
 
 **Show controls change at once** (Session 25). Next, Back, Black-out, Logo, Clear all, Put it back, the layer clears, the Looks and masks buttons, the live thumbnail's border and caption, and Simple Mode's playlist rows take their new state in the same frame as the screens: no colour fade (`Button`'s `instant`), and the live slide is scrolled into view at once, never smoothly. Hover and focus on other controls may keep their short colour change. One name, **Black-out**, with its hyphen everywhere (a unit test checks), and one glyph, a filled screen (`BlackOut` in `ui/icons.ts`), in Pro Mode, Simple Mode and on the phones; Clear all is the eraser everywhere.
+
+### Motion (Session 26g, "Rising")
+
+Things arrive and leave; the show never waits for them. **Every duration, delay and easing is a token** in `app.css` (`--dur-*`, `--delay-*`, `--stagger-*`, `--ease-*`, the design lab's table), and nothing uses a number of its own (`src/main/motion.test.ts`); Tailwind's own `transition-colors` and the like take `--dur-hover` and `--ease-out`.
+
+- **What moves:** a dialog rises 8 px (`--dur-dialog`, 220 ms) while the dim behind it only fades (`--dur-scrim`); a side sheet slides 16 px from its edge (`--dur-panel`); menus and "What is this?" pop from where they open (`--dur-menu`); a notice rises 6 px (`--dur-notice`); an empty place settles 14 px with one wisp of smoke from its lamp; a playlist row moving Up or Down slides to its place (`--dur-move`, 180 ms). Each says how it arrives with `data-motion` (`app.css`), and a dialog, menu or notice leaves in `--dur-exit` (about 70% of its entrance) as an inert copy that can't be focused, read out, clicked or found (`ui/motion.ts`), so the show's keys work the moment it closes.
+- **What never moves:** Next, Back, Clear all, the clears, Black-out, Logo, Put it back, the Looks and masks, Simple Mode's buttons and rows, the thumbnails and the live picture, with their borders, badges and red glow (`data-show-control`, which no transition or animation reaches). Nothing bounces, springs or scales from nothing.
+- **Reduced motion:** with the computer set to reduce motion, nothing in the window moves at all, and no leaving copy is drawn (`tests/e2e/motion.spec.ts`). The audience screens' motion is the show's own (Session 27), and this rule leaves it as it was.
 
 ## 4. Type
 

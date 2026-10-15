@@ -61,6 +61,7 @@ export function LivePreview() {
           somethingUp && !blackout ? 'border-live shadow-live' : 'border-line-strong shadow-card',
         )}
         data-testid="live-preview"
+        data-show-control
         data-a11y-picture
         aria-hidden="true"
       >

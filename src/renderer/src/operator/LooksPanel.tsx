@@ -36,6 +36,7 @@ export function LooksPanel() {
               type="button"
               aria-pressed={live}
               data-testid="look-button"
+              data-show-control
               data-look={look.id}
               onClick={() => {
                 if (!live) void dispatch({ type: 'setLook', lookId: look.id });

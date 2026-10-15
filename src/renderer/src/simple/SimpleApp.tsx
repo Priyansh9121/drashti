@@ -182,6 +182,7 @@ function PlaylistColumn() {
                 type="button"
                 disabled={!can}
                 data-testid="simple-item"
+                data-show-control
                 data-live={isLive ? 'true' : undefined}
                 aria-current={isLive ? 'true' : undefined}
                 onClick={() => {

@@ -5,6 +5,7 @@ import type { ButtonVariant } from './Button';
 import { Button, IconButton } from './Button';
 import { cx } from './cx';
 import { X } from './icons';
+import { useLeaving } from './motion';
 
 /*
  * Dialogs. While one is open the keyboard stays inside it (Tab wraps round),
@@ -140,8 +141,12 @@ export function Dialog({
   const panel = useRef<HTMLDivElement>(null);
   useFocusTrap(panel, onClose);
   const right = placement === 'right';
+  // It arrives (the dim fades, the dialog rises 8 px or a sheet slides 16 px) and leaves as quickly.
+  const backdrop = useLeaving<HTMLDivElement>(right ? 'sheet' : 'dialog');
   return createPortal(
     <div
+      ref={backdrop}
+      data-motion="scrim"
       className={cx(
         'fixed inset-0 z-40 flex bg-black/60',
         right ? 'justify-end' : 'items-center justify-center p-4',
@@ -149,6 +154,7 @@ export function Dialog({
     >
       <div
         ref={panel}
+        data-motion={right ? 'sheet' : 'dialog'}
         role={role}
         aria-modal="true"
         aria-labelledby={titleId}

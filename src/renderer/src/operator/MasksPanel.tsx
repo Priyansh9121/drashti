@@ -57,6 +57,7 @@ export function MasksPanel({ nested = false }: { nested?: boolean } = {}) {
                 type="button"
                 aria-pressed={on}
                 data-testid="mask-button"
+                data-show-control
                 onClick={() => {
                   void dispatch(on ? { type: 'clearLayer', layer: 'masks' } : { type: 'setMask', mask });
                 }}

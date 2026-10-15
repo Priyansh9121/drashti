@@ -85,6 +85,11 @@
   --shadow-live-thumb: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 14px 32px -12px rgb(212 42 49 / 0.55);
   --shadow-ember:
     inset 0 1px 0 rgb(255 220 240 / 0.22), 0 0 0 1px rgb(255 190 150 / 0.1), 0 8px 26px rgb(155 51 131 / 0.42);
+  /* Tailwind's own transitions (transition-colors and the like) and the spinner take the tokens. */
+  --default-transition-duration: var(--dur-hover);
+  --default-transition-timing-function: var(--ease-out);
+  --animate-spin: spin var(--dur-spin) linear infinite;
+
   --shadow-ember-hover:
     inset 0 1px 0 rgb(255 220 240 / 0.28), 0 0 0 1px rgb(255 200 160 / 0.18),
     0 10px 32px rgb(155 51 131 / 0.62);
@@ -103,13 +108,42 @@
   --lamp-empty: 0.09;
 
   /*
-   * Motion (Session 26g, "Rising"): every duration and easing in the interface is one of these. Show
-   * controls and the live state never move (--dur-instant).
+   * Motion (Session 26g, Diya's "Rising", from the design lab's table): every duration, delay,
+   * easing and distance in the interface is one of these, and nothing uses a number of its own
+   * (src/main/motion.test.ts). Show controls and the live state never move. With reduced motion
+   * nothing moves at all.
    */
-  --dur-instant: 0ms;
-  --dur-wisp: 1600ms; /* the unlit lamp's one wisp of smoke, as an empty place arrives */
+  --dur-instant: 0ms; /* show controls, the live state, black-out, logo: never animated */
+  --dur-press: 90ms; /* press feedback (never on a show control) */
+  --dur-hover: 120ms; /* colour on hover and focus */
+  --dur-exit: 150ms; /* anything leaving: about 70% of its entrance */
+  --dur-menu: 160ms; /* menus, popovers, "What is this?" */
+  --dur-notice: 200ms; /* notices rise 6 px */
+  --dur-dialog: 220ms; /* dialogs rise 8 px */
+  --dur-scrim: 200ms; /* the dim behind a dialog only fades */
+  --dur-panel: 240ms; /* side sheets slide 16 px from their edge */
+  --dur-move: 180ms; /* a playlist row moving up or down */
+  --dur-step: 320ms; /* the first start moving to its next step */
+  --dur-empty: 520ms; /* an empty place settling 14 px */
+  --dur-light: 1400ms; /* the first start: the lamp lighting, once */
+  --dur-breath: 2600ms; /* the lit lamp's one breath, then still for good */
+  --dur-wisp: 1600ms; /* the unlit lamp's one wisp of smoke */
+  --dur-spin: 1000ms; /* the Loading spinner turning */
+  --delay-dialog: 40ms; /* the dialog after its dim */
+  --delay-empty: 80ms;
   --delay-wisp: 520ms;
+  --stagger: 45ms; /* between things arriving together, one-off arrivals only */
+  --stagger-notice: 90ms;
+  --stagger-empty: 70ms;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1); /* entrances and exits */
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1); /* side sheets */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1); /* the light passing once across a notice */
+  --ease-flame: cubic-bezier(0.2, 0.8, 0.25, 1); /* the flame growing; never an overshoot */
+  --rise-sm: 4px;
+  --rise-notice: 6px;
+  --rise: 8px;
+  --rise-lg: 14px;
+  --slide-sheet: 16px;
 }
 
 /*
@@ -245,10 +279,125 @@ body.output {
   }
 }
 
+/*
+ * What moves (Session 26g): things arriving and leaving, each with its token. `data-motion` on an
+ * element says how it arrives; ui/motion.ts plays a copy's exit (`data-leaving`) as it goes.
+ */
+@layer components {
+  [data-motion='scrim'] {
+    animation: fade-in var(--dur-scrim) var(--ease-out) both;
+  }
+  [data-motion='dialog'] {
+    animation: dialog-in var(--dur-dialog) var(--ease-out) var(--delay-dialog) both;
+  }
+  [data-motion='sheet'] {
+    animation: sheet-in var(--dur-panel) var(--ease-drawer) both;
+  }
+  [data-motion='pop'] {
+    transform-origin: top left;
+    animation: pop-in var(--dur-menu) var(--ease-out) both;
+  }
+  [data-motion='notice'] {
+    animation: rise-notice var(--dur-notice) var(--ease-out) calc(var(--i, 0) * var(--stagger-notice)) both;
+  }
+  [data-motion='empty'] {
+    animation: rise-empty var(--dur-empty) var(--ease-out)
+      calc(var(--delay-empty) + var(--i, 0) * var(--stagger-empty)) both;
+  }
+  [data-leaving] {
+    pointer-events: none;
+    animation: fade-out var(--dur-exit) var(--ease-out) both;
+  }
+  [data-leaving='dialog'] > *,
+  [data-leaving='pop'],
+  [data-leaving='notice'] {
+    animation: drop-out var(--dur-exit) var(--ease-out) both;
+  }
+  [data-leaving='sheet'] > * {
+    animation: sheet-out var(--dur-exit) var(--ease-drawer) both;
+  }
+
+  /*
+   * What never moves: show controls (Next, Back, Clear all, the clears, Black-out, Logo, Put it
+   * back, the Looks), the thumbnails and the live picture, with their borders, badges and glow.
+   * They change in the same frame as the screens.
+   */
+  [data-show-control],
+  [data-show-control] *,
+  [data-show-control]::before,
+  [data-show-control]::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--rise)) scale(0.985);
+  }
+}
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateX(var(--slide-sheet));
+  }
+}
+@keyframes sheet-out {
+  to {
+    opacity: 0;
+    transform: translateX(var(--slide-sheet));
+  }
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--rise-sm) * -1)) scale(0.97);
+  }
+}
+@keyframes drop-out {
+  to {
+    opacity: 0;
+    transform: translateY(var(--rise-sm));
+  }
+}
+@keyframes rise-notice {
+  from {
+    opacity: 0;
+    transform: translateY(var(--rise-notice));
+  }
+}
+@keyframes rise-empty {
+  from {
+    opacity: 0;
+    transform: translateY(var(--rise-lg));
+  }
+}
+
+/*
+ * Reduced motion: nothing in the interface moves at all. The audience screens keep what they always
+ * had (their transitions are the show's own, Session 27).
+ */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  ::before,
-  ::after {
+  body:not(.output) *,
+  body:not(.output) ::before,
+  body:not(.output) ::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  body.output *,
+  body.output ::before,
+  body.output ::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
