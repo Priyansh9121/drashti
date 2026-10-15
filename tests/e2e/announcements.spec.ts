@@ -13,6 +13,7 @@ import {
   type PageGlobals,
   relaunchApp,
   setUpScreen,
+  outputReady,
 } from './helpers';
 
 /*
@@ -94,6 +95,9 @@ async function setUp(env: Record<string, string> = ENV) {
   await setUpScreen(win, 'Main Hall', 0);
   await setUpScreen(win, 'Side Hall', 1);
   await expect.poll(() => outputPages(app).length).toBe(2);
+  // Both ready to draw the show (Session 27's warm-up): an announcement up for five "minutes" of a second
+  // each would otherwise end before a screen still warming up drew it.
+  for (const o of outputPages(app)) await outputReady(o);
   const { base } = await networkOn(win);
   const key = await posterKey(win);
   const openPoster = async (name?: string) => {

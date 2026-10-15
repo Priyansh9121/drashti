@@ -13,6 +13,7 @@ import {
   outputPage,
   relaunchApp,
   setUpScreen,
+  outputReady,
 } from './helpers';
 import { makeTestImage } from './test-media';
 
@@ -48,7 +49,7 @@ test('a backup brings the library back as it was, keeping the one before', async
 
   // Something on a screen, so quitting would normally ask first.
   await setUpScreen(win);
-  await outputPage(first.app);
+  await outputReady(await outputPage(first.app));
   await win.evaluate(
     (id) =>
       (globalThis as PageGlobals).drashti.engine.dispatch({
@@ -67,7 +68,10 @@ test('a backup brings the library back as it was, keeping the one before', async
   }, backups);
   await operatorReady(win);
   await chooseMenuItem(first.app, 'backup-library');
-  await expect(win.getByRole('alert').filter({ hasText: 'Library backed up to' })).toBeVisible();
+  // The library and its media copied: on a slow CI computer, more than the usual 10 s.
+  await expect(win.getByRole('alert').filter({ hasText: 'Library backed up to' })).toBeVisible({
+    timeout: 30_000,
+  });
   const [backup = ''] = readdirSync(backups);
   expect(backup).toMatch(/^Drashti backup \d{4}-\d{2}-\d{2} \d{2}-\d{2}$/u);
   expect(readdirSync(join(backups, backup)).sort()).toEqual(['Media', 'backup.json', 'drashti.sqlite']);
