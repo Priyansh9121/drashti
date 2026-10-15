@@ -1,5 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { lightOf } from './pixels';
+import { holdClock } from './placeholder-slides';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -115,8 +117,11 @@ async function setUpShow(main: MainRun): Promise<{ id: string; videoId: string }
 
 test('a node’s display in a group follows slides, a dissolve and a video in step with Main’s own output', async () => {
   test.setTimeout(240_000);
-  const main = await launchMain();
-  const node = await launchNode({ DRASHTI_TEST_CLOCK_SKEW_MS: String(SKEW_MS) });
+  const main = await launchMain({ DRASHTI_TEST_CLOCK_HOLD: '1' });
+  const node = await launchNode({
+    DRASHTI_TEST_CLOCK_SKEW_MS: String(SKEW_MS),
+    DRASHTI_TEST_CLOCK_HOLD: '1',
+  });
   try {
     const nodeId = await pairNode(main, node);
     const { id, videoId } = await setUpShow(main);
@@ -182,6 +187,32 @@ test('a node’s display in a group follows slides, a dissolve and a video in st
     await expect.poll(() => fadeStart(mainOut)).not.toBeNull();
     await expect.poll(() => fadeStart(nodeOut)).not.toBeNull();
     expect(await fadeStart(nodeOut)).toBe(await fadeStart(mainOut));
+    // Held at the same moments of the engine's time (a test switch on both; the node's clock is 4 s off its
+    // computer's, Main's time held all the same), the node draws exactly Main's picture (Session 27). Held
+    // before the slide goes up, so the dissolve waits at its very start on both.
+    await dispatch(main.win, { type: 'goLive', presentationId: id, slideIndex: 0 });
+    for (const out of [mainOut, nodeOut])
+      await expect(out.locator('[data-layer="slide"][data-fading="true"]')).toHaveCount(0, {
+        timeout: 10_000,
+      });
+    for (const app of [main.app, node.app]) await holdClock(app, Date.now() - 60_000);
+    await dispatch(main.win, { type: 'goLive', presentationId: id, slideIndex: 1 });
+    const shownAt = await main.win.evaluate(
+      async () =>
+        (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.slide?.shownAt ?? 0,
+    );
+    for (const p of [0.25, 0.5, 0.75]) {
+      for (const app of [main.app, node.app]) await holdClock(app, shownAt + p * DISSOLVE_MS);
+      for (const out of [mainOut, nodeOut])
+        await expect(out.locator('[data-layer="slide"]')).toHaveAttribute('data-fade', p.toFixed(3));
+      const [a, b] = [await lightOf(mainOut), await lightOf(nodeOut)];
+      const off = Math.max(
+        Math.abs(a.mean - b.mean),
+        ...a.quad.map((q, k) => Math.abs(q - (b.quad[k] ?? 0))),
+      );
+      expect(off, `the node's picture at ${String(p)} of the dissolve`).toBeLessThan(0.01);
+    }
+    for (const app of [main.app, node.app]) await holdClock(app, null);
 
     // A video in the background (the node copies it the moment it goes up), in step on both.
     await dispatch(main.win, {

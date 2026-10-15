@@ -109,10 +109,12 @@ function Zoomed({ layer, children }: { layer: SlideLayer; children: ReactNode })
     });
     const keep = () => {
       const at = Math.min(span, Math.max(0, engineNow() - shownAt));
+      // Held (a test), or finished: it stays where it is (playing a finished one would start it again). Paused
+      // before it is placed: a pause only lands at the next frame, a frame further on.
+      const still = clockHeld() || at >= span;
+      if (still) zoom.pause();
       zoom.currentTime = at;
-      // Held (a test), or finished: it stays where it is. (Playing a finished one would start it again.)
-      if (clockHeld() || at >= span) zoom.pause();
-      else zoom.play();
+      if (!still) zoom.play();
     };
     keep();
     const off = onClockJump(keep);

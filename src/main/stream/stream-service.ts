@@ -346,6 +346,11 @@ export class StreamService {
     };
   }
 
+  /** The Program window's page while it is open (tests hold its clock with the outputs', Session 27). */
+  programContents(): WebContents | null {
+    return this.program && !this.program.isDestroyed() ? this.program.webContents : null;
+  }
+
   isProgram(contents: WebContents | null): boolean {
     return (
       contents !== null &&

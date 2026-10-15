@@ -260,6 +260,18 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   /** Each output's name, as the watchdog and the log call it. */
   const outputNames = new Map<string, string>();
   const reports = new Map<string, OutputReport>();
+  // Tests only (never a packaged Drashti): a node's outputs held at one moment of the engine's time, as Main's
+  // are (Session 27), so a node and Main can be compared pixel for pixel part-way through a transition.
+  if (!app.isPackaged && process.env['DRASHTI_TEST_CLOCK_HOLD'] === '1')
+    (globalThis as { drashtiTestHoldClock?: (at: number | null) => number }).drashtiTestHoldClock = (at) => {
+      let reached = 0;
+      for (const win of outputWindows.values())
+        if (pageAlive(win)) {
+          sendToPage(win, IPC.output.testClock, { at });
+          reached++;
+        }
+      return reached;
+    };
   const screenOf = (id: string): NodeScreen | undefined => paired?.screens.find((s) => s.screenId === id);
   const asConfig = (s: NodeScreen): ScreenConfig => ({
     id: s.screenId,
