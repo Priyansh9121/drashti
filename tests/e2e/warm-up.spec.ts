@@ -15,9 +15,13 @@ import { goLive, makeSlides } from './placeholder-slides';
 
 const HOLD = { DRASHTI_TEST_HOLD_WARM_UP: '1' };
 
-/** The brightest any pixel is (0 to 255, any channel) in a page's screenshot, or in one element's box of it. */
+/**
+ * The brightest any pixel is (0 to 255, any channel) in a page's screenshot, or in one element's box of it,
+ * 2 px in from its edges (a box at fractions of a pixel takes in what is around it: the LIVE picture's border).
+ */
 async function brightest(page: Page, selector?: string): Promise<number> {
-  const clip = selector ? await page.locator(selector).first().boundingBox() : null;
+  const box = selector ? await page.locator(selector).first().boundingBox() : null;
+  const clip = box ? { x: box.x + 2, y: box.y + 2, width: box.width - 4, height: box.height - 4 } : null;
   const png = (await page.screenshot({ scale: 'css', ...(clip ? { clip } : {}) })).toString('base64');
   return page.evaluate(async (png) => {
     // Decoded by hand: the page's security policy refuses fetch() of a data URL.
