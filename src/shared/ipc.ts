@@ -538,6 +538,12 @@ export const IPC = {
     assignNodeDisplay: 'screens:assign-node-display',
     identify: 'screens:identify',
     uncoverOperator: 'screens:uncover-operator',
+    /**
+     * Try a stopped screen again (Session 26h): the stopped-screen notice's one primary. Only a screen
+     * on this computer that the watchdog gave up on (Session 23); in Simple Mode too, and for a volunteer,
+     * since it changes nothing but brings a hall screen back.
+     */
+    tryAgain: 'screens:try-again',
     /** main -> operator: the screen setup or display list changed. */
     changed: 'screens:changed',
   },
@@ -992,6 +998,7 @@ export interface InvokeContract {
   [IPC.screens.removeScreen]: { args: [screenId: string]; result: ScreensResult };
   [IPC.screens.identify]: { args: []; result: null };
   [IPC.screens.uncoverOperator]: { args: []; result: ScreensResult };
+  [IPC.screens.tryAgain]: { args: [screenId: string]; result: { ok: true } | { ok: false; message: string } };
   [IPC.output.getContext]: { args: []; result: OutputContext | null };
   [IPC.output.report]: { args: [report: OutputReport]; result: null };
   [IPC.setup.state]: { args: []; result: SetupState };

@@ -483,6 +483,7 @@ const bridge: DrashtiBridge = {
       invoke(IPC.screens.assignNodeDisplay, groupId, nodeId, displayId),
     identify: () => invoke(IPC.screens.identify),
     uncoverOperator: () => invoke(IPC.screens.uncoverOperator),
+    tryAgain: (screenId) => invoke(IPC.screens.tryAgain, screenId),
   },
   output: {
     getContext: () => invoke(IPC.output.getContext),

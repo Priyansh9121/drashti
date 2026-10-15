@@ -3581,6 +3581,21 @@ function start(): void {
     uncover();
     return { ok: true as const, snapshot: screens.snapshot() };
   });
+  // The stopped-screen notice's Try again (Session 26h): only a screen on this computer that the watchdog
+  // gave up on, with its count starting afresh, as Screens' own Try again does. In Simple Mode too, and for
+  // a volunteer: it changes nothing but brings a hall screen back.
+  handle(IPC.screens.tryAgain, (e, screenId) => {
+    if (!fromOperator(e)) return notAllowed;
+    const sid = idSchema.safeParse(screenId);
+    const win = sid.success ? outputWindows.get(sid.data) : undefined;
+    const stopped =
+      sid.success && manager.status().some((st) => st.screenId === sid.data && st.state === 'stopped');
+    if (!win || win.isDestroyed() || !stopped)
+      return { ok: false as const, message: 'That screen is not stopped now.' };
+    log.info('Trying a stopped output again, as the operator asked from its notice');
+    watchdog.retryNow(win.webContents, 'Try again');
+    return { ok: true as const };
+  });
   handle(IPC.screens.removeScreen, (e, id) => (fromOperator(e) ? screens.removeScreen(id) : notAllowed));
   handle(IPC.screens.identify, (e) => {
     if (!fromOperator(e)) return null;

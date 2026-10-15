@@ -692,6 +692,8 @@ export interface DrashtiBridge {
     identify(): Promise<null>;
     /** Turn off any output covering the operator window. */
     uncoverOperator(): Promise<ScreensResult>;
+    /** Try a stopped screen on this computer again (Session 26h; Simple Mode too). */
+    tryAgain(screenId: string): Promise<{ ok: true } | { ok: false; message: string }>;
   };
   /** For output windows. */
   output: {
