@@ -26,9 +26,10 @@ export interface SmartPlaylistView {
   /**
    * 'following': all is well. 'folder-gone': the folder is not there (a USB stick taken out); the playlist
    * keeps its items and carries on when it is back. 'too-many': the folder holds more than SMART_MAX_FILES
-   * files Drashti takes; nothing more is added or marked until some go.
+   * files Drashti takes; nothing more is added or marked until some go. 'waiting' (Session 28): files that
+   * held still wait while the stream is on air or recording, and join afterwards.
    */
-  state: 'following' | 'folder-gone' | 'too-many';
+  state: 'following' | 'folder-gone' | 'too-many' | 'waiting';
   /** New or changed files waiting for their size to hold still, or being imported. */
   adding: number;
   /** Items whose files are gone from the folder (marked, not removed). */
@@ -156,6 +157,8 @@ export interface MediaSummary {
   format: string | null;
   /** Converted for Drashti: the name of the copy everything now uses (null: not converted). */
   convertedTo: string | null;
+  /** Taken from the drop folder (Session 28): Media's "From the drop folder" filter. */
+  fromDrop?: true;
 }
 
 export type PlaylistResult = { ok: true; ids: string[] } | { ok: false; message: string };

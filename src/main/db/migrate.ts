@@ -40,6 +40,7 @@ import { up as playlistKinds } from './migrations/038-playlist-kinds';
 import { up as pictureLooks } from './migrations/039-picture-looks';
 import { up as builtinThemes } from './migrations/040-builtin-themes';
 import { up as streamPlaces } from './migrations/041-stream-places';
+import { up as dropFolder } from './migrations/042-drop-folder';
 import { plural } from '../../shared/text';
 
 export interface Migration {
@@ -100,6 +101,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 39, name: 'picture looks', up: pictureLooks },
   { version: 40, name: 'built-in themes', up: builtinThemes },
   { version: 41, name: 'several platforms at once', up: streamPlaces, rebuildsTable: true },
+  { version: 42, name: 'the drop folder', up: dropFolder },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

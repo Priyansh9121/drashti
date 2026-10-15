@@ -25,7 +25,7 @@ import {
 import { EmptyState } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { layoutRows, visibleRows } from '../ui/virtual';
-import { clickMedia, loadMedia, useMedia } from './library-store';
+import { clickMedia, loadMedia, setDropOnly, shownMedia, useMedia } from './library-store';
 
 const ROW_HEIGHT = 48;
 const MARGIN = 600;
@@ -230,7 +230,10 @@ const MediaRow = memo(function MediaRow({
 
 /** Every media file in the library, to drag into a playlist. */
 export function MediaList({ platform }: { platform: string }) {
-  const media = useMedia((s) => s.media);
+  const allMedia = useMedia((s) => s.media);
+  const dropOnly = useMedia((s) => s.dropOnly);
+  const media = useMemo(() => shownMedia({ media: allMedia, dropOnly }), [allMedia, dropOnly]);
+  const dropped = useMemo(() => allMedia.filter((m) => m.fromDrop).length, [allMedia]);
   const loaded = useMedia((s) => s.loaded);
   const marked = useMedia((s) => s.marked);
   const anchorId = useMedia((s) => s.anchorId);
@@ -269,6 +272,22 @@ export function MediaList({ platform }: { platform: string }) {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
+      {dropped > 0 && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-line px-3 py-1.5 text-xs">
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-pressed={dropOnly}
+            data-testid="media-filter-drop"
+            className={dropOnly ? 'text-accent' : 'text-muted'}
+            onClick={() => {
+              setDropOnly(!dropOnly);
+            }}
+          >
+            From the drop folder ({dropped})
+          </Button>
+        </div>
+      )}
       {(toConvert.length > 0 || going.length > 0 || convertError) && (
         <div
           className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line px-3 py-2 text-xs"
