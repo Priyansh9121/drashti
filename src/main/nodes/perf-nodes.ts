@@ -6,6 +6,7 @@ import { ENGINE_STATE_VERSION } from '../../shared/engine/state';
 import { NODE_PROTOCOL } from '../../shared/nodes';
 import type { Db } from '../db/database';
 import type { NodeService } from './node-service';
+import { sw } from '../switches';
 
 /*
  * For the hand-run performance check (DRASHTI_SELFTEST=performance with
@@ -98,7 +99,7 @@ export async function startPerfNodes(
   version: string,
 ): Promise<PerfNodes> {
   // One generated file in the library, for every node to copy ("Get everything ready").
-  const megabytes = Math.max(1, Math.min(512, Number(process.env['DRASHTI_PERF_NODE_MEDIA_MB'] ?? 32) || 32));
+  const megabytes = Math.max(1, Math.min(512, Number(sw('DRASHTI_PERF_NODE_MEDIA_MB') ?? 32) || 32));
   const bytes = randomBytes(megabytes * MB);
   const sha256 = createHash('sha256').update(bytes).digest('hex');
   writeFileSync(join(mediaDir, `${sha256}.mp4`), bytes);
