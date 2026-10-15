@@ -1020,6 +1020,11 @@ function start(): void {
       pictureLook: (mediaId) => pictureLook(mediaId),
     },
   );
+  // Quitting: a slide moving on by itself, or an audio playlist's next track, never fires once the library
+  // has closed (seen on CI Windows: "The database connection is not open" from an auto-advance at quit).
+  stops.add('engine timers', () => {
+    engine.dispose();
+  });
   const stageLayoutRepo = new StageLayoutRepo(db);
   const maskRepo = new MaskRepo(db);
   const looks = new LookService({
