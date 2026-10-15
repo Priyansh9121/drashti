@@ -31,6 +31,7 @@ import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
+import { digestLine, stillAsUnpacked } from './tree-digest.mjs';
 
 export const YT_DLP_VERSION = '2026.08.19';
 export const DENO_VERSION = '2.9.7';
@@ -188,7 +189,13 @@ export async function fetchYtDlp(target) {
   const outDir = join(root, 'vendor', 'yt-dlp', target);
   const out = join(outDir, build.exe);
   const stamp = join(outDir, 'SOURCE.txt');
-  if (existsSync(out) && existsSync(stamp) && readFileSync(stamp, 'utf8').includes(build.sha256)) return out;
+  // Reused only while it is still what was unpacked (Session 30): else unpacked again from the checked download.
+  if (
+    existsSync(out) &&
+    existsSync(stamp) &&
+    stillAsUnpacked(readFileSync(stamp, 'utf8'), outDir, build.sha256)
+  )
+    return out;
   const zip = await cached(
     join(cacheRoot, `yt-dlp-${YT_DLP_VERSION}`),
     build.url,
@@ -203,7 +210,7 @@ export async function fetchYtDlp(target) {
   }
   writeFileSync(
     stamp,
-    `yt-dlp ${YT_DLP_VERSION} for ${target} (unpacked build)\nfrom ${build.url}\nsha256 of the download ${build.sha256}\nThe Unlicense; as built, GPL version 3 or later: see LICENSES/yt-dlp/ in Drashti's repository.\n`,
+    `yt-dlp ${YT_DLP_VERSION} for ${target} (unpacked build)\nfrom ${build.url}\nsha256 of the download ${build.sha256}\n${digestLine(outDir)}\nThe Unlicense; as built, GPL version 3 or later: see LICENSES/yt-dlp/ in Drashti's repository.\n`,
   );
   console.log(`yt-dlp ${YT_DLP_VERSION} for ${target}: ${out}`);
   return out;
@@ -216,7 +223,13 @@ export async function fetchDeno(target) {
   const outDir = join(root, 'vendor', 'deno', target);
   const out = join(outDir, build.exe);
   const stamp = join(outDir, 'SOURCE.txt');
-  if (existsSync(out) && existsSync(stamp) && readFileSync(stamp, 'utf8').includes(build.sha256)) return out;
+  // Reused only while it is still what was unpacked (Session 30): else unpacked again from the checked download.
+  if (
+    existsSync(out) &&
+    existsSync(stamp) &&
+    stillAsUnpacked(readFileSync(stamp, 'utf8'), outDir, build.sha256)
+  )
+    return out;
   const zip = await cached(
     join(cacheRoot, `deno-${DENO_VERSION}`),
     build.url,
@@ -228,7 +241,7 @@ export async function fetchDeno(target) {
   if (!build.exe.endsWith('.exe')) chmodSync(out, 0o755);
   writeFileSync(
     stamp,
-    `Deno ${DENO_VERSION} for ${target}\nfrom ${build.url}\nsha256 of the download ${build.sha256}\nsha256 of the program ${build.binarySha256}\nMIT: see LICENSES/deno/ in Drashti's repository.\n`,
+    `Deno ${DENO_VERSION} for ${target}\nfrom ${build.url}\nsha256 of the download ${build.sha256}\nsha256 of the program ${build.binarySha256}\n${digestLine(outDir)}\nMIT: see LICENSES/deno/ in Drashti's repository.\n`,
   );
   console.log(`Deno ${DENO_VERSION} for ${target}: ${out}`);
   return out;

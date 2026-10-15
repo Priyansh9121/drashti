@@ -9,7 +9,7 @@
 // gitleaks is downloaded once per computer, from one pinned release, and only used if its
 // sha256 matches the one written below (from the release's checksums file).
 import { spawnSync } from 'node:child_process';
-import { createHash, randomInt } from 'node:crypto';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -88,27 +88,45 @@ function git(dir, ...args) {
   if (r.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${r.stderr}`);
 }
 
-/** A throwaway repository with a made-up GitHub token in one commit: it must be found, and never printed. */
-function selfCheck(binary) {
+/**
+ * A throwaway repository with one made-up secret in one commit, scanned with this repository's rules: it
+ * must be found, and never printed.
+ */
+function planted(binary, what, file, text, secretPart) {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-secret-scan-'));
   try {
-    const letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    // Made up here, so no token-shaped text is ever written into this repository.
-    const token = `ghp_${Array.from({ length: 36 }, () => letters[randomInt(letters.length)]).join('')}`;
     git(dir, 'init', '-q');
     git(dir, 'config', 'user.email', 'self-check@example.invalid');
     git(dir, 'config', 'user.name', 'Self check');
-    writeFileSync(join(dir, 'settings.env'), `GITHUB_TOKEN=${token}\n`);
+    const config = join(repo, '.gitleaks.toml');
+    if (existsSync(config)) writeFileSync(join(dir, '.gitleaks.toml'), readFileSync(config));
+    writeFileSync(join(dir, file), text);
     git(dir, 'add', '.');
-    git(dir, 'commit', '-q', '-m', 'planted token');
+    git(dir, 'commit', '-q', '-m', `planted ${what}`);
     const r = scan(binary, dir);
     const output = `${r.stdout}${r.stderr}`;
-    if (r.status !== 1) throw new Error(`The planted token was not found (gitleaks exit ${r.status}).`);
-    if (output.includes(token.slice(4))) throw new Error('The finding was printed without redaction.');
-    process.stdout.write('Self-check passed: the planted token was found, and printed redacted.\n');
+    if (r.status !== 1) throw new Error(`The planted ${what} was not found (gitleaks exit ${r.status}).`);
+    if (output.includes(secretPart)) throw new Error(`The ${what} was printed without redaction.`);
+    process.stdout.write(`Self-check passed: the planted ${what} was found, and printed redacted.\n`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+function selfCheck(binary) {
+  const letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  // Made up here, so no secret-shaped text is ever written into this repository.
+  const token = `ghp_${Array.from({ length: 36 }, () => letters[randomInt(letters.length)]).join('')}`;
+  planted(binary, 'token', 'settings.env', `GITHUB_TOKEN=${token}\n`, token.slice(4));
+  // Drashti's own: an events out secret (Session 30, .gitleaks.toml).
+  const secret = `whsec_${randomBytes(32).toString('base64')}`;
+  planted(
+    binary,
+    'events out secret',
+    'events.json',
+    `{"address":"x","value":"${secret}"}\n`,
+    secret.slice(6),
+  );
 }
 
 try {
