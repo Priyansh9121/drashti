@@ -110,6 +110,7 @@ export function ProgramView({
           calendar={state.calendar}
           canvas={canvas}
           at="top"
+          movement={movement}
         />
       )}
     </div>

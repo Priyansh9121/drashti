@@ -259,6 +259,46 @@ describe('reduce', () => {
     });
   });
 
+  describe('a message’s time on the screens (Session 27)', () => {
+    it('is when it went up, and an update keeps it, so the entrance never plays again', () => {
+      let s = reduce(deepFreeze(initialEngineState()), {
+        type: 'message/show',
+        message: { id: 'm', text: 'Placeholder one' },
+        at: 5000,
+      });
+      expect(s.layers.messages).toEqual([{ id: 'm', text: 'Placeholder one', shownAt: 5000 }]);
+      s = reduce(deepFreeze(s), {
+        type: 'message/show',
+        message: { id: 'm', text: 'Placeholder two' },
+        at: 9000,
+      });
+      expect(s.layers.messages).toEqual([{ id: 'm', text: 'Placeholder two', shownAt: 5000 }]);
+      // Another comes in from its own time; hidden and shown again, it comes in again.
+      s = reduce(deepFreeze(s), {
+        type: 'message/show',
+        message: { id: 'n', text: 'Placeholder three' },
+        at: 9500,
+      });
+      expect(s.layers.messages.map((m) => m.shownAt)).toEqual([5000, 9500]);
+      s = reduce(reduce(s, { type: 'message/hide', messageId: 'm' }), {
+        type: 'message/show',
+        message: { id: 'm', text: 'Placeholder two' },
+        at: 12_000,
+      });
+      expect(s.layers.messages.find((m) => m.id === 'm')?.shownAt).toBe(12_000);
+      // Put back from a saved state, it keeps the time it had; with none, it has none (still, no entrance).
+      const kept = reduce(initialEngineState(), {
+        type: 'message/show',
+        message: { id: 'k', text: 'K', shownAt: 100 },
+      });
+      expect(kept.layers.messages[0]?.shownAt).toBe(100);
+      expect(
+        reduce(initialEngineState(), { type: 'message/show', message: { id: 'k', text: 'K' } }).layers
+          .messages[0],
+      ).toEqual({ id: 'k', text: 'K' });
+    });
+  });
+
   describe('the ticker', () => {
     it('starts again from the right each time an announcement joins, changes or leaves', () => {
       let s = reduce(deepFreeze(initialEngineState()), {
@@ -266,7 +306,8 @@ describe('reduce', () => {
         item: { id: 'a', text: 'One' },
         at: 100,
       });
-      expect(s.layers.ticker).toEqual({ items: [{ id: 'a', text: 'One' }], startedAt: 100 });
+      // The band's own time is when it came up (its entrance plays once, Session 27); the words start again.
+      expect(s.layers.ticker).toEqual({ items: [{ id: 'a', text: 'One' }], startedAt: 100, shownAt: 100 });
       s = reduce(deepFreeze(s), { type: 'ticker/show', item: { id: 'b', text: 'Two' }, at: 200 });
       expect(s.layers.ticker).toEqual({
         items: [
@@ -274,13 +315,14 @@ describe('reduce', () => {
           { id: 'b', text: 'Two' },
         ],
         startedAt: 200,
+        shownAt: 100,
       });
       const same = deepFreeze(s);
       // The same words again change nothing, and the ticker carries on where it is.
       expect(reduce(same, { type: 'ticker/show', item: { id: 'b', text: 'Two' }, at: 300 })).toBe(same);
       expect(reduce(same, { type: 'ticker/hide', itemId: 'missing', at: 300 })).toBe(same);
       s = reduce(same, { type: 'ticker/hide', itemId: 'a', at: 300 });
-      expect(s.layers.ticker).toEqual({ items: [{ id: 'b', text: 'Two' }], startedAt: 300 });
+      expect(s.layers.ticker).toEqual({ items: [{ id: 'b', text: 'Two' }], startedAt: 300, shownAt: 100 });
       expect(reduce(deepFreeze(s), { type: 'ticker/hide', itemId: 'b', at: 400 }).layers.ticker).toBeNull();
     });
 

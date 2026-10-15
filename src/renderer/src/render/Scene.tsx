@@ -3,7 +3,7 @@ import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import type { CalendarDay, CalendarLang } from '../../../shared/calendar';
 import { festivalsLine, samvatLine } from '../../../shared/calendar';
 import type { EngineState, MessageItem, PropItem, TickerLayer } from '../../../shared/engine/state';
-import type { LiveGroupLook, LookLayer } from '../../../shared/looks';
+import type { LiveGroupLook, LookLayer, Movement } from '../../../shared/looks';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import type { Mask } from '../../../shared/masks';
 import { maskCoverUrl } from '../../../shared/masks';
@@ -11,6 +11,7 @@ import type { TimerState } from '../../../shared/timers';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { BackgroundMedia } from './BackgroundMedia';
+import { useEntrance } from './entrance';
 import { IdleRotation } from './IdleRotation';
 import { clockHeld, engineFrameNow, onClockJump } from './clock';
 import { LANG_FONT_STACK } from './fonts';
@@ -64,6 +65,7 @@ export function MessageBanner({
   canvas,
   at = 'bottom',
   above = 0,
+  movement = 'calm',
 }: {
   messages: MessageItem[];
   timers: readonly TimerState[];
@@ -73,10 +75,19 @@ export function MessageBanner({
   at?: 'top' | 'bottom';
   /** Canvas pixels to leave at that edge (the ticker's band). */
   above?: number;
+  /** How this screen's group moves (Session 27): the banner's entrance. */
+  movement?: Movement;
 }) {
   const size = Math.round(canvas.height * 0.045);
+  const ref = useRef<HTMLDivElement>(null);
+  // In from when the first of its messages went up (Session 27); another joining, or an update, never
+  // plays it again. A message put back after a restart has no time: the banner is simply there.
+  const times = messages.map((m) => m.shownAt);
+  const start = times.some((t) => t === undefined) ? undefined : Math.min(...(times as number[]));
+  useEntrance(ref, start, at === 'top' ? 'banner-top' : 'banner', movement, canvas.height / 1080);
   return (
     <div
+      ref={ref}
       data-layer="messages"
       style={{
         position: 'absolute',
@@ -131,8 +142,20 @@ export function tickerPhase(now: number, startedAt: number, passMs: number): num
  * browser moves them (an animation), and each screen checks every few seconds
  * that it is still in step.
  */
-export function TickerBand({ ticker, canvas }: { ticker: TickerLayer; canvas: Size }) {
+export function TickerBand({
+  ticker,
+  canvas,
+  movement = 'calm',
+}: {
+  ticker: TickerLayer;
+  canvas: Size;
+  /** How this screen's group moves (Session 27): the band's entrance. */
+  movement?: Movement;
+}) {
   const words = useRef<HTMLDivElement>(null);
+  const band = useRef<HTMLDivElement>(null);
+  // The band comes in from its own time, once; the words start again with each announcement (Session 27).
+  useEntrance(band, ticker.shownAt, 'band', movement, canvas.height / 1080);
   const text = ticker.items.map((i) => i.text).join(TICKER_GAP);
   const height = Math.round(canvas.height * TICKER_HEIGHT);
   const size = Math.round(canvas.height * 0.045);
@@ -188,6 +211,7 @@ export function TickerBand({ ticker, canvas }: { ticker: TickerLayer; canvas: Si
   }, [text, startedAt, canvasWidth, canvasHeight]);
   return (
     <div
+      ref={band}
       data-layer="ticker"
       data-testid="ticker"
       style={{
@@ -401,9 +425,10 @@ export const Scene = memo(function Scene({
                     canvas={canvas}
                     at={lowerThirds ? 'top' : 'bottom'}
                     above={lowerThirds ? 0 : bandHeight}
+                    movement={look.movement}
                   />
                 )}
-                {band && <TickerBand ticker={band} canvas={canvas} />}
+                {band && <TickerBand ticker={band} canvas={canvas} movement={look.movement} />}
               </div>
               {layerMask && !keyed && <MaskCover mask={layerMask} layer="masks" />}
               {state.logo && !keyed && (

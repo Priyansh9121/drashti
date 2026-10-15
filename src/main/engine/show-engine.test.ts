@@ -1115,6 +1115,8 @@ describe('ShowEngine', () => {
             { kind: 'text', text: 'Placeholder clock ' },
             { kind: 'timer', timerId: 't2' },
           ],
+          // When it went up, in the same change (its banner comes in from then, Session 27).
+          shownAt: 70_000,
         },
       ]);
       // On into the next item: its cue resets the countdown.
@@ -1305,6 +1307,7 @@ describe('ShowEngine', () => {
       expect(engine.current.layers.ticker).toEqual({
         items: [{ id: 'a1', text: 'Placeholder announcement one' }],
         startedAt: started,
+        shownAt: started,
       });
       engine.dispatch({ type: 'clearLayer', layer: 'ticker' });
       expect(engine.current.layers.ticker).toBeNull();
