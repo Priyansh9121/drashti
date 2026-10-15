@@ -11,7 +11,7 @@ import { MAX_TRANSITION_MS, TRANSITION_KINDS } from '../../../shared/model';
 import { WARM_UP_MARK } from '../../../shared/perf-marks';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
-import { engineNow } from './clock';
+import { engineNow, pauseClock } from './clock';
 import { MediaUrls } from './media-urls';
 import { Scene } from './Scene';
 
@@ -339,8 +339,11 @@ export function WarmUp({
       live = false;
     };
   }, [pictures]);
-  // Then frame by frame: the slides before for two frames, every change part-way until the frames come on
-  // time, and again once every picture in it is decoded where the screen draws it; then done.
+  // Then frame by frame: the slides before for two frames; then every change part-way, the page's clock
+  // paused so the GPU draws it all once (not again at every frame), until the frames come on time; again once
+  // every picture in it is decoded where the screen draws it; again a moment on (what is drawn again in part);
+  // then done.
+  const pulse = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (step.phase === 'pictures') return;
     let frame = 0;
@@ -356,7 +359,10 @@ export function WarmUp({
       };
       frame = requestAnimationFrame(tick);
     } else {
-      /** Frames until they come on time (or MAX_MS). */
+      /**
+       * Frames until they come on time (or MAX_MS). A speck moves at each one, so every frame is a new one
+       * for the GPU, which waits for the one before it to be drawn: on time, all of it has been.
+       */
       const steadyFrames = () =>
         new Promise<void>((resolve) => {
           let steady = 0;
@@ -366,6 +372,7 @@ export function WarmUp({
           const tick = (t: number) => {
             if (!live()) return;
             first ??= t;
+            if (pulse.current) pulse.current.style.transform = `translateX(${String(gaps.length % 2)}px)`;
             if (last !== null) {
               const gap = t - last;
               gaps.push(gap);
@@ -381,6 +388,7 @@ export function WarmUp({
           frame = requestAnimationFrame(tick);
         });
       void (async () => {
+        pauseClock(step.at);
         await steadyFrames();
         // The screen's compositor decodes a big picture on its own after its first frames, drawing nothing of
         // it until then (Session 27: the pictures' pipelines came after the warm-up, measured); a picture's
@@ -389,7 +397,11 @@ export function WarmUp({
         await Promise.all(drawn.map((img) => img.decode().catch(() => undefined)));
         if (!live()) return;
         await steadyFrames();
+        // A moment on: every change drawn again in part, as a show's next frame is.
+        pauseClock(step.at + 50);
+        await steadyFrames();
         if (!live() || hold) return;
+        pauseClock(null);
         performance.mark(`${WARM_UP_MARK}-end`);
         done.current();
       })();
@@ -397,6 +409,7 @@ export function WarmUp({
     return () => {
       run.live = false;
       cancelAnimationFrame(frame);
+      pauseClock(null);
     };
   }, [step, hold, tree]);
   const urlOf = useCallback(
@@ -422,6 +435,10 @@ export function WarmUp({
         createPortal(
           <>
             <div style={{ position: 'absolute', inset: 0, background: '#000000' }} />
+            <div
+              ref={pulse}
+              style={{ position: 'absolute', left: 0, top: 0, width: 2, height: 2, background: '#000000' }}
+            />
             {step.phase !== 'pictures' && (
               <MediaUrls.Provider value={urlOf}>
                 {list.map((s) => (
