@@ -1,3 +1,4 @@
+import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -63,5 +64,104 @@ test('an output given up on is Stopped in Screens and the status line, never a m
   expect(readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8')).not.toContain(
     'Quiet test mode: answered',
   );
+  await app.close();
+});
+
+/** Nothing that runs the show is under `notice`: Next, Back, the layer bar, LIVE, Simple Mode's big buttons. */
+async function clearOfShowControls(win: Page, notice: Locator): Promise<void> {
+  const box = await notice.boundingBox();
+  expect(box).not.toBeNull();
+  const controls = await win.locator('[data-show-control]').evaluateAll((els) =>
+    els
+      .map((el) => el.getBoundingClientRect())
+      .filter((r) => r.width > 0 && r.height > 0)
+      .map((r) => ({ x: r.x, y: r.y, width: r.width, height: r.height })),
+  );
+  expect(controls.length).toBeGreaterThan(0);
+  const n = box ?? { x: 0, y: 0, width: 0, height: 0 };
+  for (const c of controls)
+    expect(
+      n.x < c.x + c.width && c.x < n.x + n.width && n.y < c.y + c.height && c.y < n.y + n.height,
+      `the notice ${JSON.stringify(n)} covers a show control ${JSON.stringify(c)}`,
+    ).toBe(false);
+}
+
+test('a stopped screen raises a notice naming it, in Pro and Simple Mode, never over the show controls; Try again brings it back and the notice goes', async () => {
+  test.setTimeout(150_000);
+  const { app } = await launchApp({ DRASHTI_TEST_GIVE_UP: '1' });
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  const screenId = await setUpScreen(win);
+  const out = await outputPage(app);
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  const name = await win.evaluate(
+    async (id) =>
+      (await (globalThis as PageGlobals).drashti.screens.get()).groups
+        .flatMap((g) => g.screens)
+        .find((sc) => sc.id === id)?.name ?? '',
+    screenId,
+  );
+  expect(name).not.toBe('');
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const list = await d.library.listPresentations();
+    const id = list.find((p) => p.name === 'Language test slides')?.id ?? '';
+    await d.engine.dispatch({ type: 'goLive', presentationId: id, slideIndex: 0 });
+  });
+  await expect(out.locator('[data-lang="en"]')).toHaveText(TEST_LINES.en);
+  const giveUp = () =>
+    app.evaluate((_electron, id) => {
+      (globalThis as unknown as Globals).drashtiTestGiveUp?.(id);
+    }, screenId);
+  const state = () =>
+    win.evaluate(
+      async (id) =>
+        (await (globalThis as PageGlobals).drashti.screens.get()).status.find((st) => st.screenId === id)
+          ?.state,
+      screenId,
+    );
+
+  // Pro Mode: the notice rises, says which screen, and its one primary is Try again.
+  await giveUp();
+  const notice = win.getByTestId('screen-stopped-notice');
+  await expect(notice).toBeVisible();
+  await expect(notice).toHaveAttribute('role', 'alert');
+  await expect(notice).toContainText(`“${name}” has stopped`);
+  await expect(notice.locator('[data-variant="primary"]')).toHaveCount(1);
+  await expect(notice.getByTestId('screen-stopped-try-again')).toHaveAttribute('data-variant', 'primary');
+  await clearOfShowControls(win, notice);
+  // Try again: the screen is back, showing the slide, and the notice has gone by itself.
+  await notice.getByTestId('screen-stopped-try-again').click();
+  await expect.poll(state, { timeout: 20_000 }).toBe('showing');
+  await expect(notice).toHaveCount(0);
+  await expect(out.locator('[data-lang="en"]')).toHaveText(TEST_LINES.en);
+
+  // Simple Mode: the same notice, clear of the big buttons; closed, it goes though the screen is still stopped.
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  await giveUp();
+  const simple = win.getByTestId('simple-mode').getByTestId('screen-stopped-notice');
+  await expect(simple).toBeVisible();
+  await expect(simple).toContainText(`“${name}” has stopped`);
+  await clearOfShowControls(win, simple);
+  await simple.getByRole('button', { name: 'Dismiss' }).click();
+  await expect(simple).toHaveCount(0);
+  expect(await state()).toBe('stopped');
+  // Simple Mode may try it again (it changes nothing but brings the screen back): back, and no notice.
+  expect(
+    await win.evaluate(
+      async (id) => (await (globalThis as PageGlobals).drashti.screens.tryAgain(id)).ok,
+      screenId,
+    ),
+  ).toBe(true);
+  await expect.poll(state, { timeout: 20_000 }).toBe('showing');
+  await expect(simple).toHaveCount(0);
+  // Stopped again later: the notice comes again, and its Try again works in Simple Mode too.
+  await giveUp();
+  await expect(simple).toBeVisible();
+  await simple.getByTestId('screen-stopped-try-again').click();
+  await expect.poll(state, { timeout: 20_000 }).toBe('showing');
+  await expect(simple).toHaveCount(0);
   await app.close();
 });

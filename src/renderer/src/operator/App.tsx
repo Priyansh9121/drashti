@@ -38,6 +38,7 @@ import { OpenPlaylist } from '../playlists/OpenPlaylist';
 import { PanelGroup, PanelNote } from '../ui/Panel';
 import { Music, Wrench } from '../ui/icons';
 import { holdOpening } from '../ui/motion';
+import { StoppedScreens } from '../screens/StoppedScreens';
 import { LivePreview } from './LivePreview';
 import { PresentationList } from './PresentationList';
 import { SlideGrid } from './SlideGrid';
@@ -255,6 +256,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <Header platform={platform} onOpenScreens={openScreens} />
       <ArtiPrompt />
       <MacroCountdown />
+      {/* A hall screen that stopped (Session 26h): in the flow, so it never covers the show controls. */}
+      <StoppedScreens />
       <RecoveryBanner />
       {practising ? (
         <PracticeShow platform={platform} run={run} />
