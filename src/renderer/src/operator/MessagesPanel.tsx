@@ -115,7 +115,7 @@ function TemplateForm({
         </p>
       )}
       <div className="flex gap-2">
-        <Button type="submit" variant="primary" size="sm" disabled={template.trim() === ''}>
+        <Button type="submit" variant="secondary" size="sm" disabled={template.trim() === ''}>
           Save
         </Button>
         <Button size="sm" onClick={() => onDone(false)}>
@@ -206,7 +206,7 @@ function TemplateRow({
         </p>
       )}
       <div className="flex flex-wrap gap-1">
-        <Button variant="primary" size="sm" onClick={show}>
+        <Button variant="secondary" size="sm" onClick={show}>
           {shown ? 'Update' : 'Show'}
         </Button>
         {shown && (

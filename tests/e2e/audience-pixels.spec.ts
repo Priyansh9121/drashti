@@ -125,10 +125,10 @@ test('the audience screens show exactly what the earlier build showed, frame by 
     ]);
 
     // The display numbers shown while setting up (5 s), on two pretend displays.
-    await win.evaluate(() => (globalThis as PageGlobals).drashti.setup.identifyDisplays());
-    await expect
-      .poll(() => app.windows().filter((p) => p.url().includes('identify=')).length)
-      .toBeGreaterThan(0);
+    const { shown } = await win.evaluate(() => (globalThis as PageGlobals).drashti.setup.identifyDisplays());
+    expect(shown).toBeGreaterThan(0);
+    // Every one of them open before any is taken (they come up one by one).
+    await expect.poll(() => app.windows().filter((p) => p.url().includes('identify=')).length).toBe(shown);
     const identify = app
       .windows()
       .filter((p) => p.url().includes('identify='))

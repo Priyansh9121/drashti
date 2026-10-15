@@ -230,6 +230,15 @@ export function BackupWarning() {
     >
       <AlertTriangle size={13} aria-hidden="true" className="shrink-0" />
       <span className="truncate">{warning}</span>
+      {/* Its next step, the one primary of the warning (Session 26g). */}
+      <Button
+        variant="primary"
+        size="sm"
+        data-testid="backup-now"
+        onClick={() => void window.drashti.backups.runNow()}
+      >
+        Back up now
+      </Button>
       <button
         type="button"
         aria-label="Dismiss the backup warning"

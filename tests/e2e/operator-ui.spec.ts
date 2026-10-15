@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { expectNoSeriousA11yIssues } from './a11y';
+import { expectNoSeriousA11yIssues, settled } from './a11y';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -255,6 +255,9 @@ for (const [width, height] of [
     // With a dialog open too.
     await win.getByRole('button', { name: 'Screens', exact: true }).click();
     const sheet = win.getByRole('dialog', { name: 'Screens' });
+    await expect(sheet).toBeVisible();
+    // Where it settles, once it has slid in (Session 26g).
+    await settled(win);
     const box = await sheet.boundingBox();
     expect(
       box &&

@@ -92,7 +92,7 @@ test('show controls, thumbnails and the live picture never move, in Pro Mode and
   await expect(win.getByTestId('slide-thumb').first()).toHaveAttribute('aria-current', 'true');
 
   const SHOW =
-    '[data-testid="layer-bar"] button, [data-testid="slide-thumb"], [data-testid="item-media"], [data-testid="live-preview"], [data-testid="look-button"]';
+    '[data-testid="layer-bar"] button, [data-testid="show-next"], [data-testid="show-back"], [data-testid="slide-thumb"], [data-testid="item-media"], [data-testid="live-preview"], [data-testid="look-button"]';
   expect(await moving(win, SHOW)).toEqual([]);
   // Hovered, pressed and lit too.
   await win.getByTestId('blackout-button').hover();

@@ -154,6 +154,9 @@ test('made at their time, media copied once, the newest kept, a missing drive sk
   const warning = win.getByTestId('backup-warning');
   await expect(warning).toContainText('skipped');
   await expect(warning).toContainText('is the drive connected');
+  // Its next step, Back up now, is the warning's one primary (Session 26g).
+  await expect(warning.getByTestId('backup-now')).toHaveAttribute('data-variant', 'primary');
+  await expect(warning.locator('[data-variant="primary"]')).toHaveCount(1);
   await warning.getByRole('button', { name: 'Dismiss the backup warning' }).click();
   await expect(warning).toHaveCount(0);
 

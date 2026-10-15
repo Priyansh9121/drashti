@@ -12,7 +12,23 @@ import axe from 'axe-core';
 
 type AxeWindow = typeof globalThis & { axe?: typeof axe };
 
+/**
+ * Wait for things still arriving (a dialog rising, a sheet sliding in: Session 26g) to settle, so a
+ * check sees the window as people do once it has, not part-way through a fade.
+ */
+export async function settled(page: Page): Promise<void> {
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+        .map((a) => a.finished.catch(() => undefined)),
+    ),
+  );
+}
+
 export async function expectNoSeriousA11yIssues(page: Page, what: string, include?: string): Promise<void> {
+  await settled(page);
   if (!(await page.evaluate(() => Boolean((globalThis as AxeWindow).axe)))) await page.evaluate(axe.source);
   const violations = await page.evaluate(async (selector) => {
     const engine = (globalThis as AxeWindow).axe;

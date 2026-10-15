@@ -120,7 +120,7 @@ export function RepeatBar({ playlistId, settings }: { playlistId: string; settin
         </Button>
       ) : (
         <Button
-          variant="primary"
+          variant="secondary"
           icon={Play}
           data-testid="repeat-start"
           onClick={() => void startRepeat(playlistId)}

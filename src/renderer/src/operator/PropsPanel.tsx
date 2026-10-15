@@ -212,7 +212,7 @@ function NewProp({ onDone }: { onDone: (made: boolean) => void }) {
         </p>
       )}
       <div className="flex gap-2">
-        <Button type="submit" variant="primary" size="sm">
+        <Button type="submit" variant="secondary" size="sm">
           Save
         </Button>
         <Button size="sm" onClick={() => onDone(false)}>
