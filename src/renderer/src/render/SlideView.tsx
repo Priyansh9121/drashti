@@ -180,7 +180,7 @@ export function textBoxStyle(el: TextElement): CSSProperties {
   };
 }
 
-function TextView({ el }: { el: TextElement }) {
+function TextView({ el, hidden = false }: { el: TextElement; hidden?: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   const words = useRef<HTMLDivElement>(null);
   useShrinkToFit(box, words, el);
@@ -190,8 +190,11 @@ function TextView({ el }: { el: TextElement }) {
       data-element={el.id}
       data-lang={el.lang ?? ''}
       data-shrink={el.style.shrinkToFit ? 'true' : undefined}
+      data-words-hidden={hidden ? '' : undefined}
       lang={el.lang ? HTML_LANG[el.lang] : undefined}
-      style={textBoxStyle(el)}
+      // Hidden while a Bold move draws the words apart (Session 27): laid out as ever, so nothing shifts when
+      // they come back.
+      style={hidden ? { ...textBoxStyle(el), visibility: 'hidden' } : textBoxStyle(el)}
     >
       <div ref={words} style={{ width: '100%', flexShrink: 0 }}>
         {el.runs && el.runs.length > 0 ? <Runs el={el} runs={el.runs} /> : el.text}
@@ -343,42 +346,63 @@ export function ElementView({
   el,
   media = 'live',
   startedAt,
+  textHidden = false,
 }: {
   el: SlideElement;
   media?: MediaMode;
   /** When the slide went live, for its videos. */
   startedAt?: number;
+  /** Words laid out but not drawn (they are drawn apart while a Bold move runs, Session 27). */
+  textHidden?: boolean;
 }) {
-  if (el.kind === 'text') return <TextView el={el} />;
+  if (el.kind === 'text') return <TextView el={el} hidden={textHidden} />;
   if (el.kind === 'shape') return <ShapeView el={el} />;
   return <MediaView el={el} media={media} startedAt={startedAt} />;
 }
+
+/**
+ * How a slide's words are drawn (Session 27): as designed (`shown`); while a Bold move draws them apart, the
+ * slide's pictures, shapes and colour with its words laid out but not drawn (`hidden`), and the words alone
+ * over nothing (`only`).
+ */
+export type SlideText = 'shown' | 'hidden' | 'only';
 
 /** One slide at its design size. Parents scale it with Placed. */
 export const SlideView = memo(function SlideView({
   slide,
   media = 'live',
   startedAt,
+  text = 'shown',
 }: {
   slide: RenderSlide;
   media?: MediaMode;
   /** When the slide went live (the engine's shownAt), so its videos play in step everywhere. */
   startedAt?: number;
+  text?: SlideText;
 }) {
   return (
     <div
       data-slide={slide.id}
+      data-text={text === 'shown' ? undefined : text}
       style={{
         position: 'relative',
         width: slide.width,
         height: slide.height,
         overflow: 'hidden',
-        background: slide.background ?? 'transparent',
+        background: text === 'only' ? 'transparent' : (slide.background ?? 'transparent'),
       }}
     >
-      {slide.elements.map((el) => (
-        <ElementView key={el.id} el={el} media={media} startedAt={startedAt} />
-      ))}
+      {slide.elements.map((el) =>
+        text === 'only' && el.kind !== 'text' ? null : (
+          <ElementView
+            key={el.id}
+            el={el}
+            media={media}
+            startedAt={startedAt}
+            textHidden={text === 'hidden'}
+          />
+        ),
+      )}
     </div>
   );
 });

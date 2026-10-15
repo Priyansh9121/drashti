@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { SLOW_ZOOM_MS, SLOW_ZOOM_SCALE } from '../../../shared/model';
 import { EASE } from './easing';
-import { dissolveCurve, easeInOut, takesTime, transitionFrame, zoomAt } from './transition-frame';
+import {
+  dissolveCurve,
+  easeInOut,
+  takesTime,
+  transitionFrame,
+  wordsFrame,
+  wordsMove,
+  zoomAt,
+} from './transition-frame';
 
 /* How each transition draws its two slides part-way (Session 26d): pure, so every screen draws the same. */
 
@@ -107,5 +115,31 @@ describe('a transition, part-way', () => {
     expect(takesTime({ kind: 'slide', durationMs: 0 })).toBe(false);
     expect(takesTime({ kind: 'fade-black', durationMs: 300 })).toBe(true);
     expect(takesTime(undefined)).toBe(false);
+  });
+});
+
+describe('words apart while a Bold move runs (Session 27)', () => {
+  it('only Bold’s dissolve draws the words apart yet; every cut, Calm dissolve and other kind draws whole slides', () => {
+    expect(wordsMove('dissolve', 'bold')).toBe('settle');
+    for (const kind of ['cut', 'dissolve', 'fade-black', 'slide', 'zoom'] as const)
+      expect(wordsMove(kind, 'calm'), kind).toBeNull();
+    for (const kind of ['cut', 'fade-black', 'slide', 'zoom'] as const)
+      expect(wordsMove(kind, 'bold'), kind).toBeNull();
+  });
+
+  it('Bold’s new words settle from 103% as they come in, on the pictures’ curve; in + out = 1', () => {
+    expect(wordsFrame('settle', 0)).toEqual({
+      in: { opacity: 0, transform: 'scale(1.03)', clip: '' },
+      out: { opacity: 1, transform: '', clip: '' },
+    });
+    expect(wordsFrame('settle', 1)).toEqual({
+      in: { opacity: 1, transform: '', clip: '' },
+      out: { opacity: 0, transform: '', clip: '' },
+    });
+    for (let i = 0; i <= 100; i++) {
+      const w = wordsFrame('settle', i / 100);
+      expect(w.in.opacity + w.out.opacity).toBeCloseTo(1, 12);
+      expect(w.in.opacity).toBeCloseTo(transitionFrame('dissolve', i / 100, 'bold').in.opacity, 12);
+    }
   });
 });

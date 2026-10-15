@@ -18,6 +18,8 @@ export interface PlaceholderSlide {
   words?: string;
   /** The slide's own colour behind everything. */
   background?: string | null;
+  /** A picture's media id it puts up as the background (behind the slide), as a background cue does. */
+  backgroundCue?: string;
 }
 
 /** A rectangle of a picture, in fractions of its size, and its colour ("r,g,b"). */
@@ -90,6 +92,16 @@ export async function makeSlides(
         const want = slides[i] ?? {};
         const text = slide.elements.find((e) => e.kind === 'text');
         slide.background = want.background ?? null;
+        if (want.backgroundCue)
+          slide.cues = [
+            {
+              id: `placeholder-bg-${String(i)}`,
+              kind: 'background',
+              label: '',
+              mediaId: want.backgroundCue,
+              props: JSON.stringify({ media: 'image', fit: 'fill', loop: false }),
+            },
+          ];
         slide.elements = [
           ...(want.picture
             ? [

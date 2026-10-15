@@ -10,9 +10,9 @@ import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { LowerThird } from './LowerThird';
 import { Placed } from './Placed';
-import { SlideView } from './SlideView';
+import { type SlideText, SlideView } from './SlideView';
 import { clockHeld, engineNow, onClockJump } from './clock';
-import { takesTime, transitionFrame, zoomSpan } from './transition-frame';
+import { takesTime, transitionFrame, wordsFrame, wordsMove, zoomSpan } from './transition-frame';
 
 /*
  * The slide layer on a screen, with its transition (PLAN.md 5.2, Session
@@ -59,22 +59,33 @@ export function nextShowing(prev: Showing, layer: SlideLayer | null, now: number
 export const fadeAt = (fade: { ms: number; start: number }, now: number): number =>
   Math.min(1, Math.max(0, (now - fade.start) / fade.ms));
 
-/** The two slides and the black as the transition has them at `p` (nothing set when not in one). */
-function paintLayers(
-  els: { in: HTMLDivElement | null; out: HTMLDivElement | null; black: HTMLDivElement | null },
-  kind: TransitionKind | null,
-  p: number,
-  movement: Movement,
-): void {
+/** The layers a transition draws: the two slides, the black, and the two slides' words while drawn apart. */
+interface Layers {
+  in: HTMLDivElement | null;
+  out: HTMLDivElement | null;
+  black: HTMLDivElement | null;
+  wordsIn: HTMLDivElement | null;
+  wordsOut: HTMLDivElement | null;
+}
+
+/** The two slides and the black as the transition has them at `p`, the words too while apart (nothing set when not in one). */
+function paintLayers(els: Layers, kind: TransitionKind | null, p: number, movement: Movement): void {
   const frame = kind === null ? null : transitionFrame(kind, p, movement);
-  const set = (el: HTMLDivElement | null, opacity: string, transform: string) => {
+  const set = (el: HTMLDivElement | null, opacity: string, transform: string, clip = '') => {
     if (!el) return;
     el.style.opacity = opacity;
     el.style.transform = transform;
+    el.style.clipPath = clip;
   };
   set(els.in, frame ? String(frame.in.opacity) : '', frame?.in.transform ?? '');
   set(els.out, frame ? String(frame.out.opacity) : '', frame?.out.transform ?? '');
   if (els.black) els.black.style.opacity = frame ? String(frame.black) : '0';
+  const move = kind === null ? null : wordsMove(kind, movement);
+  if (move && (els.wordsIn || els.wordsOut)) {
+    const words = wordsFrame(move, p);
+    set(els.wordsIn, String(words.in.opacity), words.in.transform, words.in.clip);
+    set(els.wordsOut, String(words.out.opacity), words.out.transform, words.out.clip);
+  }
 }
 
 /** The longest the fade waits for a slide's media before it starts anyway. */
@@ -161,6 +172,7 @@ function DrawnSlide({
   languages,
   slides,
   lift,
+  text = 'shown',
 }: {
   layer: SlideLayer;
   canvas: Size;
@@ -168,6 +180,8 @@ function DrawnSlide({
   languages: readonly Lang[] | null;
   slides: SlideStyle;
   lift: number;
+  /** While a Bold move runs: its pictures with the words hidden, or its words alone (Session 27). */
+  text?: SlideText;
 }) {
   if (slides === 'lowerThird') {
     const lines = lowerThird(layer.slide, languages);
@@ -176,7 +190,7 @@ function DrawnSlide({
   }
   return (
     <Placed content={layer.slide} box={canvas} mode={scaling}>
-      <SlideView slide={languageView(layer.slide, languages)} startedAt={layer.shownAt} />
+      <SlideView slide={languageView(layer.slide, languages)} startedAt={layer.shownAt} text={text} />
     </Placed>
   );
 }
@@ -243,12 +257,26 @@ export function SlideLayerView({
   const ms = fade?.ms ?? 0;
   const kind = fade?.kind ?? 'cut';
   const blackRef = useRef<HTMLDivElement>(null);
+  // The two slides' words, while a Bold move draws them apart (Session 27).
+  const wordsInRef = useRef<HTMLDivElement>(null);
+  const wordsOutRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (start === null) return;
     let frame = 0;
     const tick = () => {
       const p = fadeAt({ ms, start }, engineNow());
-      paintLayers({ in: inRef.current, out: outRef.current, black: blackRef.current }, kind, p, movement);
+      paintLayers(
+        {
+          in: inRef.current,
+          out: outRef.current,
+          black: blackRef.current,
+          wordsIn: wordsInRef.current,
+          wordsOut: wordsOutRef.current,
+        },
+        kind,
+        p,
+        movement,
+      );
       rootRef.current?.setAttribute('data-fade', p.toFixed(3));
       if (p >= 1) {
         setShowing((s) => (s.fade?.start === start ? { on: s.on, off: null, fade: null } : s));
@@ -267,7 +295,13 @@ export function SlideLayerView({
   const fading = fade !== null;
   useLayoutEffect(() => {
     paintLayers(
-      { in: inRef.current, out: outRef.current, black: blackRef.current },
+      {
+        in: inRef.current,
+        out: outRef.current,
+        black: blackRef.current,
+        wordsIn: wordsInRef.current,
+        wordsOut: wordsOutRef.current,
+      },
       fading ? kind : null,
       start !== null ? fadeAt({ ms, start }, engineNow()) : 0,
       movement,
@@ -279,6 +313,9 @@ export function SlideLayerView({
   const shown = fading && off ? [off, on] : [on];
   // A fade adds the new slide light for light over the old; the others draw it over.
   const adds = fading && off !== null && transitionFrame(kind, 0, movement).add;
+  // A Bold move (Session 27): the words drawn apart, above both slides' pictures, shapes and colour, which
+  // only dissolve. Slides as designed only (a lower third has its own); none for a cut or a Calm dissolve.
+  const move = fading && slides === 'designed' ? wordsMove(kind, movement) : null;
   return (
     <div
       ref={rootRef}
@@ -318,11 +355,46 @@ export function SlideLayerView({
                 languages={languages}
                 slides={slides}
                 lift={lift}
+                text={move ? 'hidden' : 'shown'}
               />
             </Zoomed>
           </div>
         );
       })}
+      {/* The words, while a Bold move runs: one layer above both slides' pictures, the new words added
+          light for light over the old (an unchanged word never dips). Gone when the move is over, and the
+          slide is drawn as designed again. */}
+      {move && (
+        <div data-words-apart={move} style={{ position: 'absolute', inset: 0, isolation: 'isolate' }}>
+          {shown.map((l) => {
+            const incoming = l === on;
+            return (
+              <div
+                key={keyOf(l)}
+                ref={incoming ? wordsInRef : wordsOutRef}
+                data-words-in={incoming ? '' : undefined}
+                data-words-out={incoming ? undefined : ''}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  transformOrigin: '50% 50%',
+                  mixBlendMode: incoming && off !== null ? 'plus-lighter' : undefined,
+                }}
+              >
+                <DrawnSlide
+                  layer={l}
+                  canvas={canvas}
+                  scaling={scaling}
+                  languages={languages}
+                  slides={slides}
+                  lift={lift}
+                  text="only"
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
       {/* A fade through black: black over both, whole half-way. */}
       {fading && kind === 'fade-black' && (
         <div

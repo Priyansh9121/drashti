@@ -1,7 +1,7 @@
 import type { Movement } from '../../../shared/looks';
 import type { Transition, TransitionKind } from '../../../shared/model';
 import { SLOW_ZOOM_MS, SLOW_ZOOM_SCALE } from '../../../shared/model';
-import { EASE } from './easing';
+import { EASE, lerp } from './easing';
 
 /*
  * How a transition draws its two slides at a point in it (Session 26d), as
@@ -20,12 +20,27 @@ import { EASE } from './easing';
  *   to the left, easing in and out.
  * - Slow zoom: a fade, and each slide zooms in slowly while it is up
  *   (zoomAt), from when it went up.
+ *
+ * Bold moves (Session 27, the design lab's decision 16): pushes and zooms
+ * move only the words. While one runs, each slide's words are drawn apart,
+ * in a layer of their own above both slides' pictures, shapes and colour,
+ * which only dissolve (so a darshan picture stays whole); once it is over,
+ * the slide is drawn exactly as designed. wordsMove says when, wordsFrame
+ * how.
  */
 
 export interface SlideFrame {
   opacity: number;
   /** A CSS transform ('' for none). */
   transform: string;
+}
+
+/** A part of a slide while a move runs (its words): its opacity, transform and clip ('' for none). */
+export interface PartFrame {
+  opacity: number;
+  transform: string;
+  /** A CSS clip-path ('' for none). */
+  clip: string;
 }
 
 export interface TransitionFrame {
@@ -100,4 +115,26 @@ export const zoomSpan = (t: Transition): number =>
 export function zoomAt(t: Transition | undefined, shownAt: number, now: number): number {
   if (t?.kind !== 'zoom') return 1;
   return 1 + (SLOW_ZOOM_SCALE - 1) * clamp((now - shownAt) / zoomSpan(t));
+}
+
+/** How the words move apart from the slide's pictures while a transition runs (Session 27). */
+export type WordsMove = 'settle';
+
+/**
+ * Whether a transition draws the words apart from the pictures, and how: Bold's dissolve lets the new words
+ * settle as they come in. Null: the slides are drawn whole (every cut and Calm dissolve as before).
+ */
+export function wordsMove(kind: TransitionKind, movement: Movement): WordsMove | null {
+  return movement === 'bold' && kind === 'dissolve' ? 'settle' : null;
+}
+
+/** The two slides' words, drawn apart above their pictures, at `p` (0 to 1) of a move. */
+export function wordsFrame(_move: WordsMove, p: number): { in: PartFrame; out: PartFrame } {
+  // Bold's dissolve (the lab's): the new words come in on the same curve as the pictures, settling from 103%
+  // to their own size; the old ones go as the pictures do. In + out = 1.
+  const e = EASE.inOut(clamp(p));
+  return {
+    in: { opacity: e, transform: e >= 1 ? '' : `scale(${String(lerp(1.03, 1, e))})`, clip: '' },
+    out: { opacity: 1 - e, transform: '', clip: '' },
+  };
 }
