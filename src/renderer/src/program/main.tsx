@@ -97,7 +97,14 @@ function Program() {
     >
       {fontsReady && !warmed && (
         <PlacedInParent content={CANVAS} mode="fit" className="absolute inset-0">
-          <WarmUp canvas={CANVAS} scaling="fit" ticker={false} hold={HOLD_WARM_UP} onDone={warmedUp} />
+          <WarmUp
+            page="stream"
+            canvas={CANVAS}
+            scaling="fit"
+            ticker={false}
+            hold={HOLD_WARM_UP}
+            onDone={warmedUp}
+          />
         </PlacedInParent>
       )}
       {state && ready && context && (

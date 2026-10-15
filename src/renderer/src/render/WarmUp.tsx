@@ -50,6 +50,12 @@ const BEFORE_FRAMES = 2;
 const STEADY_FRAMES = 6;
 const ON_TIME_MS = 50;
 const MAX_MS = 5000;
+/**
+ * The longest a page warms up, by this computer's clock: a window that draws no frames (covered, or on a
+ * screen asleep) never comes on time, and the show must still be drawn there. A page not seen at all does
+ * not warm up.
+ */
+const CAP_MS = 8000;
 
 /**
  * Each transition scene again under a clip-path with two notches, across the pictures, the background and
@@ -281,6 +287,7 @@ const trees = new WeakMap<Element, ShadowRoot>();
  * parent shows the show once it is done; nothing of the show is drawn meanwhile.
  */
 export function WarmUp({
+  page,
   canvas,
   scaling,
   matte = null,
@@ -288,6 +295,8 @@ export function WarmUp({
   hold = false,
   onDone,
 }: {
+  /** Which page it warms up (its marks for a trace say so). */
+  page: 'output' | 'stream' | 'live';
   canvas: Size;
   scaling: ScalingMode;
   matte?: 'fill' | 'key' | null;
@@ -303,6 +312,37 @@ export function WarmUp({
   useLayoutEffect(() => {
     done.current = onDone;
   });
+  // Done once, however it ends: drawn, at its cap, or not seen; marked for a trace (`-cut` when it is taken
+  // away before then: the LIVE picture, as something goes up).
+  const mark = `${WARM_UP_MARK}:${page}`;
+  const finished = useRef(false);
+  const finish = useCallback(
+    (how: 'drawn' | 'cap' | 'unseen') => {
+      if (finished.current || hold) return;
+      finished.current = true;
+      pauseClock(null);
+      if (how !== 'drawn') performance.mark(`${mark}-${how}`);
+      performance.mark(`${mark}-end`);
+      done.current();
+    },
+    [hold, mark],
+  );
+  useEffect(() => {
+    const unseen = () => {
+      if (document.visibilityState === 'hidden') finish('unseen');
+    };
+    unseen();
+    document.addEventListener('visibilitychange', unseen);
+    // eslint-disable-next-line no-restricted-syntax -- the warm-up's cap (a window that draws no frames): never a frame of the show
+    const cap = setTimeout(() => {
+      finish('cap');
+    }, CAP_MS);
+    return () => {
+      document.removeEventListener('visibilitychange', unseen);
+      clearTimeout(cap);
+      if (!finished.current) performance.mark(`${mark}-cut`);
+    };
+  }, [finish, mark]);
   const [tree, setTree] = useState<ShadowRoot | null>(null);
   const host = useCallback(
     (el: HTMLDivElement | null) => {
@@ -332,13 +372,13 @@ export function WarmUp({
     void Promise.all(images.map((img) => img.decode().catch(() => undefined))).then(() => {
       if (!live) return;
       // For a trace (the Performance check's): what the GPU made while it warmed up.
-      performance.mark(WARM_UP_MARK);
+      performance.mark(mark);
       setStep({ phase: 'before', at: engineNow() });
     });
     return () => {
       live = false;
     };
-  }, [pictures]);
+  }, [pictures, mark]);
   // Then frame by frame: the slides before for two frames; then every change part-way, the page's clock
   // paused so the GPU draws it all once (not again at every frame), until the frames come on time; again once
   // every picture in it is decoded where the screen draws it; again a moment on (what is drawn again in part);
@@ -400,10 +440,7 @@ export function WarmUp({
         // A moment on: every change drawn again in part, as a show's next frame is.
         pauseClock(step.at + 50);
         await steadyFrames();
-        if (!live() || hold) return;
-        pauseClock(null);
-        performance.mark(`${WARM_UP_MARK}-end`);
-        done.current();
+        if (live()) finish('drawn');
       })();
     }
     return () => {
@@ -411,7 +448,7 @@ export function WarmUp({
       cancelAnimationFrame(frame);
       pauseClock(null);
     };
-  }, [step, hold, tree]);
+  }, [step, tree, finish]);
   const urlOf = useCallback(
     (id: string, attempt?: number) => pictures[id] ?? mediaUrl(id, attempt),
     [pictures],

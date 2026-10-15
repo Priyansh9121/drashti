@@ -176,6 +176,10 @@ test('a key and fill pair draws its moving lower third alike at every held momen
     throw new Error(`no ${feed} output`);
   };
   const [fill, key] = [await byFeed('fill'), await byFeed('key')];
+  // Both ready to draw the show (fonts in, the GPU warmed up: a window under another draws no frames, so it
+  // may wait for the warm-up's longest, 8 s).
+  for (const p of [fill, key])
+    await expect(p.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   for (const movement of ['calm', 'bold'] as const) {
     await lowerThirds(win, movement, 'keyfill');
     await holdClock(app, null);
