@@ -5,11 +5,11 @@
 //   node scripts/audience-pixels.mjs 69a0887
 //
 // The pictures stay in the folder it prints (placeholder slides and generated pictures only). This
-// build must already be built (`pnpm build`). The worktree borrows this one's node_modules through
-// a link, which is removed (never followed) at the end.
+// build must already be built (`pnpm build`). The worktree (in .pixels-*, removed at the end)
+// borrows this one's node_modules through a link, which is removed first and never followed.
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmdirSync, symlinkSync, unlinkSync } from 'node:fs';
+import { mkdtempSync, rmdirSync, rmSync, symlinkSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -19,9 +19,11 @@ if (!ref) {
   process.exit(2);
 }
 const here = resolve('.');
-const work = mkdtempSync(join(tmpdir(), 'drashti-pixels-'));
+// The earlier build sits inside this folder (ignored by git), on the same drive as node_modules:
+// Vite cannot build across Windows drives (CI's temporary folder is on C:, the checkout on D:).
+const work = mkdtempSync(join(here, '.pixels-'));
 const base = join(work, 'base');
-const frames = join(work, 'frames');
+const frames = join(mkdtempSync(join(tmpdir(), 'drashti-pixels-')), 'frames');
 const node = process.execPath;
 const bin = (name) => join(here, 'node_modules', name);
 
@@ -65,6 +67,7 @@ try {
     }
   }
   spawnSync('git', ['worktree', 'remove', '--force', base], { stdio: 'inherit' });
+  rmSync(work, { recursive: true, force: true });
   console.log(`The pictures: ${frames}`);
 }
 process.exit(failed ? 1 : 0);
