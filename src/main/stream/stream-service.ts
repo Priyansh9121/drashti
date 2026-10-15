@@ -9,12 +9,13 @@ import type {
   SoundState,
   StreamLayout,
   StreamProfile,
+  StreamProfileInput,
   StreamProfiles,
   StreamProfilesResult,
   StreamResult,
   StreamStatus,
 } from '../../shared/stream';
-import { STREAM_PRESETS } from '../../shared/stream';
+import { placeName, STREAM_PRESETS } from '../../shared/stream';
 import {
   deviceChoiceSchema,
   streamKeySchema,
@@ -26,6 +27,7 @@ import type { ScreenRepo } from '../db/screens';
 import type { SettingsRepo } from '../db/settings';
 import type { StreamProfileRepo } from '../db/stream-profiles';
 import { NO_SECURE_STORAGE, type StreamKeyStore } from './key-store';
+import { safeAddress } from './redact';
 import type { StreamWorker } from './stream-worker';
 import { MAC_AUTHORITIES, streamAuthorities } from './tls';
 import { pageAlive } from '../windows/send';
@@ -69,6 +71,11 @@ export interface StreamServiceDeps {
   now(): number;
   /** Tests: Chromium's fake camera and microphone stand in, and the system is not asked. */
   fakeDevices: boolean;
+  /**
+   * Tests (never a packaged Drashti): every place must be on this computer (127.0.0.1). Any other is refused,
+   * loudly: no test ever streams to the internet.
+   */
+  onlyThisComputer?: boolean;
   log(level: 'info' | 'warn', message: string): void;
 }
 
@@ -129,6 +136,7 @@ export class StreamService {
     reconnects: 0,
     retryAt: null,
     message: null,
+    destinations: [],
   };
   private recording: StreamStatus['recording'] = {
     state: 'off',
@@ -229,6 +237,10 @@ export class StreamService {
           message: 'End the stream and stop recording before changing where it goes or its preset.',
         };
       this.deps.profiles.update(id.data, input.data);
+      // A place taken out takes its key with it.
+      const after = this.deps.profiles.get(id.data);
+      for (const d of before?.more ?? [])
+        if (!after?.more.some((x) => x.id === d.id)) this.deps.keys.remove(d.id);
     }
     this.contextChanged();
     this.profilesVersion++;
@@ -236,12 +248,14 @@ export class StreamService {
     return { ok: true, profiles: this.profilesView() };
   }
 
-  /** While on air, the camera, sound and delay may change; where it goes and how may not. */
-  private liveSettingsChanged(
-    before: StreamProfile,
-    after: StreamProfile | Omit<StreamProfile, 'id' | 'hasKey'>,
-  ): boolean {
-    return before.url !== after.url || before.preset !== after.preset;
+  /** While on air, the camera, sound and delay may change; where it goes (every place) and how may not. */
+  private liveSettingsChanged(before: StreamProfile, after: StreamProfileInput): boolean {
+    const places = (more: readonly { url: string }[]) => more.map((d) => d.url).join(' ');
+    return (
+      before.url !== after.url ||
+      before.preset !== after.preset ||
+      (after.more !== undefined && places(before.more) !== places(after.more))
+    );
   }
 
   /**
@@ -253,7 +267,7 @@ export class StreamService {
     const sound = deviceChoiceSchema.nullable().safeParse(rawSound);
     if (!camera.success || !sound.success)
       return { ok: false, message: 'Choose a camera and a sound input.' };
-    const { id, hasKey: _hasKey, ...input } = this.activeProfile();
+    const { id, hasKey: _hasKey, more: _more, ...input } = this.activeProfile();
     this.deps.profiles.update(id, { ...input, camera: camera.data, sound: sound.data });
     this.contextChanged();
     this.profilesVersion++;
@@ -268,8 +282,10 @@ export class StreamService {
     if (this.inUse() && id.data === this.activeProfile().id)
       return { ok: false, message: 'This profile is in use: end the stream and stop recording first.' };
     if (this.deps.profiles.list().length <= 1) return { ok: false, message: 'Keep at least one profile.' };
+    // Its own key and each other place's.
+    const keys = this.deps.profiles.keyIds(id.data);
     this.deps.profiles.remove(id.data);
-    this.deps.keys.remove(id.data);
+    for (const key of keys) this.deps.keys.remove(key);
     this.contextChanged();
     this.profilesVersion++;
     this.changed();
@@ -289,14 +305,27 @@ export class StreamService {
     return { ok: true, profiles: this.profilesView() };
   }
 
-  setKey(rawId: unknown, rawKey: unknown): StreamProfilesResult {
+  /** Which key a profile's place keeps (its own: the profile's id; another place: that place's), or null. */
+  private keyId(rawId: unknown, rawPlace: unknown): { keyId: string; url: string } | null {
     const id = z.string().max(100).safeParse(rawId);
-    if (!id.success || !this.deps.profiles.get(id.data))
-      return { ok: false, message: 'That profile no longer exists.' };
+    const profile = id.success ? this.deps.profiles.get(id.data) : null;
+    if (!profile) return null;
+    if (rawPlace === undefined || rawPlace === null || rawPlace === '')
+      return { keyId: profile.id, url: profile.url };
+    const place = profile.more.find((d) => d.id === rawPlace);
+    return place ? { keyId: place.id, url: place.url } : null;
+  }
+
+  setKey(rawId: unknown, rawKey: unknown, rawPlace?: unknown): StreamProfilesResult {
+    const place = this.keyId(rawId, rawPlace);
+    if (!place) return { ok: false, message: 'That profile no longer exists.' };
     const key = streamKeySchema.safeParse(rawKey);
-    if (!key.success)
-      return { ok: false, message: 'Paste the stream key from YouTube Studio: letters, digits and dashes.' };
-    const kept = this.deps.keys.set(id.data, key.data);
+    if (!key.success) {
+      const name = placeName(place.url);
+      const from = name === 'YouTube' ? ' from YouTube Studio' : name === 'Facebook' ? ' from Facebook' : '';
+      return { ok: false, message: `Paste the stream key${from}: letters, digits and dashes.` };
+    }
+    const kept = this.deps.keys.set(place.keyId, key.data);
     if (!kept.ok) return kept;
     this.deps.log('info', 'A stream key was saved');
     this.changed();
@@ -305,11 +334,10 @@ export class StreamService {
     return { ok: true, profiles: this.profilesView() };
   }
 
-  removeKey(rawId: unknown): StreamProfilesResult {
-    const id = z.string().max(100).safeParse(rawId);
-    if (!id.success || !this.deps.profiles.get(id.data))
-      return { ok: false, message: 'That profile no longer exists.' };
-    this.deps.keys.remove(id.data);
+  removeKey(rawId: unknown, rawPlace?: unknown): StreamProfilesResult {
+    const place = this.keyId(rawId, rawPlace);
+    if (!place) return { ok: false, message: 'That profile no longer exists.' };
+    this.deps.keys.remove(place.keyId);
     this.changed();
     this.profilesVersion++;
     this.changed();
@@ -605,8 +633,8 @@ export class StreamService {
     const worker = this.ensureWorker(ffmpeg);
     const profile = this.activeProfile();
     if (this.liveWanted) {
-      const key = this.deps.keys.get(profile.id);
-      if (key) worker.send({ type: 'live', url: profile.url, key });
+      const places = this.placesOf(profile);
+      if (places.ok) worker.send({ type: 'live', url: profile.url, key: places.key, more: places.more });
     }
     if (this.recordWanted && this.recording.file)
       worker.send({ type: 'record', file: this.nextFile(), keepFreeBytes: KEEP_FREE_BYTES });
@@ -677,6 +705,17 @@ export class StreamService {
         reconnects: w.reconnects,
         retryAt: w.retryAt,
         message: status.error ?? w.message,
+        destinations: status.destinations.map((d) => ({
+          id: d.id,
+          name: d.name,
+          state: d.state === 'live' ? 'live' : d.state === 'reconnecting' ? 'reconnecting' : 'starting',
+          since: d.since,
+          health: d.health,
+          bitrateKbps: d.bitrateKbps,
+          reconnects: d.reconnects,
+          retryAt: d.retryAt,
+          message: d.message,
+        })),
       };
     }
     const r = status.recording;
@@ -706,11 +745,15 @@ export class StreamService {
     else this.checkPicture(status);
   }
 
-  goLive(): StreamResult {
-    if (this.liveWanted) return { ok: false, message: 'The stream is already on air.' };
-    const ffmpeg = this.deps.ffmpegPath();
-    if (!ffmpeg) return { ok: false, message: FFMPEG_MISSING };
-    const profile = this.activeProfile();
+  /**
+   * Where going live sends the stream (Session 28): the profile's own address with its key, and each other
+   * place with its own; or why it cannot go (a key missing or unreadable; a test's address off this computer).
+   */
+  private placesOf(
+    profile: StreamProfile,
+  ):
+    | { ok: true; key: string; more: { id: string; url: string; key: string }[] }
+    | { ok: false; message: string } {
     const key = this.deps.keys.get(profile.id);
     if (!key) {
       const storage = this.deps.keys.status();
@@ -722,6 +765,38 @@ export class StreamService {
           : `There is no stream key for “${profile.name}”. Paste it in Stream settings first.`,
       };
     }
+    const more: { id: string; url: string; key: string }[] = [];
+    for (const d of profile.more) {
+      const its = this.deps.keys.get(d.id);
+      if (!its)
+        return {
+          ok: false,
+          message: `There is no stream key for ${placeName(d.url)} in “${profile.name}” (${safeAddress(d.url)}). Paste it in Stream settings, or take that place out.`,
+        };
+      more.push({ id: d.id, url: d.url, key: its });
+    }
+    if (this.deps.onlyThisComputer) {
+      const away = [profile.url, ...profile.more.map((d) => d.url)].filter(
+        (u) => !/^rtmps?:\/\/127\.0\.0\.1[:/]/u.test(u),
+      );
+      if (away.length > 0) {
+        this.deps.log(
+          'warn',
+          `TEST GUARD: going live refused: ${away.map(safeAddress).join(', ')} is not 127.0.0.1`,
+        );
+        return { ok: false, message: 'A test streams only to this computer (127.0.0.1).' };
+      }
+    }
+    return { ok: true, key, more };
+  }
+
+  goLive(): StreamResult {
+    if (this.liveWanted) return { ok: false, message: 'The stream is already on air.' };
+    const ffmpeg = this.deps.ffmpegPath();
+    if (!ffmpeg) return { ok: false, message: FFMPEG_MISSING };
+    const profile = this.activeProfile();
+    const places = this.placesOf(profile);
+    if (!places.ok) return places;
     this.ensureStreamGroup();
     this.liveWanted = true;
     this.resume = null;
@@ -734,10 +809,10 @@ export class StreamService {
       droppedFrames: 0,
     };
     const worker = this.ensureWorker(ffmpeg);
-    worker.send({ type: 'live', url: profile.url, key });
+    worker.send({ type: 'live', url: profile.url, key: places.key, more: places.more });
     this.deps.log(
       'info',
-      `Going live with the profile “${profile.name}” (${STREAM_PRESETS[profile.preset].label})`,
+      `Going live with the profile “${profile.name}” (${STREAM_PRESETS[profile.preset].label})${places.more.length > 0 ? ` to ${String(places.more.length + 1)} places` : ''}`,
     );
     this.startHeartbeat();
     this.saveState();
@@ -759,6 +834,7 @@ export class StreamService {
       reconnects: 0,
       retryAt: null,
       message: null,
+      destinations: [],
     };
     this.deps.log('info', 'The stream was ended');
     this.saveState();

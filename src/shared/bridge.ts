@@ -483,8 +483,9 @@ export interface DrashtiBridge {
     removeProfile(id: string): Promise<StreamProfilesResult>;
     useProfile(id: string): Promise<StreamProfilesResult>;
     /** The key is kept in the system's secure storage and never comes back. */
-    setKey(id: string, key: string): Promise<StreamProfilesResult>;
-    removeKey(id: string): Promise<StreamProfilesResult>;
+    /** A profile's own key, or (with `place`) one of its other places' (Session 28). */
+    setKey(id: string, key: string, place?: string): Promise<StreamProfilesResult>;
+    removeKey(id: string, place?: string): Promise<StreamProfilesResult>;
     goLive(confirm: { confirmed: true }): Promise<StreamResult>;
     end(confirm: { confirmed: true }): Promise<StreamResult>;
     startRecording(): Promise<StreamResult>;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { STREAM_PRESETS, YOUTUBE_RTMPS_URL } from './stream';
+import { placeName, STREAM_PRESETS, uploadNeededMbps, YOUTUBE_RTMPS_URL } from './stream';
 import { streamKeySchema, streamProfileInputSchema, streamUrlSchema } from './stream-schema';
 
 describe('stream settings', () => {
@@ -34,6 +34,45 @@ describe('stream settings', () => {
     expect(streamProfileInputSchema.safeParse(profile).success).toBe(true);
     expect(streamProfileInputSchema.safeParse({ ...profile, soundDelayMs: 1500 }).success).toBe(false);
     expect(streamProfileInputSchema.safeParse({ ...profile, preset: 'best' }).success).toBe(false);
+  });
+
+  it('several platforms (Session 28): two more places at most, each an address with no key in it', () => {
+    const profile = {
+      name: 'Several',
+      url: YOUTUBE_RTMPS_URL,
+      preset: 'several',
+      camera: null,
+      sound: null,
+      soundDelayMs: 0,
+      mixOwnSound: false,
+    };
+    const facebook = { url: 'rtmps://live-api-s.facebook.com:443/rtmp' };
+    const other = { id: 'kept-place', url: 'rtmp://127.0.0.1:1935/live' };
+    expect(streamProfileInputSchema.safeParse({ ...profile, more: [facebook, other] }).success).toBe(true);
+    expect(streamProfileInputSchema.safeParse({ ...profile, more: [facebook, other, other] }).success).toBe(
+      false,
+    );
+    expect(
+      streamProfileInputSchema.safeParse({ ...profile, more: [{ url: 'rtmps://a.example/live?key=x' }] })
+        .success,
+    ).toBe(false);
+    expect(STREAM_PRESETS.several).toMatchObject({ width: 1920, height: 1080, fps: 30, videoKbps: 5000 });
+    // The upload each needs, with a third to spare: no speed test.
+    expect(uploadNeededMbps(STREAM_PRESETS.several, 1)).toBe(7);
+    expect(uploadNeededMbps(STREAM_PRESETS.several, 3)).toBe(20);
+    expect(uploadNeededMbps(STREAM_PRESETS.good, 1)).toBe(8);
+  });
+
+  it('Facebook (decision 19, widen nothing): a made-up key of its shape and length is taken as it is; its address must be secure', () => {
+    // Letters, digits, dashes and underscores, about as long as Facebook's own: made up.
+    const madeUp = 'FB-1234567890123456-0-Ab1Cd2Ef3Gh4Ij5Kl6Mn7Op8Qr9St0Uv_Wx-Yz1Ab2Cd3Ef4Gh5Ij6Kl7';
+    expect(madeUp.length).toBeGreaterThan(60);
+    expect(streamKeySchema.safeParse(madeUp)).toEqual({ success: true, data: madeUp });
+    expect(streamUrlSchema.safeParse('rtmps://live-api-s.facebook.com:443/rtmp').success).toBe(true);
+    expect(streamUrlSchema.safeParse('rtmp://live-api-s.facebook.com:80/rtmp').success).toBe(false);
+    expect(placeName('rtmps://live-api-s.facebook.com:443/rtmp')).toBe('Facebook');
+    expect(placeName('rtmps://a.rtmps.youtube.com/live2')).toBe('YouTube');
+    expect(placeName('rtmp://127.0.0.1:1935/live')).toBe('the stream server');
   });
 
   it('presets follow YouTube’s minimums: 1080p30 at 6 Mbps, 720p30 at 3, AAC 128 kbps, a keyframe every 2 s', () => {

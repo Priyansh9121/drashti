@@ -1021,8 +1021,8 @@ export interface InvokeContract {
   };
   [IPC.stream.removeProfile]: { args: [id: string]; result: StreamProfilesResult };
   [IPC.stream.useProfile]: { args: [id: string]; result: StreamProfilesResult };
-  [IPC.stream.setKey]: { args: [id: string, key: string]; result: StreamProfilesResult };
-  [IPC.stream.removeKey]: { args: [id: string]; result: StreamProfilesResult };
+  [IPC.stream.setKey]: { args: [id: string, key: string, place?: string]; result: StreamProfilesResult };
+  [IPC.stream.removeKey]: { args: [id: string, place?: string]; result: StreamProfilesResult };
   [IPC.stream.goLive]: { args: [confirm: { confirmed: true }]; result: StreamResult };
   [IPC.stream.end]: { args: [confirm: { confirmed: true }]; result: StreamResult };
   [IPC.stream.startRecording]: { args: []; result: StreamResult };
