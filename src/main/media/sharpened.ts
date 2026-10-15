@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
-import { sharpenStep } from '../../shared/picture-look';
+import type { PixelSize } from '../../shared/picture-look';
+import { copyBox, sharpenStep } from '../../shared/picture-look';
 import { extOf } from '../import/scan';
 import { sha256File } from '../import/media-store';
 
@@ -9,10 +10,13 @@ import { sha256File } from '../import/media-store';
  * Sharpened copies (Session 26f). Sharpening was the screens' own SVG
  * convolution filter, which costs half a second to a second a change on a
  * computer without a graphics chip. Now a picture whose look has Sharpness
- * above 0 gets a sharpened copy, made once, at its own size, with the same
- * kernel (shared/picture-look.ts sharpenPixels), and every screen draws that
- * copy with the rest of its look; until it is ready they draw the picture
- * unsharpened.
+ * above 0 gets a sharpened copy with the same kernel (shared/picture-look.ts
+ * sharpenPixels), and every screen draws that copy with the rest of its look;
+ * until it is ready they draw the picture unsharpened. Since Session 26g the
+ * copy is made at the size the screens draw the picture (the largest audience
+ * screen's, at its zoom, never bigger than the picture: copySize), so the hall
+ * sees the sharpening the Picture editor shows; it is made again when the
+ * screens change size.
  *
  * - Made one at a time in a hidden window of its own (src/renderer/sharpen.html)
  *   whose process runs at the lowest priority, as the PDF pages are drawn:
@@ -20,7 +24,8 @@ import { sha256File } from '../import/media-store';
  *   draws it on a canvas, sharpens the pixels and hands back a JPEG (from a
  *   JPEG) or a PNG (anything else, which may be see-through). The window goes
  *   when nothing is left to make.
- * - Kept in the media folder's `sharpened/` as `<sha256>-<step>.<ext>`, beside
+ * - Kept in the media folder's `sharpened/` as `<sha256>-<step>-<w>x<h>.<ext>`
+ *   (the box it was made for; `<sha256>-<step>.<ext>` at its own size), beside
  *   the stills; never made from anything but the picture's file, never written
  *   anywhere but there.
  * - What is wanted is read from the library each time (refresh): a copy no
@@ -41,7 +46,7 @@ export const MAX_COPY_PIXELS = 50_000_000;
 const JOB_TIMEOUT_MS = 120_000;
 
 const SHA256 = /^[0-9a-f]{64}$/u;
-const COPY_NAME = /^([0-9a-f]{64})-(\d{1,3})\.(jpg|png)$/u;
+const COPY_NAME = /^([0-9a-f]{64})-(\d{1,3})(?:-(\d{1,5}x\d{1,5}))?\.(jpg|png)$/u;
 
 /** A copy's file type: a JPEG from a JPEG (as small, as quick to draw), else a PNG (it keeps see-through parts). */
 export const copyExtOf = (originalPath: string): 'jpg' | 'png' => {
@@ -49,9 +54,13 @@ export const copyExtOf = (originalPath: string): 'jpg' | 'png' => {
   return ext === 'jpg' || ext === 'jpeg' ? 'jpg' : 'png';
 };
 
+/** A box as a copy's name says it ("1920x1080"), or '' for a copy at the picture's own size. */
+export const boxKey = (box: PixelSize | null): string =>
+  box ? `${String(box.width)}x${String(box.height)}` : '';
+
 /** A copy's file name in `sharpened/`. */
-export const copyName = (sha256: string, step: number, ext: 'jpg' | 'png'): string =>
-  `${sha256}-${String(step)}.${ext}`;
+export const copyName = (sha256: string, step: number, ext: 'jpg' | 'png', box = ''): string =>
+  `${sha256}-${String(step)}${box ? `-${box}` : ''}.${ext}`;
 
 /** A picture that wants a copy: its file (relative to the media folder) and its look's sharpness. */
 export interface CopyWant {
@@ -59,6 +68,8 @@ export interface CopyWant {
   sha256: string;
   path: string;
   sharpness: number;
+  /** Its kept zoom (1 to 4): it is drawn that much bigger. */
+  zoom: number;
 }
 
 /** What the window is given to make one copy. */
@@ -70,6 +81,8 @@ export interface SharpenJob {
   /** What to hand back. */
   type: 'image/jpeg' | 'image/png';
   maxPixels: number;
+  /** The size the screens draw it at (null: its own size). */
+  box: PixelSize | null;
 }
 
 /** The hidden window as the service sees it. */
@@ -83,6 +96,8 @@ export interface SharpenDeps {
   mediaDir: string;
   /** The pictures whose looks have Sharpness above 0, from the library now. */
   wanted(): CopyWant[];
+  /** The largest audience screen's picture as drawn, in pixels; null with none (copies at their own size). */
+  screen(): PixelSize | null;
   /** Open the hidden window (its page loaded); `gone` when its process ends unexpectedly. */
   open(gone: () => void): SharpenWindow;
   /** A copy is ready, or one went: the screens and thumbnails look again. */
@@ -95,6 +110,8 @@ export interface SharpenDeps {
 interface Ready {
   step: number;
   ext: 'jpg' | 'png';
+  /** The box it was made for (boxKey). */
+  box: string;
   /** The copy's own hash and size, once known (a node copies it by them). */
   hash: string | null;
   bytes: number;
@@ -104,10 +121,10 @@ interface Job {
   want: CopyWant;
   step: number;
   ext: 'jpg' | 'png';
+  box: PixelSize | null;
 }
 
-const keyOf = (j: { want: { sha256: string }; step: number; ext: string }) =>
-  `${j.want.sha256}-${String(j.step)}.${j.ext}`;
+const keyOf = (j: Job) => copyName(j.want.sha256, j.step, j.ext, boxKey(j.box));
 
 const isPng = (b: Uint8Array) =>
   b.length > 8 && [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((v, i) => b[i] === v);
@@ -136,8 +153,16 @@ export class SharpenedCopies {
   /** The copies found at start having their hashes worked out. */
   private hashing: Promise<void> = Promise.resolve();
   private idleWaiters: (() => void)[] = [];
+  /** The screens' size the copies were last looked at for (boxKey). */
+  private lastScreen = '';
 
   constructor(private readonly deps: SharpenDeps) {}
+
+  /** The screens changed (one added or gone, its display or canvas): copies are made again for a new size. */
+  screensChanged(): Promise<void> {
+    if (boxKey(this.deps.screen()) === this.lastScreen) return Promise.resolve();
+    return this.refresh();
+  }
 
   private get dir(): string {
     return join(this.deps.mediaDir, SHARPENED_DIR);
@@ -146,7 +171,7 @@ export class SharpenedCopies {
   /** The copy of a picture's file at a step, relative to the media folder, if it is ready. */
   relativePath(sha256: string | null, step: number): string | null {
     const r = sha256 ? this.ready.get(sha256) : undefined;
-    return sha256 && r?.step === step ? `${SHARPENED_DIR}/${copyName(sha256, step, r.ext)}` : null;
+    return sha256 && r?.step === step ? `${SHARPENED_DIR}/${copyName(sha256, step, r.ext, r.box)}` : null;
   }
 
   /** The step of a picture's copy that is ready (0: none). */
@@ -182,7 +207,13 @@ export class SharpenedCopies {
         if (!m?.[1]) continue;
         // Two of one picture (a refresh will tidy): the first is kept.
         if (this.ready.has(m[1])) continue;
-        this.ready.set(m[1], { step: Number(m[2]), ext: m[3] as 'jpg' | 'png', hash: null, bytes: 0 });
+        this.ready.set(m[1], {
+          step: Number(m[2]),
+          box: m[3] ?? '',
+          ext: m[4] as 'jpg' | 'png',
+          hash: null,
+          bytes: 0,
+        });
       }
       this.hashing = this.hashAll().catch(() => undefined);
     })();
@@ -193,7 +224,7 @@ export class SharpenedCopies {
     let found = false;
     for (const [sha, r] of this.ready) {
       if (r.hash) continue;
-      const file = join(this.dir, copyName(sha, r.step, r.ext));
+      const file = join(this.dir, copyName(sha, r.step, r.ext, r.box));
       try {
         const { sha256, bytes } = await sha256File(file);
         // Still the same copy (not remade or tidied meanwhile).
@@ -224,35 +255,42 @@ export class SharpenedCopies {
   private async refreshNow(): Promise<void> {
     await this.scan();
     const jobs: Job[] = [];
-    const keep = new Map<string, number>();
+    /** What each picture wants: its step and the box it is drawn in. */
+    const keep = new Map<string, { step: number; box: string }>();
+    const screen = this.deps.screen();
+    this.lastScreen = boxKey(screen);
     for (const want of this.deps.wanted()) {
       const step = sharpenStep(want.sharpness);
       if (step === 0 || !SHA256.test(want.sha256) || want.path === '' || isAbsolute(want.path)) continue;
       if (keep.has(want.sha256)) continue;
-      keep.set(want.sha256, step);
-      jobs.push({ want, step, ext: copyExtOf(want.path) });
+      const box = copyBox(screen, want.zoom);
+      keep.set(want.sha256, { step, box: boxKey(box) });
+      jobs.push({ want, step, ext: copyExtOf(want.path), box });
     }
-    // Copies nothing wants go (another step, the picture's sharpness at 0, the picture gone).
+    const wanted = (sha: string, r: { step: number; box: string }) =>
+      keep.get(sha)?.step === r.step && keep.get(sha)?.box === r.box;
+    // Copies nothing wants go (another step or size, the picture's sharpness at 0, the picture gone).
     let gone = false;
     for (const [sha, r] of [...this.ready]) {
-      if (keep.get(sha) === r.step) continue;
+      if (wanted(sha, r)) continue;
       this.ready.delete(sha);
       gone = true;
-      await rm(join(this.dir, copyName(sha, r.step, r.ext)), { force: true }).catch(() => undefined);
+      await rm(join(this.dir, copyName(sha, r.step, r.ext, r.box)), { force: true }).catch(() => undefined);
     }
     await this.removeStray(keep);
     const making = this.current ? keyOf(this.current.job) : null;
-    this.queue = jobs.filter(
-      (j) =>
-        this.ready.get(j.want.sha256)?.step !== j.step && !this.failed.has(keyOf(j)) && keyOf(j) !== making,
-    );
+    this.queue = jobs.filter((j) => {
+      const r = this.ready.get(j.want.sha256);
+      const ready = r?.step === j.step && r.box === boxKey(j.box);
+      return !ready && !this.failed.has(keyOf(j)) && keyOf(j) !== making;
+    });
     if (gone) this.deps.changed();
     if (this.queue.length > 0) this.start();
     else this.settle();
   }
 
   /** Files in the folder that are no copy anyone wants (half-written ones, two of one picture). */
-  private async removeStray(keep: Map<string, number>): Promise<void> {
+  private async removeStray(keep: Map<string, { step: number; box: string }>): Promise<void> {
     let names: string[];
     try {
       names = await readdir(this.dir);
@@ -262,7 +300,9 @@ export class SharpenedCopies {
     for (const name of names) {
       const m = COPY_NAME.exec(name);
       const r = m?.[1] ? this.ready.get(m[1]) : undefined;
-      const current = m?.[1] && r && keep.get(m[1]) === r.step && name === copyName(m[1], r.step, r.ext);
+      const k = m?.[1] ? keep.get(m[1]) : undefined;
+      const current =
+        m?.[1] && r && k?.step === r.step && k.box === r.box && name === copyName(m[1], r.step, r.ext, r.box);
       const making = this.current && name.startsWith(`${keyOf(this.current.job)}.part-`);
       if (!current && !making) await rm(join(this.dir, name), { force: true }).catch(() => undefined);
     }
@@ -350,6 +390,7 @@ export class SharpenedCopies {
         percent: job.step,
         type: job.ext === 'jpg' ? 'image/jpeg' : 'image/png',
         maxPixels: MAX_COPY_PIXELS,
+        box: job.box,
       };
     }
     // Nothing left: the window goes once this answer is back.
@@ -386,33 +427,43 @@ export class SharpenedCopies {
   }
 
   private async keep(job: Job, bytes: Uint8Array): Promise<void> {
-    const name = copyName(job.want.sha256, job.step, job.ext);
+    const box = boxKey(job.box);
+    const name = copyName(job.want.sha256, job.step, job.ext, box);
     const target = join(this.dir, name);
     const partial = `${target}.part-${randomUUID()}`;
     try {
       await mkdir(this.dir, { recursive: true });
       await writeFile(partial, bytes);
-      // Still wanted (its look may have changed while it was being made).
+      // Still wanted (its look, or the screens' size, may have changed while it was being made).
+      const screen = this.deps.screen();
       const still = this.deps
         .wanted()
-        .some((w) => w.sha256 === job.want.sha256 && sharpenStep(w.sharpness) === job.step);
+        .some(
+          (w) =>
+            w.sha256 === job.want.sha256 &&
+            sharpenStep(w.sharpness) === job.step &&
+            boxKey(copyBox(screen, w.zoom)) === box,
+        );
       if (!still) {
         await rm(partial, { force: true });
         return;
       }
       await rename(partial, target);
       const was = this.ready.get(job.want.sha256);
-      if (was && was.step !== job.step)
-        await rm(join(this.dir, copyName(job.want.sha256, was.step, was.ext)), { force: true }).catch(
-          () => undefined,
-        );
+      if (was && (was.step !== job.step || was.box !== box))
+        await rm(join(this.dir, copyName(job.want.sha256, was.step, was.ext, was.box)), {
+          force: true,
+        }).catch(() => undefined);
       this.ready.set(job.want.sha256, {
         step: job.step,
+        box,
         ext: job.ext,
         hash: createHash('sha256').update(bytes).digest('hex'),
         bytes: bytes.length,
       });
-      this.deps.log(`Sharpened copies: one made (${String(job.step)} %, ${String(bytes.length)} bytes)`);
+      this.deps.log(
+        `Sharpened copies: one made (${String(job.step)} %, ${box || 'its own size'}, ${String(bytes.length)} bytes)`,
+      );
       this.deps.changed();
     } catch (error) {
       await rm(partial, { force: true }).catch(() => undefined);

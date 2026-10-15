@@ -234,3 +234,46 @@ export function liveZoomAt(z: LiveZoom, now: number): { zoom: number; x: number;
   const mix = (a: number, b: number) => a + (b - a) * e;
   return { zoom: mix(z.from.zoom, z.zoom), x: mix(z.from.x, z.x), y: mix(z.from.y, z.y) };
 }
+
+/*
+ * A sharpened copy's size (Session 26g). The copy is made at the size the screens draw the picture,
+ * so the hall sees the sharpening the Picture editor shows: the picture fitted whole into the
+ * largest audience screen's picture (its canvas as drawn on its display, in pixels), at the
+ * picture's kept zoom, and never bigger than the picture itself. With no audience screen, its own
+ * size.
+ */
+
+export interface PixelSize {
+  width: number;
+  height: number;
+}
+
+/** A screen's canvas as it is drawn in its window or on its display, in pixels (fit, fill or stretch). */
+export function drawnCanvas(
+  canvas: PixelSize,
+  window: PixelSize,
+  scaling: 'fit' | 'fill' | 'stretch',
+): PixelSize {
+  if (scaling === 'stretch') return { width: Math.round(window.width), height: Math.round(window.height) };
+  const sx = window.width / canvas.width;
+  const sy = window.height / canvas.height;
+  const s = scaling === 'fill' ? Math.max(sx, sy) : Math.min(sx, sy);
+  return { width: Math.round(canvas.width * s), height: Math.round(canvas.height * s) };
+}
+
+/** The box a picture is drawn in on the largest audience screen, at its kept zoom (null: no screen). */
+export function copyBox(screen: PixelSize | null, zoom: number): PixelSize | null {
+  if (!screen || screen.width < 1 || screen.height < 1) return null;
+  const z = Math.min(4, Math.max(1, Number.isFinite(zoom) ? zoom : 1));
+  return { width: Math.round(screen.width * z), height: Math.round(screen.height * z) };
+}
+
+/** The copy's own size: the picture fitted whole into the box, never bigger than it is. */
+export function copySize(picture: PixelSize, box: PixelSize | null): PixelSize {
+  if (!box) return { width: picture.width, height: picture.height };
+  const s = Math.min(1, box.width / picture.width, box.height / picture.height);
+  return {
+    width: Math.max(1, Math.round(picture.width * s)),
+    height: Math.max(1, Math.round(picture.height * s)),
+  };
+}

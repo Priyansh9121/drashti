@@ -105,4 +105,6 @@ export interface SharpenJobView {
   percent: number;
   type: 'image/jpeg' | 'image/png';
   maxPixels: number;
+  /** The size the screens draw it at (Session 26g): the copy is the picture fitted into it; null, its own size. */
+  box: { width: number; height: number } | null;
 }

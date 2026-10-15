@@ -133,7 +133,15 @@ import { runPerformanceTest } from './perftest';
 import { registerPlaylistIpc } from './playlists/playlist-ipc';
 import { nodeWatch, SmartFolders } from './playlists/smart-folders';
 import { RepeatSlides } from './playlists/repeat-slides';
-import { framed, PLAIN, type PictureLook, pictureLookSchema, sharpenStep } from '../shared/picture-look';
+import {
+  drawnCanvas,
+  framed,
+  PLAIN,
+  type PictureLook,
+  pictureLookSchema,
+  type PixelSize,
+  sharpenStep,
+} from '../shared/picture-look';
 import { TrimSaves } from './convert/trim-saves';
 import { saveRequestSchema } from '../shared/trim';
 import { isRepeatId } from '../shared/repeat';
@@ -1036,10 +1044,14 @@ function start(): void {
   mkdirSync(mediaDir, { recursive: true });
   const media = new MediaRepo(db);
   mediaLength = (mediaId) => media.lengthOf(mediaId);
+  /** The largest audience screen's picture as drawn, in pixels (set once the outputs are). */
+  let audienceScreenSize: (() => PixelSize | null) | null = null;
   // ---- pictures' sharpened copies (Session 26f): made once each, drawn by every screen ----------
   const sharpened = new SharpenedCopies({
     mediaDir,
     wanted: () => media.sharpenWants(),
+    // The largest audience screen's picture as drawn (Session 26g): copies are made at that size.
+    screen: () => audienceScreenSize?.() ?? null,
     open: (gone) => {
       const win = createSharpenWindow(gone);
       return {
@@ -1279,6 +1291,10 @@ function start(): void {
           heartbeat.closed(config.id);
         }
       });
+      // A window that changes size (a windowed output; a display's resolution): copies follow (Session 26g).
+      window.on('resize', () => {
+        void sharpened.screensChanged();
+      });
       return h;
     },
     onChange: () => {
@@ -1294,8 +1310,27 @@ function start(): void {
       );
       // Nodes follow their screens' settings (groups, canvases, names) as they change.
       nodeService?.screensChanged();
+      // Sharpened copies follow the screens' size (Session 26g).
+      void sharpened.screensChanged();
     },
   });
+  // The audience screens on this computer, each its canvas as drawn in its window, in pixels: the largest.
+  audienceScreenSize = () => {
+    let largest: PixelSize | null = null;
+    for (const [screenId, win] of outputWindows) {
+      const s = screenRepo.screen(screenId);
+      if (!s || win.isDestroyed() || screenRepo.groupRole(s.groupId) !== 'audience') continue;
+      const bounds = win.getContentBounds();
+      const factor = electronScreen.getDisplayMatching(win.getBounds()).scaleFactor;
+      const drawn = drawnCanvas(
+        { width: s.canvasWidth, height: s.canvasHeight },
+        { width: bounds.width * factor, height: bounds.height * factor },
+        s.scaling,
+      );
+      if (!largest || drawn.width * drawn.height > largest.width * largest.height) largest = drawn;
+    }
+    return largest;
+  };
   stops.add('outputs', () => {
     manager.closeAll();
   });
