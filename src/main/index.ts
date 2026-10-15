@@ -1637,6 +1637,8 @@ function start(): void {
     askMediaAccess: (kind) =>
       process.platform === 'darwin' ? systemPreferences.askForMediaAccess(kind) : Promise.resolve(true),
     fakeDevices,
+    // Tests: a stream goes only to this computer (the guard every e2e run sets; Session 28).
+    onlyThisComputer: testLinkGuard,
     titleMarks: (marks) => {
       if (operatorWindow && !operatorWindow.isDestroyed())
         operatorWindow.setTitle(marks ? `Drashti — ${marks}` : 'Drashti');
@@ -3653,8 +3655,12 @@ function start(): void {
   );
   handle(IPC.stream.removeProfile, (e, id) => (fromOperator(e) ? streaming.removeProfile(id) : notOperator));
   handle(IPC.stream.useProfile, (e, id) => (fromOperator(e) ? streaming.useProfile(id) : notOperator));
-  handle(IPC.stream.setKey, (e, id, key) => (fromOperator(e) ? streaming.setKey(id, key) : notOperator));
-  handle(IPC.stream.removeKey, (e, id) => (fromOperator(e) ? streaming.removeKey(id) : notOperator));
+  handle(IPC.stream.setKey, (e, id, key, place) =>
+    fromOperator(e) ? streaming.setKey(id, key, place) : notOperator,
+  );
+  handle(IPC.stream.removeKey, (e, id, place) =>
+    fromOperator(e) ? streaming.removeKey(id, place) : notOperator,
+  );
   handle(IPC.stream.goLive, (e, confirm) =>
     fromOperator(e) && confirmedSchema.safeParse(confirm).success
       ? streaming.goLive()

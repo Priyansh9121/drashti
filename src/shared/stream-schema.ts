@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { DeviceChoice, StreamProfileInput } from './stream';
-import { SOUND_DELAY_MAX_MS, STREAM_LAYOUTS, STREAM_PRESET_IDS } from './stream';
+import { MAX_PLACES, placeName, SOUND_DELAY_MAX_MS, STREAM_LAYOUTS, STREAM_PRESET_IDS } from './stream';
 
 /*
  * Stream settings as they arrive over IPC, checked before anything is kept.
@@ -30,7 +30,12 @@ export const streamUrlSchema = z
     } catch {
       return false;
     }
-  }, 'An address starting rtmps:// (or rtmp://), with no key in it.');
+  }, 'An address starting rtmps:// (or rtmp://), with no key in it.')
+  // Facebook takes a stream only over a secure connection (Session 28).
+  .refine(
+    (u) => !(placeName(u) === 'Facebook' && /^rtmp:/iu.test(u)),
+    'Facebook takes only a secure address: rtmps://.',
+  );
 
 export const streamProfileInputSchema: z.ZodType<StreamProfileInput> = z.object({
   name: z.string().trim().min(1).max(80),
@@ -40,6 +45,11 @@ export const streamProfileInputSchema: z.ZodType<StreamProfileInput> = z.object(
   sound: deviceChoiceSchema.nullable(),
   soundDelayMs: z.number().int().min(0).max(SOUND_DELAY_MAX_MS),
   mixOwnSound: z.boolean(),
+  // The other places (Session 28): three at most, the profile's own address with them.
+  more: z
+    .array(z.object({ id: z.string().min(1).max(100).optional(), url: streamUrlSchema }))
+    .max(MAX_PLACES - 1, 'Three places at most.')
+    .optional(),
 });
 
 /**

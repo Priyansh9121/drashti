@@ -2,7 +2,7 @@ import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { createWriteStream, statfsSync, type WriteStream } from 'node:fs';
 import { setPriority } from 'node:os';
 import { dirname } from 'node:path';
-import type { StreamPreset } from '../../../shared/stream';
+import { placeName, type StreamPreset } from '../../../shared/stream';
 import { redact } from '../redact';
 import { audioArgs, type EncoderChoice, encoderCandidates, pickEncoder, videoArgs } from './encoders';
 import type { MkvCluster } from './mkv';
@@ -112,7 +112,7 @@ export function consumerTake(
 }
 
 /** A plain-language reason the connection stopped, from FFmpeg's last words (already without the key). */
-export function connectionMessage(lastLines: readonly string[]): string {
+export function connectionMessage(lastLines: readonly string[], name = 'YouTube'): string {
   const text = lastLines.join(' ').toLowerCase();
   // First: FFmpeg also says "input/output error" after a certificate it could not check (OpenSSL on a
   // Mac, GnuTLS on Windows).
@@ -123,15 +123,18 @@ export function connectionMessage(lastLines: readonly string[]): string {
   )
     return 'The stream server’s certificate could not be checked, so nothing was sent. Check that this computer’s date and time are right.';
   if (/(resolve|name or service|getaddrinfo|nodename)/u.test(text))
-    return 'This computer cannot find YouTube’s address: the internet may be down.';
-  if (/(timed out|timeout)/u.test(text)) return 'The connection to YouTube timed out.';
-  if (/(refused)/u.test(text)) return 'YouTube refused the connection.';
+    return `This computer cannot find ${name}’s address: the internet may be down.`;
+  if (/(timed out|timeout)/u.test(text)) return `The connection to ${name} timed out.`;
+  if (/(refused)/u.test(text)) return `${capital(name)} refused the connection.`;
   if (/(broken pipe|reset by peer|end of file|i\/o error|input\/output error)/u.test(text))
-    return 'The connection to YouTube dropped.';
-  if (/(tls|ssl|certificate|handshake)/u.test(text)) return 'The secure connection to YouTube failed.';
-  if (/(unauthorized|forbidden|403|401)/u.test(text)) return 'YouTube did not accept the stream key.';
-  return 'The connection to YouTube stopped.';
+    return `The connection to ${name} dropped.`;
+  if (/(tls|ssl|certificate|handshake)/u.test(text)) return `The secure connection to ${name} failed.`;
+  if (/(unauthorized|forbidden|403|401)/u.test(text))
+    return `${capital(name)} did not accept the stream key.`;
+  return `The connection to ${name} stopped.`;
 }
+
+const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /**
  * FFmpeg's arguments for sending the encoded stream (Matroska on its input) to
@@ -174,6 +177,37 @@ export function connectionArgs(url: string, key: string, caFile: string | null):
   ];
 }
 
+const offLive = (): WorkerLive => ({
+  state: 'off',
+  since: null,
+  health: 'off',
+  bitrateKbps: null,
+  speed: null,
+  backlogBytes: 0,
+  reconnects: 0,
+  retryAt: null,
+  message: null,
+});
+
+/** One place the stream goes and its own connection (Session 28: up to three, from one encode). */
+class Connection {
+  pusher: ChildProcessWithoutNullStreams | null = null;
+  consumer: Consumer | null = null;
+  progress: Progress | null = null;
+  startedAt = 0;
+  lines: string[] = [];
+  attempts = 0;
+  retryTimer: NodeJS.Timeout | null = null;
+  live: WorkerLive = offLive();
+
+  constructor(
+    readonly id: string,
+    readonly url: string,
+    readonly key: string,
+    readonly name: string,
+  ) {}
+}
+
 export class StreamPipeline {
   private ffmpeg = '';
   /** The certificate authorities a secure connection is checked against (null: FFmpeg's own). */
@@ -197,26 +231,8 @@ export class StreamPipeline {
   private error: string | null = null;
   private keys: string[] = [];
 
-  // ---- going live
-  private liveWanted: { url: string; key: string } | null = null;
-  private pusher: ChildProcessWithoutNullStreams | null = null;
-  private pushConsumer: Consumer | null = null;
-  private pushProgress: Progress | null = null;
-  private pushStartedAt = 0;
-  private pushLines: string[] = [];
-  private attempts = 0;
-  private retryTimer: NodeJS.Timeout | null = null;
-  private live: WorkerLive = {
-    state: 'off',
-    since: null,
-    health: 'off',
-    bitrateKbps: null,
-    speed: null,
-    backlogBytes: 0,
-    reconnects: 0,
-    retryAt: null,
-    message: null,
-  };
+  // ---- going live: each place's own connection, the profile's own first (none: not live)
+  private connections: Connection[] = [];
 
   // ---- recording
   private recordFile: WriteStream | null = null;
@@ -253,7 +269,8 @@ export class StreamPipeline {
       encoding: this.encodeProcess !== null,
       fps: this.encodeProgress?.fps ?? null,
       droppedFrames: this.dropped + (this.encodeProgress?.dropFrames ?? 0),
-      live: { ...this.live, message: this.live.message ? redact(this.live.message, this.keys) : null },
+      live: this.redacted(this.overallLive()),
+      destinations: this.connections.map((c) => ({ id: c.id, name: c.name, ...this.redacted(c.live) })),
       recording: { ...this.recording },
       error: this.error,
     };
@@ -329,7 +346,7 @@ export class StreamPipeline {
       this.stopping
     )
       return;
-    if (!this.liveWanted && this.recording.state === 'off') return;
+    if (this.connections.length === 0 && this.recording.state === 'off') return;
     this.startEncoder();
   }
 
@@ -446,17 +463,24 @@ export class StreamPipeline {
    * again too, at once, and YouTube sees a short reconnection.
    */
   private reconnectForNewEncoder(): void {
-    const child = this.pusher;
-    if (!child) return;
-    this.pusher = null;
-    this.pushConsumer = null;
-    child.stdin.end();
-    setTimeout(() => {
-      child.kill();
-    }, 3000).unref();
-    if (!this.liveWanted || this.stopping) return;
-    this.log('info', 'The encoder started again, and so does the connection');
-    this.connect();
+    for (const c of this.connections) {
+      const child = c.pusher;
+      if (!child) continue;
+      c.pusher = null;
+      c.consumer = null;
+      child.stdin.end();
+      setTimeout(() => {
+        child.kill();
+      }, 3000).unref();
+      if (this.stopping) continue;
+      this.log(
+        'info',
+        this.connections.length > 1
+          ? `The encoder started again, and so does the connection to ${c.name}`
+          : 'The encoder started again, and so does the connection',
+      );
+      this.connect(c);
+    }
   }
 
   private writeAudio(pcm: Buffer, frames: number): void {
@@ -504,21 +528,25 @@ export class StreamPipeline {
       const out = consumerTake(this.recordConsumer, cluster, this.header);
       if (out) this.writeRecording(out);
     }
-    if (this.pushConsumer && this.pusher) {
-      const stdin = this.pusher.stdin;
+    // Each place on its own: one falling behind never holds another (or the recording) up.
+    for (const c of this.connections) {
+      const consumer = c.consumer;
+      if (!consumer || !c.pusher) continue;
+      const stdin = c.pusher.stdin;
       if (backlog(stdin) > PUSH_BACKLOG) {
         // Too far behind: drop until the next keyframe, the times going on, and count what is lost
         // (a cluster is ~0.1 s).
-        this.pushConsumer.skipping = true;
+        consumer.skipping = true;
         this.dropped += Math.max(1, Math.round((this.preset?.fps ?? 30) / 10));
-        return;
+        continue;
       }
-      const starting = !this.pushConsumer.started;
-      const resuming = this.pushConsumer.skipping;
-      const out = consumerTake(this.pushConsumer, cluster, this.header);
+      const starting = !consumer.started;
+      const resuming = consumer.skipping;
+      const out = consumerTake(consumer, cluster, this.header);
       if (out) {
-        if (starting) this.log('info', 'Sending, from a keyframe');
-        else if (resuming) this.log('info', 'Sending again, from a keyframe, after falling behind');
+        const to = this.connections.length > 1 ? ` to ${c.name}` : '';
+        if (starting) this.log('info', `Sending${to}, from a keyframe`);
+        else if (resuming) this.log('info', `Sending${to} again, from a keyframe, after falling behind`);
         for (const part of out) stdin.write(part);
       }
     }
@@ -624,65 +652,72 @@ export class StreamPipeline {
 
   // ---- going live -----------------------------------------------------------------------
 
-  goLive(url: string, key: string): void {
-    this.liveWanted = { url, key };
-    this.keys = [key];
-    this.attempts = 0;
-    this.live = {
-      ...this.live,
-      state: 'connecting',
-      since: this.live.since,
-      health: 'reconnecting',
-      reconnects: 0,
-      retryAt: null,
-      message: 'Connecting to YouTube…',
-    };
-    this.connect();
+  goLive(url: string, key: string, more: readonly { id: string; url: string; key: string }[] = []): void {
+    // Asked again (the worker started again): each place starts afresh, keeping when it first went on air.
+    const before = new Map(this.connections.map((c) => [c.id, c.live.since]));
+    for (const c of this.connections) this.drop(c);
+    // One place is YouTube's, as ever; with several, each is called by its address (Session 28).
+    const several = more.length > 0;
+    this.connections = [
+      new Connection('', url, key, several ? placeName(url) : 'YouTube'),
+      ...more.map((m) => new Connection(m.id, m.url, m.key, placeName(m.url))),
+    ];
+    this.keys = this.connections.map((c) => c.key);
+    for (const c of this.connections) {
+      c.live = {
+        ...offLive(),
+        state: 'connecting',
+        since: before.get(c.id) ?? null,
+        health: 'reconnecting',
+        message: `Connecting to ${c.name}…`,
+      };
+      this.connect(c);
+    }
     this.maybeStartEncoder();
     this.report();
   }
 
-  private connect(): void {
-    const wanted = this.liveWanted;
-    if (!wanted || this.stopping) return;
-    this.retryTimer = null;
-    this.pushLines = [];
-    this.pushProgress = null;
-    const child = spawn(this.ffmpeg, connectionArgs(wanted.url, wanted.key, this.caFile), {
+  private connect(c: Connection): void {
+    if (!this.connections.includes(c) || this.stopping) return;
+    c.retryTimer = null;
+    c.lines = [];
+    c.progress = null;
+    const child = spawn(this.ffmpeg, connectionArgs(c.url, c.key, this.caFile), {
       stdio: 'pipe',
       windowsHide: true,
       env: ffmpegEnv(),
     });
     belowNormal(child.pid);
-    this.pusher = child;
-    this.pushConsumer = newConsumer();
-    this.pushStartedAt = Date.now();
-    this.log('info', `Connecting (try ${this.attempts + 1})`);
+    c.pusher = child;
+    c.consumer = newConsumer();
+    c.startedAt = Date.now();
+    const to = this.connections.length > 1 ? ` to ${c.name}` : '';
+    this.log('info', `Connecting${to} (try ${c.attempts + 1})`);
     child.stdout.resume();
     const reader = new ProgressReader(
       (p) => {
         // A connection that has been replaced (or ended) no longer speaks for the stream.
-        if (this.pusher !== child) return;
-        this.pushProgress = p;
-        if ((p.totalSize ?? 0) > 0 && this.live.state !== 'live') {
-          this.live = {
-            ...this.live,
+        if (c.pusher !== child) return;
+        c.progress = p;
+        if ((p.totalSize ?? 0) > 0 && c.live.state !== 'live') {
+          c.live = {
+            ...c.live,
             state: 'live',
-            since: this.live.since ?? Date.now(),
+            since: c.live.since ?? Date.now(),
             health: 'good',
             retryAt: null,
             message: null,
           };
-          this.log('info', 'On air');
+          this.log('info', this.connections.length > 1 ? `On air on ${c.name}` : 'On air');
           this.report();
         }
       },
       (line) => {
         this.hooks.connectionLine?.(line);
         const safe = redact(line, this.keys);
-        this.pushLines.push(safe);
-        if (this.pushLines.length > 20) this.pushLines.shift();
-        this.log('warn', `[connection] ${safe}`);
+        c.lines.push(safe);
+        if (c.lines.length > 20) c.lines.shift();
+        this.log('warn', `[connection${to}] ${safe}`);
       },
     );
     child.stderr.on('data', (chunk: Buffer) => {
@@ -690,87 +725,139 @@ export class StreamPipeline {
     });
     child.stdin.on('error', () => undefined);
     child.on('error', (error) => {
-      this.log('warn', `The connection could not start: ${error.message}`);
+      this.log('warn', `The connection${to} could not start: ${error.message}`);
     });
     child.on('exit', () => {
-      if (this.pusher !== child) return;
-      this.pusher = null;
-      this.pushConsumer = null;
-      if (!this.liveWanted || this.stopping) return;
-      this.scheduleReconnect();
+      if (c.pusher !== child) return;
+      c.pusher = null;
+      c.consumer = null;
+      if (!this.connections.includes(c) || this.stopping) return;
+      this.scheduleReconnect(c);
     });
   }
 
-  private scheduleReconnect(): void {
-    if (Date.now() - this.pushStartedAt > STEADY_MS) this.attempts = 0;
-    const wait = reconnectDelay(this.attempts);
-    this.attempts++;
-    const reason = connectionMessage(this.pushLines);
+  private scheduleReconnect(c: Connection): void {
+    if (Date.now() - c.startedAt > STEADY_MS) c.attempts = 0;
+    const wait = reconnectDelay(c.attempts);
+    c.attempts++;
+    const reason = connectionMessage(c.lines, c.name);
     const at = Date.now() + wait;
-    this.live = {
-      ...this.live,
+    c.live = {
+      ...c.live,
       state: 'reconnecting',
       health: 'reconnecting',
-      reconnects: this.live.reconnects + 1,
+      reconnects: c.live.reconnects + 1,
       retryAt: at,
-      message: `${reason} Trying again in ${Math.round(wait / 1000)} s (try ${this.attempts}).`,
+      message: `${reason} Trying again in ${Math.round(wait / 1000)} s (try ${c.attempts}).`,
       bitrateKbps: null,
       speed: null,
     };
     this.log('warn', `${reason} Trying again in ${Math.round(wait / 1000)} s`);
     this.report();
-    this.retryTimer = setTimeout(() => {
-      this.live = { ...this.live, retryAt: null, message: 'Connecting to YouTube again…' };
-      this.connect();
+    c.retryTimer = setTimeout(() => {
+      c.live = { ...c.live, retryAt: null, message: `Connecting to ${c.name} again…` };
+      this.connect(c);
       this.report();
     }, wait);
   }
 
-  endLive(): void {
-    if (!this.liveWanted && !this.pusher) return;
-    this.liveWanted = null;
-    if (this.retryTimer) clearTimeout(this.retryTimer);
-    this.retryTimer = null;
-    const child = this.pusher;
-    this.pusher = null;
-    this.pushConsumer = null;
+  /** A place's connection ends (no reconnecting): its pusher finishes and goes. */
+  private drop(c: Connection): void {
+    if (c.retryTimer) clearTimeout(c.retryTimer);
+    c.retryTimer = null;
+    const child = c.pusher;
+    c.pusher = null;
+    c.consumer = null;
     if (child) {
       child.stdin.end();
       setTimeout(() => {
         child.kill();
       }, 3000).unref();
     }
-    this.live = {
-      state: 'off',
-      since: null,
-      health: 'off',
-      bitrateKbps: null,
-      speed: null,
-      backlogBytes: 0,
-      reconnects: 0,
-      retryAt: null,
-      message: null,
-    };
+  }
+
+  endLive(): void {
+    if (this.connections.length === 0) return;
+    const all = this.connections;
+    this.connections = [];
+    for (const c of all) this.drop(c);
     this.log('info', 'The stream ended');
     this.report();
+  }
+
+  /** A live status without the keys in its words. */
+  private redacted(live: WorkerLive): WorkerLive {
+    return { ...live, message: live.message ? redact(live.message, this.keys) : null };
+  }
+
+  /**
+   * All the places together: with one, just its own; with several (Session 28), on air while any is (the
+   * operator sees n of m), its health struggling while one is not, and the words of those that are not.
+   */
+  private overallLive(): WorkerLive {
+    const all = this.connections;
+    if (all.length <= 1) return all[0]?.live ?? offLive();
+    const lives = all.map((c) => c.live);
+    const on = lives.filter((l) => l.state === 'live');
+    const down = all.filter((c) => c.live.state !== 'live');
+    const state: WorkerLive['state'] =
+      on.length > 0
+        ? 'live'
+        : lives.some((l) => l.state === 'reconnecting')
+          ? 'reconnecting'
+          : lives.some((l) => l.state === 'connecting')
+            ? 'connecting'
+            : 'off';
+    const since = lives.reduce<number | null>(
+      (first, l) => (l.since !== null && (first === null || l.since < first) ? l.since : first),
+      null,
+    );
+    const health: WorkerLive['health'] =
+      state === 'live'
+        ? down.length > 0 || on.some((l) => l.health === 'struggling')
+          ? 'struggling'
+          : 'good'
+        : state === 'off'
+          ? 'off'
+          : 'reconnecting';
+    const retries = lives.map((l) => l.retryAt).filter((t): t is number => t !== null);
+    const speeds = on.map((l) => l.speed).filter((v): v is number => v !== null);
+    const message =
+      down.length > 0
+        ? down.map((c) => c.live.message ?? `${capital(c.name)} is not on air.`).join(' ')
+        : (on.find((l) => l.message !== null)?.message ?? null);
+    return {
+      state,
+      since,
+      health,
+      bitrateKbps: on.length > 0 ? on.reduce((n, l) => n + (l.bitrateKbps ?? 0), 0) : null,
+      speed: speeds.length > 0 ? Math.min(...speeds) : null,
+      backlogBytes: Math.max(0, ...lives.map((l) => l.backlogBytes)),
+      reconnects: lives.reduce((n, l) => n + l.reconnects, 0),
+      retryAt: retries.length > 0 ? Math.min(...retries) : null,
+      message,
+    };
   }
 
   // ---- every second ------------------------------------------------------------------------
 
   private tick(): void {
-    // The connection's health, from FFmpeg's progress and what is waiting to go out.
-    if (this.live.state === 'live' && this.pusher) {
-      const waiting = backlog(this.pusher.stdin);
-      const speed = this.pushProgress?.speed ?? null;
+    // Each connection's health, from FFmpeg's progress and what is waiting to go out.
+    for (const c of this.connections) {
+      if (c.live.state !== 'live' || !c.pusher) continue;
+      const waiting = backlog(c.pusher.stdin);
+      const speed = c.progress?.speed ?? null;
       const struggling = waiting > PUSH_STRUGGLING || (speed !== null && speed < 0.9);
-      this.live = {
-        ...this.live,
+      c.live = {
+        ...c.live,
         health: struggling ? 'struggling' : 'good',
-        bitrateKbps: this.pushProgress?.bitrateKbps ?? null,
+        bitrateKbps: c.progress?.bitrateKbps ?? null,
         speed,
         backlogBytes: waiting,
         message: struggling
-          ? 'The connection is too slow for this preset: try the weak-internet preset.'
+          ? this.connections.length > 1
+            ? `The connection to ${c.name} is too slow for this preset: try the weak-internet preset.`
+            : 'The connection is too slow for this preset: try the weak-internet preset.'
           : null,
       };
     }

@@ -16,8 +16,8 @@
 export type StreamLayout = 'camera' | 'slides';
 export const STREAM_LAYOUTS = ['camera', 'slides'] as const satisfies readonly StreamLayout[];
 
-export type StreamPresetId = 'good' | 'weak';
-export const STREAM_PRESET_IDS = ['good', 'weak'] as const satisfies readonly StreamPresetId[];
+export type StreamPresetId = 'good' | 'weak' | 'several';
+export const STREAM_PRESET_IDS = ['good', 'weak', 'several'] as const satisfies readonly StreamPresetId[];
 
 export interface StreamPreset {
   id: StreamPresetId;
@@ -36,10 +36,13 @@ export interface StreamPreset {
 }
 
 /**
- * Two presets, checked against YouTube's live encoder settings (October
+ * The presets, checked against YouTube's live encoder settings (October
  * 2026): H.264 at a constant bitrate, a keyframe every 2 seconds, AAC at 128
  * kbps. YouTube lists 5 Mbps as the least for 1080p30 (14 recommended) and
  * 3 Mbps for 720p30 (8 recommended), so the weak preset uses 3, not less.
+ * Several platforms (Session 28, decision 18): 1080p30 at 5 Mbps to each,
+ * YouTube's least for 1080p and within Facebook's range, so the upload two
+ * or three need stays within reach.
  */
 export const STREAM_PRESETS: Readonly<Record<StreamPresetId, StreamPreset>> = {
   good: {
@@ -66,7 +69,37 @@ export const STREAM_PRESETS: Readonly<Record<StreamPresetId, StreamPreset>> = {
     keyframeSeconds: 2,
     sampleRate: 48_000,
   },
+  several: {
+    id: 'several',
+    label: 'Several platforms',
+    note: '1080p, 30 frames a second, 5 Mbps to each platform: about 7 Mbps of upload for each.',
+    width: 1920,
+    height: 1080,
+    fps: 30,
+    videoKbps: 5000,
+    audioKbps: 128,
+    keyframeSeconds: 2,
+    sampleRate: 48_000,
+  },
 };
+
+/** At most three places at once (Session 28, decision 18): a profile's own address and two more. */
+export const MAX_PLACES = 3;
+
+/**
+ * The upload a profile needs (Mbps): its preset's video and sound to each place, with a third more to
+ * spare. Drashti measures nothing on the internet: the operator compares it with their own speed test.
+ */
+export const uploadNeededMbps = (preset: StreamPreset, places: number): number =>
+  Math.ceil(((preset.videoKbps + preset.audioKbps) * places * 1.3) / 1000);
+
+/** How the operator knows a place by its address: YouTube, Facebook, or the stream server. */
+export function placeName(url: string): string {
+  const host = /^rtmps?:\/\/([^/:]+)/iu.exec(url)?.[1]?.toLowerCase() ?? '';
+  if (host === 'youtube.com' || host.endsWith('.youtube.com')) return 'YouTube';
+  if (host === 'facebook.com' || host.endsWith('.facebook.com')) return 'Facebook';
+  return 'the stream server';
+}
 
 /** YouTube Live's RTMPS ingest; the key is added after a slash. */
 export const YOUTUBE_RTMPS_URL = 'rtmps://a.rtmps.youtube.com/live2';
@@ -91,10 +124,24 @@ export interface StreamProfile {
   /** Drashti's own sound (videos and audio cues) goes into the stream too. */
   mixOwnSound: boolean;
   hasKey: boolean;
+  /** The other places it goes to at the same time (Session 28): at most two, in order. */
+  more: StreamDestination[];
 }
 
-/** What the operator sets on a profile (the key goes separately). */
-export type StreamProfileInput = Omit<StreamProfile, 'id' | 'hasKey'>;
+/** Another place a profile sends the same stream to (Session 28): its address, and whether it has its own key. */
+export interface StreamDestination {
+  id: string;
+  url: string;
+  hasKey: boolean;
+}
+
+/**
+ * What the operator sets on a profile (the keys go separately). `more`: the other places, by their ids
+ * (a new one without); left out, they stay as they are.
+ */
+export type StreamProfileInput = Omit<StreamProfile, 'id' | 'hasKey' | 'more'> & {
+  more?: { id?: string; url: string }[];
+};
 
 export const SOUND_DELAY_MAX_MS = 1000;
 
@@ -175,6 +222,8 @@ export interface StreamStatus {
     retryAt: number | null;
     /** A sentence for the operator: what is happening or went wrong (never the key). */
     message: string | null;
+    /** Each place on its own, the profile's own first (Session 28; one place, one entry; none when off). */
+    destinations: PlaceStatus[];
   };
   recording: {
     state: RecordingState;
@@ -200,6 +249,20 @@ export interface StreamStatus {
   resume: { live: boolean; recording: boolean; profileName: string; stoppedAt: number } | null;
   /** Goes up whenever a profile or a key changes: windows read the profiles again. */
   profilesVersion: number;
+}
+
+/** One place the stream goes, as the operator sees it (Session 28): the profile's own has the id ''. */
+export interface PlaceStatus {
+  id: string;
+  /** YouTube, Facebook, or the stream server. */
+  name: string;
+  state: LiveState;
+  since: number | null;
+  health: StreamHealth;
+  bitrateKbps: number | null;
+  reconnects: number;
+  retryAt: number | null;
+  message: string | null;
 }
 
 /** The Program's preview for the operator: a small JPEG, a few times a second. */

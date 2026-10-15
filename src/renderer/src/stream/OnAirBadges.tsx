@@ -13,6 +13,9 @@ export function OnAirBadges({ size = 'md', className }: { size?: 'md' | 'lg'; cl
   const live = status?.live.state ?? 'off';
   const rec = status?.recording.state === 'recording';
   const onAir = live === 'live' || live === 'reconnecting';
+  // Several places (Session 28): ON AIR while any is, with how many of them.
+  const places = status?.live.destinations ?? [];
+  const onCount = places.filter((d) => d.state === 'live').length;
   if (!onAir && !rec) return null;
   const text = size === 'lg' ? 'text-sm px-2.5 py-1' : 'text-2xs px-1.5 leading-5';
   return (
@@ -25,7 +28,11 @@ export function OnAirBadges({ size = 'md', className }: { size?: 'md' | 'lg'; cl
             text,
           )}
         >
-          {live === 'reconnecting' ? 'On air · reconnecting' : 'On air'}
+          {live === 'reconnecting'
+            ? 'On air · reconnecting'
+            : places.length > 1
+              ? `On air · ${String(onCount)} of ${String(places.length)}`
+              : 'On air'}
         </span>
       )}
       {rec && (

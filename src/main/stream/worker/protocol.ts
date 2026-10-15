@@ -22,8 +22,11 @@ export type ToStreamWorker =
       encoder: string | null;
       caFile: string | null;
     }
-  /** Send to this address with this key (again and again until `endLive`). */
-  | { type: 'live'; url: string; key: string }
+  /**
+   * Send to this address with this key, and to each of `more` with its own (Session 28: several platforms
+   * at once, from one encode), again and again until `endLive`.
+   */
+  | { type: 'live'; url: string; key: string; more?: { id: string; url: string; key: string }[] }
   | { type: 'endLive' }
   /** Record into this file (a new one each time). Keep this much of the disk free. */
   | { type: 'record'; file: string; keepFreeBytes: number }
@@ -45,6 +48,13 @@ export interface WorkerLive {
   message: string | null;
 }
 
+/** One place the stream goes, as the worker has it: the profile's own (id '') first, then the others. */
+export interface WorkerDestination extends WorkerLive {
+  id: string;
+  /** How the operator knows it: YouTube, Facebook, or the stream server. */
+  name: string;
+}
+
 export interface WorkerRecording {
   state: 'off' | 'recording';
   file: string | null;
@@ -62,7 +72,10 @@ export interface WorkerStatus {
   fps: number | null;
   /** Frames that did not make it: the encoder or the connection could not keep up. */
   droppedFrames: number;
+  /** All the places together (just the one's, with one). */
   live: WorkerLive;
+  /** Each place, in order (Session 28). */
+  destinations: WorkerDestination[];
   recording: WorkerRecording;
   /** Something went wrong with the encoder itself (none of the outputs can work). */
   error: string | null;

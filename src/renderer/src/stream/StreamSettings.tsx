@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react';
-import type { DeviceChoice, StreamProfile, StreamProfileInput } from '../../../shared/stream';
+import type {
+  DeviceChoice,
+  StreamDestination,
+  StreamProfile,
+  StreamProfileInput,
+} from '../../../shared/stream';
 import {
+  MAX_PLACES,
+  placeName,
   SOUND_DELAY_MAX_MS,
   STREAM_PRESET_IDS,
   STREAM_PRESETS,
+  uploadNeededMbps,
   YOUTUBE_RTMPS_URL,
 } from '../../../shared/stream';
 import { Button } from '../ui/Button';
@@ -21,7 +29,8 @@ import { loadProfiles, streamAction, useStream, watchProgram } from './stream-st
  * address), its key, a preset, the camera and sound input, the delay that
  * lines the sound up with the picture, and whether Drashti's own sound goes
  * in. The key is typed once and never shown again: the window is only told
- * that one is saved.
+ * that one is saved. Since Session 28 a profile can send the same stream to
+ * up to two more places (Facebook, another platform), each with its own key.
  */
 
 const inputOf = (p: StreamProfile): StreamProfileInput => ({
@@ -32,6 +41,7 @@ const inputOf = (p: StreamProfile): StreamProfileInput => ({
   sound: p.sound,
   soundDelayMs: p.soundDelayMs,
   mixOwnSound: p.mixOwnSound,
+  more: p.more.map((d) => ({ id: d.id, url: d.url })),
 });
 
 /**
@@ -53,11 +63,32 @@ function followed(
     sound: pick('sound'),
     soundDelayMs: pick('soundDelayMs'),
     mixOwnSound: pick('mixOwnSound'),
+    more: pick('more'),
   };
 }
 
-/** The key: saved (never shown), or a field to paste one into. */
-function KeyField({ profile }: { profile: StreamProfile }) {
+/** Where a place's key is found, for its field's hint. */
+function keyHint(url: string): string {
+  const name = placeName(url);
+  if (name === 'YouTube') return 'From YouTube Studio: Go live > Stream > Stream key.';
+  if (name === 'Facebook') return 'From Facebook: Live Producer > Streaming software > Stream key.';
+  return 'From the platform’s own live settings.';
+}
+
+/** A place's key (the profile's own when no `place`): saved (never shown), or a field to paste one into. */
+function KeyField({
+  profile,
+  place,
+  index = 0,
+}: {
+  profile: StreamProfile;
+  place?: StreamDestination;
+  index?: number;
+}) {
+  const has = place ? place.hasKey : profile.hasKey;
+  const url = place ? place.url : profile.url;
+  // The profile's own keeps its test ids; another place's are numbered.
+  const tid = (id: string) => (index === 0 ? id : `${id}-${String(index)}`);
   const storage = useStream((s) => s.profiles?.keyStorage);
   const [replacing, setReplacing] = useState(false);
   const [key, setKey] = useState('');
@@ -68,11 +99,12 @@ function KeyField({ profile }: { profile: StreamProfile }) {
         {storage.message}
       </Notice>
     );
-  if (profile.hasKey && !replacing)
+  if (has && !replacing)
     return (
-      <div className="flex flex-wrap items-center gap-2" data-testid="stream-key-saved">
+      <div className="flex flex-wrap items-center gap-2" data-testid={tid('stream-key-saved')}>
         <span className="inline-flex items-center gap-1.5 text-sm text-success-fg">
-          <KeyRound size={14} aria-hidden="true" />A key is saved for this profile.
+          <KeyRound size={14} aria-hidden="true" />
+          {place ? `A key is saved for ${placeName(url)}.` : 'A key is saved for this profile.'}
         </span>
         <Button size="sm" onClick={() => setReplacing(true)}>
           Replace key
@@ -80,7 +112,7 @@ function KeyField({ profile }: { profile: StreamProfile }) {
         <Button
           size="sm"
           variant="danger"
-          onClick={() => void streamAction(() => window.drashti.stream.removeKey(profile.id))}
+          onClick={() => void streamAction(() => window.drashti.stream.removeKey(profile.id, place?.id))}
         >
           Remove key
         </Button>
@@ -93,7 +125,7 @@ function KeyField({ profile }: { profile: StreamProfile }) {
         e.preventDefault();
         const typed = key;
         setKey('');
-        void window.drashti.stream.setKey(profile.id, typed).then((result) => {
+        void window.drashti.stream.setKey(profile.id, typed, place?.id).then((result) => {
           if (result.ok) {
             useStream.setState({ profiles: result.profiles });
             setReplacing(false);
@@ -103,8 +135,8 @@ function KeyField({ profile }: { profile: StreamProfile }) {
       }}
     >
       <Field
-        label="Stream key"
-        hint="From YouTube Studio: Go live > Stream > Stream key. It is kept in this computer’s secure storage and never shown again."
+        label={place ? `Stream key for ${placeName(url)}` : 'Stream key'}
+        hint={`${keyHint(url)} It is kept in this computer’s secure storage and never shown again.`}
         error={message}
         className="min-w-60 flex-1"
       >
@@ -113,7 +145,7 @@ function KeyField({ profile }: { profile: StreamProfile }) {
           autoComplete="off"
           spellCheck={false}
           value={key}
-          data-testid="stream-key-input"
+          data-testid={tid('stream-key-input')}
           onChange={(e) => {
             setKey(e.target.value);
           }}
@@ -124,7 +156,7 @@ function KeyField({ profile }: { profile: StreamProfile }) {
         variant="primary"
         className="mt-5"
         disabled={key.trim() === ''}
-        data-testid="save-stream-key"
+        data-testid={tid('save-stream-key')}
       >
         Save key
       </Button>
@@ -219,7 +251,9 @@ function ProfileForm({ profile, active }: { profile: StreamProfile; active: bool
             <Select
               value={draft.preset}
               data-testid="stream-preset"
-              onChange={(e) => set({ preset: e.target.value === 'weak' ? 'weak' : 'good' })}
+              onChange={(e) =>
+                set({ preset: STREAM_PRESET_IDS.find((id) => id === e.target.value) ?? 'good' })
+              }
             >
               {STREAM_PRESET_IDS.map((id) => (
                 <option key={id} value={id}>
@@ -239,6 +273,7 @@ function ProfileForm({ profile, active }: { profile: StreamProfile; active: bool
             data-testid="stream-url"
           />
         </Field>
+        <OtherPlaces draft={draft} set={set} />
         <SectionTitle>Camera and sound</SectionTitle>
         {!status?.programOn && <Loading label="Looking for cameras and sound inputs…" />}
         <div className="grid grid-cols-2 gap-3">
@@ -304,9 +339,78 @@ function ProfileForm({ profile, active }: { profile: StreamProfile; active: bool
         </div>
       </form>
       <section className="space-y-2">
-        <SectionTitle>Stream key</SectionTitle>
+        <SectionTitle>{profile.more.length > 0 ? 'Stream keys' : 'Stream key'}</SectionTitle>
         <KeyField key={profile.id} profile={profile} />
+        {profile.more.map((d, i) => (
+          <KeyField key={d.id} profile={profile} place={d} index={i + 1} />
+        ))}
       </section>
+    </div>
+  );
+}
+
+/**
+ * The other places the same stream goes to (Session 28): two at most, each an address (its key below once
+ * it is saved), and the upload all of them need at the preset chosen.
+ */
+function OtherPlaces({
+  draft,
+  set,
+}: {
+  draft: StreamProfileInput;
+  set: (patch: Partial<StreamProfileInput>) => void;
+}) {
+  const more = draft.more ?? [];
+  const places = 1 + more.length;
+  const preset = STREAM_PRESETS[draft.preset];
+  return (
+    <div className="space-y-2" data-testid="stream-other-places">
+      {more.map((d, i) => (
+        <div key={d.id ?? `new-${String(i)}`} className="flex items-end gap-2">
+          <Field
+            label={`Also send to (${placeName(d.url)})`}
+            hint="Facebook: Live Producer > Streaming software > Server URL (rtmps://…)."
+            className="flex-1"
+          >
+            <TextInput
+              value={d.url}
+              data-testid={`stream-place-url-${String(i + 1)}`}
+              onChange={(e) => {
+                set({ more: more.map((x, n) => (n === i ? { ...x, url: e.target.value } : x)) });
+              }}
+            />
+          </Field>
+          <Button
+            icon={Trash2}
+            aria-label={`Take out ${placeName(d.url)}`}
+            data-testid={`stream-place-remove-${String(i + 1)}`}
+            onClick={() => {
+              set({ more: more.filter((_, n) => n !== i) });
+            }}
+          >
+            Take out
+          </Button>
+        </div>
+      ))}
+      <div className="flex flex-wrap items-center gap-3">
+        {places < MAX_PLACES && (
+          <Button
+            size="sm"
+            icon={Plus}
+            data-testid="stream-add-place"
+            onClick={() => {
+              set({ more: [...more, { url: 'rtmps://' }] });
+            }}
+          >
+            Also send to another platform
+          </Button>
+        )}
+        <p className="text-xs text-muted" data-testid="stream-upload-needed">
+          {places > 1 ? `${String(places)} places at once: ` : ''}needs an upload of about{' '}
+          {String(uploadNeededMbps(preset, places))} Mbps (compare it with a speed test on this computer).
+          {places > 1 && draft.preset !== 'several' ? ' The Several platforms preset needs less.' : ''}
+        </p>
+      </div>
     </div>
   );
 }
