@@ -17,6 +17,7 @@ import {
   setUpScreen,
 } from './helpers';
 import { makeTestImage } from './test-media';
+import { holdClock } from './placeholder-slides';
 
 /*
  * The idle rotation (Session 12), with generated pictures and placeholder
@@ -195,5 +196,65 @@ test('a lobby shows the rotation whenever nothing is up; started, the hall shows
     { ok: false, message: SIMPLE_MODE_REFUSAL },
     { ok: false, message: SIMPLE_MODE_REFUSAL },
   ]);
+  await app.close();
+});
+
+test('the rotation dissolves light for light: the old item out as the new comes in, in a group of their own (Session 27)', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_TEST_CLOCK_HOLD: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const lobbyId = await setUpScreen(win, 'Lobby', 0);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-idle-dissolve-'));
+  const files = [];
+  for (const [i, color] of ['#3a6ea5', '#a5563a'].entries())
+    files.push(
+      await makeTestImage(win, join(dir, `placeholder-darshan-${String(i + 1)}.png`), {
+        color,
+        width: 320,
+        height: 180,
+      }),
+    );
+  const pictures = await importAndGetIds(win, files);
+  await win.evaluate(
+    async ({ ids }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const saved = await d.idle.saveSettings({ pictures: ids, secondsEach: 3, quoteOfTheDay: false });
+      if (!saved.ok) throw new Error(saved.message);
+      const lobby = (await d.screens.get()).groups.find((g) => g.name === 'Lobby')?.id ?? '';
+      await d.looks.setGroup((await d.looks.list()).liveId, lobby, { idle: 'always' });
+    },
+    { ids: pictures },
+  );
+  const lobby = await outputFor(app, lobbyId);
+  await expect(lobby.locator('[data-layer="idle"]')).toBeVisible();
+  const idle: IdleState = (await engineState(win)).idle;
+  const each = idle.secondsEach * 1000;
+  const dissolve = Math.min(idle.dissolveMs, each / 2);
+  // Not started, it runs from 0: held a quarter and a half of the way through a dissolve, a step ahead.
+  const step = Math.floor(Date.now() / each) + 2;
+  // The item up is drawn first, the one dissolving in over it second.
+  const opacities = () =>
+    lobby.locator('[data-layer="idle"]').evaluate((root) => {
+      const [current, next] = root.querySelectorAll<HTMLElement>('[data-idle-item]');
+      return {
+        isolated: getComputedStyle(root).isolation,
+        current: Number(getComputedStyle(current ?? root).opacity),
+        next: next ? Number(getComputedStyle(next).opacity) : Number.NaN,
+        adds: next ? getComputedStyle(next).mixBlendMode : '',
+      };
+    });
+  for (const [fade, eased] of [
+    [0.25, 0.15625],
+    [0.5, 0.5],
+  ] as const) {
+    await holdClock(app, step * each + (each - dissolve) + fade * dissolve);
+    await expect.poll(async () => (await opacities()).next).toBeCloseTo(eased, 3);
+    const o = await opacities();
+    expect(o.current + o.next, `at ${String(fade)} of the dissolve`).toBeCloseTo(1, 6);
+    expect(o.isolated).toBe('isolate');
+    expect(o.adds).toBe('plus-lighter');
+  }
+  await holdClock(app, null);
   await app.close();
 });

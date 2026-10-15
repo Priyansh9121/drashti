@@ -1250,7 +1250,7 @@ export class ShowEngine {
       case 'toggleBlackout':
         return { ok: true, actions: [{ type: 'blackout/set', on: !this.state.blackout }] };
       case 'showLogo':
-        return { ok: true, actions: [{ type: 'logo/set', prop: command.prop }] };
+        return { ok: true, actions: [{ type: 'logo/set', prop: command.prop, at: this.now() }] };
       case 'hideLogo':
         return { ok: true, actions: [{ type: 'logo/set', prop: null }] };
       case 'setBackground':
@@ -1261,7 +1261,7 @@ export class ShowEngine {
       case 'playAudio':
         return { ok: true, actions: [{ type: 'audio/set', audio: this.audioLayer(command.audio) }] };
       case 'showProp':
-        return { ok: true, actions: [{ type: 'prop/show', prop: command.prop }] };
+        return { ok: true, actions: [{ type: 'prop/show', prop: command.prop, at: this.now() }] };
       case 'hideProp':
         return { ok: true, actions: [{ type: 'prop/hide', propId: command.propId }] };
       case 'showMessage':

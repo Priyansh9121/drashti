@@ -190,6 +190,11 @@ export interface PropItem {
   /** The canvas its elements are placed on (1920 x 1080 when left out); screens scale it as they do slides. */
   width?: number;
   height?: number;
+  /**
+   * When it went up, by the engine's clock (Session 27): its videos play from then on every screen, in step
+   * (before, each window played them from when it drew them). Kept while it stays up.
+   */
+  shownAt?: number;
 }
 
 /**

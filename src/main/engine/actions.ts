@@ -65,12 +65,14 @@ export type EngineAction =
   | { type: 'layer/clear'; layer: LayerName; at?: number }
   | { type: 'layers/clearAll' }
   | { type: 'blackout/set'; on: boolean }
-  | { type: 'logo/set'; prop: PropItem | null }
+  /** `at`: when, by the engine's clock (its videos play from then, Session 27); a logo already up keeps its own. */
+  | { type: 'logo/set'; prop: PropItem | null; at?: number }
   /** Put the layers (and the live position) back exactly as they were: Put it back, and Back. */
   | { type: 'show/put'; live: LiveCursor; layers: Layers }
   | { type: 'background/set'; background: BackgroundLayer }
   | { type: 'audio/set'; audio: AudioLayer }
-  | { type: 'prop/show'; prop: PropItem }
+  /** `at`: when, by the engine's clock (its videos play from then, Session 27); a prop already up keeps its own. */
+  | { type: 'prop/show'; prop: PropItem; at?: number }
   | { type: 'prop/hide'; propId: string }
   /** `at`: when, by the engine's clock (its entrance, Session 27); a message already up keeps its own. */
   | { type: 'message/show'; message: MessageItem; at?: number }

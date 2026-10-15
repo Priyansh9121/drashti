@@ -5,6 +5,7 @@ import {
   type LayerName,
   type Layers,
   type MessageItem,
+  type PropItem,
 } from '../../shared/engine/state';
 import type { EngineAction } from './actions';
 
@@ -161,9 +162,14 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
     }
     case 'blackout/set':
       return state.blackout === action.on ? state : { ...state, blackout: action.on };
-    case 'logo/set':
+    case 'logo/set': {
       if (action.prop === null) return state.logo === null ? state : { ...state, logo: null };
-      return sameData(state.logo, action.prop) ? state : { ...state, logo: action.prop };
+      // Its videos play from when it went up; the same logo again keeps its time (Session 27).
+      const shownAt =
+        state.logo?.id === action.prop.id ? state.logo.shownAt : (action.prop.shownAt ?? action.at);
+      const logo: PropItem = shownAt === undefined ? action.prop : { ...action.prop, shownAt };
+      return sameData(state.logo, logo) ? state : { ...state, logo };
+    }
     case 'show/put':
       return state.live === action.live && state.layers === action.layers
         ? state
@@ -187,7 +193,11 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
     case 'zoom/set':
       return sameData(state.liveZoom, action.liveZoom) ? state : { ...state, liveZoom: action.liveZoom };
     case 'prop/show': {
-      const props = upsert(state.layers.props, action.prop);
+      // Its videos play from when it went up; one already up keeps its time (Session 27).
+      const was = state.layers.props.find((p) => p.id === action.prop.id);
+      const shownAt = was?.shownAt ?? action.prop.shownAt ?? action.at;
+      const prop: PropItem = shownAt === undefined ? action.prop : { ...action.prop, shownAt };
+      const props = upsert(state.layers.props, prop);
       return props ? withLayers(state, { props }) : state;
     }
     case 'prop/hide': {

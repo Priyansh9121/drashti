@@ -181,6 +181,24 @@ describe('restart recovery', () => {
     });
   });
 
+  it('puts props, the logo and messages back with the time they went up, so their videos carry on in step (Session 27)', async () => {
+    const state = live({ slideIndex: null, withBackground: false });
+    const writer = new LiveStateWriter(files, { throttleMs: 10 });
+    await saved(writer, {
+      ...state,
+      logo: { id: 'l', name: 'Placeholder logo', elements: [], shownAt: 555 },
+      layers: {
+        ...state.layers,
+        props: [{ id: 'p', name: 'Placeholder prop', elements: [], shownAt: 777 }],
+        messages: [{ id: 'm', text: 'Placeholder message', shownAt: 666 }],
+      },
+    });
+    const back = toRestore(files);
+    expect(back?.logo?.shownAt).toBe(555);
+    expect(back?.props.map((p) => p.shownAt)).toEqual([777]);
+    expect(back?.messages.map((m) => m.shownAt)).toEqual([666]);
+  });
+
   it('keeps the announcements ticker, with when it started, so it carries on in step', async () => {
     const state = live({ slideIndex: null, withBackground: false });
     const ticker = { items: [{ id: 'a1', text: 'Placeholder announcement' }], startedAt: 4321 };

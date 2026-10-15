@@ -156,8 +156,11 @@ describe('the logo', () => {
     engine.dispatch({ type: 'playItem', playlistId: 'ravi', itemId: 'i-kirtan' });
     const layers = engine.current.layers;
     expect(engine.dispatch({ type: 'showLogo', prop: logo })).toMatchObject({ ok: true, changed: true });
-    expect(engine.current.logo).toEqual(logo);
+    // With when it went up (Session 27): its videos play from then, in step on every screen.
+    expect(engine.current.logo).toEqual({ ...logo, shownAt: engine.current.logo?.shownAt });
+    expect(typeof engine.current.logo?.shownAt).toBe('number');
     expect(engine.current.layers).toBe(layers);
+    // The same logo again changes nothing (it keeps its time).
     expect(engine.dispatch({ type: 'showLogo', prop: logo })).toMatchObject({ changed: false });
     engine.dispatch({ type: 'hideLogo' });
     expect(engine.current.logo).toBeNull();
