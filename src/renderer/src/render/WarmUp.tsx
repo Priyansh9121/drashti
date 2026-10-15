@@ -43,12 +43,21 @@ const PART = 0.4;
 /** Frames drawn of the slides before the transitions (so each starts from one). */
 const BEFORE_FRAMES = 2;
 /**
- * Then until the GPU keeps up: this many frames in a row, each within ON_TIME_MS of the one before (a GPU
- * still making what the frames need keeps them waiting: on CI's Mac for seconds), or MAX_MS at most.
+ * Then until the GPU keeps up: this many frames in a row, each within ON_TIME_MS of the one before, or within
+ * twice the middle of every wait so far (a slow GPU drawing all this evenly), as a GPU still making what the
+ * frames need keeps them waiting (on CI's Mac for seconds); MAX_MS at most each time.
  */
 const STEADY_FRAMES = 6;
 const ON_TIME_MS = 50;
-const MAX_MS = 20_000;
+const MAX_MS = 5000;
+
+/**
+ * Each transition scene again under a clip-path with two notches, across the pictures, the background and
+ * the words: a GPU that draws curves and slants with multisampling draws everything else in those parts of
+ * the screen through other pipelines too (CI's Mac does: Session 27's first trace there). Any slide's frame
+ * can hold such an edge (a wipe, a text shadow, a mask), so both ways are made.
+ */
+const NOTCHED = 'polygon(0 0, 100% 0, 100% 40%, 22% 50%, 100% 60%, 100% 100%, 0 100%, 0 32%, 78% 22%, 0 12%)';
 
 /** A placeholder picture drawn in the page: a JPEG as a darshan picture is, or a PNG with see-through parts. */
 function makePicture(kind: 'jpeg' | 'png', hue: number): string {
@@ -134,6 +143,8 @@ interface WarmScene {
   look: LiveGroupLook;
   /** What the engine would have up: before the change (`during` false), and once it is part-way. */
   state: (during: boolean, at: number) => EngineState;
+  /** Drawn under this clip-path (NOTCHED). */
+  clip?: string;
 }
 
 const LONG_AGO = 60_000;
@@ -160,12 +171,13 @@ function scenes(): WarmScene[] {
     ...(fade ? { fade: { at: at - PART * MAX_TRANSITION_MS, durationMs: MAX_TRANSITION_MS } } : {}),
   });
   const list: WarmScene[] = [];
+  const transitions: WarmScene[] = [];
   for (const movement of MOVEMENTS) {
     // Every kind that takes time, part-way: the slides, the background behind them, and on the fades the
     // rest of what comes in (a message, the ticker's band, a prop, a picture with a look).
     for (const kind of TRANSITION_KINDS.filter((k): k is Exclude<TransitionKind, 'cut'> => k !== 'cut')) {
       const all = kind === 'dissolve';
-      list.push({
+      transitions.push({
         key: `${kind}/${movement}`,
         look: look(movement),
         state: (during, at) => ({
@@ -254,7 +266,11 @@ function scenes(): WarmScene[] {
       },
     }),
   });
-  return list;
+  return [
+    ...transitions,
+    ...transitions.map((t) => ({ ...t, key: `${t.key}/clipped`, clip: NOTCHED })),
+    ...list,
+  ];
 }
 
 /** Each host's shadow tree: one an element (a second attachShadow is refused). */
@@ -324,10 +340,13 @@ export function WarmUp({
     };
   }, [pictures]);
   // Then frame by frame: the slides before for two frames, every change part-way until the frames come on
-  // time, and done.
+  // time, and again once every picture in it is decoded where the screen draws it; then done.
   useEffect(() => {
     if (step.phase === 'pictures') return;
     let frame = 0;
+    // False once this step is left (read through a function: the checker cannot follow the cleanup).
+    const run = { live: true };
+    const live = () => run.live;
     if (step.phase === 'before') {
       let left = BEFORE_FRAMES;
       const tick = () => {
@@ -337,27 +356,49 @@ export function WarmUp({
       };
       frame = requestAnimationFrame(tick);
     } else {
-      let steady = 0;
-      let last: number | null = null;
-      let first: number | null = null;
-      const tick = (t: number) => {
-        first ??= t;
-        steady = last !== null && t - last <= ON_TIME_MS ? steady + 1 : 0;
-        last = t;
-        if (steady < STEADY_FRAMES && t - first < MAX_MS) {
+      /** Frames until they come on time (or MAX_MS). */
+      const steadyFrames = () =>
+        new Promise<void>((resolve) => {
+          let steady = 0;
+          let last: number | null = null;
+          let first: number | null = null;
+          const gaps: number[] = [];
+          const tick = (t: number) => {
+            if (!live()) return;
+            first ??= t;
+            if (last !== null) {
+              const gap = t - last;
+              gaps.push(gap);
+              // The middle wait only once there are enough to say how this GPU draws it (the first wait longest).
+              const middle =
+                gaps.length >= 10 ? ([...gaps].sort((a, b) => a - b)[Math.floor(gaps.length / 2)] ?? 0) : 0;
+              steady = gap <= Math.max(ON_TIME_MS, 2 * middle) ? steady + 1 : 0;
+            }
+            last = t;
+            if (steady < STEADY_FRAMES && t - first < MAX_MS) frame = requestAnimationFrame(tick);
+            else resolve();
+          };
           frame = requestAnimationFrame(tick);
-          return;
-        }
-        if (hold) return;
+        });
+      void (async () => {
+        await steadyFrames();
+        // The screen's compositor decodes a big picture on its own after its first frames, drawing nothing of
+        // it until then (Session 27: the pictures' pipelines came after the warm-up, measured); a picture's
+        // decode() is the compositor's, so once they are all done its frames draw every one.
+        const drawn = [...(tree?.querySelectorAll('img') ?? [])];
+        await Promise.all(drawn.map((img) => img.decode().catch(() => undefined)));
+        if (!live()) return;
+        await steadyFrames();
+        if (!live() || hold) return;
         performance.mark(`${WARM_UP_MARK}-end`);
         done.current();
-      };
-      frame = requestAnimationFrame(tick);
+      })();
     }
     return () => {
+      run.live = false;
       cancelAnimationFrame(frame);
     };
-  }, [step, hold]);
+  }, [step, hold, tree]);
   const urlOf = useCallback(
     (id: string, attempt?: number) => pictures[id] ?? mediaUrl(id, attempt),
     [pictures],
@@ -390,14 +431,16 @@ export function WarmUp({
                     data-warm-scene={s.key}
                     style={{ position: 'absolute', inset: 0, mixBlendMode: 'plus-lighter' }}
                   >
-                    <Scene
-                      state={s.state(step.phase === 'during', step.at)}
-                      canvas={canvas}
-                      scaling={scaling}
-                      look={s.look}
-                      matte={matte}
-                      ticker={ticker}
-                    />
+                    <div style={{ position: 'absolute', inset: 0, clipPath: s.clip }}>
+                      <Scene
+                        state={s.state(step.phase === 'during', step.at)}
+                        canvas={canvas}
+                        scaling={scaling}
+                        look={s.look}
+                        matte={matte}
+                        ticker={ticker}
+                      />
+                    </div>
                   </div>
                 ))}
               </MediaUrls.Provider>
