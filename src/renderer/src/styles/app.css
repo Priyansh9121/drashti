@@ -86,7 +86,7 @@
    * A slide's thumbnail is redrawn as the live slide moves, so its shadow and the live one's red glow
    * are kept small: a blur costs a computer without a graphics chip by its size (Session 26g).
    */
-  --shadow-thumb: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 2px 5px rgb(0 0 0 / 0.35);
+  --shadow-thumb: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 1px 0 rgb(0 0 0 / 0.55);
   --shadow-live-thumb: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 8px 14px -8px rgb(212 42 49 / 0.6);
   --shadow-ember:
     inset 0 1px 0 rgb(255 220 240 / 0.22), 0 0 0 1px rgb(255 190 150 / 0.1), 0 8px 26px rgb(155 51 131 / 0.42);
@@ -276,6 +276,19 @@ body.output {
     background:
       radial-gradient(900px 520px at 70px -40px, rgb(var(--lamp-rgb) / var(--lamp-window)), transparent 62%),
       radial-gradient(1100px 700px at 110% 120%, rgb(94 27 82 / 0.3), transparent 60%);
+    will-change: transform;
+  }
+  /* The live slide's red underglow in the slide grid: drawn once, moved by the compositor (SlideGrid). */
+  .live-glow {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 24px;
+    width: 0;
+    z-index: 0;
+    opacity: 0;
+    pointer-events: none;
+    background: radial-gradient(closest-side, rgb(212 42 49 / 0.6), transparent);
     will-change: transform;
   }
   .lamp-empty {

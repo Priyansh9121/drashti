@@ -69,3 +69,33 @@ test('the mark beside the name and the lamp’s light, in Pro Mode and Simple Mo
   await lampHeader(simple.locator('header').first(), 'Drashti');
   await app.close();
 });
+
+test('the live slide’s red underglow sits under the live thumbnail and moves with it at once', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  const glow = win.getByTestId('live-glow');
+  const thumbs = win.getByTestId('slide-thumb');
+  await expect(thumbs.first()).toBeVisible();
+  // Nothing live yet: no glow.
+  expect(await style(glow, 'opacity')).toBe('0');
+  /** The glow's middle and top, against a thumbnail's middle and bottom edge (page pixels). */
+  const under = async (i: number) => {
+    const [g, t] = await Promise.all([glow.boundingBox(), thumbs.nth(i).boundingBox()]);
+    if (!g || !t) return false;
+    return Math.abs(g.x + g.width / 2 - (t.x + t.width / 2)) < 2 && Math.abs(g.y - (t.y + t.height - 12)) < 2;
+  };
+  for (const i of [1, 0, 2]) {
+    await thumbs.nth(i).click();
+    await expect(thumbs.nth(i)).toHaveAttribute('aria-current', 'true');
+    // In the same frame as the border: no transition or animation on it.
+    expect(await style(glow, 'opacity')).toBe('1');
+    expect(await under(i)).toBe(true);
+    expect(await style(glow, 'transition-duration')).toBe('0s');
+    expect(await style(glow, 'animation-name')).toBe('none');
+  }
+  // A layer of its own, drawn once and moved by the compositor.
+  expect(await style(glow, 'will-change')).toBe('transform');
+  await app.close();
+});
