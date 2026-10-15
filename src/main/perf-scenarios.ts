@@ -10,7 +10,7 @@ import type { TextStyle, TransitionKind } from '../shared/model';
 import type { PictureLook } from '../shared/picture-look';
 import type { Db } from './db/database';
 import { PresentationRepo } from './db/presentations';
-import { FIRST_BOLD_MARK } from './perf-watch';
+import { FIRST_BOLD_MARK } from '../shared/perf-marks';
 import type { PerfCheck } from './perftest';
 import { plural } from '../shared/text';
 

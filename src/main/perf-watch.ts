@@ -3,6 +3,7 @@ import { createReadStream, mkdirSync, writeFileSync } from 'node:fs';
 import { Session } from 'node:inspector/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { FIRST_BOLD_MARK, WARM_UP_MARK } from '../shared/perf-marks';
 
 /*
  * The performance check's watch on the main process (Session 15). Every
@@ -166,23 +167,23 @@ export interface GpuPipelines {
   /** New pipelines the GPU made while the check ran, and how long making them took (ms). */
   made: number;
   ms: number;
+  /** Those made while the test output warmed up (render/WarmUp.tsx), or null with no mark. */
+  warmUp: { made: number; ms: number } | null;
   /** Those made while a page's first marked transition ran (bold-transitions), or null with no mark. */
   during: string[] | null;
 }
-
-/** The marks a page sets as its first Bold transition starts, and as it ends with `-end` (bold-transitions). */
-export const FIRST_BOLD_MARK = 'drashti-first-bold-transition';
 
 /**
  * The GPU's new pipelines in a trace, and those made while the first marked transition ran (Session 27). A
  * trace has an event a line, so it is read line by line: a long check's trace is far too big to parse whole.
  */
-export async function gpuPipelines(trace: string, mark = FIRST_BOLD_MARK): Promise<GpuPipelines> {
+export async function gpuPipelines(trace: string): Promise<GpuPipelines> {
   const pipes: { ts: number; dur: number; desc: string }[] = [];
-  let start: number | null = null;
-  let end: number | null = null;
+  // The first of each mark (µs): a page's warm-up, and a screen's first Bold transition.
+  const marks = new Map<string, number>();
+  const named = [WARM_UP_MARK, `${WARM_UP_MARK}-end`, FIRST_BOLD_MARK, `${FIRST_BOLD_MARK}-end`];
   for await (const line of createInterface({ input: createReadStream(trace), crlfDelay: Infinity })) {
-    if (!line.includes('createGraphicsPipeline') && !line.includes(mark)) continue;
+    if (!line.includes('createGraphicsPipeline') && !line.includes('drashti-')) continue;
     let e: { name?: string; ts?: number; dur?: number; args?: { desc?: string } };
     try {
       e = JSON.parse(line.replace(/,\s*$/u, '')) as typeof e;
@@ -191,14 +192,26 @@ export async function gpuPipelines(trace: string, mark = FIRST_BOLD_MARK): Promi
     }
     const ts = e.ts ?? 0;
     if (e.name === 'createGraphicsPipeline') pipes.push({ ts, dur: e.dur ?? 0, desc: e.args?.desc ?? '' });
-    else if (e.name === mark) start = start === null ? ts : Math.min(start, ts);
-    else if (e.name === `${mark}-end`) end = end === null ? ts : Math.min(end, ts);
+    else if (e.name !== undefined && named.includes(e.name))
+      marks.set(e.name, Math.min(marks.get(e.name) ?? ts, ts));
   }
-  // Up to a fifth of a second after it ended (µs): the GPU draws its last frames a little after the page asks.
-  const until = (end ?? Number.POSITIVE_INFINITY) + 200_000;
-  const from = start;
-  const during = from === null ? null : pipes.filter((p) => p.ts >= from && p.ts <= until).map((p) => p.desc);
-  return { made: pipes.length, ms: Math.round(pipes.reduce((n, p) => n + p.dur, 0) / 1000), during };
+  const ms = (list: { dur: number }[]) => Math.round(list.reduce((n, p) => n + p.dur, 0) / 1000);
+  // From a mark to its end, and a fifth of a second after (µs): the GPU draws a page's last frames a little
+  // after the page asks for them.
+  const between = (name: string) => {
+    const from = marks.get(name);
+    if (from === undefined) return null;
+    const until = (marks.get(`${name}-end`) ?? Number.POSITIVE_INFINITY) + 200_000;
+    return pipes.filter((p) => p.ts >= from && p.ts <= until);
+  };
+  const warm = between(WARM_UP_MARK);
+  const bold = between(FIRST_BOLD_MARK);
+  return {
+    made: pipes.length,
+    ms: ms(pipes),
+    warmUp: warm ? { made: warm.length, ms: ms(warm) } : null,
+    during: bold ? bold.map((p) => p.desc) : null,
+  };
 }
 
 /**
