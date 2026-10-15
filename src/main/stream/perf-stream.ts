@@ -9,7 +9,8 @@ import type { StreamService } from './stream-service';
  * changes are measured, so streaming can be seen not to slow the hall's
  * screens, and say how much of the computer the whole of Drashti and its
  * FFmpeg used meanwhile. Only ever to an address on this computer, with a
- * made-up key.
+ * made-up key. With DRASHTI_PERF_STREAM_ALSO (Session 28), to a second place
+ * on this computer too, as Several platforms does.
  */
 
 const PERF_KEY = 'test-made-up-key-perf-0000';
@@ -47,6 +48,8 @@ export async function startPerfStream(
   operator: WebContents,
   url: string,
   folder: string,
+  /** A second place on this computer (Several platforms), or null. */
+  also: string | null = null,
 ): Promise<PerfStream> {
   stream.watchPreview(operator, true);
   for (let i = 0; i < 100; i++) {
@@ -56,10 +59,12 @@ export async function startPerfStream(
   }
   const inputs = stream.status().inputs;
   const profile = stream.activeProfile();
+  const preset = also ? 'several' : 'good';
   const saved = stream.saveProfile(profile.id, {
     name: 'Performance check',
     url,
-    preset: 'good',
+    preset,
+    ...(also ? { more: [{ url: also }] } : {}),
     camera: inputs.cameras[0] ?? null,
     sound: inputs.microphones[0] ?? null,
     soundDelayMs: 0,
@@ -68,6 +73,11 @@ export async function startPerfStream(
   if (!saved.ok) throw new Error(saved.message);
   const key = stream.setKey(profile.id, PERF_KEY);
   if (!key.ok) throw new Error(key.message);
+  if (also) {
+    const place = saved.profiles.profiles.find((p) => p.id === profile.id)?.more[0];
+    const second = place ? stream.setKey(profile.id, PERF_KEY, place.id) : null;
+    if (!second?.ok) throw new Error(second?.message ?? 'The second place was not kept.');
+  }
   stream.setRecordingFolder(folder);
   const rec = stream.startRecording();
   const live = stream.goLive();
@@ -85,7 +95,8 @@ export async function startPerfStream(
   return {
     summary: () => {
       const s = stream.status();
-      return `streaming ${STREAM_PRESETS.good.label} (${s.encoder ?? 'no encoder'}) and recording through the slide changes: ${s.live.state}, ${s.live.fps?.toFixed(1) ?? '—'} fps, ${s.live.droppedFrames} frames dropped, ${s.live.reconnects} reconnections; ${cpu}`;
+      const places = Math.max(1, s.live.destinations.length);
+      return `streaming ${STREAM_PRESETS[preset].label}${places > 1 ? ` to ${String(places)} places` : ''} (${s.encoder ?? 'no encoder'}) and recording through the slide changes: ${s.live.state}, ${s.live.fps?.toFixed(1) ?? '—'} fps, ${s.live.droppedFrames} frames dropped, ${s.live.reconnects} reconnections; ${cpu}`;
     },
     stop: async () => {
       stream.end();
