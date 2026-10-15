@@ -116,6 +116,23 @@ describe('reduce', () => {
     });
   });
 
+  describe('the slide taken off on its own (Session 27)', () => {
+    it('is kept with its time when the slide layer is cleared, and goes when Clear all or another slide comes', () => {
+      const s = fullState();
+      const off = reduce(s, { type: 'layer/clear', layer: 'slide', at: 9000 });
+      expect(off.layers.slide).toBeNull();
+      expect(off.slideOff).toEqual({ layer: s.layers.slide, at: 9000 });
+      // Clear all: everything at once, nothing fading.
+      expect(reduce(s, { type: 'layers/clearAll' }).slideOff).toBeNull();
+      expect(reduce(off, { type: 'layers/clearAll' }).slideOff).toBeNull();
+      // Another slide up: nothing leaving any more.
+      expect(reduce(off, show(1, undefined, 9500)).slideOff).toBeNull();
+      // Another layer cleared, or the slide cleared with no time given: no slide taken off.
+      expect(reduce(s, { type: 'layer/clear', layer: 'props', at: 9000 }).slideOff).toBeNull();
+      expect(reduce(s, { type: 'layer/clear', layer: 'slide' }).slideOff).toBeNull();
+    });
+  });
+
   describe('layer/clear', () => {
     it.each(LAYER_NAMES)('clears the %s layer and nothing else', (layer: LayerName) => {
       const s = fullState();

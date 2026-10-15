@@ -65,6 +65,8 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       return {
         ...state,
         live: sameCursor ? live : { presentationId, slideIndex, slideCount, arrangementId, playlist },
+        // A slide up again: nothing is leaving any more (Session 27).
+        slideOff: null,
         layers: sameSlide
           ? state.layers
           : {
@@ -144,10 +146,18 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
         return state;
       return { ...state, timers: state.timers.map((t) => (t.id === timerId ? { ...t, ...run } : t)) };
     }
-    case 'layer/clear':
-      return clearLayer(state, action.layer);
-    case 'layers/clearAll':
-      return LAYER_NAMES.reduce<EngineState>((s, layer) => clearLayer(s, layer), state);
+    case 'layer/clear': {
+      const cleared = clearLayer(state, action.layer);
+      // The slide taken off on its own, and when: a lower third leaves with a short fade (Session 27).
+      const off = state.layers.slide;
+      if (action.layer !== 'slide' || cleared === state || !off || action.at === undefined) return cleared;
+      return { ...cleared, slideOff: { layer: off, at: action.at } };
+    }
+    case 'layers/clearAll': {
+      // Everything at once, and at once: no lower third fades.
+      const cleared = LAYER_NAMES.reduce<EngineState>((s, layer) => clearLayer(s, layer), state);
+      return cleared.slideOff === null ? cleared : { ...cleared, slideOff: null };
+    }
     case 'blackout/set':
       return state.blackout === action.on ? state : { ...state, blackout: action.on };
     case 'logo/set':

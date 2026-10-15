@@ -810,7 +810,11 @@ export class ShowEngine {
     });
     return {
       ok: true,
-      actions: [cue, { type: 'layer/clear', layer: 'slide' }, { type: 'background/set', background }],
+      actions: [
+        cue,
+        { type: 'layer/clear', layer: 'slide', at: this.now() },
+        { type: 'background/set', background },
+      ],
     };
   }
 
@@ -1220,7 +1224,7 @@ export class ShowEngine {
         return this.stepItem(playlist, command.type === 'nextItem' ? 1 : -1, 'first');
       }
       case 'clearLayer':
-        return { ok: true, actions: [{ type: 'layer/clear', layer: command.layer }] };
+        return { ok: true, actions: [{ type: 'layer/clear', layer: command.layer, at: this.now() }] };
       case 'clearAll':
         return { ok: true, actions: [{ type: 'layers/clearAll' }] };
       case 'putBack': {

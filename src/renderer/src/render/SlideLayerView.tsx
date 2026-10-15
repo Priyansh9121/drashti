@@ -8,7 +8,6 @@ import { SLOW_ZOOM_SCALE } from '../../../shared/model';
 import { hasPicture, lowerThird } from '../../../shared/program';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
-import { LowerThird } from './LowerThird';
 import { Placed } from './Placed';
 import { type Reveal, type SlideText, SlideView } from './SlideView';
 import { clockHeld, engineNow, onClockJump } from './clock';
@@ -234,7 +233,6 @@ function DrawnSlide({
   scaling,
   languages,
   slides,
-  lift,
   text = 'shown',
   reveal,
 }: {
@@ -243,7 +241,6 @@ function DrawnSlide({
   scaling: ScalingMode;
   languages: readonly Lang[] | null;
   slides: SlideStyle;
-  lift: number;
   /** While a Bold move runs: its pictures with the words hidden, or its words alone (Session 27). */
   text?: SlideText;
   /** Its words alone, line by line or word by word. */
@@ -251,7 +248,8 @@ function DrawnSlide({
 }) {
   if (slides === 'lowerThird') {
     const lines = lowerThird(layer.slide, languages);
-    if (lines.length > 0) return <LowerThird lines={lines} canvas={canvas} lift={lift} />;
+    // Its words are drawn apart, by the Look's moving lower third (render/LowerThird.tsx, Session 27).
+    if (lines.length > 0) return null;
     if (!hasPicture(layer.slide)) return null;
   }
   return (
@@ -272,7 +270,6 @@ export function SlideLayerView({
   scaling,
   languages = null,
   slides = 'designed',
-  lift = 0,
   movement = 'calm',
 }: {
   layer: SlideLayer | null;
@@ -282,8 +279,6 @@ export function SlideLayerView({
   languages?: readonly Lang[] | null;
   /** How this screen draws slides (its group's Look): as designed, or as a lower third. */
   slides?: SlideStyle;
-  /** Canvas pixels a lower third keeps clear at the bottom (the ticker's band). */
-  lift?: number;
   /** How this screen's group moves (its Look, Session 27): Calm or Bold. */
   movement?: Movement;
 }) {
@@ -430,7 +425,6 @@ export function SlideLayerView({
                 scaling={scaling}
                 languages={languages}
                 slides={slides}
-                lift={lift}
                 text={move ? 'hidden' : 'shown'}
               />
             </Zoomed>
@@ -463,7 +457,6 @@ export function SlideLayerView({
                   scaling={scaling}
                   languages={languages}
                   slides={slides}
-                  lift={lift}
                   text="only"
                   reveal={move === 'lines' || move === 'words' ? move : undefined}
                 />

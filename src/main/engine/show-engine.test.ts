@@ -210,7 +210,15 @@ describe('ShowEngine', () => {
       for (const other of LAYER_NAMES)
         if (other !== layer) expect(engine.current.layers[other]).toBe(before.layers[other]);
       const patch = transport.last as EnginePatchMessage;
-      expect(patch.ops).toEqual([{ path: ['layers', layer], value: Array.isArray(value) ? [] : null }]);
+      const emptied = { path: ['layers', layer], value: Array.isArray(value) ? [] : null };
+      if (layer !== 'slide') expect(patch.ops).toEqual([emptied]);
+      else {
+        // The slide taken off on its own, and when (Session 27): a lower third leaves with a fade from then.
+        const off = engine.current.slideOff;
+        expect(off?.layer).toBe(before.layers.slide);
+        expect(typeof off?.at).toBe('number');
+        expect(patch.ops).toEqual([emptied, { path: ['slideOff'], value: off }]);
+      }
     });
 
     it.each(LAYER_NAMES)('clearLayer %s on an empty layer changes nothing', (layer) => {

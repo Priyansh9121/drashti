@@ -61,7 +61,8 @@ export type EngineAction =
   /** The timers as defined in the library; each keeps its run (start time, counted time). */
   | { type: 'timers/define'; timers: readonly TimerDefinition[] }
   | { type: 'timer/run'; timerId: string; run: TimerRun }
-  | { type: 'layer/clear'; layer: LayerName }
+  /** `at`: when, by the engine's clock (the slide layer's: a lower third leaves from then, Session 27). */
+  | { type: 'layer/clear'; layer: LayerName; at?: number }
   | { type: 'layers/clearAll' }
   | { type: 'blackout/set'; on: boolean }
   | { type: 'logo/set'; prop: PropItem | null }

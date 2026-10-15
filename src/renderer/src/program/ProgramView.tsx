@@ -6,7 +6,7 @@ import { programPicture } from '../../../shared/program';
 import type { Size } from '../../../shared/scaling';
 import type { StreamLayout } from '../../../shared/stream';
 import { BackgroundMedia } from '../render/BackgroundMedia';
-import { LowerThird } from '../render/LowerThird';
+import { MovingLowerThird } from '../render/LowerThird';
 import { MessageBanner, PropsLayer, Scene } from '../render/Scene';
 import { SlideLayerView } from '../render/SlideLayerView';
 
@@ -91,7 +91,17 @@ export function ProgramView({
           )}
         </div>
       )}
-      {picture.lowerThird.length > 0 && <LowerThird lines={picture.lowerThird} canvas={canvas} />}
+      {/* The Camera layout's lower third moves as a Look's does (Session 27), on the stream group's Movement. */}
+      <MovingLowerThird
+        lines={picture.lowerThird}
+        shownKey={
+          state.layers.slide ? `${state.layers.slide.slide.id}@${String(state.layers.slide.shownAt)}` : null
+        }
+        shownAt={state.layers.slide?.shownAt ?? 0}
+        leaving={state.slideOff}
+        canvas={canvas}
+        movement={movement}
+      />
       {picture.props && <PropsLayer props={state.layers.props} canvas={canvas} scaling="fit" />}
       {picture.messages && (
         <MessageBanner
