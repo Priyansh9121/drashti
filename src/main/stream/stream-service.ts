@@ -476,7 +476,15 @@ export class StreamService {
     if (pageAlive(program) && this.programReady) {
       const context = this.context();
       const [w, h] = program.getContentSize();
-      if (w !== context.width || h !== context.height) program.setContentSize(context.width, context.height);
+      if (w !== context.width || h !== context.height) {
+        program.setContentSize(context.width, context.height);
+        const [nw, nh] = program.getContentSize();
+        if (nw !== context.width || nh !== context.height)
+          this.deps.log(
+            'warn',
+            `The stream's page is ${String(nw)}x${String(nh)}, not the ${String(context.width)}x${String(context.height)} asked`,
+          );
+      }
       program.webContents.send(IPC.stream.context, context);
     }
     if (program && !program.isDestroyed()) void this.checkSystemAccess();

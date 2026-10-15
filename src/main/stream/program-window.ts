@@ -99,6 +99,10 @@ export function createProgramWindow(
     width: size.width,
     height: size.height,
     useContentSize: true,
+    // Never limited by the screen (Session 27/28: a 1024-wide screen made a 1280 x 720 stream 1024 wide
+    // until a later resize, and the encoder, its connection with it, started again just after going on air).
+    // Electron calls this macOS-only; on Windows it was measured to let the size below hold.
+    enableLargerThanScreen: true,
     title: 'Drashti stream',
     skipTaskbar: true,
     focusable: false,
@@ -112,6 +116,9 @@ export function createProgramWindow(
       autoplayPolicy: 'no-user-gesture-required',
     },
   });
+  // Made, the window may still have been fitted to the screen: its size is given again, which then holds.
+  const [w, h] = win.getContentSize();
+  if (w !== size.width || h !== size.height) win.setContentSize(size.width, size.height);
   win.webContents.setFrameRate(PROGRAM_FPS);
   win.webContents.on('paint', (event) => {
     event.texture?.release();
