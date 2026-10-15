@@ -60,7 +60,8 @@ export async function launchApp(
 ): Promise<{ app: ElectronApplication; userData: string }> {
   const userData = userDataDir ?? mkdtempSync(join(tmpdir(), 'drashti-e2e-'));
   const app = await electron.launch({
-    args: ['.'],
+    // Another build of Drashti can be run instead (an earlier commit's, for audience-pixels.spec.ts).
+    args: [process.env['DRASHTI_E2E_APP_DIR'] ?? '.'],
     env: appEnv({
       DRASHTI_USER_DATA_DIR: userData,
       DRASHTI_NO_QUIT_CONFIRM: '1',

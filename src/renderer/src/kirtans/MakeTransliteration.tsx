@@ -86,7 +86,7 @@ export function MakeTransliteration({ doc }: { doc: PresentationDoc }) {
             <input
               type="radio"
               name={name}
-              className="h-4 w-4 accent-accent-strong"
+              className="h-4 w-4 accent-primary"
               checked={style === value}
               data-testid={`translit-style-${value}`}
               onChange={() => {

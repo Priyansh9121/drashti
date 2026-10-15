@@ -292,7 +292,7 @@ export function BoxCanvas({
                         width: HANDLE_PX * px,
                         height: HANDLE_PX * px,
                         background: '#ffffff',
-                        border: `${px}px solid var(--color-accent-strong)`,
+                        border: `${px}px solid var(--color-selection)`,
                         borderRadius: 2 * px,
                         cursor: CURSOR[h],
                         pointerEvents: 'auto',

@@ -123,7 +123,7 @@ function NewProp({ onDone }: { onDone: (made: boolean) => void }) {
             <input
               type="radio"
               name="prop-kind"
-              className="accent-accent-strong"
+              className="accent-primary"
               checked={kind === k}
               onChange={() => setKind(k)}
             />

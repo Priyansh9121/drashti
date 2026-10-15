@@ -162,7 +162,10 @@ gh workflow run CI --ref <branch> -f os=macos -f specs="tests/e2e/remote.spec.ts
 gh workflow run CI --ref <branch> -f os=macos -f specs="tests/e2e/network.spec.ts" -f quiet=true
 gh workflow run CI --ref <branch> -f os=macos -f screenshots=true   # kept as the screenshots-macOS artifact
 gh workflow run CI --ref <branch> -f os=windows -f unit="src/main/stream/worker/pipeline.test.ts" -f repeat=40   # unit tests, 40 times (Session 16)
+gh workflow run CI --ref <branch> -f os=both -f pixels_base=<full sha>   # the audience screens against an earlier commit (Session 26g)
 ```
+
+- `pixels_base` (Session 26g) builds the earlier commit in a worktree and runs `tests/e2e/audience-pixels.spec.ts` on both builds: the hall's output, a stage screen, the stream's picture, the stage display on a tablet and the display numbers, through the seeded placeholder slides, a generated picture, a stage message and black-out. Every picture must match within 2 per channel (the stage clock is masked). Locally: `pnpm build && node scripts/audience-pixels.mjs <commit>`.
 
 - `unit` (Session 16) runs only the unit test files it names, `repeat` times each, and says how many runs failed; with no specs it runs no end-to-end tests.
 - **The two checks that failed now and then** (Session 16). The slow end of the output paint check (`tests/e2e/operator.spec.ts`: the 12th of 15 slide changes painted within 34 ms) failed about 1 attempt in 25 on CI Macs. 26 attempts on CI Macs showed why: its first three measured changes were the output's first paints of those slides, 11 of 78 over 34 ms against 8 of 312 for the rest. The test now puts every slide up once, unmeasured, before it measures; the budgets are as they were. 26 attempts after: the first three changes 0 of 78 over 34 ms, all of them 3 of 390, the 12th of 15 at worst 28 ms. One attempt in each set of 26 failed the median instead (24 ms, then 18 ms, against 17): each time 8 of its 15 changes took over 17 ms (up to 39 and 67 ms) among fast ones (2 to 13 ms), a run of late frames on the virtual machine, which the test cannot tell from a slow Drashti. That part is left for Priyansh to decide (the session report has the numbers). The FFmpeg stream test (`src/main/stream/worker/pipeline.test.ts`), which failed once on Windows before `9561baa`, passed 40 runs of 40 on Windows after it (160 tests).
@@ -720,7 +723,7 @@ With placeholder content and generated media only, from `tests/e2e/screenshots.s
 
 The operator UI is built from one set of tokens and shared components. The rules are in `docs/design.md`, the tokens in `src/renderer/src/styles/app.css` (Tailwind 4 `@theme`), and the components in `src/renderer/src/ui/`.
 
-- **Dark by default**, for dim halls. Colours are named for their job (`panel`, `muted`, `live`, `warning`), and every text colour meets 4.5:1.
+- **Diya** (Session 26g): dark, for dim halls, with plum-black surfaces lit by the lamp and the lamp's plum on the one thing to do next. Colours are named for their job (`panel`, `muted`, `live`, `warning`), every text colour meets 4.5:1, and the primary is at least 10 (CIEDE2000) from LIVE and ON AIR in usual and simulated colour vision (`src/main/contrast.test.ts`). The audience screens keep their own look (`body.output` in `app.css`), checked picture for picture against an earlier build.
 - **"Live" looks the same everywhere:** one colour (`live`) and always a label (LIVE, BLACK-OUT, ON SCREENS), never colour alone.
 - **The UI font is the bundled Noto Sans with its Gujarati and Devanagari companions**, so names in all three scripts look right offline.
 - **Icons are Lucide** (ISC licence, `LICENSES/icons/`), imported only through `src/renderer/src/ui/icons.ts`.

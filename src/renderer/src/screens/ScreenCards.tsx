@@ -71,7 +71,7 @@ function Card({
 }) {
   return (
     <section
-      className="space-y-3 rounded-xl border border-line bg-panel-2 p-3"
+      className="space-y-3 rounded-xl border border-line bg-panel-2 p-3 shadow-card"
       data-testid={testId}
       aria-labelledby={`${testId}-title`}
     >

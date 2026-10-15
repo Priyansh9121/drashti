@@ -179,7 +179,7 @@ function SoundStep() {
             <input
               type="radio"
               name={name}
-              className="h-4 w-4 accent-accent-strong"
+              className="h-4 w-4 accent-primary"
               checked={chosenId === d.id}
               onChange={() => {
                 useSetup.setState({ sound: d.id === '' ? null : { id: d.id, label: d.label } });
@@ -318,7 +318,7 @@ function ThemeStep() {
             <input
               type="radio"
               name={name}
-              className="h-4 w-4 accent-accent-strong"
+              className="h-4 w-4 accent-primary"
               checked={themeId === t.id}
               onChange={() => {
                 useSetup.setState({ themeId: t.id });
@@ -363,7 +363,7 @@ function PinsStep() {
           <input
             type="radio"
             name={name}
-            className="h-4 w-4 accent-accent-strong"
+            className="h-4 w-4 accent-primary"
             checked={typed === null}
             onChange={() => {
               useSetup.setState({ pins: 'skip' });
@@ -376,7 +376,7 @@ function PinsStep() {
             type="radio"
             name={name}
             data-testid="setup-pins-on"
-            className="h-4 w-4 accent-accent-strong"
+            className="h-4 w-4 accent-primary"
             checked={typed !== null}
             onChange={() => {
               set({});

@@ -71,7 +71,10 @@ export function LooksSection({
     if (made) onChoose(made.id);
   };
   return (
-    <section className="space-y-2 rounded-xl border border-line bg-panel-2 p-3" data-testid="looks-section">
+    <section
+      className="space-y-2 rounded-xl border border-line bg-panel-2 p-3 shadow-card"
+      data-testid="looks-section"
+    >
       <div className="flex items-center gap-2">
         <SectionTitle className="flex-1">Looks</SectionTitle>
         <Button size="sm" icon={Plus} onClick={() => void make(null)} data-testid="new-look">

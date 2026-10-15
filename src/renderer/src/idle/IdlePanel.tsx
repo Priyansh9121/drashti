@@ -283,7 +283,7 @@ function IdleForm() {
               >
                 <input
                   type="checkbox"
-                  className="h-4 w-4 shrink-0 accent-accent-strong"
+                  className="h-4 w-4 shrink-0 accent-primary"
                   checked={chosen.includes(p.id)}
                   onChange={(e) => {
                     set({

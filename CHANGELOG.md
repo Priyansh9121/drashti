@@ -2,6 +2,13 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## Unreleased
+
+Diya, Drashti's own look: the lamp's plum and flame.
+
+- The operator window, Simple Mode and the phone pages take the lamp's colours: plum-black panels, warm text, and the one thing to do next in the lamp's plum. Live, ON AIR, warnings and errors keep their colours. What the screens in the hall show does not change at all.
+- The live picture and the live slide glow red beneath, at once, as their red border does.
+
 ## 1.0.0-alpha.4 (15 Oct 2026)
 
 Drashti built round playlists: Repeat Slides, smart playlists, Dropbox folders as playlists, a video timeline and the Picture editor. The window has changed, so the operator guide shows where everything is now. Update after a sabha, never on the day of one.

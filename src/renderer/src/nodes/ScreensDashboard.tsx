@@ -84,7 +84,7 @@ function DisplayCard({ display, number, screen, state, output, thumb, nodeId, si
   const name = screen?.name ?? (display.label || `Display ${number}`);
   return (
     <li
-      className="flex flex-col overflow-hidden rounded-lg border border-line bg-panel-2"
+      className="flex flex-col overflow-hidden rounded-lg border border-line bg-panel-2 shadow-card"
       data-testid="dashboard-display"
       data-screen={screen?.id ?? ''}
       data-node={nodeId ?? 'main'}

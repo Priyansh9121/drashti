@@ -1,65 +1,144 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { contrastRatio, deltaE00, deltaE00Lab, over, VISIONS } from '../shared/contrast';
 
 /*
- * Every text and edge pair of the design tokens, measured against docs/design.md's rules (Session
- * 25, ID-1): text at least 4.5:1 (WCAG 1.4.3), and the edge of a control and the focus ring at
- * least 3:1 (1.4.11). A button's edge with an opacity modifier is measured as drawn: mixed over the
- * button's own background, against the surface it sits on. The tokens and the buttons' classes are
- * read from the source, so the test follows any change to them.
+ * The design tokens' contrast and colour distance (Session 26g, Diya), measured by the design lab's
+ * rules (design-lab/diya/tools/contrast.mjs): every pair of its table, with WCAG 2.x ratios compared
+ * unrounded (2.999 fails 3), the lamp's light measured at its brightest point (its colour over the
+ * surface at the token's strength, mixed in sRGB as browsers draw it), and the primary's plum kept at
+ * least 10 (CIEDE2000) from LIVE and ON AIR in usual colour vision and in simulated protanopia,
+ * deuteranopia and tritanopia. The tokens and the buttons' classes are read from the source, so the
+ * test follows any change to them. It prints both tables (docs/design.md quotes them).
  */
 
 const renderer = join(__dirname, '..', 'renderer', 'src');
-const ui = join(renderer, 'ui');
 const css = readFileSync(join(renderer, 'styles', 'app.css'), 'utf8');
+const button = readFileSync(join(renderer, 'ui', 'Button.tsx'), 'utf8');
+
+/** The tokens of a block of app.css (the @theme block; the audience screens' block is not the look). */
+function block(start: RegExp): string {
+  const at = start.exec(css)?.index;
+  if (at === undefined) throw new Error(`app.css has no ${String(start)} block`);
+  const open = css.indexOf('{', at);
+  let depth = 0;
+  for (let i = open; i < css.length; i++) {
+    if (css[i] === '{') depth++;
+    else if (css[i] === '}' && --depth === 0) return css.slice(open + 1, i);
+  }
+  throw new Error(`app.css's ${String(start)} block never closes`);
+}
+const theme = block(/@theme\s*\{/u);
+const root = block(/^:root\s*\{/mu);
 const token: Record<string, string> = {
   white: '#ffffff',
+  black: '#000000',
   ...Object.fromEntries(
-    [...css.matchAll(/--color-([a-z0-9-]+):\s*(#[0-9a-f]{6})\b/giu)].map((m): [string, string] => [
+    [...theme.matchAll(/--color-([a-z0-9-]+):\s*(#[0-9a-f]{6})\b/giu)].map((m): [string, string] => [
       m[1] ?? '',
-      m[2] ?? '',
+      (m[2] ?? '').toLowerCase(),
     ]),
   ),
 };
-const colour = (name: string): string => {
-  const hex = token[name];
+const lampToken = (name: string): string => {
+  const v = new RegExp(`--lamp-${name}:\\s*([^;]+);`, 'u').exec(root)?.[1]?.trim();
+  if (!v) throw new Error(`app.css has no --lamp-${name}`);
+  return v;
+};
+const lampHex = `#${lampToken('rgb')
+  .split(/\s+/u)
+  .map((c) => Number(c).toString(16).padStart(2, '0'))
+  .join('')}`;
+/** The lamp's light at its brightest, over a surface. */
+const lit = (strength: string, surface: string) =>
+  over(lampHex, Number(lampToken(strength)), colour(surface));
+function colour(name: string): string {
+  const glows: Record<string, () => string> = {
+    'header-glow': () => lit('header', 'panel'),
+    'window-glow': () => lit('window', 'ink'),
+    'welcome-glow': () => lit('welcome', 'panel'),
+    'empty-glow': () => lit('empty', 'ink'),
+    'lamp-colour': () => lampHex,
+  };
+  const hex = glows[name]?.() ?? token[name];
   if (!hex) throw new Error(`app.css has no --color-${name}`);
   return hex;
-};
-
-const rgb = (hex: string) =>
-  [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [number, number, number];
-const linear = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-const luminance = (hex: string) => {
-  const [r, g, b] = rgb(hex).map(linear) as [number, number, number];
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-};
-/** WCAG's contrast ratio. */
-export function ratio(a: string, b: string): number {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
-  return (hi + 0.05) / (lo + 0.05);
-}
-/** `top` at `alpha` over `bottom`, as the screen shows it. */
-function over(top: string, alpha: number, bottom: string): string {
-  const [t, b] = [rgb(top), rgb(bottom)];
-  return `#${t
-    .map((c, i) =>
-      Math.round((c * alpha + (b[i] ?? 0) * (1 - alpha)) * 255)
-        .toString(16)
-        .padStart(2, '0'),
-    )
-    .join('')}`;
 }
 
+/** The design lab's table: [what, foreground, background, rule, where the rule comes from]. */
+const PAIRS: readonly (readonly [string, string, string, number, string])[] = [
+  ['fg on panel', 'fg', 'panel', 15, 'design.md (fg 15:1 on panels)'],
+  ['fg on panel-2 (fields, cards)', 'fg', 'panel-2', 4.5, 'WCAG 1.4.3'],
+  ['fg on panel-3 (selected row)', 'fg', 'panel-3', 4.5, 'WCAG 1.4.3'],
+  ['fg on ink (slide grid title)', 'fg', 'ink', 4.5, 'WCAG 1.4.3'],
+  ['muted on panel', 'muted', 'panel', 7, 'design.md (muted 7:1)'],
+  ['muted on panel-2', 'muted', 'panel-2', 7, 'design.md (muted 7:1)'],
+  ['muted on panel-3', 'muted', 'panel-3', 4.5, 'WCAG 1.4.3'],
+  ['faint on ink', 'faint', 'ink', 4.5, 'design.md (faint 4.5:1 on every surface)'],
+  ['faint on panel', 'faint', 'panel', 4.5, 'design.md'],
+  ['faint on panel-2', 'faint', 'panel-2', 4.5, 'design.md'],
+  ['faint on panel-3', 'faint', 'panel-3', 4.5, 'design.md'],
+  ['white on live (LIVE badge, live buttons)', 'white', 'live', 4.5, 'design.md'],
+  ['white on primary (primary button)', 'white', 'primary', 4.5, 'design.md'],
+  ['white on onair (ON AIR badge)', 'white', 'onair', 4.5, 'design.md'],
+  ['accent as link text on panel', 'accent', 'panel', 4.5, 'WCAG 1.4.3'],
+  ['focus ring (accent) vs ink', 'accent', 'ink', 3, 'WCAG 1.4.11'],
+  ['focus ring vs panel', 'accent', 'panel', 3, 'WCAG 1.4.11'],
+  ['focus ring vs panel-2', 'accent', 'panel-2', 3, 'WCAG 1.4.11'],
+  ['focus ring vs panel-3', 'accent', 'panel-3', 3, 'WCAG 1.4.11'],
+  ['field edge vs panel', 'field', 'panel', 3, 'design.md (3:1 control edges)'],
+  ['field edge vs panel-2', 'field', 'panel-2', 3, 'WCAG 1.4.11'],
+  ['live border vs panel (live row, thumbnail)', 'live', 'panel', 3, 'WCAG 1.4.11'],
+  ['live border vs the black slide inside it', 'live', 'black', 3, 'WCAG 1.4.11'],
+  ['warning-fg on warning-bg', 'warning-fg', 'warning-bg', 4.5, 'WCAG 1.4.3'],
+  ['warning-fg on panel-2 ("Cannot play")', 'warning-fg', 'panel-2', 4.5, 'WCAG 1.4.3'],
+  ['success-fg on success-bg', 'success-fg', 'success-bg', 4.5, 'WCAG 1.4.3'],
+  ['danger-fg on danger-bg', 'danger-fg', 'danger-bg', 4.5, 'WCAG 1.4.3'],
+  ['danger (button text) on panel', 'danger', 'panel', 4.5, 'WCAG 1.4.3'],
+  ['white on primary-hi (gradient top, hover)', 'white', 'primary-hi', 4.5, 'the primary’s gradient'],
+  ['white on primary-lo (gradient bottom, pressed)', 'white', 'primary-lo', 4.5, 'the primary’s gradient'],
+  ['fg on the header at the lamp’s brightest', 'fg', 'header-glow', 4.5, 'the lamp’s light'],
+  ['muted on the header at the lamp’s brightest', 'muted', 'header-glow', 4.5, 'the lamp’s light'],
+  ['faint on the header at the lamp’s brightest', 'faint', 'header-glow', 4.5, 'the lamp’s light'],
+  ['fg on the window at the lamp’s brightest', 'fg', 'window-glow', 4.5, 'the lamp’s light'],
+  ['faint on the window at the lamp’s brightest', 'faint', 'window-glow', 4.5, 'the lamp’s light'],
+  ['fg on the welcome at the lamp’s brightest', 'fg', 'welcome-glow', 4.5, 'the first start'],
+  ['muted on the welcome at the lamp’s brightest', 'muted', 'welcome-glow', 4.5, 'the first start'],
+  ['muted on an empty state’s light', 'muted', 'empty-glow', 4.5, 'empty states'],
+  ['focus ring vs the header’s light', 'accent', 'header-glow', 3, 'WCAG 1.4.11'],
+  ['field edge vs panel-3', 'field', 'panel-3', 3, 'WCAG 1.4.11'],
+  ['accent (info rail, links) on panel-2', 'accent', 'panel-2', 4.5, 'info notices'],
+  ['warning (Stopped rail) vs panel-2', 'warning', 'panel-2', 3, 'WCAG 1.4.11'],
+  ['live (lit clear dot) vs panel-2', 'live', 'panel-2', 3, 'WCAG 1.4.11'],
+  ['field edge vs ink', 'field', 'ink', 3, 'WCAG 1.4.11'],
+  ['strong secondary’s edge vs ink', 'primary-edge', 'ink', 3, 'WCAG 1.4.11 (Clear all)'],
+  ['strong secondary’s edge vs panel', 'primary-edge', 'panel', 3, 'WCAG 1.4.11 (Clear all)'],
+  ['strong secondary’s edge vs panel-2', 'primary-edge', 'panel-2', 3, 'WCAG 1.4.11 (Clear all)'],
+];
+
+/** Text colours that must read on every surface, and fills with their text. */
+const TEXT = ['fg', 'muted', 'faint', 'accent', 'danger', 'warning-fg', 'success-fg', 'danger-fg', 'rec'];
 const SURFACES = ['ink', 'panel', 'panel-2', 'panel-3'];
+const FILLS = [
+  ['white', 'live'],
+  ['white', 'primary'],
+  ['white', 'primary-hi'],
+  ['white', 'primary-lo'],
+  ['white', 'onair'],
+  ['white', 'danger-strong'],
+  ['warning-fg', 'warning-bg'],
+  ['success-fg', 'success-bg'],
+  ['danger-fg', 'danger-bg'],
+  ['fg', 'warning-bg'],
+  ['fg', 'danger-bg'],
+] as const;
 /** Where controls sit: the window, panels, and raised cards and dialogs' fields. */
 const CONTROL_SURFACES = ['ink', 'panel', 'panel-2'];
 
 /** A Button variant's background and edge, from its classes in ui/Button.tsx. */
 function variant(name: string): { background: string | null; edge: string; alpha: number } {
-  const source = readFileSync(join(ui, 'Button.tsx'), 'utf8');
-  const classes = new RegExp(`^\\s*${name}: '([^']*)'`, 'mu').exec(source)?.[1];
+  const classes = new RegExp(`^\\s*${name}:\\s*'([^']*)'`, 'mu').exec(button)?.[1];
   if (!classes) throw new Error(`Button.tsx has no ${name} variant`);
   const bg = /(?:^|\s)bg-([a-z0-9-]+)(?:\s|$)/u.exec(classes)?.[1] ?? null;
   const edge = /(?:^|\s)border-([a-z][a-z0-9-]*?)(?:\/(\d+))?(?:\s|$)/u.exec(classes);
@@ -71,188 +150,105 @@ function variant(name: string): { background: string | null; edge: string; alpha
   };
 }
 
-describe('the design tokens’ contrast (docs/design.md §2)', () => {
-  it('text: every text colour on every surface at 4.5:1 or more', () => {
-    const fails: string[] = [];
-    for (const text of [
-      'fg',
-      'muted',
-      'faint',
-      'accent',
-      'danger',
-      'warning-fg',
-      'success-fg',
-      'danger-fg',
-      'rec',
-    ])
-      for (const surface of SURFACES)
-        if (ratio(colour(text), colour(surface)) < 4.5)
-          fails.push(`${text} on ${surface}: ${ratio(colour(text), colour(surface)).toFixed(2)}`);
-    for (const [text, fill] of [
-      ['white', 'live'],
-      ['white', 'accent-strong'],
-      ['white', 'onair'],
-      ['white', 'danger-strong'],
-      ['warning-fg', 'warning-bg'],
-      ['success-fg', 'success-bg'],
-      ['danger-fg', 'danger-bg'],
-      ['fg', 'warning-bg'],
-      ['fg', 'danger-bg'],
-    ] as const)
-      if (ratio(colour(text), colour(fill)) < 4.5)
-        fails.push(`${text} on ${fill}: ${ratio(colour(text), colour(fill)).toFixed(2)}`);
-    expect(fails).toEqual([]);
+const truncate = (v: number, places = 2) => (Math.floor(v * 10 ** places) / 10 ** places).toFixed(places);
+
+describe('the design tokens’ contrast (docs/design.md §2, the design lab’s table)', () => {
+  it('every pair of the lab’s table meets its rule, unrounded', () => {
+    const rows = PAIRS.map(([what, fg, bg, rule, source]) => {
+      const r = contrastRatio(colour(fg), colour(bg));
+      return { what, fg, bg, rule, source, r, ok: r >= rule };
+    });
+    console.info(
+      [
+        '| Pair | Colours | Rule | Ratio | Result | Source of the rule |',
+        '|---|---|---:|---:|---|---|',
+        ...rows.map(
+          (x) =>
+            `| ${x.what} | \`${x.fg}\` ${colour(x.fg)} on \`${x.bg}\` ${colour(x.bg)} | ≥ ${String(x.rule)}:1 | ${truncate(x.r)} | ${x.ok ? 'pass' : '**FAIL**'} | ${x.source} |`,
+        ),
+        `Contrast failures: ${String(rows.filter((x) => !x.ok).length)} of ${String(rows.length)} pairs.`,
+      ].join('\n'),
+    );
+    expect(rows.filter((x) => !x.ok).map((x) => `${x.what}: ${truncate(x.r)}`)).toEqual([]);
   });
 
-  it('edges: a control’s edge, the focus ring and a lit clear at 3:1 or more where controls sit', () => {
+  it('text: every text colour on every surface, and every fill with its text, at 4.5:1 or more', () => {
     const fails: string[] = [];
-    for (const edge of ['field', 'accent', 'live'])
-      for (const surface of CONTROL_SURFACES)
-        if (ratio(colour(edge), colour(surface)) < 3)
-          fails.push(`${edge} on ${surface}: ${ratio(colour(edge), colour(surface)).toFixed(2)}`);
+    for (const text of TEXT)
+      for (const surface of SURFACES) {
+        const r = contrastRatio(colour(text), colour(surface));
+        if (r < 4.5) fails.push(`${text} on ${surface}: ${truncate(r)}`);
+      }
+    for (const [text, fill] of FILLS) {
+      const r = contrastRatio(colour(text), colour(fill));
+      if (r < 4.5) fails.push(`${text} on ${fill}: ${truncate(r)}`);
+    }
     expect(fails).toEqual([]);
   });
 
   it('buttons: each variant’s edge, as drawn, at 3:1 or more against the surface it sits on', () => {
     const fails: string[] = [];
-    for (const name of ['secondary', 'danger', 'warning']) {
+    for (const name of ['secondary', 'strong', 'danger', 'warning']) {
       const v = variant(name);
       for (const surface of CONTROL_SURFACES) {
         const drawn = over(colour(v.edge), v.alpha, colour(v.background ?? surface));
-        const r = ratio(drawn, colour(surface));
-        if (r < 3)
-          fails.push(
-            `${name} (border-${v.edge}${v.alpha < 1 ? `/${String(v.alpha * 100)}` : ''}) on ${surface}: ${r.toFixed(2)}`,
-          );
+        const r = contrastRatio(drawn, colour(surface));
+        if (r < 3) fails.push(`${name} (border-${v.edge}) on ${surface}: ${truncate(r)}`);
       }
     }
     expect(fails).toEqual([]);
   });
+
+  it('the primary is the lamp’s plum, lit from above: its button draws -hi to -lo', () => {
+    const primary = new RegExp(`^\\s*primary:\\s*'([^']*)'`, 'mu').exec(button)?.[1] ?? '';
+    expect(primary).toContain('from-primary-hi');
+    expect(primary).toContain('to-primary-lo');
+    expect(primary).toContain('text-white');
+  });
 });
 
-// ---- the colour-distance report (a report only in Session 25: it fails today, and Session 26's colours fix it) ----
-
-const toLab = (hex: string): [number, number, number] => {
-  const [r, g, b] = rgb(hex).map(linear) as [number, number, number];
-  const xyz = [
-    (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047,
-    0.2126 * r + 0.7152 * g + 0.0722 * b,
-    (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883,
-  ].map((v) => (v > 216 / 24389 ? Math.cbrt(v) : (v * 24389) / 27 / 116 + 16 / 116)) as [
-    number,
-    number,
-    number,
+describe('colours that must never be confused (CIEDE2000, usual and simulated colour vision)', () => {
+  /** [what, colour, colour, must be at least (null: for information)]. */
+  const DISTANCES: readonly (readonly [string, string, string, number | null])[] = [
+    ['primary vs ON AIR', 'primary', 'onair', 10],
+    ['primary vs live', 'primary', 'live', 10],
+    ['primary-hi vs ON AIR', 'primary-hi', 'onair', 10],
+    ['primary-hi vs live', 'primary-hi', 'live', 10],
+    ['primary-lo vs ON AIR', 'primary-lo', 'onair', 10],
+    ['primary-lo vs live', 'primary-lo', 'live', 10],
+    ['primary-edge vs ON AIR', 'primary-edge', 'onair', 10],
+    ['primary-edge vs live', 'primary-edge', 'live', 10],
+    ['live vs ON AIR', 'live', 'onair', null],
+    ['primary vs success', 'primary', 'success', null],
+    ['primary vs guide', 'primary', 'guide', null],
+    ['accent vs ON AIR', 'accent', 'onair', null],
+    ['accent vs live', 'accent', 'live', null],
+    ['the lamp’s light vs warning', 'lamp-colour', 'warning', null],
   ];
-  return [116 * xyz[1] - 16, 500 * (xyz[0] - xyz[1]), 200 * (xyz[1] - xyz[2])];
-};
 
-/** CIEDE2000 colour difference between two colours. */
-export const deltaE00 = (a: string, b: string): number => deltaE00Lab(toLab(a), toLab(b));
-
-/** CIEDE2000 colour difference between two CIELAB colours. */
-function deltaE00Lab([L1, a1, b1]: readonly number[], [L2, a2, b2]: readonly number[]): number {
-  if (
-    L1 === undefined ||
-    a1 === undefined ||
-    b1 === undefined ||
-    L2 === undefined ||
-    a2 === undefined ||
-    b2 === undefined
-  )
-    throw new Error('a CIELAB colour has three numbers');
-  const rad = Math.PI / 180;
-  const C1 = Math.hypot(a1, b1);
-  const C2 = Math.hypot(a2, b2);
-  const Cm = (C1 + C2) / 2;
-  const G = 0.5 * (1 - Math.sqrt(Cm ** 7 / (Cm ** 7 + 25 ** 7)));
-  const [ap1, ap2] = [(1 + G) * a1, (1 + G) * a2];
-  const [Cp1, Cp2] = [Math.hypot(ap1, b1), Math.hypot(ap2, b2)];
-  const hue = (bb: number, ap: number) => (bb === 0 && ap === 0 ? 0 : (Math.atan2(bb, ap) / rad + 360) % 360);
-  const [hp1, hp2] = [hue(b1, ap1), hue(b2, ap2)];
-  const dL = L2 - L1;
-  const dC = Cp2 - Cp1;
-  let dh = hp2 - hp1;
-  if (Cp1 * Cp2 === 0) dh = 0;
-  else if (dh > 180) dh -= 360;
-  else if (dh < -180) dh += 360;
-  const dH = 2 * Math.sqrt(Cp1 * Cp2) * Math.sin((dh / 2) * rad);
-  const Lm = (L1 + L2) / 2;
-  const Cpm = (Cp1 + Cp2) / 2;
-  let hm = hp1 + hp2;
-  if (Cp1 * Cp2 !== 0)
-    hm = Math.abs(hp1 - hp2) > 180 ? (hp1 + hp2 + (hp1 + hp2 < 360 ? 360 : -360)) / 2 : (hp1 + hp2) / 2;
-  const T =
-    1 -
-    0.17 * Math.cos((hm - 30) * rad) +
-    0.24 * Math.cos(2 * hm * rad) +
-    0.32 * Math.cos((3 * hm + 6) * rad) -
-    0.2 * Math.cos((4 * hm - 63) * rad);
-  const SL = 1 + (0.015 * (Lm - 50) ** 2) / Math.sqrt(20 + (Lm - 50) ** 2);
-  const SC = 1 + 0.045 * Cpm;
-  const SH = 1 + 0.015 * Cpm * T;
-  const RT =
-    -2 *
-    Math.sqrt(Cpm ** 7 / (Cpm ** 7 + 25 ** 7)) *
-    Math.sin(60 * Math.exp(-(((hm - 275) / 25) ** 2)) * rad);
-  return Math.sqrt((dL / SL) ** 2 + (dC / SC) ** 2 + (dH / SH) ** 2 + RT * (dC / SC) * (dH / SH));
-}
-
-/** How a colour looks with no working green or red cones (Machado et al. 2009, severity 1). */
-const VISION: Record<string, number[][] | null> = {
-  usual: null,
-  deuteranopia: [
-    [0.367322, 0.860646, -0.227968],
-    [0.280085, 0.672501, 0.047413],
-    [-0.01182, 0.04294, 0.968881],
-  ],
-  protanopia: [
-    [0.152286, 1.052583, -0.204868],
-    [0.114503, 0.786281, 0.099216],
-    [-0.003882, -0.048116, 1.051998],
-  ],
-};
-function seenWith(hex: string, matrix: number[][] | null): string {
-  if (!matrix) return hex;
-  const lin = rgb(hex).map(linear);
-  const out = matrix.map((row) =>
-    Math.min(
-      1,
-      Math.max(
-        0,
-        row.reduce((sum, m, i) => sum + m * (lin[i] ?? 0), 0),
-      ),
-    ),
-  );
-  const gamma = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
-  return `#${out
-    .map((c) =>
-      Math.round(gamma(c) * 255)
-        .toString(16)
-        .padStart(2, '0'),
-    )
-    .join('')}`;
-}
-
-describe('colours that must never be confused: the report (Session 26 sets the floor)', () => {
-  it('measures the primary button, LIVE and ON AIR apart (CIEDE2000), with usual and red-green colour vision', () => {
-    const pairs = [
-      ['accent-strong', 'live'],
-      ['accent-strong', 'onair'],
-      ['live', 'onair'],
-    ] as const;
-    const rows = pairs.flatMap(([a, b]) =>
-      Object.entries(VISION).map(([vision, m]) => ({
-        pair: `${a} / ${b}`,
-        vision,
-        deltaE00: Math.round(deltaE00(seenWith(colour(a), m), seenWith(colour(b), m)) * 10) / 10,
-      })),
-    );
-    // A report, not a gate, this session: the primary and ON AIR are nearly one colour to a deuteranope.
+  it('keeps the primary at least 10 from LIVE and ON AIR, for everyone', () => {
+    const rows = DISTANCES.map(([what, a, b, floor]) => {
+      const each = VISIONS.map((v) => deltaE00(colour(a), colour(b), v));
+      const least = Math.min(...each);
+      const vision = VISIONS[each.indexOf(least)] ?? 'usual';
+      return { what, each, least, vision, floor, ok: floor === null || least >= floor };
+    });
     console.info(
-      `Colour distance (ΔE00; 10 is the floor proposed for Session 26):\n${rows.map((r) => `  ${r.pair.padEnd(26)} ${r.vision.padEnd(13)} ${String(r.deltaE00)}`).join('\n')}`,
+      [
+        '| Pair | usual | protan | deutan | tritan | smallest | Result |',
+        '|---|---:|---:|---:|---:|---:|---|',
+        ...rows.map(
+          (x) =>
+            `| ${x.what} | ${x.each.map((d) => truncate(d, 1)).join(' | ')} | **${truncate(x.least, 1)}** (${x.vision}) | ${x.floor === null ? 'for information' : x.ok ? `pass (≥ ${String(x.floor)})` : `**FAIL** (< ${String(x.floor)})`} |`,
+        ),
+      ].join('\n'),
     );
-    for (const r of rows) expect(Number.isFinite(r.deltaE00)).toBe(true);
-    // The formula itself, against published test pairs (Sharma, Wu and Dalal 2005: pairs 1 and 17).
+    expect(rows.filter((x) => !x.ok).map((x) => `${x.what}: ${truncate(x.least, 1)} (${x.vision})`)).toEqual(
+      [],
+    );
+  });
+
+  it('measures colour difference correctly (Sharma, Wu and Dalal 2005, pairs 1 and 17)', () => {
     expect(deltaE00Lab([50, 2.6772, -79.7751], [50, 0, -82.7485])).toBeCloseTo(2.0425, 4);
     expect(deltaE00Lab([50, 2.5, 0], [73, 25, -18])).toBeCloseTo(27.1492, 4);
     expect(deltaE00('#123456', '#123456')).toBe(0);

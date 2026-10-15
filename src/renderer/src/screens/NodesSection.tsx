@@ -99,7 +99,7 @@ function NodeCard({
     )?.name ?? null;
   return (
     <li
-      className="space-y-2 rounded-xl border border-line bg-panel-2 p-3"
+      className="space-y-2 rounded-xl border border-line bg-panel-2 p-3 shadow-card"
       data-testid="node-card"
       data-node={node.id}
     >

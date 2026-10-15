@@ -25,14 +25,17 @@ Colours are named for their **job**, never their hue (`bg-panel`, `text-muted`, 
 | `field`                                             | The edge of a control (text box, select, secondary button)                 |
 | `fg`, `muted`, `faint`                              | Text; secondary text; the quietest text allowed                            |
 | `accent`                                            | The focus ring, selection, links                                           |
-| `accent-strong`                                     | The primary button (one per area at most)                                  |
+| `primary-hi`, `primary`, `primary-lo`               | The primary: the lamp's plum, lit from above (one per screen)              |
+| `primary-edge`                                      | A strong secondary's edge (Clear all in a show)                            |
 | `live`                                              | On the screens now: always with a label                                    |
 | `warning`, `warning-bg`, `warning-fg`               | Missing, can't play, needs a look                                          |
 | `success`, `success-bg`, `success-fg`               | Connected, showing                                                         |
 | `danger`, `danger-strong`, `danger-bg`, `danger-fg` | Removing and deleting; something failed                                    |
-| `guide`                                             | The slide editor's snapping guides (never text)                            |
+| `guide`, `selection`                                | The slide editor's snapping guides and what is chosen (never text)         |
 
-**Contrast** (WCAG 2.2 AA, measured by `src/main/contrast.test.ts` from `app.css` and `ui/Button.tsx`, which fails on any pair below its rule): `fg` 12.4 to 16.3:1 and `muted` 6.2 to 8.2:1 on the four surfaces, and `faint` at least 4.5:1 on every surface. White on `live` is 5.0:1, white on `accent-strong` 5.2:1. Edges of controls are at least 3:1 where controls sit (`ink`, `panel`, `panel-2`): `field` 3.2 to 3.7:1, so a secondary button's edge is solid `field` (it was `field` at 60%, 2.1:1, until Session 25) and a danger button's is `danger` at 70% (4.1:1); the focus ring 5.3 to 7:1. The same test reports, without failing yet, how far apart the primary, LIVE and ON AIR colours are (CIEDE2000, with usual and red-green colour vision): the primary and ON AIR are 0.5 apart for a deuteranope, and Session 26's colours set a floor. Text is never quieter than `faint`. Never put text on a surface with an opacity modifier (`text-fg/60`), because axe measures the mix. Run the accessibility checks after any colour change.
+**Diya** (Session 26g, from the design lab's "Diya, pushed further"): plum-black surfaces taken from the icon's tile, warm off-white text, and the state colours (`live`, `warning`, `success`, `danger`, ON AIR, REC, `guide`) exactly as they were. **The audience screens never take the look:** `body.output` (the outputs, the stream's picture, the stage display in a browser) keeps the colours and corners Drashti had before, and `tests/e2e/audience-pixels.spec.ts` (with `scripts/audience-pixels.mjs <commit>`) compares them picture for picture with an earlier build.
+
+**Contrast** (WCAG 2.2 AA, measured by `src/main/contrast.test.ts` from `app.css` and `ui/Button.tsx` by the design lab's rules: every pair of its table, ratios compared unrounded, and the lamp's light at its brightest): `fg` 13.8 to 17.9:1 and `muted` 8.3 to 10.8:1 on the four surfaces, and `faint` at least 5.7:1 on every surface. White on `live` is 5.0:1, and on the primary 5.7:1 at its lightest (`primary-hi`) to 8.6:1 (`primary-lo`). Edges of controls are at least 3:1 where controls sit (`ink`, `panel`, `panel-2`): `field` 4.5 to 5.2:1, so a secondary button's edge is solid `field`, a danger button's solid `danger` (6.7:1 or more), and a strong secondary's `primary-edge` 3.2 to 3.7:1; the focus ring 11.3 to 13.1:1. **Colours that must never be confused:** the primary's three plums and `primary-edge` are at least 10 apart (CIEDE2000) from `live` and from ON AIR, in usual colour vision and in simulated protanopia, deuteranopia and tritanopia (Machado 2009); the closest is 12.3 (`primary-edge` and ON AIR, protanopia). The test fails below either rule and prints both tables. Text is never quieter than `faint`. Never put text on a surface with an opacity modifier (`text-fg/60`), because axe measures the mix. Run the accessibility checks after any colour change.
 
 Group colours (Verse, Chorus…) come from the presentation, so they are shown as a swatch beside the group's name, never behind text.
 
@@ -61,8 +64,8 @@ Nothing else uses `live`: errors use `danger` and warnings `warning`.
 
 - Spacing follows Tailwind's 4 px steps. Use 1, 1.5, 2, 3, 4, 5, 6 and 8 (4 to 32 px). Gaps inside a control are 1 to 2, between controls 2 to 3, and between sections 4 to 6.
 - **Control heights:** `sm` 28 px (panels), `md` 32 px (the default), `lg` 40 px (dialogs, live controls), `xl` 64 px and `xxl` 96 px (Simple Mode). Nothing clickable is smaller than 24 × 24 px (WCAG 2.5.8), and nothing on a phone's page smaller than 44 × 44 (§8).
-- **Corners:** `rounded-sm` (4 px) for badges and key hints, `rounded-md` (6 px) for controls and rows, `rounded-lg` (10 px) for cards and panels, `rounded-xl` (14 px) for dialogs and Simple Mode buttons.
-- Overlays (menus, dialogs, tooltips) use `shadow-overlay`; nothing else has a shadow.
+- **Corners** (Diya: 6/8/12/18): `rounded-xs` (4 px) for key hints, `rounded-sm` (6 px) for badges, `rounded-md` (8 px) for controls and rows, `rounded-lg` (12 px) for cards and panels, `rounded-xl` (18 px) for dialogs and Simple Mode's buttons.
+- **Depth, from light above:** cards (thumbnails, the live picture, the Screens cards) sit on `shadow-card`; overlays (menus, dialogs, tooltips, notices) float on `shadow-overlay`. The live picture and the live thumbnail glow red beneath (`shadow-live`, `shadow-live-thumb`), and that switches at once with the live border. The primary has its ember glow (`shadow-ember`). Nothing else has a shadow.
 
 ## 6. Components
 

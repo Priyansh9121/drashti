@@ -44,7 +44,7 @@ export function Toggle({
         className={cx(
           'relative inline-flex shrink-0 items-center rounded-full border p-0.5 transition-colors',
           track,
-          checked ? 'border-accent-strong bg-accent-strong' : 'border-field bg-panel-3',
+          checked ? 'border-primary-hi bg-primary' : 'border-field bg-panel-3',
         )}
       >
         <span
@@ -68,11 +68,7 @@ export function Checkbox({
 }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & { label: ReactNode }) {
   return (
     <label className={cx('inline-flex items-center gap-2 text-sm text-fg', className)}>
-      <input
-        type="checkbox"
-        className="h-4 w-4 shrink-0 rounded-sm border-field accent-accent-strong"
-        {...props}
-      />
+      <input type="checkbox" className="h-4 w-4 shrink-0 rounded-sm border-field accent-primary" {...props} />
       <span>{label}</span>
     </label>
   );
