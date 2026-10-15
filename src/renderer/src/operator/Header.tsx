@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { shortcutText } from '../../../shared/keymap';
 import { openThemes } from '../themes/themes-store';
 import { Button } from '../ui/Button';
+import { WordMark } from '../ui/Mark';
 import { Inbox, LayoutGrid, Monitor, Palette, Radio, Smartphone } from '../ui/icons';
 import { NetworkBadge } from '../network/NetworkBadge';
 import { openNetwork, useNetwork } from '../network/network-store';
@@ -49,10 +50,12 @@ export function Header({
 }) {
   return (
     <header
-      className="flex h-12 shrink-0 items-center gap-4 border-b border-line bg-panel px-4"
+      className="lamp-header flex h-12 shrink-0 items-center gap-4 border-b border-line px-4"
       data-testid="app-header"
     >
-      <h1 className="shrink-0 text-base font-bold tracking-wide">Drashti</h1>
+      <h1 className="shrink-0 text-base font-bold tracking-wide">
+        <WordMark />
+      </h1>
       <OnAirBadges />
       <NetworkBadge />
       <div className="min-w-0 flex-1">

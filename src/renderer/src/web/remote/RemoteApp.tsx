@@ -15,6 +15,7 @@ import { PreviewPicture, PreviewsContext } from '../../render/previews';
 import { Scene } from '../../render/Scene';
 import { SlideView } from '../../render/SlideView';
 import { TimerText } from '../../render/TimerText';
+import { Mark } from '../../ui/Mark';
 import { Badge, LiveBadge } from '../../ui/Badge';
 import { Button } from '../../ui/Button';
 import { cx } from '../../ui/cx';
@@ -1171,8 +1172,9 @@ function Layout() {
   );
   return (
     // One screen: the header, a middle that scrolls, and Back and Next below it (nothing scrolls under them).
-    <div className="flex h-dvh flex-col" data-testid="remote" data-layout={layout}>
-      <header className="flex shrink-0 items-center gap-3 border-b border-line bg-panel px-4 py-3">
+    <div className="lamp-window flex h-dvh flex-col" data-testid="remote" data-layout={layout}>
+      <header className="lamp-header flex shrink-0 items-center gap-3 border-b border-line px-4 py-3">
+        <Mark size={36} />
         <div className="min-w-0 flex-1">
           <p className="text-base font-bold tracking-wide text-fg">Drashti remote</p>
           <p className="truncate text-base text-muted">{device?.name ?? current()?.name ?? ''}</p>

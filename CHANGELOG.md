@@ -8,6 +8,7 @@ Diya, Drashti's own look: the lamp's plum and flame.
 
 - The operator window, Simple Mode and the phone pages take the lamp's colours: plum-black panels, warm text, and the one thing to do next in the lamp's plum. Live, ON AIR, warnings and errors keep their colours. What the screens in the hall show does not change at all.
 - The live picture and the live slide glow red beneath, at once, as their red border does.
+- Drashti's lamp sits beside its name at the top of the window, in Simple Mode and on the phone remote, and its light falls softly across the window. An empty place (no playlists yet, an empty library) shows the lamp unlit.
 
 ## 1.0.0-alpha.4 (15 Oct 2026)
 

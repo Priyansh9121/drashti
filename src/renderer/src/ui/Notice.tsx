@@ -6,11 +6,32 @@ import { AlertTriangle, CircleAlert, CircleCheck, Info, X } from './icons';
 
 export type NoticeTone = 'info' | 'success' | 'warning' | 'danger';
 
+/*
+ * Each tone fills its box and has a rail of its colour down the left (Session 26g): a warning is a
+ * filled amber rail with an icon and words, so the lamp's warm light, which is only ever a gradient
+ * on a surface, is never taken for one.
+ */
 const tones: Record<NoticeTone, { box: string; icon: Icon; iconClass: string }> = {
-  info: { box: 'border-line-strong bg-panel-2 text-fg', icon: Info, iconClass: 'text-accent' },
-  success: { box: 'border-success/50 bg-success-bg text-success-fg', icon: CircleCheck, iconClass: '' },
-  warning: { box: 'border-warning/60 bg-warning-bg text-warning-fg', icon: AlertTriangle, iconClass: '' },
-  danger: { box: 'border-danger/60 bg-danger-bg text-danger-fg', icon: CircleAlert, iconClass: '' },
+  info: {
+    box: 'border-line-strong border-l-accent bg-panel-2 text-fg',
+    icon: Info,
+    iconClass: 'text-accent',
+  },
+  success: {
+    box: 'border-success/50 border-l-success bg-success-bg text-success-fg',
+    icon: CircleCheck,
+    iconClass: '',
+  },
+  warning: {
+    box: 'border-warning/60 border-l-warning bg-warning-bg text-warning-fg',
+    icon: AlertTriangle,
+    iconClass: '',
+  },
+  danger: {
+    box: 'border-danger/60 border-l-danger bg-danger-bg text-danger-fg',
+    icon: CircleAlert,
+    iconClass: '',
+  },
 };
 
 /**
@@ -45,7 +66,7 @@ export function Notice({
     <div
       role={announce === 'none' ? undefined : announce}
       className={cx(
-        'flex items-start gap-2 rounded-md border',
+        'flex items-start gap-2 rounded-md border border-l-4',
         compact ? 'px-2 py-1.5 text-xs' : 'px-3 py-2 text-sm',
         look.box,
         className,

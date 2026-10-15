@@ -335,7 +335,7 @@ export function MediaList({ platform }: { platform: string }) {
         <li aria-hidden="true" style={{ position: 'absolute', top: layout.total, height: 12, width: 1 }} />
       </ul>
       {loaded && media.length === 0 && (
-        <EmptyState icon={Image} title="No media yet" compact className="absolute inset-x-0 top-0">
+        <EmptyState icon={Image} title="No media yet" compact lamp className="absolute inset-x-0 top-0">
           Import pictures, videos or sound, or presentations that use them.
         </EmptyState>
       )}

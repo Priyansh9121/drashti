@@ -3,6 +3,7 @@ import type { DataAttributes } from './cx';
 import { cx } from './cx';
 import type { Icon } from './icons';
 import { CircleAlert, Loader } from './icons';
+import { UnlitLamp } from './Mark';
 
 /** Nothing here yet: what this place is for, and how to fill it. */
 export function EmptyState({
@@ -11,6 +12,7 @@ export function EmptyState({
   children,
   action,
   compact = false,
+  lamp = false,
   className,
   ...data
 }: {
@@ -19,6 +21,8 @@ export function EmptyState({
   children?: ReactNode;
   action?: ReactNode;
   compact?: boolean;
+  /** One of the window's places (the library, the playlists, the slides): the unlit lamp, in its faint light. */
+  lamp?: boolean;
   className?: string;
 } & DataAttributes) {
   return (
@@ -26,12 +30,17 @@ export function EmptyState({
       className={cx(
         'flex flex-col items-center justify-center text-center text-muted',
         compact ? 'gap-1 px-3 py-4' : 'gap-2 px-6 py-10',
+        lamp && 'lamp-empty',
         className,
       )}
       {...data}
     >
-      {IconShape && (
-        <IconShape size={compact ? 20 : 32} aria-hidden="true" strokeWidth={1.5} className="text-faint" />
+      {lamp ? (
+        <UnlitLamp size={compact ? 44 : 64} />
+      ) : (
+        IconShape && (
+          <IconShape size={compact ? 20 : 32} aria-hidden="true" strokeWidth={1.5} className="text-faint" />
+        )
       )}
       <p className={cx('font-medium text-fg', compact ? 'text-sm' : 'text-base')}>{title}</p>
       {children && <div className={cx('max-w-sm', compact ? 'text-xs' : 'text-sm')}>{children}</div>}
