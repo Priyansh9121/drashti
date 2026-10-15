@@ -15,6 +15,12 @@ On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows 
 
 **The first start.** A new library opens with a welcome: Drashti's lamp lights, then three choices. **Set up the screens** opens the setup (the admin's guide has it). **Try a practice show first** puts five placeholder slides on this screen only, with a banner saying so: try Next, Back, **B**, **L** and **F1** as in a sabha; nothing goes to the hall's screens, the phones or a stream, and nothing is saved. **Leave the practice show** brings the welcome back. **Skip for now** leaves the middle of the window showing three steps to a sabha: **Import…** what you show, make **this week's playlist**, and **set up the screens**. The welcome comes once; **View › Set Up Screens…** opens the setup any time.
 
+![The first start: the lamp lit, and three choices](screenshots/first-start-welcome.png)
+
+![The practice show: placeholder slides on this screen only, with its banner](screenshots/practice-show.png)
+
+![Skip for now: the three steps to a sabha in the middle of the window](screenshots/start-here.png)
+
 ![The open playlist in the middle: its items as cards, a header before each part](screenshots/playlist-cards.png)
 
 ---
