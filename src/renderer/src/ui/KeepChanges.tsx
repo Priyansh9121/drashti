@@ -5,10 +5,12 @@ import { Dialog } from './Dialog';
 
 /*
  * The one question asked when a dialog or editor with typed changes is closed (its close button,
- * Esc or Cancel), Session 25. Keep editing has the focus, so Enter and Esc both keep editing: saving
- * the live presentation's words changes the screens at once, so Enter must never save by accident.
- * Save changes saves; Throw them away (danger) is never the default. Where there is nothing to save
- * yet (the setup wizard sets things only at Finish), it asks without Save changes.
+ * Esc or Cancel), Session 25. Save changes is the primary and has the focus (decided 15 Oct 2026,
+ * Session 26g: saving is what people mean nine times in ten), so Enter saves; when saving would
+ * change the screens at once (the live presentation), the question says so in plain words above
+ * it. Esc still keeps editing, and Throw them away (danger) is never the default. Where there is
+ * nothing to save yet (the setup wizard sets things only at Finish), it asks without Save changes,
+ * and Keep editing has the focus.
  */
 
 export function KeepChangesDialog({
@@ -48,14 +50,19 @@ export function KeepChangesDialog({
       testId="keep-changes"
       footer={
         <>
-          <Button variant="danger" className="mr-auto" onClick={onThrowAway}>
-            Throw them away
-          </Button>
-          <Button data-autofocus onClick={onKeepEditing}>
+          <Button
+            variant="ghost"
+            className="mr-auto"
+            data-autofocus={onSave ? undefined : ''}
+            onClick={onKeepEditing}
+          >
             Keep editing
           </Button>
+          <Button variant="danger" onClick={onThrowAway}>
+            Throw them away
+          </Button>
           {onSave && (
-            <Button variant="primary" disabled={saving} onClick={onSave}>
+            <Button variant="primary" data-autofocus="" disabled={saving} onClick={onSave}>
               Save changes
             </Button>
           )}

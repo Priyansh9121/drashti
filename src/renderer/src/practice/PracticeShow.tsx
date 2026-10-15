@@ -10,6 +10,8 @@ import { Kbd } from '../ui/Kbd';
 import { openWelcome } from '../setup/Welcome';
 import { Columns } from '../operator/Layout';
 import { LivePreview } from '../operator/LivePreview';
+import { NextBack } from '../operator/NextBack';
+import type { OperatorAction } from '../../../shared/keymap';
 import { runPractice, stopPractice, usePractice } from './practice-store';
 
 /*
@@ -18,7 +20,7 @@ import { runPractice, stopPractice, usePractice } from './practice-store';
  * bottom as in a show. Nothing here reaches the main process (practice-store.ts).
  */
 
-export function PracticeShow({ platform }: { platform: string }) {
+export function PracticeShow({ platform, run }: { platform: string; run: (action: OperatorAction) => void }) {
   return (
     <>
       <div
@@ -48,6 +50,7 @@ export function PracticeShow({ platform }: { platform: string }) {
         right={
           <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
             <LivePreview />
+            <NextBack platform={platform} run={run} />
           </aside>
         }
       />

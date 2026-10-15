@@ -163,7 +163,7 @@ export function MusicPanel({ nested = false }: { nested?: boolean } = {}) {
             />
             {isShownPlaying && !paused ? (
               <Button
-                variant="primary"
+                variant="secondary"
                 icon={Pause}
                 data-testid="music-pause"
                 onClick={() => void dispatch('pauseMusic')}
@@ -172,7 +172,7 @@ export function MusicPanel({ nested = false }: { nested?: boolean } = {}) {
               </Button>
             ) : (
               <Button
-                variant="primary"
+                variant="secondary"
                 icon={Play}
                 data-testid="music-play"
                 disabled={shown.tracks.length === 0}

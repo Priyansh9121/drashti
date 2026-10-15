@@ -16,30 +16,34 @@ import { makeTestVideo } from './test-media';
 
 /*
  * Ask before throwing away typed work (Session 25): closing a dialog or an editor with typed changes
- * (its close button, Esc or Cancel) asks one question, the same everywhere. Keep editing has the
- * focus, so Enter (and Esc) keep editing and nothing is saved; Save changes saves; Throw them away
- * closes without saving. Saving the live presentation's words changes the screens at once, and the
- * question says so. Placeholder content only.
+ * (its close button, Esc or Cancel) asks one question, the same everywhere. Save changes is the
+ * primary and has the focus (Session 26g, decided 15 Oct 2026); Esc keeps editing and nothing is
+ * saved; Save changes saves; Throw them away closes without saving and is never the default. Saving
+ * the live presentation's words changes the screens at once, and the question says so. Placeholder
+ * content only.
  */
 
 /**
- * The question is up with Keep editing focused (and Save changes, unless there is nothing to save
- * from there); Enter keeps editing: the question goes and `still` is still open.
+ * The question is up with Save changes focused, the one primary (Keep editing, when there is nothing
+ * to save from there); Esc keeps editing: the question goes and `still` is still open.
  */
-async function enterKeepsEditing(
+async function escKeepsEditing(
   win: Page,
   still: Locator,
   options: { save?: boolean; live?: string | null } = {},
 ): Promise<void> {
   const ask = win.getByTestId('keep-changes');
   await expect(ask).toBeVisible();
-  await expect(ask.getByRole('button', { name: 'Keep editing' })).toBeFocused();
+  const focused = options.save === false ? 'Keep editing' : 'Save changes';
+  await expect(ask.getByRole('button', { name: focused })).toBeFocused();
+  await expect(ask.locator('[data-variant="primary"]')).toHaveCount(options.save === false ? 0 : 1);
   await expect(ask.getByRole('button', { name: 'Throw them away' })).toBeVisible();
+  await expect(ask.getByRole('button', { name: 'Keep editing' })).toBeVisible();
   await expect(ask.getByRole('button', { name: 'Save changes' })).toHaveCount(options.save === false ? 0 : 1);
   if (options.live === null) await expect(ask.getByTestId('keep-changes-live')).toHaveCount(0);
   else if (options.live !== undefined)
     await expect(ask.getByTestId('keep-changes-live')).toContainText(options.live);
-  await win.keyboard.press('Enter');
+  await win.keyboard.press('Escape');
   await expect(ask).toHaveCount(0);
   await expect(still).toBeVisible();
 }
@@ -97,7 +101,7 @@ test('Edit words asks before typed words are lost, and says when saving changes 
   await expect(text).toHaveValue(before);
   await text.fill(`${before.trimEnd()}\n\nPlaceholder line three\n`);
   await win.keyboard.press('Escape');
-  await enterKeepsEditing(win, editor, {
+  await escKeepsEditing(win, editor, {
     live: '“Placeholder Keep Words” is on the screens now: saving changes them at once.',
   });
   await expect(text).toHaveValue(/Placeholder line three/u);
@@ -143,11 +147,13 @@ test('the Kirtan dialog asks before typed details are lost, Edit words by langua
   await field.fill('Placeholder kavi');
   await win.keyboard.press('Escape');
   // Its details are never on the screens: no warning about them.
-  await enterKeepsEditing(win, dialog, { live: null });
+  await escKeepsEditing(win, dialog, { live: null });
   await expect(field).toHaveValue('Placeholder kavi');
   expect(await kavi()).toBeFalsy();
+  // Enter, with Save changes focused, saves (Session 26g).
   await win.keyboard.press('Escape');
-  await answer(win, 'Save changes');
+  await expect(win.getByTestId('keep-changes').getByRole('button', { name: 'Save changes' })).toBeFocused();
+  await win.keyboard.press('Enter');
   await expect(dialog).toHaveCount(0);
   await expect.poll(kavi).toBe('Placeholder kavi');
 
@@ -180,7 +186,7 @@ test('Playback markers ask before typed points are lost', async () => {
   const dialog = win.getByTestId('markers-dialog');
   await dialog.getByTestId('markers-start').fill('0:01.0');
   await win.keyboard.press('Escape');
-  await enterKeepsEditing(win, dialog, { live: null });
+  await escKeepsEditing(win, dialog, { live: null });
   await expect(dialog.getByTestId('markers-start')).toHaveValue('0:01.0');
   expect((await markers()).startMs).toBeNull();
   await dialog.getByRole('button', { name: 'Cancel' }).click();
@@ -208,7 +214,7 @@ test('the theme form in Themes asks before a typed change is lost', async () => 
   const name = panel.getByRole('textbox', { name: 'Theme name' });
   await name.fill('Placeholder Keep Theme');
   await win.keyboard.press('Escape');
-  await enterKeepsEditing(win, panel, { live: null });
+  await escKeepsEditing(win, panel, { live: null });
   await expect(win.getByTestId('keep-changes')).toHaveCount(0);
   await expect(name).toHaveValue('Placeholder Keep Theme');
   expect(await names()).not.toContain('Placeholder Keep Theme');
@@ -234,7 +240,7 @@ test('the setup wizard asks before typed PINs are lost (nothing is set until Fin
   await wizard.getByRole('radio', { name: 'Set an admin PIN and an operator PIN' }).check();
   await wizard.getByTestId('setup-admin-pin').fill('2468');
   await win.keyboard.press('Escape');
-  await enterKeepsEditing(win, wizard, { save: false });
+  await escKeepsEditing(win, wizard, { save: false });
   await expect(wizard.getByTestId('setup-admin-pin')).toHaveValue('2468');
   await wizard.getByRole('button', { name: 'Close the setup' }).click();
   await answer(win, 'Throw them away');
@@ -275,7 +281,7 @@ test('the macro, stage layout and mask editors ask the same question, and Save c
   const macros = win.getByTestId('macro-editor');
   await macros.getByTestId('macro-name').fill('Placeholder keep macro');
   await win.keyboard.press('Escape');
-  await enterKeepsEditing(win, macros);
+  await escKeepsEditing(win, macros);
   expect(await listed('macros')).not.toContain('Placeholder keep macro');
   await win.keyboard.press('Escape');
   await answer(win, 'Save changes');
@@ -290,7 +296,7 @@ test('the macro, stage layout and mask editors ask the same question, and Save c
   await layouts.getByTestId('stage-layout-duplicate').click();
   await layouts.getByTestId('stage-layout-name').fill('Placeholder keep layout');
   await win.keyboard.press('Escape');
-  await enterKeepsEditing(win, layouts, { live: 'wherever the live Look uses this layout' });
+  await escKeepsEditing(win, layouts, { live: 'wherever the live Look uses this layout' });
   await win.keyboard.press('Escape');
   await answer(win, 'Save changes');
   await expect(layouts).toHaveCount(0);
@@ -301,7 +307,7 @@ test('the macro, stage layout and mask editors ask the same question, and Save c
   const masks = win.getByTestId('mask-editor');
   await masks.getByTestId('mask-name').fill('Placeholder keep mask');
   await win.keyboard.press('Escape');
-  await enterKeepsEditing(win, masks, { live: 'wherever this mask is showing' });
+  await escKeepsEditing(win, masks, { live: 'wherever this mask is showing' });
   await win.keyboard.press('Escape');
   await answer(win, 'Throw them away');
   await expect(masks).toHaveCount(0);
@@ -325,7 +331,7 @@ test('the slide editor asks before words still being typed in a text box are los
   await win.keyboard.press('End');
   await win.keyboard.type(' placeholder typed');
   await editor.getByRole('button', { name: 'Cancel' }).click();
-  await enterKeepsEditing(win, editor);
+  await escKeepsEditing(win, editor);
   // Still there, and Cancel asks again.
   await editor.getByRole('button', { name: 'Cancel' }).click();
   await expect(win.getByTestId('keep-changes')).toBeVisible();

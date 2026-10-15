@@ -73,7 +73,7 @@ export function IdlePanel({ nested = false }: { nested?: boolean } = {}) {
           </Button>
         ) : (
           <Button
-            variant="primary"
+            variant="secondary"
             size="sm"
             icon={Play}
             data-testid="idle-start"
@@ -159,7 +159,7 @@ function QuoteForm({ quote, onDone }: { quote: Quote | null; onDone: () => void 
         </p>
       )}
       <div className="flex gap-2">
-        <Button type="submit" variant="primary" size="sm" data-testid="save-quote">
+        <Button type="submit" variant="secondary" size="sm" data-testid="save-quote">
           Save the quote
         </Button>
         <Button size="sm" onClick={onDone}>

@@ -75,8 +75,9 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
           Put it back
         </Button>
       ) : (
+        // A strong secondary (Session 26g): in a show the one primary is Next, under LIVE.
         <Button
-          variant="primary"
+          variant="strong"
           size="lg"
           instant
           icon={Eraser}

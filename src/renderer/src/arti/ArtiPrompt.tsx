@@ -72,7 +72,7 @@ export function ArtiPrompt({ big = false }: { big?: boolean }) {
       )}
       <Button
         size={big ? 'xxl' : 'md'}
-        variant="primary"
+        variant="strong"
         icon={big ? Flame : undefined}
         data-testid="arti-put-up"
         className={big ? 'flex-[2]' : undefined}

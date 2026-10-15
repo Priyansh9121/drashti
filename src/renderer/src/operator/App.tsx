@@ -29,6 +29,7 @@ import type { OperatorAction } from '../../../shared/keymap';
 import { shortcutText } from '../../../shared/keymap';
 import { Header } from './Header';
 import { LayerBar } from './LayerBar';
+import { NextBack } from './NextBack';
 import { PracticeShow } from '../practice/PracticeShow';
 import { practiceKey, stopPractice, usePractice } from '../practice/practice-store';
 import { closeWelcome, openWelcome, Welcome } from '../setup/Welcome';
@@ -252,7 +253,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <MacroCountdown />
       <RecoveryBanner />
       {practising ? (
-        <PracticeShow platform={platform} />
+        <PracticeShow platform={platform} run={run} />
       ) : (
         <Columns
           left={
@@ -274,6 +275,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
           right={
             <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
               <LivePreview />
+              <NextBack platform={platform} run={run} />
               <MarkerJumps />
               {/* Session 26a's order: LIVE, Audio, the stage screen, messages, timers, props, Looks, then More
                 tools folded away. */}

@@ -48,6 +48,8 @@ test('an output given up on is Stopped in Screens and the status line, never a m
   await expect(row.getByTestId('screen-state')).toHaveText(/^Stopped/u);
   await expect(row.getByTestId('screen-stopped')).toContainText('tries it again by itself');
   await expect(win.getByTestId('screens-summary')).toContainText('1 stopped', { timeout: 5000 });
+  // Its next step is the row's one primary (Session 26g).
+  await expect(row.getByTestId('screen-try-again')).toHaveAttribute('data-variant', 'primary');
   await row.getByTestId('screen-try-again').click();
   await expect(row.getByTestId('screen-state')).toHaveText(/^Showing/u, { timeout: 20_000 });
   await expect(out.locator('[data-lang="en"]')).toHaveText(TEST_LINES.en);

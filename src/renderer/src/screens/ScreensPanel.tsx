@@ -130,7 +130,9 @@ function ScreenRow({
             <span className="text-xs text-danger-fg" data-testid="screen-stopped">
               It kept failing, so it is black for now. Drashti tries it again by itself every few minutes.
             </span>
+            {/* The stopped screen's next step, its one primary (Session 26g). */}
             <Button
+              variant="primary"
               size="sm"
               data-testid="screen-try-again"
               onClick={() => void nodesAction(() => window.drashti.nodes.reload(null, screen.id))}

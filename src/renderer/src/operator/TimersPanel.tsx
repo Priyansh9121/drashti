@@ -115,7 +115,7 @@ function TimerForm({ initial, onDone }: { initial: TimerState | null; onDone: ()
         </p>
       )}
       <div className="flex gap-2">
-        <Button type="submit" variant="primary" size="sm">
+        <Button type="submit" variant="secondary" size="sm">
           Save
         </Button>
         <Button size="sm" onClick={onDone}>
@@ -174,7 +174,7 @@ function TimerRow({ t, shown, onEdit }: { t: TimerState; shown: boolean; onEdit:
         <IconButton
           icon={Play}
           label="Start"
-          variant="primary"
+          variant="secondary"
           size="sm"
           onClick={() => void dispatch({ type: 'startTimer', timerId: t.id })}
         />
