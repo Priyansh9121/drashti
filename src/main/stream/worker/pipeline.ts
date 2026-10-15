@@ -9,6 +9,7 @@ import type { MkvCluster } from './mkv';
 import { AUDIO_TRACK, MkvSplitter, MkvWriter, retimeCluster, VIDEO_TRACK } from './mkv';
 import { type Progress, ProgressReader } from './progress';
 import type { FromProgram, WorkerLive, WorkerRecording, WorkerStatus } from './protocol';
+import { ffmpegEnv } from './ffmpeg-env';
 
 /*
  * The stream's pipeline, in the worker process:
@@ -32,6 +33,8 @@ import type { FromProgram, WorkerLive, WorkerRecording, WorkerStatus } from './p
 export interface PipelineHooks {
   status(status: WorkerStatus): void;
   log(level: 'info' | 'warn', message: string): void;
+  /** Tests: each line the connection's FFmpeg says, as it says it (before anything is hidden). */
+  connectionLine?(line: string): void;
   /** Free bytes on the disk holding this folder (a stand-in in tests; the disk's own figure otherwise). */
   freeBytes?(dir: string): number | null;
 }
@@ -135,8 +138,8 @@ export function connectionMessage(lastLines: readonly string[]): string {
  * an address. A secure address (rtmps://) is checked against this authorities
  * file when there is one (macOS: the system's; see ../tls.ts).
  */
-export function connectionArgs(target: string, caFile: string | null): string[] {
-  const secure = /^rtmps:\/\//iu.test(target) && caFile !== null;
+export function connectionArgs(url: string, key: string, caFile: string | null): string[] {
+  const secure = /^rtmps:\/\//iu.test(url) && caFile !== null;
   return [
     '-hide_banner',
     '-loglevel',
@@ -162,7 +165,12 @@ export function connectionArgs(target: string, caFile: string | null): string[] 
     '-rw_timeout',
     '10000000',
     ...(secure ? ['-ca_file', caFile] : []),
-    target,
+    // The key apart from the address (Session 28, decision 17): FFmpeg names the address in what it says,
+    // so the key never shows there. It is still on FFmpeg's command line, which other programs on this
+    // computer can read while it is live (the admin guide says so).
+    '-rtmp_playpath',
+    key,
+    url.replace(/\/+$/u, ''),
   ];
 }
 
@@ -360,7 +368,7 @@ export class StreamPipeline {
       'matroska',
       'pipe:1',
     ];
-    const child = spawn(this.ffmpeg, args, { stdio: 'pipe', windowsHide: true });
+    const child = spawn(this.ffmpeg, args, { stdio: 'pipe', windowsHide: true, env: ffmpegEnv() });
     belowNormal(child.pid);
     this.encodeProcess = child;
     this.log(
@@ -640,10 +648,10 @@ export class StreamPipeline {
     this.retryTimer = null;
     this.pushLines = [];
     this.pushProgress = null;
-    const target = `${wanted.url.replace(/\/+$/u, '')}/${wanted.key}`;
-    const child = spawn(this.ffmpeg, connectionArgs(target, this.caFile), {
+    const child = spawn(this.ffmpeg, connectionArgs(wanted.url, wanted.key, this.caFile), {
       stdio: 'pipe',
       windowsHide: true,
+      env: ffmpegEnv(),
     });
     belowNormal(child.pid);
     this.pusher = child;
@@ -670,6 +678,7 @@ export class StreamPipeline {
         }
       },
       (line) => {
+        this.hooks.connectionLine?.(line);
         const safe = redact(line, this.keys);
         this.pushLines.push(safe);
         if (this.pushLines.length > 20) this.pushLines.shift();

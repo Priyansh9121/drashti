@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { redact } from './stream/redact';
 
 /*
  * The main process's log: to the console, and to a rotating file in the
@@ -27,7 +28,8 @@ const FILE = 'drashti.log';
 export function scrub(text: string): string {
   let out = HOME.length > 1 ? text.split(HOME).join('~') : text;
   out = out.replace(/file:\/\/[^\s"')]+/gu, 'file://…');
-  return out;
+  // The key part of any RTMP address, whatever wrote the line (Session 28; the skills review's MED-4).
+  return redact(out);
 }
 
 function detailText(detail: unknown): string {
