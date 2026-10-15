@@ -217,6 +217,14 @@ export function outputPages(app: ElectronApplication): Page[] {
 }
 
 /**
+ * An output ready to draw the show: its fonts in and its GPU warmed up, unseen (Session 27). A window that
+ * draws no frames (under another, on a CI computer) takes the warm-up's longest, 8 s; a slow one longer.
+ */
+export async function outputReady(page: Page): Promise<void> {
+  await expect(page.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
+}
+
+/**
  * Create a screen group on a display through the bridge (covering the
  * operator window if it is there; a test needs the output). Returns the new screen's id.
  */

@@ -5,7 +5,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { settled } from './a11y';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  outputPages,
+  setUpScreen,
+  outputReady,
+} from './helpers';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import { launchMain, launchNode, pairNode } from './nodes';
 import { canvasPixels } from './pixels';
@@ -101,6 +109,8 @@ async function twoScreens(extra: Record<string, string> = {}) {
   await expect.poll(() => outputPages(app).length).toBe(2);
   const [one, two] = outputPages(app);
   if (!one || !two) throw new Error('two screens expected');
+  // Both ready to draw the show (Session 27's warm-up): one still black would differ from the other.
+  for (const o of [one, two]) await outputReady(o);
   return { app, win, screens: [one, two] as const };
 }
 

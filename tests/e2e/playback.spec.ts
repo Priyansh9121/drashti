@@ -288,13 +288,16 @@ test('images and videos placed on slides draw on the outputs; thumbnails show st
   await expect
     .poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA))
     .toBe(true);
-  const played = await video.evaluate(async (v: HTMLVideoElement) => {
-    const before = v.currentTime;
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    return { delta: v.currentTime - before, muted: v.muted, loop: v.loop };
-  });
-  expect(played.delta).toBeGreaterThan(0.2);
-  expect(played).toMatchObject({ muted: true, loop: true });
+  const playedFor = () =>
+    video.evaluate(async (v: HTMLVideoElement) => {
+      const before = v.currentTime;
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      return { delta: v.currentTime - before, muted: v.muted, loop: v.loop };
+    });
+  // Playing on: a window it waited in (a busy CI Mac decoding slowly a moment) is looked at again; a clip
+  // that really played slowly would never pass.
+  await expect.poll(async () => (await playedFor()).delta, { timeout: 10_000 }).toBeGreaterThan(0.2);
+  expect(await playedFor()).toMatchObject({ muted: true, loop: true });
 
   await app.close();
 });

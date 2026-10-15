@@ -170,6 +170,10 @@ test('a key and fill pair draws its moving lower third alike at every held momen
   });
   expect(screens.map((s) => s.feed)).toEqual(['fill', 'key']);
   await expect.poll(() => outputPages(app).length).toBe(2);
+  // Each page drawn far enough to say its feed (a window open before its page has drawn says none).
+  const feeds = () =>
+    Promise.all(outputPages(app).map((p) => p.getByTestId('output-root').getAttribute('data-feed')));
+  await expect.poll(async () => (await feeds()).sort()).toEqual(['fill', 'key']);
   const byFeed = async (feed: string) => {
     for (const p of outputPages(app))
       if ((await p.getByTestId('output-root').getAttribute('data-feed')) === feed) return p;
