@@ -17,15 +17,17 @@ const REDUCED = '(prefers-reduced-motion: reduce)';
  * the frames: Drashti starting, or starting again after a stop in the middle of a show while the
  * screens are put back. Opening lasts until the page has loaded and so has the window's first data
  * (holdOpening: an empty library or playlist list that comes with it is simply there too), and the
- * page is then first idle; or until the operator's first key or click. The first start's welcome is
- * the one arrival on opening: the lamp lighting is its point.
+ * page is then first idle (within a second); or until the operator's first key or click. The first
+ * start's welcome is the one arrival on opening: the lamp lighting is its point.
  */
 let opened = false;
 let loaded = false;
 let holds = 0;
 
+/** The window has opened: what arrives from now on moves (`data-opened` on the page says so). */
 function settle(): void {
   opened = true;
+  document.documentElement.dataset['opened'] = '';
 }
 
 function settleWhenIdle(): void {
@@ -33,7 +35,8 @@ function settleWhenIdle(): void {
   const idle = () => {
     if (holds === 0) settle();
   };
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(idle);
+  // Within a second however busy the page is, so a window kept busy still settles.
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(idle, { timeout: 1000 });
   else setTimeout(idle, 0);
 }
 

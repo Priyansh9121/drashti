@@ -78,7 +78,9 @@ test('the window opens settled with what its first data shows; what comes later 
   await expect(empty).not.toHaveAttribute('data-motion');
   await expect(empty.locator('.lamp-wisp')).toHaveCount(0);
   expect(await moving(win, '.lamp-empty')).toEqual([]);
-  // Settled without a key or a click: the keys sheet, opened from the menu, rises as it arrives.
+  // Settled without a key or a click (the page says so once it has), the keys sheet, opened from the
+  // menu, rises as it arrives.
+  await expect(win.locator('html')).toHaveAttribute('data-opened', '');
   await chooseMenuItem(app, 'keyboard-shortcuts');
   await expect(win.locator('[role="dialog"][data-motion="dialog"]')).toBeVisible();
   await app.close();
