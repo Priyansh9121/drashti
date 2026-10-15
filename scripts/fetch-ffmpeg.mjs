@@ -26,6 +26,7 @@ import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
+import { digestLine, stillAsUnpacked } from './tree-digest.mjs';
 
 export const FFMPEG_VERSION = '9.0.2';
 
@@ -90,7 +91,13 @@ export async function fetchFfmpeg(target) {
   const outDir = join(root, 'vendor', 'ffmpeg', target);
   const out = join(outDir, build.exe);
   const stamp = join(outDir, 'SOURCE.txt');
-  if (existsSync(out) && existsSync(stamp) && readFileSync(stamp, 'utf8').includes(build.sha256)) return out;
+  // Reused only while it is still what was unpacked (Session 30): else unpacked again from the checked download.
+  if (
+    existsSync(out) &&
+    existsSync(stamp) &&
+    stillAsUnpacked(readFileSync(stamp, 'utf8'), outDir, build.sha256)
+  )
+    return out;
   mkdirSync(cacheDir, { recursive: true });
   const zip = join(cacheDir, `${target}.zip`);
   if (!existsSync(zip) || sha256Of(zip) !== build.sha256) {
@@ -113,7 +120,7 @@ export async function fetchFfmpeg(target) {
   rmSync(tmp, { recursive: true, force: true });
   writeFileSync(
     stamp,
-    `FFmpeg ${FFMPEG_VERSION} for ${target}\nfrom ${build.url}\nsha256 of the download ${build.sha256}\nGPL version 3: see LICENSES/ffmpeg/ in Drashti's repository.\n`,
+    `FFmpeg ${FFMPEG_VERSION} for ${target}\nfrom ${build.url}\nsha256 of the download ${build.sha256}\n${digestLine(outDir)}\nGPL version 3: see LICENSES/ffmpeg/ in Drashti's repository.\n`,
   );
   console.log(`FFmpeg ${FFMPEG_VERSION} for ${target}: ${out}`);
   return out;
