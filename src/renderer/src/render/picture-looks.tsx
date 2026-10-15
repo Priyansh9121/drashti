@@ -97,6 +97,7 @@ function holdCopy(url: string): () => void {
   return () => {
     entry.users--;
     if (entry.users > 0) return;
+    // eslint-disable-next-line no-restricted-syntax -- lets go of a copy no screen has drawn for a few seconds: memory, never a frame
     entry.drop = setTimeout(() => {
       if (heldCopies.get(url) !== entry || entry.users > 0) return;
       heldCopies.delete(url);

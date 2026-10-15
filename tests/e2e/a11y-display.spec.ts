@@ -3,13 +3,14 @@ import { chromium, expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, operatorReady } from './helpers';
+import { launchApp, operatorPage, operatorReady, outputPage, setUpScreen } from './helpers';
 import { setUpPlaceholderShow } from './placeholder-show';
 
 /*
  * Accessibility of what is seen (Session 15, WCAG 2.2 AA): the text made
  * larger (200%) loses no control, in Pro Mode, Simple Mode and a dialog;
- * with the computer set to reduce motion, the interface's transitions stop;
+ * with the computer set to reduce motion, the interface's transitions stop
+ * and the audience screens are not touched at all (Session 27);
  * and axe at 1280 x 720 on the screens other specs do not open (Themes, the
  * words editor, the slide editor's picture picker), and on every tab of the
  * phone remote at 375 x 812 (axe's target-size check included).
@@ -112,6 +113,41 @@ test('with the computer set to reduce motion, the interface does not move', asyn
       .filter((ms) => ms > 1),
   );
   expect(moving).toEqual([]);
+  await app.close();
+});
+
+test('with the computer set to reduce motion, an audience screen changes nothing at all (Session 27)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await setUpScreen(win);
+  const out = await outputPage(app);
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const id = (await d.library.listPresentations()).find((p) => p.name === 'Language test slides')?.id ?? '';
+    await d.engine.dispatch({ type: 'goLive', presentationId: id, slideIndex: 0 });
+  });
+  await expect(out.locator('[data-layer="slide"] [data-slide]')).toHaveCount(1);
+  await expect(out.locator('[data-fading="true"]')).toHaveCount(0);
+  // Every element's own motion as the page works it out, its ::before and ::after too.
+  const motion = () =>
+    out.evaluate(() =>
+      [...document.querySelectorAll('*')]
+        .flatMap((el) => [null, '::before', '::after'].map((pseudo) => getComputedStyle(el, pseudo)))
+        .map(
+          (st) =>
+            `${st.transitionProperty} ${st.transitionDuration} ${st.animationName} ${st.animationDuration}`,
+        )
+        .join('\n'),
+    );
+  const before = await motion();
+  const picture = await out.screenshot();
+  // The show computer set to reduce motion: the audience screen's motion is the show's, never touched.
+  await out.emulateMedia({ reducedMotion: 'reduce' });
+  expect(await out.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
+  expect(await motion()).toBe(before);
+  expect((await out.screenshot()).equals(picture)).toBe(true);
   await app.close();
 });
 

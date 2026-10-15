@@ -75,6 +75,7 @@ function wantFrame(): void {
   if (nudging || !track) return;
   const since = frames;
   nudge();
+  // eslint-disable-next-line no-restricted-syntax -- capture's plumbing: a corner repainted (at most 1/255) until the capture gives its first frame
   nudging = setInterval(() => {
     if (frames === since && track) {
       nudge();
@@ -228,6 +229,7 @@ async function capture(): Promise<void> {
     keepLatest(frame.clone());
     frames++;
     document.body.dataset['frames'] = String(frames);
+    // eslint-disable-next-line no-restricted-properties -- capture's plumbing: how often the operator's small preview of the stream is sent
     const now = performance.now();
     if (preview && !previewBusy && now - lastPreview >= 1000 / PREVIEW_FPS) {
       previewBusy = true;
@@ -307,6 +309,7 @@ export function startCapture(level: () => number, sound: () => MediaStreamTrack 
   // each 100 ms sent on, so a short sound is never missed between two reports.
   let loudest = -100;
   let looks = 0;
+  // eslint-disable-next-line no-restricted-syntax -- the sound meter's own reading, never a frame of the picture
   setInterval(() => {
     loudest = Math.max(loudest, levelOf());
     if (++looks < 4) return;

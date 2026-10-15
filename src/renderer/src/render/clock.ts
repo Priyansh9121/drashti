@@ -17,7 +17,23 @@ let held: number | null = null;
 const listeners = new Set<() => void>();
 
 /** The engine's time now (ms since the epoch). */
+// eslint-disable-next-line no-restricted-properties -- the engine's clock itself: this computer's, plus how far Main's is from it
 export const engineNow = (): number => held ?? Date.now() + offset;
+
+/**
+ * The engine's time at the frame being drawn (Session 27; the skills review's MOT-7): what the page's own
+ * animations (the ticker) are timed by, so the words land in their place even on a screen that draws few
+ * frames a second. The engine's time now, less how long ago this frame began by the page's own frame
+ * clock; held, the moment held. Before, it was the page's start (performance.timeOrigin) plus the frame's
+ * time, which can drift from the computer's clock over a long sabha.
+ */
+export function engineFrameNow(): number {
+  if (held !== null) return held;
+  const frame = Number(document.timeline.currentTime);
+  if (!Number.isFinite(frame)) return engineNow();
+  // eslint-disable-next-line no-restricted-properties -- how long ago this frame began, by the page's own frame clock: a length of time, not the time
+  return engineNow() - Math.max(0, performance.now() - frame);
+}
 
 export function setClockOffset(ms: number): void {
   offset = Number.isFinite(ms) ? ms : 0;

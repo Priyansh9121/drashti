@@ -92,6 +92,7 @@ async function drawStill(mediaId: string): Promise<Uint8Array> {
 }
 
 function timeout(ms: number): Promise<never> {
+  // eslint-disable-next-line no-restricted-syntax -- gives up on making a thumbnail's still frame: not a frame of the show
   return new Promise((_, reject) => setTimeout(() => reject(new Error('timed out')), ms));
 }
 

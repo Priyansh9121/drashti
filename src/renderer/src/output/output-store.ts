@@ -26,6 +26,7 @@ export function connectOutput(): void {
   watchMediaReady();
   window.drashti.output.onIdentify((who) => {
     useOutput.setState({
+      // eslint-disable-next-line no-restricted-properties -- Identify's card (setting up, never the show), for its few seconds
       identify: { name: who.name, groupName: who.groupName, until: Date.now() + 5000 },
     });
   });
