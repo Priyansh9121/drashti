@@ -87,5 +87,10 @@ describe('the release gate', () => {
     // A file the sums leave out.
     writeFileSync(join(dir, 'extra.txt'), 'not listed');
     expect((await filesCheck(dir)).map((r) => r.line)).toContain('extra.txt is not in SHA256SUMS.txt.');
+    // A manifest changed into something that is not JSON: said, never thrown (a dry run carries on).
+    appendFileSync(join(dir, 'drashti-update.json'), 'x');
+    const lines = (await filesCheck(dir)).map((r) => r.line);
+    expect(lines).toContain('drashti-update.json does not match its SHA-256 in SHA256SUMS.txt.');
+    expect(lines).toContain('drashti-update.json cannot be read (not JSON).');
   });
 });
