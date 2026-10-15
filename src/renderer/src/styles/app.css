@@ -507,6 +507,10 @@ body.output {
 
 /* Pages for phones and tablets on the network: they scroll as a page does, clear of notches. */
 body.web {
+  /* The lamp's light from the top left, as in the window (Session 26g). */
+  background:
+    radial-gradient(420px 260px at 40px 0, rgb(var(--lamp-rgb) / var(--lamp-window)), transparent 70%),
+    var(--color-ink);
   overflow-y: auto;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
     env(safe-area-inset-left);

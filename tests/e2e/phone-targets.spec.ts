@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { devices, expect, test, webkit } from '@playwright/test';
+import { settled } from './a11y';
 import type { Device } from './devices';
 import { NETWORK_ENV, networkOn, pairByQr, pairingCode, PHONE } from './devices';
 import { launchApp, operatorPage, operatorReady } from './helpers';
@@ -137,6 +138,8 @@ test('the phone pages at 390 × 844: every target 44 px or more, no double-tap z
     await page.getByTestId('remote-back').click();
     const notice = page.getByRole('alert');
     await expect(notice).toBeVisible();
+    // Measured where it settles, once it has risen in (Session 26g).
+    await settled(page);
     expect.soft(await tooSmall(page), 'the remote with a notice').toEqual([]);
   } finally {
     await phone.close();

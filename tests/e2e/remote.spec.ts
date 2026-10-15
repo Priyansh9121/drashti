@@ -109,17 +109,18 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
       await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder chorus line');
 
       // Black-out and the logo, on and off.
-      await actions.getByRole('button', { name: 'Black-out' }).click();
+      // On, each says so in words, as Pro Mode and Simple Mode do (Session 26g), with no aria-pressed.
+      await actions.getByRole('button', { name: 'Black-out', exact: true }).click();
       await expect(output.getByTestId('blackout')).toBeVisible();
-      await expect(actions.getByRole('button', { name: 'Black-out' })).toHaveAttribute(
-        'aria-pressed',
-        'true',
-      );
-      await actions.getByRole('button', { name: 'Black-out' }).click();
+      const on = actions.getByRole('button', { name: 'Black-out is on' });
+      await expect(on).toBeVisible();
+      await expect(on).not.toHaveAttribute('aria-pressed');
+      await on.click();
       await expect(output.getByTestId('blackout')).toHaveCount(0);
-      await actions.getByRole('button', { name: 'Logo' }).click();
+      await actions.getByRole('button', { name: 'Logo', exact: true }).click();
       await expect(output.getByTestId('logo')).toContainText('Placeholder Mandir Logo');
-      await actions.getByRole('button', { name: 'Logo' }).click();
+      await expect(actions.getByRole('button', { name: 'Logo is on' })).toBeVisible();
+      await actions.getByRole('button', { name: 'Logo is on' }).click();
       await expect(output.getByTestId('logo')).toHaveCount(0);
 
       // A timer started, paused and reset; a message filled in, shown and taken off.
