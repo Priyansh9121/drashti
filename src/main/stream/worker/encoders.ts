@@ -49,7 +49,9 @@ function ownOptions(encoder: string, kbps: number): string[] {
     case 'h264_amf':
       return ['-usage', 'lowlatency', '-rc', 'cbr', '-quality', 'speed', '-profile:v', 'high'];
     default:
-      // x264: fast enough on modest computers, with a strict buffer (constant bitrate).
+      // x264: fast enough on modest computers, with a strict buffer (constant bitrate), and a keyframe only
+      // every 2 s (Session 27): a hard cut late in the 2 s (a slide cut in, the screen black before the show)
+      // added one of its own, as the platforms ask it not to.
       return [
         '-preset',
         'veryfast',
@@ -58,7 +60,7 @@ function ownOptions(encoder: string, kbps: number): string[] {
         '-profile:v',
         'high',
         '-x264-params',
-        `nal-hrd=cbr:force-cfr=1:vbv-maxrate=${kbps}:vbv-bufsize=${kbps}`,
+        `nal-hrd=cbr:force-cfr=1:vbv-maxrate=${kbps}:vbv-bufsize=${kbps}:scenecut=0`,
       ];
   }
 }
