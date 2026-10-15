@@ -77,7 +77,10 @@ function manifestFor(base: string, version: string, name: string, body: Buffer):
   };
 }
 
-function service(base: string, extra: { onAir?: () => boolean; current?: string } = {}) {
+function service(
+  base: string,
+  extra: { onAir?: () => boolean; current?: string; node?: boolean; packaged?: boolean } = {},
+) {
   const installed: string[] = [];
   const views: UpdateView[] = [];
   const installer: Installer = {
@@ -100,18 +103,22 @@ function service(base: string, extra: { onAir?: () => boolean; current?: string 
       fetch: (url, init) => fetch(url, init),
       installer,
       onAir: extra.onAir ?? (() => false),
-      autoCheck: {
-        get: () => auto,
-        set: (on) => {
-          auto = on;
-        },
-      },
+      autoCheck: extra.node
+        ? null
+        : {
+            get: () => auto,
+            set: (on) => {
+              auto = on;
+            },
+          },
       now: Date.now,
       changed: (v) => views.push(v),
-      log: () => undefined,
+      log: (_level, message) => logs.push(message),
       bytesPerSecond: 50 * 1024 * 1024,
+      packaged: extra.packaged ?? false,
     });
-  return { make, installed, views, dir };
+  const logs: string[] = [];
+  return { make, installed, views, dir, logs };
 }
 
 const until = async (test: () => boolean) => {
@@ -139,8 +146,9 @@ describe('updates', () => {
     expect(t.installed).toEqual([]);
     expect((await u.setInstallOnQuit(true)).ok).toBe(true);
     expect(u.view().installOnQuit).toBe(true);
-    // The say-so is kept over a restart.
+    // The say-so is kept over a restart, once its file is checked again (Session 30).
     const again = t.make();
+    await until(() => again.view().installOnQuit);
     expect(again.view()).toMatchObject({ phase: 'ready', installOnQuit: true });
     again.quit();
     expect(t.installed).toHaveLength(1);
@@ -199,6 +207,157 @@ describe('updates', () => {
     const u = service(r.base).make();
     const r2 = (await u.check('0.9.0')) as { ok: true; view: UpdateView };
     expect(r2.view).toMatchObject({ phase: 'available', offer: { version: '0.9.0' } });
+  });
+});
+
+describe('a pending update, after a restart (Session 30)', () => {
+  /** What an earlier run's say-so left: pending.json and the file it names. */
+  const pend = (
+    dir: string,
+    version: string,
+    body: Buffer,
+    options: { file?: string; sha512?: string; matchMain?: boolean } = {},
+  ) => {
+    const file = options.file ?? join(dir, `${version}-Drashti-setup-x64.exe`);
+    writeFileSync(file, body);
+    writeFileSync(
+      join(dir, 'pending.json'),
+      JSON.stringify({
+        version,
+        file,
+        sha512: options.sha512 ?? sha(body),
+        ...(options.matchMain ? { matchMain: true } : {}),
+      }),
+    );
+    return file;
+  };
+  const body = Buffer.alloc(50_000, 4);
+
+  it('on Main, an older one is not installed, and is deleted; an equal one too', async () => {
+    for (const version of ['0.9.0', '1.0.0']) {
+      const t = service('http://127.0.0.1:9', { current: '1.0.0' });
+      pend(t.dir, version, body);
+      const u = t.make();
+      await new Promise((r) => setTimeout(r, 200));
+      expect(u.view().installOnQuit).toBe(false);
+      u.quit();
+      expect(t.installed).toEqual([]);
+      expect(existsSync(join(t.dir, 'pending.json'))).toBe(false);
+    }
+  });
+
+  it('a newer one that is as it was installs at quit', async () => {
+    const t = service('http://127.0.0.1:9', { current: '1.0.0' });
+    const file = pend(t.dir, '1.0.1', body);
+    const u = t.make();
+    await until(() => u.view().installOnQuit);
+    u.quit();
+    expect(t.installed).toEqual([file]);
+  });
+
+  it('a file changed after the say-so is refused: at a restart, and at quit', async () => {
+    const t = service('http://127.0.0.1:9', { current: '1.0.0' });
+    const file = pend(t.dir, '1.0.1', body);
+    writeFileSync(file, Buffer.alloc(50_000, 5));
+    const u = t.make();
+    await new Promise((r) => setTimeout(r, 300));
+    u.quit();
+    expect(t.installed).toEqual([]);
+    expect(existsSync(join(t.dir, 'pending.json'))).toBe(false);
+    // Checked, then changed before quitting.
+    const t2 = service('http://127.0.0.1:9', { current: '1.0.0' });
+    const file2 = pend(t2.dir, '1.0.1', body);
+    const u2 = t2.make();
+    await until(() => u2.view().installOnQuit);
+    writeFileSync(file2, Buffer.alloc(60_000, 6));
+    u2.quit();
+    expect(t2.installed).toEqual([]);
+  });
+
+  it('a pending file outside Updates/, or with no checksum, is refused', async () => {
+    const t = service('http://127.0.0.1:9', { current: '1.0.0' });
+    const elsewhere = join(mkdtempSync(join(tmpdir(), 'drashti-elsewhere-')), 'Drashti-setup.exe');
+    pend(t.dir, '1.0.1', body, { file: elsewhere });
+    const u = t.make();
+    await new Promise((r) => setTimeout(r, 200));
+    u.quit();
+    expect(t.installed).toEqual([]);
+    const t2 = service('http://127.0.0.1:9', { current: '1.0.0' });
+    pend(t2.dir, '1.0.1', body, { sha512: '' });
+    const u2 = t2.make();
+    await new Promise((r) => setTimeout(r, 200));
+    u2.quit();
+    expect(t2.installed).toEqual([]);
+  });
+
+  it('on a node, an older one installs only when it was matching Main', async () => {
+    const t = service('http://127.0.0.1:9', { current: '1.0.0', node: true });
+    const file = pend(t.dir, '0.9.0', body, { matchMain: true });
+    const u = t.make();
+    await until(() => u.view().installOnQuit);
+    u.quit();
+    expect(t.installed).toEqual([file]);
+    const t2 = service('http://127.0.0.1:9', { current: '1.0.0', node: true });
+    pend(t2.dir, '0.9.0', body);
+    const u2 = t2.make();
+    await new Promise((r) => setTimeout(r, 200));
+    u2.quit();
+    expect(t2.installed).toEqual([]);
+  });
+
+  it('a node matching Main says so in pending.json, and installs the older version at quit', async () => {
+    const old = Buffer.alloc(1000, 5);
+    const r = await releases({ 'Drashti-0.9.0-setup-x64.exe': old }, (base) =>
+      manifestFor(base, '0.9.0', 'Drashti-0.9.0-setup-x64.exe', old),
+    );
+    const t = service(r.base, { node: true });
+    const u = t.make();
+    await u.check('0.9.0');
+    u.download();
+    await until(() => u.view().phase === 'ready');
+    expect((await u.setInstallOnQuit(true)).ok).toBe(true);
+    expect(JSON.parse(readFileSync(join(t.dir, 'pending.json'), 'utf8'))).toMatchObject({
+      version: '0.9.0',
+      matchMain: true,
+    });
+    const again = t.make();
+    await until(() => again.view().installOnQuit);
+    again.quit();
+    expect(t.installed).toHaveLength(1);
+  });
+});
+
+describe('the manifest (Session 30)', () => {
+  it('over 64 KB is refused, unread (one the schema takes is never that large)', async () => {
+    const body = Buffer.alloc(1000, 2);
+    const r = await releases({ 'Drashti-1.0.1-setup-x64.exe': body }, (base) => ({
+      ...manifestFor(base, '1.0.1', 'Drashti-1.0.1-setup-x64.exe', body),
+      // A field the schema would only leave out: the manifest is otherwise as it should be.
+      padding: 'x'.repeat(70_000),
+    }));
+    const t = service(r.base);
+    const v = (await t.make().check()) as { ok: true; view: UpdateView };
+    expect(v.view).toMatchObject({ phase: 'error', offer: null });
+    expect(t.logs.join('\n')).toContain('larger than 64 KB');
+  });
+
+  it('a node asking for one version refuses a manifest of another', async () => {
+    const body = Buffer.alloc(1000, 5);
+    const r = await releases({ 'Drashti-0.9.1-setup-x64.exe': body }, (base) =>
+      manifestFor(base, '0.9.1', 'Drashti-0.9.1-setup-x64.exe', body),
+    );
+    const t = service(r.base, { node: true });
+    const v = (await t.make().check('0.9.0')) as { ok: true; view: UpdateView };
+    expect(v.view).toMatchObject({ phase: 'error', offer: null });
+  });
+
+  it('packaged, the files must be on GitHub', async () => {
+    const body = Buffer.alloc(1000, 5);
+    const r = await releases({ 'Drashti-1.0.1-setup-x64.exe': body }, (base) =>
+      manifestFor(base, '1.0.1', 'Drashti-1.0.1-setup-x64.exe', body),
+    );
+    const v = (await service(r.base, { packaged: true }).make().check()) as { ok: true; view: UpdateView };
+    expect(v.view).toMatchObject({ phase: 'error', offer: null });
   });
 });
 
