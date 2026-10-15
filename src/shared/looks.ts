@@ -20,8 +20,14 @@ import { groupLanguagesSchema } from './screens-schema';
  * every layer, every language, slides as designed, no mask and the Standard
  * stage layout. A group a Look does not mention has the defaults.
  *
- * The stream group takes only its languages from a Look: its layout stays
- * the Stream panel's, and the Program keeps its own rules (shared/program.ts).
+ * The stream group takes its languages and its Movement from a Look: its
+ * layout stays the Stream panel's, and the Program keeps its own rules
+ * (shared/program.ts).
+ *
+ * Movement (Session 27, docs/design.md section 40): how a group's screens
+ * move between slides. Calm, the default, fades in place; Bold may move, wipe
+ * and zoom the words, while pictures and backgrounds only ever dissolve. A
+ * transition's length is the slide's, whatever the Movement.
  */
 
 /** The picture layers a Look can leave out of a group (audio has no picture). */
@@ -50,6 +56,11 @@ export const LOOK_LAYER_NAMES: Record<LookLayer, string> = {
 export type SlideStyle = 'designed' | 'lowerThird';
 export const SLIDE_STYLES = ['designed', 'lowerThird'] as const satisfies readonly SlideStyle[];
 
+/** How a group's screens move (Session 27): Calm fades in place; Bold may move the words. */
+export type Movement = 'calm' | 'bold';
+export const MOVEMENTS = ['calm', 'bold'] as const satisfies readonly Movement[];
+export const MOVEMENT_NAMES: Record<Movement, string> = { calm: 'Calm', bold: 'Bold' };
+
 /** One group's settings in a Look, as kept in the library and edited in Screens. */
 export interface GroupLook {
   /** The layers its screens show (audience and key/fill groups; stage screens have their own view). */
@@ -63,6 +74,8 @@ export interface GroupLook {
   maskId: string | null;
   /** When nothing is up on its screens: nothing, or the idle rotation once started, or always (shared/idle.ts). */
   idle: IdleWhen;
+  /** How its screens move between slides (Session 27): Calm, the default, or Bold. */
+  movement: Movement;
 }
 
 export const DEFAULT_GROUP_LOOK: GroupLook = {
@@ -72,6 +85,7 @@ export const DEFAULT_GROUP_LOOK: GroupLook = {
   stageLayoutId: null,
   maskId: null,
   idle: 'off',
+  movement: 'calm',
 };
 
 /** A Look as the operator window sees it: every group's settings, the defaults filled in. */
@@ -101,6 +115,8 @@ export interface LiveGroupLook {
   mask: Mask | null;
   /** When nothing is up: the idle rotation, once started or always; or nothing. */
   idle: IdleWhen;
+  /** How its screens move between slides: Calm, or Bold. */
+  movement: Movement;
 }
 
 /** How a group draws when the live Look does not list it (and in previews with no group). */
@@ -111,6 +127,7 @@ export const DEFAULT_LIVE_GROUP_LOOK: LiveGroupLook = {
   stageLayout: null,
   mask: null,
   idle: 'off',
+  movement: 'calm',
 };
 
 export interface LiveLook {
@@ -152,6 +169,7 @@ export const groupLookPatchSchema = z
     stageLayoutId: idSchema.nullable(),
     maskId: idSchema.nullable(),
     idle: z.enum(IDLE_WHENS),
+    movement: z.enum(MOVEMENTS),
   })
   .partial()
   .strict();
@@ -183,6 +201,8 @@ export function readGroupLook(raw: unknown): GroupLook {
   if (mask.success) out.maskId = mask.data;
   const idle = z.enum(IDLE_WHENS).safeParse(r['idle']);
   if (idle.success) out.idle = idle.data;
+  const movement = z.enum(MOVEMENTS).safeParse(r['movement']);
+  if (movement.success) out.movement = movement.data;
   return out;
 }
 
@@ -196,5 +216,6 @@ export function storedGroupLook(g: GroupLook): Record<string, unknown> {
   if (g.stageLayoutId !== null) out['stageLayoutId'] = g.stageLayoutId;
   if (g.maskId !== null) out['maskId'] = g.maskId;
   if (g.idle !== 'off') out['idle'] = g.idle;
+  if (g.movement !== 'calm') out['movement'] = g.movement;
   return out;
 }

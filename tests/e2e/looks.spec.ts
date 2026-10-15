@@ -137,7 +137,12 @@ test('two groups show their own layers, languages and slide style, and switching
   await hallCard.getByTestId('languages-some').check();
   for (const name of ['Gujarati', 'Hindi', 'English'])
     await hallCard.getByTestId('language-picker').getByRole('checkbox', { name }).uncheck();
+  // The hall moves Bold in this Look (Session 27); the side stays Calm, the default.
+  await expect(hallCard.getByTestId('look-movement')).toHaveValue('calm');
+  await hallCard.getByTestId('look-movement').selectOption('bold');
+  await expect(hallCard.getByTestId('look-movement-note')).toContainText('pictures only dissolve');
   const sideCard = groups.nth(1).getByTestId('group-look');
+  await expect(sideCard.getByTestId('look-movement')).toHaveValue('calm');
   await sideCard.getByTestId('look-layer-messages').uncheck();
   await sideCard.getByTestId('languages-some').check();
   for (const name of ['Hindi', 'Transliteration', 'English'])
@@ -190,6 +195,9 @@ test('two groups show their own layers, languages and slide style, and switching
       lowerThird: [],
       langs: ['gu'],
     });
+  // Bold reaches the hall's screens only.
+  await expect(hall.getByTestId('output-root')).toHaveAttribute('data-movement', 'bold');
+  await expect(side.getByTestId('output-root')).toHaveAttribute('data-movement', 'calm');
   // Both painted the switch's revision (in step: the same engine change).
   for (const out of [hall, side])
     await expect
@@ -199,6 +207,7 @@ test('two groups show their own layers, languages and slide style, and switching
   await panel.getByRole('button', { name: /Standard/ }).click();
   await expect.poll(async () => (await drawn(hall)).langs).toEqual(['gu', 'hi', 'translit', 'en']);
   await expect.poll(async () => (await drawn(side)).messages).toBe(true);
+  await expect(hall.getByTestId('output-root')).toHaveAttribute('data-movement', 'calm');
   await app.close();
 });
 
@@ -237,7 +246,14 @@ test('a library from before Looks keeps exactly what each group showed', async (
   expect(liveId).toBe(looks[0]?.id);
   const snapshot = await win.evaluate(() => (globalThis as PageGlobals).drashti.screens.get());
   const all = ['background', 'slide', 'props', 'messages', 'ticker', 'masks'];
-  const standard = { layers: all, slides: 'designed', stageLayoutId: null, maskId: null, idle: 'off' };
+  const standard = {
+    layers: all,
+    slides: 'designed',
+    stageLayoutId: null,
+    maskId: null,
+    idle: 'off',
+    movement: 'calm',
+  };
   // And the stream's group, made at the upgrade (YouTube in Screens, Session 26): every language.
   expect(snapshot.groups.map((g) => [g.name, g.role, looks[0]?.groups[g.id]])).toEqual([
     ['Hall', 'audience', { ...standard, languages: ['translit', 'gu'] }],
@@ -338,6 +354,17 @@ test('recovery brings the Look back; Simple Mode refuses switching; the remote a
     second,
   );
   expect(changeRefused.ok).toBe(false);
+  // Movement is never shown in Simple Mode, nor changed from it (Session 27).
+  await expect(win.getByTestId('look-movement')).toHaveCount(0);
+  const movementRefused = await win.evaluate(
+    async ({ look }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const group = (await d.screens.get()).groups[0]?.id ?? '';
+      return d.looks.setGroup(look, group, { movement: 'bold' });
+    },
+    { look: second },
+  );
+  expect(movementRefused.ok).toBe(false);
   expect((await bridge(win).snapshot()).state.look.id).toBe(standard);
   // Back to Pro Mode (the word typed), then the second Look live, and an unexpected stop.
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro'));

@@ -15,9 +15,11 @@ import type { LiveZoom, PictureLook } from '../picture-look';
  * every remote Drashti Node) holds a copy that it keeps in sync from
  * snapshots and patches. It must stay plain, JSON-serializable data.
  *
- * Bump ENGINE_STATE_VERSION whenever the shape changes incompatibly.
+ * Bump ENGINE_STATE_VERSION whenever the shape changes incompatibly. 9 (Session 27): each Look group's
+ * Movement, new transition kinds, a message's shownAt; an older phone, browser page or node says
+ * 'incompatible' rather than drawing a kind it does not know.
  */
-export const ENGINE_STATE_VERSION = 8;
+export const ENGINE_STATE_VERSION = 9;
 
 export type LayerName = 'audio' | 'background' | 'slide' | 'props' | 'messages' | 'ticker' | 'masks';
 

@@ -48,6 +48,7 @@ describe('a group’s settings in a Look', () => {
         stageLayoutId: 'l1',
         maskId: 'm1',
         idle: 'always',
+        movement: 'bold',
       }),
     ).toEqual({
       layers: ['slide', 'props'],
@@ -56,6 +57,7 @@ describe('a group’s settings in a Look', () => {
       stageLayoutId: 'l1',
       maskId: 'm1',
       idle: 'always',
+      movement: 'bold',
     });
     expect(readGroupLook(undefined)).toEqual(DEFAULT_GROUP_LOOK);
     expect(
@@ -64,16 +66,20 @@ describe('a group’s settings in a Look', () => {
         languages: ['gu', 'gu'],
         slides: 'sideways',
         idle: 'often',
+        movement: 'wild',
       }),
     ).toEqual({
-      // The layers in drawing order; the languages, slide style and idle setting unreadable, so the defaults.
+      // The layers in drawing order; the languages, slide style, idle setting and Movement unreadable, so the
+      // defaults (a Look from before Session 27 has no Movement: Calm).
       layers: ['slide', 'props'],
       languages: null,
       slides: 'designed',
       stageLayoutId: null,
       maskId: null,
       idle: 'off',
+      movement: 'calm',
     });
+    expect(readGroupLook({ movement: 'bold' }).movement).toBe('bold');
   });
 });
 
@@ -107,6 +113,7 @@ describe('Looks', () => {
         stageLayout: null,
         mask: null,
         idle: 'off',
+        movement: 'calm',
       },
       [t.stage]: { ...DEFAULT_LIVE_GROUP_LOOK, languages: ['gu'] },
     });
@@ -121,6 +128,11 @@ describe('Looks', () => {
     const t = setup();
     t.looks.setGroup(t.standard, t.hall, { languages: ['translit', 'en'] });
     expect(t.engine.current.look.groups[t.hall]?.languages).toEqual(['translit', 'en']);
+    // Bold for the hall reaches the hall's screens only (Session 27); the stage group stays Calm.
+    expect(t.looks.setGroup(t.standard, t.hall, { movement: 'bold' }).ok).toBe(true);
+    expect(t.engine.current.look.groups[t.hall]?.movement).toBe('bold');
+    expect(t.engine.current.look.groups[t.stage]?.movement).toBe('calm');
+    expect(t.repo.get(t.standard)?.groups[t.hall]?.movement).toBe('bold');
     t.looks.create('Placeholder festival', null);
     const festival = t.repo.list()[1]?.id ?? '';
     t.engine.dispatch({ type: 'setLook', lookId: festival });
@@ -154,6 +166,7 @@ describe('Looks', () => {
     expect(t.looks.setGroup(t.standard, t.hall, { languages: [] })).toMatchObject({ ok: false });
     expect(t.looks.setGroup(t.standard, t.hall, { layers: ['slide', 'slide'] })).toMatchObject({ ok: false });
     expect(t.looks.setGroup(t.standard, t.hall, { slides: 'sideways' })).toMatchObject({ ok: false });
+    expect(t.looks.setGroup(t.standard, t.hall, { movement: 'wild' })).toMatchObject({ ok: false });
     expect(t.looks.setGroup(t.standard, t.hall, { shape: 'x' })).toMatchObject({ ok: false });
     expect(t.looks.setGroup(t.standard, 'gone', { languages: ['gu'] })).toMatchObject({ ok: false });
     expect(t.looks.setGroup('gone', t.hall, { languages: ['gu'] })).toMatchObject({ ok: false });

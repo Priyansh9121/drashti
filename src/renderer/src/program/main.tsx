@@ -45,8 +45,9 @@ function Program() {
   const soundState = useProgram((s) => s.sound);
   const state = useEngine((s) => s.state);
   const rev = useEngine((s) => s.rev);
-  // The stream group's languages in the live Look (switching the Look changes them on air).
-  const languages = groupLookIn(state?.look, context?.groupId).languages;
+  // The stream group's languages and Movement in the live Look (switching the Look changes them on air).
+  const streamLook = groupLookIn(state?.look, context?.groupId);
+  const languages = streamLook.languages;
   const [fontsReady, setFontsReady] = useState(false);
   // Tests only: the clock held at one moment, as the outputs' are, so the stream's picture can be compared
   // with the hall's part-way through a transition (Session 27).
@@ -80,6 +81,7 @@ function Program() {
       data-testid="program-root"
       data-layout={context?.layout ?? ''}
       data-languages={languages?.join(',') ?? 'all'}
+      data-movement={streamLook.movement}
       data-camera={cameraState}
       data-sound={soundState}
       data-fonts={fontsReady ? 'ready' : 'loading'}
@@ -92,6 +94,7 @@ function Program() {
               state={state}
               layout={context.layout}
               languages={languages}
+              movement={streamLook.movement}
               canvas={CANVAS}
               camera={camera}
             />

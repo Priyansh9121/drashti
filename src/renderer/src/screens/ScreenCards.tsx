@@ -339,7 +339,8 @@ function LiveProgram() {
 function StillProgram({ groupId, layout }: { groupId: string | null; layout: StreamLayout }) {
   const state = useEngine((s) => s.state);
   const rev = useEngine((s) => s.rev);
-  const languages = groupLookIn(state?.look, groupId).languages;
+  const streamLook = groupLookIn(state?.look, groupId);
+  const languages = streamLook.languages;
   const picture = state ? programPicture(state, layout, languages) : null;
   return (
     <div
@@ -352,7 +353,14 @@ function StillProgram({ groupId, layout }: { groupId: string | null; layout: Str
       {state && (
         <SceneBoundary resetKey={rev} fallbackClassName="absolute inset-0 bg-black">
           <PlacedInParent content={CANVAS} mode="fit" className="absolute inset-0">
-            <ProgramView state={state} layout={layout} languages={languages} canvas={CANVAS} camera={null} />
+            <ProgramView
+              state={state}
+              layout={layout}
+              languages={languages}
+              movement={streamLook.movement}
+              canvas={CANVAS}
+              camera={null}
+            />
           </PlacedInParent>
         </SceneBoundary>
       )}

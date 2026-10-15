@@ -352,6 +352,7 @@ export const Scene = memo(function Scene({
         data-testid="scene"
         data-canvas={`${canvas.width}x${canvas.height}`}
         data-look-layers={look.layers.join(',')}
+        data-movement={look.movement}
         style={{
           position: 'relative',
           width: canvas.width,

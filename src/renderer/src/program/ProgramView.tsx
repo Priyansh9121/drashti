@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { EngineState } from '../../../shared/engine/state';
 import type { Lang } from '../../../shared/model';
-import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
+import { DEFAULT_LIVE_GROUP_LOOK, type Movement } from '../../../shared/looks';
 import { programPicture } from '../../../shared/program';
 import type { Size } from '../../../shared/scaling';
 import type { StreamLayout } from '../../../shared/stream';
@@ -35,12 +35,15 @@ export function ProgramView({
   state,
   layout,
   languages,
+  movement = 'calm',
   canvas,
   camera,
 }: {
   state: EngineState;
   layout: StreamLayout;
   languages: readonly Lang[] | null;
+  /** The stream group's Movement in the live Look (Session 27): Calm unless chosen. */
+  movement?: Movement;
   canvas: Size;
   camera: MediaStream | null;
 }) {
@@ -52,7 +55,7 @@ export function ProgramView({
           state={state}
           canvas={canvas}
           scaling="fit"
-          look={{ ...DEFAULT_LIVE_GROUP_LOOK, languages }}
+          look={{ ...DEFAULT_LIVE_GROUP_LOOK, languages, movement }}
           ticker={false}
         />
       </div>
