@@ -666,7 +666,13 @@ async function runPerformanceTestWithStream(ctx: PerfRun): ReturnType<typeof run
   const operator = ctx.operatorContents();
   if (!url || !operator) return runPerformanceTest(ctx);
   const folder = mkdtempSync(join(tmpdir(), 'drashti-perf-recording-'));
-  const perf = await startPerfStream(ctx.stream, operator, url, folder);
+  const perf = await startPerfStream(
+    ctx.stream,
+    operator,
+    url,
+    folder,
+    sw('DRASHTI_PERF_STREAM_ALSO') ?? null,
+  );
   try {
     const result = await runPerformanceTest(ctx);
     return { ...result, summary: `${result.summary}; ${perf.summary()}` };

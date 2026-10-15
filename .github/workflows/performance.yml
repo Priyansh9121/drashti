@@ -65,6 +65,11 @@ on:
         description: "An operator's edits (words, a playlist, a theme) every 0.7 s during the import, timed (Session 16)"
         type: boolean
         default: false
+      places:
+        description: 'The streaming check streams to this many places on the runner at once (Several platforms, Session 28)'
+        type: choice
+        options: ['1', '2']
+        default: '1'
       video_cases_packaged:
         description: 'Instead: these video cases (comma-separated) from a packaged Drashti, as on the mandir computers (Session 16)'
         type: string
@@ -142,6 +147,8 @@ jobs:
           DRASHTI_PERF_HANDICAP: ${{ inputs.handicap && '1' || '0' }}
           DRASHTI_PERF_EDITS: ${{ inputs.edits && '1' || '0' }}
           DRASHTI_PERF_SONGS: ${{ inputs.songs }}
+          # The streaming check to two places at once (Session 28).
+          DRASHTI_PERF_PLACES: ${{ inputs.places }}
           DRASHTI_PRIORITY: ${{ inputs.priority != 'as-set' && inputs.priority || '' }}
           # Three outputs: windows, on two pretend displays beside the runner's own, with the music.
           DRASHTI_WINDOWED_OUTPUTS: ${{ inputs.scenario == 'three-outputs' && '1' || '' }}

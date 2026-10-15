@@ -143,29 +143,35 @@ test('slide changes keep reaching the screen within a frame while streaming and 
   const port = await freePort();
   const dir = mkdtempSync(join(tmpdir(), 'drashti-perf-stream-'));
   // FFmpeg on this computer stands in for YouTube; the app's stream key for this is made up.
-  const listener = spawn(
-    ffmpeg ?? '',
-    [
-      '-hide_banner',
-      '-loglevel',
-      'error',
-      '-listen',
-      '1',
-      '-i',
-      `rtmp://127.0.0.1:${port}/live2/test-made-up-key-perf-0000`,
-      '-c',
-      'copy',
-      '-f',
-      'flv',
-      '-y',
-      join(dir, 'received.flv'),
-    ],
-    { stdio: 'ignore' },
-  );
+  const listen = (at: number, file: string) =>
+    spawn(
+      ffmpeg ?? '',
+      [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-listen',
+        '1',
+        '-i',
+        `rtmp://127.0.0.1:${at}/live2/test-made-up-key-perf-0000`,
+        '-c',
+        'copy',
+        '-f',
+        'flv',
+        '-y',
+        join(dir, file),
+      ],
+      { stdio: 'ignore' },
+    );
+  const listeners = [listen(port, 'received.flv')];
+  // Two places at once (Session 28, the Performance workflow's "places"): a second listener here too.
+  const second = process.env['DRASHTI_PERF_PLACES'] === '2' ? await freePort() : null;
+  if (second) listeners.push(listen(second, 'received-2.flv'));
   try {
     const profile = process.env['DRASHTI_PERF_PROFILE'];
     const { code, result, log } = await runPerformanceTest({
       DRASHTI_PERF_STREAM: `rtmp://127.0.0.1:${port}/live2`,
+      ...(second ? { DRASHTI_PERF_STREAM_ALSO: `rtmp://127.0.0.1:${second}/live2` } : {}),
       DRASHTI_TEST_FAKE_DEVICES: '1',
       // Its own profile, beside the first check's.
       ...(profile ? { DRASHTI_PERF_PROFILE: `${profile}-stream` } : {}),
@@ -183,6 +189,6 @@ test('slide changes keep reaching the screen within a frame while streaming and 
     expect(result?.passed).toBe(true);
     expect(code).toBe(0);
   } finally {
-    listener.kill('SIGKILL');
+    for (const l of listeners) l.kill('SIGKILL');
   }
 });
