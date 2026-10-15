@@ -79,9 +79,15 @@ export function ProgramView({
           {state.layers.background?.kind === 'color' && (
             <div style={{ position: 'absolute', inset: 0, background: state.layers.background.color }} />
           )}
-          <BackgroundMedia layer={state.layers.background} annotate={false} />
+          <BackgroundMedia layer={state.layers.background} annotate={false} movement={movement} />
           {picture.full === 'slide' && (
-            <SlideLayerView layer={state.layers.slide} canvas={canvas} scaling="fit" languages={languages} />
+            <SlideLayerView
+              layer={state.layers.slide}
+              canvas={canvas}
+              scaling="fit"
+              languages={languages}
+              movement={movement}
+            />
           )}
         </div>
       )}

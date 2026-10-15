@@ -12,6 +12,8 @@ import {
 import { OBJECT_FIT } from './media-style';
 import { type Playback, startPlayback } from './playback';
 import { engineNow } from './clock';
+import { dissolveCurve } from './transition-frame';
+import type { Movement } from '../../../shared/looks';
 import { Looked } from './picture-looks';
 import { backgroundShowing } from '../../../shared/picture-look';
 import { PreviewPicture, usePreviewsOnly } from './previews';
@@ -148,14 +150,16 @@ function ImageSlot({
 }
 
 /**
- * Set the dissolve's opacities on a background's pictures: the old one out, the new one in. A picture
- * not in a dissolve is whole (Session 23: one left with an opacity from a dissolve stayed dim).
+ * Set the dissolve's opacities on a background's pictures: the old one out, the new one in, on the same
+ * curve as the slide's (Session 27: eased, in + out = 1). A picture not in a dissolve is whole (Session 23:
+ * one left with an opacity from a dissolve stayed dim).
  */
-function setFade(root: HTMLElement | null, start: number | null, ms: number): number {
+function setFade(root: HTMLElement | null, start: number | null, ms: number, movement: Movement): number {
   const p = start === null ? 1 : Math.min(1, Math.max(0, (engineNow() - start) / ms));
+  const e = dissolveCurve(movement)(p);
   for (const el of root?.querySelectorAll<HTMLElement>('[data-bg-wrap]') ?? []) {
     const role = el.dataset['bgFade'];
-    el.style.opacity = role === undefined ? '' : String(role === 'out' ? 1 - p : p);
+    el.style.opacity = role === undefined ? '' : String(role === 'out' ? 1 - e : e);
   }
   return p;
 }
@@ -169,17 +173,18 @@ function useFade(
   root: React.RefObject<HTMLDivElement | null>,
   slots: Slots,
   dispatch: Dispatch<SlotEvent>,
+  movement: Movement,
 ): void {
   const start = slots.fade?.start ?? null;
   const ms = slots.fade?.ms ?? 0;
   useLayoutEffect(() => {
-    setFade(root.current, start, ms);
+    setFade(root.current, start, ms, movement);
   });
   useEffect(() => {
     if (start === null) return;
     let frame = 0;
     const tick = () => {
-      if (setFade(root.current, start, ms) >= 1) {
+      if (setFade(root.current, start, ms, movement) >= 1) {
         dispatch({ type: 'faded', start });
         return;
       }
@@ -189,7 +194,7 @@ function useFade(
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [root, start, ms, dispatch]);
+  }, [root, start, ms, dispatch, movement]);
 }
 
 /**
@@ -198,7 +203,12 @@ function useFade(
  * immediate. `annotate` marks a file that cannot play (the operator preview).
  * On a phone or tablet it is a still preview instead (render/previews.tsx).
  */
-export function BackgroundMedia(props: { layer: BackgroundLayer | null; annotate?: boolean }) {
+export function BackgroundMedia(props: {
+  layer: BackgroundLayer | null;
+  annotate?: boolean;
+  /** How this screen's group moves (Session 27): its dissolve's curve. */
+  movement?: Movement;
+}) {
   const previews = usePreviewsOnly();
   if (!previews) return <BackgroundPlayer {...props} />;
   const layer = props.layer;
@@ -225,9 +235,11 @@ export function BackgroundMedia(props: { layer: BackgroundLayer | null; annotate
 function BackgroundPlayer({
   layer,
   annotate = false,
+  movement = 'calm',
 }: {
   layer: BackgroundLayer | null;
   annotate?: boolean;
+  movement?: Movement;
 }) {
   const [slots, dispatch] = useReducer(slotsReducer, NO_SLOTS);
   // Follow the engine during render, so a new background starts loading in the same commit.
@@ -238,7 +250,7 @@ function BackgroundPlayer({
     dispatch({ type: 'layer', layer, joined: seen === undefined });
   }
   const rootRef = useRef<HTMLDivElement>(null);
-  useFade(rootRef, slots, dispatch);
+  useFade(rootRef, slots, dispatch, movement);
   // On a node: a background that failed because its copy had not arrived loads again when it lands,
   // once for each landing (a try that fails again waits for the next one).
   const shown = slots.shown;

@@ -371,7 +371,7 @@ export const Scene = memo(function Scene({
                     style={{ position: 'absolute', inset: 0, background: background.color }}
                   />
                 )}
-                <BackgroundMedia layer={background} annotate={annotate} />
+                <BackgroundMedia layer={background} annotate={annotate} movement={look.movement} />
                 {idle && <IdleRotation idle={state.idle} languages={look.languages} canvas={canvas} />}
                 <SlideLayerView
                   layer={shown('slide') ? layers.slide : null}
@@ -380,6 +380,7 @@ export const Scene = memo(function Scene({
                   languages={look.languages}
                   slides={look.slides}
                   lift={bandHeight}
+                  movement={look.movement}
                 />
                 {shown('props') && <PropsLayer props={layers.props} canvas={canvas} scaling={scaling} />}
                 {shown('messages') && layers.messages.length > 0 && (
