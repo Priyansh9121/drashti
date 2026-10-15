@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { SlideLayer } from '../../../shared/engine/state';
 import { languageView } from '../../../shared/language-view';
-import type { SlideStyle } from '../../../shared/looks';
+import type { Movement, SlideStyle } from '../../../shared/looks';
 import type { Lang, TransitionKind } from '../../../shared/model';
 import { SLOW_ZOOM_SCALE } from '../../../shared/model';
 import { hasPicture, lowerThird } from '../../../shared/program';
@@ -58,6 +58,24 @@ export function nextShowing(prev: Showing, layer: SlideLayer | null, now: number
 /** How far a fade is (0 to 1) at `now`. */
 export const fadeAt = (fade: { ms: number; start: number }, now: number): number =>
   Math.min(1, Math.max(0, (now - fade.start) / fade.ms));
+
+/** The two slides and the black as the transition has them at `p` (nothing set when not in one). */
+function paintLayers(
+  els: { in: HTMLDivElement | null; out: HTMLDivElement | null; black: HTMLDivElement | null },
+  kind: TransitionKind | null,
+  p: number,
+  movement: Movement,
+): void {
+  const frame = kind === null ? null : transitionFrame(kind, p, movement);
+  const set = (el: HTMLDivElement | null, opacity: string, transform: string) => {
+    if (!el) return;
+    el.style.opacity = opacity;
+    el.style.transform = transform;
+  };
+  set(els.in, frame ? String(frame.in.opacity) : '', frame?.in.transform ?? '');
+  set(els.out, frame ? String(frame.out.opacity) : '', frame?.out.transform ?? '');
+  if (els.black) els.black.style.opacity = frame ? String(frame.black) : '0';
+}
 
 /** The longest the fade waits for a slide's media before it starts anyway. */
 const MEDIA_WAIT_MS = 3000;
@@ -170,6 +188,7 @@ export function SlideLayerView({
   languages = null,
   slides = 'designed',
   lift = 0,
+  movement = 'calm',
 }: {
   layer: SlideLayer | null;
   canvas: Size;
@@ -180,6 +199,8 @@ export function SlideLayerView({
   slides?: SlideStyle;
   /** Canvas pixels a lower third keeps clear at the bottom (the ticker's band). */
   lift?: number;
+  /** How this screen's group moves (its Look, Session 27): Calm or Bold. */
+  movement?: Movement;
 }) {
   // A screen that comes along later shows the slide as it is (no fade).
   const [showing, setShowing] = useState<Showing>(() => ({ on: layer, off: null, fade: null }));
@@ -227,7 +248,7 @@ export function SlideLayerView({
     let frame = 0;
     const tick = () => {
       const p = fadeAt({ ms, start }, engineNow());
-      paint(kind, p);
+      paintLayers({ in: inRef.current, out: outRef.current, black: blackRef.current }, kind, p, movement);
       rootRef.current?.setAttribute('data-fade', p.toFixed(3));
       if (p >= 1) {
         setShowing((s) => (s.fade?.start === start ? { on: s.on, off: null, fade: null } : s));
@@ -239,33 +260,25 @@ export function SlideLayerView({
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [start, ms, kind]);
-
-  /** The two slides and the black as the transition has them at `p` (nothing set when not in one). */
-  function paint(k: TransitionKind | null, p: number) {
-    const frame = k === null ? null : transitionFrame(k, p);
-    const set = (el: HTMLDivElement | null, opacity: string, transform: string) => {
-      if (!el) return;
-      el.style.opacity = opacity;
-      el.style.transform = transform;
-    };
-    set(inRef.current, frame ? String(frame.in.opacity) : '', frame?.in.transform ?? '');
-    set(outRef.current, frame ? String(frame.out.opacity) : '', frame?.out.transform ?? '');
-    if (blackRef.current) blackRef.current.style.opacity = frame ? String(frame.black) : '0';
-  }
+  }, [start, ms, kind, movement]);
 
   // After every render, before it is painted: where the transition is now (the frames between renders set
   // it too).
   const fading = fade !== null;
   useLayoutEffect(() => {
-    paint(fading ? kind : null, start !== null ? fadeAt({ ms, start }, engineNow()) : 0);
+    paintLayers(
+      { in: inRef.current, out: outRef.current, black: blackRef.current },
+      fading ? kind : null,
+      start !== null ? fadeAt({ ms, start }, engineNow()) : 0,
+      movement,
+    );
   });
 
   if (!on) return null;
   // One list, keyed by slide and time, so the slide going away keeps its elements (its videos play on).
   const shown = fading && off ? [off, on] : [on];
   // A fade adds the new slide light for light over the old; the others draw it over.
-  const adds = fading && off !== null && transitionFrame(kind, 0).add;
+  const adds = fading && off !== null && transitionFrame(kind, 0, movement).add;
   return (
     <div
       ref={rootRef}

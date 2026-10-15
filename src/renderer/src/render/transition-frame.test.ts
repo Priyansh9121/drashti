@@ -1,17 +1,51 @@
 import { describe, expect, it } from 'vitest';
 import { SLOW_ZOOM_MS, SLOW_ZOOM_SCALE } from '../../../shared/model';
-import { easeInOut, takesTime, transitionFrame, zoomAt } from './transition-frame';
+import { EASE } from './easing';
+import { dissolveCurve, easeInOut, takesTime, transitionFrame, zoomAt } from './transition-frame';
 
 /* How each transition draws its two slides part-way (Session 26d): pure, so every screen draws the same. */
 
 describe('a transition, part-way', () => {
-  it('a fade: the old slide out and the new one in, the new one added light for light', () => {
+  it('a fade: the old slide out and the new one in, the new one added light for light, eased (Calm)', () => {
+    // Smoothstep: 0.25 in is 0.15625 of the way (Session 27; it was linear).
     expect(transitionFrame('dissolve', 0.25)).toEqual({
-      in: { opacity: 0.25, transform: '' },
-      out: { opacity: 0.75, transform: '' },
+      in: { opacity: 0.15625, transform: '' },
+      out: { opacity: 0.84375, transform: '' },
       black: 0,
       add: true,
     });
+    expect(transitionFrame('dissolve', 0.5).in.opacity).toBe(0.5);
+    expect(transitionFrame('dissolve', 1)).toMatchObject({ in: { opacity: 1 }, out: { opacity: 0 } });
+  });
+
+  it('a fade never dips or clips: in + out = 1 at 101 points, Calm and Bold, a slow zoom too (Session 27)', () => {
+    for (const kind of ['dissolve', 'zoom'] as const)
+      for (const movement of ['calm', 'bold'] as const)
+        for (let i = 0; i <= 100; i++) {
+          const f = transitionFrame(kind, i / 100, movement);
+          expect(f.in.opacity + f.out.opacity, `${kind} ${movement} at ${String(i)}%`).toBeCloseTo(1, 12);
+          if (i > 0)
+            expect(f.in.opacity).toBeGreaterThanOrEqual(
+              transitionFrame(kind, (i - 1) / 100, movement).in.opacity,
+            );
+        }
+  });
+
+  it('Bold eases in and out on its own curve, the same at the ends: only a group that chose it draws it', () => {
+    expect(dissolveCurve('calm')).toBe(EASE.smooth);
+    expect(dissolveCurve('bold')).toBe(EASE.inOut);
+    const calm = transitionFrame('dissolve', 0.25, 'calm').in.opacity;
+    const bold = transitionFrame('dissolve', 0.25, 'bold').in.opacity;
+    expect(bold).toBeLessThan(calm);
+    expect(transitionFrame('dissolve', 0.5, 'bold').in.opacity).toBeCloseTo(0.5, 6);
+    expect(transitionFrame('dissolve', 1, 'bold')).toEqual(transitionFrame('dissolve', 1, 'calm'));
+    expect(transitionFrame('dissolve', 0, 'bold')).toEqual(transitionFrame('dissolve', 0, 'calm'));
+  });
+
+  it('the cut, the fade through black and the slide draw the same whatever the Movement', () => {
+    for (const kind of ['cut', 'fade-black', 'slide'] as const)
+      for (const p of [0, 0.3, 0.7, 1])
+        expect(transitionFrame(kind, p, 'bold')).toEqual(transitionFrame(kind, p, 'calm'));
   });
 
   it('a fade through black: black over the old slide until half-way, then going from over the new one', () => {
