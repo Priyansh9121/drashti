@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { EASE } from '../../src/renderer/src/render/easing';
 import { dipsAndOvershoots, type FrameLight, swings } from '../../src/shared/flash';
 import type { TransitionKind } from '../../src/shared/model';
 import type { PageGlobals } from './helpers';
@@ -325,5 +326,113 @@ test('the held clock reaches the stream’s picture: part-way through a dissolve
     Math.max(...off),
     'where the stream is in the dissolve against the hall, frame by frame',
   ).toBeLessThan(0.02);
+  await app.close();
+});
+
+test('a Bold move draws the words apart: the pictures and the background only dissolve, then the slide is whole again; cuts and Calm dissolves draw whole slides', async () => {
+  test.setTimeout(240_000);
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_TEST_CLOCK_HOLD: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-apart-'));
+  const files = await Promise.all([
+    drawPicture(win, join(dir, 'Placeholder dark.png'), [...DARK]),
+    drawPicture(win, join(dir, 'Placeholder bright.png'), [...BRIGHT]),
+    drawPicture(win, join(dir, 'Placeholder backdrop one.png'), plain('40,90,40')),
+    drawPicture(win, join(dir, 'Placeholder backdrop two.png'), plain('200,120,60')),
+  ]);
+  const [dark = '', bright = '', backOne = '', backTwo = ''] = await importAndGetIds(win, files);
+  const MS = 1000;
+  // Pictures on the top half (over the background below), words across the middle.
+  const id = await makeSlides(
+    win,
+    'Placeholder apart slides',
+    [
+      { picture: dark, words: 'Placeholder words one', backgroundCue: backOne },
+      { picture: bright, words: 'Placeholder words two', backgroundCue: backTwo },
+    ],
+    { kind: 'dissolve', durationMs: MS },
+  );
+  // Each picture covers only the top half of the slide, so the background shows below it.
+  await win.evaluate(async (id) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const opened = await d.library.slidesForEdit(id);
+    if (!opened.ok) throw new Error(opened.message);
+    for (const slide of opened.doc.groups.flatMap((g) => g.slides))
+      for (const el of slide.elements)
+        if (el.kind === 'image')
+          el.frame = { x: 0, y: 0, width: opened.doc.width, height: opened.doc.height / 2 };
+    const saved = await d.library.saveSlides(id, opened.doc, opened.stamp);
+    if (!saved.ok) throw new Error(saved.message);
+  }, id);
+  await setUpScreen(win);
+  const out = await outputPage(app);
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  const movement = (m: 'calm' | 'bold') =>
+    win.evaluate(async (m) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const group = (await d.screens.get()).groups.find((g) => g.role === 'audience')?.id ?? '';
+      const set = await d.looks.setGroup((await d.engine.snapshot()).state.look.id, group, { movement: m });
+      if (!set.ok) throw new Error(set.message);
+    }, m);
+  // A point on the slide's picture (top left) and one on the background (bottom left), both clear of the words.
+  const PICTURE = { x: 240, y: 200 };
+  const BACKGROUND = { x: 240, y: 960 };
+  const mixed = (a: readonly number[], b: readonly number[], e: number) =>
+    a.map((c, i) => c * (1 - e) + (b[i] ?? 0) * e);
+  const near = (got: readonly number[] | undefined, want: readonly number[], within = 18) =>
+    got !== undefined && want.every((c, i) => Math.abs((got[i] ?? -999) - c) <= within);
+
+  const run = async (m: 'calm' | 'bold') => {
+    await movement(m);
+    await expect(out.getByTestId('output-root')).toHaveAttribute('data-movement', m);
+    await holdClock(app, null);
+    await goLive(win, id, 0);
+    await expect(out.locator('[data-layer="slide"][data-fading="true"]')).toHaveCount(0, { timeout: 10_000 });
+    await expect(out.locator('[data-layer="background"] img[data-state="ready"]')).not.toHaveCount(0);
+    await holdClock(app, Date.now() - 60_000);
+    await goLive(win, id, 1);
+    const shownAt = (await engineState(win)).layers.slide?.shownAt ?? 0;
+    const seen: { apart: number; picture: number[]; back: number[] }[] = [];
+    for (const p of [0.25, 0.5, 0.75]) {
+      await holdClock(app, shownAt + p * MS);
+      await drawnAt(out, p);
+      const [picture = [], back = []] = await canvasPixels(out, [PICTURE, BACKGROUND]);
+      seen.push({ apart: await out.locator('[data-words-apart]').count(), picture, back });
+    }
+    await holdClock(app, shownAt + MS + 100);
+    await drawnAt(out, 1);
+    const after = await out.locator('[data-words-apart], [data-words-hidden]').count();
+    await holdClock(app, null);
+    return { seen, after };
+  };
+
+  // Bold: the words apart, the slide's picture and the background only dissolving on Bold's curve.
+  const bold = await run('bold');
+  for (const [i, s] of bold.seen.entries()) {
+    const e = EASE.inOut([0.25, 0.5, 0.75][i] ?? 0);
+    expect(s.apart, 'Bold draws the words apart').toBe(1);
+    expect(near(s.picture, mixed([70, 70, 110], [70, 70, 110], e)), `the picture ${String(s.picture)}`).toBe(
+      true,
+    );
+    expect(near(s.back, mixed([40, 90, 40], [200, 120, 60], e)), `the background ${String(s.back)}`).toBe(
+      true,
+    );
+  }
+  expect(bold.after, 'once over, the slide is whole again').toBe(0);
+  // Calm: whole slides, as before; the same pictures, on Calm's curve.
+  const calm = await run('calm');
+  for (const [i, s] of calm.seen.entries()) {
+    const e = EASE.smooth([0.25, 0.5, 0.75][i] ?? 0);
+    expect(s.apart, 'Calm draws whole slides').toBe(0);
+    expect(near(s.back, mixed([40, 90, 40], [200, 120, 60], e)), `the background ${String(s.back)}`).toBe(
+      true,
+    );
+  }
+  // A cut: whole slides, at once.
+  await setTransition(win, id, { kind: 'cut', durationMs: 0 });
+  await movement('bold');
+  await goLive(win, id, 0);
+  await expect(out.locator('[data-words-apart]')).toHaveCount(0);
   await app.close();
 });
