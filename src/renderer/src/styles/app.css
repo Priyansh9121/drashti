@@ -230,11 +230,11 @@ body.output {
  * window (--lamp-window), with a hairline under the header from flame to plum; empty places glow
  * faintly behind the unlit lamp. Gradients on surfaces, never a filled shape.
  *
- * Each light is drawn once, on a layer of its own under the content (will-change), and each as a
- * radial gradient on a plain rectangle, the hairline too: a slide change, which redraws what is
- * above them, never draws a gradient again, and the graphics chip draws them all in one way, worked
- * out once (see Depth, above). On a computer without a graphics chip that is the difference between
- * a slide reaching the hall's screens within a frame and seconds late (the Performance check).
+ * Each light is a radial gradient on a plain rectangle, the hairline too, painted with what it lies
+ * under (a ::before under the content, on no layer of its own): the graphics chip draws them all in
+ * one way, worked out once (see Depth, above), and nothing is added to put together at every frame.
+ * On a computer without a graphics chip that is the difference between a slide reaching the hall's
+ * screens within a frame and late (the Performance check, Session 26g).
  */
 @layer components {
   .lamp-header {
@@ -252,7 +252,6 @@ body.output {
       radial-gradient(62% 600% at 0 50%, rgb(var(--lamp-rgb) / 0.55), rgb(169 59 138 / 0.4) 45%, transparent)
         left bottom / 100% 1px no-repeat,
       radial-gradient(420px 110px at 28px 24px, rgb(var(--lamp-rgb) / var(--lamp-header)), transparent 70%);
-    will-change: transform;
   }
   .lamp-window {
     position: relative;
@@ -268,20 +267,6 @@ body.output {
     background:
       radial-gradient(900px 520px at 70px -40px, rgb(var(--lamp-rgb) / var(--lamp-window)), transparent 62%),
       radial-gradient(1100px 700px at 110% 120%, rgb(94 27 82 / 0.3), transparent 60%);
-    will-change: transform;
-  }
-  /* The live slide's red underglow in the slide grid: drawn once, moved by the compositor (SlideGrid). */
-  .live-glow {
-    position: absolute;
-    top: 0;
-    left: 0;
-    height: 24px;
-    width: 0;
-    z-index: 0;
-    opacity: 0;
-    pointer-events: none;
-    background: radial-gradient(closest-side, rgb(212 42 49 / 0.6), transparent);
-    will-change: transform;
   }
   .lamp-empty {
     position: relative;
@@ -298,7 +283,6 @@ body.output {
       rgb(var(--lamp-rgb) / var(--lamp-empty)),
       transparent 70%
     );
-    will-change: transform;
   }
   /* The mark's own soft light behind it. */
   .mark-halo::before {
@@ -307,7 +291,6 @@ body.output {
     inset: -40%;
     background: radial-gradient(closest-side, rgb(var(--lamp-rgb) / 0.3), transparent);
     pointer-events: none;
-    will-change: transform;
   }
   /* One wisp of smoke from the unlit lamp's wick as an empty place arrives; then nothing moves. */
   .lamp-wisp {
