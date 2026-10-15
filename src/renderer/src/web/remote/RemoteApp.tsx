@@ -272,29 +272,28 @@ function QuickActions({ state }: { state: EngineState | null }) {
       >
         Clear all
       </Button>
+      {/* On, they say so in words as Pro Mode and Simple Mode do ("Black-out is on"), with no aria-pressed
+          besides (Session 26g, PLAN §7); the words may wrap on a narrow phone. */}
       <Button
         size="lg"
-        className="min-h-12"
+        className="min-h-12 px-3 whitespace-normal"
         instant
         icon={BlackOut}
         variant={blackout ? 'live' : 'secondary'}
-        // Its name stays "Black-out" and aria-pressed says whether it is on (the preview's badge says it in words).
-        aria-pressed={blackout}
         onClick={() => void tap(post('/api/v1/blackout', { on: !blackout }))}
       >
-        Black-out
+        {blackout ? 'Black-out is on' : 'Black-out'}
       </Button>
       <Button
         size="lg"
-        className="min-h-12"
+        className="min-h-12 px-3 whitespace-normal"
         instant
         icon={Stamp}
         variant={logoOn ? 'live' : 'secondary'}
-        aria-pressed={logoOn}
         disabled={!logoMarked && !logoOn}
         onClick={() => void tap(post('/api/v1/logo', { on: !logoOn }))}
       >
-        Logo
+        {logoOn ? 'Logo is on' : 'Logo'}
       </Button>
       <Button
         size="lg"

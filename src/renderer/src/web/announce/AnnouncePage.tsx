@@ -6,6 +6,7 @@ import {
   type AnnouncementStatusView,
 } from '../../../../shared/announcements';
 import type { DeviceKind } from '../../../../shared/network';
+import { Mark } from '../../ui/Mark';
 import { Badge } from '../../ui/Badge';
 import { Button } from '../../ui/Button';
 import { Notice } from '../../ui/Notice';
@@ -233,7 +234,10 @@ export function AnnouncePage() {
   return (
     <main className="mx-auto flex min-h-full max-w-md flex-col gap-6 px-5 py-8" data-testid="announce-page">
       <header className="space-y-1">
-        <p className="text-base font-bold tracking-wide text-muted">Drashti</p>
+        <p className="flex items-center gap-2.5 text-base font-bold tracking-wide text-muted">
+          <Mark size={28} />
+          Drashti
+        </p>
         <h1 className="text-2xl font-bold text-fg">Send an announcement</h1>
         <p className="text-base text-muted">
           The operator sees it first, and decides whether and how it goes on the screens.

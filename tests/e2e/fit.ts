@@ -1,5 +1,6 @@
 import type { Locator } from '@playwright/test';
 import { expect } from '@playwright/test';
+import { settled } from './a11y';
 
 /**
  * Check a panel or dialog is laid out at the window's size: inside the
@@ -7,6 +8,8 @@ import { expect } from '@playwright/test';
  */
 export async function expectFits(panel: Locator, what: string): Promise<void> {
   await expect(panel).toBeVisible();
+  // Where it settles, once it has risen or slid in (Session 26g).
+  await settled(panel.page());
   const problems = await panel.evaluate((root) => {
     const out: string[] = [];
     const vw = innerWidth;

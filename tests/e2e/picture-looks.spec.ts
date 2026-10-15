@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { settled } from './a11y';
 import type { PageGlobals } from './helpers';
 import { importAndGetIds, launchApp, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
@@ -486,6 +487,8 @@ test('a sharpened copy’s pixels match the Picture editor’s preview', async (
     .click();
   const editor = win.getByTestId('picture-editor');
   await expect(editor).toBeVisible();
+  // The dialog in its place (it rises in: Session 26g), so the frame snaps to whole device pixels there.
+  await settled(win);
   const frame = editor.getByTestId('pe-frame');
   await frame.evaluate((el, ratio) => {
     const f = el as HTMLElement;

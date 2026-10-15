@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BYE_TEXT, type ByeReason, DEVICE_KIND_LABEL, type DeviceKind } from '../../../../shared/network';
+import { Mark } from '../../ui/Mark';
 import { Button } from '../../ui/Button';
 import { Notice } from '../../ui/Notice';
 import { api, current, keepPairing, PAGE_OF } from '../device';
@@ -73,7 +74,10 @@ export function PairPage() {
   return (
     <main className="mx-auto flex min-h-full max-w-md flex-col gap-6 px-5 py-8" data-testid="pair-page">
       <header className="space-y-1">
-        <p className="text-base font-bold tracking-wide text-muted">Drashti</p>
+        <p className="flex items-center gap-2.5 text-base font-bold tracking-wide text-muted">
+          <Mark size={28} />
+          Drashti
+        </p>
         <h1 className="text-2xl font-bold text-fg">Pair this device</h1>
       </header>
       {reason && <Notice tone="warning">{BYE_TEXT[reason]}</Notice>}
