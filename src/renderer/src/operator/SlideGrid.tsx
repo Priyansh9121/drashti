@@ -446,7 +446,7 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
     return selectedId && !doc ? (
       <Loading label="Opening the presentation…" className="flex-1" />
     ) : (
-      <EmptyState icon={Presentation} title="Choose a presentation" className="flex-1">
+      <EmptyState icon={Presentation} title="Choose a presentation" lamp className="flex-1">
         Pick one in the library, or an item in a playlist, to see its slides here.
       </EmptyState>
     );

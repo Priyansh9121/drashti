@@ -369,7 +369,7 @@ export function PresentationList({ platform }: { platform: string }) {
             Choose Any for one of the filters above, or Clear filters.
           </EmptyState>
         ) : presentations.length === 0 ? (
-          <EmptyState icon={Upload} title="The library is empty" compact className="flex-1">
+          <EmptyState icon={Upload} title="The library is empty" compact lamp className="flex-1">
             Drag lyrics, presentations or media here, or use Import….
           </EmptyState>
         ) : (

@@ -101,6 +101,15 @@
   --lamp-window: 0.1;
   --lamp-welcome: 0.16;
   --lamp-empty: 0.09;
+
+  /*
+   * Motion (Session 26g, "Rising"): every duration and easing in the interface is one of these. Show
+   * controls and the live state never move (--dur-instant).
+   */
+  --dur-instant: 0ms;
+  --dur-wisp: 1600ms; /* the unlit lamp's one wisp of smoke, as an empty place arrives */
+  --delay-wisp: 520ms;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1); /* entrances and exits */
 }
 
 /*
@@ -165,6 +174,74 @@ body.output {
 
   kbd {
     font-family: inherit;
+  }
+}
+
+/*
+ * The lamp (Session 26g). Its light falls from the mark across the header (--lamp-header) and the
+ * window (--lamp-window), with a hairline under the header from flame to plum; empty places glow
+ * faintly behind the unlit lamp. Gradients on surfaces, never a filled shape.
+ */
+@layer components {
+  .lamp-header {
+    position: relative;
+    background:
+      radial-gradient(420px 110px at 28px 24px, rgb(var(--lamp-rgb) / var(--lamp-header)), transparent 70%),
+      var(--color-panel);
+  }
+  .lamp-header::after {
+    content: '';
+    position: absolute;
+    inset: auto 0 -1px;
+    height: 1px;
+    pointer-events: none;
+    background: linear-gradient(
+      90deg,
+      rgb(var(--lamp-rgb) / 0.55),
+      rgb(169 59 138 / 0.4) 28%,
+      transparent 62%
+    );
+  }
+  .lamp-window {
+    background:
+      radial-gradient(900px 520px at 70px -40px, rgb(var(--lamp-rgb) / var(--lamp-window)), transparent 62%),
+      radial-gradient(1100px 700px at 110% 120%, rgb(94 27 82 / 0.3), transparent 60%), var(--color-ink);
+  }
+  .lamp-empty {
+    background: radial-gradient(
+      360px 220px at 50% 42%,
+      rgb(var(--lamp-rgb) / var(--lamp-empty)),
+      transparent 70%
+    );
+  }
+  /* The mark's own soft light behind it. */
+  .mark-halo::before {
+    content: '';
+    position: absolute;
+    inset: -40%;
+    border-radius: 9999px;
+    background: radial-gradient(closest-side, rgb(var(--lamp-rgb) / 0.3), transparent);
+    pointer-events: none;
+  }
+  /* One wisp of smoke from the unlit lamp's wick as an empty place arrives; then nothing moves. */
+  .lamp-wisp {
+    transform-box: fill-box;
+    transform-origin: 50% 100%;
+    animation: lamp-wisp var(--dur-wisp) var(--ease-out) var(--delay-wisp) both;
+  }
+}
+
+@keyframes lamp-wisp {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scaleY(0.6);
+  }
+  30% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-26px) scaleY(1.2);
   }
 }
 

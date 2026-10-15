@@ -7,6 +7,7 @@ import { mediaKindIcon, mediaKindLabel } from '../library/MediaList';
 import { openPlaylist, usePlaylists } from '../playlists/playlist-store';
 import { useRoles } from '../roles/roles-store';
 import { PinInput, useWaitText } from '../roles/RolesDialogs';
+import { WordMark } from '../ui/Mark';
 import { Badge, LiveBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
@@ -420,9 +421,11 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
   }, [run]);
   const key = (action: OperatorAction) => shortcutText(action, platform, SIMPLE_KEYMAP);
   return (
-    <div className="flex h-full min-h-0 flex-col" data-testid="simple-mode">
-      <header className="flex h-14 shrink-0 items-center gap-4 border-b border-line bg-panel px-4">
-        <h1 className="shrink-0 text-lg font-bold tracking-wide">Drashti</h1>
+    <div className="lamp-window flex h-full min-h-0 flex-col" data-testid="simple-mode">
+      <header className="lamp-header flex h-14 shrink-0 items-center gap-4 border-b border-line px-4">
+        <h1 className="shrink-0 text-lg font-bold tracking-wide">
+          <WordMark size={26} />
+        </h1>
         <Badge tone="info">Simple Mode</Badge>
         <OnAirBadges size="lg" />
         <NetworkBadge />

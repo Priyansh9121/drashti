@@ -864,7 +864,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
               lineAt !== null ? 'border-accent' : 'border-line-strong',
             )}
           >
-            <EmptyState icon={ListPlus} title="This playlist is empty" compact>
+            <EmptyState icon={ListPlus} title="This playlist is empty" compact lamp>
               Drag presentations, pictures, videos or files here, use Add files… or From a Link… above, or
               choose one in the library and press Add to playlist.
             </EmptyState>

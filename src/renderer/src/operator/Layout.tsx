@@ -62,7 +62,8 @@ export function Columns({ left, middle, right }: { left: ReactNode; middle: Reac
         defaultValue={LEFT.initial}
         label="Resize the library and playlists"
       />
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-ink" data-testid="column-middle">
+      {/* No surface of its own: the window's ink, with the lamp's light falling across it. */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="column-middle">
         {middle}
       </div>
       <Splitter
