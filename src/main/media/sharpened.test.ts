@@ -44,10 +44,15 @@ function setUp(wanted: CopyWant[], read?: (file: string) => Promise<Uint8Array>)
   const windows = { opened: 0, destroyed: 0, id: 0 };
   let changed = 0;
   const jobs: SharpenJob[] = [];
-  const library = { wanted };
+  /** The largest audience screen's picture as drawn (null: none set up). */
+  const library: { wanted: CopyWant[]; screen: { width: number; height: number } | null } = {
+    wanted,
+    screen: null,
+  };
   const copies = new SharpenedCopies({
     mediaDir: dir,
     wanted: () => library.wanted,
+    screen: () => library.screen,
     open: () => {
       windows.opened++;
       windows.id++;
@@ -79,17 +84,19 @@ function setUp(wanted: CopyWant[], read?: (file: string) => Promise<Uint8Array>)
   return { copies, library, windows, jobs, drain, log, changed: () => changed };
 }
 
-const A = (sharpness: number): CopyWant => ({
+const A = (sharpness: number, zoom = 1): CopyWant => ({
   mediaId: 'media-a',
   sha256: SHA_A,
   path: `aa/${SHA_A}.jpg`,
   sharpness,
+  zoom,
 });
-const B = (sharpness: number): CopyWant => ({
+const B = (sharpness: number, zoom = 1): CopyWant => ({
   mediaId: 'media-b',
   sha256: SHA_B,
   path: `bb/${SHA_B}.png`,
   sharpness,
+  zoom,
 });
 
 const copiesOnDisk = () =>
@@ -132,6 +139,36 @@ describe('sharpened copies', () => {
     expect(again.copies.readyStep(SHA_B)).toBe(35);
     // Its hash worked out by then (a node copies it by it), and no file left open.
     expect(again.copies.fileOf(SHA_B, 35)).toMatchObject({ bytes: 9, ext: 'png' });
+  });
+
+  it('are made at the size the screens draw the picture, and again when the screens change size (Session 26g)', async () => {
+    const t = setUp([A(0.5), B(0.5, 2)]);
+    t.library.screen = { width: 1920, height: 1080 };
+    await t.copies.refresh();
+    await t.drain();
+    // The box each is drawn in: the screen's picture, at its zoom (B is zoomed to 200 %).
+    expect(t.jobs.map((j) => j.box)).toEqual([
+      { width: 1920, height: 1080 },
+      { width: 3840, height: 2160 },
+    ]);
+    expect(copiesOnDisk()).toEqual([`${SHA_A}-50-1920x1080.jpg`, `${SHA_B}-50-3840x2160.png`]);
+    expect(t.copies.relativePath(SHA_A, 50)).toBe(`${SHARPENED_DIR}/${SHA_A}-50-1920x1080.jpg`);
+    // The screens change size: each made again for it, the old ones gone.
+    t.library.screen = { width: 1280, height: 720 };
+    await t.copies.screensChanged();
+    await t.drain();
+    expect(copiesOnDisk()).toEqual([`${SHA_A}-50-1280x720.jpg`, `${SHA_B}-50-2560x1440.png`]);
+    // The same size again: nothing is made.
+    const made = t.jobs.length;
+    await t.copies.screensChanged();
+    await t.drain();
+    expect(t.jobs.length).toBe(made);
+    // No audience screen: at their own size, as before.
+    t.library.screen = null;
+    await t.copies.screensChanged();
+    await t.drain();
+    expect(copiesOnDisk()).toEqual([`${SHA_A}-50.jpg`, `${SHA_B}-50.png`]);
+    expect(t.jobs.at(-1)?.box).toBeNull();
   });
 
   it('are made again when Sharpness changes, and go when it is back at 0', async () => {

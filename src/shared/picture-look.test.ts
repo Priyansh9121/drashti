@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   autoLevels,
+  copyBox,
+  copySize,
   copyStep,
   cssFilter,
+  drawnCanvas,
   fillZoom,
   framed,
   isPlain,
@@ -130,5 +133,38 @@ describe('a picture’s look', () => {
     expect(half.zoom).toBeLessThan(2);
     expect(liveZoomAt(z, 1000 + ZOOM_GLIDE_MS)).toEqual({ zoom: 2, x: 0.5, y: 0 });
     expect(liveZoomAt(z, 99_999)).toEqual({ zoom: 2, x: 0.5, y: 0 });
+  });
+});
+
+describe('a sharpened copy’s size (Session 26g)', () => {
+  it('is the screen’s canvas as drawn: fitted, filled or stretched into its window', () => {
+    const canvas = { width: 1920, height: 1080 };
+    expect(drawnCanvas(canvas, { width: 3840, height: 2160 }, 'fit')).toEqual({ width: 3840, height: 2160 });
+    expect(drawnCanvas(canvas, { width: 1920, height: 1200 }, 'fit')).toEqual({ width: 1920, height: 1080 });
+    expect(drawnCanvas(canvas, { width: 1920, height: 1200 }, 'fill')).toEqual({ width: 2133, height: 1200 });
+    expect(drawnCanvas(canvas, { width: 1024, height: 768 }, 'stretch')).toEqual({
+      width: 1024,
+      height: 768,
+    });
+  });
+
+  it('is the picture fitted whole into the screen’s picture at its zoom, never bigger than it is', () => {
+    const screen = { width: 1920, height: 1080 };
+    expect(copyBox(screen, 1)).toEqual(screen);
+    expect(copyBox(screen, 2)).toEqual({ width: 3840, height: 2160 });
+    expect(copyBox(screen, 9)).toEqual({ width: 7680, height: 4320 });
+    expect(copyBox(null, 2)).toBeNull();
+    // A 4000 x 3000 photo on a 1920 x 1080 screen: 1440 x 1080; zoomed 200 %, 2880 x 2160.
+    expect(copySize({ width: 4000, height: 3000 }, copyBox(screen, 1))).toEqual({
+      width: 1440,
+      height: 1080,
+    });
+    expect(copySize({ width: 4000, height: 3000 }, copyBox(screen, 2))).toEqual({
+      width: 2880,
+      height: 2160,
+    });
+    // A small picture keeps its own size; with no screen, its own size.
+    expect(copySize({ width: 800, height: 600 }, copyBox(screen, 1))).toEqual({ width: 800, height: 600 });
+    expect(copySize({ width: 4000, height: 3000 }, null)).toEqual({ width: 4000, height: 3000 });
   });
 });

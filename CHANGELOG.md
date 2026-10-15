@@ -12,6 +12,7 @@ Diya, Drashti's own look: the lamp's plum and flame.
 - In a show, Next and Back sit under the live picture, with their keys: Next is the one plum button, the next thing to do, and does exactly what → does. Clear all stays where it was, with F1, as a plain button with a plum edge.
 - When you close something with typed changes, Save changes now has the focus (Enter saves); Esc still keeps you editing, and throwing work away is never the default.
 - A backup warning offers Back up now.
+- A sharpened picture is now sharpened at the size the hall's screen shows it, so it looks as sharp there as in the Picture editor, and it is done again when the screens change size.
 - On the phone remote, Black-out and Logo say "Black-out is on" and "Logo is on" while on, as on the computer.
 - New groups are teal for Chorus and indigo for Verse, and no default group colour is red any more, so nothing looks like LIVE. Groups you already have keep their colours.
 - A new library starts with a welcome: the lamp lights, then Set up the screens, Try a practice show first (placeholder slides on this screen only, never on the hall's screens), or Skip for now, which shows three steps to a sabha in the middle of the window.

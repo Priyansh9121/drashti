@@ -413,17 +413,9 @@ test('a sharpened picture: its copy on two screens and a node, with no filter in
   }
 });
 
-test('a sharpened copy’s pixels match the Picture editor’s preview', async () => {
-  test.setTimeout(240_000);
-  const { app } = await launchApp();
-  const win = await operatorPage(app);
-  await operatorReady(win);
-  await win.setViewportSize({ width: 1280, height: 720 });
+/** A picture of two greys side by side, W by H, saved to a temporary folder; its id once imported. */
+async function edgePicture(win: Page, W: number, H: number): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-sharpened-pixels-'));
-  // Drawn one picture pixel to one screen pixel in the preview: as wide as its frame is made, in this
-  // window's own pixels.
-  const ratio = await win.evaluate(() => window.devicePixelRatio);
-  const [W, H] = [320 * ratio, 180 * ratio];
   const base64 = await win.evaluate(
     ({ W, H }) => {
       const canvas = document.createElement('canvas');
@@ -456,9 +448,18 @@ test('a sharpened copy’s pixels match the Picture editor’s preview', async (
     id,
   );
   await expect.poll(async () => (await libraryLook(win, id))?.copy, { timeout: 60_000 }).toBe(50);
-  // The copy's own pixels, along a row across the edge.
+  return id;
+}
+
+/**
+ * The copy's pixels across the edge against the Picture editor's preview, its frame 320 by 180 and on
+ * whole pixels (so the preview is drawn at `size`, in this window's own pixels): plain, it is the two
+ * greys; sharpened by its filter, it matches the copy within step 12's tolerance.
+ */
+async function copyMatchesPreview(win: Page, id: string, size: { W: number; H: number }, ratio: number) {
+  const { W, H } = size;
   const across = Array.from({ length: 12 }, (_, i) => W / 2 - 6 + i);
-  const copyRow = await win.evaluate(
+  const copy = await win.evaluate(
     async ({ id, across, H }) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
@@ -468,17 +469,23 @@ test('a sharpened copy’s pixels match the Picture editor’s preview', async (
       canvas.width = img.naturalWidth;
       canvas.height = img.naturalHeight;
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) return [];
+      if (!ctx) return { width: 0, height: 0, row: [] };
       ctx.drawImage(img, 0, 0);
-      return across.map((x) => ctx.getImageData(x, H / 2, 1, 1).data[0] ?? -1);
+      return {
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+        row: across.map((x) => ctx.getImageData(x, H / 2, 1, 1).data[0] ?? -1),
+      };
     },
     { id, across, H },
   );
+  // Made at the size it is drawn at.
+  expect({ width: copy.width, height: copy.height }).toEqual({ width: W, height: H });
+  const copyRow = copy.row;
   // Sharpened: darker and lighter than either grey beside the edge.
   expect(Math.min(...copyRow)).toBeLessThan(0x60 - 12);
   expect(Math.max(...copyRow)).toBeGreaterThan(0xa0 + 12);
 
-  // The editor's preview, its frame 320 by 180 and on whole pixels, as the screen draws it.
   await win.getByRole('tab', { name: 'Media' }).click();
   await win
     .getByTestId('media-row')
@@ -517,7 +524,7 @@ test('a sharpened copy’s pixels match the Picture editor’s preview', async (
       { png, across, H },
     );
   };
-  // Held at Before, the preview is the picture itself, pixel for pixel: the two are drawn alike.
+  // Held at Before, the preview is the picture itself: the two greys.
   await editor.getByTestId('pe-before').dispatchEvent('pointerdown');
   await expect(editor.getByTestId('pe-picture')).toHaveCSS('filter', 'none');
   const plain = await previewRow();
@@ -534,6 +541,50 @@ test('a sharpened copy’s pixels match the Picture editor’s preview', async (
     expect(Math.abs((preview[i] ?? -99) - v), `pixel ${String(across[i])}`).toBeLessThanOrEqual(6);
   expect(Math.abs(Math.min(...preview) - Math.min(...copyRow))).toBeLessThanOrEqual(8);
   expect(Math.abs(Math.max(...preview) - Math.max(...copyRow))).toBeLessThanOrEqual(8);
+}
+
+test('a sharpened copy’s pixels match the Picture editor’s preview', async () => {
+  test.setTimeout(240_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  // No screen set up: the copy is the picture's own size, drawn one pixel to one screen pixel in the
+  // preview, as wide as its frame is made, in this window's own pixels.
+  const ratio = await win.evaluate(() => window.devicePixelRatio);
+  const size = { W: 320 * ratio, H: 180 * ratio };
+  const id = await edgePicture(win, size.W, size.H);
+  await copyMatchesPreview(win, id, size, ratio);
+  await app.close();
+});
+
+test('a sharpened copy is made at the size the hall’s screen draws it, as the editor shows it (Session 26g)', async () => {
+  test.setTimeout(240_000);
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  const ratio = await win.evaluate(() => window.devicePixelRatio);
+  // The hall's screen draws its 16:9 canvas 320 by 180 of this window's pixels (its own window sized for
+  // that at its own pixel ratio).
+  await setUpScreen(win, 'Main Hall', 0);
+  await expect.poll(() => outputPages(app).length).toBe(1);
+  const [output] = outputPages(app);
+  const outputRatio = (await output?.evaluate(() => devicePixelRatio)) ?? 1;
+  const css = { width: (320 * ratio) / outputRatio, height: (180 * ratio) / outputRatio };
+  await app.evaluate(({ BrowserWindow }, css) => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      const url = w.webContents.getURL();
+      if (url.includes('output.html') && !url.includes('identify=')) w.setContentSize(css.width, css.height);
+    }
+  }, css);
+  await expect
+    .poll(() => output?.evaluate(() => [innerWidth * devicePixelRatio, innerHeight * devicePixelRatio]))
+    .toEqual([320 * ratio, 180 * ratio]);
+  // A picture twice that size: its copy is made at the screen's size, sharpened there, as the editor's
+  // preview (its frame the same size) sharpens it.
+  const id = await edgePicture(win, 640 * ratio, 360 * ratio);
+  await copyMatchesPreview(win, id, { W: 320 * ratio, H: 180 * ratio }, ratio);
   await app.close();
 });
 
