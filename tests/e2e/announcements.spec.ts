@@ -1,5 +1,6 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { holdClock } from './placeholder-slides';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { device, networkOn, NETWORK_ENV, TABLET } from './devices';
 import { expectFits } from './fit';
@@ -24,7 +25,12 @@ import {
  */
 
 /** Two windowed outputs (the second on a pretend display), so the ticker can be seen in step on both. */
-const ENV = { ...NETWORK_ENV, DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' };
+const ENV = {
+  ...NETWORK_ENV,
+  DRASHTI_WINDOWED_OUTPUTS: '1',
+  DRASHTI_EXTRA_DISPLAYS: '1',
+  DRASHTI_TEST_CLOCK_HOLD: '1',
+};
 
 const queue = (win: Page) => ({
   list: () => win.evaluate(() => (globalThis as PageGlobals).drashti.announcements.list()),
@@ -68,7 +74,8 @@ const tickerOffBy = (page: Page) =>
     const started = Number(words?.dataset['startedAt']);
     const frame = Number(document.timeline.currentTime);
     if (!animation || !(pass > 0) || !Number.isFinite(frame)) return Number.POSITIVE_INFINITY;
-    const want = (performance.timeOrigin + frame - started) % pass;
+    // The frame's moment on this computer's clock, as the screens take it (render/clock.ts engineFrameNow).
+    const want = (Date.now() - (performance.now() - frame) - started) % pass;
     const off = Math.abs(want - (Number(animation.currentTime) % pass));
     return Math.min(off, pass - off);
   });
@@ -163,6 +170,22 @@ test('from a phone: edited and approved as a message, one in the ticker in step 
     const message = await main.locator('[data-layer="messages"]').boundingBox();
     const band = await main.getByTestId('ticker').boundingBox();
     expect((message?.y ?? 0) + (message?.height ?? 0)).toBeLessThanOrEqual((band?.y ?? 0) + 1);
+    // Held at one moment (a test switch), the ticker stops where the engine's time puts it, the same on both
+    // screens, and goes on when let go (Session 27): screens can be compared with it up.
+    const phase = (page: Page) =>
+      page.evaluate(() => {
+        const a = document.querySelector('[data-testid="ticker-words"]')?.getAnimations()[0];
+        return { at: Number(a?.currentTime), paused: a?.playState === 'paused' };
+      });
+    await holdClock(app, Date.now());
+    for (const output of [main, side]) await expect.poll(async () => (await phase(output)).paused).toBe(true);
+    const [held, heldSide] = [(await phase(main)).at, (await phase(side)).at];
+    await main.waitForTimeout(600);
+    expect((await phase(main)).at).toBe(held);
+    expect(Math.abs(held - heldSide)).toBeLessThan(1);
+    await holdClock(app, null);
+    await expect.poll(async () => (await phase(main)).at).not.toBe(held);
+    await expect.poll(() => tickerOffBy(main), { timeout: 15_000 }).toBeLessThan(100);
 
     // Black-out covers the ticker, which carries on underneath; Clear all takes it off, Put it back returns it.
     await dispatch(win, { type: 'setBlackout', on: true });

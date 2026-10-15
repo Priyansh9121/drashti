@@ -12,7 +12,7 @@ import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { BackgroundMedia } from './BackgroundMedia';
 import { IdleRotation } from './IdleRotation';
-import { engineFrameNow } from './clock';
+import { clockHeld, engineFrameNow, onClockJump } from './clock';
 import { LANG_FONT_STACK } from './fonts';
 import { Placed } from './Placed';
 import { SlideLayerView } from './SlideLayerView';
@@ -149,6 +149,15 @@ export function TickerBand({ ticker, canvas }: { ticker: TickerLayer; canvas: Si
       const off = Math.abs(want - now);
       if (Math.min(off, passMs - off) > TICKER_STEP_MS) animation.currentTime = want;
     };
+    // The clock held (a test) or set: the words go where its time puts them at once, and stay there while
+    // it is held (Session 27), as the slow zoom does.
+    const jumped = () => {
+      if (!animation || passMs <= 0) return;
+      // Paused before it is placed: a pause only lands at the next frame, a frame further on.
+      if (clockHeld()) animation.pause();
+      animation.currentTime = tickerPhase(engineFrameNow(), startedAt, passMs);
+      if (!clockHeld()) animation.play();
+    };
     const start = () => {
       animation?.cancel();
       // The words' width in canvas pixels (the scene is scaled around them); it changes as fonts arrive.
@@ -160,14 +169,17 @@ export function TickerBand({ ticker, canvas }: { ticker: TickerLayer; canvas: Si
         [{ transform: `translateX(${canvasWidth}px)` }, { transform: `translateX(${-width}px)` }],
         { duration: passMs, iterations: Infinity, easing: 'linear' },
       );
+      if (clockHeld()) animation.pause();
       animation.currentTime = tickerPhase(engineFrameNow(), startedAt, passMs);
     };
     start();
+    const offJump = onClockJump(jumped);
     const resized = new ResizeObserver(start);
     resized.observe(el);
     // eslint-disable-next-line no-restricted-syntax -- only checks the words are still where the engine's time puts them
     const timer = setInterval(inStep, 5000);
     return () => {
+      offJump();
       resized.disconnect();
       clearInterval(timer);
       animation?.cancel();

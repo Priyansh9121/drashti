@@ -3147,11 +3147,22 @@ function start(): void {
     },
   });
   // Tests only (never a packaged Drashti): every output's clock held at one moment of the engine's time, or
-  // let go (null), so two screens can be compared pixel for pixel part-way through a transition (Session 26d).
+  // let go (null), so two screens can be compared pixel for pixel part-way through a transition (Session 26d),
+  // the stream's picture too (Session 27). Says how many pages it reached.
   if (testClockHold)
     (globalThis as { drashtiTestHoldClock?: (at: number | null) => number }).drashtiTestHoldClock = (at) => {
-      for (const win of outputWindows.values()) sendToPage(win, IPC.output.testClock, { at });
-      return outputWindows.size;
+      let reached = 0;
+      for (const win of outputWindows.values())
+        if (pageAlive(win)) {
+          sendToPage(win, IPC.output.testClock, { at });
+          reached++;
+        }
+      const program = streaming.programContents();
+      if (program && !program.isDestroyed()) {
+        program.send(IPC.output.testClock, { at });
+        reached++;
+      }
+      return reached;
     };
   if (testRenderErrors)
     (globalThis as { drashtiTestRenderError?: (screenId?: string) => number }).drashtiTestRenderError = (

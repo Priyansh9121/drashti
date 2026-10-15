@@ -5,6 +5,7 @@ import '../styles/app.css';
 import { groupLookIn } from '../../../shared/looks';
 import type { ProgramContext } from '../../../shared/stream';
 import { connectEngine, useEngine } from '../engine/engine-store';
+import { holdClock } from '../render/clock';
 import { preloadFonts } from '../render/fonts';
 import { PlacedInParent } from '../render/Placed';
 import { SceneBoundary } from '../render/SceneBoundary';
@@ -47,6 +48,9 @@ function Program() {
   // The stream group's languages in the live Look (switching the Look changes them on air).
   const languages = groupLookIn(state?.look, context?.groupId).languages;
   const [fontsReady, setFontsReady] = useState(false);
+  // Tests only: the clock held at one moment, as the outputs' are, so the stream's picture can be compared
+  // with the hall's part-way through a transition (Session 27).
+  useEffect(() => window.drashti.output.onTestClock(holdClock), []);
   useEffect(() => {
     void preloadFonts().then(() => {
       setFontsReady(true);
