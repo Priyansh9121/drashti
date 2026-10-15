@@ -90,6 +90,20 @@ test('the Program: the camera with the words in the stream’s languages, or the
   ]);
   await expect(program.getByTestId('program-picture')).toHaveAttribute('data-kind', 'camera');
   await expect(program.getByTestId('program-camera')).toHaveAttribute('data-on', 'yes');
+  // It moves as a Look's lower third does (Session 27): it came in, and is still now.
+  await expect(third).toHaveAttribute('data-lt-phase', 'still');
+  // Taken off on its own, it leaves with a short fade, then it is gone; up again, it comes in.
+  await run(win, { type: 'clearLayer', layer: 'slide' });
+  await expect(third).toHaveCount(0);
+  expect(
+    (
+      await win.evaluate(
+        async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.slideOff,
+      )
+    )?.at,
+  ).toEqual(expect.any(Number));
+  await run(win, { type: 'goLive', presentationId: kirtan, slideIndex: 0 });
+  await expect(third).toHaveAttribute('data-lt-phase', 'still');
   // The operator sees it: the preview's frames and the sound level (the fake microphone beeps).
   await expect(win.getByTestId('stream-preview')).toBeVisible();
   await expect

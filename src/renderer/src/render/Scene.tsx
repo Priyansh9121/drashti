@@ -16,6 +16,7 @@ import { clockHeld, engineFrameNow, onClockJump } from './clock';
 import { LANG_FONT_STACK } from './fonts';
 import { Placed } from './Placed';
 import { SlideLayerView } from './SlideLayerView';
+import { SlideLowerThird } from './LowerThird';
 import { ScreenPictures } from './picture-looks';
 import { ElementView } from './SlideView';
 import { TimerText } from './TimerText';
@@ -379,9 +380,18 @@ export const Scene = memo(function Scene({
                   scaling={scaling}
                   languages={look.languages}
                   slides={look.slides}
-                  lift={bandHeight}
                   movement={look.movement}
                 />
+                {lowerThirds && shown('slide') && (
+                  <SlideLowerThird
+                    layer={layers.slide}
+                    slideOff={state.slideOff}
+                    languages={look.languages}
+                    canvas={canvas}
+                    lift={bandHeight}
+                    movement={look.movement}
+                  />
+                )}
                 {shown('props') && <PropsLayer props={layers.props} canvas={canvas} scaling={scaling} />}
                 {shown('messages') && layers.messages.length > 0 && (
                   <MessageBanner

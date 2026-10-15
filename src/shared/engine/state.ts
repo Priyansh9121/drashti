@@ -337,6 +337,12 @@ export interface EngineState {
    * and slide style. Switching it changes every group at once.
    */
   look: LiveLook;
+  /**
+   * The slide just taken off the screens on its own (the slide layer cleared, never Clear all), and when by
+   * the engine's clock (Session 27): a lower third leaves with a short fade from then, the same on every
+   * screen. Null once another slide goes up, after Clear all, and when nothing was taken off.
+   */
+  slideOff: { layer: SlideLayer; at: number } | null;
 }
 
 export function emptyLayers(): Layers {
@@ -364,6 +370,7 @@ export function initialEngineState(): EngineState {
     pictures: {},
     liveZoom: null,
     look: NO_LOOK,
+    slideOff: null,
   };
 }
 
