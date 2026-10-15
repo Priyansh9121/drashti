@@ -65,6 +65,13 @@ const CAP_MS = 8000;
  */
 const NOTCHED = 'polygon(0 0, 100% 0, 100% 40%, 22% 50%, 100% 60%, 100% 100%, 0 100%, 0 32%, 78% 22%, 0 12%)';
 
+/**
+ * Each transition scene again a quarter of the size inside a rounded box, plain and notched: the LIVE picture
+ * draws the show small under its rounded corners, and the GPU draws its pictures through other pipelines
+ * there (CI's Mac made one in the first Bold transition until these were drawn).
+ */
+const SMALL = 0.25;
+
 /** A placeholder picture drawn in the page: a JPEG as a darshan picture is, or a PNG with see-through parts. */
 function makePicture(kind: 'jpeg' | 'png', hue: number): string {
   const c = document.createElement('canvas');
@@ -151,6 +158,8 @@ interface WarmScene {
   state: (during: boolean, at: number) => EngineState;
   /** Drawn under this clip-path (NOTCHED). */
   clip?: string;
+  /** Drawn small inside a rounded box, as the operator's LIVE picture draws the show (SMALL). */
+  small?: boolean;
 }
 
 const LONG_AGO = 60_000;
@@ -275,6 +284,8 @@ function scenes(): WarmScene[] {
   return [
     ...transitions,
     ...transitions.map((t) => ({ ...t, key: `${t.key}/clipped`, clip: NOTCHED })),
+    ...transitions.map((t) => ({ ...t, key: `${t.key}/small`, small: true })),
+    ...transitions.map((t) => ({ ...t, key: `${t.key}/small-clipped`, small: true, clip: NOTCHED })),
     ...list,
   ];
 }
@@ -485,15 +496,42 @@ export function WarmUp({
                     data-warm-scene={s.key}
                     style={{ position: 'absolute', inset: 0, mixBlendMode: 'plus-lighter' }}
                   >
-                    <div style={{ position: 'absolute', inset: 0, clipPath: s.clip }}>
-                      <Scene
-                        state={s.state(step.phase === 'during', step.at)}
-                        canvas={canvas}
-                        scaling={scaling}
-                        look={s.look}
-                        matte={matte}
-                        ticker={ticker}
-                      />
+                    <div
+                      style={
+                        s.small
+                          ? {
+                              position: 'absolute',
+                              left: 0,
+                              top: 0,
+                              width: canvas.width * SMALL,
+                              height: canvas.height * SMALL,
+                              overflow: 'hidden',
+                              borderRadius: 12,
+                            }
+                          : { position: 'absolute', inset: 0 }
+                      }
+                    >
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: 0,
+                          top: 0,
+                          width: canvas.width,
+                          height: canvas.height,
+                          clipPath: s.clip,
+                          transform: s.small ? `scale(${String(SMALL)})` : undefined,
+                          transformOrigin: '0 0',
+                        }}
+                      >
+                        <Scene
+                          state={s.state(step.phase === 'during', step.at)}
+                          canvas={canvas}
+                          scaling={scaling}
+                          look={s.look}
+                          matte={matte}
+                          ticker={ticker}
+                        />
+                      </div>
                     </div>
                   </div>
                 ))}
