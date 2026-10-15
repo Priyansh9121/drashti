@@ -161,6 +161,13 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.backups.save,
   IPC.backups.pickFolder,
   IPC.backups.runNow,
+  // Events out (Session 28): Simple Mode never sees them.
+  IPC.events.view,
+  IPC.events.add,
+  IPC.events.update,
+  IPC.events.remove,
+  IPC.events.rotate,
+  IPC.events.test,
   // Audio playlists (Session 14): Simple Mode plays and pauses one, and changes none.
   IPC.music.create,
   IPC.music.rename,
@@ -207,5 +214,6 @@ export function simpleModeRefusals(sound: () => AudioOutputStatus): Map<InvokeCh
   // These answer in shapes of their own: no files picked, and the sound output as it is.
   answers.set(IPC.library.pickImportPaths, () => []);
   answers.set(IPC.audio.setOutput, sound);
+  answers.set(IPC.events.view, () => ({ available: false, message: SIMPLE_MODE_REFUSAL, addresses: [] }));
   return answers;
 }

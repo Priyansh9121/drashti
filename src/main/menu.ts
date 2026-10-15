@@ -43,6 +43,8 @@ export interface MenuActions {
   rolesAndPins: () => void;
   /** File > Scheduled Backups… (Session 14). */
   scheduledBackups: () => void;
+  /** File > Events Out… (Session 28): an admin's. */
+  eventsOut: () => void;
   /** Help > Check for Updates… (Session 14, Pro Mode only). */
   checkForUpdates: () => void;
   /** Help > Keyboard Shortcuts… (Session 25, Pro Mode only): the keys sheet. */
@@ -84,6 +86,8 @@ export function installMenu(actions: MenuActions): void {
               { id: 'backup-library', label: 'Back Up Library…', click: actions.backUpLibrary },
               { id: 'restore-library', label: 'Restore Library…', click: actions.restoreLibrary },
               { id: 'scheduled-backups', label: 'Scheduled Backups…', click: actions.scheduledBackups },
+              { type: 'separator' },
+              { id: 'events-out', label: 'Events Out…', click: actions.eventsOut },
               { type: 'separator' },
               { id: 'roles-and-pins', label: 'Roles and PINs…', click: actions.rolesAndPins },
               { type: 'separator' },

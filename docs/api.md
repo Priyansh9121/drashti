@@ -196,3 +196,77 @@ Bitfocus Companion's **Generic HTTP** connection drives Drashti with a Remote de
 3. Next, Back, Clear all, Black-out (`{}` turns it the other way), Logo and the timers fit on buttons as they are.
 
 The generic module cannot show state on the buttons (which slide is up, whether black-out is on). **A dedicated Companion module** would: ask for the Phones panel's code and pair itself (`/api/v1/pair`), keeping its token; follow the state feed (keeping a copy from the snapshot and patches, asking for the whole state when a revision goes missing, and connecting again by itself); offer the actions above with pickers filled from `/playlists`, `/playlists/{id}/items`, `/messages` and `/timers` (re-read when the feed says they changed); give feedbacks (black-out, logo, live slide or item, can put back, a timer running, a message up) and variables (the live slide's words, what is next, the time left on each timer, worked out from the feed's clock), and presets for the usual buttons; and stop with a message when the state's version is one it does not know.
+
+## Events out (webhooks)
+
+The other way round (Session 28): Drashti **sends** a signed `POST` to each address an admin adds under **File › Events Out…**, for the kinds ticked there. Nothing is on until then. An address must be on this computer or the local network, unless an admin allows one `https` address on the internet. A receiver needs nothing from the API above: no token, no pairing.
+
+**The body** is JSON:
+
+```json
+{
+  "type": "slide.changed",
+  "timestamp": "2026-10-16T19:30:05.123Z",
+  "data": {
+    "presentationId": "…",
+    "slideIndex": 2,
+    "slideCount": 5,
+    "playlistId": "…",
+    "itemId": "…",
+    "repeat": false
+  }
+}
+```
+
+| `type`                                                   | `data`                                                                                                                                                                                                                             |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `slide.changed`                                          | `presentationId`, `slideIndex`, `slideCount`, `playlistId`, `itemId` (null when not from a playlist), `repeat` (true when a Repeat Slides playlist moved on by itself). A slide taken off: `presentationId` and `slideIndex` null. |
+| `item.changed`                                           | `playlistId`, `itemId`.                                                                                                                                                                                                            |
+| `blackout.changed`, `logo.changed`                       | `on`.                                                                                                                                                                                                                              |
+| `stream.started`, `stream.reconnecting`                  | `places`: how many platforms it goes to.                                                                                                                                                                                           |
+| `stream.ended`, `recording.started`, `recording.stopped` | Nothing.                                                                                                                                                                                                                           |
+| `announcement.waiting`                                   | `announcementId`.                                                                                                                                                                                                                  |
+| `screen.stopped`, `screen.showing`                       | `screenId`: a hall screen stopped, or came back.                                                                                                                                                                                   |
+| `backup.finished`                                        | `outcome`: `done`, `skipped` or `failed`.                                                                                                                                                                                          |
+| `drashti.test`                                           | Nothing: **Send a test**.                                                                                                                                                                                                          |
+
+**Words** come only where the admin ticked **Include the words** for that kind at that address: `text` for `slide.changed` (the slide's lines, one to a line, 200 characters at most) and `announcement.waiting`, `name` for `screen.stopped` and `screen.showing`. Nothing else ever carries words, and keys, PINs, tokens, pairing codes, addresses and file paths never go.
+
+**The headers:**
+
+| Header                    | Holds                                                                                                                                                                                                    |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `webhook-id`              | The event's id (`msg_…`): the same on every try, so a receiver that sees it twice can drop the second.                                                                                                   |
+| `webhook-timestamp`       | When this try was sent, in seconds since 1970.                                                                                                                                                           |
+| `webhook-signature`       | `v1,` and the base64 HMAC-SHA256 of `id.timestamp.body`, keyed by the secret's bytes ([Standard Webhooks](https://www.standardwebhooks.com)). For a day after **New secret**, two, separated by a space. |
+| `X-Drashti-Signature-256` | `sha256=` and the hex HMAC-SHA256 of the body, keyed by the whole secret as shown (`whsec_…`), as GitHub signs its webhooks: for a receiver that can only make a plain HMAC.                             |
+| `X-Drashti-Event`         | The `type`, again.                                                                                                                                                                                       |
+
+**Checking one**, in Node (a Standard Webhooks library does the first for you):
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+const same = (a, b) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+
+/** `body` exactly as it arrived, before any JSON parsing. */
+function fromDrashti(secret, headers, body) {
+  const id = headers['webhook-id'];
+  const ts = headers['webhook-timestamp'];
+  if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false; // more than 5 minutes off
+  const key = Buffer.from(secret.replace(/^whsec_/, ''), 'base64');
+  const want = `v1,${createHmac('sha256', key).update(`${id}.${ts}.${body}`).digest('base64')}`;
+  return headers['webhook-signature'].split(' ').some((s) => same(s, want));
+}
+
+/** Or the plain one. */
+const githubStyle = (secret, headers, body) =>
+  same(
+    headers['x-drashti-signature-256'],
+    `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`,
+  );
+```
+
+In n8n, the **Crypto** node's HMAC (SHA256, hex, the secret as shown) of the body as it arrived, with `sha256=` before it, should equal `X-Drashti-Signature-256`.
+
+**Answering.** Answer `2xx` quickly (within 15 seconds; the body is not read). Anything else is tried again: at once, then after 5 s, 30 s, 2 min, 10 min and 30 min, and then the event is given up (the dialog counts those). Events to one address go one at a time, in order; slide changes within 250 ms of each other go as the last one. A `410` turns the address off until an admin turns it on again; a `404`, a redirect (never followed) or another `4xx` means the address is set up wrongly, and is tried only twice more. Events waiting when Drashti quits are not sent later.

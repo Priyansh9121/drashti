@@ -21,6 +21,7 @@ export function adminRefusals(
   // These answer in shapes of their own: no files picked, the sound output as it is, the roles as they are.
   answers.set(IPC.library.pickImportPaths, () => []);
   answers.set(IPC.audio.setOutput, sound);
+  answers.set(IPC.events.view, () => ({ available: false, message: ADMIN_REFUSAL, addresses: [] }));
   for (const c of [IPC.roles.setPins, IPC.roles.changePin, IPC.roles.turnOff])
     answers.set(c, () => ({ ok: false as const, message: ADMIN_REFUSAL, view: roles() }));
   return answers;
