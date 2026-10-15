@@ -134,7 +134,6 @@ import { registerPlaylistIpc } from './playlists/playlist-ipc';
 import { nodeWatch, SmartFolders } from './playlists/smart-folders';
 import { RepeatSlides } from './playlists/repeat-slides';
 import {
-  drawnCanvas,
   framed,
   PLAIN,
   type PictureLook,
@@ -142,6 +141,7 @@ import {
   type PixelSize,
   sharpenStep,
 } from '../shared/picture-look';
+import { largestAudienceScreen, type LocalOutput } from './media/copy-screen';
 import { TrimSaves } from './convert/trim-saves';
 import { saveRequestSchema } from '../shared/trim';
 import { isRepeatId } from '../shared/repeat';
@@ -1321,21 +1321,22 @@ function start(): void {
     },
   });
   // The audience screens on this computer, each its canvas as drawn in its window, in pixels: the largest.
+  // A node's screens count too (Session 26h), at the size of the node's display each is given to.
   audienceScreenSize = () => {
-    let largest: PixelSize | null = null;
+    const local: LocalOutput[] = [];
     for (const [screenId, win] of outputWindows) {
       const s = screenRepo.screen(screenId);
-      if (!s || win.isDestroyed() || screenRepo.groupRole(s.groupId) !== 'audience') continue;
+      if (!s || win.isDestroyed()) continue;
       const bounds = win.getContentBounds();
       const factor = electronScreen.getDisplayMatching(win.getBounds()).scaleFactor;
-      const drawn = drawnCanvas(
-        { width: s.canvasWidth, height: s.canvasHeight },
-        { width: bounds.width * factor, height: bounds.height * factor },
-        s.scaling,
-      );
-      if (!largest || drawn.width * drawn.height > largest.width * largest.height) largest = drawn;
+      local.push({ screen: s, window: { width: bounds.width * factor, height: bounds.height * factor } });
     }
-    return largest;
+    return largestAudienceScreen({
+      local,
+      screens: screenRepo.allScreens(),
+      roleOf: (groupId) => screenRepo.groupRole(groupId),
+      nodes: nodeService?.displays() ?? [],
+    });
   };
   stops.add('outputs', () => {
     manager.closeAll();
@@ -2995,6 +2996,8 @@ function start(): void {
     },
     screensChanged: () => {
       sendToOperator(IPC.screens.changed, screens.snapshot());
+      // A node's displays or screens changed: copies follow the screens' size, a node's included (Session 26h).
+      void sharpened.screensChanged();
     },
     thumbs: (thumbs) => {
       sendToOperator(IPC.nodes.thumbs, thumbs);
