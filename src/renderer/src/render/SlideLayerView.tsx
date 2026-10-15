@@ -10,9 +10,17 @@ import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { LowerThird } from './LowerThird';
 import { Placed } from './Placed';
-import { type SlideText, SlideView } from './SlideView';
+import { type Reveal, type SlideText, SlideView } from './SlideView';
 import { clockHeld, engineNow, onClockJump } from './clock';
-import { takesTime, transitionFrame, wordsFrame, wordsMove, zoomSpan } from './transition-frame';
+import { linesReveal, type UnitFrame, wordsReveal } from './reveal';
+import {
+  takesTime,
+  transitionFrame,
+  wordsFrame,
+  wordsMove,
+  type WordsMove,
+  zoomSpan,
+} from './transition-frame';
 
 /*
  * The slide layer on a screen, with its transition (PLAN.md 5.2, Session
@@ -68,8 +76,62 @@ interface Layers {
   wordsOut: HTMLDivElement | null;
 }
 
+/**
+ * How a transition paints: its kind (null when not in one), the group's Movement, how its words move (null:
+ * whole slides), the canvas, and each slide's height against 1080 (a line's rise is the lab's, at 1080).
+ */
+interface Paint {
+  kind: TransitionKind | null;
+  movement: Movement;
+  move: WordsMove | null;
+  width: number;
+  height: number;
+  scaleIn: number;
+  scaleOut: number;
+}
+
+/** Each line, or word, of the two slides' words as a reveal has it at `p` (Session 27, render/reveal.ts). */
+function paintUnits(els: Layers, how: Paint, p: number): void {
+  const lines = (root: HTMLElement | null) =>
+    root
+      ? [...root.querySelectorAll<HTMLElement>('[data-reveal-line]')].filter(
+          (line) => line.dataset['revealEmpty'] === undefined,
+        )
+      : [];
+  const place = (el: HTMLElement, f: UnitFrame, scale: number) => {
+    el.style.opacity = String(f.opacity);
+    el.style.top = f.rise === 0 ? '' : `${String(f.rise * scale)}px`;
+  };
+  const fresh = lines(els.wordsIn);
+  if (how.move === 'lines') {
+    const old = lines(els.wordsOut);
+    const r = linesReveal(how.movement, fresh.length, old.length);
+    const t = p * r.total;
+    fresh.forEach((line, i) => {
+      place(line, r.in(i, t), how.scaleIn);
+    });
+    old.forEach((line, i) => {
+      place(line, r.out(i, t), how.scaleOut);
+    });
+    return;
+  }
+  const words = fresh.map((line) => [...line.querySelectorAll<HTMLElement>('[data-reveal-word]')]);
+  const r = wordsReveal(
+    how.movement,
+    words.map((w) => w.length),
+  );
+  const t = p * r.total;
+  words.forEach((ws, li) => {
+    ws.forEach((w, wi) => {
+      place(w, r.in(li, wi, t), how.scaleIn);
+    });
+  });
+  if (els.wordsOut) els.wordsOut.style.opacity = String(r.out(t));
+}
+
 /** The two slides and the black as the transition has them at `p`, the words too while apart (nothing set when not in one). */
-function paintLayers(els: Layers, kind: TransitionKind | null, p: number, movement: Movement): void {
+function paintLayers(els: Layers, how: Paint, p: number): void {
+  const { kind, movement } = how;
   const frame = kind === null ? null : transitionFrame(kind, p, movement);
   const set = (el: HTMLDivElement | null, opacity: string, transform: string, clip = '') => {
     if (!el) return;
@@ -80,11 +142,12 @@ function paintLayers(els: Layers, kind: TransitionKind | null, p: number, moveme
   set(els.in, frame ? String(frame.in.opacity) : '', frame?.in.transform ?? '');
   set(els.out, frame ? String(frame.out.opacity) : '', frame?.out.transform ?? '');
   if (els.black) els.black.style.opacity = frame ? String(frame.black) : '0';
-  const move = kind === null ? null : wordsMove(kind, movement);
+  const move = kind === null ? null : how.move;
   if (move && (els.wordsIn || els.wordsOut)) {
-    const words = wordsFrame(move, p);
+    const words = wordsFrame(move, p, how);
     set(els.wordsIn, String(words.in.opacity), words.in.transform, words.in.clip);
     set(els.wordsOut, String(words.out.opacity), words.out.transform, words.out.clip);
+    if (move === 'lines' || move === 'words') paintUnits(els, how, p);
   }
 }
 
@@ -173,6 +236,7 @@ function DrawnSlide({
   slides,
   lift,
   text = 'shown',
+  reveal,
 }: {
   layer: SlideLayer;
   canvas: Size;
@@ -182,6 +246,8 @@ function DrawnSlide({
   lift: number;
   /** While a Bold move runs: its pictures with the words hidden, or its words alone (Session 27). */
   text?: SlideText;
+  /** Its words alone, line by line or word by word. */
+  reveal?: Reveal;
 }) {
   if (slides === 'lowerThird') {
     const lines = lowerThird(layer.slide, languages);
@@ -190,7 +256,12 @@ function DrawnSlide({
   }
   return (
     <Placed content={layer.slide} box={canvas} mode={scaling}>
-      <SlideView slide={languageView(layer.slide, languages)} startedAt={layer.shownAt} text={text} />
+      <SlideView
+        slide={languageView(layer.slide, languages)}
+        startedAt={layer.shownAt}
+        text={text}
+        reveal={reveal}
+      />
     </Placed>
   );
 }
@@ -256,6 +327,13 @@ export function SlideLayerView({
   const start = fade?.start ?? null;
   const ms = fade?.ms ?? 0;
   const kind = fade?.kind ?? 'cut';
+  // How its words move while it runs (Session 27): never word by word on a kirtan's slide; slides as designed
+  // only (a lower third has its own way).
+  const moveNow =
+    fade !== null && slides === 'designed' ? wordsMove(kind, movement, on?.slide.kirtan === true) : null;
+  const { width, height } = canvas;
+  const scaleIn = (on?.slide.height ?? 1080) / 1080;
+  const scaleOut = (off?.slide.height ?? 1080) / 1080;
   const blackRef = useRef<HTMLDivElement>(null);
   // The two slides' words, while a Bold move draws them apart (Session 27).
   const wordsInRef = useRef<HTMLDivElement>(null);
@@ -273,9 +351,8 @@ export function SlideLayerView({
           wordsIn: wordsInRef.current,
           wordsOut: wordsOutRef.current,
         },
-        kind,
+        { kind, movement, move: moveNow, width, height, scaleIn, scaleOut },
         p,
-        movement,
       );
       rootRef.current?.setAttribute('data-fade', p.toFixed(3));
       if (p >= 1) {
@@ -288,7 +365,7 @@ export function SlideLayerView({
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [start, ms, kind, movement]);
+  }, [start, ms, kind, movement, moveNow, width, height, scaleIn, scaleOut]);
 
   // After every render, before it is painted: where the transition is now (the frames between renders set
   // it too).
@@ -302,9 +379,8 @@ export function SlideLayerView({
         wordsIn: wordsInRef.current,
         wordsOut: wordsOutRef.current,
       },
-      fading ? kind : null,
+      { kind: fading ? kind : null, movement, move: moveNow, width, height, scaleIn, scaleOut },
       start !== null ? fadeAt({ ms, start }, engineNow()) : 0,
-      movement,
     );
   });
 
@@ -315,7 +391,7 @@ export function SlideLayerView({
   const adds = fading && off !== null && transitionFrame(kind, 0, movement).add;
   // A Bold move (Session 27): the words drawn apart, above both slides' pictures, shapes and colour, which
   // only dissolve. Slides as designed only (a lower third has its own); none for a cut or a Calm dissolve.
-  const move = fading && slides === 'designed' ? wordsMove(kind, movement) : null;
+  const move = fading ? moveNow : null;
   return (
     <div
       ref={rootRef}
@@ -389,6 +465,7 @@ export function SlideLayerView({
                   slides={slides}
                   lift={lift}
                   text="only"
+                  reveal={move === 'lines' || move === 'words' ? move : undefined}
                 />
               </div>
             );

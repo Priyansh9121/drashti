@@ -16,6 +16,8 @@ export interface PlaceholderSlide {
   shapes?: { x: number; y: number; width: number; height: number; fill: string }[];
   /** Placeholder words, in a box across the middle (left out: none). */
   words?: string;
+  /** Their colour ("#rrggbb"), drawn flat: no shadow or outline (left out: the theme's look). */
+  wordsColor?: string;
   /** The slide's own colour behind everything. */
   background?: string | null;
   /** A picture's media id it puts up as the background (behind the slide), as a background cue does. */
@@ -128,7 +130,14 @@ export async function makeSlides(
                 {
                   ...text,
                   text: want.words,
-                  runs: text.runs?.slice(0, 1).map((r) => ({ ...r, text: want.words ?? '' })),
+                  style: want.wordsColor
+                    ? { ...text.style, color: want.wordsColor, shadow: false, outline: null }
+                    : text.style,
+                  runs: text.runs?.slice(0, 1).map((r) => ({
+                    ...r,
+                    text: want.words ?? '',
+                    ...(want.wordsColor ? { color: want.wordsColor, shadow: false, outline: null } : {}),
+                  })),
                 },
               ]
             : []),

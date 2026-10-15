@@ -169,3 +169,21 @@ test('a dissolve on two screens at once, with its background, after its pictures
   for (const p of audience) await expect(p.locator('[data-layer="slide"]')).toHaveCount(0);
   await app.close();
 });
+
+test('Drashti’s own default transition keeps any kind the editor offers (Session 27)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  const kept = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const out: string[] = [];
+    for (const kind of ['push', 'lines', 'fade-black', 'cut'] as const) {
+      const r = await d.library.setDefaultTransition({ kind, durationMs: kind === 'cut' ? 0 : 700 });
+      const now = await d.library.getDefaultTransition();
+      out.push(`${r.ok ? r.transition.kind : 'refused'} ${now.kind} ${String(now.durationMs)}`);
+    }
+    return out;
+  });
+  // Before, every kind but a cut was kept as a fade.
+  expect(kept).toEqual(['push push 700', 'lines lines 700', 'fade-black fade-black 700', 'cut cut 0']);
+  await app.close();
+});

@@ -20,6 +20,7 @@ import { Looked } from './picture-looks';
 import { slideShowing } from '../../../shared/picture-look';
 import { PreviewPicture, usePreviewsOnly } from './previews';
 import { useMediaAttempt } from './media-attempts';
+import { hasWords, revealLines, wordUnits } from './reveal';
 
 /**
  * How a slide draws its videos: 'live' plays them (outputs and the live
@@ -103,6 +104,42 @@ function Runs({ el, runs }: { el: TextElement; runs: TextRun[] }) {
   );
 }
 
+/**
+ * The words of a box as lines (and, word by word, as words), each its own span, while they are revealed
+ * one after another (Session 27, render/reveal.ts): laid out exactly as Runs lays them out (each line
+ * break with its own run), each line and word moved by its own `top` and faded by its own opacity.
+ */
+function RevealRuns({ el, runs, words }: { el: TextElement; runs: readonly TextRun[]; words: boolean }) {
+  return (
+    <>
+      {revealLines(runs).map((line, li) => (
+        <span
+          key={li}
+          data-reveal-line={li}
+          data-reveal-empty={hasWords(line) ? undefined : ''}
+          style={{ position: 'relative' }}
+        >
+          {line.pieces.map((piece, pi) => {
+            const lang = piece.run.lang ?? el.lang;
+            const locale = lang ? HTML_LANG[lang] : undefined;
+            return (
+              <span key={pi} lang={locale} style={runStyle(piece.run, el)}>
+                {words && piece.text !== '\n'
+                  ? wordUnits(piece.text, locale).map((unit, ui) => (
+                      <span key={ui} data-reveal-word="" style={{ position: 'relative' }}>
+                        {unit}
+                      </span>
+                    ))
+                  : piece.text}
+              </span>
+            );
+          })}
+        </span>
+      ))}
+    </>
+  );
+}
+
 /** The smallest shrink-to-fit goes (a tenth of the size set). */
 const MIN_FIT = 0.1;
 
@@ -180,7 +217,16 @@ export function textBoxStyle(el: TextElement): CSSProperties {
   };
 }
 
-function TextView({ el, hidden = false }: { el: TextElement; hidden?: boolean }) {
+function TextView({
+  el,
+  hidden = false,
+  reveal,
+}: {
+  el: TextElement;
+  hidden?: boolean;
+  /** Line by line or word by word, while its words are revealed (Session 27). */
+  reveal?: Reveal;
+}) {
   const box = useRef<HTMLDivElement>(null);
   const words = useRef<HTMLDivElement>(null);
   useShrinkToFit(box, words, el);
@@ -197,7 +243,17 @@ function TextView({ el, hidden = false }: { el: TextElement; hidden?: boolean })
       style={hidden ? { ...textBoxStyle(el), visibility: 'hidden' } : textBoxStyle(el)}
     >
       <div ref={words} style={{ width: '100%', flexShrink: 0 }}>
-        {el.runs && el.runs.length > 0 ? <Runs el={el} runs={el.runs} /> : el.text}
+        {reveal ? (
+          <RevealRuns
+            el={el}
+            runs={el.runs && el.runs.length > 0 ? el.runs : [{ text: el.text }]}
+            words={reveal === 'words'}
+          />
+        ) : el.runs && el.runs.length > 0 ? (
+          <Runs el={el} runs={el.runs} />
+        ) : (
+          el.text
+        )}
       </div>
     </div>
   );
@@ -347,6 +403,7 @@ export function ElementView({
   media = 'live',
   startedAt,
   textHidden = false,
+  reveal,
 }: {
   el: SlideElement;
   media?: MediaMode;
@@ -354,8 +411,10 @@ export function ElementView({
   startedAt?: number;
   /** Words laid out but not drawn (they are drawn apart while a Bold move runs, Session 27). */
   textHidden?: boolean;
+  /** Words line by line or word by word, while they are revealed (Session 27). */
+  reveal?: Reveal;
 }) {
-  if (el.kind === 'text') return <TextView el={el} hidden={textHidden} />;
+  if (el.kind === 'text') return <TextView el={el} hidden={textHidden} reveal={reveal} />;
   if (el.kind === 'shape') return <ShapeView el={el} />;
   return <MediaView el={el} media={media} startedAt={startedAt} />;
 }
@@ -367,18 +426,24 @@ export function ElementView({
  */
 export type SlideText = 'shown' | 'hidden' | 'only';
 
+/** Words revealed one line, or one word, after another (Session 27). */
+export type Reveal = 'lines' | 'words';
+
 /** One slide at its design size. Parents scale it with Placed. */
 export const SlideView = memo(function SlideView({
   slide,
   media = 'live',
   startedAt,
   text = 'shown',
+  reveal,
 }: {
   slide: RenderSlide;
   media?: MediaMode;
   /** When the slide went live (the engine's shownAt), so its videos play in step everywhere. */
   startedAt?: number;
   text?: SlideText;
+  /** Its words alone (`only`), line by line or word by word (Session 27). */
+  reveal?: Reveal;
 }) {
   return (
     <div
@@ -400,6 +465,7 @@ export const SlideView = memo(function SlideView({
             media={media}
             startedAt={startedAt}
             textHidden={text === 'hidden'}
+            reveal={text === 'only' ? reveal : undefined}
           />
         ),
       )}

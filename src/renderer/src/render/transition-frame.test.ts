@@ -119,12 +119,70 @@ describe('a transition, part-way', () => {
 });
 
 describe('words apart while a Bold move runs (Session 27)', () => {
-  it('only Bold’s dissolve draws the words apart yet; every cut, Calm dissolve and other kind draws whole slides', () => {
+  it('Bold draws its words apart for its dissolve, wipe, push and zoom; Calm fades instead; both reveal lines and words', () => {
     expect(wordsMove('dissolve', 'bold')).toBe('settle');
-    for (const kind of ['cut', 'dissolve', 'fade-black', 'slide', 'zoom'] as const)
+    expect(wordsMove('wipe', 'bold')).toBe('wipe');
+    expect(wordsMove('push', 'bold')).toBe('push');
+    expect(wordsMove('zoom-dissolve', 'bold')).toBe('zoom');
+    for (const kind of [
+      'cut',
+      'dissolve',
+      'fade-black',
+      'slide',
+      'zoom',
+      'wipe',
+      'push',
+      'zoom-dissolve',
+    ] as const)
       expect(wordsMove(kind, 'calm'), kind).toBeNull();
     for (const kind of ['cut', 'fade-black', 'slide', 'zoom'] as const)
       expect(wordsMove(kind, 'bold'), kind).toBeNull();
+    for (const movement of ['calm', 'bold'] as const) {
+      expect(wordsMove('lines', movement)).toBe('lines');
+      expect(wordsMove('words', movement)).toBe('words');
+    }
+  });
+
+  it('never word by word on a kirtan’s slide, whatever the Look: its dissolve instead', () => {
+    expect(wordsMove('words', 'bold', true)).toBe('settle');
+    expect(wordsMove('words', 'calm', true)).toBeNull();
+    expect(wordsMove('lines', 'calm', true)).toBe('lines');
+  });
+
+  it('every new kind’s pictures only dissolve, on the Movement’s curve: in + out = 1', () => {
+    for (const kind of ['wipe', 'push', 'zoom-dissolve', 'lines', 'words'] as const)
+      for (const movement of ['calm', 'bold'] as const)
+        for (let i = 0; i <= 100; i++)
+          expect(transitionFrame(kind, i / 100, movement)).toEqual(
+            transitionFrame('dissolve', i / 100, movement),
+          );
+  });
+
+  it('the push moves the words a screen’s width; the zoom grows them; the wipe’s diagonal edge crosses', () => {
+    expect(wordsFrame('push', 0)).toMatchObject({
+      in: { transform: 'translateX(100%)' },
+      out: { transform: 'translateX(0%)' },
+    });
+    expect(wordsFrame('push', 1)).toMatchObject({
+      in: { transform: '' },
+      out: { transform: 'translateX(-100%)' },
+    });
+    expect(wordsFrame('zoom', 0)).toMatchObject({
+      in: { opacity: 0, transform: 'scale(0.92)' },
+      out: { opacity: 1, transform: 'scale(1)' },
+    });
+    expect(wordsFrame('zoom', 1)).toMatchObject({
+      in: { opacity: 1, transform: '' },
+      out: { opacity: 0, transform: 'scale(1.08)' },
+    });
+    const size = { width: 1920, height: 1080 };
+    expect(wordsFrame('wipe', 0, size).in.clip).toBe('polygon(0 0, 0.0px 0, -302.4px 100%, 0 100%)');
+    expect(wordsFrame('wipe', 0, size).out.clip).toBe('polygon(0.0px 0, 100% 0, 100% 100%, -302.4px 100%)');
+    expect(wordsFrame('wipe', 1, size).in.clip).toBe('');
+    expect(wordsFrame('lines', 0.5)).toEqual({
+      in: { opacity: 1, transform: '', clip: '' },
+      out: { opacity: 1, transform: '', clip: '' },
+    });
   });
 
   it('Bold’s new words settle from 103% as they come in, on the pictures’ curve; in + out = 1', () => {

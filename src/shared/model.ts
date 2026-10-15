@@ -185,16 +185,34 @@ export interface RenderSlide {
 /**
  * How a slide comes onto the screens: at once (a cut), or from the slide before by a fade (a dissolve:
  * the new slide added light for light over the old), a fade through black, a slide in from the right, or
- * a slow zoom (a fade, the slide then zooming in slowly while it is up). The last three came with Repeat
- * Slides (Session 26d); any slide or presentation can pick them.
+ * a slow zoom (a fade, the slide then zooming in slowly while it is up). Those three came with Repeat
+ * Slides (Session 26d); any slide or presentation can pick them. Session 27 added the design lab's: a
+ * hard diagonal wipe, a push and a zoom (each moving only the words, and only on screens whose Look moves
+ * Bold: elsewhere they fade), and the words line by line or word by word (never word by word on a
+ * kirtan's slides). Pictures only ever dissolve.
  */
-export type TransitionKind = 'cut' | 'dissolve' | 'fade-black' | 'slide' | 'zoom';
+export type TransitionKind =
+  | 'cut'
+  | 'dissolve'
+  | 'fade-black'
+  | 'slide'
+  | 'zoom'
+  | 'wipe'
+  | 'push'
+  | 'zoom-dissolve'
+  | 'lines'
+  | 'words';
 export const TRANSITION_KINDS = [
   'cut',
   'dissolve',
   'fade-black',
   'slide',
   'zoom',
+  'wipe',
+  'push',
+  'zoom-dissolve',
+  'lines',
+  'words',
 ] as const satisfies readonly TransitionKind[];
 
 /** Each transition's name, as the operator reads it. */
@@ -204,7 +222,15 @@ export const TRANSITION_NAMES: Record<TransitionKind, string> = {
   'fade-black': 'Fade through black',
   slide: 'Slide',
   zoom: 'Slow zoom',
+  wipe: 'Wipe',
+  push: 'Push',
+  'zoom-dissolve': 'Zoom',
+  lines: 'Line by line',
+  words: 'Word by word',
 };
+
+/** The kinds only a Bold Look draws as themselves (Session 27); screens that move Calm fade instead. */
+export const BOLD_ONLY_KINDS: readonly TransitionKind[] = ['wipe', 'push', 'zoom-dissolve'];
 
 export interface Transition {
   kind: TransitionKind;

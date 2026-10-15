@@ -85,6 +85,13 @@ export function transitionFrame(
         add: false,
       };
     }
+    // The design lab's moves (Session 27) move only the words, apart (wordsFrame): the slides' pictures,
+    // shapes and colour dissolve, as in a fade.
+    case 'wipe':
+    case 'push':
+    case 'zoom-dissolve':
+    case 'lines':
+    case 'words':
     case 'dissolve':
     case 'zoom': {
       const e = dissolveCurve(movement)(q);
@@ -118,23 +125,97 @@ export function zoomAt(t: Transition | undefined, shownAt: number, now: number):
 }
 
 /** How the words move apart from the slide's pictures while a transition runs (Session 27). */
-export type WordsMove = 'settle';
+export type WordsMove = 'settle' | 'wipe' | 'push' | 'zoom' | 'lines' | 'words';
 
 /**
- * Whether a transition draws the words apart from the pictures, and how: Bold's dissolve lets the new words
- * settle as they come in. Null: the slides are drawn whole (every cut and Calm dissolve as before).
+ * Whether a transition draws the words apart from the pictures, and how. Bold: its dissolve lets the new
+ * words settle as they come in; the wipe, the push and the zoom move them. Both Movements: the words line by
+ * line, or word by word, except on a kirtan's slides (never word by word there, whatever the Look: its
+ * dissolve instead). Null: the slides are drawn whole (every cut, Calm dissolve and Repeat Slides' own kind,
+ * and the Bold kinds on Calm screens, which fade).
  */
-export function wordsMove(kind: TransitionKind, movement: Movement): WordsMove | null {
-  return movement === 'bold' && kind === 'dissolve' ? 'settle' : null;
+export function wordsMove(kind: TransitionKind, movement: Movement, kirtan = false): WordsMove | null {
+  const bold = movement === 'bold';
+  switch (kind) {
+    case 'lines':
+      return 'lines';
+    case 'words':
+      return kirtan ? (bold ? 'settle' : null) : 'words';
+    case 'dissolve':
+      return bold ? 'settle' : null;
+    case 'wipe':
+      return bold ? 'wipe' : null;
+    case 'push':
+      return bold ? 'push' : null;
+    case 'zoom-dissolve':
+      return bold ? 'zoom' : null;
+    case 'cut':
+    case 'fade-black':
+    case 'slide':
+    case 'zoom':
+      return null;
+  }
 }
 
-/** The two slides' words, drawn apart above their pictures, at `p` (0 to 1) of a move. */
-export function wordsFrame(_move: WordsMove, p: number): { in: PartFrame; out: PartFrame } {
-  // Bold's dissolve (the lab's): the new words come in on the same curve as the pictures, settling from 103%
-  // to their own size; the old ones go as the pictures do. In + out = 1.
-  const e = EASE.inOut(clamp(p));
-  return {
-    in: { opacity: e, transform: e >= 1 ? '' : `scale(${String(lerp(1.03, 1, e))})`, clip: '' },
-    out: { opacity: 1 - e, transform: '', clip: '' },
-  };
+/**
+ * The two slides' words, drawn apart above their pictures, at `p` (0 to 1) of a move, on a canvas of `size`
+ * (the wipe's slant is the lab's, a quarter of the height). Line by line and word by word draw each line or
+ * word on its own (reveal.ts): their layers are whole here.
+ */
+export function wordsFrame(
+  move: WordsMove,
+  p: number,
+  size: { width: number; height: number } = { width: 1920, height: 1080 },
+): { in: PartFrame; out: PartFrame } {
+  const q = clamp(p);
+  const whole: PartFrame = { opacity: 1, transform: '', clip: '' };
+  switch (move) {
+    case 'settle': {
+      // Bold's dissolve (the lab's): the new words come in on the same curve as the pictures, settling from
+      // 103% to their own size; the old ones go as the pictures do. In + out = 1.
+      const e = EASE.inOut(q);
+      return {
+        in: { opacity: e, transform: e >= 1 ? '' : `scale(${String(lerp(1.03, 1, e))})`, clip: '' },
+        out: { opacity: 1 - e, transform: '', clip: '' },
+      };
+    }
+    case 'wipe': {
+      // A hard diagonal edge (15 degrees) crossing from the left: the new words before it, the old after.
+      const e = EASE.wipe(q);
+      const slant = 0.28 * size.height;
+      const x = lerp(-slant, size.width + slant, e);
+      const px = (v: number) => `${v.toFixed(1)}px`;
+      return {
+        in: {
+          opacity: 1,
+          transform: '',
+          clip: e >= 1 ? '' : `polygon(0 0, ${px(x + slant)} 0, ${px(x)} 100%, 0 100%)`,
+        },
+        out: {
+          opacity: 1,
+          transform: '',
+          clip: `polygon(${px(x + slant)} 0, 100% 0, 100% 100%, ${px(x)} 100%)`,
+        },
+      };
+    }
+    case 'push': {
+      // The old words out to the left as the new come in from the right, the screen's width.
+      const e = EASE.inOut(q);
+      return {
+        in: { opacity: 1, transform: e >= 1 ? '' : `translateX(${String((1 - e) * 100)}%)`, clip: '' },
+        out: { opacity: 1, transform: `translateX(${String(-e * 100)}%)`, clip: '' },
+      };
+    }
+    case 'zoom': {
+      // The old words grow to 108% as they go; the new grow from 92% to their own size as they come.
+      const e = EASE.inOut(q);
+      return {
+        in: { opacity: e, transform: e >= 1 ? '' : `scale(${String(lerp(0.92, 1, e))})`, clip: '' },
+        out: { opacity: 1 - e, transform: `scale(${String(lerp(1, 1.08, e))})`, clip: '' },
+      };
+    }
+    case 'lines':
+    case 'words':
+      return { in: whole, out: whole };
+  }
 }

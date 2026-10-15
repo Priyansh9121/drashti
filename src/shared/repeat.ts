@@ -38,13 +38,18 @@ export const DEFAULT_REPEAT: RepeatSettings = {
   transition: { kind: 'dissolve', durationMs: 1000 },
 };
 
-/** The transitions Repeat Slides offers, Fade first. */
+/** The transitions Repeat Slides offers, Fade first (Session 27's after its own). */
 export const REPEAT_TRANSITIONS: readonly TransitionKind[] = [
   'dissolve',
   'cut',
   'fade-black',
   'slide',
   'zoom',
+  'wipe',
+  'push',
+  'zoom-dissolve',
+  'lines',
+  'words',
 ];
 
 export const repeatSettingsSchema: z.ZodType<RepeatSettings> = z
