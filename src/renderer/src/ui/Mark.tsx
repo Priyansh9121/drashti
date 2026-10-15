@@ -118,8 +118,19 @@ export function LitLamp({ size = 96, className }: { size?: number; className?: s
   );
 }
 
-/** The unlit lamp of an empty place: the bowl and its wick, and one wisp of smoke as it arrives. */
-export function UnlitLamp({ size = 64, className }: { size?: number; className?: string }) {
+/**
+ * The unlit lamp of an empty place: the bowl and its wick, and one wisp of smoke as it arrives (`wisp`:
+ * it is arriving; a place there since the window opened has no smoke).
+ */
+export function UnlitLamp({
+  size = 64,
+  className,
+  wisp = true,
+}: {
+  size?: number;
+  className?: string;
+  wisp?: boolean;
+}) {
   return (
     <svg
       width={size}
@@ -136,7 +147,7 @@ export function UnlitLamp({ size = 64, className }: { size?: number; className?:
     >
       <path d={MARK.bowl} />
       <path d="M512 690V626" />
-      <path className="lamp-wisp" d="M512 600c-22-24 22-40 0-70" strokeWidth={14} opacity={0.6} />
+      {wisp && <path className="lamp-wisp" d="M512 600c-22-24 22-40 0-70" strokeWidth={14} opacity={0.6} />}
     </svg>
   );
 }

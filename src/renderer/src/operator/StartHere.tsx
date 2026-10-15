@@ -8,6 +8,7 @@ import { cx } from '../ui/cx';
 import { FileText, FolderOpen, Import, Link2, ListPlus, Monitor } from '../ui/icons';
 import { UnlitLamp } from '../ui/Mark';
 import { MenuButton } from '../ui/Menu';
+import { useArrival } from '../ui/motion';
 
 /*
  * The middle of the window with nothing chosen (Session 26g, "Skip for now" on the first start
@@ -15,23 +16,30 @@ import { MenuButton } from '../ui/Menu';
  * the steps arrive one after another as the place does (a one-off arrival), then nothing moves.
  */
 export function StartHere() {
+  const arriving = useArrival('empty');
   return (
     <div
       className="lamp-empty flex flex-1 flex-col items-center justify-center gap-2 px-6 py-8 text-center text-muted"
       data-testid="start-here"
     >
-      <div data-motion="empty" style={{ ['--i' as string]: 0 }}>
-        <UnlitLamp size={72} />
+      <div data-motion={arriving} style={{ ['--i' as string]: 0 }}>
+        <UnlitLamp size={72} wisp={arriving !== undefined} />
       </div>
-      <h2 data-motion="empty" style={{ ['--i' as string]: 1 }} className="text-lg font-bold text-fg">
+      <h2 data-motion={arriving} style={{ ['--i' as string]: 1 }} className="text-lg font-bold text-fg">
         Nothing chosen yet
       </h2>
-      <p data-motion="empty" style={{ ['--i' as string]: 2 }} className="max-w-sm text-sm">
+      <p data-motion={arriving} style={{ ['--i' as string]: 2 }} className="max-w-sm text-sm">
         Pick a presentation in the library, or an item in a playlist, to see its slides here. New to Drashti?
         Start here: three steps, and it is ready for a sabha.
       </p>
       <ol className="mt-3 w-[min(26rem,100%)] space-y-2 text-left" aria-label="Three steps to a sabha">
-        <Step n={1} now title="Bring in what you show" text="Presentations, kirtans, pictures and videos">
+        <Step
+          n={1}
+          now
+          arriving={arriving}
+          title="Bring in what you show"
+          text="Presentations, kirtans, pictures and videos"
+        >
           <MenuButton
             label="Import"
             icon={Import}
@@ -46,12 +54,22 @@ export function StartHere() {
             Import…
           </MenuButton>
         </Step>
-        <Step n={2} title="Make this week’s playlist" text="The running order for the sabha">
+        <Step
+          n={2}
+          arriving={arriving}
+          title="Make this week’s playlist"
+          text="The running order for the sabha"
+        >
           <Button size="sm" icon={ListPlus} onClick={() => void createNode(false)}>
             New playlist
           </Button>
         </Step>
-        <Step n={3} title="Set up the screens" text="Which screen is the hall’s, and which the stage’s">
+        <Step
+          n={3}
+          arriving={arriving}
+          title="Set up the screens"
+          text="Which screen is the hall’s, and which the stage’s"
+        >
           <Button size="sm" icon={Monitor} onClick={() => void openSetup(1)}>
             Set up…
           </Button>
@@ -64,19 +82,22 @@ export function StartHere() {
 function Step({
   n,
   now = false,
+  arriving,
   title,
   text,
   children,
 }: {
   n: number;
   now?: boolean;
+  /** How the steps arrive with their place (one after another), or not at all. */
+  arriving: 'empty' | undefined;
   title: string;
   text: string;
   children: ReactNode;
 }) {
   return (
     <li
-      data-motion="empty"
+      data-motion={arriving}
       style={{ ['--i' as string]: n + 2 }}
       data-testid="start-step"
       className={cx(

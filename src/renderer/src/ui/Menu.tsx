@@ -6,7 +6,7 @@ import { Button, IconButton } from './Button';
 import { cx } from './cx';
 import type { Icon } from './icons';
 import { Kbd } from './Kbd';
-import { leave } from './motion';
+import { leave, useArrival } from './motion';
 
 /*
  * Small menus: one under a button, or one at the pointer (right-click).
@@ -60,6 +60,7 @@ export function Menu({
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const arriving = useArrival('pop');
   const [place, setPlace] = useState(at);
   const close = useRef(onClose);
   useEffect(() => {
@@ -156,7 +157,7 @@ export function Menu({
   return createPortal(
     <div
       ref={ref}
-      data-motion="pop"
+      data-motion={arriving}
       role="menu"
       aria-label={label}
       tabIndex={-1}

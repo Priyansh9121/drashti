@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { DataAttributes } from './cx';
 import { cx } from './cx';
 import type { Icon } from './icons';
+import { useArrival } from './motion';
 import { AlertTriangle, CircleAlert, CircleCheck, Info, X } from './icons';
 
 export type NoticeTone = 'info' | 'success' | 'warning' | 'danger';
@@ -59,13 +60,14 @@ export function Notice({
   compact?: boolean;
   className?: string;
 } & DataAttributes) {
+  const arriving = useArrival('notice');
   const look = tones[tone];
   const IconShape = look.icon;
   const announce = role ?? (tone === 'warning' || tone === 'danger' ? 'alert' : 'status');
   return (
     <div
       role={announce === 'none' ? undefined : announce}
-      data-motion="notice"
+      data-motion={arriving}
       className={cx(
         'flex items-start gap-2 rounded-md border border-l-4',
         compact ? 'px-2 py-1.5 text-xs' : 'px-3 py-2 text-sm',

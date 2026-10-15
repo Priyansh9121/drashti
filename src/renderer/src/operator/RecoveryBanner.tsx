@@ -3,7 +3,7 @@ import type { RecoveryNotice } from '../../../shared/recovery';
 import { recoveryText } from '../../../shared/recovery';
 import { Button } from '../ui/Button';
 import { RotateCcw } from '../ui/icons';
-import { useLeaving } from '../ui/motion';
+import { useArrival, useLeaving } from '../ui/motion';
 
 /** After an unexpected stop: what Drashti put back on the screens by itself, until the operator says OK. */
 export function RecoveryBanner() {
@@ -17,12 +17,14 @@ export function RecoveryBanner() {
 
 function RecoveryCard({ notice, onDismiss }: { notice: RecoveryNotice; onDismiss: () => void }) {
   const ref = useLeaving<HTMLDivElement>('notice');
+  // Shown as Drashti opens again after a stop, while the screens are put back: it arrives settled.
+  const arriving = useArrival('notice');
   return (
     <div
       ref={ref}
       role="alert"
       data-testid="recovery-notice"
-      data-motion="notice"
+      data-motion={arriving}
       className="fixed top-14 left-1/2 z-30 flex w-[min(44rem,calc(100%-2rem))] -translate-x-1/2 items-center gap-3 rounded-lg border border-warning/60 bg-warning-bg px-4 py-3 text-sm text-warning-fg shadow-overlay"
     >
       <RotateCcw size={18} aria-hidden="true" className="shrink-0" />
