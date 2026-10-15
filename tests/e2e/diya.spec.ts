@@ -101,9 +101,10 @@ test('the live slide’s red underglow sits under the live thumbnail and moves w
 
 /**
  * What in a page costs a computer without a graphics chip (app.css, "Depth" and "The lamp"): a soft
- * shadow round a rounded corner and any gradient but the lamp's light (radial) or the primary's plum,
- * each a new way of drawing for the chip to work out, and a layer of its own (will-change), which is
- * put together again at every frame. Slides themselves (inside a scene) are the audience's.
+ * shadow round a rounded corner, any gradient but the lamp's light (radial) or the primary's plum, and
+ * a shape filled with a gradient (the mark is flat beside a name), each a new way of drawing for the
+ * chip to work out; and a layer of its own (will-change), which is put together again at every frame.
+ * Slides themselves (inside a scene) are the audience's.
  */
 function newWaysToDraw(page: Page) {
   return page.evaluate(() => {
@@ -157,6 +158,8 @@ function newWaysToDraw(page: Page) {
         }
         if (st.willChange !== 'auto')
           found.push(`${name(el, pseudo)}: a layer of its own (${st.willChange})`);
+        if (pseudo === null && el instanceof SVGElement && `${st.fill} ${st.stroke}`.includes('url('))
+          found.push(`${name(el, pseudo)}: a shape filled with a gradient`);
       }
     }
     return [...new Set(found)];

@@ -49,26 +49,37 @@ function Paints({ id }: { id: string }) {
   );
 }
 
-/** The mark: the flame on its plum tile, with the lamp's light softly behind it. */
+/** A gradient's middle colour: halfway between its two stops (#rrggbb). */
+export function middle([top, bottom]: readonly [string, string]): string {
+  const channel = (hex: string, i: number) => Number.parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+  return `#${[0, 1, 2]
+    .map((i) =>
+      Math.round((channel(top, i) + channel(bottom, i)) / 2)
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('')}`;
+}
+
+/**
+ * The mark: the flame on its plum tile, with the lamp's light softly behind it. Beside a name it is
+ * small (24 to 36 px), where the icon's gradients do not show, so each part is filled flat with its
+ * gradient's middle colour: the header is drawn again at every slide change, and gradient-filled
+ * shapes there cost a computer without a graphics chip eight new ways of drawing (Session 26g, app.css
+ * "Depth"). The lamp lit on the first start keeps the gradients.
+ */
 export function Mark({ size = 24, className }: { size?: number; className?: string }) {
-  const id = useId();
+  const c = MARK.colours;
   return (
     <span
       className={cx('mark-halo relative inline-grid shrink-0 place-items-center', className)}
       aria-hidden="true"
     >
       <svg width={size} height={size} viewBox="100 100 824 824" className="relative block" data-mark="">
-        <Paints id={id} />
-        <rect {...MARK.tile} fill={`url(#${id}-tile)`} />
-        <path d={MARK.flame} fill={`url(#${id}-flame)`} />
-        <path d={MARK.core} fill={MARK.colours.core} />
-        <path
-          d={MARK.bowl}
-          fill={`url(#${id}-bowl)`}
-          stroke={MARK.colours.bowlEdge}
-          strokeWidth={30}
-          paintOrder="stroke"
-        />
+        <rect {...MARK.tile} fill={middle(c.tile)} />
+        <path d={MARK.flame} fill={middle(c.flame)} />
+        <path d={MARK.core} fill={c.core} />
+        <path d={MARK.bowl} fill={middle(c.bowl)} stroke={c.bowlEdge} strokeWidth={30} paintOrder="stroke" />
       </svg>
     </span>
   );
