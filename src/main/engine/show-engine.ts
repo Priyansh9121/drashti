@@ -494,6 +494,7 @@ export class ShowEngine {
               { kind: 'timer', timerId: t.id },
             ],
           },
+          at: now,
         },
       ];
     });
@@ -1264,7 +1265,7 @@ export class ShowEngine {
       case 'hideProp':
         return { ok: true, actions: [{ type: 'prop/hide', propId: command.propId }] };
       case 'showMessage':
-        return { ok: true, actions: [{ type: 'message/show', message: command.message }] };
+        return { ok: true, actions: [{ type: 'message/show', message: command.message, at: this.now() }] };
       case 'hideMessage':
         return { ok: true, actions: [{ type: 'message/hide', messageId: command.messageId }] };
       case 'setMask':

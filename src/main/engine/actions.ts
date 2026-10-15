@@ -72,7 +72,8 @@ export type EngineAction =
   | { type: 'audio/set'; audio: AudioLayer }
   | { type: 'prop/show'; prop: PropItem }
   | { type: 'prop/hide'; propId: string }
-  | { type: 'message/show'; message: MessageItem }
+  /** `at`: when, by the engine's clock (its entrance, Session 27); a message already up keeps its own. */
+  | { type: 'message/show'; message: MessageItem; at?: number }
   | { type: 'message/hide'; messageId: string }
   /** An announcement joins the ticker (or its words change): it starts again from the right at `at`. */
   | { type: 'ticker/show'; item: TickerItem; at: number }

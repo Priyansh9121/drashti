@@ -208,6 +208,12 @@ export interface MessageItem {
   text: string;
   /** When given, what is drawn: its words and live timers. */
   parts?: MessagePart[];
+  /**
+   * When it went up, by the engine's clock (Session 27): the banner's entrance is timed from it, and an
+   * update keeps it, so changing the words never plays the entrance again. Left out where nothing came in
+   * (a window's request carries none; a restored message comes back still).
+   */
+  shownAt?: number;
 }
 
 /** An announcement in the ticker. */
@@ -224,7 +230,13 @@ export interface TickerItem {
  */
 export interface TickerLayer {
   items: TickerItem[];
+  /** When the words began their current run (again each time an announcement joins or leaves). */
   startedAt: number;
+  /**
+   * When the band came up, by the engine's clock (Session 27): its own entrance, kept while the words
+   * change. Left out for a band that comes back still (recovery).
+   */
+  shownAt?: number;
 }
 
 /**

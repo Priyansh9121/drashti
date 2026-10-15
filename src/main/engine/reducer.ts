@@ -4,6 +4,7 @@ import {
   LAYER_NAMES,
   type LayerName,
   type Layers,
+  type MessageItem,
 } from '../../shared/engine/state';
 import type { EngineAction } from './actions';
 
@@ -194,7 +195,11 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       return withLayers(state, { props: state.layers.props.filter((p) => p.id !== action.propId) });
     }
     case 'message/show': {
-      const messages = upsert(state.layers.messages, action.message);
+      // Its time on the screens: one already up keeps its own (an update never plays the entrance again).
+      const was = state.layers.messages.find((m) => m.id === action.message.id);
+      const shownAt = was?.shownAt ?? action.message.shownAt ?? action.at;
+      const message: MessageItem = shownAt === undefined ? action.message : { ...action.message, shownAt };
+      const messages = upsert(state.layers.messages, message);
       return messages ? withLayers(state, { messages }) : state;
     }
     case 'message/hide': {
@@ -203,13 +208,26 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
     }
     case 'ticker/show': {
       const items = upsert(state.layers.ticker?.items ?? [], action.item);
-      return items ? withLayers(state, { ticker: { items, startedAt: action.at } }) : state;
+      // The words start again; the band keeps the time it came up (its entrance plays once, Session 27).
+      const shownAt = state.layers.ticker ? state.layers.ticker.shownAt : action.at;
+      return items
+        ? withLayers(state, {
+            ticker:
+              shownAt === undefined
+                ? { items, startedAt: action.at }
+                : { items, startedAt: action.at, shownAt },
+          })
+        : state;
     }
     case 'ticker/hide': {
       const ticker = state.layers.ticker;
       if (!ticker?.items.some((i) => i.id === action.itemId)) return state;
       const items = ticker.items.filter((i) => i.id !== action.itemId);
-      return withLayers(state, { ticker: items.length > 0 ? { items, startedAt: action.at } : null });
+      const kept =
+        ticker.shownAt === undefined
+          ? { items, startedAt: action.at }
+          : { items, startedAt: action.at, shownAt: ticker.shownAt };
+      return withLayers(state, { ticker: items.length > 0 ? kept : null });
     }
     case 'ticker/set':
       return sameData(state.layers.ticker, action.ticker)

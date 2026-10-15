@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { apiCall, networkOn, pairToken } from './devices';
 import { lightOf } from './pixels';
 import { holdClock } from './placeholder-slides';
 import { mkdtempSync, writeFileSync } from 'node:fs';
@@ -212,6 +213,38 @@ test('a node’s display in a group follows slides, a dissolve and a video in st
       );
       expect(off, `the node's picture at ${String(p)} of the dissolve`).toBeLessThan(0.01);
     }
+    for (const app of [main.app, node.app]) await holdClock(app, null);
+
+    // An announcement in the ticker (Session 27, the skills review's MOT-7): the node runs the words at the
+    // same pass as Main, and, both held at one moment of the engine's time, they stand at the same place.
+    const { port: apiPort } = await networkOn(main.win);
+    const token = await pairToken(main.win, apiPort, 'announcements', 'Placeholder poster');
+    const sent = await apiCall(apiPort, '/api/v1/announcements', {
+      method: 'POST',
+      token,
+      body: { text: 'Placeholder announcement for the node', from: 'Placeholder poster', minutes: 10 },
+    });
+    expect(sent.status).toBe(202);
+    const approved = await main.win.evaluate(
+      (id) => (globalThis as PageGlobals).drashti.announcements.approve({ id, as: 'ticker' }),
+      (sent.json['announcement'] as { id: string }).id,
+    );
+    expect(approved.ok).toBe(true);
+    for (const out of [mainOut, nodeOut])
+      await expect(out.getByTestId('ticker-words')).toHaveAttribute('data-pass-ms', /^\d+$/u);
+    expect(await nodeOut.getByTestId('ticker-words').getAttribute('data-pass-ms')).toBe(
+      await mainOut.getByTestId('ticker-words').getAttribute('data-pass-ms'),
+    );
+    const words = (out: Page) =>
+      out.evaluate(() => {
+        const a = document.querySelector('[data-testid="ticker-words"]')?.getAnimations()[0];
+        return { at: Number(a?.currentTime), paused: a?.playState === 'paused' };
+      });
+    const heldAt = Date.now() + 1000;
+    for (const app of [main.app, node.app]) await holdClock(app, heldAt);
+    for (const out of [mainOut, nodeOut]) await expect.poll(async () => (await words(out)).paused).toBe(true);
+    const [onMain, onNode] = [await words(mainOut), await words(nodeOut)];
+    expect(Math.abs(onMain.at - onNode.at), 'where the words are, Main against the node').toBeLessThan(1);
     for (const app of [main.app, node.app]) await holdClock(app, null);
 
     // A video in the background (the node copies it the moment it goes up), in step on both.
