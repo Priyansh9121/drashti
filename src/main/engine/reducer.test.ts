@@ -299,6 +299,21 @@ describe('reduce', () => {
     });
   });
 
+  describe('a prop’s and the logo’s time on the screens (Session 27)', () => {
+    it('is when it went up, kept while it stays up, so its videos play in step everywhere', () => {
+      const prop = { id: 'p', name: 'Placeholder prop', elements: [] };
+      let s = reduce(initialEngineState(), { type: 'prop/show', prop, at: 4000 });
+      expect(s.layers.props[0]?.shownAt).toBe(4000);
+      s = reduce(s, { type: 'prop/show', prop: { ...prop, name: 'Placeholder renamed' }, at: 8000 });
+      expect(s.layers.props[0]).toMatchObject({ name: 'Placeholder renamed', shownAt: 4000 });
+      let l = reduce(initialEngineState(), { type: 'logo/set', prop, at: 5000 });
+      expect(l.logo?.shownAt).toBe(5000);
+      expect(reduce(l, { type: 'logo/set', prop, at: 9000 })).toBe(l);
+      l = reduce(reduce(l, { type: 'logo/set', prop: null }), { type: 'logo/set', prop, at: 9000 });
+      expect(l.logo?.shownAt).toBe(9000);
+    });
+  });
+
   describe('the ticker', () => {
     it('starts again from the right each time an announcement joins, changes or leaves', () => {
       let s = reduce(deepFreeze(initialEngineState()), {

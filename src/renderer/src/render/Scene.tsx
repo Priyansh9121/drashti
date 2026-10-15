@@ -274,8 +274,9 @@ export function PropsLayer({
           >
             <Placed content={size} box={canvas} mode={scaling}>
               <div style={{ position: 'relative', width: size.width, height: size.height }}>
+                {/* Its videos play from when it went up, in step on every screen (Session 27). */}
                 {prop.elements.map((el) => (
-                  <ElementView key={el.id} el={el} />
+                  <ElementView key={el.id} el={el} startedAt={prop.shownAt} />
                 ))}
               </div>
             </Placed>
@@ -452,7 +453,7 @@ export const Scene = memo(function Scene({
                       }}
                     >
                       {state.logo.elements.map((el) => (
-                        <ElementView key={el.id} el={el} />
+                        <ElementView key={el.id} el={el} startedAt={state.logo?.shownAt} />
                       ))}
                     </div>
                   </Placed>

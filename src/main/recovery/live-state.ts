@@ -99,6 +99,8 @@ const tickerSchema: z.ZodType<TickerLayer> = z.object({
 
 /** A saved message, with the time it went up (Session 27): put back, it comes back still, with no entrance. */
 const savedMessageSchema = messageSchema.and(z.object({ shownAt: z.number().optional() }));
+/** A saved prop or logo, with the time it went up (Session 27): put back, its videos carry on in step. */
+const savedPropSchema = propSchema.and(z.object({ shownAt: z.number().optional() }));
 
 const savedSchema = z.object({
   version: z.union([z.literal(1), z.literal(2)]),
@@ -260,8 +262,8 @@ function liveIn(s: Saved, startLookId: string | null): SavedLive | null {
   };
   const background = layer(backgroundSchema.nullable(), s.background, null);
   const audio = layer(audioLayerSchema.nullable(), s.audio, null);
-  const logo = layer(propSchema.nullable(), s.logo, null);
-  const props = layer(z.array(propSchema).max(50), s.props, []);
+  const logo = layer(savedPropSchema.nullable(), s.logo, null);
+  const props = layer(z.array(savedPropSchema).max(50), s.props, []);
   const messages = layer(z.array(savedMessageSchema).max(50), s.messages, []);
   const ticker = layer(tickerSchema.nullable(), s.ticker, null);
   const masks = layer(maskSchema.nullable(), s.masks, null);

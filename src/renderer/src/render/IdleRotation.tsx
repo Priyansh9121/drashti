@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import type { IdleItem, IdleState, Quote, QuoteLang } from '../../../shared/idle';
 import { idleFrame, QUOTE_LANGS } from '../../../shared/idle';
 import { mediaUrl } from '../../../shared/media';
@@ -7,6 +8,8 @@ import type { Size } from '../../../shared/scaling';
 import { LANG_FONT_STACK } from './fonts';
 import { useMediaAttempt } from './media-attempts';
 import { useNow } from './useNow';
+import { engineNow } from './clock';
+import { EASE } from './easing';
 
 /*
  * The idle rotation on a screen (shared/idle.ts): the item up and the next
@@ -74,19 +77,29 @@ export function QuoteView({
 
 function ItemView({
   item,
-  opacity,
+  role,
   languages,
   canvas,
 }: {
   item: IdleItem;
-  opacity: number;
+  /** The item up, or the next one dissolving in over it (added light for light). */
+  role: 'current' | 'next';
   languages: readonly Lang[] | null;
   canvas: Size;
 }) {
   // On a node, a picture whose copy landed after it was asked for is drawn again (a new element).
   const attempt = useMediaAttempt(item.kind === 'picture' ? item.mediaId : '');
   return (
-    <div style={{ ...FULL, opacity }} data-idle-item={item.kind === 'picture' ? item.mediaId : item.quote.id}>
+    <div
+      // Its opacity is the dissolve's, set frame by frame (IdleRotation); the next one starts unseen.
+      style={{
+        ...FULL,
+        opacity: role === 'next' ? 0 : undefined,
+        mixBlendMode: role === 'next' ? 'plus-lighter' : undefined,
+      }}
+      data-idle-role={role}
+      data-idle-item={item.kind === 'picture' ? item.mediaId : item.quote.id}
+    >
       {item.kind === 'picture' ? (
         <img
           key={attempt}
@@ -111,17 +124,63 @@ export function IdleRotation({
   languages: readonly Lang[] | null;
   canvas: Size;
 }) {
+  // Which items are up, drawn again as the rotation steps on (a tenth of a second late at most, when the
+  // incoming item is already whole); the dissolve itself is drawn frame by frame below.
   const now = useNow(100);
-  const frame = idleFrame(idle, idle.startedAt ?? 0, now);
+  const anchor = idle.startedAt ?? 0;
+  const frame = idleFrame(idle, anchor, now);
+  const rootRef = useRef<HTMLDivElement>(null);
+  // What is drawn, for the frame-by-frame painting: read at every frame, so a frame asked for before a
+  // drawing never paints that drawing's items with an older one's times.
+  const drawn = useRef({ idle, anchor });
+  const raf = useRef(0);
+  // A complementary dissolve (Session 27, the skills review's MOT-8), on smoothstep by the engine's clock:
+  // the old item goes out as the new one comes in, added light for light in a group of their own over
+  // black, so the picture neither dips nor pops when the old item is taken away. True while it dissolves,
+  // or is about to: painted again at the next frame.
+  const paint = useCallback((): boolean => {
+    const root = rootRef.current;
+    if (!root) return false;
+    const { idle, anchor } = drawn.current;
+    const index = Number(root.dataset['idleIndex']);
+    const t = engineNow();
+    const f = idleFrame(idle, anchor, t);
+    // A step on since this was drawn: the incoming item whole, until it is drawn as the one up.
+    const e = !f ? 0 : f.index === index ? EASE.smooth(f.fade) : 1;
+    for (const el of root.querySelectorAll<HTMLElement>('[data-idle-role]'))
+      el.style.opacity = String(el.dataset['idleRole'] === 'next' ? e : 1 - e);
+    return f?.index === index && (f.fade > 0 || (idleFrame(idle, anchor, t + 150)?.fade ?? 0) > 0);
+  }, []);
+  // Painted after every drawing, before it is shown; then frame by frame only while it dissolves (a
+  // drawing every tenth of a second, above, starts that from just before the dissolve).
+  useLayoutEffect(() => {
+    drawn.current = { idle, anchor };
+    cancelAnimationFrame(raf.current);
+    const tick = () => {
+      raf.current = paint() ? requestAnimationFrame(tick) : 0;
+    };
+    tick();
+  });
+  useEffect(
+    () => () => {
+      cancelAnimationFrame(raf.current);
+    },
+    [],
+  );
   if (!frame) return null;
   const current = idle.items[frame.index];
   const next = idle.items[frame.next];
   if (!current) return null;
   return (
-    <div data-layer="idle" data-idle-index={frame.index} style={{ ...FULL, background: '#000000' }}>
-      <ItemView key={frame.index} item={current} opacity={1} languages={languages} canvas={canvas} />
+    <div
+      ref={rootRef}
+      data-layer="idle"
+      data-idle-index={frame.index}
+      style={{ ...FULL, background: '#000000', isolation: 'isolate' }}
+    >
+      <ItemView key={frame.index} item={current} role="current" languages={languages} canvas={canvas} />
       {next && frame.next !== frame.index && (
-        <ItemView key={frame.next} item={next} opacity={frame.fade} languages={languages} canvas={canvas} />
+        <ItemView key={frame.next} item={next} role="next" languages={languages} canvas={canvas} />
       )}
     </div>
   );
