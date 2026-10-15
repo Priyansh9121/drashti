@@ -65,6 +65,8 @@ async function shot(page: Page, name: string, hide: Locator[] = [], whole = fals
     mask: hide,
     maskColor: '#2a2f3a',
     fullPage: whole,
+    // Settled (Session 26g): anything still arriving is shown in its place.
+    animations: 'disabled',
   });
 }
 
@@ -81,7 +83,7 @@ async function part(page: Page, name: string, parts: Locator[]) {
     width: Math.max(...boxes.map((b) => b.x + b.width)) - x,
     height: Math.max(...boxes.map((b) => b.y + b.height)) - y,
   };
-  await page.screenshot({ path: join(folder, `${name}.png`), scale: 'css', clip });
+  await page.screenshot({ path: join(folder, `${name}.png`), scale: 'css', clip, animations: 'disabled' });
 }
 
 /** The placeholder sabha running: the kirtan's verse live, a message on the screens and a timer going. */
@@ -100,6 +102,27 @@ async function running(win: Page) {
   await expect(win.getByTestId('live-text')).toContainText('slide 2 of 5');
   return show;
 }
+
+test('the first start: the welcome, the practice show and the three steps (Session 26g)', async () => {
+  const { app } = await launchApp({ DRASHTI_TEST_NO_WIZARD: '0' });
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  const welcome = win.getByTestId('welcome');
+  await expect(welcome).toBeVisible();
+  // The lamp lit and the words in their places.
+  await win.waitForTimeout(2000);
+  await shot(win, 'first-start-welcome');
+  await welcome.getByRole('button', { name: 'Try a practice show first' }).click();
+  await win.keyboard.press('ArrowRight');
+  await win.keyboard.press('ArrowRight');
+  await expect(win.getByTestId('practice-thumb').nth(1)).toHaveAttribute('aria-current', 'true');
+  await shot(win, 'practice-show');
+  await win.getByTestId('practice-leave').click();
+  await win.getByTestId('welcome').getByRole('button', { name: 'Skip for now' }).click();
+  await expect(win.getByTestId('start-here')).toBeVisible();
+  await shot(win, 'start-here');
+  await app.close();
+});
 
 test('the operator window and its panels', async () => {
   const { app } = await launchApp();
@@ -479,7 +502,7 @@ test('the stream: the panel on air and recording, its settings, and the Program 
 async function mkdirAndShot(page: Page, name: string) {
   mkdirSync(folder, { recursive: true });
   await page.waitForTimeout(700);
-  await page.screenshot({ path: join(folder, `${name}.png`), scale: 'css' });
+  await page.screenshot({ path: join(folder, `${name}.png`), scale: 'css', animations: 'disabled' });
 }
 
 test('converting media: the import report, then the media list while converting and after', async () => {
@@ -1500,6 +1523,7 @@ test('PDF and PowerPoint as pictures: the import report and the slides (Session 
     path: join(folder, 'import-problem-status.png'),
     scale: 'css',
     clip: { x: 0, y: 720 - 64, width: 1280, height: 64 },
+    animations: 'disabled',
   });
   await win.getByTestId('slide-thumb').nth(1).click();
   await expect(win.getByTestId('live-text')).toContainText('slide 2 of 3');
@@ -1588,6 +1612,7 @@ test('Import from a Link: each state of the dialog, the status bar and the repor
       path: join(folder, 'import-link-status.png'),
       scale: 'css',
       clip: { x: 0, y: 720 - 64, width: 1280, height: 64 },
+      animations: 'disabled',
     });
     await win.getByTestId('link-status').click();
     await app.evaluate(() => {
