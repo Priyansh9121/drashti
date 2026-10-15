@@ -98,6 +98,7 @@ export function Button({
       type={type}
       className={cx(base, !instant && fade, weight(variant), variants[variant], sizes[size], className)}
       data-show-control={instant ? '' : undefined}
+      data-variant={variant}
       {...props}
     >
       {IconBefore && <IconBefore size={iconPx} aria-hidden="true" className="shrink-0" />}
@@ -138,6 +139,7 @@ export function IconButton({
       <button
         type={type}
         aria-label={label}
+        data-variant={variant}
         className={cx(base, fade, weight(variant), variants[variant], squareSizes[size], 'px-0', className)}
         {...props}
       >

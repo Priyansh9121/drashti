@@ -9,6 +9,7 @@ Diya, Drashti's own look: the lamp's plum and flame.
 - The operator window, Simple Mode and the phone pages take the lamp's colours: plum-black panels, warm text, and the one thing to do next in the lamp's plum. Live, ON AIR, warnings and errors keep their colours. What the screens in the hall show does not change at all.
 - The live picture and the live slide glow red beneath, at once, as their red border does.
 - Dialogs, menus and notices rise gently into place and leave as quickly, and a playlist item moved Up or Down slides to its new place. Next, Back, Clear all, Black-out and Logo still change at once, and with Reduce motion turned on in the computer's settings nothing in the window moves.
+- A new library starts with a welcome: the lamp lights, then Set up the screens, Try a practice show first (placeholder slides on this screen only, never on the hall's screens), or Skip for now, which shows three steps to a sabha in the middle of the window.
 - Drashti's lamp sits beside its name at the top of the window, in Simple Mode and on the phone remote, and its light falls softly across the window. An empty place (no playlists yet, an empty library) shows the lamp unlit.
 
 ## 1.0.0-alpha.4 (15 Oct 2026)

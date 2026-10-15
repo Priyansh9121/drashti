@@ -40,6 +40,7 @@ import { Truncate } from '../ui/Truncate';
 import { themeFromPresentation } from '../themes/themes-store';
 import { chooseArrangement, goLive, playItem, useNotice } from './actions';
 import { useWhatIsThis } from '../help/WhatIsThis';
+import { StartHere } from './StartHere';
 
 /**
  * Thumbnail widths the operator can choose (px). The default fits three slides
@@ -448,9 +449,7 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
     return selectedId && !doc ? (
       <Loading label="Opening the presentation…" className="flex-1" />
     ) : (
-      <EmptyState icon={Presentation} title="Choose a presentation" lamp className="flex-1">
-        Pick one in the library, or an item in a playlist, to see its slides here.
-      </EmptyState>
+      <StartHere />
     );
   const liveHere = live?.presentationId === doc.id && liveSlideId !== null;
   // The live slide: by its position when this is the order being played, else wherever that slide appears.

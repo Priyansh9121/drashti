@@ -546,6 +546,8 @@ export const IPC = {
     state: 'setup:state',
     /** It was shown (finished or closed): it does not open by itself again. */
     setSeen: 'setup:set-seen',
+    /** The first start's welcome was answered (set up, or skipped): it does not come again. */
+    welcomeSeen: 'setup:welcome-seen',
     /** Each connected display's number across it, for a few seconds (not the operator's display). */
     identifyDisplays: 'setup:identify-displays',
     /** A short tone on a sound output (null: the system default), through the audio player. */
@@ -994,6 +996,7 @@ export interface InvokeContract {
   [IPC.output.report]: { args: [report: OutputReport]; result: null };
   [IPC.setup.state]: { args: []; result: SetupState };
   [IPC.setup.setSeen]: { args: []; result: null };
+  [IPC.setup.welcomeSeen]: { args: []; result: null };
   [IPC.setup.identifyDisplays]: { args: []; result: { shown: number } };
   [IPC.setup.testTone]: { args: [device: AudioDevice | null]; result: { ok: boolean } };
   [IPC.setup.finish]: { args: [plan: SetupPlan, options?: CoverOptions]; result: SetupResult };

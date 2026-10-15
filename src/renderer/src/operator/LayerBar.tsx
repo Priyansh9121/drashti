@@ -2,7 +2,7 @@ import type { LayerName } from '../../../shared/engine/state';
 import { isLayerEmpty } from '../../../shared/engine/state';
 import type { OperatorAction } from '../../../shared/keymap';
 import { shortcutText } from '../../../shared/keymap';
-import { useEngine } from '../engine/engine-store';
+import { practiceKey, useShowState } from '../practice/practice-store';
 import { dispatch } from './actions';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
@@ -47,10 +47,12 @@ const clears: { action: OperatorAction; layer: LayerName; label: string; icon: I
 ];
 
 export function LayerBar({ platform, run }: { platform: string; run: (action: OperatorAction) => void }) {
-  const layers = useEngine((s) => s.state?.layers);
-  const blackout = useEngine((s) => s.state?.blackout ?? false);
-  const logo = useEngine((s) => s.state?.logo ?? null);
-  const canPutBack = useEngine((s) => s.state?.canPutBack ?? false);
+  // The show, or the practice show while it is on (Session 26g).
+  const state = useShowState();
+  const layers = state?.layers;
+  const blackout = state?.blackout ?? false;
+  const logo = state?.logo ?? null;
+  const canPutBack = state?.canPutBack ?? false;
   const anything = layers ? clears.some((c) => !isLayerEmpty(layers, c.layer)) : false;
   return (
     <section
@@ -66,7 +68,9 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
           instant
           icon={RotateCcw}
           data-testid="put-back"
-          onClick={() => void dispatch({ type: 'putBack' })}
+          onClick={() => {
+            if (!practiceKey('putBack')) void dispatch({ type: 'putBack' });
+          }}
         >
           Put it back
         </Button>

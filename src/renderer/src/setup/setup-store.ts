@@ -89,9 +89,12 @@ const closed: SetupView = {
 
 export const useSetup = create<SetupView>(() => closed);
 
-/** Open the wizard, starting from the setup as it is. */
-export async function openSetup(): Promise<void> {
-  useSetup.setState({ ...closed, open: true, busy: true });
+/**
+ * Open the wizard, starting from the setup as it is: at its Welcome, or (from the first start's own
+ * welcome, which has just said hello) at a later step.
+ */
+export async function openSetup(from = 0): Promise<void> {
+  useSetup.setState({ ...closed, open: true, busy: true, step: from });
   const [state, snapshot, sound, themes, roles] = await Promise.all([
     window.drashti.setup.state(),
     window.drashti.screens.get(),

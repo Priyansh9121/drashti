@@ -391,6 +391,7 @@ const bridge: DrashtiBridge = {
   setup: {
     state: () => invoke(IPC.setup.state),
     setSeen: () => invoke(IPC.setup.setSeen),
+    welcomeSeen: () => invoke(IPC.setup.welcomeSeen),
     identifyDisplays: () => invoke(IPC.setup.identifyDisplays),
     testTone: (device) => invoke(IPC.setup.testTone, device),
     finish: (plan, options) => invoke(IPC.setup.finish, plan, options),
