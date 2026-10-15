@@ -43,11 +43,14 @@ async function playedOver(page: Page, mediaId: string, ms: number): Promise<numb
  */
 async function watchBackgroundFrames(page: Page): Promise<() => Promise<string[]>> {
   await page.evaluate(() => {
-    const g = globalThis as { bgFrames?: string[]; bgStopAt?: number };
+    const g = globalThis as { bgFrames?: string[]; bgTimes?: number[]; bgStopAt?: number };
     const frames: string[] = [];
+    const times: number[] = [];
     g.bgFrames = frames;
+    g.bgTimes = times;
     g.bgStopAt = Infinity;
-    const tick = () => {
+    const tick = (t: number) => {
+      times.push(t);
       const showing: string[] = [];
       for (const el of document.querySelectorAll<HTMLElement>(
         '[data-layer="background"] [data-state="ready"]',
@@ -139,14 +142,15 @@ test('slide backgrounds play on the background layer of a real output', async ()
   // A text-only slide: the video stays and keeps playing (its time keeps increasing).
   await go(1);
   await expect(slideText).toContainText('Placeholder line two');
-  expect(await playedOver(output, loopId, 500)).toBeGreaterThan(0.3);
+  // Played on (media comes 300 ms late here, as from a slow disk: a window it waited in is looked at again).
+  await expect.poll(() => playedOver(output, loopId, 500), { timeout: 10_000 }).toBeGreaterThan(0.3);
   expect(await backgroundOf(output, loopId).getAttribute('data-bg-slot')).toBe(playback);
 
   // The same file on a later slide carries on instead of restarting.
   await go(2);
   await expect(slideText).toContainText('Placeholder line three');
   expect(await backgroundOf(output, loopId).getAttribute('data-bg-slot')).toBe(playback);
-  expect(await playedOver(output, loopId, 500)).toBeGreaterThan(0.3);
+  await expect.poll(() => playedOver(output, loopId, 500), { timeout: 10_000 }).toBeGreaterThan(0.3);
   await expect(output.locator('[data-layer="background"] video')).toHaveCount(1);
 
   // A different background: the old one stays on screen until the new one is ready. Jump to one
@@ -156,11 +160,13 @@ test('slide backgrounds play on the background layer of a real output', async ()
   await expect(backgroundOf(output, stillId)).toHaveAttribute('data-state', 'ready');
   await expect(backgroundOf(output, loopId)).toHaveCount(0);
   const seen = await frames();
+  const times = await output.evaluate(() => (globalThis as { bgTimes?: number[] }).bgTimes ?? []);
   // Every frame shows exactly one picture: the old video until the new picture is ready, then the new one.
   const firstNew = seen.indexOf(stillId);
   expect(seen[0], seen.join(' ')).toBe(loopId);
-  // The new file took at least 300 ms to arrive: the old one was up for all of those frames.
-  expect(firstNew, seen.join(' ')).toBeGreaterThan(10);
+  // The new file took at least 300 ms to arrive: the old one was up for all of that time (timed, not
+  // counted in frames: a slow computer draws fewer of them).
+  expect((times[firstNew] ?? 0) - (times[0] ?? 0), seen.join(' ')).toBeGreaterThanOrEqual(250);
   expect(
     seen.slice(0, firstNew).every((f) => f === loopId),
     seen.join(' '),

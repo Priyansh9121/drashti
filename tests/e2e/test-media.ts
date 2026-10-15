@@ -51,7 +51,9 @@ export async function makeTestVideo(page: Page, file: string, options: TestVideo
       writeFileSync(file, setWebmDuration(bytes, recorded.ms));
       return file;
     }
-    if (attempt === 3) throw new Error(`The page recorded no video in three tries (${bytes.length} bytes).`);
+    // Five tries, a moment apart: a busy CI computer can leave a page undrawn for a while.
+    if (attempt === 5) throw new Error(`The page recorded no video in five tries (${bytes.length} bytes).`);
+    await page.waitForTimeout(500);
   }
 }
 
