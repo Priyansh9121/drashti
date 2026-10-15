@@ -1,6 +1,7 @@
 import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
 import type { RolesResult, RolesView } from './roles';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
+import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
@@ -168,6 +169,24 @@ export const IPC = {
     changed: 'backups:changed',
     /** main -> operator: File > Scheduled Backups… was chosen. */
     open: 'backups:open',
+  },
+  /**
+   * Events out (Session 28, shared/events-out.ts): an admin's, in Pro Mode only, every request (a window
+   * sees each address's host, never its path or secret).
+   */
+  events: {
+    view: 'events:view',
+    add: 'events:add',
+    update: 'events:update',
+    remove: 'events:remove',
+    /** A new secret for an address (the old one signs too for a day). */
+    rotate: 'events:rotate',
+    /** Send a test event now. */
+    test: 'events:test',
+    /** main -> operator: how the addresses stand changed. */
+    changed: 'events:changed',
+    /** main -> operator: File > Events Out… was chosen (admin unlocked). */
+    open: 'events:open',
   },
   /**
    * Updates (Session 14, shared/updates.ts): looking is anyone's in Pro Mode;
@@ -738,6 +757,12 @@ export interface InvokeContract {
   [IPC.backups.pickFolder]: { args: []; result: PickFolderResult };
   [IPC.backups.runNow]: { args: []; result: BackupsResult };
   [IPC.backups.dismiss]: { args: []; result: ScheduledBackupsView };
+  [IPC.events.view]: { args: []; result: EventsOutView };
+  [IPC.events.add]: { args: [url: string, allowInternet: boolean]; result: EventsOutResult };
+  [IPC.events.update]: { args: [id: string, patch: EventAddressPatch]; result: EventsOutResult };
+  [IPC.events.remove]: { args: [id: string]; result: EventsOutResult };
+  [IPC.events.rotate]: { args: [id: string]; result: EventsOutResult };
+  [IPC.events.test]: { args: [id: string]; result: { ok: boolean; message: string } };
   [IPC.updates.view]: { args: []; result: UpdateView };
   [IPC.music.view]: { args: []; result: MusicView };
   [IPC.music.create]: { args: [name: string]; result: MusicResult };
@@ -1094,6 +1119,8 @@ export interface EventContract {
   [IPC.roles.open]: { at: number };
   [IPC.backups.changed]: ScheduledBackupsView;
   [IPC.backups.open]: { at: number };
+  [IPC.events.changed]: EventsOutView;
+  [IPC.events.open]: { at: number };
   [IPC.updates.changed]: UpdateView;
   [IPC.music.changed]: MusicView;
   [IPC.updates.open]: { at: number };

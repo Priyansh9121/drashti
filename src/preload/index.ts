@@ -96,6 +96,19 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
+  events: {
+    view: () => invoke(IPC.events.view),
+    add: (url, allowInternet) => invoke(IPC.events.add, url, allowInternet),
+    update: (id, patch) => invoke(IPC.events.update, id, patch),
+    remove: (id) => invoke(IPC.events.remove, id),
+    rotate: (id) => invoke(IPC.events.rotate, id),
+    test: (id) => invoke(IPC.events.test, id),
+    onChanged: (listener) => on(IPC.events.changed, listener),
+    onOpen: (listener) =>
+      on(IPC.events.open, () => {
+        listener();
+      }),
+  },
   music: {
     view: () => invoke(IPC.music.view),
     create: (name) => invoke(IPC.music.create, name),

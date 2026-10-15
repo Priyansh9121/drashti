@@ -129,7 +129,7 @@ The **setup wizard** sets the screens, their languages, the sound and the defaul
 
 **Restoring.** **File**, then **Restore Library…**, and choose a backup folder (for a scheduled one, a "Drashti backup …" folder inside "Drashti scheduled backups"). Drashti asks first, keeps the library it has as well (in `Backups/` in its data folder), and restarts: the screens go black for a moment, so **never restore during a sabha**. If the backup turns out to be damaged, Drashti says so after the restart and keeps the library it had.
 
-**What a backup does not hold:** the PINs, the stream key (it is in the computer's own secure storage), Main's certificate for the node, and the pictures' sharpened copies (Drashti makes them again after a restore, a moment each). After restoring onto a new computer: set the PINs and the stream key again, pair the node again, and in **Screens** choose each screen's display again (the backup remembers the old computer's displays).
+**What a backup does not hold:** the PINs, the stream keys (in the computer's own secure storage), the events out addresses and their secrets (the same), Main's certificate for the node, and the pictures' sharpened copies (Drashti makes them again after a restore, a moment each). After restoring onto a new computer: set the PINs and the stream keys again, add the events out addresses again (each gets a new secret: give it to the receiver), pair the node again, and in **Screens** choose each screen's display again (the backup remembers the old computer's displays).
 
 ---
 
@@ -382,3 +382,17 @@ A **smart playlist** follows a folder on this computer (Session 26c): what Drash
 | ![High Contrast White on Black](screenshots/theme-high-contrast-white-on-black.png) High Contrast White on Black | ![High Contrast Black on White](screenshots/theme-high-contrast-black-on-white.png) High Contrast Black on White |
 
 **Applying one.** **Apply to N presentations** applies it to the presentations marked in the library (Cmd/Ctrl-click to mark more). **Apply to its presentations** applies it to every presentation in the playlist chosen beside it (a deck's pages are pictures, so a deck is left as it is). The words never change, and **Undo** puts the look back. **Make it the default for new presentations** gives it to every presentation made in Drashti from then on, as the setup wizard's Theme step does.
+
+## 17. Events out
+
+**Events out** (Session 28) tell another program what happens in the show, as it happens: a slide going up, the playlist moving on, black-out, the stream going on air, a hall screen stopping. The usual receiver is **n8n** (free, run on this computer or another on the mandir's network), which can then dim the lights, post in a group chat, or keep a log. Drashti sends nothing until you set it up.
+
+**Setting it up.** **File › Events Out…** (Pro Mode; it asks for the admin PIN). Type the receiver's address (in n8n, a **Webhook** node's **production** address, with the workflow active), **Add**, and copy the **secret** it shows into the receiver straight away: Drashti never shows it again. Then tick what that address gets. **Send a test** sends one at once and says what the receiver answered.
+
+- **Ids and kinds only** unless you tick **Include the words** beside a kind: then a slide's lines (up to 200 characters), an announcement's words or a screen's name go too. Keys, PINs, tokens, pairing codes, addresses and file paths never go.
+- **On this computer or the mandir's network only.** An address on the internet must be allowed (**It is on the internet**), must start `https://`, and only one may be. Drashti looks the name up and checks every address it gives before each request, and sends to the one it checked.
+- **Signed.** Each request carries Standard Webhooks' headers (`webhook-id`, `webhook-timestamp`, `webhook-signature`) and `X-Drashti-Signature-256: sha256=…`, an HMAC of the body with the secret, which n8n's **Crypto** node can check (`docs/api.md` says how). **New secret** makes another; the old one still signs too for a day while the receiver changes over.
+- **When the receiver is down,** an event is tried again at once, then after 5 seconds, 30 seconds, 2 minutes, 10 minutes and 30 minutes, then given up and counted. Slide changes close together (within a quarter of a second) go as the last one. Events waiting do not survive Drashti quitting: they describe a show that has moved on.
+- **A receiver that says the address is gone** (410) is turned off, and the operator is told. Fix it, then **Turn on again**. A 404 (in n8n, a workflow not active, or the test address used) is marked **Set up wrongly?** and tried only twice more.
+- **The show never waits for it.** Events go from a low-priority process of their own: a receiver that is slow or never answers holds up neither a slide change nor quitting.
+- **Simple Mode** never sees it. The addresses and secrets are kept encrypted by the computer's secure storage, in a file of their own: never in the library, a backup or the log, and a window sees only each address's host.

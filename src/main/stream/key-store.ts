@@ -34,11 +34,13 @@ export class StreamKeyStore {
     private readonly storage: SecureStorage,
     /** Tests only: behave as if secure storage were missing. */
     private readonly forceUnavailable = false,
+    /** What to say when secure storage is missing (events out keep their addresses here too: Session 28). */
+    private readonly unavailable = NO_SECURE_STORAGE,
   ) {}
 
   /** Whether keys can be kept here, and why not. */
   status(): { available: boolean; message: string | null } {
-    if (this.forceUnavailable) return { available: false, message: NO_SECURE_STORAGE };
+    if (this.forceUnavailable) return { available: false, message: this.unavailable };
     let available: boolean;
     try {
       available =
@@ -46,7 +48,7 @@ export class StreamKeyStore {
     } catch {
       available = false;
     }
-    return available ? { available, message: null } : { available, message: NO_SECURE_STORAGE };
+    return available ? { available, message: null } : { available, message: this.unavailable };
   }
 
   private read(): Record<string, string> {
@@ -74,15 +76,20 @@ export class StreamKeyStore {
     return profileId in this.read();
   }
 
+  /** Every id kept, in the order first kept. */
+  ids(): string[] {
+    return Object.keys(this.read());
+  }
+
   /** Keep a profile's key, encrypted; refused (and nothing kept) without secure storage. */
   set(profileId: string, key: string): KeyResult {
     const status = this.status();
-    if (!status.available) return { ok: false, message: status.message ?? NO_SECURE_STORAGE };
+    if (!status.available) return { ok: false, message: status.message ?? this.unavailable };
     let encrypted: Buffer;
     try {
       encrypted = this.storage.encryptString(key);
     } catch {
-      return { ok: false, message: NO_SECURE_STORAGE };
+      return { ok: false, message: this.unavailable };
     }
     this.write({ ...this.read(), [profileId]: encrypted.toString('base64') });
     return { ok: true };

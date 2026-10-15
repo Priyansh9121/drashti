@@ -59,6 +59,8 @@ export interface StreamServiceDeps {
   askMediaAccess(kind: 'camera' | 'microphone'): Promise<boolean>;
   /** ON AIR and REC for the window's own title ('' when neither). */
   titleMarks?(marks: string): void;
+  /** How the stream stands, whenever the operator window is told (events out: Session 28). */
+  statusChanged?(status: StreamStatus): void;
   /** The screen groups changed (the stream group was made): Screens shows it. */
   screensChanged(): void;
   /** The bundled FFmpeg, or null when it is missing. */
@@ -573,6 +575,7 @@ export class StreamService {
   private changed(): void {
     const status = this.status();
     this.deps.sendToOperator(IPC.stream.changed, status);
+    this.deps.statusChanged?.(status);
     const onAir = status.live.state === 'live' || status.live.state === 'reconnecting';
     const marks = [onAir ? 'ON AIR' : '', status.recording.state === 'recording' ? 'REC' : '']
       .filter(Boolean)
