@@ -82,7 +82,12 @@
   --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 6px 18px rgb(0 0 0 / 0.38);
   --shadow-overlay: 0 18px 50px rgb(0 0 0 / 0.58), 0 2px 8px rgb(0 0 0 / 0.35);
   --shadow-live: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 18px 44px -14px rgb(212 42 49 / 0.5);
-  --shadow-live-thumb: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 14px 32px -12px rgb(212 42 49 / 0.55);
+  /*
+   * A slide's thumbnail is redrawn as the live slide moves, so its shadow and the live one's red glow
+   * are kept small: a blur costs a computer without a graphics chip by its size (Session 26g).
+   */
+  --shadow-thumb: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 2px 5px rgb(0 0 0 / 0.35);
+  --shadow-live-thumb: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 8px 14px -8px rgb(212 42 49 / 0.6);
   --shadow-ember:
     inset 0 1px 0 rgb(255 220 240 / 0.22), 0 0 0 1px rgb(255 190 150 / 0.1), 0 8px 26px rgb(155 51 131 / 0.42);
   /* Tailwind's own transitions (transition-colors and the like) and the spinner take the tokens. */
@@ -219,13 +224,30 @@ body.output {
  * The lamp (Session 26g). Its light falls from the mark across the header (--lamp-header) and the
  * window (--lamp-window), with a hairline under the header from flame to plum; empty places glow
  * faintly behind the unlit lamp. Gradients on surfaces, never a filled shape.
+ *
+ * The header's and the window's light are each drawn once, on a layer of their own under the
+ * content (will-change): a slide change, which redraws what is above them, never draws a gradient
+ * again. On a computer without a graphics chip that is the difference between a slide reaching the
+ * hall's screens within a frame and seconds late (the Performance check, Session 26g).
  */
 @layer components {
   .lamp-header {
     position: relative;
-    background:
-      radial-gradient(420px 110px at 28px 24px, rgb(var(--lamp-rgb) / var(--lamp-header)), transparent 70%),
-      var(--color-panel);
+    isolation: isolate;
+    background: var(--color-panel);
+  }
+  .lamp-header::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(
+      420px 110px at 28px 24px,
+      rgb(var(--lamp-rgb) / var(--lamp-header)),
+      transparent 70%
+    );
+    will-change: transform;
   }
   .lamp-header::after {
     content: '';
@@ -241,9 +263,20 @@ body.output {
     );
   }
   .lamp-window {
+    position: relative;
+    isolation: isolate;
+    background: var(--color-ink);
+  }
+  .lamp-window::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
     background:
       radial-gradient(900px 520px at 70px -40px, rgb(var(--lamp-rgb) / var(--lamp-window)), transparent 62%),
-      radial-gradient(1100px 700px at 110% 120%, rgb(94 27 82 / 0.3), transparent 60%), var(--color-ink);
+      radial-gradient(1100px 700px at 110% 120%, rgb(94 27 82 / 0.3), transparent 60%);
+    will-change: transform;
   }
   .lamp-empty {
     background: radial-gradient(

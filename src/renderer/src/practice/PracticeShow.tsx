@@ -114,7 +114,7 @@ function PracticeSlides() {
                 }}
                 className={cx(
                   'w-full overflow-hidden rounded-lg border-2 bg-black text-left',
-                  on ? 'border-live shadow-live-thumb' : 'border-line shadow-card hover:border-field',
+                  on ? 'border-live shadow-live-thumb' : 'border-line shadow-thumb hover:border-field',
                 )}
               >
                 <span className="pointer-events-none relative block aspect-video w-full" data-a11y-picture>

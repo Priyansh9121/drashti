@@ -47,6 +47,7 @@ export function useWhatIsThis(topic: PanelHelpId | null): { button: ReactNode; c
       role="note"
       aria-label={`What is this? ${help.title}`}
       data-testid="what-is-this"
+      // Opened by a click, so always arriving (the window has settled by then: ui/motion.ts).
       data-motion="pop"
       className="mx-3 mb-2 rounded-md border border-line-strong bg-panel-2 px-3 py-2 text-sm text-fg"
       onKeyDown={(e) => {

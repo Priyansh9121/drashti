@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 
 /*
@@ -10,6 +10,39 @@ import type { RefObject } from 'react';
  */
 
 const REDUCED = '(prefers-reduced-motion: reduce)';
+
+/*
+ * The window opens settled (Session 26g): whatever is there when it opens is simply there, and only
+ * what arrives afterwards moves. Opening is when a computer without a graphics chip can least spare
+ * the frames: Drashti starting, or starting again after a stop in the middle of a show while the
+ * screens are put back. Settled once the page is first idle, or at the operator's first key or click.
+ * The first start's welcome is the one arrival on opening: the lamp lighting is its point.
+ */
+let opened = false;
+
+function settle(): void {
+  opened = true;
+}
+
+if (typeof window !== 'undefined') {
+  const whenIdle = () => {
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(settle);
+    else setTimeout(settle, 0);
+  };
+  if (document.readyState === 'complete') whenIdle();
+  else window.addEventListener('load', whenIdle, { once: true });
+  window.addEventListener('pointerdown', settle, { once: true, capture: true });
+  window.addEventListener('keydown', settle, { once: true, capture: true });
+}
+
+/**
+ * How a thing arrives (its `data-motion`), decided once as it first appears: nothing while the window
+ * is still opening, so it never starts moving later on.
+ */
+export function useArrival<T extends string>(kind: T | null): T | undefined {
+  const [arrival] = useState(() => (kind !== null && opened ? kind : undefined));
+  return arrival;
+}
 
 /** The computer asks for reduced motion: nothing in the interface moves. */
 export function motionOff(): boolean {

@@ -20,11 +20,13 @@ async function lampHeader(header: Locator, name: string) {
   // The mark beside the name, decoration only: the heading still reads "Drashti".
   await expect(header.getByRole('heading', { level: 1 })).toHaveText(name);
   await expect(header.locator('h1 svg[data-mark]')).toBeVisible();
-  // The lamp's light across the header, on the panel's own colour, and the hairline beneath.
-  expect(await style(header, 'background-image')).toMatch(LAMP);
+  // The lamp's light across the header (drawn once, on a layer of its own under the words), on the
+  // panel's own colour, and the hairline beneath.
+  expect(await style(header, 'background-image', '::before')).toMatch(LAMP);
+  expect(await style(header, 'will-change', '::before')).toBe('transform');
   expect(await style(header, 'background-color')).toBe('rgb(30, 16, 29)');
   expect(await style(header, 'background-image', '::after')).toMatch(LAMP);
-  expect(await style(header, 'background-image')).not.toContain(WARNING);
+  expect(await style(header, 'background-image', '::before')).not.toContain(WARNING);
 }
 
 test('the mark beside the name and the lamp’s light, in Pro Mode and Simple Mode; never a warning', async () => {
@@ -34,7 +36,8 @@ test('the mark beside the name and the lamp’s light, in Pro Mode and Simple Mo
   await lampHeader(win.getByTestId('app-header'), 'Drashti');
   // The window: the lamp's light from the top left, over ink, never a filled shape.
   const window = win.locator('.lamp-window').first();
-  expect(await style(window, 'background-image')).toMatch(LAMP);
+  expect(await style(window, 'background-image', '::before')).toMatch(LAMP);
+  expect(await style(window, 'will-change', '::before')).toBe('transform');
   expect(await style(window, 'background-color')).toBe('rgb(21, 10, 20)');
 
   // Empty places: the unlit lamp in its faint light, with no colour of a warning.

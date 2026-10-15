@@ -11,7 +11,7 @@ import { Progress } from '../ui/Progress';
 import { plural } from '../ui/text';
 import { Truncate } from '../ui/Truncate';
 import { cx } from '../ui/cx';
-import { useLeaving } from '../ui/motion';
+import { useArrival, useLeaving } from '../ui/motion';
 import { useNotice, useTaskProgress } from './actions';
 import { ScreensSummary } from './StatusLine';
 import { connectNodes, openDashboard, useNodes } from '../nodes/nodes-store';
@@ -324,12 +324,13 @@ export function NoticeArea() {
 
 function NoticeCard({ notice }: { notice: string }) {
   const ref = useLeaving<HTMLDivElement>('notice');
+  const arriving = useArrival('notice');
   return (
     <div
       ref={ref}
       role="alert"
       data-testid="operator-notice"
-      data-motion="notice"
+      data-motion={arriving}
       className="pointer-events-auto flex w-full items-start gap-2 rounded-lg border border-line-strong border-l-4 border-l-accent bg-panel-3 px-3 py-2 text-sm text-fg shadow-overlay"
     >
       <Info size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-accent" />

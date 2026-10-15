@@ -86,7 +86,10 @@ export function LivePreview() {
         data-a11y-picture
         aria-hidden="true"
       >
-        {practising ? picture : <ZoomablePreview>{picture}</ZoomablePreview>}
+        {/* The picture on a layer of its own: a slide change redraws it, never the frame's glow. */}
+        <div className="will-change-transform">
+          {practising ? picture : <ZoomablePreview>{picture}</ZoomablePreview>}
+        </div>
       </div>
       {shownAs && state?.layers.slide?.slide.kirtan && (
         <p className="text-xs text-muted" data-testid="preview-languages">

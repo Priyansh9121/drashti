@@ -4,6 +4,7 @@ import { cx } from './cx';
 import type { Icon } from './icons';
 import { CircleAlert, Loader } from './icons';
 import { UnlitLamp } from './Mark';
+import { useArrival } from './motion';
 
 /** Nothing here yet: what this place is for, and how to fill it. */
 export function EmptyState({
@@ -25,6 +26,7 @@ export function EmptyState({
   lamp?: boolean;
   className?: string;
 } & DataAttributes) {
+  const arriving = useArrival(lamp ? 'empty' : null);
   return (
     <div
       className={cx(
@@ -34,11 +36,11 @@ export function EmptyState({
         className,
       )}
       // An empty place settles 14 px as it arrives, once (with its lamp's one wisp of smoke).
-      data-motion={lamp ? 'empty' : undefined}
+      data-motion={arriving}
       {...data}
     >
       {lamp ? (
-        <UnlitLamp size={compact ? 44 : 64} />
+        <UnlitLamp size={compact ? 44 : 64} wisp={arriving !== undefined} />
       ) : (
         IconShape && (
           <IconShape size={compact ? 20 : 32} aria-hidden="true" strokeWidth={1.5} className="text-faint" />

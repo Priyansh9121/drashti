@@ -141,8 +141,8 @@ const Thumb = memo(function Thumb({
           live
             ? 'border-live shadow-live-thumb'
             : found
-              ? 'border-accent shadow-card'
-              : 'border-line shadow-card hover:border-field',
+              ? 'border-accent shadow-thumb'
+              : 'border-line shadow-thumb hover:border-field',
         )}
       >
         <span className="pointer-events-none relative block aspect-video w-full" data-a11y-picture>
@@ -345,7 +345,7 @@ function ItemView({ item }: { item: ShownItem }) {
             className={cx(
               // A thumbnail: live at once, with no fade (Session 26g).
               'w-full max-w-xl overflow-hidden rounded-lg border-2 bg-black text-left',
-              isLive ? 'border-live shadow-live-thumb' : 'border-line shadow-card hover:border-field',
+              isLive ? 'border-live shadow-live-thumb' : 'border-line shadow-thumb hover:border-field',
             )}
           >
             <span
