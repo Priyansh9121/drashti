@@ -115,6 +115,7 @@ const Thumb = memo(function Thumb({
         ref={ref}
         type="button"
         data-testid="slide-thumb"
+        data-show-control
         data-index={position}
         data-slide-id={info.id}
         data-found={found ? 'true' : undefined}
@@ -336,6 +337,7 @@ function ItemView({ item }: { item: ShownItem }) {
           <button
             type="button"
             data-testid="item-media"
+            data-show-control
             aria-current={isLive ? 'true' : undefined}
             aria-label={`${mediaKindLabel[item.media]}: ${item.label}${isLive ? ' (live)' : ''}`}
             onClick={() => void playItem(item.playlistId, item.id)}

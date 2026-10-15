@@ -100,6 +100,7 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
                 type="button"
                 disabled={!on}
                 data-lit={on ? 'true' : undefined}
+                data-show-control
                 onClick={() => {
                   run(c.action);
                 }}

@@ -11,6 +11,7 @@ import { Progress } from '../ui/Progress';
 import { plural } from '../ui/text';
 import { Truncate } from '../ui/Truncate';
 import { cx } from '../ui/cx';
+import { useLeaving } from '../ui/motion';
 import { useNotice, useTaskProgress } from './actions';
 import { ScreensSummary } from './StatusLine';
 import { connectNodes, openDashboard, useNodes } from '../nodes/nodes-store';
@@ -315,24 +316,34 @@ export function NoticeArea() {
   if (!notice) return null;
   return (
     <div className="pointer-events-none fixed right-3 bottom-24 z-30 flex w-[min(30rem,calc(100%-1.5rem))] justify-end">
-      <div
-        role="alert"
-        data-testid="operator-notice"
-        className="pointer-events-auto flex w-full items-start gap-2 rounded-lg border border-line-strong bg-panel-3 px-3 py-2 text-sm text-fg shadow-overlay"
+      {/* A new notice arrives (rising 6 px) as the last one leaves. */}
+      <NoticeCard key={notice} notice={notice} />
+    </div>
+  );
+}
+
+function NoticeCard({ notice }: { notice: string }) {
+  const ref = useLeaving<HTMLDivElement>('notice');
+  return (
+    <div
+      ref={ref}
+      role="alert"
+      data-testid="operator-notice"
+      data-motion="notice"
+      className="pointer-events-auto flex w-full items-start gap-2 rounded-lg border border-line-strong border-l-4 border-l-accent bg-panel-3 px-3 py-2 text-sm text-fg shadow-overlay"
+    >
+      <Info size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-accent" />
+      <p className="min-w-0 flex-1 break-words">{notice}</p>
+      <button
+        type="button"
+        aria-label="Dismiss"
+        onClick={() => {
+          useNotice.setState({ text: null });
+        }}
+        className="-my-0.5 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm hover:bg-panel-2"
       >
-        <Info size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-accent" />
-        <p className="min-w-0 flex-1 break-words">{notice}</p>
-        <button
-          type="button"
-          aria-label="Dismiss"
-          onClick={() => {
-            useNotice.setState({ text: null });
-          }}
-          className="-my-0.5 -mr-1.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm hover:bg-panel-2"
-        >
-          <X size={14} aria-hidden="true" />
-        </button>
-      </div>
+        <X size={14} aria-hidden="true" />
+      </button>
     </div>
   );
 }

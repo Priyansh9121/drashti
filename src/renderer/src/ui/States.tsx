@@ -33,6 +33,8 @@ export function EmptyState({
         lamp && 'lamp-empty',
         className,
       )}
+      // An empty place settles 14 px as it arrives, once (with its lamp's one wisp of smoke).
+      data-motion={lamp ? 'empty' : undefined}
       {...data}
     >
       {lamp ? (

@@ -6,6 +6,7 @@ import { Button, IconButton } from './Button';
 import { cx } from './cx';
 import type { Icon } from './icons';
 import { Kbd } from './Kbd';
+import { leave } from './motion';
 
 /*
  * Small menus: one under a button, or one at the pointer (right-click).
@@ -74,6 +75,8 @@ export function Menu({
       const now = document.activeElement;
       const lost = now === null || now === document.body || (ref.current?.contains(now) ?? false);
       if (lost && opener?.isConnected) opener.focus();
+      // It leaves as it came (ui/motion.ts), in about 70% of the time.
+      leave(ref.current, 'pop');
     },
     [opener],
   );
@@ -153,6 +156,7 @@ export function Menu({
   return createPortal(
     <div
       ref={ref}
+      data-motion="pop"
       role="menu"
       aria-label={label}
       tabIndex={-1}

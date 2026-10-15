@@ -97,6 +97,7 @@ export function Button({
     <button
       type={type}
       className={cx(base, !instant && fade, weight(variant), variants[variant], sizes[size], className)}
+      data-show-control={instant ? '' : undefined}
       {...props}
     >
       {IconBefore && <IconBefore size={iconPx} aria-hidden="true" className="shrink-0" />}
