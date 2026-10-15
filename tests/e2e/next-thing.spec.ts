@@ -77,23 +77,24 @@ test('in a show, Next under LIVE is the one primary, with its key; Back beside i
   await app.close();
 });
 
-test('Next goes quiet at the end of the show: no primary pretends there is something next', async () => {
+test('at the end of the show Next stays the primary and does what → does there: nothing more', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
   const last = await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     const [p] = await d.library.listPresentations();
-    await d.engine.dispatch({
-      type: 'goLive',
-      presentationId: p?.id ?? '',
-      slideIndex: (p?.slideCount ?? 1) - 1,
-    });
-    return p?.slideCount ?? 0;
+    const slideIndex = (p?.slideCount ?? 1) - 1;
+    await d.engine.dispatch({ type: 'goLive', presentationId: p?.id ?? '', slideIndex });
+    return slideIndex;
   });
-  expect(last).toBeGreaterThan(1);
-  await expect(win.getByTestId('show-next')).toBeDisabled();
-  await expect(win.getByTestId('show-back')).toBeEnabled();
-  expect(await primaries(win)).toEqual([]);
+  expect(last).toBeGreaterThan(0);
+  await expect.poll(() => live(win)).toMatchObject({ slide: last });
+  // Never redrawn as slides change (Session 26g: a computer without a graphics chip), Next stays lit.
+  await expect(win.getByTestId('show-next')).toBeEnabled();
+  expect(await primaries(win)).toEqual(['Next→']);
+  await win.getByTestId('show-next').click();
+  await win.keyboard.press('ArrowRight');
+  await expect.poll(() => live(win)).toMatchObject({ slide: last });
   await app.close();
 });

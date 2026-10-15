@@ -17,9 +17,9 @@ export function NextBack({ platform, run }: { platform: string; run: (action: Op
   // What the grid shows: Next starts it when nothing is live yet (actions.ts).
   const shown = useLibrary((s) => s.doc !== null || s.item !== null);
   const live = state ? state.layers.slide !== null || state.layers.background !== null : false;
-  const canNext = state
-    ? state.next !== null || state.cue !== null || (!live && (practising || shown))
-    : false;
+  // In a show Next stays the primary, even at the end (it does what → does there: nothing more), so it
+  // is never redrawn as slides change; with nothing shown or live it waits.
+  const canNext = state ? live || state.next !== null || state.cue !== null || practising || shown : false;
   return (
     <div className="grid grid-cols-[1fr_2fr] gap-2 px-3 pt-2" role="group" aria-label="Next and Back">
       <Button
