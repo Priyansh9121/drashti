@@ -181,7 +181,14 @@ function Output() {
     >
       {context && fontsReady && !ready && (
         <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
-          <WarmUp canvas={canvas} scaling={scaling} matte={matte} hold={HOLD_WARM_UP} onDone={warmedUp} />
+          <WarmUp
+            page="output"
+            canvas={canvas}
+            scaling={scaling}
+            matte={matte}
+            hold={HOLD_WARM_UP}
+            onDone={warmedUp}
+          />
         </PlacedInParent>
       )}
       {state && ready && (

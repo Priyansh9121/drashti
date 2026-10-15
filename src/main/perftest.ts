@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ELDHistogram } from 'node:perf_hooks';
 import type { DrashtiBridge } from '../shared/bridge';
-import type { MainWatch, PerfProfile } from './perf-watch';
+import type { GpuPipelines, MainWatch, PerfProfile } from './perf-watch';
 import type { ScenarioRun } from './perf-scenarios';
 import { describePriority } from './priority';
 import { plural } from '../shared/text';
@@ -390,6 +390,22 @@ export function coldStartLine(cold: ColdStart, startedAt: number): string {
 }
 
 /** The main process's worst block and its gaps over 100 ms, each with what went on around it (at most 6). */
+/** The GPU's pipelines in words (a trace kept; Session 27). */
+export function gpuLine(gpu: GpuPipelines): string {
+  const names: Record<string, string> = {
+    live: 'the LIVE picture',
+    output: 'the test output',
+    stream: 'the stream’s page',
+  };
+  const warm = gpu.warmUps
+    .map(
+      (w) =>
+        `${String(w.made)} as ${names[w.page] ?? w.page} warmed up (${String(w.ms)} ms; ${w.took === null ? 'still going' : `${String(w.took)} ms`}${w.how === 'drawn' || w.how === '' ? '' : `, ${w.how === 'cut' ? 'cut short' : w.how === 'cap' ? 'at its longest' : 'not seen'}`})`,
+    )
+    .join(', ');
+  return `the GPU made ${plural(gpu.made, 'new pipeline')} (${String(gpu.ms)} ms)${warm ? `, ${warm}` : ''}${gpu.between === null ? '' : `, ${String(gpu.between)} between the test output's and the first Bold transition`}${gpu.during ? `, ${String(gpu.during.length)} during the first Bold transition` : ''}`;
+}
+
 export function watchSummary(watch: MainWatch): string {
   const gaps = [...watch.gaps].sort((a, b) => b.ms - a.ms).slice(0, 6);
   const told = gaps.map((g) => {
@@ -432,12 +448,13 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
   const check = (name: string, ok: boolean, detail = '') => checks.push({ name, ok, detail });
   // Drashti's start, on this computer's clock (the operator page's times are on it too).
   const startedAt = Date.now() - Math.round(process.uptime() * 1000);
+  // A trace (DRASHTI_PERF_PROFILE) from the start: the LIVE picture's GPU warm-up, the cold start and the
+  // test output's warm-up are in it too.
+  await ctx.profile?.start();
   // The window draws first, on view, as before a show; then the test output goes over it.
   const cold = await coldStart(ctx.operator(), startedAt);
   const folder = mkdtempSync(join(tmpdir(), 'drashti-perf-lyrics-'));
   const songs = ctx.songs ?? PERF_SONGS;
-  // A trace (DRASHTI_PERF_PROFILE) from before the test output opens: what its GPU warm-up made is in it too.
-  await ctx.profile?.start();
   const undo = await ctx.ensureOutput();
   try {
     if (ctx.noImportMs === undefined)
@@ -557,7 +574,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
       : '';
     const others = ctx.priority?.others();
     const priority = `main process priority ${describePriority()}${ctx.priority ? ` (started at ${ctx.priority.started}${others ? `, its other processes ${others}` : ''})` : ''}`;
-    const summary = `${what}${editsSummary}; ${priority}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}${after.length > 0 ? `; ${line('just after the import', after)}` : ''}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}${scenario ? `; ${scenario.summary}` : ''}${gpu ? `; the GPU made ${plural(gpu.made, 'new pipeline')} (${String(gpu.ms)} ms)${gpu.warmUp ? `, ${String(gpu.warmUp.made)} as the test output warmed up (${String(gpu.warmUp.ms)} ms; it took ${gpu.warmUp.took === null ? '?' : String(gpu.warmUp.took)} ms)` : ''}${gpu.between === null ? '' : `, ${String(gpu.between)} between it and the first Bold transition`}${gpu.during ? `, ${String(gpu.during.length)} during the first Bold transition` : ''}` : ''}`;
+    const summary = `${what}${editsSummary}; ${priority}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}${after.length > 0 ? `; ${line('just after the import', after)}` : ''}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}${scenario ? `; ${scenario.summary}` : ''}${gpu ? `; ${gpuLine(gpu)}` : ''}`;
 
     const totals = run.result.run?.totals;
     if (!noImport) {

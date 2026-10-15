@@ -71,7 +71,9 @@ export function LivePreview() {
             the window carries on) and tries again with the next change (Session 23). */}
       <SceneBoundary resetKey={rev} fallbackClassName="aspect-video w-full bg-black">
         <PlacedInParent content={canvas} mode="fit" className="relative aspect-video w-full">
-          {warming && <WarmUp canvas={canvas} scaling={scaling} hold={HOLD_WARM_UP} onDone={warmedUp} />}
+          {warming && (
+            <WarmUp page="live" canvas={canvas} scaling={scaling} hold={HOLD_WARM_UP} onDone={warmedUp} />
+          )}
           {state && !warming && (
             <Scene
               state={state}

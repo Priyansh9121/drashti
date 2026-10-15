@@ -163,27 +163,37 @@ export class PerfProfile {
   }
 }
 
+/** A page's GPU warm-up in a trace: the pipelines made while it ran, how long it took (ms), how it ended. */
+export interface WarmUpFigures {
+  page: string;
+  made: number;
+  ms: number;
+  took: number | null;
+  /** 'drawn', 'cap' (at its longest), 'unseen' (a page not seen), 'cut' (taken away first: the LIVE picture), or '' while it ran. */
+  how: string;
+}
+
 export interface GpuPipelines {
   /** New pipelines the GPU made while the check ran, and how long making them took (ms). */
   made: number;
   ms: number;
-  /** Those made while the test output warmed up (render/WarmUp.tsx), and how long it took (ms), or null with no mark. */
-  warmUp: { made: number; ms: number; took: number | null } | null;
-  /** Those made after the warm-up ended and before the first Bold transition (its pictures drawn late, say). */
+  /** Each page's warm-up (render/WarmUp.tsx): the LIVE picture's, the test output's, the stream's page's. */
+  warmUps: WarmUpFigures[];
+  /** Those made after the test output's warm-up and before the first Bold transition (its pictures drawn late, say). */
   between: number | null;
   /** Those made while a page's first marked transition ran (bold-transitions), or null with no mark. */
   during: string[] | null;
 }
 
 /**
- * The GPU's new pipelines in a trace, and those made while the first marked transition ran (Session 27). A
- * trace has an event a line, so it is read line by line: a long check's trace is far too big to parse whole.
+ * The GPU's new pipelines in a trace, and those made while each page warmed up and while the first marked
+ * transition ran (Session 27). A trace has an event a line, so it is read line by line: a long check's trace
+ * is far too big to parse whole.
  */
 export async function gpuPipelines(trace: string): Promise<GpuPipelines> {
   const pipes: { ts: number; dur: number; desc: string }[] = [];
-  // The first of each mark (µs): a page's warm-up, and a screen's first Bold transition.
+  // The first of each of Drashti's marks (µs): each page's warm-up, and a screen's first Bold transition.
   const marks = new Map<string, number>();
-  const named = [WARM_UP_MARK, `${WARM_UP_MARK}-end`, FIRST_BOLD_MARK, `${FIRST_BOLD_MARK}-end`];
   for await (const line of createInterface({ input: createReadStream(trace), crlfDelay: Infinity })) {
     if (!line.includes('createGraphicsPipeline') && !line.includes('drashti-')) continue;
     let e: { name?: string; ts?: number; dur?: number; args?: { desc?: string } };
@@ -194,35 +204,46 @@ export async function gpuPipelines(trace: string): Promise<GpuPipelines> {
     }
     const ts = e.ts ?? 0;
     if (e.name === 'createGraphicsPipeline') pipes.push({ ts, dur: e.dur ?? 0, desc: e.args?.desc ?? '' });
-    else if (e.name !== undefined && named.includes(e.name))
-      marks.set(e.name, Math.min(marks.get(e.name) ?? ts, ts));
+    else if (e.name?.startsWith('drashti-')) marks.set(e.name, Math.min(marks.get(e.name) ?? ts, ts));
   }
   const ms = (list: { dur: number }[]) => Math.round(list.reduce((n, p) => n + p.dur, 0) / 1000);
-  // From a mark to its end, and a fifth of a second after (µs): the GPU draws a page's last frames a little
-  // after the page asks for them.
+  // From a mark to its end (or its cut), and a fifth of a second after (µs): the GPU draws a page's last
+  // frames a little after the page asks for them.
+  const ended = (name: string) => marks.get(`${name}-end`) ?? marks.get(`${name}-cut`);
   const between = (name: string) => {
     const from = marks.get(name);
     if (from === undefined) return null;
-    const until = (marks.get(`${name}-end`) ?? Number.POSITIVE_INFINITY) + 200_000;
+    const until = (ended(name) ?? Number.POSITIVE_INFINITY) + 200_000;
     return pipes.filter((p) => p.ts >= from && p.ts <= until);
   };
-  const tookMs = (name: string) => {
+  const warmUps: WarmUpFigures[] = [];
+  for (const page of ['live', 'output', 'stream']) {
+    const name = `${WARM_UP_MARK}:${page}`;
+    const made = between(name);
     const from = marks.get(name);
-    const to = marks.get(`${name}-end`);
-    return from === undefined || to === undefined ? null : Math.round((to - from) / 1000);
-  };
-  const warm = between(WARM_UP_MARK);
+    const to = ended(name);
+    if (!made || from === undefined) continue;
+    const how =
+      ['cut', 'cap', 'unseen'].find((h) => marks.has(`${name}-${h}`)) ?? (to === undefined ? '' : 'drawn');
+    warmUps.push({
+      page,
+      made: made.length,
+      ms: ms(made),
+      took: to === undefined ? null : Math.round((to - from) / 1000),
+      how,
+    });
+  }
   const bold = between(FIRST_BOLD_MARK);
+  const outputEnded = ended(`${WARM_UP_MARK}:output`);
+  const bolded = marks.get(FIRST_BOLD_MARK);
   return {
     made: pipes.length,
     ms: ms(pipes),
-    warmUp: warm ? { made: warm.length, ms: ms(warm), took: tookMs(WARM_UP_MARK) } : null,
-    between: (() => {
-      const ended = marks.get(`${WARM_UP_MARK}-end`);
-      const bolded = marks.get(FIRST_BOLD_MARK);
-      if (ended === undefined || bolded === undefined) return null;
-      return pipes.filter((p) => p.ts > ended + 200_000 && p.ts < bolded).length;
-    })(),
+    warmUps,
+    between:
+      outputEnded === undefined || bolded === undefined
+        ? null
+        : pipes.filter((p) => p.ts > outputEnded + 200_000 && p.ts < bolded).length,
     during: bold ? bold.map((p) => p.desc) : null,
   };
 }
