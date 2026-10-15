@@ -160,6 +160,8 @@ export interface OutputReport {
   droppedFrames: number;
   /** The engine revision it last painted. */
   paintedRev: number;
+  /** Still warming up its GPU, unseen (Session 27): running, not yet drawing the show. */
+  warming?: boolean;
 }
 
 /** Common canvas sizes offered in the UI; any size is allowed. */
