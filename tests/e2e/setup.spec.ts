@@ -50,10 +50,10 @@ test('on the first start: identify, what each output shows and its languages, a 
     DRASHTI_TEST_FAKE_DEVICES: '1',
   });
   const win = await operatorPage(app);
+  // The first start's welcome (Session 26g) says hello, and Set up the screens opens the wizard at its
+  // Screens step (first-start.spec.ts covers the welcome itself).
+  await win.getByTestId('welcome').getByRole('button', { name: 'Set up the screens' }).click();
   const wizard = win.getByTestId('setup-wizard');
-  await expect(wizard.getByTestId('setup-step')).toHaveText('Welcome');
-  await expectNoSeriousA11yIssues(win, 'the setup wizard, welcome');
-  await wizard.getByTestId('setup-next').click();
 
   // Each display's number across it, for a few seconds.
   await expect(wizard.getByTestId('setup-step')).toHaveText('Screens');
@@ -259,6 +259,7 @@ test('never covers the operator’s display without the confirm step', async () 
 test('Simple Mode never shows it, and refuses to apply a setup', async () => {
   const { app } = await launchApp({ DRASHTI_TEST_NO_WIZARD: '0' });
   const win = await operatorPage(app);
+  await win.getByTestId('welcome').getByRole('button', { name: 'Set up the screens' }).click();
   await expect(win.getByTestId('setup-wizard')).toBeVisible();
   await win.getByTestId('setup-wizard').getByRole('button', { name: 'Close the setup' }).click();
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));

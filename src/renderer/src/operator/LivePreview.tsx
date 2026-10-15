@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useEngine } from '../engine/engine-store';
+import { usePractice, useShowRev, useShowState } from '../practice/practice-store';
 import { preloadFonts } from '../render/fonts';
 import { PlacedInParent } from '../render/Placed';
 import { Scene } from '../render/Scene';
@@ -24,8 +24,10 @@ import { useWhatIsThis } from '../help/WhatIsThis';
  * says so under the picture (each group can show its own).
  */
 export function LivePreview() {
-  const state = useEngine((s) => s.state);
-  const rev = useEngine((s) => s.rev);
+  // The show, or the practice show while it is on (Session 26g: drawn here, never on a screen).
+  const state = useShowState();
+  const rev = useShowRev();
+  const practising = usePractice((s) => s.on);
   const help = useWhatIsThis('live');
   // As the first audience group shows it in the live Look (its layers, languages and slide style).
   const audience = useFirstGroupLook('audience');
@@ -42,6 +44,25 @@ export function LivePreview() {
   const somethingUp = state
     ? state.layers.slide !== null || state.layers.background !== null || state.layers.props.length > 0
     : false;
+  const picture = (
+    <>
+      {/* The same scene as the outputs: if it fails as it draws, the preview is black (the rest of
+            the window carries on) and tries again with the next change (Session 23). */}
+      <SceneBoundary resetKey={rev} fallbackClassName="aspect-video w-full bg-black">
+        <PlacedInParent content={canvas} mode="fit" className="relative aspect-video w-full">
+          {state && (
+            <Scene
+              state={state}
+              canvas={canvas}
+              scaling={scaling}
+              annotate
+              {...(audience ? { look: audience.look } : {})}
+            />
+          )}
+        </PlacedInParent>
+      </SceneBoundary>
+    </>
+  );
   return (
     <section aria-labelledby="live-preview-title" className="space-y-2 px-3 pt-3">
       <div className="flex h-6 items-center gap-2">
@@ -65,23 +86,7 @@ export function LivePreview() {
         data-a11y-picture
         aria-hidden="true"
       >
-        <ZoomablePreview>
-          {/* The same scene as the outputs: if it fails as it draws, the preview is black (the rest of
-            the window carries on) and tries again with the next change (Session 23). */}
-          <SceneBoundary resetKey={rev} fallbackClassName="aspect-video w-full bg-black">
-            <PlacedInParent content={canvas} mode="fit" className="relative aspect-video w-full">
-              {state && (
-                <Scene
-                  state={state}
-                  canvas={canvas}
-                  scaling={scaling}
-                  annotate
-                  {...(audience ? { look: audience.look } : {})}
-                />
-              )}
-            </PlacedInParent>
-          </SceneBoundary>
-        </ZoomablePreview>
+        {practising ? picture : <ZoomablePreview>{picture}</ZoomablePreview>}
       </div>
       {shownAs && state?.layers.slide?.slide.kirtan && (
         <p className="text-xs text-muted" data-testid="preview-languages">
@@ -89,7 +94,8 @@ export function LivePreview() {
         </p>
       )}
       {state?.autoAdvance && <TimeLeft count={state.autoAdvance} />}
-      <LiveZoomControls />
+      {/* Zooming a live picture is the show's: not in the practice show, which has no pictures. */}
+      {!practising && <LiveZoomControls />}
     </section>
   );
 }

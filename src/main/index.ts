@@ -3609,10 +3609,25 @@ function start(): void {
     process.env['DRASHTI_TEST_NO_WIZARD'] === '1' || process.env['DRASHTI_SELFTEST'] !== undefined;
   handle(IPC.setup.state, () => ({
     firstRun: mode === 'pro' && !wizardOff && settings.get('setupWizard') === undefined,
+    // The first start's welcome (Session 26g): once per library, before anything was set up; never for
+    // a volunteer (roles on and the admin PIN not typed), never in Simple Mode or on a node.
+    welcome:
+      mode === 'pro' &&
+      !wizardOff &&
+      !roles.needsAdmin() &&
+      settings.get('welcome') === undefined &&
+      settings.get('setupWizard') === undefined,
     operatorDisplayId: operatorDisplayId(),
   }));
   handle(IPC.setup.setSeen, (e) => {
     if (fromOperator(e)) settings.set('setupWizard', new Date().toISOString());
+    return null;
+  });
+  handle(IPC.setup.welcomeSeen, (e) => {
+    if (fromOperator(e)) {
+      settings.set('welcome', new Date().toISOString());
+      log.info('Setup: the first start’s welcome was answered');
+    }
     return null;
   });
   handle(IPC.setup.identifyDisplays, (e) => {

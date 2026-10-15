@@ -24,6 +24,11 @@ interface LibraryView {
   item: ShownItem | null;
   /** A slide to bring into view in the grid (a search found it). */
   focusSlideId: string | null;
+  /**
+   * Nothing is chosen on purpose (Session 26g: Skip for now on the first start): the middle shows its
+   * three steps, and the first presentation is not chosen by itself until the operator picks one.
+   */
+  nothingChosen: boolean;
 }
 
 /** Which list the left column shows: presentations, media, or Shastra texts. */
@@ -41,7 +46,13 @@ export const useLibrary = create<LibraryView>(() => ({
   anchorId: null,
   item: null,
   focusSlideId: null,
+  nothingChosen: false,
 }));
+
+/** Choose nothing (the first start's Skip for now): the middle's empty place leads, its steps first. */
+export function chooseNothing(): void {
+  useLibrary.setState({ selectedId: null, doc: null, marked: [], item: null, nothingChosen: true });
+}
 
 /** Show a playlist item in the slide grid: a presentation item's slides, or the item itself. */
 export async function showItem(item: ShownItem): Promise<void> {
@@ -56,7 +67,7 @@ export async function showItem(item: ShownItem): Promise<void> {
  * a click on one puts it up and sets it going round from there. The library's own marks stay as they are.
  */
 export async function showRepeatSteps(presentationId: string, focus: string | null): Promise<void> {
-  useLibrary.setState({ item: null, selectedId: presentationId, focusSlideId: focus });
+  useLibrary.setState({ item: null, selectedId: presentationId, focusSlideId: focus, nothingChosen: false });
   const doc = await window.drashti.library.getPresentation(presentationId);
   if (useLibrary.getState().selectedId === presentationId) useLibrary.setState({ doc });
 }
@@ -68,6 +79,7 @@ export function leaveItem(): void {
 
 export async function selectPresentation(id: string): Promise<void> {
   useLibrary.setState((s) => ({
+    nothingChosen: false,
     selectedId: id,
     marked: s.marked.includes(id) ? s.marked : [id],
     anchorId: s.anchorId ?? id,
@@ -120,7 +132,9 @@ export async function loadLibrary(): Promise<void> {
   });
   // A Shastra passage stays shown (it is not in the list).
   if (selectedId && (ids.has(selectedId) || isPassageId(selectedId))) return;
-  // Nothing selected yet, or the selected presentation is gone (removed): select the first.
+  // Nothing selected yet, or the selected presentation is gone (removed): select the first, unless
+  // nothing is chosen on purpose.
+  if (useLibrary.getState().nothingChosen && !selectedId) return;
   const first = presentations[0];
   if (first) await selectPresentation(first.id);
   else useLibrary.setState({ selectedId: null, doc: null, marked: [] });

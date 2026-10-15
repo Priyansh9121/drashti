@@ -561,6 +561,8 @@ export interface DrashtiBridge {
   setup: {
     state(): Promise<SetupState>;
     setSeen(): Promise<null>;
+    /** The first start's welcome was answered: it never comes again for this library. */
+    welcomeSeen(): Promise<null>;
     identifyDisplays(): Promise<{ shown: number }>;
     testTone(device: AudioDevice | null): Promise<{ ok: boolean }>;
     finish(plan: SetupPlan, options?: CoverOptions): Promise<SetupResult>;

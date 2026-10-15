@@ -135,6 +135,10 @@
   --stagger: 45ms; /* between things arriving together, one-off arrivals only */
   --stagger-notice: 90ms;
   --stagger-empty: 70ms;
+  --lively-time: 1.25; /* the first start only: Lively's longer moves */
+  --lively-move: 2; /* ...and bigger ones */
+  --delay-words: 900ms; /* the first start's words, once the flame is up */
+  --stagger-words: 110ms;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1); /* entrances and exits */
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1); /* side sheets */
   --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1); /* the light passing once across a notice */
@@ -304,6 +308,49 @@ body.output {
     animation: rise-empty var(--dur-empty) var(--ease-out)
       calc(var(--delay-empty) + var(--i, 0) * var(--stagger-empty)) both;
   }
+  /* The first start (Session 26g): its words and choices arrive one after another, with Lively's
+     longer, bigger moves, once the lamp is lit. */
+  [data-motion='words'] {
+    animation: rise-lively calc(var(--dur-step) * var(--lively-time)) var(--ease-out)
+      calc(var(--delay-words) + var(--i, 0) * var(--stagger-words)) both;
+  }
+  /* The lamp lights once over --dur-light: the bowl rises, a spark, the flame grows from the wick,
+     its core, the halo spreads; then the flame breathes once and is still for good. */
+  [data-lighting] .lamp-bowl {
+    animation: lamp-bowl calc(var(--dur-light) * 0.23) var(--ease-out) both;
+  }
+  [data-lighting] .lamp-spark {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: lamp-spark calc(var(--dur-light) * 0.3) var(--ease-out) calc(var(--dur-light) * 0.21) both;
+  }
+  [data-lighting] .lamp-flame {
+    transform-box: view-box;
+    transform-origin: 512px 690px;
+    animation:
+      lamp-flame calc(var(--dur-light) * 0.5) var(--ease-flame) calc(var(--dur-light) * 0.27) both,
+      lamp-breath var(--dur-breath) var(--ease-in-out) var(--dur-light) 1;
+  }
+  [data-lighting] .lamp-core {
+    transform-box: view-box;
+    transform-origin: 512px 690px;
+    animation: lamp-flame calc(var(--dur-light) * 0.46) var(--ease-flame) calc(var(--dur-light) * 0.37) both;
+  }
+  [data-lighting] .lamp-halo {
+    transform-box: view-box;
+    transform-origin: 512px 480px;
+    animation: lamp-halo calc(var(--dur-light) * 0.64) var(--ease-out) calc(var(--dur-light) * 0.36) both;
+  }
+  /* Lit, the spark is gone. */
+  .lamp-spark {
+    opacity: 0;
+  }
+  .lamp-welcome {
+    background:
+      radial-gradient(420px 260px at 50% 18%, rgb(var(--lamp-rgb) / var(--lamp-welcome)), transparent 72%),
+      var(--color-panel);
+  }
+
   [data-leaving] {
     pointer-events: none;
     animation: fade-out var(--dur-exit) var(--ease-out) both;
@@ -375,6 +422,55 @@ body.output {
   from {
     opacity: 0;
     transform: translateY(var(--rise-notice));
+  }
+}
+@keyframes rise-lively {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--rise-lg) * var(--lively-move)));
+  }
+}
+@keyframes lamp-bowl {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--rise-lg) * 4));
+  }
+}
+@keyframes lamp-spark {
+  0% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.4);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+@keyframes lamp-flame {
+  0% {
+    opacity: 0;
+    transform: scaleY(0.18) scaleX(0.5);
+  }
+  35% {
+    opacity: 1;
+  }
+}
+@keyframes lamp-breath {
+  50% {
+    transform: scaleY(0.965) scaleX(1.02);
+  }
+}
+@keyframes lamp-halo {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  60% {
+    opacity: 1;
   }
 }
 @keyframes rise-empty {

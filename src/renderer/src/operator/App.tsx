@@ -29,6 +29,9 @@ import type { OperatorAction } from '../../../shared/keymap';
 import { shortcutText } from '../../../shared/keymap';
 import { Header } from './Header';
 import { LayerBar } from './LayerBar';
+import { PracticeShow } from '../practice/PracticeShow';
+import { practiceKey, stopPractice, usePractice } from '../practice/practice-store';
+import { closeWelcome, openWelcome, Welcome } from '../setup/Welcome';
 import { CentreColumn, Columns, LeftColumn } from './Layout';
 import { OpenPlaylist } from '../playlists/OpenPlaylist';
 import { PanelGroup, PanelNote } from '../ui/Panel';
@@ -165,8 +168,12 @@ function ProApp({ info }: { info: AppInfo | null }) {
   const openScreens = useCallback(() => {
     setScreensOpen(true);
   }, []);
+  const practising = usePractice((s) => s.on);
   const run = useCallback(
     (action: OperatorAction) => {
+      // The practice show takes the show's keys while it is on (Session 26g): never the engine's.
+      const windowOnly = action === 'openScreens' || action === 'showKeys' || action === 'uncoverControls';
+      if (!windowOnly && practiceKey(action)) return;
       void runAction(action, { openScreens, showKeys: showKeysSheet });
     },
     [openScreens],
@@ -200,23 +207,38 @@ function ProApp({ info }: { info: AppInfo | null }) {
   useEffect(() => {
     setMidiHandler((action) => {
       if (action.kind === 'next') run('next');
-      else if (action.kind === 'back') void runBack();
-      else if (action.kind === 'clearAll') run('clearAll');
+      else if (action.kind === 'back') {
+        if (!practiceKey('back')) void runBack();
+      } else if (action.kind === 'clearAll') run('clearAll');
       else if (action.kind === 'blackout') run('toggleBlackout');
       else if (action.kind === 'logo') run('toggleLogo');
-      else void runMacro(action.macroId);
+      // A macro works the show itself: never during the practice show.
+      else if (!usePractice.getState().on) void runMacro(action.macroId);
     });
     return () => {
       setMidiHandler(null);
     };
   }, [run]);
-  // The setup wizard: by itself on the first start, and from View > Set Up Screens… (Pro Mode only).
+  // Leaving Pro Mode (for Simple Mode) ends a practice show: it never appears there.
+  useEffect(
+    () => () => {
+      stopPractice();
+      closeWelcome();
+    },
+    [],
+  );
+  // The first start's welcome (Session 26g), once per library; else the setup wizard by itself on a
+  // first start as before; and the wizard from View > Set Up Screens… (Pro Mode only), which also
+  // ends a practice show.
   useEffect(() => {
     void window.drashti.setup.state().then((state) => {
-      if (state.firstRun) void openSetup();
+      if (state.welcome) openWelcome();
+      else if (state.firstRun) void openSetup();
     });
     return window.drashti.setup.onOpen(() => {
       setScreensOpen(false);
+      stopPractice();
+      closeWelcome();
       void openSetup();
     });
   }, []);
@@ -229,60 +251,69 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <ArtiPrompt />
       <MacroCountdown />
       <RecoveryBanner />
-      <Columns
-        left={
-          <LeftColumn
-            top={<PlaylistPanel platform={platform} />}
-            bottom={<PresentationList platform={platform} />}
-            foot={<UndoBar platform={platform} />}
-          />
-        }
-        middle={
-          // The open playlist above the chosen item's slides (Session 26a); no playlist open, the slides alone.
-          <main aria-label="Playlist and slides" className="flex min-h-0 flex-1 flex-col">
-            <CentreColumn top={openId ? <OpenPlaylist platform={platform} /> : null} bottom={<SlideGrid />} />
-          </main>
-        }
-        right={
-          <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
-            <LivePreview />
-            <MarkerJumps />
-            {/* Session 26a's order: LIVE, Audio, the stage screen, messages, timers, props, Looks, then More
+      {practising ? (
+        <PracticeShow platform={platform} />
+      ) : (
+        <Columns
+          left={
+            <LeftColumn
+              top={<PlaylistPanel platform={platform} />}
+              bottom={<PresentationList platform={platform} />}
+              foot={<UndoBar platform={platform} />}
+            />
+          }
+          middle={
+            // The open playlist above the chosen item's slides (Session 26a); no playlist open, the slides alone.
+            <main aria-label="Playlist and slides" className="flex min-h-0 flex-1 flex-col">
+              <CentreColumn
+                top={openId ? <OpenPlaylist platform={platform} /> : null}
+                bottom={<SlideGrid />}
+              />
+            </main>
+          }
+          right={
+            <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-3" aria-label="Live">
+              <LivePreview />
+              <MarkerJumps />
+              {/* Session 26a's order: LIVE, Audio, the stage screen, messages, timers, props, Looks, then More
                 tools folded away. */}
-            <div className="mt-3 divide-y divide-line border-t border-line">
-              <PanelGroup title="Audio" icon={Music} remember="audio" data-testid="audio-group">
-                <MusicPanel nested />
-                <ArtiPanel nested />
-              </PanelGroup>
-              <StageMessageControl />
-              <MessagesPanel />
-              <TimersPanel />
-              <PropsPanel />
-              <LooksPanel />
-              <PanelGroup
-                title="More tools"
-                icon={Wrench}
-                remember="more-tools"
-                defaultOpen={false}
-                data-testid="more-tools"
-              >
-                <div>
-                  <PanelNote>A macro does several things at one press, as an admin set it up.</PanelNote>
-                  <MacrosPanel nested />
-                </div>
-                <div>
-                  <PanelNote>A mask hides part of a screen, such as a corner a banner covers.</PanelNote>
-                  <MasksPanel nested />
-                </div>
-                <div>
-                  <PanelNote>The idle rotation shows pictures and quotes while nothing else is up.</PanelNote>
-                  <IdlePanel nested />
-                </div>
-              </PanelGroup>
-            </div>
-          </aside>
-        }
-      />
+              <div className="mt-3 divide-y divide-line border-t border-line">
+                <PanelGroup title="Audio" icon={Music} remember="audio" data-testid="audio-group">
+                  <MusicPanel nested />
+                  <ArtiPanel nested />
+                </PanelGroup>
+                <StageMessageControl />
+                <MessagesPanel />
+                <TimersPanel />
+                <PropsPanel />
+                <LooksPanel />
+                <PanelGroup
+                  title="More tools"
+                  icon={Wrench}
+                  remember="more-tools"
+                  defaultOpen={false}
+                  data-testid="more-tools"
+                >
+                  <div>
+                    <PanelNote>A macro does several things at one press, as an admin set it up.</PanelNote>
+                    <MacrosPanel nested />
+                  </div>
+                  <div>
+                    <PanelNote>A mask hides part of a screen, such as a corner a banner covers.</PanelNote>
+                    <MasksPanel nested />
+                  </div>
+                  <div>
+                    <PanelNote>
+                      The idle rotation shows pictures and quotes while nothing else is up.
+                    </PanelNote>
+                    <IdlePanel nested />
+                  </div>
+                </PanelGroup>
+              </div>
+            </aside>
+          }
+        />
+      )}
       <LayerBar platform={platform} run={run} />
       <StatusBar info={info} onOpenScreens={openScreens} onOpenCalendar={openCalendar} />
       <NoticeArea />
@@ -294,6 +325,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <WordsEditor platform={platform} />
       <KirtanDialog />
       <SetupWizard platform={platform} />
+      <Welcome />
       <SlideEditor platform={platform} />
       <ThemesPanel />
       {streamOpen && <StreamPanel />}
