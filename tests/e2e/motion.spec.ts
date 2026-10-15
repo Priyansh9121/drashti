@@ -260,6 +260,16 @@ test('with the computer set to reduce motion, nothing in the window moves at all
   await win.keyboard.press('Escape');
   await win.getByTestId('what-is-this-live').click();
   await still('What is this?');
+  // A notice, as the main process sends one.
+  await app.evaluate(({ BrowserWindow }) => {
+    for (const w of BrowserWindow.getAllWindows())
+      if (w.webContents.getURL().includes('index.html'))
+        w.webContents.send('app:notice', { text: 'Placeholder notice' });
+  });
+  await expect(win.getByTestId('operator-notice')).toBeVisible();
+  await still('a notice');
+  await win.getByTestId('operator-notice').getByRole('button', { name: 'Dismiss' }).click();
+  await still('a notice leaving');
   // A playlist row moving.
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
