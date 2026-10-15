@@ -436,6 +436,8 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
   const cold = await coldStart(ctx.operator(), startedAt);
   const folder = mkdtempSync(join(tmpdir(), 'drashti-perf-lyrics-'));
   const songs = ctx.songs ?? PERF_SONGS;
+  // A trace (DRASHTI_PERF_PROFILE) from before the test output opens: what its GPU warm-up made is in it too.
+  await ctx.profile?.start();
   const undo = await ctx.ensureOutput();
   try {
     if (ctx.noImportMs === undefined)
@@ -470,7 +472,6 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
     operator.webContents.setBackgroundThrottling(false);
     const d = ctx.diagnostics;
     const noImport = ctx.noImportMs !== undefined;
-    await ctx.profile?.start();
     await ctx.scenario?.begin();
     ctx.cpu?.();
     d.loopDelay.reset();
@@ -556,7 +557,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
       : '';
     const others = ctx.priority?.others();
     const priority = `main process priority ${describePriority()}${ctx.priority ? ` (started at ${ctx.priority.started}${others ? `, its other processes ${others}` : ''})` : ''}`;
-    const summary = `${what}${editsSummary}; ${priority}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}${after.length > 0 ? `; ${line('just after the import', after)}` : ''}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}${scenario ? `; ${scenario.summary}` : ''}${gpu ? `; the GPU made ${plural(gpu.made, 'new pipeline')} (${String(gpu.ms)} ms)${gpu.during ? `, ${String(gpu.during.length)} during the first Bold transition` : ''}` : ''}`;
+    const summary = `${what}${editsSummary}; ${priority}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}${after.length > 0 ? `; ${line('just after the import', after)}` : ''}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}${scenario ? `; ${scenario.summary}` : ''}${gpu ? `; the GPU made ${plural(gpu.made, 'new pipeline')} (${String(gpu.ms)} ms)${gpu.warmUp ? `, ${String(gpu.warmUp.made)} as the test output warmed up (${String(gpu.warmUp.ms)} ms)` : ''}${gpu.during ? `, ${String(gpu.during.length)} during the first Bold transition` : ''}` : ''}`;
 
     const totals = run.result.run?.totals;
     if (!noImport) {

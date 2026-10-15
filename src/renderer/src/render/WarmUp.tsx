@@ -8,6 +8,7 @@ import { DEFAULT_LIVE_GROUP_LOOK, MOVEMENTS } from '../../../shared/looks';
 import { mediaUrl } from '../../../shared/media';
 import type { RenderSlide, TextStyle, Transition, TransitionKind } from '../../../shared/model';
 import { MAX_TRANSITION_MS, TRANSITION_KINDS } from '../../../shared/model';
+import { WARM_UP_MARK } from '../../../shared/perf-marks';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { engineNow } from './clock';
@@ -20,8 +21,9 @@ import { Scene } from './Scene';
  * of a show would stutter in the hall. Before a page first shows the show, it draws every transition kind
  * in both Movements part-way, a Look's lower third coming, changing and going, messages and the ticker's band
  * coming in, a picture with a look, the background dissolving and the idle rotation dissolving, with
- * placeholder words and pictures made here, through the same Scene the show uses, for a few frames; then it
- * lets go. The pipelines are kept by the GPU for every window after.
+ * placeholder words and pictures made here, through the same Scene the show uses, until its frames come on
+ * time (the GPU has made what they need); then it lets go. The pipelines are kept by the GPU for every
+ * window after.
  *
  * It draws in a shadow tree of its own, closed, so no page script or test finds its placeholder slides,
  * tickers and lower thirds among the show's (open only when a test keeps it drawn, to look at it).
@@ -38,9 +40,15 @@ const PICTURE = { a: `${W}-picture-a`, b: `${W}-picture-b`, prop: `${W}-prop` } 
 
 /** How far through every transition it draws: part-way, both slides on screen. */
 const PART = 0.4;
-/** Frames drawn of the slides before the transitions (so each starts from one), and of the transitions. */
+/** Frames drawn of the slides before the transitions (so each starts from one). */
 const BEFORE_FRAMES = 2;
-const DURING_FRAMES = 6;
+/**
+ * Then until the GPU keeps up: this many frames in a row, each within ON_TIME_MS of the one before (a GPU
+ * still making what the frames need keeps them waiting: on CI's Mac for seconds), or MAX_MS at most.
+ */
+const STEADY_FRAMES = 6;
+const ON_TIME_MS = 50;
+const MAX_MS = 20_000;
 
 /** A placeholder picture drawn in the page: a JPEG as a darshan picture is, or a PNG with see-through parts. */
 function makePicture(kind: 'jpeg' | 'png', hue: number): string {
@@ -306,24 +314,46 @@ export function WarmUp({
       return img;
     });
     void Promise.all(images.map((img) => img.decode().catch(() => undefined))).then(() => {
-      if (live) setStep({ phase: 'before', at: engineNow() });
+      if (!live) return;
+      // For a trace (the Performance check's): what the GPU made while it warmed up.
+      performance.mark(WARM_UP_MARK);
+      setStep({ phase: 'before', at: engineNow() });
     });
     return () => {
       live = false;
     };
   }, [pictures]);
-  // Then frame by frame: the slides before for two frames, every change part-way for six, and done.
+  // Then frame by frame: the slides before for two frames, every change part-way until the frames come on
+  // time, and done.
   useEffect(() => {
     if (step.phase === 'pictures') return;
-    let left = step.phase === 'before' ? BEFORE_FRAMES : DURING_FRAMES;
     let frame = 0;
-    const tick = () => {
-      left -= 1;
-      if (left > 0) frame = requestAnimationFrame(tick);
-      else if (step.phase === 'before') setStep({ phase: 'during', at: engineNow() });
-      else if (!hold) done.current();
-    };
-    frame = requestAnimationFrame(tick);
+    if (step.phase === 'before') {
+      let left = BEFORE_FRAMES;
+      const tick = () => {
+        left -= 1;
+        if (left > 0) frame = requestAnimationFrame(tick);
+        else setStep({ phase: 'during', at: engineNow() });
+      };
+      frame = requestAnimationFrame(tick);
+    } else {
+      let steady = 0;
+      let last: number | null = null;
+      let first: number | null = null;
+      const tick = (t: number) => {
+        first ??= t;
+        steady = last !== null && t - last <= ON_TIME_MS ? steady + 1 : 0;
+        last = t;
+        if (steady < STEADY_FRAMES && t - first < MAX_MS) {
+          frame = requestAnimationFrame(tick);
+          return;
+        }
+        if (hold) return;
+        performance.mark(`${WARM_UP_MARK}-end`);
+        done.current();
+      };
+      frame = requestAnimationFrame(tick);
+    }
     return () => {
       cancelAnimationFrame(frame);
     };
