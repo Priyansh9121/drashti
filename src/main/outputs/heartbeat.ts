@@ -18,6 +18,11 @@
 
 /** No report for this long (they come every 2 s): stuck. */
 export const REPORT_STALE_MS = 6000;
+/**
+ * While it warms up its GPU (Session 27), this long: a slow computer's warm-up can keep a page busy for
+ * seconds at a time, and an output reloaded for it would only warm up again.
+ */
+export const WARMING_STALE_MS = 30_000;
 /** A report this long after a change, and it still has not painted it: stuck. */
 export const BEHIND_MS = 3000;
 /** Nothing is judged this soon after an output opens or reloads (fonts, the first snapshot). */
@@ -116,7 +121,8 @@ export class OutputHeartbeat {
 
   private why(s: Seen, now: number): string | null {
     const heardAt = s.reportAt ?? s.since;
-    if (now - heardAt > REPORT_STALE_MS) return `no report for ${Math.round((now - heardAt) / 1000)} s`;
+    if (now - heardAt > (s.warming ? WARMING_STALE_MS : REPORT_STALE_MS))
+      return `no report for ${Math.round((now - heardAt) / 1000)} s`;
     if (s.reportAt === null || s.warming || s.paintedRev >= this.deps.engineRev()) return null;
     // The first change it has not painted, and how long before its last report that came.
     const changedAt = this.revAt.get(s.paintedRev + 1);

@@ -16,9 +16,7 @@ import { Repeat2, Square, Timer } from '../ui/icons';
 import { LiveZoomControls, ZoomablePreview } from './LiveZoom';
 import { useNow } from '../render/useNow';
 import { useWhatIsThis } from '../help/WhatIsThis';
-
-/** Tests only: the warm-up stays drawn, to be looked at (DRASHTI_TEST_HOLD_WARM_UP; never when packaged). */
-const HOLD_WARM_UP = new URLSearchParams(location.search).get('warmUp') === 'hold';
+import { HOLD_WARM_UP, SKIP_WARM_UP } from '../render/warm-up-mode';
 
 /**
  * What the audience sees, drawn by the same Scene component the outputs use,
@@ -58,7 +56,7 @@ export function LivePreview() {
       state.layers.masks !== null ||
       state.logo !== null ||
       state.idle.startedAt !== null);
-  const [warmed, setWarmed] = useState(false);
+  const [warmed, setWarmed] = useState(SKIP_WARM_UP);
   const warmedUp = useCallback(() => {
     setWarmed(true);
   }, []);
