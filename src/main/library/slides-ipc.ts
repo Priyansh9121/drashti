@@ -103,10 +103,12 @@ export function registerSlidesIpc({
     if (!fromOperator(e)) return onlyOperator;
     const t = transitionSchema.safeParse(transition);
     if (!t.success) return { ok: false as const, message: 'That transition is not valid.' };
+    // Any kind the editor offers (Session 27: before, every kind but a cut was kept as a fade, though the
+    // editor offered them all); a slow zoom's span is the engine's to set, never a default's.
     const kept: Transition =
       t.data.kind === 'cut'
         ? { kind: 'cut', durationMs: 0 }
-        : { kind: 'dissolve', durationMs: t.data.durationMs };
+        : { kind: t.data.kind, durationMs: t.data.durationMs };
     settings.set(DEFAULT_TRANSITION, kept);
     return { ok: true as const, transition: kept };
   });

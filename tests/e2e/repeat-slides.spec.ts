@@ -80,7 +80,13 @@ test('Repeat Slides goes round by itself; Esc and Stop leave its slide up; black
   ).toMatchObject({ ok: true });
   await expect(win.getByTestId('open-playlist').getByTestId('playlist-item')).toHaveCount(3);
 
-  // Its settings: 3 s each, a fade through black of half a second.
+  // Its settings: 3 s each, a fade through black of half a second. Session 27's kinds are offered too.
+  const offered = await win
+    .getByTestId('repeat-transition')
+    .locator('option')
+    .evaluateAll((options) => options.map((o) => o.textContent.trim()));
+  for (const name of ['Wipe', 'Push', 'Zoom', 'Line by line', 'Word by word'])
+    expect(offered).toContain(name);
   await win.getByTestId('repeat-seconds').fill('3');
   await win.getByTestId('repeat-transition').selectOption('fade-black');
   await win.getByTestId('repeat-transition-seconds').fill('0.5');

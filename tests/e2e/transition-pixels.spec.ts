@@ -76,6 +76,12 @@ const dim = (a: readonly number[], f: number) => a.map((c) => c * f);
 /** What each transition should show at the left quarter and the right quarter, at `p`. */
 function expected(kind: TransitionKind, p: number): { left: number[]; right: number[] } | null {
   switch (kind) {
+    // Session 27's kinds move only words: these slides are pictures alone, so on Calm screens they fade.
+    case 'wipe':
+    case 'push':
+    case 'zoom-dissolve':
+    case 'lines':
+    case 'words':
     case 'dissolve':
     case 'zoom': {
       // Calm's eased dissolve (Session 27): smoothstep, in + out = 1.
@@ -159,7 +165,17 @@ test('each transition is the same on two screens at the same moment, and gives t
       .poll(async () => close((await canvasPixels(p, [POINTS[0] ?? { x: 0, y: 0 }]))[0], OLD.left))
       .toBe(true);
 
-  for (const kind of ['dissolve', 'fade-black', 'slide', 'zoom'] as const) {
+  for (const kind of [
+    'dissolve',
+    'fade-black',
+    'slide',
+    'zoom',
+    'wipe',
+    'push',
+    'zoom-dissolve',
+    'lines',
+    'words',
+  ] as const) {
     await settings(kind, MS);
     await hold(app, null);
     await show(0);

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
+  BOLD_ONLY_KINDS,
   CUT,
   TRANSITION_KINDS,
   TRANSITION_NAMES,
@@ -99,7 +100,8 @@ const DISSOLVE: Transition = { kind: 'dissolve', durationMs: 800 };
 
 /**
  * A transition: one of the choices, with a length for any but a cut (Session 26d added fade through
- * black, slide and slow zoom). `none` is "as the default".
+ * black, slide and slow zoom; Session 27 the design lab's wipe, push, zoom, line by line and word by
+ * word). `none` is "as the default".
  */
 function TransitionField({
   label,
@@ -142,6 +144,16 @@ function TransitionField({
           ))}
         </Select>
       </Field>
+      {value && BOLD_ONLY_KINDS.includes(value.kind) && (
+        <p className="pl-2 text-xs text-muted" data-testid={`${testId}-bold-note`}>
+          It moves the words only on screens whose Look is Bold; other screens fade. Pictures always fade.
+        </p>
+      )}
+      {value?.kind === 'words' && (
+        <p className="pl-2 text-xs text-muted" data-testid={`${testId}-words-note`}>
+          For titles and announcements: a kirtan's slides always fade instead.
+        </p>
+      )}
       {value && value.kind !== 'cut' && (
         <div className="pl-2">
           <Seconds
