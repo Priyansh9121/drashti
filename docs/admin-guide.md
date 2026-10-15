@@ -149,6 +149,8 @@ Section 8 of `docs/parallel-run.md` has the steps: on the second computer choose
 
 **A screen that says Stopped.** If one output keeps failing (more than 5 times in a minute), Drashti stops trying for a moment: that screen is black, the status line at the bottom says "1 stopped", Screens shows **Stopped**, and a red notice at the top of the operator window names the screen (in Simple Mode too; never over the show controls). Drashti tries it again by itself after 2 minutes, then every 10 minutes; **Try again** on the notice or in Screens tries at once (the notice's works for a volunteer and in Simple Mode: it changes nothing but brings the screen back). The other screens are not affected. If it keeps happening, save diagnostics and fall back for that screen.
 
+![A stopped screen's notice at the top of the window](screenshots/screen-stopped-notice.png)
+
 **When a file Drashti keeps cannot be read** (a damaged disk, a file cut short). Drashti never takes it for a missing file and never writes over it: it tries once more, then keeps the file aside in its data folder with the date in its name (for example `identity.unreadable-2026-10-10 05-36.json`), and says what it did:
 
 - **Main's identity for its nodes** (`node-link/identity.json`): every paired node checks it, so Drashti does not make a new one by itself. A note says so when Drashti starts, nothing follows Main, and **Screens** says "The nodes cannot follow this computer". An admin presses **Make a new identity…** there; then pair each node again (on the node, **Unpair…**, then a new code from Main).
