@@ -1,14 +1,14 @@
 # Drashti design rules
 
-These are the rules for Drashti's operator UI. Later sessions follow them, and change this file when a rule changes. The tokens are in `src/renderer/src/styles/app.css`, the shared components in `src/renderer/src/ui/`, and the **component gallery** shows each one in every state: **Diagnostics > Component Gallery** (start Drashti with `DRASHTI_DIAGNOSTICS=1`), or `/gallery.html` under `pnpm dev`. Any new shared component goes into the gallery too. `tests/e2e/design.spec.ts` runs the accessibility checks on the gallery.
+These are the rules for Drashti's operator UI, in its own look, **Diya** (Session 26g: the lamp's plum and flame, built from the design lab's "Diya, pushed further", `design-lab/diya/`). Later sessions follow them, and change this file when a rule changes. The tokens are in `src/renderer/src/styles/app.css`, the shared components in `src/renderer/src/ui/`, and the **component gallery** shows each one in every state: **Diagnostics > Component Gallery** (start Drashti with `DRASHTI_DIAGNOSTICS=1`), or `/gallery.html` under `pnpm dev`. Any new shared component goes into the gallery too. `tests/e2e/design.spec.ts` runs the accessibility checks on the gallery.
 
-Write our own code. Design ideas may come from outside the workspace (Priyansh's All Skills collection, read as data), but nothing is copied into `app/` from there, from 21st.dev or from anywhere else. Brand matters (colours, the mark, the voice) are decided in the skills review's identity work and Session 26.
+Write our own code. Design ideas may come from outside the workspace (Priyansh's All Skills collection, read as data), but nothing is copied into `app/` from there, from 21st.dev or from anywhere else. Brand matters (colours, the mark, the voice) were decided in the skills review's identity work and the design lab, and chosen by Priyansh on 15 Oct 2026 (PLAN.md §7, "Look and motion").
 
 ## 1. What the UI is for
 
 Volunteers run a sabha with it in a dim hall, often under pressure. So:
 
-- **Dark by default.** The window is near-black and the panels a little lighter. Nothing bright is on screen unless it means something.
+- **Dark by default, lit by the lamp.** The window is plum-black and the panels a little lighter. Nothing bright is on screen unless it means something; the one decoration is the lamp's warm light falling from the mark (a gradient on a surface, never a filled shape, so never taken for a warning).
 - **What is on the screens is never in doubt.** "Live" always looks the same (section 3).
 - **Calm, and lit by the lamp.** One primary colour (the lamp's plum) on the one next thing to do, a few sizes, and the lamp's light as the only decoration. Movement only where something arrives or leaves (a dialog, a notice, a playlist row moving), each with its token, never on a show control (§3, "Motion"). Reduced motion turns it all off.
 - **Familiar to operators coming from ProPresenter.** The library, playlists and media are on the left, the slides in the middle, and what's live and what's next on the right, with the layer clears along the bottom. The name "ProPresenter" never appears in the UI.
@@ -32,6 +32,8 @@ Colours are named for their **job**, never their hue (`bg-panel`, `text-muted`, 
 | `success`, `success-bg`, `success-fg`               | Connected, showing                                                         |
 | `danger`, `danger-strong`, `danger-bg`, `danger-fg` | Removing and deleting; something failed                                    |
 | `guide`, `selection`                                | The slide editor's snapping guides and what is chosen (never text)         |
+| `--lamp-rgb`, `--lamp-header`, `--lamp-window` …    | The lamp's light and how strong it falls on each surface (§33)             |
+| `--dur-*`, `--delay-*`, `--stagger-*`, `--ease-*`   | Motion: every duration, delay and easing (§3, "Motion")                    |
 
 **One primary per screen, for the next thing to do** (Session 26g): in a show, **Next** under LIVE; on the first start, **Set up the screens**; with nothing chosen, step 1's **Import…**; in a warning, its next step (**Back up now**, a stopped screen's **Try again**); in a dialog, its own (Save, Finish; **Save changes** when typed work would be lost). Everything else in the window is a secondary (Clear all a strong one), and a primary that can't be pressed gives up its light. `tests/e2e/next-thing.spec.ts` counts them.
 
