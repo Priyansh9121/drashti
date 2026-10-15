@@ -52,6 +52,10 @@ async function keyFillPair(app: ElectronApplication, win: Page): Promise<{ fill:
   const key = await outputFor(app, screens[1]?.id ?? '');
   await expect(fill.getByTestId('output-root')).toHaveAttribute('data-feed', 'fill');
   await expect(key.getByTestId('output-root')).toHaveAttribute('data-feed', 'key');
+  // Both ready to draw the show (fonts in, the GPU warmed up, Session 27): a window under another draws no
+  // frames, so it may wait for the warm-up's longest, 8 s.
+  for (const p of [fill, key])
+    await expect(p.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready', { timeout: 20_000 });
   return { fill, key };
 }
 
