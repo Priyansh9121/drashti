@@ -25,6 +25,7 @@ Diya, Drashti's own look: the lamp's plum and flame.
 - Events out (File › Events Out…): Drashti can tell a program on your network, such as n8n, what happens in the show, signed. Nothing is sent until an admin chooses, and the words only if asked.
 - Before a screen first shows the show it quietly prepares every transition, unseen (it stays black), so the first Bold push of a sabha never stutters.
 - A sharpened picture is sharpened at the size the hall's largest screen shows it (an output computer's included), and again when the screens change size.
+- An update is checked again before it installs, and only a newer version installs (a node matching Main's excepted).
 - On the phone remote, Black-out and Logo say "Black-out is on" and "Logo is on" while on, as on the computer.
 - New groups are teal for Chorus and indigo for Verse, and no default group colour is red any more, so nothing looks like LIVE. Groups you already have keep their colours.
 - A new library starts with a welcome: Set up the screens, Try a practice show first (placeholder slides on this screen only), or Skip for now, which shows three steps to a sabha.
