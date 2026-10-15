@@ -66,6 +66,7 @@ describe("the performance check's cold start (Session 26h)", () => {
       {
         openedAt: startedAt + 2140,
         presentationAt: startedAt + 2390,
+        warmedAt: startedAt + 2480,
         liveAt: startedAt + 2610,
         settledAt: startedAt + 3060,
         changes: [212, 9, 8, 11, 7, 10, 8, 9, 12, 8],
@@ -74,7 +75,7 @@ describe("the performance check's cold start (Session 26h)", () => {
       startedAt,
     );
     expect(line).toBe(
-      'cold start (not judged): the operator window opened settled 2.1 s after Drashti started, a presentation open at 2.4 s, LIVE showing at 2.6 s, all drawn at 3.1 s; its slide changes, to the LIVE picture: n=10 median 9 ms, slowest 212 ms',
+      'cold start (not judged): the operator window opened settled 2.1 s after Drashti started, a presentation open at 2.4 s, the LIVE picture warmed up at 2.5 s, LIVE showing at 2.6 s, all drawn at 3.1 s; its slide changes, to the LIVE picture: n=10 median 9 ms, slowest 212 ms',
     );
   });
 
@@ -83,6 +84,7 @@ describe("the performance check's cold start (Session 26h)", () => {
       {
         openedAt: startedAt + 1500,
         presentationAt: null,
+        warmedAt: null,
         liveAt: null,
         settledAt: null,
         changes: [],
@@ -90,7 +92,9 @@ describe("the performance check's cold start (Session 26h)", () => {
       },
       startedAt,
     );
-    expect(line).toContain('a presentation open at never, LIVE showing at never');
+    expect(line).toContain(
+      'a presentation open at never, the LIVE picture warmed up at never, LIVE showing at never',
+    );
     expect(line).toContain('no slide changes drawn (no “Language test slides” in the library list)');
   });
 });

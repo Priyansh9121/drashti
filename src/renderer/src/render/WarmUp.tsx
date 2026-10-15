@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { EngineState, SlideLayer } from '../../../shared/engine/state';
 import { initialEngineState } from '../../../shared/engine/state';
@@ -35,6 +35,50 @@ import { Scene } from './Scene';
  */
 
 const W = 'drashti-warm-up';
+/**
+ * Every way a picture is drawn, small (the GPU's pipelines do not depend on the size): a JPEG and a PNG, each
+ * filling, fitting or covering its box, at a whole and at half a pixel, whole and part see-through, plain and
+ * inside a rounded box. Which of these a show's frame needs depends on its pictures and on how the GPU cuts
+ * the screen into parts (CI's Mac and this one differ), so the warm-up draws them all.
+ */
+function PictureStrip({ jpeg, png }: { jpeg: string; png: string }) {
+  const cells: ReactNode[] = [];
+  let n = 0;
+  for (const src of [jpeg, png])
+    for (const fit of ['fill', 'contain', 'cover'] as const)
+      for (const half of [0, 0.5])
+        for (const opacity of [1, 0.6])
+          for (const rounded of [false, true]) {
+            const x = (n % 12) * 160 + half;
+            const y = Math.floor(n / 12) * 100 + half;
+            n += 1;
+            const img = (
+              <img
+                src={src}
+                alt=""
+                draggable={false}
+                style={{ width: '100%', height: '100%', objectFit: fit, opacity, display: 'block' }}
+              />
+            );
+            cells.push(
+              <div
+                key={n}
+                style={{
+                  position: 'absolute',
+                  left: x,
+                  top: y,
+                  width: 150,
+                  height: 90,
+                  ...(rounded ? { overflow: 'hidden', borderRadius: 12 } : {}),
+                }}
+              >
+                {img}
+              </div>,
+            );
+          }
+  return <>{cells}</>;
+}
+
 /** The placeholder pictures' ids: a darshan-like JPEG for each slide, a prop's PNG with see-through parts. */
 const PICTURE = { a: `${W}-picture-a`, b: `${W}-picture-b`, prop: `${W}-prop` } as const;
 
@@ -476,6 +520,33 @@ export function WarmUp({
               ref={pulse}
               style={{ position: 'absolute', left: 0, top: 0, width: 2, height: 2, background: '#000000' }}
             />
+            {step.phase !== 'pictures' && (
+              <>
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    width: canvas.width,
+                    height: canvas.height,
+                  }}
+                >
+                  <PictureStrip jpeg={pictures[PICTURE.b] ?? ''} png={pictures[PICTURE.prop] ?? ''} />
+                </div>
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    width: canvas.width,
+                    height: canvas.height,
+                    clipPath: NOTCHED,
+                  }}
+                >
+                  <PictureStrip jpeg={pictures[PICTURE.a] ?? ''} png={pictures[PICTURE.prop] ?? ''} />
+                </div>
+              </>
+            )}
             {step.phase !== 'pictures' && (
               <MediaUrls.Provider value={urlOf}>
                 {list.map((s) => (

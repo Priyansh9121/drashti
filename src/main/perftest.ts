@@ -263,6 +263,8 @@ export interface ColdStart {
   openedAt: number | null;
   /** The presentation was open in the middle of the window. */
   presentationAt: number | null;
+  /** The LIVE picture had warmed the GPU up (Session 27, render/WarmUp.tsx), as before a show's first slide. */
+  warmedAt: number | null;
   /** Its first slide was on LIVE. */
   liveAt: number | null;
   /** The last slide change was drawn, and two frames after it. */
@@ -319,6 +321,7 @@ async function openAsAShowDoes(name: string, count: number, everyMs: number): Pr
   const out: ColdStart = {
     openedAt: null,
     presentationAt: null,
+    warmedAt: null,
     liveAt: null,
     settledAt: null,
     changes: [],
@@ -347,6 +350,13 @@ async function openAsAShowDoes(name: string, count: number, everyMs: number): Pr
       ) !== null,
     10_000,
   );
+  // As before a show: the LIVE picture warms the GPU up before the first slide goes live (a slide up first
+  // stops it at once, and CI's Mac then made the LIVE picture's own pipelines in the first Bold transition).
+  out.warmedAt = await until(
+    () => doc.querySelector('[data-testid="live-preview"] [data-warm-up]') === null,
+    10_000,
+  );
+  if (out.warmedAt === null) notes.push('the LIVE picture was still warming up after 10 s');
   const live = () =>
     doc
       .querySelector('[data-testid="live-preview"] [data-slide-in] [data-slide]')
@@ -386,10 +396,9 @@ export function coldStartLine(cold: ColdStart, startedAt: number): string {
     changes.length === 0
       ? 'no slide changes drawn'
       : `its slide changes, to the LIVE picture: n=${changes.length} median ${percentile(changes, 0.5)} ms, slowest ${Math.max(...changes)} ms`;
-  return `cold start (not judged): the operator window opened settled ${at(cold.openedAt)} after Drashti started, a presentation open at ${at(cold.presentationAt)}, LIVE showing at ${at(cold.liveAt)}, all drawn at ${at(cold.settledAt)}; ${told}${cold.note ? ` (${cold.note})` : ''}`;
+  return `cold start (not judged): the operator window opened settled ${at(cold.openedAt)} after Drashti started, a presentation open at ${at(cold.presentationAt)}, the LIVE picture warmed up at ${at(cold.warmedAt)}, LIVE showing at ${at(cold.liveAt)}, all drawn at ${at(cold.settledAt)}; ${told}${cold.note ? ` (${cold.note})` : ''}`;
 }
 
-/** The main process's worst block and its gaps over 100 ms, each with what went on around it (at most 6). */
 /** The GPU's pipelines in words (a trace kept; Session 27). */
 export function gpuLine(gpu: GpuPipelines): string {
   const names: Record<string, string> = {
@@ -406,6 +415,7 @@ export function gpuLine(gpu: GpuPipelines): string {
   return `the GPU made ${plural(gpu.made, 'new pipeline')} (${String(gpu.ms)} ms)${warm ? `, ${warm}` : ''}${gpu.between === null ? '' : `, ${String(gpu.between)} between the test output's and the first Bold transition`}${gpu.during ? `, ${String(gpu.during.length)} during the first Bold transition` : ''}`;
 }
 
+/** The main process's worst block and its gaps over 100 ms, each with what went on around it (at most 6). */
 export function watchSummary(watch: MainWatch): string {
   const gaps = [...watch.gaps].sort((a, b) => b.ms - a.ms).slice(0, 6);
   const told = gaps.map((g) => {
