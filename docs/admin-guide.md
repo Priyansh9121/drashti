@@ -40,6 +40,7 @@ On the Mac, open the `.dmg` and drag Drashti into **Applications**; on Windows, 
 - **On Windows**, the update installs by itself as Drashti quits.
 - **On the Mac**, until Drashti is signed with an Apple certificate, the update is downloaded and checked but cannot install itself: press **Show the file**, quit Drashti, open the file and drag Drashti into **Applications**.
 - **Look for a newer version once a day** makes Drashti check by itself (it only tells you; it never downloads on its own). It is off to begin with.
+- **An update waiting to install** is checked again before it installs: if Drashti was updated meanwhile by hand to that version or a newer one, or the downloaded file changed, it is dropped (download it again if it is still wanted). Only a release's own files from GitHub are taken.
 
 **One version on both computers.** After updating Main, update the node too, the same evening. Until they match, the node refuses to follow Main and its screens keep their last picture; Main's **Screens** and the screens dashboard say which node needs updating. On the node, its window offers **Update to Drashti …**: press it, then **Download Drashti …**, then **Quit and install**, and start it again. A node with no internet: install the same version on it by hand.
 
