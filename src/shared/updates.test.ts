@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compareVersions, manifestUrl, updateManifestSchema } from './updates';
+import { compareVersions, fileUrlAllowed, manifestUrl, updateManifestSchema } from './updates';
 
 describe('versions', () => {
   it('compare as semantic versions, a pre-release before its release', () => {
@@ -53,5 +53,14 @@ describe('versions', () => {
         .success,
     ).toBe(true);
     expect(updateManifestSchema.safeParse({ ...m, version: 'one' }).success).toBe(false);
+  });
+
+  it('packaged, take files from GitHub only (Session 30)', () => {
+    expect(fileUrlAllowed('https://github.com/o/r/releases/download/v1.0.1/x.exe', true)).toBe(true);
+    expect(fileUrlAllowed('https://example.com/x.exe', true)).toBe(false);
+    expect(fileUrlAllowed('https://github.com.example.com/x.exe', true)).toBe(false);
+    expect(fileUrlAllowed('http://127.0.0.1:8080/x.exe', true)).toBe(false);
+    expect(fileUrlAllowed('http://127.0.0.1:8080/x.exe', false)).toBe(true);
+    expect(fileUrlAllowed('https://example.com/x.exe', false)).toBe(true);
   });
 });

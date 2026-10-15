@@ -164,6 +164,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     arch: process.arch,
     base: deps.updateBase,
     dir: join(deps.userData, 'Updates'),
+    packaged: app.isPackaged,
     fetch: (url, init) => net.fetch(url, init),
     installer: deps.installer,
     // A node streams nothing; it never waits for that.
