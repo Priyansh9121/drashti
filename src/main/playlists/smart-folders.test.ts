@@ -39,7 +39,7 @@ const put = async (relative: string, content: string) => {
 
 const gone = (relative: string) => rm(join(root, 'Sabha', ...relative.split('/')));
 
-function setup(db: Db = openDatabase(':memory:'), maxFiles?: number) {
+function setup(db: Db = openDatabase(':memory:'), maxFiles?: number, air = { on: false }) {
   const playlists = new PlaylistRepo(db);
   const presentations = new PresentationRepo(db);
   const lib = presentations.ensureLibrary('Default');
@@ -130,6 +130,7 @@ function setup(db: Db = openDatabase(':memory:'), maxFiles?: number) {
     // The test looks at the folder itself, when it says; nothing looks again by itself.
     schedule: () => () => undefined,
     ...(maxFiles === undefined ? {} : { maxFiles }),
+    onAir: () => air.on,
   });
   services.push(service);
   /** One look at the folder now, and one once what it found has settled. */
@@ -181,6 +182,22 @@ describe('a smart playlist following a folder', () => {
       'Talk.mp3',
     ]);
     expect(view(id)).toMatchObject({ adding: 0 });
+  });
+
+  it('waits while the stream is on air or recording, then adds what held still (Session 28)', async () => {
+    await put('Opening.mp4', 'video one');
+    const air = { on: true };
+    const { service, settle, shown, imports, view } = setup(undefined, undefined, air);
+    const made = await service.create(folder());
+    const id = made.ok ? made.id : '';
+    await settle(id);
+    expect(imports).toEqual([]);
+    expect(view(id)).toMatchObject({ state: 'waiting', adding: 1 });
+    air.on = false;
+    await service.scan(id);
+    expect(imports).toHaveLength(1);
+    expect(shown(id)).toEqual(['Opening.mp4']);
+    expect(view(id)).toMatchObject({ state: 'following', adding: 0 });
   });
 
   it('adds a new file at the end of its folder’s part once it holds still, an item moved by hand staying put', async () => {

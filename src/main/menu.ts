@@ -45,6 +45,8 @@ export interface MenuActions {
   scheduledBackups: () => void;
   /** File > Events Out… (Session 28): an admin's. */
   eventsOut: () => void;
+  /** File > Drop Folder… (Session 28): an admin's. */
+  dropFolder: () => void;
   /** Help > Check for Updates… (Session 14, Pro Mode only). */
   checkForUpdates: () => void;
   /** Help > Keyboard Shortcuts… (Session 25, Pro Mode only): the keys sheet. */
@@ -87,6 +89,7 @@ export function installMenu(actions: MenuActions): void {
               { id: 'restore-library', label: 'Restore Library…', click: actions.restoreLibrary },
               { id: 'scheduled-backups', label: 'Scheduled Backups…', click: actions.scheduledBackups },
               { type: 'separator' },
+              { id: 'drop-folder', label: 'Drop Folder…', click: actions.dropFolder },
               { id: 'events-out', label: 'Events Out…', click: actions.eventsOut },
               { type: 'separator' },
               { id: 'roles-and-pins', label: 'Roles and PINs…', click: actions.rolesAndPins },

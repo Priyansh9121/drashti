@@ -2,6 +2,7 @@ import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
 import type { RolesResult, RolesView } from './roles';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
+import type { DropFolderResult, DropFolderView } from './drop-folder';
 import type { LinkKind, LinkResult, LinkView, YouTubeChoice } from './links';
 import type { UpdateResult, UpdateView } from './updates';
 import type { MusicResult, MusicView } from './music';
@@ -187,6 +188,19 @@ export const IPC = {
     changed: 'events:changed',
     /** main -> operator: File > Events Out… was chosen (admin unlocked). */
     open: 'events:open',
+  },
+  /** The drop folder (Session 28, shared/drop-folder.ts): an admin's, in Pro Mode only. */
+  drop: {
+    view: 'drop:view',
+    /** Choose the folder (and turn it on). */
+    pickFolder: 'drop:pick-folder',
+    setOn: 'drop:set-on',
+    /** A file over the size limit, imported anyway. */
+    importAnyway: 'drop:import-anyway',
+    /** main -> operator: how the drop folder stands changed. */
+    changed: 'drop:changed',
+    /** main -> operator: File > Drop Folder… was chosen (admin unlocked). */
+    open: 'drop:open',
   },
   /**
    * Updates (Session 14, shared/updates.ts): looking is anyone's in Pro Mode;
@@ -763,6 +777,10 @@ export interface InvokeContract {
   [IPC.events.remove]: { args: [id: string]; result: EventsOutResult };
   [IPC.events.rotate]: { args: [id: string]; result: EventsOutResult };
   [IPC.events.test]: { args: [id: string]; result: { ok: boolean; message: string } };
+  [IPC.drop.view]: { args: []; result: DropFolderView };
+  [IPC.drop.pickFolder]: { args: []; result: DropFolderResult | null };
+  [IPC.drop.setOn]: { args: [on: boolean]; result: DropFolderResult };
+  [IPC.drop.importAnyway]: { args: [name: string]; result: DropFolderResult };
   [IPC.updates.view]: { args: []; result: UpdateView };
   [IPC.music.view]: { args: []; result: MusicView };
   [IPC.music.create]: { args: [name: string]; result: MusicResult };
@@ -1121,6 +1139,8 @@ export interface EventContract {
   [IPC.backups.open]: { at: number };
   [IPC.events.changed]: EventsOutView;
   [IPC.events.open]: { at: number };
+  [IPC.drop.changed]: DropFolderView;
+  [IPC.drop.open]: { at: number };
   [IPC.updates.changed]: UpdateView;
   [IPC.music.changed]: MusicView;
   [IPC.updates.open]: { at: number };

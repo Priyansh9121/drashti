@@ -7,6 +7,7 @@ import {
   crashReporter,
   dialog,
   globalShortcut,
+  powerMonitor,
   powerSaveBlocker,
   protocol,
   safeStorage,
@@ -206,6 +207,8 @@ import {
   streamEvents,
 } from './events/sources';
 import { spawnEventsWorker } from './events/spawn-worker';
+import { DropFolder } from './import/drop-folder';
+import { DROP_SETTLE_MS } from '../shared/drop-folder';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
 import { StreamService } from './stream/stream-service';
 import { findFfmpeg } from './stream/ffmpeg-path';
@@ -3377,11 +3380,73 @@ function start(): void {
     scanMs: testMs('DRASHTI_TEST_SMART_SCAN_MS') ?? 10_000,
     settleMs: testMs('DRASHTI_TEST_SMART_SETTLE_MS') ?? 3000,
     watch: nodeWatch,
+    // Session 28: what joins waits while the stream is on air or recording, as conversions and backups do.
+    onAir: () => streaming.inUse() || testOnAir,
   });
   void smartFolders.start();
   stops.add('smart playlists', () => {
     smartFolders.stop();
   });
+  // ---- the drop folder (Session 28) ------------------------------------------------
+  const dropFolder = new DropFolder({
+    db: libraryDb,
+    settings,
+    dataDir: userDataDir,
+    importFiles: async (paths, options) => {
+      const result = await imports.start(paths, options);
+      return result.ok ? { ok: true, runId: result.run.id } : { ok: false, message: result.message };
+    },
+    report: (runId) => importRepo.report(runId),
+    onAir: () => streaming.inUse() || testOnAir,
+    simpleMode: () => mode === 'simple',
+    notice: (text) => {
+      sendToOperator(IPC.app.notice, { text });
+    },
+    mediaChanged: () => {
+      libraryChanged(true);
+    },
+    changed: (view) => {
+      sendToOperator(IPC.drop.changed, view);
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+    now: () => Date.now(),
+    scanMs: 10_000,
+    settleMs: DROP_SETTLE_MS,
+    watch: nodeWatch,
+  });
+  void dropFolder.start();
+  stops.add('drop folder', () => {
+    dropFolder.stop();
+  });
+  // After the computer sleeps, the folder may have changed with no word of it.
+  powerMonitor.on('resume', () => {
+    dropFolder.rescan();
+  });
+  const notDropOperator = {
+    ok: false as const,
+    message: 'Only the operator window can change the drop folder.',
+  };
+  handle(IPC.drop.view, () => dropFolder.view());
+  handle(IPC.drop.pickFolder, async (e) => {
+    if (!fromOperator(e) || !operatorWindow) return notDropOperator;
+    const picked = await dialog.showOpenDialog(operatorWindow, {
+      title: 'Drop Folder',
+      message: 'Choose a folder: pictures and videos put in it are imported by themselves.',
+      buttonLabel: 'Use This Folder',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    const folder = picked.canceled ? null : (picked.filePaths[0] ?? null);
+    return folder === null ? null : dropFolder.setFolder(folder);
+  });
+  handle(IPC.drop.setOn, (e, on) =>
+    fromOperator(e) && typeof on === 'boolean' ? dropFolder.setOn(on) : notDropOperator,
+  );
+  handle(IPC.drop.importAnyway, (e, name) =>
+    fromOperator(e) ? dropFolder.importAnyway(name) : notDropOperator,
+  );
   registerPlaylistIpc({
     repo: playlists,
     fromOperator,
@@ -4050,6 +4115,12 @@ function start(): void {
       if (mode === 'pro')
         requireAdmin('set up events out', () => {
           sendToOperator(IPC.events.open, { at: Date.now() });
+        });
+    },
+    dropFolder: () => {
+      if (mode === 'pro')
+        requireAdmin('set up the drop folder', () => {
+          sendToOperator(IPC.drop.open, { at: Date.now() });
         });
     },
     checkForUpdates: () => {

@@ -396,3 +396,15 @@ A **smart playlist** follows a folder on this computer (Session 26c): what Drash
 - **A receiver that says the address is gone** (410) is turned off, and the operator is told. Fix it, then **Turn on again**. A 404 (in n8n, a workflow not active, or the test address used) is marked **Set up wrongly?** and tried only twice more.
 - **The show never waits for it.** Events go from a low-priority process of their own: a receiver that is slow or never answers holds up neither a slide change nor quitting.
 - **Simple Mode** never sees it. The addresses and secrets are kept encrypted by the computer's secure storage, in a file of their own: never in the library, a backup or the log, and a window sees only each address's host.
+
+## 18. The drop folder
+
+**The drop folder** (Session 28) takes pictures and videos into Media by themselves: a folder on this computer where the volunteer who makes the pictures, or a phone's sync, puts them. **File › Drop Folder…** (Pro Mode; it asks for the admin PIN), **Choose…** the folder, and it is on. Media's **From the drop folder** filter shows what came from it.
+
+- **Pictures and videos only,** from the top of the folder (not the folders inside it). Anything else is listed under **Not taken**, with why.
+- **A file is taken once it has held still for 5 seconds** (and, on Windows, once nothing else has it open), so a big video still being copied is never taken half-way. Files a browser or an editor is still writing (`.part`, `.crdownload`, `.tmp`, `~$…`) are passed over.
+- **Over 2 GB** a file is listed, with **Import anyway**: check it really is wanted first.
+- **While the stream is on air or recording,** what came in waits, and comes in afterwards. Smart playlists wait too.
+- **The library only ever gains from it.** Taking a file out of the folder takes nothing out of the library; a file changed is taken again as a new picture or video. Drashti never writes to the folder.
+- **In Simple Mode** it carries on, quietly. In Pro Mode one notice says how many came in.
+- **Not a cloud folder, if you can help it.** A folder kept by OneDrive, iCloud Drive, Dropbox or Google Drive can show a file before all of it has arrived, or only as a placeholder: Drashti says so, and waits for each to hold still, but a folder on this computer alone is safer.

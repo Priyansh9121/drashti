@@ -200,9 +200,26 @@ interface MediaView {
   /** Media marked for dragging into a playlist. */
   marked: string[];
   anchorId: string | null;
+  /** Media's "From the drop folder" filter (Session 28). */
+  dropOnly: boolean;
 }
 
-export const useMedia = create<MediaView>(() => ({ media: [], loaded: false, marked: [], anchorId: null }));
+export const useMedia = create<MediaView>(() => ({
+  media: [],
+  loaded: false,
+  marked: [],
+  anchorId: null,
+  dropOnly: false,
+}));
+
+/** The media the list shows: all of it, or what came from the drop folder (while any did). */
+export function shownMedia(s: Pick<MediaView, 'media' | 'dropOnly'>): MediaSummary[] {
+  return s.dropOnly && s.media.some((m) => m.fromDrop) ? s.media.filter((m) => m.fromDrop) : s.media;
+}
+
+export function setDropOnly(on: boolean): void {
+  useMedia.setState({ dropOnly: on });
+}
 
 export async function loadMedia(): Promise<void> {
   const media = await window.drashti.library.listMedia();
@@ -212,9 +229,10 @@ export async function loadMedia(): Promise<void> {
 
 /** A click in the media list, marking like the presentation list. */
 export function clickMedia(id: string, mods: { toggle: boolean; range: boolean }): void {
-  const { media, marked, anchorId } = useMedia.getState();
+  const { marked, anchorId } = useMedia.getState();
   if (mods.range && anchorId) {
-    const ids = media.map((m) => m.id);
+    // Over what the list shows (a filter hides the rest).
+    const ids = shownMedia(useMedia.getState()).map((m) => m.id);
     const from = ids.indexOf(anchorId);
     const to = ids.indexOf(id);
     if (from >= 0 && to >= 0) {

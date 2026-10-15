@@ -60,18 +60,40 @@ export interface SmartFolderDeps {
   maxFiles?: number;
   /** Run `run` after `delayMs`, and a way to cancel it (setTimeout when left out; tests look by hand). */
   schedule?: (delayMs: number, run: () => void) => () => void;
+  /** The stream is on air or recording: files that held still wait to be imported (Session 28). */
+  onAir?: () => boolean;
 }
 
 /** A file's size and time, as seen. */
-interface Found {
+export interface Found {
   size: number;
   mtimeMs: number;
 }
 
 /** A new or changed file waiting for its size to hold still. */
-interface Seen extends Found {
+export interface Seen extends Found {
   /** When it was first seen at this size and time. */
   since: number;
+}
+
+/**
+ * Whether a new or changed file has held still: its size and time the same for `settleMs` (a big video
+ * still being copied is never taken half-way). Otherwise it is noted in `pending` at its size and time now.
+ * The drop folder (Session 28) waits by the same rule.
+ */
+export function heldStill(
+  pending: Map<string, Seen>,
+  file: string,
+  found: Found,
+  now: number,
+  settleMs: number,
+): boolean {
+  const seen = pending.get(file);
+  if (seen?.size !== found.size || seen.mtimeMs !== found.mtimeMs) {
+    pending.set(file, { size: found.size, mtimeMs: found.mtimeMs, since: now });
+    return false;
+  }
+  return now - seen.since >= settleMs;
 }
 
 /** A file the playlist follows, as remembered (smart_files). */
@@ -431,17 +453,18 @@ export class SmartFolders {
         continue;
       }
       // New, or changed: ready once its size has held still for the settle time.
-      const seen = f.pending.get(relative);
-      if (seen?.size !== s.size || seen.mtimeMs !== s.mtimeMs) {
-        f.pending.set(relative, { size: s.size, mtimeMs: s.mtimeMs, since: now });
-        continue;
-      }
-      if (now - seen.since >= this.deps.settleMs) ready.push(relative);
+      if (heldStill(f.pending, relative, s, now, this.deps.settleMs)) ready.push(relative);
     }
     for (const relative of f.pending.keys()) if (!found.files.has(relative)) f.pending.delete(relative);
-    this.setView(f, { state: 'following', adding: f.pending.size, missing: this.missingCount(playlistId) });
+    // On air or recording (Session 28): what held still waits, and is looked at again after the settle time.
+    const waiting = ready.length > 0 && (this.deps.onAir?.() ?? false);
+    this.setView(f, {
+      state: waiting ? 'waiting' : 'following',
+      adding: f.pending.size,
+      missing: this.missingCount(playlistId),
+    });
     if (marked) this.deps.changed(playlistId);
-    if (ready.length > 0) await this.importReady(playlistId, f, ready, found.files, rows);
+    if (ready.length > 0 && !waiting) await this.importReady(playlistId, f, ready, found.files, rows);
   }
 
   private async importReady(
@@ -532,8 +555,11 @@ export class SmartFolders {
   }
 }
 
-/** Watching with Node's fs.watch: a folder and its subfolders, on macOS and Windows. */
-export function nodeWatch(dir: string, changed: () => void): (() => void) | null {
+/**
+ * Watching with Node's fs.watch: a folder and its subfolders, on macOS and Windows. `failed` hears when
+ * watching stops with an error (the drop folder then looks again and watches again: Session 28).
+ */
+export function nodeWatch(dir: string, changed: () => void, failed?: () => void): (() => void) | null {
   let watcher: FSWatcher;
   try {
     watcher = watch(dir, { recursive: true, persistent: false }, () => {
@@ -545,6 +571,7 @@ export function nodeWatch(dir: string, changed: () => void): (() => void) | null
   // A folder taken away ends its watch; the scan carries on.
   watcher.on('error', () => {
     watcher.close();
+    failed?.();
   });
   return () => {
     watcher.close();

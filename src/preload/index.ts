@@ -109,6 +109,17 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
+  drop: {
+    view: () => invoke(IPC.drop.view),
+    pickFolder: () => invoke(IPC.drop.pickFolder),
+    setOn: (on) => invoke(IPC.drop.setOn, on),
+    importAnyway: (name) => invoke(IPC.drop.importAnyway, name),
+    onChanged: (listener) => on(IPC.drop.changed, listener),
+    onOpen: (listener) =>
+      on(IPC.drop.open, () => {
+        listener();
+      }),
+  },
   music: {
     view: () => invoke(IPC.music.view),
     create: (name) => invoke(IPC.music.create, name),
