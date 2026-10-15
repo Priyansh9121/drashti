@@ -43,6 +43,7 @@ import type { MarkersResult, MediaMarkers } from './markers';
 import type { PictureAssetKind, PictureJob, PicturePage, PicturesDone, SharpenJobView } from './pictures';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
+import type { DropFolderResult, DropFolderView } from './drop-folder';
 import type { Lang, RenderSlide, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
@@ -152,6 +153,17 @@ export interface DrashtiBridge {
     test(id: string): Promise<{ ok: boolean; message: string }>;
     onChanged(listener: (view: EventsOutView) => void): () => void;
     /** File > Events Out… was chosen (admin unlocked). */
+    onOpen(listener: () => void): () => void;
+  };
+  /** The drop folder (Session 28, operator window; an admin's). */
+  drop: {
+    view(): Promise<DropFolderView>;
+    /** Choose the folder (null: cancelled). */
+    pickFolder(): Promise<DropFolderResult | null>;
+    setOn(on: boolean): Promise<DropFolderResult>;
+    importAnyway(name: string): Promise<DropFolderResult>;
+    onChanged(listener: (view: DropFolderView) => void): () => void;
+    /** File > Drop Folder… was chosen (admin unlocked). */
     onOpen(listener: () => void): () => void;
   };
   /** Audio playlists (Session 14, operator window). */

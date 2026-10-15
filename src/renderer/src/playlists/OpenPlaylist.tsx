@@ -268,6 +268,8 @@ function smartState(view: { state: string; adding: number }): string {
     return 'The folder is not there (a USB stick taken out?). Its items stay, and it carries on when the folder is back.';
   if (view.state === 'too-many')
     return `The folder holds more than ${SMART_MAX_FILES.toLocaleString('en')} videos, pictures, sounds and decks: nothing more is added until some are moved out.`;
+  if (view.state === 'waiting')
+    return `Waiting while the stream is on air or recording: ${plural(view.adding, 'file')} will join afterwards.`;
   if (view.adding > 0) return `Adding ${plural(view.adding, 'file')}…`;
   return 'What goes in the folder joins by itself.';
 }
@@ -294,7 +296,7 @@ function SmartBar({ playlistId }: { playlistId: string }) {
       <span
         role="status"
         data-testid="smart-state"
-        className={view.state === 'following' ? 'text-muted' : 'text-warning-fg'}
+        className={view.state === 'following' || view.state === 'waiting' ? 'text-muted' : 'text-warning-fg'}
       >
         {smartState(view)}
       </span>

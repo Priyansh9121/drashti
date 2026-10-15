@@ -2,6 +2,7 @@ import type { AudioOutputStatus } from '../../shared/audio';
 import type { InvokeChannel } from '../../shared/ipc';
 import { IPC } from '../../shared/ipc';
 import type { RolesView } from '../../shared/roles';
+import { DROP_REFUSED_VIEW } from '../../shared/drop-folder';
 import { ADMIN_CHANNELS, ADMIN_REFUSAL, ROLES_OFF } from '../../shared/roles';
 
 /*
@@ -22,6 +23,8 @@ export function adminRefusals(
   answers.set(IPC.library.pickImportPaths, () => []);
   answers.set(IPC.audio.setOutput, sound);
   answers.set(IPC.events.view, () => ({ available: false, message: ADMIN_REFUSAL, addresses: [] }));
+  answers.set(IPC.drop.view, () => ({ ...DROP_REFUSED_VIEW }));
+  answers.set(IPC.drop.pickFolder, () => null);
   for (const c of [IPC.roles.setPins, IPC.roles.changePin, IPC.roles.turnOff])
     answers.set(c, () => ({ ok: false as const, message: ADMIN_REFUSAL, view: roles() }));
   return answers;

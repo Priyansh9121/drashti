@@ -119,6 +119,11 @@ export const ADMIN_CHANNELS: readonly InvokeChannel[] = [
   IPC.events.remove,
   IPC.events.rotate,
   IPC.events.test,
+  // The drop folder (Session 28): every request, looking too.
+  IPC.drop.view,
+  IPC.drop.pickFolder,
+  IPC.drop.setOn,
+  IPC.drop.importAnyway,
   IPC.arti.save,
   IPC.arti.setEnabled,
   IPC.arti.remove,

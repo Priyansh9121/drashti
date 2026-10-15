@@ -71,6 +71,7 @@ import { connectRoles } from '../roles/roles-store';
 import { AdminPinDialog, RolesDialog } from '../roles/RolesDialogs';
 import { BackupsDialog } from '../backups/BackupsDialog';
 import { EventsOutDialog } from '../events/EventsOutDialog';
+import { DropFolderDialog } from '../drop/DropFolderDialog';
 import { UpdatesDialog } from '../updates/UpdatesDialog';
 import { LinkDialog } from '../links/LinkDialog';
 import { KeysSheet, showKeysSheet } from './KeysSheet';
@@ -350,6 +351,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <RolesDialog />
       <BackupsDialog />
       <EventsOutDialog />
+      <DropFolderDialog />
       <UpdatesDialog />
       <LinkDialog platform={platform} />
       <KeysSheet platform={platform} />

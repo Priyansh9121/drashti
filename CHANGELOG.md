@@ -6,11 +6,11 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 Diya, Drashti's own look: the lamp's plum and flame.
 
-- The operator window, Simple Mode and the phone pages take the lamp's colours: plum-black panels, warm text, and the one thing to do next in the lamp's plum. Live, ON AIR, warnings and errors keep their colours. What the screens in the hall show does not change at all.
+- The operator window, Simple Mode and the phone pages take the lamp's colours: plum-black panels, warm text, the next thing to do in plum. Live, ON AIR, warnings and errors keep theirs; the hall's screens do not change.
 - The live picture and the live slide glow red beneath, at once, as their red border does.
-- Dialogs, menus and notices rise gently into place and leave as quickly, and a playlist item moved Up or Down slides to its new place. Next, Back, Clear all, Black-out and Logo still change at once, and with Reduce motion turned on in the computer's settings nothing in the window moves.
-- In a show, Next and Back sit under the live picture, with their keys: Next is the one plum button, the next thing to do, and does exactly what → does. Clear all stays where it was, with F1, as a plain button with a plum edge.
-- When you close something with typed changes, Save changes now has the focus (Enter saves), except when saving would change what the screens show now: then Keep editing has it. Esc still keeps you editing, and throwing work away is never the default.
+- Dialogs, menus and notices rise gently into place, and a playlist item moved Up or Down slides there. Next, Back, Clear all, Black-out and Logo still change at once, and with Reduce motion on nothing in the window moves.
+- In a show, Next and Back sit under the live picture with their keys: Next is the one plum button and does exactly what → does. Clear all stays where it was, with F1.
+- Closing something with typed changes: Save changes has the focus (Enter saves), unless saving would change what the screens show now (then Keep editing has it). Throwing work away is never the default.
 - A backup warning offers Back up now.
 - When a hall screen stops (it kept failing), a red notice at the top of the window names it, in Simple Mode too, with Try again; it goes when the screen is back.
 - Each screen group's Look has a Movement: Calm, as before, or Bold, set by an admin in Screens.
@@ -21,13 +21,14 @@ Diya, Drashti's own look: the lamp's plum and flame.
 - The idle rotation dissolves evenly, the old picture going as the new one comes, and a prop's or the logo's video plays in step on every screen, even one opened later.
 - Stream to up to three places at once (YouTube, Facebook, another platform), each with its own key, with a Several platforms preset; ON AIR says how many are on air, and one dropping never stops the others.
 - FFmpeg runs with only what it needs from the computer's settings, the stream key goes to it apart from the address, and the log hides any key in an address.
-- Events out: Drashti can tell another program on your network, such as n8n, what happens in the show (a slide going up, black-out, the stream on air), signed, set up by an admin under File › Events Out…. Nothing is sent until you choose, and the words only if you say so.
+- The drop folder (File › Drop Folder…): pictures and videos put in it come into Media by themselves once fully copied, under a From the drop folder filter. They wait while on air or recording, as smart playlists now do.
+- Events out (File › Events Out…): Drashti can tell a program on your network, such as n8n, what happens in the show, signed. Nothing is sent until an admin chooses, and the words only if asked.
 - Before a screen first shows the show it quietly prepares every transition, unseen (it stays black), so the first Bold push of a sabha never stutters.
-- A sharpened picture is now sharpened at the size the hall's largest screen shows it (an output computer's screens included), so it looks as sharp there as in the Picture editor, and it is done again when the screens change size.
+- A sharpened picture is sharpened at the size the hall's largest screen shows it (an output computer's included), and again when the screens change size.
 - On the phone remote, Black-out and Logo say "Black-out is on" and "Logo is on" while on, as on the computer.
 - New groups are teal for Chorus and indigo for Verse, and no default group colour is red any more, so nothing looks like LIVE. Groups you already have keep their colours.
-- A new library starts with a welcome: the lamp lights, then Set up the screens, Try a practice show first (placeholder slides on this screen only, never on the hall's screens), or Skip for now, which shows three steps to a sabha in the middle of the window.
-- Drashti's lamp sits beside its name at the top of the window, in Simple Mode and on the phone remote, and its light falls softly across the window. An empty place (no playlists yet, an empty library) shows the lamp unlit.
+- A new library starts with a welcome: Set up the screens, Try a practice show first (placeholder slides on this screen only), or Skip for now, which shows three steps to a sabha.
+- Drashti's lamp sits beside its name in the window, in Simple Mode and on the phone remote; an empty place shows it unlit.
 
 ## 1.0.0-alpha.4 (15 Oct 2026)
 

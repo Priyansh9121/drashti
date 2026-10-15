@@ -1,6 +1,7 @@
 import type { AudioOutputStatus } from '../shared/audio';
 import type { InvokeChannel } from '../shared/ipc';
 import { IPC } from '../shared/ipc';
+import { DROP_REFUSED_VIEW } from '../shared/drop-folder';
 import { SIMPLE_MODE_REFUSAL } from '../shared/mode';
 
 /*
@@ -168,6 +169,11 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.events.remove,
   IPC.events.rotate,
   IPC.events.test,
+  // The drop folder (Session 28): Simple Mode never sees its settings (the folder carries on quietly).
+  IPC.drop.view,
+  IPC.drop.pickFolder,
+  IPC.drop.setOn,
+  IPC.drop.importAnyway,
   // Audio playlists (Session 14): Simple Mode plays and pauses one, and changes none.
   IPC.music.create,
   IPC.music.rename,
@@ -215,5 +221,7 @@ export function simpleModeRefusals(sound: () => AudioOutputStatus): Map<InvokeCh
   answers.set(IPC.library.pickImportPaths, () => []);
   answers.set(IPC.audio.setOutput, sound);
   answers.set(IPC.events.view, () => ({ available: false, message: SIMPLE_MODE_REFUSAL, addresses: [] }));
+  answers.set(IPC.drop.view, () => ({ ...DROP_REFUSED_VIEW }));
+  answers.set(IPC.drop.pickFolder, () => null);
   return answers;
 }
