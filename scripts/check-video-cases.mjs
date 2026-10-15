@@ -103,6 +103,8 @@ for (const scenario of CASES) {
     parts.find((p) => p.startsWith('main process priority')),
   ];
   if (told.some(Boolean)) console.log(`  (${told.filter(Boolean).join('; ')})`);
+  // The operator window's first drawing, before anything is measured (Session 26h): never judged.
+  if (result.coldStart) console.log(`  ${String(result.coldStart)}`);
   for (const c of result.checks)
     console.log(`  ${c.ok ? 'PASS' : 'FAIL'}  ${c.name}${c.detail ? ` (${c.detail})` : ''}`);
 }

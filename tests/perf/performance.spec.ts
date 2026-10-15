@@ -23,6 +23,8 @@ interface PerfResult {
   passed: boolean;
   checks: { name: string; ok: boolean; detail: string }[];
   summary: string;
+  /** The operator window's first drawing before anything is measured (Session 26h): never judged. */
+  coldStart?: string;
 }
 
 /**
@@ -122,6 +124,8 @@ test('slide changes keep reaching the screen within a frame during a big import'
   test.setTimeout(STOP_AFTER_MS + 60_000);
   const { code, result, log } = await runPerformanceTest();
   expect(result, log.slice(-3000)).not.toBeNull();
+  // The cold start on its own line, for the record, then the measured part's figures.
+  if (result?.coldStart) console.log(result.coldStart);
   console.log(result?.summary);
   for (const c of result?.checks ?? []) {
     console.log(`${c.ok ? 'PASS' : 'FAIL'}  ${c.name}${c.detail ? ` (${c.detail})` : ''}`);
@@ -167,6 +171,8 @@ test('slide changes keep reaching the screen within a frame while streaming and 
       ...(profile ? { DRASHTI_PERF_PROFILE: `${profile}-stream` } : {}),
     });
     expect(result, log.slice(-3000)).not.toBeNull();
+    // The cold start on its own line, for the record, then the measured part's figures.
+    if (result?.coldStart) console.log(result.coldStart);
     console.log(result?.summary);
     for (const c of result?.checks ?? []) {
       console.log(`${c.ok ? 'PASS' : 'FAIL'}  ${c.name}${c.detail ? ` (${c.detail})` : ''}`);
