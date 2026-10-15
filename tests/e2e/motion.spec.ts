@@ -3,7 +3,14 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { importAndGetIds, launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import {
+  chooseMenuItem,
+  importAndGetIds,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  type PageGlobals,
+} from './helpers';
 
 /*
  * Motion in the interface (Session 26g, "Rising"): show controls, thumbnails and the live picture
@@ -59,6 +66,23 @@ function moving(win: Page, selector: string) {
     return [...new Set(found)];
   }, selector);
 }
+
+test('the window opens settled with what its first data shows; what comes later still arrives', async () => {
+  // Opening is when a computer without a graphics chip can least spare frames (ui/motion.ts): the
+  // empty playlist list that comes with the window's first data is simply there, with no smoke.
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const empty = win.locator('.lamp-empty').filter({ has: win.getByText('No playlists yet') });
+  await expect(empty).toBeVisible();
+  await expect(empty).not.toHaveAttribute('data-motion');
+  await expect(empty.locator('.lamp-wisp')).toHaveCount(0);
+  expect(await moving(win, '.lamp-empty')).toEqual([]);
+  // Settled without a key or a click: the keys sheet, opened from the menu, rises as it arrives.
+  await chooseMenuItem(app, 'keyboard-shortcuts');
+  await expect(win.locator('[role="dialog"][data-motion="dialog"]')).toBeVisible();
+  await app.close();
+});
 
 test('show controls, thumbnails and the live picture never move, in Pro Mode and Simple Mode', async () => {
   const { app } = await launchApp();

@@ -78,18 +78,23 @@
    * Depth, from light above. Cards and the live picture sit on soft shadows; overlays (menus,
    * dialogs, notices) float higher. The live picture and the live thumbnail glow red beneath, and
    * that switches at once, as the live border does.
+   *
+   * Every soft shadow is a blurred rectangle beneath its box: its spread takes in the box's corner
+   * (18 px for cards and overlays; the button's own for the ember, --ember-spread). The graphics chip
+   * then draws them all in one way, worked out once, where a blur round a rounded corner needs a
+   * mask or a blur profile drawn first, in five to eight more ways. On a computer without one each
+   * new way costs a pause the first time it is drawn (100–600 ms on CI's Mac), and the screens wait
+   * (the Performance check, Session 26g).
    */
-  --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 6px 18px rgb(0 0 0 / 0.38);
-  --shadow-overlay: 0 18px 50px rgb(0 0 0 / 0.58), 0 2px 8px rgb(0 0 0 / 0.35);
+  --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 12px 28px -18px rgb(0 0 0 / 0.7);
+  --shadow-overlay: 0 0 0 1px rgb(0 0 0 / 0.3), 0 24px 52px -18px rgb(0 0 0 / 0.8);
   --shadow-live: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 18px 44px -14px rgb(212 42 49 / 0.5);
-  /*
-   * A slide's thumbnail is redrawn as the live slide moves, so its shadow and the live one's red glow
-   * are kept small: a blur costs a computer without a graphics chip by its size (Session 26g).
-   */
+  /* A slide's thumbnail is redrawn as the live slide moves: a crisp edge, no blur. */
   --shadow-thumb: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 1px 0 rgb(0 0 0 / 0.55);
-  --shadow-live-thumb: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 8px 14px -8px rgb(212 42 49 / 0.6);
+  --shadow-live-thumb: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 10px 16px -12px rgb(212 42 49 / 0.7);
   --shadow-ember:
-    inset 0 1px 0 rgb(255 220 240 / 0.22), 0 0 0 1px rgb(255 190 150 / 0.1), 0 8px 26px rgb(155 51 131 / 0.42);
+    inset 0 1px 0 rgb(255 220 240 / 0.22), 0 0 0 1px rgb(255 190 150 / 0.1),
+    0 10px 24px var(--ember-spread, -8px) rgb(155 51 131 / 0.6);
   /* Tailwind's own transitions (transition-colors and the like) and the spinner take the tokens. */
   --default-transition-duration: var(--dur-hover);
   --default-transition-timing-function: var(--ease-out);
@@ -97,7 +102,7 @@
 
   --shadow-ember-hover:
     inset 0 1px 0 rgb(255 220 240 / 0.28), 0 0 0 1px rgb(255 200 160 / 0.18),
-    0 10px 32px rgb(155 51 131 / 0.62);
+    0 12px 30px var(--ember-spread, -8px) rgb(155 51 131 / 0.8);
 }
 
 /*
@@ -225,10 +230,11 @@ body.output {
  * window (--lamp-window), with a hairline under the header from flame to plum; empty places glow
  * faintly behind the unlit lamp. Gradients on surfaces, never a filled shape.
  *
- * The header's and the window's light are each drawn once, on a layer of their own under the
- * content (will-change): a slide change, which redraws what is above them, never draws a gradient
- * again. On a computer without a graphics chip that is the difference between a slide reaching the
- * hall's screens within a frame and seconds late (the Performance check, Session 26g).
+ * Each light is drawn once, on a layer of its own under the content (will-change), and each as a
+ * radial gradient on a plain rectangle, the hairline too: a slide change, which redraws what is
+ * above them, never draws a gradient again, and the graphics chip draws them all in one way, worked
+ * out once (see Depth, above). On a computer without a graphics chip that is the difference between
+ * a slide reaching the hall's screens within a frame and seconds late (the Performance check).
  */
 @layer components {
   .lamp-header {
@@ -239,28 +245,14 @@ body.output {
   .lamp-header::before {
     content: '';
     position: absolute;
-    inset: 0;
+    inset: 0 0 -1px;
     z-index: -1;
     pointer-events: none;
-    background: radial-gradient(
-      420px 110px at 28px 24px,
-      rgb(var(--lamp-rgb) / var(--lamp-header)),
-      transparent 70%
-    );
+    background:
+      radial-gradient(62% 600% at 0 50%, rgb(var(--lamp-rgb) / 0.55), rgb(169 59 138 / 0.4) 45%, transparent)
+        left bottom / 100% 1px no-repeat,
+      radial-gradient(420px 110px at 28px 24px, rgb(var(--lamp-rgb) / var(--lamp-header)), transparent 70%);
     will-change: transform;
-  }
-  .lamp-header::after {
-    content: '';
-    position: absolute;
-    inset: auto 0 -1px;
-    height: 1px;
-    pointer-events: none;
-    background: linear-gradient(
-      90deg,
-      rgb(var(--lamp-rgb) / 0.55),
-      rgb(169 59 138 / 0.4) 28%,
-      transparent 62%
-    );
   }
   .lamp-window {
     position: relative;
@@ -292,20 +284,30 @@ body.output {
     will-change: transform;
   }
   .lamp-empty {
+    position: relative;
+    isolation: isolate;
+  }
+  .lamp-empty::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
     background: radial-gradient(
       360px 220px at 50% 42%,
       rgb(var(--lamp-rgb) / var(--lamp-empty)),
       transparent 70%
     );
+    will-change: transform;
   }
   /* The mark's own soft light behind it. */
   .mark-halo::before {
     content: '';
     position: absolute;
     inset: -40%;
-    border-radius: 9999px;
     background: radial-gradient(closest-side, rgb(var(--lamp-rgb) / 0.3), transparent);
     pointer-events: none;
+    will-change: transform;
   }
   /* One wisp of smoke from the unlit lamp's wick as an empty place arrives; then nothing moves. */
   .lamp-wisp {
