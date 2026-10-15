@@ -77,12 +77,13 @@ async function expectContinuousGrid(win: Page, atLeast: number, what: string): P
   expect(
     await win.getByTestId('slide-group').evaluateAll((els) => els.map((e) => e.getAttribute('data-group'))),
   ).toEqual(GROUPS.map(([name]) => name));
-  // Each slide's colour strip is its group's colour (verse blue, chorus red, bridge purple).
+  // Each slide's colour strip is its group's colour (verse indigo, chorus teal since Session 26g, bridge
+  // purple).
   const strips = await win
     .getByTestId('group-color')
     .evaluateAll((els) => els.map((e) => getComputedStyle(e).backgroundColor));
   const verse = 'rgb(62, 99, 221)';
-  const chorus = 'rgb(229, 72, 77)';
+  const chorus = 'rgb(18, 165, 148)';
   const bridge = 'rgb(142, 78, 198)';
   expect(strips).toEqual([verse, chorus, chorus, verse, verse, verse, bridge, bridge, bridge, bridge]);
   return perRow;

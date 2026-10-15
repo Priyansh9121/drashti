@@ -74,10 +74,12 @@ describe('slides and groups', () => {
     expect(order(d)).toEqual(['Verse: a b', 'Chorus: c1']);
   });
 
-  it('makes a group with a slide in a colour not used yet', () => {
+  it('makes a group with a slide, in its name’s colour or one not used yet (Session 26g)', () => {
     const { doc: d, slideId } = addGroup(doc(), 'Bridge', null);
-    expect(d.groups.at(-1)).toMatchObject({ name: 'Bridge', color: '#f76b15' });
+    expect(d.groups.at(-1)).toMatchObject({ name: 'Bridge', color: '#8e4ec6' });
     expect(slidesOf(d).at(-1)?.id).toBe(slideId);
+    // A group with no usual name: the first default not used (teal; the fixture's groups are indigo and red).
+    expect(addGroup(doc(), 'Placeholder group', null).doc.groups.at(-1)).toMatchObject({ color: '#12a594' });
   });
 
   it('sets and clears a slide’s background and sound cues, keeping the others', () => {
