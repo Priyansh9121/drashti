@@ -35,18 +35,18 @@ const variants: Record<ButtonVariant, string> = {
 const sizes: Record<ButtonSize, string> = {
   sm: 'h-7 gap-1 px-2 text-xs rounded-md',
   md: 'h-8 gap-1.5 px-3 text-sm rounded-md',
-  lg: 'h-10 gap-2 px-4 text-base rounded-lg',
-  xl: 'min-h-16 gap-3 px-5 py-2 text-xl rounded-xl',
-  xxl: 'min-h-24 gap-4 px-6 py-3 text-3xl rounded-xl',
+  lg: 'h-10 gap-2 px-4 text-base rounded-lg [--ember-spread:-12px]',
+  xl: 'min-h-16 gap-3 px-5 py-2 text-xl rounded-xl [--ember-spread:-18px]',
+  xxl: 'min-h-24 gap-4 px-6 py-3 text-3xl rounded-xl [--ember-spread:-18px]',
 };
 
 const iconSizes: Record<ButtonSize, number> = { sm: 14, md: 16, lg: 18, xl: 26, xxl: 36 };
 const squareSizes: Record<ButtonSize, string> = {
   sm: 'h-7 w-7 rounded-md',
   md: 'h-8 w-8 rounded-md',
-  lg: 'h-10 w-10 rounded-lg',
-  xl: 'h-16 w-16 rounded-xl',
-  xxl: 'h-24 w-24 rounded-xl',
+  lg: 'h-10 w-10 rounded-lg [--ember-spread:-12px]',
+  xl: 'h-16 w-16 rounded-xl [--ember-spread:-18px]',
+  xxl: 'h-24 w-24 rounded-xl [--ember-spread:-18px]',
 };
 
 const base =

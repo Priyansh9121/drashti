@@ -49,7 +49,8 @@ export function Toggle({
       >
         <span
           className={cx(
-            'rounded-full bg-white shadow transition-transform',
+            // A crisp edge beneath, no blur (app.css, "Depth").
+            'rounded-full bg-white shadow-[0_1px_0_rgb(0_0_0/0.35)] transition-transform',
             knob,
             checked ? travel : 'translate-x-0',
           )}

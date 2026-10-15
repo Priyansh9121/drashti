@@ -15,24 +15,52 @@ const REDUCED = '(prefers-reduced-motion: reduce)';
  * The window opens settled (Session 26g): whatever is there when it opens is simply there, and only
  * what arrives afterwards moves. Opening is when a computer without a graphics chip can least spare
  * the frames: Drashti starting, or starting again after a stop in the middle of a show while the
- * screens are put back. Settled once the page is first idle, or at the operator's first key or click.
- * The first start's welcome is the one arrival on opening: the lamp lighting is its point.
+ * screens are put back. Opening lasts until the page has loaded and so has the window's first data
+ * (holdOpening: an empty library or playlist list that comes with it is simply there too), and the
+ * page is then first idle; or until the operator's first key or click. The first start's welcome is
+ * the one arrival on opening: the lamp lighting is its point.
  */
 let opened = false;
+let loaded = false;
+let holds = 0;
 
 function settle(): void {
   opened = true;
 }
 
-if (typeof window !== 'undefined') {
-  const whenIdle = () => {
-    if (typeof requestIdleCallback === 'function') requestIdleCallback(settle);
-    else setTimeout(settle, 0);
+function settleWhenIdle(): void {
+  if (opened || !loaded || holds > 0) return;
+  const idle = () => {
+    if (holds === 0) settle();
   };
-  if (document.readyState === 'complete') whenIdle();
-  else window.addEventListener('load', whenIdle, { once: true });
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(idle);
+  else setTimeout(idle, 0);
+}
+
+if (typeof window !== 'undefined') {
+  const whenLoaded = () => {
+    loaded = true;
+    settleWhenIdle();
+  };
+  if (document.readyState === 'complete') whenLoaded();
+  else window.addEventListener('load', whenLoaded, { once: true });
   window.addEventListener('pointerdown', settle, { once: true, capture: true });
   window.addEventListener('keydown', settle, { once: true, capture: true });
+}
+
+/**
+ * Keep the window opening while its first data loads; call what it returns when that is in (once is
+ * enough; more is harmless). Take it as the window's code loads, before the page can be idle.
+ */
+export function holdOpening(): () => void {
+  holds += 1;
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    holds -= 1;
+    settleWhenIdle();
+  };
 }
 
 /**

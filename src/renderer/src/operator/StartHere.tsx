@@ -102,7 +102,7 @@ function Step({
       data-testid="start-step"
       className={cx(
         'flex items-center gap-3 rounded-lg border bg-panel px-3 py-2.5 text-fg',
-        now ? 'border-primary-edge shadow-ember' : 'border-line',
+        now ? 'border-primary-edge shadow-ember [--ember-spread:-12px]' : 'border-line',
       )}
     >
       <span

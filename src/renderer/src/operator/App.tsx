@@ -37,6 +37,7 @@ import { CentreColumn, Columns, LeftColumn } from './Layout';
 import { OpenPlaylist } from '../playlists/OpenPlaylist';
 import { PanelGroup, PanelNote } from '../ui/Panel';
 import { Music, Wrench } from '../ui/icons';
+import { holdOpening } from '../ui/motion';
 import { LivePreview } from './LivePreview';
 import { PresentationList } from './PresentationList';
 import { SlideGrid } from './SlideGrid';
@@ -83,6 +84,9 @@ import { connectAnnouncements, useAnnouncements } from '../network/announcements
 import { StreamSettings } from '../stream/StreamSettings';
 import { connectStream, useStream } from '../stream/stream-store';
 
+// The window is still opening until its first data is in: taken as this code loads (ui/motion.ts).
+const firstData = holdOpening();
+
 /** Everything that keeps the window up to date, connected once as it opens. */
 function useConnections(setInfo: (info: AppInfo) => void): void {
   useEffect(() => {
@@ -102,8 +106,8 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectMode();
     connectRoles();
     void startMidi();
-    void loadLibrary();
-    void loadTree();
+    // The window opens settled with what its first data shows (ui/motion.ts).
+    void Promise.allSettled([loadLibrary(), loadTree()]).then(firstData);
     // Edit > Undo: in a text field the window undoes the typing itself; elsewhere it brings back
     // the last removal, or in Simple Mode (which removes nothing) puts back what Clear all took down.
     const offUndo = window.drashti.app.onUndo(() => {
