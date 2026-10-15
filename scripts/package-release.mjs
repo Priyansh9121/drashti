@@ -17,6 +17,7 @@
 // (build/downloads.json: Drashti-mac-apple-silicon.dmg and so on), so GitHub's
 // releases/latest/download/<name> link always gives the newest.
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -95,10 +96,12 @@ if (!signed && process.platform === 'darwin') {
 }
 console.log(`Signing: ${how}.`);
 
-const result = spawnSync('pnpm', ['exec', 'electron-builder', '--publish', 'never', ...extra], {
+// electron-builder's own script, run by this Node: no shell anywhere (Session 30, SEC-1: on Windows a shell
+// read every argument again, and pnpm there is a .cmd that needs one).
+const builder = createRequire(import.meta.url).resolve('electron-builder/cli.js');
+const result = spawnSync(process.execPath, [builder, '--publish', 'never', ...extra], {
   env,
   stdio: 'inherit',
-  shell: process.platform === 'win32',
 });
 rmSync(temp, { recursive: true, force: true });
 writeFileSync(

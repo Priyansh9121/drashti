@@ -46,20 +46,17 @@ jobs:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-          cache: pnpm
+      # No cache of any kind in the release build (Session 30, Q7): every download fresh, checked by its hash.
       - name: This version's notes are in CHANGELOG.md
         run: node scripts/release-notes.mjs
       - run: pnpm install --frozen-lockfile
-      - name: Cache FFmpeg, yt-dlp and Deno downloads
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/drashti
-          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs', 'scripts/fetch-youtube-tools.mjs') }}
       - name: Fetch FFmpeg
         run: node scripts/fetch-ffmpeg.mjs
       - name: Fetch FFmpeg for Intel Macs too
@@ -97,7 +94,7 @@ jobs:
         run: node scripts/check-relaunch.mjs --packaged
       - name: Each installer installs as a person would, and what it installs starts
         run: node scripts/check-installers.mjs
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: installers-${{ runner.os }}
           path: |
@@ -112,11 +109,13 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: installers-*
           path: downloaded
@@ -131,7 +130,7 @@ jobs:
         run: node scripts/release-assets.mjs --dir release-files --repo "$GITHUB_REPOSITORY" --notes release-notes.md
       - name: What the update check will read
         run: cat release-files/drashti-update.json
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-files
           path: release-files
@@ -146,11 +145,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: release-files
           path: release-files
