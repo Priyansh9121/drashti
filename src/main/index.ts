@@ -2537,6 +2537,8 @@ function start(): void {
     arch: process.arch,
     base: updateBase,
     dir: join(userDataDir, 'Updates'),
+    // Packaged, an update's files come from GitHub only (Session 30).
+    packaged: app.isPackaged,
     fetch: (url, init) => electronNet.fetch(url, init),
     installer: defaultInstaller({
       platform: process.platform,

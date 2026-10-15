@@ -56,6 +56,27 @@ export interface UpdateManifest {
 
 const VERSION = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/u;
 
+/** A manifest is read only up to this size (Session 30): a larger one is refused, not read. */
+export const MANIFEST_MAX_BYTES = 64 * 1024;
+
+/**
+ * Where an update's files may come from (Session 30): a packaged Drashti takes them from GitHub only (the
+ * release's own downloads); its tests, from https anywhere or this computer.
+ */
+export function fileUrlAllowed(url: string, packaged: boolean): boolean {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  if (packaged) return u.protocol === 'https:' && u.hostname === 'github.com' && u.port === '';
+  return (
+    u.protocol === 'https:' ||
+    (u.protocol === 'http:' && (u.hostname === '127.0.0.1' || u.hostname === 'localhost'))
+  );
+}
+
 export const updateManifestSchema: z.ZodType<UpdateManifest> = z.object({
   app: z.literal('drashti'),
   version: z.string().regex(VERSION),
