@@ -2,9 +2,9 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
-## Unreleased
+## 1.0.0-alpha.5 (16 Oct 2026)
 
-Diya, Drashti's own look: the lamp's plum and flame.
+Diya, Drashti's own look, with Next and Back under the live picture and a welcome on the first start; a Bold Movement for any Look; and new connections an admin can turn on. What the hall's screens show only changes where an admin chooses. Update after a sabha, never on the day of one.
 
 - The operator window, Simple Mode and the phone pages take the lamp's colours: plum-black panels, warm text, the next thing to do in plum. Live, ON AIR, warnings and errors keep theirs; the hall's screens do not change.
 - The live picture and the live slide glow red beneath, at once, as their red border does.
@@ -18,16 +18,16 @@ Diya, Drashti's own look: the lamp's plum and flame.
 - Drashti's own default transition keeps the kind you choose; it used to keep only Fade or Cut.
 - Lower thirds come in, keep their box while the words change, and fade out when their slide is cleared on its own; Clear all still clears at once.
 - Messages and the ticker's band come in gently (rising, on Bold screens); changing a message's words never plays it again.
-- The idle rotation dissolves evenly, the old picture going as the new one comes, and a prop's or the logo's video plays in step on every screen, even one opened later.
+- The idle rotation dissolves evenly, and a prop's or the logo's video plays in step on every screen, even one opened later.
 - Stream to up to three places at once (YouTube, Facebook, another platform), each with its own key, with a Several platforms preset; ON AIR says how many are on air, and one dropping never stops the others.
-- FFmpeg runs with only what it needs from the computer's settings, the stream key goes to it apart from the address, and the log hides any key in an address.
+- The stream key never shows in Drashti's log, and FFmpeg gets only what it needs from the computer.
 - The drop folder (File › Drop Folder…): pictures and videos put in it come into Media by themselves once fully copied, under a From the drop folder filter. They wait while on air or recording, as smart playlists now do.
 - Events out (File › Events Out…): Drashti can tell a program on your network, such as n8n, what happens in the show, signed. Nothing is sent until an admin chooses, and the words only if asked.
 - Before a screen first shows the show it quietly prepares every transition, unseen (it stays black), so the first Bold push of a sabha never stutters.
 - A sharpened picture is sharpened at the size the hall's largest screen shows it (an output computer's included), and again when the screens change size.
 - An update is checked again before it installs, and only a newer version installs (a node matching Main's excepted).
 - On the phone remote, Black-out and Logo say "Black-out is on" and "Logo is on" while on, as on the computer.
-- New groups are teal for Chorus and indigo for Verse, and no default group colour is red any more, so nothing looks like LIVE. Groups you already have keep their colours.
+- New Chorus and Verse groups are teal and indigo, never red, so nothing looks like LIVE; yours keep their colours.
 - A new library starts with a welcome: Set up the screens, Try a practice show first (placeholder slides on this screen only), or Skip for now, which shows three steps to a sabha.
 - Drashti's lamp sits beside its name in the window, in Simple Mode and on the phone remote; an empty place shows it unlit.
 
