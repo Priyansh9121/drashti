@@ -62,8 +62,11 @@ export const fadeAt = (fade: { ms: number; start: number }, now: number): number
 /** The longest the fade waits for a slide's media before it starts anyway. */
 const MEDIA_WAIT_MS = 3000;
 
-/** Whether every picture and video in `root` can be drawn now; else a promise for when it can. */
-function mediaReady(root: HTMLElement): true | Promise<void> {
+/**
+ * Whether every picture and video in `root` can be drawn now; else a promise for when it can, or for
+ * `deadline` (the engine's time) if that comes first.
+ */
+function mediaReady(root: HTMLElement, deadline: number): true | Promise<void> {
   const waits: Promise<unknown>[] = [];
   for (const img of root.querySelectorAll('img'))
     if (!img.complete) waits.push(img.decode().catch(() => undefined));
@@ -78,7 +81,10 @@ function mediaReady(root: HTMLElement): true | Promise<void> {
   if (waits.length === 0) return true;
   return Promise.race([
     Promise.all(waits).then(() => undefined),
-    new Promise<void>((resolve) => setTimeout(resolve, MEDIA_WAIT_MS)),
+    new Promise<void>((resolve) =>
+      // eslint-disable-next-line no-restricted-syntax -- its deadline is the engine's (3 s after the slide went up), so every screen still waiting starts at once
+      setTimeout(resolve, Math.max(0, deadline - engineNow())),
+    ),
   ]);
 }
 
@@ -95,6 +101,7 @@ function Zoomed({ layer, children }: { layer: SlideLayer; children: ReactNode })
   useLayoutEffect(() => {
     const el = ref.current;
     if (span <= 0 || !el || typeof el.animate !== 'function') return;
+    // eslint-disable-next-line no-restricted-syntax -- seeked to the engine's time below and at every clock jump (keep), paused when held
     const zoom = el.animate([{ transform: 'scale(1)' }, { transform: `scale(${String(SLOW_ZOOM_SCALE)})` }], {
       duration: span,
       fill: 'forwards',
@@ -191,7 +198,7 @@ export function SlideLayerView({
   useEffect(() => {
     if (!waiting || !on || !inRef.current) return;
     const shownAt = on.shownAt;
-    const ready = mediaReady(inRef.current);
+    const ready = mediaReady(inRef.current, shownAt + MEDIA_WAIT_MS);
     const begin = (start: number) => {
       setShowing((s) => (s.on && keyOf(s.on) === onKey && s.fade ? { ...s, fade: { ...s.fade, start } } : s));
     };

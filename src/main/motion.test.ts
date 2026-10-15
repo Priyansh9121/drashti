@@ -87,8 +87,6 @@ describe('motion in the interface is tokens', () => {
     const outside = css.replace(rootBlock, '');
     const own = [...outside.matchAll(/\b(animation|transition)(?:-duration|-delay)?\s*:\s*([^;]+);/gu)]
       .map((m) => m[0])
-      // The audience screens' reduced motion, as it always was (their motion is the show's).
-      .filter((d) => !/^(animation|transition)-duration:\s*0\.01ms !important;$/u.test(d))
       .filter((d) => /\d+(?:\.\d+)?m?s\b/u.test(d.replace(/var\([^)]*\)/gu, '')));
     expect(own).toEqual([]);
   });

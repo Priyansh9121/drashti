@@ -12,7 +12,7 @@ import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { BackgroundMedia } from './BackgroundMedia';
 import { IdleRotation } from './IdleRotation';
-import { engineNow } from './clock';
+import { engineFrameNow } from './clock';
 import { LANG_FONT_STACK } from './fonts';
 import { Placed } from './Placed';
 import { SlideLayerView } from './SlideLayerView';
@@ -124,16 +124,6 @@ export function tickerPhase(now: number, startedAt: number, passMs: number): num
 }
 
 /**
- * The engine's time at the frame being drawn: the clock the page's
- * animations run on, so the words land in their place even on a screen
- * that draws few frames a second.
- */
-function frameNow(): number {
-  const frame = Number(document.timeline.currentTime);
-  return Number.isFinite(frame) ? performance.timeOrigin + frame + (engineNow() - Date.now()) : engineNow();
-}
-
-/**
  * The announcements ticker along the bottom of the picture: the words come in
  * at the right edge and go out at the left, again and again. Where they are
  * comes from the engine's clock, so every screen shows the same place; the
@@ -154,7 +144,7 @@ export function TickerBand({ ticker, canvas }: { ticker: TickerLayer; canvas: Si
     let passMs = 0;
     const inStep = () => {
       if (!animation || passMs <= 0) return;
-      const want = tickerPhase(frameNow(), startedAt, passMs);
+      const want = tickerPhase(engineFrameNow(), startedAt, passMs);
       const now = Number(animation.currentTime ?? 0) % passMs;
       const off = Math.abs(want - now);
       if (Math.min(off, passMs - off) > TICKER_STEP_MS) animation.currentTime = want;
@@ -165,15 +155,17 @@ export function TickerBand({ ticker, canvas }: { ticker: TickerLayer; canvas: Si
       const width = el.offsetWidth;
       passMs = tickerPassMs({ width: canvasWidth, height: canvasHeight }, width);
       el.dataset['passMs'] = String(Math.round(passMs));
+      // eslint-disable-next-line no-restricted-syntax -- seeked from the engine's time at once below (tickerPhase), and checked every few seconds
       animation = el.animate(
         [{ transform: `translateX(${canvasWidth}px)` }, { transform: `translateX(${-width}px)` }],
         { duration: passMs, iterations: Infinity, easing: 'linear' },
       );
-      animation.currentTime = tickerPhase(frameNow(), startedAt, passMs);
+      animation.currentTime = tickerPhase(engineFrameNow(), startedAt, passMs);
     };
     start();
     const resized = new ResizeObserver(start);
     resized.observe(el);
+    // eslint-disable-next-line no-restricted-syntax -- only checks the words are still where the engine's time puts them
     const timer = setInterval(inStep, 5000);
     return () => {
       resized.disconnect();

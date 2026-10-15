@@ -19,10 +19,13 @@ function IdentifyOverlay() {
   const identify = useOutput((s) => s.identify);
   useEffect(() => {
     if (!identify) return;
+    // Identify's card (setting up, never the show) goes after its few seconds, by this computer's clock.
+    // eslint-disable-next-line no-restricted-syntax -- Identify's card, never a frame of the show
     const t = setTimeout(
       () => {
         useOutput.setState({ identify: null });
       },
+      // eslint-disable-next-line no-restricted-properties -- Identify's card, never a frame of the show
       Math.max(0, identify.until - Date.now()),
     );
     return () => {
@@ -61,6 +64,7 @@ function usePaintTiming(root: React.RefObject<HTMLDivElement | null>) {
       // A short history, so a test can match every command to the frame that showed it.
       const log = (window.drashtiPaintLog ??= []);
       // wallAt: this computer's own clock, so tests on one computer can compare Main's and a node's frames.
+      // eslint-disable-next-line no-restricted-properties -- the paint log's own record of this computer's time, for tests; draws nothing
       log.push({ rev, sentAt, paintedAt, wallAt: Date.now() });
       if (log.length > 20_000) log.splice(0, log.length - 20_000);
     });
@@ -88,6 +92,8 @@ const late: number[] = [];
 function useFrameReports(refreshHz: number) {
   useEffect(() => {
     const frameMs = 1000 / (refreshHz > 0 ? refreshHz : 60);
+    // Counting late frames for the screens dashboard: lengths of time on this computer, drawing nothing.
+    // eslint-disable-next-line no-restricted-properties -- a frame reporter's own clock: it draws nothing
     let last = performance.now();
     let raf = 0;
     const tick = (t: number) => {
@@ -100,7 +106,9 @@ function useFrameReports(refreshHz: number) {
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
+    // eslint-disable-next-line no-restricted-syntax -- reports late frames every 2 s: draws nothing
     const report = setInterval(() => {
+      // eslint-disable-next-line no-restricted-properties -- a frame reporter's own clock: it draws nothing
       const since = performance.now() - 60_000;
       while (late.length > 0 && (late[0] ?? 0) < since) late.shift();
       void window.drashti.output

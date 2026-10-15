@@ -39,13 +39,19 @@ export function TestCard({
   languages: readonly Lang[] | null;
 }) {
   const until = context.testCardUntil;
+  // The setup wizard's test card (never the show) is up for its seconds by this computer's clock, as Main
+  // set `until` by it.
+  // eslint-disable-next-line no-restricted-properties -- the setup wizard's test card, never a frame of the show
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (until === null) return;
+    // eslint-disable-next-line no-restricted-syntax -- the setup wizard's test card, never a frame of the show
     const t = setTimeout(
       () => {
+        // eslint-disable-next-line no-restricted-properties -- the setup wizard's test card, never a frame of the show
         setNow(Date.now());
       },
+      // eslint-disable-next-line no-restricted-properties -- the setup wizard's test card, never a frame of the show
       Math.max(0, until - Date.now()) + 50,
     );
     return () => {

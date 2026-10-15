@@ -87,13 +87,18 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   let settleLead = 0;
   let settleFrom = 0;
   const lead = () => seekLead + settleLead;
+  // How long a seek takes to land, and a sound to settle, are lengths of time on this computer (each video
+  // aims its next jump by them); where a video should be is always the engine's time (clock()).
   const jump = (to: number) => {
+    // eslint-disable-next-line no-restricted-properties -- a length of time: when this seek began, to see how long it takes to land
     seekFrom = performance.now();
     v.currentTime = to + lead();
   };
   const landed = () => {
     if (seekFrom > 0) {
+      // eslint-disable-next-line no-restricted-properties -- a length of time: how long the seek took to land
       seekLead = Math.min(0.5, (performance.now() - seekFrom) / 1000);
+      // eslint-disable-next-line no-restricted-properties -- a length of time: when the sound began to settle after its jump
       if (audible) settleFrom = performance.now();
     }
     seekFrom = 0;
@@ -145,6 +150,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     if (end === null) return;
     const left = (end - v.currentTime) / (v.playbackRate || 1);
     if (left > CHECK_MS / 1000 + 0.05) return;
+    // eslint-disable-next-line no-restricted-syntax -- stops at a clip's end point when its own position reaches it; check() holds it there by the engine's time too
     hold = setTimeout(
       () => {
         hold = null;
@@ -188,6 +194,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     const correction = playbackCorrection(offset, limits);
     // A sound's last jump, once it has played on a moment (or before it jumps again): where it plays
     // says how much further (or less far) to aim next time.
+    // eslint-disable-next-line no-restricted-properties -- a length of time: how long the sound has played on since its jump
     if (settleFrom > 0 && (correction.seek || performance.now() - settleFrom >= SETTLE_MS)) {
       settleFrom = 0;
       settleLead = Math.min(0.5 - seekLead, Math.max(-seekLead, settleLead - offset));
@@ -199,6 +206,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     if (c.loop && c.clip && !wrap) {
       const left = end - v.currentTime;
       if (left < CHECK_MS / 1000 + 0.05)
+        // eslint-disable-next-line no-restricted-syntax -- loops a clip back to its start when its own position reaches its end point
         wrap = setTimeout(
           () => {
             wrap = null;
@@ -214,6 +222,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   v.addEventListener('error', failed);
   v.addEventListener('seeked', landed);
   for (const event of ['seeked', 'playing', 'ratechange']) v.addEventListener(event, rearm);
+  // eslint-disable-next-line no-restricted-syntax -- checks every 250 ms that the video is where the engine's time says (check)
   const timer = setInterval(check, CHECK_MS);
   v.src = mediaUrl(mediaId, attempt);
   const stop = () => {

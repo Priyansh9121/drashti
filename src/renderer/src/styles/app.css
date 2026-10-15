@@ -512,8 +512,10 @@ body.output {
 }
 
 /*
- * Reduced motion: nothing in the interface moves at all. The audience screens keep what they always
- * had (their transitions are the show's own, Session 27).
+ * Reduced motion: nothing in the interface moves at all. The audience screens (body.output: the hall's
+ * screens, the stream's picture, the stage display) are never touched by the show computer's own setting
+ * (Session 27): their motion is the show's, chosen per Look, and they hold no CSS motion to stop
+ * (eslint.config.mjs, the engine-time rule).
  */
 @media (prefers-reduced-motion: reduce) {
   body:not(.output) *,
@@ -521,12 +523,6 @@ body.output {
   body:not(.output) ::after {
     animation: none !important;
     transition: none !important;
-  }
-  body.output *,
-  body.output ::before,
-  body.output ::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
   }
 }
 
