@@ -1,7 +1,7 @@
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { _electron as electron, expect, test } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DrashtiBridge } from '../../src/shared/bridge';
@@ -74,7 +74,31 @@ export async function launchApp(
     }),
   });
   sayIfItStops(app);
+  sayIfQuittingIsSlow(app, userData);
   return { app, userData };
+}
+
+/** Quitting this long is said, with the end of Drashti's own log (a quit that took 60 s once on CI Windows). */
+const SLOW_QUIT_MS = 20_000;
+
+function sayIfQuittingIsSlow(app: ElectronApplication, userData: string): void {
+  const close = app.close.bind(app);
+  app.close = async () => {
+    const timer = setTimeout(() => {
+      const file = join(userData, 'logs', 'drashti.log');
+      const tail = existsSync(file)
+        ? readFileSync(file, 'utf8').split('\n').slice(-40).join('\n')
+        : '(no log)';
+      console.log(
+        `Drashti has taken over ${String(SLOW_QUIT_MS / 1000)} s to quit. The end of its log:\n${tail}`,
+      );
+    }, SLOW_QUIT_MS);
+    try {
+      await close();
+    } finally {
+      clearTimeout(timer);
+    }
+  };
 }
 
 /** Apps the tests stop dead on purpose (killApp). */
