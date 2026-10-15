@@ -1,0 +1,10 @@
+# Drashti's secret scan (scripts/secret-scan.mjs, Session 30): gitleaks' own rules, and Drashti's own secrets
+# on top. The repository is public: a pushed secret is public before anything else sees it.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "drashti-events-out-secret"
+description = "An events out secret (Standard Webhooks: whsec_ and 32 random bytes in base64)"
+regex = '''whsec_[A-Za-z0-9+/]{43}='''
+keywords = ["whsec_"]
