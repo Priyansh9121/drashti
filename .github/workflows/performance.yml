@@ -54,6 +54,7 @@ on:
             dissolves-video,
             three-outputs,
             enhanced-pictures,
+            bold-transitions,
           ]
         default: none
       handicap:

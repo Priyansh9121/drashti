@@ -2,7 +2,6 @@ import type { CSSProperties } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import type { IdleItem, IdleState, Quote, QuoteLang } from '../../../shared/idle';
 import { idleFrame, QUOTE_LANGS } from '../../../shared/idle';
-import { mediaUrl } from '../../../shared/media';
 import type { Lang } from '../../../shared/model';
 import type { Size } from '../../../shared/scaling';
 import { LANG_FONT_STACK } from './fonts';
@@ -10,6 +9,7 @@ import { useMediaAttempt } from './media-attempts';
 import { useNow } from './useNow';
 import { engineNow } from './clock';
 import { EASE } from './easing';
+import { useMediaUrl } from './media-urls';
 
 /*
  * The idle rotation on a screen (shared/idle.ts): the item up and the next
@@ -89,6 +89,7 @@ function ItemView({
 }) {
   // On a node, a picture whose copy landed after it was asked for is drawn again (a new element).
   const attempt = useMediaAttempt(item.kind === 'picture' ? item.mediaId : '');
+  const urlOf = useMediaUrl();
   return (
     <div
       // Its opacity is the dissolve's, set frame by frame (IdleRotation); the next one starts unseen.
@@ -103,7 +104,7 @@ function ItemView({
       {item.kind === 'picture' ? (
         <img
           key={attempt}
-          src={mediaUrl(item.mediaId, attempt)}
+          src={urlOf(item.mediaId, attempt)}
           alt=""
           draggable={false}
           style={{ ...FULL, width: '100%', height: '100%', objectFit: 'contain' }}

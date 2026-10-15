@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../render/fonts.css';
 import '../styles/app.css';
@@ -9,6 +9,7 @@ import { holdClock } from '../render/clock';
 import { preloadFonts } from '../render/fonts';
 import { PlacedInParent } from '../render/Placed';
 import { SceneBoundary } from '../render/SceneBoundary';
+import { WarmUp } from '../render/WarmUp';
 import { applyCameraChoice, listDevices } from './camera';
 import { setCaptureSize, startCapture, stopEncoder, stopPreview } from './capture';
 import { useProgram } from './program-store';
@@ -49,6 +50,12 @@ function Program() {
   const streamLook = groupLookIn(state?.look, context?.groupId);
   const languages = streamLook.languages;
   const [fontsReady, setFontsReady] = useState(false);
+  // The GPU warmed up, unseen, before the show is first drawn (Session 27): the stream is black meanwhile.
+  const [warmed, setWarmed] = useState(false);
+  const warmedUp = useCallback(() => {
+    setWarmed(true);
+  }, []);
+  const ready = fontsReady && warmed;
   // Tests only: the clock held at one moment, as the outputs' are, so the stream's picture can be compared
   // with the hall's part-way through a transition (Session 27).
   useEffect(() => window.drashti.output.onTestClock(holdClock), []);
@@ -84,9 +91,16 @@ function Program() {
       data-movement={streamLook.movement}
       data-camera={cameraState}
       data-sound={soundState}
-      data-fonts={fontsReady ? 'ready' : 'loading'}
+      // Ready to draw the show: its fonts loaded, and the GPU warmed up (WarmUp).
+      data-fonts={ready ? 'ready' : 'loading'}
+      data-warm-up={warmed ? 'done' : 'warming'}
     >
-      {state && fontsReady && context && (
+      {fontsReady && !warmed && (
+        <PlacedInParent content={CANVAS} mode="fit" className="absolute inset-0">
+          <WarmUp canvas={CANVAS} scaling="fit" ticker={false} hold={HOLD_WARM_UP} onDone={warmedUp} />
+        </PlacedInParent>
+      )}
+      {state && ready && context && (
         // The stream's picture: black if it fails as it draws, until the next change (Session 23).
         <SceneBoundary resetKey={rev}>
           <PlacedInParent content={CANVAS} mode="fit" className="absolute inset-0">
@@ -112,6 +126,9 @@ startCapture(
   () => sound.level(),
   () => sound.track(),
 );
+
+/** Tests only: the warm-up stays drawn, to be looked at (DRASHTI_TEST_HOLD_WARM_UP; never when packaged). */
+const HOLD_WARM_UP = new URLSearchParams(location.search).get('warmUp') === 'hold';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');

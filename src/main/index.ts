@@ -51,7 +51,7 @@ import {
   SIMPLE_MODE_REFUSED_COMMANDS,
   startingMode,
 } from '../shared/mode';
-import { groupLookIn, NO_LOOK } from '../shared/looks';
+import { groupLookIn, type Movement, NO_LOOK } from '../shared/looks';
 import { DEFAULT_THEME } from '../shared/themes';
 import type { SlideSource } from './engine/slide-source';
 import type { Db } from './db/database';
@@ -573,6 +573,8 @@ type PerfRun = Parameters<typeof runPerformanceTest>[0] & {
   music: MusicService;
   engine: ShowEngine;
   ffmpegPath: () => string | null;
+  /** Every screen group in the live Look to move this way (a scenario; Session 27). */
+  setMovement: (movement: Movement) => void;
 };
 
 /** The performance check with a heavy case for the screens (DRASHTI_PERF_SCENARIO; Session 15). */
@@ -585,6 +587,7 @@ function runPerformanceTestWithScenario(ctx: PerfRun): ReturnType<typeof runPerf
     engine: ctx.engine,
     outputs: ctx.outputs,
     sharpened: ctx.library.sharpened,
+    setMovement: ctx.setMovement,
   });
   return runPerformanceTestWithNodes({ ...ctx, scenario });
 }
@@ -4085,6 +4088,10 @@ function start(): void {
           operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow.webContents : null,
         music,
         engine,
+        setMovement: (movement) => {
+          const lookId = engine.current.look.id;
+          for (const g of screens.snapshot().groups) looks.setGroup(lookId, g.id, { movement });
+        },
         ffmpegPath: () =>
           findFfmpeg({
             packaged: app.isPackaged,
