@@ -21,6 +21,7 @@ Diya, Drashti's own look: the lamp's plum and flame.
 - The idle rotation dissolves evenly, the old picture going as the new one comes, and a prop's or the logo's video plays in step on every screen, even one opened later.
 - Stream to up to three places at once (YouTube, Facebook, another platform), each with its own key, with a Several platforms preset; ON AIR says how many are on air, and one dropping never stops the others.
 - FFmpeg runs with only what it needs from the computer's settings, the stream key goes to it apart from the address, and the log hides any key in an address.
+- Events out: Drashti can tell another program on your network, such as n8n, what happens in the show (a slide going up, black-out, the stream on air), signed, set up by an admin under File › Events Out…. Nothing is sent until you choose, and the words only if you say so.
 - Before a screen first shows the show it quietly prepares every transition, unseen (it stays black), so the first Bold push of a sabha never stutters.
 - A sharpened picture is now sharpened at the size the hall's largest screen shows it (an output computer's screens included), so it looks as sharp there as in the Picture editor, and it is done again when the screens change size.
 - On the phone remote, Black-out and Logo say "Black-out is on" and "Logo is on" while on, as on the computer.

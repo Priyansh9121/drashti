@@ -155,6 +155,8 @@ import {
 import type { BackupUi } from './library/backup-ui';
 import { backUp, handBackupRunning, restore } from './library/backup-ui';
 import { ScheduledBackups } from './backup/scheduled-backups';
+import type { ScheduledBackupsView } from '../shared/backups';
+import type { AnnouncementsView } from '../shared/announcements';
 import { spawnBackupWorker } from './backup/spawn-backup-worker';
 import { Revisions } from './library/revisions';
 import { applyTheme, themeLook } from './library/themes';
@@ -193,6 +195,17 @@ import { quitDetail, RendererWatchdog, shouldConfirmQuit, type WatchdogEvent } f
 import { applySessionSecurity, secureWebContents } from './windows/security';
 import { StreamProfileRepo } from './db/stream-profiles';
 import { StreamKeyStore } from './stream/key-store';
+import { lookup as dnsLookup } from 'node:dns/promises';
+import { EventsOut, NO_SECURE_STORAGE_EVENTS } from './events/events-service';
+import {
+  announcementEvents,
+  backupEvents,
+  engineEvents,
+  type ScreenState,
+  screenEvents,
+  streamEvents,
+} from './events/sources';
+import { spawnEventsWorker } from './events/spawn-worker';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
 import { StreamService } from './stream/stream-service';
 import { findFfmpeg } from './stream/ffmpeg-path';
@@ -204,8 +217,9 @@ import { ConvertService, readInfo } from './convert/convert-service';
 import { diskFreeBytes } from './import/media-store';
 import { startPerfStream } from './stream/perf-stream';
 import { confirmedSchema } from '../shared/stream-schema';
+import type { StreamStatus } from '../shared/stream';
 import { FanoutTransport, type EngineTransport } from '../shared/engine/transport';
-import type { PropItem } from '../shared/engine/state';
+import type { EngineState, PropItem } from '../shared/engine/state';
 import { DeviceRepo } from './db/devices';
 import { NetworkService } from './network/network-service';
 import { AnnouncementService } from './network/announcement-service';
@@ -1273,6 +1287,7 @@ function start(): void {
   // to see Stopped and Try again (Session 23; Playwright cannot follow a renderer that crashes).
   if (!app.isPackaged && process.env['DRASHTI_TEST_GIVE_UP'] === '1')
     (globalThis as { drashtiTestGiveUp?: (screenId: string) => void }).drashtiTestGiveUp = stopOutput;
+  let eventsScreensWas: ScreenState[] | null = [];
   const manager = new OutputManager({
     listDisplays,
     screens: () => screenRepo.screens(),
@@ -1312,6 +1327,14 @@ function start(): void {
       return h;
     },
     onChange: () => {
+      // A hall screen stopped, or back (events out: Session 28).
+      const screensNow = manager.status().map((st): ScreenState => ({
+        screenId: st.screenId,
+        state: st.state,
+        name: screenRepo.screen(st.screenId)?.name ?? '',
+      }));
+      eventsOut.emit(screenEvents(eventsScreensWas, screensNow));
+      eventsScreensWas = screensNow;
       if (pageAlive(operatorWindow)) sendToPage(operatorWindow, IPC.screens.changed, screens.snapshot());
       for (const [screenId, win] of outputWindows) {
         const context = contextFor(screenId);
@@ -1416,6 +1439,41 @@ function start(): void {
   });
   engine.onChange((state) => {
     liveWriter.update(state);
+  });
+  // ---- events out (Session 28) ----------------------------------------------------
+  // Nothing goes until an admin adds an address and ticks a kind; no process runs till then.
+  const eventsOut = new EventsOut({
+    store: new StreamKeyStore(
+      join(app.getPath('userData'), 'events-out.json'),
+      safeStorage,
+      noSafeStorage,
+      NO_SECURE_STORAGE_EVENTS,
+    ),
+    spawn: spawnEventsWorker,
+    // Tests: events go only to this computer (the guard every e2e run sets).
+    onlyThisComputer: testLinkGuard,
+    resolve: (host) => dnsLookup(host, { all: true, verbatim: true }),
+    now: Date.now,
+    changed: (view) => {
+      sendToOperator(IPC.events.changed, view);
+    },
+    notice: (text) => {
+      sendToOperator(IPC.app.notice, { text });
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+  });
+  eventsOut.load();
+  stops.add('events out', () => {
+    eventsOut.close();
+  });
+  // Engine listeners get the state after a change only: the one before is kept here.
+  let eventsEngineWas: EngineState | null = engine.current;
+  engine.onChange((state) => {
+    eventsOut.emit(engineEvents(eventsEngineWas, state));
+    eventsEngineWas = state;
   });
   if (testMemoryEveryMs > 0)
     setInterval(
@@ -1614,6 +1672,7 @@ function start(): void {
   };
 
   // ---- streaming -------------------------------------------------------------
+  let eventsStreamWas: StreamStatus | null = null;
   const streamKeys = new StreamKeyStore(
     join(app.getPath('userData'), 'stream-keys.json'),
     safeStorage,
@@ -1642,6 +1701,10 @@ function start(): void {
     titleMarks: (marks) => {
       if (operatorWindow && !operatorWindow.isDestroyed())
         operatorWindow.setTitle(marks ? `Drashti — ${marks}` : 'Drashti');
+    },
+    statusChanged: (status) => {
+      eventsOut.emit(streamEvents(eventsStreamWas, status));
+      eventsStreamWas = status;
     },
     ffmpegPath: () =>
       findFfmpeg({
@@ -2403,6 +2466,7 @@ function start(): void {
     arti.dispose();
   });
   // ---- scheduled backups (Session 14): into a folder an admin picks, at their times ----------------
+  let eventsBackupsWas: ScheduledBackupsView | null = null;
   const scheduledBackups = new ScheduledBackups({
     settings,
     now: scheduleNow,
@@ -2418,6 +2482,8 @@ function start(): void {
     sameDisk,
     changed: (view) => {
       sendToOperator(IPC.backups.changed, view);
+      eventsOut.emit(backupEvents(eventsBackupsWas, view));
+      eventsBackupsWas = view;
     },
     log: (level, message) => {
       if (level === 'warn') log.warn(message);
@@ -2425,6 +2491,7 @@ function start(): void {
     },
     ...(testBackupRate ? { bytesPerSecond: testBackupRate } : {}),
   });
+  eventsBackupsWas ??= scheduledBackups.view();
   stops.add('scheduled backups', () => {
     scheduledBackups.dispose();
   });
@@ -2435,6 +2502,21 @@ function start(): void {
   );
   handle(IPC.backups.runNow, (e) => (fromOperator(e) ? scheduledBackups.runNow() : notBackupsOperator));
   handle(IPC.backups.dismiss, () => scheduledBackups.dismiss());
+  // Events out (Session 28): an admin's (the admin lock), Pro Mode's (Simple Mode's lock), the operator window's.
+  const notEventsOperator = {
+    ok: false as const,
+    message: 'Only the operator window can change events out.',
+  };
+  handle(IPC.events.view, () => eventsOut.view());
+  handle(IPC.events.add, (e, url, allowInternet) =>
+    fromOperator(e) ? eventsOut.add(url, allowInternet) : notEventsOperator,
+  );
+  handle(IPC.events.update, (e, id, patch) =>
+    fromOperator(e) ? eventsOut.update(id, patch) : notEventsOperator,
+  );
+  handle(IPC.events.remove, (e, id) => (fromOperator(e) ? eventsOut.remove(id) : notEventsOperator));
+  handle(IPC.events.rotate, (e, id) => (fromOperator(e) ? eventsOut.rotate(id) : notEventsOperator));
+  handle(IPC.events.test, (e, id) => (fromOperator(e) ? eventsOut.test(id) : notEventsOperator));
   handle(IPC.backups.pickFolder, async (e) => {
     if (!fromOperator(e) || !operatorWindow) return notBackupsOperator;
     const picked = await dialog.showOpenDialog(operatorWindow, {
@@ -2760,6 +2842,7 @@ function start(): void {
     height: p.height,
   });
   // Announcements from phones: the queue the operator approves from (Pro Mode only).
+  let eventsAnnouncementsWas: AnnouncementsView | null = null;
   const announcements = new AnnouncementService({
     repo: new AnnouncementRepo(db),
     engine: {
@@ -2779,12 +2862,15 @@ function start(): void {
     minuteMs: announceMinuteMs,
     changed: (view) => {
       sendToOperator(IPC.announcements.changed, view);
+      eventsOut.emit(announcementEvents(eventsAnnouncementsWas, view));
+      eventsAnnouncementsWas = view;
     },
     log: (level, message) => {
       if (level === 'warn') log.warn(message);
       else log.info(message);
     },
   });
+  eventsAnnouncementsWas = announcements.view();
   // What recovery put back carries on until its time; the rest that was showing has ended.
   announcements.resume();
   stops.add('announcements', () => {
@@ -3959,6 +4045,12 @@ function start(): void {
     },
     scheduledBackups: () => {
       if (mode === 'pro') sendToOperator(IPC.backups.open, { at: Date.now() });
+    },
+    eventsOut: () => {
+      if (mode === 'pro')
+        requireAdmin('set up events out', () => {
+          sendToOperator(IPC.events.open, { at: Date.now() });
+        });
     },
     checkForUpdates: () => {
       if (mode === 'pro') sendToOperator(IPC.updates.open, { at: Date.now() });

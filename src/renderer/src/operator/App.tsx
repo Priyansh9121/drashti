@@ -70,6 +70,7 @@ import { connectMode, useMode } from './mode-store';
 import { connectRoles } from '../roles/roles-store';
 import { AdminPinDialog, RolesDialog } from '../roles/RolesDialogs';
 import { BackupsDialog } from '../backups/BackupsDialog';
+import { EventsOutDialog } from '../events/EventsOutDialog';
 import { UpdatesDialog } from '../updates/UpdatesDialog';
 import { LinkDialog } from '../links/LinkDialog';
 import { KeysSheet, showKeysSheet } from './KeysSheet';
@@ -348,6 +349,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <CalendarDialog />
       <RolesDialog />
       <BackupsDialog />
+      <EventsOutDialog />
       <UpdatesDialog />
       <LinkDialog platform={platform} />
       <KeysSheet platform={platform} />

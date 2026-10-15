@@ -42,6 +42,7 @@ import type { MediaRemovalResult, MediaUsage } from './media-removal';
 import type { MarkersResult, MediaMarkers } from './markers';
 import type { PictureAssetKind, PictureJob, PicturePage, PicturesDone, SharpenJobView } from './pictures';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
+import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
 import type { Lang, RenderSlide, Transition } from './model';
 import type { EditDoc, EditSlidesResult, SaveSlidesResult, ThemeSlide } from './slide-edit';
 import type { RecoveryNotice } from './recovery';
@@ -139,6 +140,18 @@ export interface DrashtiBridge {
     dismiss(): Promise<ScheduledBackupsView>;
     onChanged(listener: (view: ScheduledBackupsView) => void): () => void;
     /** File > Scheduled Backups… was chosen. */
+    onOpen(listener: () => void): () => void;
+  };
+  /** Events out (Session 28, operator window; an admin's). */
+  events: {
+    view(): Promise<EventsOutView>;
+    add(url: string, allowInternet: boolean): Promise<EventsOutResult>;
+    update(id: string, patch: EventAddressPatch): Promise<EventsOutResult>;
+    remove(id: string): Promise<EventsOutResult>;
+    rotate(id: string): Promise<EventsOutResult>;
+    test(id: string): Promise<{ ok: boolean; message: string }>;
+    onChanged(listener: (view: EventsOutView) => void): () => void;
+    /** File > Events Out… was chosen (admin unlocked). */
     onOpen(listener: () => void): () => void;
   };
   /** Audio playlists (Session 14, operator window). */

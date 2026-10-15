@@ -112,6 +112,13 @@ export const ADMIN_CHANNELS: readonly InvokeChannel[] = [
   IPC.backups.save,
   IPC.backups.pickFolder,
   IPC.backups.runNow,
+  // Events out (Session 28): every request, looking too.
+  IPC.events.view,
+  IPC.events.add,
+  IPC.events.update,
+  IPC.events.remove,
+  IPC.events.rotate,
+  IPC.events.test,
   IPC.arti.save,
   IPC.arti.setEnabled,
   IPC.arti.remove,
