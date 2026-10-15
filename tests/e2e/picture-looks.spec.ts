@@ -375,6 +375,7 @@ test('a sharpened picture: its copy on two screens and a node, with no filter in
     await background(main.win, pictureId);
     await expect.poll(() => outputPages(node.app).length).toBeGreaterThan(0);
     const pages = [...outputPages(main.app), ...outputPages(node.app)];
+    for (const o of pages) await outputReady(o);
     // Unsharpened until its copy is ready: drawn, never blank.
     await main.win.evaluate(
       (id) =>
@@ -706,6 +707,7 @@ test('a node’s screen draws a picture’s look and the live zoom as Main’s d
       if (!page) throw new Error('no node screen');
       return page;
     })();
+    await outputReady(nodeOut);
     await expect
       .poll(async () => (await drawn(nodeOut))[0]?.transform ?? '', { timeout: 60_000 })
       .toMatch(/scale\(1\.5\)/u);

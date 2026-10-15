@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, outputPages, setUpScreen } from './helpers';
+import { launchApp, operatorPage, outputPages, setUpScreen, outputReady } from './helpers';
 
 /*
  * Timers: the engine sends only start, pause and reset; every window works
@@ -24,6 +24,7 @@ test('a countdown on the audience screens stays in step on two windows, with no 
   await setUpScreen(win, 'Overflow', 1);
   await expect.poll(() => outputPages(app).length).toBe(2);
   const [a, b] = outputPages(app) as [Page, Page];
+  for (const o of [a, b]) await outputReady(o);
 
   // Make a countdown in the operator window, start it, and show it on the screens.
   const timers = win.getByTestId('timers');
