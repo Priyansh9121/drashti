@@ -33,6 +33,11 @@ export interface PerfResult {
   checks: PerfCheck[];
   /** Every figure measured, for the record. */
   summary: string;
+  /**
+   * The operator window's first drawing, before anything is measured (Session 26h): when it came, and its
+   * slowest slide change. One line of its own, for the record; never judged.
+   */
+  coldStart?: string;
 }
 
 export interface PerfContext {
@@ -251,6 +256,138 @@ async function slideChangesDuringImport(
   return { samples, result, importMs, edits: editSamples };
 }
 
+/** The operator window's first drawing, as its page saw it (each time on this computer's clock, or null). */
+export interface ColdStart {
+  /** The window had opened, settled (`data-opened`). */
+  openedAt: number | null;
+  /** The presentation was open in the middle of the window. */
+  presentationAt: number | null;
+  /** Its first slide was on LIVE. */
+  liveAt: number | null;
+  /** The last slide change was drawn, and two frames after it. */
+  settledAt: number | null;
+  /** Each slide change, from asking until the LIVE picture drew it (ms). */
+  changes: number[];
+  /** What stopped it short, if anything. */
+  note: string;
+}
+
+/** How many slide changes the window's first drawing makes, and how often. */
+const COLD_CHANGES = 10;
+const COLD_EVERY_MS = 40;
+
+/**
+ * Runs in the operator page before the test output covers it (Session 26h): the window opens as it does
+ * on a mandir computer before a sabha, with a presentation open in the middle and its slides going up on
+ * LIVE, so its first drawing is done before anything is measured, as it is before a show. Each slide
+ * change is timed until the LIVE picture drew it: the frame in which the page first shows it. Kept free of
+ * anything outside it, as it is sent to the page as source.
+ */
+async function openAsAShowDoes(name: string, count: number, everyMs: number): Promise<ColdStart> {
+  // The page as this uses it (the main process has no DOM types).
+  const page = globalThis as unknown as {
+    drashti: DrashtiBridge;
+    document: {
+      documentElement: { dataset: { opened?: string } };
+      fonts: { ready: Promise<unknown> };
+      querySelector(selector: string): { getAttribute(name: string): string | null } | null;
+      querySelectorAll(selector: string): Iterable<{ textContent: string | null; click(): void }>;
+    };
+    requestAnimationFrame(callback: () => void): number;
+  };
+  const d = page.drashti;
+  const doc = page.document;
+  const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+  // The next frame (the window is on view, so it draws them), or 100 ms if none comes.
+  const frame = () =>
+    new Promise<void>((resolve) => {
+      const late = setTimeout(resolve, 100);
+      page.requestAnimationFrame(() => {
+        clearTimeout(late);
+        resolve();
+      });
+    });
+  const until = async (seen: () => boolean, ms: number): Promise<number | null> => {
+    const end = Date.now() + ms;
+    for (;;) {
+      if (seen()) return Date.now();
+      if (Date.now() > end) return null;
+      await frame();
+    }
+  };
+  const out: ColdStart = {
+    openedAt: null,
+    presentationAt: null,
+    liveAt: null,
+    settledAt: null,
+    changes: [],
+    note: '',
+  };
+  const notes: string[] = [];
+  // The library's list is the window's first data; it has opened, settled, within a second after it (an
+  // older Drashti, the paired check's base, never says so).
+  await until(() => doc.querySelector('[data-testid="presentation-row"]') !== null, 30_000);
+  out.openedAt = await until(() => doc.documentElement.dataset.opened !== undefined, 3000);
+  if (out.openedAt === null) notes.push('the window never said it had opened (data-opened)');
+  await doc.fonts.ready;
+  const id = (await d.library.listPresentations()).find((p) => p.name === name)?.id ?? '';
+  const row = [...doc.querySelectorAll('[data-testid="presentation-row"]')].find((r) =>
+    (r.textContent ?? '').startsWith(name),
+  );
+  if (!id || !row) {
+    out.note = [...notes, `no “${name}” in the library list`].join('; ');
+    return out;
+  }
+  row.click();
+  out.presentationAt = await until(
+    () =>
+      doc.querySelector(
+        `[data-testid="slide-grid"][data-presentation-id="${id}"] [data-testid="slide-thumb"]`,
+      ) !== null,
+    10_000,
+  );
+  const live = () =>
+    doc
+      .querySelector('[data-testid="live-preview"] [data-slide-in] [data-slide]')
+      ?.getAttribute('data-slide') ?? null;
+  for (let i = 0; i < count; i++) {
+    const before = live();
+    const askedAt = Date.now();
+    const r = await d.engine.dispatch({ type: 'goLive', presentationId: id, slideIndex: i % 3 });
+    if (!r.ok) {
+      notes.push('a slide change was refused');
+      break;
+    }
+    const drawn = await until(() => {
+      const now = live();
+      return now !== null && now !== before;
+    }, 5000);
+    if (drawn === null) {
+      notes.push('LIVE did not show a slide change within 5 s');
+      break;
+    }
+    out.liveAt ??= drawn;
+    out.changes.push(drawn - askedAt);
+    await wait(everyMs);
+  }
+  await frame();
+  await frame();
+  out.settledAt = Date.now();
+  out.note = notes.join('; ');
+  return out;
+}
+
+/** The cold start's line: each step's time after Drashti started, and its slide changes (Session 26h). */
+export function coldStartLine(cold: ColdStart, startedAt: number): string {
+  const at = (t: number | null) => (t === null ? 'never' : `${((t - startedAt) / 1000).toFixed(1)} s`);
+  const changes = cold.changes;
+  const told =
+    changes.length === 0
+      ? 'no slide changes drawn'
+      : `its slide changes, to the LIVE picture: n=${changes.length} median ${percentile(changes, 0.5)} ms, slowest ${Math.max(...changes)} ms`;
+  return `cold start (not judged): the operator window opened settled ${at(cold.openedAt)} after Drashti started, a presentation open at ${at(cold.presentationAt)}, LIVE showing at ${at(cold.liveAt)}, all drawn at ${at(cold.settledAt)}; ${told}${cold.note ? ` (${cold.note})` : ''}`;
+}
+
 /** The main process's worst block and its gaps over 100 ms, each with what went on around it (at most 6). */
 export function watchSummary(watch: MainWatch): string {
   const gaps = [...watch.gaps].sort((a, b) => b.ms - a.ms).slice(0, 6);
@@ -267,9 +404,35 @@ export function watchSummary(watch: MainWatch): string {
 const js = <T>(win: BrowserWindow, code: string) =>
   win.webContents.executeJavaScript(code, true) as Promise<T>;
 
+/**
+ * The operator window's first drawing, on view (Session 26h): before, the test output covered the window
+ * from the start, so it drew its first frames only once the slide changes began, and that first drawing
+ * (on CI's Mac, each new kind of drawing compiled for the graphics chip while every window waits) was
+ * measured as if it were the show's. On a mandir computer the window has long been drawn by then.
+ */
+async function coldStart(operator: BrowserWindow | null, startedAt: number): Promise<string> {
+  if (!operator || operator.isDestroyed()) return 'cold start (not judged): no operator window';
+  try {
+    const cold = await js<ColdStart>(
+      operator,
+      `(${openAsAShowDoes.toString()})(${JSON.stringify(PERF_PRESENTATION)}, ${String(COLD_CHANGES)}, ${String(COLD_EVERY_MS)})`,
+    );
+    return coldStartLine(cold, startedAt);
+  } catch (error) {
+    return `cold start (not judged): it stopped (${String(error)})`;
+  }
+}
+
+/** The placeholder presentation the check's slides come from (seeded in every new library). */
+const PERF_PRESENTATION = 'Language test slides';
+
 export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> {
   const checks: PerfCheck[] = [];
   const check = (name: string, ok: boolean, detail = '') => checks.push({ name, ok, detail });
+  // Drashti's start, on this computer's clock (the operator page's times are on it too).
+  const startedAt = Date.now() - Math.round(process.uptime() * 1000);
+  // The window draws first, on view, as before a show; then the test output goes over it.
+  const cold = await coldStart(ctx.operator(), startedAt);
   const folder = mkdtempSync(join(tmpdir(), 'drashti-perf-lyrics-'));
   const songs = ctx.songs ?? PERF_SONGS;
   const undo = await ctx.ensureOutput();
@@ -289,7 +452,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
     }
     if (!operator || !output) {
       check('an output window is open', false);
-      return { passed: false, checks, summary: '' };
+      return { passed: false, checks, summary: '', coldStart: cold };
     }
     const shown = output;
     for (let i = 0; i < 100; i++) {
@@ -446,7 +609,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
         ctx.watch.worstBlockMs() <= MAX_BLOCK_MS,
         `worst ${String(ctx.watch.worstBlockMs())} ms`,
       );
-    return { passed: checks.every((c) => c.ok), checks, summary };
+    return { passed: checks.every((c) => c.ok), checks, summary, coldStart: cold };
   } finally {
     undo();
     rmSync(folder, { recursive: true, force: true });

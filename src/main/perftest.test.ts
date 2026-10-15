@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { overlapCheck, paceOf, quickImport } from './perftest';
+import { coldStartLine, overlapCheck, paceOf, quickImport } from './perftest';
 
 describe("the performance check's import overlap (Session 17)", () => {
   it('reads the pace the slides really kept, never quicker than asked', () => {
@@ -55,5 +55,42 @@ describe("the performance check's import overlap (Session 17)", () => {
     // A second's import at that pace owes 10 at least (it would get about 20).
     expect(overlapCheck(19, 1000, 10, 52).ok).toBe(true);
     expect(overlapCheck(4, 1000, 10, 52).ok).toBe(false);
+  });
+});
+
+describe("the performance check's cold start (Session 26h)", () => {
+  const startedAt = 1_000_000;
+
+  it('says when each step came after Drashti started, and the slowest slide change, never judged', () => {
+    const line = coldStartLine(
+      {
+        openedAt: startedAt + 2140,
+        presentationAt: startedAt + 2390,
+        liveAt: startedAt + 2610,
+        settledAt: startedAt + 3060,
+        changes: [212, 9, 8, 11, 7, 10, 8, 9, 12, 8],
+        note: '',
+      },
+      startedAt,
+    );
+    expect(line).toBe(
+      'cold start (not judged): the operator window opened settled 2.1 s after Drashti started, a presentation open at 2.4 s, LIVE showing at 2.6 s, all drawn at 3.1 s; its slide changes, to the LIVE picture: n=10 median 9 ms, slowest 212 ms',
+    );
+  });
+
+  it('says what did not come, and why it stopped short', () => {
+    const line = coldStartLine(
+      {
+        openedAt: startedAt + 1500,
+        presentationAt: null,
+        liveAt: null,
+        settledAt: null,
+        changes: [],
+        note: 'no “Language test slides” in the library list',
+      },
+      startedAt,
+    );
+    expect(line).toContain('a presentation open at never, LIVE showing at never');
+    expect(line).toContain('no slide changes drawn (no “Language test slides” in the library list)');
   });
 });
