@@ -723,7 +723,7 @@ function StyleRow({
         <input
           aria-label={`${name} shadow`}
           type="checkbox"
-          className="h-4 w-4 accent-accent-strong"
+          className="h-4 w-4 accent-primary"
           checked={style.shadow}
           onChange={(e) => {
             onChange({ shadow: e.target.checked });

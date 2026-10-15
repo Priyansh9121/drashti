@@ -137,7 +137,7 @@ function Handle({
       aria-valuetext={markerTime(valueMs)}
       data-testid={testId}
       className={cx(
-        'absolute top-0 bottom-0 z-10 w-3 -translate-x-1/2 cursor-ew-resize rounded-sm bg-accent-strong outline-offset-2',
+        'absolute top-0 bottom-0 z-10 w-3 -translate-x-1/2 cursor-ew-resize rounded-sm bg-primary-hi outline-offset-2',
         side === 'start' ? 'rounded-r-none' : 'rounded-l-none',
       )}
       style={{ left: `${at(valueMs, durationMs)}%` }}

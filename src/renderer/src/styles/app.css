@@ -1,34 +1,47 @@
 @import 'tailwindcss';
 
 /*
- * Drashti's design tokens. The rules for using them are in docs/design.md.
+ * Drashti's design tokens: Diya (Session 26g, from the design lab's "Diya, pushed further"). The rules
+ * for using them are in docs/design.md.
  *
- * Dark by default, because sabhas run in dim halls. Colours are named for
- * their job, not their hue. Every pair used for text meets 4.5:1, and every
- * control boundary 3:1 (docs/design.md; src/main/contrast.test.ts measures them).
+ * Dark, because sabhas run in dim halls: plum-black surfaces lit by the lamp, the lamp's plum on the
+ * one thing to do next, and the state colours (live, warning, success, danger, ON AIR, REC, guide)
+ * as they always were. Colours are named for their job, not their hue. Every pair used for text
+ * meets 4.5:1, and every control boundary 3:1 (src/main/contrast.test.ts measures them all).
+ *
+ * The audience screens never take these: body.output (outputs, the stream, the stage display) keeps
+ * the colours and corners it always had, below.
  */
 @theme {
   /* The bundled Noto fonts: Latin, Gujarati and Devanagari (400, 500 and 700 only). */
   --font-sans: 'Noto Sans', 'Noto Sans Gujarati', 'Noto Sans Devanagari', system-ui, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /* Surfaces, darkest first. */
-  --color-ink: #0b0d11; /* the window, behind and between panels */
-  --color-panel: #13161c; /* panels */
-  --color-panel-2: #1a1e26; /* raised: cards, fields, rows on hover */
-  --color-panel-3: #232833; /* pressed and selected */
-  --color-line: #2a303b; /* dividers */
-  --color-line-strong: #3a4250; /* dividers that must be seen */
-  --color-field: #636d7e; /* the edge of a control (3:1 on panels) */
+  /* Surfaces, darkest first: plum-black, from the icon's tile. */
+  --color-ink: #150a14; /* the window, behind and between panels */
+  --color-panel: #1e101d; /* panels */
+  --color-panel-2: #2a1728; /* raised: cards, fields, rows on hover */
+  --color-panel-3: #352033; /* pressed and selected */
+  --color-line: #432c40; /* dividers */
+  --color-line-strong: #5a4156; /* dividers that must be seen */
+  --color-field: #977d93; /* the edge of a control (3:1 wherever controls sit) */
 
   /* Text. */
-  --color-fg: #e8ebf0; /* 15:1 on panels */
-  --color-muted: #a0a9b8; /* 7:1: secondary text */
-  --color-faint: #8790a0; /* 4.5:1 on every surface: the quietest text allowed */
+  --color-fg: #fcf4f8; /* 15:1 on panels */
+  --color-muted: #d0bccb; /* 7:1: secondary text */
+  --color-faint: #b09ba9; /* 4.5:1 on every surface: the quietest text allowed */
 
   /* Jobs. */
-  --color-accent: #5b9bff; /* focus ring, selection, links */
-  --color-accent-strong: #2563eb; /* the primary button (white text, 5.2:1) */
+  --color-accent: #a6dcf5; /* focus ring, selection, links */
+  /*
+   * The primary: the lamp's plum, lit from above (a gradient from -hi to -lo) with an ember glow
+   * beneath. On one thing per screen: the next thing to do. White text 5.7:1 at its lightest.
+   */
+  --color-primary-hi: #a93b8a;
+  --color-primary: #9b3383;
+  --color-primary-lo: #7f2a6c;
+  /* A strong secondary's plum edge (Clear all): 3:1 wherever controls sit. */
+  --color-primary-edge: #b0448c;
   --color-live: #d42a31; /* on the screens now: always with a LIVE label (white text 5:1) */
   --color-warning: #f2b23e; /* missing, can't play, needs a look */
   --color-warning-bg: #3b2a0a;
@@ -46,20 +59,73 @@
    */
   --color-onair: #7c3aed;
   --color-rec: #ff5a5a;
-  /* The slide editor: lines things snap to (seen against any slide). */
+  /* The slide editor: lines things snap to, and what is chosen (seen against any slide). */
   --color-guide: #ff4fd8;
+  --color-selection: #2563eb;
 
   /* Type: 14px body; 11px is the smallest text there is. */
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
 
-  /* Corners. */
+  /* Corners: 4 for key hints, 6 badges, 8 controls and rows, 12 cards, 18 dialogs and big buttons. */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 18px;
+
+  /*
+   * Depth, from light above. Cards and the live picture sit on soft shadows; overlays (menus,
+   * dialogs, notices) float higher. The live picture and the live thumbnail glow red beneath, and
+   * that switches at once, as the live border does.
+   */
+  --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 6px 18px rgb(0 0 0 / 0.38);
+  --shadow-overlay: 0 18px 50px rgb(0 0 0 / 0.58), 0 2px 8px rgb(0 0 0 / 0.35);
+  --shadow-live: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 18px 44px -14px rgb(212 42 49 / 0.5);
+  --shadow-live-thumb: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 14px 32px -12px rgb(212 42 49 / 0.55);
+  --shadow-ember:
+    inset 0 1px 0 rgb(255 220 240 / 0.22), 0 0 0 1px rgb(255 190 150 / 0.1), 0 8px 26px rgb(155 51 131 / 0.42);
+  --shadow-ember-hover:
+    inset 0 1px 0 rgb(255 220 240 / 0.28), 0 0 0 1px rgb(255 200 160 / 0.18),
+    0 10px 32px rgb(155 51 131 / 0.62);
+}
+
+/*
+ * The lamp's light: one warm colour falling from the mark, drawn as gradients on surfaces and never
+ * as a filled shape, so it is never taken for a warning (a warning is a filled amber rail with an
+ * icon and words). Its strength on the header, the window, the first start and empty states.
+ */
+:root {
+  --lamp-rgb: 255 176 128;
+  --lamp-header: 0.14;
+  --lamp-window: 0.1;
+  --lamp-welcome: 0.16;
+  --lamp-empty: 0.09;
+}
+
+/*
+ * The audience screens keep what they always had (Session 26g): the outputs, the stream's picture
+ * and the stage display draw a few words and frames with these tokens (the display numbers while
+ * setting up, the stage display's Full screen button), and none of them changes with the operator's
+ * look. tests/e2e/audience-pixels.spec.ts compares them, picture for picture, with 69a0887's.
+ */
+body.output {
+  --color-ink: #0b0d11;
+  --color-panel: #13161c;
+  --color-panel-2: #1a1e26;
+  --color-panel-3: #232833;
+  --color-line: #2a303b;
+  --color-line-strong: #3a4250;
+  --color-field: #636d7e;
+  --color-fg: #e8ebf0;
+  --color-muted: #a0a9b8;
+  --color-faint: #8790a0;
+  --color-accent: #5b9bff;
+  --radius-xs: 0.125rem;
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 10px;
   --radius-xl: 14px;
-
-  --shadow-overlay: 0 16px 48px rgb(0 0 0 / 0.6);
 }
 
 @layer base {
@@ -89,7 +155,7 @@
   }
 
   ::selection {
-    background: rgb(91 155 255 / 0.35);
+    background: rgb(166 220 245 / 0.3);
   }
 
   * {

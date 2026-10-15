@@ -37,6 +37,10 @@ on:
         description: 'Quick check: only these unit test files (src/...test.ts; space-separated), each run "repeat" times'
         type: string
         default: ''
+      pixels_base:
+        description: 'Quick check: compare what the audience screens show with this earlier commit (a full SHA, branch or tag; tests/e2e/audience-pixels.spec.ts)'
+        type: string
+        default: ''
 
 # A push cancels the run still going on its branch. Manual runs have a group each: they never
 # cancel a push's run, and a push never cancels them.
@@ -96,7 +100,7 @@ jobs:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       # A quick check (a manual run naming specs, or taking the screenshots): no unit tests here
       # (Ubuntu ran them), no packaging.
-      QUICK: ${{ github.event_name == 'workflow_dispatch' && (inputs.specs != '' || inputs.screenshots || inputs.unit != '') }}
+      QUICK: ${{ github.event_name == 'workflow_dispatch' && (inputs.specs != '' || inputs.screenshots || inputs.unit != '' || inputs.pixels_base != '') }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -193,6 +197,17 @@ jobs:
             if [ "$QUIET" = "true" ]; then export DRASHTI_E2E_QUIET=1; fi
             pnpm exec playwright test "${specs[@]}" "${extra[@]}"
           fi
+      # Session 26g: the operator's look changes, the audience screens must not. The earlier commit is
+      # built in a worktree and both builds show the same slides; every picture must match.
+      - name: The audience screens against an earlier commit
+        if: env.QUICK == 'true' && inputs.pixels_base != ''
+        shell: bash
+        env:
+          BASE: ${{ inputs.pixels_base }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE"
+          pnpm build
+          node scripts/audience-pixels.mjs FETCH_HEAD
       - name: Upload the screenshots
         if: env.QUICK == 'true' && inputs.screenshots
         uses: actions/upload-artifact@v7

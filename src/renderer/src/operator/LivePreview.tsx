@@ -56,8 +56,9 @@ export function LivePreview() {
       {state?.repeat && <Repeating run={state.repeat} />}
       <div
         className={cx(
+          // The live border and its red underglow come and go in the same frame as the screens: no fade.
           'overflow-hidden rounded-lg border-2 bg-black',
-          somethingUp && !blackout ? 'border-live' : 'border-line-strong',
+          somethingUp && !blackout ? 'border-live shadow-live' : 'border-line-strong shadow-card',
         )}
         data-testid="live-preview"
         data-a11y-picture

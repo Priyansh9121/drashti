@@ -134,9 +134,13 @@ const Thumb = memo(function Thumb({
           setMenu(menuPlace(e));
         }}
         className={cx(
-          // The border turns live with the caption, in one frame: no fade.
+          // The border and the red underglow turn live with the caption, in one frame: no fade.
           'group w-full overflow-hidden rounded-lg border-2 bg-black text-left',
-          live ? 'border-live' : found ? 'border-accent' : 'border-line hover:border-field',
+          live
+            ? 'border-live shadow-live-thumb'
+            : found
+              ? 'border-accent shadow-card'
+              : 'border-line shadow-card hover:border-field',
         )}
       >
         <span className="pointer-events-none relative block aspect-video w-full" data-a11y-picture>
@@ -336,8 +340,9 @@ function ItemView({ item }: { item: ShownItem }) {
             aria-label={`${mediaKindLabel[item.media]}: ${item.label}${isLive ? ' (live)' : ''}`}
             onClick={() => void playItem(item.playlistId, item.id)}
             className={cx(
-              'w-full max-w-xl overflow-hidden rounded-lg border-2 bg-black text-left transition-colors',
-              isLive ? 'border-live' : 'border-line hover:border-field',
+              // A thumbnail: live at once, with no fade (Session 26g).
+              'w-full max-w-xl overflow-hidden rounded-lg border-2 bg-black text-left',
+              isLive ? 'border-live shadow-live-thumb' : 'border-line shadow-card hover:border-field',
             )}
           >
             <span

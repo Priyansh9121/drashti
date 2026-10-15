@@ -278,7 +278,7 @@ export function MaskEditor() {
               <input
                 type="radio"
                 name="mask-mode"
-                className="h-4 w-4 accent-accent-strong"
+                className="h-4 w-4 accent-primary"
                 checked={e.mode === mode}
                 data-testid={`mask-mode-${mode}`}
                 onChange={() => {

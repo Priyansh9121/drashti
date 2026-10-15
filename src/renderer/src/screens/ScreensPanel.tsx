@@ -248,7 +248,7 @@ function GroupCard({
   return (
     <section
       id={`screen-group-${group.id}`}
-      className="space-y-2 rounded-xl border border-line bg-panel-2 p-3"
+      className="space-y-2 rounded-xl border border-line bg-panel-2 p-3 shadow-card"
       data-testid="screen-group"
     >
       <div className="flex flex-wrap items-center gap-2">

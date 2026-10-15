@@ -184,7 +184,7 @@ export function Slider({
         {...props}
         {...tie}
         aria-valuetext={format(value)}
-        className="h-1.5 min-w-24 flex-1 cursor-pointer accent-accent-strong"
+        className="h-1.5 min-w-24 flex-1 cursor-pointer accent-primary"
       />
       <output className="min-w-10 text-right text-xs whitespace-nowrap text-muted tabular-nums">
         {format(value)}

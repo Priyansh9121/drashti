@@ -42,7 +42,7 @@ export function LanguagePicker({
           <input
             type="radio"
             name={name}
-            className="h-4 w-4 accent-accent-strong"
+            className="h-4 w-4 accent-primary"
             checked={value === null}
             data-testid="languages-all"
             onChange={() => {
@@ -55,7 +55,7 @@ export function LanguagePicker({
           <input
             type="radio"
             name={name}
-            className="h-4 w-4 accent-accent-strong"
+            className="h-4 w-4 accent-primary"
             checked={value !== null}
             data-testid="languages-some"
             onChange={() => {

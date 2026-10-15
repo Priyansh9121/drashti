@@ -9,16 +9,24 @@ import { Tooltip } from './Tooltip';
  * IconButton) with an aria-label that also shows as its tooltip.
  */
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'live' | 'warning';
+export type ButtonVariant = 'primary' | 'strong' | 'secondary' | 'ghost' | 'danger' | 'live' | 'warning';
 /** sm and md for panels; lg for dialogs and the live controls; xl and xxl for Simple Mode. */
 export type ButtonSize = 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
 
 const variants: Record<ButtonVariant, string> = {
-  primary: 'bg-accent-strong text-white border-accent-strong hover:brightness-110',
+  /*
+   * The next thing to do, one per screen (docs/design.md): the lamp's plum, lit from above, with an
+   * ember glow beneath; flat and darker while pressed. Disabled, it gives up the light entirely, so
+   * a primary that can't be pressed never looks like the thing to do.
+   */
+  primary:
+    'bg-linear-to-b from-primary-hi via-primary via-55% to-primary-lo text-white border-primary-lo shadow-ember hover:shadow-ember-hover active:bg-none active:bg-primary-lo disabled:bg-none disabled:bg-transparent disabled:text-faint disabled:border-line-strong disabled:shadow-none disabled:opacity-100',
+  // A strong secondary (Clear all in a show): a plum edge and bold words, with no light of its own.
+  strong: 'bg-panel-2 text-fg border-primary-edge hover:bg-panel-3',
   // Its edge is the solid field colour: at least 3:1 wherever a control sits (Session 25; 2.13:1 at 60%).
   secondary: 'bg-panel-2 text-fg border-field hover:bg-panel-3 hover:border-muted',
   ghost: 'bg-transparent text-muted border-transparent hover:bg-panel-2 hover:text-fg',
-  danger: 'bg-transparent text-danger border-danger/70 hover:bg-danger-bg hover:border-danger',
+  danger: 'bg-transparent text-danger border-danger hover:bg-danger-bg hover:text-danger-fg',
   // On the screens now, or "on" (black-out): the live colour, always with words saying so.
   live: 'bg-live text-white border-live hover:brightness-110',
   warning: 'bg-warning-bg text-warning-fg border-warning/60 hover:border-warning',
@@ -42,16 +50,19 @@ const squareSizes: Record<ButtonSize, string> = {
 };
 
 const base =
-  'inline-flex shrink-0 select-none items-center justify-center border font-medium whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100';
+  'inline-flex shrink-0 select-none items-center justify-center border whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100';
+/** The primary and the strong secondary speak up: bold words. Every other button is medium. */
+const weight = (variant: ButtonVariant) =>
+  variant === 'primary' || variant === 'strong' ? 'font-bold' : 'font-medium';
 /**
  * A short colour change on hover and focus. Never on a show control (Session 25): Black-out, Logo,
  * the clears, Next and Back change in the same frame as the screens, so `instant` leaves it out.
  */
-const fade = 'transition-[background-color,border-color,color,filter]';
+const fade = 'transition-[background-color,border-color,color,box-shadow,filter]';
 
 /** The class names of a button, for the odd element that must look like one. */
 export function buttonClass(variant: ButtonVariant = 'secondary', size: ButtonSize = 'md'): string {
-  return cx(base, fade, variants[variant], sizes[size]);
+  return cx(base, fade, weight(variant), variants[variant], sizes[size]);
 }
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -85,7 +96,7 @@ export function Button({
   return (
     <button
       type={type}
-      className={cx(base, !instant && fade, variants[variant], sizes[size], className)}
+      className={cx(base, !instant && fade, weight(variant), variants[variant], sizes[size], className)}
       {...props}
     >
       {IconBefore && <IconBefore size={iconPx} aria-hidden="true" className="shrink-0" />}
@@ -126,7 +137,7 @@ export function IconButton({
       <button
         type={type}
         aria-label={label}
-        className={cx(base, fade, variants[variant], squareSizes[size], 'px-0', className)}
+        className={cx(base, fade, weight(variant), variants[variant], squareSizes[size], 'px-0', className)}
         {...props}
       >
         <IconShape size={iconSizes[size]} aria-hidden="true" />
