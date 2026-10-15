@@ -19,13 +19,15 @@ import { makeTestVideo } from './test-media';
  * (its close button, Esc or Cancel) asks one question, the same everywhere. Save changes is the
  * primary and has the focus (Session 26g, decided 15 Oct 2026); Esc keeps editing and nothing is
  * saved; Save changes saves; Throw them away closes without saving and is never the default. Saving
- * the live presentation's words changes the screens at once, and the question says so. Placeholder
+ * the live presentation's words changes the screens at once: the question says so, and Keep editing
+ * has the focus then, so Enter never changes the screens by accident (Session 26h). Placeholder
  * content only.
  */
 
 /**
  * The question is up with Save changes focused, the one primary (Keep editing, when there is nothing
- * to save from there); Esc keeps editing: the question goes and `still` is still open.
+ * to save from there, or when saving would change the screens now: `live`); Esc keeps editing: the
+ * question goes and `still` is still open.
  */
 async function escKeepsEditing(
   win: Page,
@@ -34,7 +36,8 @@ async function escKeepsEditing(
 ): Promise<void> {
   const ask = win.getByTestId('keep-changes');
   await expect(ask).toBeVisible();
-  const focused = options.save === false ? 'Keep editing' : 'Save changes';
+  const focused =
+    options.save === false || typeof options.live === 'string' ? 'Keep editing' : 'Save changes';
   await expect(ask.getByRole('button', { name: focused })).toBeFocused();
   await expect(ask.locator('[data-variant="primary"]')).toHaveCount(options.save === false ? 0 : 1);
   await expect(ask.getByRole('button', { name: 'Throw them away' })).toBeVisible();
@@ -106,6 +109,15 @@ test('Edit words asks before typed words are lost, and says when saving changes 
   });
   await expect(text).toHaveValue(/Placeholder line three/u);
   expect(await words()).toBe(before);
+  // Enter, with Keep editing focused because saving would change the screens now (Session 26h), keeps
+  // editing too: nothing is saved, and the editor stays open.
+  await win.keyboard.press('Escape');
+  await expect(win.getByTestId('keep-changes').getByRole('button', { name: 'Keep editing' })).toBeFocused();
+  await win.keyboard.press('Enter');
+  await expect(win.getByTestId('keep-changes')).toHaveCount(0);
+  await expect(editor).toBeVisible();
+  await expect(text).toHaveValue(/Placeholder line three/u);
+  expect(await words()).toBe(before);
   // Cancel asks too; Save changes saves and closes.
   await editor.getByRole('button', { name: 'Cancel' }).click();
   await answer(win, 'Save changes');
@@ -150,7 +162,7 @@ test('the Kirtan dialog asks before typed details are lost, Edit words by langua
   await escKeepsEditing(win, dialog, { live: null });
   await expect(field).toHaveValue('Placeholder kavi');
   expect(await kavi()).toBeFalsy();
-  // Enter, with Save changes focused, saves (Session 26g).
+  // Enter, with Save changes focused (nothing on the screens changes), saves (Session 26g).
   await win.keyboard.press('Escape');
   await expect(win.getByTestId('keep-changes').getByRole('button', { name: 'Save changes' })).toBeFocused();
   await win.keyboard.press('Enter');

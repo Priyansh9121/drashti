@@ -10,7 +10,7 @@ Diya, Drashti's own look: the lamp's plum and flame.
 - The live picture and the live slide glow red beneath, at once, as their red border does.
 - Dialogs, menus and notices rise gently into place and leave as quickly, and a playlist item moved Up or Down slides to its new place. Next, Back, Clear all, Black-out and Logo still change at once, and with Reduce motion turned on in the computer's settings nothing in the window moves.
 - In a show, Next and Back sit under the live picture, with their keys: Next is the one plum button, the next thing to do, and does exactly what → does. Clear all stays where it was, with F1, as a plain button with a plum edge.
-- When you close something with typed changes, Save changes now has the focus (Enter saves); Esc still keeps you editing, and throwing work away is never the default.
+- When you close something with typed changes, Save changes now has the focus (Enter saves), except when saving would change what the screens show now: then Keep editing has it. Esc still keeps you editing, and throwing work away is never the default.
 - A backup warning offers Back up now.
 - A sharpened picture is now sharpened at the size the hall's screen shows it, so it looks as sharp there as in the Picture editor, and it is done again when the screens change size.
 - On the phone remote, Black-out and Logo say "Black-out is on" and "Logo is on" while on, as on the computer.

@@ -6,11 +6,12 @@ import { Dialog } from './Dialog';
 /*
  * The one question asked when a dialog or editor with typed changes is closed (its close button,
  * Esc or Cancel), Session 25. Save changes is the primary and has the focus (decided 15 Oct 2026,
- * Session 26g: saving is what people mean nine times in ten), so Enter saves; when saving would
- * change the screens at once (the live presentation), the question says so in plain words above
- * it. Esc still keeps editing, and Throw them away (danger) is never the default. Where there is
- * nothing to save yet (the setup wizard sets things only at Finish), it asks without Save changes,
- * and Keep editing has the focus.
+ * Session 26g: saving is what people mean nine times in ten), so Enter saves; but when saving would
+ * change what the screens show now (the live presentation), the question says so in plain words and
+ * Keep editing has the focus, so Enter never changes the screens by accident (Session 26h, as Session
+ * 25 had it). Esc always keeps editing, and Throw them away (danger) is never the default. Where
+ * there is nothing to save yet (the setup wizard sets things only at Finish), it asks without Save
+ * changes, and Keep editing has the focus.
  */
 
 export function KeepChangesDialog({
@@ -27,7 +28,7 @@ export function KeepChangesDialog({
   name: ReactNode;
   /** How much would be lost: "You changed 3 lines." */
   lost: ReactNode;
-  /** When saving changes the screens at once (the live presentation): said plainly. */
+  /** When saving changes the screens at once (the live presentation): said plainly, and Keep editing has the focus. */
   live?: ReactNode;
   /** Anything else worth knowing before choosing (what saving does when not live). */
   note?: ReactNode;
@@ -53,7 +54,7 @@ export function KeepChangesDialog({
           <Button
             variant="ghost"
             className="mr-auto"
-            data-autofocus={onSave ? undefined : ''}
+            data-autofocus={onSave && !live ? undefined : ''}
             onClick={onKeepEditing}
           >
             Keep editing
@@ -62,7 +63,12 @@ export function KeepChangesDialog({
             Throw them away
           </Button>
           {onSave && (
-            <Button variant="primary" data-autofocus="" disabled={saving} onClick={onSave}>
+            <Button
+              variant="primary"
+              data-autofocus={live ? undefined : ''}
+              disabled={saving}
+              onClick={onSave}
+            >
               Save changes
             </Button>
           )}
