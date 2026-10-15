@@ -131,6 +131,8 @@ async function sendFrame(frame: VideoFrame): Promise<void> {
   await frame.copyTo(data, options);
   const key = `${format}:${rect.width}x${rect.height}`;
   if (key !== sentFormat) {
+    // The encoder starts again for it (Session 28: said, so the log shows what changed).
+    if (sentFormat !== '') say(`the frames are now ${key} (they were ${sentFormat})`);
     sentFormat = key;
     port.postMessage({ kind: 'format', width: rect.width, height: rect.height, format });
   }
