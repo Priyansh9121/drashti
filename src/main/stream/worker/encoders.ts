@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { ffmpegEnv } from './ffmpeg-env';
 import type { StreamPreset } from '../../../shared/stream';
 
 /*
@@ -126,7 +127,7 @@ export function tryEncoder(
         'null',
         '-',
       ],
-      { stdio: 'ignore', windowsHide: true },
+      { stdio: 'ignore', windowsHide: true, env: ffmpegEnv() },
     );
     const timer = setTimeout(() => {
       child.kill('SIGKILL');

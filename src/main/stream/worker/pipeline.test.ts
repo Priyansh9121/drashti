@@ -58,10 +58,17 @@ function listener(port: number, file: string): ChildProcess {
       '-y',
       file,
     ],
-    { stdio: 'ignore' },
+    // The listener, YouTube's stand-in, never writes a report of its own (a test sets FFREPORT for Drashti).
+    { stdio: 'ignore', env: withoutReport() },
   );
   children.push(child);
   return child;
+}
+
+function withoutReport(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env['FFREPORT'];
+  return env;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -162,6 +169,104 @@ describe.skipIf(!existsSync(ffmpeg))('the stream pipeline, with FFmpeg', () => {
     expect(droppedAt).toBeGreaterThan(1);
     expect(secs.at(-1) ?? 0).toBeGreaterThan(droppedAt);
   }, 120_000);
+
+  it('FFmpeg never gets the environment Drashti was started with: FFREPORT set for Drashti writes no report holding the key (Session 28, MED-4)', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-pipeline-'));
+    // FFREPORT's options are split at ':', so a Windows drive's has to be escaped.
+    const report = join(dir, 'ffreport.log')
+      .replaceAll('\\', '/')
+      .replace(/^([A-Za-z]):/u, '$1\\:');
+    const was = process.env['FFREPORT'];
+    process.env['FFREPORT'] = `file=${report}:level=32`;
+    try {
+      const port = await freePort();
+      const seen: { live: boolean } = { live: false };
+      const watched = new StreamPipeline({
+        status: (st) => {
+          seen.live ||= st.live.state === 'live';
+        },
+        log: () => undefined,
+      });
+      await watched.start({ ffmpeg, platform: process.platform, preset, encoder: null, caFile: null });
+      const { stop } = feed(watched);
+      try {
+        listener(port, join(dir, 'got.flv'));
+        await sleep(500);
+        watched.goLive(`rtmp://127.0.0.1:${port}/live2`, KEY);
+        await until('on air', () => seen.live);
+        await sleep(1500);
+        watched.endLive();
+      } finally {
+        stop();
+        watched.stop();
+      }
+      await sleep(500);
+      expect(statSync(join(dir, 'got.flv')).size).toBeGreaterThan(1000);
+      expect(readdirSync(dir).filter((f) => f.startsWith('ffreport'))).toEqual([]);
+    } finally {
+      if (was === undefined) delete process.env['FFREPORT'];
+      else process.env['FFREPORT'] = was;
+    }
+  }, 60_000);
+
+  it('the key goes to FFmpeg apart from the address (-rtmp_playpath): what FFmpeg itself says never holds it, and the listener gets the stream by it (Session 28, decision 17)', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-pipeline-'));
+    const port = await freePort();
+    const said: string[] = [];
+    const seen: { state: string } = { state: '' };
+    const p = new StreamPipeline({
+      status: (st) => {
+        seen.state = st.live.state;
+      },
+      log: () => undefined,
+      connectionLine: (line) => said.push(line),
+    });
+    await p.start({ ffmpeg, platform: process.platform, preset, encoder: null, caFile: null });
+    const { stop } = feed(p);
+    let heard = '';
+    try {
+      // Nothing listening yet: FFmpeg says it cannot connect, naming the address.
+      p.goLive(`rtmp://127.0.0.1:${port}/live2`, KEY);
+      await until('a refused connection', () => seen.state === 'reconnecting');
+      // Then the listener, which warns of any other stream name than its own (live2/KEY).
+      const listening = spawn(
+        ffmpeg,
+        [
+          '-hide_banner',
+          '-loglevel',
+          'info',
+          '-listen',
+          '1',
+          '-i',
+          `rtmp://127.0.0.1:${port}/live2/${KEY}`,
+          '-c',
+          'copy',
+          '-f',
+          'flv',
+          '-y',
+          join(dir, 'got.flv'),
+        ],
+        { stdio: ['ignore', 'ignore', 'pipe'], env: withoutReport() },
+      );
+      children.push(listening);
+      listening.stderr.on('data', (d: Buffer) => {
+        heard += d.toString();
+      });
+      await until('on air', () => seen.state === 'live', 40_000);
+      await sleep(1500);
+      p.endLive();
+    } finally {
+      stop();
+      p.stop();
+    }
+    // The listener's file, once what it got is written.
+    await sleep(1000);
+    expect(said.length).toBeGreaterThan(0);
+    expect(said.join('\n')).not.toContain(KEY);
+    expect(said.join('\n')).toContain(`127.0.0.1:${String(port)}`);
+    expect(heard).not.toContain('Unexpected stream');
+    expect(statSync(join(dir, 'got.flv')).size).toBeGreaterThan(1000);
+  }, 90_000);
 
   it('records without going live; when the disk runs low the recording stops and says why, and the stream goes on', async () => {
     dir = mkdtempSync(join(tmpdir(), 'drashti-pipeline-'));
