@@ -1981,3 +1981,25 @@ test('every built-in theme, and the Themes window with them (Session 26 step 14)
   }
   await app.close();
 });
+
+test('a stopped screen’s notice at the top of the window (Session 26h)', async () => {
+  const { app } = await launchApp({ DRASHTI_TEST_GIVE_UP: '1' });
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  const screenId = await setUpScreen(win, 'Placeholder hall', 0);
+  const out = await outputPage(app);
+  await expect(out.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const id = (await d.library.listPresentations()).find((p) => p.name === 'Language test slides')?.id ?? '';
+    await d.engine.dispatch({ type: 'goLive', presentationId: id, slideIndex: 0 });
+  });
+  // As a screen that kept failing does: given up on, until Try again.
+  await app.evaluate((_electron, id) => {
+    (globalThis as unknown as { drashtiTestGiveUp?: (screenId: string) => void }).drashtiTestGiveUp?.(id);
+  }, screenId);
+  await expect(win.getByTestId('screen-stopped-notice')).toBeVisible();
+  await shot(win, 'screen-stopped-notice');
+  await app.close();
+});
