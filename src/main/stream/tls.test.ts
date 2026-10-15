@@ -10,19 +10,21 @@ describe('the stream server’s certificate (Session 23)', () => {
     const caFile = streamAuthorities('darwin', there);
     expect(caFile).toBe('/etc/ssl/cert.pem');
     expect(caFile).toBe(MAC_AUTHORITIES);
-    const args = connectionArgs('rtmps://a.rtmps.youtube.com:443/live2/k', caFile);
-    // An output option: after the input, right before the address.
-    expect(args.slice(-3)).toEqual([
+    const args = connectionArgs('rtmps://a.rtmps.youtube.com:443/live2', 'k', caFile);
+    // An output option: after the input, before the key and the address (the key apart from it, Session 28).
+    expect(args.slice(-5)).toEqual([
       '-ca_file',
       '/etc/ssl/cert.pem',
-      'rtmps://a.rtmps.youtube.com:443/live2/k',
+      '-rtmp_playpath',
+      'k',
+      'rtmps://a.rtmps.youtube.com:443/live2',
     ]);
     expect(args.indexOf('-ca_file')).toBeGreaterThan(args.indexOf('pipe:0'));
   });
 
   it('never turns the check off', () => {
     for (const caFile of [MAC_AUTHORITIES, null]) {
-      const args = connectionArgs('rtmps://a.rtmps.youtube.com/live2/k', caFile).join(' ');
+      const args = connectionArgs('rtmps://a.rtmps.youtube.com/live2', 'k', caFile).join(' ');
       expect(args).not.toMatch(/tls_verify|verify 0|-verify/u);
     }
   });
@@ -30,11 +32,11 @@ describe('the stream server’s certificate (Session 23)', () => {
   it('on macOS without the file, and on Windows, FFmpeg keeps its own way', () => {
     expect(streamAuthorities('darwin', missing)).toBeNull();
     expect(streamAuthorities('win32', there)).toBeNull();
-    expect(connectionArgs('rtmps://a.rtmps.youtube.com/live2/k', null)).not.toContain('-ca_file');
+    expect(connectionArgs('rtmps://a.rtmps.youtube.com/live2', 'k', null)).not.toContain('-ca_file');
   });
 
   it('plain RTMP is never given an authorities file', () => {
-    expect(connectionArgs('rtmp://127.0.0.1:1935/live2/k', MAC_AUTHORITIES)).not.toContain('-ca_file');
+    expect(connectionArgs('rtmp://127.0.0.1:1935/live2', 'k', MAC_AUTHORITIES)).not.toContain('-ca_file');
   });
 
   it('a certificate that could not be checked is said in plain words, not as a dropped connection', () => {

@@ -1,5 +1,6 @@
 import { type MessagePortMain, utilityProcess } from 'electron';
 import { join } from 'node:path';
+import { redact } from './redact';
 import type { FromStreamWorker, ToStreamWorker } from './worker/protocol';
 
 /** The built worker sits next to the main bundle (see electron.vite.config.ts). */
@@ -17,11 +18,12 @@ export interface StreamWorker {
 /** Start the stream worker as an Electron utility process. */
 export function spawnStreamWorker(log: (line: string) => void): StreamWorker {
   const child = utilityProcess.fork(streamWorkerPath(), [], { serviceName: 'Drashti stream', stdio: 'pipe' });
+  // Its own output, as it comes (never meant to carry a key, but an RTMP address in it is hidden: MED-4).
   child.stdout?.on('data', (data: Buffer) => {
-    log(data.toString().trimEnd());
+    log(redact(data.toString().trimEnd()));
   });
   child.stderr?.on('data', (data: Buffer) => {
-    log(data.toString().trimEnd());
+    log(redact(data.toString().trimEnd()));
   });
   return {
     send: (message) => {
