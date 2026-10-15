@@ -49,6 +49,7 @@ import { LinkClient, openMediaFromMain, pairWithMain } from './link-client';
 import { MediaCache } from './media-cache';
 import { NodeStore, ShowSaver, type NodeFile } from './node-state';
 import { plural } from '../../shared/text';
+import { sw } from '../switches';
 
 /*
  * Drashti as a Node (Session 13): no library, no show controls and no sound.
@@ -263,7 +264,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   const reports = new Map<string, OutputReport>();
   // Tests only (never a packaged Drashti): a node's outputs held at one moment of the engine's time, as Main's
   // are (Session 27), so a node and Main can be compared pixel for pixel part-way through a transition.
-  if (!app.isPackaged && process.env['DRASHTI_TEST_CLOCK_HOLD'] === '1')
+  if (!app.isPackaged && sw('DRASHTI_TEST_CLOCK_HOLD') === '1')
     (globalThis as { drashtiTestHoldClock?: (at: number | null) => number }).drashtiTestHoldClock = (at) => {
       let reached = 0;
       for (const win of outputWindows.values())
@@ -750,7 +751,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   void loadPage(nodeWindow, 'node');
   nodeWindow.on('close', (event) => {
     const showing = manager.status().filter((st) => st.state === 'showing').length;
-    if (showing === 0 || process.env['DRASHTI_NO_QUIT_CONFIRM'] === '1') return;
+    if (showing === 0 || sw('DRASHTI_NO_QUIT_CONFIRM') === '1') return;
     const options = {
       type: 'warning' as const,
       buttons: ['Keep showing', 'Quit Drashti'],

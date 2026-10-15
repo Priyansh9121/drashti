@@ -4,7 +4,8 @@ import { join } from 'node:path';
 /*
  * Where the bundled FFmpeg is (scripts/fetch-ffmpeg.mjs puts it there):
  * in the app's resources when packaged, in vendor/ffmpeg/<platform>-<arch>
- * when run from the repository. DRASHTI_FFMPEG can point elsewhere.
+ * when run from the repository. DRASHTI_FFMPEG can point elsewhere, unpackaged only (Session 30): a
+ * packaged Drashti always runs its own.
  */
 
 export interface FfmpegPlace {
@@ -18,7 +19,7 @@ export interface FfmpegPlace {
 
 export function ffmpegCandidates(p: FfmpegPlace): string[] {
   const exe = p.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
-  if (p.override) return [p.override];
+  if (p.override && !p.packaged) return [p.override];
   return p.packaged
     ? [join(p.resourcesPath, 'ffmpeg', exe)]
     : [join(p.appPath, 'vendor', 'ffmpeg', `${p.platform}-${p.arch}`, exe)];
