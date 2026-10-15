@@ -139,7 +139,7 @@ const Thumb = memo(function Thumb({
           // The border and the red underglow turn live with the caption, in one frame: no fade.
           'group w-full overflow-hidden rounded-lg border-2 bg-black text-left',
           live
-            ? 'border-live shadow-thumb'
+            ? 'border-live shadow-live-thumb'
             : found
               ? 'border-accent shadow-thumb'
               : 'border-line shadow-thumb hover:border-field',
@@ -444,35 +444,6 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
   );
   const playlist = useMemo(() => (item ? { playlistId: item.playlistId, itemId: item.id } : null), [item]);
   const [thumb, setThumb] = usePersistentState('slides.thumb', THUMB.initial, isThumbSize);
-  const list = useRef<HTMLUListElement>(null);
-  const glow = useRef<HTMLSpanElement>(null);
-  // The glow follows the live thumbnail: after every change, and as the grid reflows.
-  useLayoutEffect(() => {
-    const grid = list.current;
-    const light = glow.current;
-    if (!light) return;
-    const place = () => {
-      const live = grid?.querySelector<HTMLElement>('[data-testid="slide-thumb"][aria-current="true"]');
-      if (!live) {
-        light.style.opacity = '0';
-        return;
-      }
-      const width = live.offsetWidth * 0.84;
-      light.style.width = `${String(width)}px`;
-      // Where it is in the list, and the list in the scrolling part the glow is placed in.
-      const x = (grid?.offsetLeft ?? 0) + live.offsetLeft + (live.offsetWidth - width) / 2;
-      const y = (grid?.offsetTop ?? 0) + live.offsetTop + live.offsetHeight - 12;
-      light.style.transform = `translate(${String(x)}px, ${String(y)}px)`;
-      light.style.opacity = '1';
-    };
-    place();
-    if (!grid) return;
-    const watch = new ResizeObserver(place);
-    watch.observe(grid);
-    return () => {
-      watch.disconnect();
-    };
-  });
   const help = useWhatIsThis('slides');
   if (!doc || !order)
     return selectedId && !doc ? (
@@ -578,10 +549,7 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
         />
       </div>
       {help.card && <div className="shrink-0 pt-2">{help.card}</div>}
-      <div className="relative min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-6">
-        {/* The live slide's red underglow: one glow on a layer of its own, moved under the live
-            thumbnail by the compositor (Session 26g), so a slide change never draws a blur. */}
-        <span ref={glow} aria-hidden="true" className="live-glow" data-testid="live-glow" />
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-6">
         {order.slides.length === 0 && (
           <EmptyState icon={Presentation} title="No slides yet">
             Use Edit words to write its words, and each blank line starts a slide.
@@ -590,9 +558,8 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
         {order.slides.length > 0 && (
           // Every slide in play order, wrapping across the width: a chorus sung again shows again.
           <ul
-            ref={list}
             data-testid="slide-list"
-            className="relative z-[1] grid gap-3"
+            className="grid gap-3"
             style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${thumb}px, 1fr))` }}
           >
             {order.slides.map((o, i) => {

@@ -21,13 +21,13 @@ async function lampHeader(header: Locator, name: string) {
   // The mark beside the name, decoration only: the heading still reads "Drashti".
   await expect(header.getByRole('heading', { level: 1 })).toHaveText(name);
   await expect(header.locator('h1 svg[data-mark]')).toBeVisible();
-  // The lamp's light across the header and the hairline beneath it, both drawn once on a layer of
-  // their own under the words, as radial gradients only (app.css, "The lamp"), on the panel's colour.
+  // The lamp's light across the header and the hairline beneath it, under the words, as radial
+  // gradients only and on no layer of their own (app.css, "The lamp"), on the panel's colour.
   const light = await style(header, 'background-image', '::before');
   expect(light).toMatch(LAMP);
   expect(light.match(/radial-gradient\(/gu)).toHaveLength(2);
   expect(light).not.toContain('linear-gradient');
-  expect(await style(header, 'will-change', '::before')).toBe('transform');
+  expect(await style(header, 'will-change', '::before')).toBe('auto');
   expect(await style(header, 'background-color')).toBe('rgb(30, 16, 29)');
   expect(light).not.toContain(WARNING);
 }
@@ -40,7 +40,7 @@ test('the mark beside the name and the lamp’s light, in Pro Mode and Simple Mo
   // The window: the lamp's light from the top left, over ink, never a filled shape.
   const window = win.locator('.lamp-window').first();
   expect(await style(window, 'background-image', '::before')).toMatch(LAMP);
-  expect(await style(window, 'will-change', '::before')).toBe('transform');
+  expect(await style(window, 'will-change', '::before')).toBe('auto');
   expect(await style(window, 'background-color')).toBe('rgb(21, 10, 20)');
 
   // Empty places: the unlit lamp in its faint light, with no colour of a warning.
@@ -49,7 +49,7 @@ test('the mark beside the name and the lamp’s light, in Pro Mode and Simple Mo
   const empty = win.locator('.lamp-empty').filter({ has: playlists });
   await expect(empty.getByTestId('unlit-lamp')).toBeVisible();
   expect(await style(empty, 'background-image', '::before')).toMatch(LAMP);
-  expect(await style(empty, 'will-change', '::before')).toBe('transform');
+  expect(await style(empty, 'will-change', '::before')).toBe('auto');
   expect(await style(empty, 'background-color')).toBe('rgba(0, 0, 0, 0)');
 
   // A warning is still a filled amber rail with an icon and words (the component gallery's).
@@ -79,36 +79,31 @@ test('the live slide’s red underglow sits under the live thumbnail and moves w
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
-  const glow = win.getByTestId('live-glow');
   const thumbs = win.getByTestId('slide-thumb');
   await expect(thumbs.first()).toBeVisible();
+  /** Which thumbnails glow red beneath (the live colour in their shadow). */
+  const glowing = () =>
+    thumbs.evaluateAll((all) =>
+      all.flatMap((t, i) => (getComputedStyle(t).boxShadow.includes('rgba(212, 42, 49') ? [i] : [])),
+    );
   // Nothing live yet: no glow.
-  expect(await style(glow, 'opacity')).toBe('0');
-  /** The glow's middle and top, against a thumbnail's middle and bottom edge (page pixels). */
-  const under = async (i: number) => {
-    const [g, t] = await Promise.all([glow.boundingBox(), thumbs.nth(i).boundingBox()]);
-    if (!g || !t) return false;
-    return Math.abs(g.x + g.width / 2 - (t.x + t.width / 2)) < 2 && Math.abs(g.y - (t.y + t.height - 12)) < 2;
-  };
+  expect(await glowing()).toEqual([]);
   for (const i of [1, 0, 2]) {
     await thumbs.nth(i).click();
     await expect(thumbs.nth(i)).toHaveAttribute('aria-current', 'true');
     // In the same frame as the border: no transition or animation on it.
-    expect(await style(glow, 'opacity')).toBe('1');
-    expect(await under(i)).toBe(true);
-    expect(await style(glow, 'transition-duration')).toBe('0s');
-    expect(await style(glow, 'animation-name')).toBe('none');
+    expect(await glowing()).toEqual([i]);
+    expect(await style(thumbs.nth(i), 'transition-duration')).toBe('0s');
+    expect(await style(thumbs.nth(i), 'animation-name')).toBe('none');
   }
-  // A layer of its own, drawn once and moved by the compositor.
-  expect(await style(glow, 'will-change')).toBe('transform');
   await app.close();
 });
 
 /**
- * What in a page the graphics chip would have to work out a new way of drawing for (app.css, "Depth"
- * and "The lamp"): a soft shadow round a rounded corner (each needs a mask or a blur profile drawn
- * first), and a gradient anywhere but the lamp's light on a layer of its own (radial only) or the
- * primary's plum. Slides themselves (inside a scene) are the audience's, not Diya's.
+ * What in a page costs a computer without a graphics chip (app.css, "Depth" and "The lamp"): a soft
+ * shadow round a rounded corner and any gradient but the lamp's light (radial) or the primary's plum,
+ * each a new way of drawing for the chip to work out, and a layer of its own (will-change), which is
+ * put together again at every frame. Slides themselves (inside a scene) are the audience's.
  */
 function newWaysToDraw(page: Page) {
   return page.evaluate(() => {
@@ -156,20 +151,22 @@ function newWaysToDraw(page: Page) {
           }
         }
         if (st.backgroundImage.includes('gradient(')) {
-          const lamp =
-            st.willChange.includes('transform') && !/(linear|conic)-gradient\(/u.test(st.backgroundImage);
+          const lamp = !/(linear|conic)-gradient\(/u.test(st.backgroundImage);
           const plum = pseudo === null && el.getAttribute('data-variant') === 'primary';
           if (!lamp && !plum) found.push(`${name(el, pseudo)}: ${st.backgroundImage.slice(0, 80)}`);
         }
+        if (st.willChange !== 'auto')
+          found.push(`${name(el, pseudo)}: a layer of its own (${st.willChange})`);
       }
     }
     return [...new Set(found)];
   });
 }
 
-test('in the window, Simple Mode and every component, nothing new for the graphics chip to work out', async () => {
+test('in the window, Simple Mode and every component: no new way of drawing, no layer of its own', async () => {
   // Each new way of drawing costs a computer without a graphics chip a pause the first time (CI's Mac:
-  // 100–600 ms each, in the Performance check's slide changes), so Diya keeps to the few it needs.
+  // 100–600 ms each, in the Performance check's slide changes), and each layer costs it every frame,
+  // so Diya keeps to the few ways it needs and adds no layer.
   const { app } = await launchApp({ DRASHTI_DIAGNOSTICS: '1' });
   const win = await operatorPage(app);
   await operatorReady(win);
