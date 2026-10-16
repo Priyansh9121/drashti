@@ -3972,7 +3972,9 @@ function start(): void {
       return;
     }
     // The quit goes ahead: no window may open now (the stream's page, the audio player), or the quit
-    // stops (Session 23).
+    // stops (Session 23). Said in the log, with how long Drashti's own stops took (will-quit), so a slow
+    // quit says whether Drashti or what came after was slow.
+    if (!quitStarted) log.info('Quitting');
     quitStarted = true;
     streaming.quitting();
   });
@@ -4403,6 +4405,8 @@ if (!app.requestSingleInstanceLock()) {
     sleepGuard.release();
   });
   app.on('will-quit', () => {
+    const started = performance.now();
     stops.run();
+    log.info(`Quit: Drashti's own stops took ${String(Math.round(performance.now() - started))} ms`);
   });
 }

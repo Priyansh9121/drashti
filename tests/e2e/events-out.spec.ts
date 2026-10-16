@@ -209,7 +209,7 @@ test('a receiver that never answers changes neither slide changes nor quitting',
   test.setTimeout(120_000);
   const r = await receiver();
   r.setMode('hang');
-  const { app } = await launchApp();
+  const { app, userData } = await launchApp();
   try {
     const win = await operatorPage(app);
     await operatorReady(win);
@@ -248,7 +248,13 @@ test('a receiver that never answers changes neither slide changes nor quitting',
     expect(withHung).toBeLessThan(without + 25);
     const t = Date.now();
     await app.close();
-    expect(Date.now() - t).toBeLessThan(10_000);
+    const quitMs = Date.now() - t;
+    // Drashti's own stops, as its log says (the events process stopped with them): none waits on the receiver.
+    const own = /Quit: Drashti's own stops took (\d+) ms/u.exec(
+      readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8'),
+    );
+    expect(Number(own?.[1] ?? Infinity)).toBeLessThan(2000);
+    expect(quitMs).toBeLessThan(10_000);
   } finally {
     await app.close().catch(() => undefined);
     await r.close();
