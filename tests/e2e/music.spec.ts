@@ -29,24 +29,42 @@ const audioLayer = (win: Page) =>
 const dispatch = (win: Page, type: 'pauseMusic' | 'resumeMusic' | 'clearAll' | 'putBack' | 'musicNext') =>
   win.evaluate((t) => (globalThis as PageGlobals).drashti.engine.dispatch({ type: t }), type);
 
-/** The volumes an audio element had, sampled every 20 ms for a while (fades show as steps). */
-function volumes(audio: Page, mediaId: string, ms: number): Promise<number[]> {
-  return audio.evaluate(
-    ({ id, ms }) =>
-      new Promise<number[]>((resolve) => {
-        const seen: number[] = [];
-        const t = setInterval(() => {
-          const el = document.querySelector<HTMLAudioElement>(`audio[data-media-id="${id}"]`);
-          seen.push(el ? el.volume : -1);
-        }, 20);
-        setTimeout(() => {
-          clearInterval(t);
-          resolve(seen);
-        }, ms);
-      }),
-    { id: mediaId, ms },
-  );
+interface VolumeSamples {
+  volumeSamples?: { seen: number[]; timer: ReturnType<typeof setInterval> };
 }
+
+/**
+ * The volumes an audio element has, sampled every 20 ms (fades show as steps; -1 while it is not there), from
+ * before what changes it until collected. Started before the click, it sees the whole fade however late the
+ * click takes effect (a CI Mac, its operator window busy warming up, acted on Pause after the second it was
+ * sampled for: no step seen).
+ */
+async function sampleVolumes(audio: Page, mediaId: string): Promise<() => Promise<number[]>> {
+  await audio.evaluate((id) => {
+    const seen: number[] = [];
+    const timer = setInterval(() => {
+      const el = document.querySelector<HTMLAudioElement>(`audio[data-media-id="${id}"]`);
+      seen.push(el ? el.volume : -1);
+    }, 20);
+    (globalThis as VolumeSamples).volumeSamples = { seen, timer };
+  }, mediaId);
+  return async () => {
+    // A moment more, so the last samples come after what the test waited for.
+    await audio.waitForTimeout(60);
+    return audio.evaluate(() => {
+      const samples = (globalThis as VolumeSamples).volumeSamples;
+      if (samples) clearInterval(samples.timer);
+      return samples?.seen ?? [];
+    });
+  };
+}
+
+/** The volume an audio element has now (-1 while it is not there). */
+const volumeOf = (audio: Page, mediaId: string) =>
+  audio.evaluate(
+    (id) => document.querySelector<HTMLAudioElement>(`audio[data-media-id="${id}"]`)?.volume ?? -1,
+    mediaId,
+  );
 
 test('tracks play one after another with fades; pause, Clear audio, Put it back, a sound put up and recovery', async () => {
   test.setTimeout(150_000);
@@ -76,9 +94,11 @@ test('tracks play one after another with fades; pause, Clear audio, Put it back,
 
   // Play: the first track fades in on the audio player.
   const audio = await audioPage(first.app);
+  const fadingIn = await sampleVolumes(audio, toneOne);
   await panel.getByTestId('music-play').click();
   await expect.poll(async () => (await audioLayer(win))?.mediaId).toBe(toneOne);
-  const fadeIn = await volumes(audio, toneOne, 900);
+  await expect.poll(() => volumeOf(audio, toneOne)).toBeGreaterThan(0.99);
+  const fadeIn = await fadingIn();
   expect(fadeIn.some((v) => v >= 0 && v < 0.6)).toBe(true);
   expect(fadeIn.at(-1)).toBeCloseTo(1, 1);
   // Three seconds on, the next starts where it ended (its length learned by the audio player).
@@ -89,8 +109,10 @@ test('tracks play one after another with fades; pause, Clear audio, Put it back,
   await expect(panel.getByTestId('music-now')).toContainText('Placeholder tone two');
 
   // Pause: it fades out and makes no sound; Play goes on from where it was.
+  const fadingOut = await sampleVolumes(audio, toneTwo);
   await panel.getByTestId('music-pause').click();
-  const fadeOut = await volumes(audio, toneTwo, 1000);
+  await expect(audio.locator(`audio[data-media-id="${toneTwo}"]`)).toHaveCount(0);
+  const fadeOut = await fadingOut();
   expect(fadeOut.filter((v) => v > 0 && v < 0.95).length).toBeGreaterThan(2);
   expect(fadeOut.at(-1)).toBe(-1);
   const paused = await audioLayer(win);
