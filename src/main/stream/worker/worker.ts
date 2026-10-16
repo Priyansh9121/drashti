@@ -45,7 +45,7 @@ port.on('message', (event) => {
       pipeline.endLive();
       return;
     case 'record':
-      pipeline.record(message.file, message.keepFreeBytes);
+      pipeline.record(message.file, message.keepFreeBytes, message.partBytes);
       return;
     case 'stopRecording':
       pipeline.stopRecording(message.message);

@@ -31,8 +31,9 @@ import { safeAddress } from './redact';
 import type { StreamWorker } from './stream-worker';
 import { MAC_AUTHORITIES, streamAuthorities } from './tls';
 import { pageAlive } from '../windows/send';
-import type { WorkerStatus } from './worker/protocol';
+import type { ToStreamWorker, WorkerStatus } from './worker/protocol';
 import { NO_SOUND_MS, type NoSound, NoSoundWatch } from './no-sound';
+import { bytesPerHourAt, freeBytesOf, recordingWarning } from './recording-drive';
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileStamp } from '../../shared/format';
@@ -81,6 +82,10 @@ export interface StreamServiceDeps {
   onlyThisComputer?: boolean;
   /** Tests (DRASHTI_TEST_NO_SOUND_MS): how long quiet counts as No sound; 20 s otherwise. */
   noSoundMs?: number;
+  /** Tests (DRASHTI_TEST_RECORD_PART_BYTES): how much a recording's part holds; 3.5 GB otherwise. */
+  recordPartBytes?: number;
+  /** Whether a folder is on a FAT drive, or null when that cannot be told (./recording-drive.ts). */
+  recordingDrive?(folder: string): Promise<boolean | null>;
   log(level: 'info' | 'warn', message: string): void;
 }
 
@@ -152,6 +157,7 @@ export class StreamService {
     freeBytes: null,
     secondsLeft: null,
     message: null,
+    warning: null,
   };
   private encoder: string | null = null;
   /** The encoder found to work here (the worker tries it first next time). */
@@ -682,8 +688,7 @@ export class StreamService {
       const places = this.placesOf(profile);
       if (places.ok) worker.send({ type: 'live', url: profile.url, key: places.key, more: places.more });
     }
-    if (this.recordWanted && this.recording.file)
-      worker.send({ type: 'record', file: this.nextFile(), keepFreeBytes: KEEP_FREE_BYTES });
+    if (this.recordWanted && this.recording.file) worker.send(this.recordMessage());
   }
 
   /** Give the worker a port to the stream's page for its frames and sound. */
@@ -902,25 +907,68 @@ export class StreamService {
     if (this.recordWanted) return { ok: false, message: 'It is already recording.' };
     const ffmpeg = this.deps.ffmpegPath();
     if (!ffmpeg) return { ok: false, message: FFMPEG_MISSING };
-    if (!this.recording.folder || !existsSync(this.recording.folder))
+    const folder = this.recording.folder;
+    if (!folder || !existsSync(folder))
       return { ok: false, message: 'Choose a folder for recordings first.' };
     this.ensureStreamGroup();
     this.recordWanted = true;
     this.resume = null;
-    this.recording = { ...this.recording, state: 'starting', message: null, bytes: 0, since: null };
+    this.recording = {
+      ...this.recording,
+      state: 'starting',
+      message: null,
+      warning: null,
+      bytes: 0,
+      since: null,
+    };
     const worker = this.ensureWorker(ffmpeg);
-    worker.send({ type: 'record', file: this.nextFile(), keepFreeBytes: KEEP_FREE_BYTES });
+    worker.send(this.recordMessage());
     this.startHeartbeat();
     this.saveState();
     this.contextChanged();
+    void this.lookAtRecordingDrive(folder);
     return { ok: true, status: this.status() };
+  }
+
+  /** The worker's next recording: a new file, the space kept free, and how much a part holds. */
+  private recordMessage(): ToStreamWorker {
+    return {
+      type: 'record',
+      file: this.nextFile(),
+      keepFreeBytes: KEEP_FREE_BYTES,
+      ...(this.deps.recordPartBytes ? { partBytes: this.deps.recordPartBytes } : {}),
+    };
+  }
+
+  /**
+   * As a recording starts: is its folder on a FAT32 drive, or its disk nearly full? Said once, plainly,
+   * in the status bar and the Stream panel (Session 31, MED-2); nothing when it cannot be told.
+   */
+  private async lookAtRecordingDrive(folder: string): Promise<void> {
+    const preset = STREAM_PRESETS[this.activeProfile().preset];
+    const [fat, freeBytes] = await Promise.all([
+      this.deps.recordingDrive ? this.deps.recordingDrive(folder) : Promise.resolve(null),
+      freeBytesOf(folder),
+    ]);
+    if (!this.recordWanted || this.recording.folder !== folder) return;
+    const warning = recordingWarning({
+      fat,
+      freeBytes,
+      bytesPerHour: bytesPerHourAt(preset),
+      keepFree: KEEP_FREE_BYTES,
+    });
+    if (!warning) return;
+    this.recording = { ...this.recording, warning };
+    this.deps.log('warn', `Recording: ${warning}`);
+    this.deps.notice(warning);
+    this.changed();
   }
 
   stopRecording(): StreamResult {
     if (!this.recordWanted) return { ok: false, message: 'Nothing is being recorded.' };
     this.recordWanted = false;
     this.worker?.send({ type: 'stopRecording' });
-    this.recording = { ...this.recording, state: 'off', secondsLeft: null, message: null };
+    this.recording = { ...this.recording, state: 'off', secondsLeft: null, message: null, warning: null };
     this.saveState();
     this.settleWorker();
     this.changed();

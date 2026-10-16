@@ -297,6 +297,11 @@ export function RecordingControls({ status }: { status: StreamStatus }) {
         {rec.folder ? `Recordings go in ${rec.folder}` : 'Choose where recordings go first.'}
       </p>
       {rec.message && <Notice tone="warning">{rec.message}</Notice>}
+      {rec.warning && (
+        <Notice tone="warning" data-testid="recording-warning">
+          {rec.warning}
+        </Notice>
+      )}
       {on && (
         <div className="grid grid-cols-3 gap-2">
           <Figure

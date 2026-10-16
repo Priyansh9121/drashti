@@ -28,8 +28,11 @@ export type ToStreamWorker =
    */
   | { type: 'live'; url: string; key: string; more?: { id: string; url: string; key: string }[] }
   | { type: 'endLive' }
-  /** Record into this file (a new one each time). Keep this much of the disk free. */
-  | { type: 'record'; file: string; keepFreeBytes: number }
+  /**
+   * Record into this file (a new one each time). Keep this much of the disk free. A part holds at most
+   * `partBytes` (3.5 GB unless a test says less), then the recording goes on in the next (Session 31).
+   */
+  | { type: 'record'; file: string; keepFreeBytes: number; partBytes?: number }
   | { type: 'stopRecording'; message?: string }
   /** Stop everything and exit. */
   | { type: 'stop' };

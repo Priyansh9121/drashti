@@ -212,6 +212,7 @@ import { DropFolder } from './import/drop-folder';
 import { DROP_SETTLE_MS } from '../shared/drop-folder';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
 import { StreamService } from './stream/stream-service';
+import { onFat } from './stream/recording-drive';
 import { findFfmpeg } from './stream/ffmpeg-path';
 import { ffmpegSelfTest } from './stream/ffmpeg-selftest';
 import { youtubeSelfTest } from './links/youtube-selftest';
@@ -1708,6 +1709,9 @@ function start(): void {
     onlyThisComputer: testLinkGuard,
     // Tests: No sound after this many ms of quiet, not 20 s (Session 31).
     noSoundMs: swMs('DRASHTI_TEST_NO_SOUND_MS') ?? undefined,
+    // Tests: a recording's part holds this many bytes, not 3.5 GB (Session 31).
+    recordPartBytes: Number(sw('DRASHTI_TEST_RECORD_PART_BYTES') ?? 0) || undefined,
+    recordingDrive: (folder) => onFat(folder),
     titleMarks: (marks) => {
       if (operatorWindow && !operatorWindow.isDestroyed())
         operatorWindow.setTitle(marks ? `Drashti — ${marks}` : 'Drashti');
