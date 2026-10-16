@@ -43,17 +43,27 @@ export interface TestVideoOptions {
 
 /** Record a short WebM in the page (in real time) and save it, with its duration written in. */
 export async function makeTestVideo(page: Page, file: string, options: TestVideoOptions): Promise<string> {
-  // A page that draws nothing for a while (a busy machine) records nothing: then it records again.
+  const frameMs = 1000 / (options.fps ?? 30);
+  // A page that draws nothing for a while (a busy machine) records nothing, or frames for only part of the
+  // time (a CI Mac's GPU busy with the operator window's warm-up held a page's frames from 0.3 s on): a
+  // clip given the whole length but ending early loops back at once, so a test sees it barely play. Then
+  // it records again.
   for (let attempt = 1; ; attempt++) {
     const recorded = await recordWebm(page, options);
     const bytes = Buffer.from(recorded.base64, 'base64');
-    if (bytes.length >= 4 && bytes.readUInt32BE(0) === EBML_HEADER) {
+    const webm = bytes.length >= 4 && bytes.readUInt32BE(0) === EBML_HEADER;
+    const last = webm ? Math.max(0, ...webmVideoFrameTimes(bytes)) : 0;
+    if (webm && last >= recorded.ms * 0.9 - frameMs) {
       writeFileSync(file, setWebmDuration(bytes, recorded.ms));
       return file;
     }
-    // Five tries, a moment apart: a busy CI computer can leave a page undrawn for a while.
-    if (attempt === 5) throw new Error(`The page recorded no video in five tries (${bytes.length} bytes).`);
-    await page.waitForTimeout(500);
+    const problem = webm
+      ? `its frames ended at ${String(Math.round(last))} ms of ${String(Math.round(recorded.ms))}`
+      : `no video (${String(bytes.length)} bytes)`;
+    // Five tries, a second apart: a busy CI computer can hold a page up for a while.
+    if (attempt === 5) throw new Error(`The page recorded no whole video in five tries: ${problem}.`);
+    console.log(`A test video was recorded again: ${problem}.`);
+    await page.waitForTimeout(1000);
   }
 }
 
@@ -169,6 +179,55 @@ function children(buf: Uint8Array, parent: Element): Element[] {
     at = e.end;
   }
   return out;
+}
+
+const TRACK_ENTRY = 0xae;
+const TRACK_NUMBER = 0xd7;
+const TRACK_TYPE = 0x83;
+const VIDEO_TRACK = 1;
+const CLUSTER_TIMECODE = 0xe7;
+const SIMPLE_BLOCK = 0xa3;
+const BLOCK = 0xa1;
+/** Entered rather than skipped: Tracks, a TrackEntry, Info, a Cluster and a BlockGroup. */
+const MASTERS = new Set([0x1654ae6b, TRACK_ENTRY, INFO, 0x1f43b675, 0xa0]);
+
+/**
+ * When each video frame of a WebM is shown (ms), in the file's order. Read element by element through the
+ * segment, entering the elements that hold frames, so MediaRecorder's live clusters of unknown size read too.
+ */
+export function webmVideoFrameTimes(webm: Uint8Array): number[] {
+  const header = readElement(webm, 0);
+  const segment = readElement(webm, header.end);
+  const uint = (e: Element) => webm.subarray(e.dataStart, e.end).reduce((n, b) => n * 256 + b, 0);
+  let scale = 1_000_000;
+  let entry = { number: 0, type: 0 };
+  let videoTrack = 0;
+  let cluster = 0;
+  const times: number[] = [];
+  let at = segment.dataStart;
+  while (at < webm.length) {
+    const e = readElement(webm, at);
+    if (MASTERS.has(e.id)) {
+      if (e.id === TRACK_ENTRY) entry = { number: 0, type: 0 };
+      at = e.dataStart;
+      continue;
+    }
+    if (!Number.isFinite(e.end)) break;
+    if (e.id === TIMECODE_SCALE) scale = uint(e);
+    else if (e.id === TRACK_NUMBER || e.id === TRACK_TYPE) {
+      entry = e.id === TRACK_NUMBER ? { ...entry, number: uint(e) } : { ...entry, type: uint(e) };
+      if (entry.type === VIDEO_TRACK && entry.number > 0) videoTrack = entry.number;
+    } else if (e.id === CLUSTER_TIMECODE) cluster = uint(e);
+    else if (e.id === SIMPLE_BLOCK || e.id === BLOCK) {
+      const track = readVint(webm, e.dataStart, false);
+      // The frame's time from its cluster's, a signed 16-bit number.
+      const hi = webm[e.dataStart + track.length] ?? 0;
+      const relative = hi * 256 + (webm[e.dataStart + track.length + 1] ?? 0) - (hi & 0x80 ? 0x10000 : 0);
+      if (track.value === videoTrack) times.push(((cluster + relative) * scale) / 1_000_000);
+    }
+    at = e.end;
+  }
+  return times;
 }
 
 /** An element id and an 8-byte size, so the size never needs to fit a shorter field. */
