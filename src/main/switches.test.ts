@@ -21,6 +21,8 @@ const INTERNAL = new Set([
   'DRASHTI_NODE_STATS',
   // The installer's check of a signature, given to the PowerShell it starts.
   'DRASHTI_SIGNED_FILE',
+  // A drive (Session 31: is the recording's folder on FAT32?), given to the PowerShell it starts.
+  'DRASHTI_DRIVE',
   // What the tests' fake yt-dlp is told, by Drashti, when the tests run it (links/youtube-tools.ts).
   'DRASHTI_FAKE_YT_DLP_CONFIG',
   // What the performance check tells the helpers it starts (perf-devices.ts, perf-nodes.ts).

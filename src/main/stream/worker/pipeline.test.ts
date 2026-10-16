@@ -1,5 +1,14 @@
 import { type ChildProcess, spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  fdatasync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -431,5 +440,78 @@ describe.skipIf(!existsSync(ffmpeg))('the stream pipeline, with FFmpeg', () => {
       stop();
       p.stop();
     }
+  }, 120_000);
+
+  it('a long recording goes on in parts, each from a picture with its own header, none lost or doubled; names never collide, and the disk keeps it every 10 s at most (Session 31, MED-2)', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-pipeline-'));
+    // A part left from an earlier recording of the same name: never written over.
+    const left = Buffer.from('an earlier recording, kept as it is');
+    writeFileSync(join(dir, 'recording part 2.mkv'), left);
+    // Every cluster the encoder gives, from the recording's first picture to its stop: what the parts must hold.
+    let counting: 'off' | 'waiting' | 'on' = 'off';
+    let produced = 0;
+    const syncs: number[] = [];
+    const p = new StreamPipeline({
+      status: () => undefined,
+      log: () => undefined,
+      cluster: (c) => {
+        if (counting === 'waiting' && c.startsPicture) counting = 'on';
+        if (counting === 'on') produced++;
+      },
+      datasync: (fd, done) => {
+        syncs.push(Date.now());
+        fdatasync(fd, done);
+      },
+    });
+    const parts = () =>
+      readdirSync(dir)
+        .filter((f) => f.endsWith('.mkv') && f !== 'recording part 2.mkv')
+        .sort();
+    await p.start({ ffmpeg, platform: process.platform, preset, encoder: null, caFile: null });
+    const feeding = feed(p);
+    let startedAt = 0;
+    try {
+      counting = 'waiting';
+      startedAt = Date.now();
+      // At most 150 KB to a part (about 1.5 s here): the next part from the next picture after that.
+      p.record(join(dir, 'recording.mkv'), 1024 ** 2, 150_000);
+      await until('three parts', () => parts().length >= 3, 40_000);
+      await until('two flushes', () => syncs.length >= 2, 40_000);
+      p.stopRecording();
+      counting = 'off';
+    } finally {
+      feeding.stop();
+      p.stop();
+    }
+    await sleep(1500);
+    // The earlier part as it was; the new ones named on from it, never over it.
+    expect(readFileSync(join(dir, 'recording part 2.mkv'))).toEqual(left);
+    const names = parts();
+    expect(names).toContain('recording.mkv');
+    expect(names).toContain('recording part 3.mkv');
+    expect(names).not.toContain('recording part 2.mkv');
+    let total = 0;
+    for (const name of names) {
+      let header = false;
+      const clusters: MkvCluster[] = [];
+      const splitter = new MkvSplitter(
+        () => {
+          header = true;
+        },
+        (c) => clusters.push(c),
+      );
+      splitter.push(readFileSync(join(dir, name)));
+      expect(header, `${name} has its own header`).toBe(true);
+      expect(clusters[0]?.startsPicture, `${name} starts with a picture`).toBe(true);
+      expect(clusters[0]?.timestamp, `${name} starts at 0`).toBe(0);
+      total += clusters.length;
+    }
+    expect(produced).toBeGreaterThan(0);
+    expect(total).toBe(produced);
+    // Kept on the disk about every 10 s, the first within 10 s of starting.
+    const gaps = [syncs[0] ?? 0, ...syncs.slice(1)].map(
+      (t, i) => t - (i === 0 ? startedAt : (syncs[i - 1] ?? 0)),
+    );
+    for (const gap of gaps) expect(gap).toBeLessThanOrEqual(10_000);
   }, 120_000);
 });

@@ -236,6 +236,11 @@ export interface StreamStatus {
     freeBytes: number | null;
     secondsLeft: number | null;
     message: string | null;
+    /**
+     * Said as the recording started (Session 31): its folder is on a FAT32 drive (it goes on in parts of
+     * 3.5 GB), or the disk has room for less than an hour. null otherwise, and when not recording.
+     */
+    warning: string | null;
   };
   /** The encoder in use: e.g. "VideoToolbox (hardware)". */
   encoder: string | null;

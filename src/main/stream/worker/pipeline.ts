@@ -1,5 +1,5 @@
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
-import { createWriteStream, statfsSync, type WriteStream } from 'node:fs';
+import { createWriteStream, fdatasync, openSync, statfsSync, type WriteStream } from 'node:fs';
 import { setPriority } from 'node:os';
 import { dirname } from 'node:path';
 import { placeName, type StreamPreset } from '../../../shared/stream';
@@ -38,7 +38,22 @@ export interface PipelineHooks {
   connectionLine?(line: string): void;
   /** Free bytes on the disk holding this folder (a stand-in in tests; the disk's own figure otherwise). */
   freeBytes?(dir: string): number | null;
+  /** Tests: every cluster the encoder gives, before it is handed on (to count what a recording must hold). */
+  cluster?(cluster: MkvCluster): void;
+  /** Tests: ask the disk to keep what is written (fdatasync otherwise), to see how often it is asked. */
+  datasync?(fd: number, done: (error: NodeJS.ErrnoException | null) => void): void;
 }
+
+/**
+ * A recording goes on in a new part once its part holds this much, at the next picture (Session 31,
+ * MED-2): under FAT32's 4 GB for a file, so a USB stick never cuts a long sabha's recording short.
+ */
+export const PART_BYTES = 3.5 * 1024 ** 3;
+/** The disk is asked to keep what has been written about this often (fdatasync), off the hot path. */
+const SYNC_EVERY_MS = 9000;
+
+/** A recording's later part beside its first: "<name> part 2.mkv", "<name> part 3.mkv"... */
+export const partFile = (first: string, n: number) => `${first.replace(/\.mkv$/u, '')} part ${String(n)}.mkv`;
 
 const SAMPLE_RATE = 48_000;
 const CHANNELS = 2;
@@ -246,7 +261,18 @@ export class StreamPipeline {
 
   // ---- recording
   private recordFile: WriteStream | null = null;
+  /** The part's own file descriptor, for fdatasync (null between parts). */
+  private recordFd: number | null = null;
   private recordConsumer: Consumer | null = null;
+  /** The recording's first file, the number of the part being written, and the most a part may hold. */
+  private firstFile = '';
+  private part = 1;
+  private partBytes = PART_BYTES;
+  /** Bytes written to every part so far (the rate counts across parts). */
+  private recordedBytes = 0;
+  private lastSync = 0;
+  private syncing = false;
+  private syncFailed = false;
   /**
    * The encoder stopped while recording: the recording goes on in a new file
    * once the encoder is back and has a picture (its new stream has a header
@@ -533,9 +559,20 @@ export class StreamPipeline {
   // ---- out ------------------------------------------------------------------------------
 
   private toConsumers(cluster: MkvCluster): void {
+    this.hooks.cluster?.(cluster);
     // A recording held while the encoder was down goes on, in a new file, from the new encoder's first picture.
     if (this.rollWaiting && this.header && pictureStart(cluster)) {
       this.rollWaiting = false;
+      this.rollRecording();
+    } else if (
+      this.recordFile &&
+      this.recordConsumer?.started &&
+      this.header &&
+      pictureStart(cluster) &&
+      this.recording.bytes >= this.partBytes
+    ) {
+      // A part full: the next goes on from this picture, with its own header (Session 31, MED-2).
+      this.log('info', `The recording goes on in part ${String(this.part + 1)}`);
       this.rollRecording();
     }
     if (this.recordConsumer && this.recordFile) {
@@ -568,9 +605,15 @@ export class StreamPipeline {
 
   // ---- recording -----------------------------------------------------------------------
 
-  record(file: string, keepFreeBytes: number): void {
+  record(file: string, keepFreeBytes: number, partBytes = PART_BYTES): void {
     this.stopRecording();
     this.keepFree = keepFreeBytes;
+    this.partBytes = partBytes;
+    this.firstFile = file;
+    this.part = 1;
+    this.recordedBytes = 0;
+    this.lastSync = Date.now();
+    this.syncFailed = false;
     const free = this.freeBytes(file);
     if (free !== null && free < keepFreeBytes) {
       this.recording = { ...this.recording, state: 'off', message: this.lowSpace(free) };
@@ -583,24 +626,44 @@ export class StreamPipeline {
   }
 
   private openRecording(file: string): void {
-    const out = createWriteStream(file, { flags: 'wx' });
+    // Opened here, at once and only if no file has the name (never over one), so its descriptor is
+    // known for fdatasync from the first byte.
+    let fd: number;
+    try {
+      fd = openSync(file, 'wx');
+    } catch (error) {
+      this.log(
+        'warn',
+        `The recording could not be written: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      this.stopRecording('The recording stopped: the file could not be written.');
+      return;
+    }
+    this.openOn(file, fd);
+  }
+
+  private openOn(file: string, fd: number): void {
+    const out = createWriteStream(file, { fd });
     out.on('error', (error) => {
       this.log('warn', `The recording could not be written: ${error.message}`);
       this.stopRecording('The recording stopped: the file could not be written.');
     });
     this.recordFile = out;
+    this.recordFd = fd;
     this.recordConsumer = newConsumer();
+    // A later part carries the recording on: its start, and how fast it grows, stay as they were.
+    const goingOn = this.recording.state === 'recording';
     this.recording = {
       state: 'recording',
       file,
-      since: this.recording.state === 'recording' ? this.recording.since : Date.now(),
+      since: goingOn ? this.recording.since : Date.now(),
       bytes: 0,
-      rate: null,
+      rate: goingOn ? this.recording.rate : null,
       freeBytes: this.freeBytes(file),
       message: null,
     };
-    this.bytesSeen = [];
-    this.log('info', 'Recording started');
+    if (!goingOn) this.bytesSeen = [];
+    this.log('info', this.part > 1 ? `Recording: part ${String(this.part)}` : 'Recording started');
   }
 
   /** The encoder is down: the recording's file is finished, and the next one waits for the encoder (rollWaiting). */
@@ -608,17 +671,49 @@ export class StreamPipeline {
     if (!this.recordFile) return;
     this.recordFile.end();
     this.recordFile = null;
+    this.recordFd = null;
     this.recordConsumer = null;
     this.rollWaiting = true;
   }
 
-  /** The encoder started again: the recording carries on in a new file beside the old one. */
+  /**
+   * The encoder started again, or the part is full: the recording carries on in a new part beside the
+   * first, numbered on from the last, the first free number (a file already there is never written over).
+   */
   private rollRecording(): void {
-    const file = this.recording.file;
-    if (!file) return;
+    if (!this.firstFile) return;
+    for (let n = this.part + 1; n <= this.part + 1000; n++) {
+      const file = partFile(this.firstFile, n);
+      let fd: number;
+      try {
+        fd = openSync(file, 'wx');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EEXIST') continue;
+        this.log(
+          'warn',
+          `The recording could not be written: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        break;
+      }
+      this.recordFile?.end();
+      this.part = n;
+      this.openOn(file, fd);
+      return;
+    }
+    this.failRecording('The recording stopped: the file could not be written.');
+  }
+
+  /** The next part could not be made: the recording ends here, saying why (the stream goes on). */
+  private failRecording(message: string): void {
+    this.rollWaiting = false;
     this.recordFile?.end();
-    const next = file.replace(/( part \d+)?\.mkv$/u, '') + ` part ${Date.now() % 100000}.mkv`;
-    this.openRecording(next);
+    this.recordFile = null;
+    this.recordFd = null;
+    this.recordConsumer = null;
+    this.recording = { ...this.recording, state: 'off', rate: null, message };
+    this.log('info', `Recording stopped: ${message}`);
+    this.quietIfIdle();
+    this.report();
   }
 
   private writeRecording(parts: Buffer[]): void {
@@ -631,7 +726,27 @@ export class StreamPipeline {
     for (const part of parts) {
       out.write(part);
       this.recording.bytes += part.length;
+      this.recordedBytes += part.length;
     }
+  }
+
+  /**
+   * About every 10 s the disk is asked to keep what has been written (fdatasync), so a power cut loses
+   * seconds, not minutes: one at a time, never waited for (Session 31, MED-2).
+   */
+  private keepOnDisk(now: number): void {
+    const out = this.recordFile;
+    const fd = this.recordFd;
+    if (!out || fd === null || this.syncing || out.writableEnded || now - this.lastSync < SYNC_EVERY_MS)
+      return;
+    this.syncing = true;
+    this.lastSync = now;
+    (this.hooks.datasync ?? fdatasync)(fd, (error) => {
+      this.syncing = false;
+      if (!error || this.syncFailed || this.recordFd !== fd) return;
+      this.syncFailed = true;
+      this.log('warn', `The recording could not be kept on the disk as it goes: ${error.message}`);
+    });
   }
 
   stopRecording(message?: string): void {
@@ -643,6 +758,7 @@ export class StreamPipeline {
     }
     this.recordFile?.end();
     this.recordFile = null;
+    this.recordFd = null;
     this.recordConsumer = null;
     this.recording = { ...this.recording, state: 'off', rate: null, message: message ?? null };
     this.log('info', message ? `Recording stopped: ${message}` : 'Recording stopped');
@@ -882,14 +998,15 @@ export class StreamPipeline {
           : null,
       };
     }
-    // The recording: how fast it grows, the disk's free space, and the time left.
+    // The recording: how fast it grows (across parts), the disk's free space, and the time left.
     if (this.recordFile && this.recording.file) {
       const now = Date.now();
-      this.bytesSeen.push({ at: now, bytes: this.recording.bytes });
+      this.keepOnDisk(now);
+      this.bytesSeen.push({ at: now, bytes: this.recordedBytes });
       while ((this.bytesSeen[0]?.at ?? now) < now - 10_000) this.bytesSeen.shift();
       const first = this.bytesSeen[0];
       const rate =
-        first && now > first.at ? ((this.recording.bytes - first.bytes) * 1000) / (now - first.at) : null;
+        first && now > first.at ? ((this.recordedBytes - first.bytes) * 1000) / (now - first.at) : null;
       const free = this.freeBytes(this.recording.file);
       this.recording = { ...this.recording, rate, freeBytes: free };
       if (free !== null && free < this.keepFree) this.stopRecording(this.lowSpace(free));
