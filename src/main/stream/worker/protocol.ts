@@ -79,6 +79,11 @@ export interface WorkerStatus {
   recording: WorkerRecording;
   /** Something went wrong with the encoder itself (none of the outputs can work). */
   error: string | null;
+  /**
+   * How long the sound given to the encoder has stayed below -50 dBFS, a second at a time (No sound,
+   * Session 31: ./sound-meter.ts); 0 while it is heard, and when neither on air nor recording.
+   */
+  quietMs: number;
 }
 
 export type FromStreamWorker =

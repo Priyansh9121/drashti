@@ -1706,6 +1706,8 @@ function start(): void {
     fakeDevices,
     // Tests: a stream goes only to this computer (the guard every e2e run sets; Session 28).
     onlyThisComputer: testLinkGuard,
+    // Tests: No sound after this many ms of quiet, not 20 s (Session 31).
+    noSoundMs: swMs('DRASHTI_TEST_NO_SOUND_MS') ?? undefined,
     titleMarks: (marks) => {
       if (operatorWindow && !operatorWindow.isDestroyed())
         operatorWindow.setTitle(marks ? `Drashti — ${marks}` : 'Drashti');

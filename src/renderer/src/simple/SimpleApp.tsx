@@ -38,6 +38,7 @@ import { leaveSimpleMode, useMode } from '../operator/mode-store';
 import { NextPreview } from '../operator/NextPreview';
 import { RecoveryBanner } from '../operator/RecoveryBanner';
 import { StoppedScreens } from '../screens/StoppedScreens';
+import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { LiveStatus } from '../operator/StatusLine';
 import { NoticeArea, StatusBar } from '../operator/StatusBar';
 import { useKeymap } from '../operator/useKeymap';
@@ -447,8 +448,10 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
         </Button>
       </header>
       <RecoveryBanner />
-      {/* A hall screen that stopped (Session 26h): in the flow, so it never covers the big buttons. */}
+      {/* A hall screen that stopped (Session 26h), or no sound on the stream (Session 31): in the flow, so
+          they never cover the big buttons. */}
       <StoppedScreens />
+      <NoSoundNotice />
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(18rem,26rem)_minmax(0,1fr)]">
         <PlaylistColumn />
         <main aria-label="On the screens" className="flex min-h-0 flex-col overflow-hidden pb-3">

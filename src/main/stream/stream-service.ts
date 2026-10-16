@@ -32,6 +32,7 @@ import type { StreamWorker } from './stream-worker';
 import { MAC_AUTHORITIES, streamAuthorities } from './tls';
 import { pageAlive } from '../windows/send';
 import type { WorkerStatus } from './worker/protocol';
+import { NO_SOUND_MS, type NoSound, NoSoundWatch } from './no-sound';
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileStamp } from '../../shared/format';
@@ -78,6 +79,8 @@ export interface StreamServiceDeps {
    * loudly: no test ever streams to the internet.
    */
   onlyThisComputer?: boolean;
+  /** Tests (DRASHTI_TEST_NO_SOUND_MS): how long quiet counts as No sound; 20 s otherwise. */
+  noSoundMs?: number;
   log(level: 'info' | 'warn', message: string): void;
 }
 
@@ -165,8 +168,12 @@ export class StreamService {
   /** The profile last saved with the state, for a save made when the library can no longer be read. */
   private savedProfileId: string | null = null;
   private profilesVersion = 0;
+  /** No sound (Session 31): judged from the worker's quiet count and the microphone's state. */
+  private readonly noSoundWatch: NoSoundWatch;
+  private noSound: NoSound | null = null;
 
   constructor(private readonly deps: StreamServiceDeps) {
+    this.noSoundWatch = new NoSoundWatch(deps.noSoundMs ?? NO_SOUND_MS);
     const saved = streamLayoutSchema.safeParse(deps.settings.get(LAYOUT_SETTING));
     this.layout = saved.success ? saved.data : 'camera';
     const folder = z.string().safeParse(deps.settings.get(FOLDER_SETTING));
@@ -567,12 +574,48 @@ export class StreamService {
       ffmpeg: { available: this.deps.ffmpegPath() !== null, version: FFMPEG_VERSION },
       resume: this.resume,
       profilesVersion: this.profilesVersion,
+      noSound: this.noSound ? { ...this.noSound, message: this.noSoundMessage(this.noSound) } : null,
     };
+  }
+
+  /**
+   * No sound (Session 31): on air or recording, how long the worker has heard nothing, and whether the
+   * microphone is gone. Said in the log only when it starts and ends, never every second.
+   */
+  private judgeSound(): void {
+    const onAir = this.live.state === 'live' || this.live.state === 'reconnecting';
+    const active = onAir || this.recording.state === 'recording';
+    const input: SoundState = this.systemBlocked.microphone ? 'blocked' : this.inputs.sound;
+    const quietMs = this.worker ? (this.workerStatus?.quietMs ?? 0) : 0;
+    const r = this.noSoundWatch.update({ active, quietMs, input, now: this.deps.now() });
+    if (!r.changed) return;
+    const before = this.noSound;
+    this.noSound = r.now;
+    if (r.now)
+      this.deps.log(
+        'warn',
+        r.now.why === 'input'
+          ? 'No sound: the sound input is gone, and nothing has reached the stream since'
+          : `No sound: nothing above -50 dBFS has reached the stream for ${String(Math.round(this.noSoundWatch.limit / 1000))} s`,
+      );
+    else if (before && active) this.deps.log('info', 'The stream has sound again');
+  }
+
+  /** What the No sound notice says: why, and what to do. */
+  private noSoundMessage(n: NoSound): string {
+    if (n.why === 'input')
+      return `${this.inputsMessage() ?? 'The sound input is not working.'} Until then the stream has no sound.`;
+    const seconds = String(Math.round(this.noSoundWatch.limit / 1000));
+    const profile = this.activeProfile();
+    if (profile.sound === null && !profile.mixOwnSound)
+      return `No sound input is chosen for the stream, so it has had no sound for ${seconds} seconds. Choose one in Stream settings.`;
+    return `The stream has had no sound for ${seconds} seconds. Check the microphone, its cable and the sound desk.`;
   }
 
   private marks = '';
 
   private changed(): void {
+    this.judgeSound();
     const status = this.status();
     this.deps.sendToOperator(IPC.stream.changed, status);
     this.deps.statusChanged?.(status);

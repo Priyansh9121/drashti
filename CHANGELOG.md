@@ -4,6 +4,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 ## Unreleased
 
+- On air or recording, the header says No sound, beside ON AIR and REC and in Simple Mode too, when nothing has reached the stream for 20 seconds, or 3 seconds after its microphone is unplugged; a notice says what to check. It goes when sound is back, and Drashti never changes the microphone itself.
 - Choosing the stream's camera and sound input quickly, or just as it goes live, no longer leaves it on an older choice: the newest always wins.
 
 ## 1.0.0-alpha.5 (16 Oct 2026)

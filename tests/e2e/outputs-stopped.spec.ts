@@ -1,8 +1,8 @@
-import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { TEST_LINES } from '../../src/main/db/seed';
+import { clearOfShowControls } from './fit';
 import { launchApp, operatorPage, operatorReady, outputPage, setUpScreen, type PageGlobals } from './helpers';
 
 /*
@@ -66,25 +66,6 @@ test('an output given up on is Stopped in Screens and the status line, never a m
   );
   await app.close();
 });
-
-/** Nothing that runs the show is under `notice`: Next, Back, the layer bar, LIVE, Simple Mode's big buttons. */
-async function clearOfShowControls(win: Page, notice: Locator): Promise<void> {
-  const box = await notice.boundingBox();
-  expect(box).not.toBeNull();
-  const controls = await win.locator('[data-show-control]').evaluateAll((els) =>
-    els
-      .map((el) => el.getBoundingClientRect())
-      .filter((r) => r.width > 0 && r.height > 0)
-      .map((r) => ({ x: r.x, y: r.y, width: r.width, height: r.height })),
-  );
-  expect(controls.length).toBeGreaterThan(0);
-  const n = box ?? { x: 0, y: 0, width: 0, height: 0 };
-  for (const c of controls)
-    expect(
-      n.x < c.x + c.width && c.x < n.x + n.width && n.y < c.y + c.height && c.y < n.y + n.height,
-      `the notice ${JSON.stringify(n)} covers a show control ${JSON.stringify(c)}`,
-    ).toBe(false);
-}
 
 test('a stopped screen raises a notice naming it, in Pro and Simple Mode, never over the show controls; Try again brings it back and the notice goes', async () => {
   test.setTimeout(150_000);

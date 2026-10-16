@@ -1,4 +1,4 @@
-import type { Locator } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { settled } from './a11y';
 
@@ -32,4 +32,23 @@ export async function expectFits(panel: Locator, what: string): Promise<void> {
     return out;
   });
   expect(problems, what).toEqual([]);
+}
+
+/** Nothing that runs the show is under `notice`: Next, Back, the layer bar, LIVE, Simple Mode's big buttons. */
+export async function clearOfShowControls(win: Page, notice: Locator): Promise<void> {
+  const box = await notice.boundingBox();
+  expect(box).not.toBeNull();
+  const controls = await win.locator('[data-show-control]').evaluateAll((els) =>
+    els
+      .map((el) => el.getBoundingClientRect())
+      .filter((r) => r.width > 0 && r.height > 0)
+      .map((r) => ({ x: r.x, y: r.y, width: r.width, height: r.height })),
+  );
+  expect(controls.length).toBeGreaterThan(0);
+  const n = box ?? { x: 0, y: 0, width: 0, height: 0 };
+  for (const c of controls)
+    expect(
+      n.x < c.x + c.width && c.x < n.x + n.width && n.y < c.y + c.height && c.y < n.y + n.height,
+      `the notice ${JSON.stringify(n)} covers a show control ${JSON.stringify(c)}`,
+    ).toBe(false);
 }
