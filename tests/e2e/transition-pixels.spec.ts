@@ -50,6 +50,21 @@ async function splitPicture(page: Page, file: string, left: readonly number[], r
   return file;
 }
 
+/** The output showing a screen, ready to draw the show (Session 27's warm-up). */
+async function outputFor(app: ElectronApplication, screenId: string): Promise<Page> {
+  let found: Page | undefined;
+  await expect
+    .poll(async () => {
+      for (const p of outputPages(app))
+        if ((await p.getByTestId('output-root').getAttribute('data-screen')) === screenId) found = p;
+      return found !== undefined;
+    })
+    .toBe(true);
+  if (!found) throw new Error(`no output for ${screenId}`);
+  await outputReady(found);
+  return found;
+}
+
 const hold = (app: ElectronApplication, at: number | null) =>
   app.evaluate(
     (_e, at) =>
@@ -137,12 +152,13 @@ test('each transition is the same on two screens at the same moment, and gives t
     },
     { oldId, newId },
   );
-  await setUpScreen(win, 'Main Hall', 0);
-  await setUpScreen(win, 'Side Hall', 1);
+  const mainScreen = await setUpScreen(win, 'Main Hall', 0);
+  const sideScreen = await setUpScreen(win, 'Side Hall', 1);
   await expect.poll(() => outputPages(app).length).toBe(2);
-  const [one, two] = outputPages(app);
-  for (const o of [one, two]) if (o) await outputReady(o);
-  if (!one || !two) throw new Error('two screens expected');
+  // Each by its screen, not by the order the windows came: the side hall's can open first (Checkpoint D, a CI
+  // Mac: Bold set for the side hall, and the window taken as the side hall's was the main hall's, still Calm).
+  const one = await outputFor(app, mainScreen);
+  const two = await outputFor(app, sideScreen);
   const both = [one, two];
   // Once round (cut), so both pictures are loaded and drawn before anything is measured.
   const settings = (kind: TransitionKind, durationMs: number) =>
