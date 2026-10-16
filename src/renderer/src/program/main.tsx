@@ -28,16 +28,35 @@ import { HOLD_WARM_UP, SKIP_WARM_UP } from '../render/warm-up-mode';
 const CANVAS = { width: 1920, height: 1080 };
 const sound = new StreamSound();
 
-/** Do what the context asks: the size, the camera, the sound. */
-async function apply(context: ProgramContext): Promise<void> {
+/** Do what the context asks: the size and the sound's settings at once, then the camera and the sound input. */
+function apply(context: ProgramContext): void {
   useProgram.setState({ context });
   setCaptureSize({ width: context.width, height: context.height });
   if (!context.preview) stopPreview();
   if (!context.capturing) stopEncoder();
   sound.setDelay(context.soundDelayMs);
   sound.setOwnSound(context.mixOwnSound, useEngine.getState().state);
-  await applyCameraChoice(context.camera, { width: context.width, height: context.height });
-  await sound.useInput(context.sound);
+  inputsInTurn(context);
+}
+
+/*
+ * The camera and the sound input are opened one choice after another, in the order the choices came, and
+ * a choice already overtaken by a newer one is skipped. Opened side by side, an older choice whose camera
+ * took longer to start finished last and won: a microphone chosen and then taken away at once (or as the
+ * stream went live) came back on (Session 31).
+ */
+let inputsDone: Promise<void> = Promise.resolve();
+let newestInputs: ProgramContext | null = null;
+
+function inputsInTurn(context: ProgramContext): void {
+  newestInputs = context;
+  inputsDone = inputsDone
+    .then(async () => {
+      if (newestInputs !== context) return;
+      await applyCameraChoice(context.camera, { width: context.width, height: context.height });
+      await sound.useInput(context.sound);
+    })
+    .catch(() => undefined);
 }
 
 function Program() {
@@ -69,14 +88,14 @@ function Program() {
     navigator.mediaDevices.addEventListener('devicechange', () => {
       void listDevices().then(() => {
         const c = useProgram.getState().context;
-        if (c) void apply(c);
+        if (c) apply(c);
       });
     });
     window.drashti.stream.page.onContext((next) => {
-      void apply(next);
+      apply(next);
     });
     void window.drashti.stream.page.context().then((c) => {
-      if (c) void apply(c);
+      if (c) apply(c);
     });
   }, []);
   // Drashti's own sound follows the show, when it goes into the stream.

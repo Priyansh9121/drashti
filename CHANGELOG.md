@@ -2,6 +2,10 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## Unreleased
+
+- Choosing the stream's camera and sound input quickly, or just as it goes live, no longer leaves it on an older choice: the newest always wins.
+
 ## 1.0.0-alpha.5 (16 Oct 2026)
 
 Diya, Drashti's own look, with Next and Back under the live picture and a welcome on the first start; a Bold Movement for any Look; and new connections an admin can turn on. What the hall's screens show only changes where an admin chooses. Update after a sabha, never on the day of one.

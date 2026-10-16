@@ -195,6 +195,46 @@ test('only the stream’s page may use the camera and microphone; the operator w
   await app.close();
 });
 
+test('the stream’s page takes its camera and microphone choices in turn: a microphone, then none at once, leaves none', async () => {
+  const { app } = await launchApp(FAKE);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await win.getByTestId('open-stream').click();
+  const program = await streamPage(app);
+  // The camera and the microphone: the page starts the camera, which takes a moment...
+  await useFakeInputs(win);
+  // ...and, at once, no microphone. The newer choice must win, however long the camera took (Session 31:
+  // the older one used to finish last and open the microphone again).
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const s = await d.stream.status();
+    const r = await d.stream.setInputs(s.inputs.cameras[0] ?? null, null);
+    if (!r.ok) throw new Error(r.message);
+  });
+  const root = program.getByTestId('program-root');
+  await expect(root).toHaveAttribute('data-camera', 'on');
+  // None, and still none 2 s later: the older choice, finishing late, never opens the microphone again.
+  let noneSince: number | null = null;
+  await expect
+    .poll(
+      async () => {
+        if ((await root.getAttribute('data-sound')) !== 'none') {
+          noneSince = null;
+          return 0;
+        }
+        noneSince ??= Date.now();
+        return Date.now() - noneSince;
+      },
+      { intervals: [100], timeout: 10_000 },
+    )
+    .toBeGreaterThanOrEqual(2000);
+  expect((await status(win)).inputs.sound).toBe('none');
+  // And a microphone again: it is used.
+  await useFakeInputs(win);
+  await expect(root).toHaveAttribute('data-sound', 'on');
+  await app.close();
+});
+
 test('the Stream panel, its settings and the stream group in Screens: accessible, and they fit at 1280 x 720', async () => {
   const { app } = await launchApp(FAKE);
   const win = await operatorPage(app);
