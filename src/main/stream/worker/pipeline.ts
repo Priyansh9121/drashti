@@ -10,6 +10,7 @@ import { AUDIO_TRACK, MkvSplitter, MkvWriter, retimeCluster, VIDEO_TRACK } from 
 import { type Progress, ProgressReader } from './progress';
 import type { FromProgram, WorkerLive, WorkerRecording, WorkerStatus } from './protocol';
 import { ffmpegEnv } from './ffmpeg-env';
+import { SoundMeter } from './sound-meter';
 
 /*
  * The stream's pipeline, in the worker process:
@@ -70,6 +71,15 @@ function belowNormal(pid: number | undefined): void {
 
 /** Something written to a stream, without waiting: how far behind it is. */
 const backlog = (s: { writableLength: number } | null | undefined) => s?.writableLength ?? 0;
+
+/** Interleaved 32-bit float sound as numbers, without a copy unless its bytes sit at an odd place. */
+function floats(pcm: Buffer, frames: number): Float32Array {
+  const count = Math.min(Math.floor(pcm.length / 4), frames * CHANNELS);
+  if (pcm.byteOffset % 4 === 0) return new Float32Array(pcm.buffer, pcm.byteOffset, count);
+  const copy = new Float32Array(count);
+  for (let i = 0; i < count; i++) copy[i] = pcm.readFloatLE(i * 4);
+  return copy;
+}
 
 /** One place the encoded stream goes (the recording, or the connection): it waits for a keyframe, then takes every cluster. */
 export interface Consumer {
@@ -256,6 +266,8 @@ export class StreamPipeline {
     message: null,
   };
   private bytesSeen: { at: number; bytes: number }[] = [];
+  /** How loud what the encoder is given is, and how long it has been quiet (No sound, Session 31). */
+  private readonly meter = new SoundMeter(SAMPLE_RATE, CHANNELS);
 
   constructor(private readonly hooks: PipelineHooks) {}
 
@@ -273,6 +285,7 @@ export class StreamPipeline {
       destinations: this.connections.map((c) => ({ id: c.id, name: c.name, ...this.redacted(c.live) })),
       recording: { ...this.recording },
       error: this.error,
+      quietMs: this.meter.quietMs(),
     };
   }
 
@@ -491,6 +504,7 @@ export class StreamPipeline {
     if (backlog(child.stdin) > ENCODER_BACKLOG * 2) return;
     for (const part of writer.block(AUDIO_TRACK, this.samples / SAMPLE_RATE, pcm)) child.stdin.write(part);
     this.samples += frames;
+    this.meter.add(floats(pcm, frames), frames);
     // One frame for every 1/fps s of sound.
     const due = Math.floor((this.samples * preset.fps) / SAMPLE_RATE);
     while (this.frames < due) {
@@ -632,6 +646,7 @@ export class StreamPipeline {
     this.recordConsumer = null;
     this.recording = { ...this.recording, state: 'off', rate: null, message: message ?? null };
     this.log('info', message ? `Recording stopped: ${message}` : 'Recording stopped');
+    this.quietIfIdle();
     this.report();
   }
 
@@ -782,7 +797,13 @@ export class StreamPipeline {
     this.connections = [];
     for (const c of all) this.drop(c);
     this.log('info', 'The stream ended');
+    this.quietIfIdle();
     this.report();
+  }
+
+  /** Neither on air nor recording: the sound's quiet count starts afresh next time (No sound). */
+  private quietIfIdle(): void {
+    if (this.connections.length === 0 && this.recording.state === 'off') this.meter.reset();
   }
 
   /** A live status without the keys in its words. */

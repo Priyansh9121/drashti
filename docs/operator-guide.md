@@ -132,7 +132,9 @@ A clear button is lit, with a dot, while its layer is on the screens.
 
 **A screen is black or frozen.** Open the screens dashboard: its picture shows what that screen really shows. Pro Mode can **Reload** it there. Drashti also restarts a screen that stops drawing by itself, within about 10 seconds. If a screen kept failing, a red notice at the top of the window says so ("“Main Hall 1” has stopped"), in Pro Mode and in Simple Mode, and the status line says **stopped**: Drashti tries it again every few minutes, and **Try again** on the notice (or in Screens) tries at once. The notice goes by itself when the screen is back, or when you close it. If a whole output computer stopped (a node offline), carry on: its screens keep their last picture, and it comes back by itself when the network does.
 
-**No sound.** Check the status bar: it says where the sound goes and warns when the chosen output is missing (Drashti then plays on the computer's own speakers). Check the mixer's channel.
+**No sound in the hall.** Check the status bar: it says where the sound goes and warns when the chosen output is missing (Drashti then plays on the computer's own speakers). Check the mixer's channel.
+
+**No sound on the stream.** While on air or recording, the header shows **No sound** beside ON AIR when nothing has reached the stream for 20 seconds (or 3 seconds after its microphone was unplugged), and a yellow notice under the header says what to check: the microphone, its cable and the sound desk. It goes by itself as soon as sound comes back. Drashti never changes the microphone by itself; choosing another is in Stream settings (Pro Mode).
 
 **The stream says Reconnecting.** Do nothing: Drashti tries again by itself and the recording carries on. The hall's screens are not affected. If it also says **the stream server's certificate could not be checked**, waiting will not help: tell whoever looks after Drashti (the admin guide, section 12).
 

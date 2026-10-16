@@ -249,6 +249,12 @@ export interface StreamStatus {
   resume: { live: boolean; recording: boolean; profileName: string; stoppedAt: number } | null;
   /** Goes up whenever a profile or a key changes: windows read the profiles again. */
   profilesVersion: number;
+  /**
+   * No sound (Session 31): on air or recording, nothing above -50 dBFS has reached the stream for 20 s, or
+   * its microphone has been gone (unplugged) for 3 s with nothing heard since. Shown beside ON AIR and REC
+   * and in a notice, in Pro and Simple Mode; null while sound is heard, and when neither on air nor recording.
+   */
+  noSound: { since: number; why: 'quiet' | 'input'; message: string } | null;
 }
 
 /** One place the stream goes, as the operator sees it (Session 28): the profile's own has the id ''. */
