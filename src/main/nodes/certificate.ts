@@ -1,4 +1,5 @@
 import { createHash, generateKeyPairSync, randomBytes, sign, X509Certificate } from 'node:crypto';
+import { cutText } from '../../shared/text';
 
 /*
  * Main's own certificate for the node link (Session 13). Node's crypto can
@@ -92,7 +93,7 @@ export function pemFingerprint(pem: string): string {
 export function makeIdentity(name: string, now = new Date()): Identity {
   const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
   const algorithm = sequence(oid(ECDSA_WITH_SHA256));
-  const subject = sequence(set(sequence(oid(COMMON_NAME), utf8(name.slice(0, 64) || 'Drashti Main'))));
+  const subject = sequence(set(sequence(oid(COMMON_NAME), utf8(cutText(name, 64) || 'Drashti Main'))));
   const notBefore = new Date(now.getTime() - 24 * 3600 * 1000);
   const notAfter = new Date(now.getTime());
   notAfter.setUTCFullYear(notAfter.getUTCFullYear() + 30);

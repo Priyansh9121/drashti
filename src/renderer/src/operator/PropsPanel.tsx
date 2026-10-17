@@ -14,6 +14,7 @@ import { EmptyState, Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { dispatch } from './actions';
 import { NEW_TEXT_LINE_HEIGHT } from '../../../shared/model';
+import { cutText } from '../../../shared/text';
 
 /*
  * Props: a logo or a fixed line of text that stays up whatever slide is
@@ -104,7 +105,7 @@ function NewProp({ onDone }: { onDone: (made: boolean) => void }) {
       setProblem(kind === 'text' ? 'Type the words first.' : 'Import a picture or video first.');
       return;
     }
-    const name = (kind === 'text' ? text.trim() : (picked?.name ?? 'Picture')).slice(0, 80);
+    const name = cutText(kind === 'text' ? text.trim() : (picked?.name ?? 'Picture'), 80);
     const result = await window.drashti.props.save(null, { name, width: W, height: H, elements: [element] });
     if (result.ok) onDone(true);
     else setProblem(result.message);

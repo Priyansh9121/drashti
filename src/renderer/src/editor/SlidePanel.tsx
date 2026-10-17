@@ -37,6 +37,7 @@ import {
   setBackgroundCue,
   setSoundCue,
 } from './ops';
+import { cutText } from '../../../shared/text';
 
 /*
  * The slide panel: what the inspector shows when nothing on the slide is
@@ -604,7 +605,7 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
             icon={Palette}
             data-testid="theme-from-slide"
             onClick={() => {
-              const name = `${doc.name.slice(0, 60)}: ${slide.label || `slide ${number}`}`.slice(0, 80);
+              const name = cutText(`${cutText(doc.name, 60)}: ${slide.label || `slide ${number}`}`, 80);
               void window.drashti.themes
                 .fromSlide(name, {
                   width: doc.width,

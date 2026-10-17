@@ -12,6 +12,7 @@ import type {
 import { MAX_PICTURE_PAGES, PICTURE_ASSET_NAME, tidyNotes } from '../../shared/pictures';
 import type { ScreenConfig } from '../../shared/screens';
 import { fileProblem } from '../plain-errors';
+import { cutText } from '../../shared/text';
 
 /*
  * Drawing a PDF's pages as pictures (Session 15), in the main process's
@@ -201,7 +202,7 @@ export class PdfPictures {
     const done = raw as Partial<PicturesDone> | null;
     const total = typeof done?.total === 'number' && Number.isInteger(done.total) ? done.total : 0;
     if (typeof done?.error === 'string') {
-      d.finish({ ok: false, message: done.error.slice(0, 300) });
+      d.finish({ ok: false, message: cutText(done.error, 300) });
       return;
     }
     const failed = Array.isArray(done?.failed)

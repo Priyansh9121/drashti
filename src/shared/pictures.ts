@@ -1,3 +1,5 @@
+import { cutText } from './text';
+
 /*
  * PDF, PowerPoint and Keynote as pictures (Session 15). Each page of a
  * document becomes a slide holding one full-frame picture at the canvas
@@ -88,14 +90,16 @@ export function fitPage(
 
 /** Notes as a slide keeps them: lines trimmed, runs of blank lines made one, at most 4,000 characters. */
 export function tidyNotes(text: string): string {
-  return text
-    .replace(/\r\n?/gu, '\n')
-    .split('\n')
-    .map((line) => line.trim())
-    .join('\n')
-    .replace(/\n{3,}/gu, '\n\n')
-    .trim()
-    .slice(0, 4000);
+  return cutText(
+    text
+      .replace(/\r\n?/gu, '\n')
+      .split('\n')
+      .map((line) => line.trim())
+      .join('\n')
+      .replace(/\n{3,}/gu, '\n\n')
+      .trim(),
+    4000,
+  );
 }
 
 /** One picture for the hidden window that makes sharpened copies (Session 26f): its file's bytes, the percent, and what to hand back. */

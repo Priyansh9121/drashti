@@ -13,6 +13,7 @@ import { Panel } from '../ui/Panel';
 import { EmptyState, Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { dispatch } from './actions';
+import { cutText } from '../../../shared/text';
 
 /** A field's choice in its select: "" typed in, a timer's id, or "samvat:gu" / "samvat:en". */
 function fieldChoice(f: MessageField): string {
@@ -48,7 +49,7 @@ function TemplateForm({
   const save = async () => {
     // Keep only the fields the template still has.
     const kept = Object.fromEntries(names.flatMap((n) => (fields[n] ? [[n, fields[n]]] : [])));
-    const body = { name: name.trim() === '' ? template.slice(0, 40) : name, template, fields: kept };
+    const body = { name: name.trim() === '' ? cutText(template, 40) : name, template, fields: kept };
     const result = initial
       ? await window.drashti.messages.update(initial.id, body)
       : await window.drashti.messages.create(body);

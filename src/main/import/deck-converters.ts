@@ -7,6 +7,7 @@ import type { PictureSource } from '../../shared/pictures';
 import { tidyNotes } from '../../shared/pictures';
 import { type PptxSlide, readPptx } from './pictures';
 import { readZipEntries } from './zip';
+import { cutText } from '../../shared/text';
 
 /*
  * Saving a PowerPoint or Keynote file as PDF with the app installed on this
@@ -217,11 +218,13 @@ const sleep = (ms: number, signal?: AbortSignal) =>
   });
 
 const firstLine = (text: string) =>
-  text
-    .split('\n')
-    .map((l) => l.trim())
-    .find((l) => l !== '')
-    ?.slice(0, 300) ?? '';
+  cutText(
+    text
+      .split('\n')
+      .map((l) => l.trim())
+      .find((l) => l !== '') ?? '',
+    300,
+  );
 
 /** Time limits; the tests make them short. */
 export interface ConvertLimits {
@@ -446,7 +449,7 @@ async function convertOnMac(
    * The name the copy is opened under: the file's own (the app may show it in a
    * question), and a number no document of the operator's has.
    */
-  const stem = `${basename(input, extname(input)).slice(0, 60)} (Drashti copy ${String(1000 + Math.floor(Math.random() * 9000))})`;
+  const stem = `${cutText(basename(input, extname(input)), 60)} (Drashti copy ${String(1000 + Math.floor(Math.random() * 9000))})`;
 
   const fail = (reason: string, message: string, extra: { notAllowed?: boolean } = {}): Converted => {
     log(`failed: ${reason}`);

@@ -33,6 +33,7 @@ export const LYRICS_STYLE: TextStyle = {
 // The usual colours for the usual group names: shared/group-colors.ts (Session 26g: Chorus teal).
 import { groupColor } from '../../../shared/group-colors';
 import { NEW_TEXT_LINE_HEIGHT } from '../../../shared/model';
+import { cutText } from '../../../shared/text';
 export { groupColor };
 
 /**
@@ -50,7 +51,7 @@ function slideFromLines(lines: string[], issues: ImportIssue[], typed?: TypedLin
   let text = lines.join('\n');
   const cut = text.length > MAX_SLIDE_CHARS;
   if (cut) {
-    text = text.slice(0, MAX_SLIDE_CHARS);
+    text = cutText(text, MAX_SLIDE_CHARS);
     issues.push({
       severity: 'warning',
       code: 'text-cut',
@@ -85,7 +86,7 @@ function slideFromLines(lines: string[], issues: ImportIssue[], typed?: TypedLin
 export function nameFromFile(fileName: string): string {
   const base = fileName.split(/[\\/]/u).pop() ?? fileName;
   const name = base.replace(/\.[^.]+$/u, '').trim();
-  return name === '' ? 'Untitled' : name.slice(0, 200);
+  return name === '' ? 'Untitled' : cutText(name, 200);
 }
 
 export function parseLyricsText(bytes: Uint8Array, fileName: string): ParsedPresentation {

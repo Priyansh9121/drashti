@@ -4,6 +4,7 @@ import prettier from 'eslint-config-prettier';
 import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import textCut from './tools/eslint/text-cut.mjs';
 
 const nodeBuiltins = [
   'fs',
@@ -48,6 +49,80 @@ export default defineConfig(
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true },
+      ],
+    },
+  },
+  {
+    // Words are cut with cutText, never inside a letter (Sessions 31–36, I18N-5; tools/eslint/text-cut.mjs).
+    // Allowed by name: ids and codes, and cuts at a character the code found. [file, the call, why].
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.ts', '**/*.test.tsx', 'src/main/**/testing/**'],
+    plugins: { drashti: { rules: { 'text-cut': textCut } } },
+    rules: {
+      'drashti/text-cut': [
+        'error',
+        {
+          allow: [
+            // Ids and codes.
+            ['src/main/arti/arti-service.ts', 'toTimeString().slice(0, 5)', 'a time, as 13:05'],
+            ['src/main/backup/scheduled-backups.ts', 'toTimeString().slice(0, 5)', 'a time, as 13:05'],
+            ['src/main/macros/macro-scheduler.ts', 'toTimeString().slice(0, 5)', 'a time, as 13:05'],
+            ['src/main/nodes/certificate.ts', '.slice(0, 14)', 'a certificate’s time, as 20261017093000'],
+            ['src/renderer/src/arti/ArtiPanel.tsx', 'toISOString().slice(0, 10)', 'a date, as 2026-10-17'],
+            ['src/shared/calendar.ts', 'toISOString().slice(0, 10)', 'a date, as 2026-10-17'],
+            ['src/main/import/formats/pp6.ts', '.slice(0, 7)', 'a colour, #rrggbb'],
+            ['src/main/import/formats/pp7.ts', '.slice(0, 7)', 'a colour, #rrggbb'],
+            ['src/main/library/themes.ts', 'background.slice(0, 7)', 'a colour, #rrggbb'],
+            [
+              'src/renderer/src/editor/Inspector.tsx',
+              '.slice(0, 7)',
+              'a colour, #rrggbb without its opacity',
+            ],
+            ['src/renderer/src/editor/SlidePanel.tsx', 'background.slice(0, 7)', 'a colour, #rrggbb'],
+            [
+              'src/main/import/media-store.ts',
+              'sha256.slice(0, 2)',
+              'a hash’s first two letters, its folder',
+            ],
+            ['src/main/import/stand-in-converter.ts', 'hash.slice(0, ', 'a hash'],
+            ['src/main/index.ts', "(a.mediaId ?? '-').slice(0, 8)", 'a media id’s start, for the log'],
+            [
+              'src/renderer/src/network/NetworkPanel.tsx',
+              'code.slice(0, 3)',
+              'a pairing code, in two halves',
+            ],
+            [
+              'src/renderer/src/screens/NodesSection.tsx',
+              'code.slice(0, 3)',
+              'a pairing code, in two halves',
+            ],
+            ['src/shared/nodes.ts', '.slice(0, 16)', 'a fingerprint’s hex letters'],
+            ['src/main/nodes/link-server.ts', 'version.slice(0, 40)', 'a version, as 1.0.0-alpha.6'],
+            ['src/main/network/addresses.ts', 'a.slice(0, zone)', 'an address without its zone'],
+            // Cut at a character the code found.
+            ['src/main/convert/trim.ts', 'name.slice(0, dot)', 'a file’s name before its extension’s dot'],
+            ['src/main/links/unzip.ts', 'leaf.slice(0, dot)', 'a file’s name before its extension’s dot'],
+            ['src/renderer/src/playlists/add-made.tsx', 'last.slice(0, dot)', 'a file’s name before its dot'],
+            [
+              'src/main/links/names.ts',
+              'name.slice(0, name.length - ext.length)',
+              'a file’s name before its extension',
+            ],
+            ['src/main/stream/worker/progress.ts', 'buffer.slice(0, at)', 'FFmpeg’s output up to a newline'],
+            [
+              'src/main/import/rtf/rtf.ts',
+              'style.slice(0, -slant[0].length)',
+              'a font’s name without its style',
+            ],
+            ['src/main/import/rtf/rtf.ts', '.slice(0, dash)', 'a font’s name before its dash'],
+            ['src/shared/translit.ts', 'line.slice(0, at)', 'a line up to the letter made a capital'],
+            [
+              'src/main/import/formats/docx.ts',
+              'run.text.slice(0, run.text.length - cut)',
+              'spaces taken off the end',
+            ],
+          ],
+        },
       ],
     },
   },

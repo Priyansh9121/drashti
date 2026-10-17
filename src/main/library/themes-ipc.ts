@@ -13,6 +13,7 @@ import { handle } from '../ipc/handle';
 import type { Revisions } from './revisions';
 import { applyTheme, themeFromContent } from './themes';
 import { themeContract } from '../../shared/theme-contract';
+import { cutText } from '../../shared/text';
 
 /*
  * The themes' requests: anyone of Drashti's pages may list them; only the
@@ -37,7 +38,7 @@ const ids = z.array(idSchema).min(1).max(10_000);
 function copyName(name: string, taken: ReadonlySet<string>): string {
   for (let n = 1; ; n++) {
     const tail = n === 1 ? ' (copy)' : ` (copy ${String(n)})`;
-    const made = `${name.slice(0, 80 - tail.length)}${tail}`;
+    const made = `${cutText(name, 80 - tail.length)}${tail}`;
     if (!taken.has(made)) return made;
   }
 }
@@ -132,7 +133,7 @@ export function registerThemesIpc({
     const id = idSchema.safeParse(presentationId);
     const rows = id.success ? presentations.content(id.data) : null;
     const name = rows ? presentations.list().find((p) => p.id === rows.presentationId)?.name : undefined;
-    const fields = rows ? themeFromContent(rows, (name ?? 'Theme').slice(0, 80)) : null;
+    const fields = rows ? themeFromContent(rows, cutText(name ?? 'Theme', 80)) : null;
     if (!fields) return { ok: false, message: 'That presentation has no text box to make a theme from.' };
     const made = themes.create(fields, { kind: 'drashti', path: null });
     themesChanged();

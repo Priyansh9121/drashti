@@ -9,6 +9,7 @@ import { Loading } from '../ui/States';
 import { TabPanel, Tabs } from '../ui/Tabs';
 import { GuideText } from './GuideText';
 import { closeGuides, useGuides } from './guides-store';
+import { cutText } from '../../../shared/text';
 
 /*
  * The guides inside Drashti (Sessions 31–36): Help › Guides…, in Pro Mode and Simple Mode (which is given
@@ -32,7 +33,7 @@ export function GuidesDialog() {
 }
 
 /** A passage's words, short enough for a result. */
-const snippet = (text: string) => (text.length > 220 ? `${text.slice(0, 217).trimEnd()}…` : text);
+const snippet = (text: string) => (text.length > 220 ? `${cutText(text, 217).trimEnd()}…` : text);
 
 function GuidesWindow() {
   const guide = useGuides((s) => s.guide);

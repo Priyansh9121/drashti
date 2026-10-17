@@ -23,6 +23,7 @@ import { SectionTitle } from '../ui/Panel';
 import { Loading } from '../ui/States';
 import { Toggle } from '../ui/Toggle';
 import { loadProfiles, streamAction, useStream, watchProgram } from './stream-store';
+import { cutText } from '../../../shared/text';
 
 /*
  * Stream settings: profiles, each with a name, where it goes (the RTMPS
@@ -467,7 +468,7 @@ function SettingsDialog() {
                 void streamAction(() =>
                   window.drashti.stream.saveProfile(null, {
                     ...inputOf(profile),
-                    name: `${profile.name} (copy)`.slice(0, 80),
+                    name: cutText(`${profile.name} (copy)`, 80),
                   }),
                 ).then((r) => {
                   if (r.ok) setShown(r.profiles.activeId);

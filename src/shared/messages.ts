@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { CALENDAR_LANGS, type CalendarLang } from './calendar';
 import type { MessageItem, MessagePart } from './engine/state';
+import { cutText } from './text';
 
 /*
  * Messages (PLAN.md 4.3): templates with fields, such as "Car {plate}
@@ -89,7 +90,7 @@ export function fillMessage(
       text += value;
     }
   }
-  return { message: { id: messageItemId(t.id), text: text.slice(0, 500), parts }, missing: [] };
+  return { message: { id: messageItemId(t.id), text: cutText(text, 500), parts }, missing: [] };
 }
 
 /** The id a template's message has on the messages layer (showing it again replaces it). */
