@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { placeContent, placementTransform } from './scaling';
+import { bottomBand, cropLines, placeContent, shownPart, placementTransform } from './scaling';
 
 const hd = { width: 1920, height: 1080 };
 
@@ -52,5 +52,34 @@ describe('placeContent', () => {
     expect(placementTransform({ scaleX: 0.5, scaleY: 0.25, x: 10, y: -2 })).toBe(
       'translate(10px, -2px) scale(0.5, 0.25)',
     );
+  });
+});
+
+describe('what a screen cuts off, and where its bands fall (Sessions 31–36, SLD-2)', () => {
+  const fourThree = { width: 1024, height: 768 };
+  const wide = { width: 1920, height: 1080 };
+
+  it('a 4:3 slide on a 16:9 Fill group is cut at 96 and 672, and nowhere with Fit or Stretch', () => {
+    expect(shownPart(fourThree, wide, 'fill')).toEqual({ x: 0, y: 96, width: 1024, height: 576 });
+    expect(cropLines(fourThree, wide, 'fill')).toEqual({ across: [96, 672], down: [] });
+    expect(cropLines(fourThree, wide, 'fit')).toEqual({ across: [], down: [] });
+    expect(cropLines(fourThree, wide, 'stretch')).toEqual({ across: [], down: [] });
+    // A 16:9 slide on a 4:3 Fill group loses its sides.
+    const sides = cropLines(wide, fourThree, 'fill');
+    expect({ across: sides.across, down: sides.down.map((n) => Math.round(n * 1000) / 1000) }).toEqual({
+      across: [],
+      down: [240, 1680],
+    });
+    expect(cropLines(wide, wide, 'fill')).toEqual({ across: [], down: [] });
+  });
+
+  it('the ticker’s band (7.5%) on a 1080 slide filling its screen starts at 999', () => {
+    expect(bottomBand(wide, wide, 'fit', 0.075)).toEqual({ top: 999, bottom: 1080 });
+    // Letterboxed (a 16:9 slide on a 4:3 screen, Fit): the band sits in the bar below the slide.
+    expect(bottomBand(wide, fourThree, 'fit', 0.075)).toBeNull();
+    // Cropped (a 4:3 slide filling a 16:9 screen): the band is just above the cut.
+    const band = bottomBand(fourThree, wide, 'fill', 0.075);
+    expect(band?.top).toBeCloseTo(672 - 576 * 0.075, 6);
+    expect(band?.bottom).toBeCloseTo(672, 6);
   });
 });

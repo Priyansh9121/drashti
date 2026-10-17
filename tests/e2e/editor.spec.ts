@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, operatorPage, outputPage, setUpScreen } from './helpers';
+import { chooseMenuItem, importAndGetIds, launchApp, operatorPage, outputPage, setUpScreen } from './helpers';
 import { makeTestImage } from './test-media';
 
 /*
@@ -267,6 +267,96 @@ test('words past their box and words too small for the hall are marked and said 
   const grid = win.getByTestId('slide-thumb');
   await expect(grid.nth(0).getByTestId('thumb-overset')).toBeVisible();
   await expect(grid.nth(1).getByTestId('thumb-overset')).toHaveCount(0);
+  await app.close();
+});
+
+test('View › Show Safe Areas draws 93% and 90%, the ticker’s band at 999 of 1080, a message’s band and where a group cuts the slide; words in the ticker’s band are warned of (Sessions 31–36, SLD-2)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1600, height: 900 });
+  // The hall's group, whose Look shows the ticker (every Look does to begin with).
+  const screenId = await setUpScreen(win);
+  const white: [number, number, number] = [255, 255, 255];
+  const file = join(mkdtempSync(join(tmpdir(), 'drashti-safe-')), 'Placeholder Safe Areas.pro6');
+  writeFileSync(
+    file,
+    pp6Presentation({
+      uuid: 'E2E-SAFE',
+      groups: [
+        {
+          name: 'Verse',
+          uuid: 'E2E-SAFE-G',
+          slides: [
+            {
+              text: [
+                { rtf: cocoaRtf([['Placeholder title', 72, white]]), rect: [160, 200, 1600, 200] },
+                // Words along the very bottom: where the ticker runs.
+                { rtf: cocoaRtf([['Placeholder footer', 48, white]]), rect: [160, 990, 1600, 80] },
+              ],
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  await importAndGetIds(win, [file]);
+  const editor = await openEditor(win, /Placeholder Safe Areas/);
+  const areas = editor.getByTestId('safe-areas');
+  await expect(areas).toHaveCount(0);
+  await chooseMenuItem(app, 'show-safe-areas');
+  await expect(areas).toBeVisible();
+  const box = async (id: string) =>
+    editor.getByTestId(id).evaluate((el: HTMLElement) => ({
+      left: Math.round(parseFloat(el.style.left)),
+      top: Math.round(parseFloat(el.style.top)),
+      width: Math.round(parseFloat(el.style.width)),
+      height: Math.round(parseFloat(el.style.height)),
+    }));
+  // Action-safe and title-safe, in slide pixels: 93% and 90% of 1920 × 1080, centred.
+  expect(await box('safe-action')).toEqual({ left: 67, top: 38, width: 1786, height: 1004 });
+  expect(await box('safe-title')).toEqual({ left: 96, top: 54, width: 1728, height: 972 });
+  await expect(editor.getByTestId('guide-ticker')).toHaveAttribute('data-y', '999');
+  await expect(editor.getByTestId('guide-message')).toBeVisible();
+  // Nothing cuts a 16:9 slide on the 16:9 group: no crop lines. Made 4:3 and Fill, it loses its sides.
+  await expect(editor.getByTestId('guide-crop')).toHaveCount(0);
+  await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.screens.updateScreen(id, {
+        canvasWidth: 1024,
+        canvasHeight: 768,
+        scaling: 'fill',
+      }),
+    screenId,
+  );
+  const crops = editor.getByTestId('guide-crop');
+  await expect(crops).toHaveCount(2);
+  expect(await crops.evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset['x']))).toEqual([
+    '240',
+    '1680',
+  ]);
+  await expect(crops.first()).toHaveAttribute('data-group', 'Main Hall');
+  await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.screens.updateScreen(id, {
+        canvasWidth: 1920,
+        canvasHeight: 1080,
+        scaling: 'fit',
+      }),
+    screenId,
+  );
+  await expect(crops).toHaveCount(0);
+  // The footer's words sit in the ticker's band on the hall's group: the inspector says so; the title's do not.
+  await clickSlide(win, 960, 1030);
+  await expect(editor.getByTestId('inspector-ticker')).toContainText(
+    'Words sit where the ticker runs on “Main Hall”',
+  );
+  await expectNoSeriousA11yIssues(win, 'the slide editor with its safe areas');
+  await clickSlide(win, 960, 300);
+  await expect(editor.getByTestId('inspector-text')).toBeVisible();
+  await expect(editor.getByTestId('inspector-ticker')).toHaveCount(0);
+  // Off again from the menu.
+  await chooseMenuItem(app, 'show-safe-areas');
+  await expect(areas).toHaveCount(0);
   await app.close();
 });
 

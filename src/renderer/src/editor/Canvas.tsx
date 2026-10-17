@@ -1,5 +1,5 @@
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Rect, SlideElement } from '../../../shared/model';
 import type { EditDoc } from '../../../shared/slide-edit';
 import { legacyFontOf } from '../../../shared/slide-edit';
@@ -46,6 +46,8 @@ import {
 } from './ops';
 import { copyElements, pasteElements } from './clipboard';
 import { finishTextEditing, TextBoxEditor } from './TextBoxEditor';
+import { SafeAreas } from './SafeAreas';
+import { connectSafeAreas } from './safe-areas-store';
 
 /*
  * The slide being edited, scaled to fit, drawn by the same renderer as the
@@ -140,6 +142,10 @@ const keepMeasure: MeasureReport = (id, measured) => {
 };
 
 export function Canvas({ platform }: { platform: string }) {
+  // View › Show Safe Areas: its switch, from the main process.
+  useEffect(() => {
+    connectSafeAreas();
+  }, []);
   const doc = useEditor((s) => s.doc);
   const slideId = useEditor((s) => s.slideId);
   const selection = useEditor((s) => s.selection);
@@ -548,6 +554,7 @@ export function Canvas({ platform }: { platform: string }) {
           <Selection elements={selected} scale={scale} handles={!editing && single !== undefined} />
           {!editing && selected.length > 1 && <GroupBox elements={selected} scale={scale} />}
           {guides && <GuideLines guides={guides} doc={doc} scale={scale} />}
+          <SafeAreas slide={doc} scale={scale} />
           {marquee && (
             <div
               data-testid="editor-marquee"

@@ -4182,6 +4182,9 @@ function start(): void {
     rebuildMenu();
   };
   handle(IPC.library.extras, () => extrasShown());
+  // ---- View > Show Safe Areas (Sessions 31–36): the slide editor's guides, anyone's to turn on ---------
+  const safeAreasShown = () => settings.get('showSafeAreas') === true;
+  handle(IPC.app.safeAreas, () => safeAreasShown());
   handle(IPC.library.setExtras, (e, on) => {
     if (!fromOperator(e) || typeof on !== 'boolean')
       return { ok: false as const, message: 'Only the operator window can change what it shows.' };
@@ -4270,6 +4273,15 @@ function start(): void {
           requireAdmin('show or hide Shastra, Templates and Kirtan Details', () => {
             setExtras(!extrasShown());
           });
+      },
+    },
+    safeAreas: {
+      shown: safeAreasShown(),
+      toggle: () => {
+        const on = !safeAreasShown();
+        settings.set('showSafeAreas', on);
+        sendToOperator(IPC.app.safeAreasChanged, { on });
+        rebuildMenu();
       },
     },
     reloadOperator: () => {
