@@ -542,7 +542,7 @@ export class PresentationRepo {
         .prepare(
           `UPDATE presentations SET width = ?, height = ?, notes = ?, transition = ?, loop = ?, source_kind = ?,
              source_path = ?, source_ref = ?, source_imported_at = ?, source_hash = ?,
-             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), content_rev = content_rev + 1
            WHERE id = ? AND deleted_at IS NULL`,
         )
         .run(
