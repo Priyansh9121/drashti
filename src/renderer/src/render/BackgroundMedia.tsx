@@ -16,7 +16,7 @@ import type { Movement } from '../../../shared/looks';
 import { Looked } from './picture-looks';
 import { backgroundShowing } from '../../../shared/picture-look';
 import { PreviewPicture, usePreviewsOnly } from './previews';
-import { useMediaAttempt } from './media-attempts';
+import { useGpuRestarts, useMediaAttempt } from './media-attempts';
 import { useMediaUrl } from './media-urls';
 
 function style(fit: MediaFit, visible: boolean) {
@@ -253,9 +253,10 @@ function BackgroundPlayer({
   const rootRef = useRef<HTMLDivElement>(null);
   useFade(rootRef, slots, dispatch, movement);
   // On a node: a background that failed because its copy had not arrived loads again when it lands,
-  // once for each landing (a try that fails again waits for the next one).
+  // once for each landing (a try that fails again waits for the next one). A video that failed with a GPU
+  // process that stopped loads again once another has started (Sessions 31–36, ROB-5), the same way.
   const shown = slots.shown;
-  const landed = useMediaAttempt(shown?.layer.mediaId ?? '');
+  const landed = useMediaAttempt(shown?.layer.mediaId ?? '') + useGpuRestarts();
   useEffect(() => {
     const key = retryAfterLanding(shown, landed);
     if (key !== null) dispatch({ type: 'retry', key });

@@ -747,6 +747,8 @@ export interface DrashtiBridge {
     report(report: OutputReport): Promise<null>;
     /** On a node: a media file's copy has just landed (load it again if it could not be loaded). */
     onMediaReady(listener: (mediaId: string) => void): () => void;
+    /** The GPU process stopped and another starts (Sessions 31–36, ROB-5): play again a video that failed. */
+    onGpuRestarted(listener: () => void): () => void;
     /** Tests only (a packaged Drashti never sends it): draw an element that throws (Session 23). */
     onTestThrow(listener: () => void): () => void;
     /** Tests only (a packaged Drashti never sends it): hold the clock at a moment, or let it go (Session 26d). */

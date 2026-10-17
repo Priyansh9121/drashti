@@ -40,6 +40,11 @@ export interface TestVideoOptions {
   tone?: number;
   /** Background colour hue, so two test videos look different. */
   hue?: number;
+  /**
+   * H.264 in an MP4 instead of VP8 in a WebM (Sessions 31–36): macOS and Windows decode it in the GPU process,
+   * as they do the mandir's own videos. No sound.
+   */
+  h264?: boolean;
 }
 
 /** Record a short WebM in the page (in real time) and save it, with its duration written in. */
@@ -49,6 +54,14 @@ export async function makeTestVideo(page: Page, file: string, options: TestVideo
   // time (a CI Mac's GPU busy with the operator window's warm-up held a page's frames from 0.3 s on): a
   // clip given the whole length but ending early loops back at once, so a test sees it barely play. Then
   // it records again.
+  if (options.h264) {
+    const recorded = await recordWebm(page, options);
+    const bytes = Buffer.from(recorded.base64, 'base64');
+    if (bytes.length < 1000)
+      throw new Error(`The page recorded no H.264 video (${String(bytes.length)} bytes).`);
+    writeFileSync(file, bytes);
+    return file;
+  }
   for (let attempt = 1; ; attempt++) {
     const recorded = await recordWebm(page, options);
     const bytes = Buffer.from(recorded.base64, 'base64');
@@ -68,10 +81,10 @@ export async function makeTestVideo(page: Page, file: string, options: TestVideo
   }
 }
 
-/** A WebM of a canvas recorded in the page, in real time, and how long the recording ran. */
+/** A WebM (or an MP4) of a canvas recorded in the page, in real time, and how long the recording ran. */
 function recordWebm(page: Page, options: TestVideoOptions): Promise<{ base64: string; ms: number }> {
   return page.evaluate(
-    async ({ seconds, width, height, fps, tone, hue }) => {
+    async ({ seconds, width, height, fps, tone, hue, h264 }) => {
       const canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
@@ -89,7 +102,11 @@ function recordWebm(page: Page, options: TestVideoOptions): Promise<{ base64: st
         const track = dest.stream.getAudioTracks()[0];
         if (track) stream.addTrack(track);
       }
-      const mimeType = tone > 0 ? 'video/webm;codecs=vp8,opus' : 'video/webm;codecs=vp8';
+      const mimeType = h264
+        ? 'video/mp4;codecs=avc1.42E01E'
+        : tone > 0
+          ? 'video/webm;codecs=vp8,opus'
+          : 'video/webm;codecs=vp8';
       const recorder = new MediaRecorder(stream, {
         mimeType,
         videoBitsPerSecond: 400_000,
@@ -126,7 +143,7 @@ function recordWebm(page: Page, options: TestVideoOptions): Promise<{ base64: st
         binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
       return { base64: btoa(binary), ms };
     },
-    { width: 320, height: 180, fps: 30, tone: 0, hue: 210, ...options },
+    { width: 320, height: 180, fps: 30, tone: 0, hue: 210, h264: false, ...options },
   );
 }
 

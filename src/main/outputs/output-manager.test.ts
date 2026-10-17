@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { DisplayInfo, DisplayKey, ScreenConfig } from '../../shared/screens';
-import { OutputManager, type OutputWindow } from './output-manager';
+import { DISPLAY_DROP_MS, OutputManager, type OutputWindow } from './output-manager';
 
 function display(id: number, label: string, x = 0): DisplayInfo {
   const key: DisplayKey = { id, label, pixelWidth: 1920, pixelHeight: 1080, x, y: 0, internal: false };
@@ -24,6 +24,7 @@ class FakeWindow implements OutputWindow {
   static next = 100;
   readonly webContentsId = FakeWindow.next++;
   closed = false;
+  hidden = false;
   bounds: DisplayInfo['bounds'] | null = null;
   constructor(
     readonly screenId: string,
@@ -38,7 +39,24 @@ class FakeWindow implements OutputWindow {
   isDestroyed(): boolean {
     return this.closed;
   }
+  hide(): void {
+    this.hidden = true;
+  }
+  show(): void {
+    this.hidden = false;
+  }
 }
+
+/** The tests' clock: what was asked to happen later, done when they say. */
+let waiting: { at: number; fn: () => void; cancelled: boolean }[];
+let now: number;
+const advance = (ms: number) => {
+  now += ms;
+  for (const w of waiting.filter((x) => x.at <= now && !x.cancelled)) {
+    w.cancelled = true;
+    w.fn();
+  }
+};
 
 const hall = display(2, 'Hall TV', 1440);
 const stage = display(3, 'Stage TV', 3360);
@@ -49,6 +67,7 @@ let screens: ScreenConfig[];
 let opened: FakeWindow[];
 let saved: [string, DisplayKey][];
 let changes: number;
+let putBack: string[];
 let manager: OutputManager;
 
 const screen = (id: string, d: DisplayInfo | null, enabled = true): ScreenConfig => ({
@@ -70,6 +89,9 @@ beforeEach(() => {
   opened = [];
   saved = [];
   changes = 0;
+  putBack = [];
+  waiting = [];
+  now = 0;
   manager = new OutputManager({
     listDisplays: () => displays,
     screens: () => screens,
@@ -81,6 +103,14 @@ beforeEach(() => {
     },
     onChange: () => {
       changes++;
+    },
+    onPutBack: (id) => putBack.push(id),
+    later: (fn, ms) => {
+      const w = { at: now + ms, fn, cancelled: false };
+      waiting.push(w);
+      return () => {
+        w.cancelled = true;
+      };
     },
   });
 });
@@ -124,8 +154,53 @@ describe('OutputManager', () => {
     manager.reconcile();
     displays = [laptop, hall];
     manager.reconcile();
+    // Hidden at once, and kept a while for the display to come back (ROB-4), then closed.
+    expect(opened[0]?.hidden).toBe(true);
+    expect(manager.status()[0]?.state).toBe('missing-display');
+    advance(DISPLAY_DROP_MS);
     expect(live()).toEqual([]);
     expect(manager.status()[0]?.state).toBe('missing-display');
+  });
+
+  it('keeps an output through a short display drop: hidden, then the same window back on it (ROB-4)', () => {
+    screens = [screen('stage', stage)];
+    manager.reconcile();
+    const stageWindow = opened[0];
+    displays = [laptop, hall];
+    manager.reconcile();
+    expect(stageWindow?.hidden).toBe(true);
+    expect(stageWindow?.closed).toBe(false);
+    // Its window still answers for its screen (the page's reports keep coming).
+    expect(manager.screenIdFor(stageWindow?.webContentsId ?? -1)).toBe('stage');
+    advance(DISPLAY_DROP_MS - 1);
+    // Back, at a new place: the same window on it, shown, never a new one.
+    const moved = { ...stage, bounds: { ...stage.bounds, y: 10 } };
+    displays = [laptop, hall, moved];
+    manager.reconcile();
+    expect(opened).toHaveLength(1);
+    expect(stageWindow?.hidden).toBe(false);
+    expect(stageWindow?.bounds).toEqual(moved.bounds);
+    expect(putBack).toEqual(['stage']);
+    expect(manager.status()[0]).toEqual({ screenId: 'stage', state: 'showing', displayId: 3 });
+    // The grace it had is over: nothing closes it later.
+    advance(DISPLAY_DROP_MS);
+    expect(live()).toEqual(['stage@3']);
+  });
+
+  it('closes a held output at once when its screen is turned off, and on closeAll', () => {
+    screens = [screen('stage', stage), screen('audience', hall)];
+    manager.reconcile();
+    displays = [laptop];
+    manager.reconcile();
+    expect(live()).toEqual(['stage@3', 'audience@2']);
+    screens = [screen('stage', stage, false), screen('audience', hall)];
+    manager.reconcile();
+    expect(live()).toEqual(['audience@2']);
+    manager.closeAll();
+    expect(live()).toEqual([]);
+    // Nothing waits on them any more.
+    advance(DISPLAY_DROP_MS);
+    expect(opened).toHaveLength(2);
   });
 
   it('follows a display whose resolution or position changed', () => {

@@ -61,6 +61,8 @@ beforeEach(() => {
       setBounds: () => undefined,
       close: () => undefined,
       isDestroyed: () => false,
+      hide: () => undefined,
+      show: () => undefined,
     }),
     onChange: () => undefined,
   });
@@ -223,6 +225,8 @@ describe('ScreensService', () => {
         setBounds: () => undefined,
         close: () => undefined,
         isDestroyed: () => false,
+        hide: () => undefined,
+        show: () => undefined,
       }),
       onChange: () => undefined,
     });
@@ -341,6 +345,8 @@ describe('the setup wizard’s outputs, applied at Finish', () => {
         setBounds: () => undefined,
         close: () => undefined,
         isDestroyed: () => false,
+        hide: () => undefined,
+        show: () => undefined,
       }),
       onChange: () => undefined,
     });
