@@ -3058,6 +3058,7 @@ function start(): void {
         const groupId = screenRepo.firstGroup('stage');
         return { groupId, languages: groupId ? looks.liveLanguages(groupId) : null };
       },
+      hall: () => ({ groupId: screenRepo.firstGroup('audience') }),
       looks: () => lookRepo.list().map((l) => ({ id: l.id, name: l.name })),
       macros: () => macros.list().map((m) => ({ id: m.id, name: m.name, color: m.color })),
       clockStyle: () => ({

@@ -81,6 +81,8 @@ export interface NetworkReads {
    * none) and its languages in the live Look (null: all of them).
    */
   stage(): { groupId: string | null; languages: Lang[] | null };
+  /** The hall's group (the first audience group, or null when there is none): a remote shows the slide as it does. */
+  hall(): { groupId: string | null };
   /** The Looks, in order (a Remote switches the live one). */
   looks(): { id: string; name: string }[];
   /** The macros, in order (a Remote runs them). */
@@ -136,6 +138,7 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   status: IPC.engine.snapshot,
   state: IPC.engine.snapshot,
   stage: IPC.screens.get,
+  hall: IPC.screens.get,
   looks: IPC.looks.list,
   macros: IPC.macros.list,
   'macro.run': IPC.macros.run,
@@ -640,6 +643,8 @@ export class NetworkService implements EngineTransport {
           clock: this.deps.reads.clockStyle(),
         });
       }
+      case 'hall':
+        return ok({ groupId: this.deps.reads.hall().groupId, clock: this.deps.reads.clockStyle() });
       case 'looks':
         return ok({ looks: this.deps.reads.looks(), liveId: this.deps.engine.state().look.id });
       case 'macros':

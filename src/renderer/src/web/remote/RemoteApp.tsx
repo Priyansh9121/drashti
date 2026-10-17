@@ -13,6 +13,11 @@ import { preloadFonts } from '../../render/fonts';
 import { PlacedInParent } from '../../render/Placed';
 import { PreviewPicture, PreviewsContext } from '../../render/previews';
 import { Scene } from '../../render/Scene';
+import { HTML_LANG } from '../../render/fonts';
+import { useNow } from '../../render/useNow';
+import { groupLookIn, type LiveGroupLook } from '../../../../shared/looks';
+import { languageView } from '../../../../shared/language-view';
+import { detectLang } from '../../../../shared/text-runs';
 import { SlideView } from '../../render/SlideView';
 import { TimerText } from '../../render/TimerText';
 import { Mark } from '../../ui/Mark';
@@ -116,7 +121,17 @@ const firstLine = (s: OrderedSlide): string =>
 
 // ---- what is on the screens ---------------------------------------------------------------------
 
+/**
+ * The hall's group's settings in the live Look (Sessions 31–36, SLD-6): the remote shows the slide, and the
+ * next one, in its languages, as the hall's screens and the operator's LIVE do.
+ */
+function useHallLook(state: EngineState | null): LiveGroupLook {
+  const groupId = useRemote((s) => s.hall?.groupId ?? null);
+  return groupLookIn(state?.look, groupId);
+}
+
 function LivePicture({ state }: { state: EngineState | null }) {
+  const hallLook = useHallLook(state);
   const up = state ? state.layers.slide !== null || state.layers.background !== null : false;
   return (
     <section className="space-y-2" aria-labelledby="live-title">
@@ -142,7 +157,7 @@ function LivePicture({ state }: { state: EngineState | null }) {
         aria-hidden="true"
       >
         <PlacedInParent content={CANVAS} mode="fit" className="relative aspect-video w-full">
-          {state && <Scene state={state} canvas={CANVAS} scaling="fit" />}
+          {state && <Scene state={state} canvas={CANVAS} scaling="fit" look={hallLook} />}
         </PlacedInParent>
       </div>
       {/* Repeat Slides going round (Session 26d): which, and Stop (its slide stays up). */}
@@ -174,6 +189,7 @@ function LivePicture({ state }: { state: EngineState | null }) {
 
 function NextLine({ state }: { state: EngineState | null }) {
   const next = state?.next ?? null;
+  const hallLook = useHallLook(state);
   return (
     <div className="flex items-center gap-3 text-base" data-testid="remote-next">
       <span className="shrink-0 font-bold tracking-wider text-muted uppercase">Next</span>
@@ -190,13 +206,48 @@ function NextLine({ state }: { state: EngineState | null }) {
             mode="fit"
             className="relative aspect-video w-full"
           >
-            <SlideView slide={next.slide} media="still" />
+            <SlideView slide={languageView(next.slide, hallLook.languages)} media="still" />
           </PlacedInParent>
         </div>
       )}
     </div>
   );
 }
+
+/**
+ * The time as Drashti's computer writes it (its locale and time zone, as the stage screens do), and the first
+ * running timer, beside the notes, in figures that do not jump (Sessions 31–36, SLD-6).
+ */
+function ClockAndTimer({ state }: { state: EngineState | null }) {
+  const now = useNow();
+  const clock = useRemote((s) => s.hall?.clock ?? null);
+  const timer = state?.timers.find((t) => t.kind !== 'clock' && isRunning(t)) ?? null;
+  return (
+    <div className="flex items-baseline gap-3 text-lg tabular-nums" data-testid="remote-clock-row">
+      <span className="font-bold" data-testid="remote-clock">
+        {new Date(now).toLocaleTimeString(clock?.locale ?? [], {
+          hour: 'numeric',
+          minute: '2-digit',
+          timeZone: clock?.timeZone,
+        })}
+      </span>
+      {timer && (
+        <span className="min-w-0 truncate text-base text-muted" data-testid="remote-running-timer">
+          {timer.name}{' '}
+          <span className="font-bold text-fg">
+            <TimerText timer={timer} />
+          </span>
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** The language a note is written in, for its `lang` (a phone's reader and its fonts follow it). */
+const noteLang = (text: string) => {
+  const lang = detectLang(text);
+  return lang ? HTML_LANG[lang] : undefined;
+};
 
 /** The live slide's notes and the next slide's, for a presenter; one tap shows or hides them (Session 18). */
 function Notes({ state }: { state: EngineState | null }) {
@@ -206,9 +257,12 @@ function Notes({ state }: { state: EngineState | null }) {
   return (
     <section className="space-y-2" aria-labelledby="notes-title" data-testid="remote-notes-section">
       <div className="flex items-center gap-2">
-        <h2 id="notes-title" className="flex-1 text-base font-bold tracking-wider text-muted uppercase">
+        <h2 id="notes-title" className="text-base font-bold tracking-wider text-muted uppercase">
           Notes
         </h2>
+        <div className="min-w-0 flex-1">
+          <ClockAndTimer state={state} />
+        </div>
         <Button
           size="lg"
           icon={FileText}
@@ -227,16 +281,20 @@ function Notes({ state }: { state: EngineState | null }) {
           id="remote-notes"
           className="space-y-2 rounded-lg border border-line bg-panel-2 px-3 py-2"
           data-testid="remote-notes"
+          // The operator's own words: never machine-translated by the phone's browser.
+          translate="no"
         >
           <p
             className={cx('text-lg whitespace-pre-wrap', live ? 'text-fg' : 'text-muted')}
             data-testid="remote-notes-live"
+            lang={live ? noteLang(live) : undefined}
           >
             {live || (state?.layers.slide ? 'No notes on this slide.' : 'No slide on the screens.')}
           </p>
           <p
             className="border-t border-line pt-2 text-base whitespace-pre-wrap text-muted"
             data-testid="remote-notes-next"
+            lang={next ? noteLang(next) : undefined}
           >
             <span className="font-bold">Next: </span>
             {next || (state?.next?.kind === 'slide' ? 'no notes' : 'no slide')}
