@@ -1,10 +1,11 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { STREAM_PRESETS } from '../../../shared/stream';
 import { audioArgs, videoArgs } from './encoders';
+import { ffmpegHere } from '../../testing/ffmpeg-here';
 
 /*
  * The encoder's keyframes, with the real FFmpeg where it has been fetched (Session 27): one every 2 s and no
@@ -27,7 +28,7 @@ describe('the sound the encoder makes (Session 31, MED-3)', () => {
   });
 });
 
-describe.skipIf(!existsSync(ffmpeg))("the software encoder's keyframes", () => {
+describe.skipIf(!ffmpegHere(ffmpeg))("the software encoder's keyframes", () => {
   it('come every 2 s and only then, even across a hard cut late in the 2 s', () => {
     const dir = mkdtempSync(join(tmpdir(), 'drashti-keyframes-'));
     try {

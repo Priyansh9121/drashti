@@ -17,6 +17,7 @@ import { type Db, openDatabase } from '../db/database';
 import { sha256File } from '../import/media-store';
 import { ConvertService } from './convert-service';
 import { trimArgs } from './trim';
+import { ffmpegHere } from '../testing/ffmpeg-here';
 
 /*
  * Converting with the real FFmpeg (where it has been fetched: macOS and
@@ -55,7 +56,7 @@ async function until(check: () => boolean, ms = 60_000): Promise<void> {
   }
 }
 
-describe.skipIf(!existsSync(ffmpeg))('converting media, with FFmpeg', () => {
+describe.skipIf(!ffmpegHere(ffmpeg))('converting media, with FFmpeg', () => {
   it('turns each kind into what Drashti plays, keeps the original, and moves what used it', async () => {
     dir = mkdtempSync(join(tmpdir(), 'drashti-convert-'));
     const mediaDir = join(dir, 'Media');

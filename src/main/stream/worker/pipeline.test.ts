@@ -18,6 +18,7 @@ import type { MkvCluster } from './mkv';
 import { MkvSplitter } from './mkv';
 import { StreamPipeline } from './pipeline';
 import type { WorkerStatus } from './protocol';
+import { ffmpegHere } from '../../testing/ffmpeg-here';
 
 /*
  * The pipeline with the real FFmpeg (where it has been fetched: macOS and
@@ -146,7 +147,7 @@ function soundLevels(file: string): { peak: number; rms: number } {
   return { peak: value('Peak level dB'), rms: value('RMS level dB') };
 }
 
-describe.skipIf(!existsSync(ffmpeg))('the stream pipeline, with FFmpeg', () => {
+describe.skipIf(!ffmpegHere(ffmpeg))('the stream pipeline, with FFmpeg', () => {
   it('records and sends; a dropped connection is made again while the recording carries on', async () => {
     dir = mkdtempSync(join(tmpdir(), 'drashti-pipeline-'));
     const port = await freePort();
