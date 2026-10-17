@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, renameSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync, renameSync } from 'node:fs';
 import { basename, dirname, extname, join } from 'node:path';
 import { fileStamp } from '../shared/format';
 
@@ -70,14 +70,34 @@ export function readStateTwice<T>(
  * be moved (then it stays where it is, still never written over).
  */
 export function setAside(file: string, now = new Date()): string | null {
-  const ext = extname(file);
-  const name = `${basename(file, ext)}.unreadable-${fileStamp(now)}`;
-  let to = join(dirname(file), `${name}${ext}`);
-  for (let n = 2; existsSync(to); n++) to = join(dirname(file), `${name} ${n}${ext}`);
+  const to = asideName(file, now);
   try {
     renameSync(file, to);
     return to;
   } catch {
     return null;
   }
+}
+
+/**
+ * Copy a file aside, as setAside names it, leaving it where it is too (roles.json, Sessions 31–36: kept for
+ * whoever looks into it, while the file itself waits for the admin guide's reset). The copy's path, or null.
+ */
+export function copyAside(file: string, now = new Date()): string | null {
+  const to = asideName(file, now);
+  try {
+    copyFileSync(file, to);
+    return to;
+  } catch {
+    return null;
+  }
+}
+
+/** `identity.json`'s set-aside name, `identity.unreadable-2026-10-10 05-36.json`, never one already there. */
+function asideName(file: string, now: Date): string {
+  const ext = extname(file);
+  const name = `${basename(file, ext)}.unreadable-${fileStamp(now)}`;
+  let to = join(dirname(file), `${name}${ext}`);
+  for (let n = 2; existsSync(to); n++) to = join(dirname(file), `${name} ${n}${ext}`);
+  return to;
 }

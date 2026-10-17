@@ -117,6 +117,7 @@ import {
 import { MainWatch, PerfProfile, watchedMedia } from './perf-watch';
 import { isPerfScenario, startScenario } from './perf-scenarios';
 import { LaterWrites } from './db/later-writes';
+import { ROLES_HELD } from '../shared/roles';
 import { RolesService } from './roles/roles-service';
 import { adminRefusals } from './roles/admin-lock';
 import { ImportService } from './import/import-service';
@@ -1923,7 +1924,11 @@ function start(): void {
   // RECOVERY_MAX_AGE_MS ago? A stop longer ago starts like a clean quit (Session 21).
   const savedMode = settings.get('operatorMode');
   const wasIn: OperatorMode = isOperatorMode(savedMode) ? savedMode : 'pro';
-  let mode: OperatorMode = startingMode({ recentStop: startup.recentStop, rolesOn: roles.on(), wasIn });
+  // Roles held locked (the PIN file could not be read; Sessions 31–36): Simple Mode, even after a crash in Pro.
+  let mode: OperatorMode = roles.held()
+    ? 'simple'
+    : startingMode({ recentStop: startup.recentStop, rolesOn: roles.on(), wasIn });
+  if (roles.held()) startNotice = startNotice ? `${startNotice}\n\n${ROLES_HELD}` : ROLES_HELD;
   if (mode !== wasIn) settings.set('operatorMode', mode);
   if (mode === 'simple')
     log.info(
