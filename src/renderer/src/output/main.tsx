@@ -16,6 +16,7 @@ import { Preloader } from './Preloader';
 import { DisplayNumber, TestCard } from './SetupCards';
 import { reportRenderError } from '../ui/render-errors';
 import { HOLD_WARM_UP, SKIP_WARM_UP } from '../render/warm-up-mode';
+import { ClockStyleContext } from '../render/clock-style';
 
 function IdentifyOverlay() {
   const identify = useOutput((s) => s.identify);
@@ -209,14 +210,17 @@ function Output() {
       )}
       {state && ready && (
         <SceneBoundary resetKey={rev}>
-          <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
-            {stage ? (
-              <StageScreen state={state} look={look} canvas={canvas} />
-            ) : (
-              <Scene state={state} canvas={canvas} scaling={scaling} look={look} matte={matte} />
-            )}
-            {testThrow && <ThrowForTests />}
-          </PlacedInParent>
+          {/* Main's way of writing the time (Sessions 31–36, I18N-8): a node in another time zone shows Main's. */}
+          <ClockStyleContext.Provider value={context?.clockStyle ?? null}>
+            <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
+              {stage ? (
+                <StageScreen state={state} look={look} canvas={canvas} />
+              ) : (
+                <Scene state={state} canvas={canvas} scaling={scaling} look={look} matte={matte} />
+              )}
+              {testThrow && <ThrowForTests />}
+            </PlacedInParent>
+          </ClockStyleContext.Provider>
         </SceneBoundary>
       )}
       {/* Stage screens show no pictures, so they load none ahead. */}

@@ -1,6 +1,7 @@
 import type { EngineMessage } from './engine/protocol';
 import type { UpdateView } from './updates';
 import type { DisplayInfo, DisplayKey, ScalingMode, ScreenFeed, ScreenRole } from './screens';
+import type { ClockStyle } from './format';
 
 /*
  * Output nodes (PLAN.md 4.1, Session 13). The same Drashti app, started as a
@@ -134,7 +135,8 @@ export type NodeByeReason = 'unauthorized' | 'revoked' | 'version' | 'too-slow' 
 export type ToNode =
   | {
       type: 'welcome';
-      main: { id: string; name: string; version: string; addresses: string[] };
+      /** Main, and how it writes the time (Sessions 31–36, I18N-8: the node's clocks show Main's). */
+      main: { id: string; name: string; version: string; addresses: string[]; clock?: ClockStyle };
       node: { id: string; name: string };
       /** This run of Main's engine: a new one after a restart, whatever the revision numbers. */
       session: string;

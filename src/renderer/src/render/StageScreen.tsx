@@ -5,6 +5,7 @@ import { STAGE_HEIGHT, STAGE_WIDTH } from '../../../shared/stage-layouts';
 import { Placed } from './Placed';
 import { StageLayoutView } from './StageLayoutView';
 import { StageView } from './StageView';
+import type { ClockStyle } from '../../../shared/format';
 
 /**
  * A stage screen as its group shows it in the live Look: its own layout
@@ -21,7 +22,7 @@ export function StageScreen({
   state: EngineState;
   look: LiveGroupLook;
   canvas: Size;
-  clockStyle?: { locale: string; timeZone: string } | null;
+  clockStyle?: ClockStyle | null;
 }) {
   if (!look.stageLayout)
     return <StageView state={state} languages={look.languages} {...(clockStyle ? { clockStyle } : {})} />;

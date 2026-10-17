@@ -1,3 +1,5 @@
+import type { ClockStyle } from './format';
+
 /*
  * Built-in streaming (PLAN.md 4.2). The Program is what the stream shows: an
  * offscreen page drawn with the same renderer as the outputs, in one of two
@@ -189,6 +191,8 @@ export interface ProgramContext {
   capturing: boolean;
   /** The operator is watching the preview (a port for it comes separately). */
   preview: boolean;
+  /** How Main writes the time (Sessions 31–36, I18N-8), for its clocks. */
+  clockStyle?: ClockStyle;
 }
 
 /** How well the stream is reaching YouTube. */

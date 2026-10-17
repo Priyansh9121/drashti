@@ -39,6 +39,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileStamp } from '../../shared/format';
 import { parsePlain } from '../../shared/plain-parse';
+import type { ClockStyle } from '../../shared/format';
 
 /*
  * The stream (PLAN.md 4.2), as the main process keeps it: the profiles and
@@ -50,6 +51,8 @@ import { parsePlain } from '../../shared/plain-parse';
 export type MediaAccess = 'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown';
 
 export interface StreamServiceDeps {
+  /** How Main writes the time (Sessions 31–36, I18N-8), for the stream page's clocks. */
+  clockStyle?(): ClockStyle;
   profiles: StreamProfileRepo;
   keys: StreamKeyStore;
   settings: SettingsRepo;
@@ -397,6 +400,7 @@ export class StreamService {
       mixOwnSound: profile.mixOwnSound,
       capturing: this.liveWanted || this.recordWanted,
       preview: this.watchers.size > 0,
+      ...(this.deps.clockStyle ? { clockStyle: this.deps.clockStyle() } : {}),
     };
   }
 

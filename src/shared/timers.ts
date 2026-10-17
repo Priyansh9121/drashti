@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { type ClockStyle, formatClock, formatDuration } from './format';
 
 /*
  * Timers and the clock (PLAN.md 4.3). The engine keeps only when a timer
@@ -83,26 +84,18 @@ export function timerValue(t: TimerState, now: number): number {
   }
 }
 
-/** "4:05", "1:02:03" or "-0:12". Countdowns round up, so 0:00 shows only at the end. */
-export function formatDuration(ms: number, roundUp: boolean): string {
-  const negative = ms < 0;
-  const whole = roundUp && !negative ? Math.ceil(Math.abs(ms) / 1000) : Math.floor(Math.abs(ms) / 1000);
-  const h = Math.floor(whole / 3600);
-  const m = Math.floor((whole % 3600) / 60);
-  const s = whole % 60;
-  const body =
-    h > 0
-      ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-      : `${m}:${String(s).padStart(2, '0')}`;
-  return negative && whole > 0 ? `-${body}` : body;
-}
+/** A timer's length: "4:05", "1:02:03" or "-0:12" (shared/format.ts). Countdowns round up, so 0:00 shows only at the end. */
+export const timerDuration = (ms: number, roundUp: boolean): string =>
+  formatDuration(ms, { roundUp, signed: true });
 
-/** A timer as the screens show it at `now`. */
-export function formatTimer(t: TimerState, now: number): string {
+/**
+ * A timer as the screens show it at `now`; a clock in Main's clock style (Sessions 31–36, I18N-8), so a node
+ * in another time zone shows Main's time.
+ */
+export function formatTimer(t: TimerState, now: number, style?: ClockStyle | null): string {
   const value = timerValue(t, now);
-  if (t.kind === 'clock')
-    return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  return formatDuration(value, t.kind !== 'countup');
+  if (t.kind === 'clock') return formatClock(value, style);
+  return timerDuration(value, t.kind !== 'countup');
 }
 
 /** "5:00" or "1:30:00" to ms; null if it is not a duration. */

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { MessageItem } from '../../../shared/engine/state';
 import type { TimerFields, TimerKind, TimerState } from '../../../shared/timers';
-import { formatDuration, parseDuration, TIMER_KIND_NAMES, TIMER_KINDS } from '../../../shared/timers';
+import { parseDuration, TIMER_KIND_NAMES, TIMER_KINDS, timerDuration } from '../../../shared/timers';
 import { useEngine } from '../engine/engine-store';
 import { TimerText } from '../render/TimerText';
 import { Button, IconButton } from '../ui/Button';
@@ -30,7 +30,7 @@ const timerMessage = (t: TimerState): MessageItem => ({
 function TimerForm({ initial, onDone }: { initial: TimerState | null; onDone: () => void }) {
   const [name, setName] = useState(initial?.name ?? 'Countdown');
   const [kind, setKind] = useState<TimerKind>(initial?.kind ?? 'countdown');
-  const [length, setLength] = useState(formatDuration(initial?.durationMs ?? 300_000, false));
+  const [length, setLength] = useState(timerDuration(initial?.durationMs ?? 300_000, false));
   const [at, setAt] = useState(initial?.targetTime ?? '19:30');
   const [overrun, setOverrun] = useState(initial?.allowsOverrun ?? false);
   const [problem, setProblem] = useState<string | null>(null);

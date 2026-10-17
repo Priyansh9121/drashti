@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { EngineState } from '../../../shared/engine/state';
 import { languageView } from '../../../shared/language-view';
@@ -8,6 +8,8 @@ import { htmlLang, textLang } from './lang';
 import { translitSource } from '../../../shared/tracks';
 import { TimerText } from './TimerText';
 import { useNow } from './useNow';
+import { ClockStyleContext } from './clock-style';
+import { type ClockStyle, formatClock } from '../../../shared/format';
 
 /*
  * The stage screen (PLAN.md 4.3): what the performers need, in large text
@@ -171,16 +173,14 @@ export function StageView({
   /** The languages the stage screens show of a kirtan's slides, in order; null for all of them. */
   languages?: readonly Lang[] | null;
   /** How to write the time: Drashti's computer's way, on a stage display in another device's browser. */
-  clockStyle?: { locale: string; timeZone: string } | null;
+  clockStyle?: ClockStyle | null;
 }) {
   const now = useNow();
   const slide = state.layers.slide;
   const next = state.next;
-  const clock = new Date(now).toLocaleTimeString(clockStyle?.locale ?? [], {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: clockStyle?.timeZone,
-  });
+  // Main's way of writing the time (Sessions 31–36, I18N-8): given, or the page's.
+  const pageStyle = useContext(ClockStyleContext);
+  const clock = formatClock(now, clockStyle ?? pageStyle);
   const background = state.layers.background;
   return (
     <div

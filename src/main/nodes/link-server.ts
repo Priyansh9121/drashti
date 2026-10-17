@@ -27,6 +27,7 @@ import { isLocalAddress, isLoopback, plainAddress } from '../network/addresses';
 import { RateLimiter, WrongCodeLimiter } from '../network/limits';
 import { hashToken, newToken } from '../network/tokens';
 import { confirmation, pakeKey, sameConfirmation, startPake } from './pake';
+import type { ClockStyle } from '../../shared/format';
 
 /*
  * The node link, Main's side (Session 13): HTTPS and a WebSocket feed on a
@@ -54,7 +55,8 @@ export interface LinkOptions {
   cert: string;
   key: string;
   fingerprint: string;
-  main: { id: string; name: string; version: string };
+  /** Main, and how it writes the time (Sessions 31–36, I18N-8). */
+  main: { id: string; name: string; version: string; clock?: ClockStyle };
   /** Where nodes can reach Main (sent to each, so it can find Main again if its number changes). */
   addresses: string[];
   /** This run of Main's engine. */

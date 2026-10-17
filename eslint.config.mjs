@@ -68,7 +68,6 @@ export default defineConfig(
             ['src/main/backup/scheduled-backups.ts', 'toTimeString().slice(0, 5)', 'a time, as 13:05'],
             ['src/main/macros/macro-scheduler.ts', 'toTimeString().slice(0, 5)', 'a time, as 13:05'],
             ['src/main/nodes/certificate.ts', '.slice(0, 14)', 'a certificate’s time, as 20261017093000'],
-            ['src/renderer/src/arti/ArtiPanel.tsx', 'toISOString().slice(0, 10)', 'a date, as 2026-10-17'],
             ['src/shared/calendar.ts', 'toISOString().slice(0, 10)', 'a date, as 2026-10-17'],
             ['src/main/import/formats/pp6.ts', '.slice(0, 7)', 'a colour, #rrggbb'],
             ['src/main/import/formats/pp7.ts', '.slice(0, 7)', 'a colour, #rrggbb'],

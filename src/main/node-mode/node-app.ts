@@ -52,6 +52,7 @@ import { MediaCache } from './media-cache';
 import { NodeStore, ShowSaver, type NodeFile } from './node-state';
 import { plural } from '../../shared/text';
 import { sw } from '../switches';
+import { type ClockStyle, validClockStyle } from '../../shared/format';
 
 /*
  * Drashti as a Node (Session 13): no library, no show controls and no sound.
@@ -289,6 +290,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     feed: s.feed,
     nodeId: null,
   });
+  /** How Main writes the time, from its welcome (Sessions 31–36, I18N-8); null until it says. */
+  let mainClock: ClockStyle | null = null;
   const contextFor = (screenId: string): OutputContext | null => {
     const s = screenOf(screenId);
     if (!s) return null;
@@ -314,6 +317,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
           }
         : null,
       clockOffsetMs: outputOffset(),
+      ...(mainClock ? { clockStyle: mainClock } : {}),
     };
   };
   const sendContexts = () => {
@@ -535,6 +539,12 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
           viewChanged();
         },
         welcome: (main) => {
+          // How Main writes the time (Sessions 31–36, I18N-8): this node's clocks show Main's.
+          const style = validClockStyle(main.clock);
+          if (JSON.stringify(style) !== JSON.stringify(mainClock)) {
+            mainClock = style;
+            sendContexts();
+          }
           if (!paired) return;
           paired = {
             ...paired,
