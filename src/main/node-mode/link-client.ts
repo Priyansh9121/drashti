@@ -373,6 +373,14 @@ export class LinkClient {
     ws?.terminate();
   }
 
+  /**
+   * The connection dropped as a network drop would (the end-to-end tests, Sessions 31–36): closed at once,
+   * and tried again as after any drop.
+   */
+  drop(): void {
+    this.ws?.terminate();
+  }
+
   /** Main's addresses changed (it told us where else it can be found). */
   setAddresses(addresses: string[]): void {
     const first = this.main.addresses[0];

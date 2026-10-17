@@ -5,12 +5,14 @@ import { join } from 'node:path';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import type { PageGlobals } from './helpers';
 import {
+  holdStill,
   importAndGetIds,
   killApp,
   launchApp,
   operatorPage,
   outputPage,
   relaunchApp,
+  savedLive,
   setUpScreen,
 } from './helpers';
 import { makeTestImage, makeTestVideo } from './test-media';
@@ -194,5 +196,63 @@ test('after a crash a running timer, a message and the sound come back, carrying
     )
     .toBe(true);
   await expect(win2.getByTestId('recovery-notice')).toContainText('the sound, a message and a timer');
+  await second.app.close();
+});
+
+test('after a crash the first action lands on what recovery put back, never under it (Sessions 31–36)', async () => {
+  test.setTimeout(150_000);
+  const first = await launchApp();
+  const win = await operatorPage(first.app);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-recovery-first-'));
+  const show = join(dir, 'Placeholder First Action.pro6');
+  writeFileSync(
+    show,
+    pp6Presentation({
+      uuid: 'E2E-RECOVERY-FIRST',
+      groups: [
+        {
+          name: 'Verse',
+          slides: [1, 2, 3, 4].map((n) => ({ text: [line(`Placeholder first action ${String(n)}`)] })),
+        },
+      ],
+    }),
+  );
+  const [presentationId = ''] = await importAndGetIds(win, [show]);
+  await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({
+        type: 'goLive',
+        presentationId: id,
+        slideIndex: 1,
+      }),
+    presentationId,
+  );
+  await savedLive(first.userData, (saved) => saved.slide?.slideIndex === 1);
+  await killApp(first.app);
+
+  // The very first thing the next start does: Next, before the window has even settled. Recovery has put
+  // slide 2 back by then (it runs before the engine takes any command), so Next goes on to slide 3.
+  const second = await relaunchApp(first.userData);
+  const win2 = await operatorPage(second.app);
+  const answer = await win2.evaluate(() =>
+    (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'next' }),
+  );
+  expect(answer).toMatchObject({ ok: true, changed: true });
+  const live = await win2.evaluate(async () => {
+    const s = (await (globalThis as PageGlobals).drashti.engine.snapshot()).state;
+    return { presentationId: s.live.presentationId, slideIndex: s.layers.slide?.slideIndex ?? null };
+  });
+  expect(live).toEqual({ presentationId, slideIndex: 2 });
+  // And it stays: nothing recovery does later puts slide 2 back over it.
+  await expect(win2.getByTestId('recovery-notice')).toBeVisible();
+  await holdStill(
+    async () =>
+      (await win2.evaluate(
+        async () =>
+          (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.layers.slide?.slideIndex,
+      )) === 2,
+    1500,
+    'what the first action did stays',
+  );
   await second.app.close();
 });

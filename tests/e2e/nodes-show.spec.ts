@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { apiCall, networkOn, pairToken } from './devices';
 import { lightOf } from './pixels';
 import { holdClock } from './placeholder-slides';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { OutputGlobals, PageGlobals } from './helpers';
@@ -397,5 +397,73 @@ test('a node that restarts while Main is away shows the last picture again', asy
     await expect(again.page.getByTestId('node-link-state')).not.toHaveText('Online');
   } finally {
     await again.app.close();
+  }
+});
+
+test('a node whose link drops in the middle of a dissolve, in either order, ends on Main’s slide (Sessions 31–36)', async () => {
+  test.setTimeout(240_000);
+  const main = await launchMain();
+  const node = await launchNode();
+  try {
+    const nodeId = await pairNode(main, node);
+    const { id } = await setUpShow(main);
+    await main.win.evaluate(
+      async ({ id, ms }) => {
+        const d = (globalThis as PageGlobals).drashti;
+        const opened = await d.library.slidesForEdit(id);
+        if (!opened.ok) throw new Error(opened.message);
+        opened.doc.transition = { kind: 'dissolve', durationMs: ms };
+        const saved = await d.library.saveSlides(id, opened.doc, opened.stamp);
+        if (!saved.ok) throw new Error(saved.message);
+      },
+      { id, ms: 2500 },
+    );
+    await setUpScreen(main.win, 'Placeholder Hall', 1);
+    const mainOut = await outputPage(main.app);
+    const nodeOut = await nodeScreenIn(main, node, nodeId, await groupOf(main.win, 'Placeholder Hall'));
+    for (const o of [mainOut, nodeOut]) await outputReady(o);
+    const dropLink = () =>
+      node.app.evaluate(() => {
+        (globalThis as { drashtiNode?: { dropLink(): void } }).drashtiNode?.dropLink();
+      });
+    /** Both on this slide alone, the dissolve over. */
+    const endsOn = async (text: string) => {
+      for (const out of [mainOut, nodeOut])
+        await expect
+          .poll(
+            async () => {
+              const layers = await out
+                .locator('[data-layer="slide"]')
+                .evaluateAll((els) =>
+                  els.map((e) => ({ fading: e.getAttribute('data-fading') === 'true', text: e.textContent })),
+                );
+              const [only] = layers;
+              return layers.length === 1 && only !== undefined && !only.fading && only.text.includes(text);
+            },
+            { timeout: 20_000 },
+          )
+          .toBe(true);
+    };
+    await dispatch(main.win, { type: 'goLive', presentationId: id, slideIndex: 0 });
+    await endsOn('Placeholder node slide 1');
+
+    // A dissolve starts; the link drops part-way; Main moves on while the node is away.
+    await dispatch(main.win, { type: 'goLive', presentationId: id, slideIndex: 1 });
+    await expect(nodeOut.locator('[data-layer="slide"][data-fading="true"]')).toHaveCount(1);
+    await dropLink();
+    await dispatch(main.win, { type: 'goLive', presentationId: id, slideIndex: 2 });
+    await endsOn('Placeholder node slide 3');
+
+    // The link drops first; a dissolve starts while the node is away, and it comes back part-way through.
+    await dropLink();
+    await dispatch(main.win, { type: 'goLive', presentationId: id, slideIndex: 3 });
+    await endsOn('Placeholder node slide 4');
+    await expect(node.page.getByTestId('node-link-state')).toHaveText('Online');
+    // The link did drop, both times: the node's own log says so.
+    const nodeLog = readFileSync(join(node.userData, 'logs', 'drashti.log'), 'utf8');
+    expect(nodeLog.match(/Node: link offline/gu)?.length ?? 0).toBeGreaterThanOrEqual(2);
+  } finally {
+    await node.app.close();
+    await main.app.close();
   }
 });
