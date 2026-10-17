@@ -19,6 +19,8 @@ interface Focus {
   region: string;
   ring: boolean;
   inView: boolean;
+  /** Something else drawn over its middle (a notice, a banner: WCAG 2.4.11, Sessions 31–36's A9). */
+  covered: boolean;
   testid: string;
   tag: string;
   role: string;
@@ -45,6 +47,9 @@ function focusOf(page: Page): Promise<Focus | null> {
       r.right > 0 &&
       r.top < innerHeight &&
       r.left < innerWidth;
+    // What is drawn at its middle: itself (or something inside it), never a notice or a banner over it.
+    const middle = inView ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
+    const covered = middle !== null && middle !== el && !el.contains(middle);
     // What a screen reader says: its label, or its words without the parts hidden from it (a playlist card's
     // picture holds its slide's words, Session 26a).
     const shown = el.cloneNode(true) as HTMLElement;
@@ -58,6 +63,7 @@ function focusOf(page: Page): Promise<Focus | null> {
       region,
       ring,
       inView,
+      covered,
       testid: el.dataset['testid'] ?? '',
       tag: el.tagName.toLowerCase(),
       role: el.getAttribute('role') ?? '',
@@ -151,6 +157,57 @@ test('Pro Mode: the keyboard goes through the window as it is laid out, its focu
   console.log(`Tab order by region: ${order.join(' > ')}`);
   const expected = ['header', 'Playlists', 'Library', 'Slides', 'Live', 'Show controls', 'Status'];
   expect(order.filter((r) => expected.includes(r))).toEqual(expected);
+  await app.close();
+});
+
+test('Pro Mode: with a notice up, no focused control is covered by it (WCAG 2.4.11; Sessions 31–36, A9)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await setUp(win);
+  // A notice, as the main process sends one (after saving diagnostics, a restore, a command that failed).
+  await app.evaluate(({ BrowserWindow }) => {
+    for (const w of BrowserWindow.getAllWindows())
+      if (w.webContents.getURL().includes('index.html'))
+        w.webContents.send('app:notice', {
+          text: 'Placeholder notice that stays while the keyboard goes round',
+        });
+  });
+  await expect(win.getByTestId('operator-notice')).toBeVisible();
+  const stops = await tabRound(win);
+  expect(stops.length).toBeGreaterThan(30);
+  expect(
+    stops.filter((s) => s.covered).map((s) => `${s.region}: ${s.name}`),
+    'stops covered by something drawn over them',
+  ).toEqual([]);
+  await app.close();
+});
+
+test('a playlist row’s More, clicked, opens its menu without taking the focus into a part hidden from screen readers (Sessions 31–36, A14)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await setUp(win);
+  const row = win
+    .getByTestId('playlist-tree')
+    .locator('li')
+    .filter({ has: win.getByTestId('playlist-node') })
+    .first();
+  await row.hover();
+  // A mouse's button only: hidden from screen readers (the keyboard opens the same menu on the row).
+  await row.locator('button[aria-label^="More for "]').click();
+  await expect(win.getByRole('menu')).toBeVisible();
+  // Wherever the focus is, open or closed again, it is never inside anything aria-hidden.
+  const hiddenFocus = () =>
+    win.evaluate(
+      () => document.activeElement?.closest('[aria-hidden="true"]')?.outerHTML.slice(0, 80) ?? null,
+    );
+  expect(await hiddenFocus()).toBeNull();
+  await win.keyboard.press('Escape');
+  await expect(win.getByRole('menu')).toHaveCount(0);
+  expect(await hiddenFocus()).toBeNull();
   await app.close();
 });
 

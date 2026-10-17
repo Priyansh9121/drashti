@@ -25,7 +25,8 @@ function RecoveryCard({ notice, onDismiss }: { notice: RecoveryNotice; onDismiss
       role="alert"
       data-testid="recovery-notice"
       data-motion={arriving}
-      className="fixed top-14 left-1/2 z-30 flex w-[min(44rem,calc(100%-2rem))] -translate-x-1/2 items-center gap-3 rounded-lg border border-warning/60 bg-warning-bg px-4 py-3 text-sm text-warning-fg shadow-overlay"
+      // In the window's flow under the header (Sessions 31–36, A9): it never covers a control the keyboard is on.
+      className="mx-auto mt-2 flex w-[min(44rem,calc(100%-2rem))] shrink-0 items-center gap-3 rounded-lg border border-warning/60 bg-warning-bg px-4 py-3 text-sm text-warning-fg shadow-overlay"
     >
       <RotateCcw size={18} aria-hidden="true" className="shrink-0" />
       <span className="flex-1">{recoveryText(notice)}</span>
