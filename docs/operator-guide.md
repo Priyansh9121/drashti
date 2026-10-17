@@ -89,12 +89,12 @@ Do these about 30 minutes before the sabha starts.
 
 **Covering and clearing:**
 
-| Key or button                   | What it does                                                                                                                     |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| **B** (or **.**), **Black-out** | Black on the hall's screens, and back exactly as it was. The stage screens keep the words.                                       |
-| **L**, **Logo**                 | The mandir's logo instead of the picture, and back                                                                               |
-| **F1**, **Clear all**           | Everything off the hall's screens. Straight after it, **Put it back** brings it all back.                                        |
-| **F2** to **F8**                | One layer off: the slide's words (the background stays), the background, props, messages, the sound, the Masks layer, the ticker |
+| Key or button                                          | What it does                                                                                                                                         |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **B** (or **.**), **Black-out**                        | Black on the hall's screens, and back exactly as it was. The stage screens keep the words.                                                           |
+| **L**, **Logo**                                        | The mandir's logo instead of the picture, and back                                                                                                   |
+| **F1**, **Clear all**                                  | Everything off the hall's screens. Straight after it, **Put it back** brings it all back.                                                            |
+| **F2**, **F3**, **F4**, **F5**, **F6**, **F7**, **F8** | One layer off each, in this order: the slide's words (the background stays), the background, props, messages, the sound, the Masks layer, the ticker |
 
 A clear button is lit, with a dot, while its layer is on the screens.
 
@@ -108,7 +108,7 @@ A clear button is lit, with a dot, while its layer is on the screens.
 
 **Looks.** If the admin made more than one Look ("Gujarati only", "Lower thirds"), switch between them in **Looks**: every screen changes at once.
 
-**Audio.** In the right column, under the live picture, **Audio** holds **Music** (lists of sounds that play one after another, for before the sabha) and the **Arti** (the arti's time and its presentation, which the admin sets). **Play** starts a list; **Clear audio** along the bottom (or F6) stops whatever sound is playing.
+**Audio.** In the right column, under the live picture, **Audio** holds **Music** (lists of sounds that play one after another, for before the sabha) and the **Arti** (the arti's time and its presentation, which the admin sets). **Play** starts a list; **Clear audio** along the bottom (or **F6**) stops whatever sound is playing.
 
 **More tools.** Folded away at the end of the right column: **Macros**, **Masks** and the **Idle rotation**. Press **More tools** to open it or fold it again; each tool starts with a line saying what it does.
 
@@ -128,7 +128,7 @@ A clear button is lit, with a dot, while its layer is on the screens.
 
 ![The arti prompt](screenshots/arti-prompt.png)
 
-**Music during the sabha.** A slide or item with a sound of its own stops the music (with a short fade). **Clear audio** (the **Audio** button along the bottom, or F6) stops it too, and **Put it back**, pressed at once, brings it back where it would be by now.
+**Music during the sabha.** A slide or item with a sound of its own stops the music (with a short fade). **Clear audio** (the **Audio** button along the bottom, or **F6**) stops it too, and **Put it back**, pressed at once, brings it back where it would be by now.
 
 ## 3. When something goes wrong
 
@@ -136,7 +136,7 @@ A clear button is lit, with a dot, while its layer is on the screens.
 
 **A mistake on the screens.** Put the right slide up with a click, or press **←** (the slide before). After **Clear all** by mistake, press **Put it back** at once.
 
-**A screen is black or frozen.** Open the screens dashboard: its picture shows what that screen really shows. Pro Mode can **Reload** it there. Drashti also restarts a screen that stops drawing by itself, within about 10 seconds. If a screen kept failing, a red notice at the top of the window says so ("“Main Hall 1” has stopped"), in Pro Mode and in Simple Mode, and the status line says **stopped**: Drashti tries it again every few minutes, and **Try again** on the notice (or in Screens) tries at once. The notice goes by itself when the screen is back, or when you close it. If a whole output computer stopped (a node offline), carry on: its screens keep their last picture, and it comes back by itself when the network does.
+**A screen is black or frozen.** Open the screens dashboard: its picture shows what that screen really shows. Pro Mode can **Reload** it there. Drashti also restarts a screen that stops drawing by itself, within about 10 seconds. If a screen kept failing, a red notice at the top of the window says so ("“Main Hall 1” has stopped"), in Pro Mode and in Simple Mode, and the status line says **stopped**: Drashti tries it again every few minutes, and **Try again** on the notice (or in **Screens**, **Cmd+Shift+S**) tries at once. The notice goes by itself when the screen is back, or when you close it. If a whole output computer stopped (a node offline), carry on: its screens keep their last picture, and it comes back by itself when the network does.
 
 **No sound in the hall.** Check the status bar: it says where the sound goes and warns when the chosen output is missing (Drashti then plays on the computer's own speakers). Check the mixer's channel.
 
