@@ -51,6 +51,7 @@ import type { ServerOptions } from './server';
 import { hashToken, newPairingCode, newToken } from './tokens';
 import type { FromNetworkWorker } from './worker/protocol';
 import { COULD_NOT } from './messages';
+import { cutText } from '../../shared/text';
 
 /*
  * The local network, as the main process runs it (README "The local
@@ -695,7 +696,7 @@ export class NetworkService implements EngineTransport {
         return ok({ ...page });
       }
       case 'search': {
-        const query = typeof args['query'] === 'string' ? args['query'].trim().slice(0, 200) : '';
+        const query = typeof args['query'] === 'string' ? cutText(args['query'].trim(), 200) : '';
         return ok({ ...this.deps.reads.search(query) });
       }
       case 'messages':

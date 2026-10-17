@@ -1,5 +1,6 @@
 import { readdirSync, statSync } from 'node:fs';
 import { extname, join } from 'node:path';
+import { cutText } from '../../shared/text';
 
 /*
  * The browser pages' files, served by name only. At start the server lists
@@ -102,7 +103,7 @@ export function apiQuery(raw: string): Record<string, string> {
   for (const [name, value] of params) {
     if (Object.keys(out).length >= 8) break;
     if (!/^[a-z]{1,16}$/u.test(name) || Object.hasOwn(out, name)) continue;
-    out[name] = value.slice(0, 200);
+    out[name] = cutText(value, 200);
   }
   return out;
 }

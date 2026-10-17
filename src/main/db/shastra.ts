@@ -20,6 +20,7 @@ import { passageId, referenceLine, refKey } from '../../shared/shastra';
 import type { TranslitStyle } from '../../shared/translit';
 import { capitalize, transliterate } from '../../shared/translit';
 import type { Db } from './database';
+import { cutText } from '../../shared/text';
 
 /*
  * Shastra texts in the library (migration 25). Loading a text whose
@@ -591,7 +592,7 @@ export class ShastraRepo {
         {
           passageId: passageId({ ...key, from: r.number, to: r.number }),
           reference: referenceLine(r.name, labels, r.number, r.number),
-          snippet: pick.line.length > 160 ? `${pick.line.slice(0, 157)}…` : pick.line,
+          snippet: cutText(pick.line, 160, '…'),
           lang: pick.lang,
         },
       ];

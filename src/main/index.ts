@@ -254,6 +254,7 @@ import { RECENT_DAYS, WantedMedia } from './nodes/wanted-media';
 import { startPerfNodes } from './nodes/perf-nodes';
 import type { NodeOutputStatus, ScreenThumb } from '../shared/nodes';
 import { hostname } from 'node:os';
+import { cutText } from '../shared/text';
 
 // Headless self-tests: run one, print the result, exit (see README). The performance test
 // imports a few hundred placeholder files, so it gets a throwaway data folder of its own.
@@ -2403,7 +2404,7 @@ function start(): void {
     return { ok: true, id: id.data };
   });
   handle(IPC.library.search, (_e, query) =>
-    search.search(typeof query === 'string' ? query.slice(0, 200) : ''),
+    search.search(typeof query === 'string' ? cutText(query, 200) : ''),
   );
   handle(IPC.library.legacyPresentations, () => search.legacyPresentations());
   // Message templates: kept here; showing one goes through the engine.

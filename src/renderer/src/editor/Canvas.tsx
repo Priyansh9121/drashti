@@ -50,6 +50,7 @@ import { copyElements, pasteElements } from './clipboard';
 import { finishTextEditing, TextBoxEditor } from './TextBoxEditor';
 import { SafeAreas } from './SafeAreas';
 import { connectSafeAreas } from './safe-areas-store';
+import { cutText } from '../../../shared/text';
 
 /*
  * The slide being edited, scaled to fit, drawn by the same renderer as the
@@ -116,7 +117,7 @@ const KIND_NAME: Record<SlideElement['kind'], string> = {
 export function elementName(el: SlideElement): string {
   if (el.kind === 'text') {
     const words = el.text.trim().replace(/\s+/gu, ' ');
-    return words ? `${KIND_NAME.text}: ${words.slice(0, 40)}` : `${KIND_NAME.text} (empty)`;
+    return words ? `${KIND_NAME.text}: ${cutText(words, 40)}` : `${KIND_NAME.text} (empty)`;
   }
   if (el.kind === 'shape')
     return el.shape === 'ellipse' ? 'Ellipse' : el.shape === 'line' ? 'Line' : 'Rectangle';

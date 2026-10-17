@@ -3,6 +3,7 @@ import type { ScheduledBackupsView } from '../../shared/backups';
 import type { EngineState } from '../../shared/engine/state';
 import { EVENT_WORDS_MAX, type EventKind } from '../../shared/events-out';
 import type { StreamStatus } from '../../shared/stream';
+import { cutText } from '../../shared/text';
 
 /*
  * What happens in the show, as events out (Session 28): each source's state before and after a change,
@@ -25,7 +26,7 @@ function slideWords(state: EngineState): string {
     .map((e) => (e.kind === 'text' ? e.text.trim() : ''))
     .filter((t) => t !== '')
     .join('\n');
-  return text.length > EVENT_WORDS_MAX ? text.slice(0, EVENT_WORDS_MAX) : text;
+  return cutText(text, EVENT_WORDS_MAX);
 }
 
 export function engineEvents(before: EngineState | null, after: EngineState): Emitted[] {

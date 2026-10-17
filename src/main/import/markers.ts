@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { MediaMarkers } from '../../shared/markers';
 import type { ParsedMediaRef } from './model';
+import { cutText } from '../../shared/text';
 
 /*
  * Playback markers and start and end points read from the older formats
@@ -26,7 +27,7 @@ export function markersFrom(
   const named = markers
     .filter((m) => m.name.trim() !== '' && Number.isFinite(m.seconds) && m.seconds >= 0)
     .slice(0, 50)
-    .map((m) => ({ id: randomUUID(), name: m.name.trim().slice(0, 60), atMs: ms(m.seconds) }));
+    .map((m) => ({ id: randomUUID(), name: cutText(m.name.trim(), 60), atMs: ms(m.seconds) }));
   if (startMs === null && endMs === null && named.length === 0) return null;
   return {
     startMs,

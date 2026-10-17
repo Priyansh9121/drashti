@@ -1,4 +1,5 @@
 import { PREVIEW_FPS, PREVIEW_WIDTH } from '../../../shared/stream';
+import { cutText } from '../../../shared/text';
 
 /*
  * The stream's page captures its own picture (the Program), frame by frame,
@@ -51,7 +52,7 @@ const say = (text: string) => {
   console.info(`[program] ${text}`);
 };
 const why = (error: unknown) =>
-  error instanceof Error ? `${error.name}: ${error.message}`.slice(0, 200) : String(error).slice(0, 200);
+  cutText(error instanceof Error ? `${error.name}: ${error.message}` : String(error), 200);
 
 const previewHeight = () => Math.round((PREVIEW_WIDTH * size.height) / size.width);
 

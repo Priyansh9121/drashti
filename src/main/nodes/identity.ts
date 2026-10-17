@@ -4,6 +4,7 @@ import { basename, join } from 'node:path';
 import { z } from 'zod';
 import { readState, readStateTwice, setAside } from '../state-file';
 import { type Identity, makeIdentity, pemFingerprint } from './certificate';
+import { cutText } from '../../shared/text';
 
 /*
  * Main's identity for its nodes (Session 13): an id, and a key and
@@ -72,7 +73,7 @@ function write(f: ReturnType<typeof files>, identity: MainIdentity): void {
 }
 
 function make(commonName: string): MainIdentity {
-  return { id: randomUUID(), ...makeIdentity(`Drashti Main ${commonName}`.slice(0, 64)) };
+  return { id: randomUUID(), ...makeIdentity(cutText(`Drashti Main ${commonName}`, 64)) };
 }
 
 /**

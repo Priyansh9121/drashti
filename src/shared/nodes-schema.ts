@@ -4,6 +4,7 @@ import { MEDIA_EXT_PATTERN, NODE_NAME_MAX } from './nodes';
 import type { MediaWant, NodeHealth, NodeScreen } from './nodes';
 import type { DisplayInfo, DisplayKey } from './screens';
 import { SCALING_MODES } from './screens';
+import { cutText } from './text';
 
 /*
  * Checks on what crosses the node link (Session 13), in both directions:
@@ -118,10 +119,12 @@ export const pairFinishSchema = z.object({ session: z.uuid(), confirm: z.string(
 
 /** A node's name as it gives it (its computer's name), fitted to what Main keeps. */
 export function nodeNameFrom(given: string): string {
-  const name = given
-    .replace(/\.local$/iu, '')
-    .replace(/[\p{Cc}]/gu, '')
-    .trim()
-    .slice(0, NODE_NAME_MAX);
+  const name = cutText(
+    given
+      .replace(/\.local$/iu, '')
+      .replace(/[\p{Cc}]/gu, '')
+      .trim(),
+    NODE_NAME_MAX,
+  );
   return name === '' ? 'Node' : name;
 }

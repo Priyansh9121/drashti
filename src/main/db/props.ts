@@ -3,6 +3,7 @@ import type { SlideElement } from '../../shared/model';
 import { slideElementSchema } from '../../shared/model-schema';
 import type { PropFields, PropInfo } from '../../shared/props';
 import type { Db } from './database';
+import { cutText } from '../../shared/text';
 
 const NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 
@@ -93,7 +94,7 @@ export class PropRepo {
       );
       return props.map((p) => {
         const id = randomUUID();
-        insert.run(id, p.name.slice(0, 80), definition(p), kind, path, p.ref);
+        insert.run(id, cutText(p.name, 80), definition(p), kind, path, p.ref);
         return id;
       });
     })();

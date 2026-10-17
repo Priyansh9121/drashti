@@ -1,3 +1,5 @@
+import { cutText } from './text';
+
 /*
  * A render error in one of Drashti's own windows (Session 23), as the window
  * reports it to the main process for the log. An output draws black when its
@@ -16,7 +18,7 @@ export interface RenderErrorReport {
 }
 
 const cut = (text: string | null | undefined, max: number) =>
-  typeof text === 'string' && text.length > 0 ? text.slice(0, max) : null;
+  typeof text === 'string' && text.length > 0 ? cutText(text, max) : null;
 
 /** A report from what React gives an error handler, safe to send (plain strings, cut short). */
 export function renderErrorReport(
@@ -27,9 +29,9 @@ export function renderErrorReport(
 ): RenderErrorReport {
   const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
   return {
-    where: where.slice(0, 40),
+    where: cutText(where, 40),
     kind,
-    message: message.slice(0, 500),
+    message: cutText(message, 500),
     stack: cut(error instanceof Error ? error.stack : null, 2000),
     componentStack: cut(componentStack, 2000),
   };
@@ -39,7 +41,7 @@ export function renderErrorReport(
 export function parseRenderErrorReport(raw: unknown): RenderErrorReport | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const r = raw as Record<string, unknown>;
-  const text = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : null);
+  const text = (v: unknown, max: number) => (typeof v === 'string' ? cutText(v, max) : null);
   const where = text(r['where'], 40);
   const message = text(r['message'], 500);
   if (where === null || message === null || (r['kind'] !== 'caught' && r['kind'] !== 'uncaught')) return null;
