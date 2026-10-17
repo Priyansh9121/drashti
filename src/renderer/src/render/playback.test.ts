@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlaybackClip, PlaybackSeek } from '../../../shared/media';
+import { playbackOffset, SOUND_LIMITS } from '../../../shared/media';
 import { startPlayback } from './playback';
 
 /*
  * A file played once with an end point stops there (Session 15): within two
- * frames of it, whatever the quarter-second checks are doing. A stand-in
- * media element plays on the test's clock (fake timers drive Date.now,
- * performance.now and the timers alike).
+ * frames of it, whatever the quarter-second checks are doing. A file that
+ * loops goes round in step, and a sound that starts late is brought into step
+ * at once (Sessions 31–36). A stand-in media element plays on the test's clock
+ * (fake timers drive Date.now, performance.now and the timers alike).
  */
 
 const FRAME = 1 / 60;
@@ -24,13 +26,26 @@ class FakeMedia extends EventTarget {
   private base = 0;
   private since = 0;
 
-  constructor(private readonly length: number) {
+  /**
+   * `restart`: its own loop comes round this late (seconds), as a real element's does. `startLate`: it
+   * plays this long (ms) after play() is called, as a busy computer's sound device does.
+   */
+  constructor(
+    private readonly length: number,
+    private readonly lags: { restart?: number; startLate?: number } = {},
+  ) {
     super();
   }
 
   get currentTime(): number {
     if (this.paused || this.seeking) return this.base;
-    return Math.min(this.length, this.base + ((Date.now() - this.since) / 1000) * this.rate);
+    const at = this.base + (Math.max(0, Date.now() - this.since) / 1000) * this.rate;
+    if (!this.loop || at < this.length) return Math.min(this.length, at);
+    // Its own loop: back to the start, `restart` late each time round.
+    const late = this.lags.restart ?? 0;
+    const lap = this.length + late;
+    const into = (at - this.length) % lap;
+    return into < late ? 0 : into - late;
   }
 
   set currentTime(value: number) {
@@ -65,7 +80,7 @@ class FakeMedia extends EventTarget {
 
   play(): Promise<void> {
     if (this.paused) {
-      this.since = Date.now();
+      this.since = Date.now() + (this.lags.startLate ?? 0);
       this.paused = false;
       setTimeout(() => this.dispatchEvent(new Event('playing')), 0);
     }
@@ -158,6 +173,71 @@ describe('a file played once to an end point', () => {
     expect(runFor(v, 600)).toBeLessThanOrEqual(1.5 + FRAME);
     expect(v.paused).toBe(true);
     expect(Math.abs(v.currentTime - 1.5)).toBeLessThanOrEqual(FRAME);
+    stop();
+  });
+});
+
+describe('a file that loops, and a sound that starts late', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'],
+    });
+    vi.setSystemTime(new Date('2026-10-06T10:00:00Z'));
+    vi.stubGlobal('HTMLMediaElement', { HAVE_CURRENT_DATA: 2 });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  /** How far it is from where the clock says (seconds, + ahead), a loop's end and start being near. */
+  const offset = (v: FakeMedia, startedAt: number, length: number, loop: boolean) =>
+    playbackOffset(
+      v.currentTime,
+      loop ? ((Date.now() - startedAt) / 1000) % length : (Date.now() - startedAt) / 1000,
+      length,
+      loop,
+    );
+
+  it('a looping sound goes round in step each time: by a jump aimed from the clock, not its own loop, which comes round late', () => {
+    // A 2 s file whose element's own loop comes round 0.25 s late (a sound, on a Mac: 0.2 to 0.3 s).
+    const v = new FakeMedia(2, { restart: 0.25 });
+    v.loop = true;
+    const startedAt = Date.now();
+    const stop = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'loop',
+      startedAt,
+      audible: true,
+      limits: SOUND_LIMITS,
+      timing: () => ({ loop: true }),
+    });
+    runFor(v, 1000);
+    // Half a second after each of three times round: within two frames of the clock.
+    const seen: number[] = [];
+    for (let turn = 0; turn < 3; turn++) {
+      runFor(v, 2000);
+      seen.push(offset(v, startedAt, 2, true));
+    }
+    expect(
+      seen.every((o) => Math.abs(o) < 2 / 30),
+      `offsets after each loop: ${seen.map((o) => o.toFixed(3)).join(' ')}`,
+    ).toBe(true);
+    stop();
+  });
+
+  it('a sound that starts 0.3 s late is in step within a second, not left to catch up at 2% a second', () => {
+    const v = new FakeMedia(30, { startLate: 300 });
+    const startedAt = Date.now();
+    const stop = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'late',
+      startedAt,
+      audible: true,
+      limits: SOUND_LIMITS,
+      timing: () => ({ loop: false }),
+    });
+    runFor(v, 1500);
+    const off = offset(v, startedAt, 30, false);
+    expect(Math.abs(off), `${off.toFixed(3)} s off the clock`).toBeLessThan(2 / 30);
     stop();
   });
 });

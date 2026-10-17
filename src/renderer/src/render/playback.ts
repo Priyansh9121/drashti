@@ -44,6 +44,10 @@ const SETTLE_MS = 300;
 const HOLD_TOLERANCE = 1 / 60;
 /** How far before an end point (seconds) the stop is aimed, half a frame. */
 const HOLD_EARLY = 0.008;
+/** In step: within two frames (at 30 a second) of the clock. */
+const IN_STEP = 2 / 30;
+/** A file still out of step once it has played on after landing is aimed again at once, so many times in a row. */
+const REAIMS = 2;
 
 /**
  * Play a library file in a media element, starting where a playback that
@@ -82,10 +86,16 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   // How long the last jump took to land: the next one aims that far ahead, so it lands in step.
   let seekLead = 0;
   let seekFrom = 0;
-  // A sound takes a moment more to start again after landing (pictures play on at once): how far
-  // off its last jump still was once it played on, learned so a clip looping every few seconds keeps step.
+  // A file takes a moment more to play on after landing (a sound most): how far off its last jump still
+  // was once it played on, learned so a clip looping every few seconds keeps step (pictures too, Sessions
+  // 31–36: a video's first loop, aimed by nothing learned yet, came round 0.16 s late).
   let settleLead = 0;
   let settleFrom = 0;
+  // Its start, once it plays (Sessions 31–36): a moment later, where it plays says whether it began in step
+  // (a busy computer's sound device starts late). Not learned from: a jump lands as jumps do.
+  let startFrom = 0;
+  // How many times in a row it has been aimed again, out of step once it played on.
+  let reaims = 0;
   const lead = () => seekLead + settleLead;
   // How long a seek takes to land, and a sound to settle, are lengths of time on this computer (each video
   // aims its next jump by them); where a video should be is always the engine's time (clock()).
@@ -98,8 +108,8 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     if (seekFrom > 0) {
       // eslint-disable-next-line no-restricted-properties -- a length of time: how long the seek took to land
       seekLead = Math.min(0.5, (performance.now() - seekFrom) / 1000);
-      // eslint-disable-next-line no-restricted-properties -- a length of time: when the sound began to settle after its jump
-      if (audible) settleFrom = performance.now();
+      // eslint-disable-next-line no-restricted-properties -- a length of time: when it began to settle after its jump
+      settleFrom = performance.now();
     }
     seekFrom = 0;
   };
@@ -116,6 +126,10 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   const whenFrame = () => {
     if (v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) frame();
     else v.addEventListener('loadeddata', frame, { once: true });
+  };
+  const onPlaying = () => {
+    // eslint-disable-next-line no-restricted-properties -- a length of time: when it began to play
+    if (seekFrom === 0 && settleFrom === 0) startFrom = performance.now();
   };
   const onMetadata = () => {
     tellLength(mediaId, v.duration);
@@ -192,32 +206,55 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     const span = end - start;
     const offset = playbackOffset(v.currentTime, at, span, c.loop);
     const correction = playbackCorrection(offset, limits);
-    // A sound's last jump, once it has played on a moment (or before it jumps again): where it plays
-    // says how much further (or less far) to aim next time.
-    // eslint-disable-next-line no-restricted-properties -- a length of time: how long the sound has played on since its jump
-    if (settleFrom > 0 && (correction.seek || performance.now() - settleFrom >= SETTLE_MS)) {
+    // eslint-disable-next-line no-restricted-properties -- a length of time: how long it has played on since it landed or began
+    const now = performance.now();
+    // Once it has played on a moment after landing (or before it jumps again): where it plays says how much
+    // further (or less far) to aim next time; after its start, whether it began in step. Still out of step
+    // then, it is aimed again at once (Sessions 31–36): catching up at 2% a second, a sound 0.3 s behind
+    // took 12 s, and a busy computer's never did.
+    let measured: number | null = null;
+    if (settleFrom > 0 && (correction.seek || now - settleFrom >= SETTLE_MS)) {
       settleFrom = 0;
       settleLead = Math.min(0.5 - seekLead, Math.max(-seekLead, settleLead - offset));
+      measured = offset;
+    }
+    if (startFrom > 0 && (correction.seek || now - startFrom >= SETTLE_MS)) {
+      startFrom = 0;
+      measured = offset;
+    }
+    let reaim = false;
+    if (measured !== null && !correction.seek) {
+      reaim = Math.abs(measured) > IN_STEP && reaims < REAIMS;
+      reaims = reaim ? reaims + 1 : 0;
     }
     // Aiming ahead past the end of a loop wraps round to its start.
-    if (correction.seek) jump(c.loop && span > 0 ? start + ((at - start + lead()) % span) - lead() : at);
+    if (correction.seek || reaim)
+      jump(c.loop && span > 0 ? start + ((at - start + lead()) % span) - lead() : at);
     else if (v.playbackRate !== correction.rate) v.playbackRate = correction.rate;
-    // A loop between start and end points: back to the start the moment it reaches the end point.
-    if (c.loop && c.clip && !wrap) {
+    // A loop goes round by a jump, aimed as every jump is, from where the clock is, a moment before its end
+    // (Sessions 31–36): left to the element's own loop, a whole file came round late, a picture 0.08 s and a
+    // sound 0.2 to 0.3 s on a Mac, so a looping video's sound fell further behind each time round.
+    if (c.loop && span > 0 && !wrap) {
       const left = end - v.currentTime;
       if (left < CHECK_MS / 1000 + 0.05)
-        // eslint-disable-next-line no-restricted-syntax -- loops a clip back to its start when its own position reaches its end point
+        // eslint-disable-next-line no-restricted-syntax -- sends a loop round when its own position reaches its end; check() keeps it in step by the engine's time too
         wrap = setTimeout(
           () => {
             wrap = null;
-            jump(start);
+            const round = clock();
+            const bounds = playbackBounds(round.clip, v.duration);
+            const length = bounds.end - bounds.start;
+            if (!round.loop || length <= 0) return;
+            const there = playbackPosition(round, v.duration, engineNow());
+            jump(bounds.start + ((there - bounds.start + lead()) % length) - lead());
           },
-          Math.max(0, (left / v.playbackRate) * 1000),
+          Math.max(0, ((left - HOLD_EARLY) / v.playbackRate) * 1000),
         );
     }
     armHold();
   };
   v.muted = !audible;
+  v.addEventListener('playing', onPlaying, { once: true });
   v.addEventListener('loadedmetadata', onMetadata, { once: true });
   v.addEventListener('error', failed);
   v.addEventListener('seeked', landed);
@@ -230,6 +267,7 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     if (wrap) clearTimeout(wrap);
     if (hold) clearTimeout(hold);
     v.removeEventListener('loadedmetadata', onMetadata);
+    v.removeEventListener('playing', onPlaying);
     v.removeEventListener('error', failed);
     v.removeEventListener('loadeddata', frame);
     v.removeEventListener('seeked', whenFrame);

@@ -9,6 +9,7 @@ import {
   holdStill,
   importAndGetIds,
   launchApp,
+  letTimePass,
   operatorPage,
   outputPage,
   outputPages,
@@ -137,6 +138,16 @@ test('outputs and the sound stay in step, a reloaded output rejoins, and only th
       ),
     );
 
+  /** Every window's offset known, each within a quarter of a second of the clock, all within two frames. */
+  const together = (offsets: (number | null)[], count: number) => {
+    const known = offsets.filter((o): o is number => o !== null);
+    return (
+      known.length === count &&
+      known.every((o) => Math.abs(o) < 0.25) &&
+      Math.max(...known) - Math.min(...known) < 2 * FRAME
+    );
+  };
+
   /**
    * Wait until the windows are within two frames of each other (and each
    * within a quarter of a second of the clock), then return their offsets.
@@ -150,12 +161,7 @@ test('outputs and the sound stay in step, a reloaded output rejoins, and only th
     const agree = async () => {
       offsets = await Promise.all(pages.map((p, i) => offsetOf(p, selectors[i] ?? '', startedAt)));
       seen.push(offsets.map((o) => (o === null ? 'none' : o.toFixed(3))).join(' '));
-      const known = offsets.filter((o): o is number => o !== null);
-      return (
-        known.length === pages.length &&
-        known.every((o) => Math.abs(o) < 0.25) &&
-        Math.max(...known) - Math.min(...known) < 2 * FRAME
-      );
+      return together(offsets, pages.length);
     };
     try {
       await expect.poll(agree, { timeout: 15_000, intervals: [250] }).toBe(true);
@@ -174,6 +180,30 @@ test('outputs and the sound stay in step, a reloaded output rejoins, and only th
     2 * FRAME,
   );
   expect(Math.abs(oa - oSound), `sound ${oSound.toFixed(3)} s off the clock`).toBeLessThan(2 * FRAME);
+
+  // And through the clip's loops, each time round (Sessions 31–36, the named flake): a moment after each of
+  // the next two loops, no waiting for it, the screens and the sound are in step. Left to its element's own
+  // loop, the sound came round 0.2 to 0.3 s late each time, and caught up at 2% a second: behind for good.
+  const length = await audio.evaluate(
+    (selector) => document.querySelector<HTMLMediaElement>(selector)?.duration ?? 0,
+    sound,
+  );
+  expect(length).toBeGreaterThan(3);
+  for (const round of [1, 2]) {
+    // 1.5 s into the next loop: time for a small catch-up (a frame or two), not for a sound left behind.
+    const into = ((Date.now() - startedAt) / 1000) % length;
+    await letTimePass(win, (length - into + 1.5) * 1000, 'to a moment after the clip next loops');
+    const looked = await Promise.all([
+      offsetOf(a, picture, startedAt),
+      offsetOf(b, picture, startedAt),
+      offsetOf(audio, sound, startedAt),
+    ]);
+    const states = await describe([a, b, audio], [picture, picture, sound]);
+    expect(
+      together(looked, 3),
+      `loop ${String(round)}: offsets ${looked.map((o) => (o === null ? 'none' : o.toFixed(3))).join(' ')}; ${states.join(' | ')}`,
+    ).toBe(true);
+  }
 
   // A reloaded output joins the video where the others are.
   await b.reload();
