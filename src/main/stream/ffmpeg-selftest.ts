@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { STREAM_PRESETS } from '../../shared/stream';
 import { encoderCandidates, tryEncoder } from './worker/encoders';
+import { ffmpegEnv } from './worker/ffmpeg-env';
 
 /*
  * DRASHTI_SELFTEST=ffmpeg: on a built or packaged app, check that Drashti
@@ -21,7 +22,8 @@ export interface FfmpegSelfTestResult {
 
 function run(path: string, args: string[]): Promise<string> {
   return new Promise((resolve) => {
-    const child = spawn(path, args, { windowsHide: true });
+    // The same clean environment as the stream's FFmpeg (Session 31).
+    const child = spawn(path, args, { windowsHide: true, env: ffmpegEnv() });
     let out = '';
     child.stdout.on('data', (d: Buffer) => (out += d.toString()));
     child.stderr.on('data', (d: Buffer) => (out += d.toString()));

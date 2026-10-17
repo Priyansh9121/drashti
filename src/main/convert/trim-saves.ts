@@ -4,6 +4,7 @@ import type { KeyframeResult, SaveJob, SaveRequest, SaveResult } from '../../sha
 import type { CopyOptions, FitResult } from './convert-service';
 import type { MediaInfo } from './plan';
 import { freeFileName, keyframeArgs, mp4Problem, readKeyframes, savedFileName, trimArgs } from './trim';
+import { ffmpegEnv } from '../stream/worker/ffmpeg-env';
 
 /*
  * Save as MP4… (Session 26e): a video's part between its start and end, as
@@ -45,7 +46,7 @@ const MISSING_FFMPEG = 'Drashti’s copy of FFmpeg is missing. Install Drashti a
 /** The keyframe at or before `atMs` in `file`, by FFmpeg listing keyframes from there and stopped at the first. */
 export function keyframeOf(ffmpeg: string, file: string, atMs: number): Promise<number | null> {
   return new Promise((resolve) => {
-    const child = spawn(ffmpeg, keyframeArgs(file, atMs), { windowsHide: true });
+    const child = spawn(ffmpeg, keyframeArgs(file, atMs), { windowsHide: true, env: ffmpegEnv() });
     let text = '';
     let settled = false;
     const end = (key: number | null) => {

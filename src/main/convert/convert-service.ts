@@ -9,6 +9,7 @@ import type { ConversionJob, ConvertResult } from '../../shared/convert';
 import { isHevc } from '../../shared/convert';
 import type { Db } from '../db/database';
 import { CONVERTING_DIR, MediaStore, sha256File } from '../import/media-store';
+import { ffmpegEnv } from '../stream/worker/ffmpeg-env';
 import { ProgressReader } from '../stream/worker/progress';
 import {
   chooseTarget,
@@ -36,6 +37,25 @@ import { freeFileName } from './trim';
 
 export const KEEP_FREE_BYTES = 2 * 1024 ** 3;
 
+/** The longest FFmpeg may take to read what a file holds (Session 31, MED-6). */
+export const PROBE_MS = 30_000;
+
+/**
+ * The longest a conversion or a Save as MP4 may take, each time it is tried: four times the file's length,
+ * and 5 minutes more (a file whose length is not known gets the 5 minutes). Longer, FFmpeg is stuck.
+ */
+export const workMsFor = (lengthMs: number | null): number => 4 * (lengthMs ?? 0) + 5 * 60_000;
+
+/** A time limit said plainly: "30 seconds", "1 second", "13 minutes". */
+function spoken(ms: number): string {
+  if (ms < 60_000) {
+    const s = Math.max(1, Math.round(ms / 1000));
+    return `${String(s)} second${s === 1 ? '' : 's'}`;
+  }
+  const m = Math.round(ms / 60_000);
+  return `${String(m)} minute${m === 1 ? '' : 's'}`;
+}
+
 export interface ConvertDeps {
   db: Db;
   mediaDir: string;
@@ -48,6 +68,8 @@ export interface ConvertDeps {
   /** A conversion was made or undone: these presentations' slides are read again; the lists reload. */
   libraryChanged(presentations: string[]): void;
   log(level: 'info' | 'warn', message: string): void;
+  /** Tests: shorter time limits than PROBE_MS and workMsFor. */
+  limits?: { probeMs?: number; workMs?(lengthMs: number | null): number };
 }
 
 interface MediaRow {
@@ -76,20 +98,43 @@ const KIND_OF: Record<ConvertTarget, MediaRow['kind']> = {
   m4a: 'audio',
 };
 
-/** What FFmpeg says the file holds (it prints this and stops: there is no output). */
-export function readInfo(ffmpeg: string, file: string): Promise<MediaInfo> {
+/**
+ * What FFmpeg says the file holds (it prints this and stops: there is no output), within `timeoutMs`
+ * (30 s): longer, it is stopped and `timedOut` says so. Only files may be opened, and FFmpeg gets the
+ * stream's clean environment (Session 31, MED-6). `onSpawn` lets a caller stop it meanwhile.
+ */
+export function readInfo(
+  ffmpeg: string,
+  file: string,
+  options: { timeoutMs?: number; onSpawn?(child: ChildProcess): void } = {},
+): Promise<MediaInfo & { timedOut?: true }> {
   return new Promise((resolve) => {
-    const child = spawn(ffmpeg, ['-hide_banner', '-i', file], { windowsHide: true });
+    const child = spawn(ffmpeg, ['-hide_banner', '-protocol_whitelist', 'file', '-i', file], {
+      windowsHide: true,
+      env: ffmpegEnv(),
+    });
+    options.onSpawn?.(child);
     let text = '';
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, options.timeoutMs ?? PROBE_MS);
     child.stderr.on('data', (d: Buffer) => (text += d.toString()));
     child.on('error', () => {
+      clearTimeout(timer);
       resolve(parseFfmpegInfo(''));
     });
     child.on('exit', () => {
-      resolve(parseFfmpegInfo(text));
+      clearTimeout(timer);
+      resolve(timedOut ? { ...parseFfmpegInfo(''), timedOut: true } : parseFfmpegInfo(text));
     });
   });
 }
+
+/** What the operator is told when reading a file took too long. */
+const probeTooLong = (ms: number) =>
+  `FFmpeg took longer than ${spoken(ms)} to read this file, so it was stopped. The file may be damaged: try opening it in another program.`;
 
 const gb = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 
@@ -102,14 +147,19 @@ function removeQuietly(path: string): void {
   }
 }
 
-/** Why a conversion going on was stopped: cancelled, Drashti quitting, waiting for the stream, or out of disk space. */
-type Stop = 'cancel' | 'quit' | 'wait' | 'space';
+/**
+ * Why a conversion going on was stopped: cancelled, Drashti quitting, waiting for the stream, out of disk
+ * space, or taking longer than its time limit (Session 31).
+ */
+type Stop = 'cancel' | 'quit' | 'wait' | 'space' | 'time';
 
 interface Running {
   job: ConversionJob;
   child: ChildProcess | null;
   tmp: string | null;
   stop: Stop | null;
+  /** The time limit this attempt had (ms), once it started. */
+  limitMs: number;
 }
 
 /** Making a file no taller than a height (Session 25b): a downloaded video above 1080p, before its import. */
@@ -157,6 +207,7 @@ interface RunningFile {
   child: ChildProcess | null;
   tmp: string;
   stop: Stop | null;
+  limitMs: number;
 }
 
 export class ConvertService {
@@ -166,6 +217,16 @@ export class ConvertService {
   private files: FileJob[] = [];
   private runningFile: RunningFile | null = null;
   private readonly timer: NodeJS.Timeout;
+
+  /** How long reading what a file holds may take (tests give less). */
+  private probeMs(): number {
+    return this.deps.limits?.probeMs ?? PROBE_MS;
+  }
+
+  /** How long converting or saving a file of this length may take, each time it is tried. */
+  private workMs(lengthMs: number | null): number {
+    return (this.deps.limits?.workMs ?? workMsFor)(lengthMs);
+  }
 
   constructor(private readonly deps: ConvertDeps) {
     // Part-files left by a conversion that was going when Drashti stopped.
@@ -354,7 +415,7 @@ export class ConvertService {
       return fail(
         `Only ${gb(free)} is free on the disk, and Drashti keeps 2 GB free. Free up some space, then convert again.`,
       );
-    const running: Running = { job, child: null, tmp: null, stop: null };
+    const running: Running = { job, child: null, tmp: null, stop: null, limitMs: 0 };
     this.running = running;
     job.state = 'converting';
     job.note = null;
@@ -362,18 +423,33 @@ export class ConvertService {
     job.progress = 0;
     this.changed();
 
-    const info = await readInfo(ffmpeg, source);
+    const info = await readInfo(ffmpeg, source, {
+      timeoutMs: this.probeMs(),
+      onSpawn: (probe) => {
+        running.child = probe;
+      },
+    });
+    running.child = null;
     // Cancelled, or the stream started, while FFmpeg was reading the file.
     const early = running.stop ?? (this.deps.busy() ? 'wait' : null);
     if (early) return this.stopped(running, early);
+    if (info.timedOut) return fail(probeTooLong(this.probeMs()));
     const target = chooseTarget(row.kind, info);
     if (!target) return fail('FFmpeg could not read anything in this file to convert.');
     const work = join(this.deps.mediaDir, CONVERTING_DIR);
     mkdirSync(work, { recursive: true });
     const tmp = join(work, `${job.id}.${TARGET_EXT[target]}`);
     running.tmp = tmp;
-    const child = spawn(ffmpeg, convertArgs(target, source, tmp, info), { windowsHide: true });
+    const child = spawn(ffmpeg, convertArgs(target, source, tmp, info), {
+      windowsHide: true,
+      env: ffmpegEnv(),
+    });
     running.child = child;
+    running.limitMs = this.workMs(info.durationMs);
+    const limit = setTimeout(() => {
+      running.stop = 'time';
+      child.kill('SIGKILL');
+    }, running.limitMs);
     try {
       if (child.pid !== undefined) setPriority(child.pid, constants.priority.PRIORITY_LOW);
     } catch {
@@ -401,6 +477,7 @@ export class ConvertService {
       });
       child.on('exit', resolve);
     });
+    clearTimeout(limit);
     if (code !== 0 || running.stop) {
       removeQuietly(tmp);
       if (running.stop) return this.stopped(running, running.stop);
@@ -425,6 +502,10 @@ export class ConvertService {
       job.state = 'waiting';
       job.note = this.deps.busy();
       this.deps.log('info', 'A conversion stopped while the stream is on: it starts again afterwards');
+    } else if (stop === 'time') {
+      job.state = 'failed';
+      job.message = `Stopped: converting it took longer than ${spoken(running.limitMs)} (four times its length, and 5 minutes more), so FFmpeg may be stuck. Convert it again; if it stops again, the file may be damaged.`;
+      this.deps.log('warn', 'A conversion took longer than its time limit and was stopped');
     } else {
       job.state = 'failed';
       job.message = `Stopped: the disk has less than 2 GB free (${gb(this.deps.freeBytes(this.deps.mediaDir))}). Free up some space, then convert again.`;
@@ -505,7 +586,8 @@ export class ConvertService {
         message:
           'Drashti’s copy of FFmpeg is missing, so it cannot make the video smaller. Install Drashti again.',
       };
-    const info = await readInfo(ffmpeg, source);
+    const info = await readInfo(ffmpeg, source, { timeoutMs: this.probeMs() });
+    if (info.timedOut) return { ok: false, message: probeTooLong(this.probeMs()) };
     if (!info.video || info.video.still)
       return { ok: false, message: 'FFmpeg could not find a video in it to make smaller.' };
     if (info.video.height <= options.maxHeight) return { ok: true, copy: null };
@@ -620,7 +702,8 @@ export class ConvertService {
       return;
     }
     const tmp = join(out, `.${job.id}.mp4`);
-    const running: RunningFile = { job, child: null, tmp, stop: null };
+    const lengthMs = job.copy ? job.copy.lengthMs : job.info.durationMs;
+    const running: RunningFile = { job, child: null, tmp, stop: null, limitMs: this.workMs(lengthMs) };
     this.runningFile = running;
     job.options.progress?.(0);
     const child = spawn(
@@ -628,17 +711,18 @@ export class ConvertService {
       job.copy
         ? job.copy.args(tmp)
         : convertArgs('mp4', job.source, tmp, job.info, { maxHeight: job.options.maxHeight }),
-      {
-        windowsHide: true,
-      },
+      { windowsHide: true, env: ffmpegEnv() },
     );
     running.child = child;
+    const limit = setTimeout(() => {
+      running.stop = 'time';
+      child.kill('SIGKILL');
+    }, running.limitMs);
     try {
       if (child.pid !== undefined) setPriority(child.pid, constants.priority.PRIORITY_LOW);
     } catch {
       // Not allowed here: it runs at normal priority.
     }
-    const lengthMs = job.copy ? job.copy.lengthMs : job.info.durationMs;
     // What FFmpeg says when it fails (a stream an MP4 cannot hold, say), for the log's reason.
     let said = '';
     const reader = new ProgressReader(
@@ -659,6 +743,7 @@ export class ConvertService {
       });
       child.on('exit', resolve);
     });
+    clearTimeout(limit);
     if (code !== 0 || running.stop) {
       removeQuietly(tmp);
       const stop = running.stop;
@@ -680,6 +765,14 @@ export class ConvertService {
       if (stop === 'cancel') {
         this.deps.log('info', `A video being ${what} was stopped`);
         done({ ok: false, message: 'Stopped.', stopped: true });
+        return;
+      }
+      if (stop === 'time') {
+        this.deps.log('warn', `A video being ${what} took longer than its time limit and was stopped`);
+        done({
+          ok: false,
+          message: `Stopped: ${saving ? 'saving it' : `making it ${height}p`} took longer than ${spoken(running.limitMs)} (four times its length, and 5 minutes more), so FFmpeg may be stuck. Try again; if it stops again, the file may be damaged.`,
+        });
         return;
       }
       // A stream an MP4 cannot hold (the check before is by the first picture and sound only).

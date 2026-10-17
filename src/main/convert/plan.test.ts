@@ -45,7 +45,22 @@ describe('what FFmpeg says a file holds', () => {
   });
 });
 
+/** Only files may be opened, and the option comes before the input it is for (Session 31, MED-6). */
+function onlyFiles(args: string[]): boolean {
+  const at = args.indexOf('-protocol_whitelist');
+  return at >= 0 && args[at + 1] === 'file' && at < args.indexOf('-i');
+}
+
 describe('what a file becomes', () => {
+  it('opens nothing but files: -protocol_whitelist file before the input, for every kind (Session 31)', () => {
+    const info = parseFfmpegInfo(
+      '  Duration: 00:00:02.00\n    Stream #0:0: Video: prores (HQ), yuv422p10le, 320x180, 25 fps\n',
+    );
+    for (const target of ['mp4', 'webm-alpha', 'jpeg', 'png', 'm4a'] as const)
+      expect(onlyFiles(convertArgs(target, '/in.mov', '/out', info)), target).toBe(true);
+    expect(onlyFiles(convertArgs('mp4', '/in.mov', '/out', info, { maxHeight: 1080 }))).toBe(true);
+  });
+
   it('video to H.264 MP4, with transparency to VP9 WebM, pictures to JPEG or PNG, sound to M4A', () => {
     expect(chooseTarget('video', parseFfmpegInfo(PRORES))).toBe('mp4');
     expect(chooseTarget('video', parseFfmpegInfo(AVI))).toBe('mp4');
