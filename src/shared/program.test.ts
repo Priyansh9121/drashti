@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { EngineState, PropItem } from './engine/state';
 import { initialEngineState } from './engine/state';
 import type { RenderSlide, SlideElement, TextElement, TextRun, TextStyle } from './model';
-import { LOWER_THIRD_MAX_LINES, lowerThird, programPicture } from './program';
+import { LOWER_THIRD_MAX_LINES, lowerThird, lowerThirdOf, programPicture } from './program';
 
 /* Placeholder words only: never real kirtan text. */
 
@@ -98,6 +98,11 @@ describe('the lower third', () => {
       false,
     );
     expect(lowerThird(many, null)).toHaveLength(LOWER_THIRD_MAX_LINES);
+    // And how many there are in all, for the note under LIVE (Sessions 31–36, SLD-8).
+    const of = lowerThirdOf(many, null);
+    expect(of.lines).toHaveLength(LOWER_THIRD_MAX_LINES);
+    expect(of.total).toBe(10);
+    expect(lowerThirdOf(kirtanSlide(), ['en', 'gu'])).toMatchObject({ total: 2 });
   });
 });
 

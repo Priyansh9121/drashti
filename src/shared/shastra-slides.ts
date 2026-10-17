@@ -2,6 +2,7 @@ import type { Lang, RenderSlide, TextElement, TextRun } from './model';
 import { LANGS } from './model';
 import type { LiveLook } from './looks';
 import { groupLookIn, shows } from './looks';
+import { LOWER_THIRD_MAX_LINES } from './program';
 import type { ThemeFields, ThemeLangStyle } from './themes';
 
 /*
@@ -230,7 +231,7 @@ function blockHeight(
 }
 
 /** The lower third's own rules (render/LowerThird.tsx and shared/program.ts): at most 6 lines, smaller as they grow. */
-const LOWER_THIRD_LINES = 6;
+const LOWER_THIRD_LINES = LOWER_THIRD_MAX_LINES;
 
 function lowerThirdFits(parts: Partial<Record<Lang, string[]>>, langs: readonly Lang[], slide: Box): boolean {
   // The reference line, then each language's lines.

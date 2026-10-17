@@ -62,6 +62,33 @@ async function heldChange(app: ElectronApplication, change: () => Promise<unknow
   await change();
 }
 
+test('a slide with more lines than a lower third holds says so under LIVE, “Lower third shows 6 of 7 lines” (Sessions 31–36, SLD-8)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const seven = Array.from({ length: 7 }, (_, i) => `Placeholder line ${String(i + 1)}`).join('\n');
+  const id = await makeSlides(
+    win,
+    'Placeholder long lower third',
+    [{ words: seven }, { words: 'Placeholder short\nPlaceholder two' }],
+    { kind: 'cut', durationMs: 0 },
+  );
+  await setUpScreen(win);
+  const note = win.getByTestId('preview-lower-third');
+  // The hall draws the slide as designed: nothing to say.
+  await goLive(win, id, 0);
+  await expect(win.getByTestId('live-text')).toContainText('slide 1 of 2');
+  await expect(note).toHaveCount(0);
+  // Its Look draws slides as a lower third: the first six of seven show, and LIVE says so.
+  await lowerThirds(win, 'calm');
+  await expect(note).toHaveText('Lower third shows 6 of 7 lines');
+  // A slide that fits: nothing to say.
+  await goLive(win, id, 1);
+  await expect(win.getByTestId('live-text')).toContainText('slide 2 of 2');
+  await expect(note).toHaveCount(0);
+  await app.close();
+});
+
 test('a Look’s lower third comes in, changes as its box holds, and leaves with a short fade; Clear all takes it off at once (Calm and Bold)', async () => {
   test.setTimeout(240_000);
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_TEST_CLOCK_HOLD: '1' });

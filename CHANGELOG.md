@@ -4,6 +4,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 ## Unreleased
 
+- When a lower third cannot hold all of a slide's lines, a note under LIVE says how many it shows, for example "Lower third shows 6 of 7 lines".
 - View, Show Safe Areas draws the safe areas, the ticker's and a message's bands, and where each screen group cuts the slide off, in the slide editor; words where the ticker runs are warned of.
 - The slide editor marks words that run past their box, on the slide's thumbnail and in the inspector, and warns when words are drawn smaller than 36 px on a 1080-line screen (a note below 48 px); an import says how many slides may need a look.
 - The first time Simple Mode opens, three short steps show how to choose the playlist, use Next and Back, and Black-out and Clear all; Skip ends them, and they never come again. Loading appears only when a wait lasts longer than half a second, and the phone remote says where empty playlists, library and messages are filled.

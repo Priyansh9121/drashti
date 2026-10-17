@@ -7,7 +7,9 @@ import { SceneBoundary } from '../render/SceneBoundary';
 import { WarmUp } from '../render/WarmUp';
 import { useFirstGroupLook, useScreens } from '../screens/screens-store';
 import { LANG_NAMES } from '../../../shared/themes';
-import type { RepeatRun } from '../../../shared/engine/state';
+import type { EngineState, RepeatRun } from '../../../shared/engine/state';
+import { LOWER_THIRD_MAX_LINES, lowerThirdOf } from '../../../shared/program';
+import { useStream } from '../stream/stream-store';
 import { stopRepeat } from '../playlists/repeat-actions';
 import { Badge, LiveBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -25,9 +27,30 @@ import { HOLD_WARM_UP, SKIP_WARM_UP } from '../render/warm-up-mode';
  * A kirtan's slide shows the languages of the first audience group, and
  * says so under the picture (each group can show its own).
  */
+/**
+ * How many of the live slide's lines a lower third shows, where one is drawn now (the stream's Camera and
+ * words, or a group whose Look draws slides as a lower third), when it is fewer than the slide has
+ * (Sessions 31–36, SLD-8: "Lower third shows 6 of 8 lines").
+ */
+function useLowerThirdShort(state: EngineState | null): { shown: number; total: number } | null {
+  const groups = useScreens((s) => s.snapshot?.groups);
+  const stream = useStream((s) => s.status);
+  const slide = state?.layers.slide?.slide;
+  if (!state || !slide) return null;
+  const places = (groups ?? []).flatMap((g) => {
+    const look = state.look.groups[g.id];
+    if (g.role === 'stream')
+      return stream?.programOn && stream.layout === 'camera' ? [look?.languages ?? null] : [];
+    return look?.slides === 'lowerThird' ? [look.languages] : [];
+  });
+  const total = Math.max(0, ...places.map((languages) => lowerThirdOf(slide, languages).total));
+  return total > LOWER_THIRD_MAX_LINES ? { shown: LOWER_THIRD_MAX_LINES, total } : null;
+}
+
 export function LivePreview() {
   // The show, or the practice show while it is on (Session 26g: drawn here, never on a screen).
   const state = useShowState();
+  const lowerThirdShort = useLowerThirdShort(state);
   const rev = useShowRev();
   const practising = usePractice((s) => s.on);
   const help = useWhatIsThis('live');
@@ -113,6 +136,11 @@ export function LivePreview() {
       {shownAs && state?.layers.slide?.slide.kirtan && (
         <p className="text-xs text-muted" data-testid="preview-languages">
           As “{shownAs.name}” shows it: {shownAs.languages.map((l) => LANG_NAMES[l]).join(', ')}
+        </p>
+      )}
+      {lowerThirdShort && (
+        <p className="text-xs text-warning-fg" data-testid="preview-lower-third">
+          Lower third shows {lowerThirdShort.shown} of {lowerThirdShort.total} lines
         </p>
       )}
       {state?.autoAdvance && <TimeLeft count={state.autoAdvance} />}
