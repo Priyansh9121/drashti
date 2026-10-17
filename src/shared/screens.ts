@@ -162,6 +162,16 @@ export interface OutputReport {
   paintedRev: number;
   /** Still warming up its GPU, unseen (Session 27): running, not yet drawing the show. */
   warming?: boolean;
+  /** Fonts the words it draws name that this computer does not have (Sessions 31–36, I18N-1). */
+  missingFonts?: string[];
+}
+
+/** A report's missing fonts as checked: names only, a few, each short (a page is never trusted). */
+export function missingFontsIn(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((n): n is string => typeof n === 'string' && n.trim() !== '' && n.length <= 200)
+    .slice(0, 20);
 }
 
 /** Common canvas sizes offered in the UI; any size is allowed. */

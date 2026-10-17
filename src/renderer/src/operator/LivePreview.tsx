@@ -10,6 +10,7 @@ import { LANG_NAMES } from '../../../shared/themes';
 import type { EngineState, RepeatRun } from '../../../shared/engine/state';
 import { LOWER_THIRD_MAX_LINES, lowerThirdOf } from '../../../shared/program';
 import { useStream } from '../stream/stream-store';
+import { missingFontsOf } from '../render/font-probe';
 import { stopRepeat } from '../playlists/repeat-actions';
 import { Badge, LiveBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -51,6 +52,15 @@ export function LivePreview() {
   // The show, or the practice show while it is on (Session 26g: drawn here, never on a screen).
   const state = useShowState();
   const lowerThirdShort = useLowerThirdShort(state);
+  // Fonts the live slide names that this computer does not have (Sessions 31–36, I18N-1).
+  const live = state?.layers.slide?.slide;
+  const missingFonts = live
+    ? [
+        ...new Set(
+          live.elements.flatMap((e) => (e.kind === 'text' && e.text.trim() !== '' ? missingFontsOf(e) : [])),
+        ),
+      ]
+    : [];
   const rev = useShowRev();
   const practising = usePractice((s) => s.on);
   const help = useWhatIsThis('live');
@@ -136,6 +146,11 @@ export function LivePreview() {
       {shownAs && state?.layers.slide?.slide.kirtan && (
         <p className="text-xs text-muted" data-testid="preview-languages">
           As “{shownAs.name}” shows it: {shownAs.languages.map((l) => LANG_NAMES[l]).join(', ')}
+        </p>
+      )}
+      {missingFonts.length > 0 && (
+        <p className="text-xs text-warning-fg" data-testid="live-missing-font">
+          Font not on this computer: {missingFonts.join(', ')}
         </p>
       )}
       {lowerThirdShort && (

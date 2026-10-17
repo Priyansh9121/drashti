@@ -129,6 +129,12 @@ function DisplayCard({ display, number, screen, state, output, thumb, nodeId, si
           {display.label || `Display ${number}`} · {display.pixelWidth} × {display.pixelHeight} ·{' '}
           {Math.round(display.refreshHz)} Hz
         </div>
+        {/* A font its words name that its computer does not have (Sessions 31–36, I18N-1). */}
+        {output?.missingFonts && output.missingFonts.length > 0 && (
+          <div className="text-xs text-warning-fg" data-testid="dashboard-missing-font">
+            Font not on {nodeId ? 'this node' : 'this computer'}: {output.missingFonts.join(', ')}
+          </div>
+        )}
         {output && state === 'showing' && (
           <div className="text-xs text-muted" data-testid="dashboard-frames">
             {output.droppedFrames === 0

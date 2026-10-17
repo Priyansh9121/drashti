@@ -22,6 +22,7 @@ import {
 } from '../../shared/nodes';
 import { mediaWantListSchema, nodeNameFrom, nodeScreenListSchema } from '../../shared/nodes-schema';
 import type { DisplayInfo, OutputContext, OutputReport, ScreenConfig } from '../../shared/screens';
+import { missingFontsIn } from '../../shared/screens';
 import type { DiagnosticsInput } from '../diagnostics';
 import { saveNodeDiagnostics } from '../diagnostics';
 import { handle } from '../ipc/handle';
@@ -418,6 +419,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
             displayId: st.displayId,
             droppedFrames: r?.droppedFrames ?? 0,
             paintedRev: r?.paintedRev ?? -1,
+            ...(r?.missingFonts && r.missingFonts.length > 0 ? { missingFonts: r.missingFonts } : {}),
           },
         ];
       }),
@@ -733,7 +735,11 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     const screenId = manager.screenIdFor(event.sender.id);
     const r = raw as Partial<OutputReport> | null;
     if (screenId && r && typeof r.droppedFrames === 'number' && typeof r.paintedRev === 'number') {
-      reports.set(screenId, { droppedFrames: r.droppedFrames, paintedRev: r.paintedRev });
+      reports.set(screenId, {
+        droppedFrames: r.droppedFrames,
+        paintedRev: r.paintedRev,
+        missingFonts: missingFontsIn(r.missingFonts),
+      });
       heartbeat.report(screenId, r.paintedRev);
     }
     return null;
