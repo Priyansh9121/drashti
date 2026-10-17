@@ -455,10 +455,13 @@ test('Drashti stopped dead during Save as MP4: on a Mac its FFmpeg runs on and t
   const again = await relaunchApp(userData, env);
   await expect.poll(() => running.filter(alive), { timeout: 20_000 }).toEqual([]);
   await expect.poll(() => readdirSync(out), { timeout: 10_000 }).toEqual([]);
-  const log = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  // Said as it is removed, by Drashti's own process a moment after the file goes: waited for, not read once
+  // (CI's Mac read the log in that moment, run 39054667458).
+  const logged = () => readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  await expect.poll(logged, { timeout: 10_000 }).toContain('Removed a part-file left by the last run');
+  const log = logged();
   if (process.platform === 'win32') expect(log).not.toContain('left running by the last run');
   else expect(log).toContain('Stopped a conversion left running by the last run');
-  expect(log).toContain('Removed a part-file left by the last run');
   await again.app.close();
 });
 
