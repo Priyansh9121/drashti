@@ -167,6 +167,19 @@ export interface MediaElement extends ElementBase {
 export type SlideElement = TextElement | ShapeElement | MediaElement;
 
 /** A slide resolved for display: everything a renderer needs, nothing more. */
+/**
+ * Darkening behind the words (Sessions 31–36, SLD-3): a band behind each box of words, or the whole picture,
+ * drawn over the background (a picture or video included) and under the words, this dark (0.4, 0.6 or 0.8).
+ */
+export type DarkenKind = 'band' | 'whole';
+export const DARKEN_KINDS = ['band', 'whole'] as const satisfies readonly DarkenKind[];
+export const DARKEN_STRENGTHS = [0.4, 0.6, 0.8] as const;
+export interface Darken {
+  kind: DarkenKind;
+  /** How dark: the black's opacity, 0 to 1 (the choices are 0.4, 0.6 and 0.8). */
+  strength: number;
+}
+
 export interface RenderSlide {
   id: string;
   /** Design size of the slide (the presentation's size). */
@@ -174,6 +187,8 @@ export interface RenderSlide {
   height: number;
   /** Solid background behind the elements, or null for transparent. */
   background: string | null;
+  /** Darkening behind the words; left out for none (every slide made before it, Sessions 31–36). */
+  darken?: Darken;
   elements: SlideElement[];
   /**
    * From a kirtan: each screen shows the languages it is set to show

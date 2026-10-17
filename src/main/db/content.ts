@@ -25,6 +25,8 @@ export interface SlideRow {
   label: string;
   notes: string;
   background: string | null;
+  /** Darkening behind the words as JSON (Sessions 31–36), or null for none. */
+  darken: string | null;
   transition: string | null;
   auto_advance_ms: number | null;
   enabled: number;
@@ -127,7 +129,7 @@ export function readContent(db: Db, presentationId: string): ContentRows | null 
     .all(presentationId) as GroupRow[];
   const slides = db
     .prepare(
-      `SELECT s.id, s.group_id, s.position, s.label, s.notes, s.background, s.transition, s.auto_advance_ms, s.enabled, s.macro_id
+      `SELECT s.id, s.group_id, s.position, s.label, s.notes, s.background, s.darken, s.transition, s.auto_advance_ms, s.enabled, s.macro_id
          FROM slides s JOIN slide_groups g ON g.id = s.group_id
         WHERE g.presentation_id = ? ORDER BY g.position, g.rowid, s.position, s.rowid`,
     )
@@ -201,8 +203,8 @@ export function writeContent(db: Db, rows: ContentRows): void {
   );
   for (const g of rows.groups) group.run(g.id, id, g.name, g.color, g.position);
   const slide = db.prepare(
-    `INSERT INTO slides (id, group_id, position, label, notes, background, transition, auto_advance_ms, enabled, macro_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO slides (id, group_id, position, label, notes, background, darken, transition, auto_advance_ms, enabled, macro_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   for (const s of rows.slides)
     slide.run(
@@ -212,6 +214,7 @@ export function writeContent(db: Db, rows: ContentRows): void {
       s.label,
       s.notes,
       s.background,
+      s.darken ?? null,
       s.transition,
       s.auto_advance_ms,
       s.enabled,

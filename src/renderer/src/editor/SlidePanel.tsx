@@ -9,6 +9,7 @@ import {
   type TransitionKind,
 } from '../../../shared/model';
 import type { EditDoc, EditSlide } from '../../../shared/slide-edit';
+import { DARKEN_STRENGTHS } from '../../../shared/model';
 import { slidesOf } from '../../../shared/slide-edit';
 import { useMedia } from '../library/library-store';
 import { Button } from '../ui/Button';
@@ -322,6 +323,46 @@ export function SlidePanel({ doc, slide }: { doc: EditDoc; slide: EditSlide }) {
                 setSlide({ background: e.target.value }, `background:${slide.id}`);
               }}
             />
+          </Field>
+        )}
+        {/* Darkening behind the words (Sessions 31–36, SLD-3): none unless chosen. */}
+        <Field label="Darken behind the words" layout="inline">
+          <Select
+            className="flex-1"
+            data-testid="slide-darken"
+            value={slide.darken?.kind ?? 'none'}
+            onChange={(e) => {
+              const kind = e.target.value;
+              setSlide({
+                darken:
+                  kind === 'band' || kind === 'whole'
+                    ? { kind, strength: slide.darken?.strength ?? 0.6 }
+                    : null,
+              });
+            }}
+          >
+            <option value="none">None</option>
+            <option value="band">A band behind the words</option>
+            <option value="whole">The whole picture</option>
+          </Select>
+        </Field>
+        {slide.darken && (
+          <Field label="How dark" layout="inline" className="pl-2">
+            <Select
+              className="flex-1"
+              data-testid="slide-darken-strength"
+              value={String(slide.darken.strength)}
+              onChange={(e) => {
+                const kind = slide.darken?.kind ?? 'band';
+                setSlide({ darken: { kind, strength: Number(e.target.value) } });
+              }}
+            >
+              {DARKEN_STRENGTHS.map((s) => (
+                <option key={s} value={String(s)}>
+                  {Math.round(s * 100)}%
+                </option>
+              ))}
+            </Select>
           </Field>
         )}
       </Section>

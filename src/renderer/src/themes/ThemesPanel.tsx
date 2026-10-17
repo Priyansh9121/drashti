@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Lang, RenderSlide, TextRun } from '../../../shared/model';
-import { LANGS } from '../../../shared/model';
+import { DARKEN_STRENGTHS, LANGS } from '../../../shared/model';
 import type { Theme, ThemeFields, ThemeLangStyle } from '../../../shared/themes';
 import { DEFAULT_THEME, LANG_NAMES } from '../../../shared/themes';
 import { loadMedia, selectPresentation, useLibrary, useMedia } from '../library/library-store';
@@ -22,6 +22,7 @@ import { EmptyState, Loading } from '../ui/States';
 import { plural } from '../ui/text';
 import { closeThemes, useThemesPanel } from './themes-store';
 import { themeContract } from '../../../shared/theme-contract';
+import { wordsContrast, WORDS_CONTRAST_AIM } from '../../../shared/contrast';
 
 /** Placeholder lines, one per language, for the preview. */
 const SAMPLE: Record<Lang, string> = {
@@ -55,6 +56,7 @@ function previewSlide(t: ThemeFields, langs: readonly Lang[]): RenderSlide {
     height: 1080,
     background:
       t.background.kind === 'color' ? t.background.color : t.background.kind === 'none' ? '#000000' : null,
+    ...(t.darken ? { darken: t.darken } : {}),
     elements: [
       {
         id: 'theme-preview-text',
@@ -84,6 +86,14 @@ function previewSlide(t: ThemeFields, langs: readonly Lang[]): RenderSlide {
 }
 
 const percent = (n: number) => Math.round(n * 1000) / 10;
+
+/** The lowest contrast of a theme's words (each language and the reference line) against its background, darkened as it darkens. */
+function lowestContrast(t: ThemeFields): number {
+  const bg = t.background.kind === 'color' ? t.background.color : '#000000';
+  return Math.min(
+    ...[...LANGS.map((l) => t.langs[l].color), t.reference.color].map((c) => wordsContrast(c, bg, t.darken)),
+  );
+}
 
 /** A theme drawn: a line in each language under it (a picture background shown as a still). */
 function ThemePreview({
@@ -429,6 +439,52 @@ function ThemeEditor({
             ))}
           </Select>
         )}
+      </fieldset>
+      {/* Darkening behind the words on its slides (Sessions 31–36, SLD-3): none unless chosen. */}
+      <fieldset className="flex flex-wrap items-center gap-2 text-sm">
+        <legend className="mb-2">
+          <SectionTitle>Darken behind the words</SectionTitle>
+        </legend>
+        <Select
+          aria-label="Darken behind the words"
+          data-testid="theme-darken"
+          value={draft.darken?.kind ?? 'none'}
+          onChange={(e) => {
+            const kind = e.target.value;
+            setDraft((d) => {
+              // None leaves no darkening at all, as a theme made before it has: choosing None again changes nothing.
+              const { darken: _was, ...rest } = d;
+              return kind === 'band' || kind === 'whole'
+                ? { ...rest, darken: { kind, strength: d.darken?.strength ?? 0.6 } }
+                : rest;
+            });
+          }}
+        >
+          <option value="none">None</option>
+          <option value="band">A band behind the words</option>
+          <option value="whole">The whole picture</option>
+        </Select>
+        {draft.darken && (
+          <Select
+            aria-label="How dark"
+            value={String(draft.darken.strength)}
+            onChange={(e) => {
+              const strength = Number(e.target.value);
+              setDraft((d) => ({ ...d, darken: { kind: d.darken?.kind ?? 'band', strength } }));
+            }}
+          >
+            {DARKEN_STRENGTHS.map((s) => (
+              <option key={s} value={String(s)}>
+                {Math.round(s * 100)}%
+              </option>
+            ))}
+          </Select>
+        )}
+        <span className="text-muted" data-testid="theme-contrast">
+          {bg.kind === 'media'
+            ? 'Over a picture or video the contrast cannot be measured.'
+            : `The words are at least ${lowestContrast(draft).toFixed(1)}:1 against the background (${String(WORDS_CONTRAST_AIM)}:1 reads best).`}
+        </span>
       </fieldset>
       {problem && <Notice tone="danger">{problem}</Notice>}
       {/* The theme contract (Sessions 31–36, SLD-4), as the draft stands: said, never refused. */}

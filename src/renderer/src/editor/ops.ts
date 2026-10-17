@@ -348,6 +348,7 @@ export function newSlide(look: SlideLook | null): EditSlide {
     label: '',
     notes: '',
     background: look?.background ?? null,
+    darken: look?.darken ?? null,
     enabled: true,
     transition: null,
     autoAdvanceMs: null,

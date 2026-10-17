@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { Outline, Shadow, SlideElement, TextRun, TextStyle, Transition } from './model';
-import { MAX_AUTO_ADVANCE_MS, MAX_TRANSITION_MS, TRANSITION_KINDS } from './model';
+import type { Darken, Outline, Shadow, SlideElement, TextRun, TextStyle, Transition } from './model';
+import { DARKEN_KINDS, MAX_AUTO_ADVANCE_MS, MAX_TRANSITION_MS, TRANSITION_KINDS } from './model';
 
 /*
  * Runtime schemas for the content model. Used to validate anything that
@@ -35,6 +35,23 @@ export const outlineSchema: z.ZodType<Outline> = z.object({
 
 /** Degrees clockwise. */
 const rotationSchema = num.min(-36_000).max(36_000).optional();
+
+/** Darkening behind the words (Sessions 31–36, SLD-3): a band or the whole picture, this dark. */
+export const darkenSchema: z.ZodType<Darken> = z.object({
+  kind: z.enum(DARKEN_KINDS),
+  strength: z.number().min(0.05).max(0.95),
+});
+
+/** A slide's darkening as stored (JSON), or null for none, or for one that does not read. */
+export function darkenFromJson(json: string | null | undefined): Darken | null {
+  if (!json) return null;
+  try {
+    const parsed = darkenSchema.safeParse(JSON.parse(json));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
 
 export const transitionSchema: z.ZodType<Transition> = z.object({
   kind: z.enum(TRANSITION_KINDS),

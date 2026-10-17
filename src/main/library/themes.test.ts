@@ -184,6 +184,13 @@ describe('applying a theme', () => {
     expect(none.cues).toEqual(rows.cues);
     expect(none.slides).toEqual(rows.slides);
   });
+
+  it('puts its darkening behind the words on every slide, and takes it off where it has none (Sessions 31–36, SLD-3)', () => {
+    const { rows } = setup();
+    const dark = applyTheme(rows, { ...theme, darken: { kind: 'band', strength: 0.6 } });
+    expect(dark.slides.map((s) => s.darken)).toEqual(rows.slides.map(() => '{"kind":"band","strength":0.6}'));
+    expect(applyTheme(dark, theme).slides.map((s) => s.darken)).toEqual(rows.slides.map(() => null));
+  });
 });
 
 describe('theme looks and themes from templates', () => {

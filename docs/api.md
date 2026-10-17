@@ -186,7 +186,7 @@ ws.onmessage = (e) => {
 | `{"type":"clock","t0":<this device's ms>}` | Clock sync: of a few round trips, the shortest says how far this device's clock is from the engine's (`server - (t0 + t1) / 2`). |
 | `{"type":"resync"}`                        | A revision went missing (`baseRev` is not the one held): send the whole state again.                                             |
 
-A `version` the client does not know (`ENGINE_STATE_VERSION` in `src/shared/engine/state.ts`) means the state's shape changed: such a client should stop and say so. Output nodes (Session 13) will follow this same feed.
+A `version` the client does not know (`ENGINE_STATE_VERSION` in `src/shared/engine/state.ts`, 10 since Sessions 31–36: a slide's `darken`) means the state's shape changed: such a client should stop and say so. Output nodes (Session 13) will follow this same feed.
 
 ## Companion (Stream Deck)
 

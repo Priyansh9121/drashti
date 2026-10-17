@@ -1,4 +1,4 @@
-import { contrastRatio } from './contrast';
+import { wordsContrast } from './contrast';
 import { LANGS } from './model';
 import { FLOOR_WARN_PX } from './readable';
 import { TITLE_SAFE } from './safe-areas';
@@ -39,7 +39,8 @@ export function themeContract(fields: ThemeFields): string[] {
       out.push(
         `${name} is set at ${String(style.size)} px: below ${String(THEME_MIN_SIZE)} px the back of the hall cannot read it.`,
       );
-    const ratio = contrastRatio(style.color, bg);
+    // Its darkening behind the words counts (Sessions 31–36, SLD-3).
+    const ratio = wordsContrast(style.color, bg, fields.darken);
     if (ratio < THEME_MIN_CONTRAST)
       out.push(
         `${name}’s colour is ${ratio.toFixed(1)}:1 against the background: below ${String(THEME_MIN_CONTRAST)}:1 it fades on a projector.`,

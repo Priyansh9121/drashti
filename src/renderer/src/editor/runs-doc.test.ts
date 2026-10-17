@@ -152,6 +152,7 @@ describe('arranging and copying elements', () => {
             label: '',
             notes: '',
             background: null,
+            darken: null,
             enabled: true,
             transition: null,
             autoAdvanceMs: null,

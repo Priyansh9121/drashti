@@ -4,6 +4,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 ## Unreleased
 
+- Slides and themes can darken behind their words, as a band or over the whole picture, 40, 60 or 80% dark, so words stay readable over a bright picture or video; nothing changes unless you choose it. The slide editor and the theme editor show how well the words stand out.
 - The theme editor says when a theme's words would be too small, too faint, too thin, too close or too near the edge for the back of the hall; it still saves.
 - A phone's remote shows the slide in the hall's languages, as LIVE does, and the next one too; beside the notes it shows the time as Drashti's computer has it and the first running timer.
 - The stage screen makes a long slide's words smaller until its last line shows; words that already fit look exactly as before.

@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import type { MediaFit } from './engine/state';
-import type { Lang, TextAlign, VerticalAlign } from './model';
+import type { Darken, Lang, TextAlign, VerticalAlign } from './model';
 import { LANGS } from './model';
+import { darkenSchema } from './model-schema';
 
 /*
  * Themes (PLAN.md 4.3): how a presentation's words look, per language, where
@@ -55,6 +56,8 @@ export interface Theme {
   reference: ThemeReference;
   box: ThemeBox;
   background: ThemeBackground;
+  /** Darkening behind the words on its slides (Sessions 31–36, SLD-3); left out or null for none. */
+  darken?: Darken | null;
 }
 
 export type ThemeFields = Omit<Theme, 'id'>;
@@ -185,6 +188,7 @@ export const themeFieldsSchema: z.ZodType<ThemeFields> = z.preprocess(
           })
           .strict(),
       ]),
+      darken: darkenSchema.nullable().optional(),
     })
     .strict(),
 );
