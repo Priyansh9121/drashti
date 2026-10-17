@@ -24,6 +24,7 @@ import { idSchema } from '../../shared/model-schema';
 import type { DeviceAnswer } from '../../shared/network-api';
 import { parsePlain } from '../../shared/plain-parse';
 import type { AnnouncementRepo } from '../db/announcements';
+import { nfcDeep } from '../../shared/nfc';
 
 /*
  * Announcements from phones, as the main process runs them (README, "The
@@ -120,7 +121,8 @@ export class AnnouncementService {
         `You have ${mine} announcements waiting. Wait until the operator has decided on them.`,
       );
     const added = repo.add({
-      ...parsed.data,
+      // In one form, NFC (Sessions 31–36, I18N-6).
+      ...nfcDeep(parsed.data),
       deviceId: device.id,
       deviceName: device.name,
       sentAt: this.iso(),

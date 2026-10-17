@@ -4,6 +4,7 @@ import { capitalize, transliterate, type TranslitStyle } from '../../shared/tran
 import { slideLines } from '../../shared/tracks';
 import type { AutoLineRow, ContentRows, ElementRow } from '../db/content';
 import { elementFromRow } from '../db/presentations';
+import { nfc, sameText } from '../../shared/nfc';
 
 /*
  * "Make transliteration": a kirtan's transliteration track made from its
@@ -80,7 +81,7 @@ export function planTransliteration(
       plan.noSource++;
       return;
     }
-    const made = source.map((line) => capitalize(transliterate(line, style)));
+    const made = source.map((line) => nfc(capitalize(transliterate(line, style))));
     const text = made.join('\n');
     const record = () => plan.autoLines.push({ slide_id: slide.id, lang: 'translit', text });
     const now = lines.translit?.join('\n');
@@ -88,10 +89,10 @@ export function planTransliteration(
       plan.edits.push({ slideId: slide.id, lang: 'translit', lines: made });
       plan.added++;
       record();
-    } else if (now === text) {
+    } else if (sameText(now, text)) {
       plan.same++;
       record();
-    } else if (madeBefore.get(slide.id) === now) {
+    } else if (madeBefore.has(slide.id) && sameText(madeBefore.get(slide.id) ?? '', now)) {
       plan.edits.push({ slideId: slide.id, lang: 'translit', lines: made });
       plan.renewed++;
       record();

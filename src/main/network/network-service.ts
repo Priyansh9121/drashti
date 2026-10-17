@@ -52,6 +52,7 @@ import { hashToken, newPairingCode, newToken } from './tokens';
 import type { FromNetworkWorker } from './worker/protocol';
 import { COULD_NOT } from './messages';
 import { cutText } from '../../shared/text';
+import { nfcDeep } from '../../shared/nfc';
 
 /*
  * The local network, as the main process runs it (README "The local
@@ -771,7 +772,8 @@ export class NetworkService implements EngineTransport {
     const timers = this.deps.engine.state().timers;
     const filled = fillMessage(
       template,
-      parsed.data.values ?? {},
+      // In one form, NFC (Sessions 31–36, I18N-6).
+      nfcDeep(parsed.data.values ?? {}),
       (id) => timers.find((t) => t.id === id)?.name ?? 'timer',
     );
     if (!filled.message) return deny(400, `Fill in ${filled.missing.map((n) => `{${n}}`).join(', ')} first.`);

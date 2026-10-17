@@ -8,6 +8,7 @@ import { firstLook, type LineContext, setLangLines, slideLines, trackOrder } fro
 import type { ContentRows, ElementRow } from '../db/content';
 import { elementFromRow } from '../db/presentations';
 import { rowOf } from './slides';
+import { sameText } from '../../shared/nfc';
 
 /*
  * A kirtan's words by language, for the words editor's "By language" view,
@@ -53,9 +54,10 @@ export function trackSlidesOf(rows: ContentRows): { slides: TrackSlide[]; order:
         label: s.label,
         lines: words.lines,
         legacy: words.legacy,
-        made: (Object.keys(words.lines) as Lang[]).filter(
-          (l) => made.get(`${s.id}:${l}`) === (words.lines[l] ?? []).join('\n'),
-        ),
+        made: (Object.keys(words.lines) as Lang[]).filter((l) => {
+          const was = made.get(`${s.id}:${l}`);
+          return was !== undefined && sameText(was, (words.lines[l] ?? []).join('\n'));
+        }),
       },
       order: words.order,
     };

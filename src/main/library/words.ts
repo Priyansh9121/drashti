@@ -15,6 +15,7 @@ import { readsLike } from '../../shared/translit';
 import type { ArrangementEntryRow, ContentRows, CueRow, ElementRow, GroupRow, SlideRow } from '../db/content';
 import type { NewPresentation } from '../db/presentations';
 import { groupColor } from '../import/formats/text';
+import { nfc, sameText } from '../../shared/nfc';
 
 /*
  * A presentation's words as plain text (the lyrics format of
@@ -223,8 +224,9 @@ function shareLines(boxes: readonly Box[], lines: readonly string[]): string[][]
 
 /** Line up a group's old slides with its new ones: equal words anchor, the rest pair up in order. */
 function alignSlides(old: readonly SlideWords[], next: readonly string[][]): (SlideWords | null)[] {
-  const a = old.map((s) => s.lines.join('\n'));
-  const b = next.map((lines) => lines.join('\n'));
+  // Compared in one form, NFC (Sessions 31–36, I18N-6): words stored before it are found equal.
+  const a = old.map((s) => nfc(s.lines.join('\n')));
+  const b = next.map((lines) => nfc(lines.join('\n')));
   // Longest common run of equal slides, in a flat table: at(i, j) for a[i..] and b[j..].
   const width = b.length + 1;
   const table = new Array<number>((a.length + 1) * width).fill(0);
@@ -385,7 +387,7 @@ export function applyWords(
       }
       keptSlides.add(was.slide.id);
       slides.push({ ...was.slide, group_id: groupId });
-      const same = was.lines.join('\n') === lines.join('\n');
+      const same = sameText(was.lines.join('\n'), lines.join('\n'));
       if (same) kept++;
       else changed++;
       const shared = same ? null : shareLines(was.boxes, lines);

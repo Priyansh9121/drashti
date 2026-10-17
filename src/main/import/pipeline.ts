@@ -67,6 +67,7 @@ import { extractZip } from './zip';
 import { plural } from '../../shared/text';
 import { readabilityCounts, REFERENCE_LINES } from '../../shared/readable';
 import { standsUpright } from '../../shared/text-runs';
+import { nfc, nfcDeep, nfcElement } from '../../shared/nfc';
 
 /*
  * One import run (PLAN.md 4.4): find the files, read each into the
@@ -297,26 +298,27 @@ export function toNewPresentation(
       dropped++;
       return [];
     }
-    return [el];
+    // Its words in one form, NFC (Sessions 31–36, I18N-6): text enters the library here.
+    return [nfcElement(el)];
   };
   const input: NewPresentation = {
     libraryId,
-    name: parsed.name,
+    name: nfc(parsed.name),
     width: parsed.width,
     height: parsed.height,
-    notes: parsed.notes,
+    notes: nfc(parsed.notes),
     groups: parsed.groups.map((g) => ({
-      name: g.name,
+      name: nfc(g.name),
       color: g.color,
       slides: g.slides.map((s) => ({
-        label: s.label,
-        notes: s.notes,
+        label: nfc(s.label),
+        notes: nfc(s.notes),
         background: s.background,
         enabled: s.enabled,
         elements: s.elements.flatMap(element),
         cues: s.cues.map((c) => ({
           kind: c.kind,
-          label: c.label,
+          label: nfc(c.label),
           mediaId: c.media === null ? null : (mediaIds[c.media] ?? null),
           props: c.props,
         })),
@@ -324,7 +326,7 @@ export function toNewPresentation(
         autoAdvanceMs: s.autoAdvanceMs ?? null,
       })),
     })),
-    arrangements: parsed.arrangements,
+    arrangements: parsed.arrangements.map((a) => ({ ...a, name: nfc(a.name) })),
     selectedArrangement: parsed.selectedArrangement,
     transition: parsed.transition ?? null,
     loop: parsed.loop ?? false,
@@ -635,7 +637,10 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         for (const g of input.groups) for (const sl of g.slides) sl.elements = readLatinLines(sl.elements);
         const issues = [...parsed.issues, ...media.issues, ...readabilityIssues(input)];
         // A kirtan: from its author field, or its lines in Gujarati or Hindi with another language.
-        const kirtan = importedKirtan(parsed.kavi ?? null, input.groups);
+        const kirtan = importedKirtan(
+          parsed.kavi ? { ...parsed.kavi, name: nfc(parsed.kavi.name) } : null,
+          input.groups,
+        );
         // Importing it again keeps the details the operator gave it (filling in a kavi it lacked).
         const kept = choice === 'replace' && latest ? presentations.kirtanDetails(latest.id) : null;
         if (kept) input.kirtan = { ...kept, kavi: kept.kavi ?? kirtan?.details.kavi ?? null };
@@ -664,7 +669,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           };
           wrote = { presentationId: latest.id, replaced: true };
         } else {
-          const name = presentations.uniqueName(libraryId, parsed.name);
+          const name = presentations.uniqueName(libraryId, input.name);
           const id = presentations.insert({ ...input, name });
           item = {
             ...base,
@@ -1309,7 +1314,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       failed(where, 'shastra', fileName, read.message);
       return;
     }
-    const text = read.text;
+    // In one form, NFC (Sessions 31–36, I18N-6).
+    const text = nfcDeep(read.text);
     const at = position++;
     batch.write(
       () => {
@@ -1379,7 +1385,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       failed(where, 'calendar', fileName, read.message);
       return;
     }
-    const calendar = read.calendar;
+    // In one form, NFC (Sessions 31–36, I18N-6).
+    const calendar = nfcDeep(read.calendar);
     const at = position++;
     batch.write(
       () => {

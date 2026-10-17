@@ -10,6 +10,7 @@ import type { SettingsRepo } from '../db/settings';
 import { handle } from '../ipc/handle';
 import type { Revisions } from './revisions';
 import { applySlideEdit, editDocOf, mediaIdsOf } from './slides';
+import { nfcEditDoc } from '../../shared/nfc';
 
 /*
  * The slide editor's requests: anyone of Drashti's pages may read a
@@ -90,7 +91,8 @@ export function registerSlidesIpc({
           message: 'A picture, video or sound on these slides is no longer in the library.',
         };
     }
-    const after = applySlideEdit(before, doc.data);
+    // Its words in one form, NFC (Sessions 31–36, I18N-6): text enters the library here.
+    const after = applySlideEdit(before, nfcEditDoc(doc.data));
     presentations.setContent(after);
     const revisionId = revisions.keep([before]);
     changed([id.data]);
