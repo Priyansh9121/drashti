@@ -857,6 +857,20 @@ The work runs in a utility process of its own ("Drashti backup", `src/main/backu
 
 The code is in `src/main/library/backup.ts` (the work) and `backup-ui.ts` (the questions); scheduled backups in `src/main/backup/`. The end-to-end test runs a backup, changes the library, restores and starts again, with the quit question switched on. It quits instead of restarting, because a copy of Drashti started by the restart would wait for Playwright. The restart itself is checked by `node scripts/check-relaunch.mjs` (`--packaged` for the app in `release/`), which CI runs on macOS and Windows for the built and the packaged app: Drashti starts with `DRASHTI_SELFTEST=restore-relaunch`, backs up, changes the library, asks for a restore and restarts with `app.relaunch()`, and the copy that starts again checks it is a new process, that the restore was done, and that the library is the backup's.
 
+**Invariants** (Sessions 31–36, ARCH-6): the rules that keep a show safe, each held by code and shown by a test, named with a phrase that is in it (`scripts/check-invariants.mjs` checks every one is there, in `src/main/release-checks/invariants.test.ts`).
+
+- **The screens are windows of their own that never take the focus, and are black underneath.** Held by `src/main/outputs/electron-outputs.ts` ("focusable: false") and `src/renderer/src/styles/app.css` ("cursor: none"); tested by `tests/e2e/screens.spec.ts` ("expect(facts?.focusable).toBe(false)").
+- **What the audience screens draw is a function of the engine's state and time only: no computer clock, no chance, no CSS motion.** Held by `eslint.config.mjs` ("The audience screens' motion") and `src/renderer/src/render/clock.ts` ("export const engineNow"); tested by `src/main/engine-time-lint.test.ts` and `tests/e2e/flash-pixels.spec.ts` ("the held clock reaches the stream").
+- **The audience screens' drawing imports no operator window code.** Held by `eslint.config.mjs` ("AUDIENCE_MAY_IMPORT"); tested by `src/main/render-imports-lint.test.ts`.
+- **A window reaches the main process only through the bridge.** Held by `eslint.config.mjs` ("Use window.drashti (the preload bridge).") and `src/preload/index.ts` ("contextBridge.exposeInMainWorld('drashti', bridge)"); tested by `src/main/render-imports-lint.test.ts` ("import 'electron';").
+- **A string never runs as code or becomes markup in a window.** Held by `eslint.config.mjs` ("MARKUP_SINKS"); tested by `src/main/sink-lint.test.ts`.
+- **The library closes last when Drashti quits.** Held by `src/main/index.ts` ("stops.addLast('library'") and `src/main/lifecycle.ts`; tested by `src/main/lifecycle.test.ts` ("then the last steps in their own order").
+- **The main process never waits for the library's write lock, so an import never holds up a slide change.** Held by `src/main/db/write-lock.ts` ("never waited for"); tested by `src/main/db/write-lock.test.ts` ("looking never waits or takes it").
+- **A packaged Drashti never runs as Node.** Held by `electron-builder.yml` ("runAsNode: false") and `scripts/fuse-checks.mjs`; tested by `src/main/release-checks/fuse-checks.test.ts` and `scripts/check-installers.mjs` ("runAsNodeRefused").
+- **A phone's preview and a node's copy come only from inside the media folder, by real path.** Held by `src/main/media/contained.ts` ("export function realPlace"); tested by `src/main/network/preview-source.test.ts` and `src/main/nodes/wanted-media.test.ts` ("never a file through a link").
+- **A token, a pairing code or a PIN is never kept as itself.** Held by `src/main/network/tokens.ts` ("export const hashToken"); tested by `tests/e2e/secrets.spec.ts`.
+- **A restore keeps who may connect: today's phones and nodes, never the backup's.** Held by `src/main/library/restore-access.ts` ("export function keepAccessAfterRestore"); tested by `src/main/library/restore-access.test.ts` and `tests/e2e/backup.spec.ts` ("removed after a backup stay refused").
+
 ## Looking after Drashti
 
 This is for whoever looks after Drashti at the mandir, not for the volunteers.

@@ -1,4 +1,6 @@
 import js from '@eslint/js';
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { defineConfig, globalIgnores } from 'eslint/config';
 import prettier from 'eslint-config-prettier';
 import reactHooks from 'eslint-plugin-react-hooks';
@@ -20,6 +22,33 @@ const nodeBuiltins = [
   'stream',
   'events',
 ].map((name) => ({ name, message: 'No Node APIs here.' }));
+
+/**
+ * Imports refused in every renderer: the main process (Electron) and Node. Shared, as a later block's
+ * no-restricted-imports replaces the renderer block's for the files they share.
+ */
+const RENDERER_IMPORT_PATHS = [
+  { name: 'electron', message: 'Use window.drashti (the preload bridge).' },
+  ...nodeBuiltins,
+];
+const RENDERER_IMPORT_PATTERNS = [
+  { group: ['node:*'], message: 'No Node APIs in renderers.' },
+  {
+    group: ['**/main/**', '**/preload/**'],
+    message: 'Renderers import only src/shared and src/renderer.',
+  },
+];
+
+/**
+ * The audience screens' drawing (render/, output/) never imports the operator window's code (Sessions 31–36,
+ * ARCH-6): beside src/shared, only these renderer folders. Every other one, as the folders are now.
+ */
+const AUDIENCE_MAY_IMPORT = new Set(['render', 'output', 'engine', 'ui', 'styles']);
+const OPERATOR_FOLDERS = readdirSync(join(import.meta.dirname, 'src', 'renderer', 'src'), {
+  withFileTypes: true,
+})
+  .filter((entry) => entry.isDirectory() && !AUDIENCE_MAY_IMPORT.has(entry.name))
+  .map((entry) => entry.name);
 
 /**
  * Markup made from a string (Sessions 31–36, SEC-14): refused in every renderer, the operator window's and the
@@ -162,18 +191,30 @@ export default defineConfig(
       // Renderers reach the main process only through window.drashti.
       'no-restricted-imports': [
         'error',
+        { paths: RENDERER_IMPORT_PATHS, patterns: RENDERER_IMPORT_PATTERNS },
+      ],
+      'no-restricted-syntax': ['error', ...MARKUP_SINKS],
+    },
+  },
+  {
+    // The audience screens' drawing never imports the operator window's code (Sessions 31–36, ARCH-6).
+    files: ['src/renderer/src/render/**/*.{ts,tsx}', 'src/renderer/src/output/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.ts', '**/*.test.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
         {
-          paths: [{ name: 'electron', message: 'Use window.drashti (the preload bridge).' }, ...nodeBuiltins],
+          paths: RENDERER_IMPORT_PATHS,
           patterns: [
-            { group: ['node:*'], message: 'No Node APIs in renderers.' },
+            ...RENDERER_IMPORT_PATTERNS,
             {
-              group: ['**/main/**', '**/preload/**'],
-              message: 'Renderers import only src/shared and src/renderer.',
+              regex: `^(\\.\\./)+(${OPERATOR_FOLDERS.join('|')})(/|$)`,
+              message:
+                "The audience screens' drawing imports no operator window code: only render/, output/, engine/, ui/, styles/ and src/shared.",
             },
           ],
         },
       ],
-      'no-restricted-syntax': ['error', ...MARKUP_SINKS],
     },
   },
   {
