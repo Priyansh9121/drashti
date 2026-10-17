@@ -246,6 +246,9 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
             const length = bounds.end - bounds.start;
             if (!round.loop || length <= 0) return;
             const there = playbackPosition(round, v.duration, engineNow());
+            // A new time round may be aimed again as a start may: whatever the landings before it used up
+            // (CI's Mac: a sound landed 0.2 s off just after two aimed again, and was left to its 2%).
+            reaims = 0;
             jump(bounds.start + ((there - bounds.start + lead()) % length) - lead());
           },
           Math.max(0, ((left - HOLD_EARLY) / v.playbackRate) * 1000),

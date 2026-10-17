@@ -44,6 +44,15 @@ test('a crash leaves a dump here; Diagnostics adds it only when ticked; the next
   });
   await expect.poll(() => dumpsIn(dumps).length, { timeout: 30_000 }).toBeGreaterThan(0);
   const dump = basename(dumpsIn(dumps)[0] ?? '');
+  // And in the journal: the dump can be on disk a moment before Main hears of the crash (CI's Windows: 16 ms).
+  const journaled = () => {
+    try {
+      return readFileSync(join(userData, 'crash-journal.json'), 'utf8').includes('the audio player crashed');
+    } catch {
+      return false;
+    }
+  };
+  await expect.poll(journaled, { timeout: 30_000 }).toBe(true);
 
   // As the box opens, unticked: the file alone, naming the dump and its size, the dump not with it.
   await answerCrashFiles(app, false);
