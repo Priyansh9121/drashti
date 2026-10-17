@@ -160,6 +160,8 @@ export interface OutputContext {
 
 /** What an output window says about how it draws (every few seconds). */
 export interface OutputReport {
+  /** Its page's first painted frame: its revision, and when (this computer's clock), for the start's phase lines. */
+  firstPaint?: { rev: number; wallAt: number } | null;
   /** Frames that came more than one and a half frame times late, in the last minute. */
   droppedFrames: number;
   /** The engine revision it last painted. */
