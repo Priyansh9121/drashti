@@ -6,6 +6,7 @@ import type { FromWorker } from './protocol';
 import type { YtDlpLaunch } from './youtube-run';
 import { toolEnv, toolFolders } from './youtube-tools';
 import { youtubeWorker } from './youtube-worker';
+import { ffmpegHere } from '../testing/ffmpeg-here';
 
 /*
  * yt-dlp in the download process (Session 25c), run for real against the
@@ -87,7 +88,7 @@ const startsIn = (log: string) =>
       return { kind, pid: Number(pid), child: Number(child) };
     });
 
-describe.skipIf(!existsSync(ffmpeg))('yt-dlp in the download process (with the fake)', () => {
+describe.skipIf(!ffmpegHere(ffmpeg))('yt-dlp in the download process (with the fake)', () => {
   it('asks for the details', async () => {
     const t = setUp({ title: 'Placeholder video', duration: 65 });
     t.worker.look({ type: 'yt-look', link: LINK, launch: t.launch, cwd: t.cwd });

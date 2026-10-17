@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -15,6 +15,7 @@ import {
   trimArgs,
 } from './trim';
 import { keyframeOf } from './trim-saves';
+import { ffmpegHere } from '../testing/ffmpeg-here';
 
 /* Saving a video's part as an MP4 by copying it (Session 26e): made-up FFmpeg output, and the real FFmpeg where it is. */
 
@@ -107,7 +108,7 @@ afterAll(() => {
   rmSync(work, { recursive: true, force: true });
 });
 
-describe.skipIf(!existsSync(ffmpeg))('with the real FFmpeg', () => {
+describe.skipIf(!ffmpegHere(ffmpeg))('with the real FFmpeg', () => {
   it('finds the keyframe at or before a start, and copies from it with the picture and sound unchanged', async () => {
     const source = join(work, 'placeholder.mp4');
     const made = spawnSync(ffmpeg, [

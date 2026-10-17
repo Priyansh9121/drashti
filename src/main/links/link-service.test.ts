@@ -25,6 +25,7 @@ import { nodeGet } from './http';
 import { LinkService, type LinkServiceDeps, type LinkWorker } from './link-service';
 import type { FromWorker, ToWorker } from './protocol';
 import { linkWorker } from './worker-logic';
+import { ffmpegHere } from '../testing/ffmpeg-here';
 
 /*
  * Import from a Link, the main process's side (Session 25b), with the real
@@ -581,7 +582,7 @@ describe('the highest video quality (Session 25c)', () => {
   });
 });
 
-describe.skipIf(!existsSync(FFMPEG))('YouTube (Session 25c), with the fake yt-dlp', () => {
+describe.skipIf(!ffmpegHere(FFMPEG))('YouTube (Session 25c), with the fake yt-dlp', () => {
   /** The link service with YouTube's programs: the fake yt-dlp, told what to do. */
   async function youtube(config: Record<string, unknown> = {}, over: Partial<LinkServiceDeps> = {}) {
     const log = join(mkdtempSync(join(tmpdir(), 'drashti-fake-log-')), 'fake.log');

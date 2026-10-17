@@ -9,6 +9,7 @@ import { STREAM_PRESETS } from '../../../shared/stream';
 import { makeAuthority } from '../testing/made-up-ca';
 import { StreamPipeline } from './pipeline';
 import type { WorkerStatus } from './protocol';
+import { ffmpegHere } from '../../testing/ffmpeg-here';
 
 /*
  * Going live over RTMPS (Session 23), with the bundled FFmpeg, against a
@@ -187,7 +188,7 @@ async function goLive(build: string, caFile: string | null, want: 'live' | 'refu
 }
 
 // Without FFmpeg (CI's Ubuntu checks) there is no build to try: say so, rather than have no suite at all.
-if (builds.length === 0)
+if (builds.length === 0 && !ffmpegHere(ffmpeg))
   it.skip('going live over RTMPS needs the bundled FFmpeg (node scripts/fetch-ffmpeg.mjs)', () => undefined);
 
 describe.each(builds)('going live over RTMPS with FFmpeg $label', ({ path }) => {
@@ -212,7 +213,7 @@ describe.each(builds)('going live over RTMPS with FFmpeg $label', ({ path }) => 
   }, 120_000);
 });
 
-describe.skipIf(!existsSync(ffmpeg))('several places at once (Session 28)', () => {
+describe.skipIf(!ffmpegHere(ffmpeg))('several places at once (Session 28)', () => {
   it('one encode goes to a plain RTMP place and an RTMPS one; the first dropping leaves the other, the encoder and the recording going, and it comes back by itself', async () => {
     dir = mkdtempSync(join(tmpdir(), 'drashti-several-'));
     const authority = makeAuthority();
