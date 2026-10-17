@@ -58,7 +58,10 @@ export interface Verdict {
   name: string;
   ok: boolean;
   detail: string;
-  /** A failing verdict that fails the soak (a crash, a watchdog event, a black screen, memory that keeps growing). */
+  /**
+   * A failing verdict that fails the soak (a crash, a watchdog event, a black screen, memory that keeps
+   * growing, the stream off air: Sessions 31–36).
+   */
   fatal: boolean;
 }
 
@@ -429,11 +432,23 @@ ${charts.join('\n')}
   writeFileSync(join(dir, 'summary.md'), summaryMarkdown(report));
 }
 
-/** For the workflow's summary: the verdicts, then the memory at the start and the end, by process. */
+/**
+ * The verdicts in one line (Sessions 31–36, TST-13): how many non-fatal checks failed, first, then the fatal
+ * ones, so a warning is never lost under a pass.
+ */
+export function verdictLine(verdicts: readonly Verdict[]): string {
+  const nonFatal = verdicts.filter((v) => !v.fatal && !v.ok).length;
+  const fatal = verdicts.filter((v) => v.fatal && !v.ok).length;
+  return `${String(nonFatal)} non-fatal check${nonFatal === 1 ? '' : 's'} failed; ${String(fatal)} fatal check${fatal === 1 ? '' : 's'} failed (of ${String(verdicts.length)}).`;
+}
+
+/** For the workflow's summary: the verdicts' count first, the verdicts, then the memory at the start and the end. */
 export function summaryMarkdown(report: SoakReport): string {
   const first = report.samples[0];
   const last = report.samples.at(-1);
   const lines = [
+    `**${verdictLine(report.verdicts)}**`,
+    '',
     `## Soak test: ${report.os}, ${String(report.samples.at(-1)?.minute ?? 0)} minutes`,
     '',
     '| Check | Passed | Detail |',
