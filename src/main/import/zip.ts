@@ -37,6 +37,10 @@ const EOCD64_LOCATOR = 0x07064b50;
 const CENTRAL = 0x02014b50;
 const LOCAL = 0x04034b50;
 const MAX32 = 0xffffffff;
+/** The most files an archive may list (Sessions 31–36, SEC-12): more is refused before anything is read. */
+export const MAX_ZIP_ENTRIES = 100_000;
+/** A central directory entry is at least this long. */
+const CENTRAL_MIN = 46;
 
 async function readAt(fh: FileHandle, position: number, length: number): Promise<Buffer> {
   const buf = Buffer.alloc(length);
@@ -76,16 +80,25 @@ async function listOpen(fh: FileHandle): Promise<ZipEntry[]> {
     if (locatorAt < 0 || tail.readUInt32LE(locatorAt) !== EOCD64_LOCATOR)
       throw new ZipError('Broken ZIP64 archive.');
     const eocd64 = await readAt(fh, u64(tail, locatorAt + 8), 56);
-    if (eocd64.readUInt32LE(0) !== EOCD64) throw new ZipError('Broken ZIP64 archive.');
+    if (eocd64.length < 56 || eocd64.readUInt32LE(0) !== EOCD64) throw new ZipError('Broken ZIP64 archive.');
     count = u64(eocd64, 32);
     cdSize = u64(eocd64, 40);
     cdOffset = u64(eocd64, 48);
   }
+  // What the archive says of itself, checked against the file before anything is read or allocated
+  // (Sessions 31–36, SEC-12): a central directory said to be bigger than the file was allocated as said.
+  if (count > MAX_ZIP_ENTRIES)
+    throw new ZipError(
+      `This archive lists ${String(count)} files: Drashti opens archives of 100,000 files at most.`,
+    );
+  if (cdOffset + cdSize > fileSize || cdSize < count * CENTRAL_MIN)
+    throw new ZipError('Broken central directory (it does not fit in the file).');
   const cd = await readAt(fh, cdOffset, cdSize);
   const entries: ZipEntry[] = [];
   let p = 0;
   for (let e = 0; e < count; e++) {
-    if (p + 46 > cd.length || cd.readUInt32LE(p) !== CENTRAL) throw new ZipError('Broken central directory.');
+    if (p + CENTRAL_MIN > cd.length || cd.readUInt32LE(p) !== CENTRAL)
+      throw new ZipError('Broken central directory.');
     const madeBy = cd.readUInt16LE(p + 4);
     const flags = cd.readUInt16LE(p + 8);
     const method = cd.readUInt16LE(p + 10);
