@@ -44,6 +44,36 @@ export function recoveryFigure(userData: string): { ms: number; line: string } |
   };
 }
 
+/**
+ * The recovery figure's budget on each system (Sessions 31–36, PERF-1): the 90th percentile of 10 runs on CI's
+ * machines, plus 25% (runs 39038852887 and 39038858168, 17 October 2026). The Mac's ten: 3.4 to 9.0 s, p90 5.6
+ * s; Windows': 3.3 to 5.0 s, p90 4.1 s. Most of it is the output's first frame after its GPU's warm-up.
+ */
+export const RECOVERY_BUDGET_MS: Readonly<Record<string, number>> = { darwin: 7000, win32: 5100 };
+
+/** This system's budget (any other: the larger). */
+export const recoveryBudget = (): number =>
+  RECOVERY_BUDGET_MS[process.platform] ?? Math.max(...Object.values(RECOVERY_BUDGET_MS));
+
+/**
+ * The figure against the budget: one over it is measured again, and it fails only when over twice in a row
+ * (the virtual machines swing). Each figure's line is said as it comes.
+ */
+export async function recoveryAgainstBudget(say: (line: string) => void): Promise<void> {
+  const budget = recoveryBudget();
+  const first = await crashAndRecover();
+  say(first.line);
+  expect(first.ms).toBeGreaterThan(0);
+  if (first.ms <= budget) return;
+  say(`over the budget of ${(budget / 1000).toFixed(1)} s once: measured again`);
+  const second = await crashAndRecover();
+  say(second.line);
+  expect(
+    second.ms,
+    `over the budget of ${String(budget)} ms twice in a row: ${String(first.ms)} and ${String(second.ms)} ms`,
+  ).toBeLessThanOrEqual(budget);
+}
+
 /** A slide live on one output, Drashti stopped dead, started again: the figure, once the screen is back. */
 export async function crashAndRecover(): Promise<{ ms: number; line: string }> {
   const first = await launchApp();
