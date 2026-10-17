@@ -6,6 +6,17 @@ Drashti (v1.0, package `drashti`) is a presentation app for BAPS mandirs. It rep
 
 Stack: Electron 44, React 19, TypeScript 6 (strict), Zustand, Tailwind 4, SQLite (better-sqlite3), Vitest, Playwright, electron-builder and pnpm 12.
 
+## Guides
+
+- [The operator's guide](docs/operator-guide.md): a sabha in Pro Mode, from switching on to switching off.
+- [The presenter's guide](docs/presenter-guide.md): a phone, tablet or laptop as a presenter's remote or the stage's display.
+- [The admin's guide](docs/admin-guide.md): setting Drashti up and looking after it.
+- [The setup day](docs/setup-day.md): the setup day's checklist, from the audit to the fallback drill, and what to write down.
+- [The parallel run](docs/parallel-run.md): the volunteers' guide to trying Drashti at the mandir, with the key card.
+- [The Windows checks](docs/windows-checks.md): what to check on the mandir's Windows PC.
+
+The first four are inside Drashti too, without the internet: **Help › Guides…** (Simple Mode shows the operator's and the presenter's). `src/main/guide.test.ts` keeps this list whole, and keeps the key card and the operator's guide true to the keys both ways.
+
 ## Status
 
 Phase 0 (foundations) is in place:
