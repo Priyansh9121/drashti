@@ -24,6 +24,7 @@ import type { LinkWorker } from './link-worker';
 import type { LinkOptions, LinkStats } from './link-server';
 import type { FromLinkWorker } from './worker/protocol';
 import { hashToken, newToken } from '../network/tokens';
+import type { ClockStyle } from '../../shared/format';
 
 /*
  * Output nodes, as Main runs them (Session 13). It keeps the code on offer
@@ -51,6 +52,8 @@ export interface NodeServiceDeps {
   /** An admin's choice: a new identity in place of one that could not be read. */
   newIdentity(): void;
   version: string;
+  /** How Main writes the time (Sessions 31–36, I18N-8): its nodes' clocks show Main's. */
+  clockStyle?(): ClockStyle;
   /** Where nodes can reach Main: numbers, then its local name. */
   addresses(): string[];
   /** Listen on every interface, or on this computer only (tests). */
@@ -206,7 +209,12 @@ export class NodeService implements EngineTransport {
       cert: identity.cert,
       key: identity.key,
       fingerprint: identity.fingerprint,
-      main: { id: identity.id, name: identity.name, version: this.deps.version },
+      main: {
+        id: identity.id,
+        name: identity.name,
+        version: this.deps.version,
+        ...(this.deps.clockStyle ? { clock: this.deps.clockStyle() } : {}),
+      },
       addresses: this.deps.addresses(),
       session: this.deps.engine.session,
       bytesPerSecond: this.copyRate(),

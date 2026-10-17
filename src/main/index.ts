@@ -255,6 +255,7 @@ import { startPerfNodes } from './nodes/perf-nodes';
 import type { NodeOutputStatus, ScreenThumb } from '../shared/nodes';
 import { hostname } from 'node:os';
 import { cutText } from '../shared/text';
+import { mainClockStyle } from './clock-style';
 
 // Headless self-tests: run one, print the result, exit (see README). The performance test
 // imports a few hundred placeholder files, so it gets a throwaway data folder of its own.
@@ -1250,6 +1251,7 @@ function start(): void {
             scaleFactor: d.scaleFactor,
           }
         : null,
+      clockStyle: mainClockStyle(),
     };
   };
   // ---- hung, stale and given-up outputs (Session 23; outputs/heartbeat.ts, watchdog.ts) ----------
@@ -1717,6 +1719,7 @@ function start(): void {
     noSafeStorage,
   );
   stream = new StreamService({
+    clockStyle: mainClockStyle,
     profiles: new StreamProfileRepo(db, (id) => streamKeys.has(id)),
     keys: streamKeys,
     settings,
@@ -3063,10 +3066,7 @@ function start(): void {
       hall: () => ({ groupId: screenRepo.firstGroup('audience') }),
       looks: () => lookRepo.list().map((l) => ({ id: l.id, name: l.name })),
       macros: () => macros.list().map((m) => ({ id: m.id, name: m.name, color: m.color })),
-      clockStyle: () => ({
-        locale: app.getLocale(),
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      }),
+      clockStyle: mainClockStyle,
     },
     runMacro: (id, who) => macros.run(id, who),
     playMusic: (who) => {
@@ -3176,6 +3176,7 @@ function start(): void {
       identityLoad = { ok: true, identity: makeNewIdentity(userDataDir, mainName()) };
     },
     version: appVersion(),
+    clockStyle: mainClockStyle,
     // Listening on this computer only (tests, the performance check), this computer is the only address.
     addresses: () =>
       networkLocalOnly || perfTest

@@ -318,7 +318,10 @@ export function openMediaFromMain(
 export interface LinkEvents {
   /** How the link stands, and why (in words) when it is not online. */
   state(state: LinkState, why: string | null): void;
-  welcome(main: { id: string; name: string; version: string; addresses: string[] }, session: string): void;
+  welcome(
+    main: { id: string; name: string; version: string; addresses: string[]; clock?: unknown },
+    session: string,
+  ): void;
   message(message: ToNode): void;
   clock(clock: NodeClock): void;
   /** Main removed this node (or no longer knows it): its pairing is gone. */

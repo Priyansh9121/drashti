@@ -4,6 +4,7 @@ import {
   daysSchema,
   dateSchema,
   hhmmSchema,
+  localDate,
   nextScheduleTime,
   scheduleTimes,
   scheduleWhenText,
@@ -124,3 +125,6 @@ export const nextArtiTime = (s: ScheduleWhen, nowMs: number): number | null => n
 
 /** When, in words: "Sun, Wed 19:00", "Every day 07:00", "2026-11-12 18:30". */
 export const artiWhen = (s: ScheduleWhen): string => scheduleWhenText(s);
+
+/** The date a new arti schedule starts with: today, where the mandir is (its local date, never UTC's). */
+export const defaultArtiDate = (now: Date): string => localDate(now);

@@ -6,6 +6,8 @@ import { PlacedInParent } from '../../render/Placed';
 import { StageScreen } from '../../render/StageScreen';
 import { api } from '../device';
 import { onListsChanged, onOnline, startFeed, useFeed } from '../feed';
+import { ClockStyleContext } from '../../render/clock-style';
+import { type ClockStyle, validClockStyle } from '../../../../shared/format';
 
 /*
  * The stage display in a browser (a Stage device: a tablet on the stage, a
@@ -26,20 +28,18 @@ export function StageDisplay() {
   // The stage display's group: what it shows is that group's settings in the live Look (engine state).
   const [groupId, setGroupId] = useState<string | null>(null);
   const look = groupLookIn(state?.look, groupId);
-  const [clockStyle, setClockStyle] = useState<{ locale: string; timeZone: string } | null>(null);
+  const [clockStyle, setClockStyle] = useState<ClockStyle | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   useEffect(() => {
     void preloadFonts().then(() => {
       setFonts(true);
     });
     const load = () => {
-      void api<{ groupId: string | null; clock: { locale: string; timeZone: string } }>('/api/v1/stage').then(
-        (r) => {
-          if (!r.ok) return;
-          setGroupId(r.groupId);
-          setClockStyle(r.clock);
-        },
-      );
+      void api<{ groupId: string | null; clock: unknown }>('/api/v1/stage').then((r) => {
+        if (!r.ok) return;
+        setGroupId(r.groupId);
+        setClockStyle(validClockStyle(r.clock));
+      });
     };
     onOnline(load);
     onListsChanged((what) => {
@@ -59,7 +59,10 @@ export function StageDisplay() {
     <div className="relative h-dvh w-full bg-black" data-testid="stage-display" data-connection={feed}>
       {state && fonts ? (
         <PlacedInParent content={CANVAS} mode="fit" className="absolute inset-0">
-          <StageScreen state={state} look={look} canvas={CANVAS} clockStyle={clockStyle} />
+          {/* Drashti's way of writing the time (Sessions 31–36, I18N-8), its timers' clocks too. */}
+          <ClockStyleContext.Provider value={clockStyle}>
+            <StageScreen state={state} look={look} canvas={CANVAS} clockStyle={clockStyle} />
+          </ClockStyleContext.Provider>
         </PlacedInParent>
       ) : (
         <p className="absolute inset-0 flex items-center justify-center text-2xl text-muted">

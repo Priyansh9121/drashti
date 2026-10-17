@@ -17,6 +17,7 @@ import { ProgramView } from './ProgramView';
 import { StreamSound } from './sound';
 import { reportRenderError } from '../ui/render-errors';
 import { HOLD_WARM_UP, SKIP_WARM_UP } from '../render/warm-up-mode';
+import { ClockStyleContext } from '../render/clock-style';
 
 /*
  * The stream's page: the Program, drawn off screen at the stream's size.
@@ -130,16 +131,19 @@ function Program() {
       {state && ready && context && (
         // The stream's picture: black if it fails as it draws, until the next change (Session 23).
         <SceneBoundary resetKey={rev}>
-          <PlacedInParent content={CANVAS} mode="fit" className="absolute inset-0">
-            <ProgramView
-              state={state}
-              layout={context.layout}
-              languages={languages}
-              movement={streamLook.movement}
-              canvas={CANVAS}
-              camera={camera}
-            />
-          </PlacedInParent>
+          {/* Main's way of writing the time (Sessions 31–36, I18N-8), for clocks in messages. */}
+          <ClockStyleContext.Provider value={context.clockStyle ?? null}>
+            <PlacedInParent content={CANVAS} mode="fit" className="absolute inset-0">
+              <ProgramView
+                state={state}
+                layout={context.layout}
+                languages={languages}
+                movement={streamLook.movement}
+                canvas={CANVAS}
+                camera={camera}
+              />
+            </PlacedInParent>
+          </ClockStyleContext.Provider>
         </SceneBoundary>
       )}
     </div>

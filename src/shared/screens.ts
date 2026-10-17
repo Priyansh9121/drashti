@@ -1,3 +1,5 @@
+import type { ClockStyle } from './format';
+
 /** How a screen's canvas is scaled into its output window. */
 export type ScalingMode = 'fit' | 'fill' | 'stretch';
 export const SCALING_MODES = ['fit', 'fill', 'stretch'] as const satisfies readonly ScalingMode[];
@@ -152,6 +154,8 @@ export interface OutputContext {
    * 0 on Main, the measured offset on a node.
    */
   clockOffsetMs?: number;
+  /** How Main writes the time (Sessions 31–36, I18N-8): a node in another time zone shows Main's. */
+  clockStyle?: ClockStyle;
 }
 
 /** What an output window says about how it draws (every few seconds). */

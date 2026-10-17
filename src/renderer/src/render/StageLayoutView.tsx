@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { festivalsLine, samvatLine } from '../../../shared/calendar';
 import { QUOTE_LANGS } from '../../../shared/idle';
 import type { EngineState } from '../../../shared/engine/state';
@@ -7,12 +7,14 @@ import { languageView } from '../../../shared/language-view';
 import type { Lang } from '../../../shared/model';
 import type { StageBox, StageLayout } from '../../../shared/stage-layouts';
 import { STAGE_HEIGHT, STAGE_WIDTH } from '../../../shared/stage-layouts';
-import { formatDuration } from '../../../shared/timers';
+import { timerDuration } from '../../../shared/timers';
 import { fontFamilyFor, LANG_FONT_STACK } from './fonts';
 import { kindName, StageText } from './StageView';
 import { textLang } from './lang';
 import { TimerText } from './TimerText';
 import { useNow } from './useNow';
+import { ClockStyleContext } from './clock-style';
+import { type ClockStyle, formatClock } from '../../../shared/format';
 
 /*
  * A stage layout made in Drashti (shared/stage-layouts.ts): its boxes on a
@@ -251,7 +253,7 @@ function BoxContents({
           {rows.map(([what, ms]) => (
             <div key={what} style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
               <span style={{ fontSize: '0.4em', color: muted, marginRight: '0.4em' }}>{what}</span>
-              {formatDuration(ms, true)}
+              {timerDuration(ms, true)}
             </div>
           ))}
         </div>
@@ -292,14 +294,12 @@ export function StageLayoutView({
   /** The languages the group shows of a kirtan's slides, in order; null for all of them. */
   languages?: readonly Lang[] | null;
   /** How to write the time: Drashti's computer's way, on a stage display in another device's browser. */
-  clockStyle?: { locale: string; timeZone: string } | null;
+  clockStyle?: ClockStyle | null;
 }) {
   const now = useNow(250);
-  const clock = new Date(now).toLocaleTimeString(clockStyle?.locale ?? [], {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: clockStyle?.timeZone,
-  });
+  // Main's way of writing the time (Sessions 31–36, I18N-8): given, or the page's.
+  const pageStyle = useContext(ClockStyleContext);
+  const clock = formatClock(now, clockStyle ?? pageStyle);
   return (
     <div
       data-testid="stage-layout"

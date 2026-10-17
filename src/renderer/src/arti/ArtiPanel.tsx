@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ArtiFields, ArtiScheduleInfo } from '../../../shared/arti';
-import { ARTI_PROMPT_MAX_MINUTES, artiWhen, WEEKDAY_NAMES, WEEKDAY_SHORT } from '../../../shared/arti';
+import {
+  ARTI_PROMPT_MAX_MINUTES,
+  artiWhen,
+  defaultArtiDate,
+  WEEKDAY_NAMES,
+  WEEKDAY_SHORT,
+} from '../../../shared/arti';
 import { useLibrary } from '../library/library-store';
 import { useNow } from '../render/useNow';
 import { useNotice } from '../operator/actions';
@@ -158,7 +164,8 @@ function ArtiForm({ editing }: { editing: ArtiScheduleInfo | 'new' }) {
   const first = sorted.find((p) => p.id === selectedId)?.id ?? sorted[0]?.id ?? '';
   const [f, setF] = useState<ArtiFields>(() => startFields(editing, first));
   const [weekly, setWeekly] = useState(f.date === null);
-  const [date, setDate] = useState(f.date ?? new Date().toISOString().slice(0, 10));
+  // Today where the mandir is (Sessions 31–36, I18N-8): the local date, not UTC's.
+  const [date, setDate] = useState(f.date ?? defaultArtiDate(new Date()));
   const [problem, setProblem] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
   const id = editing === 'new' ? null : editing.id;

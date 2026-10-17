@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import type { RemotePresentation } from '../../../../shared/network-api';
 import { KIRTAN_FIELD_NAMES, type SearchHit } from '../../../../shared/search';
 import type { EngineState } from '../../../../shared/engine/state';
@@ -60,6 +60,8 @@ import {
   view,
   viewLive,
 } from './remote-store';
+import { ClockStyleContext } from '../../render/clock-style';
+import { formatClock, validClockStyle } from '../../../../shared/format';
 
 /*
  * The remote for a phone or tablet (a Remote device): what is on the screens
@@ -220,16 +222,12 @@ function NextLine({ state }: { state: EngineState | null }) {
  */
 function ClockAndTimer({ state }: { state: EngineState | null }) {
   const now = useNow();
-  const clock = useRemote((s) => s.hall?.clock ?? null);
+  const clock = useContext(ClockStyleContext);
   const timer = state?.timers.find((t) => t.kind !== 'clock' && isRunning(t)) ?? null;
   return (
     <div className="flex items-baseline gap-3 text-lg tabular-nums" data-testid="remote-clock-row">
       <span className="font-bold" data-testid="remote-clock">
-        {new Date(now).toLocaleTimeString(clock?.locale ?? [], {
-          hour: 'numeric',
-          minute: '2-digit',
-          timeZone: clock?.timeZone,
-        })}
+        {formatClock(now, clock)}
       </span>
       {timer && (
         <span className="min-w-0 truncate text-base text-muted" data-testid="remote-running-timer">
@@ -1328,9 +1326,14 @@ export function RemoteApp() {
     startFeed();
     void loadPlaylists();
   }, []);
+  // Drashti's way of writing the time (Sessions 31–36, I18N-8), for the clocks it draws.
+  const given = useRemote((s) => s.hall?.clock ?? null);
+  const clock = useMemo(() => validClockStyle(given), [given]);
   return (
     <PreviewsContext.Provider value={previews}>
-      <Layout />
+      <ClockStyleContext.Provider value={clock}>
+        <Layout />
+      </ClockStyleContext.Provider>
     </PreviewsContext.Provider>
   );
 }
