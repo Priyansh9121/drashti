@@ -7,6 +7,10 @@ export interface OutputWindow {
   setBounds(bounds: DisplayInfo['bounds']): void;
   close(): void;
   isDestroyed(): boolean;
+  /** Out of sight while its display is away (Sessions 31–36, ROB-4)... */
+  hide(): void;
+  /** ...and shown again, without taking the focus, once it is back. */
+  show(): void;
 }
 
 export interface OutputManagerDeps {
@@ -16,7 +20,26 @@ export interface OutputManagerDeps {
   openWindow(screen: ScreenConfig, display: DisplayInfo): OutputWindow;
   /** Called after every reconcile, so the operator and outputs can refresh. */
   onChange(): void;
+  /** An output's display went away: it is kept hidden a while (ROB-4). */
+  onHeld?(screenId: string): void;
+  /** An output kept through a display drop is back on its display, its page never loaded again (ROB-4). */
+  onPutBack?(screenId: string): void;
+  /** Do something after a while; the answer cancels it (tests give their own clock). */
+  later?(fn: () => void, ms: number): () => void;
 }
+
+/**
+ * How long an output whose display went away is kept, hidden, for the display to come back (Sessions 31–36,
+ * ROB-4): projectors and HDMI converters often drop for a second or two as they are switched or warm up.
+ */
+export const DISPLAY_DROP_MS = 10_000;
+
+const realLater = (fn: () => void, ms: number) => {
+  const timer = setTimeout(fn, ms);
+  return () => {
+    clearTimeout(timer);
+  };
+};
 
 const sameKey = (a: DisplayKey, b: DisplayKey) =>
   a.id === b.id &&
@@ -34,11 +57,34 @@ const sameKey = (a: DisplayKey, b: DisplayKey) =>
  */
 export class OutputManager {
   private readonly open = new Map<string, { window: OutputWindow; displayId: number }>();
+  /** Outputs whose display went away, hidden for DISPLAY_DROP_MS in case it comes back (ROB-4). */
+  private readonly held = new Map<string, { window: OutputWindow; cancel: () => void }>();
   private statuses: ScreenStatus[] = [];
   /** Screens whose window the watchdog gave up on (Session 23): not "showing" until it reports again. */
   private readonly stopped = new Set<string>();
 
   constructor(private readonly deps: OutputManagerDeps) {}
+
+  /** Keep a window hidden while its display is away; closed if it is not back within DISPLAY_DROP_MS. */
+  private hold(screenId: string, window: OutputWindow): void {
+    window.hide();
+    const cancel = (this.deps.later ?? realLater)(() => {
+      if (this.held.get(screenId)?.window !== window) return;
+      this.held.delete(screenId);
+      if (!window.isDestroyed()) window.close();
+      this.reconcile();
+    }, DISPLAY_DROP_MS);
+    this.held.set(screenId, { window, cancel });
+    this.deps.onHeld?.(screenId);
+  }
+
+  private letGo(screenId: string): void {
+    const held = this.held.get(screenId);
+    if (!held) return;
+    held.cancel();
+    this.held.delete(screenId);
+    if (!held.window.isDestroyed()) held.window.close();
+  }
 
   reconcile(): void {
     const displays = this.deps.listDisplays();
@@ -50,20 +96,22 @@ export class OutputManager {
       assigned.map((s) => ({ screenId: s.id, key: s.displayKey })),
       displays,
     );
+    const wanted = new Set(assigned.map((s) => s.id));
 
-    // Close windows whose screen is gone, disabled, unmatched or matched elsewhere.
+    // Close windows whose screen is gone, disabled or matched elsewhere. One whose display went away, its
+    // screen still wanting it, is kept hidden a while instead (ROB-4).
     for (const [screenId, entry] of this.open) {
       const displayId = matches.get(screenId);
-      if (
-        entry.window.isDestroyed() ||
-        displayId === undefined ||
-        displayId === null ||
-        displayId !== entry.displayId
-      ) {
-        if (!entry.window.isDestroyed()) entry.window.close();
-        this.open.delete(screenId);
-      }
+      if (!entry.window.isDestroyed() && displayId === entry.displayId) continue;
+      this.open.delete(screenId);
+      if (entry.window.isDestroyed()) continue;
+      if (wanted.has(screenId) && (displayId === undefined || displayId === null))
+        this.hold(screenId, entry.window);
+      else entry.window.close();
     }
+    // A held window whose screen no longer wants a display (turned off, removed) closes now.
+    for (const [screenId, held] of this.held)
+      if (!wanted.has(screenId) || held.window.isDestroyed()) this.letGo(screenId);
 
     for (const screen of assigned) {
       const displayId = matches.get(screen.id);
@@ -72,12 +120,22 @@ export class OutputManager {
       // Remember the display's current fingerprint so the next start matches exactly.
       if (!sameKey(screen.displayKey, display.key)) this.deps.saveDisplayKey(screen.id, display.key);
       const entry = this.open.get(screen.id);
+      const held = this.held.get(screen.id);
       if (entry) entry.window.setBounds(display.bounds);
-      else this.open.set(screen.id, { window: this.deps.openWindow(screen, display), displayId: display.id });
+      else if (held) {
+        // Its display is back within the grace: the same window, put back on it and shown, never reloaded.
+        held.cancel();
+        this.held.delete(screen.id);
+        held.window.setBounds(display.bounds);
+        held.window.show();
+        this.open.set(screen.id, { window: held.window, displayId: display.id });
+        this.deps.onPutBack?.(screen.id);
+      } else
+        this.open.set(screen.id, { window: this.deps.openWindow(screen, display), displayId: display.id });
     }
 
     // A window closed is no longer given up on: a new one starts afresh.
-    for (const id of this.stopped) if (!this.open.has(id)) this.stopped.delete(id);
+    for (const id of this.stopped) if (!this.open.has(id) && !this.held.has(id)) this.stopped.delete(id);
     this.statuses = screens.map((s) => {
       if (!s.enabled) return { screenId: s.id, state: 'disabled', displayId: null };
       if (!s.displayKey) return { screenId: s.id, state: 'unassigned', displayId: null };
@@ -103,9 +161,9 @@ export class OutputManager {
     return this.statuses;
   }
 
-  /** The screen an output window shows, looked up by its webContents id. */
+  /** The screen an output window shows (or keeps through a display drop), looked up by its webContents id. */
   screenIdFor(webContentsId: number): string | undefined {
-    for (const [screenId, entry] of this.open)
+    for (const [screenId, entry] of [...this.open, ...this.held])
       if (entry.window.webContentsId === webContentsId) return screenId;
     return undefined;
   }
@@ -117,5 +175,6 @@ export class OutputManager {
   closeAll(): void {
     for (const entry of this.open.values()) if (!entry.window.isDestroyed()) entry.window.close();
     this.open.clear();
+    for (const screenId of [...this.held.keys()]) this.letGo(screenId);
   }
 }

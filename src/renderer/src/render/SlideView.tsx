@@ -21,7 +21,7 @@ import { engineNow } from './clock';
 import { Looked } from './picture-looks';
 import { slideShowing } from '../../../shared/picture-look';
 import { PreviewPicture, usePreviewsOnly } from './previews';
-import { useMediaAttempt } from './media-attempts';
+import { useGpuRestarts, useMediaAttempt } from './media-attempts';
 import { hasWords, revealLines, wordUnits } from './reveal';
 import { useMediaUrl } from './media-urls';
 import { useMeasureReport } from './measure';
@@ -359,11 +359,31 @@ function SlideVideo({
   // Props and other things without a start time play from when they appear.
   const [mountedAt] = useState(() => engineNow());
   const start = startedAt ?? mountedAt;
+  // One that failed with a GPU process that stopped plays again, from the engine's time, once another has
+  // started (Sessions 31–36, ROB-5): each such try loads it at a new address.
+  const restarts = useGpuRestarts();
+  const restartsNow = useRef(restarts);
+  useLayoutEffect(() => {
+    restartsNow.current = restarts;
+  });
+  const [failedWith, setFailedWith] = useState<number | null>(null);
+  const [tries, setTries] = useState(0);
+  if (failedWith !== null && restarts > failedWith) {
+    setFailedWith(null);
+    setTries(tries + 1);
+  }
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
-    return startPlayback(v, { mediaId: el.mediaId, attempt, startedAt: start });
-  }, [el.mediaId, attempt, start]);
+    return startPlayback(v, {
+      mediaId: el.mediaId,
+      attempt: attempt + tries,
+      startedAt: start,
+      onError: () => {
+        setFailedWith(restartsNow.current);
+      },
+    });
+  }, [el.mediaId, attempt, tries, start]);
   return (
     <video
       ref={ref}

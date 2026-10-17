@@ -41,6 +41,18 @@ export function setExtraDisplays(n: number): void {
 /** The first id given to an extra (pretend) display. */
 export const EXTRA_DISPLAY_ID = 900_000_000;
 
+/** Told when the pretend displays change, as the system tells of real ones (watchDisplays). */
+let pretendChanged: ((why: string) => void) | null = null;
+
+/**
+ * Tests only (DRASHTI_TEST_DISPLAY_CHANGES, never a packaged Drashti): pretend displays come and go while
+ * Drashti runs, as a projector that drops for a moment does (Sessions 31–36, ROB-4).
+ */
+export function changeExtraDisplays(n: number): void {
+  setExtraDisplays(n);
+  pretendChanged?.('pretend displays');
+}
+
 export function listDisplays(): DisplayInfo[] {
   const primaryId = screen.getPrimaryDisplay().id;
   const real = screen.getAllDisplays().map((d) => toDisplayInfo(d, primaryId));
@@ -79,6 +91,7 @@ export function watchDisplays(onChange: () => void, delayMs = 300): void {
       onChange();
     }, delayMs);
   };
+  pretendChanged = schedule;
   screen.on('display-added', () => {
     schedule('added');
   });
@@ -166,6 +179,14 @@ export function createOutputWindow(
       if (!win.isDestroyed()) win.destroy();
     },
     isDestroyed: () => win.isDestroyed(),
+    // Through a display drop (Sessions 31–36, ROB-4): out of sight, then back, never taking the focus.
+    hide: () => {
+      show.cancel();
+      if (!win.isDestroyed()) win.hide();
+    },
+    show: () => {
+      if (!win.isDestroyed()) win.showInactive();
+    },
   };
   return { window: win, handle };
 }

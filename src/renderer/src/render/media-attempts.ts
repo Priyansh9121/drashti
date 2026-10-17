@@ -27,3 +27,29 @@ export function watchMediaReady(): void {
 export function useMediaAttempt(mediaId: string): number {
   return useAttempts((s) => s[mediaId] ?? 0);
 }
+
+/*
+ * A GPU process that stops (Sessions 31–36, ROB-5) takes with it the decoders of the videos playing: macOS
+ * and Windows decode H.264 there, and each such video fails ("video decode error"). Chromium starts another
+ * GPU process by itself, and Main says so: each video that failed loads again (a new address, as Chromium
+ * keeps a failed one in mind for a while) and plays from the engine's time, as it would have.
+ */
+
+const useGpu = create<{ restarts: number }>(() => ({ restarts: 0 }));
+
+let watchingGpu = false;
+
+/** Follow Main's word that the GPU process started again (once per page). */
+export function watchGpuRestarts(): void {
+  if (watchingGpu) return;
+  watchingGpu = true;
+  const bridge = (globalThis as { drashti?: DrashtiBridge }).drashti;
+  bridge?.output.onGpuRestarted(() => {
+    useGpu.setState((s) => ({ restarts: s.restarts + 1 }));
+  });
+}
+
+/** How many times the GPU process has started again since the page opened. */
+export function useGpuRestarts(): number {
+  return useGpu((s) => s.restarts);
+}

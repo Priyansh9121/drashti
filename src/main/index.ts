@@ -1,7 +1,8 @@
-import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
+import type { IpcMainInvokeEvent } from 'electron';
 import {
   app,
   autoUpdater,
+  BrowserWindow,
   net as electronNet,
   shell,
   crashReporter,
@@ -130,6 +131,7 @@ import { DEFAULT_LINK_MAX_HEIGHT, isLinkHeight } from '../shared/links';
 import { spawnDownloadWorker } from './links/spawn-worker';
 import { AudioOutput } from './audio/audio-output';
 import { CrashJournal, childGoneWords, JOURNAL_FILE, journalNotice, watchdogWords } from './crash-journal';
+import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
 import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles } from './crash-files';
 import { type CrashFilesChoice, saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
@@ -187,11 +189,12 @@ import {
   createOutputWindow,
   listDisplays,
   setExtraDisplays,
+  changeExtraDisplays,
   showDisplayNumber,
   watchDisplays,
 } from './outputs/electron-outputs';
 import { placeOperator } from './outputs/operator-guard';
-import { OutputManager } from './outputs/output-manager';
+import { DISPLAY_DROP_MS, OutputManager } from './outputs/output-manager';
 import { ScreensService } from './outputs/screens-service';
 import { SleepGuard } from './outputs/sleep-guard';
 import { IpcTransport } from './transport/ipc-transport';
@@ -337,6 +340,23 @@ app.on('child-process-gone', (_event, details) => {
   if (words) crashJournal.add(words);
 });
 
+/** The GPU process's stops (Sessions 31–36, ROB-5): a second within 10 minutes is said. */
+const gpuStops = new GpuStops();
+/** Said to the operator (Main) once the GPU process has stopped twice within 10 minutes. */
+let gpuStoppedTwice: ((text: string) => void) | null = null;
+// The GPU process stopped (Sessions 31–36, ROB-5): Chromium starts another by itself, but the videos it was
+// decoding fail. Every window that draws the show is told, and plays its failed videos again, from the
+// engine's time. A second stop within 10 minutes is told to the operator, once.
+app.on('child-process-gone', (_event, details) => {
+  if (details.type !== 'GPU' || quitting) return;
+  log.warn(
+    `The GPU process stopped (${details.reason}); its features now: ${JSON.stringify(app.getGPUFeatureStatus())}`,
+  );
+  for (const w of BrowserWindow.getAllWindows())
+    if (!w.isDestroyed()) sendToPage(w, IPC.output.gpuRestarted, { at: Date.now() });
+  if (gpuStops.stopped(Date.now())) gpuStoppedTwice?.(GPU_STOPPED_TWICE);
+});
+
 /**
  * Before Save Diagnostics (Sessions 31–36, ROB-6): with crash files kept, whether they go too, unticked as
  * it opens, since a crash file can hold words from slides; null when the person cancels. With none kept,
@@ -370,6 +390,9 @@ const savedDiagnosticsText = (path: string, crash: CrashFilesChoice) =>
 // optionally with pretend extra displays to try several outputs. Always so in quiet test mode.
 const windowedOutputs = sw('DRASHTI_WINDOWED_OUTPUTS') === '1' || quietTests;
 if (windowedOutputs) setExtraDisplays(Number(sw('DRASHTI_EXTRA_DISPLAYS') ?? 0) || 0);
+// Tests only (never a packaged Drashti): pretend displays that come and go (Sessions 31–36, ROB-4).
+if (windowedOutputs && !app.isPackaged && sw('DRASHTI_TEST_DISPLAY_CHANGES') === '1')
+  (globalThis as { drashtiTestDisplays?: (n: number) => void }).drashtiTestDisplays = changeExtraDisplays;
 // A Diagnostics menu for the manual watchdog check (see README).
 const diagnostics = sw('DRASHTI_DIAGNOSTICS') === '1';
 // Automated tests cannot answer the quit confirmation.
@@ -1401,6 +1424,10 @@ function start(): void {
     loadedSinceStopped.delete(screenId);
     manager.setStopped(screenId, true);
   };
+  // The GPU process stopped twice within 10 minutes (Sessions 31–36, ROB-5): the operator is told, once.
+  gpuStoppedTwice = (text) => {
+    sendToOperator(IPC.app.notice, { text });
+  };
   outputWatchdogEvent = (e) => {
     const screenId = screenOfOutput(e.window);
     if (screenId === undefined) return;
@@ -1459,6 +1486,18 @@ function start(): void {
         }, 500);
       });
       return h;
+    },
+    onHeld: (screenId) => {
+      log.info(
+        `The display of ${outputNames.get(screenId) ?? 'an output'} went away: its output is kept hidden for up to ${String(DISPLAY_DROP_MS / 1000)} s`,
+      );
+    },
+    onPutBack: (screenId) => {
+      log.info(
+        `The display of ${outputNames.get(screenId) ?? 'an output'} is back: the same page shown on it again, not loaded again`,
+      );
+      // Out of sight, it drew nothing: it is judged again only after the grace.
+      heartbeat.opened(screenId);
     },
     onChange: () => {
       // A hall screen stopped, or back (events out: Session 28).

@@ -535,6 +535,10 @@ const bridge: DrashtiBridge = {
       on(IPC.output.mediaReady, ({ mediaId }) => {
         listener(mediaId);
       }),
+    onGpuRestarted: (listener) =>
+      on(IPC.output.gpuRestarted, () => {
+        listener();
+      }),
     onTestThrow: (listener) =>
       on(IPC.output.testThrow, () => {
         listener();

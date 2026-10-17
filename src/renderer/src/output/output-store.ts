@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { OutputContext } from '../../../shared/screens';
 import { setClockOffset } from '../render/clock';
-import { watchMediaReady } from '../render/media-attempts';
+import { watchGpuRestarts, watchMediaReady } from '../render/media-attempts';
 
 interface OutputView {
   context: OutputContext | null;
@@ -24,6 +24,8 @@ export function connectOutput(): void {
   window.drashti.output.onContext(take);
   // On a node: copies that land after a screen asked for them are loaded again.
   watchMediaReady();
+  // Videos that failed with a GPU process that stopped play again once another starts (ROB-5).
+  watchGpuRestarts();
   window.drashti.output.onIdentify((who) => {
     useOutput.setState({
       // eslint-disable-next-line no-restricted-properties -- Identify's card (setting up, never the show), for its few seconds

@@ -6,6 +6,7 @@ import { groupLookIn } from '../../../shared/looks';
 import type { ProgramContext } from '../../../shared/stream';
 import { connectEngine, useEngine } from '../engine/engine-store';
 import { holdClock } from '../render/clock';
+import { watchGpuRestarts } from '../render/media-attempts';
 import { preloadFonts } from '../render/fonts';
 import { PlacedInParent } from '../render/Placed';
 import { SceneBoundary } from '../render/SceneBoundary';
@@ -85,6 +86,8 @@ function Program() {
       setFontsReady(true);
       connectEngine();
     });
+    // Videos that failed with a GPU process that stopped play again once another starts (ROB-5).
+    watchGpuRestarts();
     void listDevices();
     navigator.mediaDevices.addEventListener('devicechange', () => {
       void listDevices().then(() => {

@@ -731,6 +731,11 @@ export const IPC = {
     report: 'output:report',
     /** main -> output (on a node): a media file's copy has just landed; load it if it could not be before. */
     mediaReady: 'output:media-ready',
+    /**
+     * main -> every window that draws the show (Sessions 31–36, ROB-5): the GPU process stopped and Chromium
+     * starts another; a video that failed with it plays again.
+     */
+    gpuRestarted: 'output:gpu-restarted',
     /** main -> output, tests only (never sent by a packaged Drashti): draw an element that throws (Session 23). */
     testThrow: 'output:test-throw',
     /**
@@ -1190,6 +1195,7 @@ export interface EventContract {
   [IPC.output.context]: OutputContext;
   [IPC.output.identify]: { name: string; groupName: string; label?: string };
   [IPC.output.mediaReady]: { mediaId: string };
+  [IPC.output.gpuRestarted]: { at: number };
   [IPC.output.testThrow]: Record<string, never>;
   [IPC.output.testClock]: { at: number | null };
   [IPC.audio.chosen]: { device: AudioDevice | null };
