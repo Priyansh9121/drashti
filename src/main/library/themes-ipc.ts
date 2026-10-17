@@ -12,6 +12,7 @@ import type { ThemeRepo } from '../db/themes';
 import { handle } from '../ipc/handle';
 import type { Revisions } from './revisions';
 import { applyTheme, themeFromContent } from './themes';
+import { themeContract } from '../../shared/theme-contract';
 
 /*
  * The themes' requests: anyone of Drashti's pages may list them; only the
@@ -49,17 +50,21 @@ export function saveTheme(themes: ThemeRepo, themeId: unknown, fields: unknown):
   const f = themeFieldsSchema.safeParse(fields);
   if (!f.success)
     return { ok: false, message: 'That theme is not complete: check its sizes, colours and box.' };
-  if (themeId === null) return { ok: true, id: themes.create(f.data, { kind: 'drashti', path: null }) };
+  // What it misses of the theme contract (Sessions 31–36, SLD-4): said, never refused.
+  const missed = themeContract(f.data);
+  const warned = missed.length > 0 ? { warnings: missed } : {};
+  if (themeId === null)
+    return { ok: true, id: themes.create(f.data, { kind: 'drashti', path: null }), ...warned };
   const id = idSchema.safeParse(themeId);
   const was = id.success ? themes.get(id.data) : null;
   if (!was) return { ok: false, message: 'That theme no longer exists.' };
   if (was.builtIn) {
     const taken = new Set(themes.list().map((t) => t.name));
     const name = f.data.name === was.name ? copyName(was.name, taken) : f.data.name;
-    return { ok: true, id: themes.create({ ...f.data, name }, { kind: 'drashti', path: null }) };
+    return { ok: true, id: themes.create({ ...f.data, name }, { kind: 'drashti', path: null }), ...warned };
   }
   return themes.update(was.id, f.data)
-    ? { ok: true, id: was.id }
+    ? { ok: true, id: was.id, ...warned }
     : { ok: false, message: 'That theme no longer exists.' };
 }
 

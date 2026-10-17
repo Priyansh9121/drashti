@@ -4,6 +4,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 ## Unreleased
 
+- The theme editor says when a theme's words would be too small, too faint, too thin, too close or too near the edge for the back of the hall; it still saves.
 - A phone's remote shows the slide in the hall's languages, as LIVE does, and the next one too; beside the notes it shows the time as Drashti's computer has it and the first running timer.
 - The stage screen makes a long slide's words smaller until its last line shows; words that already fit look exactly as before.
 - When a lower third cannot hold all of a slide's lines, a note under LIVE says how many it shows, for example "Lower third shows 6 of 7 lines".
