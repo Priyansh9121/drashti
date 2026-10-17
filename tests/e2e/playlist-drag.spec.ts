@@ -189,9 +189,9 @@ test('a search result can be dragged into a playlist', async () => {
   await app.close();
 });
 
-test('reordering a playlist by dragging, from the chosen item and an unchosen one, with Undo, Up and Down, and Alt+arrows', async () => {
-  const { app, win, node, items } = await start();
-  await win.evaluate(async () => {
+/** The three songs, in order, in Placeholder Empty. */
+const addSongs = (win: Page) =>
+  win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     const tree = await d.playlists.tree();
     const empty = tree.find((n) => n.name === 'Placeholder Empty');
@@ -206,10 +206,14 @@ test('reordering a playlist by dragging, from the chosen item and an unchosen on
         ids.map((presentationId) => ({ kind: 'presentation', presentationId })),
       );
   });
+const one = 'presentation:Placeholder Song One';
+const two = 'presentation:Placeholder Song Two';
+const three = 'presentation:Placeholder Song Three';
+
+test('reordering a playlist by dragging, from the chosen item and an unchosen one, with Undo, Up and Down, and Alt+arrows', async () => {
+  const { app, win, node, items } = await start();
+  await addSongs(win);
   await node('Placeholder Empty').click();
-  const one = 'presentation:Placeholder Song One';
-  const two = 'presentation:Placeholder Song Two';
-  const three = 'presentation:Placeholder Song Three';
   await expect.poll(() => labels(items)).toEqual([one, two, three]);
   // The chosen item (Up and Down under it) to the end.
   await items.first().click();
@@ -235,6 +239,43 @@ test('reordering a playlist by dragging, from the chosen item and an unchosen on
   await expect.poll(() => labels(items)).toEqual([one, two, three]);
   await win.keyboard.press('Alt+ArrowDown');
   await expect.poll(() => labels(items)).toEqual([two, one, three]);
+  await app.close();
+});
+
+test('after a move the keyboard never leaves the item, not for a frame: a key pressed straight after a move is never lost', async () => {
+  const { app, win, node, items } = await start();
+  await addSongs(win);
+  await node('Placeholder Empty').click();
+  await expect.poll(() => labels(items)).toEqual([one, two, three]);
+  await items.first().click();
+  await expect(items.first()).toBeFocused();
+  // Each time the list is drawn anew, where the keyboard is. On nothing, or on a button just turned off,
+  // a key pressed then went nowhere (Checkpoint D: an Alt+Down on Windows CI, a frame after an Alt+Up).
+  await win.evaluate(() => {
+    const list = document.querySelector('[data-testid="open-playlist"] [data-testid="playlist-items"]');
+    if (!list) throw new Error('no open playlist');
+    const lost: string[] = [];
+    (globalThis as { keyboardLost?: string[] }).keyboardLost = lost;
+    new MutationObserver(() => {
+      const now = document.activeElement;
+      if (now === null || now === document.body) lost.push('on nothing');
+      else if (now instanceof HTMLButtonElement && now.disabled)
+        lost.push(`on ${now.textContent.trim()}, which had gone off`);
+    }).observe(list, { childList: true, subtree: true });
+  });
+  // The item down from itself: its row is taken out of the list and put back lower.
+  await win.keyboard.press('Alt+ArrowDown');
+  await expect.poll(() => labels(items)).toEqual([two, one, three]);
+  // Up again from its Up, which goes off at the top.
+  await win
+    .getByTestId('open-playlist')
+    .getByTestId('playlist-item-moves')
+    .getByRole('button', { name: 'Up' })
+    .focus();
+  await win.keyboard.press('Alt+ArrowUp');
+  await expect.poll(() => labels(items)).toEqual([one, two, three]);
+  await expect(items.first()).toBeFocused();
+  expect(await win.evaluate(() => (globalThis as { keyboardLost?: string[] }).keyboardLost)).toEqual([]);
   await app.close();
 });
 
