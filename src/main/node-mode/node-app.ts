@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, net, protocol, shell } from 'electron';
 import type { Installer } from '../update/installer';
 import { UpdateService } from '../update/update-service';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import { EngineMirror } from '../../shared/engine/mirror';
 import type { EngineSnapshotMessage } from '../../shared/engine/protocol';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
@@ -23,7 +23,7 @@ import {
 import { mediaWantListSchema, nodeNameFrom, nodeScreenListSchema } from '../../shared/nodes-schema';
 import type { DisplayInfo, OutputContext, OutputReport, ScreenConfig } from '../../shared/screens';
 import { missingFontsIn } from '../../shared/screens';
-import type { DiagnosticsInput } from '../diagnostics';
+import type { CrashFilesChoice, DiagnosticsInput } from '../diagnostics';
 import { saveNodeDiagnostics } from '../diagnostics';
 import { handle } from '../ipc/handle';
 import { hearRenderErrors } from '../render-errors-ipc';
@@ -91,6 +91,11 @@ export interface NodeAppDeps {
   diagnostics: {
     app: () => DiagnosticsInput['app'];
     watchdogHistory: () => DiagnosticsInput['watchdog'];
+    /** The crash journal, and whether the crash files go too (asked; null when cancelled): Sessions 31–36, ROB-6. */
+    crashJournal: () => DiagnosticsInput['crashJournal'];
+    chooseCrashFiles: () => Promise<CrashFilesChoice | null>;
+    /** What the notice says once it is saved. */
+    savedText: (path: string, crash: CrashFilesChoice) => string;
     logFiles: () => string[];
     desktop: () => string;
   };
@@ -827,6 +832,12 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
 
   // ---- diagnostics (Session 17) ---------------------------------------------------------------------
   const saveDiagnostics = () => {
+    void (async () => {
+      const crash = await deps.diagnostics.chooseCrashFiles().catch(() => null);
+      if (crash) writeDiagnostics(crash);
+    })();
+  };
+  const writeDiagnostics = (crash: CrashFilesChoice) => {
     try {
       const status = manager.status();
       const displays = listDisplays();
@@ -865,11 +876,13 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         fromSaved,
         media: cache.status(mirror.state ? inUse().filter((id) => !cache.has(id)).length : 0),
         watchdog: deps.diagnostics.watchdogHistory(),
+        crashJournal: deps.diagnostics.crashJournal(),
+        crashFiles: crash,
         logFiles: deps.diagnostics.logFiles(),
         now: new Date(),
       });
-      log.info('Node: diagnostics saved to the Desktop');
-      say(`Diagnostics saved on the Desktop: ${basename(file)}`);
+      log.info(`Node: diagnostics saved to the Desktop${crash.included ? ', with the crash files' : ''}`);
+      say(deps.diagnostics.savedText(file, crash));
     } catch (error) {
       log.error('Node: could not save diagnostics', error);
       say('Could not save diagnostics: see the log in the data folder.');

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -6,6 +6,7 @@ import { NO_COUNTS } from '../shared/import';
 import { openDatabase } from './db/database';
 import { ImportRepo } from './db/imports';
 import { PresentationRepo } from './db/presentations';
+import type { CrashFile } from './crash-files';
 import type { DiagnosticsInput, NodeDiagnosticsInput } from './diagnostics';
 import {
   diagnosticsText,
@@ -58,10 +59,26 @@ function setup() {
     watchdog: [
       { at: '2026-09-29T10:00:01.000Z', window: 'output "Main Hall"', kind: 'crashed', reason: 'oom' },
     ],
+    crashJournal: [
+      {
+        n: 1,
+        at: '2026-09-29T09:58:00.000Z',
+        what: 'an error in the main process that nothing caught: Error: Placeholder Secret Kirtan',
+      },
+      { n: 2, at: '2026-09-29T09:59:00.000Z', what: 'the GPU process crashed (code 11)' },
+    ],
+    crashFiles: { files: [], included: false },
     logFiles: [logFile],
     now: new Date(2026, 8, 29, 10, 5),
   };
   return { db, dir, input };
+}
+
+/** A pretend crash file (a dump): placeholder bytes. */
+function pretendDump(dir: string): CrashFile {
+  const path = join(dir, 'placeholder-dump.dmp');
+  writeFileSync(path, Buffer.alloc(2048));
+  return { path, name: 'placeholder-dump.dmp', bytes: 2048, at: new Date(Date.UTC(2026, 8, 29, 9, 59)) };
 }
 
 describe('diagnostics', () => {
@@ -89,6 +106,34 @@ describe('diagnostics', () => {
     const saved = readFileSync(file, 'utf8');
     expect(saved).not.toContain('Secret Kirtan');
     expect(saved).toContain('Opened [library name] by mistake');
+    // The crash journal too (Sessions 31–36, ROB-6).
+    expect(saved).toContain('nothing caught: Error: [library name]');
+  });
+
+  it('holds the crash journal, and lists crash files by name and size, the files only when ticked (ROB-6)', () => {
+    const { input, dir } = setup();
+    const dump = pretendDump(mkdtempSync(join(tmpdir(), 'drashti-crashpad-')));
+    const text = diagnosticsText({ ...input, crashFiles: { files: [dump], included: false } });
+    expect(text).toContain('== Crash journal (the last 20, kept over restarts) ==');
+    expect(text).toContain('2026-09-29T09:59:00.000Z the GPU process crashed (code 11)');
+    expect(text).toContain('== Crash files (kept on this computer, the newest 5) ==');
+    expect(text).toContain('placeholder-dump.dmp: 2.0 KB, written 2026-09-29T09:59:00.000Z');
+    expect(text).toContain('Not included: they can hold words from slides.');
+    // Left out: the file alone, as before.
+    const unticked = saveDiagnostics(dir, { ...input, crashFiles: { files: [dump], included: false } });
+    expect(unticked).toBe(join(dir, 'Drashti diagnostics 2026-09-29 10-05.txt'));
+    expect(readdirSync(dir).filter((f) => f.endsWith('.dmp'))).toEqual([]);
+    // Ticked: a folder with the file and the crash file.
+    const into = mkdtempSync(join(tmpdir(), 'drashti-desktop-'));
+    const ticked = saveDiagnostics(into, { ...input, crashFiles: { files: [dump], included: true } });
+    expect(ticked).toBe(join(into, 'Drashti diagnostics 2026-09-29 10-05'));
+    expect(readdirSync(ticked).sort()).toEqual([
+      'Drashti diagnostics 2026-09-29 10-05.txt',
+      'placeholder-dump.dmp',
+    ]);
+    expect(readFileSync(join(ticked, 'Drashti diagnostics 2026-09-29 10-05.txt'), 'utf8')).toContain(
+      'Included: in the folder with this file.',
+    );
   });
 });
 
@@ -137,6 +182,8 @@ describe("a node's diagnostics (Session 17)", () => {
           problem: null,
         },
         watchdog: [{ at: '2026-10-08T10:02:00.000Z', window: 'node window', kind: 'reloaded', reason: null }],
+        crashJournal: [{ n: 1, at: '2026-10-08T10:01:00.000Z', what: 'the GPU process crashed (code 11)' }],
+        crashFiles: { files: [], included: false },
         logFiles: [logFile],
         now: new Date(2026, 9, 8, 10, 5),
       },
@@ -158,6 +205,7 @@ describe("a node's diagnostics (Session 17)", () => {
     expect(text).toContain('13 of 14 files ready');
     expect(text).toContain('On the screens or up next, not here yet: 1');
     expect(text).toContain('node window reloaded');
+    expect(text).toContain('2026-10-08T10:01:00.000Z the GPU process crashed (code 11)');
     expect(text).toContain('Node: link online');
     // A node has no library, imports or sound.
     expect(text).not.toContain('== Library');

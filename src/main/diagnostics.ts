@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { cpus, release, totalmem } from 'node:os';
 import { join } from 'node:path';
 import type { AudioOutputStatus } from '../shared/audio';
@@ -7,6 +7,8 @@ import type { LinkState, NodeClock, NodeMediaStatus } from '../shared/nodes';
 import type { DisplayInfo, ScreensSnapshot } from '../shared/screens';
 import type { Db } from './db/database';
 import { ImportRepo } from './db/imports';
+import { type CrashFile, copyCrashFiles, crashFilesLines, KEEP_CRASH_FILES } from './crash-files';
+import { type CrashEntry, JOURNAL_ENTRIES } from './crash-journal';
 import { scrub } from './log';
 
 /*
@@ -25,8 +27,18 @@ export interface DiagnosticsInput {
   sound: AudioOutputStatus;
   db: Db;
   watchdog: readonly { at: string; window: string; kind: string; reason: string | null }[];
+  /** The crash journal (Sessions 31–36, ROB-6). */
+  crashJournal: readonly CrashEntry[];
+  /** The crash files kept on this computer, and whether they go with the file (ticked as it was saved). */
+  crashFiles: CrashFilesChoice;
   logFiles: readonly string[];
   now: Date;
+}
+
+/** The crash files kept, and whether the person saving Diagnostics ticked Include crash files. */
+export interface CrashFilesChoice {
+  files: readonly CrashFile[];
+  included: boolean;
 }
 
 /** At most this much of the log (the newest part). */
@@ -101,6 +113,38 @@ function watchdogSection(watchdog: DiagnosticsInput['watchdog']): string {
   );
 }
 
+/** The crash journal and the crash files (Sessions 31–36, ROB-6): the files by name, size and time only. */
+function crashSections(journal: readonly CrashEntry[], crash: CrashFilesChoice): string[] {
+  return [
+    section(
+      `Crash journal (the last ${String(JOURNAL_ENTRIES)}, kept over restarts)`,
+      journal.map((e) => `${e.at} ${e.what}`),
+    ),
+    section(
+      `Crash files (kept on this computer, the newest ${String(KEEP_CRASH_FILES)})`,
+      crashFilesLines(crash.files, crash.included),
+    ),
+  ];
+}
+
+/**
+ * The file on the Desktop; with crash files ticked, a folder holding the file and the crash files.
+ * Returns the file's path, or the folder's.
+ */
+function writeDiagnostics(dir: string, now: Date, text: string, crash: CrashFilesChoice): string {
+  const name = `Drashti diagnostics ${fileStamp(now)}`;
+  if (!crash.included || crash.files.length === 0) {
+    const file = join(dir, `${name}.txt`);
+    writeFileSync(file, text, 'utf8');
+    return file;
+  }
+  const folder = join(dir, name);
+  mkdirSync(folder, { recursive: true });
+  writeFileSync(join(folder, `${name}.txt`), text, 'utf8');
+  copyCrashFiles(crash.files, folder);
+  return folder;
+}
+
 /** The log, oldest file first, keeping the newest part. */
 function logSection(logFiles: readonly string[]): string {
   let logText = '';
@@ -170,16 +214,18 @@ export function diagnosticsText(input: DiagnosticsInput): string {
     ),
   );
   parts.push(watchdogSection(input.watchdog));
+  parts.push(...crashSections(input.crashJournal, input.crashFiles));
   parts.push(logSection(input.logFiles));
   return parts.join('\n');
 }
 
-/** Write the file to `dir` (the Desktop), names blanked out; returns its path. */
+/**
+ * Write the file to `dir` (the Desktop), names blanked out; returns its path (a folder's, with the crash
+ * files in it, when they were ticked).
+ */
 export function saveDiagnostics(dir: string, input: DiagnosticsInput): string {
-  const file = join(dir, `Drashti diagnostics ${fileStamp(input.now)}.txt`);
   const text = scrub(redactNames(diagnosticsText(input), libraryNames(input.db)));
-  writeFileSync(file, text, 'utf8');
-  return file;
+  return writeDiagnostics(dir, input.now, text, input.crashFiles);
 }
 
 /** A node's screen, as Main gave it, and how it stands on the node. */
@@ -217,6 +263,8 @@ export interface NodeDiagnosticsInput {
   fromSaved: boolean;
   media: NodeMediaStatus;
   watchdog: DiagnosticsInput['watchdog'];
+  crashJournal: DiagnosticsInput['crashJournal'];
+  crashFiles: CrashFilesChoice;
   logFiles: readonly string[];
   now: Date;
 }
@@ -268,13 +316,12 @@ export function nodeDiagnosticsText(input: NodeDiagnosticsInput): string {
     ]),
   );
   parts.push(watchdogSection(input.watchdog));
+  parts.push(...crashSections(input.crashJournal, input.crashFiles));
   parts.push(logSection(input.logFiles));
   return parts.join('\n');
 }
 
-/** Write the node's file to `dir` (the Desktop); returns its path. */
+/** Write the node's file to `dir` (the Desktop); returns its path (a folder's, with crash files ticked). */
 export function saveNodeDiagnostics(dir: string, input: NodeDiagnosticsInput): string {
-  const file = join(dir, `Drashti diagnostics ${fileStamp(input.now)}.txt`);
-  writeFileSync(file, scrub(nodeDiagnosticsText(input)), 'utf8');
-  return file;
+  return writeDiagnostics(dir, input.now, scrub(nodeDiagnosticsText(input)), input.crashFiles);
 }

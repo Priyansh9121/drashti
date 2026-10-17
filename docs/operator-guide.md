@@ -156,7 +156,7 @@ A clear button is lit, with a dot, while its layer is on the screens.
 
 1. **The stream**: **End the stream…**, then **End the stream**, and **Stop recording**. End the broadcast in YouTube Studio too.
 2. **F1** (Clear all), so nothing is left up.
-3. If anything went wrong, **Help**, then **Save Diagnostics…**: a file appears on the Desktop. Send it to whoever looks after Drashti with the time and what you saw. It holds no kirtan words, names or file paths.
+3. If anything went wrong, **Help**, then **Save Diagnostics…**: a file appears on the Desktop. Send it to whoever looks after Drashti with the time and what you saw. It holds no kirtan words, names or file paths. If Drashti asks about crash files, leave **Include crash files** unticked unless the admin asks for them: they can hold words from slides.
 4. Quit Drashti, or switch to Simple Mode for the next volunteer (**View**, then **Switch to Simple Mode**). With PINs set, admin locks itself.
 
 ## 5. Keys at a glance
