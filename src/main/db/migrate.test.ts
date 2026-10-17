@@ -143,7 +143,14 @@ describe('migrations', () => {
 
     const db = openDatabase(file);
     expect(schemaVersion(db)).toBe(LATEST_VERSION);
-    expect(db.prepare('SELECT rowid, * FROM presentations ORDER BY rowid').all()).toEqual(before);
+    // As they were, with migration 44's content revision added at 0 (Sessions 31–36).
+    const after = (
+      db.prepare('SELECT rowid, * FROM presentations ORDER BY rowid').all() as Record<string, unknown>[]
+    ).map(({ content_rev: rev, ...row }) => {
+      expect(rev).toBe(0);
+      return row;
+    });
+    expect(after).toEqual(before);
     expect(db.prepare('SELECT rowid, * FROM import_items').all()).toEqual(itemsBefore);
     expect(db.prepare("SELECT kirtan FROM presentations WHERE id = 'a'").get()).toEqual({
       kirtan: expect.stringContaining('Placeholder kavi') as unknown,

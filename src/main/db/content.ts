@@ -256,7 +256,7 @@ export function writeContent(db: Db, rows: ContentRows): void {
   const tracks = rows.kirtan ? kirtanLangs(rows).join(',') : null;
   db.prepare(
     `UPDATE presentations SET selected_arrangement_id = ?, theme_id = ?, transition = ?, loop = ?, slide_count = ?,
-       kirtan_tracks = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?`,
+       kirtan_tracks = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), content_rev = content_rev + 1 WHERE id = ?`,
   ).run(selected, rows.themeId, rows.transition, rows.loop, slideCount, tracks, id);
 }
 

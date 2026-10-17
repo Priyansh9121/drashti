@@ -49,10 +49,16 @@ export function registerSlidesIpc({
   lookFor,
   changed,
 }: SlidesIpcDeps): void {
-  /** When the presentation last changed (any write of its content updates it). */
-  const stampOf = (id: string) =>
-    (db.prepare('SELECT name, updated_at FROM presentations WHERE id = ? AND deleted_at IS NULL').get(id) as
-      { name: string; updated_at: string } | undefined) ?? null;
+  /**
+   * When the presentation last changed, and its content revision (Sessions 31–36: every write of its content
+   * moves it on, so two writes in one millisecond still differ): the editor saves only over what it opened.
+   */
+  const stampOf = (id: string) => {
+    const row = db
+      .prepare('SELECT name, updated_at, content_rev FROM presentations WHERE id = ? AND deleted_at IS NULL')
+      .get(id) as { name: string; updated_at: string; content_rev: number } | undefined;
+    return row ? { name: row.name, stamp: `${row.updated_at}#${String(row.content_rev)}` } : null;
+  };
 
   handle(IPC.library.slidesForEdit, (_e, presentationId): EditSlidesResult => {
     const id = idSchema.safeParse(presentationId);
@@ -60,7 +66,7 @@ export function registerSlidesIpc({
     const stamp = id.success ? stampOf(id.data) : null;
     if (!rows || !stamp) return { ok: false, message: 'That presentation is no longer in the library.' };
     const { doc, unreadable } = editDocOf(rows, stamp.name);
-    return { ok: true, doc, stamp: stamp.updated_at, look: lookFor(rows.themeId, rows), unreadable };
+    return { ok: true, doc, stamp: stamp.stamp, look: lookFor(rows.themeId, rows), unreadable };
   });
 
   handle(IPC.library.saveSlides, (e, presentationId, edited, stamp, force): SaveSlidesResult => {
@@ -74,7 +80,7 @@ export function registerSlidesIpc({
     if (!before || !now) return { ok: false, message: 'That presentation is no longer in the library.' };
     if (before.width !== doc.data.width || before.height !== doc.data.height)
       return { ok: false, message: 'The presentation’s size changed while it was open: open it again.' };
-    if (now.updated_at !== stamp && force !== true)
+    if (now.stamp !== stamp && force !== true)
       return {
         ok: false,
         changedElsewhere: true,
