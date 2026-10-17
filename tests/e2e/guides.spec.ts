@@ -109,6 +109,51 @@ test('a curated answer comes first, in its guide’s own words, and opens the gu
   await app.close();
 });
 
+test('Loading waits half a second (Sessions 31–36): a slow guide says “Opening the guide…” then, not at 100 ms', async () => {
+  const { app } = await launchApp({ DRASHTI_TEST_GUIDES_DELAY_MS: '2500' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  // Timed in the page itself, from when the guides open: whether Loading's words show at 100 ms and at
+  // 600 ms, and when they first do.
+  await win.evaluate(() => {
+    const seen: { opened?: number; shown?: number; at100?: boolean; at600?: boolean } = {};
+    (globalThis as { drashtiLoading?: typeof seen }).drashtiLoading = seen;
+    const showing = () =>
+      document.querySelector('[data-testid="guides"] [role="status"] [data-shown="true"]') !== null;
+    new MutationObserver(() => {
+      const now = performance.now();
+      if (seen.opened === undefined && document.querySelector('[data-testid="guides"]')) {
+        seen.opened = now;
+        setTimeout(() => (seen.at100 = showing()), 100);
+        setTimeout(() => (seen.at600 = showing()), 600);
+      }
+      if (seen.shown === undefined && showing()) seen.shown = now;
+    }).observe(document.body, { subtree: true, childList: true, attributes: true });
+  });
+  await chooseMenuItem(app, 'guides');
+  const guides = win.getByTestId('guides');
+  await expect(guides).toBeVisible();
+  const words = guides.getByText('Opening the guide…');
+  await expect(words).toBeVisible();
+  const seen = () =>
+    win.evaluate(
+      () =>
+        (
+          globalThis as {
+            drashtiLoading?: { opened?: number; shown?: number; at100?: boolean; at600?: boolean };
+          }
+        ).drashtiLoading ?? {},
+    );
+  await expect.poll(async () => (await seen()).at600).toBe(true);
+  const at = await seen();
+  expect(at.at100).toBe(false);
+  expect((at.shown ?? 0) - (at.opened ?? 0)).toBeGreaterThanOrEqual(490);
+  // The guide comes, and the words go.
+  await expect(guides.getByRole('heading', { level: 1 })).toContainText('The operator', { timeout: 10_000 });
+  await expect(words).toBeHidden();
+  await app.close();
+});
+
 test('Simple Mode’s Help › Guides… shows only the operator’s and the presenter’s guides, and the others cannot be read', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);

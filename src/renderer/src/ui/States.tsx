@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { DataAttributes } from './cx';
 import { cx } from './cx';
@@ -53,15 +54,46 @@ export function EmptyState({
   );
 }
 
-/** Waiting for something to arrive. */
-export function Loading({ label = 'Loading…', className }: { label?: string; className?: string }) {
+/** How long a wait goes unsaid: most answers come sooner, and a word that flashes up and away is noise. */
+export const LOADING_AFTER_MS = 500;
+
+/**
+ * Waiting for something to arrive (Sessions 31–36): said only after half a second, or at once where the
+ * wait is known to be long (`immediate`: starting the stream's picture, asking for an update). Its status
+ * box is there from the start, its words hidden until then (keeping their room), so a screen reader hears
+ * them as they come.
+ */
+export function Loading({
+  label = 'Loading…',
+  className,
+  immediate = false,
+}: {
+  label?: string;
+  className?: string;
+  immediate?: boolean;
+}) {
+  const [shown, setShown] = useState(immediate);
+  useEffect(() => {
+    if (shown) return;
+    const timer = setTimeout(() => {
+      setShown(true);
+    }, LOADING_AFTER_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [shown]);
   return (
     <div
       role="status"
       className={cx('flex items-center justify-center gap-2 p-4 text-sm text-muted', className)}
     >
-      <Loader size={16} aria-hidden="true" className="animate-spin" />
-      {label}
+      <span
+        className={cx('flex items-center gap-2', !shown && 'invisible')}
+        data-shown={shown ? 'true' : undefined}
+      >
+        <Loader size={16} aria-hidden="true" className="animate-spin" />
+        {label}
+      </span>
     </div>
   );
 }

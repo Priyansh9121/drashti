@@ -69,7 +69,7 @@ function MatchMain({ view }: { view: NodeView }) {
           Update to Drashti {version}
         </Button>
       )}
-      {u.phase === 'checking' && <Loading label="Looking for it…" />}
+      {u.phase === 'checking' && <Loading label="Looking for it…" immediate />}
       {offered && u.phase === 'available' && (
         <Button
           variant="primary"

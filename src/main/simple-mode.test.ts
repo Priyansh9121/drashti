@@ -35,6 +35,11 @@ describe('Simple Mode locks', () => {
     for (const c of changes) if (!open.has(c)) expect(SIMPLE_MODE_LOCKED, c).toContain(c);
     expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.engine.command);
     expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.screens.uncoverOperator);
+    // Simple Mode's own first steps (Sessions 31–36) are kept seen through channels it allows; the welcome's
+    // (Pro Mode's) stays locked.
+    expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.app.simpleFirstRun);
+    expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.app.simpleFirstRunSeen);
+    expect(SIMPLE_MODE_LOCKED).toContain(IPC.setup.welcomeSeen);
   });
 
   it('every Session 11 request that changes something: Looks, stage layouts, masks, macros (running them too), MIDI', () => {
