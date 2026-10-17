@@ -21,6 +21,10 @@
 // The guides inside Drashti (Sessions 31–36) must be there too, beside the app (resources/guides): the four
 // guides and exactly the pictures they show, each the same bytes as in docs/.
 //
+// Electron's fuses (Sessions 31–36, REL-7), read from the installed app: running as Node
+// (ELECTRON_RUN_AS_NODE), NODE_OPTIONS and --inspect off, file:// pages' privileges kept. And started with
+// ELECTRON_RUN_AS_NODE=1 and a script to run, it must start as Drashti (its FFmpeg self-test), never as Node.
+//
 //   node scripts/check-installers.mjs
 import { spawn, spawnSync } from 'node:child_process';
 import {
@@ -35,6 +39,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
+import { fusesAsWanted, runAsNodeRefused } from './fuse-checks.mjs';
 import { iconFiles, macAppIcon, windowsProgramIcon } from './icon-checks.mjs';
 import { makeTempRoot, removeTempRoot } from './temp-root.mjs';
 
@@ -122,6 +127,30 @@ function selfTest(mode, command, args) {
       done({ code, result: line ? JSON.parse(line.slice('DRASHTI_SELFTEST_RESULT '.length)) : null, log });
     });
   });
+}
+
+/** Its fuses, read from the installed app (a Mac's .app, or Windows' Drashti.exe; scripts/fuse-checks.mjs). */
+async function checkFuses(name, electron) {
+  record(name, await fusesAsWanted(electron));
+}
+
+/** Started with ELECTRON_RUN_AS_NODE=1 and a script to run: Drashti starts (its FFmpeg self-test), never Node. */
+async function notNode(name, command, args) {
+  const root = makeTempRoot();
+  const env = {
+    ...process.env,
+    DRASHTI_SELFTEST: 'ffmpeg',
+    DRASHTI_USER_DATA_DIR: join(root, 'data'),
+    DRASHTI_NO_QUIT_CONFIRM: '1',
+  };
+  try {
+    record(
+      name,
+      await runAsNodeRefused(command, args, env, command === 'arch' ? EMULATED_TIMEOUT_MS : TIMEOUT_MS),
+    );
+  } finally {
+    removeTempRoot(root);
+  }
 }
 
 /** True when `path` is inside `dir` (links resolved: a Mac's temporary folder is reached through one). */
@@ -326,8 +355,14 @@ async function checkDmg(f) {
     if (f.arch === 'x64' && process.arch === 'arm64') {
       if (!run('arch', ['-x86_64', '/usr/bin/true']).ok)
         return console.log('  not started: this Mac has no Rosetta to run Intel apps');
+      await checkFuses(f.name, app);
+      await notNode(`${f.name} (under Rosetta)`, 'arch', ['-x86_64', binary]);
       await starts(`${f.name} (under Rosetta)`, 'arch', ['-x86_64', binary], app, true);
-    } else await starts(f.name, binary, [], app);
+    } else {
+      await checkFuses(f.name, app);
+      await notNode(f.name, binary, []);
+      await starts(f.name, binary, [], app);
+    }
   } finally {
     rmSync(apps, { recursive: true, force: true });
     rmSync(mount, { recursive: true, force: true });
@@ -399,6 +434,8 @@ async function checkWindows(f) {
         fail(f.name, `the Start menu entry shows the icon of ${entry.iconFile}, not Drashti.exe's`);
       else pass(f.name, 'the Start menu entry opens Drashti.exe and shows its icon');
     }
+    await checkFuses(f.name, exe);
+    await notNode(f.name, exe, []);
     await starts(f.name, exe, [], installDir);
   } finally {
     // Uninstalled as a person would (Settings, Apps), silently; the uninstaller finishes on its own, after
