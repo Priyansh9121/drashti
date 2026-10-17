@@ -879,6 +879,11 @@ function startNodeMode(): void {
       stops.add(name, stop);
     },
   });
+  // Its outputs' watchdog events (Sessions 31–36): one given up on is Stopped, and Main hears of it.
+  outputWatchdogEvent = node.watchdogEvent;
+  // Tests only (never a packaged Drashti): mark an output as given up on, as a crash loop would.
+  if (!app.isPackaged && sw('DRASHTI_TEST_GIVE_UP') === '1')
+    (globalThis as { drashtiTestGiveUp?: (screenId: string) => void }).drashtiTestGiveUp = node.giveUp;
   /** The node's watchdog self-test, its result in a box (the menu) or printed (headless). */
   const showResult = (result: SelfTestResult) => {
     const lines = result.checks.map(
@@ -4032,6 +4037,17 @@ function start(): void {
   handle(IPC.screens.tryAgain, (e, screenId) => {
     if (!fromOperator(e)) return notAllowed;
     const sid = idSchema.safeParse(screenId);
+    // A node's screen (Sessions 31–36): the node's own watchdog tries it again.
+    const onNode = sid.success ? screenRepo.screen(sid.data)?.nodeId : null;
+    if (sid.success && onNode) {
+      const nodeStopped = nodes
+        .screenStatus()
+        .some((st) => st.screenId === sid.data && st.state === 'stopped');
+      if (!nodeStopped) return { ok: false as const, message: 'That screen is not stopped now.' };
+      log.info('Trying a stopped screen on a node again, as the operator asked');
+      const sent = nodes.tryAgain(onNode, sid.data);
+      return sent.ok ? { ok: true as const } : { ok: false as const, message: sent.message };
+    }
     const win = sid.success ? outputWindows.get(sid.data) : undefined;
     const stopped =
       sid.success && manager.status().some((st) => st.screenId === sid.data && st.state === 'stopped');

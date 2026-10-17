@@ -80,7 +80,7 @@ export const nodeHealthSchema: z.ZodType<NodeHealth> = z.object({
     .array(
       z.object({
         screenId: z.string().min(1).max(128),
-        state: z.enum(['showing', 'missing-display', 'disabled']),
+        state: z.enum(['showing', 'stopped', 'missing-display', 'disabled']),
         displayId: finite.nullable(),
         droppedFrames: z.number().int().nonnegative(),
         paintedRev: z.number().int(),

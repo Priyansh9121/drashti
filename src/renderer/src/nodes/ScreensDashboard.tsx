@@ -161,6 +161,20 @@ function DisplayCard({ display, number, screen, state, output, thumb, nodeId, si
               Reload
             </Button>
           )}
+          {/* A screen its watchdog gave up on, Main's or a node's (Sessions 31–36): tried again now. In
+              Simple Mode too, as the stopped-screen notice's: it changes nothing but brings a screen back. */}
+          {screen && state === 'stopped' && (
+            <Button
+              size="sm"
+              variant="primary"
+              icon={RotateCw}
+              data-testid="dashboard-try-again"
+              onClick={() => void window.drashti.screens.tryAgain(screen.id)}
+              aria-label={`Try again ${name}`}
+            >
+              Try again
+            </Button>
+          )}
           {!simple && screen && (
             <Button
               size="sm"

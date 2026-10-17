@@ -643,6 +643,14 @@ export class NodeService implements EngineTransport {
     return { ok: true, status: this.status() };
   }
 
+  /** Try again a node's screen its watchdog gave up on (Sessions 31–36): the node's own retryNow. */
+  tryAgain(nodeId: string, screenId: string): NodesResult {
+    if (!this.live.get(nodeId)?.online) return { ok: false, message: 'That node is not connected.' };
+    this.worker?.send({ type: 'to-node', nodeId, message: { type: 'tryAgain', screenId } });
+    this.deps.log('info', `Nodes: trying a stopped screen again on ${this.label(nodeId)}`);
+    return { ok: true, status: this.status() };
+  }
+
   /** The dashboard is open (or closed): nodes send pictures of their screens while it is. */
   watch(on: boolean): void {
     if (on === this.watching) return;
