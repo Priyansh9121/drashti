@@ -60,6 +60,19 @@ From `152fe6a` both sides of a pair begin measuring at the same settled point: e
 
 The check's 10 devices and 10 nodes moved from Electron run as Node to utility processes (`fcacf26`). Paired on CI's Mac with 10 of each, both sides passed twice: importing p90 25 and 29 ms (head) against 26 and 19 ms (base, `main`); all 10 devices connected and all 10 nodes online every time. One head run before them (39026396560) failed its importing figures (p90 86 ms, 3 of 28 over 100 ms) while the nodes copied 320 MB: the VM, as the four after it show.
 
+## Round G: speed and crash recovery (Phase G), 18 October 2026
+
+Head `d6778b6` (Phase G's end), base `1e78262`: Phase F's end (`3571714`) with G's measuring alone (`38a0889`'s segments and raw times) put on it, so both sides keep the same raw times for `scripts/perf-compare.mjs`. Runs: head 39040418838, 39040449005, 39040477427; base 39040434256, 39040462846, 39040492388. (A first try that day did not count: its base had a fault of mine in the test file and measured nothing, and its head still had a change later taken back.)
+
+| System  | Ref  | Importing p90, each run | Worst block, each run | Recovery figure, each run |
+| ------- | ---- | ----------------------- | --------------------- | ------------------------- |
+| Mac     | head | 25, 29, 25 ms           | 31, 18, 7 ms          | 5.4, 4.4, 6.1 s           |
+| Mac     | base | 33, 33, 23 ms           | 36, 82, 8 ms          | (not measured before G)   |
+| Windows | head | 15, 15, 15 ms           | 11, 4, 10 ms          | 3.3, 5.0, 5.1 then 4.4 s  |
+| Windows | base | 15, 15, 15 ms           | 3, 4, 3 ms            | (not measured before G)   |
+
+Every head run passed; one base run failed on the Mac (half the changes within a frame: median 19 ms). The comparer, each system's three runs against three: on Windows no change in any segment's median or p95; on the Mac no change in any median, and key to main's p95 (4 to 1 ms) and frame to the next's (21 to 18 ms) faster. No change beyond the swing. On Windows one recovery figure (5.1 s, just over the budget) was measured again, 4.4 s, as the rule says.
+
 ## The recovery figure and its budget (Phase G, PERF-1), 18 October 2026
 
 After a crash, how long from Drashti starting again to its screens back (`tests/e2e/recovery-figure.ts`): read from the start's phase lines (`src/main/start-phases.ts`), to the output's first painted frame of the show put back. Ten runs on each of CI's systems (`9776e94`; runs 39038852887 on the Mac and 39038858168 on Windows):
