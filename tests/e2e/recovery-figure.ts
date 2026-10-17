@@ -46,10 +46,14 @@ export function recoveryFigure(userData: string): { ms: number; line: string } |
 
 /**
  * The recovery figure's budget on each system (Sessions 31–36, PERF-1): the 90th percentile of 10 runs on CI's
- * machines, plus 25% (runs 39038852887 and 39038858168, 17 October 2026). The Mac's ten: 3.4 to 9.0 s, p90 5.6
- * s; Windows': 3.3 to 5.0 s, p90 4.1 s. Most of it is the output's first frame after its GPU's warm-up.
+ * machines, plus 25%, from the Performance check, where it is judged (each run's first figure: round G's three
+ * head runs, the last round's three and four more on its head, 18 October 2026). The Mac's ten: 3.4 to
+ * 8.1 s, p90 7.9 s; Windows': 2.0 to 5.2 s, p90 5.1 s. The first budgets, 7.0 and 5.1 s, came from ten runs of
+ * the end-to-end test alone (runs 39038852887 and 39038858168); the Performance check runs it after its own
+ * checks and took longer (7.9 then 7.2 s on the Mac, run 39065925578). Most of it is the output's first frame
+ * after its GPU's warm-up.
  */
-export const RECOVERY_BUDGET_MS: Readonly<Record<string, number>> = { darwin: 7000, win32: 5100 };
+export const RECOVERY_BUDGET_MS: Readonly<Record<string, number>> = { darwin: 9900, win32: 6400 };
 
 /** This system's budget (any other: the larger). */
 export const recoveryBudget = (): number =>
