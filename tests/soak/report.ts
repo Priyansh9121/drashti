@@ -47,6 +47,15 @@ export interface SoakSample {
   nodeOnline: boolean;
   /** Watchdog events so far (a window crashed, hung or given up on), Main's and the node's. */
   watchdog: number;
+  /**
+   * Chromium's processes that stopped so far, by type (Sessions 31–36, PERF-4): Main's ("GPU", "Utility",
+   * "Tab"...), the node's with "node " before. Chromium starts each again by itself.
+   */
+  restarts?: Record<string, number>;
+  /** Main's heap after a full collection (MB): what it still holds. */
+  mainHeapMb?: number;
+  /** The main process's event loop delay since the sample before, its 99th percentile (ms). */
+  loopP99Ms?: number;
 }
 
 export interface SoakEvent {
