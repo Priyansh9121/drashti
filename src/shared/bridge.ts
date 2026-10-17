@@ -518,6 +518,8 @@ export interface DrashtiBridge {
     pickFolder(): Promise<StreamResult>;
     /** Let the offer to go live again after a crash go. */
     dismissResume(): Promise<null>;
+    /** Try the stream's page again, stopped after crashing too often (Session 31). */
+    tryAgain(): Promise<StreamResult>;
     /** The stream's own page. */
     page: {
       context(): Promise<ProgramContext | null>;

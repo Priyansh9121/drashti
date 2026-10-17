@@ -2,7 +2,15 @@ import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { TEST_LINES } from '../../src/main/db/seed';
-import { launchApp, operatorPage, operatorReady, outputPage, setUpScreen, type PageGlobals } from './helpers';
+import {
+  launchApp,
+  operatorPage,
+  operatorReady,
+  outputPage,
+  outputReady,
+  setUpScreen,
+  type PageGlobals,
+} from './helpers';
 
 /*
  * A render error on an output (Session 23). An element that throws as it
@@ -72,5 +80,28 @@ test('a render error on an output: black (never text), logged, and the output re
   await expect.poll(events).toEqual(['render-error', 'reloaded']);
   await expect(out.locator('[data-lang="en"]')).toHaveText(TEST_LINES.en);
   await expect(out.locator('[data-render-error]')).toHaveCount(0);
+  await app.close();
+});
+
+test('an output whose page fails to load: said in the log at once, and its own page loaded again (Session 31, ROB-7)', async () => {
+  test.setTimeout(90_000);
+  const { app, userData } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await setUpScreen(win);
+  const out = await outputPage(app);
+  await outputReady(out);
+  // The output's window asked to load a page that is not there, as a damaged install could make it.
+  await app.evaluate(({ BrowserWindow }) => {
+    const w = BrowserWindow.getAllWindows().find(
+      (b) => b.webContents.getURL().includes('output.html') && !b.webContents.getURL().includes('identify='),
+    );
+    void w?.webContents.loadURL('file:///drashti-no-such-page.html').catch(() => undefined);
+  });
+  const log = () => readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  await expect.poll(log, { timeout: 10_000 }).toContain('its page failed to load');
+  // Its own page again, ready to draw the show.
+  await expect.poll(() => out.url(), { timeout: 15_000 }).toContain('output.html');
+  await outputReady(out);
   await app.close();
 });

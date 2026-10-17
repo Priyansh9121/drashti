@@ -45,13 +45,13 @@ Do these if the displays have different scale settings, or set one to 125% for t
 
 ## 4. Sleep, screen saver and power
 
-| #   | Check                                                                                                                                                     | Expected                                                                              | Result |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------ |
-| 4.1 | Set "Turn off my screen after" to 1 minute (Settings, then System, then Power). Leave an output showing for 5 minutes without touching anything.          | Screens stay on and don't dim.                                                        |        |
-| 4.2 | Turn on a screen saver with a 1-minute wait (Settings, then Personalization, then Lock screen, then Screen saver). Wait 5 minutes with an output showing. | The screen saver does not start.                                                      |        |
-| 4.3 | Turn every output off in Screens and wait 2 minutes.                                                                                                      | The screen turns off as normal: Drashti only blocks sleep while an output is showing. |        |
-| 4.4 | Check the power plan and the "Active hours" for Windows Update.                                                                                           | Windows Update cannot restart the PC during sabha times.                              |        |
-| 4.5 | Put back the power, screen-saver and scale settings you changed.                                                                                          |                                                                                       |        |
+| #   | Check                                                                                                                                                     | Expected                                                                                                                          | Result |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| 4.1 | Set "Turn off my screen after" to 1 minute (Settings, then System, then Power). Leave an output showing for 5 minutes without touching anything.          | Screens stay on and don't dim.                                                                                                    |        |
+| 4.2 | Turn on a screen saver with a 1-minute wait (Settings, then Personalization, then Lock screen, then Screen saver). Wait 5 minutes with an output showing. | The screen saver does not start.                                                                                                  |        |
+| 4.3 | Turn every output off in Screens, make sure the stream is neither on air nor recording, and wait 2 minutes.                                               | The screen turns off as normal: Drashti only blocks sleep while an output is showing, or while the stream is on air or recording. |        |
+| 4.4 | Check the power plan and the "Active hours" for Windows Update.                                                                                           | Windows Update cannot restart the PC during sabha times.                                                                          |        |
+| 4.5 | Put back the power, screen-saver and scale settings you changed.                                                                                          |                                                                                                                                   |        |
 
 ## 5. Notifications and pop-ups
 

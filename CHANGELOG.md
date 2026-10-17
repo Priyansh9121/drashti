@@ -4,6 +4,8 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 ## Unreleased
 
+- The computer stays awake while the stream is on air or recording, even with no hall screen showing.
+- If the stream's own page keeps failing, Drashti stops restarting it after the sixth time in a minute and says so, with Try again, in Simple Mode too; a hall screen whose page fails to load is logged and loaded again at once.
 - After Drashti stops unexpectedly, the next start stops a conversion, Save as MP4, YouTube download or PowerPoint it had started that was left running, and removes the half-saved file; your own programs are never touched.
 - A conversion or Save as MP4 that FFmpeg gets stuck on stops after four times the video's length and 5 minutes more, saying so plainly, and reading a file stops after 30 seconds; FFmpeg only ever opens files.
 - A limiter keeps the stream's and recordings' sound under full scale, so a loud desk, or Drashti's own sound mixed in, never clips; quieter sound passes as it is, and the meter still shows the mix as it comes.

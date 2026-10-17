@@ -75,4 +75,28 @@ describe('SleepGuard', () => {
     expect(power.active.size).toBe(0);
     expect(changes).toEqual([true, false]);
   });
+
+  it('holds the screens awake while the stream is on air or recording, with no output showing (Session 31)', () => {
+    guard.setStreaming(true);
+    expect(guard.held).toBe(true);
+    // An output showing as well, then turned off: still held, for the stream.
+    guard.update(1);
+    guard.update(0);
+    expect(guard.held).toBe(true);
+    expect(power.started).toBe(1);
+    // The stream ended: released.
+    guard.setStreaming(false);
+    expect(guard.held).toBe(false);
+    expect(changes).toEqual([true, false]);
+  });
+
+  it('keeps holding for the outputs when the stream ends', () => {
+    guard.update(2);
+    guard.setStreaming(true);
+    guard.setStreaming(false);
+    expect(guard.held).toBe(true);
+    expect(power.started).toBe(1);
+    guard.update(0);
+    expect(guard.held).toBe(false);
+  });
 });

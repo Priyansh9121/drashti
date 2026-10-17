@@ -66,6 +66,14 @@ test('No sound shows beside ON AIR, in Pro and Simple Mode, with no microphone; 
   await inputs(win, false);
   await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.goLive({ confirmed: true }));
   await expect.poll(async () => (await status(win)).live.state, { timeout: 45_000 }).toBe('live');
+  // On air with no hall screen: the computer is kept awake for the stream (Session 31, ROB-7).
+  const sleepHeld = () =>
+    app.evaluate(
+      () =>
+        (globalThis as unknown as { drashtiDiagnostics: { sleepGuard: { held: boolean } } })
+          .drashtiDiagnostics.sleepGuard.held,
+    );
+  expect(await sleepHeld()).toBe(true);
   // Within the quiet time and 2 s of going on air (the quiet is counted from the first sound encoded).
   try {
     await expect(win.getByTestId('no-sound')).toBeVisible({ timeout: QUIET_MS + 2000 });
@@ -126,6 +134,7 @@ test('No sound shows beside ON AIR, in Pro and Simple Mode, with no microphone; 
   expect((await status(win)).live.state).toBe('live');
 
   await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.end({ confirmed: true }));
+  await expect.poll(sleepHeld).toBe(false);
   await app.close();
   // Said in the log once when it began and once when it ended, never every second.
   expect(logLines(userData, /No sound: /u)).toHaveLength(1);
