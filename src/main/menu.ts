@@ -60,6 +60,8 @@ export interface MenuActions {
    * the operator window shows them (off to begin with).
    */
   extras: { shown: boolean; toggle: () => void };
+  /** View › Show Safe Areas (Sessions 31–36): the slide editor's guides for where words are safe. */
+  safeAreas: { shown: boolean; toggle: () => void };
   /** Only when DRASHTI_DIAGNOSTICS=1: for the manual watchdog check. */
   diagnostics: {
     crashOperator: () => void;
@@ -153,6 +155,13 @@ export function installMenu(actions: MenuActions): void {
                 type: 'checkbox',
                 checked: actions.extras.shown,
                 click: actions.extras.toggle,
+              } as MenuItemConstructorOptions,
+              {
+                id: 'show-safe-areas',
+                label: 'Show Safe Areas',
+                type: 'checkbox',
+                checked: actions.safeAreas.shown,
+                click: actions.safeAreas.toggle,
               } as MenuItemConstructorOptions,
             ]),
         { type: 'separator' },

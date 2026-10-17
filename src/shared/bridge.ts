@@ -125,6 +125,9 @@ export interface DrashtiBridge {
     simpleFirstRun(): Promise<boolean>;
     /** They were seen (skipped, done, or a slide went up): they never come again for this library. */
     simpleFirstRunSeen(): Promise<null>;
+    /** View › Show Safe Areas: whether the slide editor draws them. */
+    safeAreas(): Promise<boolean>;
+    onSafeAreasChanged(listener: (on: boolean) => void): () => void;
     /** A long task's progress (a backup), or null when it has ended. */
     onProgress(listener: (progress: TaskProgress | null) => void): () => void;
     /** Simple Mode or Pro Mode. */

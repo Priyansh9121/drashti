@@ -67,6 +67,11 @@ const bridge: DrashtiBridge = {
     startNotice: () => invoke(IPC.app.startNotice),
     simpleFirstRun: () => invoke(IPC.app.simpleFirstRun),
     simpleFirstRunSeen: () => invoke(IPC.app.simpleFirstRunSeen),
+    safeAreas: () => invoke(IPC.app.safeAreas),
+    onSafeAreasChanged: (listener) =>
+      on(IPC.app.safeAreasChanged, ({ on: shown }) => {
+        listener(shown);
+      }),
     onProgress: (listener) =>
       on(IPC.app.progress, ({ progress }) => {
         listener(progress);

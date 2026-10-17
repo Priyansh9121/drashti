@@ -57,6 +57,7 @@ import {
 } from './ops';
 import { restyle, restyleAll, selectedLook } from './runs-doc';
 import { SlidePanel } from './SlidePanel';
+import { useTickerOver } from './SafeAreas';
 import { activeText } from './TextBoxEditor';
 
 /*
@@ -414,13 +415,22 @@ const shadowChoice = (s: TextElement['style']['shadow'] | undefined): ShadowChoi
 function Readability({ el }: { el: TextElement }) {
   const measured = useEditor((s) => s.measured[el.id]);
   const height = useEditor((s) => s.doc?.height ?? REFERENCE_LINES);
-  if (!measured) return null;
-  const px = Math.round(drawnPx(el, height, measured.fit));
-  const floor = floorOf(drawnPx(el, height, measured.fit));
+  const width = useEditor((s) => s.doc?.width ?? (REFERENCE_LINES * 16) / 9);
+  // Where the ticker runs on a group that shows it (SLD-2), on or off the safe areas.
+  const ticker = useTickerOver(el.frame, { width, height });
+  const px = measured ? Math.round(drawnPx(el, height, measured.fit)) : 0;
+  const floor = measured ? floorOf(drawnPx(el, height, measured.fit)) : null;
   const shrinks = el.style.shrinkToFit === true;
   return (
     <>
-      {measured.over && (
+      {ticker.length > 0 && el.text.trim() !== '' && (
+        <p className="text-sm text-warning-fg" data-testid="inspector-ticker">
+          <b>Words sit where the ticker runs</b> on {ticker.map((n) => `“${n}”`).join(' and ')}: when
+          announcements run along the bottom, they cover them. Move the box up (View, then Show Safe Areas,
+          shows the band).
+        </p>
+      )}
+      {measured?.over && (
         <p className="text-sm text-warning-fg" data-testid="inspector-overset" role="status">
           <b>Words run past the box</b>
           {shrinks

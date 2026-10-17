@@ -21,6 +21,7 @@ import { SlideLowerThird } from './LowerThird';
 import { ScreenPictures } from './picture-looks';
 import { ElementView } from './SlideView';
 import { TimerText } from './TimerText';
+import { MESSAGE_TEXT, TICKER_HEIGHT } from '../../../shared/safe-areas';
 
 /** Today's Samvat date and tithi, with any festival; nothing when the calendars do not give today. */
 export function samvatText(calendar: CalendarDay | null, lang: CalendarLang): string {
@@ -78,7 +79,7 @@ export function MessageBanner({
   /** How this screen's group moves (Session 27): the banner's entrance. */
   movement?: Movement;
 }) {
-  const size = Math.round(canvas.height * 0.045);
+  const size = Math.round(canvas.height * MESSAGE_TEXT);
   const ref = useRef<HTMLDivElement>(null);
   // In from when the first of its messages went up (Session 27); another joining, or an update, never
   // plays it again. A message put back after a restart has no time: the banner is simply there.
@@ -113,8 +114,6 @@ export function MessageBanner({
   );
 }
 
-/** The ticker's band: this much of the canvas height. */
-export const TICKER_HEIGHT = 0.075;
 /** How fast the ticker's words move: this many canvas heights a second (about 130 px a second at 1080). */
 export const TICKER_SPEED = 0.12;
 const TICKER_GAP = '\u2003\u2003•\u2003\u2003';

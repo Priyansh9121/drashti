@@ -125,6 +125,10 @@ export const IPC = {
      */
     simpleFirstRun: 'app:simple-first-run',
     simpleFirstRunSeen: 'app:simple-first-run-seen',
+    /** View › Show Safe Areas (Sessions 31–36): whether the slide editor draws them (kept with the library). */
+    safeAreas: 'app:safe-areas',
+    /** main -> operator: the switch changed. */
+    safeAreasChanged: 'app:safe-areas-changed',
     /** main -> operator: a long task's progress, or null when it has ended. */
     progress: 'app:progress',
     /** Simple Mode or Pro Mode. */
@@ -779,6 +783,7 @@ export interface InvokeContract {
   [IPC.app.startNotice]: { args: []; result: string | null };
   [IPC.app.simpleFirstRun]: { args: []; result: boolean };
   [IPC.app.simpleFirstRunSeen]: { args: []; result: null };
+  [IPC.app.safeAreas]: { args: []; result: boolean };
   [IPC.app.getMode]: { args: []; result: OperatorMode };
   [IPC.app.setMode]: { args: [mode: OperatorMode, word?: string]; result: ModeResult };
   [IPC.roles.view]: { args: []; result: RolesView };
@@ -1148,6 +1153,7 @@ export interface EventContract {
   [IPC.library.importProgress]: ImportProgress;
   [IPC.library.changed]: { at: number; what: LibraryChange };
   [IPC.library.extrasChanged]: { on: boolean };
+  [IPC.app.safeAreasChanged]: { on: boolean };
   [IPC.playlists.changed]: { at: number };
   [IPC.playlists.smartChanged]: SmartPlaylistView[];
   [IPC.app.undo]: { at: number };
