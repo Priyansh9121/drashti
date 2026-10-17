@@ -65,6 +65,8 @@ const bridge: DrashtiBridge = {
     recovery: () => invoke(IPC.app.recovery),
     dismissRecovery: () => invoke(IPC.app.dismissRecovery),
     startNotice: () => invoke(IPC.app.startNotice),
+    simpleFirstRun: () => invoke(IPC.app.simpleFirstRun),
+    simpleFirstRunSeen: () => invoke(IPC.app.simpleFirstRunSeen),
     onProgress: (listener) =>
       on(IPC.app.progress, ({ progress }) => {
         listener(progress);

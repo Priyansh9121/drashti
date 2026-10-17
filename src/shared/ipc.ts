@@ -119,6 +119,12 @@ export const IPC = {
     dismissRecovery: 'app:dismiss-recovery',
     /** Something to tell the operator as the page opens (how a restore went), once. */
     startNotice: 'app:start-notice',
+    /**
+     * Simple Mode's first steps (Sessions 31–36): whether to show them, and that they were seen. Simple
+     * Mode allows these (the welcome's setup:welcome-seen is locked there).
+     */
+    simpleFirstRun: 'app:simple-first-run',
+    simpleFirstRunSeen: 'app:simple-first-run-seen',
     /** main -> operator: a long task's progress, or null when it has ended. */
     progress: 'app:progress',
     /** Simple Mode or Pro Mode. */
@@ -771,6 +777,8 @@ export interface InvokeContract {
   [IPC.app.recovery]: { args: []; result: RecoveryNotice | null };
   [IPC.app.dismissRecovery]: { args: []; result: null };
   [IPC.app.startNotice]: { args: []; result: string | null };
+  [IPC.app.simpleFirstRun]: { args: []; result: boolean };
+  [IPC.app.simpleFirstRunSeen]: { args: []; result: null };
   [IPC.app.getMode]: { args: []; result: OperatorMode };
   [IPC.app.setMode]: { args: [mode: OperatorMode, word?: string]; result: ModeResult };
   [IPC.roles.view]: { args: []; result: RolesView };

@@ -43,6 +43,52 @@ async function where(win: Page) {
   return { presentationId: state.live.presentationId, slideIndex: state.layers.slide?.slideIndex ?? null };
 }
 
+test('the remote’s waits are said as a status, and its empty places say where they are filled (Sessions 31–36)', async () => {
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const { base } = await networkOn(win);
+  const code = await pairingCode(win, 'remote', 'Placeholder phone');
+  const phone = await device('chromium');
+  const p = phone.page;
+  try {
+    // The playlists, the library and the messages are held back until each wait has been seen.
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const asked = new Set(['/api/v1/playlists', '/api/v1/presentations', '/api/v1/messages']);
+    await p.route(
+      (url) => asked.has(url.pathname),
+      async (route) => {
+        await held;
+        await route.continue();
+      },
+    );
+    await pairByQr(p, base, code, '/remote');
+    await expect(p.getByTestId('connection')).toHaveText('Connected');
+    await p.getByTestId('remote-tab-playlist').click();
+    await expect(p.getByRole('status').filter({ hasText: 'Loading the playlists…' })).toBeVisible();
+    await p.getByTestId('remote-tab-library').click();
+    await expect(p.getByRole('status').filter({ hasText: 'Loading the library…' })).toBeVisible();
+    await p.getByTestId('remote-tab-more').click();
+    await expect(p.getByRole('status').filter({ hasText: 'Loading the messages…' })).toBeVisible();
+    release();
+    // A new library has no messages and no playlists: each place says where they are made.
+    await expect(
+      p.getByText('There are no messages yet: they are made in Drashti on the computer'),
+    ).toBeVisible();
+    await p.getByTestId('remote-tab-playlist').click();
+    await expect(
+      p.getByText('There are no playlists yet: they are made in Drashti on the computer, in Pro Mode.'),
+    ).toBeVisible();
+    await expectNoSeriousA11yIssues(p, 'the remote with no playlists');
+  } finally {
+    await phone.close();
+  }
+  await app.close();
+});
+
 for (const engine of ['chromium', 'webkit'] as Engine[]) {
   test(`the remote runs a sabha on a real output (${engine})`, async () => {
     test.setTimeout(180_000);

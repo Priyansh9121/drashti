@@ -121,6 +121,10 @@ export interface DrashtiBridge {
     dismissRecovery(): Promise<null>;
     /** Something to tell the operator as the page opens (how a restore went); null after the first ask. */
     startNotice(): Promise<string | null>;
+    /** Whether Simple Mode shows its three first steps: once per library, never in tests unless asked. */
+    simpleFirstRun(): Promise<boolean>;
+    /** They were seen (skipped, done, or a slide went up): they never come again for this library. */
+    simpleFirstRunSeen(): Promise<null>;
     /** A long task's progress (a backup), or null when it has ended. */
     onProgress(listener: (progress: TaskProgress | null) => void): () => void;
     /** Simple Mode or Pro Mode. */

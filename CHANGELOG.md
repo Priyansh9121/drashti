@@ -4,6 +4,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 ## Unreleased
 
+- The first time Simple Mode opens, three short steps show how to choose the playlist, use Next and Back, and Black-out and Clear all; Skip ends them, and they never come again. Loading appears only when a wait lasts longer than half a second, and the phone remote says where empty playlists, library and messages are filled.
 - Error messages say what to do next as well as what went wrong, without codes or the computer's own words: reading a PDF, saving an update, opening the library, converting, a port in use, pairing a node, and every form and file Drashti checks. The screens' setup is called Set Up Screens… everywhere, its button on the dashboard is Screens, and a message that is up says On the screens.
 - What is this? cards now have Read more, which opens the guide at the passage they come from; there is a ? beside Next and Back, the show controls, the open playlist, Stream, Phones, Announcements, the status bar, Audio and More tools too.
 - Help › Guides… opens the operator's, presenter's, admin's and setup day's guides inside Drashti, with their pictures, without the internet; search finds every passage that holds the words you type, after answers to questions such as "When a screen is black or frozen, what do I do?". Simple Mode shows the operator's and presenter's.

@@ -2023,8 +2023,11 @@ function start(): void {
       ? GUIDES.filter((g) => mode === 'pro' || g.simple).map((g) => ({ id: g.id, tab: g.tab }))
       : [],
   );
-  handle(IPC.guides.read, (e, raw): GuideRead => {
+  // Tests (DRASHTI_TEST_GUIDES_DELAY_MS): a slow read, so a test sees Loading wait its half second.
+  const guidesDelayMs = swMs('DRASHTI_TEST_GUIDES_DELAY_MS');
+  handle(IPC.guides.read, async (e, raw): Promise<GuideRead> => {
     if (!fromOperator(e)) return { ok: false, message: 'Only Drashti’s own window can read the guides.' };
+    if (guidesDelayMs !== null) await new Promise((resolve) => setTimeout(resolve, guidesDelayMs));
     const id = guideIdSchema.safeParse(raw);
     const guide = id.success ? GUIDES.find((g) => g.id === id.data) : undefined;
     if (!guide) return { ok: false, message: 'There is no such guide.' };
@@ -3954,6 +3957,19 @@ function start(): void {
     if (fromOperator(e)) {
       settings.set('welcome', new Date().toISOString());
       log.info('Setup: the first start’s welcome was answered');
+    }
+    return null;
+  });
+  // Simple Mode's first steps (Sessions 31–36): three, once per library, through channels Simple Mode allows
+  // (the welcome's is locked there). Like the wizard, tests start without them unless a test is about them.
+  handle(
+    IPC.app.simpleFirstRun,
+    (e) => fromOperator(e) && mode === 'simple' && !wizardOff && settings.get('simpleFirstRun') === undefined,
+  );
+  handle(IPC.app.simpleFirstRunSeen, (e) => {
+    if (fromOperator(e) && settings.get('simpleFirstRun') === undefined) {
+      settings.set('simpleFirstRun', new Date().toISOString());
+      log.info('Simple Mode: its first steps were seen');
     }
     return null;
   });

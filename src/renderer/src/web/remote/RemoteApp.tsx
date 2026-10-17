@@ -499,8 +499,14 @@ function Playlist() {
             </option>
           ))}
         </select>
+      ) : playlists ? (
+        <p className="text-base text-muted">
+          There are no playlists yet: they are made in Drashti on the computer, in Pro Mode.
+        </p>
       ) : (
-        <p className="text-base text-muted">{playlists ? 'There are no playlists.' : 'Loading…'}</p>
+        <p role="status" className="text-base text-muted">
+          Loading the playlists…
+        </p>
       )}
       <ul className="space-y-1.5" data-testid="remote-items">
         {(items ?? []).map((i) => {
@@ -642,7 +648,9 @@ function Library() {
       />
       {searching ? (
         library.hits === null ? (
-          <p className="text-base text-muted">Searching…</p>
+          <p role="status" className="text-base text-muted">
+            Searching…
+          </p>
         ) : library.hits.length === 0 ? (
           <p className="text-base text-muted" data-testid="remote-library-none">
             Nothing found for “{library.query}”.
@@ -670,9 +678,13 @@ function Library() {
           </>
         )
       ) : library.list === null ? (
-        <p className="text-base text-muted">Loading…</p>
+        <p role="status" className="text-base text-muted">
+          Loading the library…
+        </p>
       ) : library.list.length === 0 ? (
-        <p className="text-base text-muted">The library is empty.</p>
+        <p className="text-base text-muted">
+          The library is empty: presentations are imported in Drashti on the computer, in Pro Mode.
+        </p>
       ) : (
         <>
           <ul className="space-y-1.5" aria-label="Presentations">
@@ -1036,7 +1048,15 @@ function TimersAndMessages() {
           Messages
         </h2>
         {!templates || templates.length === 0 ? (
-          <p className="text-base text-muted">{templates ? 'There are no messages.' : 'Loading…'}</p>
+          templates ? (
+            <p className="text-base text-muted">
+              There are no messages yet: they are made in Drashti on the computer, under Messages in Pro Mode.
+            </p>
+          ) : (
+            <p role="status" className="text-base text-muted">
+              Loading the messages…
+            </p>
+          )
         ) : (
           <ul className="space-y-2">
             {templates.map((t) => (
