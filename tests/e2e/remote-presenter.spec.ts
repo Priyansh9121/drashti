@@ -10,6 +10,7 @@ import {
   pairByQr,
   pairingCode,
   pairToken,
+  TABLET,
 } from './devices';
 import { launchApp, operatorPage, operatorReady, outputPage, type PageGlobals, setUpScreen } from './helpers';
 import { KIRTAN, NOTE_ONE, NOTE_TWO, placeholderTalk, setUpPlaceholderShow, TALK } from './placeholder-show';
@@ -118,6 +119,99 @@ for (const engine of ['chromium', 'webkit'] as Engine[]) {
 
       // The phone only ever gets small previews of media, never a file.
       expect(loads.filter((path) => path.includes('/media/') && !path.endsWith('/preview'))).toEqual([]);
+    } finally {
+      await phone.close();
+    }
+    await app.close();
+  });
+}
+
+for (const [engine, name] of [
+  ['chromium', undefined],
+  ['webkit', TABLET],
+] as const) {
+  test(`a remote shows the slide in the hall’s languages, Drashti’s time, a running timer and its notes’ language (${engine}${name ? ', a tablet' : ''}; Sessions 31–36, SLD-6)`, async () => {
+    test.setTimeout(120_000);
+    const { app } = await launchApp(NETWORK_ENV);
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await setUpPlaceholderShow(win, { video: false });
+    const talkId = await placeholderTalk(win);
+    await setUpScreen(win);
+    // The hall shows a kirtan's Gujarati only; its first slide is up.
+    await win.evaluate(async (kirtan) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const hall = (await d.screens.get()).groups.find((g) => g.role === 'audience');
+      const set = await d.screens.setGroupLanguages(hall?.id ?? '', ['gu']);
+      if (!set.ok) throw new Error(set.message);
+      const id = (await d.library.listPresentations()).find((p) => p.name === kirtan)?.id ?? '';
+      await d.engine.dispatch({ type: 'goLive', presentationId: id, slideIndex: 0 });
+    }, KIRTAN);
+    const langs = (page: Page, scope: string) =>
+      page
+        .locator(`${scope} [data-lang]`)
+        .evaluateAll((els) => els.map((e) => e.getAttribute('data-lang') ?? '').sort());
+    // LIVE shows the hall's Gujarati only.
+    await expect
+      .poll(async () => {
+        const shown = await langs(win, '[data-testid="live-preview"]');
+        return shown.length > 0 && shown.every((l) => l === 'gu');
+      })
+      .toBe(true);
+    const onLive = await langs(win, '[data-testid="live-preview"]');
+    const { base } = await networkOn(win);
+    const code = await pairingCode(win, 'remote', 'Placeholder presenter');
+    const phone = await device(engine, name);
+    const p = phone.page;
+    try {
+      await pairByQr(p, base, code, '/remote');
+      await expect(p.getByTestId('connection')).toHaveText('Connected');
+      // The same languages as LIVE, and Next in them too.
+      await expect.poll(() => langs(p, '[data-testid="remote-live"]')).toEqual(onLive);
+      expect((await langs(p, '[data-testid="remote-next"]')).every((l) => l === 'gu')).toBe(true);
+      // Drashti's time, in figures that do not jump.
+      const style = await app.evaluate(({ app }) => ({
+        locale: app.getLocale(),
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      }));
+      const clock = p.getByTestId('remote-clock');
+      const times = [0, 60_000].map((later) =>
+        new Date(Date.now() + later).toLocaleTimeString(style.locale, {
+          hour: 'numeric',
+          minute: '2-digit',
+          timeZone: style.timeZone,
+        }),
+      );
+      expect(times).toContain(await clock.textContent());
+      expect(await clock.evaluate((el) => getComputedStyle(el).fontVariantNumeric)).toContain('tabular-nums');
+      // A running timer beside it.
+      await win.evaluate(async () => {
+        const d = (globalThis as PageGlobals).drashti;
+        const made = await d.timers.create({
+          name: 'Placeholder countdown',
+          kind: 'countdown',
+          durationMs: 300_000,
+          targetTime: null,
+          allowsOverrun: false,
+        });
+        if (!made.ok) throw new Error(made.message);
+        await d.engine.dispatch({ type: 'startTimer', timerId: made.id });
+      });
+      await expect(p.getByTestId('remote-running-timer')).toContainText(/Placeholder countdown 4:\d\d/u);
+      // The notes: in their own language, never machine-translated.
+      await win.evaluate(
+        (id) =>
+          (globalThis as PageGlobals).drashti.engine.dispatch({
+            type: 'goLive',
+            presentationId: id,
+            slideIndex: 0,
+          }),
+        talkId,
+      );
+      await expect(p.getByTestId('remote-notes-live')).toHaveText(NOTE_ONE);
+      await expect(p.getByTestId('remote-notes-live')).toHaveAttribute('lang', 'en');
+      await expect(p.getByTestId('remote-notes')).toHaveAttribute('translate', 'no');
+      await expectNoSeriousA11yIssues(p, `the remote's clock and notes (${engine})`);
     } finally {
       await phone.close();
     }

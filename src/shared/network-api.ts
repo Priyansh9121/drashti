@@ -16,6 +16,11 @@ export const DEVICE_OPS = {
   state: ['remote', 'stage'],
   /** The stage display's screen group (the first stage group) and its languages in the live Look. */
   stage: ['stage'],
+  /**
+   * The hall's screen group (the first audience group), whose live Look the remote's picture follows, and how
+   * Drashti's computer writes the time (Sessions 31–36, SLD-6).
+   */
+  hall: ['remote'],
   /** The Looks, in order, and which is live. */
   looks: ['remote'],
   /** The macros (name, colour), in order. */

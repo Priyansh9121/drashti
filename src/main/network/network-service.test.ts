@@ -95,6 +95,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
       logo: () => ({ id: 'logo', name: 'Placeholder logo', elements: [] }),
       mediaSource: () => null,
       stage: () => ({ groupId: 'stage-group', languages: ['gu'] }),
+      hall: () => ({ groupId: 'hall-group' }),
       looks: () => [
         { id: 'look-standard', name: 'Standard' },
         { id: 'look-lower', name: 'Placeholder lower thirds' },
@@ -318,6 +319,12 @@ describe('the network in the main process', () => {
       status: 200,
       body: { groupId: 'stage-group', languages: ['gu'] },
     });
+    // The hall's group and Main's clock, for a Remote's picture and time (Sessions 31–36); not a stage display's.
+    expect(service.answer({ address: PHONE, deviceId: remote, op: 'hall', args: {} })).toMatchObject({
+      status: 200,
+      body: { groupId: 'hall-group', clock: { locale: 'en-GB', timeZone: 'Europe/London' } },
+    });
+    expect(service.answer({ address: PHONE, deviceId: stage, op: 'hall', args: {} }).status).toBe(403);
     // Shastra: a Remote lists the texts and puts up a reference; nonsense is refused with why.
     expect(service.answer({ address: PHONE, deviceId: remote, op: 'shastra.texts', args: {} })).toMatchObject(
       {

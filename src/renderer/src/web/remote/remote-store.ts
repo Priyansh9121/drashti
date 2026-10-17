@@ -60,6 +60,11 @@ interface RemoteView {
   macros: { id: string; name: string; color: string }[] | null;
   /** The loaded Shastra texts (a reference box shows when there are any). */
   shastra: { name: string; abbreviation: string; itemCount: number }[] | null;
+  /**
+   * The hall's group, whose live Look the picture follows, and how Drashti's computer writes the time
+   * (Sessions 31–36, SLD-6); null until read.
+   */
+  hall: { groupId: string | null; clock: { locale: string; timeZone: string } } | null;
 }
 
 const NOTES_KEY = 'drashti.remote.notes';
@@ -98,6 +103,7 @@ export const useRemote = create<RemoteView>(() => ({
   looks: null,
   macros: null,
   shastra: null,
+  hall: null,
 }));
 
 export async function loadPlaylists(): Promise<void> {
@@ -190,6 +196,13 @@ async function loadShastra(): Promise<void> {
   if (r.ok) useRemote.setState({ shastra: r.texts });
 }
 
+async function loadHall(): Promise<void> {
+  const r = await api<{ groupId: string | null; clock: { locale: string; timeZone: string } }>(
+    '/api/v1/hall',
+  );
+  if (r.ok) useRemote.setState({ hall: { groupId: r.groupId, clock: r.clock } });
+}
+
 async function loadLooks(): Promise<void> {
   const r = await api<{ looks: { id: string; name: string }[] }>('/api/v1/looks');
   if (r.ok) useRemote.setState({ looks: r.looks });
@@ -257,6 +270,7 @@ export function startRemote(): void {
     void loadTemplates();
     void loadLogo();
     void loadLooks();
+    void loadHall();
     void loadMacros();
     void loadShastra();
     const v = useRemote.getState().viewing;
@@ -275,6 +289,7 @@ export function startRemote(): void {
     if (what === 'messages') void loadTemplates();
     if (what === 'props') void loadLogo();
     if (what === 'looks') void loadLooks();
+    if (what === 'screens') void loadHall();
     if (what === 'macros') void loadMacros();
     if (what === 'shastra') void loadShastra();
   });

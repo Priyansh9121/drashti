@@ -138,6 +138,7 @@ const ROUTES: Route[] = [
   route('GET', '/api/v1/status', 'status'),
   route('GET', '/api/v1/state', 'state'),
   route('GET', '/api/v1/stage', 'stage'),
+  route('GET', '/api/v1/hall', 'hall'),
   route('GET', '/api/v1/playlists', 'playlists'),
   // The presenter's remote (Session 18): the library a page at a time, and searched.
   route('GET', '/api/v1/presentations', 'presentations', (q) => ({ offset: q['offset'], limit: q['limit'] })),
