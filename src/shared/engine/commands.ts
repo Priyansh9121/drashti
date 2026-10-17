@@ -105,7 +105,12 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
     y: z.number().min(-1.5).max(1.5),
   }),
   z.object({ type: z.literal('resetLiveZoom') }),
-  z.object({ type: z.literal('next') }),
+  /**
+   * Next. A phone's or the API's carries the revision it saw (Sessions 31–36, TST-11): when the show has moved
+   * since, it does nothing (changed: false), so two people pressing Next at once move one slide. The operator's
+   * own Next, and one without it (Companion, an older phone), always acts.
+   */
+  z.object({ type: z.literal('next'), rev: z.number().int().nonnegative().optional() }),
   z.object({ type: z.literal('previous') }),
   /**
    * Back: undoes the last Next exactly (the slide, background and sound as

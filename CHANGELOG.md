@@ -11,6 +11,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 - Hindi is drawn by Noto Sans Devanagari everywhere: in messages, the ticker, on the stage and inside Gujarati lines.
 - Words typed or imported in different Unicode forms are stored one way, so search and Edit words find them alike.
 - A node's stage clock and clock timers show Main's time and time zone; a new arti starts on today's local date.
+- Two phones pressing Next at the same moment move the show one slide, not two.
 - On air or recording, No sound shows beside ON AIR, in Simple Mode too, when nothing reaches the stream for 20 seconds or 3 seconds after its microphone is unplugged, with what to check.
 - A long recording goes on in parts of 3.5 GB, so a USB stick never cuts it short; Drashti warns of a FAT32 drive or a disk with room for less than an hour.
 - A limiter keeps the stream's and recordings' sound from clipping.

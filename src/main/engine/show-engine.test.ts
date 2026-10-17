@@ -33,6 +33,37 @@ describe('ShowEngine', () => {
     expect(transport.messages).toHaveLength(0);
   });
 
+  describe('a Next with the revision it saw (Sessions 31–36, TST-11)', () => {
+    it('moves on when the show has not moved since, and does nothing when it has', () => {
+      const { engine } = setup();
+      engine.dispatch(goLive('p1', 0));
+      const seen = engine.rev;
+      // Two people press Next at once, each having seen the same revision: one slide.
+      expect(engine.dispatch({ type: 'next', rev: seen })).toMatchObject({ ok: true, changed: true });
+      expect(engine.dispatch({ type: 'next', rev: seen })).toEqual({
+        ok: true,
+        changed: false,
+        rev: engine.rev,
+      });
+      expect(engine.current.live.slideIndex).toBe(1);
+    });
+
+    it('a Next without one (the operator’s own, Companion, an older phone) always acts', () => {
+      const { engine } = setup();
+      engine.dispatch(goLive('p1', 0));
+      expect(engine.dispatch({ type: 'next' })).toMatchObject({ changed: true });
+      expect(engine.dispatch({ type: 'next' })).toMatchObject({ changed: true });
+      expect(engine.current.live.slideIndex).toBe(2);
+      // A revision is a whole number, never below 0.
+      expect(parseEngineCommand({ type: 'next', rev: -1 }).ok).toBe(false);
+      expect(parseEngineCommand({ type: 'next', rev: 2.5 }).ok).toBe(false);
+      expect(parseEngineCommand({ type: 'next', rev: 7 })).toEqual({
+        ok: true,
+        command: { type: 'next', rev: 7 },
+      });
+    });
+  });
+
   describe('goLive', () => {
     it('shows the slide and broadcasts one patch', () => {
       const { engine, transport } = setup();
