@@ -1,6 +1,6 @@
 import { extname, isAbsolute, join } from 'node:path';
 import { copyOfId, MEDIA_ID_PATTERN } from '../../shared/media';
-import { isInside } from '../media/media-protocol';
+import { realPlace } from '../media/contained';
 import type { EngineState } from '../../shared/engine/state';
 import type { MediaWant } from '../../shared/nodes';
 import { MEDIA_EXT_PATTERN } from '../../shared/nodes';
@@ -86,17 +86,19 @@ export class WantedMedia {
     mediaDir: string,
   ): { path: string; sha256: string; bytes: number; ext: string } | null {
     if (!MEDIA_ID_PATTERN.test(mediaId)) return null;
+    // By real paths: a link in the media folder that leads out of it is refused (Sessions 31–36, SEC-10).
     if (copyOfId(mediaId)) {
       const copy = this.copies?.source(mediaId) ?? null;
-      return copy && isInside(mediaDir, copy.path) ? copy : null;
+      const place = copy ? realPlace(mediaDir, copy.path) : null;
+      return copy && place?.inside ? { ...copy, path: place.path } : null;
     }
     const want = this.file(mediaId);
     const row = want
       ? (this.db.prepare('SELECT path FROM media WHERE id = ?').get(mediaId) as { path: string } | undefined)
       : undefined;
     if (!want || !row || row.path === '' || isAbsolute(row.path)) return null;
-    const path = join(mediaDir, row.path);
-    return isInside(mediaDir, path) ? { path, sha256: want.sha256, bytes: want.bytes, ext: want.ext } : null;
+    const place = realPlace(mediaDir, join(mediaDir, row.path));
+    return place?.inside ? { path: place.path, sha256: want.sha256, bytes: want.bytes, ext: want.ext } : null;
   }
 
   private presentation(presentationId: string): string[] {

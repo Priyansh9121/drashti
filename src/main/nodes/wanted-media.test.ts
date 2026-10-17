@@ -1,3 +1,5 @@
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { initialEngineState } from '../../shared/engine/state';
@@ -11,6 +13,20 @@ import { WantedMedia } from './wanted-media';
 /* What each node copies, and in what order (made-up files and names only). */
 
 const sha = (n: number) => String(n).repeat(64).slice(0, 64);
+
+/** A media folder with picture 1 and its sharpened copy, and a folder in it that is a link to one outside. */
+function mediaFolder(): string {
+  const root = mkdtempSync(join(tmpdir(), 'drashti-wanted-media-'));
+  const dir = join(root, 'Media');
+  mkdirSync(join(dir, 'sharpened'), { recursive: true });
+  mkdirSync(join(root, 'Elsewhere'));
+  writeFileSync(join(dir, `${sha(1)}.png`), Buffer.alloc(100, 1));
+  writeFileSync(join(dir, 'sharpened', `${sha(1)}-50.jpg`), Buffer.alloc(42, 2));
+  writeFileSync(join(root, 'Elsewhere', 'secret.png'), Buffer.alloc(100, 3));
+  symlinkSync(join(root, 'Elsewhere'), join(dir, 'linked'), 'junction');
+  return dir;
+}
+const real = (path: string) => realpathSync.native(path);
 
 function library() {
   const db = openDatabase(':memory:');
@@ -105,20 +121,34 @@ describe('what a node copies', () => {
         .map((w) => w.id)
         .sort(),
     ).toEqual(['live-item', 'old', 'prop-pic', 'slide-pic', 'week-item'].sort());
-    // Where a file is, for a node that asks: inside the media folder only.
-    expect(wanted.source('slide-pic', '/placeholder/Media')).toEqual({
-      path: join('/placeholder/Media', `${sha(1)}.png`),
+    // Where a file is, for a node that asks: inside the media folder only, by its real path.
+    const dir = mediaFolder();
+    expect(wanted.source('slide-pic', dir)).toEqual({
+      path: real(join(dir, `${sha(1)}.png`)),
       sha256: sha(1),
       bytes: 100,
       ext: 'png',
     });
-    expect(wanted.source('song', '/placeholder/Media')).toBeNull();
+    expect(wanted.source('song', dir)).toBeNull();
+  });
+
+  it('never a file through a link in the media folder that leads out of it (Sessions 31–36, SEC-10)', () => {
+    const { db } = library();
+    const wanted = new WantedMedia(
+      db,
+      () => [],
+      () => Date.parse('2026-10-05T10:00:00Z'),
+    );
+    const dir = mediaFolder();
+    db.prepare("UPDATE media SET path = 'linked/secret.png' WHERE id = 'slide-pic'").run();
+    expect(wanted.source('slide-pic', dir)).toBeNull();
   });
 });
 
 describe('a picture’s sharpened copy (Session 26f)', () => {
   it('comes right after the picture once it is ready, and is served from where the copies are', () => {
     const { db } = library();
+    const dir = mediaFolder();
     const copy = { id: 'slide-pic_s50', sha256: sha(9), bytes: 42, ext: 'jpg' };
     const wanted = new WantedMedia(
       db,
@@ -128,7 +158,7 @@ describe('a picture’s sharpened copy (Session 26f)', () => {
         want: (mediaId) => (mediaId === 'slide-pic' ? copy : null),
         source: (copyId) =>
           copyId === copy.id
-            ? { path: join('/placeholder/Media', 'sharpened', `${sha(1)}-50.jpg`), ...copy, id: undefined }
+            ? { path: join(dir, 'sharpened', `${sha(1)}-50.jpg`), ...copy, id: undefined }
             : null,
       },
     );
@@ -141,14 +171,14 @@ describe('a picture’s sharpened copy (Session 26f)', () => {
       'week-item',
       'prop-pic',
     ]);
-    expect(wanted.source('slide-pic_s50', '/placeholder/Media')).toMatchObject({
-      path: join('/placeholder/Media', 'sharpened', `${sha(1)}-50.jpg`),
+    expect(wanted.source('slide-pic_s50', dir)).toMatchObject({
+      path: real(join(dir, 'sharpened', `${sha(1)}-50.jpg`)),
       sha256: sha(9),
       bytes: 42,
       ext: 'jpg',
     });
     // A copy outside the media folder, or one that is not ready: none.
-    expect(wanted.source('slide-pic_s55', '/placeholder/Media')).toBeNull();
+    expect(wanted.source('slide-pic_s55', dir)).toBeNull();
     expect(wanted.source('slide-pic_s50', '/elsewhere')).toBeNull();
   });
 });
