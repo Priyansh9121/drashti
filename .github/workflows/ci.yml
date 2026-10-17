@@ -89,6 +89,14 @@ jobs:
       # one is found first, then every file git tracks is read.
       - run: node scripts/unicode-check.mjs --self-check
       - run: node scripts/unicode-check.mjs
+      # The bar guard (Sessions 31–36, TST-8): every line of this change that lowers a bar the tests hold (a
+      # time limit raised, a budget loosened, a check skipped, a lint rule turned off), and the ratchets, said
+      # in the job summary against main. It reports; it never fails the job.
+      - name: The bar guard (reports, never fails)
+        continue-on-error: true
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          node scripts/bar-guard.mjs origin/main
       - name: Unit tests (inside Electron's Node)
         run: pnpm test
 
