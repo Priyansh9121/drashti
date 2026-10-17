@@ -2,6 +2,7 @@ import type { OperatorAction } from '../../../shared/keymap';
 import { shortcutText } from '../../../shared/keymap';
 import { useLibrary } from '../library/library-store';
 import { usePractice, useShowState } from '../practice/practice-store';
+import { useWhatIsThis } from '../help/WhatIsThis';
 import { Button } from '../ui/Button';
 import { ChevronLeft, ChevronRight } from '../ui/icons';
 
@@ -20,35 +21,49 @@ export function NextBack({ platform, run }: { platform: string; run: (action: Op
   // In a show Next stays the primary, even at the end (it does what → does there: nothing more), so it
   // is never redrawn as slides change; with nothing shown or live it waits.
   const canNext = state ? live || state.next !== null || state.cue !== null || practising || shown : false;
+  // What is this? (Sessions 31–36): its ? beside them, its words under them (none in Simple Mode).
+  const help = useWhatIsThis('nextback');
   return (
-    <div className="grid grid-cols-[1fr_2fr] gap-2 px-3 pt-2" role="group" aria-label="Next and Back">
-      <Button
-        size="lg"
-        instant
-        icon={ChevronLeft}
-        kbd={shortcutText('previous', platform)}
-        disabled={!live}
-        data-testid="show-back"
-        onClick={() => {
-          run('previous');
-        }}
+    <>
+      <div
+        className={
+          help.button
+            ? 'grid grid-cols-[1fr_2fr_auto] items-center gap-2 px-3 pt-2'
+            : 'grid grid-cols-[1fr_2fr] gap-2 px-3 pt-2'
+        }
+        role="group"
+        aria-label="Next and Back"
       >
-        Back
-      </Button>
-      <Button
-        variant="primary"
-        size="lg"
-        instant
-        iconEnd={ChevronRight}
-        kbd={shortcutText('next', platform)}
-        disabled={!canNext}
-        data-testid="show-next"
-        onClick={() => {
-          run('next');
-        }}
-      >
-        Next
-      </Button>
-    </div>
+        <Button
+          size="lg"
+          instant
+          icon={ChevronLeft}
+          kbd={shortcutText('previous', platform)}
+          disabled={!live}
+          data-testid="show-back"
+          onClick={() => {
+            run('previous');
+          }}
+        >
+          Back
+        </Button>
+        <Button
+          variant="primary"
+          size="lg"
+          instant
+          iconEnd={ChevronRight}
+          kbd={shortcutText('next', platform)}
+          disabled={!canNext}
+          data-testid="show-next"
+          onClick={() => {
+            run('next');
+          }}
+        >
+          Next
+        </Button>
+        {help.button}
+      </div>
+      {help.card && <div className="pt-2">{help.card}</div>}
+    </>
   );
 }

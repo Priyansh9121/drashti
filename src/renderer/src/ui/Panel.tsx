@@ -138,6 +138,7 @@ export function PanelGroup({
   icon: IconShape,
   remember,
   defaultOpen = true,
+  help: topic,
   children,
   ...data
 }: {
@@ -146,9 +147,12 @@ export function PanelGroup({
   /** A name to remember whether it is folded (per computer). */
   remember: string;
   defaultOpen?: boolean;
+  /** Its "What is this?" words (Sessions 31–36), as a panel's: shared/panel-help.ts. */
+  help?: PanelHelpId;
   children: ReactNode;
 } & DataAttributes) {
   const id = useId();
+  const help = useWhatIsThis(topic ?? null);
   const [open, setOpen] = usePersistentState<boolean>(
     `group.${remember}.open`,
     defaultOpen,
@@ -177,7 +181,9 @@ export function PanelGroup({
             </span>
           </button>
         </h2>
+        {help.button}
       </header>
+      {help.card}
       {open && (
         <div id={`${id}-body`} className="divide-y divide-line">
           {children}

@@ -1,3 +1,4 @@
+import { useWhatIsThis } from '../help/WhatIsThis';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { DragEvent } from 'react';
 import { create } from 'zustand';
@@ -508,6 +509,8 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
     wantSlides(wanted === '' ? [] : wanted.split(' '));
   }, [wanted]);
   const [menu, setMenu] = useState<{ at: MenuPlace; item: PlaylistItemInfo } | null>(null);
+  // What is this? (Sessions 31–36): its ? in the playlist's header row, its words under it.
+  const help = useWhatIsThis('playlist');
   const markedSet = new Set(marked);
   // The item on the screens now: the playlist's place, while something of it is up (not after Clear all).
   const liveItem = useEngine((s) => {
@@ -646,6 +649,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
             </Button>
           </>
         )}
+        {help.button}
         <MenuButton
           label="Playlist"
           title="Playlist actions"
@@ -706,6 +710,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
           onClick={closePlaylist}
         />
       </div>
+      {help.card && <div className="shrink-0 pt-2">{help.card}</div>}
       {node?.kind === 'smart' && <SmartBar playlistId={openId} />}
       {node?.kind === 'repeat' && node.repeat && <RepeatBar playlistId={openId} settings={node.repeat} />}
       {isTemplate && (
