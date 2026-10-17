@@ -97,3 +97,70 @@ describe('decodeMessage', () => {
     expect(() => decodeMessage(new Uint8Array(), 'test.Missing', d)).toThrow('No definition');
   });
 });
+
+describe('data that says it is bigger or deeper than it is (Sessions 31–36, SEC-12)', () => {
+  /** A table with a message that holds itself, and a map whose values are messages. */
+  const deep: Descriptor = {
+    messages: {
+      ...d.messages,
+      'test.Node': { '1': { name: 'next', kind: 'message', type: 'test.Node' } },
+      'test.Kids': {
+        '1': { name: 'kids', kind: 'map', type: 'test.Child', key: 'string', value: 'message' },
+      },
+    },
+  };
+  const varint = (n: number): number[] => {
+    const out: number[] = [];
+    let v = n;
+    while (v >= 0x80) {
+      out.push((v % 0x80) | 0x80);
+      v = Math.floor(v / 0x80);
+    }
+    out.push(v);
+    return out;
+  };
+  /** A Node `deep` messages deep (itself the first), each the next one's only field, built from the outside in. */
+  const nested = (deep: number): Uint8Array => {
+    const levels = deep - 1;
+    const lengths = [0];
+    for (let i = 1; i < levels; i++) {
+      const inner = lengths[i - 1] ?? 0;
+      lengths.push(1 + varint(inner).length + inner);
+    }
+    const bytes: number[] = [];
+    for (let i = levels - 1; i >= 0; i--) bytes.push(0x0a, ...varint(lengths[i] ?? 0));
+    return Uint8Array.from(bytes);
+  };
+  const ended = (run: () => unknown, message: string) => {
+    const started = performance.now();
+    expect(run).toThrow(new ProtobufError(message));
+    expect(performance.now() - started).toBeLessThan(100);
+  };
+  const FOUR_MB = 4 * 1024 * 1024;
+
+  it('stops at 64 messages deep, at once, however deep it goes', () => {
+    expect(() => decodeMessage(nested(64), 'test.Node', deep)).not.toThrow();
+    ended(() => decodeMessage(nested(65), 'test.Node', deep), 'Messages nest deeper than 64.');
+    ended(() => decodeMessage(nested(100_000), 'test.Node', deep), 'Messages nest deeper than 64.');
+  });
+
+  it('refuses at once a map entry, a map value or a packed field longer than the message it is in', () => {
+    // labels (field 13, a map): an entry said to be 4 MB, in a message of 6 bytes.
+    ended(
+      () => decodeMessage(Uint8Array.from([0x6a, ...varint(FOUR_MB)]), 'test.Doc', deep),
+      'A map entry is longer than the data.',
+    );
+    // kids (field 1, a map of messages): an entry of 5 bytes whose value says it is 4 MB.
+    const value = [0x12, ...varint(FOUR_MB)];
+    const entry = [0x0a, 0x01, 0x6b, ...value];
+    ended(
+      () => decodeMessage(Uint8Array.from([0x0a, entry.length, ...entry]), 'test.Kids', deep),
+      'A map value is longer than the data.',
+    );
+    // numbers (field 12, packed): said to be 4 MB.
+    ended(
+      () => decodeMessage(Uint8Array.from([0x62, ...varint(FOUR_MB)]), 'test.Doc', deep),
+      'A packed field is longer than the data.',
+    );
+  });
+});

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { makeZip } from './testing/zip-writer';
-import { entryPath, extractZip, listZip, ZipError } from './zip';
+import { entryPath, extractZip, listZip, MAX_ZIP_ENTRIES, ZipError } from './zip';
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'drashti-zip-'));
 
@@ -86,5 +86,64 @@ describe('ZIP archives', () => {
     const path = join(dir, 'bomb.zip');
     writeFileSync(path, zip);
     await expect(extractZip(path, join(dir, 'out'))).rejects.toThrow('bigger than the archive says');
+  });
+});
+
+/**
+ * A ZIP64 archive's end, written by hand: its ZIP64 end record (at the file's start), the locator, and the
+ * classic end record pointing at them. What it claims for its central directory is the test's to say.
+ */
+function zip64End(claims: { count: number; cdSize: bigint; cdOffset: bigint; recordAt?: bigint }): Buffer {
+  const record = Buffer.alloc(56);
+  record.writeUInt32LE(0x06064b50, 0);
+  record.writeBigUInt64LE(44n, 4);
+  record.writeBigUInt64LE(BigInt(claims.count), 24);
+  record.writeBigUInt64LE(BigInt(claims.count), 32);
+  record.writeBigUInt64LE(claims.cdSize, 40);
+  record.writeBigUInt64LE(claims.cdOffset, 48);
+  const locator = Buffer.alloc(20);
+  locator.writeUInt32LE(0x07064b50, 0);
+  locator.writeBigUInt64LE(claims.recordAt ?? 0n, 8);
+  locator.writeUInt32LE(1, 16);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0xffff, 8);
+  end.writeUInt16LE(0xffff, 10);
+  end.writeUInt32LE(0xffffffff, 12);
+  end.writeUInt32LE(0xffffffff, 16);
+  return Buffer.concat([record, locator, end]);
+}
+
+describe('what a ZIP says of itself, checked before anything is read or allocated (Sessions 31–36, SEC-12)', () => {
+  it('refuses a central directory bigger than the file, as the classic end record or ZIP64 says it', async () => {
+    const dir = tmp();
+    const zip = makeZip([{ name: 'a.txt', data: 'placeholder' }]);
+    // The classic end record's size of the central directory, made bigger than the whole file.
+    zip.writeUInt32LE(zip.length + 1000, zip.length - 22 + 12);
+    writeFileSync(join(dir, 'big-cd.zip'), zip);
+    await expect(listZip(join(dir, 'big-cd.zip'))).rejects.toThrow(
+      'Broken central directory (it does not fit in the file).',
+    );
+    // ZIP64 saying 2^53 bytes: never allocated.
+    writeFileSync(join(dir, 'huge-cd.zip'), zip64End({ count: 1, cdSize: 2n ** 53n - 1n, cdOffset: 0n }));
+    const started = Date.now();
+    await expect(listZip(join(dir, 'huge-cd.zip'))).rejects.toThrow(
+      'Broken central directory (it does not fit in the file).',
+    );
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it('refuses more than 100,000 entries, and a ZIP64 end record past the end of the file', async () => {
+    const dir = tmp();
+    expect(MAX_ZIP_ENTRIES).toBe(100_000);
+    writeFileSync(join(dir, 'many.zip'), zip64End({ count: 200_000, cdSize: 46n, cdOffset: 0n }));
+    await expect(listZip(join(dir, 'many.zip'))).rejects.toThrow(
+      'This archive lists 200000 files: Drashti opens archives of 100,000 files at most.',
+    );
+    writeFileSync(
+      join(dir, 'past.zip'),
+      zip64End({ count: 1, cdSize: 46n, cdOffset: 0n, recordAt: 1_000_000n }),
+    );
+    await expect(listZip(join(dir, 'past.zip'))).rejects.toThrow('Broken ZIP64 archive.');
   });
 });

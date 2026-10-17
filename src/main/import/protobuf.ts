@@ -49,6 +49,8 @@ export class ProtobufError extends Error {
 
 const utf8 = new TextDecoder('utf-8');
 const TWO32 = 2 ** 32;
+/** How deep messages may nest (Sessions 31–36, SEC-12): ProPresenter's go about ten deep. */
+export const MAX_DEPTH = 64;
 
 class Reader {
   pos: number;
@@ -62,8 +64,22 @@ class Reader {
   }
 
   private byte(): number {
-    if (this.pos >= this.end) throw new ProtobufError('The data ends in the middle of a field.');
-    return this.buf[this.pos++] ?? 0;
+    const b = this.pos < this.end ? this.buf[this.pos] : undefined;
+    if (b === undefined) throw new ProtobufError('The data ends in the middle of a field.');
+    this.pos++;
+    return b;
+  }
+
+  /**
+   * The next `length` bytes, read on their own (a message, a map entry or value, a packed field): never
+   * longer than what holds them (Sessions 31–36, SEC-12; one said to be longer was read as zeros).
+   */
+  child(length: number, what: string): Reader {
+    if (length < 0 || this.pos + length > this.end)
+      throw new ProtobufError(`${what} is longer than the data.`);
+    const sub = new Reader(this.buf, this.pos, this.pos + length);
+    this.pos += length;
+    return sub;
   }
 
   /** A varint as its low and high 32 bits (unsigned). */
@@ -176,7 +192,8 @@ function skip(r: Reader, wire: number): number | Uint8Array {
   }
 }
 
-function decodeAt(r: Reader, type: string, d: Descriptor, stats?: DecodeStats): Message {
+function decodeAt(r: Reader, type: string, d: Descriptor, stats?: DecodeStats, depth = 1): Message {
+  if (depth > MAX_DEPTH) throw new ProtobufError(`Messages nest deeper than ${String(MAX_DEPTH)}.`);
   const fields = d.messages[type];
   if (!fields) throw new ProtobufError(`No definition for ${type}.`);
   const out: Message = {};
@@ -196,17 +213,12 @@ function decodeAt(r: Reader, type: string, d: Descriptor, stats?: DecodeStats): 
       continue;
     }
     if (f.kind === 'message') {
-      const length = r.uint32();
-      const sub = new Reader(r.buf, r.pos, r.pos + length);
-      if (sub.end > r.end) throw new ProtobufError('A message is longer than the data.');
-      r.pos = sub.end;
-      const value = decodeAt(sub, f.type, d, stats);
+      const sub = r.child(r.uint32(), 'A message');
+      const value = decodeAt(sub, f.type, d, stats, depth + 1);
       if (f.repeated) ((out[f.name] ??= []) as unknown[]).push(value);
       else out[f.name] = value;
     } else if (f.kind === 'map') {
-      const length = r.uint32();
-      const entry = new Reader(r.buf, r.pos, r.pos + length);
-      r.pos = entry.end;
+      const entry = r.child(r.uint32(), 'A map entry');
       let k: unknown = '';
       let v: unknown;
       while (entry.pos < entry.end) {
@@ -214,18 +226,14 @@ function decodeAt(r: Reader, type: string, d: Descriptor, stats?: DecodeStats): 
         if (ek >>> 3 === 1) k = readSingle(entry, 'scalar', f.key ?? 'string');
         else if (ek >>> 3 === 2) {
           if (f.value === 'message') {
-            const len = entry.uint32();
-            const sub = new Reader(entry.buf, entry.pos, entry.pos + len);
-            entry.pos = sub.end;
-            v = decodeAt(sub, f.type, d, stats);
+            const sub = entry.child(entry.uint32(), 'A map value');
+            v = decodeAt(sub, f.type, d, stats, depth + 1);
           } else v = readSingle(entry, f.value === 'enum' ? 'enum' : 'scalar', f.type);
         } else skip(entry, ek & 7);
       }
       ((out[f.name] ??= {}) as Record<string, unknown>)[String(k)] = v;
     } else if (packable) {
-      const length = r.uint32();
-      const packed = new Reader(r.buf, r.pos, r.pos + length);
-      r.pos = packed.end;
+      const packed = r.child(r.uint32(), 'A packed field');
       const list = (out[f.name] ??= []) as unknown[];
       while (packed.pos < packed.end) list.push(readSingle(packed, f.kind, f.type));
     } else {
