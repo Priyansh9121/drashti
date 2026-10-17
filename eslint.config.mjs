@@ -21,6 +21,30 @@ const nodeBuiltins = [
   'events',
 ].map((name) => ({ name, message: 'No Node APIs here.' }));
 
+/**
+ * Markup made from a string (Sessions 31–36, SEC-14): refused in every renderer, the operator window's and the
+ * audience screens' alike. One list, spread into both blocks below, as a later block's no-restricted-syntax
+ * replaces an earlier one's for the files they share. Reading markup is no sink, so only writes and calls.
+ */
+const MARKUP_SINKS = [
+  {
+    selector: 'AssignmentExpression[left.property.name=/^(innerHTML|outerHTML)$/]',
+    message: 'Markup from a string: build the elements (createElement, createElementNS, textContent).',
+  },
+  {
+    selector: "CallExpression[callee.property.name='insertAdjacentHTML']",
+    message: 'Markup from a string: build the elements (createElement, createElementNS, textContent).',
+  },
+  {
+    selector: "CallExpression[callee.object.name='document'][callee.property.name=/^write(ln)?$/]",
+    message: 'Markup from a string: build the elements (createElement, createElementNS, textContent).',
+  },
+  {
+    selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+    message: 'Markup from a string: render the elements.',
+  },
+];
+
 export default defineConfig(
   globalIgnores([
     'out/**',
@@ -50,6 +74,11 @@ export default defineConfig(
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true },
       ],
+      // A string never runs as code (Sessions 31–36, SEC-14): eval, new Function, a timer given a string.
+      'no-eval': 'error',
+      'no-new-func': 'error',
+      'no-implied-eval': 'off',
+      '@typescript-eslint/no-implied-eval': 'error',
     },
   },
   {
@@ -144,6 +173,7 @@ export default defineConfig(
           ],
         },
       ],
+      'no-restricted-syntax': ['error', ...MARKUP_SINKS],
     },
   },
   {
@@ -196,6 +226,7 @@ export default defineConfig(
             'CallExpression[callee.name=/^(setTimeout|setInterval|requestIdleCallback)$/], CallExpression[callee.object.name=/^(window|globalThis)$/][callee.property.name=/^(setTimeout|setInterval|requestIdleCallback)$/]',
           message: "A timer never decides a frame: allow the line, saying why it doesn't.",
         },
+        ...MARKUP_SINKS,
       ],
     },
   },

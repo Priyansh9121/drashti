@@ -165,7 +165,17 @@ export function sharpenFilter(percent: number): string {
     svg.setAttribute('width', '0');
     svg.setAttribute('height', '0');
     svg.style.position = 'absolute';
-    svg.innerHTML = `<filter id="${id}" color-interpolation-filters="sRGB"><feConvolveMatrix order="3" preserveAlpha="true" edgeMode="duplicate" kernelMatrix="${sharpenKernel(percent).join(' ')}"/></filter>`;
+    // Built as elements, never markup from a string (Sessions 31–36, SEC-14).
+    const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+    filter.setAttribute('id', id);
+    filter.setAttribute('color-interpolation-filters', 'sRGB');
+    const matrix = document.createElementNS('http://www.w3.org/2000/svg', 'feConvolveMatrix');
+    matrix.setAttribute('order', '3');
+    matrix.setAttribute('preserveAlpha', 'true');
+    matrix.setAttribute('edgeMode', 'duplicate');
+    matrix.setAttribute('kernelMatrix', sharpenKernel(percent).join(' '));
+    filter.appendChild(matrix);
+    svg.appendChild(filter);
     document.body.appendChild(svg);
   }
   return `url(#${id})`;
