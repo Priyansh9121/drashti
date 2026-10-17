@@ -86,6 +86,31 @@ export function applySessionSecurity(session: Session, rules: PermissionRules = 
 const ownPage = (url: string): boolean =>
   isAppUrl(url, { devServerUrl: devServerUrl(), rendererDir: rendererDir() });
 
+/** The Document-Policy by which a page lets Chromium give its JavaScript's stack when it hangs. */
+export const HANG_STACKS_POLICY = 'include-js-call-stacks-in-crash-reports';
+
+/**
+ * Our own pages let the watchdog ask where their JavaScript is when they hang (Sessions 31–36, ROB-1).
+ * Chromium gives a page's stack only when its response opts in, and a page from a file has no headers of
+ * its own, so the session adds the header to each of our pages as it loads (the page itself only, never
+ * what it loads). Nothing else about how pages load changes.
+ */
+export function allowHangStacks(
+  session: Pick<Session, 'webRequest'>,
+  isOwnPage: (url: string) => boolean = ownPage,
+): void {
+  session.webRequest.onHeadersReceived(
+    { urls: ['<all_urls>'], types: ['mainFrame'] },
+    (details, callback) => {
+      if (!isOwnPage(details.url)) {
+        callback({});
+        return;
+      }
+      callback({ responseHeaders: { ...details.responseHeaders, 'Document-Policy': [HANG_STACKS_POLICY] } });
+    },
+  );
+}
+
 /**
  * No pop-ups, no <webview>, and no navigating away from our own pages: not by a link, nor by a redirect,
  * nor in a frame (Sessions 31–36, SEC-15).

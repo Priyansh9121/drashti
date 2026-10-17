@@ -43,6 +43,9 @@ interface Frame {
   pid: number;
 }
 
+/** The function the self-test's hung output is stuck in: the hung window's stack names it (ROB-1). */
+export const HANG_FUNCTION = 'drashtiSelfTestHangsHere';
+
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 async function waitFor(what: () => Promise<boolean> | boolean, timeoutMs = 10_000): Promise<boolean> {
@@ -220,10 +223,13 @@ export async function runWatchdogSelfTest(ctx: SelfTestContext): Promise<SelfTes
     );
 
     // 4b. Hang the output (Session 23): stuck in a loop and taking no input, so Chromium's own
-    // "unresponsive" never comes. Its reports stop, and it must be noticed and restarted.
+    // "unresponsive" never comes. Its reports stop, and it must be noticed and restarted. The loop is a
+    // named function, for the hung window's stack to name (Sessions 31–36, ROB-1).
     const beforeHang = ctx.watchdog.events.length;
     const hungPid = output.webContents.getOSProcessId();
-    void output.webContents.executeJavaScript('for (;;) {}').catch(() => undefined);
+    void output.webContents
+      .executeJavaScript(`(function ${HANG_FUNCTION}() { for (;;) {} })()`)
+      .catch(() => undefined);
     const noticed = await waitFor(
       () =>
         ctx.watchdog.events.slice(beforeHang).some((e) => e.window.startsWith('output') && e.kind === 'hung'),
@@ -238,6 +244,14 @@ export async function runWatchdogSelfTest(ctx: SelfTestContext): Promise<SelfTes
             .some((e) => e.window.startsWith('output') && e.kind === 'reloaded'),
         )),
       noticed ? '' : 'no hung event within 40 s',
+    );
+    const hungEvent = ctx.watchdog.events
+      .slice(beforeHang)
+      .find((e) => e.window.startsWith('output') && e.kind === 'hung');
+    check(
+      'the hung output’s JavaScript stack names the function it hung in',
+      hungEvent?.stack?.includes(HANG_FUNCTION) ?? false,
+      hungEvent?.stack ?? 'no stack',
     );
     const revAfterHang = String(ctx.engineRev());
     const backAfterHang = noticed && (await waitFor(async () => (await paintedRev(output)) === revAfterHang));

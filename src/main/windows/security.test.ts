@@ -1,7 +1,14 @@
 import type { WebContents } from 'electron';
 import { EventEmitter } from 'node:events';
 import { describe, expect, it } from 'vitest';
-import { isAudioPage, isOperatorPage, permissionCheckAllowed, secureWebContents } from './security';
+import {
+  allowHangStacks,
+  HANG_STACKS_POLICY,
+  isAudioPage,
+  isOperatorPage,
+  permissionCheckAllowed,
+  secureWebContents,
+} from './security';
 
 const AUDIO = 'file:///Applications/Drashti.app/Contents/Resources/app.asar/out/renderer/audio.html';
 const OPERATOR = 'file:///Applications/Drashti.app/Contents/Resources/app.asar/out/renderer/index.html';
@@ -82,5 +89,36 @@ describe('navigating (Sessions 31–36, SEC-15)', () => {
       expect(fire(name, 'file:///elsewhere/index.html'), `${name} to another file`).toBe(true);
       expect(fire(name, 'file:///app/out/renderer/index.html'), `${name} to our own page`).toBe(false);
     }
+  });
+});
+
+describe("a hung page's JavaScript stack (Sessions 31–36, ROB-1)", () => {
+  it('lets our own pages, and only them, give it: the header on the page itself, never on what it loads', () => {
+    type Listener = (
+      details: { url: string; responseHeaders?: Record<string, string[]> },
+      callback: (response: { responseHeaders?: Record<string, string[]> }) => void,
+    ) => void;
+    let filter: unknown = null;
+    let listener: Listener | null = null;
+    const session = {
+      webRequest: {
+        onHeadersReceived: (f: unknown, l: Listener) => {
+          filter = f;
+          listener = l;
+        },
+      },
+    };
+    allowHangStacks(session as unknown as Parameters<typeof allowHangStacks>[0], (url) => url === OPERATOR);
+    expect(filter).toEqual({ urls: ['<all_urls>'], types: ['mainFrame'] });
+    const answer = (url: string) => {
+      let response: { responseHeaders?: Record<string, string[]> } | null = null;
+      listener?.({ url, responseHeaders: { 'Content-Type': ['text/html'] } }, (r) => (response = r));
+      return response;
+    };
+    expect(answer(OPERATOR)).toEqual({
+      responseHeaders: { 'Content-Type': ['text/html'], 'Document-Policy': [HANG_STACKS_POLICY] },
+    });
+    expect(answer('https://example.com/')).toEqual({});
+    expect(HANG_STACKS_POLICY).toBe('include-js-call-stacks-in-crash-reports');
   });
 });
