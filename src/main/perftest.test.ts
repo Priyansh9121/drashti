@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { coldStartLine, overlapCheck, paceOf, quickImport } from './perftest';
+import { coldStartLine, overlapCheck, paceOf, quickImport, settle, settleLine } from './perftest';
 
 describe("the performance check's import overlap (Session 17)", () => {
   it('reads the pace the slides really kept, never quicker than asked', () => {
@@ -96,5 +96,57 @@ describe("the performance check's cold start (Session 26h)", () => {
       'a presentation open at never, the LIVE picture warmed up at never, LIVE showing at never',
     );
     expect(line).toContain('no slide changes drawn (no “Language test slides” in the library list)');
+  });
+});
+
+describe('where both sides of a Performance pair start measuring (Sessions 31–36)', () => {
+  /** A computer settling on a pretend clock: its outputs warm up at `warmAt`, its main process's worst turn in each second waited from `worstFrom`. */
+  function computer(warmAt: number | null, worstFrom: (windowStart: number) => number) {
+    let t = 0;
+    let windowStart = 0;
+    return {
+      probe: {
+        now: () => t,
+        sleep: (ms: number) => {
+          t += ms;
+          return Promise.resolve();
+        },
+        warming: () => Promise.resolve(warmAt === null || t < warmAt ? 1 : 0),
+        quiet: {
+          reset: () => {
+            windowStart = t;
+          },
+          worst: () => worstFrom(windowStart),
+        },
+      },
+    };
+  }
+
+  it('begins once every output has warmed up and the main process has had a quiet second', async () => {
+    const { probe } = computer(2100, (from) => (from < 3000 ? 64 : 12));
+    const settled = await settle(probe);
+    expect(settled).toEqual({ settled: true, ms: 4100, warmedAt: 2100, worst: [64, 12] });
+    expect(settleLine(settled)).toBe(
+      'measuring began once settled, 4.1 s after the outputs were ready: they warmed up at 2.1 s, then the main process was quiet for a second (its worst turn each second: 64, 12 ms)',
+    );
+  });
+
+  it('begins at once on a computer already settled', async () => {
+    const { probe } = computer(0, () => 8);
+    const settled = await settle(probe);
+    expect(settled).toEqual({ settled: true, ms: 1000, warmedAt: 0, worst: [8] });
+  });
+
+  it('measures anyway after 20 s, saying what never settled', async () => {
+    const warm = await settle(computer(null, () => 8).probe);
+    expect(warm.settled).toBe(false);
+    expect(warm.warmedAt).toBeNull();
+    expect(settleLine(warm)).toBe('measuring began unsettled, after 20.0 s: an output was still warming up');
+    const busy = await settle(computer(500, () => 80).probe);
+    expect(busy.settled).toBe(false);
+    expect(busy.worst.every((w) => w === 80)).toBe(true);
+    expect(settleLine(busy)).toMatch(
+      /^measuring began unsettled, after 20\.\d s: the outputs warmed up at 0\.5 s, but the main process was never quiet for a second \(its worst turn each second: 80, 80, .*80 ms\)$/u,
+    );
   });
 });

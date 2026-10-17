@@ -50,6 +50,8 @@ export class MainWatch {
   private last = this.t0;
   private timer: NodeJS.Timeout | null = null;
   private longest = 0;
+  /** When the longest began, ms since the watch (or the measured part) began. */
+  private longestAt = 0;
   readonly gaps: Gap[] = [];
   readonly events: TimelineEvent[] = [];
 
@@ -59,7 +61,10 @@ export class MainWatch {
     this.timer = setInterval(() => {
       const now = performance.now();
       const gap = now - this.last;
-      this.longest = Math.max(this.longest, gap - TICK_MS);
+      if (gap - TICK_MS > this.longest) {
+        this.longest = gap - TICK_MS;
+        this.longestAt = round(this.last - this.t0);
+      }
       if (gap > GAP_MS) this.gaps.push({ at: round(this.last - this.t0), ms: round(gap) });
       this.last = now;
     }, TICK_MS);
@@ -75,6 +80,7 @@ export class MainWatch {
     this.t0 = performance.now();
     this.last = this.t0;
     this.longest = 0;
+    this.longestAt = 0;
     this.gaps.length = 0;
     this.events.length = 0;
   }
@@ -92,6 +98,11 @@ export class MainWatch {
   /** The longest the main process went without a turn, beyond the watch's own tick (ms). */
   worstBlockMs(): number {
     return Math.round(this.longest);
+  }
+
+  /** When the longest began (ms since the watch or the measured part began): the start, or later on. */
+  worstBlockAt(): number {
+    return this.longestAt;
   }
 
   /** What was going on within `around` ms of each gap, for the summary of a gap. */
