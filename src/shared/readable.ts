@@ -9,6 +9,11 @@ import { wrappedLines } from './shastra-slides';
  * import report, which has no window to measure in, counts by an estimate (shastra-slides' word widths).
  */
 
+export { NEW_TEXT_LINE_HEIGHT } from './model';
+
+/** Below this line height the slide editor warns of a box with Gujarati or Hindi in it (Sessions 31–36, I18N-2). */
+export const INDIC_LINE_HEIGHT_MIN = 1.3;
+
 /** The smallest shrink-to-fit goes: a tenth of the size set. */
 export const MIN_FIT = 0.1;
 /** The reference the floors are said at: a slide 1080 lines high. */

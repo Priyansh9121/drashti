@@ -66,6 +66,7 @@ import { notesForPages, picturesIssues, picturesPresentation, type PptxSlide } f
 import { extractZip } from './zip';
 import { plural } from '../../shared/text';
 import { readabilityCounts, REFERENCE_LINES } from '../../shared/readable';
+import { standsUpright } from '../../shared/text-runs';
 
 /*
  * One import run (PLAN.md 4.4): find the files, read each into the
@@ -223,6 +224,26 @@ export function readabilityIssues(input: NewPresentation): ImportIssue[] {
       severity: 'warning',
       code: 'words-run-over',
       message: `${plural(over, 'slide has', 'slides have')} words that may run past their box: open it in the slide editor, where a mark shows each.`,
+      fix: null,
+    });
+  // Gujarati, Hindi or Sanskrit set italic or letter-spaced in the file (Sessions 31–36, I18N-2): kept as
+  // stored, but drawn upright with no extra spacing.
+  const slanted = input.groups
+    .flatMap((g) => g.slides)
+    .filter((s) =>
+      s.elements.some(
+        (e) =>
+          e.kind === 'text' &&
+          (e.runs ?? []).some(
+            (r) => (r.italic === true || (r.letterSpacing ?? 0) !== 0) && standsUpright(r, e.lang),
+          ),
+      ),
+    ).length;
+  if (slanted > 0)
+    out.push({
+      severity: 'info',
+      code: 'indic-upright',
+      message: `${plural(slanted, 'slide has', 'slides have')} Gujarati, Hindi or Sanskrit words set italic or letter-spaced in the file: Drashti draws them upright, with the font’s own spacing, so their letters stay joined.`,
       fix: null,
     });
   if (small > 0)

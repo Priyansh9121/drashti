@@ -5,6 +5,7 @@ import type { KirtanLang, Lang, RenderSlide, TextElement } from './model';
 import { idSchema } from './model-schema';
 import type { ScreensSnapshot } from './screens';
 import { groupLanguagesSchema } from './screens-schema';
+import { NEW_TEXT_LINE_HEIGHT } from './model';
 
 /*
  * The first-run setup wizard (PLAN.md 3): which output feeds what, the
@@ -107,7 +108,7 @@ export function sampleKirtanSlide(width = 1920, height = 1080): RenderSlide {
       color: '#ffffff',
       align: 'center',
       verticalAlign: 'middle',
-      lineHeight: 1.25,
+      lineHeight: NEW_TEXT_LINE_HEIGHT,
       shadow: true,
       shrinkToFit: true,
     },

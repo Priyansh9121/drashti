@@ -1,6 +1,7 @@
 import type { EngineState, PropItem } from './engine/state';
 import { initialEngineState } from './engine/state';
 import type { RenderSlide, TextElement } from './model';
+import { NEW_TEXT_LINE_HEIGHT } from './model';
 
 /*
  * The practice show (Session 26g): placeholder slides on the operator's own screen only, for trying
@@ -35,7 +36,7 @@ function words(id: string, text: string, y: number, size: number, lang: 'en' | '
       color: '#ffffff',
       align: 'center',
       verticalAlign: 'middle',
-      lineHeight: 1.25,
+      lineHeight: NEW_TEXT_LINE_HEIGHT,
       shadow: true,
       shrinkToFit: true,
     },

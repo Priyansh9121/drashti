@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TextElement } from '../../../shared/model';
 import { slideElementSchema } from '../../../shared/model-schema';
-import { groupColor, nameFromFile, parseLyricsText } from './text';
+import { groupColor, LYRICS_STYLE, nameFromFile, parseLyricsText } from './text';
 
 const parse = (text: string, name = 'Placeholder Song.txt') => parseLyricsText(Buffer.from(text), name);
 const texts = (p: ReturnType<typeof parse>) =>
@@ -101,5 +101,11 @@ describe('parseLyricsText', () => {
     expect(groupColor('Bridge')).toBe('#8e4ec6');
     expect(groupColor('Ending')).toBe('#00a2c7');
     expect(groupColor('Announcement')).toBeNull();
+  });
+});
+
+describe('lyrics', () => {
+  it('get 1.35 between their lines, room for Gujarati and Hindi marks (Sessions 31–36, I18N-2)', () => {
+    expect(LYRICS_STYLE.lineHeight).toBe(1.35);
   });
 });

@@ -360,6 +360,44 @@ test('View › Show Safe Areas draws 93% and 90%, the ticker’s band at 999 of 
   await app.close();
 });
 
+test('new words get 1.35 between lines; a Gujarati box set closer than 1.3 is warned of, and has no Italic (Sessions 31–36, I18N-2)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1600, height: 900 });
+  await importKirtan(
+    win,
+    'Placeholder Spacing',
+    '[Verse]\nનમૂનાની પંક્તિ\nબીજી નમૂના પંક્તિ\n\n[Chorus]\nPlaceholder line\nPlaceholder second line\n',
+  );
+  const editor = await openEditor(win, /Placeholder Spacing/);
+  const spacing = editor.getByTestId('field-line-height');
+  const warning = editor.getByTestId('inspector-line-height');
+  const italic = editor.getByRole('button', { name: 'Italic', exact: true });
+  // The Gujarati slide's words: 1.35 apart, nothing to say, and no Italic (they are always drawn upright).
+  await clickSlide(win, 960, 540);
+  await expect(editor.getByTestId('inspector-text')).toBeVisible();
+  await expect(spacing).toHaveValue('1.35');
+  await expect(warning).toHaveCount(0);
+  await expect(italic).toHaveCount(0);
+  // Set at 1.2: warned of, until it is 1.3 again.
+  await spacing.fill('1.2');
+  await expect(warning).toHaveText(
+    'The line spacing is 1.2: below 1.3, Gujarati and Hindi marks can touch the line above. Line spacing is under Words.',
+  );
+  await expectNoSeriousA11yIssues(win, 'the slide editor warning of close Gujarati lines');
+  await spacing.fill('1.3');
+  await expect(warning).toHaveCount(0);
+  // English words at 1.2: nothing to say, and Italic is there.
+  await win.keyboard.press('Escape');
+  await editor.getByTestId('editor-slide-thumb').nth(1).click();
+  await clickSlide(win, 960, 540);
+  await expect(editor.getByTestId('inspector-text')).toBeVisible();
+  await spacing.fill('1.2');
+  await expect(italic).toBeVisible();
+  await expect(warning).toHaveCount(0);
+  await app.close();
+});
+
 test('Cancel keeps nothing: Esc lets go of the selection, then asks before throwing changes away', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);

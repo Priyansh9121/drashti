@@ -495,4 +495,27 @@ describe('the import report on words the hall may not read (Sessions 31–36, SL
     ]);
     expect(readabilityIssues(presentation([text('Placeholder line', 80)]))).toEqual([]);
   });
+
+  it('counts the slides with Gujarati, Hindi or Sanskrit set italic or letter-spaced, which are drawn upright (Sessions 31–36, I18N-2)', () => {
+    const slanted = {
+      ...text('નમૂના नमूना', 80),
+      runs: [
+        { text: 'નમૂના', lang: 'gu' as const, italic: true },
+        { text: ' नमूना', lang: 'hi' as const, letterSpacing: 3 },
+      ],
+    };
+    // Transliteration keeps its italic: not counted.
+    const translit = {
+      ...text('Placeholder', 80),
+      runs: [{ text: 'Placeholder', lang: 'translit' as const, italic: true }],
+    };
+    expect(
+      readabilityIssues(presentation([slanted], [slanted], [translit])).find(
+        (i) => i.code === 'indic-upright',
+      )?.message,
+    ).toBe(
+      '2 slides have Gujarati, Hindi or Sanskrit words set italic or letter-spaced in the file: Drashti draws them upright, with the font’s own spacing, so their letters stay joined.',
+    );
+    expect(readabilityIssues(presentation([translit]))).toEqual([]);
+  });
 });

@@ -13,6 +13,7 @@ import { Panel } from '../ui/Panel';
 import { EmptyState, Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { dispatch } from './actions';
+import { NEW_TEXT_LINE_HEIGHT } from '../../../shared/model';
 
 /*
  * Props: a logo or a fixed line of text that stays up whatever slide is
@@ -50,7 +51,7 @@ function textElement(
       color,
       align,
       verticalAlign: 'middle',
-      lineHeight: 1.2,
+      lineHeight: NEW_TEXT_LINE_HEIGHT,
       shadow: true,
     },
   };

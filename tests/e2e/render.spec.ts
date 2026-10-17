@@ -1,7 +1,11 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { near, pixels } from './pixels';
 import { TEST_LINES } from '../../src/main/db/seed';
+import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import type { PageGlobals } from './helpers';
 import { launchApp, operatorPage } from './helpers';
 
@@ -207,6 +211,68 @@ test('the test slide renders all four languages with the bundled fonts, shaped c
   );
   await expect(output.getByTestId('scene')).toHaveAttribute('data-canvas', '1280x720');
   await expect(output.locator('[data-lang="gu"]')).toHaveText(TEST_LINES.gu);
+  await app.close();
+});
+
+test('Gujarati set italic and letter-spaced in a file is drawn upright with its own spacing, kept as stored; transliteration stays italic (Sessions 31–36, I18N-2)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  // Every line italic and spaced 15 pt apart, as a file from another program may have them.
+  const white: [number, number, number] = [255, 255, 255];
+  const rtf = cocoaRtf([
+    ['નમૂનાની પંક્તિ', 72, white],
+    ['Namūnānī paṅkti', 48, white],
+  ]).replace(/\\f0\\fs/gu, '\\f0\\i\\expnd60\\expndtw300\\fs');
+  const file = join(mkdtempSync(join(tmpdir(), 'drashti-upright-')), 'Placeholder Upright.pro6');
+  writeFileSync(
+    file,
+    pp6Presentation({
+      uuid: 'E2E-UPRIGHT',
+      groups: [{ name: 'Verse', uuid: 'E2E-UPRIGHT-G', slides: [{ text: [{ rtf }] }] }],
+    }),
+  );
+  const { id, issues } = await win.evaluate(async (path) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const result = await d.library.importPaths([path]);
+    if (!result.ok) throw new Error(result.message);
+    const item = (await d.library.getImportReport(result.run.id))?.items[0];
+    return { id: item?.target?.id ?? '', issues: (item?.issues ?? []).map((i) => i.code) };
+  }, file);
+  await setUpOneScreen(win);
+  const output = await outputPage(app);
+  await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({
+        type: 'goLive',
+        presentationId: id,
+        slideIndex: 0,
+      }),
+    id,
+  );
+  const runs = output.locator('[data-layer="slide"] [data-run]');
+  const look = (text: string) =>
+    runs.filter({ hasText: text }).evaluate((el) => ({
+      style: getComputedStyle(el).fontStyle,
+      spacing: getComputedStyle(el).letterSpacing,
+    }));
+  await expect(runs.filter({ hasText: 'નમૂનાની પંક્તિ' })).toHaveCount(1);
+  expect(await look('નમૂનાની પંક્તિ')).toEqual({ style: 'normal', spacing: 'normal' });
+  expect((await look('Namūnānī paṅkti')).style).toBe('italic');
+  expect((await look('Namūnānī paṅkti')).spacing).not.toBe('normal');
+  // The import report says what happens to them.
+  expect(issues).toContain('indic-upright');
+  // The file's styling is kept as stored: only how it is drawn changes.
+  const stored = await win.evaluate(async (id) => {
+    const opened = await (globalThis as PageGlobals).drashti.library.slidesForEdit(id);
+    if (!opened.ok) throw new Error(opened.message);
+    const el = opened.doc.groups[0]?.slides[0]?.elements.find((e) => e.kind === 'text');
+    return el?.kind === 'text'
+      ? (el.runs ?? []).map((r) => ({ italic: r.italic === true, spacing: r.letterSpacing ?? 0 }))
+      : [];
+  }, id);
+  expect(stored.length).toBeGreaterThan(0);
+  for (const run of stored) expect(run).toEqual({ italic: true, spacing: 15 });
   await app.close();
 });
 

@@ -1,4 +1,5 @@
 import type { Lang, TextRun } from './model';
+import { isIndic } from './model';
 import { readsLike } from './translit';
 
 /*
@@ -44,6 +45,22 @@ export function scriptOf(text: string): Script | null {
   if (most === 0) return null;
   if (gu === most) return 'gu';
   return hi === most ? 'hi' : 'latin';
+}
+
+/**
+ * Whether a run stands upright with no letter-spacing (Sessions 31–36, I18N-2): Gujarati and Devanagari
+ * letters break apart when slanted or spaced, whatever the run was marked as or stored. Its letters decide,
+ * as one box can hold a Gujarati line and an italic transliteration line; words in a legacy Gujarati or
+ * Hindi font stand upright too; a run without letters (or one whose letters are not known) goes by its
+ * language, or its box's.
+ */
+export function standsUpright(
+  run: { text?: string; lang?: Lang | null; legacy?: boolean },
+  boxLang: Lang | null,
+): boolean {
+  if (run.legacy === true) return true;
+  const script = run.text === undefined ? null : scriptOf(run.text);
+  return script === null ? isIndic(run.lang ?? boxLang) : script !== 'latin';
 }
 
 /**

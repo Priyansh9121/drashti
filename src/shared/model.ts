@@ -14,6 +14,17 @@
 export type Lang = 'en' | 'gu' | 'hi' | 'translit' | 'sa' | 'sa-gu';
 export const LANGS: readonly Lang[] = ['en', 'gu', 'hi', 'translit', 'sa', 'sa-gu'];
 
+/**
+ * The languages written in Gujarati or Devanagari letters (Sessions 31–36, I18N-2): drawn upright with no
+ * letter-spacing whatever a file stored (their joined letters break apart when slanted or spaced).
+ * Transliteration keeps its italic.
+ */
+export const INDIC_LANGS: readonly Lang[] = ['gu', 'hi', 'sa', 'sa-gu'];
+export const isIndic = (lang: Lang | null | undefined): boolean => lang != null && INDIC_LANGS.includes(lang);
+
+/** The line height new text gets (Sessions 31–36, I18N-2): room for Gujarati and Hindi marks above and below. */
+export const NEW_TEXT_LINE_HEIGHT = 1.35;
+
 /** A kirtan's language tracks (Edit words by language, the Kirtan dialog): the four kirtans are written in. */
 export type KirtanLang = Exclude<Lang, 'sa' | 'sa-gu'>;
 export const KIRTAN_LANGS: readonly KirtanLang[] = ['en', 'gu', 'hi', 'translit'];
