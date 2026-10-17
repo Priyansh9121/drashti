@@ -130,6 +130,7 @@ import { spawnDownloadWorker } from './links/spawn-worker';
 import { AudioOutput } from './audio/audio-output';
 import { saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
+import { phaseLine } from './start-phases';
 import { LiveStateWriter, startupRecovery, type StartupRecovery } from './recovery/live-state';
 import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES } from './media/media-protocol';
 import { saveStill } from './media/stills';
@@ -278,6 +279,7 @@ if (userDataOverride) app.setPath('userData', userDataOverride);
 else if (perfTest) app.setPath('userData', mkdtempSync(join(tmpdir(), 'drashti-perf-')));
 // The log goes to a rotating file in the data folder too (see log.ts), from the start.
 startLogFile(join(app.getPath('userData'), 'logs'));
+log.info(phaseLine('the main process running'));
 log.info(
   `Drashti ${app.getVersion()} (Electron ${process.versions.electron}, Chrome ${process.versions.chrome}, Node ${process.versions.node}) on ${process.platform} ${osRelease()} ${process.arch}`,
 );
@@ -540,6 +542,7 @@ function openLibrary(): { db: Db } | { error: unknown } {
       throw error;
     }
     log.info(`Library opened (schema ${LATEST_VERSION})`);
+    log.info(phaseLine('library open'));
     return { db: opened };
   } catch (error) {
     log.error('Could not open the library', error);
@@ -1668,6 +1671,7 @@ function start(): void {
   }
   // This run takes the saved file over from now on, so a later start knows how this run ended.
   liveWriter.start(engine.current);
+  log.info(phaseLine(`engine ready, revision ${String(engine.rev)}${saved ? ', the show put back' : ''}`));
 
   // ---- deleting media (Session 26a) -------------------------------------------------
   const mediaRemoval = new MediaRemoval(db, {
@@ -3346,6 +3350,8 @@ function start(): void {
     }
     return null;
   });
+  /** Each output page's first painted frame already said (its time, on this computer's clock). */
+  const firstPaints = new Map<string, number>();
   handle(IPC.output.report, (e, raw) => {
     const screenId = manager.screenIdFor(e.sender.id);
     const r = raw as {
@@ -3353,7 +3359,24 @@ function start(): void {
       paintedRev?: unknown;
       warming?: unknown;
       missingFonts?: unknown;
+      firstPaint?: { rev?: unknown; wallAt?: unknown } | null;
     } | null;
+    // Its page's first painted frame, once per page: the start's last phase line (Sessions 31–36, PERF-1).
+    const first = r?.firstPaint;
+    if (
+      screenId &&
+      typeof first?.rev === 'number' &&
+      typeof first.wallAt === 'number' &&
+      firstPaints.get(screenId) !== first.wallAt
+    ) {
+      firstPaints.set(screenId, first.wallAt);
+      log.info(
+        phaseLine(
+          `${outputNames.get(screenId) ?? 'an output'} first painted revision ${String(first.rev)}`,
+          first.wallAt,
+        ),
+      );
+    }
     if (screenId && typeof r?.droppedFrames === 'number' && typeof r.paintedRev === 'number') {
       const missingFonts = missingFontsIn(r.missingFonts);
       const before = localReports.get(screenId)?.missingFonts.join('|') ?? '';
@@ -4085,6 +4108,9 @@ function start(): void {
   };
 
   operatorWindow = createOperatorWindow();
+  operatorWindow.once('show', () => {
+    log.info(phaseLine('operator window shown'));
+  });
   watchdog.watch(operatorWindow.webContents, 'operator');
   // The audio player once the operator window has loaded (or after 5 s whatever happens). Created
   // first, Chromium 152 can hand the operator window the audio player's list of sound outputs.

@@ -70,9 +70,11 @@ function usePaintTiming(root: React.RefObject<HTMLDivElement | null>, drawing: b
       // A short history, so a test can match every command to the frame that showed it.
       const log = (window.drashtiPaintLog ??= []);
       // wallAt: this computer's own clock, so tests on one computer can compare Main's and a node's frames.
-      // eslint-disable-next-line no-restricted-properties -- the paint log's own record of this computer's time, for tests; draws nothing
-      log.push({ rev, sentAt, committedAt, paintedAt, wallAt: Date.now() });
+      // eslint-disable-next-line no-restricted-properties -- the paint log's own record of this computer's time, for tests and the start's phase lines; draws nothing
+      const wallAt = Date.now();
+      log.push({ rev, sentAt, committedAt, paintedAt, wallAt });
       if (log.length > 20_000) log.splice(0, log.length - 20_000);
+      firstPaintNow ??= { rev, wallAt };
     });
     return () => {
       cancelAnimationFrame(frame);
@@ -87,6 +89,8 @@ function ThrowForTests(): never {
 
 /** The revision this window last painted, and frames that came late, for its reports. */
 let paintedRevNow = -1;
+/** This page's first painted frame (its revision, this computer's time), for the start's phase lines. */
+let firstPaintNow: { rev: number; wallAt: number } | null = null;
 const late: number[] = [];
 
 /**
@@ -113,8 +117,15 @@ function useFrameReports(refreshHz: number, drawing: boolean) {
           ),
         ),
       ].filter((n) => n !== '');
+      // Its first painted frame: the start's last phase line (Sessions 31–36, PERF-1).
       void window.drashti.output
-        .report({ droppedFrames: late.length, paintedRev: paintedRevNow, warming: !drawing, missingFonts })
+        .report({
+          droppedFrames: late.length,
+          paintedRev: paintedRevNow,
+          warming: !drawing,
+          missingFonts,
+          firstPaint: firstPaintNow,
+        })
         .catch(() => undefined);
     }, 2000);
     return () => {
