@@ -9,7 +9,7 @@ import { PresentationRepo } from '../db/presentations';
 import { seedBuiltinThemes } from '../db/seed';
 import { ThemeRepo } from '../db/themes';
 import { LYRICS_STYLE } from '../import/formats/text';
-import { applyTheme, themeFromContent, themeLook } from './themes';
+import { applyTheme, styleNewText, themeFromContent, themeLook } from './themes';
 import { saveTheme } from './themes-ipc';
 
 /* Placeholder words only. */
@@ -205,6 +205,19 @@ describe('theme looks and themes from templates', () => {
       color: '#ffee00',
       shadow: true,
     });
+  });
+
+  it('gives new text at least 1.35 between its lines; applying a stored theme gives its own (Sessions 31–36, I18N-2)', () => {
+    // The theme here has 1.1: new slides get 1.35, and a theme set wider keeps its own.
+    expect(themeLook(theme, 1920, 1080).style.lineHeight).toBe(1.35);
+    const wide = { ...theme, box: { ...theme.box, lineHeight: 1.6 } };
+    expect(themeLook(wide, 1920, 1080).style.lineHeight).toBe(1.6);
+    // A new presentation's words, styled by the default theme: new text too.
+    const { rows } = setup();
+    expect(texts(styleNewText(rows, theme)).map((t) => t.style.lineHeight)).toEqual([1.35, 1.35, 1.35, 1.35]);
+    expect(texts(styleNewText(rows, wide)).map((t) => t.style.lineHeight)).toEqual([1.6, 1.6, 1.6, 1.6]);
+    // Slides already made, given the theme: its own, as stored themes never change.
+    expect(texts(applyTheme(rows, theme)).map((t) => t.style.lineHeight)).toEqual([1.1, 1.1, 1.1, 1.1]);
   });
 
   it('makes a theme from a template: its first text box, the look of each language, its background', () => {
