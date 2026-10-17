@@ -164,7 +164,10 @@ test('the audience screens show exactly what the earlier build showed, frame by 
       .windows()
       .filter((p) => p.url().includes('identify='))
       .sort((a, b) => a.url().localeCompare(b.url()));
-    for (const [i, page] of identify.entries()) keep(`identify-${String(i + 1)}`, await settled(page));
+    // Side by side: each closes 5 s after it opened, and one after another CI's Mac took longer than that to
+    // settle three (CI run 39065876630, twice).
+    const identified = await Promise.all(identify.map((page) => settled(page)));
+    for (const [i, shot] of identified.entries()) keep(`identify-${String(i + 1)}`, shot);
     await expect.poll(() => app.windows().filter((p) => p.url().includes('identify=')).length).toBe(0);
 
     // The hall and a stage screen, then the stream's picture (no camera chosen: the slides as the hall has them).
