@@ -57,9 +57,14 @@ test.skip(
 const MINUTES = Math.max(5, Number(process.env['DRASHTI_SOAK_MINUTES'] ?? '180') || 180);
 /**
  * Tests the Soak itself (Sessions 31–36, PERF-4): crash the GPU process at this minute, by Chromium's own
- * chrome://gpucrash, in a window of its own that is never shown. The Soak must then fail.
+ * chrome://gpucrash, in a window of its own that is never shown. The Soak must then fail. Unset or empty (the
+ * workflow's value when not asked), never: `Number('')` is 0, and every Soak not asked crashed its GPU at the
+ * start (runs 39038893552, 39052528489, 39052534742).
  */
-const CRASH_GPU_AT = Number(process.env['DRASHTI_SOAK_CRASH_GPU'] ?? 'NaN');
+const CRASH_GPU_AT = (() => {
+  const asked = (process.env['DRASHTI_SOAK_CRASH_GPU'] ?? '').trim();
+  return asked === '' ? Number.NaN : Number(asked);
+})();
 
 /** A run's stopped processes by type, its heap after a full collection, and its loop p99 since the last read. */
 function health(target: ElectronApplication) {
