@@ -233,6 +233,27 @@ describe('themes in the library', () => {
 });
 
 describe('built-in themes in the library (Session 26)', () => {
+  it('saving a theme that misses the theme contract saves it, and says what it misses (Sessions 31–36, SLD-4)', () => {
+    const db = openDatabase(':memory:');
+    seedBuiltinThemes(db);
+    const repo = new ThemeRepo(db);
+    const midnight = must(repo.list().find((t) => t.name === 'Midnight'));
+    const { id: _id, builtIn: _builtIn, ...fields } = midnight;
+    const tiny = {
+      ...fields,
+      name: 'Placeholder tiny',
+      langs: { ...fields.langs, gu: { ...fields.langs.gu, size: 20 } },
+    };
+    const saved = saveTheme(repo, null, tiny);
+    expect(saved).toMatchObject({
+      ok: true,
+      warnings: ['Gujarati is set at 20 px: below 36 px the back of the hall cannot read it.'],
+    });
+    expect(repo.get(saved.ok ? saved.id : '')?.langs.gu.size).toBe(20);
+    // One that keeps it: no warnings at all.
+    expect(saveTheme(repo, null, { ...fields, name: 'Placeholder fine' })).not.toHaveProperty('warnings');
+  });
+
   it('saving a built-in one makes a copy, named so unless it was renamed; the built-in stays as it was', () => {
     const db = openDatabase(':memory:');
     seedBuiltinThemes(db);

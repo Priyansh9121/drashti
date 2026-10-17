@@ -21,6 +21,7 @@ import { SectionTitle } from '../ui/Panel';
 import { EmptyState, Loading } from '../ui/States';
 import { plural } from '../ui/text';
 import { closeThemes, useThemesPanel } from './themes-store';
+import { themeContract } from '../../../shared/theme-contract';
 
 /** Placeholder lines, one per language, for the preview. */
 const SAMPLE: Record<Lang, string> = {
@@ -168,6 +169,7 @@ function ThemeEditor({
   const [playlistId, setPlaylistId] = useState(playlists[0]?.id ?? '');
   // The draft starts as the theme itself (id and all), so the two compare directly.
   const changed = JSON.stringify(draft) !== JSON.stringify(theme);
+  const missed = themeContract(draft);
   const setLang = (lang: Lang, patch: Partial<ThemeFields['langs'][Lang]>) => {
     setDraft((d) => ({ ...d, langs: { ...d.langs, [lang]: { ...d.langs[lang], ...patch } } }));
   };
@@ -429,6 +431,22 @@ function ThemeEditor({
         )}
       </fieldset>
       {problem && <Notice tone="danger">{problem}</Notice>}
+      {/* The theme contract (Sessions 31–36, SLD-4), as the draft stands: said, never refused. */}
+      {missed.length > 0 && (
+        <Notice
+          tone="warning"
+          role="status"
+          title="This theme misses Drashti’s theme contract"
+          data-testid="theme-contract"
+        >
+          <ul className="list-disc pl-5">
+            {missed.map((m) => (
+              <li key={m}>{m}</li>
+            ))}
+          </ul>
+          It can still be saved and used.
+        </Notice>
+      )}
       {note && (
         <Notice tone="success" role="status">
           {note}

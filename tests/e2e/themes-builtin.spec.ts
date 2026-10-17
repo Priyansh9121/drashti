@@ -81,6 +81,20 @@ test('ten built-in themes, each a preview in every language; given once (a delet
   expect(list.themes.find((t) => t.name === 'Midnight')?.langs.en.size).toBe(80);
   expect(list.themes.find((t) => t.name === 'Midnight (copy)')?.langs.en.size).toBe(96);
 
+  // The theme contract (Sessions 31–36, SLD-4): Gujarati at 20 px is said at once, and saving still saves.
+  await expect(editor.getByTestId('theme-contract')).toHaveCount(0);
+  await editor.getByRole('spinbutton', { name: 'Gujarati size' }).fill('20');
+  const contract = editor.getByTestId('theme-contract');
+  await expect(contract).toContainText(
+    'Gujarati is set at 20 px: below 36 px the back of the hall cannot read it.',
+  );
+  await expectNoSeriousA11yIssues(win, 'the Themes window saying what a theme misses');
+  await editor.getByTestId('theme-save').click();
+  await expect
+    .poll(async () => (await themes(win)).themes.find((t) => t.name === 'Midnight (copy)')?.langs.gu.size)
+    .toBe(20);
+  await expect(contract).toBeVisible();
+
   // Charcoal deleted: after a restart it is still gone.
   await items.filter({ hasText: 'Charcoal' }).click();
   await editor.getByRole('button', { name: 'Delete' }).click();
