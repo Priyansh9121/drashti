@@ -154,7 +154,17 @@ jobs:
           DRASHTI_WINDOWED_OUTPUTS: ${{ inputs.scenario == 'three-outputs' && '1' || '' }}
           DRASHTI_EXTRA_DISPLAYS: ${{ inputs.scenario == 'three-outputs' && '2' || '' }}
           DRASHTI_PERF_MUSIC: ${{ (inputs.music || inputs.scenario == 'three-outputs') && '1' || '0' }}
+          # Each slide change's raw times, as JSON (Sessions 31–36, PERF-2): kept 90 days, for the ledger.
+          DRASHTI_PERF_RAW: ${{ runner.temp }}/perf-raw
         run: pnpm test:perf
+      - name: Keep each slide change's raw times (90 days)
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: perf-raw-${{ runner.os }}
+          path: ${{ runner.temp }}/perf-raw
+          if-no-files-found: warn
+          retention-days: 90
       - name: Keep the profile, the trace and the timeline
         if: always() && inputs.profile
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

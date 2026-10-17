@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { ChildProcess } from 'node:child_process';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { constants, getPriority, setPriority, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,6 +24,8 @@ interface PerfResult {
   passed: boolean;
   checks: { name: string; ok: boolean; detail: string }[];
   summary: string;
+  /** Each slide change's raw times (src/main/perftest.ts, RawChange). */
+  raw?: unknown[];
   /** The operator window's first drawing before anything is measured (Session 26h): never judged. */
   coldStart?: string;
 }
@@ -128,6 +130,7 @@ test('slide changes keep reaching the screen within a frame during a big import'
   // The cold start on its own line, for the record, then the measured part's figures.
   if (result?.coldStart) console.log(result.coldStart);
   console.log(result?.summary);
+  keepRaw('plain', result);
   for (const c of result?.checks ?? []) {
     console.log(`${c.ok ? 'PASS' : 'FAIL'}  ${c.name}${c.detail ? ` (${c.detail})` : ''}`);
     expect.soft(c.ok, `${c.name} ${c.detail}`).toBe(true);
@@ -181,6 +184,7 @@ test('slide changes keep reaching the screen within a frame while streaming and 
     // The cold start on its own line, for the record, then the measured part's figures.
     if (result?.coldStart) console.log(result.coldStart);
     console.log(result?.summary);
+    keepRaw('streaming', result);
     for (const c of result?.checks ?? []) {
       console.log(`${c.ok ? 'PASS' : 'FAIL'}  ${c.name}${c.detail ? ` (${c.detail})` : ''}`);
       expect.soft(c.ok, `${c.name} ${c.detail}`).toBe(true);
@@ -202,3 +206,23 @@ test('after a crash the screens come back: the recovery figure (Sessions 31–36
   test.info().annotations.push({ type: 'recovery', description: figure.line });
   expect(figure.ms).toBeGreaterThan(0);
 });
+
+/**
+ * Each slide change's raw times, as JSON, where DRASHTI_PERF_RAW says (the Performance workflow keeps them
+ * 90 days; Sessions 31–36, PERF-2): one file per test and system, with the commit, for scripts/perf-compare.mjs.
+ */
+function keepRaw(which: string, result: PerfResult | null): void {
+  const dir = process.env['DRASHTI_PERF_RAW'];
+  if (!dir || !result?.raw) return;
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, `${which}-${process.platform}.json`),
+    JSON.stringify({
+      commit: process.env['GITHUB_SHA'] ?? null,
+      run: process.env['GITHUB_RUN_ID'] ?? null,
+      platform: process.platform,
+      test: which,
+      changes: result.raw,
+    }),
+  );
+}

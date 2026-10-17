@@ -72,8 +72,13 @@ function usePaintTiming(root: React.RefObject<HTMLDivElement | null>, drawing: b
       // wallAt: this computer's own clock, so tests on one computer can compare Main's and a node's frames.
       // eslint-disable-next-line no-restricted-properties -- the paint log's own record of this computer's time, for tests and the start's phase lines; draws nothing
       const wallAt = Date.now();
-      log.push({ rev, sentAt, committedAt, paintedAt, wallAt });
+      const entry: PaintEntry = { rev, sentAt, committedAt, paintedAt, wallAt };
+      log.push(entry);
       if (log.length > 20_000) log.splice(0, log.length - 20_000);
+      // The frame after it (Sessions 31–36, PERF-2): how long the change's own frame took to draw.
+      requestAnimationFrame(() => {
+        entry.nextAt = engineNow();
+      });
       firstPaintNow ??= { rev, wallAt };
     });
     return () => {
