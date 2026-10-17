@@ -39,6 +39,8 @@ export interface DiagnosticsInput {
 export interface CrashFilesChoice {
   files: readonly CrashFile[];
   included: boolean;
+  /** False when this run keeps no crash files (Drashti running translated): Diagnostics says why. */
+  kept?: boolean;
 }
 
 /** At most this much of the log (the newest part). */
@@ -122,7 +124,7 @@ function crashSections(journal: readonly CrashEntry[], crash: CrashFilesChoice):
     ),
     section(
       `Crash files (kept on this computer, the newest ${String(KEEP_CRASH_FILES)})`,
-      crashFilesLines(crash.files, crash.included),
+      crashFilesLines(crash.files, crash.included, crash.kept ?? true),
     ),
   ];
 }

@@ -14,6 +14,30 @@ import { formatBytes } from '../shared/format';
 /** How many dumps are kept, the newest. */
 export const KEEP_CRASH_FILES = 5;
 
+/** Said in the log and in Diagnostics when this run keeps no crash files (Drashti running translated). */
+export const CRASH_FILES_NOT_KEPT =
+  'Crash files are not kept while Drashti runs translated (an Intel build on an Apple-silicon Mac, or the x64 build on Windows on ARM)';
+
+/**
+ * Start the crash reporter, unless Drashti runs translated: then none, as alpha.5 started none anywhere. Under
+ * Rosetta the crash reporter cannot read a translated process's threads ("thread_get_state … invalid
+ * argument"), and when the watchdog restarted a window (Electron dumps the window first) the main process
+ * stopped on SIGTRAP: the release check's Intel build, Release runs 39070516997 and 39071319781. The crash
+ * journal still says what went wrong. Whether this run keeps crash files.
+ */
+export function startCrashReporter(
+  translated: boolean,
+  start: () => void,
+  say: (line: string) => void,
+): boolean {
+  if (translated) {
+    say(CRASH_FILES_NOT_KEPT);
+    return false;
+  }
+  start();
+  return true;
+}
+
 export interface CrashFile {
   path: string;
   name: string;
@@ -64,10 +88,15 @@ export function keepNewestCrashFiles(
   return deleted;
 }
 
-/** The dumps for Diagnostics' text: by name, size and time only, and whether they are in the folder. */
-export function crashFilesLines(files: readonly CrashFile[], included: boolean): string[] {
-  if (files.length === 0) return [];
+/**
+ * The dumps for Diagnostics' text: by name, size and time only, and whether they are in the folder; first,
+ * when this run keeps none (`kept` false), why.
+ */
+export function crashFilesLines(files: readonly CrashFile[], included: boolean, kept = true): string[] {
+  const why = kept ? [] : [CRASH_FILES_NOT_KEPT];
+  if (files.length === 0) return why;
   return [
+    ...why,
     ...files.map((f) => `${f.name}: ${formatBytes(f.bytes)}, written ${f.at.toISOString()}`),
     included
       ? 'Included: in the folder with this file.'
