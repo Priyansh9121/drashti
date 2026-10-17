@@ -11,6 +11,7 @@ import { Badge } from '../../ui/Badge';
 import { Button } from '../../ui/Button';
 import { Notice } from '../../ui/Notice';
 import { api, current, PAGE_OF } from '../device';
+import { textLang } from '../../render/lang';
 
 /*
  * Sending an announcement from a phone (an Announcements device: paired, or
@@ -258,6 +259,8 @@ export function AnnouncePage() {
             maxLength={ANNOUNCEMENT_TEXT_MAX}
             rows={4}
             data-testid="announce-text"
+            // In the language it is typed in (Sessions 31–36, I18N-4), by its letters.
+            lang={textLang(text)}
             aria-describedby="announce-count"
             className="w-full rounded-lg border border-field bg-panel-2 p-3 text-lg text-fg placeholder:text-faint"
           />

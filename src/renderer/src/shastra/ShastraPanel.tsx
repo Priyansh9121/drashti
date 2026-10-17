@@ -22,6 +22,7 @@ import {
   useShastra,
   watchShastra,
 } from './shastra-store';
+import { textLang } from '../render/lang';
 
 /*
  * The Shastra tab of the left column (Session 12): type a reference ("SD 14",
@@ -55,8 +56,14 @@ function HitRow({ hit, selected }: { hit: ShastraHit; selected: boolean }) {
         }}
         {...rowMenu(hit.reference, pickPassage(hit.passageId))}
       >
-        <span className="block truncate text-sm font-medium">{hit.reference}</span>
-        <span className="block truncate text-xs text-muted" data-testid="shastra-hit-line">
+        <span className="block truncate text-sm font-medium" lang={textLang(hit.reference)}>
+          {hit.reference}
+        </span>
+        <span
+          className="block truncate text-xs text-muted"
+          data-testid="shastra-hit-line"
+          lang={textLang(hit.snippet)}
+        >
           {hit.snippet}
         </span>
       </button>

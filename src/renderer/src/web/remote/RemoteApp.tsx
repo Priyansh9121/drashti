@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import type { RemotePresentation } from '../../../../shared/network-api';
 import { KIRTAN_FIELD_NAMES, type SearchHit } from '../../../../shared/search';
@@ -13,11 +14,10 @@ import { preloadFonts } from '../../render/fonts';
 import { PlacedInParent } from '../../render/Placed';
 import { PreviewPicture, PreviewsContext } from '../../render/previews';
 import { Scene } from '../../render/Scene';
-import { HTML_LANG } from '../../render/fonts';
+import { textLang } from '../../render/lang';
 import { useNow } from '../../render/useNow';
 import { groupLookIn, type LiveGroupLook } from '../../../../shared/looks';
 import { languageView } from '../../../../shared/language-view';
-import { detectLang } from '../../../../shared/text-runs';
 import { SlideView } from '../../render/SlideView';
 import { TimerText } from '../../render/TimerText';
 import { Mark } from '../../ui/Mark';
@@ -243,12 +243,6 @@ function ClockAndTimer({ state }: { state: EngineState | null }) {
   );
 }
 
-/** The language a note is written in, for its `lang` (a phone's reader and its fonts follow it). */
-const noteLang = (text: string) => {
-  const lang = detectLang(text);
-  return lang ? HTML_LANG[lang] : undefined;
-};
-
 /** The live slide's notes and the next slide's, for a presenter; one tap shows or hides them (Session 18). */
 function Notes({ state }: { state: EngineState | null }) {
   const open = useRemote((s) => s.notesOpen);
@@ -287,17 +281,22 @@ function Notes({ state }: { state: EngineState | null }) {
           <p
             className={cx('text-lg whitespace-pre-wrap', live ? 'text-fg' : 'text-muted')}
             data-testid="remote-notes-live"
-            lang={live ? noteLang(live) : undefined}
+            lang={live ? textLang(live) : undefined}
           >
             {live || (state?.layers.slide ? 'No notes on this slide.' : 'No slide on the screens.')}
           </p>
           <p
             className="border-t border-line pt-2 text-base whitespace-pre-wrap text-muted"
             data-testid="remote-notes-next"
-            lang={next ? noteLang(next) : undefined}
           >
             <span className="font-bold">Next: </span>
-            {next || (state?.next?.kind === 'slide' ? 'no notes' : 'no slide')}
+            {next ? (
+              <span lang={textLang(next)}>{next}</span>
+            ) : state?.next?.kind === 'slide' ? (
+              'no notes'
+            ) : (
+              'no slide'
+            )}
           </p>
         </div>
       )}
@@ -627,7 +626,7 @@ function LibraryRow({
   onOpen,
 }: {
   name: string;
-  detail: string;
+  detail: ReactNode;
   live: boolean;
   onOpen: () => void;
 }) {
@@ -644,7 +643,9 @@ function LibraryRow({
         )}
       >
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-base text-fg">{name}</span>
+          <span className="block truncate text-base text-fg" lang={textLang(name)}>
+            {name}
+          </span>
           {detail && <span className="block truncate text-base text-muted">{detail}</span>}
         </span>
         {live && <LiveBadge />}
@@ -653,13 +654,19 @@ function LibraryRow({
   );
 }
 
-/** Where a search found a presentation: its title, a kirtan's detail, or a line of its words. */
-const matchText = (hit: SearchHit): string =>
-  hit.match.kind === 'title'
-    ? hit.libraryName
-    : hit.match.kind === 'detail'
-      ? `${KIRTAN_FIELD_NAMES[hit.match.field]}: ${hit.match.value}`
-      : `“${hit.match.line}”`;
+/** Where a search found a presentation: its title, a kirtan's detail, or a line of its words (in their language). */
+const matchText = (hit: SearchHit): ReactNode =>
+  hit.match.kind === 'title' ? (
+    hit.libraryName
+  ) : hit.match.kind === 'detail' ? (
+    <>
+      {KIRTAN_FIELD_NAMES[hit.match.field]}: <span lang={textLang(hit.match.value)}>{hit.match.value}</span>
+    </>
+  ) : (
+    <>
+      “<span lang={textLang(hit.match.line)}>{hit.match.line}</span>”
+    </>
+  );
 
 const listedText = (p: RemotePresentation): string =>
   [p.libraryName, p.category, `${String(p.slideCount)} ${p.slideCount === 1 ? 'slide' : 'slides'}`]

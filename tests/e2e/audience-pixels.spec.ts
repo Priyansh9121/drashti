@@ -191,6 +191,13 @@ test('the audience screens show exactly what the earlier build showed, frame by 
       await dispatch(win, { type: 'setStageMessage', text: 'Placeholder: two minutes left' });
       await shoot('stage-message');
       await dispatch(win, { type: 'clearStageMessage' });
+      // A message in Gujarati and English (Sessions 31–36, I18N-4: a message now says its language).
+      await dispatch(win, {
+        type: 'showMessage',
+        message: { id: 'placeholder-message', text: 'નમૂના સંદેશ · Placeholder message' },
+      });
+      await shoot('message');
+      await dispatch(win, { type: 'hideMessage', messageId: 'placeholder-message' });
       // Words made smaller to fit their box, and words that run past theirs (Sessions 31–36, SLD-1: each box
       // is now measured and marked, and the screens must look exactly as before).
       const words = Array.from({ length: 40 }, (_, i) => `Placeholder word ${String(i + 1)}`).join(' ');

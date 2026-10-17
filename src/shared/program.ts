@@ -1,8 +1,8 @@
 import type { EngineState } from './engine/state';
 import { languageView } from './language-view';
-import type { Lang, RenderSlide, TextRun } from './model';
+import type { Lang, RenderSlide, TextRun, TranslitSource } from './model';
 import type { StreamLayout } from './stream';
-import { boxLines, lineText, readingOrder } from './tracks';
+import { boxLines, lineText, readingOrder, translitSource } from './tracks';
 
 /*
  * What the stream shows (PLAN.md 4.2), worked out from the show engine's
@@ -33,6 +33,8 @@ export interface LowerThirdLine {
   runs: TextRun[];
   /** Its text box's font, for words typed in a legacy font (which need it to read). */
   boxFont: string | null;
+  /** A transliteration line: what it is of, for its lang (Sessions 31–36, I18N-4); left out when unknown. */
+  translitOf?: TranslitSource;
 }
 
 export type ProgramPicture =
@@ -63,11 +65,17 @@ export function lowerThirdOf(
   languages: readonly Lang[] | null,
 ): { lines: LowerThirdLine[]; total: number } {
   const shown = languageView(slide, languages);
+  const source = slide.translitOf ?? translitSource(slide.elements);
   const lines: LowerThirdLine[] = [];
   for (const el of readingOrder(shown.elements))
     for (const line of boxLines(el)) {
       if (!line.legacy && lineText(line).trim() === '') continue;
-      lines.push({ lang: line.lang, runs: line.runs, boxFont: el.style.fontFamily });
+      lines.push({
+        lang: line.lang,
+        runs: line.runs,
+        boxFont: el.style.fontFamily,
+        ...(line.lang === 'translit' && source ? { translitOf: source } : {}),
+      });
     }
   return { lines: lines.slice(0, LOWER_THIRD_MAX_LINES), total: lines.length };
 }

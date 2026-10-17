@@ -5,7 +5,8 @@ import type { Lang } from '../../../shared/model';
 import { type LowerThirdLine, lowerThird } from '../../../shared/program';
 import type { Size } from '../../../shared/scaling';
 import { engineNow } from './clock';
-import { fontFamilyFor, HTML_LANG } from './fonts';
+import { fontFamilyFor } from './fonts';
+import { htmlLang } from './lang';
 import { type LowerThirdPhase, lowerThirdFrame, lowerThirdLength } from './lower-third-motion';
 import type { UnitFrame } from './reveal';
 
@@ -29,7 +30,7 @@ function Lines({ lines }: { lines: LowerThirdLine[] }) {
           key={i}
           data-lang={line.lang ?? ''}
           data-lt-line=""
-          lang={line.lang ? HTML_LANG[line.lang] : undefined}
+          lang={line.lang ? htmlLang(line.lang, line.translitOf ?? null) : undefined}
           style={{ position: 'relative', fontFamily: fontFamilyFor(null, line.lang) }}
         >
           {line.runs.map((run, j) => (

@@ -50,3 +50,26 @@ export async function expectNoSeriousA11yIssues(page: Page, what: string, includ
     .map((v) => `${v.impact ?? ''} ${v.id}: ${v.help}\n${v.nodes.map((n) => `  - ${n}`).join('\n')}`);
   expect(serious, `accessibility findings in ${what}`).toEqual([]);
 }
+
+/**
+ * Every `lang` on the page is a real language tag (Sessions 31–36, I18N-4): axe's valid-lang, html-has-lang
+ * and html-lang-valid alone, so a screen's own colours (the slides') are not judged here. Returns how many
+ * elements valid-lang passed, so a check knows it saw some.
+ */
+export async function expectValidLang(page: Page, what: string): Promise<number> {
+  if (!(await page.evaluate(() => Boolean((globalThis as AxeWindow).axe)))) await page.evaluate(axe.source);
+  const result = await page.evaluate(async () => {
+    const engine = (globalThis as AxeWindow).axe;
+    if (!engine) throw new Error('axe-core did not load');
+    const run = await engine.run(document, {
+      runOnly: { type: 'rule', values: ['valid-lang', 'html-has-lang', 'html-lang-valid'] },
+      resultTypes: ['violations', 'passes'],
+    });
+    return {
+      violations: run.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`),
+      passed: run.passes.find((p) => p.id === 'valid-lang')?.nodes.length ?? 0,
+    };
+  });
+  expect(result.violations, `language tags in ${what}`).toEqual([]);
+  return result.passed;
+}

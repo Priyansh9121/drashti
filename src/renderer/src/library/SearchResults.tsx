@@ -10,6 +10,7 @@ import { rowClass } from '../ui/ListRow';
 import { Notice } from '../ui/Notice';
 import { EmptyState } from '../ui/States';
 import { plural } from '../ui/text';
+import { textLang } from '../render/lang';
 
 /** A line with the words the operator typed marked, as it is written (accents and all). */
 function Marked({ line, query }: { line: string; query: string }) {
@@ -49,17 +50,25 @@ function HitRow({ hit, query, selected }: { hit: SearchHit; query: string; selec
       }}
       className={`${rowClass({ selected })} px-2.5 py-1.5`}
     >
-      <span className="block truncate text-sm font-medium">
+      {/* Each in its own language (Sessions 31–36, I18N-4), by its letters. */}
+      <span className="block truncate text-sm font-medium" lang={textLang(hit.name)}>
         {hit.match.kind === 'title' ? <Marked line={hit.name} query={query} /> : hit.name}
       </span>
       {hit.match.kind === 'text' && (
-        <span className="block truncate text-xs text-muted" data-testid="search-line">
+        <span
+          className="block truncate text-xs text-muted"
+          data-testid="search-line"
+          lang={textLang(hit.match.line)}
+        >
           <Marked line={hit.match.line} query={query} />
         </span>
       )}
       {hit.match.kind === 'detail' && (
         <span className="block truncate text-xs text-muted" data-testid="search-detail">
-          {FIELD_NAMES[hit.match.field]}: <Marked line={hit.match.value} query={query} />
+          {FIELD_NAMES[hit.match.field]}:{' '}
+          <span lang={textLang(hit.match.value)}>
+            <Marked line={hit.match.value} query={query} />
+          </span>
         </span>
       )}
       <span className="block text-xs text-muted">{hit.libraryName}</span>

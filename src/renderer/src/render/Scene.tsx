@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { memo, useLayoutEffect, useMemo, useRef } from 'react';
+import { Fragment, memo, useLayoutEffect, useMemo, useRef } from 'react';
 import type { CalendarDay, CalendarLang } from '../../../shared/calendar';
 import { festivalsLine, samvatLine } from '../../../shared/calendar';
 import type { EngineState, MessageItem, PropItem, TickerLayer } from '../../../shared/engine/state';
@@ -15,6 +15,7 @@ import { useEntrance } from './entrance';
 import { IdleRotation } from './IdleRotation';
 import { clockHeld, engineFrameNow, onClockJump } from './clock';
 import { LANG_FONT_STACK } from './fonts';
+import { textLang } from './lang';
 import { Placed } from './Placed';
 import { SlideLayerView } from './SlideLayerView';
 import { SlideLowerThird } from './LowerThird';
@@ -107,7 +108,10 @@ export function MessageBanner({
       {messages.map((m, i) => (
         <span key={m.id} data-message={m.id}>
           {i > 0 && '   ·   '}
-          <MessageText message={m} timers={timers} calendar={calendar} />
+          {/* Its words' language (Sessions 31–36, I18N-4), by their letters. */}
+          <span lang={textLang(m.text)}>
+            <MessageText message={m} timers={timers} calendar={calendar} />
+          </span>
         </span>
       ))}
     </div>
@@ -244,7 +248,15 @@ export function TickerBand({
           fontWeight: 500,
         }}
       >
-        {text}
+        {/* Each announcement in its own language (Sessions 31–36, I18N-4), by its letters. */}
+        {ticker.items.map((item, i) => (
+          <Fragment key={i}>
+            {i > 0 && TICKER_GAP}
+            <span data-ticker-item="" lang={textLang(item.text)}>
+              {item.text}
+            </span>
+          </Fragment>
+        ))}
       </div>
     </div>
   );

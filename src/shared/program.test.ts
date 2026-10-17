@@ -68,6 +68,9 @@ describe('the lower third', () => {
     expect(text(lowerThird(kirtanSlide(), ['en', 'gu']))).toEqual(['Sample', 'નમૂનો']);
     expect(text(lowerThird(kirtanSlide(), null))).toEqual(['નમૂનો', 'नमूना', 'Namuno', 'Sample']);
     expect(lowerThird(kirtanSlide(), ['gu'])[0]?.lang).toBe('gu');
+    // Its transliteration says what it is of, though the Gujarati is left out (Sessions 31–36, I18N-4).
+    expect(lowerThird(kirtanSlide(), ['translit'])[0]?.translitOf).toBe('gu');
+    expect(lowerThird(kirtanSlide(), ['gu'])[0]?.translitOf).toBeUndefined();
   });
 
   it('shows every line of a slide that is not a kirtan’s, top to bottom, without blank lines', () => {

@@ -25,6 +25,12 @@ export const isIndic = (lang: Lang | null | undefined): boolean => lang != null 
 /** The line height new text gets (Sessions 31–36, I18N-2): room for Gujarati and Hindi marks above and below. */
 export const NEW_TEXT_LINE_HEIGHT = 1.35;
 
+/**
+ * What a transliteration is of (Sessions 31–36, I18N-4), for its `lang` tag: gu-Latn, hi-Latn or sa-Latn
+ * (Sanskrit in either script).
+ */
+export type TranslitSource = 'gu' | 'hi' | 'sa';
+
 /** A kirtan's language tracks (Edit words by language, the Kirtan dialog): the four kirtans are written in. */
 export type KirtanLang = Exclude<Lang, 'sa' | 'sa-gu'>;
 export const KIRTAN_LANGS: readonly KirtanLang[] = ['en', 'gu', 'hi', 'translit'];
@@ -206,6 +212,11 @@ export interface RenderSlide {
    * (see language-view.ts). Left out for any other slide, shown in full.
    */
   kirtan?: boolean;
+  /**
+   * What its transliteration is of, when a screen's languages left it without the lines it came from
+   * (language-view.ts; Sessions 31–36, I18N-4). Never stored: a slide in full says by its own lines.
+   */
+  translitOf?: TranslitSource;
 }
 
 /**

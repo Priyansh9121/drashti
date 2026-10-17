@@ -6,6 +6,8 @@ import { legacyFontOf } from '../../../shared/slide-edit';
 import { useMedia } from '../library/library-store';
 import { MediaStill } from '../render/MediaStill';
 import { ElementView } from '../render/SlideView';
+import { TranslitSourceContext } from '../render/lang';
+import { translitSource } from '../../../shared/tracks';
 import { MeasureContext, type MeasureReport } from '../render/measure';
 import { useElementSize } from '../render/useElementSize';
 import {
@@ -545,38 +547,41 @@ export function Canvas({ platform }: { platform: string }) {
             }}
           >
             {background?.mediaId && <CueStill mediaId={background.mediaId} props={background.props} />}
-            {/* Each text box's measure, for the inspector (words past the box, the size drawn). */}
-            <MeasureContext.Provider value={keepMeasure}>
-              {elements.map((el) => [
-                // Darkening behind the words (Sessions 31–36, SLD-3), as the screens draw it.
-                el.id === wholeUnder && slide.darken ? (
-                  <div
-                    key="darken"
-                    data-darken="whole"
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      background: `rgba(0, 0, 0, ${String(slide.darken.strength)})`,
-                      pointerEvents: 'none',
-                    }}
-                  />
-                ) : null,
-                el.id === editing && el.kind === 'text' ? (
-                  <TextBoxEditor key={el.id} el={el} slideId={slide.id} at={editAt} />
-                ) : (
-                  <ElementView
-                    key={el.id}
-                    el={el}
-                    media="still"
-                    band={
-                      slide.darken?.kind === 'band' && el.kind === 'text' && el.text.trim() !== ''
-                        ? slide.darken.strength
-                        : undefined
-                    }
-                  />
-                ),
-              ])}
-            </MeasureContext.Provider>
+            {/* Each text box's measure, for the inspector (words past the box, the size drawn); what the
+                slide's transliteration is of, for its words' lang (Sessions 31–36, I18N-4). */}
+            <TranslitSourceContext.Provider value={translitSource(elements)}>
+              <MeasureContext.Provider value={keepMeasure}>
+                {elements.map((el) => [
+                  // Darkening behind the words (Sessions 31–36, SLD-3), as the screens draw it.
+                  el.id === wholeUnder && slide.darken ? (
+                    <div
+                      key="darken"
+                      data-darken="whole"
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: `rgba(0, 0, 0, ${String(slide.darken.strength)})`,
+                        pointerEvents: 'none',
+                      }}
+                    />
+                  ) : null,
+                  el.id === editing && el.kind === 'text' ? (
+                    <TextBoxEditor key={el.id} el={el} slideId={slide.id} at={editAt} />
+                  ) : (
+                    <ElementView
+                      key={el.id}
+                      el={el}
+                      media="still"
+                      band={
+                        slide.darken?.kind === 'band' && el.kind === 'text' && el.text.trim() !== ''
+                          ? slide.darken.strength
+                          : undefined
+                      }
+                    />
+                  ),
+                ])}
+              </MeasureContext.Provider>
+            </TranslitSourceContext.Provider>
           </div>
           <Selection elements={selected} scale={scale} handles={!editing && single !== undefined} />
           {!editing && selected.length > 1 && <GroupBox elements={selected} scale={scale} />}

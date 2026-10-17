@@ -1,4 +1,4 @@
-import type { Lang, SlideElement, TextElement, TextRun } from './model';
+import type { Lang, SlideElement, TextElement, TextRun, TranslitSource } from './model';
 import { LANGS } from './model';
 import { langOfLine, mainLang, mergeRuns } from './text-runs';
 
@@ -93,6 +93,19 @@ export function withLines(el: TextElement, lines: readonly BoxLine[]): TextEleme
   // An emptied box keeps its language, so words in it come back where they were.
   const lang = mainLang(merged) ?? el.lang;
   return plain ? { ...rest, text, lang } : { ...rest, text, lang, runs: merged };
+}
+
+/**
+ * What a slide's transliteration is of (Sessions 31–36, I18N-4): its first Gujarati, Hindi or Sanskrit line in
+ * reading order; null when it has none.
+ */
+export function translitSource(elements: readonly SlideElement[]): TranslitSource | null {
+  for (const el of readingOrder(elements))
+    for (const line of boxLines(el)) {
+      if (line.lang === 'gu' || line.lang === 'hi') return line.lang;
+      if (line.lang === 'sa' || line.lang === 'sa-gu') return 'sa';
+    }
+  return null;
 }
 
 /** A slide's text boxes in reading order: top to bottom, then left to right. */

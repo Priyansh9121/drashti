@@ -7,9 +7,10 @@ import { EditorState, TextSelection } from 'prosemirror-state';
 import type { MarkViewConstructor } from 'prosemirror-view';
 import { EditorView } from 'prosemirror-view';
 import type { CSSProperties } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import type { TextElement } from '../../../shared/model';
-import { HTML_LANG } from '../render/fonts';
+import { htmlLang, TranslitSourceContext } from '../render/lang';
+import type { TranslitSource } from '../../../shared/model';
 import { runStyle, textBoxStyle, useShrinkToFit } from '../render/SlideView';
 import { commit, stopEditing, useEditor } from './editor-store';
 import { deleteElements, findSlide, mapElements } from './ops';
@@ -56,14 +57,14 @@ function cssText(style: CSSProperties): string {
 }
 
 /** How each run's text is drawn: as the renderer draws a run in this box. */
-function markViews(el: TextElement): Record<string, MarkViewConstructor> {
+function markViews(el: TextElement, source: TranslitSource | null): Record<string, MarkViewConstructor> {
   return {
     run: (mark: Mark) => {
       const look = mark.attrs['look'] as Look;
       const dom = document.createElement('span');
       dom.setAttribute('style', cssText(runStyle(look, el)));
       const lang = look.lang ?? el.lang;
-      if (lang) dom.setAttribute('lang', HTML_LANG[lang]);
+      if (lang) dom.setAttribute('lang', htmlLang(lang, source));
       if (look.lang) dom.dataset['lang'] = look.lang;
       if (look.legacy) dom.dataset['legacy'] = 'true';
       return { dom };
@@ -111,6 +112,8 @@ export function TextBoxEditor({
   const mount = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const [typed, setTyped] = useState(0);
+  // What the slide's transliteration is of, for its words' lang (Sessions 31–36, I18N-4).
+  const source = useContext(TranslitSourceContext);
   useShrinkToFit(box, mount, el, typed);
 
   // One editor per box being typed in.
@@ -135,7 +138,7 @@ export function TextBoxEditor({
             keymap(baseKeymap),
           ],
         }),
-        markViews: markViews(el),
+        markViews: markViews(el, source),
         attributes: {
           'data-testid': 'text-editing',
           role: 'textbox',
@@ -189,15 +192,15 @@ export function TextBoxEditor({
 
   // A new look for the whole box (the inspector): its words are drawn again in it.
   useEffect(() => {
-    view.current?.setProps({ markViews: markViews(el) });
-  }, [el]);
+    view.current?.setProps({ markViews: markViews(el, source) });
+  }, [el, source]);
 
   return (
     <div
       ref={box}
       data-element={el.id}
       data-editing="true"
-      lang={el.lang ? HTML_LANG[el.lang] : undefined}
+      lang={el.lang ? htmlLang(el.lang, source) : undefined}
       style={{
         ...textBoxStyle(el),
         cursor: 'text',
