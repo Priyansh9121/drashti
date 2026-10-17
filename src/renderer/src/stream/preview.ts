@@ -15,13 +15,43 @@ import { watchProgram } from './stream-store';
 export interface PreviewState {
   /** A frame has been drawn. */
   hasFrame: boolean;
-  /** The loudest point just now, dBFS (-100 for silence). */
-  levelDb: number;
+  /** The sound level, followed by the meter itself (see LevelSource). */
+  level: LevelSource;
+}
+
+/**
+ * The stream's sound level as it changes, about ten times a second: the loudest point just now, dBFS (-100
+ * for silence). The meter follows it through refs (Sessions 31–36, PERF-5a): kept as the panel's state, it
+ * drew the whole Stream panel again at each report, 16 commits a second.
+ */
+export interface LevelSource {
+  db(): number;
+  /** Told of each change; the answer stops it. */
+  listen(listener: (db: number) => void): () => void;
+}
+
+function levelSource(): LevelSource & { set(db: number): void } {
+  let db = -100;
+  const listeners = new Set<(db: number) => void>();
+  return {
+    db: () => db,
+    listen: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    set: (next) => {
+      db = next;
+      for (const listener of listeners) listener(next);
+    },
+  };
 }
 
 /** Watch the preview while mounted, drawing each frame on `canvas`. */
 export function usePreview(canvas: RefObject<HTMLCanvasElement | null>): PreviewState {
-  const [state, setState] = useState<PreviewState>({ hasFrame: false, levelDb: -100 });
+  const [hasFrame, setHasFrame] = useState(false);
+  const [level] = useState(levelSource);
   useEffect(() => {
     let port: MessagePort | null = null;
     let closed = false;
@@ -51,17 +81,14 @@ export function usePreview(canvas: RefObject<HTMLCanvasElement | null>): Preview
               if (target.height !== bitmap.height) target.height = bitmap.height;
               target.getContext('2d')?.drawImage(bitmap, 0, 0);
               bitmap.close();
-              setState((s) => (s.hasFrame ? s : { ...s, hasFrame: true }));
+              setHasFrame(true);
             },
             () => undefined,
           );
         } else if (m.kind === 'level' && typeof m.db === 'number') {
           // Like a mixer's meter: a peak shows at once and falls back at 20 dB a second (2 dB a report).
-          const db = m.db;
-          setState((s) => {
-            const shown = Math.max(db, s.levelDb - 2);
-            return Math.abs(s.levelDb - shown) < 0.5 ? s : { ...s, levelDb: shown };
-          });
+          const shown = Math.max(m.db, level.db() - 2);
+          if (Math.abs(level.db() - shown) >= 0.5) level.set(shown);
         }
       };
       next.start();
@@ -74,6 +101,6 @@ export function usePreview(canvas: RefObject<HTMLCanvasElement | null>): Preview
       release();
       port?.close();
     };
-  }, [canvas]);
-  return state;
+  }, [canvas, level]);
+  return { hasFrame, level };
 }

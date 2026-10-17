@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { StreamStatus } from '../../../shared/stream';
 import { STREAM_PRESETS } from '../../../shared/stream';
 import { useEngine } from '../engine/engine-store';
@@ -13,7 +13,7 @@ import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { Loading } from '../ui/States';
 import { LAYOUT_SHOWS, LayoutSwitch } from './LayoutSwitch';
-import { usePreview } from './preview';
+import { type LevelSource, usePreview } from './preview';
 import { OnAirControls, RecordingControls } from './StreamControls';
 import { closeStreamPanel, loadProfiles, useStream } from './stream-store';
 
@@ -28,29 +28,64 @@ import { closeStreamPanel, loadProfiles, useStream } from './stream-store';
 /** The level in words: above 0 dB the sound is clipped (too loud from the mixer). */
 const levelWords = (db: number) => (db <= -60 ? 'Silent' : db > 0 ? 'Too loud' : `${Math.round(db)} dB`);
 
-/** The stream's sound, from silence (-60 dB and below) to full (0 dB). */
-function LevelMeter({ db }: { db: number }) {
+/** How the meter shows a level: its fill, colour, words and their colour. */
+function meterLook(db: number) {
   const shown = Math.max(-60, Math.min(0, db));
-  const fill = ((shown + 60) / 60) * 100;
-  const tone = db > -3 ? 'bg-danger' : db > -12 ? 'bg-warning' : 'bg-success';
+  return {
+    shown,
+    fill: `${String(((shown + 60) / 60) * 100)}%`,
+    bar: cx('h-full', db > -3 ? 'bg-danger' : db > -12 ? 'bg-warning' : 'bg-success'),
+    words: levelWords(db),
+    wordsClass: cx('w-16 text-right text-xs tabular-nums', db > 0 ? 'text-danger-fg' : 'text-muted'),
+  };
+}
+
+/**
+ * The stream's sound, from silence (-60 dB and below) to full (0 dB). It follows the level itself, through
+ * refs, never as React state (Sessions 31–36, PERF-5a): ten reports a second would draw it all again.
+ */
+function LevelMeter({ level }: { level: LevelSource }) {
+  const meter = useRef<HTMLDivElement>(null);
+  const bar = useRef<HTMLDivElement>(null);
+  const words = useRef<HTMLSpanElement>(null);
+  const first = meterLook(level.db());
+  useLayoutEffect(() => {
+    const show = (db: number) => {
+      const look = meterLook(db);
+      meter.current?.setAttribute('aria-valuenow', String(Math.round(look.shown)));
+      meter.current?.setAttribute('aria-valuetext', look.words);
+      meter.current?.setAttribute('data-db', String(Math.round(db)));
+      if (bar.current) {
+        bar.current.className = look.bar;
+        bar.current.style.width = look.fill;
+      }
+      if (words.current) {
+        words.current.className = look.wordsClass;
+        words.current.textContent = look.words;
+      }
+    };
+    show(level.db());
+    return level.listen(show);
+  }, [level]);
   return (
     <div className="flex items-center gap-2">
       <Mic size={14} aria-hidden="true" className="shrink-0 text-muted" />
       <div
+        ref={meter}
         role="meter"
         aria-label="Sound level"
         aria-valuemin={-60}
         aria-valuemax={0}
-        aria-valuenow={Math.round(shown)}
-        aria-valuetext={levelWords(db)}
+        aria-valuenow={Math.round(first.shown)}
+        aria-valuetext={first.words}
         data-testid="stream-level"
-        data-db={Math.round(db)}
+        data-db={Math.round(level.db())}
         className="relative h-2.5 flex-1 overflow-hidden rounded-full border border-line-strong bg-panel-3"
       >
-        <div className={cx('h-full', tone)} style={{ width: `${fill}%` }} />
+        <div ref={bar} className={first.bar} style={{ width: first.fill }} />
       </div>
-      <span className={cx('w-16 text-right text-xs tabular-nums', db > 0 ? 'text-danger-fg' : 'text-muted')}>
-        {levelWords(db)}
+      <span ref={words} className={first.wordsClass}>
+        {first.words}
       </span>
     </div>
   );
@@ -174,7 +209,7 @@ export function StreamPanel() {
             </div>
           )}
         </div>
-        <LevelMeter db={preview.levelDb} />
+        <LevelMeter level={preview.level} />
       </section>
       {status ? (
         <>

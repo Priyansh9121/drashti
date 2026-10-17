@@ -27,5 +27,15 @@ describe('formatting for people', () => {
     const at = Date.UTC(2026, 9, 16, 19, 0);
     expect(formatClock(at, { locale: 'en-GB', timeZone: 'Asia/Kolkata' })).toBe('0:30');
     expect(formatClock(at, { locale: 'en-GB', timeZone: 'UTC' })).toBe('19:00');
+    // A style's formatter is made once (PERF-5d): asked again, the same words, a minute on as they should be.
+    expect(formatClock(at + 60_000, { locale: 'en-GB', timeZone: 'Asia/Kolkata' })).toBe('0:31');
+    // One this computer cannot write in: its own way, rather than no clock.
+    expect(formatClock(at, { locale: 'en-GB', timeZone: 'Placeholder/Nowhere' })).toBe(
+      new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+    );
+    // Without a style, this computer's own way (it follows the computer's zone, so it is never kept).
+    expect(formatClock(at, null)).toBe(
+      new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+    );
   });
 });
