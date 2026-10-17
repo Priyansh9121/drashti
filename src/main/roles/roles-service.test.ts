@@ -57,7 +57,7 @@ describe('roles', () => {
     const roles = make();
     expect(roles.on()).toBe(false);
     expect(roles.needsAdmin()).toBe(false);
-    expect(roles.view()).toEqual({ on: false, adminUntil: null, waitUntil: null });
+    expect(roles.view()).toEqual({ on: false, adminUntil: null, waitUntil: null, held: false });
     // Bad PINs are refused: letters, too short, the same twice.
     expect((await roles.setPins({ admin: '12ab', operator: '5555' })).ok).toBe(false);
     expect((await roles.setPins({ admin: '123', operator: '5555' })).ok).toBe(false);
@@ -159,11 +159,39 @@ describe('roles', () => {
     expect(() => readFileSync(file)).toThrow();
   });
 
-  it('treat a damaged PIN file as roles off (it can be set again)', async () => {
+  it('lock roles when the PIN file cannot be read: Simple Mode, admin refused, no PIN taken, a copy kept, held over a restart (decided 10 Oct; Sessions 31–36)', async () => {
     const { file, make } = setup();
     await make().setPins({ admin: '246810', operator: '135791' });
-    const { writeFileSync } = await import('node:fs');
+    const { existsSync, readdirSync, rmSync, writeFileSync } = await import('node:fs');
     writeFileSync(file, '{ not json');
-    expect(make().on()).toBe(false);
+    const held = make();
+    // On (so Drashti starts in Simple Mode), with admin refused and no way out by any PIN.
+    expect(held.on()).toBe(true);
+    expect(held.held()).toBe(true);
+    expect(held.needsAdmin()).toBe(true);
+    expect(held.view()).toMatchObject({ on: true, adminUntil: null, held: true });
+    for (const pin of ['246810', '135791', '000000']) {
+      const entered = await held.enter(pin);
+      expect(entered.ok ? '' : entered.message).toContain('could not read its PIN file');
+    }
+    const unlocked = await held.unlock('246810');
+    expect(unlocked.ok).toBe(false);
+    // Nobody sets new PINs over it either.
+    expect((await held.setPins({ admin: '112233', operator: '445566' })).ok).toBe(false);
+    // A copy beside it, with the date, and the file itself left as it was.
+    const dir = join(file, '..');
+    expect(readdirSync(dir).filter((f) => /^roles\.unreadable-.+\.json$/u.test(f))).toHaveLength(1);
+    expect(readFileSync(file, 'utf8')).toBe('{ not json');
+    // Held over a restart, even with the PIN file gone (a missing file alone would mean roles off).
+    rmSync(file);
+    expect(make().held()).toBe(true);
+    expect(make().on()).toBe(true);
+    // The admin guide's reset: roles.json and roles-held.json deleted. Then roles are off, to set again.
+    expect(existsSync(`${dir}/roles-held.json`)).toBe(true);
+    rmSync(`${dir}/roles-held.json`);
+    const reset = make();
+    expect(reset.held()).toBe(false);
+    expect(reset.on()).toBe(false);
+    expect((await reset.setPins({ admin: '112233', operator: '445566' })).ok).toBe(true);
   });
 });

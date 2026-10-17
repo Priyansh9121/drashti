@@ -55,9 +55,18 @@ export interface RolesView {
   adminUntil: number | null;
   /** Too many wrong PINs: none is checked until then (ms since the epoch), or null. */
   waitUntil: number | null;
+  /**
+   * Locked because the PIN file could not be read (Sessions 31–36): Simple Mode, admin refused, no PIN
+   * taken, until the admin guide's reset (roles.json and roles-held.json deleted at the computer).
+   */
+  held: boolean;
 }
 
-export const ROLES_OFF: RolesView = { on: false, adminUntil: null, waitUntil: null };
+export const ROLES_OFF: RolesView = { on: false, adminUntil: null, waitUntil: null, held: false };
+
+/** Why nothing is unlocked while roles are held. */
+export const ROLES_HELD =
+  'Drashti could not read its PIN file, so roles are locked: Simple Mode, with admin refused. An admin resets them at the computer (the admin guide, “Resetting a forgotten admin PIN”).';
 
 export type RolesResult = { ok: true; view: RolesView } | { ok: false; message: string; view: RolesView };
 

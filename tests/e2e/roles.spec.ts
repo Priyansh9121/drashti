@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ADMIN_REFUSAL } from '../../src/shared/roles';
 import { expectNoSeriousA11yIssues } from './a11y';
@@ -37,7 +37,7 @@ test('roles are off by default: Pro Mode changes anything without a PIN, and Sim
   const { app, userData } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
-  expect(await roles(win)).toEqual({ on: false, adminUntil: null, waitUntil: null });
+  expect(await roles(win)).toEqual({ on: false, adminUntil: null, waitUntil: null, held: false });
   await expect(win.getByTestId('role-chip')).toHaveCount(0);
   const made = await win.evaluate(() =>
     (globalThis as PageGlobals).drashti.screens.createGroup('Placeholder A'),
@@ -270,6 +270,54 @@ test('wrong PINs are limited, over a restart too; with roles on a clean start op
   );
   expect(still.ok ? '' : still.message).toContain('Try again in');
   expect(await mode(win)).toBe('simple');
+  await run.app.close();
+});
+
+test('a PIN file that cannot be read keeps roles locked, over a restart; the admin guide’s reset ends it (Sessions 31–36)', async () => {
+  test.setTimeout(150_000);
+  const first = await launchApp();
+  let win = await operatorPage(first.app);
+  await operatorReady(win);
+  await setPins(win);
+  await first.app.close();
+  // Damaged while Drashti was closed (a bad disk, a copy cut short).
+  writeFileSync(join(first.userData, 'roles.json'), '{ not json');
+  let run = await relaunchApp(first.userData);
+  win = await operatorPage(run.app);
+  await operatorReady(win);
+  // Locked, never off: Simple Mode, admin refused, and the start notice says why.
+  expect(await mode(win)).toBe('simple');
+  expect(await roles(win)).toMatchObject({ on: true, adminUntil: null, held: true });
+  await expect(win.getByRole('alert').filter({ hasText: 'could not read its PIN file' })).toBeVisible();
+  for (const pin of [OPERATOR, ADMIN]) {
+    const left = await win.evaluate(
+      (pin) => (globalThis as PageGlobals).drashti.app.setMode('pro', pin),
+      pin,
+    );
+    expect(left.ok ? '' : left.message).toContain('could not read its PIN file');
+    const unlocked = await win.evaluate((pin) => (globalThis as PageGlobals).drashti.roles.unlock(pin), pin);
+    expect(unlocked.ok).toBe(false);
+  }
+  expect(await mode(win)).toBe('simple');
+  // A copy kept beside it.
+  expect(readdirSync(first.userData).filter((f) => /^roles\.unreadable-.+\.json$/u.test(f))).toHaveLength(1);
+  await run.app.close();
+  // Still locked after a restart.
+  run = await relaunchApp(first.userData);
+  win = await operatorPage(run.app);
+  await operatorReady(win);
+  expect(await mode(win)).toBe('simple');
+  expect((await roles(win)).held).toBe(true);
+  await run.app.close();
+  // The admin guide's reset, at the computer: roles.json and roles-held.json deleted. Roles off, to set again.
+  rmSync(join(first.userData, 'roles.json'));
+  rmSync(join(first.userData, 'roles-held.json'));
+  run = await relaunchApp(first.userData);
+  win = await operatorPage(run.app);
+  await operatorReady(win);
+  expect(await roles(win)).toEqual({ on: false, adminUntil: null, waitUntil: null, held: false });
+  expect(await mode(win)).toBe('pro');
+  await setPins(win);
   await run.app.close();
 });
 

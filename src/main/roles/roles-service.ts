@@ -1,5 +1,6 @@
 import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
-import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { z } from 'zod';
 import type { Role, RolesResult, RolesView } from '../../shared/roles';
 import { parsePlain } from '../../shared/plain-parse';
@@ -10,8 +11,10 @@ import {
   PIN_LONGEST_WAIT_MS,
   pinChangeSchema,
   pinsSchema,
+  ROLES_HELD,
   waitText,
 } from '../../shared/roles';
+import { copyAside, readStateTwice } from '../state-file';
 
 /*
  * Roles as the main process keeps them (shared/roles.ts). Two PINs, each
@@ -22,6 +25,11 @@ import {
  * PIN_FREE_TRIES in a row nothing is checked for a minute, doubling with
  * each wrong PIN after that up to 15 minutes; the count survives a restart.
  * Log lines never carry a PIN or a hash.
+ *
+ * A PIN file there but unreadable (decided 10 Oct; Sessions 31–36) never means roles off, which would
+ * unlock everything: roles are held locked (Simple Mode, admin refused, no PIN taken, none set), a copy is
+ * kept beside it with the date, and roles-held.json holds that over a restart, until the admin guide's
+ * reset deletes roles.json and roles-held.json at the computer.
  */
 
 export interface PinHash {
@@ -65,6 +73,8 @@ export interface RolesDeps {
   cost?: { N: number; r: number; p: number };
   /** Run `run` after `ms` (setTimeout when left out): admin locks itself when its time is up. */
   schedule?: (ms: number, run: () => void) => () => void;
+  /** Tests: how long before a PIN file that failed is read once more (250 ms). */
+  retryMs?: number;
 }
 
 function derive(pin: string, salt: Buffer, cost: { N: number; r: number; p: number }): Promise<Buffer> {
@@ -96,6 +106,8 @@ export async function pinMatches(pin: string, stored: PinHash): Promise<boolean>
 
 export class RolesService {
   private data: RolesFile | null = null;
+  /** Held locked: the PIN file could not be read (now, or at an earlier start). */
+  private holding = false;
   /** Admin is unlocked until then (0: locked). */
   private adminUntil = 0;
   /** Locks admin again when its time is up. */
@@ -105,14 +117,48 @@ export class RolesService {
     this.data = this.read();
   }
 
+  /** The hold beside the PIN file: roles stay locked over a restart while it is there. */
+  private get holdFile(): string {
+    return join(dirname(this.deps.file), 'roles-held.json');
+  }
+
   private read(): RolesFile | null {
-    if (!existsSync(this.deps.file)) return null;
-    try {
-      return fileSchema.parse(JSON.parse(readFileSync(this.deps.file, 'utf8')));
-    } catch {
-      this.deps.log('warn', 'Roles: the PIN file cannot be read, so roles are off until PINs are set again');
+    if (existsSync(this.holdFile)) {
+      this.holding = true;
+      this.deps.log('warn', 'Roles: held locked since the PIN file could not be read (roles-held.json)');
       return null;
     }
+    const read = readStateTwice(
+      this.deps.file,
+      (raw) => {
+        const parsed = fileSchema.safeParse(raw);
+        return parsed.success ? parsed.data : null;
+      },
+      this.deps.retryMs,
+    );
+    if (read.status === 'ok') return read.value;
+    if (read.status === 'missing') return null;
+    const kept = copyAside(this.deps.file);
+    try {
+      writeFileSync(
+        this.holdFile,
+        `${JSON.stringify({ reason: read.reason, copy: kept ? basename(kept) : null }, null, 2)}\n`,
+        { mode: 0o600 },
+      );
+    } catch {
+      // Held for this run anyway; the PIN file is read again at the next start.
+    }
+    this.holding = true;
+    this.deps.log(
+      'warn',
+      `Roles: the PIN file cannot be read (${read.reason}); ${kept ? `a copy is kept as ${basename(kept)}` : 'it is left as it is'}. Roles are locked (Simple Mode, admin refused) until an admin resets them at the computer.`,
+    );
+    return null;
+  }
+
+  /** Held locked: the PIN file could not be read. */
+  held(): boolean {
+    return this.holding;
   }
 
   private write(data: RolesFile): void {
@@ -127,10 +173,11 @@ export class RolesService {
   }
 
   on(): boolean {
-    return this.data !== null;
+    return this.data !== null || this.holding;
   }
 
   adminUnlocked(): boolean {
+    if (this.holding) return false;
     return this.data === null || this.deps.now() < this.adminUntil;
   }
 
@@ -142,9 +189,10 @@ export class RolesService {
   view(): RolesView {
     const now = this.deps.now();
     return {
-      on: this.data !== null,
+      on: this.on(),
       adminUntil: this.data !== null && now < this.adminUntil ? this.adminUntil : null,
       waitUntil: this.data?.waitUntil != null && now < this.data.waitUntil ? this.data.waitUntil : null,
+      held: this.holding,
     };
   }
 
@@ -205,6 +253,7 @@ export class RolesService {
    * checked every time, so the time taken says nothing about which matched.
    */
   private async check(pin: string): Promise<{ role: Role } | { message: string }> {
+    if (this.holding) return { message: ROLES_HELD };
     const data = this.data;
     if (data === null) return { message: 'No PINs are set.' };
     const now = this.deps.now();
@@ -252,6 +301,7 @@ export class RolesService {
 
   /** Unlock admin with the admin PIN (an operator PIN unlocks nothing). */
   async unlock(pin: unknown): Promise<RolesResult> {
+    if (this.holding) return { ok: false, message: ROLES_HELD, view: this.view() };
     if (this.data === null) return { ok: true, view: this.view() };
     const result = await this.check(typeof pin === 'string' ? pin : '');
     if ('message' in result) return { ok: false, message: result.message, view: this.view() };
@@ -269,6 +319,7 @@ export class RolesService {
 
   /** Turn roles on with two PINs, or set both again (an admin, or anyone while roles are off). */
   async setPins(raw: unknown): Promise<RolesResult> {
+    if (this.holding) return { ok: false, message: ROLES_HELD, view: this.view() };
     const parsed = parsePlain(pinsSchema, raw, 'Those PINs cannot be used: type each again, then save.');
     if (!parsed.success) return { ok: false, message: parsed.message, view: this.view() };
     const [admin, operator] = await Promise.all([
@@ -286,6 +337,7 @@ export class RolesService {
 
   /** Change one PIN (an admin): it must differ from the other one. */
   async changePin(raw: unknown): Promise<RolesResult> {
+    if (this.holding) return { ok: false, message: ROLES_HELD, view: this.view() };
     const data = this.data;
     if (data === null)
       return { ok: false, message: 'Roles are off: set both PINs first.', view: this.view() };
@@ -305,6 +357,7 @@ export class RolesService {
 
   /** Roles off (an admin): both PINs go, and Drashti works as it did before roles. */
   turnOff(): RolesResult {
+    if (this.holding) return { ok: false, message: ROLES_HELD, view: this.view() };
     rmSync(this.deps.file, { force: true });
     this.data = null;
     this.adminUntil = 0;

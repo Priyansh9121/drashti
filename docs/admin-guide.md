@@ -77,13 +77,15 @@ With roles on:
 **Resetting a forgotten admin PIN.** It cannot be read back, so it is reset at the computer, by someone who can use its user account:
 
 1. Quit Drashti (on a Mac **Drashti**, then **Quit Drashti**; on Windows close its window).
-2. Delete the file `roles.json` from Drashti's data folder:
-   - **Mac:** in Finder choose **Go**, then **Go to Folder…**, paste `~/Library/Application Support/Drashti`, and drag `roles.json` to the Bin.
-   - **Windows:** paste `%APPDATA%\Drashti` into File Explorer's address bar, press Enter, and delete `roles.json`.
+2. Delete the file `roles.json` from Drashti's data folder, and `roles-held.json` too if it is there:
+   - **Mac:** in Finder choose **Go**, then **Go to Folder…**, paste `~/Library/Application Support/Drashti`, and drag `roles.json` (and `roles-held.json`) to the Bin.
+   - **Windows:** paste `%APPDATA%\Drashti` into File Explorer's address bar, press Enter, and delete `roles.json` (and `roles-held.json`).
 3. Start Drashti. Roles are now off: Simple Mode is left by typing **pro**.
 4. Set two new PINs in **File**, then **Roles and PINs…**.
 
 Nothing else changes: the library, the playlists and the settings are as they were.
+
+**If Drashti cannot read its PIN file** (a damaged disk, a copy cut short), it never takes that as roles off, which would let anyone in. It stays in **Simple Mode** with admin refused and no PIN taken, says so when it starts, keeps a copy of the file beside it (`roles.unreadable-` and the date) and writes `roles-held.json`, which keeps it locked over a restart. The reset above ends it.
 
 ---
 
