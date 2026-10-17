@@ -12,6 +12,7 @@ import {
   operatorPage,
   outputPage,
   relaunchApp,
+  savedLive,
   setUpScreen,
 } from './helpers';
 import { makeTestImage } from './test-media';
@@ -226,8 +227,8 @@ test('after a crash the playlist and the place in it come back, and Next carries
   await win.keyboard.press('Space');
   for (let i = 0; i < 3; i++) await win.keyboard.press('ArrowRight');
   await expect(win.getByTestId('live-text')).toContainText('slide 4 of 4');
-  // Give the save a moment, then stop dead.
-  await win.waitForTimeout(1500);
+  // Saved, then Drashti stops dead.
+  await savedLive(userData, (saved) => saved.slide?.slideIndex === 3 && saved['playlist'] != null);
   await killApp(app);
 
   const again = await relaunchApp(userData);

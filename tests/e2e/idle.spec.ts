@@ -10,12 +10,13 @@ import type { PageGlobals } from './helpers';
 import {
   importAndGetIds,
   launchApp,
+  letTimePass,
   openMoreTools,
   operatorPage,
   operatorReady,
   outputPages,
-  setUpScreen,
   outputReady,
+  setUpScreen,
 } from './helpers';
 import { makeTestImage } from './test-media';
 import { holdClock } from './placeholder-slides';
@@ -151,7 +152,7 @@ test('a lobby shows the rotation whenever nothing is up; started, the hall shows
       expect([h, l]).toEqual([frame.index, frame.index]);
       compared++;
     }
-    await win.waitForTimeout(700);
+    await letTimePass(win, 700, 'looked at again a little later in the rotation');
   }
   expect(compared).toBeGreaterThanOrEqual(3);
   // After the pictures, the quote of the day.

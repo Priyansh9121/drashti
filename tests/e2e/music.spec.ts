@@ -6,7 +6,15 @@ import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { apiCall, NETWORK_ENV, networkOn, pairToken } from './devices';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, killApp, launchApp, operatorPage, operatorReady, relaunchApp } from './helpers';
+import {
+  importAndGetIds,
+  killApp,
+  launchApp,
+  letTimePass,
+  operatorPage,
+  operatorReady,
+  relaunchApp,
+} from './helpers';
 import { makeTestTone } from './test-media';
 
 /*
@@ -49,8 +57,7 @@ async function sampleVolumes(audio: Page, mediaId: string): Promise<() => Promis
     (globalThis as VolumeSamples).volumeSamples = { seen, timer };
   }, mediaId);
   return async () => {
-    // A moment more, so the last samples come after what the test waited for.
-    await audio.waitForTimeout(60);
+    await letTimePass(audio, 60, 'the last volume samples come after what the test waited for');
     return audio.evaluate(() => {
       const samples = (globalThis as VolumeSamples).volumeSamples;
       if (samples) clearInterval(samples.timer);

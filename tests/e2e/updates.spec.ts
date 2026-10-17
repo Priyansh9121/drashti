@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helpers';
+import { chooseMenuItem, holdStill, launchApp, operatorPage, operatorReady } from './helpers';
 import { launchMain, launchNode, nodeCode, nodesStatus, typePairing } from './nodes';
 import { releaseServer } from './release-server';
 
@@ -68,8 +68,7 @@ test('an update is offered with what changed, downloads (waiting while on air), 
     });
     await dialog.getByTestId('updates-download').click();
     await expect(dialog).toContainText('Waiting: the stream is on air or recording');
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    expect(release.served()).toBe(0);
+    await holdStill(() => release.served() === 0, 1500, 'on air, nothing is fetched');
     await app.evaluate(() => {
       (globalThis as { drashtiTestOnAir?: (on: boolean) => void }).drashtiTestOnAir?.(false);
     });

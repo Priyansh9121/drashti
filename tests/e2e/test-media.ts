@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
+import { letTimePass } from './helpers';
 
 /*
  * Test media, made while the test runs (nothing is committed): a PNG drawn
@@ -63,7 +64,7 @@ export async function makeTestVideo(page: Page, file: string, options: TestVideo
     // Five tries, a second apart: a busy CI computer can hold a page up for a while.
     if (attempt === 5) throw new Error(`The page recorded no whole video in five tries: ${problem}.`);
     console.log(`A test video was recorded again: ${problem}.`);
-    await page.waitForTimeout(1000);
+    await letTimePass(page, 1000, 'a busy computer is given a second before the video is recorded again');
   }
 }
 
@@ -112,6 +113,7 @@ function recordWebm(page: Page, options: TestVideoOptions): Promise<{ base64: st
       const start = performance.now();
       while (performance.now() - start < seconds * 1000) {
         draw((performance.now() - start) / 1000);
+        // eslint-disable-next-line no-restricted-syntax -- in the page: a video's frames drawn one each 1/fps s
         await new Promise((resolve) => setTimeout(resolve, 1000 / fps));
       }
       const ms = performance.now() - start;

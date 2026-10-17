@@ -1,7 +1,15 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, outputPages, setUpScreen, outputReady } from './helpers';
+import {
+  holdStill,
+  launchApp,
+  letTimePass,
+  operatorPage,
+  outputPages,
+  outputReady,
+  setUpScreen,
+} from './helpers';
 
 /*
  * Timers: the engine sends only start, pause and reset; every window works
@@ -12,9 +20,9 @@ import { launchApp, operatorPage, outputPages, setUpScreen, outputReady } from '
 const snapshot = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
 
 /** Wait until the timer is half-way through a second, so no window is about to turn over. */
-async function midSecond(startedAt: number): Promise<void> {
+async function midSecond(page: Page, startedAt: number): Promise<void> {
   const phase = (Date.now() - startedAt) % 1000;
-  await new Promise((resolve) => setTimeout(resolve, (1500 - phase) % 1000));
+  await letTimePass(page, (1500 - phase) % 1000, 'to the middle of a second of the timer');
 }
 
 test('a countdown on the audience screens stays in step on two windows, with no message a second', async () => {
@@ -48,7 +56,7 @@ test('a countdown on the audience screens stays in step on two windows, with no 
   // Sampled together, half-way through a second: the same time on both, counting down.
   const seen: string[] = [];
   for (let i = 0; i < 3; i++) {
-    await midSecond(startedAt);
+    await midSecond(win, startedAt);
     const [ta, tb] = await Promise.all([timerOn(a).innerText(), timerOn(b).innerText()]);
     expect(ta).toBe(tb);
     seen.push(ta);
@@ -61,8 +69,11 @@ test('a countdown on the audience screens stays in step on two windows, with no 
   await row.getByRole('button', { name: 'Pause' }).click();
   await expect(row).not.toHaveAttribute('data-running', 'true');
   const paused = await timerOn(a).innerText();
-  await win.waitForTimeout(1500);
-  expect([await timerOn(a).innerText(), await timerOn(b).innerText()]).toEqual([paused, paused]);
+  await holdStill(
+    async () => (await timerOn(a).innerText()) === paused && (await timerOn(b).innerText()) === paused,
+    1500,
+    'paused, both windows stay where they stopped',
+  );
   // Reset: back to 5:00 everywhere.
   await row.getByRole('button', { name: 'Reset' }).click();
   for (const p of [a, b]) await expect(timerOn(p)).toHaveText('Placeholder sabha starts in 5:00');

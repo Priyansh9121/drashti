@@ -1,7 +1,7 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { OutputGlobals, PageGlobals } from './helpers';
-import { launchApp, operatorPage, operatorReady, outputPages, outputReady } from './helpers';
+import { launchApp, letTimePass, operatorPage, operatorReady, outputPages, outputReady } from './helpers';
 import { canvasPixels, near } from './pixels';
 
 /*
@@ -182,7 +182,7 @@ test('the fill and the key dissolve together, and paint each change within frame
   const changes = 40;
   for (let i = 0; i < changes; i++) {
     await goLive(i % 2);
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await letTimePass(win, 150, 'the slides change every 150 ms');
   }
   const last = (await win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot())).rev;
   await expect

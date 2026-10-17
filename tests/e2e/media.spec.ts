@@ -74,6 +74,7 @@ test('library media reaches the windows by id only, with byte ranges, and nothin
       () => 'fetched',
       () => 'refused',
     );
+    // eslint-disable-next-line no-restricted-syntax -- in the page: the violation is reported a moment after the fetch fails
     await new Promise((resolve) => setTimeout(resolve, 50));
     return { outcome, violated };
   }, `drashti-media://media/${imageId}`);

@@ -13,12 +13,14 @@ import { expectFits } from './fit';
 import { filesUnder, findSecrets } from './secrets';
 import {
   chooseMenuItem,
+  holdStill,
   killApp,
   launchApp,
+  letTimePass,
   operatorPage,
   operatorReady,
-  relaunchApp,
   type PageGlobals,
+  relaunchApp,
 } from './helpers';
 import {
   freePort,
@@ -141,8 +143,7 @@ test('go live to the stand-in for YouTube: H.264 and AAC, a keyframe every 2 s; 
   await expect(panel.getByText(/Encoder: /u)).toBeVisible();
   await expectNoSeriousA11yIssues(win, 'the Stream panel on air');
   await expectFits(panel, 'the Stream panel on air at 1280 x 720');
-  // Several keyframes' worth.
-  await win.waitForTimeout(7000);
+  await letTimePass(win, 7000, 'several keyframes’ worth of stream');
 
   await panel.getByTestId('end-stream').click();
   const end = win.getByTestId('end-confirm');
@@ -185,7 +186,7 @@ test('cut the connection mid-stream: it reconnects by itself, and the recording 
   await waitLive(win, userData, 'live', 30_000);
   await expect(win.getByTestId('rec')).toBeVisible();
   const recordingSince = Date.now();
-  await win.waitForTimeout(3000);
+  await letTimePass(win, 3000, 'the stream and the recording run a few seconds');
 
   // The far end goes away, as when the internet drops.
   first.kill('SIGKILL');
@@ -194,14 +195,14 @@ test('cut the connection mid-stream: it reconnects by itself, and the recording 
   await expect(win.getByTestId('on-air')).toContainText('reconnecting');
   // Recording goes on meanwhile.
   expect((await bridge(win).status()).recording.state).toBe('recording');
-  await win.waitForTimeout(2000);
+  await letTimePass(win, 2000, 'the recording goes on while the stream tries again');
 
   // It comes back: Drashti connects again by itself.
   listeners.push(rtmpListener(ffmpeg ?? '', port, join(dir, 'second.flv')));
   await waitLive(win, userData, 'live', 45_000);
   const after = await bridge(win).status();
   expect(after.live.reconnects).toBeGreaterThanOrEqual(1);
-  await win.waitForTimeout(3000);
+  await letTimePass(win, 3000, 'the stream and the recording run on once it is back');
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     await d.stream.end({ confirmed: true });
@@ -445,7 +446,7 @@ test('on air, and on air again, with the preview watched and a picture standing 
       .poll(
         async () => {
           const before = await frames();
-          await win.waitForTimeout(2500);
+          await letTimePass(win, 2500, 'the stream’s frames are counted again a moment later');
           return (await frames()) === before;
         },
         { message: 'the capture gives no new frame: the picture stands still', timeout: 30_000 },
@@ -511,9 +512,12 @@ test('a quit on purpose while on air and recording: the next start is off air, n
   const win2 = await operatorPage(again.app);
   await operatorReady(win2);
   // The stream resumes (when it does) as the operator window finishes loading: give it time to.
-  await win2.waitForTimeout(5000);
+  await holdStill(
+    async () => (await bridge(win2).status()).live.state === 'off',
+    5000,
+    'after a quit on purpose, the stream does not go live again by itself',
+  );
   const after = await bridge(win2).status();
-  expect(after.live.state).toBe('off');
   expect(after.recording.state).toBe('off');
   expect(after.resume).toBeNull();
   await expect(win2.getByRole('alert').filter({ hasText: 'stopped unexpectedly' })).toHaveCount(0);
@@ -538,7 +542,7 @@ test('after a crash on air: back on air by itself within 5 minutes, in a new rec
     await d.stream.goLive({ confirmed: true });
   });
   await waitLive(win, userData, 'live', 30_000);
-  await win.waitForTimeout(3000);
+  await letTimePass(win, 3000, 'the recording has a few seconds in it before the crash');
   // On Windows, safeStorage's own key lives in Chromium's Local State file, written a few seconds after
   // it is made: a crash before that leaves the stream key unreadable (a real crash that soon after
   // saving a key would too; the operator is then asked to paste it again).
@@ -565,7 +569,7 @@ test('after a crash on air: back on air by itself within 5 minutes, in a new rec
     timeout: 20_000,
   });
   expect((await bridge(win2).status()).recording.state).toBe('recording');
-  await win2.waitForTimeout(3000);
+  await letTimePass(win2, 3000, 'the new recording has a few seconds in it');
   await win2.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     await d.stream.end({ confirmed: true });

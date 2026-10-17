@@ -7,13 +7,14 @@ import { expectNoSeriousA11yIssues } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import type { PageGlobals } from './helpers';
 import {
+  holdStill,
   importAndGetIds,
   launchApp,
   operatorPage,
   operatorReady,
   outputPages,
-  setUpScreen,
   outputReady,
+  setUpScreen,
 } from './helpers';
 import { makeTestVideo } from './test-media';
 
@@ -65,6 +66,7 @@ function offsetOf(page: Page, selector: string, t: Timing): Promise<number | nul
         const expected = start + ((from - start + elapsed) % span);
         const off = v.currentTime - expected;
         samples.push(((((off + span / 2) % span) + span) % span) - span / 2);
+        // eslint-disable-next-line no-restricted-syntax -- in the page: samples 60 ms apart while the video plays
         await new Promise((resolve) => setTimeout(resolve, 60));
       }
       samples.sort((a, b) => a - b);
@@ -318,7 +320,14 @@ test('a file played once stops at its end point, within two frames, on two scree
       )
       .toBe(true);
   // A moment more: nothing moves on from there.
-  await new Promise((resolve) => setTimeout(resolve, 1000));
+  await holdStill(
+    async () => {
+      for (const c of copies) if ((await watched(c.page, c.selector)).paused !== true) return false;
+      return true;
+    },
+    1000,
+    'held at the end point, nothing moves on',
+  );
   for (const c of copies) {
     const w = await watched(c.page, c.selector);
     console.log(

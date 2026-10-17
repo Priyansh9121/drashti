@@ -4,7 +4,14 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { chooseMenuItem, launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import {
+  chooseMenuItem,
+  holdStill,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  type PageGlobals,
+} from './helpers';
 import { testFfmpeg } from './stream-helpers';
 
 /*
@@ -130,8 +137,7 @@ test('YouTube: details, quality up to the setting, the tick each time, MP4 and M
   await expect
     .poll(() => [first?.pid ?? 0, first?.child ?? 0].filter(alive), { timeout: 15_000 })
     .toEqual([]);
-  await win.waitForTimeout(1500);
-  expect(fakeStarts(log)).toHaveLength(1);
+  await holdStill(() => fakeStarts(log).length === 1, 1500, 'on air, yt-dlp is not started again');
   // A part-file under a hidden name only: nothing under a real name yet.
   expect(readdirSync(chosen).every((n) => n.startsWith('.drashti-youtube-'))).toBe(true);
   // Off air: it starts again, carrying on from its part-file, and finishes.
@@ -185,8 +191,7 @@ test('YouTube: on air, looking at a link waits; a look going stops (yt-dlp and i
   await expect(looking).toHaveText(
     'Waiting: the stream is on air or recording. It goes on by itself afterwards.',
   );
-  await win.waitForTimeout(1500);
-  expect(looks()).toEqual([]);
+  await holdStill(() => looks().length === 0, 1500, 'on air, the link is not looked at');
   // Off air: it looks. On air again while it looks: yt-dlp (and the child it started) stop, and it waits.
   await setOnAir(app, false);
   await expect.poll(() => looks().length, { timeout: 30_000 }).toBe(1);
@@ -197,8 +202,7 @@ test('YouTube: on air, looking at a link waits; a look going stops (yt-dlp and i
   await expect
     .poll(() => [first?.pid ?? 0, first?.child ?? 0].filter(alive), { timeout: 15_000 })
     .toEqual([]);
-  await win.waitForTimeout(1500);
-  expect(looks()).toHaveLength(1);
+  await holdStill(() => looks().length === 1, 1500, 'on air again, it does not look again');
   await expect(win.getByTestId('link-name')).toHaveCount(0);
   // Off air: it looks again by itself, and the video's details come.
   await setOnAir(app, false);

@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import type { EngineCommand } from '../../src/shared/engine/commands';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
-import { launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import { holdStill, launchApp, letTimePass, operatorPage, operatorReady, type PageGlobals } from './helpers';
 import { freePort, rtmpListener, setUpStream, streamPage, testFfmpeg } from './stream-helpers';
 
 /*
@@ -106,9 +106,14 @@ test('Screens opens with three cards, the projector, the stage screen and YouTub
   await expect(youtube.getByTestId('youtube-open-stream')).toBeVisible();
   // Its preview is a still of what the stream would show: nothing has started.
   await expect(youtube.getByTestId('youtube-preview')).toHaveAttribute('data-kind', 'still');
-  await win.waitForTimeout(1500);
-  const s = await status(win);
-  expect([s.programOn, s.live.state, s.recording.state]).toEqual([false, 'off', 'off']);
+  await holdStill(
+    async () => {
+      const s = await status(win);
+      return !s.programOn && s.live.state === 'off' && s.recording.state === 'off';
+    },
+    1500,
+    'opening Screens starts nothing',
+  );
   await expectNoSeriousA11yIssues(win, 'Screens with its three cards');
   await expectFits(
     win.getByRole('dialog', { name: 'Screens' }),
@@ -168,7 +173,7 @@ test('the YouTube card and the Stream panel are one setting: the layout and lang
   await expect(program.getByTestId('scene')).not.toContainText('નમૂનાની');
   // The slide off: the hall's magenta background goes out.
   await run(win, { type: 'clearLayer', layer: 'slide' });
-  await win.waitForTimeout(4000);
+  await letTimePass(win, 4000, 'the stream sends a few seconds of the hall’s magenta (checked at the end)');
   await win.getByRole('button', { name: 'Close screens' }).click();
 
   // The Stream panel shows the same; back the other way from there: the camera, and every language.
@@ -189,7 +194,7 @@ test('the YouTube card and the Stream panel are one setting: the layout and lang
   await openScreens(win);
   await expect(youtube.getByTestId('youtube-layout-camera')).toHaveAttribute('aria-checked', 'true');
   await expect(youtube.getByTestId('languages-all')).toBeChecked();
-  await win.waitForTimeout(4000);
+  await letTimePass(win, 4000, 'the stream sends a few seconds of the camera again (checked at the end)');
   await win.getByRole('button', { name: 'Close screens' }).click();
 
   await win.getByTestId('open-stream').click();

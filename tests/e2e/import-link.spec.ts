@@ -10,7 +10,14 @@ import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
 import { makeDropboxLikeZip, makeZip } from '../../src/main/import/testing/zip-writer';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { dropboxStandIn, fileLink, folderLink, type StandIn, type StandInFile } from './dropbox-stand-in';
-import { chooseMenuItem, launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import {
+  chooseMenuItem,
+  holdStill,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  type PageGlobals,
+} from './helpers';
 import { mouseDrag } from './mouse-drag';
 import { testFfmpeg } from './stream-helpers';
 import { makeTestImage } from './test-media';
@@ -153,8 +160,11 @@ test('Dropbox: a file link and a folder link are saved in the chosen folder, the
   await expect(dialog).toHaveCount(0);
   const status = win.getByTestId('link-status');
   await expect(status).toHaveAttribute('data-phase', 'waiting');
-  await win.waitForTimeout(2500);
-  expect(standIn.requests.length).toBe(asked);
+  await holdStill(
+    () => standIn?.requests.length === asked,
+    2500,
+    'with the dialog closed, nothing more is fetched on air',
+  );
   await status.click();
   await expect(dialog).toBeVisible();
   await setOnAir(app, false);

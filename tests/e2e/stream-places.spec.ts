@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, operatorReady } from './helpers';
+import { launchApp, letTimePass, operatorPage, operatorReady } from './helpers';
 import { freePort, rtmpListener, setUpStream, TEST_KEY, testFfmpeg } from './stream-helpers';
 
 /*
@@ -74,7 +74,7 @@ test('one stream to two places at once: both receive it; one dropping leaves the
   // Back: both again.
   listeners.push(rtmpListener(ffmpeg ?? '', portA, join(dir, 'first-again.flv')));
   await expect(onAir).toHaveText('On air · 2 of 2', { timeout: 40_000 });
-  await win.waitForTimeout(3000);
+  await letTimePass(win, 3000, 'both places carry the stream a few seconds again');
 
   await panel.getByTestId('end-stream').click();
   await win.getByTestId('end-confirm').getByRole('button', { name: 'End the stream' }).click();

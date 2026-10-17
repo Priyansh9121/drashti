@@ -28,6 +28,7 @@ async function playedOver(page: Page, mediaId: string, ms: number): Promise<numb
       );
       if (!v) return -1;
       const before = v.currentTime;
+      // eslint-disable-next-line no-restricted-syntax -- in the page: how far the video plays in this long
       await new Promise((resolve) => setTimeout(resolve, ms));
       const d = v.duration;
       return (((v.currentTime - before) % d) + d) % d;
@@ -291,6 +292,7 @@ test('images and videos placed on slides draw on the outputs; thumbnails show st
   const playedFor = () =>
     video.evaluate(async (v: HTMLVideoElement) => {
       const before = v.currentTime;
+      // eslint-disable-next-line no-restricted-syntax -- in the page: how far the video plays in 400 ms
       await new Promise((resolve) => setTimeout(resolve, 400));
       return { delta: v.currentTime - before, muted: v.muted, loop: v.loop };
     });

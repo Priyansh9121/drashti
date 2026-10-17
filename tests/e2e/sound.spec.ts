@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import type { PageGlobals } from './helpers';
 import {
+  holdStill,
   importAndGetIds,
   launchApp,
   operatorPage,
@@ -47,6 +48,7 @@ async function offsetOf(page: Page, selector: string, startedAt: number): Promis
         const expected = ((Date.now() - startedAt) / 1000) % d;
         const off = v.currentTime - expected;
         samples.push(((((off + d / 2) % d) + d) % d) - d / 2);
+        // eslint-disable-next-line no-restricted-syntax -- in the page: samples 60 ms apart while it plays
         await new Promise((resolve) => setTimeout(resolve, 60));
       }
       samples.sort((a, b) => a - b);
@@ -152,13 +154,11 @@ test('outputs and the sound stay in step, a reloaded output rejoins, and only th
         Math.max(...known) - Math.min(...known) < 2 * FRAME
       );
     };
-    const end = Date.now() + 15_000;
-    while (!(await agree())) {
-      if (Date.now() > end) {
-        const states = await describe(pages, selectors);
-        throw new Error(`Not in step after 15 s. Offsets ${JSON.stringify(offsets)}; ${states.join(' | ')}`);
-      }
-      await new Promise((resolve) => setTimeout(resolve, 250));
+    try {
+      await expect.poll(agree, { timeout: 15_000, intervals: [250] }).toBe(true);
+    } catch {
+      const states = await describe(pages, selectors);
+      throw new Error(`Not in step after 15 s. Offsets ${JSON.stringify(offsets)}; ${states.join(' | ')}`);
     }
     return offsets as number[];
   };
@@ -373,8 +373,11 @@ test("an audio cue plays on the audio layer with the cue's volume and looping; C
   await win.keyboard.press('ArrowRight');
   await expect(win.getByTestId('live-text')).toContainText('slide 2 of 2');
   await expect(cue).toHaveAttribute('data-key', key ?? '');
-  await new Promise((resolve) => setTimeout(resolve, 2500));
-  expect(await cue.evaluate((el: HTMLAudioElement) => !el.paused)).toBe(true);
+  await holdStill(
+    () => cue.evaluate((el: HTMLAudioElement) => !el.paused),
+    2500,
+    'the sound plays on past the end of its 2 s file',
+  );
   expect(await soundingIn(win)).toBe(0);
 
   // Clear audio (F6) stops it; the slide stays up.

@@ -5,15 +5,17 @@ import { expectNoSeriousA11yIssues } from './a11y';
 import { device, networkOn, NETWORK_ENV, TABLET } from './devices';
 import { expectFits } from './fit';
 import {
+  holdStill,
   killApp,
   launchApp,
   operatorPage,
   operatorReady,
   outputPages,
+  outputReady,
   type PageGlobals,
   relaunchApp,
+  savedLive,
   setUpScreen,
-  outputReady,
 } from './helpers';
 
 /*
@@ -184,8 +186,11 @@ test('from a phone: edited and approved as a message, one in the ticker in step 
     await holdClock(app, Date.now());
     for (const output of [main, side]) await expect.poll(async () => (await phase(output)).paused).toBe(true);
     const [held, heldSide] = [(await phase(main)).at, (await phase(side)).at];
-    await main.waitForTimeout(600);
-    expect((await phase(main)).at).toBe(held);
+    await holdStill(
+      async () => (await phase(main)).at === held,
+      600,
+      'the held clock holds the ticker where it is',
+    );
     expect(Math.abs(held - heldSide)).toBeLessThan(1);
     await holdClock(app, null);
     await expect.poll(async () => (await phase(main)).at).not.toBe(held);
@@ -272,7 +277,12 @@ test('after a crash, an approved announcement is back on the screens until its t
     await expect(main.locator('[data-layer="messages"]')).toHaveCount(0);
     const startedAt = (await main.getByTestId('ticker-words').getAttribute('data-started-at')) ?? '';
     // Saved, then Drashti stops dead.
-    await win.waitForTimeout(1500);
+    await savedLive(
+      userData,
+      (saved) =>
+        saved.ticker?.items.some((i) => i.text.includes('kept through a crash')) === true &&
+        (saved.messages ?? []).length === 0,
+    );
     await killApp(app);
 
     const again = await relaunchApp(userData, ENV);

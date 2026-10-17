@@ -7,10 +7,11 @@ import { device, networkOn, NETWORK_ENV, pairByQr, pairingCode, TABLET } from '.
 import {
   importAndGetIds,
   launchApp,
+  letTimePass,
   operatorPage,
   operatorReady,
-  outputPages,
   type OutputGlobals,
+  outputPages,
   type PageGlobals,
   setUpScreen,
   windowShowing,
@@ -71,7 +72,7 @@ async function settled(page: Page, mask: Locator[] = []): Promise<Buffer> {
     const shot = await page.screenshot({ mask, maskColor: '#ff00ff', animations: 'allow' });
     if (last?.equals(shot)) return shot;
     last = shot;
-    await page.waitForTimeout(250);
+    await letTimePass(page, 250, 'the screen looked at again, to see it has settled');
   }
   throw new Error(`${page.url()} never settled`);
 }

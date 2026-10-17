@@ -204,6 +204,30 @@ export default defineConfig(
     languageOptions: { globals: globals.node },
   },
   {
+    // End-to-end tests wait for a condition, never for a while (Sessions 31–36, TST-6, TST-7): where time
+    // itself is tested, or something must not happen, or Drashti must have saved the show before it is
+    // stopped dead, tests/e2e/helpers.ts says so (letTimePass, holdStill, savedLive, nodeSaved).
+    files: ['tests/e2e/**/*.ts'],
+    ignores: ['tests/e2e/helpers.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.property.name='waitForTimeout']",
+          message:
+            'Wait for a condition (a locator, expect.poll), or say why time must pass: letTimePass, holdStill, savedLive or nodeSaved (tests/e2e/helpers.ts).',
+        },
+        {
+          selector:
+            "NewExpression[callee.name='Promise'] CallExpression[callee.name='setTimeout'][arguments.0.type='Identifier']",
+          message:
+            'A sleep: wait for a condition (expect.poll), or say why time must pass: letTimePass or holdStill (tests/e2e/helpers.ts).',
+        },
+      ],
+    },
+  },
+
+  {
     // The shared contracts run in every process: no Node, DOM or Electron.
     files: ['src/shared/**'],
     languageOptions: { globals: {} },
