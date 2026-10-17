@@ -204,6 +204,13 @@ test('the audience screens show exactly what the earlier build showed, frame by 
     const isStream = (p: Page) => p.url().includes('stream.html');
     const program = await windowShowing(app, isStream, 'stream');
     await expect(program.getByTestId('program-root')).toBeVisible();
+    // Ready to draw the show: until its fonts load and its GPU warms up the stream's picture is black, as both
+    // builds make it (Session 27). CI's Windows, drawing without a GPU, was still warming up when its first
+    // slide was taken (run 39074386719: "stream-p1-s1: 36465 pixels changed", a black frame against the
+    // slide, which lights 34,646 pixels on a Mac).
+    await expect(program.getByTestId('program-root')).toHaveAttribute('data-fonts', 'ready', {
+      timeout: 60_000,
+    });
 
     // The stage display on a tablet (Safari's engine).
     const { base } = await networkOn(win);
