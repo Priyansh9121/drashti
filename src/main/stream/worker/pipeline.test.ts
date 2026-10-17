@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from 'node:child_process';
+import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import {
   existsSync,
   fdatasync,
@@ -91,17 +91,21 @@ async function until(what: string, check: () => boolean, ms = 30_000): Promise<v
 }
 
 /**
- * Frames (a grey that changes) and sound, 1/30 s at a time, until stopped; and the seconds fed so
- * far (the recording's own time: a slow runner's timer can fall behind the clock).
+ * Frames (a grey that changes) and sound (a 440 Hz tone, 0.2 unless `loud` says otherwise), 1/30 s at a
+ * time, until stopped; and the seconds fed so far (the recording's own time: a slow runner's timer can
+ * fall behind the clock).
  */
-function feed(p: StreamPipeline): { stop: () => void; fed: () => number } {
+function feed(
+  p: StreamPipeline,
+  loud: { amplitude: number } = { amplitude: 0.2 },
+): { stop: () => void; fed: () => number } {
   p.fromProgram({ kind: 'format', width: preset.width, height: preset.height, format: 'I420' });
   let n = 0;
   const timer = setInterval(() => {
     const frame = new Uint8Array((preset.width * preset.height * 3) / 2).fill((n * 7) % 255);
     p.fromProgram({ kind: 'video', data: frame.buffer });
     const audio = new Float32Array(1600 * 2).map(
-      (_, i) => 0.2 * Math.sin((2 * Math.PI * 440 * (n * 1600 + (i >> 1))) / 48_000),
+      (_, i) => loud.amplitude * Math.sin((2 * Math.PI * 440 * (n * 1600 + (i >> 1))) / 48_000),
     );
     p.fromProgram({ kind: 'audio', data: audio.buffer, frames: 1600 });
     n++;
@@ -112,6 +116,34 @@ function feed(p: StreamPipeline): { stop: () => void; fed: () => number } {
     },
     fed: () => n / 30,
   };
+}
+
+/**
+ * A recording's sound as the bundled FFmpeg reads it back: its peak and RMS (dBFS), from 0.5 s in and
+ * without stretches of silence (a slow runner's feed can stall, and silence keeps the time meanwhile).
+ */
+function soundLevels(file: string): { peak: number; rms: number } {
+  const r = spawnSync(
+    ffmpeg,
+    [
+      '-hide_banner',
+      '-nostats',
+      '-i',
+      file,
+      '-map',
+      '0:a:0',
+      '-af',
+      'atrim=start=0.5,silenceremove=stop_periods=-1:stop_duration=0.05:stop_threshold=-60dB,astats=metadata=0:reset=0',
+      '-f',
+      'null',
+      '-',
+    ],
+    { encoding: 'utf8', env: withoutReport() },
+  );
+  const overall = r.stderr.slice(r.stderr.lastIndexOf('Overall'));
+  const value = (name: string) =>
+    Number(new RegExp(`${name}: (-?[0-9.]+|-inf)`, 'u').exec(overall)?.[1] ?? NaN);
+  return { peak: value('Peak level dB'), rms: value('RMS level dB') };
 }
 
 describe.skipIf(!existsSync(ffmpeg))('the stream pipeline, with FFmpeg', () => {
@@ -509,9 +541,39 @@ describe.skipIf(!existsSync(ffmpeg))('the stream pipeline, with FFmpeg', () => {
     expect(produced).toBeGreaterThan(0);
     expect(total).toBe(produced);
     // Kept on the disk about every 10 s, the first within 10 s of starting.
-    const gaps = [syncs[0] ?? 0, ...syncs.slice(1)].map(
-      (t, i) => t - (i === 0 ? startedAt : (syncs[i - 1] ?? 0)),
-    );
+    const gaps = syncs.map((t, i) => t - (i === 0 ? startedAt : (syncs[i - 1] ?? 0)));
     for (const gap of gaps) expect(gap).toBeLessThanOrEqual(10_000);
+  }, 120_000);
+
+  it('a limiter keeps the sound under -1 dBFS before AAC: full-scale and louder tones read back at -0.5 dBFS at most, and a quiet one as it was (Session 31, MED-3)', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-pipeline-'));
+    const p = new StreamPipeline({ status: () => undefined, log: () => undefined });
+    const loud = { amplitude: 0.2 };
+    await p.start({ ffmpeg, platform: process.platform, preset, encoder: null, caFile: null });
+    const feeding = feed(p, loud);
+    const levels: Record<string, { peak: number; rms: number }> = {};
+    try {
+      // Quietest first: what is left of one tone in the next recording's first moment is quieter still.
+      for (const amplitude of [0.2, 1.0, 1.5]) {
+        loud.amplitude = amplitude;
+        await sleep(1000);
+        const file = join(dir, `tone ${String(amplitude)}.mkv`);
+        p.record(file, 1024 ** 2);
+        await sleep(4000);
+        p.stopRecording();
+      }
+    } finally {
+      feeding.stop();
+      p.stop();
+    }
+    await sleep(1500);
+    for (const amplitude of [0.2, 1.0, 1.5])
+      levels[String(amplitude)] = soundLevels(join(dir, `tone ${String(amplitude)}.mkv`));
+    // The quiet tone (0.2: RMS -16.99 dBFS) is untouched: within 0.5 dB.
+    expect(Math.abs((levels['0.2']?.rms ?? 0) - 20 * Math.log10(0.2 / Math.SQRT2))).toBeLessThanOrEqual(0.5);
+    // Full scale, and louder than full scale (Drashti's own sound and the microphone together can be), never
+    // above -0.5 dBFS once AAC has made its own overshoot.
+    expect(levels['1']?.peak).toBeLessThanOrEqual(-0.5);
+    expect(levels['1.5']?.peak).toBeLessThanOrEqual(-0.5);
   }, 120_000);
 });

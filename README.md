@@ -395,6 +395,8 @@ Every shortcut is defined in one file, `src/shared/keymap.ts`. The current keys 
 
 YouTube's own table (October 2026) asks for at least 5 Mbps at 1080p30 (14 recommended) and 3 Mbps at 720p30 (8 recommended), a keyframe every 2 seconds and constant bitrate.
 
+**A limiter** (Session 31, MED-3). Before AAC, every stream and recording goes through FFmpeg's `alimiter` at -1 dBFS with its own level setting off (`src/main/stream/worker/encoders.ts`), so a loud desk, or Drashti's own sound mixed in with the microphone (whose sum can pass full scale), never clips on YouTube or in a recording; quieter sound passes as it is. There is no setting. In the pipeline's test a full-scale tone and one 3.5 dB louder both read back at -1.0 dBFS, and a quiet tone (RMS -17 dBFS) changed by 0.003 dB. It limits the samples' peaks: a very high tone can still peak a little above between samples once AAC has made it (an 8 kHz tone 3.5 dB over full scale read back at +0.8 dBFS on the dev Mac). The Stream panel's meter shows the mix as it comes, before the limiter.
+
 **The layouts.** **Camera and words**: the camera full frame, the live slide's words as a lower third in the stream group's languages (chosen and ordered as on the hall's screens), and a picture or video full frame when one goes live (a media item, or a slide with a picture and no words). **Slides**: what an audience screen shows, in the stream group's languages. Switch at any time, on air too. What the hall's controls do to the stream:
 
 |                         | Camera and words                                  | Slides          |
