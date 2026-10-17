@@ -1,0 +1,4 @@
+{
+  "about": "Moderate accessibility findings accepted, each with why (Sessions 31-36, A11Y-3). Keyed by the check's name (the second argument of expectNoSeriousA11yIssues) and axe's rule id. A moderate finding not listed here fails its test; one fixed is taken out.",
+  "accepted": []
+}

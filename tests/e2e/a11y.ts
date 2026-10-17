@@ -1,6 +1,8 @@
 import type { Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import axe from 'axe-core';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 /*
  * Accessibility checks with axe-core, run inside the page (Electron cannot
@@ -11,6 +13,13 @@ import axe from 'axe-core';
  */
 
 type AxeWindow = typeof globalThis & { axe?: typeof axe };
+
+/** The moderate findings accepted, each with why (a11y-moderate.json). */
+const ACCEPTED = (
+  JSON.parse(readFileSync(join(__dirname, 'a11y-moderate.json'), 'utf8')) as {
+    accepted: { what: string; rule: string; why: string }[];
+  }
+).accepted;
 
 /**
  * Wait for things still arriving (a dialog rising, a sheet sliding in: Session 26g) to settle, so a
@@ -49,6 +58,15 @@ export async function expectNoSeriousA11yIssues(page: Page, what: string, includ
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')
     .map((v) => `${v.impact ?? ''} ${v.id}: ${v.help}\n${v.nodes.map((n) => `  - ${n}`).join('\n')}`);
   expect(serious, `accessibility findings in ${what}`).toEqual([]);
+  // Moderate findings (Sessions 31–36, A11Y-3): said in the log, and each one not in the committed baseline
+  // (tests/e2e/a11y-moderate.json, each accepted with why) fails the test.
+  const moderate = violations.filter((v) => v.impact === 'moderate');
+  for (const v of moderate)
+    console.log(`A11Y_MODERATE ${what} :: ${v.id}: ${v.help}\n${v.nodes.map((n) => `  - ${n}`).join('\n')}`);
+  const fresh = moderate
+    .filter((v) => !ACCEPTED.some((a) => a.what === what && a.rule === v.id))
+    .map((v) => `${v.id}: ${v.help}`);
+  expect(fresh, `moderate accessibility findings in ${what} not in tests/e2e/a11y-moderate.json`).toEqual([]);
 }
 
 /**
