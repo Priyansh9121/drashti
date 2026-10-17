@@ -13,6 +13,7 @@ import {
   type OutputGlobals,
   type PageGlobals,
   setUpScreen,
+  windowShowing,
 } from './helpers';
 
 /*
@@ -156,8 +157,7 @@ test('the audience screens show exactly what the earlier build showed, frame by 
     const [hall, stage] = (await roleOf(first)) === 'audience' ? [first, second] : [second, first];
     await win.getByTestId('open-stream').click();
     const isStream = (p: Page) => p.url().includes('stream.html');
-    const program =
-      app.windows().find(isStream) ?? (await app.waitForEvent('window', { predicate: isStream }));
+    const program = await windowShowing(app, isStream, 'stream');
     await expect(program.getByTestId('program-root')).toBeVisible();
 
     // The stage display on a tablet (Safari's engine).

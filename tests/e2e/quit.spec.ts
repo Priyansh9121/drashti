@@ -383,7 +383,7 @@ test('quitting during Save as MP4 (Session 26e): no file under its name, no part
   expect(log).not.toContain('did not stop cleanly');
 });
 
-test('Drashti stopped dead during Save as MP4 leaves its FFmpeg running; the next start stops that very FFmpeg, removes its part-file and says so (Session 31, ROB-3)', async () => {
+test('Drashti stopped dead during Save as MP4: on a Mac its FFmpeg runs on and the next start stops that very one, on Windows it ends with Drashti; either way the next start removes its part-file and says so (Session 31, ROB-3)', async () => {
   test.skip(!ffmpeg, 'needs the bundled FFmpeg');
   test.setTimeout(180_000);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-crash-save-'));
@@ -443,16 +443,21 @@ test('Drashti stopped dead during Save as MP4 leaves its FFmpeg running; the nex
   const mainPid = await app.evaluate(() => process.pid);
   const running = ffmpegUnder(mainPid);
   expect(running.length).toBeGreaterThan(0);
-  // A crash of Drashti's main process alone: what it started carries on by itself.
+  // A crash of Drashti's main process alone. On a Mac what it started carries on by itself. On Windows,
+  // Node starts each program in a job that Windows closes, ending them, when Drashti's process ends.
   await killMainOnly(app);
-  await expect.poll(() => running.filter(alive).length, { timeout: 3000 }).toBeGreaterThan(0);
+  if (process.platform === 'win32')
+    await expect.poll(() => running.filter(alive), { timeout: 10_000 }).toEqual([]);
+  else await expect.poll(() => running.filter(alive).length, { timeout: 3000 }).toBeGreaterThan(0);
   expect(readdirSync(out).filter((f) => f.startsWith('.'))).toHaveLength(1);
-  // The next start stops it before anything else, removes the part-file it was writing, and says so.
+  // The next start stops one still running before anything else, removes the part-file it was writing,
+  // and says so.
   const again = await relaunchApp(userData, env);
   await expect.poll(() => running.filter(alive), { timeout: 20_000 }).toEqual([]);
   await expect.poll(() => readdirSync(out), { timeout: 10_000 }).toEqual([]);
   const log = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
-  expect(log).toContain('Stopped a conversion left running by the last run');
+  if (process.platform === 'win32') expect(log).not.toContain('left running by the last run');
+  else expect(log).toContain('Stopped a conversion left running by the last run');
   expect(log).toContain('Removed a part-file left by the last run');
   await again.app.close();
 });
