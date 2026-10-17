@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { MediaFit } from './engine/state';
 import type { Darken, Lang, TextAlign, VerticalAlign } from './model';
-import { LANGS } from './model';
+import { LANGS, NEW_TEXT_LINE_HEIGHT } from './model';
 import { darkenSchema } from './model-schema';
 
 /*
@@ -116,7 +116,8 @@ export const DEFAULT_THEME: ThemeFields = {
     height: 0.8222,
     align: 'center',
     verticalAlign: 'middle',
-    lineHeight: 1.25,
+    // A new library's default and built-in themes (Sessions 31–36, I18N-2); a stored theme keeps its own.
+    lineHeight: NEW_TEXT_LINE_HEIGHT,
   },
   background: { kind: 'none' },
 };

@@ -25,12 +25,14 @@ export const LYRICS_STYLE: TextStyle = {
   color: '#ffffff',
   align: 'center',
   verticalAlign: 'middle',
-  lineHeight: 1.25,
+  // New text (Sessions 31–36, I18N-2): room for Gujarati and Hindi marks.
+  lineHeight: NEW_TEXT_LINE_HEIGHT,
   shadow: true,
 };
 
 // The usual colours for the usual group names: shared/group-colors.ts (Session 26g: Chorus teal).
 import { groupColor } from '../../../shared/group-colors';
+import { NEW_TEXT_LINE_HEIGHT } from '../../../shared/model';
 export { groupColor };
 
 /**

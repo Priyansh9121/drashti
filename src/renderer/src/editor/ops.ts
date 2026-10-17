@@ -15,6 +15,7 @@ import type { EditDoc, EditSlide, SlideLook } from '../../../shared/slide-edit';
 import { newGroupColor } from '../../../shared/group-colors';
 import { mainLang } from '../../../shared/text-runs';
 import { boundsOf, centerOf, normalizeAngle, type Point, rotatePoint } from './geometry';
+import { NEW_TEXT_LINE_HEIGHT } from '../../../shared/model';
 
 /*
  * What the slide editor does to its document, as pure functions: each
@@ -191,7 +192,8 @@ export function newTextBox(look: SlideLook): TextElement {
     frame: { ...look.frame },
     text: '',
     lang: null,
-    style: { ...look.style },
+    // New text gets room for Gujarati and Hindi marks (Sessions 31–36, I18N-2), whatever the theme had.
+    style: { ...look.style, lineHeight: NEW_TEXT_LINE_HEIGHT },
   };
 }
 

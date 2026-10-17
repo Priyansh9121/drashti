@@ -11,7 +11,15 @@ import type {
   TextElement,
 } from '../../../shared/model';
 import { legacyFontOf, slidesOf } from '../../../shared/slide-edit';
-import { drawnPx, FLOOR_NOTE_PX, FLOOR_WARN_PX, floorOf, REFERENCE_LINES } from '../../../shared/readable';
+import {
+  drawnPx,
+  FLOOR_NOTE_PX,
+  FLOOR_WARN_PX,
+  floorOf,
+  INDIC_LINE_HEIGHT_MIN,
+  REFERENCE_LINES,
+} from '../../../shared/readable';
+import { isIndic } from '../../../shared/model';
 import { wordsContrast, WORDS_CONTRAST_AIM, WORDS_CONTRAST_MIN } from '../../../shared/contrast';
 import { LANG_NAMES } from '../../../shared/themes';
 import { boxLines } from '../../../shared/tracks';
@@ -422,6 +430,10 @@ function Readability({ el }: { el: TextElement }) {
   const px = measured ? Math.round(drawnPx(el, height, measured.fit)) : 0;
   const floor = measured ? floorOf(drawnPx(el, height, measured.fit)) : null;
   const shrinks = el.style.shrinkToFit === true;
+  // Gujarati or Hindi lines closer than 1.3 (Sessions 31–36, I18N-2): their marks can touch.
+  const indicCrowded =
+    el.style.lineHeight < INDIC_LINE_HEIGHT_MIN - 0.0001 &&
+    (isIndic(el.lang) || boxLines(el).some((l) => isIndic(l.lang ?? el.lang)));
   // The words' contrast against what is behind them, darkening included (Sessions 31–36, SLD-3).
   const slide = useEditor((s) =>
     s.doc && s.slideId ? slidesOf(s.doc).find((x) => x.id === s.slideId) : undefined,
@@ -477,6 +489,12 @@ function Readability({ el }: { el: TextElement }) {
           shows the band).
         </p>
       )}
+      {indicCrowded && (
+        <p className="text-sm text-warning-fg" data-testid="inspector-line-height" data-level="warning">
+          The line spacing is {String(el.style.lineHeight)}: below {String(INDIC_LINE_HEIGHT_MIN)}, Gujarati
+          and Hindi marks can touch the line above. Line spacing is under Words.
+        </p>
+      )}
       {measured?.over && (
         <p className="text-sm text-warning-fg" data-testid="inspector-overset" role="status">
           <b>Words run past the box</b>
@@ -509,6 +527,11 @@ function TextSection({ el, slideId, editing }: { el: TextElement; slideId: strin
   const s = el.style;
   // The whole box with lines in more than one language (a kirtan's tracks) is in several, not one of them.
   const several = !words && new Set(boxLines(el).flatMap((l) => (l.lang ? [l.lang] : []))).size > 1;
+  // Every line (or the selected words) in Gujarati, Hindi or Sanskrit: drawn upright, so no Italic to offer.
+  const langsHere = words
+    ? [look.lang !== undefined ? look.lang : el.lang]
+    : boxLines(el).map((l) => l.lang ?? el.lang);
+  const allIndic = langsHere.length > 0 && langsHere.every((l) => isIndic(l));
   const shown = {
     lang: look.lang !== undefined ? look.lang : el.lang,
     font: look.font !== undefined ? look.font : s.fontFamily,
@@ -636,16 +659,19 @@ function TextSection({ el, slideId, editing }: { el: TextElement; slideId: strin
             <option value="700">Bold</option>
           </Select>
         </Field>
-        <IconButton
-          icon={Italic}
-          size="sm"
-          label="Italic"
-          variant={shown.italic ? 'secondary' : 'ghost'}
-          aria-pressed={shown.italic}
-          onClick={() => {
-            apply({ italic: !shown.italic });
-          }}
-        />
+        {/* Gujarati, Hindi and Sanskrit are always drawn upright (Sessions 31–36, I18N-2): no Italic for them. */}
+        {!allIndic && (
+          <IconButton
+            icon={Italic}
+            size="sm"
+            label="Italic"
+            variant={shown.italic ? 'secondary' : 'ghost'}
+            aria-pressed={shown.italic}
+            onClick={() => {
+              apply({ italic: !shown.italic });
+            }}
+          />
+        )}
       </div>
       <Field label="Colour" layout="inline">
         <ColorInput

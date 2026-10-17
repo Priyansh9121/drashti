@@ -25,6 +25,7 @@ import { useMediaUrl } from './media-urls';
 import { useMeasureReport } from './measure';
 import { missingFontsOf } from './font-probe';
 import { MIN_FIT } from '../../../shared/readable';
+import { standsUpright } from '../../../shared/text-runs';
 
 /**
  * How a slide draws its videos: 'live' plays them (outputs and the live
@@ -70,16 +71,21 @@ function frameStyle(el: SlideElement): CSSProperties {
 /** A size that shrink-to-fit can scale: the box's --fit (1 unless the words do not fit). */
 const fitted = (px: number | undefined) => (px === undefined ? undefined : `calc(var(--fit, 1) * ${px}px)`);
 
-/** How a run is drawn inside its box (the slide editor draws text it edits the same way). */
-export function runStyle(run: Omit<TextRun, 'text'>, el: TextElement): CSSProperties {
+/**
+ * How a run is drawn inside its box (the slide editor draws text it edits the same way). Gujarati and
+ * Devanagari stand upright with no letter-spacing (Sessions 31–36, I18N-2: shared/text-runs.ts
+ * standsUpright), whatever was stored, which is kept.
+ */
+export function runStyle(run: Omit<TextRun, 'text'> & { text?: string }, el: TextElement): CSSProperties {
   const lang = run.lang ?? el.lang;
+  const upright = standsUpright(run, el.lang);
   return {
     fontFamily: fontFamilyFor(run.font ?? el.style.fontFamily, lang),
     fontSize: fitted(run.size),
     color: run.color,
     fontWeight: run.weight,
-    fontStyle: run.italic ? 'italic' : undefined,
-    letterSpacing: run.letterSpacing,
+    fontStyle: run.italic && !upright ? 'italic' : undefined,
+    letterSpacing: upright ? undefined : run.letterSpacing,
     textShadow: textShadowCss(run.shadow),
     ...textOutlineCss(run.outline),
   };
