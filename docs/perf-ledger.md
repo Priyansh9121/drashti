@@ -60,6 +60,17 @@ From `152fe6a` both sides of a pair begin measuring at the same settled point: e
 
 The check's 10 devices and 10 nodes moved from Electron run as Node to utility processes (`fcacf26`). Paired on CI's Mac with 10 of each, both sides passed twice: importing p90 25 and 29 ms (head) against 26 and 19 ms (base, `main`); all 10 devices connected and all 10 nodes online every time. One head run before them (39026396560) failed its importing figures (p90 86 ms, 3 of 28 over 100 ms) while the nodes copied 320 MB: the VM, as the four after it show.
 
+## The recovery figure and its budget (Phase G, PERF-1), 18 October 2026
+
+After a crash, how long from Drashti starting again to its screens back (`tests/e2e/recovery-figure.ts`): read from the start's phase lines (`src/main/start-phases.ts`), to the output's first painted frame of the show put back. Ten runs on each of CI's systems (`9776e94`; runs 39038852887 on the Mac and 39038858168 on Windows):
+
+| System  | Figures, in order (s)                            | p90   | Budget (p90 + 25%) |
+| ------- | ------------------------------------------------ | ----- | ------------------ |
+| Mac     | 9.0, 5.3, 5.6, 5.2, 5.3, 4.3, 3.4, 3.9, 4.7, 4.8 | 5.6 s | **7.0 s**          |
+| Windows | 3.6, 3.5, 3.5, 4.1, 3.4, 3.3, 5.0, 3.3, 3.7, 3.6 | 4.1 s | **5.1 s**          |
+
+Where the time goes, on the Mac: the main process running at 0.1 to 0.3 s, the library open and the engine ready by 0.6 s, the operator window shown by 1.5 s, and the output's first frame at 3.4 to 9.0 s, after its GPU's warm-up (Windows: 0.6 s, then 3.3 to 5.0 s). The end-to-end test and the Performance check hold it to the budget (`RECOVERY_BUDGET_MS`); a figure over it is measured again, and it fails only when over twice in a row.
+
 ## Quick wins (Phase G, PERF-5), 18 October 2026
 
 Each kept only if measured: more than 50% fewer commits, or more than 20% faster ("neutral is a revert"). Measured on the development Mac (Apple silicon), the build before (`b700571`) against the build with the change, one change at a time. Commits are React's in the operator window, counted by a stand-in for React DevTools' hook installed before the page loads (its `onCommitFiberRoot`), over 5 s, three times.
