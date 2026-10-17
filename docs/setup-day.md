@@ -1,8 +1,8 @@
 # Setup day: the checklist
 
-This is the list for the day Drashti is set up on the mandir's two computers: for the admin doing the setup, with the operators there for the parts marked **(operators)**. Tick each line as it is done, and fill in the "Write down" table at the end. The steps say what to do; `docs/admin-guide.md` says how, and `docs/parallel-run.md` has the first evenings beside ProPresenter.
+This is the list for the day Drashti is set up on the mandir's two computers: for the admin doing the setup, with the operators there for the parts marked **(operators)**. Tick each line as it is done, and fill in the "Write down" table at the end. The steps say what to do; `docs/admin-guide.md` says how, and `docs/parallel-run.md` has the first evenings beside the old presentation program.
 
-ProPresenter stays installed and untouched all day. Drashti only reads its files.
+The old presentation program stays installed and untouched all day. Drashti only reads its files.
 
 ---
 
@@ -26,7 +26,7 @@ ProPresenter stays installed and untouched all day. Drashti only reads its files
 
 ## 2. Bring in the library (Main)
 
-- [ ] Drag ProPresenter's folders onto the presentation list (`docs/parallel-run.md`, section 3), and any other folders the audit named.
+- [ ] Drag the old program's folders (its `.pro6` and `.pro` files) onto the presentation list (`docs/parallel-run.md`, section 3), and any other folders the audit named.
 - [ ] Read the report and **write down its numbers**: presentations, playlists, media, problems.
 - [ ] **Media that could not be found** (the report's notice "… media files could not be found"): **Find missing media…**, and pick each folder the files are in (or **Find…** beside one file).
 - [ ] **Media Drashti cannot play** (the notice "… media files Drashti cannot play"): **Convert all**, and let it finish in the background.
@@ -35,7 +35,7 @@ ProPresenter stays installed and untouched all day. Drashti only reads its files
 - [ ] **Keynote and PowerPoint on this computer** (never tried on these machines before the setup). With a placeholder deck (a few slides of made-up words, one hidden slide, one with an animation, speaker notes on some), not one of the mandir's: drag it in, and check the report says which app saved it as PDF, counts the hidden slide and the animation, and that the slides' notes are right. Then check that the app closed again (or, if it was already open with something of yours, that it was left as it was). **On the Windows PC with PowerPoint** this is the first time it has ever run: also check PowerPoint showed no window, and drag in a deck while PowerPoint is open with an unsaved presentation: the presentation must still be there, unsaved. Write down how long the deck took (the log says, **Help**, **Save Diagnostics…**).
 - [ ] **Import from a Link with a real Dropbox link** (never tried against Dropbox itself: the tests use a stand-in). With a Dropbox link to one of the mandir's own short videos, and one to a mandir folder holding a placeholder `.pptx` and a short MP4: **File**, **Import from a Link…**, **Dropbox**, paste, **Download**, into a test folder (admin guide, section 14). Write down: whether each link was looked at (its name and size shown), saved and imported; that a folder came as a folder of its own with the right files; and anything the window said. If Dropbox refused, write its exact words.
 - [ ] **Import from a Link with one of the mandir's own YouTube videos** (never tried against YouTube itself: the tests use a fake yt-dlp). An admin, with a short video from the mandir's own channel: **File**, **Import from a Link…**, **YouTube**, paste its Share link, choose **MP4** at **1080p**, tick the box, **Download**, into a test folder; then the same video as **MP3** (admin guide, section 14). Once only. Write down: whether the title and length showed, the qualities offered, how long each took, whether each was saved and imported and plays, and anything the window said (its exact words if it refused).
-- [ ] **(operators)** Open five kirtans they know well and compare with ProPresenter: the words, the line breaks, the Gujarati and Hindi letters, the backgrounds.
+- [ ] **(operators)** Open five kirtans they know well and compare with the old program: the words, the line breaks, the Gujarati and Hindi letters, the backgrounds.
 - [ ] **Back up**: **File**, **Back Up Library…**, with the media, to the USB drive.
 - [ ] **Scheduled backups**: **File**, **Scheduled Backups…**, onto the drive that stays plugged in (admin guide, section 5). Press **Back up now** once and check it finishes.
 
@@ -58,7 +58,7 @@ ProPresenter stays installed and untouched all day. Drashti only reads its files
 - [ ] **The arti's times**, with the presentation that is the arti (admin guide, section 10).
 - [ ] **The idle rotation**: pictures and quotes from authorised sources, and which screens show it.
 - [ ] **Music** lists for before the sabha, and **markers** on any video or sound that needs a start or end point.
-- [ ] **(operators)** **Markers brought over from ProPresenter**: open three or four videos or sounds that had start or end points (or markers) in ProPresenter, and check in their **Markers** that Drashti's are at the same times. They follow community notes on the file formats, never yet checked against the mandir's own files: write down any that are off.
+- [ ] **(operators)** **Markers brought over from the old program**: open three or four videos or sounds that had start or end points (or markers) there, and check in their **Markers** that Drashti's are at the same times. They follow community notes on the file formats, never yet checked against the mandir's own files: write down any that are off.
 - [ ] **Shastra texts** and **calendars**, if the mandir has prepared files from an authorised source.
 - [ ] **Sabha templates**: replace the two examples with the mandir's real running orders.
 - [ ] **(operators)** The keys: try their presentation clicker (Next, Back, Black-out). The keys are provisional until the checklist's "Keyboard shortcuts" section is read: write down any key they want different.
@@ -100,7 +100,7 @@ On each computer:
 - [ ] **By keyboard alone** in Simple Mode: Tab to each big button, and Enter; and to **Switch to Pro Mode…** at the top right.
 - [ ] **A screen reader**, if anyone at the mandir uses one (this needs a person who uses it every day): VoiceOver on the Mac (**Cmd+F5**) or Narrator or NVDA on Windows. Check the regions are announced (header, playlists, library, slides, live, show controls, status), the buttons say what they do, the dialogs say their names, and Simple Mode's buttons can be found and pressed. On a phone, VoiceOver or TalkBack on the remote: Next and Back, and the tabs.
 - [ ] **On the Windows PC: Windows' own text size at 200%** (Windows 11: **Settings**, **Accessibility**, **Text size**; Windows 10: **Settings**, **Ease of Access**, **Display**, **Make text bigger**; 200%, then **Apply**): the operator window's buttons, lists and dialogs still fit and can be read, and nothing is cut off. Set it back afterwards if the operators prefer.
-- [ ] **The fallback drill**: the named fallback operator quits Drashti and opens ProPresenter. Time it: it should take under a minute.
+- [ ] **The fallback drill**: the named fallback operator quits Drashti and opens the old program. Time it: it should take under a minute.
 
 ## Write down
 
@@ -129,4 +129,4 @@ Keep this with the notebook. Never the PINs, the stream key or pairing codes.
 | Who holds the admin PIN (not the PIN)                         |      |                        |
 | Named fallback operator, and the drill's time                 |      |                        |
 | Keys the operators want changed                               |      |                        |
-| Anything different from ProPresenter, with the time           |      |                        |
+| Anything different from the old program, with the time        |      |                        |

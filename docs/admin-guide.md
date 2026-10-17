@@ -1,6 +1,6 @@
 # The admin's guide: looking after Drashti
 
-This guide is for the **admins**: whoever sets Drashti up at the mandir and keeps it right from week to week. The operators' side, running a sabha in Pro Mode, is in `docs/operator-guide.md`; the first evenings beside ProPresenter are in `docs/parallel-run.md`; the day Drashti is set up on the mandir's computers has its own list, `docs/setup-day.md`.
+This guide is for the **admins**: whoever sets Drashti up at the mandir and keeps it right from week to week. The operators' side, running a sabha in Pro Mode, is in `docs/operator-guide.md`; the first evenings beside the old presentation program are in `docs/parallel-run.md`; the day Drashti is set up on the mandir's computers has its own list, `docs/setup-day.md`.
 
 On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows the menu bar is hidden: press **Alt** to show it. With roles on (section 3), everything in this guide asks for the **admin PIN** first.
 
@@ -8,7 +8,7 @@ On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows 
 
 ## 1. The two computers
 
-Drashti runs on both of the mandir's computers. One is **Main**: it keeps the library and the playlists, and the operators run the show on it. The other can be a **node**: it shows Main's screens on its own displays, in step, and has no controls of its own (section 6). Or both can be Mains with libraries of their own, as ProPresenter is today; the plan is to try the node on the parallel-run evenings first.
+Drashti runs on both of the mandir's computers. One is **Main**: it keeps the library and the playlists, and the operators run the show on it. The other can be a **node**: it shows Main's screens on its own displays, in step, and has no controls of its own (section 6). Or both can be Mains with libraries of their own, as with the old program today; the plan is to try the node on the parallel-run evenings first.
 
 **What each computer needs:**
 
@@ -281,10 +281,10 @@ After installing a font, quit Drashti and start it again. Then look at a few of 
 
 **When Drashti stops unexpectedly** (a crash, a power cut, a forced quit). Drashti saves what is on the screens as it changes, and every minute. Started again within **3 hours**, it puts it all back by itself (the slide, the background, black-out, the sound, timers, messages, props, the Look) and a note at the top says what it put back. Started 3 hours or more after the stop, it puts nothing on the screens, and the note says what was live and when. After a quit on purpose, nothing is put back, whatever happened in between, and the stream does not go on air or record again by itself. A conversion, a Save as MP4, a YouTube download or a PowerPoint or Keynote that Drashti had started and that was left running by the stop is stopped as Drashti starts again (the log says so), and a half-saved MP4 is removed; programs you started yourself are never touched.
 
-**Falling back to ProPresenter.** ProPresenter stays installed, untouched, until Drashti has run four weeks of sabhas on that computer without falling back (PLAN.md, section 5.1). Every sabha has a named fallback operator who has practised it (under a minute):
+**Falling back to the old program.** The old presentation program stays installed, untouched, until Drashti has run four weeks of sabhas on that computer without falling back (PLAN.md, section 5.1). Every sabha has a named fallback operator who has practised it (under a minute):
 
 1. Quit Drashti (**Cmd+Q**, or close its window on Windows). It asks first if screens are showing or the stream is on air or recording: confirm.
-2. Open ProPresenter. Its screens come back as before.
+2. Open the old program. Its screens come back as before.
 3. After the sabha, save Drashti's diagnostics and write down what happened and when.
 
 Fall back when Drashti cannot keep the screens right and the fix is not quick; not for a slide that a click puts right.
@@ -365,7 +365,7 @@ When a video cannot be had, the window says why in plain words, with what to do:
 
 ## 15. Smart playlists
 
-A **smart playlist** follows a folder on this computer (Session 26c): what Drashti imports as media or pictures there (videos, pictures, sounds, and PowerPoint, Keynote and PDF decks), in the folders inside it too, joins the playlist by itself. Words files, ProPresenter files and anything else are left alone, as are hidden files.
+A **smart playlist** follows a folder on this computer (Session 26c): what Drashti imports as media or pictures there (videos, pictures, sounds, and PowerPoint, Keynote and PDF decks), in the folders inside it too, joins the playlist by itself. Words files, the old program's files (`.pro6`, `.pro`) and anything else are left alone, as are hidden files.
 
 - **Making one** is an admin's, as importing is: in **Playlists**, **+ New › Smart Playlist from a Folder…**, then choose the folder. The playlist is named after the folder, goes at the top of the list, opens, and fills itself in the folder's order: folder by folder, each folder's videos, then its decks, then its pictures, then its sounds, A to Z (numbers in order), with a **header** before each inside folder's part ("Week 1 › Videos").
 - **While Drashti runs** it looks at the folder when the computer says something changed there, and every 10 seconds besides. **When it starts**, it catches up on what changed while it was closed.
