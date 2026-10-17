@@ -96,7 +96,6 @@ export function SimpleFirstRun({ platform }: { platform: string }) {
       aria-labelledby={titleId}
       data-testid="simple-first-run"
       data-step={step + 1}
-      data-motion="pop"
       className="mx-3 mt-3 flex shrink-0 items-center gap-4 rounded-lg border border-line-strong bg-panel-2 px-4 py-3"
     >
       <div className="min-w-0 flex-1">
