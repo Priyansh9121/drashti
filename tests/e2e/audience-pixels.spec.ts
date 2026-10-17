@@ -155,20 +155,32 @@ test('the audience screens show exactly what the earlier build showed, frame by 
       await testPicture(win, join(dir, 'Placeholder picture.png')),
     ]);
 
-    // The display numbers shown while setting up (5 s), on two pretend displays.
-    const { shown } = await win.evaluate(() => (globalThis as PageGlobals).drashti.setup.identifyDisplays());
-    expect(shown).toBeGreaterThan(0);
-    // Every one of them open before any is taken (they come up one by one).
-    await expect.poll(() => app.windows().filter((p) => p.url().includes('identify=')).length).toBe(shown);
-    const identify = app
-      .windows()
-      .filter((p) => p.url().includes('identify='))
-      .sort((a, b) => a.url().localeCompare(b.url()));
-    // Side by side: each closes 5 s after it opened, and one after another CI's Mac took longer than that to
-    // settle three (CI run 39065876630, twice).
-    const identified = await Promise.all(identify.map((page) => settled(page)));
+    // The display numbers shown while setting up, on two pretend displays. Each window goes 5 s after it is
+    // made, the product's own time. Loading and settling three side by side took CI's Mac longer than that
+    // (runs 39065876630, twice, and 39072928723), so the numbers are shown again, as a person would press
+    // Identify again, until all three settle before they go: at most three times, and each time they must
+    // have stayed their 5 s.
+    const identifying = () => app.windows().filter((p) => p.url().includes('identify='));
+    let identified: Buffer[] = [];
+    for (let time = 1; identified.length === 0; time++) {
+      const madeBy = Date.now();
+      const { shown } = await win.evaluate(() =>
+        (globalThis as PageGlobals).drashti.setup.identifyDisplays(),
+      );
+      expect(shown).toBeGreaterThan(0);
+      // Every one of them open before any is taken (they come up one by one).
+      await expect.poll(() => identifying().length).toBe(shown);
+      const identify = identifying().sort((a, b) => a.url().localeCompare(b.url()));
+      try {
+        identified = await Promise.all(identify.map((page) => settled(page)));
+      } catch (error) {
+        // Only a window that went before it settled is shown again.
+        if (time >= 3 || !(error instanceof Error && error.message.includes('has been closed'))) throw error;
+      }
+      await expect.poll(() => identifying().length).toBe(0);
+      expect(Date.now() - madeBy, 'the display numbers stayed their 5 s').toBeGreaterThanOrEqual(5000);
+    }
     for (const [i, shot] of identified.entries()) keep(`identify-${String(i + 1)}`, shot);
-    await expect.poll(() => app.windows().filter((p) => p.url().includes('identify=')).length).toBe(0);
 
     // The hall and a stage screen, then the stream's picture (no camera chosen: the slides as the hall has them).
     await setUpScreen(win, 'Main Hall', 0);
