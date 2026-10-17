@@ -82,7 +82,7 @@ After a crash, how long from Drashti starting again to its screens back (`tests/
 | Mac     | 9.0, 5.3, 5.6, 5.2, 5.3, 4.3, 3.4, 3.9, 4.7, 4.8 | 5.6 s | **7.0 s**          |
 | Windows | 3.6, 3.5, 3.5, 4.1, 3.4, 3.3, 5.0, 3.3, 3.7, 3.6 | 4.1 s | **5.1 s**          |
 
-Where the time goes, on the Mac: the main process running at 0.1 to 0.3 s, the library open and the engine ready by 0.6 s, the operator window shown by 1.5 s, and the output's first frame at 3.4 to 9.0 s, after its GPU's warm-up (Windows: 0.6 s, then 3.3 to 5.0 s). The Performance check holds it to the budget (`RECOVERY_BUDGET_MS`); a figure over it is measured again, and it fails only when over twice in a row. The end-to-end test says it without judging it: timing is judged in the Performance check (the README's rule), and in the whole suite CI's Windows machine took 6.8 to 7.7 s (run 39042346766, the checkpoint run that found this) for what took it 3.3 to 5.0 s alone. The ten runs were of the test alone; the Performance check's own figures fit the same budget (round G: Mac 5.4, 4.4 and 6.1 s; Windows 3.3, 5.0 and 5.1 then 4.4 s).
+Where the time goes, on the Mac: the main process running at 0.1 to 0.3 s, the library open and the engine ready by 0.6 s, the operator window shown by 1.5 s, and the output's first frame at 3.4 to 9.0 s, after its GPU's warm-up (Windows: 0.6 s, then 3.3 to 5.0 s). The Performance check holds it to the budget (`RECOVERY_BUDGET_MS`); a figure over it is measured again, and it fails only when over twice in a row. The end-to-end test says it without judging it: timing is judged in the Performance check (the README's rule), and in the whole suite CI's Windows machine took 6.8 to 7.7 s (run 39042346766, the checkpoint run that found this) for what took it 3.3 to 5.0 s alone. The ten runs were of the test alone; the Performance check's own figures fit the same budget in round G (Mac 5.4, 4.4 and 6.1 s; Windows 3.3, 5.0 and 5.1 then 4.4 s), but not in the last round, and the budget was set again from the Performance check's own runs (below).
 
 ## Quick wins (Phase G, PERF-5), 18 October 2026
 
@@ -94,3 +94,27 @@ Each kept only if measured: more than 50% fewer commits, or more than 20% faster
 | (b)  | Simple Mode's big buttons take three narrow choices from the engine's state instead of all of it                                               | 71, 71, 70 commits for 50 changes the operator window never shows (stage messages, 5 s)                 | 70, 70, 71       | **Reverted**: no change (other parts of Simple Mode follow every change of the show)                                                                  |
 | (c)  | `content-visibility: auto` on each thumbnail of a grid with over 60 slides                                                                     | a 200-slide grid's first render (opened to 200 thumbnails and two frames), median of six: 99, 99, 99 ms | 116, 116, 116 ms | **Reverted**: 17% slower (the 200 thumbnails cost more in React than in layout, and the containment adds work)                                        |
 | (d)  | The clock style's `Intl.DateTimeFormat` made once (`formatClock`, `src/shared/format.ts`), only for a style, which names its time zone         | 31.5, 28.1 µs a call (20,000 calls, Electron's Node)                                                    | 1.5, 1.6 µs      | **Kept**: 95% faster; the same words for every minute of a day. A stage clock writes once a second, so it saves about 30 µs a second per stage screen |
+
+## The last round: alpha.6 against alpha.5 (Phase H), 18 October 2026
+
+Head `80b98e7` (1.0.0-alpha.6), base `9df47ac` (alpha.5). Runs: head 39065895419, 39065925578, 39065957732; base 39065909532, 39065942465, 39065970986. The base's Performance check is alpha.5's own: it begins measuring as soon as the outputs are ready (not at Phase E's settled point), keeps no raw times and has no recovery figure, so this round compares the summaries alone.
+
+| System  | Ref  | Idle p90, each run | Importing p90, each run | Worst block, each run | Recovery figure, each run         |
+| ------- | ---- | ------------------ | ----------------------- | --------------------- | --------------------------------- |
+| Mac     | head | 32, 33, 32 ms      | 33, 29, 31 ms           | 12, 48, 9 ms          | 4.6; 7.9 then 7.2; 8.1 then 4.6 s |
+| Mac     | base | 28, 25, 27 ms      | 29, 31, 22 ms           | 16, 114, 7 ms         | (not measured before G)           |
+| Windows | head | 13, 14, 14 ms      | 15, 15, 15 ms           | 3, 11, 3 ms           | 3.8, 4.9, 2.8 s                   |
+| Windows | base | 15, 106, 48 ms     | 15, 15, 15 ms           | 3, 12, 11 ms          | (not measured before G)           |
+
+Importing: no change. On the Mac the head's idle p90 sat above the base's on all three runs, the medians the same (17 ms; one base run 16): four more runs of the same head that day gave 25, 33, 20 and 32 ms (39066656163, 39066668826, 39066680371, 39068007134), so the swing, no change. On Windows the head's idle p90 is lower (13 to 14 ms against 15, 106 and 48): the base began measuring before the start had settled. One head run failed on the Mac, on its recovery figure, 7.9 then 7.2 s against the 7.0 s budget of the time (the next section); one base run failed on the Mac, half the changes during the import within a frame (median 18 ms), with a 114 ms block while the import wrote a presentation.
+
+## The recovery budget from the Performance check (Phase H, PERF-1), 18 October 2026
+
+The budget is judged in the Performance check, which measures the figure after its own checks, and there it ran longer than in the end-to-end test alone: one run of the last round's head was over the Mac's 7.0 s twice (7.9 then 7.2 s, 39065925578). So it was set again by the same rule, the 90th percentile of 10 runs plus 25%, from the Performance check's own runs: each run's first figure, from round G's three head runs (`d6778b6`), the last round's three and four more of its head (`80b98e7`).
+
+| System  | Each run's first figure (s)                      | p90   | Budget (p90 + 25%) |
+| ------- | ------------------------------------------------ | ----- | ------------------ |
+| Mac     | 5.4, 4.4, 6.1, 4.6, 7.9, 8.1, 4.4, 5.9, 6.2, 3.4 | 7.9 s | **9.9 s**          |
+| Windows | 3.3, 5.0, 5.1, 3.8, 4.9, 2.8, 5.2, 4.1, 5.1, 2.0 | 5.1 s | **6.4 s**          |
+
+Runs, in order: 39040418838, 39040449005, 39040477427, 39065895419, 39065925578, 39065957732, 39066656163, 39066668826, 39066680371, 39068007134. A second figure was measured where the first was over the budget of the time (Mac 7.2 and 4.6 s; Windows 4.4 and 3.6 s). Most of the time is still the output's first frame after its GPU's warm-up. The bar guard lists the raise; it is the budget made by its own rule where it is judged, not a looser test of anything that was measured before.
