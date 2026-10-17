@@ -60,6 +60,10 @@ export default defineConfig({
           'download-worker': resolve('src/main/links/worker.ts'),
           // The events process: events out, at the lowest priority (src/main/events/worker.ts).
           'events-worker': resolve('src/main/events/worker.ts'),
+          // The performance check's devices and nodes (Sessions 31–36, REL-7): utility processes, as a packaged
+          // Drashti's RunAsNode fuse is off (src/main/network/perf-devices-worker.ts, src/main/nodes/perf-nodes-worker.ts).
+          'perf-devices-worker': resolve('src/main/network/perf-devices-worker.ts'),
+          'perf-nodes-worker': resolve('src/main/nodes/perf-nodes-worker.ts'),
         },
         // ws's optional native helpers are not installed. Left as plain requires, they fail and ws uses its
         // own JavaScript; bundled, Vite would put an empty object in their place and ws would call
