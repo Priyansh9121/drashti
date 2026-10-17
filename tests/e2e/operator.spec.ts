@@ -1,6 +1,6 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import type { PageGlobals } from './helpers';
+import type { OutputGlobals, PageGlobals } from './helpers';
 import { launchApp, operatorPage } from './helpers';
 import { KIRTAN, setUpPlaceholderShow } from './placeholder-show';
 
@@ -37,11 +37,14 @@ test('operator: pick a presentation, go live by click and keyboard, clear layers
   await expect(output.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
 
   const latencies: number[] = [];
+  const revs: number[] = [];
   /** Wait until the output has painted the engine's current revision, and note how long it took. */
   const outputCaughtUp = async (note = true) => {
     const rev = await engineRev(win);
     await expect(output.getByTestId('output-root')).toHaveAttribute('data-painted-rev', String(rev));
-    if (note) latencies.push(Number(await output.getByTestId('output-root').getAttribute('data-latency-ms')));
+    if (!note) return;
+    latencies.push(Number(await output.getByTestId('output-root').getAttribute('data-latency-ms')));
+    revs.push(rev);
   };
 
   // Warm the output up first (Session 16): its first paint of each slide (new text, fonts, layers) was
@@ -158,6 +161,34 @@ test('operator: pick a presentation, go live by click and keyboard, clear layers
   const worst = sorted.at(-1) ?? Infinity;
   console.log(
     `output paint latency (ms): ${latencies.join(', ')}; median ${median}, 12th of ${sorted.length} ${slowEnd}, worst ${worst}`,
+  );
+  // Where the time went (Sessions 31–36, the named flake: a CI Mac's median 18): each change's message and
+  // render (sent to drawn into the page), then its wait for the next frame; and how far apart the output's
+  // frames come.
+  const parts = await output.evaluate((revs) => {
+    const log = (globalThis as OutputGlobals).drashtiPaintLog ?? [];
+    return revs.map((rev) => {
+      const p = log.filter((e) => e.rev === rev).at(-1);
+      return p
+        ? `${String(Math.round(p.committedAt - p.sentAt))}+${String(Math.round(p.paintedAt - p.committedAt))}`
+        : '?';
+    });
+  }, revs);
+  const gaps = await output.evaluate(
+    () =>
+      new Promise<number[]>((resolve) => {
+        const at: number[] = [];
+        const tick = (t: number) => {
+          at.push(t);
+          if (at.length <= 60) requestAnimationFrame(tick);
+          else resolve(at.slice(1).map((t2, i) => t2 - (at[i] ?? t2)));
+        };
+        requestAnimationFrame(tick);
+      }),
+  );
+  const gapsSorted = [...gaps].sort((a, b) => a - b);
+  console.log(
+    `output paint latency, message and render + wait for the frame (ms): ${parts.join(', ')}; the output's frames ${(gapsSorted[Math.floor(gapsSorted.length / 2)] ?? 0).toFixed(1)} ms apart (median of 60), ${(gapsSorted.at(-1) ?? 0).toFixed(1)} at most`,
   );
   expect(latencies).toHaveLength(15);
   expect(median).toBeLessThanOrEqual(17);
