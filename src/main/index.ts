@@ -121,6 +121,8 @@ import { adminRefusals } from './roles/admin-lock';
 import { ImportService } from './import/import-service';
 import { spawnImportWorker } from './import/spawn-worker';
 import { LinkService } from './links/link-service';
+import { libraryProblem } from './library-problem';
+import { parsePlain } from '../shared/plain-parse';
 import { DEFAULT_LINK_MAX_HEIGHT, isLinkHeight } from '../shared/links';
 import { spawnDownloadWorker } from './links/spawn-worker';
 import { AudioOutput } from './audio/audio-output';
@@ -540,9 +542,10 @@ function openLibrary(): { db: Db } | { error: unknown } {
 }
 
 function cannotOpenLibrary(error: unknown, before = ''): void {
+  // What it means and what to do; the error itself is in the log ("Could not open the library").
   dialog.showErrorBox(
     'Drashti cannot open its library',
-    `${before}${error instanceof Error ? error.message : String(error)}\n\nFile: ${libraryFile()}`,
+    `${before}${libraryProblem(error)}\n\nFile: ${libraryFile()}`,
   );
 }
 
@@ -565,7 +568,8 @@ function pendingRestore(): ReturnType<typeof applyPendingRestore> {
     return {
       restored: false,
       code: 'copy-failed',
-      message: 'The library was not restored: something went wrong (see the log). The library is as it was.',
+      message:
+        'The library was not restored: copying the backup stopped part way. The library is as it was: restore again, and if it stops again, choose Help, then Save Diagnostics…, and tell the admin.',
     };
   }
 }
@@ -1132,12 +1136,12 @@ function start(): void {
   handle(IPC.media.setMarkers, (e, mediaId, raw) => {
     if (!fromOperator(e) || typeof mediaId !== 'string' || !MEDIA_ID_PATTERN.test(mediaId))
       return { ok: false as const, message: 'Only the operator window can set markers.' };
-    const parsed = mediaMarkersSchema.safeParse(raw);
-    if (!parsed.success)
-      return {
-        ok: false as const,
-        message: parsed.error.issues[0]?.message ?? 'Those markers cannot be kept.',
-      };
+    const parsed = parsePlain(
+      mediaMarkersSchema,
+      raw,
+      'Those markers cannot be kept: check each one’s name and time, then save again.',
+    );
+    if (!parsed.success) return { ok: false as const, message: parsed.message };
     if (!media.setMarkers(mediaId, parsed.data))
       return { ok: false as const, message: 'Markers are for a video or a sound in the library.' };
     engine.refreshMarkers(mediaId);
@@ -3332,7 +3336,7 @@ function start(): void {
         return { name: outputNames.get(screenId) ?? 'an output', output: output.webContents };
       if (operatorWindow && !operatorWindow.isDestroyed() && sender.id === operatorWindow.webContents.id)
         return { name: 'operator', output: null };
-      if (streaming.isProgram(sender)) return { name: "the stream's page", output: null };
+      if (streaming.isProgram(sender)) return { name: 'the stream’s page', output: null };
       return { name: 'a window', output: null };
     },
   });
@@ -3969,7 +3973,7 @@ function start(): void {
     return { ok: sendToPage(audioWindow, IPC.audio.testTone, { deviceId: parsed.data?.id ?? '' }) };
   });
   handle(IPC.setup.finish, (e, rawPlan, options): SetupResult => {
-    if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can set up the screens.' };
+    if (!fromOperator(e)) return { ok: false, message: 'Only the operator window can change the screens.' };
     const plan = setupPlanSchema.safeParse(rawPlan);
     if (!plan.success) return { ok: false, message: 'That setup cannot be applied.' };
     const { outputs, sound, themeId } = plan.data;
@@ -4173,7 +4177,7 @@ function start(): void {
     switchMode,
     setUpScreens: () => {
       if (mode === 'pro')
-        requireAdmin('set up the screens', () => {
+        requireAdmin('change the screens', () => {
           sendToOperator(IPC.setup.open, { at: Date.now() });
         });
     },

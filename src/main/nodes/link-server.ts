@@ -256,8 +256,9 @@ export class LinkServer {
           message:
             error.code === 'EADDRINUSE'
               ? `Port ${options.port} is in use by another program on this computer, so nodes cannot connect. Choose another port for nodes, or close that program.`
-              : `Drashti could not listen for nodes on port ${options.port} (${error.code ?? error.message}).`,
+              : `Drashti could not listen for nodes on port ${options.port}: choose another port for nodes, or restart the computer.`,
         });
+        this.host.log('warn', `The node link did not start (${error.code ?? 'no code'})`);
       });
       server.listen(options.port, options.bind, () => {
         this.server = server;

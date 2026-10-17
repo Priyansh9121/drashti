@@ -76,6 +76,8 @@ test('the dashboard: pictures, status, Identify, the warning when a node goes, a
     await main.win.getByTestId('screens-summary').click();
     const dashboard = main.win.getByTestId('screens-dashboard');
     await expect(dashboard).toBeVisible();
+    // Its button to the Screens panel is named for it (DOC-2): the setup itself is Set Up Screens….
+    await expect(dashboard.getByRole('button', { name: 'Screens', exact: true })).toBeVisible();
     await expect(dashboard.getByTestId('dashboard-node')).toHaveCount(1);
     await expect(dashboard.getByTestId('dashboard-thumb')).toHaveCount(2, { timeout: 20_000 });
     const nodeCard = dashboard.getByTestId('dashboard-node');
@@ -134,7 +136,7 @@ test('the dashboard: pictures, status, Identify, the warning when a node goes, a
     await expect(dashboard).toBeVisible();
     await expect(dashboard.getByRole('button', { name: /^Remove/u })).toHaveCount(0);
     await expect(dashboard.getByRole('button', { name: /^Reload/u })).toHaveCount(0);
-    await expect(dashboard.getByRole('button', { name: 'Set up screens…' })).toHaveCount(0);
+    await expect(dashboard.getByRole('button', { name: 'Screens', exact: true })).toHaveCount(0);
     await expect(dashboard.getByTestId('dashboard-node')).toHaveCount(1);
     await dashboard.getByRole('button', { name: 'Close the dashboard' }).click();
 

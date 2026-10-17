@@ -38,6 +38,7 @@ import { RestartCap } from './restart-cap';
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileStamp } from '../../shared/format';
+import { parsePlain } from '../../shared/plain-parse';
 
 /*
  * The stream (PLAN.md 4.2), as the main process keeps it: the profiles and
@@ -237,9 +238,12 @@ export class StreamService {
   }
 
   saveProfile(rawId: unknown, rawInput: unknown): StreamProfilesResult {
-    const input = streamProfileInputSchema.safeParse(rawInput);
-    if (!input.success)
-      return { ok: false, message: input.error.issues[0]?.message ?? 'Check the profile’s settings.' };
+    const input = parsePlain(
+      streamProfileInputSchema,
+      rawInput,
+      'That stream profile cannot be kept: check its settings, then save again.',
+    );
+    if (!input.success) return { ok: false, message: input.message };
     const id = rawId === null ? null : z.string().max(100).safeParse(rawId);
     if (id === null) {
       const made = this.deps.profiles.create(input.data);
@@ -452,7 +456,7 @@ export class StreamService {
         this.pageStopped = true;
         this.deps.log(
           'warn',
-          `The stream's page stopped (${details.reason}) for the sixth time in a minute: it stays stopped until Try again`,
+          `The stream’s page stopped (${details.reason}) for the sixth time in a minute: it stays stopped until Try again`,
         );
         this.changed();
         return;
@@ -542,7 +546,7 @@ export class StreamService {
         if (nw !== context.width || nh !== context.height)
           this.deps.log(
             'warn',
-            `The stream's page is ${String(nw)}x${String(nh)}, not the ${String(context.width)}x${String(context.height)} asked`,
+            `The stream’s page is ${String(nw)}x${String(nh)}, not the ${String(context.width)}x${String(context.height)} asked`,
           );
       }
       program.webContents.send(IPC.stream.context, context);
@@ -682,7 +686,7 @@ export class StreamService {
     if (this.deps.platform === 'darwin' && caFile === null)
       this.deps.log(
         'warn',
-        `${MAC_AUTHORITIES} is missing: a secure stream (rtmps://) cannot have its server's certificate checked, so it will not go on air`,
+        `${MAC_AUTHORITIES} is missing: a secure stream (rtmps://) cannot have its server’s certificate checked, so it will not go on air`,
       );
     worker.send({
       type: 'start',

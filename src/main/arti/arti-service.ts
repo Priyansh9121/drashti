@@ -13,6 +13,7 @@ import {
 } from '../../shared/arti';
 import type { CommandResult, EngineCommand } from '../../shared/engine/commands';
 import type { EngineState } from '../../shared/engine/state';
+import { parsePlain } from '../../shared/plain-parse';
 import type { ArtiRepo, StoredArti } from '../db/arti';
 
 /*
@@ -110,9 +111,12 @@ export class ArtiService {
   }
 
   save(id: string | null, input: unknown): ArtiResult {
-    const parsed = artiFieldsSchema.safeParse(input);
-    if (!parsed.success)
-      return { ok: false, message: parsed.error.issues[0]?.message ?? 'That is not a valid schedule.' };
+    const parsed = parsePlain(
+      artiFieldsSchema,
+      input,
+      'That arti time cannot be kept: check its name, time and days, then save again.',
+    );
+    if (!parsed.success) return { ok: false, message: parsed.message };
     const fields = parsed.data;
     if (!this.deps.repo.hasPresentation(fields.presentationId))
       return { ok: false, message: 'That presentation is no longer in the library.' };

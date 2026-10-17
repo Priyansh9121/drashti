@@ -147,15 +147,11 @@ describe('ImportService', () => {
     const done = service.start(['/a']);
     const w = workers[0];
     w?.exit(9);
-    await expect(done).resolves.toEqual({
-      ok: false,
-      message: 'The import stopped unexpectedly (exit code 9).',
-    });
-    expect(mocks.failRun).toHaveBeenCalledWith(
-      w?.runId,
-      ['/a'],
-      'The import stopped unexpectedly (exit code 9).',
-    );
+    // What happened and what to do; the exit code goes to the log only.
+    const said =
+      'The import stopped unexpectedly: import the files again; if it stops again, choose Help, then Save Diagnostics…, and tell the admin.';
+    await expect(done).resolves.toEqual({ ok: false, message: said });
+    expect(mocks.failRun).toHaveBeenCalledWith(w?.runId, ['/a'], said);
     expect(mocks.onFinished).toHaveBeenCalledWith(null);
   });
 

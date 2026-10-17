@@ -1,5 +1,6 @@
 import { localDateOf, nextMidnight } from '../../shared/calendar';
 import type { CommandResult } from '../../shared/engine/commands';
+import { parsePlain } from '../../shared/plain-parse';
 import {
   DEFAULT_IDLE_SETTINGS,
   IDLE_DISSOLVE_MS,
@@ -74,9 +75,12 @@ export class IdleService {
   }
 
   saveSettings(input: unknown): IdleResult {
-    const parsed = idleSettingsSchema.safeParse(input);
-    if (!parsed.success)
-      return { ok: false, message: parsed.error.issues[0]?.message ?? 'Those settings do not read.' };
+    const parsed = parsePlain(
+      idleSettingsSchema,
+      input,
+      'Those settings cannot be kept: check them, then save again.',
+    );
+    if (!parsed.success) return { ok: false, message: parsed.message };
     const pictures = [...new Set(parsed.data.pictures)];
     const gone = pictures.find((id) => this.deps.picture(id) === null);
     if (gone !== undefined)
@@ -87,9 +91,12 @@ export class IdleService {
   }
 
   saveQuote(id: string | null, input: unknown): QuoteResult {
-    const parsed = quoteFieldsSchema.safeParse(input);
-    if (!parsed.success)
-      return { ok: false, message: parsed.error.issues[0]?.message ?? 'That quote does not read.' };
+    const parsed = parsePlain(
+      quoteFieldsSchema,
+      input,
+      'That quote cannot be kept: check its words and where it is from, then save again.',
+    );
+    if (!parsed.success) return { ok: false, message: parsed.message };
     if (id === null) {
       if (this.deps.quotes.count() >= QUOTES_MAX)
         return { ok: false, message: `There can be up to ${String(QUOTES_MAX)} quotes.` };

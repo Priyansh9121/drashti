@@ -5,6 +5,7 @@ import { backupScheduleSchema, NO_BACKUP_SCHEDULE, SCHEDULED_FOLDER } from '../.
 import { nextScheduleTime, scheduleTimes } from '../../shared/schedule';
 import type { BackupWorker } from './spawn-backup-worker';
 import { plural } from '../../shared/text';
+import { parsePlain } from '../../shared/plain-parse';
 
 /*
  * Scheduled backups (shared/backups.ts) as the main process runs them: the
@@ -115,9 +116,12 @@ export class ScheduledBackups {
   }
 
   save(raw: unknown): BackupsResult {
-    const parsed = backupScheduleSchema.safeParse(raw);
-    if (!parsed.success)
-      return { ok: false, message: parsed.error.issues[0]?.message ?? 'That schedule cannot be kept.' };
+    const parsed = parsePlain(
+      backupScheduleSchema,
+      raw,
+      'That schedule cannot be kept: check its days, time and how many to keep, then save again.',
+    );
+    if (!parsed.success) return { ok: false, message: parsed.message };
     const s = parsed.data;
     if (s.folder !== null) {
       if (!isAbsolute(s.folder)) return { ok: false, message: 'Choose the folder with the button.' };

@@ -496,7 +496,7 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
           <Button
             size="sm"
             icon={Palette}
-            title="A theme from this template's first text box"
+            title="A theme from this template’s first text box"
             onClick={() => {
               void themeFromPresentation(doc.id).then((problem) => {
                 useNotice.setState({ text: problem });

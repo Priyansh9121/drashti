@@ -434,7 +434,7 @@ function MacroTimes({ schedules, set }: { schedules: MacroSchedule[]; set: (s: M
             )}
             <TextInput
               type="time"
-              aria-label="Time (this computer's clock)"
+              aria-label="Time (this computer’s clock)"
               data-testid="macro-time-at"
               value={s.time}
               onChange={(ev) => update(i, { time: ev.target.value })}

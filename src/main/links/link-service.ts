@@ -846,7 +846,7 @@ export class LinkService {
         );
         notTaken.push({
           name: inFolder(path),
-          reason: `It is above ${most}, and Drashti could not make it ${most} (${fit.message.replace(/\.$/u, '')}), so it was not imported.`,
+          reason: `It is above ${most}, and Drashti could not make it ${most} (${fit.message.replace(/\.$/u, '')}), so it was not imported: make it ${most} or smaller in another program, then import it again.`,
         });
         continue;
       }

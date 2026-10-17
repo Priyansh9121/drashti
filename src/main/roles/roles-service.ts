@@ -2,6 +2,7 @@ import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { z } from 'zod';
 import type { Role, RolesResult, RolesView } from '../../shared/roles';
+import { parsePlain } from '../../shared/plain-parse';
 import {
   ADMIN_UNLOCK_MS,
   PIN_FIRST_WAIT_MS,
@@ -268,13 +269,8 @@ export class RolesService {
 
   /** Turn roles on with two PINs, or set both again (an admin, or anyone while roles are off). */
   async setPins(raw: unknown): Promise<RolesResult> {
-    const parsed = pinsSchema.safeParse(raw);
-    if (!parsed.success)
-      return {
-        ok: false,
-        message: parsed.error.issues[0]?.message ?? 'Those PINs cannot be used.',
-        view: this.view(),
-      };
+    const parsed = parsePlain(pinsSchema, raw, 'Those PINs cannot be used: type each again, then save.');
+    if (!parsed.success) return { ok: false, message: parsed.message, view: this.view() };
     const [admin, operator] = await Promise.all([
       hashPin(parsed.data.admin, this.cost),
       hashPin(parsed.data.operator, this.cost),
@@ -293,13 +289,8 @@ export class RolesService {
     const data = this.data;
     if (data === null)
       return { ok: false, message: 'Roles are off: set both PINs first.', view: this.view() };
-    const parsed = pinChangeSchema.safeParse(raw);
-    if (!parsed.success)
-      return {
-        ok: false,
-        message: parsed.error.issues[0]?.message ?? 'That PIN cannot be used.',
-        view: this.view(),
-      };
+    const parsed = parsePlain(pinChangeSchema, raw, 'That PIN cannot be used: type it again, then save.');
+    if (!parsed.success) return { ok: false, message: parsed.message, view: this.view() };
     const { role, pin } = parsed.data;
     const other = role === 'admin' ? data.operator : data.admin;
     if (await pinMatches(pin, other))

@@ -725,7 +725,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       if (screenId && output && !output.isDestroyed())
         return { name: outputNames.get(screenId) ?? 'an output', output: output.webContents };
       if (nodeWindow && !nodeWindow.isDestroyed() && sender.id === nodeWindow.webContents.id)
-        return { name: "the node's window", output: null };
+        return { name: 'the node’s window', output: null };
       return { name: 'a window', output: null };
     },
   });

@@ -14,7 +14,7 @@ import {
 
 /*
  * The first start (Session 26g): once per library, the lamp lights, then a welcome with three
- * choices. Set up the screens opens the wizard; Skip for now leaves the empty places to lead; Try a
+ * choices. Set Up Screens… opens the wizard; Skip for now leaves the empty places to lead; Try a
  * practice show first puts placeholder slides on the operator's screen only, and they reach no
  * output and change nothing in the show or the library. Never in Simple Mode or for a volunteer.
  */
@@ -44,7 +44,7 @@ async function welcomeOf(
   return { win, welcome };
 }
 
-test('the lamp lights once, then Set up the screens opens the wizard at its Screens step; never again', async () => {
+test('the lamp lights once, then Set Up Screens… opens the wizard at its Screens step; never again', async () => {
   const { app, userData } = await launchApp(FIRST);
   const { win, welcome } = await welcomeOf(app);
   await expect(welcome.getByRole('heading', { name: 'Welcome to Drashti' })).toBeVisible();
@@ -58,10 +58,10 @@ test('the lamp lights once, then Set up the screens opens the wizard at its Scre
   expect(flame.names).toBe('lamp-flame, lamp-breath');
   expect(flame.delays.split(', ')[1]).toBe('1.4s');
   await expectNoSeriousA11yIssues(win, 'the first start’s welcome');
-  // The one primary is Set up the screens, and it has the keyboard.
-  await expect(welcome.getByRole('button', { name: 'Set up the screens' })).toBeFocused();
+  // The one primary is Set Up Screens…, and it has the keyboard.
+  await expect(welcome.getByRole('button', { name: 'Set Up Screens…' })).toBeFocused();
   await expect(welcome.locator('[data-variant="primary"]')).toHaveCount(1);
-  await welcome.getByRole('button', { name: 'Set up the screens' }).click();
+  await welcome.getByRole('button', { name: 'Set Up Screens…' }).click();
   const wizard = win.getByTestId('setup-wizard');
   await expect(wizard.getByTestId('setup-step')).toHaveText('Screens');
   await expect(welcome).toHaveCount(0);

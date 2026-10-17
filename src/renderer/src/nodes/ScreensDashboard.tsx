@@ -391,7 +391,7 @@ export function ScreensDashboard({ simple, onSetUp }: { simple: boolean; onSetUp
       headerActions={
         onSetUp && (
           <Button icon={Settings} onClick={onSetUp}>
-            Set up screens…
+            Screens
           </Button>
         )
       }

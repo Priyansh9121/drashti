@@ -214,7 +214,7 @@ export function WordsEditor({ platform }: { platform: string }) {
       {open.mode === 'new' && (
         <TextInput
           aria-label="Name"
-          placeholder="Name, for example the kirtan's first line"
+          placeholder="Name, for example the kirtan’s first line"
           value={name}
           maxLength={200}
           autoFocus

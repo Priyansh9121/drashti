@@ -11,11 +11,11 @@ if (!root) throw new Error('Missing #root');
 const sendError = (report: Parameters<typeof window.drashti.app.renderError>[0]) =>
   window.drashti.app.renderError(report);
 createRoot(root, {
-  onUncaughtError: reportRenderError("node's window", 'uncaught', sendError),
-  onCaughtError: reportRenderError("node's window", 'caught', sendError),
+  onUncaughtError: reportRenderError('node’s window', 'uncaught', sendError),
+  onCaughtError: reportRenderError('node’s window', 'caught', sendError),
 }).render(
   <StrictMode>
-    <WindowBoundary reloadLabel="Reload the node's window">
+    <WindowBoundary reloadLabel="Reload the node’s window">
       <NodeApp />
     </WindowBoundary>
   </StrictMode>,

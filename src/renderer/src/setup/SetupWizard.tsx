@@ -511,7 +511,7 @@ export function SetupWizard({ platform }: { platform: string }) {
   return (
     <>
       <Dialog
-        title="Set up Drashti"
+        title="Set Up Screens"
         subtitle={<StepList step={step} />}
         size="xl"
         onClose={requestClose}
@@ -572,7 +572,7 @@ export function SetupWizard({ platform }: { platform: string }) {
             </p>
             <p className="text-muted">
               Nothing changes until you press Finish at the end. Each step can be skipped to keep things as
-              they are, and the setup can be run again from View, Set Up Screens. Drashti never changes a
+              they are, and the setup can be run again from View, Set Up Screens… Drashti never changes a
               display’s resolution.
             </p>
           </div>

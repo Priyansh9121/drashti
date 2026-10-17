@@ -12,6 +12,7 @@ import {
   WORDY_KINDS,
 } from '../../shared/events-out';
 import { idSchema } from '../../shared/model-schema';
+import { parsePlain } from '../../shared/plain-parse';
 import type { StreamKeyStore } from '../stream/key-store';
 import type { OutEvent, Outcome, TryResult } from './delivery';
 import { checkTarget, type Resolve } from './policy';
@@ -227,9 +228,12 @@ export class EventsOut {
   }
 
   async add(rawUrl: unknown, rawAllowInternet: unknown): Promise<EventsOutResult> {
-    const parsed = eventAddressSchema.safeParse(rawUrl);
-    if (!parsed.success)
-      return { ok: false, message: parsed.error.issues[0]?.message ?? 'That is not an address.' };
+    const parsed = parsePlain(
+      eventAddressSchema,
+      rawUrl,
+      'That is not an address Drashti can send to: type it as the receiver gives it, starting http:// or https://.',
+    );
+    if (!parsed.success) return { ok: false, message: parsed.message };
     const allowInternet = rawAllowInternet === true;
     if (this.addresses.size >= EVENT_ADDRESSES_MAX)
       return { ok: false, message: `At most ${String(EVENT_ADDRESSES_MAX)} addresses.` };

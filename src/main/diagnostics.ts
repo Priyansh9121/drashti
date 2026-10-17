@@ -235,7 +235,7 @@ export function nodeDiagnosticsText(input: NodeDiagnosticsInput): string {
         : 'Not paired with a Main',
       `Link: ${input.link.state} since ${new Date(input.link.since).toISOString()}${input.link.why ? ` (${input.link.why})` : ''}`,
       clock
-        ? `Clock: Main's is ${clock.offsetMs >= 0 ? '+' : ''}${String(Math.round(clock.offsetMs))} ms from this computer's, from a round trip of ${String(Math.round(clock.rttMs))} ms at ${new Date(clock.at).toISOString()}`
+        ? `Clock: Main’s is ${clock.offsetMs >= 0 ? '+' : ''}${String(Math.round(clock.offsetMs))} ms from this computer’s, from a round trip of ${String(Math.round(clock.rttMs))} ms at ${new Date(clock.at).toISOString()}`
         : 'Clock: not measured yet',
       `Show: revision ${String(input.rev)}${input.fromSaved ? ', the last picture kept (Main not reached since this node started)' : ''}`,
     ]),
@@ -258,7 +258,7 @@ export function nodeDiagnosticsText(input: NodeDiagnosticsInput): string {
   );
   const m = input.media;
   parts.push(
-    section("Pictures and videos (copies of Main's, counts only)", [
+    section('Pictures and videos (copies of Main’s, counts only)', [
       `${String(m.ready)} of ${String(m.wanted)} files ready (${formatBytes(m.bytesReady)} of ${formatBytes(m.bytesWanted)})`,
       ...(m.copying
         ? [`Copying one: ${formatBytes(m.copying.done)} of ${formatBytes(m.copying.bytes)}`]

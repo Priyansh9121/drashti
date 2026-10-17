@@ -940,11 +940,13 @@ async function powerPointOnWindows(
     };
   }
   if (r.code !== 0 || !exists(pdf)) {
+    // PowerPoint's own words go to the log only.
     const detail = firstLine(r.stderr);
+    if (detail) options.log?.(`PowerPoint: failed: ${detail}`);
     return {
       ok: false,
-      reason: 'PowerPoint could not save it as PDF',
-      message: `PowerPoint could not save it as PDF${detail ? ` (${detail})` : ''}. ${byHand('powerpoint')}`,
+      reason: 'it stopped with an error',
+      message: `PowerPoint could not save it as PDF. ${byHand('powerpoint')}`,
     };
   }
   let slides: PptxSlide[] | null = null;

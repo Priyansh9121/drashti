@@ -11,6 +11,7 @@ import type {
 } from '../../shared/pictures';
 import { MAX_PICTURE_PAGES, PICTURE_ASSET_NAME, tidyNotes } from '../../shared/pictures';
 import type { ScreenConfig } from '../../shared/screens';
+import { fileProblem } from '../plain-errors';
 
 /*
  * Drawing a PDF's pages as pictures (Session 15), in the main process's
@@ -83,11 +84,15 @@ export class PdfPictures {
     let data: Buffer;
     try {
       data = await readFile(pdfPath);
-    } catch {
-      return { ok: false, message: 'The PDF could not be read.' };
+    } catch (error) {
+      return { ok: false, message: `The PDF could not be read. ${fileProblem(error, 'read')}` };
     }
     if (data.length > MAX_PDF_BYTES)
-      return { ok: false, message: 'The PDF is too big to draw (over 500 MB).' };
+      return {
+        ok: false,
+        message:
+          'The PDF is too big to draw (over 500 MB): save it again with smaller pictures, or in parts, and import those.',
+      };
     await mkdir(outDir, { recursive: true });
     const { width, height } = this.deps.size();
     const started = Date.now();
@@ -96,11 +101,19 @@ export class PdfPictures {
       try {
         win = this.deps.open();
       } catch {
-        resolve({ ok: false, message: 'The window that draws the pages could not open.' });
+        resolve({
+          ok: false,
+          message:
+            'The window that draws the pages could not open: quit Drashti, start it again, then import the PDF again.',
+        });
         return;
       }
       const timer = setTimeout(() => {
-        finish({ ok: false, message: 'Drawing the pages took too long (over 15 minutes).' });
+        finish({
+          ok: false,
+          message:
+            'Drawing the pages took too long (over 15 minutes): save the PDF again in smaller parts and import those one at a time.',
+        });
       }, TIMEOUT_MS);
       const onAbort = () => {
         drawing.stopped = true;
@@ -134,7 +147,11 @@ export class PdfPictures {
       this.drawing = drawing;
       signal?.addEventListener('abort', onAbort);
       win.webContents.on('render-process-gone', () => {
-        finish({ ok: false, message: 'The window drawing the pages stopped unexpectedly.' });
+        finish({
+          ok: false,
+          message:
+            'The window drawing the pages stopped unexpectedly: import the PDF again; if it stops again, save it again from the program that made it.',
+        });
       });
       // The lowest priority: whenever the computer is busy, the show's processes come first.
       win.webContents.once('dom-ready', () => {

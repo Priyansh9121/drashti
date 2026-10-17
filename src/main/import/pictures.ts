@@ -279,7 +279,7 @@ export function picturesIssues(details: {
     issues.push({
       severity: 'warning',
       code: 'pictures-failed-pages',
-      message: `${details.failed.length === 1 ? 'Page' : 'Pages'} ${details.failed.map((n) => String(n + 1)).join(', ')} could not be drawn and ${details.failed.length === 1 ? 'was' : 'were'} left out.`,
+      message: `${details.failed.length === 1 ? 'Page' : 'Pages'} ${details.failed.map((n) => String(n + 1)).join(', ')} could not be drawn and ${details.failed.length === 1 ? 'was' : 'were'} left out: if ${details.failed.length === 1 ? 'it is' : 'they are'} needed, save the PDF again from its program and import that.`,
       fix: null,
     });
   return issues;

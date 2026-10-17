@@ -90,12 +90,12 @@ export function CalendarDialog() {
             <TodayLines day={today} />
           ) : (
             <p className="text-sm text-muted" data-testid="calendar-no-today">
-              No loaded calendar gives today&apos;s date, so nothing shows for it.
+              No loaded calendar gives today’s date, so nothing shows for it.
             </p>
           )}
           <p className="text-xs text-muted">
-            It shows under the operator window&apos;s controls; on stage screens with a Samvat box (or a clock
-            box with the date) in their layout; and on the audience screens in a message with a Samvat field.
+            It shows under the operator window’s controls; on stage screens with a Samvat box (or a clock box
+            with the date) in their layout; and on the audience screens in a message with a Samvat field.
           </p>
         </section>
         <section className="space-y-2" aria-labelledby="calendar-list-title">
@@ -122,8 +122,8 @@ export function CalendarDialog() {
             </table>
           ) : (
             <EmptyState icon={CalendarDays} title="No calendars yet" compact>
-              Load the mandir&apos;s calendar file (its format is in docs/calendar-format.md), or drag it onto
-              the library.
+              Load the mandir’s calendar file (its format is in docs/calendar-format.md), or drag it onto the
+              library.
             </EmptyState>
           )}
           {problem && (

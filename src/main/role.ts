@@ -75,7 +75,7 @@ export function startingRole(
   const moved = setAside(join(userData, FILE), o.now);
   const kept = moved ? `kept as “${basename(moved)}”` : 'left where it is';
   o.log(
-    `${FILE} could not be read (${read.reason}); ${kept}. Starting as ${role === 'main' ? "Main: Main's files are the newest" : "a node: no library, or a node's files are the newest"}`,
+    `${FILE} could not be read (${read.reason}); ${kept}. Starting as ${role === 'main' ? 'Main: Main’s files are the newest' : 'a node: no library, or a node’s files are the newest'}`,
   );
   return {
     role,

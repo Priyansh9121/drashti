@@ -135,7 +135,7 @@ function NewProp({ onDone }: { onDone: (made: boolean) => void }) {
         <>
           <TextInput
             aria-label="Prop words"
-            placeholder="For example the mandir's name"
+            placeholder="For example the mandir’s name"
             className="w-full"
             value={text}
             maxLength={200}
@@ -317,7 +317,7 @@ export function PropsPanel() {
       </ul>
       {props?.length === 0 && !making && (
         <EmptyState icon={Sticker} title="No props yet" compact>
-          A logo, or a line such as the mandir&apos;s name, over every slide.
+          A logo, or a line such as the mandir’s name, over every slide.
         </EmptyState>
       )}
     </Panel>

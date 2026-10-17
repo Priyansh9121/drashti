@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { asClause, issueWords, parsePlain } from './plain-parse';
 
 /*
  * Samvat and tithi (Session 12). Drashti computes no tithi: an admin loads a
@@ -118,23 +119,20 @@ function where(path: readonly PropertyKey[]): string {
  * a file with no day that reads is refused.
  */
 export function readCalendarFile(json: unknown): ReadCalendar {
-  const file = fileSchema.safeParse(json);
-  if (!file.success) {
-    const issue = file.error.issues[0];
+  const file = parsePlain(fileSchema, json, issueWords);
+  if (!file.success)
     return {
       ok: false,
-      message: `This is not a calendar Drashti can read: ${issue?.message ?? 'unknown problem'}${where(issue?.path ?? [])}.`,
+      message: `This is not a calendar Drashti can read${where(file.path)}: ${asClause(file.message)}. Check it against its format, in docs/calendar-format.md.`,
     };
-  }
   const issues: CalendarIssue[] = [];
   const days: CalendarDay[] = [];
   const seen = new Set<string>();
   file.data.days.forEach((raw, i) => {
-    const day = daySchema.safeParse(raw);
+    const day = parsePlain(daySchema, raw, issueWords);
     if (!day.success) {
-      const issue = day.error.issues[0];
       issues.push({
-        message: `Day ${String(i + 1)} was left out: ${issue?.message ?? 'it does not read'}${where(['days', i, ...(issue?.path ?? [])])}.`,
+        message: `Day ${String(i + 1)} was left out${where(['days', i, ...day.path])}: ${asClause(day.message)}.`,
       });
       return;
     }

@@ -1,4 +1,3 @@
-import type { z } from 'zod';
 import {
   ANNOUNCEMENT_TEMPLATE,
   type Announcement,
@@ -23,6 +22,7 @@ import {
 } from '../../shared/messages';
 import { idSchema } from '../../shared/model-schema';
 import type { DeviceAnswer } from '../../shared/network-api';
+import { parsePlain } from '../../shared/plain-parse';
 import type { AnnouncementRepo } from '../db/announcements';
 
 /*
@@ -63,8 +63,10 @@ const KEEP_MS = 30 * 24 * 60 * 60 * 1000;
 const EARLIER = 20;
 
 const deny = (status: number, message: string): DeviceAnswer => ({ status, body: { ok: false, message } });
-const firstProblem = (error: z.ZodError): string =>
-  error.issues[0]?.message ?? 'That is not a valid request.';
+/** A phone's announcement that does not read (its page sends it as it should: an old page, say). */
+const REQUEST_UNREAD = 'That announcement cannot be read: reload the page, then send it again.';
+/** The operator's change to one that does not read. */
+const CHANGE_UNREAD = 'That change cannot be made: check the announcement’s words, then try again.';
 const statusView = (a: Announcement): AnnouncementStatusView => ({
   id: a.id,
   status: a.status,
@@ -101,8 +103,8 @@ export class AnnouncementService {
 
   /** An Announcements device sends one (the network service has checked the device and its kind). */
   submit(device: { id: string; name: string }, address: string, input: unknown): DeviceAnswer {
-    const parsed = announcementInputSchema.safeParse(input);
-    if (!parsed.success) return deny(400, firstProblem(parsed.error));
+    const parsed = parsePlain(announcementInputSchema, input, REQUEST_UNREAD);
+    if (!parsed.success) return deny(400, parsed.message);
     const { repo } = this.deps;
     if (repo.waitingCount() >= ANNOUNCEMENTS_WAITING_MAX)
       return deny(
@@ -141,8 +143,8 @@ export class AnnouncementService {
   // ---- the operator's queue ------------------------------------------------------------------
 
   edit(input: unknown): AnnouncementResult {
-    const parsed = announcementEditSchema.safeParse(input);
-    if (!parsed.success) return { ok: false, message: firstProblem(parsed.error) };
+    const parsed = parsePlain(announcementEditSchema, input, CHANGE_UNREAD);
+    if (!parsed.success) return { ok: false, message: parsed.message };
     const { id, text, minutes } = parsed.data;
     if (!this.deps.repo.edit(id, text, minutes))
       return { ok: false, message: 'That announcement is no longer waiting.' };
@@ -151,8 +153,8 @@ export class AnnouncementService {
   }
 
   approve(input: unknown): AnnouncementResult {
-    const parsed = announcementApproveSchema.safeParse(input);
-    if (!parsed.success) return { ok: false, message: firstProblem(parsed.error) };
+    const parsed = parsePlain(announcementApproveSchema, input, CHANGE_UNREAD);
+    if (!parsed.success) return { ok: false, message: parsed.message };
     const a = this.deps.repo.get(parsed.data.id);
     if (a?.status !== 'waiting') return { ok: false, message: 'That announcement is no longer waiting.' };
     const now = this.deps.now();
@@ -163,7 +165,7 @@ export class AnnouncementService {
       if (!message)
         return {
           ok: false,
-          message: `“${template.name}” needs more than the announcement's words. Choose a template with one field to type into.`,
+          message: `“${template.name}” needs more than the announcement’s words. Choose a template with one field to type into.`,
         };
       const shown = this.deps.engine.dispatch({ type: 'showMessage', message });
       if (!shown.ok) return { ok: false, message: shown.message };

@@ -288,7 +288,7 @@ export function startCapture(level: () => number, sound: () => MediaStreamTrack 
       preview = port;
     } else if (data?.drashtiStreamPort === 'encoder') {
       say(
-        `the encoder's port arrived (${track ? 'capturing' : 'no capture yet'}${latest ? ': the newest frame goes at once' : ''})`,
+        `the encoder’s port arrived (${track ? 'capturing' : 'no capture yet'}${latest ? ': the newest frame goes at once' : ''})`,
       );
       encoder?.close();
       encoder = port;

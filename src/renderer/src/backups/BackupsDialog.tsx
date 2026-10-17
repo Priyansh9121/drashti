@@ -174,7 +174,7 @@ function BackupsForm({ view }: { view: ScheduledBackupsView }) {
           <DaysPicker days={f.days} onChange={(days) => set({ days })} />
         </fieldset>
         <div className="flex flex-wrap gap-4">
-          <Field label="At (this computer's clock)">
+          <Field label="At (this computer’s clock)">
             <TextInput
               type="time"
               data-testid="backups-time"

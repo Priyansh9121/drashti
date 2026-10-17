@@ -336,7 +336,7 @@ function MarkersForm({ media, start }: { media: MediaSummary; start: MediaMarker
               ))}
           </ul>
           <div className="flex items-end gap-2">
-            <Field label="New marker's name" className="flex-1">
+            <Field label="New marker’s name" className="flex-1">
               <TextInput
                 data-testid="marker-name"
                 value={name}

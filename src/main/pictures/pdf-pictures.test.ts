@@ -144,10 +144,12 @@ describe('drawing a PDF as pictures (the main process)', () => {
     const crashed = t.pictures.draw(t.pdf, join(t.dir, 'b'));
     for (let i = 0; i < 100 && t.windows.length < 2; i++) await new Promise((r) => setTimeout(r, 5));
     t.windows[1]?.handlers.get('render-process-gone')?.();
-    expect(await crashed).toEqual({
-      ok: false,
-      message: 'The window drawing the pages stopped unexpectedly.',
-    });
+    // What happened, and what to do next.
+    const result = await crashed;
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.message).toMatch(
+      /^The window drawing the pages stopped unexpectedly: import the PDF again/u,
+    );
   });
 
   it('gives pdf.js its own data by plain name only, from the first folder that has it', async () => {

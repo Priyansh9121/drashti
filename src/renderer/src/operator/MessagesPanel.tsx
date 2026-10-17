@@ -103,7 +103,7 @@ function TemplateForm({
             ))}
             {CALENDAR_LANGS.map((lang) => (
               <option key={lang} value={`samvat:${lang}`}>
-                {`Today's Samvat date (${CALENDAR_LANG_NAMES[lang]})`}
+                {`Today’s Samvat date (${CALENDAR_LANG_NAMES[lang]})`}
               </option>
             ))}
           </Select>
@@ -172,7 +172,7 @@ function TemplateRow({
     >
       <div className="flex items-center gap-2">
         <Truncate text={t.name} className="flex-1 text-sm font-medium" />
-        {shown && <Badge tone="live">On screens</Badge>}
+        {shown && <Badge tone="live">On the screens</Badge>}
       </div>
       <Truncate text={t.template} className="text-xs text-muted" />
       {names.map((n) => {
@@ -183,7 +183,7 @@ function TemplateRow({
           </p>
         ) : f.kind === 'samvat' ? (
           <p key={n} className="text-xs text-muted">
-            {`{${n}}`}: today&apos;s Samvat date ({CALENDAR_LANG_NAMES[f.lang]})
+            {`{${n}}`}: today’s Samvat date ({CALENDAR_LANG_NAMES[f.lang]})
           </p>
         ) : (
           <TextInput

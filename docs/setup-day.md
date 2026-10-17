@@ -41,7 +41,7 @@ ProPresenter stays installed and untouched all day. Drashti only reads its files
 
 ## 3. Screens and sound (Main, then the node)
 
-- [ ] **The setup wizard** (**View**, **Set Up Screens…**): **Show each display's number on it**, then for each display what it shows and its languages, as the screen map in the checklist says.
+- [ ] **Set Up Screens…** (in **View**): **Show each display's number on it**, then for each display what it shows and its languages, as the screen map in the checklist says.
 - [ ] **Sound**: the output to the mixer, and **Play a test tone**. **(operators)** Check the mixer hears it on the right channel.
 - [ ] Canvas sizes and scaling for any screen that is not 1920 × 1080 (an LED wall).
 - [ ] **(operators)** **Looks**: the everyday Look first in the list, then any others they need ("Gujarati only", "Lower thirds").

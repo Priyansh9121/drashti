@@ -70,17 +70,20 @@ export function samePublisher(a: string, b: string): boolean {
 export function installerAllowed(
   own: Authenticode | null,
   theirs: Authenticode,
-): { ok: true } | { ok: false; message: string } {
+): { ok: true } | { ok: false; message: string; cause?: string } {
   if (!own?.valid || !own.subject) return { ok: true };
   if (!theirs.valid || !theirs.subject)
     return {
       ok: false,
-      message: `The downloaded update has no valid signature (Windows says: ${theirs.status}), so Drashti will not install it. Download Drashti again from its releases page, or ask whoever looks after this computer.`,
+      // Windows' own word for it, for the log only.
+      cause: `its signature: ${theirs.status}`,
+      message:
+        'The downloaded update has no valid signature, so Drashti will not install it: download Drashti again from its releases page, or ask whoever looks after this computer.',
     };
   if (!samePublisher(own.subject, theirs.subject))
     return {
       ok: false,
-      message: `The downloaded update is signed by someone else (${subjectParts(theirs.subject).get('CN') ?? 'unknown'}), not by Drashti's publisher, so Drashti will not install it.`,
+      message: `The downloaded update is signed by someone else (${subjectParts(theirs.subject).get('CN') ?? 'a name not given'}), not by Drashti’s publisher, so Drashti will not install it: download Drashti again from its releases page, or ask whoever looks after this computer.`,
     };
   return { ok: true };
 }

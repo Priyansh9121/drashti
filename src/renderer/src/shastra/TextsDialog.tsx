@@ -57,7 +57,7 @@ export function TextsDialog() {
   return (
     <Dialog
       title="Shastra texts"
-      subtitle="Load only texts that BAPS or the mandir has authorised. Each text's passages are drawn with its theme."
+      subtitle="Load only texts that BAPS or the mandir has authorised. Each text’s passages are drawn with its theme."
       onClose={close}
       closeLabel="Close Shastra texts"
       size="lg"

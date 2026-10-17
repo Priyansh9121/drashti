@@ -12,7 +12,7 @@ import { openSetup } from './setup-store';
 
 /*
  * The first start (Session 26g): once per library, the lamp lights (over --dur-light; with reduced
- * motion it is simply lit), then a welcome with three choices. Set up the screens opens the setup
+ * motion it is simply lit), then a welcome with three choices. Set Up Screens… opens the setup
  * wizard, as before, at its Screens step; Try a practice show first puts placeholder slides on this
  * screen only, and leaving it comes back here; Skip for now leaves the empty places to lead, step
  * 1's Import… the one primary. Once set up or skipped, it never comes again for this library.
@@ -99,7 +99,7 @@ function WelcomeDialog() {
           className="mt-2 flex flex-wrap items-center justify-center gap-2"
         >
           <Button variant="primary" size="lg" icon={Monitor} data-autofocus onClick={setUpTheScreens}>
-            Set up the screens
+            Set Up Screens…
           </Button>
           <Button size="lg" icon={Play} onClick={tryPractice} data-testid="welcome-practice">
             Try a practice show first
@@ -109,8 +109,9 @@ function WelcomeDialog() {
           </Button>
         </div>
         <p data-motion="words" style={{ ['--i' as string]: 3 }} className="max-w-lg text-sm text-muted">
-          A practice show uses placeholder slides on this screen only. You can set up the screens later from{' '}
-          <b className="text-fg">Screens</b>.
+          A practice show uses placeholder slides on this screen only. Later,{' '}
+          <b className="text-fg">Set Up Screens…</b> (in <b className="text-fg">View</b>) or{' '}
+          <b className="text-fg">Screens</b> sets the screens up.
         </p>
       </div>
     </div>,
