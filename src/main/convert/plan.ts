@@ -94,7 +94,21 @@ export function convertArgs(
   info: MediaInfo,
   options: { maxHeight?: number } = {},
 ): string[] {
-  const head = ['-hide_banner', '-loglevel', 'error', '-nostats', '-progress', 'pipe:2', '-y', '-i', input];
+  // Only files may be opened (Session 31, MED-6): a file naming another place (a playlist, concat:,
+  // a network address) is never followed.
+  const head = [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-nostats',
+    '-progress',
+    'pipe:2',
+    '-y',
+    '-protocol_whitelist',
+    'file',
+    '-i',
+    input,
+  ];
   const even =
     options.maxHeight === undefined
       ? 'scale=trunc(iw/2)*2:trunc(ih/2)*2'

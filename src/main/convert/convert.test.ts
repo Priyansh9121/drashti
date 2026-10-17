@@ -395,4 +395,79 @@ describe.skipIf(!existsSync(ffmpeg))('converting media, with FFmpeg', () => {
     expect(readdirSync(out).sort()).toEqual(['Part (2).mp4', 'Part.mp4']);
     expect(service.cancelFile('no such save')).toBe(false);
   }, 120_000);
+
+  it('stops a conversion, a look at a file and a Save as MP4 that take too long, saying so plainly; and FFmpeg never gets Drashti’s own environment (Session 31, MED-6)', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-convert-'));
+    const mediaDir = join(dir, 'Media');
+    mkdirSync(join(mediaDir, 'in'), { recursive: true });
+    const clip = join(mediaDir, 'in', 'clip.avi');
+    make(['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25', '-t', '2', '-c:v', 'mpeg4', clip]);
+    const library = openDatabase(join(dir, 'drashti.sqlite'));
+    db = library;
+    library
+      .prepare(
+        "INSERT INTO media (id, kind, name, path, playable) VALUES ('m-avi', 'video', 'Placeholder clip.avi', 'in/clip.avi', 0)",
+      )
+      .run();
+    // FFREPORT set for Drashti: an FFmpeg given Drashti's whole environment would write a report here.
+    // Its options are split at ':', so a Windows drive's has to be escaped.
+    const report = join(dir, 'ffreport.log')
+      .replaceAll('\\', '/')
+      .replace(/^([A-Za-z]):/u, '$1\\:');
+    const was = process.env['FFREPORT'];
+    process.env['FFREPORT'] = `file=${report}:level=32`;
+    let jobs: ConversionJob[] = [];
+    const open = (limits: { probeMs?: number; workMs?: (lengthMs: number | null) => number }) => {
+      service?.close();
+      jobs = [];
+      service = new ConvertService({
+        db: library,
+        mediaDir,
+        ffmpegPath: () => ffmpeg,
+        busy: () => null,
+        freeBytes: () => 100 * 1024 ** 3,
+        changed: (j) => {
+          jobs = j;
+        },
+        libraryChanged: () => undefined,
+        log: () => undefined,
+        limits,
+      });
+      return service;
+    };
+    try {
+      // Converting given almost no time: stopped, and said plainly.
+      expect(open({ workMs: () => 1 }).convert(['m-avi'])).toMatchObject({ ok: true });
+      await until(() => jobs[0]?.state === 'failed');
+      expect(jobs[0]?.message).toMatch(/^Stopped: converting it took longer than /u);
+      // Reading what the file holds given almost no time: the same, before anything is made.
+      expect(open({ probeMs: 1 }).convert(['m-avi'])).toMatchObject({ ok: true });
+      await until(() => jobs[0]?.state === 'failed');
+      expect(jobs[0]?.message).toMatch(/^FFmpeg took longer than 1 second to read this file/u);
+      // Save as MP4 given almost no time: stopped, nothing left.
+      const out = join(dir, 'saved');
+      mkdirSync(out);
+      const saved = open({ workMs: () => 1 }).saveCopy(
+        clip,
+        join(out, 'Part.mp4'),
+        {
+          durationMs: 2000,
+          video: { codec: 'mpeg4', pixFmt: 'yuv420p', width: 320, height: 180, still: false },
+          audio: null,
+        },
+        { args: (tmp) => trimArgs(clip, tmp, 0, 2000), lengthMs: 2000 },
+      );
+      const result = await saved.done;
+      expect(result.ok).toBe(false);
+      expect(result.ok ? '' : result.message).toMatch(/^Stopped: saving it took longer than /u);
+      expect(readdirSync(out)).toEqual([]);
+      // With the usual time it converts; and no FFmpeg wrote a report: none had Drashti's environment.
+      expect(open({}).convert(['m-avi'])).toMatchObject({ ok: true });
+      await until(() => jobs[0]?.state === 'done');
+      expect(readdirSync(dir).filter((f) => f.startsWith('ffreport'))).toEqual([]);
+    } finally {
+      if (was === undefined) delete process.env['FFREPORT'];
+      else process.env['FFREPORT'] = was;
+    }
+  }, 120_000);
 });

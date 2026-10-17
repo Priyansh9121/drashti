@@ -50,6 +50,15 @@ describe('a video saved as an MP4 by copying it', () => {
     );
   });
 
+  it('opens nothing but files, before the input (Session 31, MED-6)', () => {
+    for (const args of [trimArgs('/in.mov', '/o.mp4', 40_000, 280_000), keyframeArgs('/in.mp4', 41_200)]) {
+      const at = args.indexOf('-protocol_whitelist');
+      expect(at).toBeGreaterThanOrEqual(0);
+      expect(args[at + 1]).toBe('file');
+      expect(at).toBeLessThan(args.indexOf('-i'));
+    }
+  });
+
   it('copies every picture and sound stream from the keyframe to the end, with its details, starting as it downloads', () => {
     const args = trimArgs('/in.mov', '/out/.part.mp4', 40_000, 280_000);
     expect(args.slice(args.indexOf('-ss'), args.indexOf('-ss') + 6)).toEqual([

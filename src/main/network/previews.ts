@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { constants, setPriority } from 'node:os';
 import { join } from 'node:path';
+import { ffmpegEnv } from '../stream/worker/ffmpeg-env';
 
 /*
  * Small pictures of media for the remote's thumbnails, so a phone on slow
@@ -71,6 +72,9 @@ export class PreviewMaker {
       '-loglevel',
       'error',
       '-y',
+      // Only files may be opened (Session 31).
+      '-protocol_whitelist',
+      'file',
       // A video's frame from a moment in, past any fade from black.
       ...(source.kind === 'video' ? ['-ss', '0.5'] : []),
       '-i',
@@ -84,7 +88,7 @@ export class PreviewMaker {
       tmp,
     ];
     return new Promise((resolve) => {
-      const child = spawn(ffmpeg, args, { windowsHide: true, stdio: 'ignore' });
+      const child = spawn(ffmpeg, args, { windowsHide: true, stdio: 'ignore', env: ffmpegEnv() });
       try {
         if (child.pid !== undefined) setPriority(child.pid, constants.priority.PRIORITY_LOW);
       } catch {
