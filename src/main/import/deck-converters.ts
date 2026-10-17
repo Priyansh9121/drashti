@@ -798,14 +798,16 @@ async function quitIfIdle(
 
 /**
  * PowerPoint on Windows, through its automation: note whether PowerPoint was
- * running, open the copy read-only without a window and with its questions
- * off, save as PDF (32 is ppSaveAsPDF), note every slide's notes and whether
+ * running, open the copy read-only without a window, with its questions off
+ * and its macros forced off (AutomationSecurity 3, put back as it was after;
+ * Sessions 31–36, SEC-13: if that cannot be set, the deck is not opened),
+ * save as PDF (32 is ppSaveAsPDF), note every slide's notes and whether
  * it is hidden, close, and quit PowerPoint only if Drashti started it and
  * nothing else is open. A PowerPoint Drashti started runs below normal
  * priority, and its process id is written down so Drashti can stop it if it
  * stops answering.
  */
-const POWERPOINT_WINDOWS_SCRIPT = `param([Parameter(Mandatory)][string]$In, [Parameter(Mandatory)][string]$Out, [Parameter(Mandatory)][string]$Notes, [Parameter(Mandatory)][string]$Started)
+export const POWERPOINT_WINDOWS_SCRIPT = `param([Parameter(Mandatory)][string]$In, [Parameter(Mandatory)][string]$Out, [Parameter(Mandatory)][string]$Notes, [Parameter(Mandatory)][string]$Started)
 $ErrorActionPreference = 'Stop'
 $before = @(Get-Process POWERPNT -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
 $app = New-Object -ComObject PowerPoint.Application
@@ -814,8 +816,10 @@ Set-Content -LiteralPath $Started -Value ($ours -join ',') -Encoding ASCII
 foreach ($id in $ours) { try { (Get-Process -Id $id).PriorityClass = 'BelowNormal' } catch {} }
 $alerts = $app.DisplayAlerts
 try { $app.DisplayAlerts = 1 } catch {}
+$security = $app.AutomationSecurity
 $pres = $null
 try {
+  $app.AutomationSecurity = 3
   $pres = $app.Presentations.Open($In, -1, 0, 0)
   $pres.SaveAs($Out, 32)
   $slides = @()
@@ -828,6 +832,7 @@ try {
 } finally {
   if ($pres) { try { $pres.Close() } catch {} }
   try { $app.DisplayAlerts = $alerts } catch {}
+  try { $app.AutomationSecurity = $security } catch {}
   if ($ours.Count -gt 0 -and $app.Presentations.Count -eq 0) { $app.Quit() }
   [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($app)
 }
