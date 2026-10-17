@@ -1,6 +1,7 @@
 import { app, type WebContents } from 'electron';
 import { execFileSync } from 'node:child_process';
 import { STREAM_PRESETS } from '../../shared/stream';
+import { powershellEnv, powershellPath } from '../system/powershell';
 import type { StreamService } from './stream-service';
 
 /*
@@ -16,9 +17,12 @@ import type { StreamService } from './stream-service';
 const PERF_KEY = 'test-made-up-key-perf-0000';
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** CPU seconds used so far by FFmpeg processes started by this app (macOS and Linux; null elsewhere). */
+/**
+ * CPU seconds used so far by FFmpeg processes started by this app: `ps` on macOS and Linux, Windows'
+ * own process list through PowerShell on Windows (Session 31, so the limiter's cost shows there too).
+ */
 function ffmpegCpuSeconds(): number | null {
-  if (process.platform === 'win32') return null;
+  if (process.platform === 'win32') return windowsFfmpegCpuSeconds();
   try {
     const rows = execFileSync('ps', ['-A', '-o', 'ppid=,time=,comm=']).toString().trim().split('\n');
     const ours = new Set(app.getAppMetrics().map((m) => m.pid));
@@ -30,6 +34,36 @@ function ffmpegCpuSeconds(): number | null {
       total += parts.reduce((s, p) => s * 60 + p, 0);
     }
     return total;
+  } catch {
+    return null;
+  }
+}
+
+/** Windows: each ffmpeg.exe's parent and CPU time (100 ns units), from Win32_Process. */
+function windowsFfmpegCpuSeconds(): number | null {
+  try {
+    const rows = execFileSync(
+      powershellPath(),
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        'Get-CimInstance Win32_Process -Filter "Name=\'ffmpeg.exe\'" | ForEach-Object { "$($_.ParentProcessId) $($_.KernelModeTime + $_.UserModeTime)" }',
+      ],
+      { env: powershellEnv(), timeout: 15_000, windowsHide: true },
+    )
+      .toString()
+      .trim()
+      .split('\n');
+    const ours = new Set(app.getAppMetrics().map((m) => m.pid));
+    let total = 0;
+    for (const row of rows) {
+      const [ppid = '', time = ''] = row.trim().split(/\s+/u);
+      if (ours.has(Number(ppid))) total += Number(time) / 1e7;
+    }
+    return Number.isFinite(total) ? total : null;
   } catch {
     return null;
   }
