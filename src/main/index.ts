@@ -34,6 +34,7 @@ import { addToFolderParts, makeFolderPlaylist } from './playlists/folder-playlis
 import { idSchema } from '../shared/model-schema';
 import { z } from 'zod';
 import type { OutputContext } from '../shared/screens';
+import { missingFontsIn } from '../shared/screens';
 import type { MessageResult } from '../shared/messages';
 import type { PropResult } from '../shared/props';
 import { propFieldsSchema } from '../shared/props';
@@ -3131,7 +3132,10 @@ function start(): void {
   /** Main's identity for its nodes, read (or made) once, when a node is paired or being paired. */
   let identityLoad: IdentityLoad | null = null;
   /** How each of Main's own outputs draws (they report every few seconds), for the dashboard. */
-  const localReports = new Map<string, { droppedFrames: number; paintedRev: number }>();
+  const localReports = new Map<
+    string,
+    { droppedFrames: number; paintedRev: number; missingFonts: string[] }
+  >();
   const nodes = new NodeService({
     nodes: nodeRepo,
     write: (key, run) => {
@@ -3210,6 +3214,9 @@ function start(): void {
                 displayId: st.displayId,
                 droppedFrames: localReports.get(st.screenId)?.droppedFrames ?? 0,
                 paintedRev: localReports.get(st.screenId)?.paintedRev ?? -1,
+                ...((localReports.get(st.screenId)?.missingFonts.length ?? 0) > 0
+                  ? { missingFonts: localReports.get(st.screenId)?.missingFonts }
+                  : {}),
               },
             ]
           : [],
@@ -3318,9 +3325,18 @@ function start(): void {
   });
   handle(IPC.output.report, (e, raw) => {
     const screenId = manager.screenIdFor(e.sender.id);
-    const r = raw as { droppedFrames?: unknown; paintedRev?: unknown; warming?: unknown } | null;
+    const r = raw as {
+      droppedFrames?: unknown;
+      paintedRev?: unknown;
+      warming?: unknown;
+      missingFonts?: unknown;
+    } | null;
     if (screenId && typeof r?.droppedFrames === 'number' && typeof r.paintedRev === 'number') {
-      localReports.set(screenId, { droppedFrames: r.droppedFrames, paintedRev: r.paintedRev });
+      const missingFonts = missingFontsIn(r.missingFonts);
+      const before = localReports.get(screenId)?.missingFonts.join('|') ?? '';
+      localReports.set(screenId, { droppedFrames: r.droppedFrames, paintedRev: r.paintedRev, missingFonts });
+      // A font found missing (or there now): the dashboard says so.
+      if (missingFonts.join('|') !== before) nodes.localOutputsChanged();
       heartbeat.report(screenId, r.paintedRev, r.warming === true);
       // Reporting from a page loaded since it was given up on: it draws again.
       if (loadedSinceStopped.has(screenId)) manager.setStopped(screenId, false);

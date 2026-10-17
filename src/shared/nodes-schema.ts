@@ -83,6 +83,7 @@ export const nodeHealthSchema: z.ZodType<NodeHealth> = z.object({
         displayId: finite.nullable(),
         droppedFrames: z.number().int().nonnegative(),
         paintedRev: z.number().int(),
+        missingFonts: z.array(z.string().min(1).max(200)).max(20).optional(),
       }),
     )
     .max(16),

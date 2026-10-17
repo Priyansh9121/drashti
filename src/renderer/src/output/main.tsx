@@ -101,8 +101,16 @@ function useFrameReports(refreshHz: number, drawing: boolean) {
       // eslint-disable-next-line no-restricted-properties -- a frame reporter's own clock: it draws nothing
       const since = performance.now() - 60_000;
       while (late.length > 0 && (late[0] ?? 0) < since) late.shift();
+      // Fonts the words up now name that this computer does not have (Sessions 31–36, I18N-1).
+      const missingFonts = [
+        ...new Set(
+          [...document.querySelectorAll<HTMLElement>('[data-missing-font]')].flatMap((e) =>
+            (e.dataset['missingFont'] ?? '').split(', '),
+          ),
+        ),
+      ].filter((n) => n !== '');
       void window.drashti.output
-        .report({ droppedFrames: late.length, paintedRev: paintedRevNow, warming: !drawing })
+        .report({ droppedFrames: late.length, paintedRev: paintedRevNow, warming: !drawing, missingFonts })
         .catch(() => undefined);
     }, 2000);
     return () => {

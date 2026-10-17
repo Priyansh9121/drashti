@@ -4,25 +4,21 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 ## Unreleased
 
-- Slides and themes can darken behind their words, as a band or over the whole picture, 40, 60 or 80% dark, so words stay readable over a bright picture or video; nothing changes unless you choose it. The slide editor and the theme editor show how well the words stand out.
-- The theme editor says when a theme's words would be too small, too faint, too thin, too close or too near the edge for the back of the hall; it still saves.
-- A phone's remote shows the slide in the hall's languages, as LIVE does, and the next one too; beside the notes it shows the time as Drashti's computer has it and the first running timer.
-- The stage screen makes a long slide's words smaller until its last line shows; words that already fit look exactly as before.
-- When a lower third cannot hold all of a slide's lines, a note under LIVE says how many it shows, for example "Lower third shows 6 of 7 lines".
-- View, Show Safe Areas draws the safe areas, the ticker's and a message's bands, and where each screen group cuts the slide off, in the slide editor; words where the ticker runs are warned of.
-- The slide editor marks words that run past their box, on the slide's thumbnail and in the inspector, and warns when words are drawn smaller than 36 px on a 1080-line screen (a note below 48 px); an import says how many slides may need a look.
-- The first time Simple Mode opens, three short steps show how to choose the playlist, use Next and Back, and Black-out and Clear all; Skip ends them, and they never come again. Loading appears only when a wait lasts longer than half a second, and the phone remote says where empty playlists, library and messages are filled.
-- Error messages say what to do next as well as what went wrong, without codes or the computer's own words: reading a PDF, saving an update, opening the library, converting, a port in use, pairing a node, and every form and file Drashti checks. The screens' setup is called Set Up Screens… everywhere, its button on the dashboard is Screens, and a message that is up says On the screens.
-- What is this? cards now have Read more, which opens the guide at the passage they come from; there is a ? beside Next and Back, the show controls, the open playlist, Stream, Phones, Announcements, the status bar, Audio and More tools too.
-- Help › Guides… opens the operator's, presenter's, admin's and setup day's guides inside Drashti, with their pictures, without the internet; search finds every passage that holds the words you type, after answers to questions such as "When a screen is black or frozen, what do I do?". Simple Mode shows the operator's and presenter's.
-- The computer stays awake while the stream is on air or recording, even with no hall screen showing.
-- If the stream's own page keeps failing, Drashti stops restarting it after the sixth time in a minute and says so, with Try again, in Simple Mode too; a hall screen whose page fails to load is logged and loaded again at once.
-- After Drashti stops unexpectedly, the next start stops a conversion, Save as MP4, YouTube download or PowerPoint it had started that was left running, and removes the half-saved file; your own programs are never touched.
-- A conversion or Save as MP4 that FFmpeg gets stuck on stops after four times the video's length and 5 minutes more, saying so plainly, and reading a file stops after 30 seconds; FFmpeg only ever opens files.
-- A limiter keeps the stream's and recordings' sound under full scale, so a loud desk, or Drashti's own sound mixed in, never clips; quieter sound passes as it is, and the meter still shows the mix as it comes.
-- A long recording goes on in parts of 3.5 GB, each playing on its own, so a USB stick never cuts a sabha's recording short; Drashti says so when the recording folder is on a FAT32 drive or its disk has room for less than an hour.
-- On air or recording, the header says No sound, beside ON AIR and REC and in Simple Mode too, when nothing has reached the stream for 20 seconds, or 3 seconds after its microphone is unplugged; a notice says what to check. It goes when sound is back, and Drashti never changes the microphone itself.
-- Choosing the stream's camera and sound input quickly, or just as it goes live, no longer leaves it on an older choice: the newest always wins.
+- When the live slide names a font this computer, or a node, does not have, a warning says so beside LIVE and on the screens dashboard.
+- On air or recording, No sound shows beside ON AIR, in Simple Mode too, when nothing reaches the stream for 20 seconds or 3 seconds after its microphone is unplugged, with what to check.
+- A long recording goes on in parts of 3.5 GB, so a USB stick never cuts it short; Drashti warns of a FAT32 drive or a disk with room for less than an hour.
+- A limiter keeps the stream's and recordings' sound from clipping.
+- A stuck conversion or Save as MP4 stops by itself and says why; after a crash, the next start stops what Drashti had left running.
+- The computer stays awake on air; a failing stream page stops restarting after six tries in a minute and offers Try again.
+- Help › Guides… opens the guides inside Drashti, searchable without the internet, with answers to "When …, what do I do?"; What is this? cards have Read more, and there are more of them.
+- Messages say what to do next; the screens' setup is called Set Up Screens… everywhere.
+- Simple Mode shows three first steps once; Loading appears only after half a second; the phone remote says where empty lists are filled.
+- The slide editor marks words that run past their box or are too small for the hall, and View › Show Safe Areas shows the safe areas, the ticker's band and where screens cut the slide.
+- Slides and themes can darken behind their words; the editors show how well the words stand out, and the theme editor says what a theme misses.
+- The stage screen makes a long slide's words smaller until its last line shows.
+- A lower third that cannot hold all of a slide's lines says how many it shows.
+- A phone's remote shows the slide in the hall's languages, Drashti's time and the first running timer.
+- Choosing the stream's camera and sound quickly always keeps the newest choice.
 
 ## 1.0.0-alpha.5 (16 Oct 2026)
 

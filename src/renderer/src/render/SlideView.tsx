@@ -23,6 +23,7 @@ import { useMediaAttempt } from './media-attempts';
 import { hasWords, revealLines, wordUnits } from './reveal';
 import { useMediaUrl } from './media-urls';
 import { useMeasureReport } from './measure';
+import { missingFontsOf } from './font-probe';
 import { MIN_FIT } from '../../../shared/readable';
 
 /**
@@ -243,6 +244,14 @@ function TextView({
   const box = useRef<HTMLDivElement>(null);
   const words = useRef<HTMLDivElement>(null);
   useShrinkToFit(box, words, el);
+  // A font this computer does not have (Sessions 31–36, I18N-1): marked for the reports, drawing nothing different.
+  useEffect(() => {
+    const b = box.current;
+    if (!b) return;
+    const missing = missingFontsOf(el);
+    if (missing.length > 0) b.setAttribute('data-missing-font', missing.join(', '));
+    else b.removeAttribute('data-missing-font');
+  }, [el]);
   return (
     <div
       ref={box}

@@ -417,6 +417,11 @@ export class NodeService implements EngineTransport {
     this.worker?.send({ type: 'screens', nodeId, screens: this.nodeScreens(nodeId) });
   }
 
+  /** What Main's own outputs say changed (a font found missing, Sessions 31–36): the windows hear it a moment later. */
+  localOutputsChanged(): void {
+    this.changed();
+  }
+
   /** Screens or groups changed: every node gets its screens again. */
   screensChanged(): void {
     for (const n of this.deps.nodes.list()) this.pushScreens(n.id);

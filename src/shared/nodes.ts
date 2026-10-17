@@ -90,6 +90,8 @@ export interface NodeOutputStatus {
   droppedFrames: number;
   /** The engine revision it last painted, and when (engine clock). */
   paintedRev: number;
+  /** Fonts its words name that its computer does not have (Sessions 31–36, I18N-1); left out for none. */
+  missingFonts?: string[];
 }
 
 export interface NodeClock {
