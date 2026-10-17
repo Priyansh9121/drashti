@@ -97,16 +97,18 @@ Each kept only if measured: more than 50% fewer commits, or more than 20% faster
 
 ## The last round: alpha.6 against alpha.5 (Phase H), 18 October 2026
 
-Head `80b98e7` (1.0.0-alpha.6), base `9df47ac` (alpha.5). Runs: head 39065895419, 39065925578, 39065957732; base 39065909532, 39065942465, 39065970986. The base's Performance check is alpha.5's own: it begins measuring as soon as the outputs are ready (not at Phase E's settled point), keeps no raw times and has no recovery figure, so this round compares the summaries alone.
+Head `8541372` (1.0.0-alpha.6), base `9df47ac` (alpha.5). Runs: head 39072953675, 39072981594, 39073007463; base 39072967308, 39072994993, 39073020450. The base's Performance check is alpha.5's own: it begins measuring as soon as the outputs are ready (not at Phase E's settled point), keeps no raw times and has no recovery figure, so this round compares the summaries alone.
 
-| System  | Ref  | Idle p90, each run | Importing p90, each run | Worst block, each run | Recovery figure, each run         |
-| ------- | ---- | ------------------ | ----------------------- | --------------------- | --------------------------------- |
-| Mac     | head | 32, 33, 32 ms      | 33, 29, 31 ms           | 12, 48, 9 ms          | 4.6; 7.9 then 7.2; 8.1 then 4.6 s |
-| Mac     | base | 28, 25, 27 ms      | 29, 31, 22 ms           | 16, 114, 7 ms         | (not measured before G)           |
-| Windows | head | 13, 14, 14 ms      | 15, 15, 15 ms           | 3, 11, 3 ms           | 3.8, 4.9, 2.8 s                   |
-| Windows | base | 15, 106, 48 ms     | 15, 15, 15 ms           | 3, 12, 11 ms          | (not measured before G)           |
+| System  | Ref  | Idle p90, each run | Importing p90, each run | Worst block, each run | Recovery figure, each run |
+| ------- | ---- | ------------------ | ----------------------- | --------------------- | ------------------------- |
+| Mac     | head | 19, 32, 31 ms      | 31, 30, 26 ms           | 21, 12, 20 ms         | 4.1, 7.8, 3.5 s           |
+| Mac     | base | 65, 33, 32 ms      | 32, 32, 25 ms           | 11, 7, 12 ms          | (not measured before G)   |
+| Windows | head | 14, 15, 13 ms      | 15, 15, 15 ms           | 3, 2, 3 ms            | 2.7, 1.8, 2.9 s           |
+| Windows | base | 16, 16, 15 ms      | 15, 15, 15 ms           | 12, 10, 7 ms          | (not measured before G)   |
 
-Importing: no change. On the Mac the head's idle p90 sat above the base's on all three runs, the medians the same (17 ms; one base run 16): four more runs of the same head that day gave 25, 33, 20 and 32 ms (39066656163, 39066668826, 39066680371, 39068007134), so the swing, no change. On Windows the head's idle p90 is lower (13 to 14 ms against 15, 106 and 48): the base began measuring before the start had settled. One head run failed on the Mac, on its recovery figure, 7.9 then 7.2 s against the 7.0 s budget of the time (the next section); one base run failed on the Mac, half the changes during the import within a frame (median 18 ms), with a 114 ms block while the import wrote a presentation.
+Every run passed. No change. The Mac's worst block sat a little above the base's (21, 12, 20 against 11, 7, 12 ms), far inside the 150 ms rule and the Mac's swing (the first try below: 12, 48, 9 against 16, 114, 7).
+
+A first try of this round, on `80b98e7` (the same app but for the crash reporter under Rosetta, Phase H), gave the same picture. Runs: head 39065895419, 39065925578, 39065957732; base 39065909532, 39065942465, 39065970986. Importing p90: Mac 33, 29, 31 against 29, 31, 22 ms; Windows 15 everywhere. The Mac's idle p90 was 32, 33, 32 against 28, 25, 27 ms, the medians the same, and four more runs of that head gave 25, 33, 20 and 32 ms (39066656163, 39066668826, 39066680371, 39068007134): the swing. One head run was over the Mac's recovery budget of the time (7.9 then 7.2 s against 7.0 s; the next section). One base run failed on the Mac: half the changes during the import within a frame (median 18 ms), with a 114 ms block while the import wrote a presentation.
 
 ## The recovery budget from the Performance check (Phase H, PERF-1), 18 October 2026
 
