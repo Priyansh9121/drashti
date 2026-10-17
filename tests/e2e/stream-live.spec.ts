@@ -10,6 +10,7 @@ import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import type { StreamStatus } from '../../src/shared/stream';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
+import { filesUnder, findSecrets } from './secrets';
 import {
   chooseMenuItem,
   killApp,
@@ -282,19 +283,16 @@ test('after a run, the made-up key is nowhere: not in the logs, diagnostics, dat
   await expect(win.getByRole('alert').filter({ hasText: 'Library backed up to' })).toBeVisible();
   await app.close();
 
-  // Every file Drashti wrote: its data folder (library, logs, settings), the diagnostics and the backup.
-  const files = (root: string) =>
-    (readdirSync(root, { recursive: true }) as string[])
-      .map((f) => join(root, f))
-      .filter((f) => statSync(f).isFile());
-  const all = [...files(userData), ...files(desktop), ...files(backups)];
+  // Every file Drashti wrote: its data folder (library, logs, settings), the diagnostics and the backup
+  // (the search shared with the network's secrets, Session 31: tests/e2e/secrets.ts).
+  const all = filesUnder(userData, desktop, backups);
   expect(all.some((f) => f.endsWith('.log'))).toBe(true);
   expect(all.some((f) => f.endsWith('drashti.sqlite'))).toBe(true);
   const keyFile = all.find((f) => f.endsWith('stream-keys.json'));
   expect(keyFile).toBeDefined();
-  for (const f of all) expect(readFileSync(f).includes(Buffer.from(TEST_KEY)), f).toBe(false);
+  expect(findSecrets(all, [{ label: 'the stream key', value: TEST_KEY }])).toEqual([]);
   // The library's database holds no key column, and the backup never takes the key file.
-  expect(files(backups).some((f) => f.endsWith('stream-keys.json'))).toBe(false);
+  expect(filesUnder(backups).some((f) => f.endsWith('stream-keys.json'))).toBe(false);
 });
 
 test('without the system’s secure storage, no key is kept, and the settings say why', async () => {
