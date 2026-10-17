@@ -6,7 +6,13 @@ declare global {
     /** Exposed by the preload script; the renderer's only way to reach the main process. */
     readonly drashti: DrashtiBridge;
     /** Output windows: the last painted engine revisions and when (for latency checks). */
-    drashtiPaintLog?: { rev: number; sentAt: number; paintedAt: number; wallAt: number }[];
+    drashtiPaintLog?: {
+      rev: number;
+      sentAt: number;
+      committedAt: number;
+      paintedAt: number;
+      wallAt: number;
+    }[];
     /** Output windows: frames that came late since the page loaded (the soak test reads it; Session 15). */
     drashtiLateFrames?: number;
   }

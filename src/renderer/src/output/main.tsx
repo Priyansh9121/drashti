@@ -56,6 +56,9 @@ function usePaintTiming(root: React.RefObject<HTMLDivElement | null>, drawing: b
   const sentAt = useEngine((s) => s.sentAt);
   useLayoutEffect(() => {
     if (rev < 0 || !drawing) return;
+    // When the change was drawn into the page, before its frame (Sessions 31–36): the paint log splits how
+    // long it took into the message and the render, and the wait for the next frame.
+    const committedAt = engineNow();
     const frame = requestAnimationFrame(() => {
       const el = root.current;
       if (!el) return;
@@ -68,7 +71,7 @@ function usePaintTiming(root: React.RefObject<HTMLDivElement | null>, drawing: b
       const log = (window.drashtiPaintLog ??= []);
       // wallAt: this computer's own clock, so tests on one computer can compare Main's and a node's frames.
       // eslint-disable-next-line no-restricted-properties -- the paint log's own record of this computer's time, for tests; draws nothing
-      log.push({ rev, sentAt, paintedAt, wallAt: Date.now() });
+      log.push({ rev, sentAt, committedAt, paintedAt, wallAt: Date.now() });
       if (log.length > 20_000) log.splice(0, log.length - 20_000);
     });
     return () => {
