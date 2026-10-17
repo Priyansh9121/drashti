@@ -11,6 +11,7 @@ import type {
   TextElement,
 } from '../../../shared/model';
 import { legacyFontOf } from '../../../shared/slide-edit';
+import { drawnPx, FLOOR_NOTE_PX, FLOOR_WARN_PX, floorOf, REFERENCE_LINES } from '../../../shared/readable';
 import { LANG_NAMES } from '../../../shared/themes';
 import { boxLines } from '../../../shared/tracks';
 import { Button, IconButton } from '../ui/Button';
@@ -406,6 +407,42 @@ type ShadowChoice = 'none' | 'soft' | 'own';
 const shadowChoice = (s: TextElement['style']['shadow'] | undefined): ShadowChoice =>
   s === false || s === undefined ? 'none' : s === true ? 'soft' : 'own';
 
+/**
+ * Whether the hall can read a box's words (Sessions 31–36, SLD-1), as measured on the slide: words past the
+ * box, and the size its smallest words are drawn at, at 1080 lines (a warning below 36 px, a note below 48).
+ */
+function Readability({ el }: { el: TextElement }) {
+  const measured = useEditor((s) => s.measured[el.id]);
+  const height = useEditor((s) => s.doc?.height ?? REFERENCE_LINES);
+  if (!measured) return null;
+  const px = Math.round(drawnPx(el, height, measured.fit));
+  const floor = floorOf(drawnPx(el, height, measured.fit));
+  const shrinks = el.style.shrinkToFit === true;
+  return (
+    <>
+      {measured.over && (
+        <p className="text-sm text-warning-fg" data-testid="inspector-overset" role="status">
+          <b>Words run past the box</b>
+          {shrinks
+            ? ', even as small as shrinking goes: make the box bigger, or give it fewer words.'
+            : ': make the box bigger or the words smaller, or turn on Shrink the words to fit the box.'}
+        </p>
+      )}
+      {floor && (
+        <p
+          className={cx('text-sm', floor === 'warning' ? 'text-warning-fg' : 'text-muted')}
+          data-testid="inspector-floor"
+          data-level={floor}
+        >
+          {floor === 'warning'
+            ? `The words are drawn at ${String(px)} px on a 1080-line screen: below ${String(FLOOR_WARN_PX)} px they are hard to read from the back of the hall.`
+            : `The words are drawn at ${String(px)} px on a 1080-line screen: ${String(FLOOR_NOTE_PX)} px or more reads best from the back of the hall.`}
+        </p>
+      )}
+    </>
+  );
+}
+
 function TextSection({ el, slideId, editing }: { el: TextElement; slideId: string; editing: boolean }) {
   const legacy = legacyFontOf(el);
   const active = editing ? activeText() : null;
@@ -472,6 +509,7 @@ function TextSection({ el, slideId, editing }: { el: TextElement; slideId: strin
   const outline: Outline | null = shown.outline;
   return (
     <Section title="Words" testId="inspector-text">
+      <Readability el={el} />
       <p className="text-xs text-faint" data-testid="text-target">
         {words
           ? 'Styling the selected words.'

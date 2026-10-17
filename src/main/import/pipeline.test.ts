@@ -9,7 +9,7 @@ import { openDatabase } from '../db/database';
 import { ImportRepo } from '../db/imports';
 import { PresentationRepo } from '../db/presentations';
 import { MediaStore } from './media-store';
-import { MAX_TEXT_BYTES, runImport } from './pipeline';
+import { MAX_TEXT_BYTES, readabilityIssues, runImport } from './pipeline';
 import { makeTestDocx } from './testing/make-docx';
 import { cocoaRtf, pp6Presentation } from './testing/pp6-fixtures';
 
@@ -448,5 +448,51 @@ describe('runImport', () => {
       target: { id: first.report?.items[0]?.target?.id },
     });
     expect((t.db.prepare('SELECT COUNT(*) AS n FROM calendar_days').get() as { n: number }).n).toBe(3);
+  });
+});
+
+describe('the import report on words the hall may not read (Sessions 31–36, SLD-1)', () => {
+  const text = (words: string, fontSize: number, shrinkToFit = false) => ({
+    id: randomUUID(),
+    kind: 'text' as const,
+    frame: { x: 160, y: 100, width: 1600, height: 300 },
+    text: words,
+    lang: 'en' as const,
+    style: {
+      fontFamily: null,
+      fontSize,
+      fontWeight: 500,
+      color: '#ffffff',
+      align: 'center' as const,
+      verticalAlign: 'middle' as const,
+      lineHeight: 1.25,
+      shadow: false,
+      shrinkToFit,
+    },
+  });
+  const long = 'Placeholder words for a slide that says far too much for its box to hold. '.repeat(8);
+  const presentation = (...slides: ReturnType<typeof text>[][]) => ({
+    libraryId: 'placeholder',
+    name: 'Placeholder',
+    groups: [{ name: 'Verse', slides: slides.map((elements) => ({ elements })) }],
+  });
+
+  it('counts the slides that run over and those below 36 px, and says where to look', () => {
+    const issues = readabilityIssues(
+      presentation([text('Placeholder line', 80)], [text(long, 80)], [text(long, 80)], [text('Small', 30)]),
+    );
+    expect(issues.map((i) => [i.severity, i.code, i.message])).toEqual([
+      [
+        'warning',
+        'words-run-over',
+        '2 slides have words that may run past their box: open it in the slide editor, where a mark shows each.',
+      ],
+      [
+        'info',
+        'words-small',
+        '1 slide has words drawn below 36 px on a 1080-line screen, hard to read from the back of the hall: the slide editor says which.',
+      ],
+    ]);
+    expect(readabilityIssues(presentation([text('Placeholder line', 80)]))).toEqual([]);
   });
 });
