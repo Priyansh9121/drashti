@@ -10,6 +10,8 @@ import { fileURLToPath } from 'node:url';
 
 /** Where bars live. */
 export const WATCHED = ['src', 'tests', 'scripts', 'eslint.config.mjs', 'playwright.config.ts', '.github'];
+/** The guard's own files, which name what it looks for: never read as lowering a bar. */
+const ITSELF = [':(exclude)scripts/bar-guard.mjs', ':(exclude)src/main/release-checks/bar-guard.test.ts'];
 
 /** Files whose numbers are budgets: any number changed in them is said. */
 export const BUDGETS = [
@@ -96,7 +98,7 @@ const git = (args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 6
 /** How many lines match a pattern in a tree (a commit). */
 export function countIn(ref, pattern, paths) {
   try {
-    return git(['grep', '-c', '-E', pattern, ref, '--', ...paths])
+    return git(['grep', '-c', '-E', pattern, ref, '--', ...paths, ...ITSELF])
       .split('\n')
       .filter((l) => l !== '')
       .reduce((sum, l) => sum + Number(l.slice(l.lastIndexOf(':') + 1)), 0);
@@ -107,7 +109,7 @@ export function countIn(ref, pattern, paths) {
 
 /** The report, as Markdown. */
 export function report(base, head = 'HEAD') {
-  const diff = git(['diff', '-U0', base, head, '--', ...WATCHED]);
+  const diff = git(['diff', '-U0', base, head, '--', ...WATCHED, ...ITSELF]);
   const bars = barsLowered(diff);
   const lines = [`### The bar guard: ${head} against ${base}`, ''];
   if (bars.length === 0) lines.push('No bar is lowered.');
