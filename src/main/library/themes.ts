@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Lang, TextRun, TextStyle } from '../../shared/model';
-import { LANGS } from '../../shared/model';
+import { LANGS, NEW_TEXT_LINE_HEIGHT } from '../../shared/model';
 import { detectLang, mainLang, mergeRuns } from '../../shared/text-runs';
 import type { Theme, ThemeFields, ThemeLangStyle } from '../../shared/themes';
 import { DEFAULT_REFERENCE } from '../../shared/themes';
@@ -86,6 +86,18 @@ function themedText(p: TextProps, theme: ThemeFields, scale: number): TextProps 
   return { ...p, style, runs: mergeRuns(themed) };
 }
 
+/**
+ * New text's line spacing under a theme (Sessions 31–36, I18N-2): the theme's, but never below 1.35, room for
+ * Gujarati and Hindi marks. A stored theme keeps its own for applying it, as it never changes (Shastra
+ * passages are made from it).
+ */
+const newTextLineHeight = (theme: ThemeFields) => Math.max(theme.box.lineHeight, NEW_TEXT_LINE_HEIGHT);
+
+/** A new presentation's rows styled by a theme (the words editor's): as applyTheme, its new text at least 1.35. */
+export function styleNewText(rows: ContentRows, theme: Theme, newId: () => string = randomUUID): ContentRows {
+  return applyTheme(rows, { ...theme, box: { ...theme.box, lineHeight: newTextLineHeight(theme) } }, newId);
+}
+
 /** A presentation's rows with a theme applied. */
 export function applyTheme(rows: ContentRows, theme: Theme, newId: () => string = randomUUID): ContentRows {
   const scale = rows.height / 1080;
@@ -161,7 +173,7 @@ export function themeLook(theme: ThemeFields, width: number, height: number): Ne
       color: en.color,
       align: theme.box.align,
       verticalAlign: theme.box.verticalAlign,
-      lineHeight: theme.box.lineHeight,
+      lineHeight: newTextLineHeight(theme),
       shadow: en.shadow,
     },
     langs: Object.fromEntries(LANGS.map((l) => [l, runLook(theme.langs[l], scale)])),

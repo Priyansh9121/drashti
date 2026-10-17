@@ -164,7 +164,7 @@ import type { ScheduledBackupsView } from '../shared/backups';
 import type { AnnouncementsView } from '../shared/announcements';
 import { spawnBackupWorker } from './backup/spawn-backup-worker';
 import { Revisions } from './library/revisions';
-import { applyTheme, themeLook } from './library/themes';
+import { styleNewText, themeLook } from './library/themes';
 import { defaultTransition, registerSlidesIpc } from './library/slides-ipc';
 import { registerThemesIpc } from './library/themes-ipc';
 import { registerWordsIpc } from './library/words-ipc';
@@ -2325,7 +2325,7 @@ function start(): void {
     changed: contentChanged,
     styleNew: (id) => {
       const rows = presentations.content(id);
-      if (rows) presentations.setContent(applyTheme(rows, themes.themeOrDefault(null)));
+      if (rows) presentations.setContent(styleNewText(rows, themes.themeOrDefault(null)));
     },
   });
   registerSlidesIpc({
