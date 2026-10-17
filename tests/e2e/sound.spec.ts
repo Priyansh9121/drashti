@@ -182,8 +182,10 @@ test('outputs and the sound stay in step, a reloaded output rejoins, and only th
   expect(Math.abs(oa - oSound), `sound ${oSound.toFixed(3)} s off the clock`).toBeLessThan(2 * FRAME);
 
   // And through the clip's loops, each time round (Sessions 31–36, the named flake): a moment after each of
-  // the next two loops, no waiting for it, the screens and the sound are in step. Left to its element's own
-  // loop, the sound came round 0.2 to 0.3 s late each time, and caught up at 2% a second: behind for good.
+  // the next two loops, no waiting for it, the sound is where the clock says, within two frames, and the two
+  // screens agree. Left to its element's own loop, the sound came round 0.2 to 0.3 s late each time, and
+  // caught up at 2% a second: behind for good. (CI's Mac can leave both screens a few frames behind the
+  // clock a moment, catching up together: run 39021823995. The start, above, holds all three together.)
   const length = await audio.evaluate(
     (selector) => document.querySelector<HTMLMediaElement>(selector)?.duration ?? 0,
     sound,
@@ -199,8 +201,15 @@ test('outputs and the sound stay in step, a reloaded output rejoins, and only th
       offsetOf(audio, sound, startedAt),
     ]);
     const states = await describe([a, b, audio], [picture, picture, sound]);
+    const [la, lb, ls] = looked;
     expect(
-      together(looked, 3),
+      la !== null &&
+        lb !== null &&
+        ls !== null &&
+        Math.abs(ls) < 2 * FRAME &&
+        Math.abs(la - lb) < 2 * FRAME &&
+        Math.abs(la) < 0.25 &&
+        Math.abs(lb) < 0.25,
       `loop ${String(round)}: offsets ${looked.map((o) => (o === null ? 'none' : o.toFixed(3))).join(' ')}; ${states.join(' | ')}`,
     ).toBe(true);
   }
