@@ -153,7 +153,9 @@ test('a node’s display in a group follows slides, a dissolve and a video in st
     expect(clock).not.toBeNull();
     const residual = (clock?.offsetMs ?? 0) + SKEW_MS;
 
-    // Slide changes: both windows paint each one; how far apart.
+    // Slide changes: both windows paint each one; how far apart. The next goes up once both have painted
+    // this one: a frame a busy computer holds back past a fixed wait would never be recorded, as a newer
+    // revision's takes its place (a Windows runner did, once: Sessions 31–36).
     const revs: number[] = [];
     for (let i = 0; i < 12; i++) {
       const r = await dispatch(main.win, { type: 'goLive', presentationId: id, slideIndex: i % 8 });
@@ -161,7 +163,7 @@ test('a node’s display in a group follows slides, a dissolve and a video in st
       await expect(nodeOut.locator('[data-layer="slide"]')).toContainText(
         `Placeholder node slide ${(i % 8) + 1}`,
       );
-      await main.win.waitForTimeout(150);
+      if (r.ok) await expect.poll(async () => (await paintGaps(mainOut, nodeOut, [r.rev])).length).toBe(1);
     }
     await expect.poll(async () => (await paintGaps(mainOut, nodeOut, revs)).length).toBe(revs.length);
     const gaps = await paintGaps(mainOut, nodeOut, revs);
