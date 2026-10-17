@@ -340,7 +340,7 @@ If anything goes wrong (a screen went black, something froze, Drashti closed by 
 2. A file called "Drashti diagnostics" with the date and time appears on the **Desktop**. The live controls say where it went.
 3. Send that file to whoever looks after Drashti, with the time it happened and what you saw.
 
-The file holds the versions, the screen and sound setup, and Drashti's log. It never holds kirtan words, presentation names or where your files are.
+The file holds the versions, the screen and sound setup, and Drashti's log. It never holds kirtan words, presentation names or where your files are. If Drashti asks about crash files first, press **Save** with **Include crash files** left unticked, unless whoever looks after Drashti asks for them: they can hold words from slides.
 
 If the problem showed on the node's screens, do the same on the node: **Help**, then **Save Diagnostics…** there too (on Windows, press **Alt** first). The node's window says where its file went, and both files go to whoever looks after Drashti.
 

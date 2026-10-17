@@ -26,6 +26,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 - A lower third that cannot hold all of a slide's lines says how many it shows.
 - A phone's remote shows the slide in the hall's languages, Drashti's time and the first running timer.
 - Choosing the stream's camera and sound quickly always keeps the newest choice.
+- When part of Drashti crashes, a crash file stays on this computer, never sent anywhere, and the next start says what went wrong; Save Diagnostics… asks before adding crash files, as they can hold slide words.
 
 ## 1.0.0-alpha.5 (16 Oct 2026)
 

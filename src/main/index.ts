@@ -20,6 +20,7 @@ import { release as osRelease, tmpdir } from 'node:os';
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import type { AppInfo } from '../shared/app-info';
+import { formatBytes, formatClock } from '../shared/format';
 import type { ImportResult } from '../shared/import';
 import { type LibraryChange, listedKirtan } from '../shared/library';
 import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/import-schema';
@@ -128,7 +129,9 @@ import { parsePlain } from '../shared/plain-parse';
 import { DEFAULT_LINK_MAX_HEIGHT, isLinkHeight } from '../shared/links';
 import { spawnDownloadWorker } from './links/spawn-worker';
 import { AudioOutput } from './audio/audio-output';
-import { saveDiagnostics } from './diagnostics';
+import { CrashJournal, childGoneWords, JOURNAL_FILE, journalNotice, watchdogWords } from './crash-journal';
+import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles } from './crash-files';
+import { type CrashFilesChoice, saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
 import { phaseLine } from './start-phases';
 import { heapAfterCollection } from './heap-after-gc';
@@ -284,11 +287,23 @@ log.info(phaseLine('the main process running'));
 log.info(
   `Drashti ${app.getVersion()} (Electron ${process.versions.electron}, Chrome ${process.versions.chrome}, Node ${process.versions.node}) on ${process.platform} ${osRelease()} ${process.arch}`,
 );
+/** Drashti is quitting: windows and processes going now are no problem (the crash journal). */
+let quitting = false;
+// The crash journal (Sessions 31–36, ROB-6): what went wrong, kept in the data folder as it happens, so the
+// next start can say it even when Drashti itself stopped (crash-journal.ts).
+const crashJournal = new CrashJournal(join(app.getPath('userData'), JOURNAL_FILE), (line) => {
+  log.warn(line);
+});
+/** An uncaught error, as the journal keeps it: its name and message (the log has its stack). */
+const errorWords = (what: string, error: unknown) =>
+  `${what}: ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`;
 process.on('uncaughtException', (error) => {
   log.error('Uncaught exception in the main process', error);
+  crashJournal.add(errorWords('an error in the main process that nothing caught', error));
 });
 process.on('unhandledRejection', (reason) => {
   log.error('Unhandled promise rejection in the main process', reason);
+  crashJournal.add(errorWords('a promise in the main process failed and nothing caught it', reason));
 });
 // What stops as Drashti quits, in one ordered list (lifecycle.ts, Session 23): run at will-quit, or
 // before an exit that skips it (app.exit).
@@ -297,17 +312,60 @@ const stops = new StopList((name, error) => {
 });
 /** Exit at once (self-tests, restarting as Main): everything still stops, in order, first. */
 const exitNow = (code: number) => {
+  quitting = true;
   stops.run();
   app.exit(code);
 };
 // Tests on a computer someone is using: never active, never covering the screen (windows/quiet.ts).
 startQuietTests();
-// Tests only: keep crash dumps in this folder (never sent anywhere), to read with Electron's symbols.
-const crashDumps = sw('DRASHTI_TEST_CRASH_DUMPS');
-if (crashDumps) {
-  app.setPath('crashDumps', crashDumps);
-  crashReporter.start({ uploadToServer: false, compress: false });
+// Crash files (Sessions 31–36, ROB-6): a crash of any of Drashti's processes leaves a dump in the data
+// folder's Crashpad folder (tests may name another: DRASHTI_TEST_CRASH_DUMPS), never sent anywhere. The
+// newest five are kept (crash-files.ts).
+const crashFilesDir = sw('DRASHTI_TEST_CRASH_DUMPS') ?? join(app.getPath('userData'), 'Crashpad');
+app.setPath('crashDumps', crashFilesDir);
+crashReporter.start({ uploadToServer: false, compress: false });
+keepNewestCrashFiles(crashFilesDir, KEEP_CRASH_FILES, (line) => {
+  log.warn(line);
+});
+// A GPU or utility process that stops, on Main or a node, goes into the journal too: never as Drashti
+// quits, when its processes go as they should.
+app.on('before-quit', () => {
+  quitting = true;
+});
+app.on('child-process-gone', (_event, details) => {
+  const words = quitting ? null : childGoneWords(details);
+  if (words) crashJournal.add(words);
+});
+
+/**
+ * Before Save Diagnostics (Sessions 31–36, ROB-6): with crash files kept, whether they go too, unticked as
+ * it opens, since a crash file can hold words from slides; null when the person cancels. With none kept,
+ * nothing to ask.
+ */
+async function chooseCrashFiles(): Promise<CrashFilesChoice | null> {
+  const files = crashFiles(crashFilesDir);
+  if (files.length === 0) return { files, included: false };
+  const bytes = files.reduce((sum, f) => sum + f.bytes, 0);
+  const answer = await dialog.showMessageBox({
+    type: 'question',
+    message: 'Save diagnostics on the Desktop?',
+    detail:
+      'A file for the admin: the versions, the setup, counts, the crash journal and the log, never words from the library. Crash files are kept on this computer too: each holds what a part of Drashti had in memory when it crashed, which can include words from slides.',
+    checkboxLabel: `Include crash files: ${String(files.length)} (${formatBytes(bytes)})`,
+    checkboxChecked: false,
+    buttons: ['Save', 'Cancel'],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (answer.response !== 0) return null;
+  return { files, included: answer.checkboxChecked };
 }
+
+/** What the notice says once Diagnostics is saved. */
+const savedDiagnosticsText = (path: string, crash: CrashFilesChoice) =>
+  crash.included && crash.files.length > 0
+    ? `Diagnostics saved on the Desktop, with ${String(crash.files.length)} crash ${crash.files.length === 1 ? 'file' : 'files'}: ${basename(path)}`
+    : `Diagnostics saved on the Desktop: ${basename(path)}`;
 // Development only: outputs as normal windows, for machines with one screen,
 // optionally with pretend extra displays to try several outputs. Always so in quiet test mode.
 const windowedOutputs = sw('DRASHTI_WINDOWED_OUTPUTS') === '1' || quietTests;
@@ -474,6 +532,8 @@ const watchdog = new RendererWatchdog((e) => {
   if (e.kind === 'crashed' || e.kind === 'hung' || e.kind === 'gave-up' || e.kind === 'render-error')
     log.warn(text);
   else log.info(text);
+  const words = quitting ? null : watchdogWords(e);
+  if (words) crashJournal.add(words);
   outputWatchdogEvent?.(e);
 });
 // Screens never sleep or dim while an output is showing, or the stream is on air or recording (Session 31).
@@ -715,6 +775,9 @@ async function runPerformanceTestWithStream(ctx: PerfRun): ReturnType<typeof run
 const startNotes: string[] = [];
 
 function boot(): void {
+  // What went wrong while Drashti last ran, said once (Sessions 31–36, ROB-6).
+  const journalNote = journalNotice(crashJournal.takeUnshown(), (at) => formatClock(Date.parse(at), null));
+  if (journalNote) startNotes.push(journalNote);
   const userData = app.getPath('userData');
   const selfTesting = sw('DRASHTI_SELFTEST') !== undefined;
   const starting = startingRole(userData, sw('DRASHTI_ROLE'), {
@@ -777,6 +840,9 @@ function startNodeMode(): void {
     diagnostics: {
       app: appInfo,
       watchdogHistory: () => watchdogHistory,
+      crashJournal: () => crashJournal.entries(),
+      chooseCrashFiles,
+      savedText: savedDiagnosticsText,
       logFiles,
       desktop: () => app.getPath('desktop'),
     },
@@ -4379,25 +4445,31 @@ function start(): void {
     },
     uncoverControls: { accelerator: uncoverAccelerator, run: uncover },
     saveDiagnostics: () => {
-      try {
-        const file = saveDiagnostics(app.getPath('desktop'), {
-          app: appInfo(),
-          displays: listDisplays(),
-          screens: screens.snapshot(),
-          sound: audioOutput.status,
-          db: libraryDb,
-          watchdog: watchdogHistory,
-          logFiles: logFiles(),
-          now: new Date(),
-        });
-        log.info('Diagnostics saved to the Desktop');
-        sendToOperator(IPC.app.notice, { text: `Diagnostics saved on the Desktop: ${basename(file)}` });
-      } catch (error) {
-        log.error('Could not save diagnostics', error);
-        sendToOperator(IPC.app.notice, {
-          text: 'Could not save diagnostics: see the log in the data folder.',
-        });
-      }
+      void (async () => {
+        try {
+          const crash = await chooseCrashFiles();
+          if (!crash) return;
+          const file = saveDiagnostics(app.getPath('desktop'), {
+            app: appInfo(),
+            displays: listDisplays(),
+            screens: screens.snapshot(),
+            sound: audioOutput.status,
+            db: libraryDb,
+            watchdog: watchdogHistory,
+            crashJournal: crashJournal.entries(),
+            crashFiles: crash,
+            logFiles: logFiles(),
+            now: new Date(),
+          });
+          log.info(`Diagnostics saved to the Desktop${crash.included ? ', with the crash files' : ''}`);
+          sendToOperator(IPC.app.notice, { text: savedDiagnosticsText(file, crash) });
+        } catch (error) {
+          log.error('Could not save diagnostics', error);
+          sendToOperator(IPC.app.notice, {
+            text: 'Could not save diagnostics: see the log in the data folder.',
+          });
+        }
+      })();
     },
     diagnostics: diagnostics
       ? {
