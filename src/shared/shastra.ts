@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Lang } from './model';
 import { scriptOf } from './text-runs';
+import { asClause, issueWords, parsePlain } from './plain-parse';
 
 /*
  * The Shastra module (PLAN.md 3, Session 12): texts an admin loads from
@@ -157,13 +158,12 @@ function sanskritLang(text: string, given: 'sa' | 'sa-gu'): Lang {
 export function readShastraFile(
   raw: unknown,
 ): { ok: true; text: LoadedText; notes: LoadNote[] } | { ok: false; message: string } {
-  const parsed = shastraFileSchema.safeParse(raw);
+  const parsed = parsePlain(shastraFileSchema, raw, issueWords);
   if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    const where = issue && issue.path.length > 0 ? ` (at ${issue.path.join(' › ')})` : '';
+    const where = parsed.path.length > 0 ? ` (at ${parsed.path.map(String).join(' › ')})` : '';
     return {
       ok: false,
-      message: `This is not a Shastra text Drashti can read${where}: ${issue?.message ?? ''}`,
+      message: `This is not a Shastra text Drashti can read${where}: ${asClause(parsed.message)}. Check it against its format, in docs/shastra-format.md.`,
     };
   }
   const file = parsed.data;

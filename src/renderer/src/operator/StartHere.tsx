@@ -67,11 +67,11 @@ export function StartHere() {
         <Step
           n={3}
           arriving={arriving}
-          title="Set up the screens"
+          title="The screens"
           text="Which screen is the hall’s, and which the stage’s"
         >
           <Button size="sm" icon={Monitor} onClick={() => void openSetup(1)}>
-            Set up…
+            Set Up Screens…
           </Button>
         </Step>
       </ol>

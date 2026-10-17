@@ -345,7 +345,8 @@ export class NetworkServer {
             ? `Port ${options.port} is in use by another program on this computer. Choose another port for Drashti, or close that program.`
             : error.code === 'EACCES'
               ? `This computer does not let Drashti use port ${options.port}. Choose another port.`
-              : `Drashti could not listen on port ${options.port} (${error.code ?? error.message}).`;
+              : `Drashti could not listen on port ${options.port}: choose another port, or restart the computer.`;
+        this.host.log('warn', `The phone server did not start (${error.code ?? 'no code'})`);
         resolve({ ok: false, message });
       });
       server.listen(options.port, options.bind, () => {

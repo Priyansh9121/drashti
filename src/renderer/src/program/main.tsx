@@ -159,8 +159,8 @@ if (!root) throw new Error('Missing #root');
 const sendError = (report: Parameters<typeof window.drashti.app.renderError>[0]) =>
   window.drashti.app.renderError(report);
 createRoot(root, {
-  onUncaughtError: reportRenderError("stream's page", 'uncaught', sendError),
-  onCaughtError: reportRenderError("stream's page", 'caught', sendError),
+  onUncaughtError: reportRenderError('stream’s page', 'uncaught', sendError),
+  onCaughtError: reportRenderError('stream’s page', 'caught', sendError),
 }).render(
   <StrictMode>
     <Program />

@@ -271,7 +271,7 @@ export function installNodeMenu(actions: NodeMenuActions): void {
       submenu: [
         { id: 'run-watchdog-self-test', label: 'Run Watchdog Self-Test', click: d.runSelfTest },
         { type: 'separator' },
-        { label: "Crash the Node's Window (watchdog test)", click: d.crashWindow },
+        { label: 'Crash the Node’s Window (watchdog test)', click: d.crashWindow },
         { label: 'Crash the Output Windows (watchdog test)', click: d.crashOutputs },
         { type: 'separator' },
         { role: 'toggleDevTools' },

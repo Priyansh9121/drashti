@@ -166,7 +166,7 @@ function NotSetUp({ what, onClose }: { what: string; onClose: () => void }) {
           void openSetup();
         }}
       >
-        Setup wizard
+        Set Up Screens…
       </Button>
     </>
   );
@@ -239,7 +239,7 @@ function ProjectorCard({
         </>
       ) : (
         <NotSetUp
-          what="No projector is set up yet: the Setup wizard gives a display to it."
+          what="No projector is set up yet: Set Up Screens… gives a display to it."
           onClose={onClose}
         />
       )}
@@ -306,7 +306,7 @@ function StageCard({
         </>
       ) : (
         <NotSetUp
-          what="No stage screen is set up yet: the Setup wizard gives a display to it."
+          what="No stage screen is set up yet: Set Up Screens… gives a display to it."
           onClose={onClose}
         />
       )}

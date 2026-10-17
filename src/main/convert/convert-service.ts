@@ -11,6 +11,7 @@ import type { Db } from '../db/database';
 import { CONVERTING_DIR, MediaStore, sha256File } from '../import/media-store';
 import { ffmpegEnv } from '../stream/worker/ffmpeg-env';
 import { ProgressReader } from '../stream/worker/progress';
+import { fileProblem } from '../plain-errors';
 import {
   chooseTarget,
   convertArgs,
@@ -502,7 +503,7 @@ export class ConvertService {
       return true;
     } catch (error) {
       removeQuietly(tmp);
-      return fail(`The converted file could not be kept: ${(error as Error).message}`);
+      return fail(`The converted file could not be kept. ${fileProblem(error, 'own')}`);
     }
   }
 
@@ -603,7 +604,11 @@ export class ConvertService {
     const info = await readInfo(ffmpeg, source, { timeoutMs: this.probeMs() });
     if (info.timedOut) return { ok: false, message: probeTooLong(this.probeMs()) };
     if (!info.video || info.video.still)
-      return { ok: false, message: 'FFmpeg could not find a video in it to make smaller.' };
+      return {
+        ok: false,
+        message:
+          'FFmpeg could not find a video in it to make smaller: check that it plays as a video, then import it again.',
+      };
     if (info.video.height <= options.maxHeight) return { ok: true, copy: null };
     const dest = join(outDir, basename(source, extname(source)) + '.mp4');
     return new Promise((resolve) => {

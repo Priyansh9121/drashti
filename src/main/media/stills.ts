@@ -31,7 +31,12 @@ export function isJpeg(bytes: Uint8Array): boolean {
 export async function saveStill(mediaDir: string, sha256: string, bytes: unknown): Promise<SaveStillResult> {
   if (!SHA256.test(sha256)) return { ok: false, message: 'That media item has no file.' };
   if (!(bytes instanceof Uint8Array)) return { ok: false, message: 'A still frame must be a JPEG.' };
-  if (bytes.length > STILL_MAX_BYTES) return { ok: false, message: 'That still frame is too large.' };
+  if (bytes.length > STILL_MAX_BYTES)
+    return {
+      ok: false,
+      message:
+        'That still frame is too large to keep (over 1 MB): the video shows without one, and nothing needs doing.',
+    };
   if (!isJpeg(bytes)) return { ok: false, message: 'A still frame must be a JPEG.' };
   const target = join(mediaDir, stillPath(sha256));
   const partial = `${target}.part-${randomUUID()}`;

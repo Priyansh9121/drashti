@@ -456,7 +456,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
       issues.push({
         severity: 'info',
         code: 'markers-read',
-        message: `Start and end points or markers were read for ${plural(marked, 'video or sound', 'videos or sounds')}. The older formats' markers follow the community notes on them and are not yet checked against real files: look them over (the media item's Markers).`,
+        message: `Start and end points or markers were read for ${plural(marked, 'video or sound', 'videos or sounds')}. The older formats' markers follow the community notes on them and are not yet checked against real files: look them over (the media item’s Markers).`,
         fix: null,
       });
     return { ids, issues, count: ids.length };
@@ -595,7 +595,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           issues.push({
             severity: 'warning',
             code: 'invalid-element',
-            message: `${plural(dropped, 'slide element')} could not be read and ${dropped === 1 ? 'was' : 'were'} left out.`,
+            message: `${plural(dropped, 'slide element')} could not be read and ${dropped === 1 ? 'was' : 'were'} left out: check the slides, and add what is missing in the slide editor.`,
             fix: null,
           });
         }
@@ -1027,7 +1027,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           issues.push({
             severity: 'warning',
             code: 'invalid-element',
-            message: `${plural(dropped, 'prop element')} could not be read and ${dropped === 1 ? 'was' : 'were'} left out.`,
+            message: `${plural(dropped, 'prop element')} could not be read and ${dropped === 1 ? 'was' : 'were'} left out: check the props, and add what is missing in their editor.`,
             fix: null,
           });
         const item: NewImportItem = {

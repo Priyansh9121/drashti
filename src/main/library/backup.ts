@@ -423,7 +423,7 @@ export function applyPendingRestore(
     return {
       restored: false,
       code: 'swap-failed',
-      message: `The library was not restored completely (${reason(error)}). The library from before is kept in Backups/${basename(keptIn)} in Drashti's data folder.`,
+      message: `The library was not restored completely (${reason(error)}). The library from before is kept in Backups/${basename(keptIn)} in Drashti’s data folder.`,
     };
   }
   writeFileSync(
@@ -476,7 +476,7 @@ export function rollBackRestore(userData: string, keptIn: string, options: { now
   } catch (error) {
     return {
       ok: false,
-      message: `The library from before the restore could not be put back (${reason(error)}). It is kept in Backups/${keptIn} in Drashti's data folder.`,
+      message: `The library from before the restore could not be put back (${reason(error)}). It is kept in Backups/${keptIn} in Drashti’s data folder.`,
     };
   }
   return { ok: true, failedIn: basename(failedIn) };

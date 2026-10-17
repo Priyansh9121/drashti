@@ -250,7 +250,8 @@ export async function pairWithMain(input: {
     if (!sameConfirmation(finished.json.confirm, confirmation(key, 'main')))
       return {
         ok: false,
-        message: 'Main could not prove it knows the code, so this node did not pair with it.',
+        message:
+          'Main could not prove it knows the code, so this node did not pair with it: check that the address is Main’s, then pair again with a new code.',
       };
     if (started.json.main.version !== input.version)
       return {

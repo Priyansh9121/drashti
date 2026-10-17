@@ -8,7 +8,7 @@ export type BadgeTone = 'neutral' | 'live' | 'warning' | 'danger' | 'success' | 
 
 const tones: Record<BadgeTone, string> = {
   neutral: 'border-line-strong bg-panel-2 text-muted',
-  // The live colour, always with its word (LIVE, BLACK-OUT, ON SCREENS): never colour alone.
+  // The live colour, always with its word (LIVE, BLACK-OUT, ON THE SCREENS): never colour alone.
   live: 'border-live bg-live text-white',
   warning: 'border-warning/60 bg-warning-bg text-warning-fg',
   danger: 'border-danger/60 bg-danger-bg text-danger-fg',
@@ -71,7 +71,7 @@ export function MissingBadge({ title }: { title?: string }) {
 export function UnplayableBadge({ title }: { title?: string }) {
   return (
     <Badge tone="warning" icon={Ban} title={title} data-testid="badge-unplayable">
-      Can&apos;t play
+      Can’t play
     </Badge>
   );
 }

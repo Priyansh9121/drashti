@@ -150,7 +150,7 @@ describe("a node's diagnostics (Session 17)", () => {
     expect(text).toContain('Drashti 1.0.0; Electron 44');
     expect(text).toContain('Follows Main "Placeholder Main" at 192.0.2.10 port 8741');
     expect(text).toContain('Link: online since 2026-10-08T09:01:00.000Z');
-    expect(text).toContain("Clock: Main's is -4 ms from this computer's, from a round trip of 1 ms");
+    expect(text).toContain('Clock: Main’s is -4 ms from this computer’s, from a round trip of 1 ms');
     expect(text).toContain('Show: revision 41');
     expect(text).toContain('Group "Lobby" (audience):');
     expect(text).toContain('"Placeholder lobby screen": canvas 1920×1080 fit, on, showing on Display 2');

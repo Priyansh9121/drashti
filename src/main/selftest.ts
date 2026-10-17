@@ -312,7 +312,7 @@ export async function runNodeWatchdogSelfTest(ctx: NodeSelfTestContext): Promise
     !check(
       'an output window is open',
       output !== null,
-      output ? '' : "none: put one of this node's displays in a screen group on Main",
+      output ? '' : 'none: put one of this node’s displays in a screen group on Main',
     ) ||
     !output
   )
@@ -325,7 +325,7 @@ export async function runNodeWatchdogSelfTest(ctx: NodeSelfTestContext): Promise
       )) === 'ready',
   );
   check(
-    "the output shows Main's live slide",
+    'the output shows Main’s live slide',
     await waitFor(async () => (await paintedRev(output)) === String(ctx.rev())),
     `revision ${String(ctx.rev())}`,
   );
@@ -344,15 +344,15 @@ export async function runNodeWatchdogSelfTest(ctx: NodeSelfTestContext): Promise
   await sleep(40);
   const during = await frameOf(output);
   check(
-    "while the node's window is crashed, the output keeps the same frame",
+    'while the node’s window is crashed, the output keeps the same frame',
     during.hash === before.hash && during.pid === before.pid,
     `frame ${during.hash === before.hash ? 'unchanged' : 'CHANGED'}, output process ${during.pid === before.pid ? 'unchanged' : 'CHANGED'}`,
   );
   check(
-    "the watchdog reloads the node's window",
+    'the watchdog reloads the node’s window',
     await waitFor(() => reloads(ctx, 'node window') > windowReloadsBefore),
   );
-  check("the reloaded node's window works", await waitFor(() => nodeWindowReady(ctx)));
+  check('the reloaded node’s window works', await waitFor(() => nodeWindowReady(ctx)));
   const after = await frameOf(output);
   check(
     'the output was never reloaded or redrawn',
@@ -366,10 +366,10 @@ export async function runNodeWatchdogSelfTest(ctx: NodeSelfTestContext): Promise
   await sleep(40);
   const reloading = await frameOf(output);
   check(
-    "while the node's window reloads, the output keeps the same frame",
+    'while the node’s window reloads, the output keeps the same frame',
     reloading.hash === before.hash && reloading.pid === before.pid,
   );
-  check("the node's window comes back after a reload", await waitFor(() => nodeWindowReady(ctx)));
+  check('the node’s window comes back after a reload', await waitFor(() => nodeWindowReady(ctx)));
 
   // 3. Crash the output itself: the watchdog reloads it and it shows Main's live slide again.
   const fromEvent = ctx.watchdog.events.length;
@@ -385,7 +385,7 @@ export async function runNodeWatchdogSelfTest(ctx: NodeSelfTestContext): Promise
   const back = await waitFor(async () => (await paintedRev(output)) === String(ctx.rev()));
   const restored = await steadyFrame(output, undefined, NODE_BRIGHT);
   check(
-    "the reloaded output shows Main's live slide again",
+    'the reloaded output shows Main’s live slide again',
     back && restored.hash === before.hash && restored.pid !== before.pid,
     `frame ${restored.hash === before.hash ? 'matches' : 'differs'}, new process ${restored.pid !== before.pid ? 'yes' : 'no'}`,
   );

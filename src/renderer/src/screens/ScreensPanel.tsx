@@ -392,7 +392,7 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
               void openSetup();
             }}
           >
-            Setup wizard
+            Set Up Screens…
           </Button>
           <Button icon={ScanEye} onClick={() => void window.drashti.screens.identify()}>
             Identify screens

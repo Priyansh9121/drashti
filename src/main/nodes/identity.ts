@@ -55,8 +55,8 @@ const files = (userData: string) => {
 export function heldProblem(setAsideAs: string | null): string {
   return `This computer's identity for its nodes could not be read, so no node can follow it. ${
     setAsideAs
-      ? `It was kept as “${setAsideAs}” in Drashti's data folder (node-link).`
-      : "It was left where it is, in Drashti's data folder (node-link)."
+      ? `It was kept as “${setAsideAs}” in Drashti’s data folder (node-link).`
+      : 'It was left where it is, in Drashti’s data folder (node-link).'
   } An admin can make a new identity, then pair each node again.`;
 }
 

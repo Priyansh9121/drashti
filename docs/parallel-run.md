@@ -94,9 +94,9 @@ Once the import is done, **back up the library** to a USB drive: choose **File**
 
 ---
 
-## 4. Set up the screens and the sound
+## 4. The screens and the sound
 
-The first time Drashti starts, the **setup wizard** opens by itself (later, it is in **View > Set Up Screens…**; on Windows press Alt for the menu bar, or use **Setup wizard** in Screens). It takes a minute and changes nothing until **Finish**:
+The first time Drashti starts, **Set Up Screens…** opens by itself (later, it is in **View > Set Up Screens…**; on Windows press Alt for the menu bar, or use **Set Up Screens…** in Screens). It takes a minute and changes nothing until **Finish**:
 
 - **Screens**: **Show each display's number on it** puts a big number on every display for a few seconds (not on the one the controls are on), so you can see which output feeds which screens. For each display choose **The audience picture**, **The stage view (performers)** or **Not used**, and the languages a kirtan shows on it (for example Gujarati then transliteration in the hall, Gujarati only on the stage).
 - **Sound**: choose the output that goes to the mixer, and **Play a test tone** to hear it.
@@ -192,7 +192,7 @@ Drashti never updates itself. To see if there is a newer version: **Help**, then
 
 Drashti has three roles. **Volunteers** run a sabha in Simple Mode, which changes nothing. **Operators** run the show in Pro Mode: playlists, words and slides, props, messages and timers, macros, Looks, announcements, going live and recording. **Admins** also set Drashti up: importing and removing, themes, Shastra texts, calendars, the idle rotation and every schedule, macros, the screens, Looks, stage layouts, masks and sound, the stream's settings and keys, phones and nodes, backups, restores and updates.
 
-Until someone sets PINs, roles are off and everything works as above. To turn them on, an admin chooses **File**, then **Roles and PINs…** (on Windows press **Alt** first), types an **admin PIN** and an **operator PIN** (4 to 12 digits each, different from each other), each twice, and presses **Turn on roles**. The setup wizard offers the same at its **PINs** step. Keep the admin PIN with whoever looks after Drashti, and give the operator PIN only to the operators.
+Until someone sets PINs, roles are off and everything works as above. To turn them on, an admin chooses **File**, then **Roles and PINs…** (on Windows press **Alt** first), types an **admin PIN** and an **operator PIN** (4 to 12 digits each, different from each other), each twice, and presses **Turn on roles**. **Set Up Screens…** offers the same at its **PINs** step. Keep the admin PIN with whoever looks after Drashti, and give the operator PIN only to the operators.
 
 With roles on:
 

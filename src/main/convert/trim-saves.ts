@@ -42,6 +42,9 @@ const KEEP = 10;
 const LISTING_MS = 15_000;
 
 const MISSING_FFMPEG = 'Drashti’s copy of FFmpeg is missing. Install Drashti again.';
+/** No clean frame (a keyframe) was found near the start asked for. */
+const CLEAN_FRAMES =
+  'FFmpeg could not find where its clean frames are: choose a start a few seconds earlier or later, then try again.';
 
 /** The keyframe at or before `atMs` in `file`, by FFmpeg listing keyframes from there and stopped at the first. */
 export function keyframeOf(ffmpeg: string, file: string, atMs: number): Promise<number | null> {
@@ -91,9 +94,7 @@ export class TrimSaves {
     if (!ffmpeg) return { ok: false, message: MISSING_FFMPEG };
     if (startMs <= 0) return { ok: true, atMs: 0 };
     const at = await keyframeOf(ffmpeg, video.path, startMs);
-    return at === null
-      ? { ok: false, message: 'FFmpeg could not find where its clean frames are.' }
-      : { ok: true, atMs: at };
+    return at === null ? { ok: false, message: CLEAN_FRAMES } : { ok: true, atMs: at };
   }
 
   /** Save the part (the operator chooses where): it goes on in the background. */
@@ -110,7 +111,7 @@ export class TrimSaves {
     if (endMs === null || endMs <= startMs)
       return { ok: false, message: 'Its end must come after its start.' };
     const from = startMs > 0 ? await keyframeOf(ffmpeg, video.path, startMs) : 0;
-    if (from === null) return { ok: false, message: 'FFmpeg could not find where its clean frames are.' };
+    if (from === null) return { ok: false, message: CLEAN_FRAMES };
     const chosen = await this.deps.pickDest(savedFileName(video.name, endMs - startMs));
     if (chosen === null) return { ok: true, job: null };
     // Never over a file already there (even one the save dialog offered to replace).

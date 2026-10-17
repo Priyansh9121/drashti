@@ -280,8 +280,9 @@ export class ImportService {
     });
     worker.onExit((code) => {
       if (settled || this.stopped) return;
-      const message = `The import stopped unexpectedly (exit code ${code}).`;
-      this.deps.log('warn', message);
+      const message =
+        'The import stopped unexpectedly: import the files again; if it stops again, choose Help, then Save Diagnostics…, and tell the admin.';
+      this.deps.log('warn', `The import stopped unexpectedly (exit code ${code})`);
       this.recordFailure(job, message);
       settle({ ok: false, message }, null);
     });

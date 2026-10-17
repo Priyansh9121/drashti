@@ -134,7 +134,7 @@ function PlaylistColumn() {
           </Field>
         ) : (
           <EmptyState icon={ListMusic} title="No playlists" compact>
-            An admin makes the sabha&apos;s playlist in Pro Mode.
+            An admin makes the sabha’s playlist in Pro Mode.
           </EmptyState>
         )}
       </div>

@@ -154,7 +154,7 @@ function BoxSettings({ box }: { box: StageBox }) {
       )}
       {box.kind === 'clock' && (
         <Checkbox
-          label="Today's Samvat date under the time"
+          label="Today’s Samvat date under the time"
           checked={box.calendar ?? false}
           data-testid="stage-box-calendar"
           onChange={(e) => {
@@ -181,7 +181,7 @@ function BoxSettings({ box }: { box: StageBox }) {
       )}
       {box.kind === 'quote' && (
         <p className="text-xs text-muted">
-          The quote of the day from the idle rotation&apos;s quotes: one each day, the same all day.
+          The quote of the day from the idle rotation’s quotes: one each day, the same all day.
         </p>
       )}
       {box.kind === 'samvat' && (

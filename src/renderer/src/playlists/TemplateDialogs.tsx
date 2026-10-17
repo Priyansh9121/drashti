@@ -63,7 +63,7 @@ function SaveTemplate({ playlistId }: { playlistId: string }) {
   return (
     <Dialog
       title={`Save “${node?.name ?? 'the playlist'}” as a template`}
-      subtitle="A running order to make each week's playlist from. Templates are kept apart from the playlists."
+      subtitle="A running order to make each week’s playlist from. Templates are kept apart from the playlists."
       size="md"
       onClose={close}
       testId="save-template"

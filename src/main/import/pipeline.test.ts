@@ -436,7 +436,7 @@ describe('runImport', () => {
         "Loaded: 2 days, 2026-10-04 to 2026-10-05, with 1 festival. Today's Samvat date shows in the operator window, and wherever a stage layout or a message shows it.",
     });
     expect(first.report?.items[0]?.issues.map((i) => i.message)).toEqual([
-      'Day 3 was left out: That date does not exist. (at days › 2 › date).',
+      'Day 3 was left out (at days › 2 › date): that date does not exist.',
     ]);
     expect((await t.run([file])).report?.items[0]).toMatchObject({
       outcome: 'skipped',

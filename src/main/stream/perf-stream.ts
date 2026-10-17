@@ -125,7 +125,7 @@ export async function startPerfStream(
   const end = { at: performance.now(), app: appCpuSeconds(), ffmpeg: ffmpegCpuSeconds() };
   const ms = end.at - start.at;
   const cores = (seconds: number) => `${Math.round((seconds / (ms / 1000)) * 100)}%`;
-  const cpu = `CPU over ${Math.round(ms / 1000)} s of streaming and recording alone, as a share of one core: Drashti's processes ${cores(end.app - start.app)}, FFmpeg ${end.ffmpeg !== null && start.ffmpeg !== null ? cores(end.ffmpeg - start.ffmpeg) : 'not measured here'}`;
+  const cpu = `CPU over ${Math.round(ms / 1000)} s of streaming and recording alone, as a share of one core: Drashti’s processes ${cores(end.app - start.app)}, FFmpeg ${end.ffmpeg !== null && start.ffmpeg !== null ? cores(end.ffmpeg - start.ffmpeg) : 'not measured here'}`;
   return {
     summary: () => {
       const s = stream.status();

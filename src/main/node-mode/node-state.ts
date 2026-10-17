@@ -86,7 +86,7 @@ export class NodeStore {
     o.log(`Node: node.json could not be read (${read.reason}); ${kept}. Starting unpaired`);
     return {
       paired: null,
-      note: `This node's pairing with Main could not be read, so it starts unpaired. The file was ${kept} in Drashti's data folder. Pair it with Main again: a new code from Main's Screens, Nodes.`,
+      note: `This node’s pairing with Main could not be read, so it starts unpaired. The file was ${kept} in Drashti’s data folder. Pair it with Main again: a new code from Main’s Screens, Nodes.`,
     };
   }
 

@@ -80,7 +80,7 @@ test("a node's Save Diagnostics writes the link, its screens and its copies, and
     expect(text).toContain('== Displays ==');
     expect(text).toMatch(/Follows Main ".+" at 127\.0\.0\.1 port \d+, paired /u);
     expect(text).toContain('Link: online since');
-    expect(text).toMatch(/Clock: Main's is [+-]?\d+ ms from this computer's/u);
+    expect(text).toMatch(/Clock: Main’s is [+-]?\d+ ms from this computer’s/u);
     expect(text).toContain('Group "Lobby" (audience):');
     expect(text).toMatch(/: canvas \d+×\d+ \w+, on, showing on /u);
     expect(text).toMatch(/\d+ of \d+ files ready/u);
@@ -146,16 +146,16 @@ test("a node's watchdog self-test: its window crashes and reloads under a steady
     expect(result?.checks.map((c) => c.name)).toEqual([
       'the node follows Main',
       'an output window is open',
-      "the output shows Main's live slide",
+      'the output shows Main’s live slide',
       'the output shows something',
-      "while the node's window is crashed, the output keeps the same frame",
-      "the watchdog reloads the node's window",
-      "the reloaded node's window works",
+      'while the node’s window is crashed, the output keeps the same frame',
+      'the watchdog reloads the node’s window',
+      'the reloaded node’s window works',
       'the output was never reloaded or redrawn',
-      "while the node's window reloads, the output keeps the same frame",
-      "the node's window comes back after a reload",
+      'while the node’s window reloads, the output keeps the same frame',
+      'the node’s window comes back after a reload',
       'the watchdog reloads a crashed output',
-      "the reloaded output shows Main's live slide again",
+      'the reloaded output shows Main’s live slide again',
       'the node still follows Main',
     ]);
     expect(result?.passed).toBe(true);

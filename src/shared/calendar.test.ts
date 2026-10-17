@@ -45,8 +45,8 @@ describe('calendar files', () => {
       ['2026-10-06', 1001],
     ]);
     expect(read.issues.map((i) => i.message)).toEqual([
-      'Day 2 was left out: That date does not exist. (at days › 1 › date).',
-      'Day 3 was left out: Give it in Gujarati, English or both. (at days › 2 › tithi).',
+      'Day 2 was left out (at days › 1 › date): that date does not exist.',
+      'Day 3 was left out (at days › 2 › tithi): give it in Gujarati, English or both.',
       '2026-10-05 is given twice: the first is kept.',
     ]);
   });

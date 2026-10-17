@@ -59,8 +59,7 @@ export function SoundOutput() {
         </Notice>
       )}
       <p className="text-xs text-muted">
-        Only this output makes sound: the screens are silent, and videos&apos; sound plays here in step with
-        them.
+        Only this output makes sound: the screens are silent, and videos’ sound plays here in step with them.
       </p>
     </section>
   );

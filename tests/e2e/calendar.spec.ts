@@ -151,7 +151,7 @@ test('a calendar loads; today shows in the operator window, on the stage and in 
     if (!made.ok) throw new Error(made.message);
   });
   const row = win.getByTestId('message-row').filter({ hasText: 'Placeholder today' });
-  await expect(row).toContainText("today's Samvat date (English)");
+  await expect(row).toContainText('today’s Samvat date (English)');
   await row.getByRole('button', { name: 'Show' }).click();
   await expect(hall.locator('[data-layer="messages"]')).toContainText(
     'Today: Samvat 1001, Placeholder month First half Placeholder tithi 1 · Placeholder festival',

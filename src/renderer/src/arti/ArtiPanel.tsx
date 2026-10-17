@@ -291,7 +291,7 @@ function ArtiForm({ editing }: { editing: ArtiScheduleInfo | 'new' }) {
           )}
         </fieldset>
         <div className="flex flex-wrap gap-4">
-          <Field label="Time (this computer's clock)">
+          <Field label="Time (this computer’s clock)">
             <TextInput
               type="time"
               data-testid="arti-time"

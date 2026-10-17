@@ -144,7 +144,7 @@ function makeVideo(
     { stdio: 'pipe' },
   );
   if (r.status !== 0)
-    throw new Error(`FFmpeg could not make the scenario's video: ${r.stderr.toString().slice(0, 200)}`);
+    throw new Error(`FFmpeg could not make the scenario’s video: ${r.stderr.toString().slice(0, 200)}`);
   const mediaId = randomUUID();
   deps.db
     .prepare("INSERT INTO media (id, kind, name, path, width, height) VALUES (?, 'video', ?, ?, ?, ?)")
@@ -190,7 +190,7 @@ function makePicture(deps: ScenarioDeps, name: string, hue: number, look: Pictur
     { stdio: 'pipe' },
   );
   if (r.status !== 0)
-    throw new Error(`FFmpeg could not make the scenario's picture: ${r.stderr.toString().slice(0, 200)}`);
+    throw new Error(`FFmpeg could not make the scenario’s picture: ${r.stderr.toString().slice(0, 200)}`);
   const mediaId = randomUUID();
   // Its sha256, as an imported picture has: its sharpened copy is named by it (Session 26f).
   const sha256 = createHash('sha256')
@@ -482,7 +482,7 @@ export function startScenario(name: PerfScenario, deps: ScenarioDeps): ScenarioR
       return {
         checks: [
           {
-            name: `every screen showed 9 in 10 of the background video's frames (${String(fps)} fps)`,
+            name: `every screen showed 9 in 10 of the background video’s frames (${String(fps)} fps)`,
             ok: worst >= 0.9,
             detail: kept.map(percent).join(', '),
           },

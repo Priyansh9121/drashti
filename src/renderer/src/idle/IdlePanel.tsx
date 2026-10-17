@@ -376,8 +376,8 @@ function IdleForm() {
           </ul>
         </section>
         <p className="text-xs text-muted">
-          Which screens show it is set in each group&apos;s Look (Screens): <em>{IDLE_WHEN_NAMES.started}</em>{' '}
-          or <em>{IDLE_WHEN_NAMES.always}</em>.
+          Which screens show it is set in each group’s Look (Screens): <em>{IDLE_WHEN_NAMES.started}</em> or{' '}
+          <em>{IDLE_WHEN_NAMES.always}</em>.
         </p>
       </div>
       {removing && (

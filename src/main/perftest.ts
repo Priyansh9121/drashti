@@ -574,7 +574,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
     const t = run.result.timings;
     const commits = t?.commits ?? 0;
     const editsSummary = ctx.edits
-      ? `; the import's commits: ${String(commits)}, ${String(Math.round(t?.commit ?? 0))} ms in all${commits > 0 ? ` (${String(Math.round((t?.commit ?? 0) / commits))} ms each)` : ''}; import gave way ${ways ? JSON.stringify(ways) : '?'}; operator's edits ${editLine(
+      ? `; the import’s commits: ${String(commits)}, ${String(Math.round(t?.commit ?? 0))} ms in all${commits > 0 ? ` (${String(Math.round((t?.commit ?? 0) / commits))} ms each)` : ''}; import gave way ${ways ? JSON.stringify(ways) : '?'}; operator's edits ${editLine(
           'idle',
           run.edits.filter((e) => !e.during),
         )}; ${editLine(
@@ -612,7 +612,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
     const judged = [...during, ...after];
     const which =
       after.length > 0
-        ? `, ${String(judged.length)} changes from the import's start, ${String(after.length)} after it`
+        ? `, ${String(judged.length)} changes from the import’s start, ${String(after.length)} after it`
         : '';
     // 60 Hz: a frame is 16.7 ms. (No change during a long import at all: the line above says why.)
     const none = judged.length === 0;
