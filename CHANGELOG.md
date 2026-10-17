@@ -2,33 +2,33 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
-## Unreleased
+## 1.0.0-alpha.6 (18 Oct 2026)
 
-- When the live slide names a font this computer, or a node, does not have, a warning says so beside LIVE and on the screens dashboard.
-- Gujarati and Hindi are always drawn upright, with the font's own spacing; new words get 1.35 between lines, and the slide editor warns below 1.3.
-- The screens, the stage and phones' pages tell readers and browsers each line's language, and are never machine-translated.
-- Names and words cut short to fit are never cut inside a Gujarati or Hindi letter.
-- Hindi is drawn by Noto Sans Devanagari everywhere: in messages, the ticker, on the stage and inside Gujarati lines.
-- Words typed or imported in different Unicode forms are stored one way, so search and Edit words find them alike.
-- A node's stage clock and clock timers show Main's time and time zone; a new arti starts on today's local date.
-- Two phones pressing Next at the same moment move the show one slide, not two.
-- On air or recording, No sound shows beside ON AIR, in Simple Mode too, when nothing reaches the stream for 20 seconds or 3 seconds after its microphone is unplugged, with what to check.
-- A long recording goes on in parts of 3.5 GB, so a USB stick never cuts it short; Drashti warns of a FAT32 drive or a disk with room for less than an hour.
-- A limiter keeps the stream's and recordings' sound from clipping.
-- A stuck conversion or Save as MP4 stops by itself and says why; after a crash, the next start stops what Drashti had left running.
-- The computer stays awake on air; a failing stream page stops restarting after six tries in a minute and offers Try again.
-- Help › Guides… opens the guides inside Drashti, searchable without the internet, with answers to "When …, what do I do?"; What is this? cards have Read more, and there are more of them.
-- Messages say what to do next; the screens' setup is called Set Up Screens… everywhere.
-- Simple Mode shows three first steps once; Loading appears only after half a second; the phone remote says where empty lists are filled.
-- The slide editor marks words that run past their box or are too small for the hall, and View › Show Safe Areas shows the safe areas, the ticker's band and where screens cut the slide.
+Safer on air and easier to learn: a No sound warning, recordings that keep going past 4 GB, the guides inside Drashti without the internet, slides that warn before their words run over, and Gujarati and Hindi drawn right. Update after a sabha, never on the day of one.
+
+- On air or recording, No sound shows beside ON AIR, in Simple Mode too, when nothing reaches the stream for 20 seconds, or 3 seconds after its microphone is unplugged.
+- A long recording goes on in parts of 3.5 GB, so a USB stick never cuts it short; Drashti warns of a FAT32 drive or room for less than an hour.
+- A limiter keeps the stream's and recordings' sound from clipping, and a looping video's sound keeps step with the screens each time round.
+- A stuck conversion or Save as MP4 stops by itself and says why; after a crash, the next start stops what Drashti left running.
+- The computer stays awake on air; a failing stream page stops restarting after six tries in a minute and offers Try again; quick camera and sound choices keep the newest.
+- Help › Guides… opens the guides inside Drashti, searchable without the internet, with answers to "When …, what do I do?"; What is this? cards have Read more.
+- Messages say what to do next; the screens' setup is Set Up Screens… everywhere; Simple Mode shows three first steps once; Loading shows only after half a second.
+- The phone remote says where empty lists are filled, and shows the slide in the hall's languages, Drashti's time and the first running timer.
+- The slide editor marks words that run past their box or are too small for the hall; View › Show Safe Areas shows the safe areas, the ticker's band and where screens cut the slide.
 - Slides and themes can darken behind their words; the editors show how well the words stand out, and the theme editor says what a theme misses.
-- The stage screen makes a long slide's words smaller until its last line shows.
 - A lower third that cannot hold all of a slide's lines says how many it shows.
-- A phone's remote shows the slide in the hall's languages, Drashti's time and the first running timer.
-- Choosing the stream's camera and sound quickly always keeps the newest choice.
+- Gujarati, Hindi and Sanskrit stored in italic or letter-spaced are drawn upright, with normal spacing; new words get 1.35 between lines, and the editor warns below 1.3.
+- Hindi is drawn by Noto Sans Devanagari everywhere: in messages, the ticker, on the stage and inside Gujarati lines.
+- The Standard stage screen makes a long slide's words smaller until its last line shows.
+- Stage clocks and clock timers follow Main's time zone, on nodes too; a new arti starts on today's local date.
+- A warning beside LIVE and on the screens dashboard names a font the live slide needs that this computer, or a node, does not have.
+- Words are never cut inside a Gujarati or Hindi letter, are stored one way whatever Unicode form they came in (so search finds them), and are never machine-translated on screens or phones.
+- Two phones pressing Next at once move the show one slide, not two.
+- Notices never cover a control the keyboard is on; a key pressed straight after moving a playlist item is never lost; high contrast shows the chosen tab.
+- A restore keeps today's paired phones, poster link and nodes: nobody pairs again. A PIN file that cannot be read keeps roles locked until the admin guide's reset.
 - When part of Drashti crashes, a crash file stays on this computer, never sent anywhere, and the next start says what went wrong; Save Diagnostics… asks before adding crash files, as they can hold slide words.
-- A projector that drops for a moment keeps its picture: its output is hidden for up to 10 seconds and comes back as it was, with no black.
-- Videos that stop when the computer's graphics restart play again by themselves, at the right point; a second restart within 10 minutes is said.
+- A projector that drops for a moment keeps its picture: its output is hidden for up to 10 seconds and comes back as it was.
+- Videos stopped by a graphics restart play again by themselves, at the right point; a second restart within 10 minutes is said.
 - A node's screen that keeps failing shows as Stopped on Main's screens dashboard and in the notice, and Try again works for it.
 
 ## 1.0.0-alpha.5 (16 Oct 2026)
