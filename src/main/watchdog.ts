@@ -1,4 +1,4 @@
-import { plural } from '../shared/text';
+import { cutText, plural } from '../shared/text';
 
 /** The parts of Electron's WebContents the watchdog needs (easy to fake in tests). */
 export interface WatchTarget {
@@ -7,6 +7,22 @@ export interface WatchTarget {
   reload(): void;
   forcefullyCrashRenderer(): void;
   isDestroyed(): boolean;
+  /** Its page, to ask where its JavaScript is when it hangs (Sessions 31–36, ROB-1). */
+  readonly mainFrame?: { collectJavaScriptCallStack(): Promise<unknown> } | null;
+}
+
+/** How long a hung window has to say where its JavaScript is before it is crashed anyway (ROB-1). */
+export const STACK_WAIT_MS = 1000;
+
+/** A hung page's JavaScript stack as one line, at most 20 frames, or why there is none. */
+export function stackLine(stack: unknown): string {
+  const text = typeof stack === 'string' ? stack.trim() : '';
+  const frames = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('at '));
+  if (frames.length > 0) return frames.slice(0, 20).join(' | ');
+  return `none (${cutText(text, 200) || 'it gave none'})`;
 }
 
 export type WatchdogEventKind =
@@ -16,6 +32,8 @@ export interface WatchdogEvent {
   window: string;
   kind: WatchdogEventKind;
   reason?: string;
+  /** A hung window's JavaScript stack, as one line (Sessions 31–36, ROB-1). */
+  stack?: string;
   at: number;
 }
 
@@ -59,14 +77,22 @@ export class RendererWatchdog {
   private readonly renderReloads = new Map<string, number>();
   /** Each watched window's "try it again now" (Screens' Try again, Session 23). */
   private readonly retries = new Map<WatchTarget, (why: string) => void>();
+  /** Hung windows waiting to say where their JavaScript is, each with what to do if it stops first. */
+  private readonly askingStack = new Map<WatchTarget, () => void>();
 
   constructor(
     private readonly onEvent: (e: WatchdogEvent) => void = () => undefined,
     private readonly timers: Timers = realTimers,
   ) {}
 
-  private record(window: string, kind: WatchdogEventKind, reason?: string): void {
-    const e: WatchdogEvent = { window, kind, at: this.timers.now(), ...(reason ? { reason } : {}) };
+  private record(window: string, kind: WatchdogEventKind, reason?: string, stack?: string): void {
+    const e: WatchdogEvent = {
+      window,
+      kind,
+      at: this.timers.now(),
+      ...(reason ? { reason } : {}),
+      ...(stack ? { stack } : {}),
+    };
     this.events.push(e);
     if (this.events.length > 200) this.events.shift();
     this.onEvent(e);
@@ -98,8 +124,52 @@ export class RendererWatchdog {
    * crashed, and the crash path reloads it, as a hang Chromium noticed would be.
    */
   stuck(target: WatchTarget, name: string, reason: string): void {
-    this.record(name, 'hung', reason);
-    if (!target.isDestroyed()) target.forcefullyCrashRenderer();
+    this.hung(target, name, reason);
+  }
+
+  /**
+   * A hung window is asked where its JavaScript is before it is crashed into the reload (Sessions 31–36,
+   * ROB-1): Chromium stops the page's script for a moment to give its stack, so the 'hung' event (and the
+   * log) says what it was stuck in. One that does not answer within STACK_WAIT_MS is crashed anyway, and
+   * one that stops by itself meanwhile is left to the crash path.
+   */
+  private hung(target: WatchTarget, name: string, reason: string): void {
+    let frame: WatchTarget['mainFrame'];
+    try {
+      frame = target.isDestroyed() || this.askingStack.has(target) ? null : target.mainFrame;
+    } catch {
+      // Its page is already gone.
+      frame = null;
+    }
+    if (!frame) {
+      if (this.askingStack.has(target)) return;
+      this.record(name, 'hung', reason);
+      if (!target.isDestroyed()) target.forcefullyCrashRenderer();
+      return;
+    }
+    let timer: unknown = null;
+    const finish = (stack: string, crash: boolean) => {
+      if (this.askingStack.get(target) !== stopped) return;
+      this.askingStack.delete(target);
+      if (timer !== null) this.timers.clearTimeout(timer);
+      this.record(name, 'hung', reason, stack);
+      if (crash && !target.isDestroyed()) target.forcefullyCrashRenderer();
+    };
+    const stopped = () => {
+      finish('none (it stopped first)', false);
+    };
+    this.askingStack.set(target, stopped);
+    timer = this.timers.setTimeout(() => {
+      finish(`none (no answer within ${String(STACK_WAIT_MS)} ms)`, true);
+    }, STACK_WAIT_MS);
+    frame.collectJavaScriptCallStack().then(
+      (stack) => {
+        finish(stackLine(stack), true);
+      },
+      (error: unknown) => {
+        finish(`none (${String(error)})`, true);
+      },
+    );
   }
 
   /** Try a window again now (after it was given up on): false when it is not watched. */
@@ -141,6 +211,7 @@ export class RendererWatchdog {
 
     target.on('render-process-gone', (_event, details) => {
       cancelHang();
+      this.askingStack.get(target)?.();
       if (details.reason === 'clean-exit' || target.isDestroyed()) return;
       this.record(name, 'crashed', details.reason);
       const now = this.timers.now();
@@ -177,9 +248,8 @@ export class RendererWatchdog {
       hangTimer = this.timers.setTimeout(() => {
         hangTimer = null;
         if (target.isDestroyed()) return;
-        this.record(name, 'hung', `unresponsive for ${hangMs} ms`);
         // Crashing it hands over to the crash path above, which reloads it.
-        target.forcefullyCrashRenderer();
+        this.hung(target, name, `unresponsive for ${hangMs} ms`);
       }, hangMs);
     });
 
@@ -190,6 +260,7 @@ export class RendererWatchdog {
 
     target.on('destroyed', () => {
       cancelHang();
+      this.askingStack.get(target)?.();
       if (reloadTimer !== null) this.timers.clearTimeout(reloadTimer);
       if (retryTimer !== null) this.timers.clearTimeout(retryTimer);
       this.retries.delete(target);

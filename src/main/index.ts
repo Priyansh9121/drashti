@@ -202,7 +202,7 @@ import { StopList } from './lifecycle';
 import { hearRenderErrors } from './render-errors-ipc';
 import { CHECK_EVERY_MS, OutputHeartbeat } from './outputs/heartbeat';
 import { quitDetail, RendererWatchdog, shouldConfirmQuit, type WatchdogEvent } from './watchdog';
-import { applySessionSecurity, secureWebContents } from './windows/security';
+import { allowHangStacks, applySessionSecurity, secureWebContents } from './windows/security';
 import { StreamProfileRepo } from './db/stream-profiles';
 import { StreamKeyStore } from './stream/key-store';
 import { lookup as dnsLookup } from 'node:dns/promises';
@@ -470,7 +470,7 @@ const watchdog = new RendererWatchdog((e) => {
     reason: e.reason ?? null,
   });
   if (watchdogHistory.length > 200) watchdogHistory.splice(0, watchdogHistory.length - 200);
-  const text = `Watchdog: ${e.window} ${e.kind}${e.reason ? ` (${e.reason})` : ''}`;
+  const text = `Watchdog: ${e.window} ${e.kind}${e.reason ? ` (${e.reason})` : ''}${e.stack ? `; its JavaScript: ${e.stack}` : ''}`;
   if (e.kind === 'crashed' || e.kind === 'hung' || e.kind === 'gave-up' || e.kind === 'render-error')
     log.warn(text);
   else log.info(text);
@@ -755,6 +755,7 @@ function startNodeMode(): void {
       : undefined,
     isOperator: () => false,
   });
+  allowHangStacks(session.defaultSession);
   const node = startNode({
     userData: app.getPath('userData'),
     startNotes,
@@ -880,6 +881,8 @@ function start(): void {
       log.info(line);
     },
   });
+  // A hung window's JavaScript stack, for the log (Sessions 31–36, ROB-1): every session's own pages.
+  for (const pages of [session.defaultSession, audioSession, streamSession]) allowHangStacks(pages);
 
   // Tests only (never a packaged Drashti): write a library as an older Drashti kept it, then stop.
   const oldLibrary = sw('DRASHTI_SELFTEST_LIBRARY');

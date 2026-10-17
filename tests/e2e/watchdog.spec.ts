@@ -74,12 +74,18 @@ test('watchdog self-test: operator crash and reload never touch the output or th
     'the watchdog reloads a crashed output',
     'the reloaded output shows the live slide again',
     'a hung output (stuck in a loop, taking no input) is noticed and restarted',
+    'the hung output’s JavaScript stack names the function it hung in',
     'the restarted output shows the live slide again',
     'the watchdog reloads a crashed audio player',
     'the reloaded audio player follows the show again',
   ]);
   expect(result?.passed).toBe(true);
   expect(code).toBe(0);
+  // The hung output's stack is in the log, naming the function it hung in (Sessions 31–36, ROB-1).
+  const logged = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  expect(logged).toMatch(
+    /Watchdog: output ".+" hung \(.+\); its JavaScript: at drashtiSelfTestHangsHere \(/u,
+  );
   // The self-test ends on purpose: marked as a clean quit, so the next start puts nothing back.
   const mark = JSON.parse(readFileSync(join(userData, 'live-state.clean'), 'utf8')) as { session: string };
   const saved = JSON.parse(readFileSync(join(userData, 'live-state.json'), 'utf8')) as { session: string };

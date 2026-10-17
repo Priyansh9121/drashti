@@ -1,7 +1,15 @@
 import { EventEmitter } from 'node:events';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { WatchdogEvent, WatchTarget } from './watchdog';
-import { quitDetail, RendererWatchdog, RETRY_AGAIN_MS, RETRY_FIRST_MS, shouldConfirmQuit } from './watchdog';
+import {
+  quitDetail,
+  RendererWatchdog,
+  RETRY_AGAIN_MS,
+  RETRY_FIRST_MS,
+  shouldConfirmQuit,
+  STACK_WAIT_MS,
+  stackLine,
+} from './watchdog';
 
 class FakeContents extends EventEmitter implements WatchTarget {
   reloads = 0;
@@ -127,6 +135,72 @@ describe('RendererWatchdog', () => {
     expect(events[0]).toMatchObject({ kind: 'hung', reason: 'no report for 7 s' });
     clock.advance(100);
     expect(contents.reloads).toBe(1);
+  });
+
+  it('asks a hung window where its JavaScript is, then crashes it: its stack in the hung event (ROB-1)', async () => {
+    const page = new FakeContents();
+    let answer: (stack: string) => void = () => undefined;
+    Object.assign(page, {
+      mainFrame: { collectJavaScriptCallStack: () => new Promise<string>((resolve) => (answer = resolve)) },
+    });
+    dog.watch(page, 'output "Main Hall"');
+    dog.stuck(page, 'output "Main Hall"', 'no report for 7 s');
+    // Not crashed while it is asked: the stack would go with it.
+    expect(page.crashes).toBe(0);
+    answer('\n    at drashtiSelfTestHangsHere (<anonymous>:1:33)\n    at <anonymous>:1:47');
+    await Promise.resolve();
+    expect(page.crashes).toBe(1);
+    expect(events.find((e) => e.kind === 'hung')).toMatchObject({
+      window: 'output "Main Hall"',
+      reason: 'no report for 7 s',
+      stack: 'at drashtiSelfTestHangsHere (<anonymous>:1:33) | at <anonymous>:1:47',
+    });
+    clock.advance(100);
+    expect(page.reloads).toBe(1);
+  });
+
+  it('crashes a hung window that does not say within a second, and leaves one that stopped by itself', () => {
+    const silent = new FakeContents();
+    Object.assign(silent, { mainFrame: { collectJavaScriptCallStack: () => new Promise(() => undefined) } });
+    dog.watch(silent, 'output "Silent"');
+    silent.emit('unresponsive');
+    clock.advance(5000);
+    expect(silent.crashes).toBe(0);
+    clock.advance(STACK_WAIT_MS - 1);
+    expect(silent.crashes).toBe(0);
+    clock.advance(1);
+    expect(silent.crashes).toBe(1);
+    expect(events.find((e) => e.kind === 'hung')?.stack).toBe(
+      `none (no answer within ${String(STACK_WAIT_MS)} ms)`,
+    );
+
+    // Asked, and it crashes by itself first: not crashed again, and the crash path reloads it once.
+    events.length = 0;
+    const gone = new FakeContents();
+    Object.assign(gone, { mainFrame: { collectJavaScriptCallStack: () => new Promise(() => undefined) } });
+    dog.watch(gone, 'output "Gone"');
+    dog.stuck(gone, 'output "Gone"', 'no report for 7 s');
+    gone.emit('render-process-gone', {}, { reason: 'crashed' });
+    clock.advance(STACK_WAIT_MS);
+    expect(gone.crashes).toBe(0);
+    expect(gone.reloads).toBe(1);
+    expect(events.filter((e) => e.window === 'output "Gone"').map((e) => [e.kind, e.stack])).toEqual([
+      ['hung', 'none (it stopped first)'],
+      ['crashed', undefined],
+      ['reloaded', undefined],
+    ]);
+  });
+
+  it("says a hung page's stack as one line, at most 20 frames, or why there is none", () => {
+    const deep = Array.from(
+      { length: 30 },
+      (_, i) => `    at placeholder${String(i)} (file:///x/output.js:${String(i)}:1)`,
+    );
+    expect(stackLine(`\n${deep.join('\n')}`).split(' | ')).toHaveLength(20);
+    expect(stackLine('Website owner has not opted in for JS call stacks in crash reports.')).toBe(
+      'none (Website owner has not opted in for JS call stacks in crash reports.)',
+    );
+    expect(stackLine(undefined)).toBe('none (it gave none)');
   });
 
   it('forgets crashes older than a minute', () => {
