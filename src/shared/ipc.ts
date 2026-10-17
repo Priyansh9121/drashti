@@ -76,6 +76,7 @@ import type {
   TimerCue,
 } from './playlists';
 import type { RepeatSettings } from './repeat';
+import type { GuideId, GuideRead } from './guides';
 import type { KeyframeResult, SaveJob, SaveRequest, SaveResult } from './trim';
 import type { PictureLook } from './picture-look';
 import type { MessageResult, MessageTemplate, MessageTemplateFields } from './messages';
@@ -132,6 +133,8 @@ export const IPC = {
     renderError: 'app:render-error',
     /** main -> operator: Help > Keyboard Shortcuts… was chosen (Session 25). */
     showKeys: 'app:show-keys',
+    /** main -> operator: Help > Guides… was chosen (Sessions 31–36), in either mode. */
+    showGuides: 'app:show-guides',
   },
   /**
    * Roles (Session 14, shared/roles.ts): an admin PIN and an operator PIN.
@@ -743,6 +746,14 @@ export const IPC = {
     /** And hands back each copy as made. */
     made: 'sharpen:made',
   },
+  /**
+   * The guides inside Drashti (Sessions 31–36): which guides this mode may read, and a guide's text, from
+   * the files beside the app. Open in Simple Mode, which is given the operator's and presenter's only.
+   */
+  guides: {
+    list: 'guides:list',
+    read: 'guides:read',
+  },
 } as const;
 
 /** Request/response channels: arguments and result for each. */
@@ -753,6 +764,8 @@ export interface InvokeContract {
   [IPC.pictures.asset]: { args: [kind: PictureAssetKind, name: string]; result: Uint8Array | null };
   [IPC.sharpen.next]: { args: []; result: SharpenJobView | null };
   [IPC.sharpen.made]: { args: [key: string, bytes: Uint8Array | null]; result: boolean };
+  [IPC.guides.list]: { args: []; result: { id: GuideId; tab: string }[] };
+  [IPC.guides.read]: { args: [id: GuideId]; result: GuideRead };
   [IPC.app.getInfo]: { args: []; result: AppInfo };
   [IPC.app.renderError]: { args: [report: RenderErrorReport]; result: null };
   [IPC.app.recovery]: { args: []; result: RecoveryNotice | null };
@@ -1150,6 +1163,7 @@ export interface EventContract {
   [IPC.links.changed]: LinkView;
   [IPC.links.open]: { at: number };
   [IPC.app.showKeys]: { at: number };
+  [IPC.app.showGuides]: { at: number };
   [IPC.screens.changed]: ScreensSnapshot;
   [IPC.looks.changed]: LooksView;
   [IPC.stageLayouts.changed]: StageLayout[];

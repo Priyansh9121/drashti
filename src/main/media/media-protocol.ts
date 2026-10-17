@@ -36,6 +36,11 @@ export interface MediaProtocolDeps {
   lookup: (mediaId: string) => MediaFileRow | null;
   /** A picture's sharpened copy at a step, relative to the media folder, if it is ready (Session 26f). */
   sharpened?: (sha256: string, step: number) => string | null;
+  /**
+   * A picture one of the guides shows (Sessions 31–36): its file in the guides' own folder, or null for a
+   * name no guide shows. `dir` is that folder: the file must be inside it.
+   */
+  guidePicture?: (name: string) => { dir: string; file: string } | null;
   /** Told about refusals that point at a broken or tampered library. */
   warn?: (message: string) => void;
 }
@@ -105,7 +110,9 @@ export type MediaRequest =
   | { what: 'media'; mediaId: string }
   | { what: 'still'; mediaId: string }
   /** A picture's sharpened copy (Session 26f), made at a step of 5 %. */
-  | { what: 'sharp'; mediaId: string; step: number };
+  | { what: 'sharp'; mediaId: string; step: number }
+  /** A picture one of the guides shows (the guides inside Drashti, Sessions 31–36). */
+  | { what: 'guide'; name: string };
 
 /** What a drashti-media:// URL asks for, or null if it is not a URL Drashti makes. */
 export function mediaRequestOf(url: string): MediaRequest | null {
@@ -123,6 +130,10 @@ export function mediaRequestOf(url: string): MediaRequest | null {
     return m?.[1] && MEDIA_ID_PATTERN.test(m[1]) && step >= 5 && step <= 100 && step % 5 === 0
       ? { what, mediaId: m[1], step }
       : null;
+  }
+  if (what === 'guide') {
+    const name = parsed.pathname.slice(1);
+    return /^[a-z0-9-]{1,80}\.png$/u.test(name) ? { what, name } : null;
   }
   const mediaId = parsed.pathname.slice(1);
   if (!MEDIA_ID_PATTERN.test(mediaId)) return null;
@@ -166,11 +177,29 @@ function refused(status: 404 | 405): Response {
 
 const SHA256 = /^[0-9a-f]{64}$/;
 
-/** The file a request asks for, if it is a regular file inside the media folder. */
+/** A regular file, by its real path, if it is inside `dir`. */
+async function fileInside(dir: string, file: string): Promise<{ path: string; size: number } | null> {
+  let realDir: string;
+  let real: string;
+  try {
+    [realDir, real] = await Promise.all([realpath(dir), realpath(file)]);
+  } catch {
+    return null;
+  }
+  if (!isInside(realDir, real)) return null;
+  const s = await stat(real).catch(() => null);
+  return s?.isFile() ? { path: real, size: s.size } : null;
+}
+
+/** The file a request asks for, if it is a regular file inside the media folder (or the guides' own). */
 async function fileFor(
   asked: MediaRequest,
   deps: MediaProtocolDeps,
 ): Promise<{ path: string; size: number } | null> {
+  if (asked.what === 'guide') {
+    const found = deps.guidePicture?.(asked.name) ?? null;
+    return found ? fileInside(found.dir, found.file) : null;
+  }
   const { mediaId } = asked;
   const found = deps.lookup(mediaId);
   if (!found || found.missing) return null;

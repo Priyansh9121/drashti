@@ -51,6 +51,8 @@ export interface MenuActions {
   checkForUpdates: () => void;
   /** Help > Keyboard Shortcuts… (Session 25, Pro Mode only): the keys sheet. */
   keyboardShortcuts: () => void;
+  /** Help > Guides… (Sessions 31–36, both modes): the guides inside Drashti. */
+  guides: () => void;
   /** File > Run Ahead of Other Programs (Windows only, Pro Mode, admin; Session 16): null elsewhere. */
   priority: PriorityItem | null;
   /**
@@ -186,6 +188,9 @@ export function installMenu(actions: MenuActions): void {
   template.push({
     role: 'help',
     submenu: [
+      // The guides inside Drashti, in both modes (Simple Mode is given the operator's and presenter's only).
+      { id: 'guides', label: 'Guides…', click: actions.guides },
+      { type: 'separator' },
       // The keys sheet, Pro Mode's (Simple Mode keeps its key line). No accelerator: ? is the page's key,
       // and a menu's would get round the guards for fields and dialogs.
       ...(simple

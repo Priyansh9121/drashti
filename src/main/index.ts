@@ -214,6 +214,8 @@ import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } fro
 import { StreamService } from './stream/stream-service';
 import { onFat } from './stream/recording-drive';
 import { Leftovers, leftoversFile } from './system/leftovers';
+import { GuideFiles, guidesDir } from './guides';
+import { GUIDES, guideIdSchema, type GuideRead } from '../shared/guides';
 import { watchLoadFailures } from './outputs/load-failures';
 import { findFfmpeg } from './stream/ffmpeg-path';
 import { ffmpegSelfTest } from './stream/ffmpeg-selftest';
@@ -1181,6 +1183,10 @@ function start(): void {
     const found = media.kindAndName(mediaId);
     return found ? { name: found.name, missing: false, unplayable: null } : null;
   };
+  // The guides inside Drashti (Sessions 31–36): beside an installed Drashti, docs/ in the repository.
+  const guideFiles = new GuideFiles(
+    guidesDir({ packaged: app.isPackaged, resourcesPath: process.resourcesPath, appPath: app.getAppPath() }),
+  );
   const serveMedia = async (request: Request) => {
     const started = performance.now();
     if (mediaDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, mediaDelayMs));
@@ -1192,6 +1198,11 @@ function start(): void {
         return found?.deleted && !mediaUpNow(engine.current).has(id) ? { ...found, missing: true } : found;
       },
       sharpened: (sha256, step) => sharpened.relativePath(sha256, step),
+      // A picture one of the guides shows (only those, from the guides' own folder).
+      guidePicture: (name) => {
+        const file = guideFiles.picture(name);
+        return file ? { dir: guideFiles.dir, file } : null;
+      },
       warn: (message) => {
         log.warn(message);
       },
@@ -2000,6 +2011,29 @@ function start(): void {
     return null;
   });
   handle(IPC.pictures.asset, (e, kind, name) => pdfPictures.asset(e.sender, kind, name));
+  // ---- the guides inside Drashti (Sessions 31–36) -------------------------------------------------
+  // Read from the files beside the app, for the operator window only. Simple Mode is given the operator's
+  // and the presenter's guides: the admin's holds how to reset a forgotten PIN.
+  handle(IPC.guides.list, (e) =>
+    fromOperator(e)
+      ? GUIDES.filter((g) => mode === 'pro' || g.simple).map((g) => ({ id: g.id, tab: g.tab }))
+      : [],
+  );
+  handle(IPC.guides.read, (e, raw): GuideRead => {
+    if (!fromOperator(e)) return { ok: false, message: 'Only Drashti’s own window can read the guides.' };
+    const id = guideIdSchema.safeParse(raw);
+    const guide = id.success ? GUIDES.find((g) => g.id === id.data) : undefined;
+    if (!guide) return { ok: false, message: 'There is no such guide.' };
+    if (mode === 'simple' && !guide.simple)
+      return {
+        ok: false,
+        message: 'That guide is read in Pro Mode: View, then Switch to Pro Mode…, or ask the admin.',
+      };
+    const text = guideFiles.read(guide.id);
+    return text === null
+      ? { ok: false, message: 'This guide is missing from Drashti’s folder: install Drashti again.' }
+      : { ok: true, text, sizes: guideFiles.sizesFor(text) };
+  });
   // ---- programs a crash left running (Session 31, ROB-3) ----------------------------------------
   // Each program Drashti starts that could outlive it is written down (src/main/system/leftovers.ts): one
   // the last run left running (the very one: id, start time and program) is stopped now, before anything
@@ -4184,6 +4218,9 @@ function start(): void {
     },
     keyboardShortcuts: () => {
       if (mode === 'pro') sendToOperator(IPC.app.showKeys, { at: Date.now() });
+    },
+    guides: () => {
+      sendToOperator(IPC.app.showGuides, { at: Date.now() });
     },
     priority: (() => {
       const item = priorityItem((text) => {

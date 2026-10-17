@@ -83,6 +83,14 @@ const bridge: DrashtiBridge = {
       on(IPC.app.showKeys, () => {
         listener();
       }),
+    onShowGuides: (listener) =>
+      on(IPC.app.showGuides, () => {
+        listener();
+      }),
+  },
+  guides: {
+    list: () => invoke(IPC.guides.list),
+    read: (id) => invoke(IPC.guides.read, id),
   },
   backups: {
     view: () => invoke(IPC.backups.view),

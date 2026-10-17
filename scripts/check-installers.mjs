@@ -18,12 +18,16 @@
 // uninstaller and the copy its windows show carry build/icon.ico's pictures, and the Start menu entry
 // opens Drashti.exe with its icon.
 //
+// The guides inside Drashti (Sessions 31–36) must be there too, beside the app (resources/guides): the four
+// guides and exactly the pictures they show, each the same bytes as in docs/.
+//
 //   node scripts/check-installers.mjs
 import { spawn, spawnSync } from 'node:child_process';
 import {
   existsSync,
   lstatSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
   realpathSync,
@@ -58,6 +62,41 @@ const pass = (name, what) => {
   results.push({ name, ok: true, why: what });
   console.log(`  ${what}`);
 };
+
+const GUIDES = ['operator-guide.md', 'presenter-guide.md', 'admin-guide.md', 'setup-day.md'];
+/** The pictures the four guides show ("screenshots/<name>.png"), as Drashti's Markdown reader finds them. */
+const GUIDE_PICTURES = [
+  ...new Set(
+    GUIDES.flatMap((g) =>
+      [
+        ...readFileSync(join('docs', g), 'utf8').matchAll(/!\[[^\]]*\]\(screenshots\/([a-z0-9-]+\.png)\)/gu),
+      ].map((m) => m[1]),
+    ),
+  ),
+].sort();
+const sameBytes = (a, b) => existsSync(a) && existsSync(b) && readFileSync(a).equals(readFileSync(b));
+
+/** The guides beside an installed Drashti (Sessions 31–36): the four, and exactly the pictures they show. */
+function checkGuides(name, resources) {
+  const dir = join(resources, 'guides');
+  const wrong = GUIDES.filter((g) => !sameBytes(join(dir, g), join('docs', g)));
+  if (wrong.length > 0)
+    return fail(name, `the guides ${wrong.join(', ')} are missing, or not those in docs/`);
+  const pictures = join(dir, 'screenshots');
+  const shipped = existsSync(pictures) ? readdirSync(pictures).sort() : [];
+  if (shipped.join(' ') !== GUIDE_PICTURES.join(' '))
+    return fail(
+      name,
+      `the guides' pictures are not exactly those they show (${String(shipped.length)} there, ${String(GUIDE_PICTURES.length)} shown)`,
+    );
+  const changed = GUIDE_PICTURES.filter((p) => !sameBytes(join(pictures, p), join('docs', 'screenshots', p)));
+  if (changed.length > 0)
+    return fail(name, `the guides' pictures ${changed.join(', ')} are not those in docs/`);
+  pass(
+    name,
+    `holds the four guides and the ${String(GUIDE_PICTURES.length)} pictures they show (resources/guides)`,
+  );
+}
 
 /** Start Drashti for one of its self-tests (DRASHTI_SELFTEST), with a data folder of its own. */
 function selfTest(mode, command, args) {
@@ -211,6 +250,7 @@ function checkMacApp(name, app, arch) {
     }
   }
   record(name, macAppIcon(app, ICONS));
+  checkGuides(name, resources);
   pass(
     name,
     `holds Drashti ${shown} for ${archs}, with its FFmpeg for ${ffArchs}, yt-dlp for ${ytArchs} and Deno for ${denoArchs}, signed (${kind}) all through, yt-dlp and Deno with the rest`,
@@ -349,6 +389,7 @@ async function checkWindows(f) {
     if (!existsSync(windowIcon) || !readFileSync(windowIcon).equals(ICONS.ico))
       fail(f.name, `the icon its windows show (${windowIcon}) is not build/icon.ico`);
     else pass(f.name, "its windows show Drashti's icon (resources\\icon.ico: build/icon.ico)");
+    checkGuides(f.name, join(installDir, 'resources'));
     if (existsSync(menu)) {
       const entry = shortcut(menu);
       const same = (a, b) => resolve(a).toLowerCase() === resolve(b).toLowerCase();
@@ -365,7 +406,11 @@ async function checkWindows(f) {
     // resources, so it is done only when those are gone too (dry run 38613284691 looked between the two).
     const uninstaller = join(installDir, 'Uninstall Drashti.exe');
     if (existsSync(uninstaller)) run(uninstaller, ['/S']);
-    const tools = [join(installDir, 'resources', 'yt-dlp'), join(installDir, 'resources', 'deno')];
+    const tools = [
+      join(installDir, 'resources', 'yt-dlp'),
+      join(installDir, 'resources', 'deno'),
+      join(installDir, 'resources', 'guides'),
+    ];
     const left = () => existsSync(exe) || tools.some((t) => existsSync(t));
     const began = Date.now();
     for (let i = 0; i < 90 && left(); i++)
@@ -373,7 +418,7 @@ async function checkWindows(f) {
     const took = `${String(Math.round((Date.now() - began) / 1000))} s`;
     if (existsSync(exe)) fail(f.name, `the silent uninstall left Drashti.exe behind (after ${took})`);
     else if (tools.some((t) => existsSync(t)))
-      fail(f.name, `the silent uninstall left yt-dlp or Deno behind (after ${took})`);
+      fail(f.name, `the silent uninstall left yt-dlp, Deno or the guides behind (after ${took})`);
     else pass(f.name, `uninstalls silently (in ${took})`);
   }
 }
