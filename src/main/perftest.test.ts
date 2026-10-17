@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { coldStartLine, overlapCheck, paceOf, quickImport, settle, settleLine } from './perftest';
+import {
+  coldStartLine,
+  overlapCheck,
+  paceOf,
+  quickImport,
+  rawChanges,
+  segmentsLine,
+  settle,
+  settleLine,
+} from './perftest';
 
 describe("the performance check's import overlap (Session 17)", () => {
   it('reads the pace the slides really kept, never quicker than asked', () => {
@@ -147,6 +156,44 @@ describe('where both sides of a Performance pair start measuring (Sessions 31–
     expect(busy.worst.every((w) => w === 80)).toBe(true);
     expect(settleLine(busy)).toMatch(
       /^measuring began unsettled, after 20\.\d s: the outputs warmed up at 0\.5 s, but the main process was never quiet for a second \(its worst turn each second: 80, 80, .*80 ms\)$/u,
+    );
+  });
+});
+
+describe("the hot path's segments (Sessions 31–36, PERF-2)", () => {
+  it('reads each change at its own revision: key to main, main to frame, frame to the next', () => {
+    const samples = [10, 11, 12, 13].map((rev, i) => ({
+      rev,
+      sentAt: 1000 + i * 40,
+      during: i > 1,
+      after: false,
+    }));
+    // Revision 12 shares its frame with 13: only 13 was painted.
+    const paints = [
+      { rev: 10, sentAt: 1002, committedAt: 1004, paintedAt: 1012, nextAt: 1029 },
+      { rev: 11, sentAt: 1043, committedAt: 1045, paintedAt: 1050, nextAt: 1066 },
+      { rev: 13, sentAt: 1123, committedAt: 1125, paintedAt: 1133, nextAt: 1150 },
+    ];
+    const raw = rawChanges(samples, paints);
+    expect(raw[0]).toEqual({
+      rev: 10,
+      during: false,
+      after: false,
+      keyAt: 1000,
+      mainAt: 1002,
+      committedAt: 1004,
+      paintedAt: 1012,
+      nextAt: 1029,
+    });
+    expect(raw[2]).toMatchObject({ rev: 12, mainAt: null, paintedAt: null });
+    expect(segmentsLine(raw)).toBe(
+      'segments (ms): key to main n=3 median 3, p95 3, p99 3; main to frame n=3 median 10, p95 10, p99 10; frame to the next n=3 median 17, p95 17, p99 17',
+    );
+  });
+
+  it('says a segment it has nothing for as a dash', () => {
+    expect(segmentsLine([])).toBe(
+      'segments (ms): key to main n=0 median -, p95 -, p99 -; main to frame n=0 median -, p95 -, p99 -; frame to the next n=0 median -, p95 -, p99 -',
     );
   });
 });

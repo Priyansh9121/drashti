@@ -39,6 +39,67 @@ export interface PerfResult {
    * slowest slide change. One line of its own, for the record; never judged.
    */
   coldStart?: string;
+  /** Every slide change measured, as it went (Sessions 31–36, PERF-2): kept as JSON by the workflow. */
+  raw?: RawChange[];
+}
+
+/**
+ * One slide change, as it went (ms since the epoch, this computer's clock): the operator window sent it
+ * (key), the main process sent it on (main), the output drew it into the page, its frame, and the frame
+ * after. Main's, the page's and the frames' are those of the change's own revision, when it was painted
+ * as itself (two changes in one frame paint the later one only).
+ */
+export interface RawChange {
+  rev: number;
+  during: boolean;
+  after: boolean;
+  keyAt: number;
+  mainAt: number | null;
+  committedAt: number | null;
+  paintedAt: number | null;
+  nextAt: number | null;
+}
+
+/** An output's paint log entry, as the check reads it. */
+export interface PaintRecord {
+  rev: number;
+  sentAt: number;
+  committedAt?: number;
+  paintedAt: number;
+  nextAt?: number;
+}
+
+/** Each change with its own revision's times, from the output's paint log. */
+export function rawChanges(
+  samples: readonly { rev: number; sentAt: number; during: boolean; after: boolean }[],
+  paints: readonly PaintRecord[],
+): RawChange[] {
+  return samples.map((s) => {
+    const own = paints.find((p) => p.rev === s.rev);
+    return {
+      rev: s.rev,
+      during: s.during,
+      after: s.after,
+      keyAt: s.sentAt,
+      mainAt: own?.sentAt ?? null,
+      committedAt: own?.committedAt ?? null,
+      paintedAt: own?.paintedAt ?? null,
+      nextAt: own?.nextAt ?? null,
+    };
+  });
+}
+
+/** The hot path's segments (Sessions 31–36, PERF-2): key to main, main to frame, frame to the next. */
+export function segmentsLine(changes: readonly RawChange[]): string {
+  const of = (f: (c: RawChange) => number | null) =>
+    changes.map(f).filter((v): v is number => v !== null && Number.isFinite(v));
+  const keyToMain = of((c) => (c.mainAt === null ? null : c.mainAt - c.keyAt));
+  const mainToFrame = of((c) => (c.mainAt === null || c.paintedAt === null ? null : c.paintedAt - c.mainAt));
+  const frameToNext = of((c) => (c.paintedAt === null || c.nextAt === null ? null : c.nextAt - c.paintedAt));
+  const r = (v: number) => (Number.isFinite(v) ? String(Math.round(v * 10) / 10) : '-');
+  const part = (label: string, v: number[]) =>
+    `${label} n=${String(v.length)} median ${r(percentile(v, 0.5))}, p95 ${r(percentile(v, 0.95))}, p99 ${r(percentile(v, 0.99))}`;
+  return `segments (ms): ${part('key to main', keyToMain)}; ${part('main to frame', mainToFrame)}; ${part('frame to the next', frameToNext)}`;
 }
 
 export interface PerfContext {
@@ -640,7 +701,8 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
 
     // Pair each change with the first frame the output painted at or after its revision.
     await sleep(200);
-    const paints = await js<{ rev: number; paintedAt: number }[]>(shown, 'globalThis.drashtiPaintLog ?? []');
+    const paints = await js<PaintRecord[]>(shown, 'globalThis.drashtiPaintLog ?? []');
+    const raw = rawChanges(run.samples, paints);
     const latency = (s: Sample) => (paints.find((p) => p.rev >= s.rev)?.paintedAt ?? Infinity) - s.sentAt;
     const idle = run.samples.filter((s) => !s.during && !s.after).map(latency);
     const during = run.samples.filter((s) => s.during).map(latency);
@@ -670,7 +732,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
       : '';
     const others = ctx.priority?.others();
     const priority = `main process priority ${describePriority()}${ctx.priority ? ` (started at ${ctx.priority.started}${others ? `, its other processes ${others}` : ''})` : ''}`;
-    const summary = `${what}; ${settleLine(settled)}${editsSummary}; ${priority}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}${after.length > 0 ? `; ${line('just after the import', after)}` : ''}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}${scenario ? `; ${scenario.summary}` : ''}${gpu ? `; ${gpuLine(gpu)}` : ''}`;
+    const summary = `${what}; ${settleLine(settled)}${editsSummary}; ${priority}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}${after.length > 0 ? `; ${line('just after the import', after)}` : ''}; ${segmentsLine(raw)}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}${scenario ? `; ${scenario.summary}` : ''}${gpu ? `; ${gpuLine(gpu)}` : ''}`;
 
     const totals = run.result.run?.totals;
     if (!noImport) {
@@ -732,7 +794,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
         ctx.watch.worstBlockMs() <= MAX_BLOCK_MS,
         `worst ${String(ctx.watch.worstBlockMs())} ms`,
       );
-    return { passed: checks.every((c) => c.ok), checks, summary, coldStart: cold };
+    return { passed: checks.every((c) => c.ok), checks, summary, coldStart: cold, raw };
   } finally {
     undo();
     rmSync(folder, { recursive: true, force: true });
