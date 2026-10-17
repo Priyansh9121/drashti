@@ -54,11 +54,11 @@ Every run within its budgets. On the Mac the head's importing p90 sat above the 
 
 ## Where the measuring begins, and what it waits for (Phase E, the 150 ms rule)
 
-From `dc234bf` both sides of a pair begin measuring at the same settled point: every output warmed up and the main process quiet for a second (its worst turn 40 ms or less), or after 20 s whatever, said in the summary ("measuring began once settled, …"). On CI's Mac (run 39021244250) the first second after the outputs were ready had a 105 ms turn: the old start counted it. A stall of 277 ms still came 2.9 s into that run's measuring with no JavaScript behind it (handlers 6 ms at most, GC 2 ms): the Mac's virtual machine.
+From `152fe6a` both sides of a pair begin measuring at the same settled point: every output warmed up and the main process quiet for a second (its worst turn 40 ms or less), or after 20 s whatever, said in the summary ("measuring began once settled, …"). On CI's Mac (run 39021244250) the first second after the outputs were ready had a 105 ms turn: the old start counted it. A stall of 277 ms still came 2.9 s into that run's measuring with no JavaScript behind it (handlers 6 ms at most, GC 2 ms): the Mac's virtual machine.
 
 ## The Performance check's phones and nodes as utility processes (Phase F, REL-7)
 
-The check's 10 devices and 10 nodes moved from Electron run as Node to utility processes (`b9a7746`). Paired on CI's Mac with 10 of each, both sides passed twice: importing p90 25 and 29 ms (head) against 26 and 19 ms (base, `main`); all 10 devices connected and all 10 nodes online every time. One head run before them (39026396560) failed its importing figures (p90 86 ms, 3 of 28 over 100 ms) while the nodes copied 320 MB: the VM, as the four after it show.
+The check's 10 devices and 10 nodes moved from Electron run as Node to utility processes (`fcacf26`). Paired on CI's Mac with 10 of each, both sides passed twice: importing p90 25 and 29 ms (head) against 26 and 19 ms (base, `main`); all 10 devices connected and all 10 nodes online every time. One head run before them (39026396560) failed its importing figures (p90 86 ms, 3 of 28 over 100 ms) while the nodes copied 320 MB: the VM, as the four after it show.
 
 ## Quick wins (Phase G, PERF-5)
 
