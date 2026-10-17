@@ -64,6 +64,8 @@ export interface ServerOptions {
   localName: string | null;
   /** Tests: treat this computer as outside the local network, to see such requests refused. */
   refuseLoopback?: boolean;
+  /** Tests: fewer connections at once than SOCKET_LIMITS. */
+  sockets?: { total: number; perAddress: number };
 }
 
 export interface ServerHost {
@@ -89,6 +91,12 @@ const MAX_BODY = 16 * 1024;
 const MAX_FEED_MESSAGE = 4 * 1024;
 const MAX_CLIENTS = 100;
 const MAX_CLIENTS_PER_ADDRESS = 10;
+/**
+ * Connections at once, pages, previews and feeds alike (Sessions 31–36, SEC-11), in all and from one
+ * address: one more is closed at once. From one address there is room for 10 feeds and a browser's 6 page
+ * fetches, and for the Performance check's 10 devices (each a feed and its fetches, all from this computer).
+ */
+export const SOCKET_LIMITS = { total: 256, perAddress: 32 } as const;
 const MAX_BUFFERED = 1024 * 1024;
 const HELLO_WITHIN_MS = 5000;
 const HEARTBEAT_MS = 20_000;
@@ -339,6 +347,23 @@ export class NetworkServer {
     server.requestTimeout = 30_000;
     server.keepAliveTimeout = 5000;
     server.maxHeadersCount = 50;
+    const limits = options.sockets ?? SOCKET_LIMITS;
+    server.maxConnections = limits.total;
+    const fromAddress = new Map<string, number>();
+    server.on('connection', (socket) => {
+      const address = socket.remoteAddress ?? '';
+      const count = (fromAddress.get(address) ?? 0) + 1;
+      if (count > limits.perAddress) {
+        socket.destroy();
+        return;
+      }
+      fromAddress.set(address, count);
+      socket.once('close', () => {
+        const left = (fromAddress.get(address) ?? 1) - 1;
+        if (left > 0) fromAddress.set(address, left);
+        else fromAddress.delete(address);
+      });
+    });
     const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_FEED_MESSAGE, clientTracking: false });
     server.on('upgrade', (req, socket, head) => {
       this.onUpgrade(req, socket, head);

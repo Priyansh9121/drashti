@@ -1,5 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
+import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -8,7 +9,7 @@ import type { EngineMessage } from '../../shared/engine/protocol';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import type { ToDevice } from '../../shared/network';
 import type { DeviceAuth, DeviceRequest } from '../../shared/network-api';
-import { NetworkServer, type ServerHost } from './server';
+import { NetworkServer, type ServerHost, SOCKET_LIMITS } from './server';
 import { hashToken } from './tokens';
 
 /*
@@ -82,7 +83,9 @@ function fakeHost(): Fake {
   return host;
 }
 
-async function start(options: { refuseLoopback?: boolean } = {}) {
+async function start(
+  options: { refuseLoopback?: boolean; sockets?: { total: number; perAddress: number } } = {},
+) {
   dir = mkdtempSync(join(tmpdir(), 'drashti-net-'));
   mkdirSync(join(dir, 'web', 'assets'), { recursive: true });
   writeFileSync(join(dir, 'web', 'pair.html'), '<!doctype html><title>pair</title>');
@@ -99,6 +102,7 @@ async function start(options: { refuseLoopback?: boolean } = {}) {
     previewDir: join(dir, 'previews'),
     localName: null,
     refuseLoopback: options.refuseLoopback,
+    ...(options.sockets ? { sockets: options.sockets } : {}),
   });
   if (!started.ok) throw new Error(started.message);
   server.setDevices(devices);
@@ -168,6 +172,61 @@ const snapshot = (rev: number): EngineMessage => ({
   rev,
   state: initialEngineState(),
   sentAt: Date.now(),
+});
+
+/** A raw connection from this computer, and whether the server has closed it (a moment after connecting). */
+function socketTo(port: number): Promise<{ socket: Socket; closed: () => boolean }> {
+  return new Promise((resolve, reject) => {
+    let closed = false;
+    const socket = connect(port, '127.0.0.1', () => {
+      resolve({ socket, closed: () => closed });
+    });
+    socket.on('close', () => {
+      closed = true;
+    });
+    socket.on('error', () => {
+      closed = true;
+    });
+    socket.once('error', reject);
+  });
+}
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 300));
+
+describe('connections at once (Sessions 31–36, SEC-11)', () => {
+  it('closes at once the one too many from an address', async () => {
+    const { port } = await start({ sockets: { total: 50, perAddress: 3 } });
+    const open = await Promise.all([socketTo(port), socketTo(port), socketTo(port)]);
+    const extra = await socketTo(port);
+    await settle();
+    expect(open.map((o) => o.closed())).toEqual([false, false, false]);
+    expect(extra.closed()).toBe(true);
+    // One closed: room again.
+    open[0].socket.destroy();
+    await settle();
+    const again = await socketTo(port);
+    await settle();
+    expect(again.closed()).toBe(false);
+    for (const o of [...open, again]) o.socket.destroy();
+  });
+
+  it('closes at once the one too many in all', async () => {
+    const { port } = await start({ sockets: { total: 2, perAddress: 50 } });
+    const open = await Promise.all([socketTo(port), socketTo(port)]);
+    const extra = await socketTo(port);
+    await settle();
+    expect(open.map((o) => o.closed())).toEqual([false, false]);
+    expect(extra.closed()).toBe(true);
+    for (const o of open) o.socket.destroy();
+  });
+
+  it('leaves room from one address for 10 feeds and a browser’s page fetches, and the Performance check’s 10 devices', () => {
+    // A browser opens up to 6 connections to one address for pages; the Performance check's 10 devices, all
+    // from this computer, each keep a feed open and fetch pages.
+    expect(SOCKET_LIMITS.perAddress).toBeGreaterThan(10 + 6);
+    expect(SOCKET_LIMITS.perAddress).toBeGreaterThanOrEqual(10 * 2);
+    expect(SOCKET_LIMITS.total).toBeGreaterThan(100);
+  });
 });
 
 describe('the network server', () => {
