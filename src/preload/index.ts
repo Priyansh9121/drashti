@@ -4,6 +4,7 @@ import type { EventChannel, EventContract, InvokeArgs, InvokeChannel, InvokeResu
 import { IPC } from '../shared/ipc';
 import { summariesOf } from '../shared/library';
 import { isAdminChannel } from '../shared/roles';
+import { bridgeFor, pageOf } from './page-groups';
 
 /** The page's way to ask for the admin PIN (roles, Session 14), once it has given one. */
 let askAdmin: (() => Promise<boolean>) | null = null;
@@ -555,4 +556,6 @@ const bridge: DrashtiBridge = {
   },
 };
 
-contextBridge.exposeInMainWorld('drashti', bridge);
+// Each page gets only its own groups of the bridge (Sessions 31–36, ARCH-7; page-groups.ts), known by its address.
+const here = (globalThis as { location?: { href: string } }).location?.href ?? '';
+contextBridge.exposeInMainWorld('drashti', bridgeFor(bridge, pageOf(here)));
