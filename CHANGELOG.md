@@ -4,6 +4,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 ## Unreleased
 
+- After Drashti stops unexpectedly, the next start stops a conversion, Save as MP4, YouTube download or PowerPoint it had started that was left running, and removes the half-saved file; your own programs are never touched.
 - A conversion or Save as MP4 that FFmpeg gets stuck on stops after four times the video's length and 5 minutes more, saying so plainly, and reading a file stops after 30 seconds; FFmpeg only ever opens files.
 - A limiter keeps the stream's and recordings' sound under full scale, so a loud desk, or Drashti's own sound mixed in, never clips; quieter sound passes as it is, and the meter still shows the mix as it comes.
 - A long recording goes on in parts of 3.5 GB, each playing on its own, so a USB stick never cuts a sabha's recording short; Drashti says so when the recording folder is on a FAT32 drive or its disk has room for less than an hour.

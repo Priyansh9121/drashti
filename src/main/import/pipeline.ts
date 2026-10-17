@@ -112,6 +112,9 @@ export interface PipelineContext {
   way?: { wanted(): boolean; give(): Promise<void>; loop(on: boolean): void };
   /** Bring Drashti's window back to the front (Keynote or PowerPoint took it with a message). */
   refocus?: () => void;
+  /** Keynote or PowerPoint started by Drashti itself, and its end (Session 31: the leftovers record). */
+  appStarted?: (pid: number, app: 'PowerPoint' | 'Keynote') => void;
+  appEnded?: (pid: number) => void;
   /** Filled in with where the time went. */
   timings?: ImportTimings;
   /** Least time between progress reports (default 100 ms). */
@@ -721,6 +724,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
             slideCount: slides?.length,
             log: ctx.log && ((line) => ctx.log?.(`Saving as PDF: ${line}`)),
             refocus: ctx.refocus,
+            started: (pid) => ctx.appStarted?.(pid, app === 'keynote' ? 'Keynote' : 'PowerPoint'),
+            ended: (pid) => ctx.appEnded?.(pid),
           });
           time('parse', t);
           if (converted.ok) {

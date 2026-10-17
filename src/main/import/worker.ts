@@ -141,6 +141,12 @@ async function start(message: StartMessage): Promise<void> {
             refocus: () => {
               post({ type: 'refocus' });
             },
+            appStarted: (pid, app) => {
+              post({ type: 'app-started', pid, app });
+            },
+            appEnded: (pid) => {
+              post({ type: 'app-ended', pid });
+            },
             converters: message.converters ?? true,
             onWrote: (wrote) => {
               post({ type: 'wrote', runId: message.runId, ...wrote });

@@ -213,6 +213,7 @@ import { DROP_SETTLE_MS } from '../shared/drop-folder';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
 import { StreamService } from './stream/stream-service';
 import { onFat } from './stream/recording-drive';
+import { Leftovers, leftoversFile } from './system/leftovers';
 import { findFfmpeg } from './stream/ffmpeg-path';
 import { ffmpegSelfTest } from './stream/ffmpeg-selftest';
 import { youtubeSelfTest } from './links/youtube-selftest';
@@ -1986,8 +1987,26 @@ function start(): void {
     return null;
   });
   handle(IPC.pictures.asset, (e, kind, name) => pdfPictures.asset(e.sender, kind, name));
+  // ---- programs a crash left running (Session 31, ROB-3) ----------------------------------------
+  // Each program Drashti starts that could outlive it is written down (src/main/system/leftovers.ts): one
+  // the last run left running (the very one: id, start time and program) is stopped now, before anything
+  // that could start it again or clear the files it was writing.
+  const leftovers = new Leftovers({
+    file: leftoversFile(userDataDir),
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+  });
+  leftovers.stopLeft();
   const imports = new ImportService({
     spawn: spawnImportWorker,
+    children: {
+      started: (pid, kind) => void leftovers.started(pid, kind),
+      ended: (pid) => {
+        leftovers.forget(pid);
+      },
+    },
     worker: {
       dbFile: libraryFile(),
       mediaDir,
@@ -2065,6 +2084,12 @@ function start(): void {
   const conversions = new ConvertService({
     db: libraryDb,
     mediaDir,
+    children: {
+      started: (pid, partFile) => void leftovers.started(pid, 'conversion', { partFile }),
+      ended: (pid) => {
+        leftovers.forget(pid);
+      },
+    },
     ffmpegPath: () =>
       findFfmpeg({
         packaged: app.isPackaged,
@@ -2597,6 +2622,12 @@ function start(): void {
   });
   // ---- Import from a Link (Session 25b): saved in a folder an admin chooses, then the normal import ----
   const links = new LinkService({
+    children: {
+      started: (pid, group) => void leftovers.started(pid, 'yt-dlp', { group }),
+      ended: (pid) => {
+        leftovers.forget(pid);
+      },
+    },
     // A Dropbox folder as one playlist (Session 26c, src/main/playlists/folder-playlist.ts).
     folderPlaylist: ({ name, runId, files }) => {
       const made = makeFolderPlaylist(playlists, name, importRepo.report(runId)?.items ?? [], files);

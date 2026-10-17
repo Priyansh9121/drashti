@@ -42,6 +42,8 @@ export interface ImportServiceDeps {
   log(level: 'info' | 'warn', message: string): void;
   /** Bring the operator's window back to the front (Keynote or PowerPoint took it, Session 16). */
   refocus?(): void;
+  /** Keynote or PowerPoint started by Drashti itself, and its end (Session 31, ROB-3: the leftovers record). */
+  children?: { started(pid: number, app: 'PowerPoint' | 'Keynote'): void; ended(pid: number): void };
 }
 
 interface Job {
@@ -260,6 +262,12 @@ export class ImportService {
           break;
         case 'refocus':
           this.deps.refocus?.();
+          break;
+        case 'app-started':
+          this.deps.children?.started(m.pid, m.app);
+          break;
+        case 'app-ended':
+          this.deps.children?.ended(m.pid);
           break;
         case 'gave-way':
           active.ways.get(m.id)?.(m.waiting ? 'waiting' : 'at once');

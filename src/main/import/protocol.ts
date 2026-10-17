@@ -65,6 +65,9 @@ export type FromWorker =
   | { type: 'log'; level: 'info' | 'warn'; message: string }
   /** Keynote or PowerPoint took the front with a message: Drashti's window should have it back. */
   | { type: 'refocus' }
+  /** Drashti started Keynote or PowerPoint itself (Session 31), and when the deck is done with it. */
+  | { type: 'app-started'; pid: number; app: 'PowerPoint' | 'Keynote' }
+  | { type: 'app-ended'; pid: number }
   /** The library is free for the main process's write (`waiting`: the import waits for 'go-on'). */
   | { type: 'gave-way'; id: string; waiting: boolean }
   | { type: 'failed'; runId: string; message: string };
