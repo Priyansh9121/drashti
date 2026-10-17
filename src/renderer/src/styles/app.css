@@ -526,6 +526,17 @@ body.output {
   }
 }
 
+/*
+ * Forced colours (Windows' contrast themes, Sessions 31–36, A11Y-3): the system paints every background its
+ * own, so the chosen tab's bar (a background) is gone. An underline is kept, in the theme's own colour.
+ */
+@media (forced-colors: active) {
+  [role='tab'][aria-selected='true'] {
+    text-decoration: underline 2px;
+    text-underline-offset: 4px;
+  }
+}
+
 body.output {
   background: #000;
   overflow: hidden;
