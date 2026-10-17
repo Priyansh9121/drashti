@@ -25,7 +25,7 @@ import type { OutputSample, ProcessSample, SoakEvent, SoakReport, SoakSample, Ve
 import type { WindowMemory } from './heap';
 import { allocatorDump, describe as describeMemory, heapSample, snapshot, watchRequests } from './heap';
 import { makeMedia } from './media';
-import { growth, mainTotal, memoryOf, writeReport } from './report';
+import { growth, mainTotal, memoryOf, verdictLine, writeReport } from './report';
 
 /*
  * The soak test (Session 15): a sabha that never stops, for three hours
@@ -813,7 +813,8 @@ test('a sabha that never stops', async () => {
             .filter((s) => s.stream.state !== 'live')
             .map((s) => `${String(s.minute)} min: ${s.stream.state}`)
             .join(', ') || 'on air at every sample',
-        fatal: false,
+        // Off air in a sabha is what the audience at home sees: it fails the soak (Sessions 31–36, TST-13).
+        fatal: true,
       },
       {
         name: 'The phone stayed connected',
@@ -864,6 +865,7 @@ test('a sabha that never stops', async () => {
       writeFileSync(join(OUT, 'summary.md'), `${readFileSync(join(OUT, 'summary.md'), 'utf8')}\n${text}`);
       console.log(text);
     }
+    console.log(verdictLine(verdicts));
     for (const v of verdicts)
       console.log(`${v.ok ? 'PASS' : v.fatal ? 'FAIL' : 'WARN'}  ${v.name}: ${v.detail}`);
     for (const v of verdicts.filter((x) => x.fatal)) expect.soft(v.ok, `${v.name}: ${v.detail}`).toBe(true);
