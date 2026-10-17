@@ -44,18 +44,33 @@ export interface ClockStyle {
   timeZone: string;
 }
 
+const CLOCK_TIME = { hour: 'numeric', minute: '2-digit' } as const;
+
+/**
+ * Each clock style's formatter, made once (Sessions 31–36, PERF-5d): a stage clock writes the time every
+ * second, and making the formatter took 30 µs a time, using it 1.5. Only a style's, as it names its time
+ * zone: this computer's own way follows a change of the computer's zone, so it is made each time.
+ */
+const clockFormats = new Map<string, Intl.DateTimeFormat>();
+
+function clockFormat(style: ClockStyle): Intl.DateTimeFormat {
+  const key = `${style.locale}\n${style.timeZone}`;
+  let format = clockFormats.get(key);
+  if (!format) {
+    try {
+      format = new Intl.DateTimeFormat(style.locale, { ...CLOCK_TIME, timeZone: style.timeZone });
+    } catch {
+      // A style this computer cannot write in: its own way, rather than no clock.
+      format = new Intl.DateTimeFormat([], CLOCK_TIME);
+    }
+    clockFormats.set(key, format);
+  }
+  return format;
+}
+
 /** The time of day as a clock style writes it ("7:05 PM", "19:05"); without one, this computer's own way. */
 export function formatClock(ms: number, style: ClockStyle | null | undefined): string {
-  const time = { hour: 'numeric', minute: '2-digit' } as const;
-  try {
-    return new Date(ms).toLocaleTimeString(style?.locale ?? [], {
-      ...time,
-      ...(style ? { timeZone: style.timeZone } : {}),
-    });
-  } catch {
-    // A style this computer cannot write in: its own way, rather than no clock.
-    return new Date(ms).toLocaleTimeString([], time);
-  }
+  return style ? clockFormat(style).format(ms) : new Date(ms).toLocaleTimeString([], CLOCK_TIME);
 }
 
 /** A clock style as given (by Main, or over the network), when it is one this computer can write in. */
