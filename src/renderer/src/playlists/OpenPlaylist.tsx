@@ -413,21 +413,20 @@ function CuesLine({ cues }: { cues: readonly TimerCue[] }) {
 /**
  * After a move the keyboard stays where it was: on the item, or on its Up or Down (on the item once
  * that is off). Only when it was lost (the row moved, or the button went off): never taken back from
- * where the operator has gone since, even beside it (Tab from the item to Down).
+ * where the operator has gone since, even beside it (Tab from the item to Down). Put back as the list
+ * is drawn in its new order, and looked at again a frame later (Sessions 31–36: put back only then, a
+ * key pressed in between went nowhere).
  */
 function keepFocus(id: string, on: 'item' | 'up' | 'down'): void {
-  requestAnimationFrame(() => {
-    const row = document.querySelector(`[data-item-row="${CSS.escape(id)}"]`);
-    const now = document.activeElement;
-    const lost =
-      now === null ||
-      now === document.body ||
-      (now instanceof HTMLButtonElement && now.disabled && (row?.contains(now) ?? false));
-    if (!row || !lost) return;
-    const button =
-      on === 'item' ? null : row.querySelector<HTMLElement>(`[data-move="${on}"]:not(:disabled)`);
-    (button ?? row.querySelector<HTMLElement>('[data-testid="playlist-item"]'))?.focus();
-  });
+  const row = document.querySelector(`[data-item-row="${CSS.escape(id)}"]`);
+  const now = document.activeElement;
+  const lost =
+    now === null ||
+    now === document.body ||
+    (now instanceof HTMLButtonElement && now.disabled && (row?.contains(now) ?? false));
+  if (!row || !lost) return;
+  const button = on === 'item' ? null : row.querySelector<HTMLElement>(`[data-move="${on}"]:not(:disabled)`);
+  (button ?? row.querySelector<HTMLElement>('[data-testid="playlist-item"]'))?.focus();
 }
 
 /**
@@ -490,7 +489,12 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
   const listRef = useRef<HTMLUListElement>(null);
   /** Where the rows were before a move (Up, Down, Alt+↑ ↓), until the list is drawn in its new order. */
   const slideFrom = useRef<Map<string, number> | null>(null);
+  /** Where the keyboard was before a move, put back in the same commit as the list's new order. */
+  const focusFrom = useRef<{ id: string; on: 'item' | 'up' | 'down' } | null>(null);
   useLayoutEffect(() => {
+    const keep = focusFrom.current;
+    focusFrom.current = null;
+    if (keep) keepFocus(keep.id, keep.on);
     const before = slideFrom.current;
     if (!before) return;
     slideFrom.current = null;
@@ -770,9 +774,16 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
           const move = (step: -1 | 1, on: 'item' | 'up' | 'down') => {
             // The rows slide to their new places once the list is drawn in its new order (ui/motion.ts).
             slideFrom.current = rowTops(listRef.current, 'data-item-row');
+            focusFrom.current = { id: item.id, on };
             void moveItemBy(item.id, step).then((moved) => {
-              if (!moved) slideFrom.current = null;
-              if (moved || on === 'item') keepFocus(item.id, on);
+              if (!moved) {
+                slideFrom.current = null;
+                focusFrom.current = null;
+              }
+              if (moved || on === 'item')
+                requestAnimationFrame(() => {
+                  keepFocus(item.id, on);
+                });
             });
           };
           return (
