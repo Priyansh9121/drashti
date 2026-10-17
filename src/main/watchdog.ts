@@ -78,7 +78,7 @@ export class RendererWatchdog {
    * minute, so a page that fails every time it draws is never reloaded over and over (an output
    * shows black meanwhile, and tries again with each change).
    */
-  renderError(target: WatchTarget, name: string, reason: string): void {
+  renderError(target: WatchTarget, name: string, reason: string, reload?: () => void): void {
     this.record(name, 'render-error', reason);
     const now = this.timers.now();
     const last = this.renderReloads.get(name);
@@ -86,7 +86,9 @@ export class RendererWatchdog {
     this.renderReloads.set(name, now);
     this.timers.setTimeout(() => {
       if (target.isDestroyed()) return;
-      target.reload();
+      // A page that failed to load is loaded again as itself (Session 31), not reloaded at the failed address.
+      if (reload) reload();
+      else target.reload();
       this.record(name, 'reloaded');
     }, 100);
   }

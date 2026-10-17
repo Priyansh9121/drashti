@@ -214,6 +214,7 @@ import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } fro
 import { StreamService } from './stream/stream-service';
 import { onFat } from './stream/recording-drive';
 import { Leftovers, leftoversFile } from './system/leftovers';
+import { watchLoadFailures } from './outputs/load-failures';
 import { findFfmpeg } from './stream/ffmpeg-path';
 import { ffmpegSelfTest } from './stream/ffmpeg-selftest';
 import { youtubeSelfTest } from './links/youtube-selftest';
@@ -462,9 +463,11 @@ const watchdog = new RendererWatchdog((e) => {
   else log.info(text);
   outputWatchdogEvent?.(e);
 });
-// Screens never sleep or dim while an output is showing.
+// Screens never sleep or dim while an output is showing, or the stream is on air or recording (Session 31).
 const sleepGuard = new SleepGuard(powerSaveBlocker, (held) => {
-  log.info(held ? 'Display sleep is blocked while outputs show' : 'Display sleep allowed again');
+  log.info(
+    held ? 'Display sleep is blocked while outputs show or the stream is on' : 'Display sleep allowed again',
+  );
 });
 // How long the main process's event loop stalls: everything the show does passes through it.
 const loopDelay = monitorEventLoopDelay({ resolution: 10 });
@@ -1306,6 +1309,14 @@ function start(): void {
       outputWindows.set(config.id, window);
       outputNames.set(config.id, `output "${config.name}"`);
       watchdog.watch(window.webContents, `output "${config.name}"`);
+      watchLoadFailures(window, {
+        name: `output "${config.name}"`,
+        screen: config.id,
+        watchdog,
+        log: (message) => {
+          log.warn(message);
+        },
+      });
       heartbeat.opened(config.id);
       // However it loads again (the watchdog, the dashboard's Reload, a test), it gets its grace.
       window.webContents.on('did-start-loading', () => {
@@ -1720,6 +1731,8 @@ function start(): void {
     statusChanged: (status) => {
       eventsOut.emit(streamEvents(eventsStreamWas, status));
       eventsStreamWas = status;
+      // On air or recording (or getting there): the computer stays awake for the stream too (Session 31).
+      sleepGuard.setStreaming(status.live.state !== 'off' || status.recording.state !== 'off');
     },
     ffmpegPath: () =>
       findFfmpeg({
@@ -3871,6 +3884,8 @@ function start(): void {
     if (fromOperator(e)) streaming.dismissResume();
     return null;
   });
+  // Open in Simple Mode and to every role, as a stopped hall screen's Try again is (Session 31).
+  handle(IPC.stream.tryAgain, (e) => (fromOperator(e) ? streaming.tryAgainPage() : notOperator));
   handle(IPC.stream.pageContext, (e) => (streaming.isProgram(e.sender) ? streaming.context() : null));
   handle(IPC.stream.pageInputs, (e, inputs) => {
     streaming.reportInputs(e.sender, inputs);

@@ -34,6 +34,7 @@ import { pageAlive } from '../windows/send';
 import type { ToStreamWorker, WorkerStatus } from './worker/protocol';
 import { NO_SOUND_MS, type NoSound, NoSoundWatch } from './no-sound';
 import { bytesPerHourAt, freeBytesOf, recordingWarning } from './recording-drive';
+import { RestartCap } from './restart-cap';
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileStamp } from '../../shared/format';
@@ -177,6 +178,12 @@ export class StreamService {
   /** No sound (Session 31): judged from the worker's quiet count and the microphone's state. */
   private readonly noSoundWatch: NoSoundWatch;
   private noSound: NoSound | null = null;
+  /**
+   * The stream's page started again after a crash at most 5 times a minute (Session 31, ROB-7); then it
+   * is left stopped (`pageStopped`) until someone presses Try again.
+   */
+  private readonly pageRestarts = new RestartCap();
+  private pageStopped = false;
 
   constructor(private readonly deps: StreamServiceDeps) {
     this.noSoundWatch = new NoSoundWatch(deps.noSoundMs ?? NO_SOUND_MS);
@@ -405,7 +412,8 @@ export class StreamService {
 
   /** The Program window is open while the preview is watched, or the stream is live or recording. */
   private updateProgram(): void {
-    if (this.closing) return;
+    // Stopped after crashing too often: only Try again starts it (tryAgainPage).
+    if (this.closing || this.pageStopped) return;
     const wanted = this.watchers.size > 0 || this.inUse();
     if (wanted && (!this.program || this.program.isDestroyed())) {
       void this.openProgram();
@@ -437,10 +445,19 @@ export class StreamService {
       this.changed();
     });
     win.webContents.on('render-process-gone', (_e, details) => {
-      this.deps.log('warn', `The stream's page stopped (${details.reason}); starting it again`);
       this.programReady = false;
       if (!win.isDestroyed()) win.destroy();
       if (this.program === win) this.program = null;
+      if (!this.pageRestarts.allow(this.deps.now())) {
+        this.pageStopped = true;
+        this.deps.log(
+          'warn',
+          `The stream's page stopped (${details.reason}) for the sixth time in a minute: it stays stopped until Try again`,
+        );
+        this.changed();
+        return;
+      }
+      this.deps.log('warn', `The stream's page stopped (${details.reason}); starting it again`);
       setTimeout(() => {
         this.updateProgram();
       }, 500);
@@ -581,6 +598,7 @@ export class StreamService {
       resume: this.resume,
       profilesVersion: this.profilesVersion,
       noSound: this.noSound ? { ...this.noSound, message: this.noSoundMessage(this.noSound) } : null,
+      pageStopped: this.pageStopped,
     };
   }
 
@@ -1079,6 +1097,17 @@ export class StreamService {
   }
 
   /** The operator answered the offer to go live again (or let it go). */
+  /** Try again: the stream's page, stopped after crashing too often, starts afresh (open in Simple Mode). */
+  tryAgainPage(): StreamResult {
+    if (!this.pageStopped) return { ok: true, status: this.status() };
+    this.pageStopped = false;
+    this.pageRestarts.reset();
+    this.deps.log('info', "The stream's page is tried again");
+    this.updateProgram();
+    this.changed();
+    return { ok: true, status: this.status() };
+  }
+
   dismissResume(): void {
     this.resume = null;
     this.changed();

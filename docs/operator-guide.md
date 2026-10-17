@@ -136,6 +136,8 @@ A clear button is lit, with a dot, while its layer is on the screens.
 
 **No sound on the stream.** While on air or recording, the header shows **No sound** beside ON AIR when nothing has reached the stream for 20 seconds (or 3 seconds after its microphone was unplugged), and a yellow notice under the header says what to check: the microphone, its cable and the sound desk. It goes by itself as soon as sound comes back. Drashti never changes the microphone by itself; choosing another is in Stream settings (Pro Mode).
 
+**The stream's picture has stopped.** A red notice under the header says so when the stream's own page kept failing (six times in a minute), in Simple Mode too: the stream shows its last picture. Press **Try again**; if it stops again, tell whoever looks after Drashti.
+
 **The stream says Reconnecting.** Do nothing: Drashti tries again by itself and the recording carries on. The hall's screens are not affected. If it also says **the stream server's certificate could not be checked**, waiting will not help: tell whoever looks after Drashti (the admin guide, section 12).
 
 **Drashti closed by itself.** Start it again: it puts back what was on the screens (the slide, background, sound, timers, messages and props) and says so at the top. If it was on air less than 5 minutes ago, it goes live again by itself. This happens only within 3 hours of the stop: started later than that (the next morning, say), Drashti puts nothing on the screens, and the note at the top says what was live and when. Within those 3 hours it also comes back in the mode it was in (Pro Mode or Simple Mode); started later, it starts as after a quit on purpose. After Drashti was quit on purpose, it always starts with nothing on the screens.

@@ -44,6 +44,7 @@ import type { RendererWatchdog } from '../watchdog';
 import { windowIcon } from '../windows/app-icon';
 import { pageAlive, sendToPage } from '../windows/send';
 import { loadPage } from '../windows/renderer';
+import { watchLoadFailures } from '../outputs/load-failures';
 import { secureWebPreferences } from '../windows/web-preferences';
 import { LinkClient, openMediaFromMain, pairWithMain } from './link-client';
 import { MediaCache } from './media-cache';
@@ -371,6 +372,14 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       outputWindows.set(config.id, window);
       outputNames.set(config.id, `output "${config.name}"`);
       deps.watchdog.watch(window.webContents, `output "${config.name}"`);
+      watchLoadFailures(window, {
+        name: `output "${config.name}"`,
+        screen: config.id,
+        watchdog: deps.watchdog,
+        log: (message) => {
+          log.warn(`Node: ${message}`);
+        },
+      });
       heartbeat.opened(config.id);
       window.webContents.on('did-start-loading', () => {
         heartbeat.opened(config.id);

@@ -406,6 +406,7 @@ const bridge: DrashtiBridge = {
     stopRecording: () => invoke(IPC.stream.stopRecording),
     pickFolder: () => invoke(IPC.stream.pickFolder),
     dismissResume: () => invoke(IPC.stream.dismissResume),
+    tryAgain: () => invoke(IPC.stream.tryAgain),
     page: {
       context: () => invoke(IPC.stream.pageContext),
       onContext: (listener) => on(IPC.stream.context, listener),

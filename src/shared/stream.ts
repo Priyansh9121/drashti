@@ -260,6 +260,11 @@ export interface StreamStatus {
    * and in a notice, in Pro and Simple Mode; null while sound is heard, and when neither on air nor recording.
    */
   noSound: { since: number; why: 'quiet' | 'input'; message: string } | null;
+  /**
+   * The stream's page crashed a sixth time within a minute and is left stopped (Session 31): a notice says
+   * so, with Try again (stream.tryAgain), in Pro and Simple Mode. The stream keeps its last picture.
+   */
+  pageStopped: boolean;
 }
 
 /** One place the stream goes, as the operator sees it (Session 28): the profile's own has the id ''. */
