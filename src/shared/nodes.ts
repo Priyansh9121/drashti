@@ -85,7 +85,8 @@ export interface NodeMediaStatus {
 
 export interface NodeOutputStatus {
   screenId: string;
-  state: 'showing' | 'missing-display' | 'disabled';
+  /** Stopped: the node's watchdog gave up on its window (Sessions 31–36), until it draws again. */
+  state: 'showing' | 'stopped' | 'missing-display' | 'disabled';
   displayId: number | null;
   /** Frames that came late (over one and a half frame times) in the last minute. */
   droppedFrames: number;
@@ -153,6 +154,8 @@ export type ToNode =
   | { type: 'identify'; displayId: number | null; label: string }
   /** Reload an output window (its picture comes back from the show at once). */
   | { type: 'reload'; screenId: string }
+  /** Try again an output the node's watchdog gave up on (Sessions 31–36): its crash count starts afresh. */
+  | { type: 'tryAgain'; screenId: string }
   | { type: 'bye'; reason: NodeByeReason; mainVersion?: string };
 
 /** What each kind of goodbye means, as the node's window says it. */

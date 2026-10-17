@@ -41,7 +41,7 @@ import type { SleepGuard } from '../outputs/sleep-guard';
 import type { SelfTestResult } from '../selftest';
 import { runNodeWatchdogSelfTest } from '../selftest';
 import { IpcTransport } from '../transport/ipc-transport';
-import type { RendererWatchdog } from '../watchdog';
+import type { RendererWatchdog, WatchdogEvent } from '../watchdog';
 import { windowIcon } from '../windows/app-icon';
 import { pageAlive, sendToPage } from '../windows/send';
 import { loadPage } from '../windows/renderer';
@@ -109,6 +109,10 @@ export interface NodeAppHandle {
   runSelfTest: () => Promise<SelfTestResult>;
   crashWindow: () => void;
   crashOutputs: () => void;
+  /** What the node does with its outputs' watchdog events (Sessions 31–36): Stopped when given up on. */
+  watchdogEvent: (e: WatchdogEvent) => void;
+  /** Mark an output as given up on (tests only: DRASHTI_TEST_GIVE_UP, never a packaged Drashti). */
+  giveUp: (screenId: string) => void;
 }
 
 /** How often the node reports its health to Main. */
@@ -270,6 +274,11 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   /** Each output's name, as the watchdog and the log call it. */
   const outputNames = new Map<string, string>();
   const reports = new Map<string, OutputReport>();
+  /**
+   * Outputs given up on (Sessions 31–36) whose page has loaded again since: their next report ends Stopped,
+   * as on Main (Session 23).
+   */
+  const loadedSinceStopped = new Set<string>();
   // Tests only (never a packaged Drashti): a node's outputs held at one moment of the engine's time, as Main's
   // are (Session 27), so a node and Main can be compared pixel for pixel part-way through a transition.
   if (!app.isPackaged && sw('DRASHTI_TEST_CLOCK_HOLD') === '1')
@@ -393,6 +402,7 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       heartbeat.opened(config.id);
       window.webContents.on('did-start-loading', () => {
         heartbeat.opened(config.id);
+        loadedSinceStopped.add(config.id);
       });
       window.on('closed', () => {
         if (outputWindows.get(config.id) === window) {
@@ -405,10 +415,19 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     },
     onChange: () => {
       sendContexts();
-      deps.sleepGuard.update(manager.status().filter((st) => st.state === 'showing').length);
+      // A stopped output (Sessions 31–36) is still on its display and tried again: the display stays awake.
+      deps.sleepGuard.update(
+        manager.status().filter((st) => st.state === 'showing' || st.state === 'stopped').length,
+      );
       viewChanged();
     },
   });
+
+  /** An output the watchdog gave up on: Stopped until a page loaded since reports again. */
+  const stopOutput = (screenId: string) => {
+    loadedSinceStopped.delete(screenId);
+    manager.setStopped(screenId, true);
+  };
 
   // ---- health, pictures and orders from Main ----------------------------------------------------
   const health = (): NodeHealth => {
@@ -419,7 +438,13 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
       host,
       displays: listDisplays(),
       outputs: manager.status().flatMap((st) => {
-        if (st.state !== 'showing' && st.state !== 'missing-display' && st.state !== 'disabled') return [];
+        if (
+          st.state !== 'showing' &&
+          st.state !== 'stopped' &&
+          st.state !== 'missing-display' &&
+          st.state !== 'disabled'
+        )
+          return [];
         const r = reports.get(st.screenId);
         return [
           {
@@ -494,6 +519,19 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         if (win && !win.isDestroyed()) {
           log.info('Node: Main asked to reload an output');
           win.webContents.reload();
+        }
+        return;
+      }
+      case 'tryAgain': {
+        // Try again on Main's dashboard or its notice (Sessions 31–36): an output given up on, tried again
+        // now by the node's watchdog, its count of crashes starting afresh.
+        const win = outputWindows.get(message.screenId);
+        const stopped = manager
+          .status()
+          .some((st) => st.screenId === message.screenId && st.state === 'stopped');
+        if (win && !win.isDestroyed() && stopped) {
+          log.info('Node: Main asked to try a stopped output again');
+          deps.watchdog.retryNow(win.webContents, 'Try again on Main');
         }
         return;
       }
@@ -756,6 +794,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         missingFonts: missingFontsIn(r.missingFonts),
       });
       heartbeat.report(screenId, r.paintedRev);
+      // Reporting from a page loaded since it was given up on: it draws again.
+      if (loadedSinceStopped.has(screenId)) manager.setStopped(screenId, false);
     }
     return null;
   });
@@ -907,6 +947,17 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     },
     crashOutputs: () => {
       for (const w of showingOutputs()) w.webContents.forcefullyCrashRenderer();
+    },
+    watchdogEvent: (e) => {
+      const screenId = [...outputNames].find(([, n]) => n === e.window)?.[0];
+      if (screenId === undefined) return;
+      // A page loaded again gets its grace before it is judged.
+      if (e.kind === 'reloaded' || e.kind === 'retried') heartbeat.opened(screenId);
+      // Given up on: Stopped (Main's dashboard and its notice say so) until it draws again.
+      if (e.kind === 'gave-up') stopOutput(screenId);
+    },
+    giveUp: (screenId) => {
+      stopOutput(screenId);
     },
   };
 }
