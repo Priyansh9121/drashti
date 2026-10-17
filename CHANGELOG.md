@@ -6,6 +6,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 - When the live slide names a font this computer, or a node, does not have, a warning says so beside LIVE and on the screens dashboard.
 - Gujarati and Hindi are always drawn upright, with the font's own spacing; new words get 1.35 between lines, and the slide editor warns below 1.3.
+- The screens, the stage and phones' pages tell readers and browsers each line's language, and are never machine-translated.
 - On air or recording, No sound shows beside ON AIR, in Simple Mode too, when nothing reaches the stream for 20 seconds or 3 seconds after its microphone is unplugged, with what to check.
 - A long recording goes on in parts of 3.5 GB, so a USB stick never cuts it short; Drashti warns of a FAT32 drive or a disk with room for less than an hour.
 - A limiter keeps the stream's and recordings' sound from clipping.

@@ -1,6 +1,6 @@
 import type { Lang, RenderSlide, SlideElement, TextElement } from './model';
 import type { BoxLine } from './tracks';
-import { boxLines, lineText, withLines } from './tracks';
+import { boxLines, lineText, translitSource, withLines } from './tracks';
 
 /*
  * Which languages a screen shows (PLAN.md 3: Audience shows Gujarati and
@@ -135,7 +135,10 @@ function view(slide: RenderSlide, langs: readonly Lang[]): RenderSlide {
     }
   }
   const same = elements.length === slide.elements.length && elements.every((e, i) => e === slide.elements[i]);
-  return same ? slide : { ...slide, elements };
+  if (same) return slide;
+  // What its transliteration is of, though the lines it came from may be left out here.
+  const source = slide.translitOf ?? translitSource(slide.elements);
+  return source ? { ...slide, elements, translitOf: source } : { ...slide, elements };
 }
 
 const cache = new WeakMap<RenderSlide, Map<string, RenderSlide>>();

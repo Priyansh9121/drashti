@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { languageView } from './language-view';
 import type { RenderSlide, SlideElement, TextElement, TextRun, TextStyle } from './model';
 import { slideElementSchema } from './model-schema';
+import { translitSource } from './tracks';
 
 /* Placeholder words only: never real kirtan text. */
 
@@ -150,5 +151,30 @@ describe('a kirtan slide on a screen with its own languages', () => {
     expect(
       languageView(slide([left, right]), ['en']).elements.map((e) => [e.id, e.frame.x, e.frame.y]),
     ).toEqual([['r', 1000, 200]]);
+  });
+});
+
+describe('what a transliteration is of (Sessions 31–36, I18N-4)', () => {
+  const hindiKirtan = () =>
+    slide([
+      box('k', [
+        { text: 'नमूना\n', lang: 'hi' },
+        { text: 'Namuno', lang: 'translit' },
+      ]),
+    ]);
+
+  it('is the slide’s first Gujarati, Hindi or Sanskrit line, in reading order', () => {
+    expect(translitSource(hindiKirtan().elements)).toBe('hi');
+    expect(translitSource(slide([kirtanBox()]).elements)).toBe('gu');
+    expect(translitSource(slide([box('s', [{ text: 'नमूना', lang: 'sa' }])]).elements)).toBe('sa');
+    expect(translitSource(slide([box('e', [{ text: 'Sample', lang: 'en' }])]).elements)).toBeNull();
+  });
+
+  it('stays with a screen’s copy that left the lines it came from out', () => {
+    const shown = languageView(hindiKirtan(), ['translit']);
+    expect(words(shown)).toEqual(['Namuno']);
+    expect(shown.translitOf).toBe('hi');
+    // A copy that changed nothing is the slide itself, which says by its own lines.
+    expect(languageView(hindiKirtan(), null).translitOf).toBeUndefined();
   });
 });

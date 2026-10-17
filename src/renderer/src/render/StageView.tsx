@@ -3,7 +3,9 @@ import type { ReactNode } from 'react';
 import type { EngineState } from '../../../shared/engine/state';
 import { languageView } from '../../../shared/language-view';
 import type { Lang, RenderSlide, TextElement } from '../../../shared/model';
-import { fontFamilyFor, HTML_LANG } from './fonts';
+import { fontFamilyFor } from './fonts';
+import { htmlLang, textLang } from './lang';
+import { translitSource } from '../../../shared/tracks';
 import { TimerText } from './TimerText';
 import { useNow } from './useNow';
 
@@ -43,6 +45,8 @@ export function StageText({
   size?: number;
   dim?: boolean;
 }) {
+  // What its transliteration is of (Sessions 31–36, I18N-4), for the words' lang.
+  const source = slide.translitOf ?? translitSource(slide.elements);
   return (
     <div
       style={{
@@ -56,7 +60,7 @@ export function StageText({
         <p
           key={el.id}
           data-stage-element={el.id}
-          lang={el.lang ? HTML_LANG[el.lang] : undefined}
+          lang={el.lang ? htmlLang(el.lang, source) : undefined}
           style={{
             margin: '0 0 0.35em',
             whiteSpace: 'pre-wrap',
@@ -70,7 +74,7 @@ export function StageText({
                 return (
                   <span
                     key={i}
-                    lang={lang ? HTML_LANG[lang] : undefined}
+                    lang={lang ? htmlLang(lang, source) : undefined}
                     style={{ fontFamily: fontFamilyFor(run.font ?? el.style.fontFamily, lang) }}
                   >
                     {run.text}
@@ -196,6 +200,7 @@ export function StageView({
       {state.stageMessage !== null && (
         <div
           data-testid="stage-message"
+          lang={textLang(state.stageMessage)}
           style={{
             background: '#f5a524',
             color: '#000000',
@@ -237,6 +242,7 @@ export function StageView({
           {slide && slide.notes.trim() !== '' && (
             <div
               data-testid="stage-notes"
+              lang={textLang(slide.notes)}
               style={{
                 fontSize: 40,
                 lineHeight: 1.3,

@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { stillUrl } from '../../../shared/media';
 import type {
   MediaElement,
@@ -11,7 +11,9 @@ import type {
   TextRun,
   TextShadow,
 } from '../../../shared/model';
-import { fontFamilyFor, HTML_LANG } from './fonts';
+import { fontFamilyFor } from './fonts';
+import { TranslitSourceContext, useHtmlLang } from './lang';
+import { translitSource } from '../../../shared/tracks';
 import { OBJECT_FIT } from './media-style';
 import { startPlayback } from './playback';
 import { requestStill, useStill } from './stills';
@@ -93,6 +95,7 @@ export function runStyle(run: Omit<TextRun, 'text'> & { text?: string }, el: Tex
 
 /** Styled runs, inline, inside one block so the element's vertical alignment still applies. */
 function Runs({ el, runs }: { el: TextElement; runs: TextRun[] }) {
+  const langOf = useHtmlLang();
   return (
     <>
       {runs.map((run, i) => {
@@ -103,7 +106,7 @@ function Runs({ el, runs }: { el: TextElement; runs: TextRun[] }) {
             data-run={i}
             data-lang={run.lang ?? undefined}
             data-legacy={run.legacy ? 'true' : undefined}
-            lang={lang ? HTML_LANG[lang] : undefined}
+            lang={langOf(lang)}
             style={runStyle(run, el)}
           >
             {run.text}
@@ -120,6 +123,7 @@ function Runs({ el, runs }: { el: TextElement; runs: TextRun[] }) {
  * break with its own run), each line and word moved by its own `top` and faded by its own opacity.
  */
 function RevealRuns({ el, runs, words }: { el: TextElement; runs: readonly TextRun[]; words: boolean }) {
+  const langOf = useHtmlLang();
   return (
     <>
       {revealLines(runs).map((line, li) => (
@@ -130,8 +134,7 @@ function RevealRuns({ el, runs, words }: { el: TextElement; runs: readonly TextR
           style={{ position: 'relative' }}
         >
           {line.pieces.map((piece, pi) => {
-            const lang = piece.run.lang ?? el.lang;
-            const locale = lang ? HTML_LANG[lang] : undefined;
+            const locale = langOf(piece.run.lang ?? el.lang);
             return (
               <span key={pi} lang={locale} style={runStyle(piece.run, el)}>
                 {words && piece.text !== '\n'
@@ -249,6 +252,7 @@ function TextView({
 }) {
   const box = useRef<HTMLDivElement>(null);
   const words = useRef<HTMLDivElement>(null);
+  const langOf = useHtmlLang();
   useShrinkToFit(box, words, el);
   // A font this computer does not have (Sessions 31–36, I18N-1): marked for the reports, drawing nothing different.
   useEffect(() => {
@@ -265,7 +269,7 @@ function TextView({
       data-lang={el.lang ?? ''}
       data-shrink={el.style.shrinkToFit ? 'true' : undefined}
       data-words-hidden={hidden ? '' : undefined}
-      lang={el.lang ? HTML_LANG[el.lang] : undefined}
+      lang={langOf(el.lang)}
       // Hidden while a Bold move draws the words apart (Session 27): laid out as ever, so nothing shifts when
       // they come back.
       style={hidden ? { ...textBoxStyle(el), visibility: 'hidden' } : textBoxStyle(el)}
@@ -492,53 +496,57 @@ export const SlideView = memo(function SlideView({
   reveal?: Reveal;
 }) {
   const darken = slide.darken;
+  // What its transliteration is of (Sessions 31–36, I18N-4), for its words' lang.
+  const source = useMemo(() => slide.translitOf ?? translitSource(slide.elements), [slide]);
   // The words the whole-picture darkening goes under: the first box with any (none in the words alone).
   const wholeUnder =
     darken?.kind === 'whole' && text !== 'only'
       ? slide.elements.find((e) => e.kind === 'text' && e.text.trim() !== '')?.id
       : undefined;
   return (
-    <div
-      data-slide={slide.id}
-      data-text={text === 'shown' ? undefined : text}
-      style={{
-        position: 'relative',
-        width: slide.width,
-        height: slide.height,
-        overflow: 'hidden',
-        background: text === 'only' ? 'transparent' : (slide.background ?? 'transparent'),
-      }}
-    >
-      {slide.elements.map((el) => [
-        // The whole picture darkened (Sessions 31–36, SLD-3): over everything before the first words (a
-        // picture, the colour, the background layer's video under the slide), under the words.
-        el.id === wholeUnder && darken ? (
-          <div
-            key="darken"
-            data-darken="whole"
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: `rgba(0, 0, 0, ${String(darken.strength)})`,
-            }}
-          />
-        ) : null,
-        text === 'only' && el.kind !== 'text' ? null : (
-          <ElementView
-            key={el.id}
-            el={el}
-            media={media}
-            startedAt={startedAt}
-            textHidden={text === 'hidden'}
-            reveal={text === 'only' ? reveal : undefined}
-            band={
-              darken?.kind === 'band' && el.kind === 'text' && el.text.trim() !== ''
-                ? darken.strength
-                : undefined
-            }
-          />
-        ),
-      ])}
-    </div>
+    <TranslitSourceContext.Provider value={source}>
+      <div
+        data-slide={slide.id}
+        data-text={text === 'shown' ? undefined : text}
+        style={{
+          position: 'relative',
+          width: slide.width,
+          height: slide.height,
+          overflow: 'hidden',
+          background: text === 'only' ? 'transparent' : (slide.background ?? 'transparent'),
+        }}
+      >
+        {slide.elements.map((el) => [
+          // The whole picture darkened (Sessions 31–36, SLD-3): over everything before the first words (a
+          // picture, the colour, the background layer's video under the slide), under the words.
+          el.id === wholeUnder && darken ? (
+            <div
+              key="darken"
+              data-darken="whole"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: `rgba(0, 0, 0, ${String(darken.strength)})`,
+              }}
+            />
+          ) : null,
+          text === 'only' && el.kind !== 'text' ? null : (
+            <ElementView
+              key={el.id}
+              el={el}
+              media={media}
+              startedAt={startedAt}
+              textHidden={text === 'hidden'}
+              reveal={text === 'only' ? reveal : undefined}
+              band={
+                darken?.kind === 'band' && el.kind === 'text' && el.text.trim() !== ''
+                  ? darken.strength
+                  : undefined
+              }
+            />
+          ),
+        ])}
+      </div>
+    </TranslitSourceContext.Provider>
   );
 });

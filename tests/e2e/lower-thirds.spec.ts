@@ -189,7 +189,8 @@ test('a key and fill pair draws its moving lower third alike at every held momen
     const group = made.snapshot.groups.find((g) => g.name === 'Placeholder switcher');
     const role = await d.screens.setGroupRole(group?.id ?? '', 'keyfill');
     if (!role.ok) throw new Error(role.message);
-    for (const display of made.snapshot.displays) {
+    // Two displays, the fill's and the key's, however many this computer has.
+    for (const display of made.snapshot.displays.slice(0, 2)) {
       const used = await d.screens.assignDisplay(group?.id ?? '', display.id, { coverOperator: true });
       if (!used.ok) throw new Error(used.message);
     }

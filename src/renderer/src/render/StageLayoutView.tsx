@@ -10,6 +10,7 @@ import { STAGE_HEIGHT, STAGE_WIDTH } from '../../../shared/stage-layouts';
 import { formatDuration } from '../../../shared/timers';
 import { fontFamilyFor, LANG_FONT_STACK } from './fonts';
 import { kindName, StageText } from './StageView';
+import { textLang } from './lang';
 import { TimerText } from './TimerText';
 import { useNow } from './useNow';
 
@@ -118,7 +119,12 @@ function BoxContents({
     }
     case 'notes':
       return slide && slide.notes.trim() !== '' ? (
-        <p style={{ margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{slide.notes}</p>
+        <p
+          lang={textLang(slide.notes)}
+          style={{ margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
+        >
+          {slide.notes}
+        </p>
       ) : null;
     case 'clock': {
       const time = <span style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{clock}</span>;
@@ -195,6 +201,7 @@ function BoxContents({
       return state.stageMessage !== null ? (
         <div
           data-testid="stage-box-message"
+          lang={textLang(state.stageMessage)}
           style={{
             background: '#f5a524',
             borderRadius: '0.25em',
@@ -263,7 +270,14 @@ function BoxContents({
         </span>
       );
     case 'text':
-      return <p style={{ margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{box.text ?? ''}</p>;
+      return (
+        <p
+          lang={textLang(box.text ?? '')}
+          style={{ margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
+        >
+          {box.text ?? ''}
+        </p>
+      );
   }
 }
 

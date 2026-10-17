@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { TrackSlide } from '../../../shared/kirtans';
 import { parseLyrics } from '../../../shared/lyrics';
-import type { Lang } from '../../../shared/model';
+import type { Lang, TranslitSource } from '../../../shared/model';
 import { LANG_NAMES } from '../../../shared/themes';
 import { useEngine } from '../engine/engine-store';
 import { Badge } from '../ui/Badge';
@@ -10,6 +10,7 @@ import { cx } from '../ui/cx';
 import { Dialog } from '../ui/Dialog';
 import { KeepChangesDialog, linesChanged, SAVES_LIBRARY, savesLive } from '../ui/KeepChanges';
 import { Textarea, TextInput } from '../ui/Field';
+import { htmlLang } from '../render/lang';
 import { Notice } from '../ui/Notice';
 import { TabPanel, Tabs } from '../ui/Tabs';
 import { plural } from '../ui/text';
@@ -40,7 +41,18 @@ function AllWordsPanel({ tabbed, children }: { tabbed: boolean; children: React.
 }
 
 /** One slide's lines in one language: a field, marked when the slide has none in it. */
-function TrackCell({ slide, lang, showName }: { slide: TrackSlide; lang: Lang; showName: boolean }) {
+function TrackCell({
+  slide,
+  lang,
+  source,
+  showName,
+}: {
+  slide: TrackSlide;
+  lang: Lang;
+  /** What the kirtan's transliteration is of, for its lang (Sessions 31–36, I18N-4). */
+  source: TranslitSource | null;
+  showName: boolean;
+}) {
   const typed = useWords((s) => s.typed[slide.slideId]?.[lang]);
   const value = typed ?? cellText(slide, lang);
   const missing = value.trim() === '';
@@ -66,6 +78,7 @@ function TrackCell({ slide, lang, showName }: { slide: TrackSlide; lang: Lang; s
       )}
       <Textarea
         aria-label={`Slide ${slide.number}, ${LANG_NAMES[lang]}${missing ? ' (missing)' : ''}`}
+        lang={htmlLang(lang, source)}
         data-missing={missing ? 'true' : undefined}
         rows={lines}
         spellCheck={false}
@@ -90,6 +103,9 @@ function TrackCell({ slide, lang, showName }: { slide: TrackSlide; lang: Lang; s
 
 /** A kirtan's words slide by slide: one language, or every language of each slide together. */
 function ByLanguage({ tracks, shown }: { tracks: TrackWords; shown: TrackChoice }) {
+  // Its transliteration is of its first Gujarati, Hindi or Sanskrit track.
+  const indic = tracks.order.find((l) => l === 'gu' || l === 'hi' || l === 'sa' || l === 'sa-gu');
+  const source: TranslitSource | null = indic === undefined ? null : indic === 'sa-gu' ? 'sa' : indic;
   // All languages: those the kirtan has (pick one above to add another).
   const langs: Lang[] =
     shown === 'all' ? tracks.order.filter((l) => tracks.kirtan?.tracks.includes(l)) : [shown];
@@ -120,7 +136,7 @@ function ByLanguage({ tracks, shown }: { tracks: TrackWords; shown: TrackChoice 
               style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(13rem, 1fr))' }}
             >
               {langs.map((lang) => (
-                <TrackCell key={lang} slide={slide} lang={lang} showName={shown === 'all'} />
+                <TrackCell key={lang} slide={slide} lang={lang} source={source} showName={shown === 'all'} />
               ))}
             </div>
           )}
