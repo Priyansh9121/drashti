@@ -51,11 +51,17 @@ export type ProgramPicture =
       messages: boolean;
     };
 
-/** At most this many lines in a lower third; a slide with more shows its first ones. */
+/**
+ * At most this many lines in a lower third; a slide with more shows its first ones, and the operator is told
+ * how many it has (Sessions 31–36, SLD-8: the one count, Shastra's passages' too).
+ */
 export const LOWER_THIRD_MAX_LINES = 6;
 
-/** A slide's words for a lower third, in these languages (null: all of them), top to bottom. */
-export function lowerThird(slide: RenderSlide, languages: readonly Lang[] | null): LowerThirdLine[] {
+/** A slide's words for a lower third, in these languages (null: all of them): the lines shown, and how many in all. */
+export function lowerThirdOf(
+  slide: RenderSlide,
+  languages: readonly Lang[] | null,
+): { lines: LowerThirdLine[]; total: number } {
   const shown = languageView(slide, languages);
   const lines: LowerThirdLine[] = [];
   for (const el of readingOrder(shown.elements))
@@ -63,7 +69,12 @@ export function lowerThird(slide: RenderSlide, languages: readonly Lang[] | null
       if (!line.legacy && lineText(line).trim() === '') continue;
       lines.push({ lang: line.lang, runs: line.runs, boxFont: el.style.fontFamily });
     }
-  return lines.slice(0, LOWER_THIRD_MAX_LINES);
+  return { lines: lines.slice(0, LOWER_THIRD_MAX_LINES), total: lines.length };
+}
+
+/** A slide's words for a lower third, in these languages (null: all of them), top to bottom. */
+export function lowerThird(slide: RenderSlide, languages: readonly Lang[] | null): LowerThirdLine[] {
+  return lowerThirdOf(slide, languages).lines;
 }
 
 /** The slide has something to look at besides words: a picture or a video. */
