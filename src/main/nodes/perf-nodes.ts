@@ -69,10 +69,6 @@ export async function startPerfNodes(
       // The check's own harness trusts this Main's certificate (on this computer only).
       NODE_TLS_REJECT_UNAUTHORIZED: '0',
       NODE_NO_WARNINGS: '1',
-      DRASHTI_PERF_PORT: String(nodes.status().port),
-      DRASHTI_PERF_VERSION: version,
-      DRASHTI_PERF_PROTOCOL: String(NODE_PROTOCOL),
-      DRASHTI_PERF_ENGINE: String(ENGINE_STATE_VERSION),
     },
     stdio: 'ignore',
   });
@@ -85,7 +81,14 @@ export async function startPerfNodes(
   const send = (message: ToPerfNodes) => {
     child.postMessage(message);
   };
-  send({ type: 'start', tokens: paired.map((p) => p.token) });
+  send({
+    type: 'start',
+    tokens: paired.map((p) => p.token),
+    port: nodes.status().port,
+    version,
+    protocol: NODE_PROTOCOL,
+    engine: ENGINE_STATE_VERSION,
+  });
   for (let i = 0; i < 200 && nodes.status().nodes.filter((n) => n.online).length < count; i++)
     await sleep(50);
   const online = nodes.status().nodes.filter((n) => n.online).length;

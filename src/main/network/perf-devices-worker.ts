@@ -3,7 +3,8 @@
  * Remote devices following the state feed, in a utility process of their own (Sessions 31–36, REL-7:
  * a packaged Drashti's RunAsNode fuse is off, so Electron no longer runs a script as Node). Each device
  * also fetches the given pages every second, as a phone opening a page does. Told to start with the
- * devices' tokens (made at run time, never shown), and to stop; then it says how late the changes came.
+ * devices' tokens (made at run time, never shown), the port and the pages, and to stop; then it says how
+ * late the changes came.
  */
 
 export interface PerfDeviceStats {
@@ -14,20 +15,19 @@ export interface PerfDeviceStats {
   fetched: number;
 }
 
-export type ToPerfDevices = { type: 'start'; tokens: string[] } | { type: 'stop' };
+export type ToPerfDevices =
+  { type: 'start'; tokens: string[]; port: number; pages: string[] } | { type: 'stop' };
 export interface FromPerfDevices {
   type: 'stats';
   stats: PerfDeviceStats;
 }
 
-const port = Number(process.env['DRASHTI_PERF_PORT']);
-const pages = JSON.parse(process.env['DRASHTI_PERF_PAGES'] ?? '[]') as string[];
 const sockets: WebSocket[] = [];
 const late: number[] = [];
 const loads: ReturnType<typeof setInterval>[] = [];
 let fetched = 0;
 
-function start(tokens: readonly string[]): void {
+function start(tokens: readonly string[], port: number, pages: readonly string[]): void {
   for (const token of tokens) {
     const ws = new WebSocket(`ws://127.0.0.1:${String(port)}/api/v1/feed`);
     ws.onopen = () => {
@@ -73,6 +73,6 @@ function stop(): void {
 
 process.parentPort.on('message', (e) => {
   const message = e.data as ToPerfDevices;
-  if (message.type === 'start') start(message.tokens);
+  if (message.type === 'start') start(message.tokens, message.port, message.pages);
   else stop();
 });

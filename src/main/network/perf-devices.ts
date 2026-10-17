@@ -59,7 +59,6 @@ export async function startPerfDevices(
   );
   const child = utilityProcess.fork(workerPath(), [], {
     serviceName: 'Drashti performance devices',
-    env: { ...process.env, DRASHTI_PERF_PORT: String(port), DRASHTI_PERF_PAGES: JSON.stringify(pages) },
     stdio: 'ignore',
   });
   const told = new Promise<PerfDeviceStats | null>((resolve) => {
@@ -71,7 +70,7 @@ export async function startPerfDevices(
   const send = (message: ToPerfDevices) => {
     child.postMessage(message);
   };
-  send({ type: 'start', tokens: paired.map((p) => p.token) });
+  send({ type: 'start', tokens: paired.map((p) => p.token), port, pages: [...pages] });
   for (let i = 0; i < 200 && network.status().connected < count; i++) await sleep(50);
   const connected = network.status().connected;
   let stats = '';

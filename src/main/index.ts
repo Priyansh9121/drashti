@@ -923,7 +923,7 @@ function start(): void {
     const access = keepAccessAfterRestore(opened.db, keptAccess);
     if (access.ok)
       log.info(
-        `Restore: kept today's phones (${String(access.phones)}) and nodes (${String(access.nodes)}); ${String(access.refused)} removed since the backup stay refused`,
+        `Restore: kept today’s phones (${String(access.phones)}) and nodes (${String(access.nodes)}); ${String(access.refused)} removed since the backup stay refused`,
       );
     else {
       log.warn(
