@@ -25,7 +25,11 @@ const pretendDisplays = (app: ElectronApplication, n: number) =>
 
 test('a display that drops for a moment keeps its output: hidden, then back on it as the same page', async () => {
   test.setTimeout(90_000);
-  const { app } = await launchApp({ DRASHTI_EXTRA_DISPLAYS: '1', DRASHTI_TEST_DISPLAY_CHANGES: '1' });
+  const { app } = await launchApp({
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_EXTRA_DISPLAYS: '1',
+    DRASHTI_TEST_DISPLAY_CHANGES: '1',
+  });
   const win = await operatorPage(app);
   const index = await win.evaluate(async () =>
     (await (globalThis as PageGlobals).drashti.screens.get()).displays.findIndex(
