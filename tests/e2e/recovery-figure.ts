@@ -95,11 +95,15 @@ export async function crashAndRecover(): Promise<{ ms: number; line: string }> {
   );
   await savedLive(first.userData, (saved) => saved.slide?.slideIndex === 0);
   await killApp(first.app);
-  // Started again: the show back on the screen, and the start's phase lines in the log say when.
+  // Started again: the show back on the screen, and the start's phase lines in the log say when. The waits
+  // are long whatever the config's (the Performance check's is Playwright's 5 s): the figure is what is
+  // judged, against its budget, and CI's Mac took 9.0 s once (run 39038852887).
   const second = await relaunchApp(first.userData);
   try {
     const output = await outputPage(second.app);
-    await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder figure one');
+    await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder figure one', {
+      timeout: 30_000,
+    });
     // The output says its first frame within its next report (every 2 s).
     await expect.poll(() => recoveryFigure(first.userData)?.ms ?? null, { timeout: 15_000 }).not.toBeNull();
     const figure = recoveryFigure(first.userData);
