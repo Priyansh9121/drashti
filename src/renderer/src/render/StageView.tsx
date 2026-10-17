@@ -1,3 +1,5 @@
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { EngineState } from '../../../shared/engine/state';
 import { languageView } from '../../../shared/language-view';
 import type { Lang, RenderSlide, TextElement } from '../../../shared/model';
@@ -18,7 +20,7 @@ export const kindName = { image: 'Picture', video: 'Video', audio: 'Sound' } as 
 const textElements = (slide: RenderSlide) =>
   slide.elements.filter((e): e is TextElement => e.kind === 'text' && e.text.trim() !== '');
 
-/** Smaller type for longer text, so a slide always fits its box. */
+/** Smaller type for longer text: the size a slide's words start from (and never go above) on the Standard stage. */
 function sizeFor(slide: RenderSlide, base: number): number {
   const chars = textElements(slide).reduce((n, e) => n + e.text.length, 0);
   if (chars > 400) return Math.round(base * 0.45);
@@ -44,7 +46,8 @@ export function StageText({
   return (
     <div
       style={{
-        fontSize: size,
+        // Times the Standard stage's own fit (StageFit): 1, as before, unless the words would not fit.
+        fontSize: size === undefined ? undefined : `calc(${String(size)}px * var(--stage-fit, 1))`,
         lineHeight: 1.25,
         color: size === undefined ? undefined : dim ? '#c9ced8' : '#ffffff',
       }}
@@ -77,6 +80,72 @@ export function StageText({
             : el.text}
         </p>
       ))}
+    </div>
+  );
+}
+
+/** The smallest the Standard stage makes a slide's words: a fifth of the size they start from. */
+const STAGE_MIN_FIT = 0.2;
+
+/**
+ * The Standard stage's box for a slide's words, measured to fit (Sessions 31–36, SLD-7): the words start
+ * at today's size for their length and only ever get smaller, so a long slide's last line shows. The box
+ * says how far (data-stage-fit) for tests; with words that fit, nothing changes.
+ */
+function StageFit({ testId, children }: { testId: string; children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [fontsAndSize, setFontsAndSize] = useState(0);
+  // What it was last measured for: the clock's tick re-draws the stage every second, and must not measure.
+  const measured = useRef('');
+  // A font arriving, or the screen changing size, changes how far the words reach.
+  useEffect(() => {
+    const again = () => {
+      setFontsAndSize((n) => n + 1);
+    };
+    document.fonts.addEventListener('loadingdone', again);
+    const b = box.current;
+    const sized = b ? new ResizeObserver(again) : null;
+    if (b) sized?.observe(b);
+    return () => {
+      document.fonts.removeEventListener('loadingdone', again);
+      sized?.disconnect();
+    };
+  }, []);
+  useLayoutEffect(() => {
+    const b = box.current;
+    if (!b) return;
+    const words = b.firstElementChild;
+    const key = `${String(fontsAndSize)} ${words?.textContent ?? ''}`;
+    if (key === measured.current) return;
+    measured.current = key;
+    if (!(words instanceof HTMLElement)) return;
+    const fits = (fit: number) => {
+      b.style.setProperty('--stage-fit', String(fit));
+      return words.offsetHeight <= b.clientHeight + 0.5;
+    };
+    // The usual case, words that fit as they are: nothing is written.
+    const shrunk = b.style.getPropertyValue('--stage-fit') !== '';
+    if (!shrunk && words.offsetHeight <= b.clientHeight + 0.5) return;
+    let lo = 1;
+    if (!fits(1)) {
+      lo = STAGE_MIN_FIT;
+      let hi = 1;
+      for (let i = 0; i < 12; i++) {
+        const mid = (lo + hi) / 2;
+        if (fits(mid)) lo = mid;
+        else hi = mid;
+      }
+      fits(lo);
+    }
+    if (lo < 1) b.setAttribute('data-stage-fit', lo.toFixed(3));
+    else {
+      b.style.removeProperty('--stage-fit');
+      b.removeAttribute('data-stage-fit');
+    }
+  });
+  return (
+    <div ref={box} data-testid={testId} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      {children}
     </div>
   );
 }
@@ -151,7 +220,7 @@ export function StageView({
                 ? ' · LOGO ON THE AUDIENCE SCREENS'
                 : ''}
           </p>
-          <div data-testid="stage-current" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <StageFit testId="stage-current">
             {slide ? (
               <StageText
                 slide={languageView(slide.slide, languages)}
@@ -164,7 +233,7 @@ export function StageView({
                   : 'Nothing on the screens'}
               </p>
             )}
-          </div>
+          </StageFit>
           {slide && slide.notes.trim() !== '' && (
             <div
               data-testid="stage-notes"
@@ -215,7 +284,7 @@ export function StageView({
               </div>
             ))}
           <p style={label}>NEXT</p>
-          <div data-testid="stage-next" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <StageFit testId="stage-next">
             {next?.kind === 'slide' ? (
               <StageText
                 slide={languageView(next.slide, languages)}
@@ -229,7 +298,7 @@ export function StageView({
             ) : (
               <p style={{ fontSize: 48, color: '#6b7280', margin: 0 }}>End</p>
             )}
-          </div>
+          </StageFit>
         </aside>
       </div>
     </div>

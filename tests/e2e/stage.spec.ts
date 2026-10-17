@@ -4,7 +4,14 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
-import { importAndGetIds, launchApp, operatorPage, outputPages, setUpScreen } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  operatorPage,
+  outputPages,
+  type PageGlobals,
+  setUpScreen,
+} from './helpers';
 import { makeTestImage } from './test-media';
 
 /*
@@ -14,6 +21,69 @@ import { makeTestImage } from './test-media';
  */
 
 const line = (text: string) => ({ text: [{ rtf: cocoaRtf([[text, 80, [255, 255, 255]]]) }] });
+
+test('the Standard stage makes a long slide’s words smaller until its last line shows, never larger than before (Sessions 31–36, SLD-7)', async () => {
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' });
+  const win = await operatorPage(app);
+  // A long Gujarati slide (placeholder words), and a short one after it.
+  const long = Array.from({ length: 24 }, (_, i) => `નમૂના પંક્તિ ${String(i + 1)} નમૂના શબ્દો`).join('\n');
+  const id = await win.evaluate(
+    async ({ long }) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const made = await d.library.newFromWords(
+        'Placeholder long stage slide',
+        `${long}\n\nનમૂના ટૂંકી પંક્તિ`,
+      );
+      if (!made.ok) throw new Error(made.message);
+      return made.id;
+    },
+    { long },
+  );
+  await setUpScreen(win, 'Main Hall', 0);
+  const stageScreen = await setUpScreen(win, 'Stage', 1);
+  await win.evaluate(async (screenId) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const group = (await d.screens.get()).groups.find((g) => g.screens.some((x) => x.id === screenId));
+    const set = await d.screens.setGroupRole(group?.id ?? '', 'stage');
+    if (!set.ok) throw new Error(set.message);
+  }, stageScreen);
+  await expect.poll(() => outputPages(app).length).toBe(2);
+  const roleOf = (p: Page) => p.getByTestId('output-root').getAttribute('data-role');
+  await expect
+    .poll(async () => (await Promise.all(outputPages(app).map(roleOf))).sort())
+    .toEqual(['audience', 'stage']);
+  const [one, two] = outputPages(app) as [Page, Page];
+  const stage = (await roleOf(one)) === 'stage' ? one : two;
+  await expect(stage.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  const current = stage.getByTestId('stage-current');
+  const lastLineInside = () =>
+    current.evaluate((box) => {
+      const words = box.firstElementChild;
+      if (!(words instanceof HTMLElement)) return false;
+      return words.getBoundingClientRect().bottom <= box.getBoundingClientRect().bottom + 1;
+    });
+  await win.evaluate(
+    (presentationId) =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'goLive', presentationId, slideIndex: 0 }),
+    id,
+  );
+  await expect(current).toContainText('નમૂના પંક્તિ 24');
+  // Shrunk, and its last line inside the box.
+  await expect(current).toHaveAttribute('data-stage-fit', /^0\.\d{3}$/u);
+  await expect.poll(lastLineInside).toBe(true);
+  // A short slide: today's size, unshrunk.
+  await win.evaluate(
+    (presentationId) =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({ type: 'goLive', presentationId, slideIndex: 1 }),
+    id,
+  );
+  await expect(current).toContainText('નમૂના ટૂંકી પંક્તિ');
+  await expect(current).not.toHaveAttribute('data-stage-fit');
+  expect(
+    await current.evaluate((box) => getComputedStyle(box.firstElementChild as HTMLElement).fontSize),
+  ).toBe('92px');
+  await app.close();
+});
 
 test('a stage screen follows Next with the current and next text, notes, clock and a stage-only message', async () => {
   // Two outputs on a one-screen machine: windowed, with one pretend extra display.

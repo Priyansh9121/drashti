@@ -4,6 +4,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 ## Unreleased
 
+- The stage screen makes a long slide's words smaller until its last line shows; words that already fit look exactly as before.
 - When a lower third cannot hold all of a slide's lines, a note under LIVE says how many it shows, for example "Lower third shows 6 of 7 lines".
 - View, Show Safe Areas draws the safe areas, the ticker's and a message's bands, and where each screen group cuts the slide off, in the slide editor; words where the ticker runs are warned of.
 - The slide editor marks words that run past their box, on the slide's thumbnail and in the inspector, and warns when words are drawn smaller than 36 px on a 1080-line screen (a note below 48 px); an import says how many slides may need a look.
