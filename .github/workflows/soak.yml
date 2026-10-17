@@ -30,6 +30,10 @@ on:
         type: choice
         options: [none, operator, output]
         default: none
+      crash_gpu:
+        description: 'Tests the Soak itself: crash the GPU process at minute 2 (the Soak must then fail)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -70,6 +74,7 @@ jobs:
           DRASHTI_SOAK_MINUTES: ${{ inputs.minutes }}
           DRASHTI_SOAK_SAMPLE_MINUTES: ${{ inputs.sample_minutes }}
           DRASHTI_SOAK_HEAP: ${{ inputs.heap != 'none' && inputs.heap || '' }}
+          DRASHTI_SOAK_CRASH_GPU: ${{ inputs.crash_gpu && '2' || '' }}
           DRASHTI_SOAK_DEVTOOLS: ${{ inputs.test == 'devtools' && '1' || '0' }}
         run: pnpm exec playwright test -c playwright.soak.config.ts
       - name: The summary

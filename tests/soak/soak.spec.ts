@@ -55,6 +55,31 @@ test.skip(
 );
 
 const MINUTES = Math.max(5, Number(process.env['DRASHTI_SOAK_MINUTES'] ?? '180') || 180);
+/**
+ * Tests the Soak itself (Sessions 31–36, PERF-4): crash the GPU process at this minute, by Chromium's own
+ * chrome://gpucrash, in a window of its own that is never shown. The Soak must then fail.
+ */
+const CRASH_GPU_AT = Number(process.env['DRASHTI_SOAK_CRASH_GPU'] ?? 'NaN');
+
+/** A run's stopped processes by type, its heap after a full collection, and its loop p99 since the last read. */
+function health(target: ElectronApplication) {
+  return target.evaluate(() => {
+    const d = (
+      globalThis as unknown as {
+        drashtiDiagnostics?: {
+          processesGone?: { type: string }[];
+          heapAfterCollection?: () => number;
+          loopDelay?: { percentile(p: number): number; reset(): void };
+        };
+      }
+    ).drashtiDiagnostics;
+    const restarts: Record<string, number> = {};
+    for (const g of d?.processesGone ?? []) restarts[g.type] = (restarts[g.type] ?? 0) + 1;
+    const loopP99Ms = (d?.loopDelay?.percentile(99) ?? 0) / 1e6;
+    d?.loopDelay?.reset();
+    return { restarts, heapMb: d?.heapAfterCollection?.() ?? 0, loopP99Ms };
+  });
+}
 const SAMPLE_MS = Math.max(0.5, Number(process.env['DRASHTI_SOAK_SAMPLE_MINUTES'] ?? '3') || 3) * 60_000;
 const OUT = join(process.cwd(), 'test-results', 'soak');
 /**
@@ -579,6 +604,7 @@ test('a sabha that never stops', async () => {
     let nextSample = Date.now() + 60_000;
     let nextMessage = Date.now() + at(0.03) * 60_000;
     let messageOff = 0;
+    let gpuCrashed = false;
     let nextMusic = Date.now() + at(0.08) * 60_000;
     let musicOff = 0;
     let nextTimerReset = Date.now() + 30 * 60_000;
@@ -647,6 +673,10 @@ test('a sabha that never stops', async () => {
             ).length ?? 0,
         )) + (node ? watchdogLines(node.userData) : 0);
       const disk = statfsSync(work);
+      const mainHealth = await health(app);
+      const nodeHealth = node ? await health(node.app) : null;
+      const restarts: Record<string, number> = { ...mainHealth.restarts };
+      for (const [type, n] of Object.entries(nodeHealth?.restarts ?? {})) restarts[`node ${type}`] = n;
       const s: SoakSample = {
         minute: minute(),
         at: new Date().toISOString(),
@@ -664,6 +694,9 @@ test('a sabha that never stops', async () => {
         phoneConnected: net.connected > 0,
         nodeOnline: nodes.nodes.some((n) => n.online),
         watchdog,
+        restarts,
+        mainHeapMb: mainHealth.heapMb,
+        loopP99Ms: mainHealth.loopP99Ms,
       };
       samples.push(s);
       if (cdp)
@@ -675,7 +708,7 @@ test('a sabha that never stops', async () => {
           ]),
         });
       console.log(
-        `soak ${String(s.minute)} min: Main ${String(Math.round(mainTotal([s])[0]?.[1] ?? 0))} MB, node ${String(Math.round(s.processes.find((p) => p.label === 'Node (all of it)')?.memoryMb ?? 0))} MB, p90 ${outputs.map((o) => String(o.p90Ms)).join('/')} ms, late ${outputs.map((o) => String(o.lateFrames)).join('/')}, black ${String(outputs.some((o) => o.black))}, stream ${s.stream.state}, ${String(slideChanges)} slide changes`,
+        `soak ${String(s.minute)} min: Main ${String(Math.round(mainTotal([s])[0]?.[1] ?? 0))} MB, node ${String(Math.round(s.processes.find((p) => p.label === 'Node (all of it)')?.memoryMb ?? 0))} MB, p90 ${outputs.map((o) => String(o.p90Ms)).join('/')} ms, late ${outputs.map((o) => String(o.lateFrames)).join('/')}, black ${String(outputs.some((o) => o.black))}, stream ${s.stream.state}, ${String(slideChanges)} slide changes, Main's heap after a collection ${s.mainHeapMb?.toFixed(1) ?? '-'} MB, its loop p99 ${s.loopP99Ms?.toFixed(1) ?? '-'} ms, restarts ${JSON.stringify(restarts)}`,
       );
       writeReport(OUT, report([]));
     };
@@ -709,6 +742,17 @@ test('a sabha that never stops', async () => {
       if (musicOff > 0 && now >= musicOff) {
         await dispatch({ type: 'pauseMusic' });
         musicOff = 0;
+      }
+      if (!gpuCrashed && minute() >= CRASH_GPU_AT) {
+        gpuCrashed = true;
+        await app.evaluate(({ BrowserWindow }) => {
+          const w = new BrowserWindow({ show: false });
+          void w.webContents.loadURL('chrome://gpucrash').catch(() => undefined);
+          setTimeout(() => {
+            w.destroy();
+          }, 3000);
+        });
+        note('the GPU process crashed on purpose (DRASHTI_SOAK_CRASH_GPU)');
       }
       if (now >= nextTimerReset) {
         await dispatch({ type: 'resetTimer', timerId: show.timerId });

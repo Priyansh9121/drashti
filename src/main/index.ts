@@ -131,6 +131,7 @@ import { AudioOutput } from './audio/audio-output';
 import { saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
 import { phaseLine } from './start-phases';
+import { heapAfterCollection } from './heap-after-gc';
 import { LiveStateWriter, startupRecovery, type StartupRecovery } from './recovery/live-state';
 import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES } from './media/media-protocol';
 import { saveStill } from './media/stills';
@@ -497,6 +498,8 @@ if (perfWatch)
   hearHandled((channel, ms) => {
     if (ms >= 5 || channel === IPC.media.reportLength) perfWatch.note(`answered ${channel}`, ms);
   });
+/** Chromium's processes that stopped (a GPU's, a utility's, a renderer's), each kept for the Soak (Sessions 31–36). */
+const processesGone: { type: string; reason: string; at: string }[] = [];
 // Readable from the main process in end-to-end tests.
 (globalThis as { drashtiDiagnostics?: unknown }).drashtiDiagnostics = {
   watchdog,
@@ -504,6 +507,8 @@ if (perfWatch)
   loopDelay,
   handlerTimes,
   gc,
+  processesGone,
+  heapAfterCollection,
 };
 let quitConfirmed = false;
 /** The quit goes ahead (confirmed): nothing may open a window now, or the quit stops (Session 23). */
@@ -4553,6 +4558,7 @@ function start(): void {
     });
   }
   app.on('child-process-gone', (_event, details) => {
+    processesGone.push({ type: details.type, reason: details.reason, at: new Date().toISOString() });
     log.warn(`A ${details.type} process stopped (${details.reason}); Chromium restarts it by itself.`);
   });
 
