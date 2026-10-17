@@ -18,14 +18,24 @@ export interface PerfNodeStats {
   mediaMs: number;
 }
 
-export type ToPerfNodes = { type: 'start'; tokens: string[] } | { type: 'stop' };
+export type ToPerfNodes =
+  | {
+      type: 'start';
+      tokens: string[];
+      port: number;
+      /** Main's version, link protocol and engine state version, as a node of this Main says them. */
+      version: string;
+      protocol: number;
+      engine: number;
+    }
+  | { type: 'stop' };
 export interface FromPerfNodes {
   type: 'stats';
   stats: PerfNodeStats;
 }
 
-const port = Number(process.env['DRASHTI_PERF_PORT']);
-const version = process.env['DRASHTI_PERF_VERSION'] ?? '';
+let port = 0;
+let version = '';
 const late: number[] = [];
 const sockets: WebSocket[] = [];
 const timers: ReturnType<typeof setInterval>[] = [];
@@ -71,8 +81,10 @@ async function copy(token: string, ids: readonly string[]): Promise<void> {
   }
 }
 
-function start(tokens: readonly string[]): void {
-  for (const token of tokens) {
+function start(m: Extract<ToPerfNodes, { type: 'start' }>): void {
+  port = m.port;
+  version = m.version;
+  for (const token of m.tokens) {
     let rev = -1;
     let copying = false;
     const ws = new WebSocket(`wss://127.0.0.1:${String(port)}/node/v1/feed`);
@@ -82,8 +94,8 @@ function start(tokens: readonly string[]): void {
           type: 'hello',
           token,
           version,
-          protocol: Number(process.env['DRASHTI_PERF_PROTOCOL']),
-          engine: Number(process.env['DRASHTI_PERF_ENGINE']),
+          protocol: m.protocol,
+          engine: m.engine,
         }),
       );
     };
@@ -145,6 +157,6 @@ function stop(): void {
 
 process.parentPort.on('message', (e) => {
   const message = e.data as ToPerfNodes;
-  if (message.type === 'start') start(message.tokens);
+  if (message.type === 'start') start(message);
   else stop();
 });
