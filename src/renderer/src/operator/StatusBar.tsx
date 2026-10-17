@@ -286,7 +286,7 @@ export function StatusBar({
   /** The Calendar dialog (Pro Mode). */
   onOpenCalendar?: (() => void) | null;
 }) {
-  // What is this? (Sessions 31–36): its ? at the end of the bar, its words just above it (Pro Mode only).
+  // What is this? (Sessions 31–36): its ? before the bar's passing news, its words just above it (Pro Mode only).
   const help = useWhatIsThis('statusbar');
   return (
     <>
@@ -303,12 +303,13 @@ export function StatusBar({
         <LinkStatus />
         <SoundStatus onOpen={onOpenScreens} />
         <TodayStatus onOpen={onOpenCalendar} />
+        {/* Ahead of what comes and goes: an import's long line runs on under the version's words, never under a button. */}
+        {help.button}
         <div aria-live="polite" className="flex min-w-0 flex-1 items-center gap-3">
           <ImportStatus />
           <SaveStatus platform={info?.platform ?? 'darwin'} />
           <TaskStatus />
         </div>
-        {help.button}
         <span data-testid="app-info" className="shrink-0 text-faint">
           {info ? describeAppInfo(info) : ''}
         </span>

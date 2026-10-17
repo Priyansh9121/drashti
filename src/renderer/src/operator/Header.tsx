@@ -68,7 +68,8 @@ export function Header({
           <WordMark />
         </h1>
         <OnAirBadges />
-        <NetworkBadge />
+        {/* How many announcements wait is on the Announcements button beside it. */}
+        <NetworkBadge waiting={false} />
         <div className="min-w-0 flex-1">
           <LiveStatus />
         </div>

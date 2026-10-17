@@ -7,8 +7,16 @@ import { useNetwork } from './network-store';
  * While the network is on, the operator window always says so, with how many
  * devices are connected and how many announcements wait for Pro Mode: in the
  * header and in Simple Mode. Its own quiet look, apart from LIVE and ON AIR.
+ * Pro Mode's header leaves the count to its Announcements button beside it
+ * (Sessions 31–36: the header at 1280 has room for one of them).
  */
-export function NetworkBadge({ className }: { className?: string }) {
+export function NetworkBadge({
+  className,
+  waiting: sayWaiting = true,
+}: {
+  className?: string;
+  waiting?: boolean;
+}) {
   const status = useNetwork((s) => s.status);
   const waiting = useAnnouncements((s) => s.view?.waiting.length ?? 0);
   if (!status?.on) return null;
@@ -16,7 +24,11 @@ export function NetworkBadge({ className }: { className?: string }) {
   const devices =
     status.connected === 1 ? 'Network on · 1 device' : `Network on · ${status.connected} devices`;
   const queue =
-    waiting === 0 ? '' : waiting === 1 ? ' · 1 announcement waiting' : ` · ${waiting} announcements waiting`;
+    !sayWaiting || waiting === 0
+      ? ''
+      : waiting === 1
+        ? ' · 1 announcement waiting'
+        : ` · ${waiting} announcements waiting`;
   const text = failed ? 'Network: not listening' : `${devices}${queue}`;
   return (
     <span
