@@ -41,6 +41,8 @@ import { holdOpening } from '../ui/motion';
 import { StoppedScreens } from '../screens/StoppedScreens';
 import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { StreamPageStopped } from '../stream/StreamPageStopped';
+import { GuidesDialog } from '../help/GuidesDialog';
+import { showGuides } from '../help/guides-store';
 import { LivePreview } from './LivePreview';
 import { PresentationList } from './PresentationList';
 import { SlideGrid } from './SlideGrid';
@@ -134,6 +136,10 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     });
     // Help > Keyboard Shortcuts… (Pro Mode).
     const offKeys = window.drashti.app.onShowKeys(showKeysSheet);
+    // Help > Guides… (both modes, Sessions 31–36).
+    const offGuides = window.drashti.app.onShowGuides(() => {
+      showGuides();
+    });
     // How a restore went, told once as the page opens.
     void window.drashti.app.startNotice().then((text) => {
       if (text) useNotice.setState({ text });
@@ -152,6 +158,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
       offNotice();
       offProgress();
       offKeys();
+      offGuides();
       window.removeEventListener('dragover', ignoreDrop);
       window.removeEventListener('drop', ignoreDrop);
     };
@@ -359,6 +366,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <UpdatesDialog />
       <LinkDialog platform={platform} />
       <KeysSheet platform={platform} />
+      <GuidesDialog />
       <MarkersDialog />
       <PictureEditor />
       <AdminPinDialog />

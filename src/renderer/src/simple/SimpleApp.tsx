@@ -40,6 +40,7 @@ import { RecoveryBanner } from '../operator/RecoveryBanner';
 import { StoppedScreens } from '../screens/StoppedScreens';
 import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { StreamPageStopped } from '../stream/StreamPageStopped';
+import { GuidesDialog } from '../help/GuidesDialog';
 import { LiveStatus } from '../operator/StatusLine';
 import { NoticeArea, StatusBar } from '../operator/StatusBar';
 import { useKeymap } from '../operator/useKeymap';
@@ -479,6 +480,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       <StatusBar info={info} onOpenScreens={null} />
       <NoticeArea />
       <LeaveSimpleDialog />
+      <GuidesDialog />
       {dashboardOpen && <ScreensDashboard simple onSetUp={null} />}
     </div>
   );

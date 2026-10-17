@@ -4,6 +4,8 @@ This guide is for the **operators**: the people who run a sabha's screens in Dra
 
 On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows the menu bar is hidden: press **Alt** to show it.
 
+**This guide is inside Drashti too:** **Help**, then **Guides…**, with the presenter's guide (and in Pro Mode the admin's and the setup day's). Type a word in **Search the guides** to find every passage that holds it, by section; choose one to read it in its place. It needs no internet. **Esc** closes it.
+
 ![The operator window](screenshots/operator-1920x1080.png)
 
 **The window, left to right:**

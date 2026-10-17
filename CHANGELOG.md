@@ -4,6 +4,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 ## Unreleased
 
+- Help › Guides… opens the operator's, presenter's, admin's and setup day's guides inside Drashti, with their pictures, without the internet; search finds every passage that holds the words you type. Simple Mode shows the operator's and presenter's.
 - The computer stays awake while the stream is on air or recording, even with no hall screen showing.
 - If the stream's own page keeps failing, Drashti stops restarting it after the sixth time in a minute and says so, with Try again, in Simple Mode too; a hall screen whose page fails to load is logged and loaded again at once.
 - After Drashti stops unexpectedly, the next start stops a conversion, Save as MP4, YouTube download or PowerPoint it had started that was left running, and removes the half-saved file; your own programs are never touched.

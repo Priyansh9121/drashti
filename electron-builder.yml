@@ -12,6 +12,69 @@ files:
 extraResources:
   - from: LICENSES
     to: licenses
+  # The guides inside Drashti (Sessions 31–36): the four guides and only the pictures they show, read by the
+  # main process (src/main/guides.ts) and never served to phones. src/main/guides.test.ts keeps this list
+  # the same as what the guides show.
+  - from: docs
+    to: guides
+    filter:
+      - operator-guide.md
+      - presenter-guide.md
+      - admin-guide.md
+      - setup-day.md
+      - screenshots/admin-pin.png
+      - screenshots/arti-dialog.png
+      - screenshots/arti-prompt.png
+      - screenshots/calendar-dialog.png
+      - screenshots/dropbox-playlist.png
+      - screenshots/first-start-welcome.png
+      - screenshots/idle-dialog.png
+      - screenshots/import-link-dropbox.png
+      - screenshots/import-link-report.png
+      - screenshots/import-link-youtube.png
+      - screenshots/keep-changes.png
+      - screenshots/keys-sheet.png
+      - screenshots/live-zoom.png
+      - screenshots/marker-jumps.png
+      - screenshots/markers-dialog.png
+      - screenshots/music-panel.png
+      - screenshots/node-diagnostics-saved.png
+      - screenshots/node-update-offer.png
+      - screenshots/operator-1920x1080.png
+      - screenshots/phone-remote-notes.png
+      - screenshots/phone-remote-search.png
+      - screenshots/phones-panel.png
+      - screenshots/picture-editor.png
+      - screenshots/playlist-cards.png
+      - screenshots/playlist-up-down.png
+      - screenshots/practice-show.png
+      - screenshots/repeat-slides-1280x720.png
+      - screenshots/roles-dialog.png
+      - screenshots/scheduled-backups.png
+      - screenshots/screen-stopped-notice.png
+      - screenshots/screens-cards.png
+      - screenshots/screens-dashboard-1280x720.png
+      - screenshots/screens-looks.png
+      - screenshots/screens-pair-node.png
+      - screenshots/setup-wizard.png
+      - screenshots/shastra-texts.png
+      - screenshots/smart-playlist.png
+      - screenshots/start-here.png
+      - screenshots/tablet-remote-sideways.png
+      - screenshots/theme-charcoal.png
+      - screenshots/theme-forest.png
+      - screenshots/theme-high-contrast-black-on-white.png
+      - screenshots/theme-high-contrast-white-on-black.png
+      - screenshots/theme-ivory.png
+      - screenshots/theme-maroon-and-gold.png
+      - screenshots/theme-midnight.png
+      - screenshots/theme-ocean.png
+      - screenshots/theme-plum-and-flame.png
+      - screenshots/theme-saffron.png
+      - screenshots/themes-builtin.png
+      - screenshots/updates-offer.png
+      - screenshots/video-timeline.png
+      - screenshots/what-is-this.png
 asarUnpack:
   - '**/*.node'
 # better-sqlite3's Node-API prebuilds load in Electron as they are.

@@ -1,5 +1,6 @@
 import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
 import type { CalendarResult, CalendarView } from './calendar';
+import type { GuideId, GuideRead } from './guides';
 import type { IdleResult, IdleSettings, IdleView, QuoteFields, QuoteResult } from './idle';
 import type {
   PassageInfo,
@@ -131,6 +132,13 @@ export interface DrashtiBridge {
     onAskLeaveSimple(listener: () => void): () => void;
     /** Help > Keyboard Shortcuts… was chosen (Pro Mode). */
     onShowKeys(listener: () => void): () => void;
+    /** Help > Guides… was chosen (Sessions 31–36), in either mode. */
+    onShowGuides(listener: () => void): () => void;
+  };
+  /** The guides inside Drashti (Sessions 31–36): those this mode may read, and a guide's text. */
+  guides: {
+    list(): Promise<{ id: GuideId; tab: string }[]>;
+    read(id: GuideId): Promise<GuideRead>;
   };
   /** Scheduled backups (Session 14, operator window). */
   backups: {
