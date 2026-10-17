@@ -5,7 +5,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 ## Unreleased
 
 - What is this? cards now have Read more, which opens the guide at the passage they come from; there is a ? beside Next and Back, the show controls, the open playlist, Stream, Phones, Announcements, the status bar, Audio and More tools too.
-- Help › Guides… opens the operator's, presenter's, admin's and setup day's guides inside Drashti, with their pictures, without the internet; search finds every passage that holds the words you type. Simple Mode shows the operator's and presenter's.
+- Help › Guides… opens the operator's, presenter's, admin's and setup day's guides inside Drashti, with their pictures, without the internet; search finds every passage that holds the words you type, after answers to questions such as "When a screen is black or frozen, what do I do?". Simple Mode shows the operator's and presenter's.
 - The computer stays awake while the stream is on air or recording, even with no hall screen showing.
 - If the stream's own page keeps failing, Drashti stops restarting it after the sixth time in a minute and says so, with Try again, in Simple Mode too; a hall screen whose page fails to load is logged and loaded again at once.
 - After Drashti stops unexpectedly, the next start stops a conversion, Save as MP4, YouTube download or PowerPoint it had started that was left running, and removes the half-saved file; your own programs are never touched.

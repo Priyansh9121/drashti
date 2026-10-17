@@ -74,6 +74,41 @@ test('Help › Guides…: the four guides offline, "black" finds the Black-out r
   await app.close();
 });
 
+test('a curated answer comes first, in its guide’s own words, and opens the guide at its passage', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await chooseMenuItem(app, 'guides');
+  const guides = win.getByTestId('guides');
+  await expect(guides).toBeVisible();
+  const search = guides.getByRole('searchbox');
+  const results = guides.getByTestId('guide-results');
+  // Two words find the answer first, above the passages that hold them, in the guide's words.
+  await search.fill('screen black');
+  const first = results.getByRole('button').first();
+  await expect(first).toHaveAttribute('data-testid', 'guide-answer');
+  await expect(first).toContainText('When a screen is black or frozen, what do I do?');
+  await expect(first).toContainText(
+    'Open the screens dashboard: its picture shows what that screen really shows.',
+  );
+  await expectNoSeriousA11yIssues(win, 'an answer in the guides’ search');
+  await first.click();
+  const shown = guides.locator('[data-passage][data-current="true"]');
+  await expect(shown).toContainText('A screen is black or frozen.');
+  await expect(shown).toBeInViewport();
+  // A whole question, which no passage holds word for word, still finds its answer, and only that.
+  await search.fill('When the stream says Reconnecting, what do I do?');
+  await expect(results.getByTestId('guide-answer')).toHaveCount(1);
+  await expect(results.getByTestId('guide-answer')).toContainText(
+    'Do nothing: Drashti tries again by itself',
+  );
+  await expect(results).not.toContainText('Nothing in the guides holds every word');
+  await win.keyboard.press('Escape');
+  await expect(guides).toBeHidden();
+  await app.close();
+});
+
 test('Simple Mode’s Help › Guides… shows only the operator’s and the presenter’s guides, and the others cannot be read', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
