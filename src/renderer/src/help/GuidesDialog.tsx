@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { GUIDE_ANSWERS, searchAnswers } from '../../../shared/guide-answers';
 import { type GuideId, indexGuide, type IndexedGuide, searchGuides } from '../../../shared/guides';
 import { type Block, parseMarkdown, passagesOf } from '../../../shared/markdown';
+import { cx } from '../ui/cx';
 import { Dialog } from '../ui/Dialog';
 import { TextInput } from '../ui/Field';
 import { Loading } from '../ui/States';
@@ -12,9 +14,10 @@ import { closeGuides, useGuides } from './guides-store';
  * The guides inside Drashti (Sessions 31–36): Help › Guides…, in Pro Mode and Simple Mode (which is given
  * the operator's and the presenter's guides only). The guides are read from the files that came with this
  * Drashti, through the bridge, and drawn by Drashti's own Markdown reader: nothing is fetched, and nothing
- * in a guide can open anything. A search finds the passages holding every word typed, by section; a result
- * opens its guide there, marked. It is a dialog like the keys sheet: Esc closes it, and the show's keys
- * wait while it is open.
+ * in a guide can open anything. A search finds the passages holding every word typed, by section, after
+ * up to three curated answers ("When …, what do I do?", in the guide's own words: shared/guide-answers.ts);
+ * a result opens its guide there, marked. It is a dialog like the keys sheet: Esc closes it, and the show's
+ * keys wait while it is open.
  */
 
 interface Loaded {
@@ -74,6 +77,7 @@ function GuidesWindow() {
     [list, loaded],
   );
   const results = useMemo(() => searchGuides(indexed, query), [indexed, query]);
+  const answers = useMemo(() => searchAnswers(GUIDE_ANSWERS, indexed, query).slice(0, 3), [indexed, query]);
   const sections =
     typeof doc === 'object'
       ? doc.blocks.flatMap((b) => (b.kind === 'heading' && b.level === 2 ? [b] : []))
@@ -150,9 +154,34 @@ function GuidesWindow() {
           aria-label={query === '' ? `The ${tabOf(shown)} guide` : 'What the search found'}
           className="min-w-0 flex-1 overflow-y-auto px-5 pb-6 focus:outline-none"
         >
-          {query !== '' ? (
+          {query !== '' && (
             <div data-testid="guide-results" className="space-y-4">
-              {results.length === 0 && (
+              {answers.length > 0 && (
+                <section aria-label="Answers">
+                  <h3 className="mb-1 text-sm font-semibold text-muted">Answers</h3>
+                  <ul className="space-y-1">
+                    {answers.map(({ answer, passage: p }) => (
+                      <li key={answer.question}>
+                        <button
+                          type="button"
+                          data-testid="guide-answer"
+                          onClick={() => {
+                            go(answer.doc, p.id);
+                          }}
+                          className="w-full rounded-md border border-line-strong bg-panel-2 px-3 py-2 text-left text-sm hover:border-muted"
+                        >
+                          <span className="block font-semibold text-fg">{answer.question}</span>
+                          <span className="block text-xs text-muted">
+                            {tabOf(answer.doc)} · {p.section}
+                          </span>
+                          {snippet(p.text)}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              {results.length === 0 && answers.length === 0 && (
                 <p className="text-muted">
                   Nothing in the guides holds every word of “{query}”. Try fewer words, or another word for
                   it.
@@ -185,17 +214,17 @@ function GuidesWindow() {
                 </section>
               ))}
             </div>
-          ) : (
-            <TabPanel group="guides" id={shown} className="max-w-[46rem]">
-              {doc === undefined ? (
-                <Loading label="Opening the guide…" />
-              ) : typeof doc === 'string' ? (
-                <p role="alert">{doc}</p>
-              ) : (
-                <GuideText blocks={doc.blocks} current={passage} sizes={doc.sizes} />
-              )}
-            </TabPanel>
           )}
+          {/* Kept while a search shows (hidden), so the chosen tab always names a panel that is there. */}
+          <TabPanel group="guides" id={shown} className={cx('max-w-[46rem]', query !== '' && 'hidden')}>
+            {doc === undefined ? (
+              <Loading label="Opening the guide…" />
+            ) : typeof doc === 'string' ? (
+              <p role="alert">{doc}</p>
+            ) : (
+              <GuideText blocks={doc.blocks} current={passage} sizes={doc.sizes} />
+            )}
+          </TabPanel>
         </div>
       </div>
     </Dialog>
