@@ -4,10 +4,12 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   copyCrashFiles,
+  CRASH_FILES_NOT_KEPT,
   crashFiles,
   crashFilesLines,
   KEEP_CRASH_FILES,
   keepNewestCrashFiles,
+  startCrashReporter,
 } from './crash-files';
 
 /** A pretend crash folder as Crashpad keeps it: dumps under pending/ (Mac) or reports/ (Windows). */
@@ -60,6 +62,27 @@ describe('crash files (Sessions 31–36, ROB-6)', () => {
     ]);
     expect(crashFilesLines(files, true).at(-1)).toBe('Included: in the folder with this file.');
     expect(crashFilesLines([], false)).toEqual([]);
+  });
+
+  it('starts no crash reporter when Drashti runs translated, and Diagnostics says why there are none', () => {
+    // Under Rosetta the crash reporter's dump of a window the watchdog restarted stopped the main process
+    // (the release check's Intel build, Release runs 39070516997 and 39071319781): alpha.5's way there.
+    const said: string[] = [];
+    let started = 0;
+    const start = () => {
+      started++;
+    };
+    expect(startCrashReporter(true, start, (line) => said.push(line))).toBe(false);
+    expect(started).toBe(0);
+    expect(said).toEqual([CRASH_FILES_NOT_KEPT]);
+    expect(startCrashReporter(false, start, (line) => said.push(line))).toBe(true);
+    expect(started).toBe(1);
+    expect(said).toHaveLength(1);
+    expect(crashFilesLines([], false, false)).toEqual([CRASH_FILES_NOT_KEPT]);
+    // Ones an earlier, native run left are still listed.
+    const files = crashFiles(crashFolder(1));
+    expect(crashFilesLines(files, false, false)[0]).toBe(CRASH_FILES_NOT_KEPT);
+    expect(crashFilesLines(files, false, false)).toHaveLength(3);
   });
 
   it('copies them into the folder Diagnostics makes', () => {

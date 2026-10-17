@@ -132,7 +132,7 @@ import { spawnDownloadWorker } from './links/spawn-worker';
 import { AudioOutput } from './audio/audio-output';
 import { CrashJournal, childGoneWords, JOURNAL_FILE, journalNotice, watchdogWords } from './crash-journal';
 import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
-import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles } from './crash-files';
+import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter } from './crash-files';
 import { type CrashFilesChoice, saveDiagnostics } from './diagnostics';
 import { log, logFiles, startLogFile } from './log';
 import { phaseLine } from './start-phases';
@@ -323,10 +323,19 @@ const exitNow = (code: number) => {
 startQuietTests();
 // Crash files (Sessions 31–36, ROB-6): a crash of any of Drashti's processes leaves a dump in the data
 // folder's Crashpad folder (tests may name another: DRASHTI_TEST_CRASH_DUMPS), never sent anywhere. The
-// newest five are kept (crash-files.ts).
+// newest five are kept (crash-files.ts). Not when running translated: there the crash reporter stopped the
+// main process as the watchdog restarted a window (startCrashReporter).
 const crashFilesDir = sw('DRASHTI_TEST_CRASH_DUMPS') ?? join(app.getPath('userData'), 'Crashpad');
 app.setPath('crashDumps', crashFilesDir);
-crashReporter.start({ uploadToServer: false, compress: false });
+const crashFilesKept = startCrashReporter(
+  app.runningUnderARM64Translation,
+  () => {
+    crashReporter.start({ uploadToServer: false, compress: false });
+  },
+  (line) => {
+    log.info(line);
+  },
+);
 keepNewestCrashFiles(crashFilesDir, KEEP_CRASH_FILES, (line) => {
   log.warn(line);
 });
@@ -364,7 +373,7 @@ app.on('child-process-gone', (_event, details) => {
  */
 async function chooseCrashFiles(): Promise<CrashFilesChoice | null> {
   const files = crashFiles(crashFilesDir);
-  if (files.length === 0) return { files, included: false };
+  if (files.length === 0) return { files, included: false, kept: crashFilesKept };
   const bytes = files.reduce((sum, f) => sum + f.bytes, 0);
   const answer = await dialog.showMessageBox({
     type: 'question',
@@ -378,7 +387,7 @@ async function chooseCrashFiles(): Promise<CrashFilesChoice | null> {
     cancelId: 1,
   });
   if (answer.response !== 0) return null;
-  return { files, included: answer.checkboxChecked };
+  return { files, included: answer.checkboxChecked, kept: crashFilesKept };
 }
 
 /** What the notice says once Diagnostics is saved. */
