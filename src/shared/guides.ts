@@ -77,6 +77,15 @@ export function searchGuides(guides: readonly IndexedGuide[], query: string): Gu
   return out;
 }
 
+/** A help card's words as its guide prints them, their bold and code marks aside ("**Looks.**" is "Looks."). */
+export const plainWords = (words: string): string => words.replace(/\*\*|`/gu, '');
+
+/** The passages holding these words as written: Read more opens the one ("What is this?", Sessions 31–36). */
+export function passagesHolding(passages: readonly Passage[], words: string): Passage[] {
+  const plain = plainWords(words);
+  return passages.filter((p) => p.text.includes(plain));
+}
+
 /**
  * The bridge's answer for a guide: its text, and each picture's size (width, height) by its name, so the
  * window keeps each picture's room before it loads and a passage brought into view stays there.

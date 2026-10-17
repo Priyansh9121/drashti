@@ -300,7 +300,13 @@ function ProApp({ info }: { info: AppInfo | null }) {
               {/* Session 26a's order: LIVE, Audio, the stage screen, messages, timers, props, Looks, then More
                 tools folded away. */}
               <div className="mt-3 divide-y divide-line border-t border-line">
-                <PanelGroup title="Audio" icon={Music} remember="audio" data-testid="audio-group">
+                <PanelGroup
+                  title="Audio"
+                  icon={Music}
+                  remember="audio"
+                  help="audio"
+                  data-testid="audio-group"
+                >
                   <MusicPanel nested />
                   <ArtiPanel nested />
                 </PanelGroup>
@@ -314,6 +320,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
                   icon={Wrench}
                   remember="more-tools"
                   defaultOpen={false}
+                  help="tools"
                   data-testid="more-tools"
                 >
                   <div>

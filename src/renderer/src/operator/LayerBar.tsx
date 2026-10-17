@@ -1,3 +1,4 @@
+import { useWhatIsThis } from '../help/WhatIsThis';
 import type { LayerName } from '../../../shared/engine/state';
 import { isLayerEmpty } from '../../../shared/engine/state';
 import type { OperatorAction } from '../../../shared/keymap';
@@ -54,109 +55,118 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
   const logo = state?.logo ?? null;
   const canPutBack = state?.canPutBack ?? false;
   const anything = layers ? clears.some((c) => !isLayerEmpty(layers, c.layer)) : false;
+  // What is this? (Sessions 31–36): its ? in the bar, its words just above it, in the flow (never over a button).
+  const help = useWhatIsThis('controls');
   return (
-    <section
-      aria-label="Show controls"
-      className="flex shrink-0 items-center gap-2 overflow-x-auto border-t border-line bg-panel px-3 py-2"
-      data-testid="layer-bar"
-    >
-      {/* Put it back takes Clear all's place while it is offered: right after Clear all, with nothing left to clear. */}
-      {canPutBack ? (
-        <Button
-          variant="warning"
-          size="lg"
-          instant
-          icon={RotateCcw}
-          data-testid="put-back"
-          onClick={() => {
-            if (!practiceKey('putBack')) void dispatch({ type: 'putBack' });
-          }}
-        >
-          Put it back
-        </Button>
-      ) : (
-        // A strong secondary (Session 26g): in a show the one primary is Next, under LIVE.
-        <Button
-          variant="strong"
-          size="lg"
-          instant
-          icon={Eraser}
-          kbd={shortcutText('clearAll', platform)}
-          disabled={!anything}
-          onClick={() => {
-            run('clearAll');
-          }}
-        >
-          Clear all
-        </Button>
-      )}
-      <div role="group" aria-label="Clear one layer" className="flex items-center gap-1.5">
-        {clears.map((c) => {
-          const on = layers ? !isLayerEmpty(layers, c.layer) : false;
-          const IconShape = c.icon;
-          return (
-            <Tooltip
-              key={c.layer}
-              content={`Clear ${c.label.toLowerCase()}`}
-              kbd={shortcutText(c.action, platform)}
-              describes={false}
-            >
-              <button
-                type="button"
-                disabled={!on}
-                data-lit={on ? 'true' : undefined}
-                data-show-control
-                onClick={() => {
-                  run(c.action);
-                }}
-                aria-label={`Clear ${c.label.toLowerCase()}${on ? ' (on screen)' : ''}`}
-                className={cx(
-                  'relative inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium',
-                  on
-                    ? 'border-live bg-panel-2 text-fg hover:bg-panel-3'
-                    : 'cursor-not-allowed border-line bg-transparent text-faint',
-                )}
+    <>
+      {help.card && <div className="shrink-0 border-t border-line pt-2">{help.card}</div>}
+      <section
+        aria-label="Show controls"
+        className="flex shrink-0 items-center gap-2 overflow-x-auto border-t border-line bg-panel px-3 py-2"
+        data-testid="layer-bar"
+      >
+        {/* Put it back takes Clear all's place while it is offered: right after Clear all, with nothing left to clear. */}
+        {canPutBack ? (
+          <Button
+            variant="warning"
+            size="lg"
+            instant
+            icon={RotateCcw}
+            data-testid="put-back"
+            onClick={() => {
+              if (!practiceKey('putBack')) void dispatch({ type: 'putBack' });
+            }}
+          >
+            Put it back
+          </Button>
+        ) : (
+          // A strong secondary (Session 26g): in a show the one primary is Next, under LIVE.
+          <Button
+            variant="strong"
+            size="lg"
+            instant
+            icon={Eraser}
+            kbd={shortcutText('clearAll', platform)}
+            disabled={!anything}
+            onClick={() => {
+              run('clearAll');
+            }}
+          >
+            Clear all
+          </Button>
+        )}
+        <div role="group" aria-label="Clear one layer" className="flex items-center gap-1.5">
+          {clears.map((c) => {
+            const on = layers ? !isLayerEmpty(layers, c.layer) : false;
+            const IconShape = c.icon;
+            return (
+              <Tooltip
+                key={c.layer}
+                content={`Clear ${c.label.toLowerCase()}`}
+                kbd={shortcutText(c.action, platform)}
+                describes={false}
               >
-                <IconShape size={16} aria-hidden="true" />
-                {c.label}
-                <span className="hidden min-[1440px]:contents">
-                  <Kbd>{shortcutText(c.action, platform)}</Kbd>
-                </span>
-                {on && (
-                  <span aria-hidden="true" className="absolute top-1 right-1 h-2 w-2 rounded-full bg-live" />
-                )}
-              </button>
-            </Tooltip>
-          );
-        })}
-      </div>
-      <span className="flex-1" />
-      <Button
-        variant={logo ? 'live' : 'secondary'}
-        size="lg"
-        instant
-        icon={Stamp}
-        kbd={shortcutText('toggleLogo', platform)}
-        onClick={() => {
-          run('toggleLogo');
-        }}
-        data-testid="logo-button"
-      >
-        {logo ? 'Logo is on' : 'Logo'}
-      </Button>
-      <Button
-        variant={blackout ? 'live' : 'secondary'}
-        size="lg"
-        instant
-        icon={BlackOut}
-        kbd={shortcutText('toggleBlackout', platform)}
-        onClick={() => {
-          run('toggleBlackout');
-        }}
-        data-testid="blackout-button"
-      >
-        {blackout ? 'Black-out is on' : 'Black-out'}
-      </Button>
-    </section>
+                <button
+                  type="button"
+                  disabled={!on}
+                  data-lit={on ? 'true' : undefined}
+                  data-show-control
+                  onClick={() => {
+                    run(c.action);
+                  }}
+                  aria-label={`Clear ${c.label.toLowerCase()}${on ? ' (on screen)' : ''}`}
+                  className={cx(
+                    'relative inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium',
+                    on
+                      ? 'border-live bg-panel-2 text-fg hover:bg-panel-3'
+                      : 'cursor-not-allowed border-line bg-transparent text-faint',
+                  )}
+                >
+                  <IconShape size={16} aria-hidden="true" />
+                  {c.label}
+                  <span className="hidden min-[1440px]:contents">
+                    <Kbd>{shortcutText(c.action, platform)}</Kbd>
+                  </span>
+                  {on && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute top-1 right-1 h-2 w-2 rounded-full bg-live"
+                    />
+                  )}
+                </button>
+              </Tooltip>
+            );
+          })}
+        </div>
+        <span className="flex-1" />
+        {help.button}
+        <Button
+          variant={logo ? 'live' : 'secondary'}
+          size="lg"
+          instant
+          icon={Stamp}
+          kbd={shortcutText('toggleLogo', platform)}
+          onClick={() => {
+            run('toggleLogo');
+          }}
+          data-testid="logo-button"
+        >
+          {logo ? 'Logo is on' : 'Logo'}
+        </Button>
+        <Button
+          variant={blackout ? 'live' : 'secondary'}
+          size="lg"
+          instant
+          icon={BlackOut}
+          kbd={shortcutText('toggleBlackout', platform)}
+          onClick={() => {
+            run('toggleBlackout');
+          }}
+          data-testid="blackout-button"
+        >
+          {blackout ? 'Black-out is on' : 'Black-out'}
+        </Button>
+      </section>
+    </>
   );
 }

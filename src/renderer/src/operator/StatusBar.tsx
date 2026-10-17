@@ -1,3 +1,4 @@
+import { useWhatIsThis } from '../help/WhatIsThis';
 import { useEffect } from 'react';
 import { festivalsLine, samvatLine } from '../../../shared/calendar';
 import { useEngine } from '../engine/engine-store';
@@ -285,28 +286,34 @@ export function StatusBar({
   /** The Calendar dialog (Pro Mode). */
   onOpenCalendar?: (() => void) | null;
 }) {
+  // What is this? (Sessions 31–36): its ? at the end of the bar, its words just above it (Pro Mode only).
+  const help = useWhatIsThis('statusbar');
   return (
-    <footer
-      className="flex h-7 shrink-0 items-center gap-3 border-t border-line bg-ink px-2 text-xs text-muted"
-      aria-label="Status"
-    >
-      {/* The screens dashboard opens from here in both modes (Simple Mode only looks). */}
-      <ScreensSummary onOpen={openDashboard} />
-      <NodeWarnings />
-      <BackupWarning />
-      <UpdateStatus />
-      <LinkStatus />
-      <SoundStatus onOpen={onOpenScreens} />
-      <TodayStatus onOpen={onOpenCalendar} />
-      <div aria-live="polite" className="flex min-w-0 flex-1 items-center gap-3">
-        <ImportStatus />
-        <SaveStatus platform={info?.platform ?? 'darwin'} />
-        <TaskStatus />
-      </div>
-      <span data-testid="app-info" className="shrink-0 text-faint">
-        {info ? describeAppInfo(info) : ''}
-      </span>
-    </footer>
+    <>
+      {help.card && <div className="shrink-0 border-t border-line pt-2">{help.card}</div>}
+      <footer
+        className="flex h-7 shrink-0 items-center gap-3 border-t border-line bg-ink px-2 text-xs text-muted"
+        aria-label="Status"
+      >
+        {/* The screens dashboard opens from here in both modes (Simple Mode only looks). */}
+        <ScreensSummary onOpen={openDashboard} />
+        <NodeWarnings />
+        <BackupWarning />
+        <UpdateStatus />
+        <LinkStatus />
+        <SoundStatus onOpen={onOpenScreens} />
+        <TodayStatus onOpen={onOpenCalendar} />
+        <div aria-live="polite" className="flex min-w-0 flex-1 items-center gap-3">
+          <ImportStatus />
+          <SaveStatus platform={info?.platform ?? 'darwin'} />
+          <TaskStatus />
+        </div>
+        {help.button}
+        <span data-testid="app-info" className="shrink-0 text-faint">
+          {info ? describeAppInfo(info) : ''}
+        </span>
+      </footer>
+    </>
   );
 }
 
