@@ -75,6 +75,17 @@ extraResources:
       - screenshots/updates-offer.png
       - screenshots/video-timeline.png
       - screenshots/what-is-this.png
+# Electron's fuses (Sessions 31–36, REL-7): a packaged Drashti never runs as Node (ELECTRON_RUN_AS_NODE),
+# never reads NODE_OPTIONS and never takes --inspect; its pages are file://, so file:// keeps its privileges.
+# Asar integrity is not now. electron-builder flips them right before it signs (ad hoc on a Mac without a
+# certificate), so the signature covers them; and a Mac's ad hoc signature is made again after flipping,
+# for a build that is not signed after. scripts/check-installers.mjs reads them from each installed app.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  grantFileProtocolExtraPrivileges: true
+  resetAdHocDarwinSignature: true
 asarUnpack:
   - '**/*.node'
 # better-sqlite3's Node-API prebuilds load in Electron as they are.
