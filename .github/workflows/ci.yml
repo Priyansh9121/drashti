@@ -85,6 +85,10 @@ jobs:
       - run: pnpm lint
       # The workflows' own rules (Session 30): actions pinned by SHA, no kept credentials, no expression in a script.
       - run: node scripts/check-workflows.mjs
+      # Hidden characters (Sessions 31–36, I18N-3): direction overrides, zero-width characters, fillers; a planted
+      # one is found first, then every file git tracks is read.
+      - run: node scripts/unicode-check.mjs --self-check
+      - run: node scripts/unicode-check.mjs
       - name: Unit tests (inside Electron's Node)
         run: pnpm test
 
