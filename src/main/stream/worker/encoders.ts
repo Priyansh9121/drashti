@@ -97,9 +97,27 @@ export function videoArgs(encoder: string, preset: StreamPreset): string[] {
   ];
 }
 
-/** AAC at the preset's rate, 48 kHz stereo. */
+/**
+ * A limiter, then AAC at the preset's rate, 48 kHz stereo. The limiter (FFmpeg's alimiter, Session 31,
+ * MED-3) keeps every stream and recording under -1 dBFS, so a loud desk, or Drashti's own sound mixed in
+ * with it, never clips on YouTube; its own level setting is off, so quieter sound passes as it is. It
+ * acts on what is encoded only: the Stream panel's meter still shows the mix as it comes.
+ */
+export const LIMITER = 'alimiter=limit=-1dB:level=false';
+
 export function audioArgs(preset: StreamPreset): string[] {
-  return ['-c:a', 'aac', '-b:a', `${preset.audioKbps}k`, '-ar', String(preset.sampleRate), '-ac', '2'];
+  return [
+    '-af',
+    LIMITER,
+    '-c:a',
+    'aac',
+    '-b:a',
+    `${preset.audioKbps}k`,
+    '-ar',
+    String(preset.sampleRate),
+    '-ac',
+    '2',
+  ];
 }
 
 /** Whether this encoder works here: a second of a test picture, encoded and thrown away. */

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { STREAM_PRESETS } from '../../../shared/stream';
-import { videoArgs } from './encoders';
+import { audioArgs, videoArgs } from './encoders';
 
 /*
  * The encoder's keyframes, with the real FFmpeg where it has been fetched (Session 27): one every 2 s and no
@@ -14,6 +14,18 @@ import { videoArgs } from './encoders';
 
 const exe = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
 const ffmpeg = join(process.cwd(), 'vendor', 'ffmpeg', `${process.platform}-${process.arch}`, exe);
+
+describe('the sound the encoder makes (Session 31, MED-3)', () => {
+  it('goes through a limiter at -1 dBFS, with its own level setting off, before AAC: for every stream and recording', () => {
+    for (const preset of Object.values(STREAM_PRESETS)) {
+      const args = audioArgs(preset);
+      const filter = args[args.indexOf('-af') + 1] ?? '';
+      expect(args.indexOf('-af')).toBeGreaterThanOrEqual(0);
+      expect(filter).toBe('alimiter=limit=-1dB:level=false');
+      expect(args.slice(args.indexOf('-c:a'), args.indexOf('-c:a') + 2)).toEqual(['-c:a', 'aac']);
+    }
+  });
+});
 
 describe.skipIf(!existsSync(ffmpeg))("the software encoder's keyframes", () => {
   it('come every 2 s and only then, even across a hard cut late in the 2 s', () => {
