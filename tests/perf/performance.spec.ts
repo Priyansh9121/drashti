@@ -7,6 +7,7 @@ import { constants, getPriority, setPriority, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { QUIET } from '../e2e/helpers';
 import { freePort, testFfmpeg } from '../e2e/stream-helpers';
+import { crashAndRecover } from '../e2e/recovery-figure';
 
 /*
  * The performance check, started by hand (pnpm test:perf, or the
@@ -191,4 +192,13 @@ test('slide changes keep reaching the screen within a frame while streaming and 
   } finally {
     for (const l of listeners) l.kill('SIGKILL');
   }
+});
+
+test('after a crash the screens come back: the recovery figure (Sessions 31–36, PERF-1)', async () => {
+  test.setTimeout(180_000);
+  // Kill, start again, screens back, read from the start's phase lines: the same as the end-to-end test's.
+  const figure = await crashAndRecover();
+  console.log(figure.line);
+  test.info().annotations.push({ type: 'recovery', description: figure.line });
+  expect(figure.ms).toBeGreaterThan(0);
 });

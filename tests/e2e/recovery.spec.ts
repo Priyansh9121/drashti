@@ -15,8 +15,7 @@ import {
   savedLive,
   setUpScreen,
 } from './helpers';
-import { makeSlides } from './placeholder-slides';
-import { recoveryFigure } from './recovery-figure';
+import { crashAndRecover } from './recovery-figure';
 import { makeTestImage, makeTestVideo } from './test-media';
 
 /*
@@ -261,34 +260,7 @@ test('after a crash the first action lands on what recovery put back, never unde
 
 test('after a crash the screens come back, and how long that took is said: the recovery figure (Sessions 31–36, PERF-1)', async () => {
   test.setTimeout(180_000);
-  const first = await launchApp();
-  const win = await operatorPage(first.app);
-  const id = await makeSlides(win, 'Placeholder recovery figure', [{ words: 'Placeholder figure one' }], {
-    kind: 'cut',
-    durationMs: 0,
-  });
-  await setUpScreen(win);
-  await outputPage(first.app);
-  await win.evaluate(
-    (id) =>
-      (globalThis as PageGlobals).drashti.engine.dispatch({
-        type: 'goLive',
-        presentationId: id,
-        slideIndex: 0,
-      }),
-    id,
-  );
-  await savedLive(first.userData, (saved) => saved.slide?.slideIndex === 0);
-  await killApp(first.app);
-
-  // Started again: the show back on the screens, and the start's phase lines in the log say when.
-  const second = await relaunchApp(first.userData);
-  const output = await outputPage(second.app);
-  await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder figure one');
-  // The output says its first frame within its next report (every 2 s).
-  await expect.poll(() => recoveryFigure(first.userData)?.ms ?? null, { timeout: 15_000 }).not.toBeNull();
-  const figure = recoveryFigure(first.userData);
-  console.log(figure?.line);
-  expect(figure?.ms).toBeGreaterThan(0);
-  await second.app.close();
+  const figure = await crashAndRecover();
+  console.log(figure.line);
+  expect(figure.ms).toBeGreaterThan(0);
 });

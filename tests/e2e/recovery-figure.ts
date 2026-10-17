@@ -1,5 +1,9 @@
+import { expect } from '@playwright/test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { PageGlobals } from './helpers';
+import { killApp, launchApp, operatorPage, outputPage, relaunchApp, savedLive, setUpScreen } from './helpers';
+import { makeSlides } from './placeholder-slides';
 
 /*
  * The recovery figure (Sessions 31–36, PERF-1): after a crash, how long from Drashti starting again to its
@@ -38,4 +42,40 @@ export function recoveryFigure(userData: string): { ms: number; line: string } |
     ms: back.ms,
     line: `recovery: ${s(back.ms)} from the start to the screens back (${phases.map((p) => `${p.what} ${s(p.ms)}`).join('; ')})`,
   };
+}
+
+/** A slide live on one output, Drashti stopped dead, started again: the figure, once the screen is back. */
+export async function crashAndRecover(): Promise<{ ms: number; line: string }> {
+  const first = await launchApp();
+  const win = await operatorPage(first.app);
+  const id = await makeSlides(win, 'Placeholder recovery figure', [{ words: 'Placeholder figure one' }], {
+    kind: 'cut',
+    durationMs: 0,
+  });
+  await setUpScreen(win);
+  await outputPage(first.app);
+  await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.engine.dispatch({
+        type: 'goLive',
+        presentationId: id,
+        slideIndex: 0,
+      }),
+    id,
+  );
+  await savedLive(first.userData, (saved) => saved.slide?.slideIndex === 0);
+  await killApp(first.app);
+  // Started again: the show back on the screen, and the start's phase lines in the log say when.
+  const second = await relaunchApp(first.userData);
+  try {
+    const output = await outputPage(second.app);
+    await expect(output.locator('[data-layer="slide"]')).toContainText('Placeholder figure one');
+    // The output says its first frame within its next report (every 2 s).
+    await expect.poll(() => recoveryFigure(first.userData)?.ms ?? null, { timeout: 15_000 }).not.toBeNull();
+    const figure = recoveryFigure(first.userData);
+    if (!figure) throw new Error('no recovery figure');
+    return figure;
+  } finally {
+    await second.app.close();
+  }
 }
