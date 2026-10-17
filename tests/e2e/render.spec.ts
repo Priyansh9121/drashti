@@ -6,8 +6,9 @@ import { join } from 'node:path';
 import { near, pixels } from './pixels';
 import { TEST_LINES } from '../../src/main/db/seed';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
+import { device, networkOn, NETWORK_ENV } from './devices';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage } from './helpers';
+import { importAndGetIds, launchApp, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
 
 async function outputPage(app: ElectronApplication): Promise<Page> {
   const existing = app.windows().find((w) => w.url().includes('output.html'));
@@ -273,6 +274,100 @@ test('Gujarati set italic and letter-spaced in a file is drawn upright with its 
   }, id);
   expect(stored.length).toBeGreaterThan(0);
   for (const run of stored) expect(run).toEqual({ italic: true, spacing: 15 });
+  await app.close();
+});
+
+/** The fonts Chromium drew a node's words with, and how many glyphs each (CSS.getPlatformFontsForNode). */
+async function fontsDrawing(page: Page, selector: string): Promise<{ family: string; glyphs: number }[]> {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('DOM.enable');
+  await cdp.send('CSS.enable');
+  const { root } = await cdp.send('DOM.getDocument', { depth: -1 });
+  const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector });
+  const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId });
+  await cdp.detach();
+  return fonts.map((f) => ({ family: f.familyName, glyphs: f.glyphCount }));
+}
+
+/** Whether Noto Sans Devanagari drew some of a node's words (any of its weights). */
+const devanagariDrew = (fonts: { family: string; glyphs: number }[]) =>
+  fonts.some((f) => /^Noto Sans Devanagari( [A-Za-z]+)?$/u.test(f.family) && f.glyphs > 0);
+
+test('Hindi is drawn by Noto Sans Devanagari in a message, the ticker, the stage’s message and inside a Gujarati line (Sessions 31–36, I18N-7)', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp({
+    ...NETWORK_ENV,
+    DRASHTI_WINDOWED_OUTPUTS: '1',
+    DRASHTI_EXTRA_DISPLAYS: '1',
+  });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  // A Gujarati line with a Hindi word in it: one run, in Gujarati.
+  const file = join(mkdtempSync(join(tmpdir(), 'drashti-fonts-')), 'Placeholder mixed line.txt');
+  writeFileSync(file, '[Verse]\nનમૂનાની પંક્તિ नमूना\n');
+  const [id = ''] = await importAndGetIds(win, [file]);
+  await setUpScreen(win, 'Main Hall', 0);
+  await setUpScreen(win, 'Stage', 1);
+  await expect.poll(() => outputPages(app).length).toBe(2);
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const group = (await d.screens.get()).groups.find((g) => g.name === 'Stage');
+    const set = await d.screens.setGroupRole(group?.id ?? '', 'stage');
+    if (!set.ok) throw new Error(set.message);
+  });
+  const roleOf = (p: Page) => p.getByTestId('output-root').getAttribute('data-role');
+  await expect
+    .poll(async () => (await Promise.all(outputPages(app).map(roleOf))).sort())
+    .toEqual(['audience', 'stage']);
+  const [first, second] = outputPages(app);
+  if (!first || !second) throw new Error('two screens expected');
+  const [hall, stage] = (await roleOf(first)) === 'audience' ? [first, second] : [second, first];
+  for (const page of [hall, stage])
+    await expect(page.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
+  const dispatch = (command: unknown) =>
+    win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c as never), command);
+  // Inside the Gujarati line.
+  await dispatch({ type: 'goLive', presentationId: id, slideIndex: 0 });
+  const line = '[data-layer="slide"] [data-element]';
+  await expect(hall.locator(line)).toContainText('नमूना');
+  await expect.poll(async () => devanagariDrew(await fontsDrawing(hall, line))).toBe(true);
+  // A message, and the stage's message.
+  await dispatch({ type: 'showMessage', message: { id: 'placeholder-hindi', text: 'नमूना संदेश' } });
+  const message = '[data-message="placeholder-hindi"]';
+  await expect(hall.locator(message)).toHaveText('नमूना संदेश');
+  await expect.poll(async () => devanagariDrew(await fontsDrawing(hall, message))).toBe(true);
+  await dispatch({ type: 'setStageMessage', text: 'नमूना संदेश' });
+  await expect(stage.getByTestId('stage-message')).toHaveText('नमूना संदेश');
+  await expect
+    .poll(async () => devanagariDrew(await fontsDrawing(stage, '[data-testid="stage-message"]')))
+    .toBe(true);
+  // The ticker, from a phone's announcement.
+  const { base } = await networkOn(win);
+  const key = await win.evaluate(async () => {
+    const r = await (globalThis as PageGlobals).drashti.network.makePoster();
+    if (!r.ok || !r.status.poster) throw new Error(r.ok ? 'no poster link' : r.message);
+    return r.status.poster.url.split('#k=')[1] ?? '';
+  });
+  const phone = await device('chromium');
+  try {
+    await phone.page.goto(`${base}/announce#k=${key}`);
+    await phone.page.getByTestId('announce-text').fill('नमूना घोषणा');
+    await phone.page.getByTestId('announce-from').fill('Placeholder name');
+    await phone.page.getByTestId('announce-send').click();
+    await expect(phone.page.getByRole('status')).toContainText('waiting for the operator');
+  } finally {
+    await phone.close();
+  }
+  const approved = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const [waiting] = (await d.announcements.list()).waiting;
+    return d.announcements.approve({ id: waiting?.id ?? '', as: 'ticker' });
+  });
+  expect(approved.ok).toBe(true);
+  await expect(hall.getByTestId('ticker')).toContainText('नमूना घोषणा');
+  await expect
+    .poll(async () => devanagariDrew(await fontsDrawing(hall, '[data-testid="ticker-words"]')))
+    .toBe(true);
   await app.close();
 });
 

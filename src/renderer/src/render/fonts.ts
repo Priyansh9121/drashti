@@ -7,14 +7,18 @@ const LATIN = "'Noto Sans'";
 const GUJARATI = "'Noto Sans Gujarati'";
 const DEVANAGARI = "'Noto Sans Devanagari'";
 
-/** Font stacks per language: the bundled Noto font first, then the others as fallbacks. */
+/**
+ * Font stacks per language: the bundled Noto font first, then the others as fallbacks. Every stack has both
+ * Indian scripts (Sessions 31–36, I18N-7), after Latin so Latin letters are drawn as before: a Hindi word in
+ * a Gujarati line is drawn by Noto Sans Devanagari, and a Gujarati one in a Hindi line by Noto Sans Gujarati.
+ */
 export const LANG_FONT_STACK: Record<Lang | 'default', string> = {
   en: `${LATIN}, ${GUJARATI}, ${DEVANAGARI}, sans-serif`,
   translit: `${LATIN}, sans-serif`,
-  gu: `${GUJARATI}, ${LATIN}, sans-serif`,
-  hi: `${DEVANAGARI}, ${LATIN}, sans-serif`,
-  sa: `${DEVANAGARI}, ${LATIN}, sans-serif`,
-  'sa-gu': `${GUJARATI}, ${LATIN}, sans-serif`,
+  gu: `${GUJARATI}, ${LATIN}, ${DEVANAGARI}, sans-serif`,
+  hi: `${DEVANAGARI}, ${LATIN}, ${GUJARATI}, sans-serif`,
+  sa: `${DEVANAGARI}, ${LATIN}, ${GUJARATI}, sans-serif`,
+  'sa-gu': `${GUJARATI}, ${LATIN}, ${DEVANAGARI}, sans-serif`,
   default: `${LATIN}, ${GUJARATI}, ${DEVANAGARI}, sans-serif`,
 };
 
