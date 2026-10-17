@@ -153,10 +153,12 @@ import { isRepeatId } from '../shared/repeat';
 import {
   applyPendingRestore,
   backupLibrary,
+  LIBRARY_FILE,
   requestRestore,
   rollBackRestore,
   sameDisk,
 } from './library/backup';
+import { keepAccessAfterRestore } from './library/restore-access';
 import type { BackupUi } from './library/backup-ui';
 import { backUp, handBackupRunning, restore } from './library/backup-ui';
 import { ScheduledBackups } from './backup/scheduled-backups';
@@ -891,7 +893,13 @@ function start(): void {
     : restored.message;
   for (const note of startNotes) startNotice = startNotice ? `${startNotice}\n\n${note}` : note;
   let opened = openLibrary();
+  // The library from before a restore, kept aside: who may connect is taken from it (once the restored
+  // library has opened as it should).
+  let keptAccess = restored.restored
+    ? join(app.getPath('userData'), 'Backups', restored.keptIn, LIBRARY_FILE)
+    : null;
   if ('error' in opened && restored.restored) {
+    keptAccess = null;
     // The restored library will not open: put back the one from before the restore, and say so.
     log.error('The restored library cannot be opened; putting back the library from before the restore');
     const back = rollBackRestore(app.getPath('userData'), restored.keptIn, { now: new Date() });
@@ -908,6 +916,20 @@ function start(): void {
     cannotOpenLibrary(opened.error);
     app.quit();
     return;
+  }
+  if (keptAccess) {
+    // Today's phones, poster link and node tokens, not the backup's (Sessions 31–36, SEC-6).
+    const access = keepAccessAfterRestore(opened.db, keptAccess);
+    if (access.ok)
+      log.info(
+        `Restore: kept today's phones (${String(access.phones)}) and nodes (${String(access.nodes)}); ${String(access.refused)} removed since the backup stay refused`,
+      );
+    else {
+      log.warn(
+        `Restore: who was paired could not be read; ${String(access.refused)} phones and nodes refused`,
+      );
+      startNotice = `${startNotice ?? ''}\n\nWho was paired before the restore could not be read, so every phone and the node must be paired again (Phones in the header; Screens, then Pair a node).`;
+    }
   }
   db = opened.db;
   const libraryDb: Db = db;

@@ -16,6 +16,8 @@ import {
   outputReady,
 } from './helpers';
 import { makeTestImage } from './test-media';
+import { apiCall, networkOn, pairToken } from './devices';
+import { launchMain, launchNode, nodeCode, pairNode } from './nodes';
 
 /*
  * File > Back Up Library… and Restore Library…: after a restore the library
@@ -193,4 +195,85 @@ test('a restored library that will not open is put back by itself, and the opera
   expect(kept[0]).toMatch(/^Before restore /u);
   expect(kept[1]).toMatch(/^Failed restore /u);
   await second.app.close();
+});
+
+test('a phone and a node removed after a backup stay refused after the restore, and a phone paired since needs no pairing again', async () => {
+  test.setTimeout(240_000);
+  // Sessions 31–36, SEC-6. Made-up names only; the tokens are the test's own, never printed.
+  const noRelaunch = { DRASHTI_TEST_NO_RELAUNCH: '1' };
+  const main = await launchMain(noRelaunch);
+  const node = await launchNode();
+  let mainAgain: Awaited<ReturnType<typeof launchMain>> | null = null;
+  let nodeAgain: Awaited<ReturnType<typeof launchNode>> | null = null;
+  try {
+    const { port } = await networkOn(main.win);
+    const kept = await pairToken(main.win, port, 'remote', 'Placeholder kept phone');
+    const removed = await pairToken(main.win, port, 'remote', 'Placeholder removed phone');
+    const nodeId = await pairNode(main, node);
+    // The node goes home for the day, its token with it.
+    await node.app.close();
+
+    // Back up, the library only.
+    const backups = mkdtempSync(join(tmpdir(), 'drashti-backups-access-'));
+    await main.app.evaluate(({ dialog }, into) => {
+      dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [into] });
+      dialog.showMessageBox = () => Promise.resolve({ response: 0, checkboxChecked: false });
+    }, backups);
+    await chooseMenuItem(main.app, 'backup-library');
+    await expect(main.win.getByRole('alert').filter({ hasText: 'Library backed up to' })).toBeVisible({
+      timeout: 30_000,
+    });
+    const [backup = ''] = readdirSync(backups);
+
+    // Since the backup: one phone removed, another paired, and the node removed.
+    const since = await pairToken(main.win, port, 'remote', 'Placeholder phone paired since');
+    await main.win.evaluate(async (nodeId) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const phone = (await d.network.status()).devices.find((x) => x.name === 'Placeholder removed phone');
+      const revoked = await d.network.revokeDevice(phone?.id ?? '');
+      if (!revoked.ok) throw new Error(revoked.message);
+      const gone = await d.nodes.remove(nodeId);
+      if (!gone.ok) throw new Error(gone.message);
+    }, nodeId);
+    expect((await apiCall(port, '/api/v1/me', { token: removed })).status).toBe(401);
+
+    // Restore the backup.
+    await main.app.evaluate(
+      ({ dialog }, from) => {
+        dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [from] });
+        dialog.showMessageBox = () => Promise.resolve({ response: 0, checkboxChecked: false });
+        dialog.showMessageBoxSync = () => 0;
+      },
+      join(backups, backup),
+    );
+    const closed = main.app.waitForEvent('close', { timeout: 30_000 });
+    await chooseMenuItem(main.app, 'restore-library');
+    await closed;
+    mainAgain = await launchMain(noRelaunch, { port: main.port, userData: main.userData });
+    await expect(
+      mainAgain.win.getByRole('alert').filter({ hasText: `Library restored from “${backup}”` }),
+    ).toBeVisible();
+    const again = await networkOn(mainAgain.win);
+
+    // The phone removed after the backup is still refused; the one kept and the one paired since need nothing.
+    expect((await apiCall(again.port, '/api/v1/me', { token: removed })).status).toBe(401);
+    expect((await apiCall(again.port, '/api/v1/me', { token: kept })).status).toBe(200);
+    expect((await apiCall(again.port, '/api/v1/me', { token: since })).status).toBe(200);
+    // The node removed after the backup comes back to find Main does not know it. With no node paired, Main's
+    // link for nodes is closed; an admin pairing another opens it, and the removed node is refused then.
+    nodeAgain = await launchNode({}, node.userData);
+    await nodeCode(mainAgain.win);
+    await expect(nodeAgain.page.getByTestId('node-pair-form')).toBeVisible({ timeout: 30_000 });
+    await expect(
+      nodeAgain.page.getByText('Main does not know this node any more. Pair it again.'),
+    ).toBeVisible();
+    expect(
+      (await mainAgain.win.evaluate(() => (globalThis as PageGlobals).drashti.nodes.status())).nodes,
+    ).toEqual([]);
+  } finally {
+    await nodeAgain?.app.close().catch(() => undefined);
+    await mainAgain?.app.close().catch(() => undefined);
+    await node.app.close().catch(() => undefined);
+    await main.app.close().catch(() => undefined);
+  }
 });

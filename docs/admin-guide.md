@@ -136,6 +136,9 @@ Nothing else changes: the library, the playlists and the settings are as they we
 2. Make a folder there named `Damaged library`, and move into it `drashti.sqlite` and every file whose name starts with `drashti.sqlite-`. Keep them: whoever looks after Drashti may want them.
 3. Start Drashti: it opens with an empty library.
 4. **File**, then **Restore Library…**, and choose the last backup.
+5. Pair the phones and tablets and the node again: a restore keeps who was paired in the library it replaces, and the empty one knew nobody.
+
+**Who may connect stays as it was before the restore:** the phones and tablets paired then, the poster link and the node. A phone or a node removed after the backup stays removed, and nothing paired since needs pairing again. If the library from before cannot be read, every phone and the node are refused, Drashti says so, and they pair again.
 
 **What a backup does not hold:** the PINs, the stream keys (in the computer's own secure storage), the events out addresses and their secrets (the same), Main's certificate for the node, and the pictures' sharpened copies (Drashti makes them again after a restore, a moment each). After restoring onto a new computer: set the PINs and the stream keys again, add the events out addresses again (each gets a new secret: give it to the receiver), pair the node again, and in **Screens** choose each screen's display again (the backup remembers the old computer's displays).
 
