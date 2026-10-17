@@ -16,6 +16,7 @@ import {
   setUpScreen,
   windowShowing,
 } from './helpers';
+import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 
 /*
  * What the audience sees, picture for picture against another build (Session 26g). The operator's
@@ -35,6 +36,30 @@ import {
 
 const OUT = process.env['DRASHTI_PIXELS_OUT'];
 const BASE = process.env['DRASHTI_PIXELS_BASE'];
+
+/**
+ * What the hall's screens show differently since alpha.5, as Sessions 31–36 decided, each on a frame of its
+ * own: these frames may differ from the earlier build's, and each must on one screen at least, so the change
+ * is seen, unless it says why its pixels may match. Every other frame must be the same.
+ */
+const CHANGED: Readonly<Record<string, { what: string; mayMatch?: string }>> = {
+  'upright-indic': {
+    what: 'Gujarati stored in italic and letter-spaced is drawn upright, with normal spacing',
+  },
+  'hindi-devanagari': {
+    what: 'Hindi inside a Gujarati line and in a message is drawn by Noto Sans Devanagari',
+    // Measured 18 October 2026 against 9df47ac: 0 pixels changed on every screen.
+    mayMatch:
+      "the earlier build drew it with Noto Sans's own Devanagari, the same letters; render.spec.ts asks Chromium which font draws it",
+  },
+  'stage-long-slide': {
+    what: 'the Standard stage makes a slide that would not fit smaller, until its last line shows',
+  },
+  'stage-clock': { what: "the stage clock follows Main's time zone" },
+};
+
+/** The moment the stage clock's frame is held at (any fixed moment: it is the same in both builds). */
+const HELD_AT = Date.UTC(2026, 9, 18, 6, 30);
 
 const dispatch = (win: Page, command: unknown) =>
   win.evaluate((c) => (globalThis as PageGlobals).drashti.engine.dispatch(c as never), command);
@@ -111,6 +136,10 @@ test('the audience screens show exactly what the earlier build showed, frame by 
     DRASHTI_WINDOWED_OUTPUTS: '1',
     DRASHTI_EXTRA_DISPLAYS: '2',
     DRASHTI_TEST_FAKE_DEVICES: '1',
+    // Main in another time zone and locale than the computer's (an earlier build has no such switch), and the
+    // screens' clock held for the stage clock's frame.
+    DRASHTI_TEST_CLOCK_STYLE: 'en-GB Pacific/Chatham',
+    DRASHTI_TEST_CLOCK_HOLD: '1',
     ...NETWORK_ENV,
   });
   const frames: { name: string; png: Buffer }[] = [];
@@ -169,10 +198,13 @@ test('the audience screens show exactly what the earlier build showed, frame by 
       await pairByQr(tablet.page, base, code, '/stage');
       await expect(tablet.page.getByTestId('stage-view')).toBeVisible();
       const clocks = (p: Page) => [p.getByTestId('stage-clock'), p.getByTestId('stage-timer')];
-      const shoot = async (frame: string) => {
+      const shoot = async (frame: string, stageClock = false) => {
         await painted(win, [hall, stage]);
         keep(`hall-${frame}`, await settled(hall));
-        keep(`stage-${frame}`, await settled(stage, clocks(stage)));
+        keep(
+          `stage-${frame}`,
+          await settled(stage, stageClock ? [stage.getByTestId('stage-timer')] : clocks(stage)),
+        );
         keep(`stream-${frame}`, await settled(program));
         keep(`tablet-${frame}`, await settled(tablet.page, clocks(tablet.page)));
       };
@@ -240,6 +272,63 @@ test('the audience screens show exactly what the earlier build showed, frame by 
       });
       await shoot('shrink-to-fit');
       await dispatch(win, { type: 'hideProp', propId: 'placeholder-fit' });
+
+      // The slides for the hall's four changes (CHANGED), as a file brings them: placeholder words only.
+      const white: [number, number, number] = [255, 255, 255];
+      const slanted = cocoaRtf([
+        ['નમૂનાની પંક્તિ', 72, white],
+        ['Namūnānī paṅkti', 48, white],
+      ]).replace(/\\f0\\fs/gu, '\\f0\\i\\expnd60\\expndtw300\\fs');
+      const longLines = Array.from({ length: 24 }, (_, i): [string, number, [number, number, number]] => [
+        `નમૂના પંક્તિ ${String(i + 1)} નમૂના શબ્દો`,
+        80,
+        white,
+      ]);
+      const changesFile = join(dir, 'Placeholder changes.pro6');
+      writeFileSync(
+        changesFile,
+        pp6Presentation({
+          uuid: 'PIXELS-CHANGES',
+          groups: [
+            {
+              name: 'Verse',
+              uuid: 'PIXELS-CHANGES-G',
+              slides: [
+                { text: [{ rtf: slanted }] },
+                { text: [{ rtf: cocoaRtf(longLines) }] },
+                { text: [{ rtf: cocoaRtf([['નમૂનાની પંક્તિ नमूना', 80, white]]) }] },
+              ],
+            },
+          ],
+        }),
+      );
+      const [changes = ''] = await importAndGetIds(win, [changesFile]);
+      // The four changes the hall's screens show (CHANGED), each on its own frame, from a file as a mandir's
+      // come (its own spacing kept by both builds, so only the change shows). Gujarati set italic and
+      // letter-spaced, with its transliteration (I18N-2).
+      await dispatch(win, { type: 'goLive', presentationId: changes, slideIndex: 0 });
+      await shoot('upright-indic');
+      // Hindi inside a Gujarati line, and in a message (I18N-7).
+      await dispatch(win, { type: 'goLive', presentationId: changes, slideIndex: 2 });
+      await dispatch(win, {
+        type: 'showMessage',
+        message: { id: 'placeholder-hindi', text: 'नमूना संदेश · Placeholder message' },
+      });
+      await shoot('hindi-devanagari');
+      await dispatch(win, { type: 'hideMessage', messageId: 'placeholder-hindi' });
+      // A slide too long for the Standard stage: 24 lines (SLD-7).
+      await dispatch(win, { type: 'goLive', presentationId: changes, slideIndex: 1 });
+      await shoot('stage-long-slide');
+      // The stage clock, held at one moment and not masked on the stage screen (the tablet keeps its own),
+      // over nothing else.
+      await dispatch(win, { type: 'clearLayer', layer: 'slide' });
+      await app.evaluate((_electron, at) => {
+        (globalThis as { drashtiTestHoldClock?: (at: number | null) => number }).drashtiTestHoldClock?.(at);
+      }, HELD_AT);
+      await shoot('stage-clock', true);
+      await app.evaluate(() => {
+        (globalThis as { drashtiTestHoldClock?: (at: number | null) => number }).drashtiTestHoldClock?.(null);
+      });
       // The picture, as a playlist item.
       await win.evaluate(async (mediaId) => {
         const d = (globalThis as PageGlobals).drashti;
@@ -258,9 +347,13 @@ test('the audience screens show exactly what the earlier build showed, frame by 
       await tablet.close();
     }
 
-    // Against the earlier build's pictures, when given: the same size, and every pixel within 2.
+    // Against the earlier build's pictures, when given: the same size, and every pixel within 2; the four
+    // changes' frames are said, and each must differ on one screen at least.
     if (BASE) {
       const differ: string[] = [];
+      const intended: string[] = [];
+      const shown = new Set<string>();
+      const changeOf = (name: string) => Object.keys(CHANGED).find((key) => name.endsWith(`-${key}`));
       for (const { name, png } of frames) {
         let before: Buffer;
         try {
@@ -289,12 +382,23 @@ test('the audience screens show exactly what the earlier build showed, frame by 
           most = Math.max(most, d);
           if (d > 2) changed++;
         }
-        if (changed > 0) differ.push(`${name}: ${String(changed)} pixels changed (by up to ${String(most)})`);
+        if (changed === 0) continue;
+        const line = `${name}: ${String(changed)} pixels changed (by up to ${String(most)})`;
+        const change = changeOf(name);
+        if (change) {
+          intended.push(`${line}: ${CHANGED[change]?.what ?? ''}`);
+          shown.add(change);
+        } else differ.push(line);
       }
+      const matched = Object.entries(CHANGED)
+        .filter(([key, change]) => !shown.has(key) && change.mayMatch)
+        .map(([key, change]) => `${key}: no pixel changed on any screen (${change.mayMatch ?? ''})`);
+      const notShown = Object.keys(CHANGED).filter((key) => !shown.has(key) && !CHANGED[key]?.mayMatch);
       console.log(
-        `Audience pictures compared with the earlier build: ${String(frames.length)}, differing ${String(differ.length)}`,
+        `Audience pictures compared with the earlier build: ${String(frames.length)}, differing ${String(differ.length + intended.length)}, of which the intended changes ${String(intended.length)}:\n${[...intended, ...matched].join('\n')}`,
       );
       expect(differ).toEqual([]);
+      expect(notShown, 'each intended change shows on one screen at least').toEqual([]);
     } else {
       console.log(`Audience pictures kept: ${String(frames.length)} in ${out}`);
     }
