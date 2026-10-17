@@ -34,6 +34,37 @@ async function audioPage(app: ElectronApplication): Promise<Page> {
 }
 
 /**
+ * For a failure's message (Sessions 31–36, the loop flake on CI's Mac): from now, every 50 ms for 3 s, how
+ * far the file is from the clock, its rate, and whether it is seeking ("s") or paused ("p").
+ */
+const startTrace = (page: Page, selector: string, startedAt: number) =>
+  page.evaluate(
+    ({ selector, startedAt }) => {
+      const g = globalThis as { loopTrace?: string[] };
+      const trace: string[] = [];
+      g.loopTrace = trace;
+      const timer = setInterval(() => {
+        const v = document.querySelector<HTMLMediaElement>(selector);
+        if (!v || !Number.isFinite(v.duration)) {
+          trace.push('-');
+        } else {
+          const d = v.duration;
+          const off = v.currentTime - (((Date.now() - startedAt) / 1000) % d);
+          const wrapped = ((((off + d / 2) % d) + d) % d) - d / 2;
+          trace.push(
+            `${wrapped.toFixed(3)}/${v.playbackRate.toFixed(3)}${v.seeking ? 's' : ''}${v.paused ? 'p' : ''}`,
+          );
+        }
+        if (trace.length >= 60) clearInterval(timer);
+      }, 50);
+    },
+    { selector, startedAt },
+  );
+
+const readTrace = (page: Page) =>
+  page.evaluate(() => ((globalThis as { loopTrace?: string[] }).loopTrace ?? []).join(' '));
+
+/**
  * How far a playing file is from where the shared clock says it should be,
  * in seconds: the median of a few samples. Offsets from the same clock can be
  * compared between windows, whenever each was sampled.
@@ -193,8 +224,16 @@ test('outputs and the sound stay in step, a reloaded output rejoins, and only th
   expect(length).toBeGreaterThan(3);
   for (const round of [1, 2]) {
     // 1.5 s into the next loop: time for a small catch-up (a frame or two), not for a sound left behind.
+    // Each window's file is traced from half a second before it, for a failure's message.
     const into = ((Date.now() - startedAt) / 1000) % length;
-    await letTimePass(win, (length - into + 1.5) * 1000, 'to a moment after the clip next loops');
+    const traceFrom = Math.max(0, (length - into - 0.5) * 1000);
+    await letTimePass(win, traceFrom, 'to half a second before the clip next loops');
+    await Promise.all([
+      startTrace(a, picture, startedAt),
+      startTrace(b, picture, startedAt),
+      startTrace(audio, sound, startedAt),
+    ]);
+    await letTimePass(win, (length - into + 1.5) * 1000 - traceFrom, 'to a moment after the clip next loops');
     const looked = await Promise.all([
       offsetOf(a, picture, startedAt),
       offsetOf(b, picture, startedAt),
@@ -202,15 +241,18 @@ test('outputs and the sound stay in step, a reloaded output rejoins, and only th
     ]);
     const states = await describe([a, b, audio], [picture, picture, sound]);
     const [la, lb, ls] = looked;
-    expect(
+    const ok =
       la !== null &&
-        lb !== null &&
-        ls !== null &&
-        Math.abs(ls) < 2 * FRAME &&
-        Math.abs(la - lb) < 2 * FRAME &&
-        Math.abs(la) < 0.25 &&
-        Math.abs(lb) < 0.25,
-      `loop ${String(round)}: offsets ${looked.map((o) => (o === null ? 'none' : o.toFixed(3))).join(' ')}; ${states.join(' | ')}`,
+      lb !== null &&
+      ls !== null &&
+      Math.abs(ls) < 2 * FRAME &&
+      Math.abs(la - lb) < 2 * FRAME &&
+      Math.abs(la) < 0.25 &&
+      Math.abs(lb) < 0.25;
+    const traces = ok ? [] : await Promise.all([a, b, audio].map(readTrace));
+    expect(
+      ok,
+      `loop ${String(round)}: offsets ${looked.map((o) => (o === null ? 'none' : o.toFixed(3))).join(' ')}; ${states.join(' | ')}${ok ? '' : `\ntraces (offset/rate every 50 ms from 0.5 s before the loop):\n a: ${traces[0] ?? ''}\n b: ${traces[1] ?? ''}\n sound: ${traces[2] ?? ''}`}`,
     ).toBe(true);
   }
 
