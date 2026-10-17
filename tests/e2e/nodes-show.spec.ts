@@ -7,7 +7,17 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { OutputGlobals, PageGlobals } from './helpers';
-import { importAndGetIds, killApp, outputPage, setUpScreen, outputReady } from './helpers';
+import {
+  holdStill,
+  importAndGetIds,
+  killApp,
+  letTimePass,
+  nodeSaved,
+  outputPage,
+  outputReady,
+  savedLive,
+  setUpScreen,
+} from './helpers';
 import { launchMain, launchNode, pairNode, type MainRun, type NodeRun } from './nodes';
 import { makeTestVideo } from './test-media';
 
@@ -181,7 +191,24 @@ test('a node’s display in a group follows slides, a dissolve and a video in st
       { id, ms: DISSOLVE_MS },
     );
     await dispatch(main.win, { type: 'goLive', presentationId: id, slideIndex: 0 });
-    await main.win.waitForTimeout(DISSOLVE_MS + 300);
+    // Both done with that dissolve: one slide, the first, no longer fading.
+    for (const out of [mainOut, nodeOut])
+      await expect
+        .poll(async () => {
+          const layers = await out
+            .locator('[data-layer="slide"]')
+            .evaluateAll((els) =>
+              els.map((e) => ({ fading: e.getAttribute('data-fading') === 'true', text: e.textContent })),
+            );
+          const [only] = layers;
+          return (
+            layers.length === 1 &&
+            only !== undefined &&
+            !only.fading &&
+            only.text.includes('Placeholder node slide 1')
+          );
+        })
+        .toBe(true);
     await dispatch(main.win, { type: 'goLive', presentationId: id, slideIndex: 1 });
     const fadeStart = (p: Page) =>
       p.locator('[data-layer="slide"][data-fading="true"]').evaluateAll((els) => {
@@ -265,12 +292,12 @@ test('a node’s display in a group follows slides, a dissolve and a video in st
     await expect.poll(() => playing(mainOut), { timeout: 30_000 }).toBe(true);
     await expect.poll(() => playing(nodeOut), { timeout: 30_000 }).toBe(true);
     // Let both settle on the shared clock, then sample a few times.
-    await main.win.waitForTimeout(2500);
+    await letTimePass(main.win, 2500, 'both videos settle on the shared clock before they are compared');
     const videoGaps: number[] = [];
     for (let i = 0; i < 6; i++) {
       const g = await videoGap(mainOut, nodeOut, videoId);
       if (g !== null) videoGaps.push(Math.round(g * 1000));
-      await main.win.waitForTimeout(300);
+      await letTimePass(main.win, 300, 'the samples spread over the video’s playing');
     }
 
     // The numbers, for the session report (milliseconds; positive: the node later).
@@ -311,12 +338,18 @@ test('Main stops: the node holds its picture; Main comes back: the node catches 
         return raw;
       })
       .toBe(2);
-    await main.win.waitForTimeout(600);
+    await savedLive(main.userData, (saved) => saved.slide?.slideIndex === 2);
     await killApp(main.app);
     await expect(node.page.getByTestId('node-link-state')).toHaveText('Offline', { timeout: 20_000 });
     await expect(nodeOut.locator('[data-layer="slide"]')).toContainText('Placeholder node slide 3');
-    await nodeOut.waitForTimeout(1500);
-    await expect(nodeOut.locator('[data-layer="slide"]')).toContainText('Placeholder node slide 3');
+    await holdStill(
+      async () =>
+        ((await nodeOut.locator('[data-layer="slide"]').textContent()) ?? '').includes(
+          'Placeholder node slide 3',
+        ),
+      1500,
+      'the node keeps its picture while Main is away',
+    );
     // Main starts again (recovery puts the slide back): the node is back by itself, and follows the show.
     const again = await launchMain({}, { port: main.port, userData: main.userData });
     try {
@@ -348,7 +381,7 @@ test('a node that restarts while Main is away shows the last picture again', asy
     await dispatch(main.win, { type: 'goLive', presentationId: id, slideIndex: 5 });
     await expect(nodeOut.locator('[data-layer="slide"]')).toContainText('Placeholder node slide 6');
     // The node keeps the picture at most a second after it changes.
-    await nodeOut.waitForTimeout(1500);
+    await nodeSaved(node.userData, (state) => state.layers.slide?.slideIndex === 5);
   } finally {
     await main.app.close();
   }

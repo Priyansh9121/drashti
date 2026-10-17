@@ -7,7 +7,7 @@ import { REPEAT_REFUSES } from '../../src/shared/repeat';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, operatorPage, operatorReady } from './helpers';
+import { holdStill, importAndGetIds, launchApp, operatorPage, operatorReady } from './helpers';
 import { makeTestImage, makeTestVideo } from './test-media';
 
 /*
@@ -121,8 +121,11 @@ test('Repeat Slides goes round by itself; Esc and Stop leave its slide up; black
   const kept = await stepUp(win);
   expect(kept).not.toBeNull();
   await expect(win.getByTestId('live-repeating')).toHaveCount(0);
-  await win.waitForTimeout(4000);
-  expect(await stepUp(win)).toBe(kept);
+  await holdStill(
+    async () => (await stepUp(win)) === kept,
+    4000,
+    'stopped, the slide stays: nothing moves on',
+  );
   expect((await snapshot(win)).autoAdvance).toBeNull();
 
   // Black-out covers it while it goes round underneath.

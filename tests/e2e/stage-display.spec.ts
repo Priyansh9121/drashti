@@ -10,11 +10,13 @@ import {
   importAndGetIds,
   killApp,
   launchApp,
+  letTimePass,
   operatorPage,
   operatorReady,
   outputPage,
   type PageGlobals,
   relaunchApp,
+  savedLive,
   setUpScreen,
 } from './helpers';
 
@@ -96,7 +98,7 @@ test('the stage display in a browser matches the stage screen, and comes back af
     async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.timers[0]?.id ?? '',
   );
   await dispatch(win, { type: 'startTimer', timerId });
-  await win.waitForTimeout(1200);
+  await letTimePass(win, 1200, 'the countdown runs a little before it is paused');
   await dispatch(win, { type: 'pauseTimer', timerId });
   await dispatch(win, { type: 'goLive', presentationId, slideIndex: 0 });
   await dispatch(win, { type: 'setStageMessage', text: 'Placeholder: two minutes left' });
@@ -152,7 +154,7 @@ test('the stage display in a browser matches the stage screen, and comes back af
           ),
       )
       .toBe(1);
-    await win.waitForTimeout(600);
+    await savedLive(userData, (saved) => saved.slide?.slideIndex === 1);
     await killApp(app);
     await expect(t.getByTestId('stage-offline')).toBeVisible({ timeout: 20_000 });
     await expect(t.getByTestId('stage-current')).toHaveText('Placeholder stage line two');

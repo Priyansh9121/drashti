@@ -5,6 +5,7 @@ import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DrashtiBridge } from '../../src/shared/bridge';
+import type { EngineState } from '../../src/shared/engine/state';
 
 /** Globals inside our pages, for code passed to page.evaluate(). */
 export type PageGlobals = typeof globalThis & { drashti: DrashtiBridge };
@@ -364,4 +365,110 @@ export async function openMoreTools(page: Page): Promise<void> {
   const toggle = page.getByTestId('group-more-tools-toggle');
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+}
+
+// ---- waits that say what they wait for (Sessions 31–36, TST-6, TST-7) ------------------------------------
+// A test waits for a condition (a locator, expect.poll), never for a while: eslint.config.mjs refuses a raw
+// waitForTimeout or a sleeping setTimeout in tests/ outside this file. Where time itself is what is tested,
+// letTimePass says why; where something must not happen, holdStill keeps checking it does not; before a test
+// stops Drashti dead, savedLive and nodeSaved wait for what it saved.
+
+/**
+ * Time itself is what is tested (a recording grows, a video plays on, a dissolve is part-way, a file is written
+ * slowly): let `ms` pass, saying why. It shows as a step in the report.
+ */
+export async function letTimePass(page: Page, ms: number, why: string): Promise<void> {
+  await test.step(`let ${String(ms)} ms pass: ${why}`, async () => {
+    await page.waitForTimeout(ms);
+  });
+}
+
+/**
+ * Something must not happen: `still` stays true for `ms`, asked every 100 ms, and the test fails at once when
+ * it does not ("no message was sent", "nothing was imported").
+ */
+export async function holdStill(
+  still: () => boolean | Promise<boolean>,
+  ms: number,
+  why: string,
+): Promise<void> {
+  await test.step(`hold still ${String(ms)} ms: ${why}`, async () => {
+    const until = Date.now() + ms;
+    for (;;) {
+      expect(await still(), why).toBe(true);
+      const left = until - Date.now();
+      if (left <= 0) return;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(100, left)));
+    }
+  });
+}
+
+/** What Drashti saved of the show (live-state.json, src/main/recovery/live-state.ts), as far as tests read it. */
+export interface SavedLive {
+  session?: string;
+  slide?: { presentationId?: string; slideIndex?: number } | null;
+  background?: { kind?: string; mediaId?: string; startedAt?: number } | null;
+  blackout?: boolean;
+  audio?: { mediaId?: string; startedAt?: number } | null;
+  messages?: { id: string; text: string }[];
+  ticker?: { items: { id: string; text: string }[]; startedAt: number } | null;
+  stageMessage?: string | null;
+  timers?: { id: string; startedAt: number | null; elapsedMs: number }[];
+  lookId?: string | null;
+  [more: string]: unknown;
+}
+
+/**
+ * Wait until Drashti has saved the show as `check` wants it (live-state.json, written in the background as the
+ * show changes): before a test stops it dead, so the next start finds it.
+ */
+export async function savedLive(
+  userData: string,
+  check: (saved: SavedLive) => boolean,
+  timeout = 10_000,
+): Promise<SavedLive> {
+  const file = join(userData, 'live-state.json');
+  const read = (): SavedLive | null => {
+    try {
+      return existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as SavedLive) : null;
+    } catch {
+      return null; // part-written: asked again
+    }
+  };
+  await expect
+    .poll(
+      () => {
+        const saved = read();
+        return saved !== null && check(saved);
+      },
+      { timeout, message: 'Drashti saved the show as the test wants it (live-state.json)' },
+    )
+    .toBe(true);
+  return read() ?? {};
+}
+
+/**
+ * Wait until a node has saved the show as `check` wants it (node-show.json, its last picture, kept at most a
+ * second after it changes): before a test stops the node or its Main.
+ */
+export async function nodeSaved(
+  userData: string,
+  check: (state: EngineState) => boolean,
+  timeout = 10_000,
+): Promise<void> {
+  const file = join(userData, 'node-show.json');
+  await expect
+    .poll(
+      () => {
+        try {
+          if (!existsSync(file)) return false;
+          const saved = JSON.parse(readFileSync(file, 'utf8')) as { snapshot?: { state?: EngineState } };
+          return saved.snapshot?.state ? check(saved.snapshot.state) : false;
+        } catch {
+          return false; // part-written: asked again
+        }
+      },
+      { timeout, message: 'the node saved the show as the test wants it (node-show.json)' },
+    )
+    .toBe(true);
 }

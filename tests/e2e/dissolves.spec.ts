@@ -4,7 +4,15 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, operatorPage, operatorReady, outputPage, setUpScreen } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  letTimePass,
+  operatorPage,
+  operatorReady,
+  outputPage,
+  setUpScreen,
+} from './helpers';
 import { makeTestImage } from './test-media';
 
 /*
@@ -101,7 +109,7 @@ test('a background dissolve cut short by another background never leaves the pic
   await expect(out.locator('[data-layer="background"][data-fading="true"]')).toHaveCount(1, {
     timeout: 15_000,
   });
-  await out.waitForTimeout(MS / 3);
+  await letTimePass(out, MS / 3, 'the dissolve is about a third of the way through');
   // ...the third arrives, and loads for a moment and a half.
   await goLive(win, id, 2);
   await expect(out.locator(`[data-media-id="${backgrounds[2]}"][data-state="loading"]`)).toHaveCount(1);
@@ -111,7 +119,7 @@ test('a background dissolve cut short by another background never leaves the pic
     const shown = await shownBackgrounds(out);
     const strength = shown.reduce((sum, b) => sum + Number(b.wrapper || '1'), 0);
     expect(strength, JSON.stringify(shown)).toBeCloseTo(1, 1);
-    await out.waitForTimeout(200);
+    await letTimePass(out, 200, 'looked at again a little later in the dissolve');
   }
   // Once the third is ready and its own dissolve is over, it alone is on screen, at full strength.
   await expect
@@ -194,7 +202,7 @@ test('a screen that opens part-way through a dissolve shows the slide and its ba
   // The slide that brings the background dissolves; part-way through, the screen opens again.
   await goLive(win, id, 1);
   await expect(out.locator('[data-layer="slide"][data-fading="true"]')).toHaveCount(1, { timeout: 15_000 });
-  await out.waitForTimeout(MS / 5);
+  await letTimePass(out, MS / 5, 'the dissolve is part-way when the screen opens again');
   await out.reload();
   await expect(out.locator(`[data-bg-slot][data-media-id="${background}"][data-state="ready"]`)).toHaveCount(
     1,

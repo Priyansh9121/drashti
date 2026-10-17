@@ -13,6 +13,7 @@ import {
   dropFiles,
   importAndGetIds,
   launchApp,
+  letTimePass,
   openMoreTools,
   operatorPage,
   operatorReady,
@@ -57,8 +58,7 @@ const folder = join(__dirname, '..', '..', 'docs', 'screenshots');
  */
 async function shot(page: Page, name: string, hide: Locator[] = [], whole = false) {
   mkdirSync(folder, { recursive: true });
-  // Let thumbnails and still frames settle.
-  await page.waitForTimeout(700);
+  await letTimePass(page, 700, 'the docs’ picture: thumbnails and still frames settle');
   await page.screenshot({
     path: join(folder, `${name}.png`),
     scale: 'css',
@@ -73,7 +73,7 @@ async function shot(page: Page, name: string, hide: Locator[] = [], whole = fals
 /** A picture of part of the page: the box around these parts (Session 25's close-ups for the guides). */
 async function part(page: Page, name: string, parts: Locator[]) {
   mkdirSync(folder, { recursive: true });
-  await page.waitForTimeout(700);
+  await letTimePass(page, 700, 'the docs’ picture: thumbnails and still frames settle');
   const boxes = (await Promise.all(parts.map((p) => p.boundingBox()))).filter((b) => b !== null);
   const x = Math.min(...boxes.map((b) => b.x));
   const y = Math.min(...boxes.map((b) => b.y));
@@ -109,8 +109,7 @@ test('the first start: the welcome, the practice show and the three steps (Sessi
   await win.setViewportSize({ width: 1280, height: 720 });
   const welcome = win.getByTestId('welcome');
   await expect(welcome).toBeVisible();
-  // The lamp lit and the words in their places.
-  await win.waitForTimeout(2000);
+  await letTimePass(win, 2000, 'the docs’ picture: the lamp lit and the words in their places');
   await shot(win, 'first-start-welcome');
   await welcome.getByRole('button', { name: 'Try a practice show first' }).click();
   await win.keyboard.press('ArrowRight');
@@ -470,11 +469,11 @@ test('the stream: the panel on air and recording, its settings, and the Program 
       )
       .toBe('live');
     await expect(win.getByTestId('stream-preview')).toBeVisible();
-    await win.waitForTimeout(3000);
+    await letTimePass(win, 3000, 'the docs’ picture: the preview shows the camera');
     await shot(win, 'stream-panel');
     await mkdirAndShot(program, 'stream-program-camera');
     await win.getByTestId('stream-layout-slides').click();
-    await win.waitForTimeout(1000);
+    await letTimePass(win, 1000, 'the docs’ picture: the preview shows the slides');
     await mkdirAndShot(program, 'stream-program-slides');
     await win.getByTestId('stream-layout-camera').click();
     await win.getByTestId('open-stream-settings').click();
@@ -501,7 +500,7 @@ test('the stream: the panel on air and recording, its settings, and the Program 
 /** The Program's own picture (its offscreen page), at the stream's size. */
 async function mkdirAndShot(page: Page, name: string) {
   mkdirSync(folder, { recursive: true });
-  await page.waitForTimeout(700);
+  await letTimePass(page, 700, 'the docs’ picture: the stream’s page settles');
   await page.screenshot({ path: join(folder, `${name}.png`), scale: 'css', animations: 'disabled' });
 }
 
@@ -1170,11 +1169,11 @@ test('Shastra, timers in the running order, the arti prompt, Samvat and tithi, a
   await win.getByTestId('idle-panel').getByTestId('idle-start').click();
   const hall = await outputs('Placeholder hall');
   await expect(hall.locator('[data-layer="idle"][data-idle-index="0"]')).toBeVisible({ timeout: 20_000 });
-  await hall.waitForTimeout(500);
+  await letTimePass(hall, 500, 'the docs’ picture: the first picture has faded in');
   await shot(hall, 'output-idle-picture');
   await expect(hall.locator('[data-layer="idle"][data-idle-index="3"]')).toBeVisible({ timeout: 20_000 });
   await expect(hall.locator(`[data-idle-item="${quoteId}"]`).first()).toBeVisible();
-  await hall.waitForTimeout(500);
+  await letTimePass(hall, 500, 'the docs’ picture: the quote has faded in');
   await shot(hall, 'output-idle-quote');
   await app.close();
 });
@@ -1518,7 +1517,7 @@ test('PDF and PowerPoint as pictures: the import report and the slides (Session 
   await expect(report).toHaveCount(0);
   // An import with a problem says so in the status bar, in the warning colour (Session 16).
   await expect(win.getByTestId('import-result').getByLabel('Problems')).toBeVisible();
-  await win.waitForTimeout(500);
+  await letTimePass(win, 500, 'the docs’ picture: the status bar settles');
   await win.screenshot({
     path: join(folder, 'import-problem-status.png'),
     scale: 'css',
@@ -1607,7 +1606,7 @@ test('Import from a Link: each state of the dialog, the status bar and the repor
     await shot(win, 'import-link-waiting');
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(win.getByTestId('link-status')).toBeVisible();
-    await win.waitForTimeout(500);
+    await letTimePass(win, 500, 'the docs’ picture: the status bar settles');
     await win.screenshot({
       path: join(folder, 'import-link-status.png'),
       scale: 'css',
@@ -1678,7 +1677,7 @@ test('Import from a Link, YouTube: the choices, the tick, downloading and a refu
   await expect(first.win.getByTestId('link-going-words')).toContainText('Downloading the MP4, 1080p', {
     timeout: 60_000,
   });
-  await first.win.waitForTimeout(1500);
+  await letTimePass(first.win, 1500, 'the docs’ picture: the download has made some progress');
   await shot(first.win, 'import-link-youtube-going');
   await first.win.getByTestId('link-stop').click();
   // MP3: the best sound, no quality to choose.

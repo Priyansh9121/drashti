@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import type { Movement } from '../../src/shared/looks';
 import { apiCall, NETWORK_ENV, networkOn, pairToken } from './devices';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, operatorReady, outputPage, setUpScreen } from './helpers';
+import { launchApp, letTimePass, operatorPage, operatorReady, outputPage, setUpScreen } from './helpers';
 import { engineState, holdClock } from './placeholder-slides';
 
 /*
@@ -59,7 +59,7 @@ test('a message banner comes in from when it went up, Calm and Bold; an update o
     await expect.poll(async () => (await entering(out, banner)).at).toBe('');
     // New words for it, and a second message joining, well after its entrance (real time): nothing comes in
     // again (a replay would show, 100 ms in).
-    await win.waitForTimeout(400);
+    await letTimePass(win, 400, 'well after its entrance, in real time');
     await dispatch(win, { type: 'showMessage', message: { id: 'm1', text: 'Placeholder message changed' } });
     await dispatch(win, { type: 'showMessage', message: { id: 'm2', text: 'Placeholder message two' } });
     const messages = (await engineState(win)).layers.messages;
@@ -116,7 +116,7 @@ test('the ticker’s band comes in once, from its own time; another announcement
   expect(part.transform, 'Bold rises in from below').toMatch(/^translateY\(\d/u);
   // Another joins: the words start again from the right, the band stays where it is.
   await holdClock(app, (first?.shownAt ?? 0) + 2000);
-  await win.waitForTimeout(400);
+  await letTimePass(win, 400, 'the next announcement comes well after the first, in real time');
   await announce('Placeholder announcement two');
   const second = (await engineState(win)).layers.ticker;
   expect(second?.startedAt).toBeGreaterThan(first?.startedAt ?? 0);

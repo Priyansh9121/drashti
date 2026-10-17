@@ -4,7 +4,15 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  letTimePass,
+  operatorPage,
+  operatorReady,
+  outputPages,
+  setUpScreen,
+} from './helpers';
 import { makeTestVideo } from './test-media';
 
 /*
@@ -70,7 +78,7 @@ test('a prop’s video plays in step on a screen that opens after it went up', a
   }, mediaId);
   await expect.poll(() => where(first), { timeout: 20_000 }).toBeGreaterThan(0);
   // Two seconds on, a second screen opens: it plays the video where the first one is, not from its start.
-  await win.waitForTimeout(2000);
+  await letTimePass(win, 2000, 'the prop’s video plays on before the second screen opens');
   const secondId = await setUpScreen(win, 'Side Hall', 1);
   const second = await outputFor(app, secondId);
   await expect.poll(() => where(second), { timeout: 20_000 }).toBeGreaterThan(0);

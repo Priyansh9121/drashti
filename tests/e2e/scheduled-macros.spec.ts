@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, launchApp, openMoreTools, operatorPage, operatorReady } from './helpers';
+import { chooseMenuItem, holdStill, launchApp, openMoreTools, operatorPage, operatorReady } from './helpers';
 
 /*
  * Macros that run by themselves (Session 14), on the schedules' test clock:
@@ -77,8 +77,7 @@ test('a macro runs at its time after a countdown, in Simple Mode too; Cancel sto
   await countdown.getByTestId('macro-countdown-cancel').click();
   await expect(countdown).toHaveCount(0);
   await moveClock(app, at + 15_000);
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  expect(await stageMessage(win)).toBeNull();
+  await holdStill(async () => (await stageMessage(win)) === null, 500, 'cancelled, the macro does not run');
 
   // In Simple Mode too (a big strip a volunteer can cancel), where no button runs a macro.
   await win.getByRole('button', { name: 'Simple Mode' }).click();
@@ -103,8 +102,10 @@ test('a macro runs at its time after a countdown, in Simple Mode too; Cancel sto
   );
   at = next1830(at + 1000);
   await moveClock(app, at + 2 * 60_000);
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  await expect(countdown).toHaveCount(0);
-  expect(await stageMessage(win)).toBeNull();
+  await holdStill(
+    async () => (await countdown.count()) === 0 && (await stageMessage(win)) === null,
+    500,
+    'a time slept through by more than a minute is not run late',
+  );
   await app.close();
 });

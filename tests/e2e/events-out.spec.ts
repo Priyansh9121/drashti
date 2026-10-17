@@ -8,7 +8,7 @@ import { ADMIN_REFUSAL } from '../../src/shared/roles';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helpers';
+import { chooseMenuItem, holdStill, launchApp, operatorPage, operatorReady } from './helpers';
 
 /*
  * Events out (Session 28, decision 20): an admin adds an address on this computer and ticks what it gets;
@@ -143,8 +143,7 @@ test('an address on this computer gets each slide within a second of Next, signe
     const secret = await addAddress(win, r.url);
     const dialog = win.getByTestId('events-dialog');
     await dispatch(win, { type: 'next' });
-    await win.waitForTimeout(500);
-    expect(r.got).toHaveLength(0);
+    await holdStill(() => r.got.length === 0, 500, 'nothing is on yet, so nothing is sent');
 
     await dialog.getByTestId('events-kind-slide.changed-0').check();
     await dialog.getByTestId('events-kind-blackout.changed-0').check();
@@ -192,8 +191,11 @@ test('an address on this computer gets each slide within a second of Next, signe
     await expect(dialog.getByTestId('events-address-0')).toContainText('Off');
     const sent = r.got.length;
     await dispatch(win, { type: 'next' });
-    await win.waitForTimeout(1000);
-    expect(r.got).toHaveLength(sent);
+    await holdStill(
+      () => r.got.length === sent,
+      1000,
+      'nothing more goes to an address that said it is gone',
+    );
 
     await app.close();
     // The secret and the address's path are nowhere in Drashti's files as written: only encrypted.
@@ -278,8 +280,11 @@ test('Simple Mode and a locked admin cannot open events out, nor read them', asy
     const prompt = win.getByTestId('admin-pin');
     await expect(prompt).toBeVisible();
     await prompt.getByRole('button', { name: 'Cancel' }).click();
-    await win.waitForTimeout(500);
-    await expect(win.getByTestId('events-dialog')).toHaveCount(0);
+    await holdStill(
+      async () => (await win.getByTestId('events-dialog').count()) === 0,
+      500,
+      'cancelled, the Events out dialog does not open',
+    );
     await win.evaluate(() => {
       (globalThis as PageGlobals).drashti.roles.setAdminAsker(() => Promise.resolve(false));
     });

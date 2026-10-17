@@ -16,7 +16,7 @@ import { DROP_REFUSED_VIEW } from '../../src/shared/drop-folder';
 import { ADMIN_REFUSAL } from '../../src/shared/roles';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helpers';
+import { chooseMenuItem, holdStill, launchApp, letTimePass, operatorPage, operatorReady } from './helpers';
 import { makeTestImage, makeTestVideo } from './test-media';
 
 /*
@@ -107,7 +107,7 @@ test('pictures and videos put in the drop folder come into Media within 15 s, th
     const size = Math.ceil(whole.length / pieces);
     for (let i = 0; i < pieces; i++) {
       appendFileSync(slow, whole.subarray(i * size, (i + 1) * size));
-      if (i < pieces - 1) await win.waitForTimeout(1000);
+      if (i < pieces - 1) await letTimePass(win, 1000, 'the picture is written a piece a second');
     }
     await expect
       .poll(() => fromDrop(win), { timeout: 20_000 })
@@ -128,8 +128,11 @@ test('pictures and videos put in the drop folder come into Media within 15 s, th
     });
     await makeTestImage(win, join(scratch, 'Placeholder on air.png'), { color: '#6ea53a' });
     renameSync(join(scratch, 'Placeholder on air.png'), join(drop, 'Placeholder on air.png'));
-    await win.waitForTimeout(9000);
-    expect(await fromDrop(win)).not.toContain('Placeholder on air.png');
+    await holdStill(
+      async () => !(await fromDrop(win)).includes('Placeholder on air.png'),
+      9000,
+      'on air, nothing comes in from the drop folder',
+    );
     await chooseMenuItem(app, 'drop-folder');
     await expect(dialog.getByTestId('drop-state')).toHaveAttribute('data-state', 'waiting');
     await app.evaluate(() => {
@@ -167,8 +170,11 @@ test('a locked admin cannot open the drop folder; in Simple Mode it carries on, 
     const prompt = win.getByTestId('admin-pin');
     await expect(prompt).toBeVisible();
     await prompt.getByRole('button', { name: 'Cancel' }).click();
-    await win.waitForTimeout(500);
-    await expect(win.getByTestId('drop-dialog')).toHaveCount(0);
+    await holdStill(
+      async () => (await win.getByTestId('drop-dialog').count()) === 0,
+      500,
+      'cancelled, the drop folder’s dialog does not open',
+    );
     await win.evaluate(() => {
       (globalThis as PageGlobals).drashti.roles.setAdminAsker(() => Promise.resolve(false));
     });
@@ -190,8 +196,11 @@ test('a locked admin cannot open the drop folder; in Simple Mode it carries on, 
     await makeTestImage(win, join(scratch, 'Placeholder quiet.png'));
     renameSync(join(scratch, 'Placeholder quiet.png'), join(drop, 'Placeholder quiet.png'));
     await expect.poll(() => fromDrop(win), { timeout: 15_000 }).toEqual(['Placeholder quiet.png']);
-    await win.waitForTimeout(500);
-    await expect(win.getByText(/from the drop folder/u)).toHaveCount(0);
+    await holdStill(
+      async () => (await win.getByText(/from the drop folder/u).count()) === 0,
+      500,
+      'in Simple Mode no notice shows',
+    );
   } finally {
     await app.close().catch(() => undefined);
     rmSync(drop, { recursive: true, force: true });

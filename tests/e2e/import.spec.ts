@@ -107,6 +107,7 @@ test('a big import runs in its own process: every slide change still reaches the
   const running = win.evaluate(async (folder) => {
     const d = (globalThis as PageGlobals).drashti;
     const id = (await d.library.listPresentations()).find((p) => p.name === 'Language test slides')?.id ?? '';
+    // eslint-disable-next-line no-restricted-syntax -- in the page: slide changes 40 ms apart, as the test wants
     const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
     const samples: { rev: number; sentAt: number; during: boolean }[] = [];
     let slide = 0;
@@ -154,12 +155,17 @@ test('a big import runs in its own process: every slide change still reaches the
     state.settled = true;
   });
   let sawWorker = false;
-  while (!sawWorker && !state.settled) {
-    sawWorker = await app.evaluate(({ app: electronApp }) =>
-      electronApp.getAppMetrics().some((m) => m.type === 'Utility' && m.name === 'Drashti import'),
-    );
-    if (!sawWorker) await new Promise((resolve) => setTimeout(resolve, 50));
-  }
+  await expect
+    .poll(
+      async () => {
+        sawWorker ||= await app.evaluate(({ app: electronApp }) =>
+          electronApp.getAppMetrics().some((m) => m.type === 'Utility' && m.name === 'Drashti import'),
+        );
+        return sawWorker || state.settled;
+      },
+      { intervals: [50], timeout: 120_000 },
+    )
+    .toBe(true);
   const run = await running;
   const mainLoop = await mainHealth();
   expect(sawWorker, 'the import worker appears as its own utility process').toBe(true);
