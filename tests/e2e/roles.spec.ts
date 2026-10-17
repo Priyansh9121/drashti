@@ -172,7 +172,7 @@ test('two PINs turn roles on; an operator is refused every admin request in the 
   // Locked again, a menu item asks for the PIN, and does nothing when cancelled.
   await win.getByTestId('role-chip').click();
   await chooseMenuItem(app, 'set-up-screens');
-  await expect(prompt).toContainText('To set up the screens');
+  await expect(prompt).toContainText('To change the screens');
   await prompt.getByRole('button', { name: 'Cancel' }).click();
   await expect(win.getByTestId('setup-wizard')).toHaveCount(0);
   await app.close();
