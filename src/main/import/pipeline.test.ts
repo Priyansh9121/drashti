@@ -451,6 +451,24 @@ describe('runImport', () => {
   });
 });
 
+describe('text in one form, NFC (Sessions 31–36, I18N-6)', () => {
+  it('stores क़ alike whether a file has it as U+0958 or as U+0915 U+093C', async () => {
+    const t = setup();
+    const precomposed = '\u0928\u092e\u0942\u0928\u093e \u0958';
+    const decomposed = '\u0928\u092e\u0942\u0928\u093e \u0915\u093c';
+    await t.run([
+      t.write('one/Placeholder one.txt', `[Verse]\n${precomposed}\n`),
+      t.write('two/Placeholder two.txt', `[Verse]\n${decomposed}\n`),
+    ]);
+    const texts = (
+      t.db.prepare("SELECT props FROM elements WHERE kind = 'text' ORDER BY props").all() as {
+        props: string;
+      }[]
+    ).map((r) => (JSON.parse(r.props) as { text: string }).text);
+    expect(texts).toEqual([decomposed, decomposed]);
+  });
+});
+
 describe('the import report on words the hall may not read (Sessions 31–36, SLD-1)', () => {
   const text = (words: string, fontSize: number, shrinkToFit = false) => ({
     id: randomUUID(),

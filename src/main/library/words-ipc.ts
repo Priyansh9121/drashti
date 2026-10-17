@@ -8,6 +8,7 @@ import { handle } from '../ipc/handle';
 import type { Revisions } from './revisions';
 import type { NewSlideLook } from './words';
 import { applyWords, legacyFonts, presentationFromWords, wordsOf } from './words';
+import { nfc } from '../../shared/nfc';
 
 /*
  * The words editor's requests: anyone of Drashti's pages may read words;
@@ -59,7 +60,8 @@ export function registerWordsIpc({
         ok: false,
         message: `This presentation has text in a legacy font (${fonts.join(', ')}), which cannot be edited as plain text yet.`,
       };
-    const change = applyWords(before, words.data, lookFor(before.themeId, before));
+    // In one form, NFC (Sessions 31–36, I18N-6): text enters the library here.
+    const change = applyWords(before, nfc(words.data), lookFor(before.themeId, before));
     if (!change) return { ok: false, message: 'There are no words to make slides from.' };
     presentations.setContent(change.rows);
     const revisionId = revisions.keep([before]);
@@ -78,8 +80,8 @@ export function registerWordsIpc({
     const size = { width: 1920, height: 1080 };
     const input = presentationFromWords(
       libraryId,
-      presentations.uniqueName(libraryId, n.data),
-      words.data,
+      presentations.uniqueName(libraryId, nfc(n.data)),
+      nfc(words.data),
       lookFor(null, size),
       size,
     );

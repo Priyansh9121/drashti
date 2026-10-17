@@ -17,6 +17,7 @@ import {
   QUOTES_MAX,
 } from '../../shared/idle';
 import type { QuoteRepo } from '../db/quotes';
+import { nfcDeep } from '../../shared/nfc';
 
 /*
  * The idle rotation (src/shared/idle.ts), as the main process keeps it: the
@@ -97,15 +98,16 @@ export class IdleService {
       'That quote cannot be kept: check its words and where it is from, then save again.',
     );
     if (!parsed.success) return { ok: false, message: parsed.message };
+    // In one form, NFC (Sessions 31–36, I18N-6).
+    const quote = nfcDeep(parsed.data);
     if (id === null) {
       if (this.deps.quotes.count() >= QUOTES_MAX)
         return { ok: false, message: `There can be up to ${String(QUOTES_MAX)} quotes.` };
-      const made = this.deps.quotes.create(parsed.data);
+      const made = this.deps.quotes.create(quote);
       this.refresh();
       return { ok: true, id: made };
     }
-    if (!this.deps.quotes.save(id, parsed.data))
-      return { ok: false, message: 'That quote is no longer there.' };
+    if (!this.deps.quotes.save(id, quote)) return { ok: false, message: 'That quote is no longer there.' };
     this.refresh();
     return { ok: true, id };
   }

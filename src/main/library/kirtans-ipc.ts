@@ -18,6 +18,7 @@ import { handle } from '../ipc/handle';
 import type { Revisions } from './revisions';
 import { applyTrackEdits, detailsOf, trackSlidesOf, withDetails } from './tracks';
 import { planTransliteration } from './make-translit';
+import { nfc, nfcDeep } from '../../shared/nfc';
 
 /*
  * The kirtan requests: anyone of Drashti's pages may read a kirtan's words
@@ -84,7 +85,9 @@ export function registerKirtansIpc({
     if (!id.success || !list.success) return { ok: false, message: 'Those words cannot be saved.' };
     const before = presentations.content(id.data);
     if (!before) return gone;
-    const { rows, changed: count } = applyTrackEdits(before, list.data, lookFor(before.themeId, before));
+    // In one form, NFC (Sessions 31–36, I18N-6): text enters the library here.
+    const typed = list.data.map((edit) => ({ ...edit, lines: edit.lines.map(nfc) }));
+    const { rows, changed: count } = applyTrackEdits(before, typed, lookFor(before.themeId, before));
     if (count === 0) return { ok: true, revisionId: null, changed: 0 };
     presentations.setContent(rows);
     const revisionId = revisions.keep([before]);
@@ -98,7 +101,7 @@ export function registerKirtansIpc({
     const parsed = details === null ? null : kirtanDetailsSchema.safeParse(details);
     if (!id.success || (parsed !== null && !parsed.success))
       return { ok: false, message: 'Those kirtan details cannot be saved.' };
-    const clean = parsed ? cleanDetails(parsed.data) : null;
+    const clean = parsed ? cleanDetails(nfcDeep(parsed.data)) : null;
     if (clean?.audioMediaId && !mediaExists(clean.audioMediaId))
       return { ok: false, message: 'That recording is no longer in the media library.' };
     const before = presentations.content(id.data);
@@ -188,8 +191,9 @@ export function registerKirtansIpc({
     if (!n.success) return { ok: false as const, message: 'A category needs a name (up to 60 letters).' };
     const added = z.array(z.string()).safeParse(settings.get(CATEGORIES));
     const list = added.success ? added.data : [];
-    if (!categories().some((c) => c.toLocaleLowerCase('en') === n.data.toLocaleLowerCase('en')))
-      settings.set(CATEGORIES, [...list, n.data]);
+    const category = nfc(n.data);
+    if (!categories().some((c) => nfc(c).toLocaleLowerCase('en') === category.toLocaleLowerCase('en')))
+      settings.set(CATEGORIES, [...list, category]);
     return { ok: true as const, categories: categories() };
   });
 }
