@@ -145,8 +145,11 @@ test('outputs and the sound stay in step, a reloaded output rejoins, and only th
    */
   const inStep = async (pages: Page[], selectors: string[]) => {
     let offsets: (number | null)[] = [];
+    // Every look, for a failure's message: how each moved (Sessions 31–36, the named flakes).
+    const seen: string[] = [];
     const agree = async () => {
       offsets = await Promise.all(pages.map((p, i) => offsetOf(p, selectors[i] ?? '', startedAt)));
+      seen.push(offsets.map((o) => (o === null ? 'none' : o.toFixed(3))).join(' '));
       const known = offsets.filter((o): o is number => o !== null);
       return (
         known.length === pages.length &&
@@ -158,7 +161,9 @@ test('outputs and the sound stay in step, a reloaded output rejoins, and only th
       await expect.poll(agree, { timeout: 15_000, intervals: [250] }).toBe(true);
     } catch {
       const states = await describe(pages, selectors);
-      throw new Error(`Not in step after 15 s. Offsets ${JSON.stringify(offsets)}; ${states.join(' | ')}`);
+      throw new Error(
+        `Not in step after 15 s. Offsets ${JSON.stringify(offsets)}; ${states.join(' | ')}; each look:\n${seen.join('\n')}`,
+      );
     }
     return offsets as number[];
   };

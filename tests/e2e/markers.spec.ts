@@ -184,12 +184,15 @@ test('a background loops between its points; a jump to a marker lands in step on
   /** Wait until the two screens are within two frames of each other, the sound near them, and each near the clock. */
   const inStep = async (t: Timing) => {
     const end = Date.now() + 15_000;
+    // Every look, for a failure's message: how each copy moved (Sessions 31–36, the named flakes).
+    const seen: string[] = [];
     for (;;) {
       const offsets = await Promise.all([
         offsetOf(a, picture, t),
         offsetOf(b, picture, t),
         offsetOf(audio, sound, t),
       ]);
+      seen.push(offsets.map((o) => (o === null ? 'none' : o.toFixed(3))).join(' '));
       const [pa, pb, heard] = offsets;
       if (
         pa != null &&
@@ -200,7 +203,10 @@ test('a background loops between its points; a jump to a marker lands in step on
         Math.abs(heard - (pa + pb) / 2) < SOUND_MARGIN
       )
         return;
-      if (Date.now() > end) throw new Error(`Not in step after 15 s. Offsets ${JSON.stringify(offsets)}`);
+      if (Date.now() > end)
+        throw new Error(
+          `Not in step after 15 s. Offsets (screen, screen, sound), each look:\n${seen.join('\n')}`,
+        );
     }
   };
   await inStep(await state());
