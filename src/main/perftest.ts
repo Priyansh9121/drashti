@@ -83,6 +83,71 @@ export const PERF_SONGS = 400;
 export const MAX_BLOCK_MS = 150;
 const VERSES = 16;
 
+/** A quiet second: the main process's worst turn in it, at most (ms). */
+const QUIET_BLOCK_MS = 40;
+/** How long the main process is quiet before the measuring begins (ms). */
+const QUIET_FOR_MS = 1000;
+/** The longest the check waits to settle (ms): then it measures anyway, and says so. */
+const SETTLE_LIMIT_MS = 20_000;
+
+export interface Settled {
+  settled: boolean;
+  /** How long it waited (ms). */
+  ms: number;
+  /** When every output had warmed up, ms into the wait; null if one never did. */
+  warmedAt: number | null;
+  /** The main process's worst turn in each second it waited for quiet (ms). */
+  worst: number[];
+}
+
+export interface SettleProbe {
+  now: () => number;
+  sleep: (ms: number) => Promise<void>;
+  /** How many of the outputs are still warming up. */
+  warming: () => Promise<number>;
+  /** The main process's worst turn since `reset` (the check's watch on it). */
+  quiet: { reset: () => void; worst: () => number };
+}
+
+/**
+ * Where both sides of a Performance pair start measuring (Sessions 31–36): once every output opened for the
+ * check has warmed up and the main process has had a quiet second, or after 20 s whatever. Before, the
+ * measuring began the moment the output's fonts were ready, wherever the computer was in settling, so one
+ * side of a pair could count its settling in its worst block and the other not.
+ */
+export async function settle(probe: SettleProbe): Promise<Settled> {
+  const from = probe.now();
+  const waited = () => probe.now() - from;
+  let warmedAt: number | null = null;
+  const worst: number[] = [];
+  while (waited() < SETTLE_LIMIT_MS) {
+    if (warmedAt === null) {
+      if ((await probe.warming()) > 0) {
+        await probe.sleep(100);
+        continue;
+      }
+      warmedAt = waited();
+    }
+    probe.quiet.reset();
+    await probe.sleep(QUIET_FOR_MS);
+    const turn = probe.quiet.worst();
+    worst.push(turn);
+    if (turn <= QUIET_BLOCK_MS) return { settled: true, ms: waited(), warmedAt, worst };
+  }
+  return { settled: false, ms: waited(), warmedAt, worst };
+}
+
+/** Where the measuring began, for the summary. */
+export function settleLine(s: Settled): string {
+  const secs = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
+  const turns = s.worst.length > 0 ? ` (its worst turn each second: ${s.worst.join(', ')} ms)` : '';
+  if (s.settled)
+    return `measuring began once settled, ${secs(s.ms)} after the outputs were ready: they warmed up at ${secs(s.warmedAt ?? 0)}, then the main process was quiet for a second${turns}`;
+  if (s.warmedAt === null)
+    return `measuring began unsettled, after ${secs(s.ms)}: an output was still warming up`;
+  return `measuring began unsettled, after ${secs(s.ms)}: the outputs warmed up at ${secs(s.warmedAt)}, but the main process was never quiet for a second${turns}`;
+}
+
 function song(i: number): string {
   const lines = ['[Chorus]', `Placeholder chorus ${i}`, ''];
   for (let v = 1; v <= VERSES; v++) {
@@ -425,7 +490,7 @@ export function watchSummary(watch: MainWatch): string {
       .map((e) => `${e.what}${e.ms === undefined ? '' : ` ${e.ms} ms`} @${e.at}`);
     return `${g.ms} ms at ${g.at} ms${near.length > 0 ? ` [${near.join('; ')}]` : ''}`;
   });
-  return `main process worst block ${watch.worstBlockMs()} ms, gaps over 100 ms: ${watch.gaps.length}${told.length > 0 ? ` (${told.join(' | ')})` : ''}`;
+  return `main process worst block ${watch.worstBlockMs()} ms, ${(watch.worstBlockAt() / 1000).toFixed(1)} s into the measuring, gaps over 100 ms: ${watch.gaps.length}${told.length > 0 ? ` (${told.join(' | ')})` : ''}`;
 }
 
 const js = <T>(win: BrowserWindow, code: string) =>
@@ -500,6 +565,27 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
     const d = ctx.diagnostics;
     const noImport = ctx.noImportMs !== undefined;
     await ctx.scenario?.begin();
+    // Both sides of a pair start measuring at the same settled point (Sessions 31–36).
+    const settled = await settle({
+      now: () => Date.now(),
+      sleep,
+      warming: async () =>
+        (
+          await Promise.all(
+            ctx
+              .outputs()
+              .map((w) =>
+                w.isDestroyed()
+                  ? Promise.resolve('')
+                  : js<string>(
+                      w,
+                      `document.querySelector('[data-testid="output-root"]')?.dataset.warmUp ?? ''`,
+                    ).catch(() => ''),
+              ),
+          )
+        ).filter((state) => state === 'warming').length,
+      quiet: { reset: () => ctx.watch?.reset(), worst: () => ctx.watch?.worstBlockMs() ?? 0 },
+    });
     ctx.cpu?.();
     d.loopDelay.reset();
     d.handlerTimes.clear();
@@ -584,7 +670,7 @@ export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> 
       : '';
     const others = ctx.priority?.others();
     const priority = `main process priority ${describePriority()}${ctx.priority ? ` (started at ${ctx.priority.started}${others ? `, its other processes ${others}` : ''})` : ''}`;
-    const summary = `${what}${editsSummary}; ${priority}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}${after.length > 0 ? `; ${line('just after the import', after)}` : ''}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}${scenario ? `; ${scenario.summary}` : ''}${gpu ? `; ${gpuLine(gpu)}` : ''}`;
+    const summary = `${what}; ${settleLine(settled)}${editsSummary}; ${priority}; ${line('idle', idle)}; ${line(noImport ? 'changing' : 'importing', during)}${after.length > 0 ? `; ${line('just after the import', after)}` : ''}; main event loop delay p99 ${loopP99} ms, max ${loopMax} ms; slowest handlers (ms) ${slowest.join(', ')}; longest GC ${Math.round(d.gc.max)} ms${ctx.watch ? `; ${watchSummary(ctx.watch)}` : ''}${cpu === undefined ? '' : `; Drashti's processes used ${String(Math.round(cpu))}% of one core`}${scenario ? `; ${scenario.summary}` : ''}${gpu ? `; ${gpuLine(gpu)}` : ''}`;
 
     const totals = run.result.run?.totals;
     if (!noImport) {
