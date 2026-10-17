@@ -16,6 +16,7 @@ import {
   outputPage,
   outputPages,
   setUpScreen,
+  windowShowing,
 } from './helpers';
 import { canvasPixels, lightOf } from './pixels';
 import {
@@ -355,7 +356,7 @@ test('the held clock reaches the stream’s picture: part-way through a dissolve
   await expect(hall.getByTestId('output-root')).toHaveAttribute('data-fonts', 'ready');
   await win.getByTestId('open-stream').click();
   const isStream = (p: Page) => p.url().includes('stream.html');
-  const program = app.windows().find(isStream) ?? (await app.waitForEvent('window', { predicate: isStream }));
+  const program = await windowShowing(app, isStream, 'stream');
   await expect(program.getByTestId('program-root')).toBeVisible();
   const [lights = [], streamLights = []] = await framesOf(app, win, [hall, program], id, 0, 1, MS);
   // The stream's page is drawn off screen, without the display's colour profile: about 5% brighter

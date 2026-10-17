@@ -131,14 +131,34 @@ export async function useDisplay(page: Page, row = page.getByTestId('display-row
 }
 
 /**
+ * The first window showing this page, looked for again every 100 ms until it is there (30 s at most). Not
+ * waited for as a "window" event with a test of its address: a window can open before its page's address
+ * is known, and an event tested then is passed over for good (a 30 s wait for a window already open, as on
+ * the Mac VM in Session 31). If none comes, the error names the windows that are open.
+ */
+export async function windowShowing(
+  app: ElectronApplication,
+  is: (p: Page) => boolean,
+  what: string,
+): Promise<Page> {
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    const found = app.windows().find(is);
+    if (found) return found;
+    if (Date.now() > deadline) {
+      const open = app.windows().map((w) => w.url() || '(no address yet)');
+      throw new Error(`No ${what} window after 30 s. Open: ${open.join(', ') || 'none'}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+/**
  * The operator window's page, found by its page rather than by window order:
  * after a restart the outputs can open first.
  */
-export async function operatorPage(app: ElectronApplication): Promise<Page> {
-  const isOperator = (p: Page) => p.url().includes('index.html');
-  const existing = app.windows().find(isOperator);
-  if (existing) return existing;
-  return app.waitForEvent('window', { predicate: isOperator });
+export function operatorPage(app: ElectronApplication): Promise<Page> {
+  return windowShowing(app, (p) => p.url().includes('index.html'), 'operator');
 }
 
 /**
@@ -231,10 +251,8 @@ export async function relaunchApp(
 const isOutput = (w: Page) => w.url().includes('output.html') && !w.url().includes('identify=');
 
 /** The first output window's page, waiting for it to open. */
-export async function outputPage(app: ElectronApplication): Promise<Page> {
-  const existing = app.windows().find(isOutput);
-  if (existing) return existing;
-  return app.waitForEvent('window', { predicate: isOutput });
+export function outputPage(app: ElectronApplication): Promise<Page> {
+  return windowShowing(app, isOutput, 'output');
 }
 
 /** Every open output window's page. */

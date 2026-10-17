@@ -4,7 +4,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { NodeView } from '../../src/shared/nodes';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, operatorReady, relaunchApp } from './helpers';
+import { launchApp, operatorPage, operatorReady, relaunchApp, windowShowing } from './helpers';
 import { freePort } from './stream-helpers';
 
 /*
@@ -53,8 +53,7 @@ export interface NodeRun {
 /** The node's own window. */
 export async function nodeWindow(app: ElectronApplication): Promise<Page> {
   const isNode = (p: Page) => p.url().includes('node.html');
-  const existing = app.windows().find(isNode);
-  const page = existing ?? (await app.waitForEvent('window', { predicate: isNode }));
+  const page = await windowShowing(app, isNode, 'node');
   await expect(page.getByTestId('node-window')).toBeVisible();
   return page;
 }
