@@ -818,11 +818,28 @@ test('a sabha that never stops', async () => {
     const describe = (g: ReturnType<typeof growth>) =>
       `${String(Math.round(g.early))} MB after warming up, ${String(Math.round(g.late))} MB at the end; ${String(Math.round(g.perHour))} MB an hour (${String(Math.round(g.lastPerHour))} over the last third)`;
     const onAirSamples = samples.filter((s) => s.minute < at(0.47) - 1 || s.minute > at(0.53) + 2);
+    // Every process that stopped, by type, read once more now (after the last sample).
+    const lastMain = await health(app).catch(() => null);
+    const lastNode = await health(node.app).catch(() => null);
+    const gpuOrUtilityRestarts = [
+      ...Object.entries(lastMain?.restarts ?? samples.at(-1)?.restarts ?? {}),
+      ...Object.entries(lastNode?.restarts ?? {}).map(([type, n]) => [`node ${type}`, n] as const),
+    ]
+      .filter(([type]) => /(^|node )(GPU|Utility)$/u.test(type))
+      .map(([type, n]) => `${type} ${String(n)}`);
     const verdicts: Verdict[] = [
       {
         name: 'Drashti and the node ran the whole time',
         ok: exits.length === 0,
         detail: exits.join('; ') || 'no crash',
+        fatal: true,
+      },
+      {
+        // Sessions 31–36, PERF-4: Chromium starts one again by itself, but the screens or the stream may have
+        // stalled while it did, and a restart is the start of trouble.
+        name: 'No GPU or utility process stopped (Main or the node)',
+        ok: gpuOrUtilityRestarts.length === 0,
+        detail: gpuOrUtilityRestarts.join(', ') || 'none stopped',
         fatal: true,
       },
       {
