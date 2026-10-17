@@ -429,10 +429,23 @@ test('every move draws the words apart where it should: the pictures and the bac
     await holdClock(app, null);
     await goLive(win, id, 0);
     await expect(out.locator('[data-layer="slide"][data-fading="true"]')).toHaveCount(0, { timeout: 10_000 });
-    await expect(out.locator('[data-layer="background"] img[data-state="ready"]')).not.toHaveCount(0);
+    // The background settled too: slide one's picture alone, whole. A picture slow to be ready dissolves in
+    // late, and a dissolve still running finishes before the next one starts (Session 23): Checkpoint D's
+    // Mac drew that one where this one should have been.
+    const pictures = out.locator('[data-layer="background"] [data-bg-slot]');
+    await expect(pictures.and(out.locator(`[data-media-id="${backOne}"]`))).toHaveAttribute(
+      'data-state',
+      'ready',
+    );
+    await expect(out.locator('[data-layer="background"][data-fading="true"]')).toHaveCount(0);
+    await expect(pictures).toHaveCount(1);
     await holdClock(app, Date.now() - 60_000);
     await goLive(win, id, 1);
     const shownAt = (await engineState(win)).layers.slide?.shownAt ?? 0;
+    // Slide two's picture ready before the clock moves on, so its dissolve starts with the slide's.
+    await expect(pictures.and(out.locator(`[data-media-id="${backTwo}"][data-state="ready"]`))).toHaveCount(
+      1,
+    );
     const name = `${movement} ${kind}${label}`;
     for (const p of [0.25, 0.5, 0.75]) {
       await holdClock(app, shownAt + p * MS);
