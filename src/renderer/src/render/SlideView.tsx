@@ -22,6 +22,8 @@ import { PreviewPicture, usePreviewsOnly } from './previews';
 import { useMediaAttempt } from './media-attempts';
 import { hasWords, revealLines, wordUnits } from './reveal';
 import { useMediaUrl } from './media-urls';
+import { useMeasureReport } from './measure';
+import { MIN_FIT } from '../../../shared/readable';
 
 /**
  * How a slide draws its videos: 'live' plays them (outputs and the live
@@ -141,13 +143,13 @@ function RevealRuns({ el, runs, words }: { el: TextElement; runs: readonly TextR
   );
 }
 
-/** The smallest shrink-to-fit goes (a tenth of the size set). */
-const MIN_FIT = 0.1;
-
 /**
  * Shrink-to-fit: the largest --fit (at most 1) at which the words fit the
  * box, found by measuring. Measured in layout pixels, so a box drawn scaled
- * (a thumbnail) or turned gets the same answer as the output.
+ * (a thumbnail) or turned gets the same answer as the output. Every box is
+ * measured (Sessions 31–36, SLD-1): one whose words still run past it, at the
+ * fit shrink-to-fit reached or unshrunk, is marked data-overset, and whoever
+ * asked (MeasureContext: a thumbnail, the slide editor) is told.
  */
 export function useShrinkToFit(
   box: React.RefObject<HTMLDivElement | null>,
@@ -157,9 +159,10 @@ export function useShrinkToFit(
   again?: unknown,
 ): void {
   const on = el.style.shrinkToFit === true;
+  const report = useMeasureReport();
   const [fontsLoaded, setFontsLoaded] = useState(0);
+  // A font arriving changes how far the words reach, shrunk or not.
   useEffect(() => {
-    if (!on) return;
     const again = () => {
       setFontsLoaded((n) => n + 1);
     };
@@ -167,7 +170,8 @@ export function useShrinkToFit(
     return () => {
       document.fonts.removeEventListener('loadingdone', again);
     };
-  }, [on]);
+  }, []);
+  useEffect(() => () => report?.(el.id, null), [report, el.id]);
   useLayoutEffect(() => {
     const b = box.current;
     const w = words.current;
@@ -192,7 +196,12 @@ export function useShrinkToFit(
     // For tests and diagnostics: how much it was made smaller.
     if (lo < 1) b.setAttribute('data-fit', lo.toFixed(3));
     else b.removeAttribute('data-fit');
-  }, [box, words, el, on, fontsLoaded, again]);
+    // The words still past the box, at that fit.
+    const over = w.offsetHeight > b.clientHeight + 0.5;
+    if (over) b.setAttribute('data-overset', '');
+    else b.removeAttribute('data-overset');
+    report?.(el.id, { over, fit: lo });
+  }, [box, words, el, on, fontsLoaded, again, report]);
 }
 
 /** How a text box is drawn (the slide editor draws the box it edits the same way). */

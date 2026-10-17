@@ -7,6 +7,7 @@ import { isTyping } from '../operator/useKeymap';
 import { loadMedia } from '../library/library-store';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
+import { OversetMark, OversetWatch } from '../render/measure';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { ConfirmDialog, useFocusTrap } from '../ui/Dialog';
@@ -378,6 +379,8 @@ function SlideList({ doc, current }: { doc: EditDoc; current: string | null }) {
   const numbers = new Map(slidesOf(doc).map((s, i) => [s.id, i + 1]));
   const total = numbers.size;
   const [dragging, setDragging] = useState<string | null>(null);
+  // Slides with words past a box (Sessions 31–36, SLD-1), marked on their thumbnails.
+  const [overset, setOverset] = useState<ReadonlySet<string>>(new Set());
   const [dropAt, setDropAt] = useState<{ groupId: string; index: number } | null>(null);
   const act = (fn: (d: EditDoc, slideId: string) => { doc: EditDoc; show?: string } | null) => {
     finishTextEditing();
@@ -541,7 +544,7 @@ function SlideList({ doc, current }: { doc: EditDoc; current: string | null }) {
                       data-testid="editor-slide-thumb"
                       data-slide-id={s.id}
                       aria-current={here ? 'true' : undefined}
-                      aria-label={`Slide ${n}${s.label ? `: ${s.label}` : ''}${s.enabled ? '' : ' (hidden in the show)'}`}
+                      aria-label={`Slide ${n}${s.label ? `: ${s.label}` : ''}${s.enabled ? '' : ' (hidden in the show)'}${overset.has(s.id) ? ', words run past a box' : ''}`}
                       onDragStart={(e) => {
                         e.dataTransfer.effectAllowed = 'move';
                         e.dataTransfer.setData('text/plain', s.id);
@@ -567,8 +570,21 @@ function SlideList({ doc, current }: { doc: EditDoc; current: string | null }) {
                         data-a11y-picture
                       >
                         <PlacedInParent content={doc} mode="fit" className="absolute inset-0">
-                          <SlideView slide={renderSlide(doc, s)} media="still" />
+                          <OversetWatch
+                            onChange={(over) => {
+                              setOverset((was) => {
+                                if (was.has(s.id) === over) return was;
+                                const next = new Set(was);
+                                if (over) next.add(s.id);
+                                else next.delete(s.id);
+                                return next;
+                              });
+                            }}
+                          >
+                            <SlideView slide={renderSlide(doc, s)} media="still" />
+                          </OversetWatch>
                         </PlacedInParent>
+                        {overset.has(s.id) && <OversetMark />}
                       </span>
                       <span className="flex h-6 items-center gap-1 bg-panel-2 px-1.5 text-2xs text-muted">
                         <span className="font-bold tabular-nums">{n}</span>

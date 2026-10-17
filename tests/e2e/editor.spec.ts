@@ -203,6 +203,73 @@ test('edit a slide: a Gujarati word in its own font and size, a shape and a pict
   await app.close();
 });
 
+test('words past their box and words too small for the hall are marked and said (Sessions 31–36, SLD-1)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1600, height: 900 });
+  const long = Array.from({ length: 30 }, (_, i) => `Placeholder word ${String(i + 1)}`).join(' ');
+  const white: [number, number, number] = [255, 255, 255];
+  const file = join(mkdtempSync(join(tmpdir(), 'drashti-overset-')), 'Placeholder Overset.pro6');
+  writeFileSync(
+    file,
+    pp6Presentation({
+      uuid: 'E2E-OVERSET',
+      groups: [
+        {
+          name: 'Verse',
+          uuid: 'E2E-OVERSET-G',
+          slides: [
+            // Too many words for the box.
+            { text: [{ rtf: cocoaRtf([[long, 80, white]]), rect: [160, 100, 1600, 200] }] },
+            // Words set at 30 px: below the 36 px floor.
+            {
+              text: [
+                { rtf: cocoaRtf([['Placeholder small words', 30, white]]), rect: [160, 400, 1600, 200] },
+              ],
+            },
+            // Nothing to say.
+            {
+              text: [{ rtf: cocoaRtf([['Placeholder fine words', 72, white]]), rect: [160, 400, 1600, 200] }],
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  await importAndGetIds(win, [file]);
+  const editor = await openEditor(win, /Placeholder Overset/);
+  // The slide list marks the slide whose words run over, and says so with its name.
+  const thumbs = editor.getByTestId('editor-slide-thumb');
+  await expect(thumbs.nth(0).getByTestId('thumb-overset')).toBeVisible();
+  await expect(thumbs.nth(0)).toHaveAttribute('aria-label', /words run past a box$/u);
+  await expect(thumbs.nth(1).getByTestId('thumb-overset')).toHaveCount(0);
+  // Its box, selected: the inspector says what to do.
+  await clickSlide(win, 960, 200);
+  await expect(editor.getByTestId('inspector-overset')).toContainText('Words run past the box');
+  // The 30 px words: a warning, below 36 px.
+  await thumbs.nth(1).click();
+  await clickSlide(win, 960, 500);
+  const floor = editor.getByTestId('inspector-floor');
+  await expect(floor).toHaveAttribute('data-level', 'warning');
+  await expect(floor).toContainText('drawn at 30 px on a 1080-line screen');
+  await expect(editor.getByTestId('inspector-overset')).toHaveCount(0);
+  await expectNoSeriousA11yIssues(win, 'the slide editor saying words are too small');
+  // The 72 px words: nothing to say.
+  await thumbs.nth(2).click();
+  await clickSlide(win, 960, 500);
+  await expect(editor.getByTestId('inspector-text')).toBeVisible();
+  await expect(floor).toHaveCount(0);
+  await expect(editor.getByTestId('inspector-overset')).toHaveCount(0);
+  // The operator's slide grid marks the same slide.
+  await win.keyboard.press('Escape');
+  await win.keyboard.press('Escape');
+  await expect(editor).toHaveCount(0);
+  const grid = win.getByTestId('slide-thumb');
+  await expect(grid.nth(0).getByTestId('thumb-overset')).toBeVisible();
+  await expect(grid.nth(1).getByTestId('thumb-overset')).toHaveCount(0);
+  await app.close();
+});
+
 test('Cancel keeps nothing: Esc lets go of the selection, then asks before throwing changes away', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);

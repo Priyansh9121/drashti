@@ -15,6 +15,7 @@ import { setItemOrder } from '../playlists/playlist-store';
 import { MediaStill } from '../render/MediaStill';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
+import { OversetMark, OversetWatch } from '../render/measure';
 import { editWords } from '../library/words-store';
 import { Badge, MissingBadge, UnplayableBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -110,6 +111,8 @@ const Thumb = memo(function Thumb({
   // A slide with a picture on it (a deck's page, say): its right-click offers the Picture editor (Session 26e).
   const picture = info.slide.elements.find((e) => e.kind === 'image');
   const [menu, setMenu] = useState<MenuPlace | null>(null);
+  // Words past a box on this slide (Sessions 31–36, SLD-1): marked in its corner, and said with its name.
+  const [over, setOver] = useState(false);
   return (
     <li>
       <button
@@ -121,7 +124,7 @@ const Thumb = memo(function Thumb({
         data-slide-id={info.id}
         data-found={found ? 'true' : undefined}
         aria-current={live ? 'true' : undefined}
-        aria-label={`Slide ${position + 1}${group.name ? `, ${group.name}` : ''}${info.label ? `: ${info.label}` : ''}${live ? ' (live)' : ''}`}
+        aria-label={`Slide ${position + 1}${group.name ? `, ${group.name}` : ''}${info.label ? `: ${info.label}` : ''}${live ? ' (live)' : ''}${over ? ', words run past a box' : ''}`}
         onClick={() => void goLive(presentationId, position, arrangementId, playlist)}
         // A double-click opens the slide editor at this slide (the first click put it live); a passage's
         // slides are made from its text, so they have no editor.
@@ -148,8 +151,11 @@ const Thumb = memo(function Thumb({
         <span className="pointer-events-none relative block aspect-video w-full" data-a11y-picture>
           {background && <CueBackground cue={background} />}
           <PlacedInParent content={info.slide} mode="fit" className="absolute inset-0">
-            <SlideView slide={info.slide} media="still" />
+            <OversetWatch onChange={setOver}>
+              <SlideView slide={info.slide} media="still" />
+            </OversetWatch>
           </PlacedInParent>
+          {over && <OversetMark />}
         </span>
         <span
           className={cx(

@@ -6,6 +6,7 @@ import { legacyFontOf } from '../../../shared/slide-edit';
 import { useMedia } from '../library/library-store';
 import { MediaStill } from '../render/MediaStill';
 import { ElementView } from '../render/SlideView';
+import { MeasureContext, type MeasureReport } from '../render/measure';
 import { useElementSize } from '../render/useElementSize';
 import {
   beginGesture,
@@ -127,6 +128,15 @@ const CURSOR: Record<Handle, string> = {
   s: 'ns-resize',
   e: 'ew-resize',
   w: 'ew-resize',
+};
+
+/** A text box's measure kept in the editor's store, when it changed (the inspector reads it). */
+const keepMeasure: MeasureReport = (id, measured) => {
+  const now = useEditor.getState().measured;
+  const was = now[id];
+  if (measured === null ? was === undefined : was?.over === measured.over && was.fit === measured.fit) return;
+  const { [id]: _was, ...rest } = now;
+  useEditor.setState({ measured: measured === null ? rest : { ...rest, [id]: measured } });
 };
 
 export function Canvas({ platform }: { platform: string }) {
@@ -524,13 +534,16 @@ export function Canvas({ platform }: { platform: string }) {
             }}
           >
             {background?.mediaId && <CueStill mediaId={background.mediaId} props={background.props} />}
-            {elements.map((el) =>
-              el.id === editing && el.kind === 'text' ? (
-                <TextBoxEditor key={el.id} el={el} slideId={slide.id} at={editAt} />
-              ) : (
-                <ElementView key={el.id} el={el} media="still" />
-              ),
-            )}
+            {/* Each text box's measure, for the inspector (words past the box, the size drawn). */}
+            <MeasureContext.Provider value={keepMeasure}>
+              {elements.map((el) =>
+                el.id === editing && el.kind === 'text' ? (
+                  <TextBoxEditor key={el.id} el={el} slideId={slide.id} at={editAt} />
+                ) : (
+                  <ElementView key={el.id} el={el} media="still" />
+                ),
+              )}
+            </MeasureContext.Provider>
           </div>
           <Selection elements={selected} scale={scale} handles={!editing && single !== undefined} />
           {!editing && selected.length > 1 && <GroupBox elements={selected} scale={scale} />}

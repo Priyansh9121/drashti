@@ -191,6 +191,47 @@ test('the audience screens show exactly what the earlier build showed, frame by 
       await dispatch(win, { type: 'setStageMessage', text: 'Placeholder: two minutes left' });
       await shoot('stage-message');
       await dispatch(win, { type: 'clearStageMessage' });
+      // Words made smaller to fit their box, and words that run past theirs (Sessions 31–36, SLD-1: each box
+      // is now measured and marked, and the screens must look exactly as before).
+      const words = Array.from({ length: 40 }, (_, i) => `Placeholder word ${String(i + 1)}`).join(' ');
+      const look = {
+        fontFamily: null,
+        fontWeight: 700,
+        color: '#ffffff',
+        align: 'center' as const,
+        verticalAlign: 'middle' as const,
+        lineHeight: 1.2,
+        shadow: false,
+      };
+      await dispatch(win, {
+        type: 'showProp',
+        prop: {
+          id: 'placeholder-fit',
+          name: 'Placeholder fit',
+          width: 1920,
+          height: 1080,
+          elements: [
+            {
+              id: 'fitted',
+              kind: 'text',
+              frame: { x: 160, y: 120, width: 1600, height: 380 },
+              text: words,
+              lang: 'en',
+              style: { ...look, fontSize: 90, shrinkToFit: true },
+            },
+            {
+              id: 'overflowing',
+              kind: 'text',
+              frame: { x: 160, y: 700, width: 800, height: 120 },
+              text: words,
+              lang: 'en',
+              style: { ...look, fontSize: 40, verticalAlign: 'top' },
+            },
+          ],
+        },
+      });
+      await shoot('shrink-to-fit');
+      await dispatch(win, { type: 'hideProp', propId: 'placeholder-fit' });
       // The picture, as a playlist item.
       await win.evaluate(async (mediaId) => {
         const d = (globalThis as PageGlobals).drashti;

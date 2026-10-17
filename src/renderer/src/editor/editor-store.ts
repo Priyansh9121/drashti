@@ -4,6 +4,7 @@ import { slidesOf } from '../../../shared/slide-edit';
 import { selectPresentation, useLibrary } from '../library/library-store';
 import { pushRemoval } from '../library/undo';
 import { findSlide } from './ops';
+import type { Measured } from '../render/measure';
 
 /*
  * The slide editor: the presentation being edited (a copy, changed freely
@@ -49,6 +50,8 @@ export interface EditorView {
   textTick: number;
   /** Something to tell the operator in the editor (the operator window's notices are underneath it). */
   note: string | null;
+  /** Each text box on the slide shown, as measured where it is drawn (its words past it, its fit). */
+  measured: Readonly<Record<string, Measured>>;
 }
 
 const closed: EditorView = {
@@ -73,6 +76,7 @@ const closed: EditorView = {
   made: [],
   textTick: 0,
   note: null,
+  measured: {},
 };
 
 export const useEditor = create<EditorView>(() => closed);

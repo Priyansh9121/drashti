@@ -65,6 +65,7 @@ import { standInPdf } from './stand-in-converter';
 import { notesForPages, picturesIssues, picturesPresentation, type PptxSlide } from './pictures';
 import { extractZip } from './zip';
 import { plural } from '../../shared/text';
+import { readabilityCounts, REFERENCE_LINES } from '../../shared/readable';
 
 /*
  * One import run (PLAN.md 4.4): find the files, read each into the
@@ -204,6 +205,34 @@ export function importOrder(file: ScannedFile): number {
   if (ext === 'pro6x' || ext === 'probundle' || file.format === 'pictures') return 2;
   if (ext === 'pro6pl' || ext === 'pro6plx' || ext === 'proplaylist') return 3;
   return 4;
+}
+
+/**
+ * The report's word on slides the hall may not read (Sessions 31–36, SLD-1), counted by the estimate: words
+ * running past their box, and words drawn below 36 px on a 1080-line screen. The slide editor measures and
+ * marks each.
+ */
+export function readabilityIssues(input: NewPresentation): ImportIssue[] {
+  const { over, small } = readabilityCounts(
+    input.groups.flatMap((g) => g.slides),
+    input.height ?? REFERENCE_LINES,
+  );
+  const out: ImportIssue[] = [];
+  if (over > 0)
+    out.push({
+      severity: 'warning',
+      code: 'words-run-over',
+      message: `${plural(over, 'slide has', 'slides have')} words that may run past their box: open it in the slide editor, where a mark shows each.`,
+      fix: null,
+    });
+  if (small > 0)
+    out.push({
+      severity: 'info',
+      code: 'words-small',
+      message: `${plural(small, 'slide has', 'slides have')} words drawn below 36 px on a 1080-line screen, hard to read from the back of the hall: the slide editor says which.`,
+      fix: null,
+    });
+  return out;
 }
 
 const sortForImport = (files: readonly ScannedFile[]) =>
@@ -583,7 +612,7 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         const { input, dropped } = toNewPresentation(parsed, libraryId, source, hash, media.ids);
         // A kirtan laid out a box per language: its plain transliteration is told from English by reading.
         for (const g of input.groups) for (const sl of g.slides) sl.elements = readLatinLines(sl.elements);
-        const issues = [...parsed.issues, ...media.issues];
+        const issues = [...parsed.issues, ...media.issues, ...readabilityIssues(input)];
         // A kirtan: from its author field, or its lines in Gujarati or Hindi with another language.
         const kirtan = importedKirtan(parsed.kavi ?? null, input.groups);
         // Importing it again keeps the details the operator gave it (filling in a kavi it lacked).

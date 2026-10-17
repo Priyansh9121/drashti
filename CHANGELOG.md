@@ -4,6 +4,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 ## Unreleased
 
+- The slide editor marks words that run past their box, on the slide's thumbnail and in the inspector, and warns when words are drawn smaller than 36 px on a 1080-line screen (a note below 48 px); an import says how many slides may need a look.
 - The first time Simple Mode opens, three short steps show how to choose the playlist, use Next and Back, and Black-out and Clear all; Skip ends them, and they never come again. Loading appears only when a wait lasts longer than half a second, and the phone remote says where empty playlists, library and messages are filled.
 - Error messages say what to do next as well as what went wrong, without codes or the computer's own words: reading a PDF, saving an update, opening the library, converting, a port in use, pairing a node, and every form and file Drashti checks. The screens' setup is called Set Up Screens… everywhere, its button on the dashboard is Screens, and a message that is up says On the screens.
 - What is this? cards now have Read more, which opens the guide at the passage they come from; there is a ? beside Next and Back, the show controls, the open playlist, Stream, Phones, Announcements, the status bar, Audio and More tools too.

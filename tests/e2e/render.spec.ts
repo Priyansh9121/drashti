@@ -356,6 +356,10 @@ test('an output draws shapes, outlines, shadows, rotation and shrink-to-fit', as
   expect(fit.fit).toBeGreaterThan(0.1);
   expect(fit.fit).toBeLessThan(1);
   expect(fit).toMatchObject({ fits: true, overflows: true });
+  // Every box is measured (Sessions 31–36, SLD-1): words past their box are marked, words that fit are not.
+  await expect(el('overflowing')).toHaveAttribute('data-overset', '');
+  await expect(el('fitted')).not.toHaveAttribute('data-overset');
+  await expect(el('outlined')).not.toHaveAttribute('data-overset');
 
   // What is painted: the outline in red round white letters, the shadow in green, the ellipse
   // filled blue with a yellow edge (its frame's corner left black), and the magenta line.
