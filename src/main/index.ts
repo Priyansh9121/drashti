@@ -582,7 +582,21 @@ if (perfWatch)
     if (ms >= 5 || channel === IPC.media.reportLength) perfWatch.note(`answered ${channel}`, ms);
   });
 /** Chromium's processes that stopped (a GPU's, a utility's, a renderer's), each kept for the Soak (Sessions 31–36). */
-const processesGone: { type: string; reason: string; at: string }[] = [];
+const processesGone: { type: string; reason: string; exitCode: number; name: string | null; at: string }[] =
+  [];
+// On Main and on a node alike: the Soak counts both.
+app.on('child-process-gone', (_event, details) => {
+  processesGone.push({
+    type: details.type,
+    reason: details.reason,
+    exitCode: details.exitCode,
+    name: details.name ?? details.serviceName ?? null,
+    at: new Date().toISOString(),
+  });
+  log.warn(
+    `A ${details.type} process stopped (${details.reason}, code ${String(details.exitCode)}); Chromium restarts it by itself.`,
+  );
+});
 // Readable from the main process in end-to-end tests.
 (globalThis as { drashtiDiagnostics?: unknown }).drashtiDiagnostics = {
   watchdog,
@@ -4687,10 +4701,6 @@ function start(): void {
       );
     });
   }
-  app.on('child-process-gone', (_event, details) => {
-    processesGone.push({ type: details.type, reason: details.reason, at: new Date().toISOString() });
-    log.warn(`A ${details.type} process stopped (${details.reason}); Chromium restarts it by itself.`);
-  });
 
   // Restore the saved screen assignments, and follow display changes.
   manager.reconcile();

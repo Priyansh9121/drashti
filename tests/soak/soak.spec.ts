@@ -67,7 +67,13 @@ function health(target: ElectronApplication) {
     const d = (
       globalThis as unknown as {
         drashtiDiagnostics?: {
-          processesGone?: { type: string }[];
+          processesGone?: {
+            type: string;
+            reason?: string;
+            exitCode?: number;
+            name?: string | null;
+            at?: string;
+          }[];
           heapAfterCollection?: () => number;
           loopDelay?: { percentile(p: number): number; reset(): void };
         };
@@ -77,7 +83,13 @@ function health(target: ElectronApplication) {
     for (const g of d?.processesGone ?? []) restarts[g.type] = (restarts[g.type] ?? 0) + 1;
     const loopP99Ms = (d?.loopDelay?.percentile(99) ?? 0) / 1e6;
     d?.loopDelay?.reset();
-    return { restarts, heapMb: d?.heapAfterCollection?.() ?? 0, loopP99Ms };
+    // Each one that stopped, for the verdict's detail: why, its exit code and when.
+    const gone = (d?.processesGone ?? []).map((g) => ({
+      type: g.type,
+      why: `${g.reason ?? '?'}${g.exitCode ? `, code ${String(g.exitCode)}` : ''}${g.name ? `, ${g.name}` : ''}`,
+      at: Date.parse(g.at ?? ''),
+    }));
+    return { restarts, heapMb: d?.heapAfterCollection?.() ?? 0, loopP99Ms, gone };
   });
 }
 const SAMPLE_MS = Math.max(0.5, Number(process.env['DRASHTI_SOAK_SAMPLE_MINUTES'] ?? '3') || 3) * 60_000;
@@ -827,6 +839,13 @@ test('a sabha that never stops', async () => {
     ]
       .filter(([type]) => /(^|node )(GPU|Utility)$/u.test(type))
       .map(([type, n]) => `${type} ${String(n)}`);
+    // Why each stopped, and when (minutes into the Soak), for the verdict's detail.
+    const whenWhy = [
+      ...(lastMain?.gone ?? []).map((g) => ({ ...g, who: g.type })),
+      ...(lastNode?.gone ?? []).map((g) => ({ ...g, who: `node ${g.type}` })),
+    ]
+      .filter((g) => /(^|node )(GPU|Utility)$/u.test(g.who))
+      .map((g) => `${g.who} ${g.why} at ${((g.at - startedAt) / 60_000).toFixed(1)} min`);
     const verdicts: Verdict[] = [
       {
         name: 'Drashti and the node ran the whole time',
@@ -839,7 +858,10 @@ test('a sabha that never stops', async () => {
         // stalled while it did, and a restart is the start of trouble.
         name: 'No GPU or utility process stopped (Main or the node)',
         ok: gpuOrUtilityRestarts.length === 0,
-        detail: gpuOrUtilityRestarts.join(', ') || 'none stopped',
+        detail:
+          gpuOrUtilityRestarts.length > 0
+            ? `${gpuOrUtilityRestarts.join(', ')}: ${whenWhy.join('; ')}`
+            : 'none stopped',
         fatal: true,
       },
       {
