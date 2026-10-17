@@ -251,12 +251,14 @@ test('a receiver that never answers changes neither slide changes nor quitting',
     const t = Date.now();
     await app.close();
     const quitMs = Date.now() - t;
-    // Drashti's own stops, as its log says (the events process stopped with them): none waits on the receiver.
+    // Judged by Drashti's own quit, as its log says (the events process stopped with them): none waits on the
+    // receiver, so they take under 2 s. The whole quit (Electron's closing and the processes' exits, which a
+    // busy CI computer can slow) gets 30 s (Priyansh's answer, Sessions 31–36).
     const own = /Quit: Drashti's own stops took (\d+) ms/u.exec(
       readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8'),
     );
-    expect(Number(own?.[1] ?? Infinity)).toBeLessThan(2000);
-    expect(quitMs).toBeLessThan(10_000);
+    expect(Number(own?.[1] ?? Infinity), "Drashti's own stops (ms)").toBeLessThan(2000);
+    expect(quitMs, 'the whole quit (ms)').toBeLessThan(30_000);
   } finally {
     await app.close().catch(() => undefined);
     await r.close();
