@@ -289,6 +289,12 @@ export interface ConvertOptions {
    * Drashti's own window should have the keys back (Session 16).
    */
   refocus?: () => void;
+  /**
+   * Drashti started the app itself (Session 31, ROB-3): its process, written down until the deck is saved
+   * (`ended`), so one left running by a crash is stopped at the next start. Never an app the operator had open.
+   */
+  started?: (pid: number) => void;
+  ended?: (pid: number) => void;
 }
 
 const appName = (converter: Converter) => (converter === 'keynote' ? 'Keynote' : 'PowerPoint');
@@ -428,6 +434,8 @@ async function convertOnMac(
   const state = { answering: true, tookFront: false };
   /** The open document, as the app knows it, once found. */
   let doc: string | null = null;
+  /** The app's processes, when Drashti started it. */
+  let ours: number[] = [];
   // PowerPoint for Mac may only read and write in its own folders: work there.
   const folder =
     app.converter === 'powerpoint'
@@ -504,6 +512,10 @@ async function convertOnMac(
       if (r.aborted) return cancelled();
       if (r.code === 0 && r.stdout.trim() !== 'gone') {
         log(`answering (${before.length > 0 ? 'it was already open' : 'Drashti started it'})`);
+        if (before.length === 0) {
+          ours = await pidsOf(app);
+          for (const pid of ours) options.started?.(pid);
+        }
         break;
       }
       const n = errorNumber(r.stderr);
@@ -702,6 +714,8 @@ async function convertOnMac(
     }
     if (before.length === 0) await quitIfIdle(app, before, stem, state.answering, log);
     else log('left open, as the operator had it');
+    // Quit, stopped, or left open for something the operator opened in it: no longer Drashti's own.
+    for (const pid of ours) options.ended?.(pid);
     // The app took the front from Drashti: give the operator's window the keys back.
     if (!state.tookFront && frontBefore?.pid === process.ppid) await tookFront();
     if (state.tookFront && frontBefore?.pid === process.ppid) {
@@ -816,7 +830,46 @@ try {
 }
 `;
 
+/** The process ids PowerPoint's script wrote down ("1234,5678"). */
+const idsIn = (text: string) =>
+  text
+    .split(',')
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isInteger(n) && n > 0);
+
+/**
+ * PowerPoint on Windows, with the PowerPoint Drashti started told as the script writes it down, and
+ * forgotten once the deck is done (Session 31, ROB-3).
+ */
 async function convertOnWindows(
+  input: string,
+  work: string,
+  limits: ConvertLimits,
+  options: ConvertOptions,
+): Promise<Converted> {
+  const startedFile = join(work, 'started.txt');
+  const ours = new Set<number>();
+  const look = () =>
+    readFile(startedFile, 'ascii').then(
+      (text) => {
+        for (const id of idsIn(text))
+          if (!ours.has(id)) {
+            ours.add(id);
+            options.started?.(id);
+          }
+      },
+      () => undefined,
+    );
+  const poll = setInterval(() => void look(), 500);
+  try {
+    return await powerPointOnWindows(input, work, limits, options);
+  } finally {
+    clearInterval(poll);
+    for (const id of ours) options.ended?.(id);
+  }
+}
+
+async function powerPointOnWindows(
   input: string,
   work: string,
   limits: ConvertLimits,
@@ -868,10 +921,7 @@ async function convertOnWindows(
   if (r.timedOut || r.aborted) {
     // Stop the PowerPoint Drashti started, which is stuck; one the operator had open stays.
     try {
-      const ids = (await readFile(startedFile, 'ascii'))
-        .split(',')
-        .map((s) => Number(s.trim()))
-        .filter((n) => Number.isInteger(n) && n > 0);
+      const ids = idsIn(await readFile(startedFile, 'ascii'));
       for (const id of ids) {
         try {
           process.kill(id);

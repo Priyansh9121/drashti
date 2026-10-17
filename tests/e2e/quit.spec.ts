@@ -6,7 +6,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { networkOn } from './devices';
 import { dropboxStandIn, fileLink } from './dropbox-stand-in';
-import { importAndGetIds, launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import {
+  importAndGetIds,
+  killMainOnly,
+  launchApp,
+  operatorPage,
+  operatorReady,
+  relaunchApp,
+  type PageGlobals,
+} from './helpers';
 import { launchMain, launchNode, pairNode } from './nodes';
 import { releaseServer } from './release-server';
 import { freePort, rtmpListener, setUpStream, testFfmpeg } from './stream-helpers';
@@ -373,6 +381,80 @@ test('quitting during Save as MP4 (Session 26e): no file under its name, no part
   const log = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
   expect(log).not.toContain('Uncaught exception');
   expect(log).not.toContain('did not stop cleanly');
+});
+
+test('Drashti stopped dead during Save as MP4 leaves its FFmpeg running; the next start stops that very FFmpeg, removes its part-file and says so (Session 31, ROB-3)', async () => {
+  test.skip(!ffmpeg, 'needs the bundled FFmpeg');
+  test.setTimeout(180_000);
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-crash-save-'));
+  const source = join(dir, 'Placeholder long.mp4');
+  const made = spawnSync(ffmpeg ?? '', [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-y',
+    '-f',
+    'lavfi',
+    '-i',
+    'testsrc2=s=320x180:r=25',
+    '-t',
+    '90',
+    '-c:v',
+    'libx264',
+    '-preset',
+    'ultrafast',
+    '-pix_fmt',
+    'yuv420p',
+    source,
+  ]);
+  expect(made.status).toBe(0);
+  const out = join(dir, 'Saved');
+  mkdirSync(out);
+  // The save reads no faster than the video plays (a test switch): still going long after the crash.
+  const env = { DRASHTI_TEST_SAVE_READRATE: '1' };
+  const { app, userData } = await launchApp(env);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const [mediaId = ''] = await importAndGetIds(win, [source]);
+  await app.evaluate(
+    ({ dialog }, path) => {
+      dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath: path });
+    },
+    join(out, 'Placeholder long (1m 25s).mp4'),
+  );
+  const started = await win.evaluate(
+    (id) =>
+      (globalThis as PageGlobals).drashti.media.saveTrim({
+        mediaId: id,
+        startMs: null,
+        endMs: 85_000,
+        addToLibrary: false,
+      }),
+    mediaId,
+  );
+  expect(started).toMatchObject({ ok: true });
+  await expect
+    .poll(
+      async () =>
+        (await win.evaluate(() => (globalThis as PageGlobals).drashti.media.saves()))[0]?.progress ?? 0,
+      { timeout: 30_000 },
+    )
+    .toBeGreaterThan(0.02);
+  const mainPid = await app.evaluate(() => process.pid);
+  const running = ffmpegUnder(mainPid);
+  expect(running.length).toBeGreaterThan(0);
+  // A crash of Drashti's main process alone: what it started carries on by itself.
+  await killMainOnly(app);
+  await expect.poll(() => running.filter(alive).length, { timeout: 3000 }).toBeGreaterThan(0);
+  expect(readdirSync(out).filter((f) => f.startsWith('.'))).toHaveLength(1);
+  // The next start stops it before anything else, removes the part-file it was writing, and says so.
+  const again = await relaunchApp(userData, env);
+  await expect.poll(() => running.filter(alive), { timeout: 20_000 }).toEqual([]);
+  await expect.poll(() => readdirSync(out), { timeout: 10_000 }).toEqual([]);
+  const log = readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8');
+  expect(log).toContain('Stopped a conversion left running by the last run');
+  expect(log).toContain('Removed a part-file left by the last run');
+  await again.app.close();
 });
 
 test('quitting during a YouTube download (Session 25c): no part-file, and no yt-dlp, Deno or FFmpeg left', async () => {

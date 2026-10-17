@@ -183,6 +183,32 @@ export async function killApp(app: ElectronApplication): Promise<void> {
 }
 
 /**
+ * Stop only Drashti's main process dead, as a crash of it would (Session 31): never the programs it started
+ * (on Windows too: no /T), which a crash leaves running. Answers once that process has gone.
+ */
+export async function killMainOnly(app: ElectronApplication): Promise<void> {
+  killed.add(app);
+  // Drashti's own main process (on Windows CI the process Playwright started is not it).
+  const pid = await app.evaluate(() => process.pid);
+  if (process.platform === 'win32')
+    spawnSync(join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'taskkill.exe'), [
+      '/PID',
+      String(pid),
+      '/F',
+    ]);
+  else process.kill(pid, 'SIGKILL');
+  const gone = () => {
+    try {
+      process.kill(pid, 0);
+      return false;
+    } catch {
+      return true;
+    }
+  };
+  await expect.poll(gone, { timeout: 15_000 }).toBe(true);
+}
+
+/**
  * Start the app again on the same data folder. A killed instance can take a
  * moment to let go of the single-instance lock (slow Windows machines), and
  * a second instance started before then quits at once: try a few times.

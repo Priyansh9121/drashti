@@ -70,6 +70,14 @@ export interface ConvertDeps {
   log(level: 'info' | 'warn', message: string): void;
   /** Tests: shorter time limits than PROBE_MS and workMsFor. */
   limits?: { probeMs?: number; workMs?(lengthMs: number | null): number };
+  /**
+   * Each FFmpeg started, and its end (Session 31, ROB-3: ../system/leftovers.ts), so one left running by a
+   * crash is stopped at the next start, with the part-file it was writing.
+   */
+  children?: {
+    started(pid: number | undefined, partFile?: string): void;
+    ended(pid: number | undefined): void;
+  };
 }
 
 interface MediaRow {
@@ -423,12 +431,16 @@ export class ConvertService {
     job.progress = 0;
     this.changed();
 
+    let probePid: number | undefined;
     const info = await readInfo(ffmpeg, source, {
       timeoutMs: this.probeMs(),
       onSpawn: (probe) => {
         running.child = probe;
+        probePid = probe.pid;
+        this.deps.children?.started(probe.pid);
       },
     });
+    this.deps.children?.ended(probePid);
     running.child = null;
     // Cancelled, or the stream started, while FFmpeg was reading the file.
     const early = running.stop ?? (this.deps.busy() ? 'wait' : null);
@@ -445,6 +457,7 @@ export class ConvertService {
       env: ffmpegEnv(),
     });
     running.child = child;
+    this.deps.children?.started(child.pid, tmp);
     running.limitMs = this.workMs(info.durationMs);
     const limit = setTimeout(() => {
       running.stop = 'time';
@@ -478,6 +491,7 @@ export class ConvertService {
       child.on('exit', resolve);
     });
     clearTimeout(limit);
+    this.deps.children?.ended(child.pid);
     if (code !== 0 || running.stop) {
       removeQuietly(tmp);
       if (running.stop) return this.stopped(running, running.stop);
@@ -714,6 +728,7 @@ export class ConvertService {
       { windowsHide: true, env: ffmpegEnv() },
     );
     running.child = child;
+    this.deps.children?.started(child.pid, tmp);
     const limit = setTimeout(() => {
       running.stop = 'time';
       child.kill('SIGKILL');
@@ -744,6 +759,7 @@ export class ConvertService {
       child.on('exit', resolve);
     });
     clearTimeout(limit);
+    this.deps.children?.ended(child.pid);
     if (code !== 0 || running.stop) {
       removeQuietly(tmp);
       const stop = running.stop;

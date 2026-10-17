@@ -95,6 +95,11 @@ export interface LinkServiceDeps {
    * `work` (a Drashti work folder, emptied afterwards); or why it cannot be.
    */
   youtubeLaunch?(work: string): { ok: true; launch: YtDlpLaunch } | { ok: false; message: string };
+  /**
+   * yt-dlp's process as it starts and ends (Session 31, ROB-3: ../system/leftovers.ts): one left running
+   * by a crash is stopped at the next start, with its process group on a Mac.
+   */
+  children?: { started(pid: number, group: boolean): void; ended(pid: number): void };
   /** Tests only: where requests go instead, and the guard. */
   route: WorkerRoute;
   /** How often to look at the stream while downloading (ms). */
@@ -264,7 +269,10 @@ export class LinkService {
     this.job = null;
     this.stopWatching();
     // yt-dlp, and the Deno and FFmpeg it started, stop with the download process.
-    if (this.toolPid !== null) killTree(this.toolPid);
+    if (this.toolPid !== null) {
+      killTree(this.toolPid);
+      this.deps.children?.ended(this.toolPid);
+    }
     this.toolPid = null;
     if (worker) {
       worker.post({ type: 'stop' });
@@ -326,7 +334,10 @@ export class LinkService {
         void this.unpacked(m);
         return;
       case 'tool':
+        if (this.toolPid !== null && this.toolPid !== m.pid) this.deps.children?.ended(this.toolPid);
         this.toolPid = m.pid;
+        // On a Mac it leads a process group of its own (youtube-run.ts), stopped together.
+        if (m.pid !== null) this.deps.children?.started(m.pid, process.platform !== 'win32');
         return;
       case 'yt-looked':
         this.ytLooked(m);
