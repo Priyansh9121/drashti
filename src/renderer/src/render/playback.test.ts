@@ -28,11 +28,12 @@ class FakeMedia extends EventTarget {
 
   /**
    * `restart`: its own loop comes round this late (seconds), as a real element's does. `startLate`: it
-   * plays this long (ms) after play() is called, as a busy computer's sound device does.
+   * plays this long (ms) after play() is called, as a busy computer's sound device does. `landOff`: each
+   * seek in turn lands this far from where it was aimed (seconds, + ahead), as CI's Mac's sometimes do.
    */
   constructor(
     private readonly length: number,
-    private readonly lags: { restart?: number; startLate?: number } = {},
+    private readonly lags: { restart?: number; startLate?: number; landOff?: number[] } = {},
   ) {
     super();
   }
@@ -49,7 +50,7 @@ class FakeMedia extends EventTarget {
   }
 
   set currentTime(value: number) {
-    this.base = Math.max(0, Math.min(this.length, value));
+    this.base = Math.max(0, Math.min(this.length, value + (this.lags.landOff?.shift() ?? 0)));
     this.seeking = true;
     setTimeout(() => {
       this.seeking = false;
@@ -222,6 +223,26 @@ describe('a file that loops, and a sound that starts late', () => {
       seen.every((o) => Math.abs(o) < 2 / 30),
       `offsets after each loop: ${seen.map((o) => o.toFixed(3)).join(' ')}`,
     ).toBe(true);
+    stop();
+  });
+
+  it('a loop that lands off is aimed again, whatever the landings before it used up', () => {
+    // A 2 s sound already 0.5 s in: its first landing and the two aimed again after it all land 0.2 s ahead,
+    // and the loop comes round before the last of them is measured; that loop's landing is 0.2 s ahead too.
+    const v = new FakeMedia(2, { landOff: [0.2, 0.2, 0.2, 0.2] });
+    v.loop = true;
+    const startedAt = Date.now() - 500;
+    const stop = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'lands-off',
+      startedAt,
+      audible: true,
+      limits: SOUND_LIMITS,
+      timing: () => ({ loop: true }),
+    });
+    runFor(v, 2600);
+    // About 1.3 s after it went round: in step, not left 0.2 s off to come back at 2% a second.
+    const off = offset(v, startedAt, 2, true);
+    expect(Math.abs(off), `${off.toFixed(3)} s off the clock after the loop`).toBeLessThan(2 / 30);
     stop();
   });
 
