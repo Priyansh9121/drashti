@@ -1,7 +1,8 @@
 import { z } from 'zod';
-import type { Lang, Rect, SlideElement, TextRun, TextStyle, Transition } from './model';
+import type { Darken, Lang, Rect, SlideElement, TextRun, TextStyle, Transition } from './model';
 import {
   autoAdvanceSchema,
+  darkenSchema,
   hexColorSchema,
   idSchema,
   slideElementSchema,
@@ -36,6 +37,8 @@ export interface EditSlide {
   notes: string;
   /** A colour behind everything on the slide, or null. */
   background: string | null;
+  /** Darkening behind the words (Sessions 31–36, SLD-3), or null for none. */
+  darken: Darken | null;
   /** Hidden slides are kept, but skipped in the show. */
   enabled: boolean;
   /** Its own transition, or null for the presentation's. */
@@ -78,6 +81,8 @@ export interface SlideLook {
   langs: Partial<Record<Lang, RunLook>>;
   /** The colour behind the text, or null. */
   background: string | null;
+  /** Darkening behind the words a theme gives new slides (Sessions 31–36, SLD-3); left out or null for none. */
+  darken?: Darken | null;
 }
 
 export type EditSlidesResult =
@@ -134,6 +139,8 @@ const slideSchema: z.ZodType<EditSlide> = z.object({
   label: z.string().max(200),
   notes: z.string().max(20_000),
   background: hexColorSchema.nullable(),
+  // Documents saved before darkening have none.
+  darken: darkenSchema.nullable().default(null),
   enabled: z.boolean(),
   transition: transitionSchema.nullable(),
   autoAdvanceMs: autoAdvanceSchema.nullable(),

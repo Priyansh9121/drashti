@@ -10,8 +10,9 @@ import type {
   SlideElement,
   TextElement,
 } from '../../../shared/model';
-import { legacyFontOf } from '../../../shared/slide-edit';
+import { legacyFontOf, slidesOf } from '../../../shared/slide-edit';
 import { drawnPx, FLOOR_NOTE_PX, FLOOR_WARN_PX, floorOf, REFERENCE_LINES } from '../../../shared/readable';
+import { wordsContrast, WORDS_CONTRAST_AIM, WORDS_CONTRAST_MIN } from '../../../shared/contrast';
 import { LANG_NAMES } from '../../../shared/themes';
 import { boxLines } from '../../../shared/tracks';
 import { Button, IconButton } from '../ui/Button';
@@ -421,8 +422,54 @@ function Readability({ el }: { el: TextElement }) {
   const px = measured ? Math.round(drawnPx(el, height, measured.fit)) : 0;
   const floor = measured ? floorOf(drawnPx(el, height, measured.fit)) : null;
   const shrinks = el.style.shrinkToFit === true;
+  // The words' contrast against what is behind them, darkening included (Sessions 31–36, SLD-3).
+  const slide = useEditor((s) =>
+    s.doc && s.slideId ? slidesOf(s.doc).find((x) => x.id === s.slideId) : undefined,
+  );
+  const overPicture = slide?.cues.some((c) => c.kind === 'background' && c.mediaId !== null) ?? false;
+  const colors = [
+    el.style.color,
+    ...(el.runs ?? []).flatMap((r) => (r.text.trim() !== '' && r.color ? [r.color] : [])),
+  ]
+    .map((c) => c.slice(0, 7))
+    .filter((c) => /^#[0-9a-f]{6}$/iu.test(c));
+  const behind = (slide?.background ?? '#000000').slice(0, 7);
+  const ratio =
+    colors.length > 0
+      ? Math.min(...colors.map((c) => wordsContrast(c, behind, slide?.darken ?? null)))
+      : null;
+  const contrastLevel =
+    ratio === null
+      ? null
+      : ratio < WORDS_CONTRAST_MIN
+        ? 'warning'
+        : ratio < WORDS_CONTRAST_AIM
+          ? 'note'
+          : 'fine';
   return (
     <>
+      {el.text.trim() !== '' &&
+        (overPicture ? (
+          <p className="text-sm text-muted" data-testid="inspector-contrast" data-level="unknown">
+            Over a picture or a video the words’ contrast cannot be measured: darkening behind the words (the
+            slide’s own settings) keeps them readable.
+          </p>
+        ) : (
+          ratio !== null &&
+          contrastLevel && (
+            <p
+              className={cx('text-sm', contrastLevel === 'warning' ? 'text-warning-fg' : 'text-muted')}
+              data-testid="inspector-contrast"
+              data-level={contrastLevel}
+            >
+              {contrastLevel === 'warning'
+                ? `The words are ${ratio.toFixed(1)}:1 against what is behind them: below ${String(WORDS_CONTRAST_MIN)}:1 they fade on a projector. Choose another colour, or darken behind the words (the slide’s own settings).`
+                : contrastLevel === 'note'
+                  ? `The words are ${ratio.toFixed(1)}:1 against what is behind them: ${String(WORDS_CONTRAST_AIM)}:1 reads best.`
+                  : `The words are ${ratio.toFixed(1)}:1 against what is behind them.`}
+            </p>
+          )
+        ))}
       {ticker.length > 0 && el.text.trim() !== '' && (
         <p className="text-sm text-warning-fg" data-testid="inspector-ticker">
           <b>Words sit where the ticker runs</b> on {ticker.map((n) => `“${n}”`).join(' and ')}: when

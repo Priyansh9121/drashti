@@ -231,11 +231,14 @@ function TextView({
   el,
   hidden = false,
   reveal,
+  band,
 }: {
   el: TextElement;
   hidden?: boolean;
   /** Line by line or word by word, while its words are revealed (Session 27). */
   reveal?: Reveal;
+  /** A band behind its words this dark (Sessions 31–36, SLD-3: the slide's darkening), or none. */
+  band?: number;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const words = useRef<HTMLDivElement>(null);
@@ -252,7 +255,21 @@ function TextView({
       // they come back.
       style={hidden ? { ...textBoxStyle(el), visibility: 'hidden' } : textBoxStyle(el)}
     >
-      <div ref={words} style={{ width: '100%', flexShrink: 0 }}>
+      <div
+        ref={words}
+        data-darken={band ? 'band' : undefined}
+        style={{
+          width: '100%',
+          flexShrink: 0,
+          // The band behind the lines: its spread is drawn outside them, so the words lie exactly as without it.
+          ...(band
+            ? {
+                background: `rgba(0, 0, 0, ${String(band)})`,
+                boxShadow: `0 0 0 0.3em rgba(0, 0, 0, ${String(band)})`,
+              }
+            : {}),
+        }}
+      >
         {reveal ? (
           <RevealRuns
             el={el}
@@ -415,6 +432,7 @@ export function ElementView({
   startedAt,
   textHidden = false,
   reveal,
+  band,
 }: {
   el: SlideElement;
   media?: MediaMode;
@@ -424,8 +442,10 @@ export function ElementView({
   textHidden?: boolean;
   /** Words line by line or word by word, while they are revealed (Session 27). */
   reveal?: Reveal;
+  /** A band behind a box's words this dark (Sessions 31–36, SLD-3). */
+  band?: number;
 }) {
-  if (el.kind === 'text') return <TextView el={el} hidden={textHidden} reveal={reveal} />;
+  if (el.kind === 'text') return <TextView el={el} hidden={textHidden} reveal={reveal} band={band} />;
   if (el.kind === 'shape') return <ShapeView el={el} />;
   return <MediaView el={el} media={media} startedAt={startedAt} />;
 }
@@ -456,6 +476,12 @@ export const SlideView = memo(function SlideView({
   /** Its words alone (`only`), line by line or word by word (Session 27). */
   reveal?: Reveal;
 }) {
+  const darken = slide.darken;
+  // The words the whole-picture darkening goes under: the first box with any (none in the words alone).
+  const wholeUnder =
+    darken?.kind === 'whole' && text !== 'only'
+      ? slide.elements.find((e) => e.kind === 'text' && e.text.trim() !== '')?.id
+      : undefined;
   return (
     <div
       data-slide={slide.id}
@@ -468,7 +494,20 @@ export const SlideView = memo(function SlideView({
         background: text === 'only' ? 'transparent' : (slide.background ?? 'transparent'),
       }}
     >
-      {slide.elements.map((el) =>
+      {slide.elements.map((el) => [
+        // The whole picture darkened (Sessions 31–36, SLD-3): over everything before the first words (a
+        // picture, the colour, the background layer's video under the slide), under the words.
+        el.id === wholeUnder && darken ? (
+          <div
+            key="darken"
+            data-darken="whole"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: `rgba(0, 0, 0, ${String(darken.strength)})`,
+            }}
+          />
+        ) : null,
         text === 'only' && el.kind !== 'text' ? null : (
           <ElementView
             key={el.id}
@@ -477,9 +516,14 @@ export const SlideView = memo(function SlideView({
             startedAt={startedAt}
             textHidden={text === 'hidden'}
             reveal={text === 'only' ? reveal : undefined}
+            band={
+              darken?.kind === 'band' && el.kind === 'text' && el.text.trim() !== ''
+                ? darken.strength
+                : undefined
+            }
           />
         ),
-      )}
+      ])}
     </div>
   );
 });

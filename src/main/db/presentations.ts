@@ -13,7 +13,7 @@ import type {
 import type { KirtanDetails } from '../../shared/kirtans';
 import { occasionsFrom } from '../../shared/kirtans';
 import { type Lang, LANGS, type RenderSlide, type SlideElement, type Transition } from '../../shared/model';
-import { slideElementSchema } from '../../shared/model-schema';
+import { darkenFromJson, slideElementSchema } from '../../shared/model-schema';
 import { langsOf } from '../../shared/tracks';
 import type { PlayOrder, SlideSource } from '../engine/slide-source';
 import { playOrder } from '../../shared/order';
@@ -314,7 +314,7 @@ export class PresentationRepo {
       .all(id) as { id: string; name: string; color: string | null }[];
     const slides = this.db
       .prepare(
-        `SELECT s.id, s.group_id, s.label, s.notes, s.background, s.transition, s.auto_advance_ms, s.macro_id
+        `SELECT s.id, s.group_id, s.label, s.notes, s.background, s.darken, s.transition, s.auto_advance_ms, s.macro_id
            FROM slides s JOIN slide_groups g ON g.id = s.group_id
           WHERE g.presentation_id = ? AND s.enabled = 1
           ORDER BY g.position, g.rowid, s.position, s.rowid`,
@@ -325,6 +325,7 @@ export class PresentationRepo {
       label: string;
       notes: string;
       background: string | null;
+      darken: string | null;
       transition: string | null;
       auto_advance_ms: number | null;
       macro_id: string | null;
@@ -377,11 +378,14 @@ export class PresentationRepo {
       groups.map((g) => [g.id, { id: g.id, name: g.name, color: g.color, slides: [] }]),
     );
     slides.forEach((s, index) => {
+      const darken = darkenFromJson(s.darken);
       const slide: RenderSlide = {
         id: s.id,
         width: p.width,
         height: p.height,
         background: s.background,
+        // Left out for none, so a slide without it is the same data as before (Sessions 31–36).
+        ...(darken ? { darken } : {}),
         elements: bySlide.get(s.id) ?? [],
       };
       const info: SlideInfo = {

@@ -94,6 +94,14 @@ test('ten built-in themes, each a preview in every language; given once (a delet
     .poll(async () => (await themes(win)).themes.find((t) => t.name === 'Midnight (copy)')?.langs.gu.size)
     .toBe(20);
   await expect(contract).toBeVisible();
+  // Its words' contrast, read with its darkening behind them (Sessions 31–36, SLD-3).
+  const reading = editor.getByTestId('theme-contrast');
+  await expect(reading).toContainText(':1 against the background');
+  await editor.getByTestId('theme-darken').selectOption('whole');
+  await expect(reading).toContainText(':1 against the background');
+  // None again: nothing left to save.
+  await editor.getByTestId('theme-darken').selectOption('none');
+  await expect(editor.getByTestId('theme-save')).toBeDisabled();
 
   // Charcoal deleted: after a restart it is still gone.
   await items.filter({ hasText: 'Charcoal' }).click();

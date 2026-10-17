@@ -31,6 +31,23 @@ export function over(top: string, alpha: number, bottom: string): string {
   return `#${mix.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
 }
 
+/** A colour with black over it at `strength` (Sessions 31–36, SLD-3: darkening behind the words). */
+export const darkened = (color: string, strength: number): string => over('#000000', strength, color);
+
+/** Words read from the back of the hall at this contrast or more; below it the editor warns. */
+export const WORDS_CONTRAST_MIN = 4.5;
+/** What Drashti aims for (its own themes keep it): 7:1. */
+export const WORDS_CONTRAST_AIM = 7;
+
+/** Words' contrast against what is behind them: the background, darkened as the slide or theme darkens it. */
+export function wordsContrast(
+  words: string,
+  background: string,
+  darken?: { strength: number } | null,
+): number {
+  return contrastRatio(words, darken ? darkened(background, darken.strength) : background);
+}
+
 /*
  * How far apart two colours look (Session 26g): CIEDE2000 (Sharma, Wu and Dalal 2005), in usual
  * colour vision and as people without working red, green or blue cones see them (Machado,

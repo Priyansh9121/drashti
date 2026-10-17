@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { contrastRatio, luminance } from './contrast';
+import {
+  contrastRatio,
+  darkened,
+  luminance,
+  WORDS_CONTRAST_AIM,
+  WORDS_CONTRAST_MIN,
+  wordsContrast,
+} from './contrast';
 
 describe('contrast (WCAG 2)', () => {
   it('measures black and white, a colour against itself, and either way round', () => {
@@ -13,5 +20,16 @@ describe('contrast (WCAG 2)', () => {
     expect(contrastRatio('#777777', '#ffffff')).toBeLessThan(4.5);
     expect(luminance('#ffffff')).toBe(1);
     expect(luminance('#000000')).toBe(0);
+  });
+});
+
+describe('darkening behind the words (Sessions 31–36, SLD-3)', () => {
+  it('white words over white warn; a 70% band clears them, a 40% one does not', () => {
+    expect(wordsContrast('#ffffff', '#ffffff')).toBeLessThan(WORDS_CONTRAST_MIN);
+    expect(wordsContrast('#ffffff', '#ffffff', { strength: 0.7 })).toBeGreaterThanOrEqual(WORDS_CONTRAST_MIN);
+    expect(wordsContrast('#ffffff', '#ffffff', { strength: 0.4 })).toBeLessThan(WORDS_CONTRAST_MIN);
+    // 80% reaches Drashti's own aim.
+    expect(wordsContrast('#ffffff', '#ffffff', { strength: 0.8 })).toBeGreaterThanOrEqual(WORDS_CONTRAST_AIM);
+    expect(darkened('#ffffff', 0.7)).toBe('#4d4d4d');
   });
 });

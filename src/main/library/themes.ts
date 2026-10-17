@@ -112,7 +112,9 @@ export function applyTheme(rows: ContentRows, theme: Theme, newId: () => string 
       out.push({ ...e, ...box, props: JSON.stringify(themedText(p, theme, scale)) });
     }
   }
-  let slides: SlideRow[] = rows.slides;
+  // Its darkening behind the words (Sessions 31–36, SLD-3) on every slide, none where it has none.
+  const darken = theme.darken ? JSON.stringify(theme.darken) : null;
+  let slides: SlideRow[] = rows.slides.map((s) => ({ ...s, darken }));
   let cues: CueRow[] = rows.cues;
   const bg = theme.background;
   if (bg.kind === 'color') {
@@ -164,6 +166,7 @@ export function themeLook(theme: ThemeFields, width: number, height: number): Ne
     },
     langs: Object.fromEntries(LANGS.map((l) => [l, runLook(theme.langs[l], scale)])),
     background: theme.background.kind === 'color' ? theme.background.color : null,
+    darken: theme.darken ?? null,
   };
 }
 

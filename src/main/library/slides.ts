@@ -4,6 +4,7 @@ import type { EditCue, EditDoc } from '../../shared/slide-edit';
 import type { ContentRows, CueRow, ElementRow, GroupRow, SlideRow } from '../db/content';
 import { transitionFromJson, transitionToJson } from '../db/content';
 import { elementFromRow } from '../db/presentations';
+import { darkenFromJson } from '../../shared/model-schema';
 
 /*
  * The slide editor's document, made from a presentation's stored rows, and
@@ -60,6 +61,7 @@ export function editDocOf(rows: ContentRows, name: string): { doc: EditDoc; unre
       label: s.label,
       notes: s.notes,
       background: s.background,
+      darken: darkenFromJson(s.darken),
       enabled: s.enabled === 1,
       transition: transitionFromJson(s.transition),
       autoAdvanceMs: s.auto_advance_ms,
@@ -198,6 +200,7 @@ export function applySlideEdit(
         label: s.label,
         notes: s.notes,
         background: s.background,
+        darken: s.darken ? JSON.stringify(s.darken) : null,
         // A transition as stored stays exactly as it was when it means the same.
         transition:
           old && sameData(transitionFromJson(old.transition), s.transition)

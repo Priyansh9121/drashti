@@ -6,7 +6,7 @@ import type { LiveGroupLook, Movement } from '../../../shared/looks';
 import type { PictureLook } from '../../../shared/picture-look';
 import { DEFAULT_LIVE_GROUP_LOOK, MOVEMENTS } from '../../../shared/looks';
 import { mediaUrl } from '../../../shared/media';
-import type { RenderSlide, TextStyle, Transition, TransitionKind } from '../../../shared/model';
+import type { Darken, RenderSlide, TextStyle, Transition, TransitionKind } from '../../../shared/model';
 import { MAX_TRANSITION_MS, TRANSITION_KINDS } from '../../../shared/model';
 import { WARM_UP_MARK } from '../../../shared/perf-marks';
 import type { Size } from '../../../shared/scaling';
@@ -140,13 +140,17 @@ const WORDS: TextStyle = {
   shadow: true,
 };
 
-/** A placeholder slide as lyrics are, with a picture and a shape: `b` the one coming in. */
-function slide(id: string, b: boolean): RenderSlide {
+/**
+ * A placeholder slide as lyrics are, with a picture and a shape: `b` the one coming in; `darken` its darkening
+ * behind the words (Sessions 31–36, SLD-3), so that drawing is warmed too.
+ */
+function slide(id: string, b: boolean, darken?: Darken): RenderSlide {
   return {
     id: `${W}-${id}`,
     width: 1920,
     height: 1080,
     background: b ? '#1b1030' : null,
+    ...(darken ? { darken } : {}),
     elements: [
       {
         id: 'picture',
@@ -236,11 +240,25 @@ function scenes(): WarmScene[] {
           layers: {
             ...base.layers,
             background: background(during, at, during),
+            // The dissolve's slide coming in darkens the whole picture behind its words, the fade through
+            // black's a band behind them.
             slide: during
-              ? layerOf(slide(`${kind}-${movement}-b`, true), at - PART * MAX_TRANSITION_MS, {
-                  kind,
-                  durationMs: MAX_TRANSITION_MS,
-                })
+              ? layerOf(
+                  slide(
+                    `${kind}-${movement}-b`,
+                    true,
+                    all
+                      ? { kind: 'whole', strength: 0.6 }
+                      : kind === 'fade-black'
+                        ? { kind: 'band', strength: 0.6 }
+                        : undefined,
+                  ),
+                  at - PART * MAX_TRANSITION_MS,
+                  {
+                    kind,
+                    durationMs: MAX_TRANSITION_MS,
+                  },
+                )
               : layerOf(slide(`${kind}-${movement}-a`, false), at - LONG_AGO),
             props: all
               ? [

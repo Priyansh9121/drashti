@@ -323,6 +323,8 @@ export function applyWords(
       label: '',
       notes: '',
       background: template ? template.slide.background : look.background,
+      // Like its template, or as the theme darkens new slides (Sessions 31–36, SLD-3).
+      darken: template ? template.slide.darken : look.darken ? JSON.stringify(look.darken) : null,
       transition: null,
       auto_advance_ms: null,
       enabled: 1,

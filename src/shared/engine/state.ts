@@ -17,9 +17,10 @@ import type { LiveZoom, PictureLook } from '../picture-look';
  *
  * Bump ENGINE_STATE_VERSION whenever the shape changes incompatibly. 9 (Session 27): each Look group's
  * Movement, new transition kinds, a message's shownAt; an older phone, browser page or node says
- * 'incompatible' rather than drawing a kind it does not know.
+ * 'incompatible' rather than drawing a kind it does not know. 10 (Sessions 31–36): a slide's darkening
+ * behind the words, which an older one would leave out.
  */
-export const ENGINE_STATE_VERSION = 9;
+export const ENGINE_STATE_VERSION = 10;
 
 export type LayerName = 'audio' | 'background' | 'slide' | 'props' | 'messages' | 'ticker' | 'masks';
 

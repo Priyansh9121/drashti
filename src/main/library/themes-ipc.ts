@@ -171,6 +171,7 @@ function slideRows(slide: ThemeSlide): ContentRows {
         label: '',
         notes: '',
         background: slide.background,
+        darken: null,
         transition: null,
         auto_advance_ms: null,
         enabled: 1,

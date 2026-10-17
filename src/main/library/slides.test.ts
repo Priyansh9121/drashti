@@ -230,6 +230,27 @@ describe('putting edited slides back', () => {
     return { db, repo, id };
   }
 
+  it('keeps a slide’s darkening behind the words, for the editor and the screens; a slide made before has none (Sessions 31–36, SLD-3)', () => {
+    const { repo, id } = stored();
+    const before = repo.content(id);
+    if (!before) throw new Error('missing');
+    const { doc } = editDocOf(before, 'Placeholder edit');
+    const [first, second] = slidesOf(doc);
+    expect(first?.darken).toBeNull();
+    if (first) first.darken = { kind: 'whole', strength: 0.8 };
+    repo.setContent(applySlideEdit(before, asSaved(doc)));
+    const stored2 = repo.content(id);
+    if (!stored2) throw new Error('missing');
+    // The editor reads it back; the other slide still has none.
+    const again = slidesOf(editDocOf(stored2, 'Placeholder edit').doc);
+    expect(again.map((s) => s.darken)).toEqual([{ kind: 'whole', strength: 0.8 }, null]);
+    expect(second?.darken).toBeNull();
+    // The screens get it with the slide; a slide without it has no darken at all (the same data as before).
+    const shown = repo.get(id)?.groups.flatMap((g) => g.slides.map((s) => s.slide));
+    expect(shown?.[0]?.darken).toEqual({ kind: 'whole', strength: 0.8 });
+    expect(shown?.[1]).not.toHaveProperty('darken');
+  });
+
   it('keeps data it does not know, and elements it cannot read in their place', () => {
     const { repo, id } = stored();
     const before = repo.content(id);
@@ -271,6 +292,7 @@ describe('putting edited slides back', () => {
             label: '',
             notes: '',
             background: null,
+            darken: null,
             enabled: true,
             transition: { kind: 'dissolve', durationMs: 600 },
             autoAdvanceMs: 4000,
