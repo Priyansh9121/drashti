@@ -15,7 +15,7 @@ import {
   savedLive,
   setUpScreen,
 } from './helpers';
-import { recoveryAgainstBudget } from './recovery-figure';
+import { crashAndRecover } from './recovery-figure';
 import { makeTestImage, makeTestVideo } from './test-media';
 
 /*
@@ -259,8 +259,10 @@ test('after a crash the first action lands on what recovery put back, never unde
 });
 
 test('after a crash the screens come back, and how long that took is said: the recovery figure (Sessions 31–36, PERF-1)', async () => {
-  test.setTimeout(360_000);
-  await recoveryAgainstBudget((line) => {
-    console.log(line);
-  });
+  test.setTimeout(180_000);
+  // Said here; held to its budget by the Performance check, where timing is judged: in the whole suite CI's
+  // Windows machine took 6.8 to 7.7 s (run 39042346766) for what takes it 3.3 to 5.0 s alone.
+  const figure = await crashAndRecover();
+  console.log(figure.line);
+  expect(figure.ms).toBeGreaterThan(0);
 });

@@ -57,7 +57,8 @@ export const recoveryBudget = (): number =>
 
 /**
  * The figure against the budget: one over it is measured again, and it fails only when over twice in a row
- * (the virtual machines swing). Each figure's line is said as it comes.
+ * (the virtual machines swing). Each figure's line is said as it comes. The Performance check holds it to the
+ * budget (where timing is judged); the end-to-end test only says it, as the whole suite slows CI's machines.
  */
 export async function recoveryAgainstBudget(say: (line: string) => void): Promise<void> {
   const budget = recoveryBudget();

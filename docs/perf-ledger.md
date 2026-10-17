@@ -82,7 +82,7 @@ After a crash, how long from Drashti starting again to its screens back (`tests/
 | Mac     | 9.0, 5.3, 5.6, 5.2, 5.3, 4.3, 3.4, 3.9, 4.7, 4.8 | 5.6 s | **7.0 s**          |
 | Windows | 3.6, 3.5, 3.5, 4.1, 3.4, 3.3, 5.0, 3.3, 3.7, 3.6 | 4.1 s | **5.1 s**          |
 
-Where the time goes, on the Mac: the main process running at 0.1 to 0.3 s, the library open and the engine ready by 0.6 s, the operator window shown by 1.5 s, and the output's first frame at 3.4 to 9.0 s, after its GPU's warm-up (Windows: 0.6 s, then 3.3 to 5.0 s). The end-to-end test and the Performance check hold it to the budget (`RECOVERY_BUDGET_MS`); a figure over it is measured again, and it fails only when over twice in a row.
+Where the time goes, on the Mac: the main process running at 0.1 to 0.3 s, the library open and the engine ready by 0.6 s, the operator window shown by 1.5 s, and the output's first frame at 3.4 to 9.0 s, after its GPU's warm-up (Windows: 0.6 s, then 3.3 to 5.0 s). The Performance check holds it to the budget (`RECOVERY_BUDGET_MS`); a figure over it is measured again, and it fails only when over twice in a row. The end-to-end test says it without judging it: timing is judged in the Performance check (the README's rule), and in the whole suite CI's Windows machine took 6.8 to 7.7 s (run 39042346766, the checkpoint run that found this) for what took it 3.3 to 5.0 s alone. The ten runs were of the test alone; the Performance check's own figures fit the same budget (round G: Mac 5.4, 4.4 and 6.1 s; Windows 3.3, 5.0 and 5.1 then 4.4 s).
 
 ## Quick wins (Phase G, PERF-5), 18 October 2026
 
