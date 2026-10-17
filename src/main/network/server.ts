@@ -170,7 +170,11 @@ const ROUTES: Route[] = [
   route('POST', '/api/v1/music/previous', 'command', command('musicPrevious')),
   route('GET', '/api/v1/shastra', 'shastra.texts'),
   route('POST', '/api/v1/shastra', 'shastra', (b) => ({ reference: b['reference'] })),
-  route('POST', '/api/v1/trigger/next', 'command', command('next')),
+  // Next with the revision it saw, when it says (Sessions 31–36, TST-11): nothing when the show has moved since.
+  route('POST', '/api/v1/trigger/next', 'command', (b) => ({
+    type: 'next',
+    ...(b['rev'] !== undefined ? { rev: b['rev'] } : {}),
+  })),
   route('POST', '/api/v1/trigger/back', 'command', command('back')),
   route('POST', '/api/v1/trigger/previous', 'command', command('previous')),
   route('POST', '/api/v1/trigger/next-item', 'command', command('nextItem')),

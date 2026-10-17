@@ -1150,7 +1150,12 @@ function next(): Promise<void> {
         method: 'POST',
         body: { playlistId, itemId: first.id },
       });
-    return api<{ rev?: number }>('/api/v1/trigger/next', { method: 'POST' });
+    // With the revision this phone saw (Sessions 31–36, TST-11): if the show has moved since (another phone,
+    // the operator), it does nothing, so two Nexts at once move one slide.
+    return api<{ rev?: number }>('/api/v1/trigger/next', {
+      method: 'POST',
+      body: { rev: useEngine.getState().rev },
+    });
   });
 }
 

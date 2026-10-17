@@ -1,7 +1,17 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { device, type Engine, networkOn, NETWORK_ENV, pairByQr, pairingCode, TABLET } from './devices';
+import {
+  apiCall,
+  device,
+  type Engine,
+  networkOn,
+  NETWORK_ENV,
+  pairByQr,
+  pairingCode,
+  pairToken,
+  TABLET,
+} from './devices';
 import { launchApp, operatorPage, operatorReady, outputPage, type PageGlobals, setUpScreen } from './helpers';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow, WELCOME } from './placeholder-show';
 
@@ -226,6 +236,57 @@ test('the remote on a tablet shows the playlist beside the show, and an item tap
     await expectNoSeriousA11yIssues(t, 'the remote on a tablet');
   } finally {
     await tablet.close();
+  }
+  await app.close();
+});
+
+test('two remotes pressing Next at once move one slide; a phone’s Next says what it saw, and one without still acts (Sessions 31–36, TST-11)', async () => {
+  test.setTimeout(150_000);
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const show = await setUpPlaceholderShow(win);
+  const { base, port } = await networkOn(win);
+  const goLive = (slideIndex: number) =>
+    win.evaluate(
+      ({ id, slideIndex }) =>
+        (globalThis as PageGlobals).drashti.engine.dispatch({
+          type: 'goLive',
+          presentationId: id,
+          slideIndex,
+        }),
+      { id: show.kirtanId, slideIndex },
+    );
+  await goLive(1);
+  // Two remotes, each having seen the show as it is now, press Next in the same moment: one slide on.
+  const tokens = [
+    await pairToken(win, port, 'remote', 'Placeholder remote one'),
+    await pairToken(win, port, 'remote', 'Placeholder remote two'),
+  ];
+  const rev = (await snapshot(win)).rev;
+  const answers = await Promise.all(
+    tokens.map((token) => apiCall(port, '/api/v1/trigger/next', { method: 'POST', token, body: { rev } })),
+  );
+  expect(answers.map((a) => a.json['changed']).sort()).toEqual([false, true]);
+  expect(await where(win)).toEqual({ presentationId: show.kirtanId, slideIndex: 2 });
+  // A Next without a revision (Companion, an older phone) acts as ever.
+  const plain = await apiCall(port, '/api/v1/trigger/next', { method: 'POST', token: tokens[0], body: {} });
+  expect(plain.json).toMatchObject({ ok: true, changed: true });
+  expect((await where(win)).slideIndex).toBe(3);
+
+  // A phone's Next button sends the revision it saw.
+  const phone = await device('chromium');
+  try {
+    await pairByQr(phone.page, base, await pairingCode(win, 'remote', 'Placeholder phone'), '/remote');
+    await expect(phone.page.getByTestId('connection')).toHaveText('Connected');
+    await expect(phone.page.getByTestId('remote-slide').nth(3)).toHaveAttribute('data-live', 'true');
+    const seen = (await snapshot(win)).rev;
+    const sent = phone.page.waitForRequest((r) => r.url().endsWith('/api/v1/trigger/next'));
+    await phone.page.getByTestId('remote-next-button').click();
+    expect((await sent).postDataJSON()).toEqual({ rev: seen });
+    await expect.poll(async () => (await where(win)).slideIndex).toBe(4);
+  } finally {
+    await phone.close();
   }
   await app.close();
 });
