@@ -82,13 +82,29 @@ export function applySessionSecurity(session: Session, rules: PermissionRules = 
   });
 }
 
-/** No pop-ups, no <webview>, and no navigating away from our own pages. */
-export function secureWebContents(contents: WebContents): void {
+/** One of our own pages: from the built renderer, or Vite's in development. */
+const ownPage = (url: string): boolean =>
+  isAppUrl(url, { devServerUrl: devServerUrl(), rendererDir: rendererDir() });
+
+/**
+ * No pop-ups, no <webview>, and no navigating away from our own pages: not by a link, nor by a redirect,
+ * nor in a frame (Sessions 31–36, SEC-15).
+ */
+export function secureWebContents(
+  contents: WebContents,
+  isOwnPage: (url: string) => boolean = ownPage,
+): void {
   contents.setWindowOpenHandler(() => ({ action: 'deny' }));
   contents.on('will-attach-webview', (event) => {
     event.preventDefault();
   });
-  contents.on('will-navigate', (event, url) => {
-    if (!isAppUrl(url, { devServerUrl: devServerUrl(), rendererDir: rendererDir() })) event.preventDefault();
+  contents.on('will-navigate', (event) => {
+    if (!isOwnPage(event.url)) event.preventDefault();
+  });
+  contents.on('will-redirect', (event) => {
+    if (!isOwnPage(event.url)) event.preventDefault();
+  });
+  contents.on('will-frame-navigate', (event) => {
+    if (!isOwnPage(event.url)) event.preventDefault();
   });
 }

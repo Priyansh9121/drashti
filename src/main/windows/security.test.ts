@@ -1,5 +1,7 @@
+import type { WebContents } from 'electron';
+import { EventEmitter } from 'node:events';
 import { describe, expect, it } from 'vitest';
-import { isAudioPage, isOperatorPage, permissionCheckAllowed } from './security';
+import { isAudioPage, isOperatorPage, permissionCheckAllowed, secureWebContents } from './security';
 
 const AUDIO = 'file:///Applications/Drashti.app/Contents/Resources/app.asar/out/renderer/audio.html';
 const OPERATOR = 'file:///Applications/Drashti.app/Contents/Resources/app.asar/out/renderer/index.html';
@@ -54,5 +56,31 @@ describe('permissions', () => {
     expect(isAudioPage(`${AUDIO}?x=1`)).toBe(true);
     expect(isAudioPage('file:///x/audio.html.evil')).toBe(false);
     expect(isAudioPage('not a url')).toBe(false);
+  });
+});
+
+describe('navigating (Sessions 31–36, SEC-15)', () => {
+  /** A stand-in for a window's web contents: fire an event at it, and see whether a handler stopped it. */
+  function stand() {
+    const emitter = new EventEmitter();
+    const contents = Object.assign(emitter, {
+      setWindowOpenHandler: () => undefined,
+    }) as unknown as WebContents;
+    const fire = (name: string, url: string): boolean => {
+      let stopped = false;
+      emitter.emit(name, { url, preventDefault: () => (stopped = true) }, url);
+      return stopped;
+    };
+    return { contents, fire };
+  }
+
+  it('stops a link, a redirect and a frame going anywhere but our own pages', () => {
+    const { contents, fire } = stand();
+    secureWebContents(contents, (url) => url.startsWith('file:///app/out/renderer/'));
+    for (const name of ['will-navigate', 'will-redirect', 'will-frame-navigate']) {
+      expect(fire(name, 'https://example.com/'), `${name} off the app`).toBe(true);
+      expect(fire(name, 'file:///elsewhere/index.html'), `${name} to another file`).toBe(true);
+      expect(fire(name, 'file:///app/out/renderer/index.html'), `${name} to our own page`).toBe(false);
+    }
   });
 });
