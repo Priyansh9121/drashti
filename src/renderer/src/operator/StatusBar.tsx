@@ -318,12 +318,15 @@ export function StatusBar({
   );
 }
 
-/** Things to tell the operator (a restore, saved diagnostics, a command that failed), above the status bar. */
+/**
+ * Things to tell the operator (a restore, saved diagnostics, a command that failed), above the show controls,
+ * in the window's flow (Sessions 31–36, A9): it never covers a control the keyboard is on.
+ */
 export function NoticeArea() {
   const notice = useNotice((s) => s.text);
   if (!notice) return null;
   return (
-    <div className="pointer-events-none fixed right-3 bottom-24 z-30 flex w-[min(30rem,calc(100%-1.5rem))] justify-end">
+    <div className="flex shrink-0 justify-end px-3 pb-2">
       {/* A new notice arrives (rising 6 px) as the last one leaves. */}
       <NoticeCard key={notice} notice={notice} />
     </div>
@@ -339,7 +342,7 @@ function NoticeCard({ notice }: { notice: string }) {
       role="alert"
       data-testid="operator-notice"
       data-motion={arriving}
-      className="pointer-events-auto flex w-full items-start gap-2 rounded-lg border border-line-strong border-l-4 border-l-accent bg-panel-3 px-3 py-2 text-sm text-fg shadow-overlay"
+      className="flex w-[min(30rem,100%)] items-start gap-2 rounded-lg border border-line-strong border-l-4 border-l-accent bg-panel-3 px-3 py-2 text-sm text-fg shadow-overlay"
     >
       <Info size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-accent" />
       <p className="min-w-0 flex-1 break-words">{notice}</p>

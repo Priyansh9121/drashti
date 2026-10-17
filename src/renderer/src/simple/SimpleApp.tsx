@@ -478,9 +478,9 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       </div>
       <ArtiPrompt big />
       <MacroCountdown big />
+      <NoticeArea />
       <BigButtons platform={platform} run={run} />
       <StatusBar info={info} onOpenScreens={null} />
-      <NoticeArea />
       <LeaveSimpleDialog />
       <GuidesDialog />
       {dashboardOpen && <ScreensDashboard simple onSetUp={null} />}

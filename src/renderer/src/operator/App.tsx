@@ -343,9 +343,9 @@ function ProApp({ info }: { info: AppInfo | null }) {
           }
         />
       )}
+      <NoticeArea />
       <LayerBar platform={platform} run={run} />
       <StatusBar info={info} onOpenScreens={openScreens} onOpenCalendar={openCalendar} />
-      <NoticeArea />
 
       <ImportReportDialog platform={platform} />
       <RemoveConfirm undoKey={shortcutText('undo', platform)} />

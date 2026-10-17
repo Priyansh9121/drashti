@@ -320,8 +320,17 @@ function PlaylistTree({ platform }: { platform: string }) {
                     size="sm"
                     tabIndex={-1}
                     aria-haspopup="menu"
+                    // Never the focus's place, as it is hidden from screen readers (Sessions 31–36, A14): the
+                    // row itself takes it, so the menu gives it back there when it closes.
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                    }}
                     onClick={(e) => {
                       selectNode(node.id);
+                      e.currentTarget
+                        .closest('li')
+                        ?.querySelector<HTMLElement>('[data-testid="playlist-node"]')
+                        ?.focus();
                       const box = e.currentTarget.getBoundingClientRect();
                       setMenu({ at: { x: box.left, y: box.bottom + 2 }, node });
                     }}
