@@ -18,7 +18,7 @@
 /** Latin accents are the combining marks U+0300 to U+036F once a text is decomposed. */
 const LATIN_ACCENTS = /[̀-ͯ]/g;
 /** Zero-width joiners change how Indic text is drawn, not what it says. */
-const JOINERS = /[‌‍]/g;
+const JOINERS = /[\u200c\u200d]/g;
 /** A word: letters, their marks (Indic vowel signs are marks) and digits. */
 const WORD = /[\p{L}\p{M}\p{N}]+/gu;
 

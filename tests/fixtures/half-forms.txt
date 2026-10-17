@@ -1,0 +1,5 @@
+Placeholder half-forms (Sessions 31-36, I18N-3): Devanagari and Gujarati written with ZWJ and ZWNJ
+between the letters, as kirtan text can be. scripts/unicode-check.mjs passes them.
+
+क्‍ष क्‌ष र्‍य
+ક્‍ષ ક્‌ષ
