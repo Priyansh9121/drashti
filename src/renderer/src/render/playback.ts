@@ -48,12 +48,6 @@ const HOLD_EARLY = 0.008;
 const IN_STEP = 2 / 30;
 /** A file still out of step once it has played on after landing is aimed again at once, so many times in a row. */
 const REAIMS = 2;
-/**
- * Further off than this (four frames at 30 a second) on two checks in a row while it plays on, long after it
- * landed, a file is aimed again too, within REAIMS (Sessions 31–36): a stall on a busy computer, CI's Mac's
- * looping video 0.23 s behind a moment after it went round, was left to its rate, 4 s to make up.
- */
-const DRIFTED = 4 / 30;
 
 /**
  * Play a library file in a media element, starting where a playback that
@@ -102,8 +96,6 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   let startFrom = 0;
   // How many times in a row it has been aimed again, out of step once it played on.
   let reaims = 0;
-  // How many checks in a row have found it more than DRIFTED off while it played on.
-  let drifted = 0;
   const lead = () => seekLead + settleLead;
   // How long a seek takes to land, and a sound to settle, are lengths of time on this computer (each video
   // aims its next jump by them); where a video should be is always the engine's time (clock()).
@@ -221,8 +213,6 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     // then, it is aimed again at once (Sessions 31–36): catching up at 2% a second, a sound 0.3 s behind
     // took 12 s, and a busy computer's never did.
     let measured: number | null = null;
-    const playingOn = seekFrom === 0 && settleFrom === 0 && startFrom === 0;
-    drifted = playingOn && !correction.seek && Math.abs(offset) > DRIFTED ? drifted + 1 : 0;
     if (settleFrom > 0 && (correction.seek || now - settleFrom >= SETTLE_MS)) {
       settleFrom = 0;
       settleLead = Math.min(0.5 - seekLead, Math.max(-seekLead, settleLead - offset));
@@ -236,10 +226,6 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     if (measured !== null && !correction.seek) {
       reaim = Math.abs(measured) > IN_STEP && reaims < REAIMS;
       reaims = reaim ? reaims + 1 : 0;
-    } else if (drifted >= 2 && reaims < REAIMS) {
-      reaim = true;
-      reaims++;
-      drifted = 0;
     }
     // Aiming ahead past the end of a loop wraps round to its start.
     if (correction.seek || reaim)

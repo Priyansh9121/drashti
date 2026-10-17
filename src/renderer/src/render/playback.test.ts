@@ -98,12 +98,6 @@ class FakeMedia extends EventTarget {
     this.readyState = 0;
   }
 
-  /** Stop where it is for `ms` and then play on from there, as a busy computer's decoder can. */
-  stall(ms: number): void {
-    this.base = this.currentTime;
-    this.since = Date.now() + ms;
-  }
-
   removeAttribute(): void {
     this.duration = NaN;
   }
@@ -229,31 +223,6 @@ describe('a file that loops, and a sound that starts late', () => {
       `offsets after each loop: ${seen.map((o) => o.toFixed(3)).join(' ')}`,
     ).toBe(true);
     stop();
-  });
-
-  it('a picture or a sound that stalls once in step is in step again within a second, not left to catch up', () => {
-    for (const limits of [undefined, SOUND_LIMITS]) {
-      const v = new FakeMedia(30);
-      const startedAt = Date.now();
-      const stop = startPlayback(v as unknown as HTMLMediaElement, {
-        mediaId: 'stalls',
-        startedAt,
-        audible: limits !== undefined,
-        ...(limits ? { limits } : {}),
-        timing: () => ({ loop: false }),
-      });
-      runFor(v, 2000);
-      expect(Math.abs(offset(v, startedAt, 30, false))).toBeLessThan(2 / 30);
-      // A stall of 0.2 s (CI's Mac: a looping video fell 0.23 s behind just after it went round).
-      v.stall(200);
-      runFor(v, 1200);
-      const off = offset(v, startedAt, 30, false);
-      // Left to its rate (5% a second for a picture, 2% for a sound), it would still be 0.14 s or more behind.
-      expect(Math.abs(off), `${limits ? 'sound' : 'picture'} ${off.toFixed(3)} s off the clock`).toBeLessThan(
-        2 / 30,
-      );
-      stop();
-    }
   });
 
   it('a sound that starts 0.3 s late is in step within a second, not left to catch up at 2% a second', () => {
