@@ -152,6 +152,16 @@ test('the Picture editor: zoom, move, enhance and Auto, kept with the picture, a
     'filter',
     /brightness\(1\.2\) contrast\(1\.1\) saturate\(1\.3\) url/u,
   );
+  // The sharpening the preview names, built as elements (Sessions 31–36, SEC-14): a 3 × 3 kernel.
+  const named =
+    /url\("?#([^")]+)"?\)/u.exec(
+      await editor.getByTestId('pe-picture').evaluate((el) => getComputedStyle(el).filter),
+    )?.[1] ?? '';
+  expect(named).toMatch(/^drashti-sharpen-\d+$/u);
+  const matrix = win.locator(`filter[id="${named}"] feConvolveMatrix`);
+  await expect(matrix).toHaveAttribute('order', '3');
+  await expect(matrix).toHaveAttribute('edgeMode', 'duplicate');
+  await expect(matrix).toHaveAttribute('kernelMatrix', /^(-?[\d.]+ ){8}-?[\d.]+$/u);
   await editor.getByTestId('pe-save').click();
   await expect(editor).toHaveCount(0);
   const look = await win.evaluate((id) => (globalThis as PageGlobals).drashti.media.look(id), splitId);
