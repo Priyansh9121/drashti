@@ -27,6 +27,16 @@ describe('the guides inside Drashti', () => {
     expect(tasks.filter((t) => t.task === 'open').length).toBeGreaterThan(50);
   });
 
+  it('never names the old presentation program, as Drashti’s own screens never do (the guides show inside it)', () => {
+    // The standing rule: no "ProPresenter" in the UI. Help › Guides… shows these four (Phase H).
+    for (const g of GUIDES) {
+      const named = readFileSync(join(docs, g.file), 'utf8')
+        .split('\n')
+        .flatMap((line, i) => (/propresenter/iu.test(line) ? [`${g.file}:${String(i + 1)}`] : []));
+      expect(named, `${g.file} names it`).toEqual([]);
+    }
+  });
+
   it('finds "black" in the Black-out row, by section, and nothing for words no guide has', () => {
     const indexed = GUIDES.map((g) => indexGuide(g.id, passagesOf(guide(g.file))));
     const found = searchGuides(indexed, 'black');
