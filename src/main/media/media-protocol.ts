@@ -1,9 +1,10 @@
 import { createReadStream } from 'node:fs';
-import { realpath, stat } from 'node:fs/promises';
-import { isAbsolute, join, relative, sep } from 'node:path';
+import { stat } from 'node:fs/promises';
+import { isAbsolute, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { MEDIA_ID_PATTERN, MEDIA_SCHEME } from '../../shared/media';
 import { extOf } from '../import/scan';
+import { realPlaceAsync } from './contained';
 
 /*
  * The main-process side of drashti-media://. A window asks for
@@ -100,11 +101,8 @@ export function contentTypeOf(path: string): string {
   return CONTENT_TYPES[extOf(path)] ?? 'application/octet-stream';
 }
 
-/** True when `file` is inside `dir` (both through the same realpath, so links and short names agree). */
-export function isInside(dir: string, file: string): boolean {
-  const rel = relative(dir, file);
-  return rel !== '' && !isAbsolute(rel) && rel.split(sep)[0] !== '..';
-}
+// Inside the media folder by real paths, the one way the phones' previews and a node's copies ask too.
+export { isInside } from './contained';
 
 export type MediaRequest =
   | { what: 'media'; mediaId: string }
@@ -179,16 +177,10 @@ const SHA256 = /^[0-9a-f]{64}$/;
 
 /** A regular file, by its real path, if it is inside `dir`. */
 async function fileInside(dir: string, file: string): Promise<{ path: string; size: number } | null> {
-  let realDir: string;
-  let real: string;
-  try {
-    [realDir, real] = await Promise.all([realpath(dir), realpath(file)]);
-  } catch {
-    return null;
-  }
-  if (!isInside(realDir, real)) return null;
-  const s = await stat(real).catch(() => null);
-  return s?.isFile() ? { path: real, size: s.size } : null;
+  const place = await realPlaceAsync(dir, file);
+  if (!place?.inside) return null;
+  const s = await stat(place.path).catch(() => null);
+  return s?.isFile() ? { path: place.path, size: s.size } : null;
 }
 
 /** The file a request asks for, if it is a regular file inside the media folder (or the guides' own). */
@@ -219,20 +211,14 @@ async function fileFor(
     deps.warn?.(`Media ${mediaId} points outside the media folder; not served.`);
     return null;
   }
-  let dir: string;
-  let real: string;
-  try {
-    // One realpath for both: Windows short names (RUNNER~1) and macOS /var -> /private/var then agree.
-    [dir, real] = await Promise.all([realpath(deps.mediaDir), realpath(join(deps.mediaDir, row.path))]);
-  } catch {
-    return null;
-  }
-  if (!isInside(dir, real)) {
+  const place = await realPlaceAsync(deps.mediaDir, join(deps.mediaDir, row.path));
+  if (!place) return null;
+  if (!place.inside) {
     deps.warn?.(`Media ${mediaId} points outside the media folder; not served.`);
     return null;
   }
-  const s = await stat(real).catch(() => null);
-  return s?.isFile() ? { path: real, size: s.size } : null;
+  const s = await stat(place.path).catch(() => null);
+  return s?.isFile() ? { path: place.path, size: s.size } : null;
 }
 
 /** Answer one drashti-media:// request. */

@@ -242,7 +242,7 @@ import { inProcessNetworkWorker, spawnNetworkWorker } from './network/network-wo
 import { startPerfDevices } from './network/perf-devices';
 import { localName } from './network/local-name';
 import { localInterfaceAddresses } from './network/addresses';
-import { isInside } from './media/media-protocol';
+import { previewSource } from './network/preview-source';
 import { rendererDir } from './windows/renderer';
 import { pageAlive, sendToPage } from './windows/send';
 import { quietTests, startQuietTests } from './windows/quiet';
@@ -3066,21 +3066,15 @@ function start(): void {
         const prop = typeof id === 'string' ? props.list().find((p) => p.id === id) : undefined;
         return prop ? asPropItem(prop) : null;
       },
-      mediaSource: (mediaId) => {
-        if (!MEDIA_ID_PATTERN.test(mediaId)) return null;
-        // A picture's sharpened copy (Session 26f): its preview is made from the copy, once it is ready.
-        const copy = copyOfId(mediaId);
-        if (copy) {
-          const found = media.file(copy.mediaId);
-          const relative = found && !found.missing ? sharpened.relativePath(found.sha256, copy.step) : null;
-          const path = relative ? join(mediaDir, relative) : null;
-          return path && isInside(mediaDir, path) ? { path, kind: 'image' as const } : null;
-        }
-        const row = media.kindAndFile(mediaId);
-        if (!row || row.missing || row.kind === 'audio' || row.path === '') return null;
-        const path = join(mediaDir, row.path);
-        return isInside(mediaDir, path) ? { path, kind: row.kind } : null;
-      },
+      mediaSource: (mediaId) =>
+        previewSource(mediaId, {
+          mediaDir,
+          kindAndFile: (id) => media.kindAndFile(id),
+          sharpened: (id, step) => {
+            const found = media.file(id);
+            return found && !found.missing ? sharpened.relativePath(found.sha256, step) : null;
+          },
+        }),
       stage: () => {
         const groupId = screenRepo.firstGroup('stage');
         return { groupId, languages: groupId ? looks.liveLanguages(groupId) : null };
