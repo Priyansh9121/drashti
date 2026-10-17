@@ -813,12 +813,14 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     manager.reconcile();
     sendHealthNow();
   });
-  // Globals the end-to-end tests read (the node's clock estimate and link).
+  // Globals the end-to-end tests read (the node's clock estimate and link), and its link dropped as a network
+  // drop would (Sessions 31–36).
   (globalThis as { drashtiNode?: unknown }).drashtiNode = {
     view,
     health,
     engineNow,
     mirror: () => ({ rev: mirror.rev, session: mirror.session }),
+    dropLink: () => client?.drop(),
   };
   if (paired) connect();
   log.info(`Node: started${paired ? ` following Main “${paired.main.name}”` : ' (not paired yet)'}`);
