@@ -82,9 +82,16 @@ export async function launchApp(
 /** Quitting this long is said, with the end of Drashti's own log (a quit that took 60 s once on CI Windows). */
 const SLOW_QUIT_MS = 20_000;
 
+/**
+ * Closing Drashti: a slow quit is said, and a quit that ends in a crash (a signal, or a crash's exit code) fails
+ * the test that closed it (Session 37: quit.spec's restarted Drashti had quit on SIGSEGV unseen since Session 31,
+ * as the test passed). A Drashti stopped dead on purpose (killApp, killMainOnly) is never asked.
+ */
 function sayIfQuittingIsSlow(app: ElectronApplication, userData: string): void {
   const close = app.close.bind(app);
   app.close = async () => {
+    // Asked for before closing: once closed, Playwright no longer gives it.
+    const child = app.process();
     const timer = setTimeout(() => {
       const file = join(userData, 'logs', 'drashti.log');
       const tail = existsSync(file)
@@ -99,6 +106,11 @@ function sayIfQuittingIsSlow(app: ElectronApplication, userData: string): void {
     } finally {
       clearTimeout(timer);
     }
+    const crashed = child.signalCode !== null || (child.exitCode !== null && child.exitCode !== 0);
+    if (crashed && !killed.has(app))
+      throw new Error(
+        `Drashti crashed as it quit: exit code ${String(child.exitCode)}, signal ${String(child.signalCode)}. Run again with DRASHTI_TEST_CRASH_DUMPS to keep its dump (README, "End-to-end tests").`,
+      );
   };
 }
 
