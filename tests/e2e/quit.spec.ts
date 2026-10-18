@@ -462,6 +462,11 @@ test('Drashti stopped dead during Save as MP4: on a Mac its FFmpeg runs on and t
   const log = logged();
   if (process.platform === 'win32') expect(log).not.toContain('left running by the last run');
   else expect(log).toContain('Stopped a conversion left running by the last run');
+  // Quit once it has started, as a person would (Session 37). Playwright's quit runs in the middle of whatever
+  // the main process is doing, and Electron itself crashes (SIGSEGV) on a quit inside the making of a window,
+  // which a start is full of: the audio player is the last window it makes.
+  await operatorReady(await operatorPage(again.app));
+  await expect.poll(() => again.app.windows().some((w) => w.url().includes('audio.html'))).toBe(true);
   await again.app.close();
 });
 
