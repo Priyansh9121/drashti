@@ -73,6 +73,12 @@ const bridge: DrashtiBridge = {
       on(IPC.app.safeAreasChanged, ({ on: shown }) => {
         listener(shown);
       }),
+    singleKeys: () => invoke(IPC.app.singleKeys),
+    setSingleKeys: (keys) => invoke(IPC.app.setSingleKeys, keys),
+    onSingleKeysChanged: (listener) =>
+      on(IPC.app.singleKeysChanged, ({ on: keys }) => {
+        listener(keys);
+      }),
     onProgress: (listener) =>
       on(IPC.app.progress, ({ progress }) => {
         listener(progress);

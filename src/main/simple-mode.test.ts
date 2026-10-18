@@ -105,6 +105,13 @@ describe('Simple Mode locks', () => {
       expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
   });
 
+  // Session 37 (WCAG 2.1.4): Simple Mode never turns the single-letter keys on or off; it still asks whether they act.
+  it('the single-letter keys’ switch; whether they act is still answered', () => {
+    expect(SIMPLE_MODE_LOCKED).toContain(IPC.app.setSingleKeys);
+    expect(answers.get(IPC.app.setSingleKeys)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
+    expect(SIMPLE_MODE_LOCKED).not.toContain(IPC.app.singleKeys);
+  });
+
   it('answers each in the shape its caller expects', () => {
     expect(answers.get(IPC.props.save)?.()).toEqual({ ok: false, message: SIMPLE_MODE_REFUSAL });
     expect(answers.get(IPC.library.pickImportPaths)?.()).toEqual([]);

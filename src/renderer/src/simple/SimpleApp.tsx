@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { PlaylistItemInfo } from '../../../shared/playlists';
 import type { OperatorAction } from '../../../shared/keymap';
 import { shortcutText, SIMPLE_KEYMAP } from '../../../shared/keymap';
+import { useKeymapNow } from '../operator/single-keys-store';
 import { useEngine } from '../engine/engine-store';
 import { mediaKindIcon, mediaKindLabel } from '../library/MediaList';
 import { openPlaylist, usePlaylists } from '../playlists/playlist-store';
@@ -425,7 +426,10 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       setMidiHandler(null);
     };
   }, [run]);
-  const key = (action: OperatorAction) => shortcutText(action, platform, SIMPLE_KEYMAP);
+  // Its key line names only keys that act: not B, . or L while an admin has turned them off (Session 37).
+  const keymap = useKeymapNow(SIMPLE_KEYMAP);
+  const key = (action: OperatorAction) => shortcutText(action, platform, keymap);
+  const covering = key('toggleBlackout') !== '';
   return (
     <div className="lamp-window flex h-full min-h-0 flex-col" data-testid="simple-mode">
       <header className="lamp-header flex h-14 shrink-0 items-center gap-4 border-b border-line px-4">
@@ -469,10 +473,16 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
             </div>
           </div>
           <MusicStrip />
-          <p className="mt-auto px-3 pt-3 text-xs leading-6 text-muted">
-            Keys: Next <Kbd>{key('next')}</Kbd> or Page Down · Back <Kbd>{key('previous')}</Kbd> or Page Up ·
-            Black-out <Kbd>{key('toggleBlackout')}</Kbd> or <Kbd>.</Kbd> · Logo <Kbd>{key('toggleLogo')}</Kbd>{' '}
-            · Clear all <Kbd>{key('clearAll')}</Kbd> · Put it back <Kbd>{key('undo')}</Kbd>
+          <p className="mt-auto px-3 pt-3 text-xs leading-6 text-muted" data-testid="simple-keys">
+            Keys: Next <Kbd>{key('next')}</Kbd> or Page Down · Back <Kbd>{key('previous')}</Kbd> or Page Up ·{' '}
+            {covering && (
+              <>
+                Black-out <Kbd>{key('toggleBlackout')}</Kbd> or <Kbd>.</Kbd> · Logo{' '}
+                <Kbd>{key('toggleLogo')}</Kbd> ·{' '}
+              </>
+            )}
+            Clear all <Kbd>{key('clearAll')}</Kbd> · Put it back <Kbd>{key('undo')}</Kbd>
+            {!covering && ' · Black-out and Logo: their buttons'}
           </p>
         </main>
       </div>

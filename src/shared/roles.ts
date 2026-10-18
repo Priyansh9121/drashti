@@ -94,6 +94,8 @@ export const ADMIN_CHANNELS: readonly InvokeChannel[] = [
   IPC.library.restorePresentations,
   IPC.library.setDefaultTransition,
   IPC.library.setExtras,
+  // The single-letter keys (Session 37): B, ., L and ? on or off.
+  IPC.app.setSingleKeys,
   IPC.kirtans.setTranslitStyle,
   IPC.media.convert,
   IPC.media.undoConversion,

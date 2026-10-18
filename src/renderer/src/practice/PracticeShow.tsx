@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { shortcutText } from '../../../shared/keymap';
+import { useKeymapNow } from '../operator/single-keys-store';
 import { practiceLabels, practiceSlides } from '../../../shared/practice';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
@@ -60,13 +61,15 @@ export function PracticeShow({ platform, run }: { platform: string; run: (action
 
 /** The keys a show runs on, to try here. */
 function TryTheKeys({ platform }: { platform: string }) {
+  // Only keys that act: Black-out and the logo have none while an admin has turned B, . and L off (Session 37).
+  const keymap = useKeymapNow();
   const keys: { what: string; key: string }[] = [
-    { what: 'Next slide', key: shortcutText('next', platform) },
-    { what: 'Back a slide', key: shortcutText('previous', platform) },
-    { what: 'Black-out', key: shortcutText('toggleBlackout', platform) },
-    { what: 'The logo', key: shortcutText('toggleLogo', platform) },
-    { what: 'Clear all', key: shortcutText('clearAll', platform) },
-  ];
+    { what: 'Next slide', key: shortcutText('next', platform, keymap) },
+    { what: 'Back a slide', key: shortcutText('previous', platform, keymap) },
+    { what: 'Black-out', key: shortcutText('toggleBlackout', platform, keymap) },
+    { what: 'The logo', key: shortcutText('toggleLogo', platform, keymap) },
+    { what: 'Clear all', key: shortcutText('clearAll', platform, keymap) },
+  ].filter((k) => k.key !== '');
   return (
     <section aria-labelledby="practice-keys" className="space-y-3 p-4 text-sm">
       <h2 id="practice-keys" className="text-2xs font-bold tracking-wider text-muted uppercase">

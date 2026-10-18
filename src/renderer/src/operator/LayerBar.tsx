@@ -4,6 +4,7 @@ import { isLayerEmpty } from '../../../shared/engine/state';
 import type { OperatorAction } from '../../../shared/keymap';
 import { shortcutText } from '../../../shared/keymap';
 import { practiceKey, useShowState } from '../practice/practice-store';
+import { useKeymapNow } from './single-keys-store';
 import { dispatch } from './actions';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
@@ -50,6 +51,8 @@ const clears: { action: OperatorAction; layer: LayerName; label: string; icon: I
 export function LayerBar({ platform, run }: { platform: string; run: (action: OperatorAction) => void }) {
   // The show, or the practice show while it is on (Session 26g).
   const state = useShowState();
+  // The keys beside its buttons, as they act now: none for Black-out or the Logo while B, . and L are off.
+  const keymap = useKeymapNow();
   const layers = state?.layers;
   const blackout = state?.blackout ?? false;
   const logo = state?.logo ?? null;
@@ -86,7 +89,7 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
             size="lg"
             instant
             icon={Eraser}
-            kbd={shortcutText('clearAll', platform)}
+            kbd={shortcutText('clearAll', platform, keymap)}
             disabled={!anything}
             onClick={() => {
               run('clearAll');
@@ -103,7 +106,7 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
               <Tooltip
                 key={c.layer}
                 content={`Clear ${c.label.toLowerCase()}`}
-                kbd={shortcutText(c.action, platform)}
+                kbd={shortcutText(c.action, platform, keymap)}
                 describes={false}
               >
                 <button
@@ -125,7 +128,7 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
                   <IconShape size={16} aria-hidden="true" />
                   {c.label}
                   <span className="hidden min-[1440px]:contents">
-                    <Kbd>{shortcutText(c.action, platform)}</Kbd>
+                    <Kbd>{shortcutText(c.action, platform, keymap)}</Kbd>
                   </span>
                   {on && (
                     <span
@@ -145,7 +148,7 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
           size="lg"
           instant
           icon={Stamp}
-          kbd={shortcutText('toggleLogo', platform)}
+          kbd={shortcutText('toggleLogo', platform, keymap)}
           onClick={() => {
             run('toggleLogo');
           }}
@@ -158,7 +161,7 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
           size="lg"
           instant
           icon={BlackOut}
-          kbd={shortcutText('toggleBlackout', platform)}
+          kbd={shortcutText('toggleBlackout', platform, keymap)}
           onClick={() => {
             run('toggleBlackout');
           }}

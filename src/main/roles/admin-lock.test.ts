@@ -17,6 +17,14 @@ describe('the admin channels', () => {
     expect(answers.get(IPC.audio.setOutput)?.()).toMatchObject({ state: 'default' });
   });
 
+  // Session 37 (WCAG 2.1.4): turning B, ., L and ? on or off is an admin's; whether they act is anyone's to ask.
+  it('make the single-letter keys an admin’s to turn off or on, and leave reading them to anyone', () => {
+    expect(isAdminChannel(IPC.app.setSingleKeys)).toBe(true);
+    expect(isAdminChannel(IPC.app.singleKeys)).toBe(false);
+    const answers = adminRefusals(() => ({ chosen: null, devices: [], state: 'default', checked: true }));
+    expect(answers.get(IPC.app.setSingleKeys)?.()).toEqual({ ok: false, message: ADMIN_REFUSAL });
+  });
+
   it('leave running the show, playlists, words, slides and macros to the operator', () => {
     for (const c of [
       IPC.engine.command,
