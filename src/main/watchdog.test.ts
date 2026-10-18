@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WatchdogEvent, WatchTarget } from './watchdog';
 import {
   quitDetail,
@@ -9,6 +9,7 @@ import {
   shouldConfirmQuit,
   STACK_WAIT_MS,
   stackLine,
+  watchdogLine,
 } from './watchdog';
 
 class FakeContents extends EventEmitter implements WatchTarget {
@@ -232,7 +233,8 @@ describe('RendererWatchdog', () => {
     expect(contents.crashes).toBe(1);
     clock.advance(100);
     expect(contents.reloads).toBe(1);
-    expect(kinds()).toEqual(['unresponsive', 'hung', 'crashed', 'reloaded']);
+    // The restart says how long it held the main process (Session 38): here the fake crashes at once.
+    expect(kinds()).toEqual(['unresponsive', 'hung', 'crashed', 'restarted', 'reloaded']);
   });
 
   it('leaves a renderer alone that recovers by itself', () => {
@@ -250,6 +252,104 @@ describe('RendererWatchdog', () => {
     contents.emit('destroyed');
     clock.advance(10_000);
     expect(contents.reloads).toBe(0);
+  });
+});
+
+/** A window whose crash takes a set time: Electron writes its dump inside the main process first (Session 37). */
+class SlowCrash extends FakeContents {
+  constructor(private readonly takesMs: number) {
+    super();
+  }
+  override forcefullyCrashRenderer(): void {
+    clock.t += this.takesMs;
+    super.forcefullyCrashRenderer();
+  }
+}
+
+describe('how long restarting a hung window held the main process (Session 38)', () => {
+  /** The log's lines, as the main process writes them from the watchdog's events. */
+  let lines: string[];
+  const logging = (crashFiles: boolean) =>
+    new RendererWatchdog(
+      (e) => {
+        events.push(e);
+        lines.push(watchdogLine(e));
+      },
+      clock,
+      crashFiles,
+    );
+
+  beforeEach(() => {
+    lines = [];
+  });
+
+  it('says it once, in plain words, as a hung window that gave its stack is restarted: the stack only once', async () => {
+    const dog = logging(true);
+    const page = new SlowCrash(240);
+    Object.assign(page, {
+      mainFrame: {
+        collectJavaScriptCallStack: () =>
+          Promise.resolve('\n    at drashtiSelfTestHangsHere (<anonymous>:1:33)\n    at <anonymous>:1:47'),
+      },
+    });
+    dog.watch(page, 'output "Main Hall"');
+    dog.stuck(page, 'output "Main Hall"', 'no report for 7 s');
+    await vi.waitFor(() => {
+      expect(page.crashes).toBe(1);
+    });
+    expect(events.filter((e) => e.kind === 'restarted')).toEqual([
+      {
+        window: 'output "Main Hall"',
+        kind: 'restarted',
+        reason: 'Drashti waited 240 ms while it saved the crash file',
+        heldMs: 240,
+        at: 240,
+      },
+    ]);
+    expect(lines).toContain(
+      'Watchdog: output "Main Hall" restarted (Drashti waited 240 ms while it saved the crash file)',
+    );
+    expect(lines.filter((line) => line.includes('drashtiSelfTestHangsHere'))).toEqual([
+      'Watchdog: output "Main Hall" hung (no report for 7 s); its JavaScript: at drashtiSelfTestHangsHere (<anonymous>:1:33) | at <anonymous>:1:47',
+    ]);
+    // The rest as before: the crash path reloads it.
+    clock.advance(100);
+    expect(page.reloads).toBe(1);
+  });
+
+  it('says it for a hung window with no page to ask (no stack), and when no crash file is kept', () => {
+    const dog = logging(true);
+    const bare = new SlowCrash(1153);
+    dog.watch(bare, 'operator', { hangMs: 5000 });
+    bare.emit('unresponsive');
+    clock.advance(5000);
+    expect(bare.crashes).toBe(1);
+    expect(events.find((e) => e.kind === 'restarted')).toMatchObject({ window: 'operator', heldMs: 1153 });
+    expect(lines).toContain(
+      'Watchdog: operator restarted (Drashti waited 1153 ms while it saved the crash file)',
+    );
+    // Running translated, Drashti keeps no crash files (crash-files.ts): the wait is the restart's alone.
+    events.length = 0;
+    const translated = logging(false);
+    const other = new SlowCrash(2);
+    translated.watch(other, 'audio player', { hangMs: 5000 });
+    other.emit('unresponsive');
+    clock.advance(5000);
+    expect(lines).toContain(
+      'Watchdog: audio player restarted (Drashti waited 2 ms; no crash file while Drashti runs translated)',
+    );
+  });
+
+  it('says no wait for a hung window that stopped by itself while it was asked (it was never restarted)', () => {
+    const dog = logging(true);
+    const gone = new SlowCrash(240);
+    Object.assign(gone, { mainFrame: { collectJavaScriptCallStack: () => new Promise(() => undefined) } });
+    dog.watch(gone, 'output "Gone"');
+    dog.stuck(gone, 'output "Gone"', 'no report for 7 s');
+    gone.emit('render-process-gone', {}, { reason: 'crashed' });
+    clock.advance(STACK_WAIT_MS);
+    expect(gone.crashes).toBe(0);
+    expect(events.filter((e) => e.kind === 'restarted')).toEqual([]);
   });
 });
 

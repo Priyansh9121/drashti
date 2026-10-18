@@ -10,6 +10,7 @@ import {
   JOURNAL_LETTERS,
   journalNotice,
   scrubEntry,
+  watchdogJournal,
   watchdogWords,
 } from './crash-journal';
 
@@ -139,6 +140,63 @@ describe('the crash journal (Sessions 31–36, ROB-6)', () => {
     );
     // A process that ended as it should is no problem.
     expect(childGoneWords({ type: 'Utility', reason: 'clean-exit', exitCode: 0 })).toBeNull();
+  });
+
+  it('adds how long restarting a hung window held Drashti to that hang’s entry, before its stack (Session 38)', () => {
+    const file = fresh();
+    const journal = new CrashJournal(file);
+    const note = watchdogJournal(journal);
+    const stack = Array.from(
+      { length: 20 },
+      (_, i) => `at placeholder${String(i)} (output.js:${String(i)}:1)`,
+    ).join(' | ');
+    // The hang is noted as it is noticed, before the restart: if the dump stopped Drashti, the next start says it.
+    note({ window: 'output "Main Hall"', kind: 'hung', reason: 'no report for 7 s', stack, at: 0 });
+    expect(journal.entries().map((e) => e.what)).toEqual([
+      scrubEntry(`output “Main Hall” hung (no report for 7 s); its JavaScript: ${stack}`),
+    ]);
+    note({ window: 'output "Main Hall"', kind: 'crashed', reason: 'killed', at: 1 });
+    note({
+      window: 'output "Main Hall"',
+      kind: 'restarted',
+      reason: 'Drashti waited 240 ms while it saved the crash file',
+      heldMs: 240,
+      at: 2,
+    });
+    // No entry of its own: the figure goes into the hang's, before the stack, so the cut to 300 letters takes
+    // stack frames, never the figure.
+    const [hang, crash, ...rest] = journal.entries();
+    expect(rest).toEqual([]);
+    expect(hang?.what).toMatch(
+      /^output “Main Hall” hung \(no report for 7 s\); restarted after Drashti waited 240 ms while it saved the crash file; its JavaScript: at placeholder0 /u,
+    );
+    expect(hang?.what.length).toBe(JOURNAL_LETTERS);
+    expect(hang?.what.endsWith('…')).toBe(true);
+    expect(crash?.what).toBe('output “Main Hall” crashed (killed); the watchdog brought it back');
+    // Kept so in the file, which the next start reads.
+    expect(new CrashJournal(file).entries()[0]?.what).toBe(hang?.what);
+    // Its next hang, with no stack, gets its own figure.
+    note({ window: 'output "Main Hall"', kind: 'hung', reason: 'no report for 7 s', at: 3 });
+    note({
+      window: 'output "Main Hall"',
+      kind: 'restarted',
+      reason: 'Drashti waited 63 ms while it saved the crash file',
+      heldMs: 63,
+      at: 4,
+    });
+    expect(journal.entries().at(-1)?.what).toBe(
+      'output “Main Hall” hung (no report for 7 s); restarted after Drashti waited 63 ms while it saved the crash file',
+    );
+    // A restart with no hang noted for that window changes nothing.
+    note({
+      window: 'operator',
+      kind: 'restarted',
+      reason: 'Drashti waited 5 ms while it saved the crash file',
+      at: 5,
+    });
+    expect(journal.entries()).toHaveLength(3);
+    // An entry no longer kept (the oldest dropped) cannot be amended.
+    expect(journal.amend(99, 'placeholder')).toBe(false);
   });
 
   it('writes its file in the form it reads', () => {

@@ -83,13 +83,24 @@ export class CrashJournal {
     return this.state.entries;
   }
 
-  /** Note a problem as it happens (the file is written at once). */
-  add(what: string, at = new Date()): void {
-    this.state.entries.push({ n: this.state.next, at: at.toISOString(), what: scrubEntry(what) });
+  /** Note a problem as it happens (the file is written at once); its number, to say more about it later. */
+  add(what: string, at = new Date()): number {
+    const n = this.state.next;
+    this.state.entries.push({ n, at: at.toISOString(), what: scrubEntry(what) });
     this.state.next++;
     if (this.state.entries.length > JOURNAL_ENTRIES)
       this.state.entries.splice(0, this.state.entries.length - JOURNAL_ENTRIES);
     this.write();
+    return n;
+  }
+
+  /** Say an entry noted before again, with more (Session 38; the file is written at once): false when it is no longer kept. */
+  amend(n: number, what: string): boolean {
+    const entry = this.state.entries.find((e) => e.n === n);
+    if (!entry) return false;
+    entry.what = scrubEntry(what);
+    this.write();
+    return true;
   }
 
   /** What it noted since it was last shown, oldest first; from now on those count as shown. */
@@ -121,15 +132,22 @@ function windowName(window: string): string {
   return `the ${window}`;
 }
 
-/** A watchdog event as the journal says it, or null for one that is no problem (a reload, a recovery). */
-export function watchdogWords(e: Pick<WatchdogEvent, 'window' | 'kind' | 'reason' | 'stack'>): string | null {
+/**
+ * A watchdog event as the journal says it, or null for one that is no problem (a reload, a recovery, a
+ * restart, whose wait goes into its hang's entry: `restarted`, how long Drashti waited, Session 38).
+ */
+export function watchdogWords(
+  e: Pick<WatchdogEvent, 'window' | 'kind' | 'reason' | 'stack'>,
+  restarted?: string,
+): string | null {
   const name = windowName(e.window);
   const why = e.reason ? ` (${e.reason})` : '';
   switch (e.kind) {
     case 'crashed':
       return `${name} crashed${why}; the watchdog brought it back`;
     case 'hung':
-      return `${name} hung${why}${e.stack ? `; its JavaScript: ${e.stack}` : ''}`;
+      // The wait before the stack, which is long: the cut to JOURNAL_LETTERS takes stack frames, never the figure.
+      return `${name} hung${why}${restarted ? `; restarted after ${restarted}` : ''}${e.stack ? `; its JavaScript: ${e.stack}` : ''}`;
     case 'gave-up':
       return `${name} kept crashing, so the watchdog stopped it${why}`;
     case 'render-error':
@@ -137,6 +155,29 @@ export function watchdogWords(e: Pick<WatchdogEvent, 'window' | 'kind' | 'reason
     default:
       return null;
   }
+}
+
+/**
+ * The watchdog's events into the journal, each as watchdogWords says it (Session 38). A hang is noted as it is
+ * noticed, before the window is restarted, so a dump that stopped Drashti itself still leaves it said; the
+ * restart then adds how long Drashti waited to that hang's entry.
+ */
+export function watchdogJournal(journal: CrashJournal): (e: WatchdogEvent) => void {
+  /** Each window's last hang noted, waiting for its restart. */
+  const hangs = new Map<string, { n: number; e: WatchdogEvent }>();
+  return (e) => {
+    if (e.kind === 'restarted') {
+      const hang = hangs.get(e.window);
+      hangs.delete(e.window);
+      const words = hang && e.reason ? watchdogWords(hang.e, e.reason) : null;
+      if (hang && words) journal.amend(hang.n, words);
+      return;
+    }
+    const words = watchdogWords(e);
+    if (words === null) return;
+    const n = journal.add(words);
+    if (e.kind === 'hung') hangs.set(e.window, { n, e });
+  };
 }
 
 const GONE_WORDS: Record<string, string> = {
