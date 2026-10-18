@@ -140,6 +140,16 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
   await expect(win.getByTestId('live-text')).toContainText('slide 5 of 5');
   await win.keyboard.press('PageDown');
   await expect(video).toHaveCount(1);
+  // The video's length, learned from playback, reaches the layer once a screen has read it: wait for it, so
+  // the comparisons below see the layer as it stays (Session 38; once on the dev Mac it came between them).
+  await expect
+    .poll(async () => {
+      const background = (await state(win)).layers.background;
+      return background?.kind === 'media' && background.mediaId === show.videoMediaId
+        ? (background.durationMs ?? 0)
+        : 0;
+    })
+    .toBeGreaterThan(0);
   const playing = (await state(win)).layers.background;
   expect(playing).toMatchObject({ kind: 'media', mediaId: show.videoMediaId });
 
