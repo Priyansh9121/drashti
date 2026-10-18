@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { DataAttributes } from './cx';
 import { cx } from './cx';
@@ -61,7 +61,8 @@ export const LOADING_AFTER_MS = 500;
  * Waiting for something to arrive (Sessions 31–36): said only after half a second, or at once where the
  * wait is known to be long (`immediate`: starting the stream's picture, asking for an update). Its status
  * box is there from the start, its words hidden until then (keeping their room), so a screen reader hears
- * them as they come.
+ * them as they come. The box says when it came and when its words showed (`data-since`, `data-shown-at`:
+ * performance.now() as each reached the page, Session 37), so the half second can be checked on any machine.
  */
 export function Loading({
   label = 'Loading…',
@@ -73,6 +74,14 @@ export function Loading({
   immediate?: boolean;
 }) {
   const [shown, setShown] = useState(immediate);
+  const box = useRef<HTMLDivElement>(null);
+  // Written as the page takes each in, before the half second's timer is even set (layout effects run first).
+  useLayoutEffect(() => {
+    box.current?.setAttribute('data-since', performance.now().toFixed(1));
+  }, []);
+  useLayoutEffect(() => {
+    if (shown) box.current?.setAttribute('data-shown-at', performance.now().toFixed(1));
+  }, [shown]);
   useEffect(() => {
     if (shown) return;
     const timer = setTimeout(() => {
@@ -84,6 +93,7 @@ export function Loading({
   }, [shown]);
   return (
     <div
+      ref={box}
       role="status"
       className={cx('flex items-center justify-center gap-2 p-4 text-sm text-muted', className)}
     >
