@@ -81,7 +81,7 @@ import { StageLayoutRepo } from './db/stage-layouts';
 import { StageLayoutService } from './stage/stage-layout-service';
 import { MaskRepo } from './db/masks';
 import { MaskService } from './masks/mask-service';
-import { anyTestSwitch, sw, swMs } from './switches';
+import { anyTestSwitch, sw, swMs, swOn } from './switches';
 import { MacroRepo } from './db/macros';
 import { ArtiRepo } from './db/arti';
 import { ArtiService } from './arti/arti-service';
@@ -116,6 +116,7 @@ import {
   refusedNow,
   setGiveWay,
 } from './ipc/handle';
+import { readOrDefault } from './ipc/read-or-default';
 import { MainWatch, PerfProfile, watchedMedia } from './perf-watch';
 import { isPerfScenario, startScenario } from './perf-scenarios';
 import { LaterWrites } from './db/later-writes';
@@ -4407,7 +4408,22 @@ function start(): void {
   // Kept with the library's settings, as the switch in Help › Keyboard Shortcuts… sets them. Off, they do
   // nothing in the window in either mode (no menu item answers a single key); Black-out and the Logo work
   // from their buttons, a MIDI pad and the phone remote as before.
-  const singleKeysOn = () => settings.get('singleLetterKeys') !== false;
+  // The operator window shows nothing until it knows this (Session 37), so it is always answered (Session 38):
+  // a setting that cannot be read (a refused read of the library) answers on, the default, and the log says
+  // why, once. Tests only (never a packaged Drashti): DRASHTI_TEST_SINGLE_KEYS_UNREADABLE makes the read fail.
+  const singleKeysUnreadable = swOn('DRASHTI_TEST_SINGLE_KEYS_UNREADABLE');
+  const singleKeysOn = readOrDefault(
+    () => {
+      if (singleKeysUnreadable) throw new Error('A test made this read of the library fail');
+      return settings.get('singleLetterKeys') !== false;
+    },
+    true,
+    (error) => {
+      log.warn(
+        `Keys: the single-letter keys setting could not be read, so they are on, as they are by default (${String(error)})`,
+      );
+    },
+  );
   handle(IPC.app.singleKeys, () => singleKeysOn());
   handle(IPC.app.setSingleKeys, (e, on) => {
     if (!fromOperator(e) || typeof on !== 'boolean')
