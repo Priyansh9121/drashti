@@ -6,8 +6,12 @@ import {
   KEYMAP,
   keyMatches,
   keyText,
+  PAGE_KEYMAP,
   shortcutText,
+  SIMPLE_KEYMAP,
+  SINGLE_KEYS,
   toAccelerator,
+  withoutSingleKeys,
 } from './keymap';
 
 const press = (
@@ -116,5 +120,51 @@ describe('keymap', () => {
     expect(keyText('PageDown', 'win32')).toBe('Page Down');
     expect(keyText('?', 'darwin')).toBe('?');
     expect(actionFor(press('?', { shiftKey: true }), 'darwin')).toBe('showKeys');
+  });
+
+  // WCAG 2.1.4 (Session 37): a key of one character with no Cmd, Ctrl or Alt acts on its own, so an admin
+  // can turn them off. A new one must be added here on purpose: the switch names them.
+  it('knows its single-letter keys: B, ., L and ?, and only those', () => {
+    expect(SINGLE_KEYS).toEqual(['B', '.', 'L', '?']);
+  });
+
+  it('without its single-letter keys, B, ., L and ? do nothing, in Pro and Simple Mode, and every other key works', () => {
+    for (const [keymap, platform] of [
+      [withoutSingleKeys(PAGE_KEYMAP), 'darwin'],
+      [withoutSingleKeys(SIMPLE_KEYMAP), 'win32'],
+    ] as const) {
+      expect(actionFor(press('b'), platform, keymap)).toBeNull();
+      expect(actionFor(press('B', { shiftKey: true }), platform, keymap)).toBeNull();
+      expect(actionFor(press('.'), platform, keymap)).toBeNull();
+      expect(actionFor(press('l'), platform, keymap)).toBeNull();
+      expect(actionFor(press('?', { shiftKey: true }), platform, keymap)).toBeNull();
+      expect(actionFor(press('ArrowRight'), platform, keymap)).toBe('next');
+      expect(actionFor(press('PageUp'), platform, keymap)).toBe('previous');
+      expect(actionFor(press(' '), platform, keymap)).toBe('next');
+      expect(actionFor(press('F1'), platform, keymap)).toBe('clearAll');
+      expect(actionFor(press('Escape'), platform, keymap)).toBe('stopRepeat');
+    }
+    // Keys with Cmd or Ctrl stay: they never act by a word said or a key brushed.
+    const pro = withoutSingleKeys(PAGE_KEYMAP);
+    expect(actionFor(press('f', { metaKey: true }), 'darwin', pro)).toBe('findInLibrary');
+    expect(actionFor(press('U', { ctrlKey: true, shiftKey: true }), 'win32', pro)).toBe('uncoverControls');
+    // What the window shows beside a button follows: no key for Black-out, the Logo or the list of keys.
+    const all = withoutSingleKeys(KEYMAP);
+    expect(shortcutText('toggleBlackout', 'darwin', all)).toBe('');
+    expect(shortcutText('toggleLogo', 'win32', all)).toBe('');
+    expect(shortcutText('showKeys', 'darwin', all)).toBe('');
+    expect(shortcutText('next', 'darwin', all)).toBe('→');
+    expect(shortcutText('clearAll', 'win32', all)).toBe('F1');
+  });
+
+  it('leaves a keymap without single-letter keys as it was, binding for binding', () => {
+    const library = KEYMAP.filter((b) => b.scope === 'library');
+    expect(withoutSingleKeys(library)).toEqual(library);
+    for (const b of withoutSingleKeys(KEYMAP)) expect(KEYMAP).toContain(b);
+    expect(withoutSingleKeys(KEYMAP).map((b) => b.action)).toEqual(
+      KEYMAP.filter((b) => !['toggleBlackout', 'toggleLogo', 'showKeys'].includes(b.action)).map(
+        (b) => b.action,
+      ),
+    );
   });
 });

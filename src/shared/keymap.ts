@@ -128,6 +128,42 @@ export const LIBRARY_KEYMAP: readonly KeyBinding[] = KEYMAP.filter((b) => b.scop
  */
 export const SIMPLE_KEYMAP: readonly KeyBinding[] = KEYMAP.filter((b) => !b.scope);
 
+/**
+ * A key of one character with no Cmd, Ctrl or Alt (Shift or not): B, ., L and ?. WCAG 2.1.4 calls these
+ * character key shortcuts. They act wherever the window has the keyboard, so a word said to speech software,
+ * or a key brushed, could black out the hall: an admin can turn them off (Help › Keyboard Shortcuts…,
+ * Session 37). Every other key has Cmd, Ctrl or Alt, is a named key (arrows, Space, F1…), or works only in a
+ * list with the keyboard.
+ */
+export function isSingleKey(binding: string): boolean {
+  const { key, mod, alt } = parse(binding);
+  return key.length === 1 && !mod && !alt;
+}
+
+/** The single-letter keys, in the keymap's order: B, ., L and ?. */
+export const SINGLE_KEYS: readonly string[] = KEYMAP.flatMap((b) => b.keys.filter(isSingleKey));
+
+/** The single-letter keys in words, as the switch and the guides name them: "B, ., L and ?". */
+export const SINGLE_KEYS_TEXT = `${SINGLE_KEYS.slice(0, -1).join(', ')} and ${SINGLE_KEYS.at(-1) ?? ''}`;
+
+const withoutSingle = new WeakMap<readonly KeyBinding[], readonly KeyBinding[]>();
+
+/**
+ * The keymap with its single-letter keys taken out, as when they are turned off: an action left with no
+ * key goes, and every other binding stays as it was. Asked again for the same keymap, the same answer.
+ */
+export function withoutSingleKeys(keymap: readonly KeyBinding[]): readonly KeyBinding[] {
+  const known = withoutSingle.get(keymap);
+  if (known) return known;
+  const left = keymap.flatMap((b) => {
+    const keys = b.keys.filter((k) => !isSingleKey(k));
+    if (keys.length === b.keys.length) return [b];
+    return keys.length > 0 ? [{ ...b, keys }] : [];
+  });
+  withoutSingle.set(keymap, left);
+  return left;
+}
+
 export interface KeyInput {
   key: string;
   metaKey: boolean;

@@ -129,6 +129,14 @@ export const IPC = {
     safeAreas: 'app:safe-areas',
     /** main -> operator: the switch changed. */
     safeAreasChanged: 'app:safe-areas-changed',
+    /**
+     * Single-letter keys (Session 37, WCAG 2.1.4): whether B, ., L and ? act (kept with the library; on unless
+     * an admin turned them off), and turning them on or off (an admin's, never in Simple Mode).
+     */
+    singleKeys: 'app:single-keys',
+    setSingleKeys: 'app:set-single-keys',
+    /** main -> operator: the single-letter keys were turned on or off. */
+    singleKeysChanged: 'app:single-keys-changed',
     /** main -> operator: a long task's progress, or null when it has ended. */
     progress: 'app:progress',
     /** Simple Mode or Pro Mode. */
@@ -789,6 +797,11 @@ export interface InvokeContract {
   [IPC.app.simpleFirstRun]: { args: []; result: boolean };
   [IPC.app.simpleFirstRunSeen]: { args: []; result: null };
   [IPC.app.safeAreas]: { args: []; result: boolean };
+  [IPC.app.singleKeys]: { args: []; result: boolean };
+  [IPC.app.setSingleKeys]: {
+    args: [on: boolean];
+    result: { ok: true; on: boolean } | { ok: false; message: string };
+  };
   [IPC.app.getMode]: { args: []; result: OperatorMode };
   [IPC.app.setMode]: { args: [mode: OperatorMode, word?: string]; result: ModeResult };
   [IPC.roles.view]: { args: []; result: RolesView };
@@ -1159,6 +1172,7 @@ export interface EventContract {
   [IPC.library.changed]: { at: number; what: LibraryChange };
   [IPC.library.extrasChanged]: { on: boolean };
   [IPC.app.safeAreasChanged]: { on: boolean };
+  [IPC.app.singleKeysChanged]: { on: boolean };
   [IPC.playlists.changed]: { at: number };
   [IPC.playlists.smartChanged]: SmartPlaylistView[];
   [IPC.app.undo]: { at: number };

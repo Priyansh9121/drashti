@@ -2,6 +2,10 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## Unreleased
+
+- An admin can turn off the single-letter keys (B, ., L and ?) in Help › Keyboard Shortcuts…, for someone who works the computer by speaking to it or with a switch. Then they do nothing, and Black-out and the Logo still work from their buttons.
+
 ## 1.0.0-alpha.6 (18 Oct 2026)
 
 Safer on air and easier to learn: a No sound warning, recordings that keep going past 4 GB, the guides inside Drashti without the internet, slides that warn before their words run over, and Gujarati and Hindi drawn right. Update after a sabha, never on the day of one.

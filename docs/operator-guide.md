@@ -98,6 +98,8 @@ Do these about 30 minutes before the sabha starts.
 
 A clear button is lit, with a dot, while its layer is on the screens.
 
+If an admin has turned the single-letter keys off (**Keys at a glance**, below), **B**, **.** and **L** do nothing: use the **Black-out** and **Logo** buttons.
+
 **Messages.** In **Messages**, fill in a message's fields (for example the car's number in "Car {plate} please move") and press **Show** (or Enter in the field). It goes across the bottom of the hall's screens. **Take off** removes it; **F5** removes them all.
 
 **Timers.** In **Timers**: **Start**, **Pause**, **Reset**, and **Show on the screens**. The stage screens show every running timer by themselves.
@@ -161,6 +163,6 @@ A clear button is lit, with a dot, while its layer is on the screens.
 
 ## 5. Keys at a glance
 
-In Drashti, **Help**, then **Keyboard Shortcuts…** (or press **?** when no field is chosen) lists every key, as your computer writes it. The full key card, including the slide editor's keys, is at the end of `docs/parallel-run.md`. Going live, ending the stream and recording have no keys: always the buttons, and always a question first.
+In Drashti, **Help**, then **Keyboard Shortcuts…** (or press **?** when no field is chosen) lists every key, as your computer writes it. At its top, an admin can turn the single-letter keys (**B**, **.**, **L** and **?**) off, for someone who works the computer by speaking to it or with a switch, so that a word said never blacks out the hall. Then those four keys do nothing, the list says **Off** beside them, and **Black-out** and **Logo** work from their buttons, a MIDI pad and the phone remote as always. The full key card, including the slide editor's keys, is at the end of `docs/parallel-run.md`. Going live, ending the stream and recording have no keys: always the buttons, and always a question first.
 
 ![The keys sheet](screenshots/keys-sheet.png)

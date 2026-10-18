@@ -434,6 +434,8 @@ On the Mac, **Cmd** is the ⌘ key; on Windows, use **Ctrl** instead. These keys
 | **Esc**                                        | Stop Repeat Slides going round (its slide stays up). In a dialog, a question or the search box: close it, or empty the box; with typed changes it asks first (**Enter** keeps editing) |
 | **?** (Pro Mode, no field chosen)              | The list of keys (also **Help**, then **Keyboard Shortcuts…**)                                                                                                                         |
 
+An admin can turn **B**, **.**, **L** and **?** off (**Help**, then **Keyboard Shortcuts…**, the switch at the top): then use the **Black-out** and **Logo** buttons.
+
 In **Start, end and markers** (a video's timeline): **I** and **O** set the start and the end at the play head, and the arrow keys move a handle (with **Shift**, a second at a time).
 
 **Transitions** (how a slide comes on; chosen in Pro Mode, for a slide or a presentation in the slide editor, or for a Repeat Slides playlist under its name): **Cut** (at once), **Fade**, **Fade through black**, **Slide** (in from the right) and **Slow zoom** (a fade, then the slide growing slowly while it is up); and **Wipe**, **Push** and **Zoom**, which move the words on screens whose Look is Bold and fade elsewhere, and **Line by line** and **Word by word** (never word by word on a kirtan's slides). Pictures only ever fade. Every screen runs them at the same moment.

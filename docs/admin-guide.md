@@ -85,6 +85,8 @@ With roles on:
 
 Nothing else changes: the library, the playlists and the settings are as they were.
 
+**Single-letter keys.** **B** and **.** (Black-out), **L** (the logo) and **?** (the list of keys) act anywhere in the operator window while no field has the keyboard. For someone who works the computer by speaking to it or with a switch, turn them off, so that a word said never blacks out the hall: **Help**, then **Keyboard Shortcuts…**, and the switch **Single-letter keys (B, ., L and ?)** at the top. It is an admin's (with roles on, it asks for the admin PIN), in Pro Mode only; Simple Mode cannot change it. Off, those four keys do nothing in either mode, the list says **Off** beside them, and **Black-out** and **Logo** work from their buttons, a MIDI pad and the phone remote as before. It is kept with the library, so a backup carries it.
+
 **If Drashti cannot read its PIN file** (a damaged disk, a copy cut short), it never takes that as roles off, which would let anyone in. It stays in **Simple Mode** with admin refused and no PIN taken, says so when it starts, keeps a copy of the file beside it (`roles.unreadable-` and the date) and writes `roles-held.json`, which keeps it locked over a restart. The reset above ends it.
 
 ---

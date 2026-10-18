@@ -23,6 +23,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.saveSlides,
   IPC.library.setDefaultTransition,
   IPC.library.setExtras,
+  // The single-letter keys (Session 37): an admin's, from Pro Mode's keys sheet.
+  IPC.app.setSingleKeys,
   IPC.library.restoreRevision,
   IPC.library.importPaths,
   IPC.library.pickImportPaths,

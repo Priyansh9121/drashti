@@ -26,7 +26,7 @@ import type { ImportResult } from '../shared/import';
 import { type LibraryChange, listedKirtan } from '../shared/library';
 import { importOptionsSchema, importPathsSchema, runIdSchema } from '../shared/import-schema';
 import { type EventChannel, type EventContract, IPC } from '../shared/ipc';
-import { acceleratorFor } from '../shared/keymap';
+import { acceleratorFor, SINGLE_KEYS_TEXT } from '../shared/keymap';
 import { copyMediaId, copyOfId, MEDIA_ID_PATTERN, MEDIA_SCHEME } from '../shared/media';
 import { NOT_USED } from '../shared/media-removal';
 import { mediaUpNow } from '../shared/node-media';
@@ -4403,6 +4403,20 @@ function start(): void {
   // ---- View > Show Safe Areas (Sessions 31–36): the slide editor's guides, anyone's to turn on ---------
   const safeAreasShown = () => settings.get('showSafeAreas') === true;
   handle(IPC.app.safeAreas, () => safeAreasShown());
+  // ---- Single-letter keys (Session 37, WCAG 2.1.4): B, ., L and ? act unless an admin turned them off ----
+  // Kept with the library's settings, as the switch in Help › Keyboard Shortcuts… sets them. Off, they do
+  // nothing in the window in either mode (no menu item answers a single key); Black-out and the Logo work
+  // from their buttons, a MIDI pad and the phone remote as before.
+  const singleKeysOn = () => settings.get('singleLetterKeys') !== false;
+  handle(IPC.app.singleKeys, () => singleKeysOn());
+  handle(IPC.app.setSingleKeys, (e, on) => {
+    if (!fromOperator(e) || typeof on !== 'boolean')
+      return { ok: false as const, message: 'Only the operator window can change the keys.' };
+    settings.set('singleLetterKeys', on);
+    log.info(`Keys: the single-letter keys (${SINGLE_KEYS_TEXT}) ${on ? 'on' : 'off'}`);
+    sendToOperator(IPC.app.singleKeysChanged, { on });
+    return { ok: true as const, on };
+  });
   handle(IPC.library.setExtras, (e, on) => {
     if (!fromOperator(e) || typeof on !== 'boolean')
       return { ok: false as const, message: 'Only the operator window can change what it shows.' };

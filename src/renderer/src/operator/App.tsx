@@ -71,6 +71,7 @@ import { openCalendar } from '../calendar/calendar-store';
 import { isTyping, useKeymap } from './useKeymap';
 import { watchProps } from './logo-store';
 import { connectMode, useMode } from './mode-store';
+import { connectSingleKeys, useSingleKeys } from './single-keys-store';
 import { connectRoles } from '../roles/roles-store';
 import { AdminPinDialog, RolesDialog } from '../roles/RolesDialogs';
 import { BackupsDialog } from '../backups/BackupsDialog';
@@ -110,6 +111,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectSmart();
     connectSaves();
     connectPictureLooks();
+    connectSingleKeys();
     connectMode();
     connectRoles();
     void startMidi();
@@ -168,8 +170,10 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
 export function App() {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const mode = useMode((s) => s.mode);
+  // Whether B, ., L and ? act (Session 37): known before the window shows, so no key is heard before then.
+  const keysKnown = useSingleKeys((s) => s.on !== null);
   useConnections(setInfo);
-  if (mode === null) return null;
+  if (mode === null || !keysKnown) return null;
   return mode === 'simple' ? <SimpleApp info={info} /> : <ProApp info={info} />;
 }
 

@@ -128,6 +128,10 @@ export interface DrashtiBridge {
     /** View › Show Safe Areas: whether the slide editor draws them. */
     safeAreas(): Promise<boolean>;
     onSafeAreasChanged(listener: (on: boolean) => void): () => void;
+    /** Single-letter keys (Session 37): whether B, ., L and ? act, and turning them on or off (an admin's). */
+    singleKeys(): Promise<boolean>;
+    setSingleKeys(on: boolean): Promise<{ ok: true; on: boolean } | { ok: false; message: string }>;
+    onSingleKeysChanged(listener: (on: boolean) => void): () => void;
     /** A long task's progress (a backup), or null when it has ended. */
     onProgress(listener: (progress: TaskProgress | null) => void): () => void;
     /** Simple Mode or Pro Mode. */

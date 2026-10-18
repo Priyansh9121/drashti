@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { shortcutText, SIMPLE_KEYMAP } from '../../../shared/keymap';
+import { useKeymapNow } from '../operator/single-keys-store';
 import { useEngine } from '../engine/engine-store';
 import { Button } from '../ui/Button';
 import { Kbd } from '../ui/Kbd';
@@ -41,10 +42,16 @@ const STEPS: readonly Step[] = [
     title: 'When something is wrong',
     text: (key) => (
       <>
-        <b className="text-fg">Black-out</b> (<Kbd>{key('toggleBlackout')}</Kbd>) darkens every screen at
-        once. <b className="text-fg">Clear all</b> (<Kbd>{key('clearAll')}</Kbd>) takes everything off, and{' '}
-        <b className="text-fg">Put it back</b> brings it back. <b className="text-fg">Help</b>, then{' '}
-        <b className="text-fg">Guides…</b> has the rest.
+        <b className="text-fg">Black-out</b>
+        {key('toggleBlackout') && (
+          <>
+            {' '}
+            (<Kbd>{key('toggleBlackout')}</Kbd>)
+          </>
+        )}{' '}
+        darkens every screen at once. <b className="text-fg">Clear all</b> (<Kbd>{key('clearAll')}</Kbd>)
+        takes everything off, and <b className="text-fg">Put it back</b> brings it back.{' '}
+        <b className="text-fg">Help</b>, then <b className="text-fg">Guides…</b> has the rest.
       </>
     ),
   },
@@ -53,6 +60,8 @@ const STEPS: readonly Step[] = [
 export function SimpleFirstRun({ platform }: { platform: string }) {
   const [step, setStep] = useState<number | null>(null);
   const titleId = useId();
+  // Only keys that act: no key for Black-out while an admin has turned B and . off (Session 37).
+  const keymap = useKeymapNow(SIMPLE_KEYMAP);
   // Whether a slide is up: null until the show's state has come.
   const live = useEngine((s) => (s.state === null ? null : s.state.layers.slide !== null));
   const asked = useRef(false);
@@ -89,7 +98,7 @@ export function SimpleFirstRun({ platform }: { platform: string }) {
   const at = STEPS[step];
   if (!at) return null;
   const key = (action: 'next' | 'previous' | 'toggleBlackout' | 'clearAll') =>
-    shortcutText(action, platform, SIMPLE_KEYMAP);
+    shortcutText(action, platform, keymap);
   const last = step === STEPS.length - 1;
   return (
     <section

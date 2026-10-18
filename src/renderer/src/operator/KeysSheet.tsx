@@ -1,14 +1,18 @@
 import { Fragment, useEffect, useId } from 'react';
 import { create } from 'zustand';
-import { KEY_GROUPS, KEYMAP, keyText } from '../../../shared/keymap';
+import { KEY_GROUPS, KEYMAP, keyText, SINGLE_KEYS_TEXT } from '../../../shared/keymap';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Kbd } from '../ui/Kbd';
+import { Toggle } from '../ui/Toggle';
+import { useKeymapNow, useSingleKeys } from './single-keys-store';
 
 /*
  * The keys sheet (Session 25): Help > Keyboard Shortcuts…, or ? when no field has the focus, in Pro
  * Mode (Simple Mode keeps its key line). Built from KEYMAP and grouped by what the operator is doing
- * (KEY_GROUPS), each key as this computer writes it, so it never drifts from the keys.
+ * (KEY_GROUPS), each key as this computer writes it, so it never drifts from the keys. It holds the
+ * switch for the single-letter keys (Session 37, WCAG 2.1.4): an admin's, on to begin with; off, the sheet
+ * says Off beside each key it took away.
  */
 
 export const useKeysSheet = create<{ open: boolean }>(() => ({ open: false }));
@@ -23,10 +27,13 @@ const close = () => {
 
 export function KeysSheet({ platform }: { platform: string }) {
   const open = useKeysSheet((s) => s.open);
+  const singleOn = useSingleKeys((s) => s.on !== false);
+  const keymap = useKeymapNow();
   const ids = useId();
-  // ? closes it again (the show's keys are off while a dialog is open, so the sheet listens itself).
+  // ? closes it again (the show's keys are off while a dialog is open, so the sheet listens itself), while
+  // the single-letter keys are on.
   useEffect(() => {
-    if (!open) return;
+    if (!open || !singleOn) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== '?' || e.metaKey || e.ctrlKey || e.altKey) return;
       e.preventDefault();
@@ -36,7 +43,7 @@ export function KeysSheet({ platform }: { platform: string }) {
     return () => {
       window.removeEventListener('keydown', onKey);
     };
-  }, [open]);
+  }, [open, singleOn]);
   if (!open) return null;
   const mac = platform === 'darwin';
   return (
@@ -50,11 +57,33 @@ export function KeysSheet({ platform }: { platform: string }) {
       testId="keys-sheet"
       footer={
         <>
-          <span className="mr-auto text-xs text-muted">Press ? or Esc to close.</span>
+          <span className="mr-auto text-xs text-muted">
+            {singleOn ? 'Press ? or Esc to close.' : 'Press Esc to close.'}
+          </span>
           <Button onClick={close}>Close</Button>
         </>
       }
     >
+      <div className="mb-4 flex flex-col gap-1 rounded-md border border-line bg-panel-2 px-3 py-2.5">
+        <Toggle
+          checked={singleOn}
+          label={`Single-letter keys (${SINGLE_KEYS_TEXT})`}
+          data-testid="keys-single"
+          onChange={(on) => void window.drashti.app.setSingleKeys(on)}
+        />
+        {singleOn ? (
+          <p className="text-xs text-muted">
+            They act anywhere in this window while no field has the keyboard. An admin can turn them off for
+            someone who works the computer by speech or a switch, so that a word said never blacks out the
+            hall.
+          </p>
+        ) : (
+          <p className="text-xs text-muted" data-testid="keys-single-off">
+            Off on this computer: {SINGLE_KEYS_TEXT} do nothing. Black-out and the Logo still work from their
+            buttons, a MIDI pad and the phone remote.
+          </p>
+        )}
+      </div>
       <div className="gap-x-8 sm:columns-2">
         {KEY_GROUPS.map((group, n) => (
           <section
@@ -70,6 +99,8 @@ export function KeysSheet({ platform }: { platform: string }) {
               {group.actions.map((action) => {
                 const binding = KEYMAP.find((b) => b.action === action);
                 if (!binding) return null;
+                // Its keys as they act now: none, while the single-letter keys are off.
+                const keys = keymap.find((b) => b.action === action)?.keys ?? [];
                 return (
                   <Fragment key={action}>
                     <dt className="text-muted">
@@ -77,7 +108,12 @@ export function KeysSheet({ platform }: { platform: string }) {
                       {binding.scope === 'library' && <span className="text-faint"> (in a list)</span>}
                     </dt>
                     <dd className="flex flex-wrap items-center justify-end gap-1" data-testid="keys-keys">
-                      {binding.keys.map((key, i) => (
+                      {keys.length === 0 && (
+                        <span className="text-xs text-muted" data-testid="keys-off">
+                          Off
+                        </span>
+                      )}
+                      {keys.map((key, i) => (
                         <Fragment key={key}>
                           {i > 0 && <span className="text-xs text-muted">or</span>}
                           <Kbd>{keyText(key, platform)}</Kbd>
