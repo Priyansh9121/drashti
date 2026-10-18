@@ -19,9 +19,18 @@ export function connectMode(): void {
   window.drashti.app.onAskLeaveSimple(() => {
     if (useMode.getState().mode === 'simple') useMode.setState({ askingToLeave: true });
   });
-  void window.drashti.app.getMode().then((mode) => {
-    useMode.setState({ mode });
-  });
+  // The window shows nothing until it knows (App), so it must always come to know (Session 38): when the
+  // request fails, Simple Mode, the safe side (only the show's controls, each of which works in either mode,
+  // as when the PIN file cannot be read), until the main process says otherwise.
+  void window.drashti.app.getMode().then(
+    (mode) => {
+      useMode.setState({ mode });
+    },
+    (error: unknown) => {
+      console.warn('The mode could not be asked, so the window shows Simple Mode', error);
+      if (useMode.getState().mode === null) useMode.setState({ mode: 'simple' });
+    },
+  );
 }
 
 export async function enterSimpleMode(): Promise<void> {

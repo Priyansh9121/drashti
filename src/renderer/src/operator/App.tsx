@@ -171,6 +171,7 @@ export function App() {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const mode = useMode((s) => s.mode);
   // Whether B, ., L and ? act (Session 37): known before the window shows, so no key is heard before then.
+  // Both always come: a request that fails takes the safe default (Session 38), never a blank window.
   const keysKnown = useSingleKeys((s) => s.on !== null);
   useConnections(setInfo);
   if (mode === null || !keysKnown) return null;

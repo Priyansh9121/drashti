@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { KEY_GROUPS, KEYMAP } from '../../src/shared/keymap';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { ADMIN_REFUSAL } from '../../src/shared/roles';
@@ -293,5 +295,38 @@ test('with roles on, a locked admin cannot change the single-letter keys; the ad
   await expect(prompt).toHaveCount(0);
   await expect(single).not.toBeChecked();
   expect(await singleKeys(win)).toBe(false);
+  await app.close();
+});
+
+/*
+ * The window shows nothing until it knows whether the single-letter keys act (Session 37), so that request is
+ * always answered (Session 38, found by the assister reading Session 37): when the setting cannot be read (a
+ * refused read of the library), the window shows with them on, as they are by default, and the log says why,
+ * once. Before, the request failed and the operator window stayed blank.
+ */
+test('the operator window shows, the single-letter keys on, when their setting cannot be read, and the log says why once (Session 38)', async () => {
+  test.setTimeout(90_000);
+  const { app, userData } = await launchApp({ DRASHTI_TEST_SINGLE_KEYS_UNREADABLE: '1' });
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await expect(win.getByTestId('blackout-button').locator('kbd')).toHaveText('B');
+  expect(await singleKeys(win)).toBe(true);
+  await letGo(win);
+  await win.keyboard.press('b');
+  await expect.poll(async () => (await show(win)).blackout).toBe(true);
+  await win.keyboard.press('b');
+  await expect.poll(async () => (await show(win)).blackout).toBe(false);
+  // Asked again as the window opens again: on again, and still one line in the log.
+  await win.reload();
+  await operatorReady(win);
+  expect(await singleKeys(win)).toBe(true);
+  const said = () =>
+    readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8')
+      .split('\n')
+      .filter((line) => line.includes('Keys: the single-letter keys setting could not be read'));
+  await expect.poll(said).toHaveLength(1);
+  expect(said()[0]).toContain('so they are on, as they are by default');
+  expect(said()[0]).toContain('A test made this read of the library fail');
   await app.close();
 });
