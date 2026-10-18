@@ -26,7 +26,15 @@ export function stackLine(stack: unknown): string {
 }
 
 export type WatchdogEventKind =
-  'crashed' | 'reloaded' | 'unresponsive' | 'responsive' | 'hung' | 'gave-up' | 'render-error' | 'retried';
+  | 'crashed'
+  | 'reloaded'
+  | 'unresponsive'
+  | 'responsive'
+  | 'hung'
+  | 'restarted'
+  | 'gave-up'
+  | 'render-error'
+  | 'retried';
 
 export interface WatchdogEvent {
   window: string;
@@ -34,7 +42,22 @@ export interface WatchdogEvent {
   reason?: string;
   /** A hung window's JavaScript stack, as one line (Sessions 31–36, ROB-1). */
   stack?: string;
+  /** How long restarting a hung window held the main process, in ms (Session 38): its dump is written there first. */
+  heldMs?: number;
   at: number;
+}
+
+/** How long Drashti waited as the watchdog restarted a hung window, in words (Session 38). */
+function waitWords(heldMs: number, crashFiles: boolean): string {
+  const waited = `Drashti waited ${String(Math.round(heldMs))} ms`;
+  return crashFiles
+    ? `${waited} while it saved the crash file`
+    : `${waited}; no crash file while Drashti runs translated`;
+}
+
+/** A watchdog event as the log says it (the stack only with the hang that has one). */
+export function watchdogLine(e: WatchdogEvent): string {
+  return `Watchdog: ${e.window} ${e.kind}${e.reason ? ` (${e.reason})` : ''}${e.stack ? `; its JavaScript: ${e.stack}` : ''}`;
 }
 
 export interface WatchdogOptions {
@@ -83,15 +106,24 @@ export class RendererWatchdog {
   constructor(
     private readonly onEvent: (e: WatchdogEvent) => void = () => undefined,
     private readonly timers: Timers = realTimers,
+    /** Whether this run keeps crash files (crash-files.ts): then a restart writes the hung window's dump first. */
+    private readonly crashFiles = true,
   ) {}
 
-  private record(window: string, kind: WatchdogEventKind, reason?: string, stack?: string): void {
+  private record(
+    window: string,
+    kind: WatchdogEventKind,
+    reason?: string,
+    stack?: string,
+    heldMs?: number,
+  ): void {
     const e: WatchdogEvent = {
       window,
       kind,
       at: this.timers.now(),
       ...(reason ? { reason } : {}),
       ...(stack ? { stack } : {}),
+      ...(heldMs === undefined ? {} : { heldMs }),
     };
     this.events.push(e);
     if (this.events.length > 200) this.events.shift();
@@ -144,7 +176,7 @@ export class RendererWatchdog {
     if (!frame) {
       if (this.askingStack.has(target)) return;
       this.record(name, 'hung', reason);
-      if (!target.isDestroyed()) target.forcefullyCrashRenderer();
+      this.restart(target, name);
       return;
     }
     let timer: unknown = null;
@@ -153,7 +185,7 @@ export class RendererWatchdog {
       this.askingStack.delete(target);
       if (timer !== null) this.timers.clearTimeout(timer);
       this.record(name, 'hung', reason, stack);
-      if (crash && !target.isDestroyed()) target.forcefullyCrashRenderer();
+      if (crash) this.restart(target, name);
     };
     const stopped = () => {
       finish('none (it stopped first)', false);
@@ -170,6 +202,21 @@ export class RendererWatchdog {
         finish(`none (${String(error)})`, true);
       },
     );
+  }
+
+  /**
+   * Crash a hung window into its reload (the crash path reloads it), and say how long that held the main
+   * process (Session 38): with crash files kept, Electron writes the window's dump inside the main process
+   * first, and every slide change waits meanwhile (Session 37: 40–443 ms on Windows, about a quarter of a
+   * second on the dev Mac, up to 1.15 s on CI's Mac VM). Timed on the watchdog's own clock; the hang itself
+   * (and its stack) is recorded before, so if the dump stopped Drashti, the journal still says it hung.
+   */
+  private restart(target: WatchTarget, name: string): void {
+    if (target.isDestroyed()) return;
+    const started = this.timers.now();
+    target.forcefullyCrashRenderer();
+    const heldMs = Math.max(0, this.timers.now() - started);
+    this.record(name, 'restarted', waitWords(heldMs, this.crashFiles), undefined, heldMs);
   }
 
   /** Try a window again now (after it was given up on): false when it is not watched. */

@@ -132,3 +132,5 @@ With crash files kept (Phase G), the watchdog restarts a hung window with Electr
 | Mac (the dev Mac) | 225 to 790 ms (247)                | 219 to 235 ms (226)           | 218 to 332 ms (224)              | 219 to 222, 492 to 504, 220 to 222 ms       | 0 to 0.2 ms   |
 
 Windows holds at most 443 ms (once, the operator window; otherwise under 145 ms), within the 500 ms set for it (decided 18 Oct 2026), so the dump is kept as it is: a hung window is still restarted with its dump. On the dev Mac the hold is a quarter of a second, as in Phase H, apart from a run's first dump (790 ms) and a hung audio player (half a second). CI's Mac VM takes 1.5 to 1.7 times the dev Mac's medians, as it is slower at everything else here.
+
+Since Session 38 (decided 18 Oct 2026: the dump kept everywhere) each real restart logs its own figure, timed on the watchdog's clock: `Watchdog: output "Hall 1" restarted (Drashti waited 240 ms while it saved the crash file)` (README, Crash files). So a hang on the mandir's own Mac, not measured here, gives its figure in Save Diagnostics….

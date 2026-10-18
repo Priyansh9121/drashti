@@ -86,6 +86,17 @@ test('watchdog self-test: operator crash and reload never touch the output or th
   expect(logged).toMatch(
     /Watchdog: output ".+" hung \(.+\); its JavaScript: at drashtiSelfTestHangsHere \(/u,
   );
+  // Its restart says how long the main process waited as it saved the crash file (Session 38), once, without
+  // the stack again; the figure is printed, so each system's run tells it.
+  const restarts = logged
+    .split('\n')
+    .filter((line) => /Watchdog: output ".+" restarted \(/u.test(line))
+    .map((line) => line.slice(line.indexOf('Watchdog: ')));
+  expect(restarts).toHaveLength(1);
+  expect(restarts[0]).toMatch(
+    /^Watchdog: output ".+" restarted \(Drashti waited \d+ ms while it saved the crash file\)$/u,
+  );
+  console.log(`The hung output's restart, as logged: ${restarts.join('')}`);
   // The self-test ends on purpose: marked as a clean quit, so the next start puts nothing back.
   const mark = JSON.parse(readFileSync(join(userData, 'live-state.clean'), 'utf8')) as { session: string };
   const saved = JSON.parse(readFileSync(join(userData, 'live-state.json'), 'utf8')) as { session: string };

@@ -131,7 +131,7 @@ import { parsePlain } from '../shared/plain-parse';
 import { DEFAULT_LINK_MAX_HEIGHT, isLinkHeight } from '../shared/links';
 import { spawnDownloadWorker } from './links/spawn-worker';
 import { AudioOutput } from './audio/audio-output';
-import { CrashJournal, childGoneWords, JOURNAL_FILE, journalNotice, watchdogWords } from './crash-journal';
+import { CrashJournal, childGoneWords, JOURNAL_FILE, journalNotice, watchdogJournal } from './crash-journal';
 import { GPU_STOPPED_TWICE, GpuStops } from './gpu-stops';
 import { crashFiles, KEEP_CRASH_FILES, keepNewestCrashFiles, startCrashReporter } from './crash-files';
 import { type CrashFilesChoice, saveDiagnostics } from './diagnostics';
@@ -208,7 +208,13 @@ import { createOperatorWindow } from './windows/operator-window';
 import { StopList } from './lifecycle';
 import { hearRenderErrors } from './render-errors-ipc';
 import { CHECK_EVERY_MS, OutputHeartbeat } from './outputs/heartbeat';
-import { quitDetail, RendererWatchdog, shouldConfirmQuit, type WatchdogEvent } from './watchdog';
+import {
+  quitDetail,
+  RendererWatchdog,
+  shouldConfirmQuit,
+  watchdogLine,
+  type WatchdogEvent,
+} from './watchdog';
 import { allowHangStacks, applySessionSecurity, secureWebContents } from './windows/security';
 import { StreamProfileRepo } from './db/stream-profiles';
 import { StreamKeyStore } from './stream/key-store';
@@ -553,22 +559,29 @@ protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { ...M
 let outputWatchdogEvent: ((e: WatchdogEvent) => void) | null = null;
 /** The watchdog's recent events, for diagnostics. */
 const watchdogHistory: { at: string; window: string; kind: string; reason: string | null }[] = [];
-const watchdog = new RendererWatchdog((e) => {
-  watchdogHistory.push({
-    at: new Date().toISOString(),
-    window: e.window,
-    kind: e.kind,
-    reason: e.reason ?? null,
-  });
-  if (watchdogHistory.length > 200) watchdogHistory.splice(0, watchdogHistory.length - 200);
-  const text = `Watchdog: ${e.window} ${e.kind}${e.reason ? ` (${e.reason})` : ''}${e.stack ? `; its JavaScript: ${e.stack}` : ''}`;
-  if (e.kind === 'crashed' || e.kind === 'hung' || e.kind === 'gave-up' || e.kind === 'render-error')
-    log.warn(text);
-  else log.info(text);
-  const words = quitting ? null : watchdogWords(e);
-  if (words) crashJournal.add(words);
-  outputWatchdogEvent?.(e);
-});
+/** The watchdog's problems into the crash journal: a hung window's restart adds Drashti's wait to its hang (Session 38). */
+const journalWatchdog = watchdogJournal(crashJournal);
+const watchdog = new RendererWatchdog(
+  (e) => {
+    watchdogHistory.push({
+      at: new Date().toISOString(),
+      window: e.window,
+      kind: e.kind,
+      reason: e.reason ?? null,
+    });
+    if (watchdogHistory.length > 200) watchdogHistory.splice(0, watchdogHistory.length - 200);
+    // A hung window's restart says how long the main process waited for its dump (Session 38), in the log and so
+    // in Save Diagnostics, as "output "Hall 1" restarted (Drashti waited 240 ms while it saved the crash file)".
+    const text = watchdogLine(e);
+    if (e.kind === 'crashed' || e.kind === 'hung' || e.kind === 'gave-up' || e.kind === 'render-error')
+      log.warn(text);
+    else log.info(text);
+    if (!quitting) journalWatchdog(e);
+    outputWatchdogEvent?.(e);
+  },
+  undefined,
+  crashFilesKept,
+);
 // Screens never sleep or dim while an output is showing, or the stream is on air or recording (Session 31).
 const sleepGuard = new SleepGuard(powerSaveBlocker, (held) => {
   log.info(
