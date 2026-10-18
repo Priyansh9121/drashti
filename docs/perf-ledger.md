@@ -120,3 +120,15 @@ The budget is judged in the Performance check, which measures the figure after i
 | Windows | 3.3, 5.0, 5.1, 3.8, 4.9, 2.8, 5.2, 4.1, 5.1, 2.0 | 5.1 s | **6.4 s**          |
 
 Runs, in order: 39040418838, 39040449005, 39040477427, 39065895419, 39065925578, 39065957732, 39066656163, 39066668826, 39066680371, 39068007134. A second figure was measured where the first was over the budget of the time (Mac 7.2 and 4.6 s; Windows 4.4 and 3.6 s). Most of the time is still the output's first frame after its GPU's warm-up. The bar guard lists the raise; it is the budget made by its own rule where it is judged, not a looser test of anything that was measured before.
+
+## The hung-window dump's hold, measured on Windows (Session 37), 18 October 2026
+
+With crash files kept (Phase G), the watchdog restarts a hung window with Electron's `forcefullyCrashRenderer`, which writes the window's dump inside the main process (`src/main/watchdog.ts`, `hung`): the main process waits meanwhile, so a slide change from the operator waits too, while the other screens keep their picture. Phase H measured 238 to 274 ms on the dev Mac. A scratch self-test (`DRASHTI_SELFTEST=dump-hold` on branch `s37-dumphold`, not kept) timed each call in the main process with `performance.now()`: an output, the audio player and the operator window, six calls each on a page at rest and two on a page stuck in a loop, each writing one dump; and two kills by pid beside them, which write none. Each window was crashed at most once every 14 s, so the watchdog never gave up. CI run 39106819402 (both systems), and the dev Mac (M2, quiet test mode).
+
+| System            | Output at rest, six calls (median) | Audio player at rest (median) | Operator window at rest (median) | A hung page: output, audio player, operator | A kill by pid |
+| ----------------- | ---------------------------------- | ----------------------------- | -------------------------------- | ------------------------------------------- | ------------- |
+| Windows (CI's VM) | 52.7 to 144.9 ms (81)              | 40.2 to 139.3 ms (64)         | 63.1 to 442.8 ms (78)            | 55 to 101, 100 to 111, 46 to 53 ms          | 0.2 to 0.3 ms |
+| Mac (CI's VM)     | 336 to 745 ms (404)                | 318 to 559 ms (350)           | 339 to 1,153 ms (386)            | 625 to 801, 1,079 to 1,145, 534 to 581 ms   | 0 to 0.6 ms   |
+| Mac (the dev Mac) | 225 to 790 ms (247)                | 219 to 235 ms (226)           | 218 to 332 ms (224)              | 219 to 222, 492 to 504, 220 to 222 ms       | 0 to 0.2 ms   |
+
+Windows holds at most 443 ms (once, the operator window; otherwise under 145 ms), within the 500 ms set for it (decided 18 Oct 2026), so the dump is kept as it is: a hung window is still restarted with its dump. On the dev Mac the hold is a quarter of a second, as in Phase H, apart from a run's first dump (790 ms) and a hung audio player (half a second). CI's Mac VM takes 1.5 to 1.7 times the dev Mac's medians, as it is slower at everything else here.
