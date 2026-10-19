@@ -2,14 +2,18 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
-## Unreleased
+## 1.0.0-alpha.7 (20 Oct 2026)
 
-- When Drashti can’t read the playlists, a presentation or what the screens are showing as a window opens, it says so with Try again, instead of showing no playlists or waiting for good; Simple Mode’s Next says why it has nothing to start.
-- Drashti’s own look is chosen in View › Appearance: Follow the computer (Black or White, as the computer is set, the first choice), Black, White, Saffron, Peacock, Midnight Blue, Sandalwood, Lotus, Marble or Tulsi. The plum look is gone. Each computer keeps its own; the screens in the hall, the stream and the phones never change with it.
-- The phone and tablet pages (the remote, pairing and announcements) are now Black on every phone, whatever the computer shows: the plum is gone from them too.
+Choose how Drashti looks: Follow the computer, Black, White or seven colourful appearances, or make your own, with calm or lively motion. The plum look is gone, from the phones too. Update after a sabha, never on the day of one.
+
+- The phone and tablet pages (the remote, pairing and announcements) are now Black on every phone, whatever the Drashti computer shows: the plum is gone from them too.
+- Drashti’s own look is chosen in View › Appearance: Follow the computer (Black or White, as the computer is set, the first choice), Black, White, Saffron, Peacock, Midnight Blue, Sandalwood, Lotus, Marble or Tulsi. Each computer keeps its own; the screens in the hall and the stream never change with it.
 - Appearance… can make a copy your own: a name, dark or light, and the colour for the next thing to do. Drashti checks the words can be read and the colour stays apart from LIVE, ON AIR and warnings, and offers the nearest colour that works. Your own can be deleted.
 - Interface motion, in the Appearance window: Calm, Lively (tabs and the chosen playlist glide, cards arrive one after another, buttons answer a press) or Off. Next, Back, the clears and the live picture never move.
+- The guides in Help › Guides… show Drashti in Black.
+- When Drashti can’t read the playlists, a presentation or what the screens are showing as a window opens, it says so with Try again, instead of showing no playlists or waiting for good; Simple Mode’s Next says why it has nothing to start. The operator window no longer stays blank if a setting can’t be read as it opens.
 - An admin can turn off the single-letter keys (B, ., L and ?) in Help › Keyboard Shortcuts…, for someone who works the computer by speaking to it or with a switch. Then they do nothing, and Black-out and the Logo still work from their buttons.
+- Help › Save Diagnostics… says how a window that crashed ended, and how long Drashti waited while it saved a stuck window’s crash file.
 
 ## 1.0.0-alpha.6 (18 Oct 2026)
 
