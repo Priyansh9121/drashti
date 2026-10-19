@@ -38,25 +38,16 @@ const OUT = process.env['DRASHTI_PIXELS_OUT'];
 const BASE = process.env['DRASHTI_PIXELS_BASE'];
 
 /**
- * What the hall's screens show differently since alpha.5, as Sessions 31–36 decided, each on a frame of its
- * own: these frames may differ from the earlier build's, and each must on one screen at least, so the change
- * is seen, unless it says why its pixels may match. Every other frame must be the same.
+ * What the hall's screens show differently from the build compared with, each on a frame of its own: these
+ * frames may differ from the earlier build's, and each must on one screen at least, so the change is seen,
+ * unless it says why its pixels may match. Every other frame must be the same.
+ *
+ * None since alpha.6 (Sessions 39–40, against Session 38's d032357, whose hall is alpha.6's): every frame
+ * must be the same, the frames of alpha.6's four hall changes too. Those four, which Sessions 31–36 decided
+ * and the alpha.6 round measured against alpha.5 (9df47ac), were listed here until then (f9a2ab9). A session
+ * that changes what the hall sees names its changes here, against its own base.
  */
-const CHANGED: Readonly<Record<string, { what: string; mayMatch?: string }>> = {
-  'upright-indic': {
-    what: 'Gujarati stored in italic and letter-spaced is drawn upright, with normal spacing',
-  },
-  'hindi-devanagari': {
-    what: 'Hindi inside a Gujarati line and in a message is drawn by Noto Sans Devanagari',
-    // Measured 18 October 2026 against 9df47ac: 0 pixels changed on every screen.
-    mayMatch:
-      "the earlier build drew it with Noto Sans's own Devanagari, the same letters; render.spec.ts asks Chromium which font draws it",
-  },
-  'stage-long-slide': {
-    what: 'the Standard stage makes a slide that would not fit smaller, until its last line shows',
-  },
-  'stage-clock': { what: "the stage clock follows Main's time zone" },
-};
+const CHANGED: Readonly<Record<string, { what: string; mayMatch?: string }>> = {};
 
 /** The moment the stage clock's frame is held at (any fixed moment: it is the same in both builds). */
 const HELD_AT = Date.UTC(2026, 9, 18, 6, 30);
@@ -295,7 +286,8 @@ test('the audience screens show exactly what the earlier build showed, frame by 
       await shoot('shrink-to-fit');
       await dispatch(win, { type: 'hideProp', propId: 'placeholder-fit' });
 
-      // The slides for the hall's four changes (CHANGED), as a file brings them: placeholder words only.
+      // The slides for alpha.6's four hall changes (Sessions 31–36), as a file brings them: placeholder
+      // words only.
       const white: [number, number, number] = [255, 255, 255];
       const slanted = cocoaRtf([
         ['નમૂનાની પંક્તિ', 72, white],
@@ -325,9 +317,9 @@ test('the audience screens show exactly what the earlier build showed, frame by 
         }),
       );
       const [changes = ''] = await importAndGetIds(win, [changesFile]);
-      // The four changes the hall's screens show (CHANGED), each on its own frame, from a file as a mandir's
-      // come (its own spacing kept by both builds, so only the change shows). Gujarati set italic and
-      // letter-spaced, with its transliteration (I18N-2).
+      // alpha.6's four hall changes, each on its own frame, from a file as a mandir's come (its own spacing
+      // kept by both builds, so only a change shows). Gujarati set italic and letter-spaced, with its
+      // transliteration (I18N-2).
       await dispatch(win, { type: 'goLive', presentationId: changes, slideIndex: 0 });
       await shoot('upright-indic');
       // Hindi inside a Gujarati line, and in a message (I18N-7).
@@ -369,8 +361,8 @@ test('the audience screens show exactly what the earlier build showed, frame by 
       await tablet.close();
     }
 
-    // Against the earlier build's pictures, when given: the same size, and every pixel within 2; the four
-    // changes' frames are said, and each must differ on one screen at least.
+    // Against the earlier build's pictures, when given: the same size, and every pixel within 2; the intended
+    // changes' frames (CHANGED) are said, and each must differ on one screen at least.
     if (BASE) {
       const differ: string[] = [];
       const intended: string[] = [];
