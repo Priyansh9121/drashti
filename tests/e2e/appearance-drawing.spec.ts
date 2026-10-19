@@ -1,78 +1,74 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { BUILT_IN } from '../../src/shared/appearance/appearances';
 import type { PageGlobals } from './helpers';
 import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helpers';
 
 /*
- * Diya, Drashti's own look (Session 26g), in the real window: the mark beside the name, the lamp's
- * light falling from it, the unlit lamp in empty places, and nothing in that light that could be
- * taken for a warning. Placeholder content only.
+ * What Drashti's own windows draw, in every appearance (Sessions 39–40; Session 26g's checks): the mark beside the
+ * name in the logo's own colours, plain surfaces in the appearance's colours with no lamp light (the phone pages
+ * keep theirs), a warning still a filled amber rail with an icon and words, the live slide's underglow switching
+ * at once, and nothing that costs a computer without a graphics chip a new way of drawing. Placeholder content
+ * only.
  */
-
-/** The lamp's light, as getComputedStyle writes it. */
-const LAMP = /rgba\(255, 176, 128, 0\.\d+\)/u;
-/** The warning colour (#f2b23e), which the lamp's light never is. */
-const WARNING = 'rgb(242, 178, 62)';
 
 const style = (l: Locator, prop: string, pseudo: string | null = null) =>
   l.evaluate((el, { p, ps }) => getComputedStyle(el, ps).getPropertyValue(p), { p: prop, ps: pseudo });
 
-async function lampHeader(header: Locator, name: string) {
+/** "#rrggbb" as getComputedStyle writes it. */
+const rgb = (hex: string) =>
+  `rgb(${[1, 3, 5].map((at) => String(parseInt(hex.slice(at, at + 2), 16))).join(', ')})`;
+
+async function plainHeader(header: Locator, name: string, panel: string) {
   // The mark beside the name, decoration only: the heading still reads "Drashti".
   await expect(header.getByRole('heading', { level: 1 })).toHaveText(name);
   await expect(header.locator('h1 svg[data-mark]')).toBeVisible();
-  // The lamp's light across the header and the hairline beneath it, under the words, as radial
-  // gradients only and on no layer of their own (app.css, "The lamp"), on the panel's colour.
-  const light = await style(header, 'background-image', '::before');
-  expect(light).toMatch(LAMP);
-  expect(light.match(/radial-gradient\(/gu)).toHaveLength(2);
-  expect(light).not.toContain('linear-gradient');
-  expect(await style(header, 'will-change', '::before')).toBe('auto');
-  expect(await style(header, 'background-color')).toBe('rgb(30, 16, 29)');
-  expect(light).not.toContain(WARNING);
+  // No light across the header and no hairline: the panel's own colour, nothing drawn before it.
+  expect(await style(header, 'background-color')).toBe(rgb(panel));
+  expect(await style(header, 'background-image')).toBe('none');
+  expect(await style(header, 'content', '::before')).toBe('none');
+  expect(await style(header.locator('.mark-halo').first(), 'content', '::before')).toBe('none');
 }
 
-test('the mark beside the name and the lamp’s light, in Pro Mode and Simple Mode; never a warning', async () => {
-  const { app } = await launchApp({ DRASHTI_DIAGNOSTICS: '1' });
-  const win = await operatorPage(app);
-  await operatorReady(win);
-  await lampHeader(win.getByTestId('app-header'), 'Drashti');
-  // The window: the lamp's light from the top left, over ink, never a filled shape.
-  const window = win.locator('.lamp-window').first();
-  expect(await style(window, 'background-image', '::before')).toMatch(LAMP);
-  expect(await style(window, 'will-change', '::before')).toBe('auto');
-  expect(await style(window, 'background-color')).toBe('rgb(21, 10, 20)');
+for (const a of BUILT_IN) {
+  test(`${a.name}: the mark in the logo’s colours on plain surfaces, in Pro Mode and Simple Mode; a warning still a filled amber rail`, async () => {
+    const { app } = await launchApp({ DRASHTI_DIAGNOSTICS: '1' });
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await chooseMenuItem(app, `appearance-${a.id}`);
+    await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
+    await plainHeader(win.getByTestId('app-header'), 'Drashti', a.colours.panel);
+    // Empty places: the unlit lamp, in the quietest words' colour, with no light behind it.
+    const playlists = win.getByText('No playlists yet');
+    await expect(playlists).toBeVisible();
+    const empty = win.locator('.lamp-empty').filter({ has: playlists });
+    await expect(empty.getByTestId('unlit-lamp')).toBeVisible();
+    expect(await style(empty, 'content', '::before')).toBe('none');
+    expect(await style(empty.getByTestId('unlit-lamp'), 'color')).toBe(rgb(a.colours.faint));
 
-  // Empty places: the unlit lamp in its faint light, with no colour of a warning.
-  const playlists = win.getByText('No playlists yet');
-  await expect(playlists).toBeVisible();
-  const empty = win.locator('.lamp-empty').filter({ has: playlists });
-  await expect(empty.getByTestId('unlit-lamp')).toBeVisible();
-  expect(await style(empty, 'background-image', '::before')).toMatch(LAMP);
-  expect(await style(empty, 'will-change', '::before')).toBe('auto');
-  expect(await style(empty, 'background-color')).toBe('rgba(0, 0, 0, 0)');
+    // A warning is a filled amber rail with an icon and words (the component gallery's), in this appearance.
+    const opened = app.waitForEvent('window', { predicate: (w) => w.url().includes('gallery.html') });
+    await chooseMenuItem(app, 'component-gallery');
+    const gallery: Page = await opened;
+    await expect(gallery.locator('html')).toHaveAttribute('data-appearance', a.id);
+    const warning = gallery
+      .getByText('Sound output not connected')
+      .locator('xpath=ancestor::div[contains(@class,"border-l-4")][1]');
+    await expect(warning).toBeVisible();
+    expect(await style(warning, 'background-color')).toBe(rgb(a.colours['warning-bg']));
+    expect(await style(warning, 'border-left-color')).toBe(rgb(a.colours.warning));
+    expect(Number.parseFloat(await style(warning, 'border-left-width'))).toBeGreaterThanOrEqual(4);
+    await expect(warning.locator('svg').first()).toBeVisible();
+    await gallery.close();
 
-  // A warning is still a filled amber rail with an icon and words (the component gallery's).
-  const opened = app.waitForEvent('window', { predicate: (w) => w.url().includes('gallery.html') });
-  await chooseMenuItem(app, 'component-gallery');
-  const gallery: Page = await opened;
-  const warning = gallery
-    .getByText('Sound output not connected')
-    .locator('xpath=ancestor::div[contains(@class,"border-l-4")][1]');
-  await expect(warning).toBeVisible();
-  expect(await style(warning, 'background-color')).toBe('rgb(59, 42, 10)');
-  expect(await style(warning, 'border-left-color')).toBe(WARNING);
-  expect(Number.parseFloat(await style(warning, 'border-left-width'))).toBeGreaterThanOrEqual(4);
-  await expect(warning.locator('svg').first()).toBeVisible();
-  await gallery.close();
-
-  // Simple Mode: the same mark and light.
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
-  const simple = win.getByTestId('simple-mode');
-  await expect(simple).toBeVisible();
-  await lampHeader(simple.locator('header').first(), 'Drashti');
-  await app.close();
-});
+    // Simple Mode: the same mark and plain header.
+    await win.getByRole('button', { name: 'Simple Mode' }).click();
+    const simple = win.getByTestId('simple-mode');
+    await expect(simple).toBeVisible();
+    await plainHeader(simple.locator('header').first(), 'Drashti', a.colours.panel);
+    await app.close();
+  });
+}
 
 test('the live slide’s red underglow sits under the live thumbnail and moves with it at once', async () => {
   const { app } = await launchApp();
@@ -100,11 +96,10 @@ test('the live slide’s red underglow sits under the live thumbnail and moves w
 });
 
 /**
- * What in a page costs a computer without a graphics chip (app.css, "Depth" and "The lamp"): a soft
- * shadow round a rounded corner, any gradient but the lamp's light (radial) or the primary's plum, and
- * a shape filled with a gradient (the mark is flat beside a name), each a new way of drawing for the
- * chip to work out; and a layer of its own (will-change), which is put together again at every frame.
- * Slides themselves (inside a scene) are the audience's.
+ * What in a page costs a computer without a graphics chip (app.css, "Depth"): a soft shadow round a rounded
+ * corner, any gradient but the primary's, and a shape filled with a gradient (the mark is flat beside a name),
+ * each a new way of drawing for the chip to work out; and a layer of its own (will-change), which is put
+ * together again at every frame. Slides themselves (inside a scene) are the audience's.
  */
 function newWaysToDraw(page: Page) {
   return page.evaluate(() => {
@@ -152,9 +147,8 @@ function newWaysToDraw(page: Page) {
           }
         }
         if (st.backgroundImage.includes('gradient(')) {
-          const lamp = !/(linear|conic)-gradient\(/u.test(st.backgroundImage);
-          const plum = pseudo === null && el.getAttribute('data-variant') === 'primary';
-          if (!lamp && !plum) found.push(`${name(el, pseudo)}: ${st.backgroundImage.slice(0, 80)}`);
+          const primary = pseudo === null && el.getAttribute('data-variant') === 'primary';
+          if (!primary) found.push(`${name(el, pseudo)}: ${st.backgroundImage.slice(0, 80)}`);
         }
         if (st.willChange !== 'auto')
           found.push(`${name(el, pseudo)}: a layer of its own (${st.willChange})`);
@@ -166,39 +160,47 @@ function newWaysToDraw(page: Page) {
   });
 }
 
-test('in the window, Simple Mode and every component: no new way of drawing, no layer of its own', async () => {
-  // Each new way of drawing costs a computer without a graphics chip a pause the first time (CI's Mac:
-  // 100–600 ms each, in the Performance check's slide changes), and each layer costs it every frame,
-  // so Diya keeps to the few ways it needs and adds no layer.
-  const { app } = await launchApp({ DRASHTI_DIAGNOSTICS: '1' });
-  const win = await operatorPage(app);
-  await operatorReady(win);
-  expect(await newWaysToDraw(win), 'the window, nothing live').toEqual([]);
-  await win.evaluate(async () => {
-    const d = (globalThis as PageGlobals).drashti;
-    const [p] = await d.library.listPresentations();
-    await d.engine.dispatch({ type: 'goLive', presentationId: p?.id ?? '', slideIndex: 0 });
+for (const a of BUILT_IN)
+  test(`${a.name}: in the window, Simple Mode, the Appearance window and every component: no new way of drawing, no layer of its own`, async () => {
+    // Each new way of drawing costs a computer without a graphics chip a pause the first time (CI's Mac:
+    // 100–600 ms each, in the Performance check's slide changes), and each layer costs it every frame,
+    // so every appearance keeps to the few ways it needs and adds no layer.
+    const { app } = await launchApp({ DRASHTI_DIAGNOSTICS: '1' });
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await chooseMenuItem(app, `appearance-${a.id}`);
+    await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
+    expect(await newWaysToDraw(win), 'the window, nothing live').toEqual([]);
+    await win.evaluate(async () => {
+      const d = (globalThis as PageGlobals).drashti;
+      const [p] = await d.library.listPresentations();
+      await d.engine.dispatch({ type: 'goLive', presentationId: p?.id ?? '', slideIndex: 0 });
+    });
+    await expect(win.getByTestId('live-preview')).toHaveClass(/border-live/u);
+    expect(await newWaysToDraw(win), 'the window in a show').toEqual([]);
+    await chooseMenuItem(app, 'keyboard-shortcuts');
+    await expect(win.getByRole('dialog')).toBeVisible();
+    expect(await newWaysToDraw(win), 'a dialog').toEqual([]);
+    await win.keyboard.press('Escape');
+    await expect(win.getByRole('dialog')).toHaveCount(0);
+    await chooseMenuItem(app, 'appearance-window');
+    await expect(win.getByTestId('appearance-dialog')).toBeVisible();
+    expect(await newWaysToDraw(win), 'the Appearance window').toEqual([]);
+    await win.keyboard.press('Escape');
+    await expect(win.getByRole('dialog')).toHaveCount(0);
+
+    const opened = app.waitForEvent('window', { predicate: (w) => w.url().includes('gallery.html') });
+    await chooseMenuItem(app, 'component-gallery');
+    const gallery: Page = await opened;
+    await expect(gallery.getByRole('heading', { name: 'Component gallery' })).toBeVisible();
+    expect(await newWaysToDraw(gallery), 'the component gallery').toEqual([]);
+    await gallery.getByRole('button', { name: 'Open a dialog' }).click();
+    await expect(gallery.getByRole('dialog')).toBeVisible();
+    expect(await newWaysToDraw(gallery), 'the gallery’s dialog').toEqual([]);
+    await gallery.close();
+
+    await win.getByRole('button', { name: 'Simple Mode' }).click();
+    await expect(win.getByTestId('simple-mode')).toBeVisible();
+    expect(await newWaysToDraw(win), 'Simple Mode').toEqual([]);
+    await app.close();
   });
-  await expect(win.getByTestId('live-preview')).toHaveClass(/border-live/u);
-  expect(await newWaysToDraw(win), 'the window in a show').toEqual([]);
-  await chooseMenuItem(app, 'keyboard-shortcuts');
-  await expect(win.getByRole('dialog')).toBeVisible();
-  expect(await newWaysToDraw(win), 'a dialog').toEqual([]);
-  await win.keyboard.press('Escape');
-  await expect(win.getByRole('dialog')).toHaveCount(0);
-
-  const opened = app.waitForEvent('window', { predicate: (w) => w.url().includes('gallery.html') });
-  await chooseMenuItem(app, 'component-gallery');
-  const gallery: Page = await opened;
-  await expect(gallery.getByRole('heading', { name: 'Component gallery' })).toBeVisible();
-  expect(await newWaysToDraw(gallery), 'the component gallery').toEqual([]);
-  await gallery.getByRole('button', { name: 'Open a dialog' }).click();
-  await expect(gallery.getByRole('dialog')).toBeVisible();
-  expect(await newWaysToDraw(gallery), 'the gallery’s dialog').toEqual([]);
-  await gallery.close();
-
-  await win.getByRole('button', { name: 'Simple Mode' }).click();
-  await expect(win.getByTestId('simple-mode')).toBeVisible();
-  expect(await newWaysToDraw(win), 'Simple Mode').toEqual([]);
-  await app.close();
-});

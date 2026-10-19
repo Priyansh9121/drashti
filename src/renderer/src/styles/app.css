@@ -1,47 +1,50 @@
 @import 'tailwindcss';
 
 /*
- * Drashti's design tokens: Diya (Session 26g, from the design lab's "Diya, pushed further"). The rules
- * for using them are in docs/design.md.
+ * Drashti's design tokens. The rules for using them are in docs/design.md.
  *
- * Dark, because sabhas run in dim halls: plum-black surfaces lit by the lamp, the lamp's plum on the
- * one thing to do next, and the state colours (live, warning, success, danger, ON AIR, REC, guide)
- * as they always were. Colours are named for their job, not their hue. Every pair used for text
- * meets 4.5:1, and every control boundary 3:1 (src/main/contrast.test.ts measures them all).
+ * The look of Drashti's own windows is an appearance (Sessions 39–40), chosen in the app (View › Appearance):
+ * each is a complete set of these colours, kept in src/shared/appearance/, and the preload sets the chosen
+ * one's colours and its shadows' tints on each window's <html> before the page draws (src/preload/index.ts).
+ * The values here are Black's, so nothing draws differently before that (src/main/contrast.test.ts keeps them
+ * so). Colours are named for their job, not their hue. In every appearance every pair used for text meets
+ * 4.5:1 and every control boundary 3:1, and the primary stays apart from LIVE, ON AIR and a warning
+ * (src/shared/appearance/rules.ts).
  *
- * The audience screens never take these: body.output (outputs, the stream, the stage display) keeps
- * the colours and corners it always had, below.
+ * The audience screens and the phone pages never take an appearance: body.output (outputs, the stream, the
+ * stage display) and body.web set every colour of their own, below.
  */
 @theme {
   /* The bundled Noto fonts: Latin, Gujarati and Devanagari (400, 500 and 700 only). */
   --font-sans: 'Noto Sans', 'Noto Sans Gujarati', 'Noto Sans Devanagari', system-ui, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-  /* Surfaces, darkest first: plum-black, from the icon's tile. */
-  --color-ink: #150a14; /* the window, behind and between panels */
-  --color-panel: #1e101d; /* panels */
-  --color-panel-2: #2a1728; /* raised: cards, fields, rows on hover */
-  --color-panel-3: #352033; /* pressed and selected */
-  --color-line: #432c40; /* dividers */
-  --color-line-strong: #5a4156; /* dividers that must be seen */
-  --color-field: #977d93; /* the edge of a control (3:1 wherever controls sit) */
+  /* Surfaces: the window behind and between panels, panels, raised things, pressed and selected. */
+  --color-ink: #09090b;
+  --color-panel: #121215;
+  --color-panel-2: #1b1b1f; /* raised: cards, fields, rows on hover */
+  --color-panel-3: #26262b; /* pressed and selected */
+  --color-line: #2c2c32; /* dividers */
+  --color-line-strong: #42424a; /* dividers that must be seen */
+  --color-field: #82828d; /* the edge of a control (3:1 wherever controls sit) */
 
   /* Text. */
-  --color-fg: #fcf4f8; /* 15:1 on panels */
-  --color-muted: #d0bccb; /* 7:1: secondary text */
-  --color-faint: #b09ba9; /* 4.5:1 on every surface: the quietest text allowed */
+  --color-fg: #f5f5f7; /* 15:1 on panels */
+  --color-muted: #c8c8cf; /* 7:1 on panels: secondary text */
+  --color-faint: #a1a1ab; /* 4.5:1 on every surface: the quietest text allowed */
 
   /* Jobs. */
-  --color-accent: #a6dcf5; /* focus ring, selection, links */
+  --color-accent: #8ab4f8; /* focus ring, selection, links */
   /*
-   * The primary: the lamp's plum, lit from above (a gradient from -hi to -lo) with an ember glow
-   * beneath. On one thing per screen: the next thing to do. White text 5.7:1 at its lightest.
+   * The primary: on one thing per screen, the next thing to do, lit from above (a gradient from -hi to -lo)
+   * with a glow of its own colour beneath, its words in on-primary.
    */
-  --color-primary-hi: #a93b8a;
-  --color-primary: #9b3383;
-  --color-primary-lo: #7f2a6c;
-  /* A strong secondary's plum edge (Clear all): 3:1 wherever controls sit. */
-  --color-primary-edge: #b0448c;
+  --color-primary-hi: #ffffff;
+  --color-primary: #ededf0;
+  --color-primary-lo: #d6d6dc;
+  --color-on-primary: #0b0b0e;
+  /* A strong secondary's edge (Clear all): 3:1 wherever controls sit. */
+  --color-primary-edge: #c9c9d1;
   --color-live: #d42a31; /* on the screens now: always with a LIVE label (white text 5:1) */
   --color-warning: #f2b23e; /* missing, can't play, needs a look */
   --color-warning-bg: #3b2a0a;
@@ -55,7 +58,7 @@
   --color-danger-fg: #ffb4b4;
   /*
    * The stream: kept apart from the slide's LIVE. ON AIR (the stream is public now) is violet with
-   * white text (5.7:1); REC is a red dot beside the word, on a panel.
+   * white text; REC is a red dot beside the word, on a panel.
    */
   --color-onair: #7c3aed;
   --color-rec: #ff5a5a;
@@ -77,48 +80,59 @@
   /*
    * Depth, from light above. Cards and the live picture sit on soft shadows; overlays (menus,
    * dialogs, notices) float higher. The live picture and the live thumbnail glow red beneath, and
-   * that switches at once, as the live border does.
+   * that switches at once, as the live border does. Their shapes are the same in every appearance; only
+   * their tints (--depth-*, below) change with it, so a change of appearance asks for no new way of drawing.
    *
    * Every soft shadow is a blurred rectangle beneath its box: its spread takes in the box's corner
-   * (18 px for cards and overlays; the button's own for the ember, --ember-spread). The graphics chip
-   * then draws them all in one way, worked out once, where a blur round a rounded corner needs a
+   * (18 px for cards and overlays; the button's own for the primary's glow, --glow-spread). The graphics
+   * chip then draws them all in one way, worked out once, where a blur round a rounded corner needs a
    * mask or a blur profile drawn first, in five to eight more ways. On a computer without one each
    * new way costs a pause the first time it is drawn (100–600 ms on CI's Mac), and the screens wait
    * (the Performance check, Session 26g).
    */
-  --shadow-card: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 12px 28px -18px rgb(0 0 0 / 0.7);
-  --shadow-overlay: 0 0 0 1px rgb(0 0 0 / 0.3), 0 24px 52px -18px rgb(0 0 0 / 0.8);
-  --shadow-live: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 18px 44px -14px rgb(212 42 49 / 0.5);
+  --shadow-card: inset 0 1px 0 var(--depth-light), 0 12px 28px -18px var(--depth-card);
+  --shadow-overlay: 0 0 0 1px var(--depth-ring), 0 24px 52px -18px var(--depth-overlay);
+  --shadow-live: inset 0 1px 0 var(--depth-light), 0 18px 44px -14px var(--depth-live);
   /* A slide's thumbnail is redrawn as the live slide moves: a crisp edge, no blur. */
-  --shadow-thumb: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 1px 0 rgb(0 0 0 / 0.55);
-  --shadow-live-thumb: inset 0 1px 0 rgb(255 255 255 / 0.03), 0 10px 16px -12px rgb(212 42 49 / 0.7);
-  --shadow-ember:
-    inset 0 1px 0 rgb(255 220 240 / 0.22), 0 0 0 1px rgb(255 190 150 / 0.1),
-    0 10px 24px var(--ember-spread, -8px) rgb(155 51 131 / 0.6);
+  --shadow-thumb: inset 0 1px 0 var(--depth-light-thumb), 0 1px 0 var(--depth-thumb);
+  --shadow-live-thumb: inset 0 1px 0 var(--depth-light), 0 10px 16px -12px var(--depth-live-thumb);
+  --shadow-primary:
+    inset 0 1px 0 var(--depth-primary-top), 0 0 0 1px var(--depth-primary-ring),
+    0 10px 24px var(--glow-spread, -8px) var(--depth-primary);
   /* Tailwind's own transitions (transition-colors and the like) and the spinner take the tokens. */
   --default-transition-duration: var(--dur-hover);
   --default-transition-timing-function: var(--ease-out);
   --animate-spin: spin var(--dur-spin) linear infinite;
 
-  --shadow-ember-hover:
-    inset 0 1px 0 rgb(255 220 240 / 0.28), 0 0 0 1px rgb(255 200 160 / 0.18),
-    0 12px 30px var(--ember-spread, -8px) rgb(155 51 131 / 0.8);
+  --shadow-primary-hover:
+    inset 0 1px 0 var(--depth-primary-top-hover), 0 0 0 1px var(--depth-primary-ring-hover),
+    0 12px 30px var(--glow-spread, -8px) var(--depth-primary-hover);
 }
 
 /*
- * The lamp's light: one warm colour falling from the mark, drawn as gradients on surfaces and never
- * as a filled shape, so it is never taken for a warning (a warning is a filled amber rail with an
- * icon and words). Its strength on the header, the window, the first start and empty states.
+ * The shadows' tints (src/shared/appearance/vars.ts sets them with the appearance): Black's here. Dark
+ * appearances' shadows are black, light ones' a soft grey; the glows take the live colour and the primary.
  */
 :root {
-  --lamp-rgb: 255 176 128;
-  --lamp-header: 0.14;
-  --lamp-window: 0.1;
-  --lamp-welcome: 0.16;
-  --lamp-empty: 0.09;
+  --depth-light: #ffffff08;
+  --depth-light-thumb: #ffffff0a;
+  --depth-card: #000000b3;
+  --depth-ring: #0000004d;
+  --depth-overlay: #000000cc;
+  --depth-thumb: #0000008c;
+  --depth-live: #d42a3180;
+  --depth-live-thumb: #d42a31b3;
+  --depth-primary-top: #ffffff38;
+  --depth-primary-ring: #ffffff1a;
+  --depth-primary: #ededf099;
+  --depth-primary-top-hover: #ffffff47;
+  --depth-primary-ring-hover: #ffffff2e;
+  --depth-primary-hover: #ededf0cc;
+  /* Native controls (lists, scroll bars, pickers) draw as the appearance's base. */
+  color-scheme: dark;
 
   /*
-   * Motion (Session 26g, Diya's "Rising", from the design lab's table): every duration, delay,
+   * Motion (Session 26g, "Rising", from the design lab's table): every duration, delay,
    * easing and distance in the interface is one of these, and nothing uses a number of its own
    * (src/main/motion.test.ts). Show controls and the live state never move. With reduced motion
    * nothing moves at all.
@@ -160,11 +174,16 @@
   --slide-sheet: 16px;
 }
 
+:root[data-base='light'] {
+  color-scheme: light;
+}
+
 /*
- * The audience screens keep what they always had (Session 26g): the outputs, the stream's picture
- * and the stage display draw a few words and frames with these tokens (the display numbers while
- * setting up, the stage display's Full screen button), and none of them changes with the operator's
- * look. tests/e2e/audience-pixels.spec.ts compares them, picture for picture, with 69a0887's.
+ * The audience screens keep what they always had (Session 26g): the outputs, the stream's picture and the
+ * stage display draw a few words and frames with these tokens (the display numbers while setting up, the stage
+ * display's Full screen button), and none of them changes with the operator's appearance: every colour and
+ * shadow is set here. tests/e2e/audience-pixels.spec.ts compares them, picture for picture, with an earlier
+ * build.
  */
 body.output {
   --color-ink: #0b0d11;
@@ -178,11 +197,104 @@ body.output {
   --color-muted: #a0a9b8;
   --color-faint: #8790a0;
   --color-accent: #5b9bff;
+  --color-primary-hi: #a93b8a;
+  --color-primary: #9b3383;
+  --color-primary-lo: #7f2a6c;
+  --color-on-primary: #ffffff;
+  --color-primary-edge: #b0448c;
+  --color-live: #d42a31;
+  --color-warning: #f2b23e;
+  --color-warning-bg: #3b2a0a;
+  --color-warning-fg: #ffd88f;
+  --color-success: #4cc26a;
+  --color-success-bg: #0f2b18;
+  --color-success-fg: #9be8b0;
+  --color-danger: #ff7b7b;
+  --color-danger-strong: #c4262e;
+  --color-danger-bg: #3a1214;
+  --color-danger-fg: #ffb4b4;
+  --color-onair: #7c3aed;
+  --color-rec: #ff5a5a;
+  --color-guide: #ff4fd8;
+  --color-selection: #2563eb;
+  --depth-light: #ffffff08;
+  --depth-light-thumb: #ffffff0a;
+  --depth-card: #000000b3;
+  --depth-ring: #0000004d;
+  --depth-overlay: #000000cc;
+  --depth-thumb: #0000008c;
+  --depth-live: #d42a3180;
+  --depth-live-thumb: #d42a31b3;
+  --depth-primary-top: #ffdcf038;
+  --depth-primary-ring: #ffbe961a;
+  --depth-primary: #9b338399;
+  --depth-primary-top-hover: #ffdcf047;
+  --depth-primary-ring-hover: #ffc8a02e;
+  --depth-primary-hover: #9b3383cc;
   --radius-xs: 0.125rem;
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 10px;
   --radius-xl: 14px;
+  color-scheme: dark;
+}
+
+/*
+ * The phone and tablet pages keep the look they had (Session 26g): their own colours, with the lamp's warm
+ * light falling from the top left and across the remote's header. They are not Drashti's windows on this
+ * computer, so an appearance never reaches them.
+ */
+body.web {
+  --color-ink: #150a14;
+  --color-panel: #1e101d;
+  --color-panel-2: #2a1728;
+  --color-panel-3: #352033;
+  --color-line: #432c40;
+  --color-line-strong: #5a4156;
+  --color-field: #977d93;
+  --color-fg: #fcf4f8;
+  --color-muted: #d0bccb;
+  --color-faint: #b09ba9;
+  --color-accent: #a6dcf5;
+  --color-primary-hi: #a93b8a;
+  --color-primary: #9b3383;
+  --color-primary-lo: #7f2a6c;
+  --color-on-primary: #ffffff;
+  --color-primary-edge: #b0448c;
+  --color-live: #d42a31;
+  --color-warning: #f2b23e;
+  --color-warning-bg: #3b2a0a;
+  --color-warning-fg: #ffd88f;
+  --color-success: #4cc26a;
+  --color-success-bg: #0f2b18;
+  --color-success-fg: #9be8b0;
+  --color-danger: #ff7b7b;
+  --color-danger-strong: #c4262e;
+  --color-danger-bg: #3a1214;
+  --color-danger-fg: #ffb4b4;
+  --color-onair: #7c3aed;
+  --color-rec: #ff5a5a;
+  --color-guide: #ff4fd8;
+  --color-selection: #2563eb;
+  --depth-light: #ffffff08;
+  --depth-light-thumb: #ffffff0a;
+  --depth-card: #000000b3;
+  --depth-ring: #0000004d;
+  --depth-overlay: #000000cc;
+  --depth-thumb: #0000008c;
+  --depth-live: #d42a3180;
+  --depth-live-thumb: #d42a31b3;
+  --depth-primary-top: #ffdcf038;
+  --depth-primary-ring: #ffbe961a;
+  --depth-primary: #9b338399;
+  --depth-primary-top-hover: #ffdcf047;
+  --depth-primary-ring-hover: #ffc8a02e;
+  --depth-primary-hover: #9b3383cc;
+  --lamp-rgb: 255 176 128;
+  --lamp-header: 0.14;
+  --lamp-window: 0.1;
+  --lamp-empty: 0.09;
+  color-scheme: dark;
 }
 
 @layer base {
@@ -201,8 +313,6 @@ body.output {
     /* Room for Gujarati and Devanagari above and below the line, even in one-line rows. */
     line-height: 1.45;
     -webkit-font-smoothing: antialiased;
-    /* Native controls (lists, scroll bars, pickers) draw dark too. */
-    color-scheme: dark;
   }
 
   /* Every focusable thing shows where the keyboard is. */
@@ -212,7 +322,7 @@ body.output {
   }
 
   ::selection {
-    background: rgb(166 220 245 / 0.3);
+    background: color-mix(in srgb, var(--color-accent) 30%, transparent);
   }
 
   * {
@@ -226,23 +336,22 @@ body.output {
 }
 
 /*
- * The lamp (Session 26g). Its light falls from the mark across the header (--lamp-header) and the
- * window (--lamp-window), with a hairline under the header from flame to plum; empty places glow
- * faintly behind the unlit lamp. Gradients on surfaces, never a filled shape.
+ * The phone pages' lamp light (Session 26g): from the mark across the remote's header (--lamp-header) and the
+ * page (--lamp-window), with a hairline under the header from flame to plum; empty places glow faintly behind
+ * the unlit lamp. Gradients on surfaces, never a filled shape. Drashti's own windows have none since Sessions
+ * 39–40: an appearance's surfaces are plain.
  *
  * Each light is a radial gradient on a plain rectangle, the hairline too, painted with what it lies
  * under (a ::before under the content, on no layer of its own): the graphics chip draws them all in
  * one way, worked out once (see Depth, above), and nothing is added to put together at every frame.
- * On a computer without a graphics chip that is the difference between a slide reaching the hall's
- * screens within a frame and late (the Performance check, Session 26g).
  */
 @layer components {
-  .lamp-header {
+  body.web .lamp-header {
     position: relative;
     isolation: isolate;
     background: var(--color-panel);
   }
-  .lamp-header::before {
+  body.web .lamp-header::before {
     content: '';
     position: absolute;
     inset: 0 0 -1px;
@@ -253,12 +362,12 @@ body.output {
         left bottom / 100% 1px no-repeat,
       radial-gradient(420px 110px at 28px 24px, rgb(var(--lamp-rgb) / var(--lamp-header)), transparent 70%);
   }
-  .lamp-window {
+  body.web .lamp-window {
     position: relative;
     isolation: isolate;
     background: var(--color-ink);
   }
-  .lamp-window::before {
+  body.web .lamp-window::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -268,11 +377,11 @@ body.output {
       radial-gradient(900px 520px at 70px -40px, rgb(var(--lamp-rgb) / var(--lamp-window)), transparent 62%),
       radial-gradient(1100px 700px at 110% 120%, rgb(94 27 82 / 0.3), transparent 60%);
   }
-  .lamp-empty {
+  body.web .lamp-empty {
     position: relative;
     isolation: isolate;
   }
-  .lamp-empty::before {
+  body.web .lamp-empty::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -284,8 +393,8 @@ body.output {
       transparent 70%
     );
   }
-  /* The mark's own soft light behind it. */
-  .mark-halo::before {
+  /* The mark's own soft light behind it, on the phone pages. */
+  body.web .mark-halo::before {
     content: '';
     position: absolute;
     inset: -40%;
@@ -376,12 +485,6 @@ body.output {
   .lamp-spark {
     opacity: 0;
   }
-  .lamp-welcome {
-    background:
-      radial-gradient(420px 260px at 50% 18%, rgb(var(--lamp-rgb) / var(--lamp-welcome)), transparent 72%),
-      var(--color-panel);
-  }
-
   [data-leaving] {
     pointer-events: none;
     animation: fade-out var(--dur-exit) var(--ease-out) both;
@@ -545,7 +648,7 @@ body.output {
 
 /* Pages for phones and tablets on the network: they scroll as a page does, clear of notches. */
 body.web {
-  /* The lamp's light from the top left, as in the window (Session 26g). */
+  /* The lamp's light from the top left (Session 26g). */
   background:
     radial-gradient(420px 260px at 40px 0, rgb(var(--lamp-rgb) / var(--lamp-window)), transparent 70%),
     var(--color-ink);

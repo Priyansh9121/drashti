@@ -448,8 +448,8 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
   const key = (action: OperatorAction) => shortcutText(action, platform, keymap);
   const covering = key('toggleBlackout') !== '';
   return (
-    <div className="lamp-window flex h-full min-h-0 flex-col" data-testid="simple-mode">
-      <header className="lamp-header flex h-14 shrink-0 items-center gap-4 border-b border-line px-4">
+    <div className="flex h-full min-h-0 flex-col bg-ink" data-testid="simple-mode">
+      <header className="flex h-14 bg-panel shrink-0 items-center gap-4 border-b border-line px-4">
         <h1 className="shrink-0 text-lg font-bold tracking-wide">
           <WordMark size={26} />
         </h1>

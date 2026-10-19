@@ -15,6 +15,7 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   index: [
     'announcements',
     'app',
+    'appearance',
     'arti',
     'audio',
     'backups',

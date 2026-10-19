@@ -49,10 +49,11 @@ export function Toggle({
       >
         <span
           className={cx(
-            // A crisp edge beneath, no blur (app.css, "Depth").
-            'rounded-full bg-white shadow-[0_1px_0_rgb(0_0_0/0.35)] transition-transform',
+            // A crisp edge beneath, no blur (app.css, "Depth"). The knob stands out from its track in every
+            // appearance (Sessions 39–40): the primary's words colour on it when on, the words' when off.
+            'rounded-full shadow-[0_1px_0_rgb(0_0_0/0.35)] transition-transform',
             knob,
-            checked ? travel : 'translate-x-0',
+            checked ? `${travel} bg-on-primary` : 'translate-x-0 bg-fg',
           )}
         />
       </span>

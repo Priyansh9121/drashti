@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent, webUtils } from 'electron';
 import type { DrashtiBridge } from '../shared/bridge';
 import type { EventChannel, EventContract, InvokeArgs, InvokeChannel, InvokeResult } from '../shared/ipc';
+import type { AppearanceNow } from '../shared/appearance/appearances';
+import { drawAppearance, type AppearanceRoot } from '../shared/appearance/draw';
 import { IPC } from '../shared/ipc';
 import { summariesOf } from '../shared/library';
 import { isAdminChannel } from '../shared/roles';
@@ -306,6 +308,18 @@ const bridge: DrashtiBridge = {
     getLogo: () => invoke(IPC.props.getLogo),
     setLogo: (propId) => invoke(IPC.props.setLogo, propId),
   },
+  appearance: {
+    view: () => invoke(IPC.appearance.view),
+    choose: (choice) => invoke(IPC.appearance.choose, choice),
+    onOpen: (listener) =>
+      on(IPC.appearance.open, () => {
+        listener();
+      }),
+    onChanged: (listener) =>
+      on(IPC.appearance.changed, () => {
+        listener();
+      }),
+  },
   themes: {
     list: () => invoke(IPC.themes.list),
     save: (themeId, fields) => invoke(IPC.themes.save, themeId, fields),
@@ -569,3 +583,46 @@ const bridge: DrashtiBridge = {
 // Each page gets only its own groups of the bridge (Sessions 31–36, ARCH-7; page-groups.ts), known by its address.
 const here = (globalThis as { location?: { href: string } }).location?.href ?? '';
 contextBridge.exposeInMainWorld('drashti', bridgeFor(bridge, pageOf(here)));
+
+/*
+ * Drashti's own windows draw in their appearance from the start (Sessions 39–40): asked for at once, and set on
+ * <html> the moment the page's parser makes it (a preload runs before there is one), before anything is drawn,
+ * so no frame shows another colour; then every change, at once. The audience screens, the stream's page and
+ * the stage display never take one (body.output keeps its own colours).
+ */
+const OWN_WINDOWS: readonly (string | null)[] = ['index', 'gallery', 'node'];
+/** The page's document and MutationObserver, as far as this needs them (the preload has no DOM types). */
+const dom = globalThis as unknown as {
+  document: { documentElement: AppearanceRoot | null };
+  MutationObserver: new (seen: () => void) => {
+    observe(target: unknown, options: { childList: boolean }): void;
+    disconnect(): void;
+  };
+};
+if (OWN_WINDOWS.includes(pageOf(here))) {
+  let now: AppearanceNow | null = null;
+  try {
+    now = ipcRenderer.sendSync(IPC.appearance.now) as AppearanceNow | null;
+  } catch {
+    // Unanswered: the page draws in app.css's own tokens (Black's) until the next change.
+  }
+  const draw = (next: AppearanceNow) => {
+    const root = dom.document.documentElement;
+    if (root) drawAppearance(root, next);
+  };
+  if (now) {
+    const first = now;
+    if (dom.document.documentElement) draw(first);
+    else {
+      const made = new dom.MutationObserver(() => {
+        if (!dom.document.documentElement) return;
+        made.disconnect();
+        draw(first);
+      });
+      made.observe(dom.document, { childList: true });
+    }
+  }
+  ipcRenderer.on(IPC.appearance.changed, (_event, next: AppearanceNow) => {
+    draw(next);
+  });
+}

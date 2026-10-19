@@ -1,3 +1,4 @@
+import type { AppearanceNow, AppearanceView } from './appearance/appearances';
 import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
 import type { RolesResult, RolesView } from './roles';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
@@ -467,6 +468,21 @@ export const IPC = {
     setLogo: 'props:set-logo',
   },
   /** Themes; changing and applying them is for the operator window only. */
+  /**
+   * The look of Drashti's own windows (Sessions 39–40), kept per computer: what a page draws in as it starts
+   * (the preload asks for it at once, before the page draws), every appearance and the choice for the
+   * Appearance window, and choosing (anyone, in Pro Mode; Simple Mode has no switch).
+   */
+  appearance: {
+    /** preload -> main, answered at once: the appearance to draw this page in. */
+    now: 'appearance:now',
+    /** main -> each of Drashti's windows: the appearance (or the motion) changed. */
+    changed: 'appearance:changed',
+    view: 'appearance:view',
+    choose: 'appearance:choose',
+    /** main -> operator: View › Appearance… was chosen. */
+    open: 'appearance:open',
+  },
   themes: {
     list: 'themes:list',
     save: 'themes:save',
@@ -781,6 +797,8 @@ export const IPC = {
 
 /** Request/response channels: arguments and result for each. */
 export interface InvokeContract {
+  [IPC.appearance.view]: { args: []; result: AppearanceView };
+  [IPC.appearance.choose]: { args: [choice: string]; result: { ok: true } | { ok: false; message: string } };
   [IPC.pictures.job]: { args: []; result: PictureJob | null };
   [IPC.pictures.page]: { args: [page: PicturePage]; result: boolean };
   [IPC.pictures.done]: { args: [done: PicturesDone]; result: null };
@@ -1167,6 +1185,8 @@ export interface InvokeContract {
 
 /** main -> renderer event channels and their payloads. */
 export interface EventContract {
+  [IPC.appearance.changed]: AppearanceNow;
+  [IPC.appearance.open]: { at: number };
   [IPC.engine.message]: EngineMessage;
   [IPC.library.importProgress]: ImportProgress;
   [IPC.library.changed]: { at: number; what: LibraryChange };

@@ -59,6 +59,7 @@ const COLOURS: { name: string; job: string }[] = [
   { name: 'faint', job: 'The quietest text allowed' },
   { name: 'accent', job: 'Focus ring, selection' },
   { name: 'primary', job: 'The primary: the next thing to do (a gradient from primary-hi to primary-lo)' },
+  { name: 'on-primary', job: 'Words on the primary' },
   { name: 'primary-edge', job: 'A strong secondary’s edge' },
   { name: 'live', job: 'On the screens now (with a label)' },
   { name: 'warning', job: 'Missing, can’t play' },

@@ -25,6 +25,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.library.setExtras,
   // The single-letter keys (Session 37): an admin's, from Pro Mode's keys sheet.
   IPC.app.setSingleKeys,
+  // The appearance (Sessions 39–40): Simple Mode shows the one chosen, with no switch.
+  IPC.appearance.choose,
   IPC.library.restoreRevision,
   IPC.library.importPaths,
   IPC.library.pickImportPaths,

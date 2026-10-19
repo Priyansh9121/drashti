@@ -19,7 +19,7 @@ export function StartHere() {
   const arriving = useArrival('empty');
   return (
     <div
-      className="lamp-empty flex flex-1 flex-col items-center justify-center gap-2 px-6 py-8 text-center text-muted"
+      className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-8 text-center text-muted"
       data-testid="start-here"
     >
       <div data-motion={arriving} style={{ ['--i' as string]: 0 }}>
@@ -102,14 +102,14 @@ function Step({
       data-testid="start-step"
       className={cx(
         'flex items-center gap-3 rounded-lg border bg-panel px-3 py-2.5 text-fg',
-        now ? 'border-primary-edge shadow-ember [--ember-spread:-12px]' : 'border-line',
+        now ? 'border-primary-edge shadow-primary [--glow-spread:-12px]' : 'border-line',
       )}
     >
       <span
         aria-hidden="true"
         className={cx(
           'grid h-7 w-7 shrink-0 place-items-center rounded-full border text-sm font-bold',
-          now ? 'border-primary-hi bg-primary text-white' : 'border-field text-muted',
+          now ? 'border-primary-hi bg-primary text-on-primary' : 'border-field text-muted',
         )}
       >
         {n}

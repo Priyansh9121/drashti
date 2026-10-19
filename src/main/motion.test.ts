@@ -3,7 +3,7 @@ import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /*
- * Motion in the interface is all tokens (Session 26g, Diya's "Rising", the design lab's table):
+ * Motion in the interface is all tokens (Session 26g, "Rising", the design lab's table):
  * every duration, delay and easing is a --dur-*, --delay-*, --stagger-* or --ease-* in app.css, with
  * the lab's values, and nothing in the window's code or styles uses a number of its own. The
  * audience screens' own motion (render/, output/, program/, the stage display) is the show's, not
@@ -21,7 +21,7 @@ const rootBlock = (() => {
 })();
 const token = (name: string) => new RegExp(`--${name}:\\s*([^;]+);`, 'u').exec(rootBlock)?.[1]?.trim();
 
-/** The design lab's table (design-lab/diya/README.md, "Motion"), with the few the build added. */
+/** The design lab's table (the design lab's README, "Motion"), with the few the build added. */
 const TABLE: Record<string, string> = {
   'dur-instant': '0ms',
   'dur-press': '90ms',

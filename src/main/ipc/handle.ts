@@ -116,3 +116,16 @@ export function handle<C extends InvokeChannel>(
     });
   });
 }
+
+/**
+ * A request a page's preload makes synchronously, answered at once (Sessions 39–40: the appearance a page draws
+ * in, before it draws anything). Only Drashti's own pages are answered; any other gets null.
+ */
+export function handleSync(channel: string, answer: () => unknown): void {
+  ipcMain.on(channel, (event) => {
+    const url = event.senderFrame?.url ?? '';
+    event.returnValue = isAppUrl(url, { devServerUrl: devServerUrl(), rendererDir: rendererDir() })
+      ? answer()
+      : null;
+  });
+}

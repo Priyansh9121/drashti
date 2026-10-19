@@ -7,7 +7,7 @@ import { launchApp, operatorPage, operatorReady } from './helpers';
 import { setUpPlaceholderShow } from './placeholder-show';
 
 /*
- * Every phone page in Diya (Session 26g), at 375 × 812 in Safari's engine and Chrome's: the pairing
+ * Every phone page in its own look (Session 26g, kept by Sessions 39–40), at 375 × 812 in Safari's engine and Chrome's: the pairing
  * page, the remote on each of its tabs and the announcement page pass axe, every target is 44 px or
  * more, and the lamp is beside Drashti's name. The stage display is a screen and keeps its look
  * (audience-pixels.spec.ts); it passes axe here too. Placeholder content only.

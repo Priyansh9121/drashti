@@ -87,7 +87,11 @@ test('in forced colours (a Windows contrast theme) the chosen tab and the focus 
   expect(
     await win.evaluate(() => getComputedStyle(document.activeElement ?? document.body).outlineStyle),
   ).not.toBe('none');
-  await expectNoSeriousA11yIssues(win, 'the operator window in forced colours');
+  // The system's theme sets every colour here: axe's contrast reading is left out (a11y.ts says why). It never
+  // measured here before either: at d032357 all 87 words were "incomplete", the lamp's light (a ::before) under them.
+  await expectNoSeriousA11yIssues(win, 'the operator window in forced colours', undefined, [
+    'color-contrast',
+  ]);
   await app.close();
 });
 

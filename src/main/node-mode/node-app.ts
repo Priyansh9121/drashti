@@ -66,6 +66,8 @@ import { type ClockStyle, validClockStyle } from '../../shared/format';
  */
 
 export interface NodeAppDeps {
+  /** This computer's appearance (Sessions 39–40): the node's own window opens on its colour and follows it. */
+  appearance: { background(): string; track(win: BrowserWindow): void };
   userData: string;
   /** What the start found that the person at the node should read (Session 23), shown in its window. */
   startNotes: string[];
@@ -809,11 +811,12 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
     minHeight: 520,
     show: false,
     title: 'Drashti Node',
-    backgroundColor: '#0b0d11',
+    backgroundColor: deps.appearance.background(),
     autoHideMenuBar: true,
     ...windowIcon(),
     webPreferences: secureWebPreferences(),
   });
+  deps.appearance.track(nodeWindow);
   deps.watchdog.watch(nodeWindow.webContents, 'node window');
   nodeWindow.once('ready-to-show', () => {
     nodeWindow?.show();

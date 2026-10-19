@@ -275,7 +275,7 @@ export function BoxCanvas({
                   height: b.frame.height,
                   outline: on
                     ? `${2 * px}px solid var(--color-accent)`
-                    : `${px}px dashed rgb(160 169 184 / 0.7)`,
+                    : `${px}px dashed color-mix(in srgb, var(--color-muted) 70%, transparent)`,
                   pointerEvents: 'none',
                 }}
               >

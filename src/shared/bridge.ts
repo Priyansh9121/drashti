@@ -1,3 +1,4 @@
+import type { AppearanceView } from './appearance/appearances';
 import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { GuideId, GuideRead } from './guides';
@@ -428,6 +429,16 @@ export interface DrashtiBridge {
     setLogo(propId: string | null): Promise<PropResult>;
   };
   /** Themes: how presentations' words look, per language, and what is behind them. */
+  /** The look of Drashti's own windows (Sessions 39–40): the Appearance window's view, and choosing. */
+  appearance: {
+    view(): Promise<AppearanceView>;
+    /** FOLLOW or an appearance's id (Pro Mode; Simple Mode refuses it). */
+    choose(choice: string): Promise<{ ok: true } | { ok: false; message: string }>;
+    /** View › Appearance… was chosen. */
+    onOpen(listener: () => void): () => void;
+    /** The appearance or the motion changed (every window draws it by itself; the Appearance window shows it). */
+    onChanged(listener: () => void): () => void;
+  };
   themes: {
     list(): Promise<{ themes: Theme[]; defaultId: string }>;
     /** Make a theme (no id) or change one. */

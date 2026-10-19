@@ -3,7 +3,8 @@ import { windowIcon } from './app-icon';
 import { loadPage } from './renderer';
 import { secureWebPreferences } from './web-preferences';
 
-export function createOperatorWindow(): BrowserWindow {
+/** The operator window, opening on its appearance's window colour (Sessions 39–40), so it never flashes another. */
+export function createOperatorWindow(background: string): BrowserWindow {
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -11,7 +12,7 @@ export function createOperatorWindow(): BrowserWindow {
     minHeight: 640,
     show: false,
     title: 'Drashti',
-    backgroundColor: '#0b0d11',
+    backgroundColor: background,
     // Windows: keep the menu bar out of a volunteer's way (Alt shows it).
     autoHideMenuBar: true,
     ...windowIcon(),
