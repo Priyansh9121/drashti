@@ -598,7 +598,7 @@ export function Canvas({ platform }: { platform: string }) {
                 width: marquee.width,
                 height: marquee.height,
                 border: `${1 / scale}px solid var(--color-accent)`,
-                background: 'rgb(91 155 255 / 0.12)',
+                background: 'color-mix(in srgb, var(--color-accent) 12%, transparent)',
                 pointerEvents: 'none',
               }}
             />

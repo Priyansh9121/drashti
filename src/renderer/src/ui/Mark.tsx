@@ -2,10 +2,11 @@ import { useId } from 'react';
 import { cx } from './cx';
 
 /*
- * Drashti's mark, the lamp (Session 26g): the flame on its plum tile, drawn from build/icon.svg,
- * the one source every icon is made from (src/main/mark.test.ts keeps these the same). Beside the
- * name in the header, Simple Mode and the phone pages; lit once on the first start; and unlit, with
- * one wisp of smoke on arrival, in empty places. Decoration only: hidden from screen readers.
+ * Drashti's mark, the lamp (Session 26g): the flame on its tile, drawn from build/icon.svg, the one
+ * source every icon is made from (src/main/mark.test.ts keeps these the same). Beside the name in the
+ * header, Simple Mode and the phone pages, in the logo's own colours; lit once on the first start, on a
+ * tile in the appearance's colours (Sessions 39–40); and unlit, with one wisp of smoke on arrival, in
+ * empty places. Decoration only: hidden from screen readers.
  */
 
 /** The drawing's parts, as in build/icon.svg (the tile's rect is drawn as a rect). */
@@ -23,14 +24,17 @@ export const MARK = {
   },
 } as const;
 
-/** The gradients, with ids of their own so two marks on a page never share them. */
+/**
+ * The lit lamp's gradients, with ids of their own so two lamps on a page never share them. Its tile and halo
+ * take the appearance's colours (Sessions 39–40); the flame and the bowl are the lamp's own.
+ */
 function Paints({ id }: { id: string }) {
   const c = MARK.colours;
   return (
     <defs>
       <linearGradient id={`${id}-tile`} x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stopColor={c.tile[0]} />
-        <stop offset="1" stopColor={c.tile[1]} />
+        <stop offset="0" style={{ stopColor: 'var(--color-panel-3)' }} />
+        <stop offset="1" style={{ stopColor: 'var(--color-ink)' }} />
       </linearGradient>
       <linearGradient id={`${id}-flame`} x1="0" y1="0" x2="0" y2="1">
         <stop offset="0" stopColor={c.flame[0]} />
@@ -41,9 +45,9 @@ function Paints({ id }: { id: string }) {
         <stop offset="1" stopColor={c.bowl[1]} />
       </linearGradient>
       <radialGradient id={`${id}-halo`} cx="0.5" cy="0.5" r="0.5">
-        <stop offset="0" stopColor="#ffb070" stopOpacity="0.4" />
-        <stop offset="0.45" stopColor="#ff8a50" stopOpacity="0.18" />
-        <stop offset="1" stopColor="#ff8a50" stopOpacity="0" />
+        <stop offset="0" style={{ stopColor: 'var(--color-primary)', stopOpacity: 0.32 }} />
+        <stop offset="0.45" style={{ stopColor: 'var(--color-primary)', stopOpacity: 0.14 }} />
+        <stop offset="1" style={{ stopColor: 'var(--color-primary)', stopOpacity: 0 }} />
       </radialGradient>
     </defs>
   );
@@ -62,7 +66,8 @@ export function middle([top, bottom]: readonly [string, string]): string {
 }
 
 /**
- * The mark: the flame on its plum tile, with the lamp's light softly behind it. Beside a name it is
+ * The mark: the flame on its tile, in the logo's own colours (on the phone pages with the lamp's light
+ * softly behind it, app.css). Beside a name it is
  * small (24 to 36 px), where the icon's gradients do not show, so each part is filled flat with its
  * gradient's middle colour: the header is drawn again at every slide change, and gradient-filled
  * shapes there cost a computer without a graphics chip eight new ways of drawing (Session 26g, app.css
@@ -121,7 +126,7 @@ export function LitLamp({ size = 96, className }: { size?: number; className?: s
         className="lamp-bowl"
         d={MARK.bowl}
         fill={`url(#${id}-bowl)`}
-        stroke={MARK.colours.bowlEdge}
+        style={{ stroke: 'var(--color-ink)' }}
         strokeWidth={30}
         paintOrder="stroke"
       />

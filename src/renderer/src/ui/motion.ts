@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 
 /*
- * Motion in the interface (Session 26g, Diya's "Rising"). Things arrive and leave; show controls,
+ * Motion in the interface (Session 26g, "Rising"). Things arrive and leave; show controls,
  * thumbnails and the live picture never move. Every duration and easing is a token in app.css
  * (--dur-*, --ease-*): entrances are CSS (`data-motion` in app.css), and the two things CSS cannot
  * do read their timing from the same tokens here: a playlist row sliding to its new place, and a

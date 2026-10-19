@@ -54,7 +54,7 @@ function StepList({ step }: { step: number }) {
             aria-hidden="true"
             className={cx(
               'inline-flex h-5 w-5 items-center justify-center rounded-full border text-2xs',
-              i === step ? 'border-accent bg-accent text-white' : 'border-line-strong',
+              i === step ? 'border-accent bg-accent text-ink' : 'border-line-strong',
             )}
           >
             {i + 1}
@@ -109,7 +109,7 @@ function ScreensStep() {
               <div className="flex flex-wrap items-center gap-2">
                 <span
                   aria-hidden="true"
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-accent text-sm font-bold text-white"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-accent text-sm font-bold text-ink"
                 >
                   {i + 1}
                 </span>

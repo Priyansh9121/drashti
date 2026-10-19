@@ -36,24 +36,39 @@ export async function settled(page: Page): Promise<void> {
   );
 }
 
-export async function expectNoSeriousA11yIssues(page: Page, what: string, include?: string): Promise<void> {
+export async function expectNoSeriousA11yIssues(
+  page: Page,
+  what: string,
+  include?: string,
+  /**
+   * Rules left out, each named by the caller with why. Only `color-contrast` in forced colours (Sessions 39–40):
+   * the system's theme sets every colour there, and axe reads a word's colour from -webkit-text-fill-color,
+   * which Chromium still gives unforced while it draws the word in the system's colour (64 such readings in a
+   * dialog at d032357 too).
+   */
+  skip: readonly 'color-contrast'[] = [],
+): Promise<void> {
   await settled(page);
   if (!(await page.evaluate(() => Boolean((globalThis as AxeWindow).axe)))) await page.evaluate(axe.source);
-  const violations = await page.evaluate(async (selector) => {
-    const engine = (globalThis as AxeWindow).axe;
-    if (!engine) throw new Error('axe-core did not load');
-    const exclude = [['[data-a11y-picture]']];
-    const result = await engine.run(selector ? { include: [[selector]], exclude } : { exclude }, {
-      runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] },
-      resultTypes: ['violations'],
-    });
-    return result.violations.map((v) => ({
-      id: v.id,
-      impact: v.impact ?? null,
-      help: v.help,
-      nodes: v.nodes.map((n) => `${n.target.join(' ')}: ${n.failureSummary ?? ''}`),
-    }));
-  }, include ?? null);
+  const violations = await page.evaluate(
+    async ({ selector, off }) => {
+      const engine = (globalThis as AxeWindow).axe;
+      if (!engine) throw new Error('axe-core did not load');
+      const exclude = [['[data-a11y-picture]']];
+      const result = await engine.run(selector ? { include: [[selector]], exclude } : { exclude }, {
+        runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] },
+        rules: Object.fromEntries(off.map((rule) => [rule, { enabled: false }])),
+        resultTypes: ['violations'],
+      });
+      return result.violations.map((v) => ({
+        id: v.id,
+        impact: v.impact ?? null,
+        help: v.help,
+        nodes: v.nodes.map((n) => `${n.target.join(' ')}: ${n.failureSummary ?? ''}`),
+      }));
+    },
+    { selector: include ?? null, off: [...skip] },
+  );
   const serious = violations
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')
     .map((v) => `${v.impact ?? ''} ${v.id}: ${v.help}\n${v.nodes.map((n) => `  - ${n}`).join('\n')}`);

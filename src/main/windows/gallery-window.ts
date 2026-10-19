@@ -6,7 +6,7 @@ import { secureWebPreferences } from './web-preferences';
 let gallery: BrowserWindow | null = null;
 
 /** The component gallery (development only, from the Diagnostics menu): one window, brought forward if open. */
-export function openGalleryWindow(): BrowserWindow {
+export function openGalleryWindow(background: string): BrowserWindow {
   if (gallery && !gallery.isDestroyed()) {
     gallery.focus();
     return gallery;
@@ -16,7 +16,8 @@ export function openGalleryWindow(): BrowserWindow {
     height: 900,
     show: false,
     title: 'Drashti Component Gallery',
-    backgroundColor: '#0b0d11',
+    // Its appearance's window colour (Sessions 39–40).
+    backgroundColor: background,
     autoHideMenuBar: true,
     ...windowIcon(),
     webPreferences: secureWebPreferences(),

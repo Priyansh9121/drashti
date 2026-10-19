@@ -15,13 +15,13 @@ export type ButtonSize = 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
 
 const variants: Record<ButtonVariant, string> = {
   /*
-   * The next thing to do, one per screen (docs/design.md): the lamp's plum, lit from above, with an
-   * ember glow beneath; flat and darker while pressed. Disabled, it gives up the light entirely, so
-   * a primary that can't be pressed never looks like the thing to do.
+   * The next thing to do, one per screen (docs/design.md): the appearance's primary, lit from above, with a
+   * glow of its own colour beneath; flat and darker while pressed. Disabled, it gives up the light entirely,
+   * so a primary that can't be pressed never looks like the thing to do.
    */
   primary:
-    'bg-linear-to-b from-primary-hi via-primary via-55% to-primary-lo text-white border-primary-lo shadow-ember hover:shadow-ember-hover active:bg-none active:bg-primary-lo disabled:bg-none disabled:bg-transparent disabled:text-faint disabled:border-line-strong disabled:shadow-none disabled:opacity-100',
-  // A strong secondary (Clear all in a show): a plum edge and bold words, with no light of its own.
+    'bg-linear-to-b from-primary-hi via-primary via-55% to-primary-lo text-on-primary border-primary-lo shadow-primary hover:shadow-primary-hover active:bg-none active:bg-primary-lo disabled:bg-none disabled:bg-transparent disabled:text-faint disabled:border-line-strong disabled:shadow-none disabled:opacity-100',
+  // A strong secondary (Clear all in a show): the primary's edge and bold words, with no light of its own.
   strong: 'bg-panel-2 text-fg border-primary-edge hover:bg-panel-3',
   // Its edge is the solid field colour: at least 3:1 wherever a control sits (Session 25; 2.13:1 at 60%).
   secondary: 'bg-panel-2 text-fg border-field hover:bg-panel-3 hover:border-muted',
@@ -29,24 +29,25 @@ const variants: Record<ButtonVariant, string> = {
   danger: 'bg-transparent text-danger border-danger hover:bg-danger-bg hover:text-danger-fg',
   // On the screens now, or "on" (black-out): the live colour, always with words saying so.
   live: 'bg-live text-white border-live hover:brightness-110',
-  warning: 'bg-warning-bg text-warning-fg border-warning/60 hover:border-warning',
+  // Its edge is the solid warning colour, at least 3:1 in every appearance (Sessions 39–40).
+  warning: 'bg-warning-bg text-warning-fg border-warning hover:border-warning-fg',
 };
 
 const sizes: Record<ButtonSize, string> = {
   sm: 'h-7 gap-1 px-2 text-xs rounded-md',
   md: 'h-8 gap-1.5 px-3 text-sm rounded-md',
-  lg: 'h-10 gap-2 px-4 text-base rounded-lg [--ember-spread:-12px]',
-  xl: 'min-h-16 gap-3 px-5 py-2 text-xl rounded-xl [--ember-spread:-18px]',
-  xxl: 'min-h-24 gap-4 px-6 py-3 text-3xl rounded-xl [--ember-spread:-18px]',
+  lg: 'h-10 gap-2 px-4 text-base rounded-lg [--glow-spread:-12px]',
+  xl: 'min-h-16 gap-3 px-5 py-2 text-xl rounded-xl [--glow-spread:-18px]',
+  xxl: 'min-h-24 gap-4 px-6 py-3 text-3xl rounded-xl [--glow-spread:-18px]',
 };
 
 const iconSizes: Record<ButtonSize, number> = { sm: 14, md: 16, lg: 18, xl: 26, xxl: 36 };
 const squareSizes: Record<ButtonSize, string> = {
   sm: 'h-7 w-7 rounded-md',
   md: 'h-8 w-8 rounded-md',
-  lg: 'h-10 w-10 rounded-lg [--ember-spread:-12px]',
-  xl: 'h-16 w-16 rounded-xl [--ember-spread:-18px]',
-  xxl: 'h-24 w-24 rounded-xl [--ember-spread:-18px]',
+  lg: 'h-10 w-10 rounded-lg [--glow-spread:-12px]',
+  xl: 'h-16 w-16 rounded-xl [--glow-spread:-18px]',
+  xxl: 'h-24 w-24 rounded-xl [--glow-spread:-18px]',
 };
 
 const base =

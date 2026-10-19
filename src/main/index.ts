@@ -8,6 +8,7 @@ import {
   crashReporter,
   dialog,
   globalShortcut,
+  nativeTheme,
   powerMonitor,
   powerSaveBlocker,
   protocol,
@@ -110,6 +111,7 @@ import { runEngineCommand } from './ipc/engine-ipc';
 import {
   handle,
   handlerTimes,
+  handleSync,
   hearHandled,
   lockAdminChannels,
   lockChannels,
@@ -205,6 +207,8 @@ import { createPicturesWindow } from './pictures/pictures-window';
 import { createSharpenWindow } from './pictures/sharpen-window';
 import { PdfPictures, pictureSize } from './pictures/pdf-pictures';
 import { openGalleryWindow } from './windows/gallery-window';
+import { AppearanceService } from './appearance/appearance-service';
+import { FOLLOW } from '../shared/appearance/appearances';
 import { createOperatorWindow } from './windows/operator-window';
 import { StopList } from './lifecycle';
 import { hearRenderErrors } from './render-errors-ipc';
@@ -447,6 +451,15 @@ holdPriority('at start');
 void app.whenReady().then(() => {
   holdPriority('once ready');
 });
+// The look of Drashti's own windows (Sessions 39–40): kept per computer, outside the library, and read before
+// any window is made, so each opens on its appearance's colour and its page draws in it from the start.
+const appearance = new AppearanceService({
+  userData: app.getPath('userData'),
+  say: (line) => {
+    log.info(line);
+  },
+});
+handleSync(IPC.appearance.now, () => appearance.now());
 /** File > Run Ahead of Other Programs (Windows; an admin's choice for this computer, kept and applied at once). */
 const priorityItem = (after: (text: string) => void) =>
   process.platform === 'win32'
@@ -838,6 +851,8 @@ async function runPerformanceTestWithStream(ctx: PerfRun): ReturnType<typeof run
 const startNotes: string[] = [];
 
 function boot(): void {
+  // Menus, dialogs and title bars as the appearance's base, or the computer's own (Follow the computer).
+  appearance.start(nativeTheme);
   // What went wrong while Drashti last ran, said once (Sessions 31–36, ROB-6).
   const journalNote = journalNotice(crashJournal.takeUnshown(), (at) => formatClock(Date.parse(at), null));
   if (journalNote) startNotes.push(journalNote);
@@ -883,6 +898,7 @@ function startNodeMode(): void {
   });
   allowHangStacks(session.defaultSession);
   const node = startNode({
+    appearance,
     userData: app.getPath('userData'),
     startNotes,
     version: appVersion(),
@@ -4289,7 +4305,8 @@ function start(): void {
     return quitConfirmed;
   };
 
-  operatorWindow = createOperatorWindow();
+  operatorWindow = createOperatorWindow(appearance.background());
+  appearance.track(operatorWindow);
   operatorWindow.once('show', () => {
     log.info(phaseLine('operator window shown'));
   });
@@ -4454,6 +4471,19 @@ function start(): void {
     },
   );
   handle(IPC.app.singleKeys, () => singleKeysOn());
+  // ---- Appearance (Sessions 39–40): anyone's to choose in Pro Mode (Simple Mode refuses it), per computer ----
+  handle(IPC.appearance.view, () => appearance.view());
+  handle(IPC.appearance.choose, (e, choice) => {
+    if (!fromOperator(e) || typeof choice !== 'string')
+      return { ok: false as const, message: 'Only the operator window can change the appearance.' };
+    return appearance.choose(choice)
+      ? { ok: true as const }
+      : { ok: false as const, message: 'That appearance is no longer here: choose another.' };
+  });
+  // The menu's ticks follow the appearance shown (Follow the computer's changes too).
+  appearance.onChanged(() => {
+    rebuildMenu();
+  });
   handle(IPC.app.setSingleKeys, (e, on) => {
     if (!fromOperator(e) || typeof on !== 'boolean')
       return { ok: false as const, message: 'Only the operator window can change the keys.' };
@@ -4561,6 +4591,20 @@ function start(): void {
         rebuildMenu();
       },
     },
+    // View › Appearance (Sessions 39–40): Pro Mode only, anyone's; the choice is this computer's.
+    appearance: {
+      choices: [
+        { id: FOLLOW, label: 'Follow the Computer' },
+        ...appearance.list().map((a) => ({ id: a.id, label: a.name })),
+      ],
+      chosen: appearance.choice,
+      choose: (id) => {
+        if (mode === 'pro') appearance.choose(id);
+      },
+      open: () => {
+        if (mode === 'pro') sendToOperator(IPC.appearance.open, { at: Date.now() });
+      },
+    },
     reloadOperator: () => {
       operatorWindow?.webContents.reload();
     },
@@ -4618,7 +4662,7 @@ function start(): void {
               if (!w.isDestroyed()) w.webContents.forcefullyCrashRenderer();
           },
           openGallery: () => {
-            openGalleryWindow();
+            appearance.track(openGalleryWindow(appearance.background()));
           },
           runSelfTest: () => {
             void runSelfTest().then((result) => {

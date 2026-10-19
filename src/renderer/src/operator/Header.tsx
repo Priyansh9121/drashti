@@ -61,7 +61,7 @@ export function Header({
   return (
     <>
       <header
-        className="lamp-header flex h-12 shrink-0 items-center gap-4 border-b border-line px-4"
+        className="flex h-12 bg-panel shrink-0 items-center gap-4 border-b border-line px-4"
         data-testid="app-header"
       >
         <h1 className="shrink-0 text-base font-bold tracking-wide">

@@ -441,7 +441,7 @@ export function NodeApp() {
   if (!view) return <Loading label="Starting…" />;
   return (
     <main
-      className="mx-auto h-full max-w-3xl space-y-5 overflow-y-auto bg-bg p-5 text-fg"
+      className="mx-auto h-full max-w-3xl space-y-5 overflow-y-auto bg-ink p-5 text-fg"
       data-testid="node-window"
     >
       <header className="flex flex-wrap items-baseline gap-x-3">

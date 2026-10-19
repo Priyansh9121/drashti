@@ -76,7 +76,7 @@ function WelcomeDialog() {
         tabIndex={-1}
         data-testid="welcome"
         data-motion="dialog"
-        className="lamp-welcome flex max-h-full w-[min(44rem,100%)] flex-col items-center gap-3 overflow-y-auto rounded-xl border border-line-strong px-8 pt-8 pb-7 text-center text-fg shadow-overlay focus:outline-none"
+        className="flex bg-panel max-h-full w-[min(44rem,100%)] flex-col items-center gap-3 overflow-y-auto rounded-xl border border-line-strong px-8 pt-8 pb-7 text-center text-fg shadow-overlay focus:outline-none"
       >
         <div data-lighting="">
           <LitLamp size={72} />

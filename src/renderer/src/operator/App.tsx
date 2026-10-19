@@ -17,6 +17,8 @@ import { KirtanDialog } from '../kirtans/KirtanDialog';
 import { SlideEditor } from '../editor/SlideEditor';
 import { redo as redoEdit, undo as undoEdit, useEditor } from '../editor/editor-store';
 import { ThemesPanel } from '../themes/ThemesPanel';
+import { AppearanceDialog } from '../appearance/AppearanceDialog';
+import { connectAppearance } from '../appearance/appearance-store';
 import { undoRemoval } from '../library/undo';
 import { PlaylistPanel } from '../playlists/PlaylistPanel';
 import { loadTree, usePlaylists, watchPlaylists } from '../playlists/playlist-store';
@@ -114,6 +116,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectPictureLooks();
     connectSingleKeys();
     connectMode();
+    connectAppearance();
     connectRoles();
     void startMidi();
     // The window opens settled with what its first data shows (ui/motion.ts).
@@ -269,7 +272,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
   return (
     // Never narrower or shorter than the columns need (Session 15): with the text made larger (200%
     // on a 1280 × 720 display leaves 640 × 360) the window scrolls rather than cutting the Live column off.
-    <div className="lamp-window flex h-full min-h-[540px] min-w-[960px] flex-col">
+    <div className="flex h-full bg-ink min-h-[540px] min-w-[960px] flex-col">
       <Header platform={platform} onOpenScreens={openScreens} />
       <ArtiPrompt />
       <MacroCountdown />
@@ -364,6 +367,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <Welcome />
       <SlideEditor platform={platform} />
       <ThemesPanel />
+      <AppearanceDialog />
       {streamOpen && <StreamPanel />}
       {networkOpen && <NetworkPanel />}
       {announcementsOpen && <AnnouncementsPanel />}

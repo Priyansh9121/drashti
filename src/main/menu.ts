@@ -16,6 +16,16 @@ const priorityItem = (p: PriorityItem): MenuItemConstructorOptions => ({
   click: p.toggle,
 });
 
+/** View › Appearance (Sessions 39–40): Follow the computer and each appearance, as radio items, then the window. */
+export interface AppearanceItems {
+  choices: readonly { id: string; label: string }[];
+  /** FOLLOW, or the chosen appearance's id. */
+  chosen: string;
+  choose: (id: string) => void;
+  /** Appearance…: the Appearance window, where each is shown as a picture of the operator window. */
+  open: () => void;
+}
+
 export interface MenuActions {
   /** Simple Mode leaves out backup and restore, and offers the way back to Pro Mode. */
   mode: OperatorMode;
@@ -62,6 +72,8 @@ export interface MenuActions {
   extras: { shown: boolean; toggle: () => void };
   /** View › Show Safe Areas (Sessions 31–36): the slide editor's guides for where words are safe. */
   safeAreas: { shown: boolean; toggle: () => void };
+  /** View › Appearance (Pro Mode only). */
+  appearance: AppearanceItems;
   /** Only when DRASHTI_DIAGNOSTICS=1: for the manual watchdog check. */
   diagnostics: {
     crashOperator: () => void;
@@ -162,6 +174,25 @@ export function installMenu(actions: MenuActions): void {
                 type: 'checkbox',
                 checked: actions.safeAreas.shown,
                 click: actions.safeAreas.toggle,
+              } as MenuItemConstructorOptions,
+              { type: 'separator' } as MenuItemConstructorOptions,
+              // Simple Mode shows the chosen appearance, with no switch (Sessions 39–40).
+              {
+                id: 'appearance',
+                label: 'Appearance',
+                submenu: [
+                  ...actions.appearance.choices.map((c): MenuItemConstructorOptions => ({
+                    id: `appearance-${c.id}`,
+                    label: c.label,
+                    type: 'radio',
+                    checked: c.id === actions.appearance.chosen,
+                    click: () => {
+                      actions.appearance.choose(c.id);
+                    },
+                  })),
+                  { type: 'separator' },
+                  { id: 'appearance-window', label: 'Appearance…', click: actions.appearance.open },
+                ],
               } as MenuItemConstructorOptions,
             ]),
         { type: 'separator' },
