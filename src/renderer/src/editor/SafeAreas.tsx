@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { BLACK } from '../../../shared/appearance/appearances';
 import type { Rect } from '../../../shared/model';
 import { ACTION_SAFE, MESSAGE_BAND, TICKER_HEIGHT, TITLE_SAFE } from '../../../shared/safe-areas';
 import { bottomBand, cropLines, type Size } from '../../../shared/scaling';
@@ -59,6 +60,17 @@ const label = (scale: number): CSSProperties => ({
   pointerEvents: 'none',
 });
 
+/**
+ * Drawn over the slide, not the window (Sessions 39–40): its marks and words read against the slide whatever
+ * the window's appearance, so they keep the dark appearances' accent, warning and danger (a light appearance's
+ * darker shades would be lost on a dark slide).
+ */
+const OVER_THE_SLIDE = {
+  '--color-accent': BLACK.colours.accent,
+  '--color-warning': BLACK.colours.warning,
+  '--color-danger': BLACK.colours.danger,
+} as CSSProperties;
+
 export function SafeAreas({ slide, scale }: { slide: Size; scale: number }) {
   const on = useSafeAreas((s) => s.on);
   const groups = useScreens((s) => s.snapshot?.groups);
@@ -90,7 +102,7 @@ export function SafeAreas({ slide, scale }: { slide: Size; scale: number }) {
     <div
       data-testid="safe-areas"
       aria-hidden="true"
-      style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+      style={{ position: 'absolute', inset: 0, pointerEvents: 'none', ...OVER_THE_SLIDE }}
     >
       <div
         data-testid="safe-action"
