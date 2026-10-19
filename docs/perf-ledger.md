@@ -134,3 +134,16 @@ With crash files kept (Phase G), the watchdog restarts a hung window with Electr
 Windows holds at most 443 ms (once, the operator window; otherwise under 145 ms), within the 500 ms set for it (decided 18 Oct 2026), so the dump is kept as it is: a hung window is still restarted with its dump. On the dev Mac the hold is a quarter of a second, as in Phase H, apart from a run's first dump (790 ms) and a hung audio player (half a second). CI's Mac VM takes 1.5 to 1.7 times the dev Mac's medians, as it is slower at everything else here.
 
 Since Session 38 (decided 18 Oct 2026: the dump kept everywhere) each real restart logs its own figure, timed on the watchdog's clock: `Watchdog: output "Hall 1" restarted (Drashti waited 240 ms while it saved the crash file)` (README, Crash files). So a hang on the mandir's own Mac, not measured here, gives its figure in Save Diagnostics….
+
+## Round 39–40: appearances and interface motion (Sessions 39–40), 19 October 2026
+
+Head `2185eae` (`phase1`: Phase A's start-up reads and exit codes, the appearances, one's own and interface motion; after it only a test changes), base `d032357` (Session 38's `main`). Runs: head 39239613741, 39239674511, 39239746001; base 39239643437, 39239710076, 39239780210. The plain check. Its data folder is new, so the head's operator window follows the computer: White on CI's computers, which are set light, with Calm motion, the default.
+
+| System  | Ref  | Idle p90, each run | Importing p90, each run | Worst block, each run | Recovery figure, each run |
+| ------- | ---- | ------------------ | ----------------------- | --------------------- | ------------------------- |
+| Mac     | head | 33, 25, 21 ms      | 27, 26, 18 ms           | 26, 20, 12 ms         | 5.3, 5.6, 5.9 s           |
+| Mac     | base | 33, 34, 32 ms      | 29, 30, 32 ms           | 59, 12, 13 ms         | 8.4, 6.0, 3.8 s           |
+| Windows | head | 14, 15, 13 ms      | 15, 15, 15 ms           | 8, 4, 3 ms            | 3.6, 5.8, 5.0 s           |
+| Windows | base | 13, 14, 15 ms      | 15, 15, 15 ms           | 3, 6, 5 ms            | 4.1, 6.4, 4.2 s           |
+
+Every run passed every check (7 of 7). No change. `scripts/perf-compare.mjs` on the three runs of each finds no change in any segment on either system: every median and p95 of key to main, main to frame, frame to the next and key to frame differs within a 95% interval that holds 0. Key to frame: Mac median 16 ms against 16, p95 32 against 34; Windows median 8 against 8, p95 16 against 16. The head measured fewer changes during the import (Mac 185 against 201, Windows 802 against 991) because its imports happened to end sooner (Windows 7.4, 12.4 and 12.9 s against 11.1, 15.7 and 14.5 s; Mac 3.0, 1.9 and 2.1 s against 4.0, 2.2 and 1.6 s): changes are measured until the import ends, and nothing in these sessions touches the import. The raw files were compared and then deleted with the session's other artifacts.
