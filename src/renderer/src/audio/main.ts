@@ -150,7 +150,7 @@ async function findOutputs(): Promise<void> {
   await window.drashti.audio.reportDevices(devices, state);
 }
 
-connectEngine();
+connectEngine('silent');
 useEngine.subscribe((view) => {
   play(view.state);
   // For the watchdog self-test: the revision this window follows.

@@ -34,6 +34,7 @@ import { useWhatIsThis } from '../help/WhatIsThis';
 import { plural } from '../ui/text';
 import { droppedPaths, hasFiles } from './drag';
 import { startRepeat, stopRepeat } from './repeat-actions';
+import { PlaylistsUnread } from './PlaylistsUnread';
 import { useEngine } from '../engine/engine-store';
 import { droppedItems, fromLibrary, isRemoveKey, RenameField } from './playlist-shared';
 import {
@@ -98,6 +99,7 @@ function nodeMenu(node: PlaylistNode): MenuEntry[] {
 
 function PlaylistTree({ platform }: { platform: string }) {
   const tree = usePlaylists((s) => s.tree);
+  const unread = usePlaylists((s) => s.unread.playlists);
   const closed = usePlaylists((s) => s.closed);
   const selectedNodeId = usePlaylists((s) => s.selectedNodeId);
   const renaming = usePlaylists((s) => (s.renameIn === 'tree' ? s.renaming : null));
@@ -162,8 +164,10 @@ function PlaylistTree({ platform }: { platform: string }) {
       </div>
       {help.card}
       <TabPanel group="playlist-view" id="playlists" className="flex min-h-0 flex-1 flex-col">
+        {/* A read that failed is said, with Try again (Session 39): what was read before stays below. */}
+        {unread && <PlaylistsUnread what="playlists" className="mx-2 mb-2" />}
         {/* An empty tree is no tree: the note stands on its own until there are playlists. */}
-        {tree.length === 0 && (
+        {tree.length === 0 && !unread && (
           <div data-testid="playlist-tree" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
             <EmptyState icon={ListMusic} title="No playlists yet" compact lamp>
               Make one with the New button above, or import a playlist file.

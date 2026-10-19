@@ -29,6 +29,11 @@ interface LibraryView {
    * three steps, and the first presentation is not chosen by itself until the operator picks one.
    */
   nothingChosen: boolean;
+  /**
+   * The presentation whose slides could not be read (Session 39), until it is chosen or read again: the grid
+   * says so with Try again, never "Opening the presentation…" for good.
+   */
+  unreadId: string | null;
 }
 
 /** Which list the left column shows: presentations, media, or Shastra texts. */
@@ -47,7 +52,26 @@ export const useLibrary = create<LibraryView>(() => ({
   item: null,
   focusSlideId: null,
   nothingChosen: false,
+  unreadId: null,
 }));
+
+/**
+ * A presentation's slides (Session 39): null when they could not be read, or it is not in the library;
+ * the main process's log says why.
+ */
+async function readDoc(id: string): Promise<PresentationDoc | null> {
+  try {
+    return await window.drashti.library.getPresentation(id);
+  } catch {
+    return null;
+  }
+}
+
+/** Set what was read for the presentation still chosen: its slides, or that they could not be read. */
+function took(id: string, doc: PresentationDoc | null): void {
+  if (useLibrary.getState().selectedId !== id) return;
+  useLibrary.setState({ doc, unreadId: doc ? null : id });
+}
 
 /** Choose nothing (the first start's Skip for now): the middle's empty place leads, its steps first. */
 export function chooseNothing(): void {
@@ -68,8 +92,7 @@ export async function showItem(item: ShownItem): Promise<void> {
  */
 export async function showRepeatSteps(presentationId: string, focus: string | null): Promise<void> {
   useLibrary.setState({ item: null, selectedId: presentationId, focusSlideId: focus, nothingChosen: false });
-  const doc = await window.drashti.library.getPresentation(presentationId);
-  if (useLibrary.getState().selectedId === presentationId) useLibrary.setState({ doc });
+  took(presentationId, await readDoc(presentationId));
 }
 
 /** Back to the library's own selection (the grid no longer shows a playlist item). */
@@ -83,10 +106,10 @@ export async function selectPresentation(id: string): Promise<void> {
     selectedId: id,
     marked: s.marked.includes(id) ? s.marked : [id],
     anchorId: s.anchorId ?? id,
+    unreadId: s.unreadId === id ? id : null,
   }));
-  const doc = await window.drashti.library.getPresentation(id);
-  // Ignore a slow answer for a presentation that is no longer selected.
-  if (useLibrary.getState().selectedId === id) useLibrary.setState({ doc });
+  // A slow answer for a presentation that is no longer selected is ignored.
+  took(id, await readDoc(id));
 }
 
 /**

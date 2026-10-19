@@ -5,7 +5,8 @@ import { shortcutText, SIMPLE_KEYMAP } from '../../../shared/keymap';
 import { useKeymapNow } from '../operator/single-keys-store';
 import { useEngine } from '../engine/engine-store';
 import { mediaKindIcon, mediaKindLabel } from '../library/MediaList';
-import { openPlaylist, usePlaylists } from '../playlists/playlist-store';
+import { openPlaylist, playlistsUnread, usePlaylists } from '../playlists/playlist-store';
+import { PlaylistsUnread } from '../playlists/PlaylistsUnread';
 import { useRoles } from '../roles/roles-store';
 import { PinInput, useWaitText } from '../roles/RolesDialogs';
 import { WordMark } from '../ui/Mark';
@@ -39,6 +40,7 @@ import { leaveSimpleMode, useMode } from '../operator/mode-store';
 import { NextPreview } from '../operator/NextPreview';
 import { RecoveryBanner } from '../operator/RecoveryBanner';
 import { StoppedScreens } from '../screens/StoppedScreens';
+import { EngineUnread } from '../operator/EngineUnread';
 import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { StreamPageStopped } from '../stream/StreamPageStopped';
 import { SimpleFirstRun } from './SimpleFirstRun';
@@ -64,6 +66,10 @@ import { useNodes } from '../nodes/nodes-store';
  * button at the top right since Session 20, or the View menu) and typing the
  * word.
  */
+
+/** What Next says when it has nothing to start because the playlist could not be read (Session 39). */
+const NEXT_UNREAD =
+  'Next has nothing to start: Drashti couldn’t read the playlist. Press Try again beside it.';
 
 const playable = (i: PlaylistItemInfo) =>
   (i.kind === 'presentation' && i.presentationName !== null) || (i.kind === 'media' && !i.missing);
@@ -93,6 +99,9 @@ function usePlaylistChoice() {
 function PlaylistColumn() {
   const { lists, openId, choose } = usePlaylistChoice();
   const items = usePlaylists((s) => s.items);
+  // A read that failed is said, with Try again (Session 39): never "No playlists" when there are some.
+  const treeUnread = usePlaylists((s) => s.unread.playlists);
+  const itemsUnread = usePlaylists((s) => s.openId !== null && s.unread.itemsOf === s.openId);
   // The item on the screens now: the playlist's place, while something of it is up.
   const liveItem = useEngine((s) => {
     const st = s.state;
@@ -116,7 +125,8 @@ function PlaylistColumn() {
   };
   return (
     <section aria-label="Playlist" className="flex min-h-0 flex-col border-r border-line bg-panel">
-      <div className="shrink-0 p-3">
+      <div className="shrink-0 space-y-2 p-3">
+        {treeUnread && <PlaylistsUnread what="playlists" size="lg" />}
         {lists.length > 0 ? (
           <Field label="Playlist">
             <Select
@@ -134,11 +144,12 @@ function PlaylistColumn() {
               ))}
             </Select>
           </Field>
-        ) : (
+        ) : treeUnread ? null : (
           <EmptyState icon={ListMusic} title="No playlists" compact>
             An admin makes the sabha’s playlist in Pro Mode.
           </EmptyState>
         )}
+        {itemsUnread && <PlaylistsUnread what="items" size="lg" />}
       </div>
       {repeat && openId && (
         <div className="shrink-0 px-3 pb-2">
@@ -400,11 +411,17 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
   const repeating = usePlaylists((s) => s.tree.find((n) => n.id === s.openId)?.kind === 'repeat');
   // Next with nothing live starts the playlist at its first item that can play; a Repeat Slides
   // playlist (Session 26d) starts going round.
+  const unread = usePlaylists(playlistsUnread);
   const start = useCallback(async () => {
+    // Nothing to start while the playlist could not be read (Session 39): say why, never nothing at all.
+    if (unread) {
+      useNotice.setState({ text: NEXT_UNREAD });
+      return;
+    }
     if (openId && repeating) return startRepeat(openId);
     const first = items.find(playable);
     if (openId && first) await playItem(openId, first.id);
-  }, [items, openId, repeating]);
+  }, [items, openId, repeating, unread]);
   const run = useCallback(
     (action: OperatorAction) => {
       void runSimpleAction(action, start);
@@ -457,6 +474,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       <RecoveryBanner />
       {/* A hall screen that stopped (Session 26h), or no sound on the stream (Session 31): in the flow, so
           they never cover the big buttons. */}
+      <EngineUnread />
       <StoppedScreens />
       <NoSoundNotice />
       <StreamPageStopped />

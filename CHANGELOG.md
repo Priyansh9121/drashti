@@ -4,6 +4,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 ## Unreleased
 
+- When Drashti can’t read the playlists, a presentation or what the screens are showing as a window opens, it says so with Try again, instead of showing no playlists or waiting for good; Simple Mode’s Next says why it has nothing to start.
 - An admin can turn off the single-letter keys (B, ., L and ?) in Help › Keyboard Shortcuts…, for someone who works the computer by speaking to it or with a switch. Then they do nothing, and Black-out and the Logo still work from their buttons.
 
 ## 1.0.0-alpha.6 (18 Oct 2026)

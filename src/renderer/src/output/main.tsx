@@ -190,7 +190,7 @@ function Output() {
     // Fonts first, so the first live slide never shows a fallback font.
     void preloadFonts().then(() => {
       setFontsReady(true);
-      connectEngine();
+      connectEngine('silent');
     });
   }, []);
   const canvas = { width: context?.canvasWidth ?? 1920, height: context?.canvasHeight ?? 1080 };

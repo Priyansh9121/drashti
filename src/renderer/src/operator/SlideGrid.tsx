@@ -9,7 +9,7 @@ import { type OrderedSlide, playOrder } from '../../../shared/order';
 import type { ItemOrder } from '../../../shared/playlists';
 import { useEngine } from '../engine/engine-store';
 import type { ShownItem } from '../library/library-store';
-import { useLibrary } from '../library/library-store';
+import { selectPresentation, useLibrary } from '../library/library-store';
 import { mediaKindLabel, mediaProblem } from '../library/MediaList';
 import { setItemOrder } from '../playlists/playlist-store';
 import { MediaStill } from '../render/MediaStill';
@@ -28,6 +28,7 @@ import {
   Palette,
   Pencil,
   Presentation,
+  RotateCcw,
   SlidersHorizontal,
   SquarePen,
 } from '../ui/icons';
@@ -36,7 +37,7 @@ import { markersMedia, openMarkers } from '../markers/MarkersDialog';
 import { openSlideEditor } from '../editor/editor-store';
 import { openKirtan } from '../kirtans/kirtan-store';
 import { usePersistentState } from '../ui/persist';
-import { EmptyState, Loading } from '../ui/States';
+import { EmptyState, ErrorState, Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { themeFromPresentation } from '../themes/themes-store';
 import { chooseArrangement, goLive, playItem, useNotice } from './actions';
@@ -426,9 +427,43 @@ export function SlideGrid() {
 }
 
 /** A presentation's slides (or a passage's): picked in the library, or a playlist item (in the item's order). */
+/**
+ * The chosen presentation's slides could not be read (Session 39): said, with Try again, never
+ * "Opening the presentation…" for good. The screens keep what they show; the log says why.
+ */
+function PresentationUnread({ id }: { id: string }) {
+  const name = useLibrary((s) => s.presentations.find((p) => p.id === id)?.name ?? null);
+  const [trying, setTrying] = useState(false);
+  return (
+    <ErrorState
+      className="flex-1 justify-center"
+      title={name ? `Drashti couldn’t open “${name}”` : 'Drashti couldn’t open the presentation'}
+      action={
+        <Button
+          variant="primary"
+          icon={RotateCcw}
+          disabled={trying}
+          data-testid="presentation-try-again"
+          onClick={() => {
+            setTrying(true);
+            void selectPresentation(id).finally(() => {
+              setTrying(false);
+            });
+          }}
+        >
+          Try again
+        </Button>
+      }
+    >
+      The screens keep what they show. If Try again doesn’t open it, tell the admin.
+    </ErrorState>
+  );
+}
+
 function PresentationGrid({ item }: { item: SlidesItem | null }) {
   const doc = useLibrary((s) => s.doc);
   const selectedId = useLibrary((s) => s.selectedId);
+  const unreadId = useLibrary((s) => s.unreadId);
   const live = useEngine((s) => s.state?.live);
   const liveSlideId = useEngine((s) => s.state?.layers.slide?.slide.id ?? null);
   const focusSlideId = useLibrary((s) => s.focusSlideId);
@@ -453,7 +488,11 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
   const help = useWhatIsThis('slides');
   if (!doc || !order)
     return selectedId && !doc ? (
-      <Loading label="Opening the presentation…" className="flex-1" />
+      unreadId === selectedId ? (
+        <PresentationUnread id={selectedId} />
+      ) : (
+        <Loading label="Opening the presentation…" className="flex-1" />
+      )
     ) : (
       <StartHere />
     );
