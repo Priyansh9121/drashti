@@ -1,6 +1,6 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { BUILT_IN, FOLLOW, WHITE, type Appearance } from '../../src/shared/appearance/appearances';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
@@ -16,6 +16,7 @@ import {
   setUpScreen,
   type PageGlobals,
 } from './helpers';
+import { launchNode } from './nodes';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -213,6 +214,33 @@ for (const id of BUILT_IN.map((a) => a.id)) {
 
 /** The appearance's own words' colour, as getComputedStyle writes it (forced colours replace it). */
 const getComputedStyleFg = (id: string) => rgb((BUILT_IN.find((a) => a.id === id) ?? WHITE).colours.fg);
+
+test('a node’s own window takes its computer’s appearance from its first frame, and keeps it over a restart', async () => {
+  const { app, page, userData } = await launchNode();
+  // Its computer's own setting (Follow the computer): Black or White, the window made on its colour.
+  await expect(page.locator('html')).toHaveAttribute('data-appearance', /^(black|white)$/u);
+  const shownId = await page.evaluate(() => document.documentElement.dataset['appearance'] ?? '');
+  const shown = BUILT_IN.find((a) => a.id === shownId) ?? WHITE;
+  const nodeBackground = () =>
+    app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .filter((w) => w.webContents.getURL().includes('node.html'))
+        .map((w) => w.getBackgroundColor().toLowerCase()),
+    );
+  expect(await nodeBackground()).toEqual([shown.colours.ink]);
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(
+    rgb(shown.colours.ink),
+  );
+  await app.close();
+  // Kept per computer: a node started in another appearance (as a person would have chosen on it) keeps it.
+  writeFileSync(
+    join(userData, 'drashti-appearance.json'),
+    JSON.stringify({ version: 1, choice: 'tulsi', motion: 'calm', own: [] }),
+  );
+  const again = await launchNode({}, userData);
+  await expect(again.page.locator('html')).toHaveAttribute('data-appearance', 'tulsi');
+  await again.app.close();
+});
 
 /** Decode a page's picture to RGBA in Electron's main process (no PNG package in the tests). */
 async function bitmap(app: ElectronApplication, page: Page): Promise<string> {
