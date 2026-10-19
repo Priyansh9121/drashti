@@ -84,7 +84,7 @@ function Program() {
   useEffect(() => {
     void preloadFonts().then(() => {
       setFontsReady(true);
-      connectEngine();
+      connectEngine('silent');
     });
     // Videos that failed with a GPU process that stopped play again once another starts (ROB-5).
     watchGpuRestarts();

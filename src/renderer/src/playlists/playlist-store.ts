@@ -47,6 +47,12 @@ interface PlaylistView {
   confirmRemove: { ids: string[]; name: string; folder: boolean; template: boolean; inside: number } | null;
   /** The last problem, until the next change works. */
   problem: string | null;
+  /**
+   * Reads that failed (Session 39), until one works: the playlists (their list and the templates), or the
+   * open playlist's items (its id). The window says so with Try again, never "No playlists" when there are
+   * some; what was read before stays shown.
+   */
+  unread: { playlists: boolean; itemsOf: string | null };
   /** The playlist being saved as a template (its dialog is open). */
   savingTemplate: string | null;
   /** The Add a slot dialog is open. */
@@ -73,6 +79,7 @@ export const usePlaylists = create<PlaylistView>(() => ({
   renameIn: 'tree',
   confirmRemove: null,
   problem: null,
+  unread: { playlists: false, itemsOf: null },
   savingTemplate: null,
   addingSlot: false,
   filling: null,
@@ -99,24 +106,40 @@ function settled(result: PlaylistResult): result is { ok: true; ids: string[] } 
 }
 
 export async function loadTree(): Promise<void> {
-  const [tree, templates] = await Promise.all([api().tree(), api().templates()]);
+  let read: [PlaylistNode[], PlaylistNode[]];
+  try {
+    read = await Promise.all([api().tree(), api().templates()]);
+  } catch {
+    // Said in the window with Try again (Session 39); the main process's log says why.
+    usePlaylists.setState((s) => ({ unread: { ...s.unread, playlists: true } }));
+    return;
+  }
+  const [tree, templates] = read;
   const ids = new Set([...tree, ...templates].map((n) => n.id));
   const { openId, selectedNodeId } = usePlaylists.getState();
-  usePlaylists.setState({
+  usePlaylists.setState((s) => ({
     tree,
     templates,
     openId: openId && ids.has(openId) ? openId : null,
     selectedNodeId: selectedNodeId && ids.has(selectedNodeId) ? selectedNodeId : null,
-  });
+    unread: { ...s.unread, playlists: false },
+  }));
 }
 
 export async function loadItems(): Promise<void> {
   const { openId } = usePlaylists.getState();
   if (!openId) {
-    usePlaylists.setState({ items: [], marked: [] });
+    usePlaylists.setState((s) => ({ items: [], marked: [], unread: { ...s.unread, itemsOf: null } }));
     return;
   }
-  const items = await api().items(openId);
+  let items: PlaylistItemInfo[];
+  try {
+    items = await api().items(openId);
+  } catch {
+    if (usePlaylists.getState().openId === openId)
+      usePlaylists.setState((s) => ({ unread: { ...s.unread, itemsOf: openId } }));
+    return;
+  }
   // Ignore a slow answer for a playlist that is no longer open.
   if (usePlaylists.getState().openId !== openId) return;
   const ids = new Set(items.map((i) => i.id));
@@ -124,6 +147,7 @@ export async function loadItems(): Promise<void> {
     items,
     marked: s.marked.filter((id) => ids.has(id)),
     anchorId: s.anchorId && ids.has(s.anchorId) ? s.anchorId : null,
+    unread: { ...s.unread, itemsOf: null },
   }));
   // The item in the slide grid follows its changes (a new order, a filled placeholder); gone, the grid lets it go.
   const shown = useLibrary.getState().item;
@@ -139,6 +163,15 @@ async function reload(): Promise<void> {
   await loadTree();
   await loadItems();
 }
+
+/** Try again (Session 39): read the playlists, and the open one's items, once more. */
+export function readPlaylistsAgain(): Promise<void> {
+  return reload();
+}
+
+/** Whether a read the window needs failed: the playlists, or the open playlist's items. */
+export const playlistsUnread = (s: PlaylistView): boolean =>
+  s.unread.playlists || (s.openId !== null && s.unread.itemsOf === s.openId);
 
 let watching = false;
 

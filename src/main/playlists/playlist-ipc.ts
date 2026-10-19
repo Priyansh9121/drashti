@@ -16,6 +16,7 @@ import {
 } from '../../shared/playlists';
 import type { PlaylistRepo } from '../db/playlists';
 import { handle } from '../ipc/handle';
+import type { StartupReads } from '../ipc/startup-reads';
 
 /*
  * The playlist requests: anyone of Drashti's pages may read playlists;
@@ -31,6 +32,8 @@ export interface PlaylistIpcDeps {
   opened: (playlistId: string) => void;
   /** A presentation's first slide in its order, for a playlist card (Session 26a); null when it has none. */
   firstSlide: (presentationId: string) => RenderSlide | null;
+  /** The windows' start-up reads (Session 39): a failure fails the request and is logged once. */
+  reads: StartupReads;
   /** Smart playlists (Session 26c, smart-folders.ts). */
   smart?: {
     /** The folder an admin chooses for a new one (a dialog), or null. */
@@ -54,6 +57,7 @@ export function registerPlaylistIpc({
   opened,
   firstSlide,
   smart,
+  reads,
 }: PlaylistIpcDeps): void {
   /** Run a change for the operator window, then tell everyone when something changed. */
   const change = (event: IpcMainInvokeEvent, run: () => PlaylistResult): PlaylistResult => {
@@ -63,10 +67,10 @@ export function registerPlaylistIpc({
     return result;
   };
 
-  handle(IPC.playlists.tree, () => repo.tree());
+  handle(IPC.playlists.tree, () => reads.read('playlists', () => repo.tree()));
   handle(IPC.playlists.items, (_e, playlistId) => {
     const id = playlistIdSchema.safeParse(playlistId);
-    return id.success ? repo.itemsOf(id.data) : [];
+    return id.success ? reads.read('playlist-items', () => repo.itemsOf(id.data)) : [];
   });
   handle(IPC.playlists.firstSlides, (_e, presentationIds) => {
     const ids = idListSchema.max(500).safeParse(presentationIds);
@@ -193,7 +197,7 @@ export function registerPlaylistIpc({
     }),
   );
 
-  handle(IPC.playlists.templates, () => repo.tree(true));
+  handle(IPC.playlists.templates, () => reads.read('playlists', () => repo.tree(true)));
   handle(IPC.playlists.saveAsTemplate, (e, playlistId, request) =>
     change(e, () => {
       const id = playlistIdSchema.safeParse(playlistId);

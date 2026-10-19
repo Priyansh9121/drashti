@@ -55,6 +55,7 @@ import { useSmart } from './smart-store';
 import { markersMedia, openMarkers } from '../markers/MarkersDialog';
 import { openPictureEditor } from '../pictures/PictureEditor';
 import { RepeatBar } from './RepeatBar';
+import { PlaylistsUnread } from './PlaylistsUnread';
 import {
   addFromLibrary,
   addHeader,
@@ -486,6 +487,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
   // Slots and templates only with View › Show Shastra, Templates and Kirtan Details (Session 26a).
   const extras = useExtras((s) => s.on);
   const items = usePlaylists((s) => s.items);
+  const itemsUnread = usePlaylists((s) => s.unread.itemsOf === openId);
   const listRef = useRef<HTMLUListElement>(null);
   /** Where the rows were before a move (Up, Down, Alt+↑ ↓), until the list is drawn in its new order. */
   const slideFrom = useRef<Map<string, number> | null>(null);
@@ -889,7 +891,13 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
             </li>
           );
         })}
-        {items.length === 0 && (
+        {/* A read that failed is said, with Try again (Session 39): never "empty" when it may not be. */}
+        {items.length === 0 && itemsUnread && (
+          <li>
+            <PlaylistsUnread what="items" />
+          </li>
+        )}
+        {items.length === 0 && !itemsUnread && (
           <li
             className={cx(
               'rounded-lg border border-dashed',

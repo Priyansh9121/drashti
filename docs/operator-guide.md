@@ -146,6 +146,8 @@ If an admin has turned the single-letter keys off (**Keys at a glance**, below),
 
 **The stream's picture has stopped.** A red notice under the header says so when the stream's own page kept failing (six times in a minute), in Simple Mode too: the stream shows its last picture. Press **Try again**; if it stops again, tell whoever looks after Drashti.
 
+**A red notice says Drashti couldn’t read the playlists, this playlist, a presentation or what the screens are showing.** The screens keep what they show. Press **Try again** on the notice; it goes by itself once Drashti can read it. Until then Simple Mode’s **Next** says it has nothing to start, and while Drashti can’t read what the screens are showing (it asks again by itself for a few seconds first), Next, Back and the clears wait. If Try again doesn’t work, tell whoever looks after Drashti.
+
 **The stream says Reconnecting.** Do nothing: Drashti tries again by itself and the recording carries on. The hall's screens are not affected. If it also says **the stream server's certificate could not be checked**, waiting will not help: tell whoever looks after Drashti (the admin guide, section 12).
 
 **Font not on this computer.** Beside LIVE (and on the screens dashboard, for the screen it is about) this names a font the live slide uses that the computer does not have: its words show in another font. Carry on, and tell whoever looks after Drashti afterwards (the admin guide, section 11).

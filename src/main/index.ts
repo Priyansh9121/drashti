@@ -145,6 +145,7 @@ import { SharpenedCopies } from './media/sharpened';
 import { installMenu, installNodeMenu } from './menu';
 import { runPerformanceTest } from './perftest';
 import { registerPlaylistIpc } from './playlists/playlist-ipc';
+import { startupReads } from './ipc/startup-reads';
 import { nodeWatch, SmartFolders } from './playlists/smart-folders';
 import { RepeatSlides } from './playlists/repeat-slides';
 import {
@@ -2489,10 +2490,22 @@ function start(): void {
     if (fromOperator(e)) recovery = null;
     return null;
   });
-  handle(IPC.engine.subscribe, (event) => {
-    transport.add(event.sender);
-    return engine.snapshot();
+  // The reads a window needs as it opens (Session 39): a failure fails the request, so the window says what
+  // it could not read with Try again, and the log names it once. Tests only (never packaged):
+  // DRASHTI_TEST_UNREADABLE holds the reads it names failing until globalThis.drashtiTestReadable(name).
+  const windowReads = startupReads(sw('DRASHTI_TEST_UNREADABLE'), (line) => {
+    log.warn(line);
   });
+  if (sw('DRASHTI_TEST_UNREADABLE') !== undefined)
+    (globalThis as { drashtiTestReadable?: (name: string) => void }).drashtiTestReadable = (name) => {
+      windowReads.readable(name);
+    };
+  handle(IPC.engine.subscribe, (event) =>
+    windowReads.read('engine', () => {
+      transport.add(event.sender);
+      return engine.snapshot();
+    }),
+  );
   handle(IPC.engine.snapshot, () => engine.snapshot());
   handle(IPC.engine.command, (event, command) => runEngineCommand(engine, command, fromOperator(event)));
   handle(IPC.library.listPresentations, () => presentations.list());
@@ -3762,6 +3775,7 @@ function start(): void {
   registerPlaylistIpc({
     repo: playlists,
     fromOperator,
+    reads: windowReads,
     firstSlide: (presentationId) => slides.order(presentationId)?.slides[0]?.slide ?? null,
     changed: playlistsChanged,
     smart: {
@@ -3798,7 +3812,7 @@ function start(): void {
   handle(IPC.library.getPresentation, (_event, id) => {
     const parsed = idSchema.safeParse(id);
     if (!parsed.success) return null;
-    return playableDoc(parsed.data);
+    return windowReads.read('presentation', () => playableDoc(parsed.data));
   });
   // ---- Shastra texts (Session 12) ----------------------------------------------------
   const textIdSchema = idSchema;

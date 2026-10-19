@@ -39,6 +39,7 @@ import { PanelGroup, PanelNote } from '../ui/Panel';
 import { Music, Wrench } from '../ui/icons';
 import { holdOpening } from '../ui/motion';
 import { StoppedScreens } from '../screens/StoppedScreens';
+import { EngineUnread } from './EngineUnread';
 import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { StreamPageStopped } from '../stream/StreamPageStopped';
 import { GuidesDialog } from '../help/GuidesDialog';
@@ -273,6 +274,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <ArtiPrompt />
       <MacroCountdown />
       {/* A hall screen that stopped (Session 26h): in the flow, so it never covers the show controls. */}
+      <EngineUnread />
       <StoppedScreens />
       <NoSoundNotice />
       <StreamPageStopped />
