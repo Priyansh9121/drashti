@@ -458,6 +458,7 @@ void app.whenReady().then(() => {
 const ownFieldsSchema = ownSchema.omit({ id: true });
 const appearance = new AppearanceService({
   userData: app.getPath('userData'),
+  startIn: sw('DRASHTI_TEST_APPEARANCE'),
   say: (line) => {
     log.info(line);
   },

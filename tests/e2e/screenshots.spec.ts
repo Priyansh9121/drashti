@@ -53,6 +53,19 @@ test.skip(QUIET, 'Screenshots need real windows: take them on CI (or with DRASHT
 
 const folder = join(__dirname, '..', '..', 'docs', 'screenshots');
 
+// The guides' pictures are in Black (Sessions 39–40), whatever the computer taking them is set to: every Drashti
+// this file starts begins in it (a test switch, ignored when packaged). Set only while this file's tests run:
+// loading the file to list its tests, as every run does, must change nothing, and the worker goes on to the
+// other files (where it would hide the appearance a test chose).
+const appearanceBefore = process.env['DRASHTI_TEST_APPEARANCE'];
+test.beforeAll(() => {
+  process.env['DRASHTI_TEST_APPEARANCE'] = 'black';
+});
+test.afterAll(() => {
+  if (appearanceBefore === undefined) delete process.env['DRASHTI_TEST_APPEARANCE'];
+  else process.env['DRASHTI_TEST_APPEARANCE'] = appearanceBefore;
+});
+
 /**
  * A picture of the page; `hide` covers parts that must not be kept (a pairing
  * code and its QR code); `whole` takes all of a page that scrolls.
