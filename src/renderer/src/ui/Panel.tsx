@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { PanelHelpId } from '../../../shared/panel-help';
 import { useWhatIsThis } from '../help/WhatIsThis';
@@ -6,6 +6,7 @@ import type { DataAttributes } from './cx';
 import { cx } from './cx';
 import type { Icon } from './icons';
 import { ChevronDown, ChevronRight } from './icons';
+import { livelyNow } from './motion';
 import { usePersistentState } from './persist';
 
 /** A small heading over a part of a panel. */
@@ -51,6 +52,8 @@ export function Panel({
   nested?: boolean;
 } & DataAttributes) {
   const id = useId();
+  // Lively (Session 40): opened by a click, its insides arrive (app.css, data-lively="open").
+  const [opening, setOpening] = useState(false);
   const [open, setOpen] = usePersistentState<boolean>(
     remember ? `panel.${remember}.open` : null,
     defaultOpen,
@@ -78,7 +81,10 @@ export function Panel({
               aria-expanded={open}
               // Only while the body is there to point at (axe: aria-controls must name an element).
               aria-controls={open ? `${id}-body` : undefined}
-              onClick={() => setOpen(!open)}
+              onClick={() => {
+                setOpening(!open && livelyNow());
+                setOpen(!open);
+              }}
               // 24 px tall at least (WCAG 2.5.8): What is this? sits beside it.
               className="-ml-1 flex min-h-6 items-center gap-0.5 rounded-sm px-1 py-0.5 tracking-wider uppercase hover:text-fg"
             >
@@ -98,7 +104,11 @@ export function Panel({
       </header>
       {help.card}
       {shown && (
-        <div id={`${id}-body`} className={cx('min-h-0 flex-1', bodyClassName)}>
+        <div
+          id={`${id}-body`}
+          data-lively={opening ? 'open' : undefined}
+          className={cx('min-h-0 flex-1', bodyClassName)}
+        >
           {children}
         </div>
       )}
@@ -153,6 +163,8 @@ export function PanelGroup({
 } & DataAttributes) {
   const id = useId();
   const help = useWhatIsThis(topic ?? null);
+  // Lively (Session 40): opened by a click, its insides arrive (app.css, data-lively="open").
+  const [opening, setOpening] = useState(false);
   const [open, setOpen] = usePersistentState<boolean>(
     `group.${remember}.open`,
     defaultOpen,
@@ -167,7 +179,10 @@ export function PanelGroup({
             aria-expanded={open}
             aria-controls={open ? `${id}-body` : undefined}
             data-testid={`group-${remember}-toggle`}
-            onClick={() => setOpen(!open)}
+            onClick={() => {
+              setOpening(!open && livelyNow());
+              setOpen(!open);
+            }}
             className="-ml-1 flex min-h-6 items-center gap-0.5 rounded-sm px-1 py-0.5 tracking-wider uppercase hover:text-accent"
           >
             {open ? (
@@ -185,7 +200,7 @@ export function PanelGroup({
       </header>
       {help.card}
       {open && (
-        <div id={`${id}-body`} className="divide-y divide-line">
+        <div id={`${id}-body`} data-lively={opening ? 'open' : undefined} className="divide-y divide-line">
           {children}
         </div>
       )}

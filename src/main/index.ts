@@ -4497,6 +4497,14 @@ function start(): void {
       ? { ok: true as const }
       : { ok: false as const, message: 'Only an appearance of your own can be deleted.' };
   });
+  // Interface motion (Session 40): Calm, Lively or Off, this computer's, as the appearance is.
+  handle(IPC.appearance.setMotion, (e, motion) => {
+    if (!fromOperator(e) || typeof motion !== 'string')
+      return { ok: false as const, message: 'Only the operator window can change the interface motion.' };
+    return appearance.setMotion(motion)
+      ? { ok: true as const }
+      : { ok: false as const, message: 'Choose Calm, Lively or Off.' };
+  });
   // The menu's ticks follow the appearance shown (Follow the computer's changes too).
   appearance.onChanged(() => {
     rebuildMenu();

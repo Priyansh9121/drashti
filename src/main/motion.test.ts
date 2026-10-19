@@ -44,6 +44,16 @@ const TABLE: Record<string, string> = {
   rise: '8px',
   'rise-lg': '14px',
   'slide-sheet': '16px',
+  // Lively (Session 40), from the motion skills' tables: moving on MD3's standard curve, arrivals 30 ms apart.
+  'dur-glide': '240ms',
+  'dur-arrive': '220ms',
+  'stagger-arrive': '30ms',
+  'arrive-most': '8',
+  'dur-open': '200ms',
+  'dur-crossfade': '200ms',
+  'ease-glide': 'cubic-bezier(0.2, 0, 0, 1)',
+  'rise-arrive': '6px',
+  'press-scale': '0.97',
 };
 
 /** The window's own code: every .ts and .tsx under src/renderer/src but the audience screens'. */
@@ -130,16 +140,26 @@ describe('motion in the interface is tokens', () => {
       join('setup', 'Welcome.tsx'),
     ]);
     const ONE_AFTER_ANOTHER = new Set([join('operator', 'StartHere.tsx'), join('setup', 'Welcome.tsx')]);
+    // Lively (Session 40), Priyansh's choice beside Calm: a playlist's cards just opened arrive one after another,
+    // and a folded panel's insides as it opens; never a show control, never while the show changes (ui/motion.ts).
+    const LIVELY = new Set([
+      join('playlists', 'OpenPlaylist.tsx'),
+      join('ui', 'Panel.tsx'),
+      join('ui', 'motion.ts'),
+    ]);
     const arriving: string[] = [];
     const staggered: string[] = [];
+    const lively: string[] = [];
     for (const file of files(renderer)) {
       const text = readFileSync(file, 'utf8');
       const at = relative(renderer, file);
       if (text.includes('data-motion=') && !ARRIVING.has(at)) arriving.push(at);
-      if (text.includes("'--i'") && !ONE_AFTER_ANOTHER.has(at)) staggered.push(at);
+      if (text.includes("'--i'") && !ONE_AFTER_ANOTHER.has(at) && !LIVELY.has(at)) staggered.push(at);
+      if (text.includes('data-lively=') && !LIVELY.has(at)) lively.push(at);
     }
     expect(arriving).toEqual([]);
     expect(staggered).toEqual([]);
+    expect(lively).toEqual([]);
   });
 
   it('the window’s code says no duration, delay or easing of its own', () => {

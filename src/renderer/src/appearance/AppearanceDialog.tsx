@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import type { AppearanceView, OwnAppearance } from '../../../shared/appearance/appearances';
+import { useId, useState } from 'react';
+import type { AppearanceView, InterfaceMotion, OwnAppearance } from '../../../shared/appearance/appearances';
 import { BLACK, FOLLOW, WHITE, type Appearance } from '../../../shared/appearance/appearances';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -9,7 +9,14 @@ import { Copy, Trash2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { radioKeys, radioTabIndex } from '../ui/radio';
 import { AppearancePreview } from './AppearancePreview';
-import { chooseAppearance, closeAppearance, removeAppearance, useAppearance } from './appearance-store';
+import {
+  chooseAppearance,
+  chooseMotion,
+  closeAppearance,
+  removeAppearance,
+  useAppearance,
+} from './appearance-store';
+import { motionOff } from '../ui/motion';
 import { OwnAppearanceForm, type OwnStart } from './OwnAppearanceForm';
 
 /*
@@ -36,6 +43,80 @@ interface Choice {
   name: string;
   note: string;
   appearance: Appearance | null;
+}
+
+const MOTIONS: readonly { id: InterfaceMotion; name: string; words: string }[] = [
+  {
+    id: 'calm',
+    name: 'Calm',
+    words: 'Dialogs, sheets, menus and notices arrive and leave gently.',
+  },
+  {
+    id: 'lively',
+    name: 'Lively',
+    words:
+      'More: tabs and the chosen playlist glide, cards arrive one after another, buttons answer a press, panels open smoothly, and one appearance fades into the next.',
+  },
+  { id: 'off', name: 'Off', words: 'Nothing in Drashti’s windows moves.' },
+];
+
+/**
+ * Interface motion (Session 40): how Drashti's own windows move. In every one, the show's controls, the slides'
+ * thumbnails and the live picture never move, and the screens in the hall keep their own transitions.
+ */
+function MotionChoice({ motion }: { motion: InterfaceMotion }) {
+  const titleId = useId();
+  const ids = MOTIONS.map((m) => m.id);
+  const reduced = motionOff() && motion !== 'off';
+  const choose = (id: InterfaceMotion) => {
+    if (id !== motion) void chooseMotion(id);
+  };
+  return (
+    <section aria-labelledby={titleId} className="space-y-2" data-testid="appearance-motion">
+      <h3 id={titleId} className="text-2xs font-bold tracking-wider text-muted uppercase">
+        Interface motion
+      </h3>
+      <div
+        role="radiogroup"
+        aria-labelledby={titleId}
+        className="grid gap-2 sm:grid-cols-3"
+        onKeyDown={radioKeys(ids, motion, choose)}
+      >
+        {MOTIONS.map((m, i) => {
+          const checked = m.id === motion;
+          return (
+            <button
+              key={m.id}
+              type="button"
+              role="radio"
+              aria-checked={checked}
+              tabIndex={radioTabIndex(checked, i, true)}
+              data-testid="appearance-motion-choice"
+              data-motion-choice={m.id}
+              onClick={() => {
+                choose(m.id);
+              }}
+              className={cx(
+                'flex flex-col gap-1 rounded-lg border-2 bg-panel-2 p-2 text-left transition-colors',
+                checked ? 'border-accent' : 'border-line hover:border-field',
+              )}
+            >
+              <span className="flex items-center gap-2">
+                <span className="font-bold text-fg">{m.name}</span>
+                {checked && <Badge tone="info">Chosen</Badge>}
+              </span>
+              <span className="text-xs text-muted">{m.words}</span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-xs text-muted">
+        Whichever is chosen, the show’s controls, the slides and the live picture never move, and the screens
+        in the hall keep their own transitions.
+        {reduced && ' This computer is set to reduce motion, so nothing moves now.'}
+      </p>
+    </section>
+  );
 }
 
 export function AppearanceDialog() {
@@ -130,6 +211,7 @@ function AppearanceSheet({ view }: { view: AppearanceView | null }) {
             );
           })}
         </div>
+        <MotionChoice motion={view?.motion ?? 'calm'} />
         {problem && (
           <Notice tone="danger" data-testid="appearance-problem">
             {problem}

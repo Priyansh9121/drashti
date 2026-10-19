@@ -313,6 +313,7 @@ const bridge: DrashtiBridge = {
     choose: (choice) => invoke(IPC.appearance.choose, choice),
     make: (fields) => invoke(IPC.appearance.make, fields),
     remove: (id) => invoke(IPC.appearance.remove, id),
+    setMotion: (motion) => invoke(IPC.appearance.setMotion, motion),
     onOpen: (listener) =>
       on(IPC.appearance.open, () => {
         listener();
@@ -624,7 +625,33 @@ if (OWN_WINDOWS.includes(pageOf(here))) {
       made.observe(dom.document, { childList: true });
     }
   }
+  // Lively (Session 40): one appearance to the next in a short cross-fade of the whole window, never while the
+  // show is changing (a change in the last 800 ms, or one arriving during it, which ends it at once).
+  let showChangedAt = 0;
+  let fading: { skipTransition(): void } | null = null;
+  ipcRenderer.on(IPC.engine.message, () => {
+    showChangedAt = Date.now();
+    fading?.skipTransition();
+  });
+  let drawn = now;
   ipcRenderer.on(IPC.appearance.changed, (_event, next: AppearanceNow) => {
-    draw(next);
+    const doc = dom.document as unknown as {
+      startViewTransition?: (change: () => void) => { skipTransition(): void; finished: Promise<void> };
+    };
+    const looksOtherwise = drawn !== null && (drawn.id !== next.id || drawn.base !== next.base);
+    drawn = next;
+    const quiet = Date.now() - showChangedAt > 800;
+    const reduced = (
+      globalThis as unknown as { matchMedia?: (q: string) => { matches: boolean } }
+    ).matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (looksOtherwise && next.motion === 'lively' && quiet && !reduced && doc.startViewTransition) {
+      const fade = doc.startViewTransition(() => {
+        draw(next);
+      });
+      fading = fade;
+      void fade.finished.finally(() => {
+        if (fading === fade) fading = null;
+      });
+    } else draw(next);
   });
 }

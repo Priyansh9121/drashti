@@ -1,6 +1,6 @@
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { DragEvent } from 'react';
+import type { CSSProperties, DragEvent } from 'react';
 import { create } from 'zustand';
 import { formatDuration } from '../../../shared/format';
 import { actionFor, LIBRARY_KEYMAP } from '../../../shared/keymap';
@@ -18,7 +18,7 @@ import { SlideView } from '../render/SlideView';
 import { Badge, LiveBadge, MissingBadge, UnplayableBadge } from '../ui/Badge';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
-import { rowTops, slideRows } from '../ui/motion';
+import { rowTops, slideRows, useLivelyArrival } from '../ui/motion';
 import {
   AlertTriangle,
   ArrowDown,
@@ -488,6 +488,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
   const extras = useExtras((s) => s.on);
   const items = usePlaylists((s) => s.items);
   const itemsUnread = usePlaylists((s) => s.unread.itemsOf === openId);
+  const arriving = useLivelyArrival(openId);
   const listRef = useRef<HTMLUListElement>(null);
   /** Where the rows were before a move (Up, Down, Alt+↑ ↓), until the list is drawn in its new order. */
   const slideFrom = useRef<Map<string, number> | null>(null);
@@ -793,6 +794,9 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
               key={item.id}
               data-item-index={index}
               data-item-row={item.id}
+              // Lively (Session 40): the cards of a playlist just opened arrive one after another (app.css).
+              data-lively={arriving ? 'arrive' : undefined}
+              style={arriving ? ({ '--i': index } as CSSProperties) : undefined}
               className={cx('group relative rounded-md', line)}
               onKeyDown={(e) => {
                 const action = actionFor(e.nativeEvent, platform, LIBRARY_KEYMAP);

@@ -29,6 +29,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.appearance.choose,
   IPC.appearance.make,
   IPC.appearance.remove,
+  IPC.appearance.setMotion,
   IPC.library.restoreRevision,
   IPC.library.importPaths,
   IPC.library.pickImportPaths,

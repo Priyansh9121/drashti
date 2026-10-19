@@ -1,4 +1,4 @@
-import type { AppearanceNow, AppearanceView, OwnAppearance } from './appearance/appearances';
+import type { AppearanceNow, AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
 import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
 import type { RolesResult, RolesView } from './roles';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
@@ -483,6 +483,8 @@ export const IPC = {
     /** Make one's own from a name, a base and an accent, and choose it (Session 40); delete one's own. */
     make: 'appearance:make',
     remove: 'appearance:remove',
+    /** Interface motion (Session 40): calm, lively or off. */
+    setMotion: 'appearance:set-motion',
     /** main -> operator: View › Appearance… was chosen. */
     open: 'appearance:open',
   },
@@ -807,6 +809,10 @@ export interface InvokeContract {
     result: { ok: true; id: string } | { ok: false; message: string };
   };
   [IPC.appearance.remove]: { args: [id: string]; result: { ok: true } | { ok: false; message: string } };
+  [IPC.appearance.setMotion]: {
+    args: [motion: InterfaceMotion];
+    result: { ok: true } | { ok: false; message: string };
+  };
   [IPC.pictures.job]: { args: []; result: PictureJob | null };
   [IPC.pictures.page]: { args: [page: PicturePage]; result: boolean };
   [IPC.pictures.done]: { args: [done: PicturesDone]; result: null };

@@ -1,7 +1,8 @@
-import { useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { cx } from './cx';
 import type { Icon } from './icons';
+import { glideFrom } from './motion';
 
 export interface TabItem<T extends string> {
   id: T;
@@ -41,6 +42,15 @@ export function Tabs<T extends string>({
   className?: string;
 }) {
   const list = useRef<HTMLDivElement>(null);
+  // Lively (Session 40): the chosen tab's underline glides from the tab chosen before.
+  const underline = useRef<HTMLSpanElement>(null);
+  const underlineWas = useRef<DOMRect | null>(null);
+  useLayoutEffect(() => {
+    const el = underline.current;
+    const now = el?.getBoundingClientRect() ?? null;
+    glideFrom(el, underlineWas.current);
+    underlineWas.current = now;
+  }, [value]);
   const move = (e: KeyboardEvent) => {
     const i = items.findIndex((t) => t.id === value);
     let next = -1;
@@ -91,7 +101,9 @@ export function Tabs<T extends string>({
             {t.extra}
             {selected && (
               <span
+                ref={underline}
                 aria-hidden="true"
+                data-glide=""
                 className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-accent"
               />
             )}
