@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { deltaE00, deltaE00Lab } from '../shared/contrast';
-import type { Appearance } from '../shared/appearance/appearances';
+import type { Appearance, Colours } from '../shared/appearance/appearances';
 import { BLACK, BUILT_IN, COLOUR_TOKENS } from '../shared/appearance/appearances';
 import {
   appearanceProblems,
@@ -11,6 +11,7 @@ import {
   measureDistances,
   type Measured,
 } from '../shared/appearance/rules';
+import { appearanceVars } from '../shared/appearance/vars';
 
 /*
  * Every appearance's contrast and colour distance (Sessions 39–40; the rules are the design lab's, Session 26g, now on
@@ -119,6 +120,34 @@ describe('the tokens in app.css and the buttons in ui/Button.tsx', () => {
       const own = coloursIn(block(start));
       expect(Object.keys(own).sort(), String(start)).toEqual([...COLOUR_TOKENS].sort());
     }
+  });
+
+  it('the phone pages are Black, fixed (Session 41): body.web’s colours meet Black’s rules, and are Black’s with its tints', () => {
+    const web = block(/^body\.web\s*\{/mu);
+    const phones: Appearance = {
+      ...BLACK,
+      id: 'phones',
+      name: 'The phone pages',
+      colours: coloursIn(web) as Colours,
+    };
+    console.info(table(phones, measureContrast(phones), false));
+    expect(appearanceProblems(phones)).toEqual([]);
+    expect(phones.colours).toEqual(
+      Object.fromEntries(COLOUR_TOKENS.map((name) => [name, BLACK.colours[name]])),
+    );
+    // The shadows' tints too (vars.ts), and nothing of the lamp's light.
+    const tints = Object.fromEntries(
+      [...web.matchAll(/(--depth-[a-z-]+):\s*(#[0-9a-f]{8})\b/giu)].map((m): [string, string] => [
+        m[1] ?? '',
+        (m[2] ?? '').toLowerCase(),
+      ]),
+    );
+    expect(tints).toEqual(
+      Object.fromEntries(
+        Object.entries(appearanceVars(BLACK)).filter(([name]) => name.startsWith('--depth-')),
+      ),
+    );
+    expect(web).not.toMatch(/--lamp-/u);
   });
 
   it('each button variant’s edge is the solid colour the rules measure, and the primary draws -hi to -lo with its own words', () => {

@@ -6,8 +6,8 @@ import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helper
 
 /*
  * What Drashti's own windows draw, in every appearance (Sessions 39–40; Session 26g's checks): the mark beside the
- * name in the logo's own colours, plain surfaces in the appearance's colours with no lamp light (the phone pages
- * keep theirs), a warning still a filled amber rail with an icon and words, the live slide's underglow switching
+ * name in the logo's own colours, plain surfaces in the appearance's colours with no lamp light (nor the phone
+ * pages, Black since Session 41), a warning still a filled amber rail with an icon and words, the live slide's underglow switching
  * at once, and nothing that costs a computer without a graphics chip a new way of drawing. Placeholder content
  * only.
  */

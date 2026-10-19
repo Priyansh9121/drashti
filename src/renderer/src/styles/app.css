@@ -12,7 +12,7 @@
  * (src/shared/appearance/rules.ts).
  *
  * The audience screens and the phone pages never take an appearance: body.output (outputs, the stream, the
- * stage display) and body.web set every colour of their own, below.
+ * stage display) and body.web (Black, fixed, since Session 41) set every colour of their own, below.
  */
 @theme {
   /* The bundled Noto fonts: Latin, Gujarati and Devanagari (400, 500 and 700 only). */
@@ -268,27 +268,27 @@ body.output {
 }
 
 /*
- * The phone and tablet pages keep the look they had (Session 26g): their own colours, with the lamp's warm
- * light falling from the top left and across the remote's header. They are not Drashti's windows on this
- * computer, so an appearance never reaches them.
+ * The phone and tablet pages are Black, fixed (Session 41): Black's colours and its shadows' tints
+ * (src/shared/appearance/appearances.ts, vars.ts), the same on every phone. They are not Drashti's windows on
+ * this computer, so they never follow Main's appearance; src/main/contrast.test.ts keeps these Black's.
  */
 body.web {
-  --color-ink: #150a14;
-  --color-panel: #1e101d;
-  --color-panel-2: #2a1728;
-  --color-panel-3: #352033;
-  --color-line: #432c40;
-  --color-line-strong: #5a4156;
-  --color-field: #977d93;
-  --color-fg: #fcf4f8;
-  --color-muted: #d0bccb;
-  --color-faint: #b09ba9;
-  --color-accent: #a6dcf5;
-  --color-primary-hi: #a93b8a;
-  --color-primary: #9b3383;
-  --color-primary-lo: #7f2a6c;
-  --color-on-primary: #ffffff;
-  --color-primary-edge: #b0448c;
+  --color-ink: #09090b;
+  --color-panel: #121215;
+  --color-panel-2: #1b1b1f;
+  --color-panel-3: #26262b;
+  --color-line: #2c2c32;
+  --color-line-strong: #42424a;
+  --color-field: #82828d;
+  --color-fg: #f5f5f7;
+  --color-muted: #c8c8cf;
+  --color-faint: #a1a1ab;
+  --color-accent: #8ab4f8;
+  --color-primary-hi: #ffffff;
+  --color-primary: #ededf0;
+  --color-primary-lo: #d6d6dc;
+  --color-on-primary: #0b0b0e;
+  --color-primary-edge: #c9c9d1;
   --color-live: #d42a31;
   --color-warning: #f2b23e;
   --color-warning-bg: #3b2a0a;
@@ -312,16 +312,12 @@ body.web {
   --depth-thumb: #0000008c;
   --depth-live: #d42a3180;
   --depth-live-thumb: #d42a31b3;
-  --depth-primary-top: #ffdcf038;
-  --depth-primary-ring: #ffbe961a;
-  --depth-primary: #9b338399;
-  --depth-primary-top-hover: #ffdcf047;
-  --depth-primary-ring-hover: #ffc8a02e;
-  --depth-primary-hover: #9b3383cc;
-  --lamp-rgb: 255 176 128;
-  --lamp-header: 0.14;
-  --lamp-window: 0.1;
-  --lamp-empty: 0.09;
+  --depth-primary-top: #ffffff38;
+  --depth-primary-ring: #ffffff1a;
+  --depth-primary: #ededf099;
+  --depth-primary-top-hover: #ffffff47;
+  --depth-primary-ring-hover: #ffffff2e;
+  --depth-primary-hover: #ededf0cc;
   color-scheme: dark;
 }
 
@@ -364,72 +360,10 @@ body.web {
 }
 
 /*
- * The phone pages' lamp light (Session 26g): from the mark across the remote's header (--lamp-header) and the
- * page (--lamp-window), with a hairline under the header from flame to plum; empty places glow faintly behind
- * the unlit lamp. Gradients on surfaces, never a filled shape. Drashti's own windows have none since Sessions
- * 39–40: an appearance's surfaces are plain.
- *
- * Each light is a radial gradient on a plain rectangle, the hairline too, painted with what it lies
- * under (a ::before under the content, on no layer of its own): the graphics chip draws them all in
- * one way, worked out once (see Depth, above), and nothing is added to put together at every frame.
+ * The unlit lamp in an empty place (Session 26g): one wisp of smoke from its wick as the place arrives; then
+ * nothing moves. No light falls anywhere since Sessions 39–40 (Drashti's windows) and Session 41 (the phones).
  */
 @layer components {
-  body.web .lamp-header {
-    position: relative;
-    isolation: isolate;
-    background: var(--color-panel);
-  }
-  body.web .lamp-header::before {
-    content: '';
-    position: absolute;
-    inset: 0 0 -1px;
-    z-index: -1;
-    pointer-events: none;
-    background:
-      radial-gradient(62% 600% at 0 50%, rgb(var(--lamp-rgb) / 0.55), rgb(169 59 138 / 0.4) 45%, transparent)
-        left bottom / 100% 1px no-repeat,
-      radial-gradient(420px 110px at 28px 24px, rgb(var(--lamp-rgb) / var(--lamp-header)), transparent 70%);
-  }
-  body.web .lamp-window {
-    position: relative;
-    isolation: isolate;
-    background: var(--color-ink);
-  }
-  body.web .lamp-window::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    pointer-events: none;
-    background:
-      radial-gradient(900px 520px at 70px -40px, rgb(var(--lamp-rgb) / var(--lamp-window)), transparent 62%),
-      radial-gradient(1100px 700px at 110% 120%, rgb(94 27 82 / 0.3), transparent 60%);
-  }
-  body.web .lamp-empty {
-    position: relative;
-    isolation: isolate;
-  }
-  body.web .lamp-empty::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    pointer-events: none;
-    background: radial-gradient(
-      360px 220px at 50% 42%,
-      rgb(var(--lamp-rgb) / var(--lamp-empty)),
-      transparent 70%
-    );
-  }
-  /* The mark's own soft light behind it, on the phone pages. */
-  body.web .mark-halo::before {
-    content: '';
-    position: absolute;
-    inset: -40%;
-    background: radial-gradient(closest-side, rgb(var(--lamp-rgb) / 0.3), transparent);
-    pointer-events: none;
-  }
-  /* One wisp of smoke from the unlit lamp's wick as an empty place arrives; then nothing moves. */
   .lamp-wisp {
     transform-box: fill-box;
     transform-origin: 50% 100%;
@@ -743,10 +677,7 @@ body.output {
 
 /* Pages for phones and tablets on the network: they scroll as a page does, clear of notches. */
 body.web {
-  /* The lamp's light from the top left (Session 26g). */
-  background:
-    radial-gradient(420px 260px at 40px 0, rgb(var(--lamp-rgb) / var(--lamp-window)), transparent 70%),
-    var(--color-ink);
+  background: var(--color-ink);
   overflow-y: auto;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
     env(safe-area-inset-left);

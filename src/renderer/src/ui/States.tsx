@@ -23,7 +23,7 @@ export function EmptyState({
   children?: ReactNode;
   action?: ReactNode;
   compact?: boolean;
-  /** One of the window's places (the library, the playlists, the slides): the unlit lamp, in its faint light. */
+  /** One of the window's places (the library, the playlists, the slides): the unlit lamp. */
   lamp?: boolean;
   className?: string;
 } & DataAttributes) {
