@@ -66,8 +66,8 @@ export function middle([top, bottom]: readonly [string, string]): string {
 }
 
 /**
- * The mark: the flame on its tile, in the logo's own colours (on the phone pages with the lamp's light
- * softly behind it, app.css). Beside a name it is
+ * The mark: the flame on its tile, in the logo's own colours, with nothing drawn behind it (the phone pages
+ * had the lamp's light there until Session 41). Beside a name it is
  * small (24 to 36 px), where the icon's gradients do not show, so each part is filled flat with its
  * gradient's middle colour: the header is drawn again at every slide change, and gradient-filled
  * shapes there cost a computer without a graphics chip eight new ways of drawing (Session 26g, app.css

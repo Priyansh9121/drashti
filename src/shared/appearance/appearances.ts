@@ -4,7 +4,7 @@
  * over the same names as app.css's @theme, so no component changes for one; its shadows' tints follow from its
  * base and its primary and live colours (vars.ts). Every one meets every rule (rules.ts, measured by
  * src/main/contrast.test.ts). The audience screens, the stream's page, the stage display and the phone pages
- * never take one (body.output and body.web keep their own, app.css).
+ * never take one (body.output keeps its own, and body.web is Black, fixed since Session 41: app.css).
  *
  * The states keep their meaning in every appearance: LIVE is always red with its label, ON AIR violet, REC a
  * red dot, a warning amber, success green, danger red, and the slide editor's guide and selection the same

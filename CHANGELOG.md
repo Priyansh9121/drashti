@@ -6,6 +6,7 @@ Each version, newest first. A version's section is what Help › Check for Updat
 
 - When Drashti can’t read the playlists, a presentation or what the screens are showing as a window opens, it says so with Try again, instead of showing no playlists or waiting for good; Simple Mode’s Next says why it has nothing to start.
 - Drashti’s own look is chosen in View › Appearance: Follow the computer (Black or White, as the computer is set, the first choice), Black, White, Saffron, Peacock, Midnight Blue, Sandalwood, Lotus, Marble or Tulsi. The plum look is gone. Each computer keeps its own; the screens in the hall, the stream and the phones never change with it.
+- The phone and tablet pages (the remote, pairing and announcements) are now Black on every phone, whatever the computer shows: the plum is gone from them too.
 - Appearance… can make a copy your own: a name, dark or light, and the colour for the next thing to do. Drashti checks the words can be read and the colour stays apart from LIVE, ON AIR and warnings, and offers the nearest colour that works. Your own can be deleted.
 - Interface motion, in the Appearance window: Calm, Lively (tabs and the chosen playlist glide, cards arrive one after another, buttons answer a press) or Off. Next, Back, the clears and the live picture never move.
 - An admin can turn off the single-letter keys (B, ., L and ?) in Help › Keyboard Shortcuts…, for someone who works the computer by speaking to it or with a switch. Then they do nothing, and Black-out and the Logo still work from their buttons.

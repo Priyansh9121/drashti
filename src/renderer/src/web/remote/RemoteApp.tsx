@@ -1259,8 +1259,8 @@ function Layout() {
   );
   return (
     // One screen: the header, a middle that scrolls, and Back and Next below it (nothing scrolls under them).
-    <div className="lamp-window flex h-dvh flex-col" data-testid="remote" data-layout={layout}>
-      <header className="lamp-header flex shrink-0 items-center gap-3 border-b border-line px-4 py-3">
+    <div className="flex h-dvh flex-col bg-ink" data-testid="remote" data-layout={layout}>
+      <header className="flex shrink-0 items-center gap-3 border-b border-line bg-panel px-4 py-3">
         <Mark size={36} />
         <div className="min-w-0 flex-1">
           <p className="text-base font-bold tracking-wide text-fg">Drashti remote</p>
