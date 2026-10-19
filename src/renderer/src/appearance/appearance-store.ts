@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AppearanceView } from '../../../shared/appearance/appearances';
+import type { AppearanceView, OwnAppearance } from '../../../shared/appearance/appearances';
 
 /*
  * The Appearance window (Sessions 39–40): open from View › Appearance…, what it shows (every appearance, the
@@ -39,6 +39,21 @@ export function closeAppearance(): void {
 /** Choose Follow the computer or an appearance: every window changes at once. */
 export async function chooseAppearance(choice: string): Promise<void> {
   const result = await window.drashti.appearance.choose(choice);
+  useAppearance.setState({ problem: result.ok ? null : result.message });
+  await refresh();
+}
+
+/** Make one's own and choose it (Session 40): the new one's id, or why it could not be made. */
+export async function makeAppearance(fields: Omit<OwnAppearance, 'id'>): Promise<string | null> {
+  const result = await window.drashti.appearance.make(fields);
+  useAppearance.setState({ problem: result.ok ? null : result.message });
+  await refresh();
+  return result.ok ? result.id : null;
+}
+
+/** Delete one's own: if it was in use, this computer follows its own setting again. */
+export async function removeAppearance(id: string): Promise<void> {
+  const result = await window.drashti.appearance.remove(id);
   useAppearance.setState({ problem: result.ok ? null : result.message });
   await refresh();
 }

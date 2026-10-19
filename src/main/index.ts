@@ -208,6 +208,7 @@ import { createSharpenWindow } from './pictures/sharpen-window';
 import { PdfPictures, pictureSize } from './pictures/pdf-pictures';
 import { openGalleryWindow } from './windows/gallery-window';
 import { AppearanceService } from './appearance/appearance-service';
+import { ownSchema } from './appearance/appearance-file';
 import { FOLLOW } from '../shared/appearance/appearances';
 import { createOperatorWindow } from './windows/operator-window';
 import { StopList } from './lifecycle';
@@ -453,6 +454,8 @@ void app.whenReady().then(() => {
 });
 // The look of Drashti's own windows (Sessions 39–40): kept per computer, outside the library, and read before
 // any window is made, so each opens on its appearance's colour and its page draws in it from the start.
+/** What a window gives to make an appearance of one's own (Session 40): checked here, every rule too. */
+const ownFieldsSchema = ownSchema.omit({ id: true });
 const appearance = new AppearanceService({
   userData: app.getPath('userData'),
   say: (line) => {
@@ -4479,6 +4482,20 @@ function start(): void {
     return appearance.choose(choice)
       ? { ok: true as const }
       : { ok: false as const, message: 'That appearance is no longer here: choose another.' };
+  });
+  // One's own (Session 40): made from a name, a base and an accent, every rule checked here again.
+  handle(IPC.appearance.make, (e, fields) => {
+    const parsed = ownFieldsSchema.safeParse(fields);
+    if (!fromOperator(e) || !parsed.success)
+      return { ok: false as const, message: 'Only the operator window can make an appearance.' };
+    return appearance.make(parsed.data);
+  });
+  handle(IPC.appearance.remove, (e, id) => {
+    if (!fromOperator(e) || typeof id !== 'string')
+      return { ok: false as const, message: 'Only the operator window can delete an appearance.' };
+    return appearance.remove(id)
+      ? { ok: true as const }
+      : { ok: false as const, message: 'Only an appearance of your own can be deleted.' };
   });
   // The menu's ticks follow the appearance shown (Follow the computer's changes too).
   appearance.onChanged(() => {

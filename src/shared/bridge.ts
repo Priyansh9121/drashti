@@ -1,4 +1,4 @@
-import type { AppearanceView } from './appearance/appearances';
+import type { AppearanceView, OwnAppearance } from './appearance/appearances';
 import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { GuideId, GuideRead } from './guides';
@@ -434,6 +434,11 @@ export interface DrashtiBridge {
     view(): Promise<AppearanceView>;
     /** FOLLOW or an appearance's id (Pro Mode; Simple Mode refuses it). */
     choose(choice: string): Promise<{ ok: true } | { ok: false; message: string }>;
+    /** Make one's own and choose it (every rule is checked again in the main process); delete one's own. */
+    make(
+      fields: Omit<OwnAppearance, 'id'>,
+    ): Promise<{ ok: true; id: string } | { ok: false; message: string }>;
+    remove(id: string): Promise<{ ok: true } | { ok: false; message: string }>;
     /** View › Appearance… was chosen. */
     onOpen(listener: () => void): () => void;
     /** The appearance or the motion changed (every window draws it by itself; the Appearance window shows it). */
