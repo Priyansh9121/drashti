@@ -62,7 +62,7 @@ export function Columns({ left, middle, right }: { left: ReactNode; middle: Reac
         defaultValue={LEFT.initial}
         label="Resize the library and playlists"
       />
-      {/* No surface of its own: the window's ink, with the lamp's light falling across it. */}
+      {/* No surface of its own: the window's ink, the appearance's (Sessions 39–40). */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="column-middle">
         {middle}
       </div>
