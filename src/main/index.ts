@@ -214,6 +214,7 @@ import {
   RendererWatchdog,
   shouldConfirmQuit,
   watchdogLine,
+  whyText,
   type WatchdogEvent,
 } from './watchdog';
 import { allowHangStacks, applySessionSecurity, secureWebContents } from './windows/security';
@@ -568,7 +569,8 @@ const watchdog = new RendererWatchdog(
       at: new Date().toISOString(),
       window: e.window,
       kind: e.kind,
-      reason: e.reason ?? null,
+      // With how a crashed window's process ended (Session 39), as the log says it.
+      reason: whyText(e).slice(2, -1) || null,
     });
     if (watchdogHistory.length > 200) watchdogHistory.splice(0, watchdogHistory.length - 200);
     // A hung window's restart says how long the main process waited for its dump (Session 38), in the log and so

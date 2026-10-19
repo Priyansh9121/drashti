@@ -267,6 +267,13 @@ jobs:
             release/*/*.exe
           if-no-files-found: error
           retention-days: 7
+      # A failed test keeps its Drashti's crash files in its folder (Session 39: tests/e2e/helpers.ts; a
+      # passing test's folder is removed, playwright.config.ts). The report is public, and a crash file
+      # holds the process's memory: this job's environment holds no secret (README, "When Drashti crashes
+      # in a test"). A run where many tests crashed keeps the earliest files, up to 200 MB.
+      - name: Cap the crash files in the report
+        if: always()
+        run: node scripts/cap-crash-files.mjs test-results 200
       # Always: a test that passed only on its retry ("flaky") keeps the trace of the attempt that
       # failed in test-results, and that is the only way to see what went wrong.
       - name: Upload Playwright report

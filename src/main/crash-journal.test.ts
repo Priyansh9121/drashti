@@ -112,10 +112,33 @@ describe('the crash journal (Sessions 31–36, ROB-6)', () => {
     );
   });
 
+  it('keeps how a crashed window’s process ended in its entry, in the file the next start reads (Session 39)', () => {
+    const file = fresh();
+    const note = watchdogJournal(new CrashJournal(file));
+    note({ window: 'operator', kind: 'crashed', reason: 'crashed', exit: 'exit code 0xC0000005', at: 0 });
+    note({ window: 'audio player', kind: 'crashed', reason: 'crashed', exit: 'signal 11: SIGSEGV', at: 1 });
+    expect(new CrashJournal(file).entries().map((e) => e.what)).toEqual([
+      'the operator window crashed (crashed, exit code 0xC0000005); the watchdog brought it back',
+      'the audio player crashed (crashed, signal 11: SIGSEGV); the watchdog brought it back',
+    ]);
+  });
+
   it('words the watchdog’s events and the processes that stopped', () => {
     expect(watchdogWords({ window: 'operator', kind: 'crashed', reason: 'killed' })).toBe(
       'the operator window crashed (killed); the watchdog brought it back',
     );
+    // With how its process ended (Session 39), on Windows and on a Mac.
+    expect(
+      watchdogWords({ window: 'operator', kind: 'crashed', reason: 'crashed', exit: 'exit code 0xC0000005' }),
+    ).toBe('the operator window crashed (crashed, exit code 0xC0000005); the watchdog brought it back');
+    expect(
+      watchdogWords({
+        window: 'audio player',
+        kind: 'crashed',
+        reason: 'crashed',
+        exit: 'signal 11: SIGSEGV',
+      }),
+    ).toBe('the audio player crashed (crashed, signal 11: SIGSEGV); the watchdog brought it back');
     expect(
       watchdogWords({ window: 'output "Main Hall"', kind: 'gave-up', reason: '6 crashes in a minute' }),
     ).toBe('output “Main Hall” kept crashing, so the watchdog stopped it (6 crashes in a minute)');

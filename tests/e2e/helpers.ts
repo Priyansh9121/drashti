@@ -71,12 +71,24 @@ export async function launchApp(
       // A first start asks whether the computer is Main or a node (Session 13): tests are Main
       // unless they say otherwise (tests/e2e/nodes.ts starts nodes).
       DRASHTI_ROLE: 'main',
+      // Crash files go into the test's own output folder (Session 39), which Playwright keeps only when the
+      // test fails (playwright.config.ts, preserveOutput), so a failed run's report carries them.
+      ...crashFilesHere(),
       ...extraEnv,
     }),
   });
   sayIfItStops(app);
   sayIfQuittingIsSlow(app, userData);
   return { app, userData };
+}
+
+/** The running test's own folder for crash files, or nothing outside a test. */
+function crashFilesHere(): { DRASHTI_TEST_CRASH_DUMPS?: string } {
+  try {
+    return { DRASHTI_TEST_CRASH_DUMPS: test.info().outputPath('crash-files') };
+  } catch {
+    return {};
+  }
 }
 
 /** Quitting this long is said, with the end of Drashti's own log (a quit that took 60 s once on CI Windows). */

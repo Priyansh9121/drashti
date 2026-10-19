@@ -15,4 +15,7 @@ export default defineConfig({
   retries: process.env['CI'] ? 1 : 0,
   reporter: process.env['CI'] ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: { trace: 'retain-on-failure', screenshot: 'only-on-failure' },
+  // A test's own folder (its crash files, Session 39, among them) is kept only when it fails, so a failed
+  // run's report carries them and a green run's stays small (README, "When Drashti crashes in a test").
+  preserveOutput: 'failures-only',
 });
