@@ -24,3 +24,5 @@ migration-samples/
 /tools/audit/*_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]/
 # the earlier build scripts/audience-pixels.mjs compares with, while it runs
 /.pixels-*/
+# every appearance, side by side, from a screenshots run (Session 40): for choosing, never committed
+/docs/screenshots/appearances/

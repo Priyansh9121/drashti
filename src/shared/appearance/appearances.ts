@@ -182,8 +182,220 @@ export const WHITE: Appearance = {
   },
 };
 
+/*
+ * The colourful appearances (Session 40), each with one clear colour for the next thing to do, calm surfaces,
+ * and states that never clash with it (rules.ts). Made with the licensed design skills' ideas (the skills
+ * review): a palette from the subject's own things, designed light and dark rather than inverted, one bold
+ * colour spent in one place.
+ */
+
+/** Saffron: warm and dark; the next thing to do in saffron. Its warning is a clear yellow, never taken for it. */
+export const SAFFRON: Appearance = {
+  id: 'saffron',
+  name: 'Saffron',
+  base: 'dark',
+  colours: {
+    ink: '#120c08',
+    panel: '#1b130d',
+    'panel-2': '#251a12',
+    'panel-3': '#312319',
+    line: '#3a2a1e',
+    'line-strong': '#54402f',
+    field: '#9a8470',
+    fg: '#fdf6ee',
+    muted: '#dccab8',
+    faint: '#b9a591',
+    accent: '#ffc58a',
+    'primary-hi': '#f7923a',
+    primary: '#ee8228',
+    'primary-lo': '#da7016',
+    'on-primary': '#1d0e02',
+    'primary-edge': '#e8893a',
+    ...DARK_STATES,
+    warning: '#ffe45c',
+    'warning-bg': '#33290a',
+    'warning-fg': '#ffe98a',
+    danger: '#ff8fb8',
+    'danger-fg': '#ffc2d8',
+  },
+};
+
+/** Peacock: deep teal; the next thing to do in the peacock's teal. Its success is a lime green, apart from it. */
+export const PEACOCK: Appearance = {
+  id: 'peacock',
+  name: 'Peacock',
+  base: 'dark',
+  colours: {
+    ink: '#05141a',
+    panel: '#0a1d24',
+    'panel-2': '#10272f',
+    'panel-3': '#17333c',
+    line: '#1e3c45',
+    'line-strong': '#2e5560',
+    field: '#6d959e',
+    fg: '#edfbfb',
+    muted: '#bad8db',
+    faint: '#91b3b8',
+    accent: '#86d7ff',
+    'primary-hi': '#2cc6bf',
+    primary: '#16b3ac',
+    'primary-lo': '#0c9c96',
+    'on-primary': '#02191a',
+    'primary-edge': '#20bab3',
+    ...DARK_STATES,
+    success: '#a5d64c',
+    'success-bg': '#1d2b0b',
+    'success-fg': '#d6f2a6',
+    rec: '#ff6b6b',
+  },
+};
+
+/** Midnight Blue: deep navy; the next thing to do in a clear sky blue. */
+export const MIDNIGHT_BLUE: Appearance = {
+  id: 'midnight-blue',
+  name: 'Midnight Blue',
+  base: 'dark',
+  colours: {
+    ink: '#070b1a',
+    panel: '#0d1326',
+    'panel-2': '#141c33',
+    'panel-3': '#1c2642',
+    line: '#232d4c',
+    'line-strong': '#36426a',
+    field: '#7883a8',
+    fg: '#f1f4ff',
+    muted: '#c4cbea',
+    faint: '#9ba4c8',
+    accent: '#9cc3ff',
+    'primary-hi': '#7db8ff',
+    primary: '#5aa2ff',
+    'primary-lo': '#3f8cf2',
+    'on-primary': '#04102a',
+    'primary-edge': '#6aa9ff',
+    ...DARK_STATES,
+  },
+};
+
+/** Sandalwood: light and warm, the colour of chandan; the next thing to do in a deep blue-green. */
+export const SANDALWOOD: Appearance = {
+  id: 'sandalwood',
+  name: 'Sandalwood',
+  base: 'light',
+  colours: {
+    ink: '#e9dcc4',
+    panel: '#f6eedf',
+    'panel-2': '#fdf8ef',
+    'panel-3': '#e3d4b8',
+    line: '#d9c8a8',
+    'line-strong': '#bba885',
+    field: '#7a6a52',
+    fg: '#20180e',
+    muted: '#4a3c2a',
+    faint: '#64543f',
+    accent: '#0b5e73',
+    'primary-hi': '#126c8c',
+    primary: '#0b5c7a',
+    'primary-lo': '#084a63',
+    'on-primary': '#ffffff',
+    'primary-edge': '#0b5c7a',
+    ...LIGHT_STATES,
+    danger: '#a51616',
+    'danger-strong': '#a51616',
+  },
+};
+
+/** Lotus: light, the lotus's soft pink; the next thing to do in its deep pink. */
+export const LOTUS: Appearance = {
+  id: 'lotus',
+  name: 'Lotus',
+  base: 'light',
+  colours: {
+    ink: '#f0e4e8',
+    panel: '#faf4f6',
+    'panel-2': '#ffffff',
+    'panel-3': '#ead8de',
+    line: '#e1cdd4',
+    'line-strong': '#c4aab3',
+    field: '#7d6870',
+    fg: '#1f1216',
+    muted: '#4c3840',
+    faint: '#67535a',
+    accent: '#1d4ed8',
+    'primary-hi': '#b8336a',
+    primary: '#a52a5e',
+    'primary-lo': '#8e2050',
+    'on-primary': '#ffffff',
+    'primary-edge': '#a52a5e',
+    ...LIGHT_STATES,
+    warning: '#946200',
+    'warning-fg': '#5c3d00',
+  },
+};
+
+/** Marble: light, the mandir's cool white marble; the next thing to do in a deep navy. */
+export const MARBLE: Appearance = {
+  id: 'marble',
+  name: 'Marble',
+  base: 'light',
+  colours: {
+    ink: '#e6e8ec',
+    panel: '#f6f7f9',
+    'panel-2': '#ffffff',
+    'panel-3': '#dcdfe5',
+    line: '#d2d6dd',
+    'line-strong': '#b0b5bf',
+    field: '#6b717c',
+    fg: '#0f141c',
+    muted: '#3f4652',
+    faint: '#59606c',
+    accent: '#0b5e9e',
+    'primary-hi': '#24427a',
+    primary: '#1b3566',
+    'primary-lo': '#132852',
+    'on-primary': '#ffffff',
+    'primary-edge': '#1b3566',
+    ...LIGHT_STATES,
+  },
+};
+
+/** Tulsi: dark, the tulsi plant's deep green; the next thing to do in ivory. */
+export const TULSI: Appearance = {
+  id: 'tulsi',
+  name: 'Tulsi',
+  base: 'dark',
+  colours: {
+    ink: '#07110c',
+    panel: '#0d1a13',
+    'panel-2': '#13241a',
+    'panel-3': '#1b3023',
+    line: '#22392b',
+    'line-strong': '#355240',
+    field: '#78947f',
+    fg: '#f2faf4',
+    muted: '#c3d8c9',
+    faint: '#9ab5a2',
+    accent: '#a9d8ff',
+    'primary-hi': '#fffbea',
+    primary: '#f6efd6',
+    'primary-lo': '#e6dcbc',
+    'on-primary': '#11160f',
+    'primary-edge': '#e6dcbc',
+    ...DARK_STATES,
+  },
+};
+
 /** The built-in appearances, in the menu's order (after Follow the computer). */
-export const BUILT_IN: readonly Appearance[] = [BLACK, WHITE];
+export const BUILT_IN: readonly Appearance[] = [
+  BLACK,
+  WHITE,
+  SAFFRON,
+  PEACOCK,
+  MIDNIGHT_BLUE,
+  SANDALWOOD,
+  LOTUS,
+  MARBLE,
+  TULSI,
+];
 
 /** A built-in appearance by its id. */
 export const builtIn = (id: string): Appearance | undefined => BUILT_IN.find((a) => a.id === id);

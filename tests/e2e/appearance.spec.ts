@@ -154,7 +154,7 @@ test('Simple Mode shows the chosen appearance, with no switch, and refuses a cha
   await app.close();
 });
 
-for (const id of ['black', 'white']) {
+for (const id of BUILT_IN.map((a) => a.id)) {
   test(`${id}: axe passes in a show, a dialog, the Appearance window and Simple Mode; forced colours still work`, async () => {
     test.setTimeout(120_000);
     const { app } = await launchApp();

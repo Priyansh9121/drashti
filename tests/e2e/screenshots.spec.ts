@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { BUILT_IN } from '../../src/shared/appearance/appearances';
 import { BUILTIN_THEMES } from '../../src/shared/builtin-themes';
 import type { PageGlobals } from './helpers';
 import { device, networkOn, NETWORK_ENV, pairByQr, pairingCode, TABLET } from './devices';
@@ -120,6 +121,34 @@ test('the first start: the welcome, the practice show and the three steps (Sessi
   await win.getByTestId('welcome').getByRole('button', { name: 'Skip for now' }).click();
   await expect(win.getByTestId('start-here')).toBeVisible();
   await shot(win, 'start-here');
+  await app.close();
+});
+
+/*
+ * Every appearance in Pro Mode in a show, side by side in one folder (Session 40), for Priyansh to compare and
+ * choose from: docs/screenshots/appearances/ (never committed: .gitignore), numbered in the menu's order; and the
+ * Appearance window itself, for the guides.
+ */
+test('every appearance in Pro Mode in a show, and the Appearance window (Session 40)', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1440, height: 900 });
+  await running(win);
+  const live = win.getByRole('complementary', { name: 'Live' });
+  await live.evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  mkdirSync(join(folder, 'appearances'), { recursive: true });
+  for (const [i, a] of BUILT_IN.entries()) {
+    await chooseMenuItem(app, `appearance-${a.id}`);
+    await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
+    await shot(win, join('appearances', `${String(i + 1).padStart(2, '0')}-${a.id}`));
+  }
+  await chooseMenuItem(app, 'appearance-black');
+  await chooseMenuItem(app, 'appearance-window');
+  await expect(win.getByTestId('appearance-dialog')).toBeVisible();
+  await shot(win, 'appearance-window');
   await app.close();
 });
 
