@@ -46,6 +46,8 @@ export type AppearanceWindow = Pick<
 export interface AppearanceDeps {
   userData: string;
   say: (line: string) => void;
+  /** Tests only (DRASHTI_TEST_APPEARANCE, never packaged): start in this appearance, kept or not (the guides' pictures in Black). */
+  startIn?: string;
 }
 
 export class AppearanceService {
@@ -56,6 +58,8 @@ export class AppearanceService {
 
   constructor(private readonly deps: AppearanceDeps) {
     this.settings = readAppearance(deps.userData, deps.say);
+    if (deps.startIn && (deps.startIn === FOLLOW || this.list().some((a) => a.id === deps.startIn)))
+      this.settings = { ...this.settings, choice: deps.startIn };
   }
 
   /** Once Electron is ready, before any window: the native parts follow, and so does Follow the computer. */
