@@ -18,6 +18,7 @@ import {
 } from './helpers';
 import { launchNode } from './nodes';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
+import { holdClock } from './placeholder-slides';
 
 /*
  * Appearance (Sessions 39â€“40): the look of Drashti's own windows, chosen in the app and kept per computer.
@@ -292,6 +293,12 @@ test('the audience screens draw exactly the same in every appearance: the hallâ€
     }
     return out;
   };
+  // The stage screen shows the time: once the slide has come in, every screen's clock is held at that moment
+  // (Main's own, the engine's), so a minute turning while the appearances are compared changes nothing (it
+  // did once on CI's Mac, Tulsi's stage screen, with the clock running).
+  await pictures();
+  const settled = await app.evaluate(() => Date.now());
+  expect(await holdClock(app, settled), 'both screens hold their clock').toBe(2);
   await chooseMenuItem(app, 'appearance-black');
   await expect(win.locator('html')).toHaveAttribute('data-appearance', 'black');
   const first = await pictures();
