@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { EngineMirror } from '../../../shared/engine/mirror';
 import type { EngineMessage } from '../../../shared/engine/protocol';
 import type { EngineState } from '../../../shared/engine/state';
+import { noteShowChange } from './show-changed';
 
 interface EngineView {
   state: EngineState | null;
@@ -51,7 +52,8 @@ export function connectEngineSource(source: EngineSource): void {
   const mirror = new EngineMirror();
   source.onMessage((message) => {
     const result = mirror.apply(message);
-    if (result === 'applied')
+    if (result === 'applied') {
+      noteShowChange();
       useEngine.setState({
         state: mirror.state,
         rev: mirror.rev,
@@ -59,7 +61,7 @@ export function connectEngineSource(source: EngineSource): void {
         connected: true,
         unread: false,
       });
-    else if (result === 'resync') source.resync();
+    } else if (result === 'resync') source.resync();
   });
 }
 

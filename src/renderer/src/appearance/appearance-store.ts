@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AppearanceView, OwnAppearance } from '../../../shared/appearance/appearances';
+import type { AppearanceView, InterfaceMotion, OwnAppearance } from '../../../shared/appearance/appearances';
 
 /*
  * The Appearance window (Sessions 39–40): open from View › Appearance…, what it shows (every appearance, the
@@ -54,6 +54,13 @@ export async function makeAppearance(fields: Omit<OwnAppearance, 'id'>): Promise
 /** Delete one's own: if it was in use, this computer follows its own setting again. */
 export async function removeAppearance(id: string): Promise<void> {
   const result = await window.drashti.appearance.remove(id);
+  useAppearance.setState({ problem: result.ok ? null : result.message });
+  await refresh();
+}
+
+/** Interface motion (Session 40): Calm, Lively or Off, in every one of Drashti's own windows at once. */
+export async function chooseMotion(motion: InterfaceMotion): Promise<void> {
+  const result = await window.drashti.appearance.setMotion(motion);
   useAppearance.setState({ problem: result.ok ? null : result.message });
   await refresh();
 }

@@ -172,6 +172,34 @@
   --rise: 8px;
   --rise-lg: 14px;
   --slide-sheet: 16px;
+  --dialog-scale: 0.985; /* a dialog grows to its size from just under it */
+  /*
+   * Lively (Session 40, the Appearance window's Interface motion; the motion skills' tables: moving on screen
+   * on MD3's standard curve, list arrivals 20–40 ms apart and under 300 ms in all, a press at about 97%).
+   */
+  --dur-glide: 240ms; /* a tab's underline, a chosen row's highlight, gliding to their new place */
+  --dur-arrive: 220ms; /* cards of a playlist just opened arriving one after another */
+  --stagger-arrive: 30ms;
+  --arrive-most: 8; /* after the eighth, they all arrive together */
+  --dur-open: 200ms; /* a folded panel opening */
+  --dur-crossfade: 200ms; /* one appearance to the next */
+  --ease-glide: cubic-bezier(0.2, 0, 0, 1);
+  --rise-arrive: 6px;
+  --press-scale: 0.97;
+}
+
+/*
+ * Interface motion (Session 40), chosen in the Appearance window, set on <html> as data-interface-motion: Calm is
+ * Rising (above); Lively moves further and more (below); Off, like reduced motion, moves nothing. Whichever is
+ * chosen, the show controls, the thumbnails and the live picture never move (data-show-control), only opacity
+ * and transform move, and nothing starts while the show is changing (ui/motion.ts, showIsQuiet).
+ */
+:root[data-interface-motion='lively'] {
+  --rise: 12px;
+  --rise-notice: 9px;
+  --rise-sm: 6px;
+  --slide-sheet: 24px;
+  --dialog-scale: 0.96;
 }
 
 :root[data-base='light'] {
@@ -498,6 +526,27 @@ body.web {
     animation: sheet-out var(--dur-exit) var(--ease-drawer) both;
   }
 
+  /* Lively (Session 40): dialogs, sheets, menus and notices take longer over their bigger moves. */
+  :root[data-interface-motion='lively'] [data-motion='dialog'] {
+    animation-duration: calc(var(--dur-dialog) * var(--lively-time));
+  }
+  :root[data-interface-motion='lively'] [data-motion='sheet'] {
+    animation-duration: calc(var(--dur-panel) * var(--lively-time));
+  }
+  :root[data-interface-motion='lively'] [data-motion='pop'],
+  :root[data-interface-motion='lively'] [data-motion='notice'] {
+    animation-duration: calc(var(--dur-menu) * var(--lively-time));
+  }
+  /* A playlist's cards, just opened, arrive one after another (at most --arrive-most apart). */
+  :root[data-interface-motion='lively'] [data-lively='arrive'] {
+    animation: lively-arrive var(--dur-arrive) var(--ease-out)
+      calc(min(var(--i, 0), var(--arrive-most)) * var(--stagger-arrive)) both;
+  }
+  /* A folded panel's insides as it opens. */
+  :root[data-interface-motion='lively'] [data-lively='open'] {
+    animation: lively-open var(--dur-open) var(--ease-out) both;
+  }
+
   /*
    * What never moves: show controls (Next, Back, Clear all, the clears, Black-out, Logo, Put it
    * back, the Looks), the thumbnails and the live picture, with their borders, badges and glow.
@@ -510,6 +559,26 @@ body.web {
     transition: none !important;
     animation: none !important;
   }
+}
+
+/*
+ * Lively's two rules that must beat the utilities' own (unlayered, so they do: Tailwind's utilities are in a
+ * layer): a chosen row's own highlight waits while the highlight glides to it (ui/motion.ts, glideHighlight),
+ * and a button answers a press (never a show control: those change at once, and keep their size).
+ */
+[data-gliding] {
+  isolation: isolate;
+}
+[data-gliding] [aria-current='true'] {
+  background-color: transparent;
+  border-color: transparent;
+}
+:root[data-interface-motion='lively'] [data-variant]:not([data-show-control]) {
+  transition-property: background-color, border-color, color, box-shadow, filter, transform;
+}
+:root[data-interface-motion='lively'] [data-variant]:not([data-show-control], :disabled):active {
+  transform: scale(var(--press-scale));
+  transition-duration: var(--dur-press);
 }
 
 @keyframes fade-in {
@@ -525,8 +594,27 @@ body.web {
 @keyframes dialog-in {
   from {
     opacity: 0;
-    transform: translateY(var(--rise)) scale(0.985);
+    transform: translateY(var(--rise)) scale(var(--dialog-scale));
   }
+}
+@keyframes lively-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(var(--rise-arrive));
+  }
+}
+@keyframes lively-open {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--rise-sm) * -1));
+  }
+}
+
+/* One appearance to the next, in Lively (Session 40): a short cross-fade of the whole window. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--dur-crossfade);
+  animation-timing-function: var(--ease-in-out);
 }
 @keyframes sheet-in {
   from {
@@ -627,6 +715,13 @@ body.web {
     animation: none !important;
     transition: none !important;
   }
+}
+/* Interface motion Off (Session 40): the same, in Drashti's own windows only (the audience's pages have none). */
+:root[data-interface-motion='off'] *,
+:root[data-interface-motion='off'] ::before,
+:root[data-interface-motion='off'] ::after {
+  animation: none !important;
+  transition: none !important;
 }
 
 /*

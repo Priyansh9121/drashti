@@ -1,4 +1,4 @@
-import type { AppearanceView, OwnAppearance } from './appearance/appearances';
+import type { AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
 import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { GuideId, GuideRead } from './guides';
@@ -439,6 +439,8 @@ export interface DrashtiBridge {
       fields: Omit<OwnAppearance, 'id'>,
     ): Promise<{ ok: true; id: string } | { ok: false; message: string }>;
     remove(id: string): Promise<{ ok: true } | { ok: false; message: string }>;
+    /** Interface motion: Calm, Lively or Off (Session 40). */
+    setMotion(motion: InterfaceMotion): Promise<{ ok: true } | { ok: false; message: string }>;
     /** View › Appearance… was chosen. */
     onOpen(listener: () => void): () => void;
     /** The appearance or the motion changed (every window draws it by itself; the Appearance window shows it). */

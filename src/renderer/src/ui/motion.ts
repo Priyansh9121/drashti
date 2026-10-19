@@ -1,9 +1,10 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
+import { sinceShowChanged } from '../engine/show-changed';
 
 /*
- * Motion in the interface (Session 26g, "Rising"). Things arrive and leave; show controls,
- * thumbnails and the live picture never move. Every duration and easing is a token in app.css
+ * Motion in the interface (Session 26g, "Rising"; Session 40: Calm, Lively or Off, chosen in the Appearance
+ * window). Things arrive and leave; show controls, thumbnails and the live picture never move. Every duration and easing is a token in app.css
  * (--dur-*, --ease-*): entrances are CSS (`data-motion` in app.css), and the two things CSS cannot
  * do read their timing from the same tokens here: a playlist row sliding to its new place, and a
  * leaving dialog, menu or notice playing its exit. With reduced motion nothing moves.
@@ -75,9 +76,78 @@ export function useArrival<T extends string>(kind: T | null): T | undefined {
   return arrival;
 }
 
-/** The computer asks for reduced motion: nothing in the interface moves. */
+/** The interface motion chosen in the Appearance window (Session 40), as the preload set it on <html>. */
+function chosenMotion(): string | undefined {
+  return typeof document === 'undefined' ? undefined : document.documentElement.dataset['interfaceMotion'];
+}
+
+/** Nothing in the interface moves: the computer asks for reduced motion, or interface motion is Off. */
 export function motionOff(): boolean {
-  return typeof matchMedia === 'function' && matchMedia(REDUCED).matches;
+  return (typeof matchMedia === 'function' && matchMedia(REDUCED).matches) || chosenMotion() === 'off';
+}
+
+/*
+ * Lively (Session 40): more moves, never on a show control, and none started while the show is changing: a
+ * slide change, Next to the next item, a clear, anything the engine says changed in the last QUIET_MS.
+ */
+const QUIET_MS = 800;
+
+/** Lively is chosen, the computer allows motion, and the show has not changed just now. */
+export function livelyNow(): boolean {
+  return chosenMotion() === 'lively' && !motionOff() && sinceShowChanged() > QUIET_MS;
+}
+
+/**
+ * Whether what `key` names arrives in Lively (a playlist just opened): for a moment after the key changes, once
+ * the window has opened, while Lively is on and the show is quiet. Its cards take `data-lively="arrive"` and
+ * their place as `--i` (app.css), one after another.
+ */
+export function useLivelyArrival(key: string | null): boolean {
+  // Decided as it first draws and as the key changes (during render): nothing while the window is opening.
+  const [seen, setSeen] = useState<{ key: string | null; arriving: boolean }>(() => ({
+    key,
+    arriving: key !== null && opened && livelyNow(),
+  }));
+  if (seen.key !== key) setSeen({ key, arriving: key !== null && opened && livelyNow() });
+  useEffect(() => {
+    if (!seen.arriving) return;
+    const done = setTimeout(
+      () => {
+        setSeen((s) => ({ ...s, arriving: false }));
+      },
+      duration('dur-arrive') + 8 * duration('stagger-arrive') + 200,
+    );
+    return () => {
+      clearTimeout(done);
+    };
+  }, [seen]);
+  return seen.arriving && seen.key === key;
+}
+
+/**
+ * Glide `el` from where `from` was to where it is now (Lively, Session 40): a tab's underline, a chosen row's
+ * highlight. Only a transform, over --dur-glide on --ease-glide; nothing when Lively is not on or the show is
+ * changing.
+ */
+export function glideFrom(el: HTMLElement | null, from: DOMRect | null): void {
+  if (!el || !from || !livelyNow()) return;
+  const to = el.getBoundingClientRect();
+  if (to.width === 0 || to.height === 0) return;
+  const dx = from.left - to.left;
+  const dy = from.top - to.top;
+  if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+  const sx = from.width / to.width;
+  const sy = from.height / to.height;
+  el.animate(
+    [
+      {
+        transformOrigin: '0 0',
+        transform: `translate(${String(dx)}px, ${String(dy)}px) scale(${String(sx)}, ${String(sy)})`,
+      },
+      { transformOrigin: '0 0', transform: 'none' },
+    ],
+    { duration: duration('dur-glide'), easing: easing('ease-glide') },
+  );
 }
 
 /** A token's value, as app.css sets it on the page. */
@@ -96,6 +166,54 @@ export function duration(name: string): number {
 /** An easing token (--ease-out). */
 export function easing(name: string): string {
   return tokenText(name) || 'ease-out';
+}
+
+/**
+ * A list's chosen row: its highlight glides from the row chosen before (Lively, Session 40). A highlight drawn
+ * like the row's own (`look`, its classes) moves from `from` to `to` by transform alone, under the rows, while the
+ * list holds `data-gliding` (app.css keeps the row's own highlight back till it arrives); then it goes. The list
+ * is the highlight's frame (position: relative).
+ */
+export function glideHighlight(
+  list: HTMLElement | null,
+  from: DOMRect | null,
+  to: HTMLElement | null,
+  look: string,
+): void {
+  if (!list || !from || !to || !livelyNow()) return;
+  const frame = list.getBoundingClientRect();
+  const end = to.getBoundingClientRect();
+  if (end.height === 0 || Math.abs(from.top - end.top) < 1) return;
+  const mark = document.createElement('span');
+  mark.setAttribute('aria-hidden', 'true');
+  mark.className = look;
+  Object.assign(mark.style, {
+    position: 'absolute',
+    zIndex: '-1',
+    pointerEvents: 'none',
+    left: `${String(end.left - frame.left + list.scrollLeft)}px`,
+    top: `${String(end.top - frame.top + list.scrollTop)}px`,
+    width: `${String(end.width)}px`,
+    height: `${String(end.height)}px`,
+  });
+  list.dataset['gliding'] = '';
+  list.prepend(mark);
+  const done = () => {
+    mark.remove();
+    delete list.dataset['gliding'];
+  };
+  const glide = mark.animate(
+    [
+      {
+        transform: `translateY(${String(from.top - end.top)}px) scaleY(${String(from.height / end.height)})`,
+        transformOrigin: '0 0',
+      },
+      { transform: 'none', transformOrigin: '0 0' },
+    ],
+    { duration: duration('dur-glide'), easing: easing('ease-glide') },
+  );
+  glide.addEventListener('finish', done);
+  glide.addEventListener('cancel', done);
 }
 
 /*

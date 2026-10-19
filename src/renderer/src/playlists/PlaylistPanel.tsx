@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import type { PlaylistNode } from '../../../shared/playlists';
 import { Badge } from '../ui/Badge';
@@ -25,6 +25,7 @@ import type { MenuEntry, MenuPlace } from '../ui/Menu';
 import { isMenuKey, Menu, MenuButton, menuBelow, menuPlace } from '../ui/Menu';
 import { Notice } from '../ui/Notice';
 import { rowClass } from '../ui/ListRow';
+import { glideHighlight } from '../ui/motion';
 import { EmptyState } from '../ui/States';
 import { TabPanel, Tabs } from '../ui/Tabs';
 import { Truncate } from '../ui/Truncate';
@@ -107,6 +108,16 @@ function PlaylistTree({ platform }: { platform: string }) {
   const [menu, setMenu] = useState<{ at: MenuPlace; node: PlaylistNode } | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null);
   const help = useWhatIsThis('playlists');
+  // Lively (Session 40): the chosen row's highlight glides from the row chosen before.
+  const listRef = useRef<HTMLUListElement>(null);
+  const chosenWas = useRef<DOMRect | null>(null);
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const row = list?.querySelector<HTMLElement>('[aria-current="true"]') ?? null;
+    const now = row?.getBoundingClientRect() ?? null;
+    glideHighlight(list ?? null, chosenWas.current, row, rowClass({ selected: true }));
+    chosenWas.current = now;
+  }, [selectedNodeId]);
 
   // The rows to show: everything not inside a shut folder, with how deep it is.
   /** Folders' names, for a screen reader: a playlist in a folder says which. */
@@ -178,10 +189,11 @@ function PlaylistTree({ platform }: { platform: string }) {
             show's own (the arrows move the slides wherever the keyboard is). Folders say whether they
             are open, and a playlist in a folder says which. */}
         <ul
+          ref={listRef}
           aria-label="Playlists and folders"
           data-testid={tree.length > 0 ? 'playlist-tree' : undefined}
           hidden={tree.length === 0}
-          className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2"
+          className="relative min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2"
         >
           {rows.map(({ node, depth }) => {
             const open = node.isFolder && !closed.includes(node.id);

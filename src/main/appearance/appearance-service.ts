@@ -1,7 +1,12 @@
 import type { BrowserWindow } from 'electron';
-import type { Appearance, AppearanceNow, AppearanceView } from '../../shared/appearance/appearances';
+import type {
+  Appearance,
+  AppearanceNow,
+  AppearanceView,
+  InterfaceMotion,
+} from '../../shared/appearance/appearances';
 import { randomBytes } from 'node:crypto';
-import { BUILT_IN, FOLLOW, followed } from '../../shared/appearance/appearances';
+import { BUILT_IN, FOLLOW, followed, INTERFACE_MOTIONS } from '../../shared/appearance/appearances';
 import {
   checkAccent,
   deriveAppearance,
@@ -173,6 +178,16 @@ export class AppearanceService {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  /** Interface motion (Session 40): Calm, Lively or Off, for every one of Drashti's own windows at once. */
+  setMotion(motion: string): boolean {
+    if (!(INTERFACE_MOTIONS as readonly string[]).includes(motion)) return false;
+    this.settings = { ...this.settings, motion: motion as InterfaceMotion };
+    this.keep();
+    this.tell();
+    this.deps.say(`Appearance: interface motion ${motion}`);
+    return true;
   }
 
   /** One of Drashti's own windows: told of every change until it closes. */

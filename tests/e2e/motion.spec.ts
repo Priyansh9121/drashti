@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -7,8 +7,10 @@ import {
   chooseMenuItem,
   importAndGetIds,
   launchApp,
+  letTimePass,
   operatorPage,
   operatorReady,
+  relaunchApp,
   type PageGlobals,
 } from './helpers';
 
@@ -242,50 +244,54 @@ test('a playlist row moving Up or Down slides to its place over 180 ms', async (
   await app.close();
 });
 
-test('with the computer set to reduce motion, nothing in the window moves at all', async () => {
-  const { app } = await launchApp();
-  const win = await operatorPage(app);
-  await win.setViewportSize({ width: 1280, height: 720 });
-  await win.emulateMedia({ reducedMotion: 'reduce' });
-  await operatorReady(win);
-  /** Anything in the window that moves, except the pictures of the screens (what the hall sees). */
-  const still = async (what: string) => {
-    const found = await win.evaluate(() => {
-      const out: string[] = [];
-      const picture = (el: Element) => el.closest('[data-a11y-picture]') !== null;
-      for (const el of document.querySelectorAll('body *')) {
-        if (picture(el)) continue;
-        for (const pseudo of [null, '::before', '::after']) {
-          const st = getComputedStyle(el, pseudo);
-          if (st.animationName !== 'none') out.push(`${el.tagName}.${el.className}: ${st.animationName}`);
-          if (st.transitionDuration.split(',').some((d) => Number.parseFloat(d) > 0))
-            out.push(`${el.tagName}.${el.className}: transition`);
-        }
+/** Anything in the window that moves, except the pictures of the screens (what the hall sees). */
+async function still(win: Page, what: string): Promise<void> {
+  const found = await win.evaluate(() => {
+    const out: string[] = [];
+    const picture = (el: Element) => el.closest('[data-a11y-picture]') !== null;
+    for (const el of document.querySelectorAll('body *')) {
+      if (picture(el)) continue;
+      for (const pseudo of [null, '::before', '::after']) {
+        const st = getComputedStyle(el, pseudo);
+        if (st.animationName !== 'none') out.push(`${el.tagName}.${el.className}: ${st.animationName}`);
+        if (st.transitionDuration.split(',').some((d) => Number.parseFloat(d) > 0))
+          out.push(`${el.tagName}.${el.className}: transition`);
       }
-      for (const a of document.getAnimations()) {
-        const target = (a.effect as KeyframeEffect | null)?.target;
-        if (target && !picture(target)) out.push(`${target.tagName}: running`);
-      }
-      if (document.querySelector('[data-leaving-host]')) out.push('a leaving copy');
-      return [...new Set(out)];
-    });
-    expect(found, what).toEqual([]);
-  };
-  await still('the window');
+    }
+    for (const a of document.getAnimations()) {
+      const target = (a.effect as KeyframeEffect | null)?.target;
+      if (target && !picture(target)) out.push(`${target.tagName}: running`);
+    }
+    if (document.querySelector('[data-leaving-host]')) out.push('a leaving copy');
+    return [...new Set(out)];
+  });
+  expect(found, what).toEqual([]);
+}
+
+/** Interface motion, as the Appearance window sets it (Session 40), and the window drawn with it. */
+async function interfaceMotion(win: Page, motion: 'calm' | 'lively' | 'off'): Promise<void> {
+  const set = await win.evaluate((m) => (globalThis as PageGlobals).drashti.appearance.setMotion(m), motion);
+  expect(set).toEqual({ ok: true });
+  await expect(win.locator('html')).toHaveAttribute('data-interface-motion', motion);
+}
+
+/** Every kind of thing that would arrive or leave, each checked to move not at all. */
+async function nothingMoves(app: ElectronApplication, win: Page): Promise<void> {
+  await still(win, 'the window');
   await win.keyboard.press('Shift+Slash');
   await expect(win.getByTestId('keys-sheet')).toBeVisible();
-  await still('a dialog');
+  await still(win, 'a dialog');
   await win.keyboard.press('Escape');
-  await still('a dialog closing');
+  await still(win, 'a dialog closing');
   await win.getByRole('button', { name: 'Themes' }).click();
-  await still('a side sheet');
+  await still(win, 'a side sheet');
   await win.keyboard.press('Escape');
   await win.getByTestId('presentation-list').getByRole('button').first().click({ button: 'right' });
   await expect(win.getByRole('menu')).toBeVisible();
-  await still('a menu');
+  await still(win, 'a menu');
   await win.keyboard.press('Escape');
   await win.getByTestId('what-is-this-live').click();
-  await still('What is this?');
+  await still(win, 'What is this?');
   // A notice, as the main process sends one.
   await app.evaluate(({ BrowserWindow }) => {
     for (const w of BrowserWindow.getAllWindows())
@@ -293,10 +299,10 @@ test('with the computer set to reduce motion, nothing in the window moves at all
         w.webContents.send('app:notice', { text: 'Placeholder notice' });
   });
   await expect(win.getByTestId('operator-notice')).toBeVisible();
-  await still('a notice');
+  await still(win, 'a notice');
   await win.getByTestId('operator-notice').getByRole('button', { name: 'Dismiss' }).click();
-  await still('a notice leaving');
-  // A playlist row moving.
+  await still(win, 'a notice leaving');
+  // A playlist row moving, a playlist opening (Lively's arrivals), a tab chosen and a panel opened.
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     const [a, b] = await d.library.listPresentations();
@@ -311,8 +317,186 @@ test('with the computer set to reduce motion, nothing in the window moves at all
     .getByTestId('playlist-node')
     .filter({ hasText: /^Placeholder still/u })
     .click();
+  await still(win, 'a playlist opening');
   await win.getByTestId('playlist-item').nth(1).click();
   await win.locator('[data-move="up"]').click();
-  await still('a row moving up');
+  await still(win, 'a row moving up');
+  await win.getByTestId('library-tab-media').click();
+  await still(win, 'a tab chosen');
+  await win.getByTestId('group-more-tools-toggle').click();
+  await still(win, 'a panel opening');
+}
+
+test('with the computer set to reduce motion, nothing in the window moves at all', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await win.emulateMedia({ reducedMotion: 'reduce' });
+  await operatorReady(win);
+  await nothingMoves(app, win);
   await app.close();
+});
+
+test('with interface motion Off, nothing in the window moves at all (Session 40)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await interfaceMotion(win, 'off');
+  await nothingMoves(app, win);
+  await app.close();
+});
+
+test('with the computer set to reduce motion, Lively moves nothing either (Session 40)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await win.emulateMedia({ reducedMotion: 'reduce' });
+  await operatorReady(win);
+  await interfaceMotion(win, 'lively');
+  await nothingMoves(app, win);
+  await app.close();
+});
+
+/** Every animation running in the window now that is not a leaving copy's: its target and length. */
+const running = (win: Page) =>
+  win.evaluate(() =>
+    document.getAnimations().flatMap((a) => {
+      const effect = a.effect as KeyframeEffect | null;
+      const target = effect?.target;
+      if (!target || target.closest('[data-leaving-host]')) return [];
+      const what = `${target.getAttribute('data-testid') ?? target.tagName}${effect.pseudoElement ?? ''}`;
+      return [{ what, ms: Number(effect.getComputedTiming().duration ?? 0) }];
+    }),
+  );
+
+/** Every animation that starts in the page within `ms` of now (what a change sets moving). */
+const watchAnimations = (win: Page, ms: number) =>
+  win.evaluate(
+    (wait) =>
+      new Promise<{ what: string; ms: number; delay: number }[]>((resolve) => {
+        const seen = new Map<Animation, { what: string; ms: number; delay: number }>();
+        const look = () => {
+          for (const a of document.getAnimations()) {
+            const effect = a.effect as KeyframeEffect | null;
+            const target = effect?.target;
+            if (!target || seen.has(a)) continue;
+            const timing = effect.getComputedTiming();
+            seen.set(a, {
+              what: `${target.getAttribute('data-testid') ?? (target.hasAttribute('data-glide') ? 'underline' : target.tagName)}${effect.pseudoElement ?? ''}`,
+              ms: Number(timing.duration ?? 0),
+              delay: effect.getTiming().delay ?? 0,
+            });
+          }
+          requestAnimationFrame(look);
+        };
+        look();
+        setTimeout(() => {
+          resolve([...seen.values()]);
+        }, wait);
+      }),
+    ms,
+  );
+
+test('Lively: the tab’s underline and the chosen playlist glide, cards arrive one after another, a panel opens, a press answers, and an appearance fades into the next (Session 40)', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await interfaceMotion(win, 'lively');
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const [a, b] = await d.library.listPresentations();
+    for (const name of ['Placeholder lively one', 'Placeholder lively two']) {
+      const made = await d.playlists.create(name, null, false);
+      if (!made.ok) throw new Error(made.message);
+      await d.playlists.addItems(made.ids[0] ?? '', null, [
+        { kind: 'presentation', presentationId: a?.id ?? '' },
+        { kind: 'presentation', presentationId: b?.id ?? '' },
+      ]);
+    }
+  });
+  const row = (name: string) =>
+    win.getByTestId('playlist-node').filter({ hasText: new RegExp(`^${name}`, 'u') });
+  await expect(row('Placeholder lively two')).toBeVisible();
+  // Nothing starts while the show is changing: let the window's own start settle first.
+  await letTimePass(win, 900, 'the show has not changed for a moment, as Lively waits for');
+
+  // The playlist opens: its cards arrive one after another, 30 ms apart.
+  let started = watchAnimations(win, 800);
+  await row('Placeholder lively one').click();
+  await expect(win.getByTestId('playlist-item')).toHaveCount(2);
+  const arrivals = (await started).filter((a) => a.what === 'LI');
+  expect(arrivals.map((a) => [a.ms, a.delay])).toEqual([
+    [220, 0],
+    [220, 30],
+  ]);
+
+  // The chosen playlist's highlight glides to the next one chosen.
+  started = watchAnimations(win, 800);
+  await row('Placeholder lively two').click();
+  expect((await started).some((a) => a.what === 'SPAN' && a.ms === 240)).toBe(true);
+
+  // The tab's underline glides to the tab chosen.
+  started = watchAnimations(win, 800);
+  await win.getByTestId('library-tab-media').click();
+  expect((await started).some((a) => a.what === 'underline' && a.ms === 240)).toBe(true);
+
+  // A folded panel's insides arrive as it opens.
+  await win.getByTestId('group-more-tools-toggle').click();
+  const body = win.locator('[data-lively="open"]').first();
+  await expect(body).toBeVisible();
+  expect(await body.evaluate((el) => getComputedStyle(el).animationName)).toBe('lively-open');
+
+  // A button answers a press; a show control never does.
+  const transitions = (sel: string) =>
+    win
+      .locator(sel)
+      .first()
+      .evaluate((el) => getComputedStyle(el).transitionProperty);
+  expect(await transitions('[data-testid="open-network"]')).toContain('transform');
+  expect(await transitions('[data-testid="show-next"]')).toBe('none');
+
+  // One appearance fades into the next.
+  started = watchAnimations(win, 800);
+  await chooseMenuItem(app, 'appearance-white');
+  await chooseMenuItem(app, 'appearance-black');
+  expect((await started).some((a) => a.what.includes('::view-transition') && a.ms === 200)).toBe(true);
+  await app.close();
+});
+
+test('Lively never moves a show control or the live picture, starts nothing as the slide changes, and the window opens settled (Session 40)', async () => {
+  test.setTimeout(120_000);
+  const { app, userData } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await interfaceMotion(win, 'lively');
+  const presentation = await win.evaluate(
+    async () => (await (globalThis as PageGlobals).drashti.library.listPresentations())[0]?.id ?? '',
+  );
+  await win.getByTestId('presentation-list').getByRole('button').first().click();
+  await dispatch(win, { type: 'goLive', presentationId: presentation, slideIndex: 0 });
+  await expect(win.getByTestId('slide-thumb').first()).toHaveAttribute('aria-current', 'true');
+  const SHOW =
+    '[data-testid="layer-bar"] button, [data-testid="show-next"], [data-testid="show-back"], [data-testid="slide-thumb"], [data-testid="live-preview"], [data-testid="look-button"]';
+  expect(await moving(win, SHOW)).toEqual([]);
+  // Next, pressed: the slide changes at once and nothing in the window starts moving with it.
+  await letTimePass(win, 900, 'the show has not changed for a moment');
+  const started = watchAnimations(win, 700);
+  await win.getByTestId('show-next').click();
+  await expect(win.getByTestId('slide-thumb').nth(1)).toHaveAttribute('aria-current', 'true');
+  expect(await started).toEqual([]);
+  expect(await moving(win, SHOW)).toEqual([]);
+  await app.close();
+
+  // Started again in Lively: whatever is there as the window opens is simply there.
+  const again = await relaunchApp(userData);
+  const next = await operatorPage(again.app);
+  await expect(next.locator('html')).toHaveAttribute('data-interface-motion', 'lively');
+  await operatorReady(next);
+  await expect(next.locator('html')).toHaveAttribute('data-opened', '');
+  expect(await running(next)).toEqual([]);
+  await again.app.close();
 });
