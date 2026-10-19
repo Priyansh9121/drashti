@@ -70,6 +70,8 @@ test('Pro Mode: playlists that could not be read say so with Try again, never â€
   await panel.getByTestId('playlists-try-again').click();
   await expect(unread).toBeVisible();
   await expect(panel.getByText('No playlists yet')).toHaveCount(0);
+  // That try has answered (the button waits while it reads).
+  await expect(panel.getByTestId('playlists-try-again')).toBeEnabled();
   // It answers: Try again, from the keyboard, brings the playlist and the message goes.
   await readable(app, 'playlists');
   await panel.getByTestId('playlists-try-again').focus();
