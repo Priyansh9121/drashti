@@ -1,5 +1,5 @@
 // The release gate (Session 30, Q6). Before a release is published: its tag must be new; its commit must be
-// origin/main; a CI run from a push of that very commit must have passed both app jobs (a manual quick run
+// origin/main; a CI run from a push of that very commit must have passed every app job (a manual quick run
 // never counts); and every file must match SHA256SUMS.txt and the update manifest's sha512 and size. A dry
 // run reports what it finds and goes on; a publish stops at any failure.
 //
@@ -13,11 +13,14 @@ import { createReadStream, existsSync, readdirSync, readFileSync, statSync } fro
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/** The two jobs a release's commit must have passed, from a push. */
+/** The jobs a release's commit must have passed, from a push: the Mac's, Windows', and Windows' in Black (Session 41). */
 export const APP_JOBS = [
   'End-to-end and installers (macos-latest)',
   'End-to-end and installers (windows-latest)',
+  'End-to-end in Black (windows-latest)',
 ];
+/** How the gate's lines name them. */
+const JOB_NAMES = ['macOS', 'Windows', 'Windows in Black'];
 
 const short = (sha) => String(sha).slice(0, 7);
 
@@ -43,7 +46,7 @@ export function mainCheck(lsRemote, sha) {
 
 /**
  * The CI runs for the commit (the API's workflow_runs) and each run's jobs (by run id): passed when a run from
- * a push of exactly this commit passed both app jobs. A run passed on a re-run still counts, and says so.
+ * a push of exactly this commit passed every app job. A run passed on a re-run still counts, and says so.
  */
 export function ciCheck(runs, jobsOf, sha) {
   const pushed = runs.filter((r) => r.event === 'push' && r.head_sha === sha);
@@ -62,14 +65,14 @@ export function ciCheck(runs, jobsOf, sha) {
         Number(run.run_attempt ?? 1) > 1 ? ` (on attempt ${String(run.run_attempt)}: a re-run counts)` : '';
       return {
         ok: true,
-        line: `CI run ${String(run.id)}, from a push of ${short(sha)}, passed both app jobs${again}.`,
+        line: `CI run ${String(run.id)}, from a push of ${short(sha)}, passed every app job${again}.`,
       };
     }
-    states.push(`run ${String(run.id)}: macOS ${got[0] ?? 'missing'}, Windows ${got[1] ?? 'missing'}`);
+    states.push(`run ${String(run.id)}: ${got.map((c, i) => `${JOB_NAMES[i] ?? ''} ${c}`).join(', ')}`);
   }
   return {
     ok: false,
-    line: `No CI run from a push of ${short(sha)} passed both app jobs (${states.join('; ')}).`,
+    line: `No CI run from a push of ${short(sha)} passed every app job (${states.join('; ')}).`,
   };
 }
 

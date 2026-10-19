@@ -11,7 +11,7 @@ name: Release
 # the run stops at its first step.
 #
 # It publishes a GitHub release only when started by hand with "publish" ticked, from main, and only past the
-# release gate (Session 30: the tag new, the commit main, a CI run from a push of it green on both app jobs,
+# release gate (Session 30: the tag new, the commit main, a CI run from a push of it green on every app job,
 # every file as its checksums say). Otherwise (publish off, or a push to the scratch branch release-dry-run) it
 # builds and checks everything, reports what the gate finds, and keeps the files as an artifact for 7 days: a
 # dry run, which publishes nothing.
@@ -144,7 +144,7 @@ jobs:
           path: release-files
           retention-days: 7
 
-  # Session 30 (Q6): the tag is new, the commit is main, a CI run from a push of it passed both app jobs, and
+  # Session 30 (Q6): the tag is new, the commit is main, a CI run from a push of it passed every app job, and
   # every file matches its checksums (scripts/release-gate.mjs). A dry run reports it; a publish stops here.
   gate:
     name: The release gate
