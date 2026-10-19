@@ -1,6 +1,15 @@
 import type { BrowserWindow } from 'electron';
 import type { Appearance, AppearanceNow, AppearanceView } from '../../shared/appearance/appearances';
+import { randomBytes } from 'node:crypto';
 import { BUILT_IN, FOLLOW, followed } from '../../shared/appearance/appearances';
+import {
+  checkAccent,
+  deriveAppearance,
+  OWN_MAX,
+  OWN_NAME_MAX,
+  OWN_PREFIX,
+  type OwnAppearance,
+} from '../../shared/appearance/derive';
 import { appearanceVars } from '../../shared/appearance/vars';
 import { IPC } from '../../shared/ipc';
 import { sendToPage } from '../windows/send';
@@ -54,9 +63,62 @@ export class AppearanceService {
     });
   }
 
-  /** Every appearance there is to choose, in the menu's order. */
+  /** Every appearance there is to choose, in the menu's order: the built-in ones, then this computer's own. */
   list(): readonly Appearance[] {
-    return BUILT_IN;
+    return [...BUILT_IN, ...this.settings.own.map(deriveAppearance)];
+  }
+
+  /** This computer's own appearances (Session 40), as kept. */
+  own(): readonly OwnAppearance[] {
+    return this.settings.own;
+  }
+
+  /**
+   * Make one's own from a name, a base and an accent, and choose it (Session 40). Every rule is measured here
+   * too, whatever the window said: one that fails is refused in its words. The new one's id, or why not.
+   */
+  make(fields: Omit<OwnAppearance, 'id'>): { ok: true; id: string } | { ok: false; message: string } {
+    const name = fields.name.trim();
+    if (name === '' || name.length > OWN_NAME_MAX)
+      return { ok: false, message: `Give it a name of up to ${String(OWN_NAME_MAX)} letters.` };
+    if (this.list().some((a) => a.name.toLowerCase() === name.toLowerCase()))
+      return { ok: false, message: `There is already one called “${name}”: give it another name.` };
+    if (this.settings.own.length >= OWN_MAX)
+      return {
+        ok: false,
+        message: `This computer keeps ${String(OWN_MAX)} of your own at most: delete one you no longer use first.`,
+      };
+    const check = checkAccent(fields.base, fields.accent);
+    if (!check.ok) return { ok: false, message: check.why };
+    const own: OwnAppearance = {
+      id: `${OWN_PREFIX}${randomBytes(6).toString('hex')}`,
+      name,
+      base: fields.base,
+      accent: fields.accent,
+    };
+    this.settings = { ...this.settings, own: [...this.settings.own, own], choice: own.id };
+    this.keep();
+    this.setNative();
+    this.tell();
+    this.deps.say(`Appearance: made “${name}” (${own.base}, ${own.accent}) and chose it`);
+    return { ok: true, id: own.id };
+  }
+
+  /** Delete one's own; a built-in one can't be. If it was in use, this computer follows its own setting again. */
+  remove(id: string): boolean {
+    const gone = this.settings.own.find((o) => o.id === id);
+    if (!gone) return false;
+    const inUse = this.settings.choice === id;
+    this.settings = {
+      ...this.settings,
+      own: this.settings.own.filter((o) => o.id !== id),
+      choice: inUse ? FOLLOW : this.settings.choice,
+    };
+    this.keep();
+    this.setNative();
+    this.tell();
+    this.deps.say(`Appearance: deleted “${gone.name}”${inUse ? '; following the computer again' : ''}`);
+    return true;
   }
 
   /** FOLLOW, or the chosen appearance's id. */
@@ -82,6 +144,7 @@ export class AppearanceService {
       choice: this.settings.choice,
       shown: this.shown().id,
       list: this.list(),
+      own: this.settings.own,
       motion: this.settings.motion,
     };
   }

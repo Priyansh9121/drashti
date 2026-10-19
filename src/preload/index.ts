@@ -311,6 +311,8 @@ const bridge: DrashtiBridge = {
   appearance: {
     view: () => invoke(IPC.appearance.view),
     choose: (choice) => invoke(IPC.appearance.choose, choice),
+    make: (fields) => invoke(IPC.appearance.make, fields),
+    remove: (id) => invoke(IPC.appearance.remove, id),
     onOpen: (listener) =>
       on(IPC.appearance.open, () => {
         listener();

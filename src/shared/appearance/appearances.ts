@@ -78,6 +78,16 @@ export interface AppearanceNow {
   motion: InterfaceMotion;
 }
 
+/** One a person made (Session 40): kept as its name, base and accent; the rest is worked out (derive.ts). */
+export interface OwnAppearance {
+  /** "own-" and a random part, made once. */
+  id: string;
+  name: string;
+  base: AppearanceBase;
+  /** The next thing to do's colour, "#rrggbb", as chosen. */
+  accent: string;
+}
+
 /** The Appearance window's view: every appearance, what is chosen and what that shows now. */
 export interface AppearanceView {
   /** FOLLOW, or an appearance's id. */
@@ -85,6 +95,8 @@ export interface AppearanceView {
   /** The appearance shown now (Follow the computer's: Black or White). */
   shown: string;
   list: readonly Appearance[];
+  /** This computer's own, as kept (their ids are in `list` too). */
+  own: readonly OwnAppearance[];
   motion: InterfaceMotion;
 }
 

@@ -27,6 +27,8 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.app.setSingleKeys,
   // The appearance (Sessions 39–40): Simple Mode shows the one chosen, with no switch.
   IPC.appearance.choose,
+  IPC.appearance.make,
+  IPC.appearance.remove,
   IPC.library.restoreRevision,
   IPC.library.importPaths,
   IPC.library.pickImportPaths,
