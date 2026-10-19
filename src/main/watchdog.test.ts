@@ -56,6 +56,8 @@ let dog: RendererWatchdog;
 let contents: FakeContents;
 
 const kinds = () => events.map((e) => e.kind);
+/** An event's log line, or that there was none. */
+const lineOf = (e: WatchdogEvent | undefined) => (e ? watchdogLine(e) : 'no event');
 
 beforeEach(() => {
   clock = new Clock();
@@ -66,6 +68,23 @@ beforeEach(() => {
 });
 
 describe('RendererWatchdog', () => {
+  it('says how a crashed window’s process ended: in hex on Windows, by its signal on a Mac (Session 39)', () => {
+    const win: WatchdogEvent[] = [];
+    const mac: WatchdogEvent[] = [];
+    const onWindows = new FakeContents();
+    const onMac = new FakeContents();
+    new RendererWatchdog((e) => win.push(e), clock, true, 'win32').watch(onWindows, 'operator');
+    new RendererWatchdog((e) => mac.push(e), clock, true, 'darwin').watch(onMac, 'output "Main Hall"');
+    onWindows.emit('render-process-gone', {}, { reason: 'crashed', exitCode: -1073741819 });
+    onMac.emit('render-process-gone', {}, { reason: 'crashed', exitCode: 11 });
+    expect(win[0]).toMatchObject({ kind: 'crashed', reason: 'crashed', exit: 'exit code 0xC0000005' });
+    expect(lineOf(win[0])).toBe('Watchdog: operator crashed (crashed, exit code 0xC0000005)');
+    expect(lineOf(mac[0])).toBe('Watchdog: output "Main Hall" crashed (crashed, signal 11: SIGSEGV)');
+    // Without a code, as before.
+    contents.emit('render-process-gone', {}, { reason: 'crashed' });
+    expect(lineOf(events[0])).toBe('Watchdog: operator crashed (crashed)');
+  });
+
   it('reloads a crashed renderer after a short wait', () => {
     contents.emit('render-process-gone', {}, { reason: 'crashed' });
     expect(contents.reloads).toBe(0);

@@ -2,6 +2,7 @@ import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { cutText } from '../shared/text';
 import { scrub } from './log';
 import type { WatchdogEvent } from './watchdog';
+import { whyText } from './watchdog';
 
 /*
  * The crash journal (Sessions 31–36, ROB-6): the last 20 things that went wrong while Drashti ran (a
@@ -137,11 +138,12 @@ function windowName(window: string): string {
  * restart, whose wait goes into its hang's entry: `restarted`, how long Drashti waited, Session 38).
  */
 export function watchdogWords(
-  e: Pick<WatchdogEvent, 'window' | 'kind' | 'reason' | 'stack'>,
+  e: Pick<WatchdogEvent, 'window' | 'kind' | 'reason' | 'stack' | 'exit'>,
   restarted?: string,
 ): string | null {
   const name = windowName(e.window);
-  const why = e.reason ? ` (${e.reason})` : '';
+  // A crash with how its process ended (Session 39): "(crashed, exit code 0xC0000005)".
+  const why = whyText(e);
   switch (e.kind) {
     case 'crashed':
       return `${name} crashed${why}; the watchdog brought it back`;

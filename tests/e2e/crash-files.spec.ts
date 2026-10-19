@@ -17,6 +17,12 @@ function dumpsIn(dir: string): string[] {
     .filter((f) => f.toLowerCase().endsWith('.dmp'));
 }
 
+/** How a crashed window's process ended, as the watchdog's line says it: Windows' code in hex, a Mac's as a number or its signal. */
+const EXIT =
+  process.platform === 'win32'
+    ? /Watchdog: audio player crashed \(\w+, exit code 0x[0-9A-F]{8}\)/u
+    : /Watchdog: audio player crashed \(\w+, (?:exit code \d+|signal \d+: SIG[A-Z]+)\)/u;
+
 /** Answer Save Diagnostics' question: Save, with Include crash files ticked or not. */
 async function answerCrashFiles(app: Awaited<ReturnType<typeof launchApp>>['app'], ticked: boolean) {
   await app.evaluate(({ dialog }, checkboxChecked) => {
@@ -53,6 +59,15 @@ test('a crash leaves a dump here; Diagnostics adds it only when ticked; the next
     }
   };
   await expect.poll(journaled, { timeout: 30_000 }).toBe(true);
+  // The log says how its process ended (Session 39): in hex on Windows, a number or a signal on a Mac.
+  const crashLine = () =>
+    readFileSync(join(userData, 'logs', 'drashti.log'), 'utf8')
+      .split('\n')
+      .find((line) => line.includes('Watchdog: audio player crashed')) ?? '';
+  await expect.poll(crashLine).toMatch(EXIT);
+  expect(readFileSync(join(userData, 'crash-journal.json'), 'utf8')).toMatch(
+    /the audio player crashed \(\w+, (?:exit code \w+|signal \d+: SIG[A-Z]+)\); the watchdog brought it back/u,
+  );
 
   // As the box opens, unticked: the file alone, naming the dump and its size, the dump not with it.
   await answerCrashFiles(app, false);
@@ -62,7 +77,9 @@ test('a crash leaves a dump here; Diagnostics adds it only when ticked; the next
   expect(file).toMatch(/^Drashti diagnostics \d{4}-\d{2}-\d{2} \d{2}-\d{2}\.txt$/u);
   const text = readFileSync(join(desktop, file ?? ''), 'utf8');
   expect(text).toContain('== Crash journal (the last 20, kept over restarts) ==');
-  expect(text).toMatch(/the audio player crashed \(\w+\); the watchdog brought it back/u);
+  expect(text).toMatch(
+    /the audio player crashed \(\w+, (?:exit code \w+|signal \d+: SIG[A-Z]+)\); the watchdog brought it back/u,
+  );
   expect(text).toContain(`${dump}: `);
   expect(text).toContain('Not included: they can hold words from slides.');
   expect(dumpsIn(desktop)).toEqual([]);
@@ -85,7 +102,7 @@ test('a crash leaves a dump here; Diagnostics adds it only when ticked; the next
   const again = await relaunchApp(userData, { DRASHTI_TEST_CRASH_DUMPS: dumps });
   const next = await operatorPage(again.app);
   await expect(next.getByRole('alert').filter({ hasText: 'While Drashti last ran' })).toContainText(
-    /the audio player crashed \(\w+\); the watchdog brought it back\. Help, then Save Diagnostics…, keeps the details for the admin\./u,
+    /the audio player crashed \(\w+, (?:exit code \w+|signal \d+: SIG[A-Z]+)\); the watchdog brought it back\. Help, then Save Diagnostics…, keeps the details for the admin\./u,
   );
   await again.app.close();
 });

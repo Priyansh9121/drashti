@@ -1,8 +1,12 @@
 import { cutText, plural } from '../shared/text';
+import { exitText } from './exit-code';
 
 /** The parts of Electron's WebContents the watchdog needs (easy to fake in tests). */
 export interface WatchTarget {
-  on(event: 'render-process-gone', listener: (event: unknown, details: { reason: string }) => void): unknown;
+  on(
+    event: 'render-process-gone',
+    listener: (event: unknown, details: { reason: string; exitCode?: number }) => void,
+  ): unknown;
   on(event: 'unresponsive' | 'responsive' | 'destroyed', listener: () => void): unknown;
   reload(): void;
   forcefullyCrashRenderer(): void;
@@ -44,6 +48,8 @@ export interface WatchdogEvent {
   stack?: string;
   /** How long restarting a hung window held the main process, in ms (Session 38): its dump is written there first. */
   heldMs?: number;
+  /** How a crashed window's process ended (Session 39): its exit code, or its signal on a Mac (exit-code.ts). */
+  exit?: string;
   at: number;
 }
 
@@ -57,7 +63,13 @@ function waitWords(heldMs: number, crashFiles: boolean): string {
 
 /** A watchdog event as the log says it (the stack only with the hang that has one). */
 export function watchdogLine(e: WatchdogEvent): string {
-  return `Watchdog: ${e.window} ${e.kind}${e.reason ? ` (${e.reason})` : ''}${e.stack ? `; its JavaScript: ${e.stack}` : ''}`;
+  return `Watchdog: ${e.window} ${e.kind}${whyText(e)}${e.stack ? `; its JavaScript: ${e.stack}` : ''}`;
+}
+
+/** Why, in brackets: the reason, and how a crashed window's process ended (Session 39); or nothing. */
+export function whyText(e: Pick<WatchdogEvent, 'reason' | 'exit'>): string {
+  const parts = [e.reason, e.exit].filter((p) => p !== undefined && p !== '');
+  return parts.length > 0 ? ` (${parts.join(', ')})` : '';
 }
 
 export interface WatchdogOptions {
@@ -108,15 +120,17 @@ export class RendererWatchdog {
     private readonly timers: Timers = realTimers,
     /** Whether this run keeps crash files (crash-files.ts): then a restart writes the hung window's dump first. */
     private readonly crashFiles = true,
+    /** Whose exit codes these are (Session 39): Windows' are given in hex, a Mac's crash by its signal. */
+    private readonly platform: NodeJS.Platform = process.platform,
   ) {}
 
   private record(
     window: string,
     kind: WatchdogEventKind,
     reason?: string,
-    stack?: string,
-    heldMs?: number,
+    more: Pick<WatchdogEvent, 'stack' | 'heldMs' | 'exit'> = {},
   ): void {
+    const { stack, heldMs, exit } = more;
     const e: WatchdogEvent = {
       window,
       kind,
@@ -124,6 +138,7 @@ export class RendererWatchdog {
       ...(reason ? { reason } : {}),
       ...(stack ? { stack } : {}),
       ...(heldMs === undefined ? {} : { heldMs }),
+      ...(exit ? { exit } : {}),
     };
     this.events.push(e);
     if (this.events.length > 200) this.events.shift();
@@ -184,7 +199,7 @@ export class RendererWatchdog {
       if (this.askingStack.get(target) !== stopped) return;
       this.askingStack.delete(target);
       if (timer !== null) this.timers.clearTimeout(timer);
-      this.record(name, 'hung', reason, stack);
+      this.record(name, 'hung', reason, { stack });
       if (crash) this.restart(target, name);
     };
     const stopped = () => {
@@ -216,7 +231,7 @@ export class RendererWatchdog {
     const started = this.timers.now();
     target.forcefullyCrashRenderer();
     const heldMs = Math.max(0, this.timers.now() - started);
-    this.record(name, 'restarted', waitWords(heldMs, this.crashFiles), undefined, heldMs);
+    this.record(name, 'restarted', waitWords(heldMs, this.crashFiles), { heldMs });
   }
 
   /** Try a window again now (after it was given up on): false when it is not watched. */
@@ -260,7 +275,8 @@ export class RendererWatchdog {
       cancelHang();
       this.askingStack.get(target)?.();
       if (details.reason === 'clean-exit' || target.isDestroyed()) return;
-      this.record(name, 'crashed', details.reason);
+      const exit = exitText(details.exitCode, details.reason, this.platform);
+      this.record(name, 'crashed', details.reason, exit ? { exit } : {});
       const now = this.timers.now();
       crashes.push(now);
       while (crashes.length > 0 && now - (crashes[0] ?? now) > 60_000) crashes.shift();
