@@ -6,6 +6,7 @@ import { expectNoSeriousA11yIssues } from './a11y';
 import {
   chooseMenuItem,
   launchApp,
+  OWN_APPEARANCE,
   operatorPage,
   operatorReady,
   relaunchApp,
@@ -27,7 +28,7 @@ const kept = (userData: string) =>
 
 test('make one’s own, use it, keep it over a restart, then delete it', async () => {
   test.setTimeout(120_000);
-  const { app, userData } = await launchApp();
+  const { app, userData } = await launchApp(OWN_APPEARANCE);
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1440, height: 900 });
   await operatorReady(win);
@@ -94,7 +95,7 @@ test('make one’s own, use it, keep it over a restart, then delete it', async (
   await app.close();
 
   // Kept over a restart.
-  const again = await relaunchApp(userData);
+  const again = await relaunchApp(userData, OWN_APPEARANCE);
   const next = await operatorPage(again.app);
   await expect(next.locator('html')).toHaveAttribute('data-appearance', id);
   await operatorReady(next);

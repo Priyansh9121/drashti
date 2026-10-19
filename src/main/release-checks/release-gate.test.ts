@@ -7,7 +7,8 @@ import { APP_JOBS, ciCheck, filesCheck, mainCheck, tagCheck } from '../../../scr
 
 /*
  * The release gate (Session 30 step 5), on canned answers from git and GitHub: the tag new, the commit
- * main, a push CI run of that commit green on both app jobs, every file as its checksums say.
+ * main, a push CI run of that commit green on every app job (the Mac's, Windows', and since Session 41 Windows' in
+ * Black), every file as its checksums say.
  */
 
 const SHA = 'a'.repeat(40);
@@ -31,7 +32,7 @@ describe('the release gate', () => {
     });
   });
 
-  it('a push CI run of this very commit must have passed both app jobs; a run by hand never counts', () => {
+  it('a push CI run of this very commit must have passed every app job; a run by hand never counts', () => {
     const push = { id: 7, event: 'push', head_sha: SHA, run_attempt: 1 };
     expect(ciCheck([push], { 7: green }, SHA)).toMatchObject({ ok: true });
     expect(ciCheck([], {}, SHA)).toMatchObject({
@@ -43,15 +44,27 @@ describe('the release gate', () => {
     const red = [
       { name: APP_JOBS[0] ?? '', conclusion: 'success' },
       { name: APP_JOBS[1] ?? '', conclusion: 'failure' },
+      { name: APP_JOBS[2] ?? '', conclusion: 'success' },
     ];
     expect(ciCheck([push], { 7: red }, SHA)).toEqual({
       ok: false,
-      line: 'No CI run from a push of aaaaaaa passed both app jobs (run 7: macOS success, Windows failure).',
+      line: 'No CI run from a push of aaaaaaa passed every app job (run 7: macOS success, Windows failure, Windows in Black success).',
+    });
+    // The Black job counts too (Session 41): the two in White green is not enough, nor a run from before it.
+    expect(APP_JOBS).toEqual([
+      'End-to-end and installers (macos-latest)',
+      'End-to-end and installers (windows-latest)',
+      'End-to-end in Black (windows-latest)',
+    ]);
+    const white = green.filter((j) => j.name !== 'End-to-end in Black (windows-latest)');
+    expect(ciCheck([push], { 7: white }, SHA)).toEqual({
+      ok: false,
+      line: 'No CI run from a push of aaaaaaa passed every app job (run 7: macOS success, Windows success, Windows in Black missing).',
     });
     // Passed on a re-run: it counts, and says so.
     expect(ciCheck([{ ...push, run_attempt: 2 }], { 7: green }, SHA)).toEqual({
       ok: true,
-      line: 'CI run 7, from a push of aaaaaaa, passed both app jobs (on attempt 2: a re-run counts).',
+      line: 'CI run 7, from a push of aaaaaaa, passed every app job (on attempt 2: a re-run counts).',
     });
   });
 

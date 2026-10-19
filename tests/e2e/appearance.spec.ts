@@ -8,6 +8,7 @@ import { expectNoSeriousA11yIssues } from './a11y';
 import {
   chooseMenuItem,
   launchApp,
+  OWN_APPEARANCE,
   operatorPage,
   operatorReady,
   outputPages,
@@ -73,7 +74,7 @@ const ticked = (app: ElectronApplication) =>
 
 test('choosing each appearance changes the window at once, its own colour and the native parts too, and lasts over a restart', async () => {
   test.setTimeout(120_000);
-  const { app, userData } = await launchApp();
+  const { app, userData } = await launchApp(OWN_APPEARANCE);
   const win = await operatorPage(app);
   await operatorReady(win);
   for (const a of BUILT_IN) {
@@ -96,7 +97,7 @@ test('choosing each appearance changes the window at once, its own colour and th
 
   // Started again: White from the first frame. The window is made on White's colour, and its page has it
   // before it has drawn anything (the preload sets it as the page's <html> is made).
-  const again = await relaunchApp(userData);
+  const again = await relaunchApp(userData, OWN_APPEARANCE);
   const next = await operatorPage(again.app);
   const made = await again.app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows().map((w) => w.getBackgroundColor().toLowerCase()),
@@ -110,7 +111,7 @@ test('choosing each appearance changes the window at once, its own colour and th
 });
 
 test('Follow the computer follows it turning light or dark, at once, and is the default', async () => {
-  const { app } = await launchApp();
+  const { app } = await launchApp(OWN_APPEARANCE);
   const win = await operatorPage(app);
   await operatorReady(win);
   expect(await ticked(app)).toEqual([`appearance-${FOLLOW}`]);
@@ -217,7 +218,7 @@ for (const id of BUILT_IN.map((a) => a.id)) {
 const getComputedStyleFg = (id: string) => rgb((BUILT_IN.find((a) => a.id === id) ?? WHITE).colours.fg);
 
 test('a node’s own window takes its computer’s appearance from its first frame, and keeps it over a restart', async () => {
-  const { app, page, userData } = await launchNode();
+  const { app, page, userData } = await launchNode(OWN_APPEARANCE);
   // Its computer's own setting (Follow the computer): Black or White, the window made on its colour.
   await expect(page.locator('html')).toHaveAttribute('data-appearance', /^(black|white)$/u);
   const shownId = await page.evaluate(() => document.documentElement.dataset['appearance'] ?? '');
@@ -238,7 +239,7 @@ test('a node’s own window takes its computer’s appearance from its first fra
     join(userData, 'drashti-appearance.json'),
     JSON.stringify({ version: 1, choice: 'tulsi', motion: 'calm', own: [] }),
   );
-  const again = await launchNode({}, userData);
+  const again = await launchNode(OWN_APPEARANCE, userData);
   await expect(again.page.locator('html')).toHaveAttribute('data-appearance', 'tulsi');
   await again.app.close();
 });

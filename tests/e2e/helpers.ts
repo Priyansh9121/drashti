@@ -50,6 +50,13 @@ function appEnv(extra: Record<string, string>): Record<string, string> {
 }
 
 /**
+ * For a test of what Drashti starts in by itself (Follow the computer, the default, a choice kept over a
+ * restart): no test appearance, whatever the run's own switch. CI's Black job (Session 41) starts every other
+ * Drashti in Black (DRASHTI_TEST_APPEARANCE=black), which would hide what such a test checks.
+ */
+export const OWN_APPEARANCE = { DRASHTI_TEST_APPEARANCE: '' } as const;
+
+/**
  * Launch the built app (out/), with a fresh data folder unless one is given (to test restarts).
  * The setup wizard, which opens by itself on a first start, stays shut unless a test asks for it
  * (DRASHTI_TEST_NO_WIZARD: '0'), and Drashti starts as Main without asking (DRASHTI_ROLE). Quiet

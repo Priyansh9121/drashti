@@ -2,8 +2,9 @@ name: CI
 
 # The repository is public, so standard runners are free: the end-to-end and
 # packaging jobs run on macOS and Windows for every push to phase1 and main,
-# pull requests and manual runs (a manual run can target one OS). Pushes to
-# other branches get the Ubuntu checks and the secret scan only.
+# pull requests and manual runs (a manual run can target one OS), and the
+# end-to-end suite again in Black on Windows (Session 41). Pushes to other
+# branches get the Ubuntu checks and the secret scan only.
 #
 # A manual run can also be a quick check: only the end-to-end specs it names
 # (repeated if asked), quietly, or the screenshots, with no packaging.
@@ -281,6 +282,66 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-report-${{ runner.os }}
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Session 41: the same end-to-end suite in Black, on Windows. CI's computers are set light, so the two jobs
+  # above run it in White (Follow the computer), as a dark computer runs it in Black. Here every Drashti a test
+  # starts begins in Black (DRASHTI_TEST_APPEARANCE), except in the tests of Follow the computer, the default and
+  # a choice kept over a restart, which give their own switch (tests/e2e/helpers.ts, OWN_APPEARANCE). The same
+  # runs as the jobs above, but not a quick check or a Mac-only run; no unit tests (the Windows job above runs
+  # them) and no packaging. The release gate counts it with the other two (scripts/release-gate.mjs).
+  app-black:
+    name: End-to-end in Black (windows-latest)
+    needs: [secrets, checks]
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/phase1')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.os != 'macos' && inputs.specs == '' &&
+      !inputs.screenshots && inputs.unit == '' && inputs.pixels_base == '')
+    runs-on: windows-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      DRASHTI_TEST_APPEARANCE: black
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Cache FFmpeg, yt-dlp and Deno downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/drashti
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/fetch-ffmpeg.mjs', 'scripts/fetch-youtube-tools.mjs') }}
+      - name: Fetch FFmpeg
+        run: node scripts/fetch-ffmpeg.mjs
+      - name: Fetch yt-dlp and Deno
+        run: node scripts/fetch-youtube-tools.mjs
+      - name: Cache Playwright's browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~\AppData\Local\ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Playwright's Chromium and WebKit
+        run: pnpm exec playwright install chromium webkit
+      - name: End-to-end tests in Black (Playwright + Electron)
+        run: pnpm test:e2e
+      - name: Cap the crash files in the report
+        if: always()
+        run: node scripts/cap-crash-files.mjs test-results 200
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report-Windows-black
           path: |
             playwright-report
             test-results
