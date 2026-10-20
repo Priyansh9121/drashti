@@ -47,9 +47,11 @@ export function Columns({ left, middle, right }: { left: ReactNode; middle: Reac
   const leftWidth = clamp(leftWant, LEFT.min, leftMax);
   return (
     <div className="flex min-h-0 min-w-0 flex-1">
+      {/* Nothing in it draws outside it, over the layer bar (Session 44): its parts scroll their own, and
+          the column clips whatever is left as a last guard. */}
       <div
         style={{ width: leftWidth }}
-        className="flex min-h-0 shrink-0 flex-col bg-panel"
+        className="flex min-h-0 shrink-0 flex-col overflow-hidden bg-panel"
         data-testid="column-left"
       >
         {left}
