@@ -29,14 +29,14 @@ export function lockChannels(
 let adminLock: {
   locked: () => boolean;
   refusals: ReadonlyMap<string, () => unknown>;
-  touched: () => void;
+  touched?: () => void;
 } | null = null;
 
-/** Refuse the listed (admin) channels while `locked()` says so; `touched` hears of each that went through. */
+/** Refuse the listed (admin) channels while `locked()` says so; `touched` (if any) hears of each that went through. */
 export function lockAdminChannels(
   locked: () => boolean,
   refusals: ReadonlyMap<InvokeChannel, () => unknown>,
-  touched: () => void,
+  touched?: () => void,
 ): void {
   adminLock = { locked, refusals, touched };
 }
@@ -97,7 +97,7 @@ export function handle<C extends InvokeChannel>(
     }
     const refusal = refusalFor(channel);
     if (refusal) return refusal();
-    if (adminLock?.refusals.has(channel)) adminLock.touched();
+    if (adminLock?.refusals.has(channel)) adminLock.touched?.();
     const run = () => {
       const started = performance.now();
       const result = handler(event, ...args);

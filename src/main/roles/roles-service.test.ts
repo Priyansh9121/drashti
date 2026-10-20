@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { RolesView } from '../../shared/roles';
-import { ADMIN_UNLOCK_MS, PIN_FIRST_WAIT_MS, PIN_FREE_TRIES, PIN_LONGEST_WAIT_MS } from '../../shared/roles';
+import { PIN_FIRST_WAIT_MS, PIN_FREE_TRIES, PIN_LONGEST_WAIT_MS } from '../../shared/roles';
 import { hashPin, pinMatches, RolesService } from './roles-service';
 
 /* Roles and PINs (made-up PINs only; a cheap scrypt cost so the tests are quick). */
@@ -13,7 +13,6 @@ const CHEAP = { N: 2 ** 10, r: 8, p: 1 };
 function setup(file = join(mkdtempSync(join(tmpdir(), 'drashti-roles-')), 'roles.json')) {
   const clock = { now: 1_000_000 };
   const views: RolesView[] = [];
-  const timers: { at: number; run: () => void }[] = [];
   const make = () =>
     new RolesService({
       file,
@@ -21,20 +20,9 @@ function setup(file = join(mkdtempSync(join(tmpdir(), 'drashti-roles-')), 'roles
       changed: (v) => views.push(v),
       log: () => undefined,
       cost: CHEAP,
-      schedule: (ms, run) => {
-        const t = { at: clock.now + ms, run };
-        timers.push(t);
-        return () => {
-          timers.splice(timers.indexOf(t), 1);
-        };
-      },
     });
   const tick = (ms: number) => {
     clock.now += ms;
-    for (const t of [...timers].filter((x) => x.at <= clock.now)) {
-      timers.splice(timers.indexOf(t), 1);
-      t.run();
-    }
   };
   return { file, clock, views, make, tick };
 }
@@ -57,7 +45,7 @@ describe('roles', () => {
     const roles = make();
     expect(roles.on()).toBe(false);
     expect(roles.needsAdmin()).toBe(false);
-    expect(roles.view()).toEqual({ on: false, adminUntil: null, waitUntil: null, held: false });
+    expect(roles.view()).toEqual({ on: false, admin: false, waitUntil: null, held: false });
     // Bad PINs are refused: letters, too short, the same twice.
     expect((await roles.setPins({ admin: '12ab', operator: '5555' })).ok).toBe(false);
     expect((await roles.setPins({ admin: '123', operator: '5555' })).ok).toBe(false);
@@ -95,22 +83,23 @@ describe('roles', () => {
     expect(roles.needsAdmin()).toBe(false);
   });
 
-  it('keep admin unlocked for ten minutes after the last admin action, then lock it by themselves', async () => {
+  it('keep admin unlocked until Lock or quitting, however long, with no time limit (Session 44)', async () => {
     const { make, tick, views } = setup();
     const roles = make();
     await roles.setPins({ admin: '246810', operator: '135791' });
-    tick(ADMIN_UNLOCK_MS - 60_000);
+    // A whole day of sabhas later, with no admin action meanwhile: still unlocked.
+    tick(24 * 60 * 60_000);
     expect(roles.adminUnlocked()).toBe(true);
-    // An admin action keeps it open from then on.
-    roles.touchAdmin();
-    tick(ADMIN_UNLOCK_MS - 1000);
+    expect(roles.view().admin).toBe(true);
+    // Lock locks it, and says so.
+    roles.lock();
+    expect(roles.adminUnlocked()).toBe(false);
+    expect(views.at(-1)?.admin).toBe(false);
+    // The admin PIN unlocks it again, until Lock; quitting locks it (a new start begins locked).
+    expect((await roles.unlock('246810')).ok).toBe(true);
+    tick(24 * 60 * 60_000);
     expect(roles.adminUnlocked()).toBe(true);
-    tick(2000);
-    expect(roles.adminUnlocked()).toBe(false);
-    expect(views.at(-1)?.adminUntil).toBeNull();
-    // Touching a locked admin does not unlock it.
-    roles.touchAdmin();
-    expect(roles.adminUnlocked()).toBe(false);
+    expect(make().adminUnlocked()).toBe(false);
   });
 
   it('limit wrong PINs: five free, then a minute, doubling up to fifteen, kept over a restart', async () => {
@@ -169,7 +158,7 @@ describe('roles', () => {
     expect(held.on()).toBe(true);
     expect(held.held()).toBe(true);
     expect(held.needsAdmin()).toBe(true);
-    expect(held.view()).toMatchObject({ on: true, adminUntil: null, held: true });
+    expect(held.view()).toMatchObject({ on: true, admin: false, held: true });
     for (const pin of ['246810', '135791', '000000']) {
       const entered = await held.enter(pin);
       expect(entered.ok ? '' : entered.message).toContain('could not read its PIN file');

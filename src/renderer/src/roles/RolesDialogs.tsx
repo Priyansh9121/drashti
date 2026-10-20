@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { InputHTMLAttributes } from 'react';
-import { ADMIN_UNLOCK_MS, PIN_PATTERN, waitText } from '../../../shared/roles';
+import { PIN_PATTERN, waitText } from '../../../shared/roles';
 import { useNow } from '../render/useNow';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -96,8 +96,7 @@ function AdminPinForm({ what }: { what: string | null }) {
       >
         <p className="text-sm text-muted">
           {what ? `To ${what}, ` : 'This is for an admin: '}
-          type the admin PIN. Admin then stays unlocked for {String(ADMIN_UNLOCK_MS / 60_000)} minutes after
-          the last thing an admin does, or until Lock.
+          type the admin PIN. Admin then stays unlocked until Lock (in the header), Simple Mode or quitting.
         </p>
         <Field label="Admin PIN" error={wait ? `Too many wrong PINs. Try again in ${wait}.` : problem}>
           <PinInput
@@ -115,30 +114,30 @@ function AdminPinForm({ what }: { what: string | null }) {
   );
 }
 
-/** Who is at the controls (roles on): Operator, or Admin with its time left, and Lock. */
+/** Who is at the controls (roles on): Operator, or Admin and Lock. */
 export function RoleChip() {
   const view = useRoles((s) => s.view);
   if (!view.on) return null;
-  if (view.adminUntil !== null) return <AdminChip until={view.adminUntil} />;
+  if (view.admin) return <AdminChip />;
   return <OperatorChip />;
 }
 
-/** Admin, with its time left (ticking only while it shows). */
-function AdminChip({ until }: { until: number }) {
-  const now = useNow(1000);
-  if (until <= now) return <OperatorChip />;
-  const left = waitText(until, now);
+/**
+ * Admin, unlocked until Lock (Session 44; Priyansh: "admin can use it for as long as he wants, not 10
+ * minutes"): Lock, where the countdown was, locks it; Simple Mode and quitting lock it too.
+ */
+function AdminChip() {
   return (
-    <Tooltip content="Admin is unlocked. Lock it now, or it locks by itself." side="bottom">
+    <Tooltip content="Admin is unlocked until you lock it, change to Simple Mode or quit." side="bottom">
       <Button
         variant="warning"
         icon={LockOpen}
         data-testid="role-chip"
         data-role="admin"
-        aria-label={`Admin, unlocked for ${left}. Lock now`}
+        aria-label="Admin is unlocked. Lock"
         onClick={() => void window.drashti.roles.lock()}
       >
-        Admin {left}
+        Admin · Lock
       </Button>
     </Tooltip>
   );

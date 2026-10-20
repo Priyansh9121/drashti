@@ -5,13 +5,21 @@ import { join } from 'node:path';
 import { ADMIN_REFUSAL } from '../../src/shared/roles';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, killApp, launchApp, operatorPage, operatorReady, relaunchApp } from './helpers';
+import {
+  chooseMenuItem,
+  killApp,
+  launchApp,
+  letTimePass,
+  operatorPage,
+  operatorReady,
+  relaunchApp,
+} from './helpers';
 
 /*
  * Roles (Session 14): an admin PIN and an operator PIN. Off until set; with
  * them, leaving Simple Mode takes a PIN, the main process refuses every
- * admin request from an operator, the admin PIN unlocks admin for a while,
- * and wrong PINs are limited (over a restart too). Made-up PINs only, never
+ * admin request from an operator, the admin PIN unlocks admin until Lock
+ * (Session 44: no time limit), and wrong PINs are limited (over a restart too). Made-up PINs only, never
  * printed.
  */
 
@@ -37,7 +45,7 @@ test('roles are off by default: Pro Mode changes anything without a PIN, and Sim
   const { app, userData } = await launchApp();
   const win = await operatorPage(app);
   await operatorReady(win);
-  expect(await roles(win)).toEqual({ on: false, adminUntil: null, waitUntil: null, held: false });
+  expect(await roles(win)).toEqual({ on: false, admin: false, waitUntil: null, held: false });
   await expect(win.getByTestId('role-chip')).toHaveCount(0);
   const made = await win.evaluate(() =>
     (globalThis as PageGlobals).drashti.screens.createGroup('Placeholder A'),
@@ -53,6 +61,29 @@ test('roles are off by default: Pro Mode changes anything without a PIN, and Sim
   await leave.getByTestId('leave-simple-switch').click();
   await expect.poll(() => mode(win)).toBe('pro');
   expect(existsSync(join(userData, 'roles.json'))).toBe(false);
+  await app.close();
+});
+
+test('admin stays unlocked with no countdown until Lock in the header (Session 44: no ten minutes)', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await setPins(win);
+  const chip = win.getByTestId('role-chip');
+  await expect(chip).toHaveAttribute('data-role', 'admin');
+  // No time left to count down: it says Lock, and stays as it is.
+  await expect(chip).toHaveText('Admin · Lock');
+  await expect(chip).toHaveAccessibleName('Admin is unlocked. Lock');
+  const said = await chip.textContent();
+  await letTimePass(win, 2500, 'a countdown would tick in this time; Lock does not');
+  expect(await chip.textContent()).toBe(said);
+  expect((await roles(win)).admin).toBe(true);
+  await expectNoSeriousA11yIssues(win, 'the header with admin unlocked');
+  // Lock locks it.
+  await chip.click();
+  await expect(chip).toHaveAttribute('data-role', 'operator');
+  expect((await roles(win)).admin).toBe(false);
   await app.close();
 });
 
@@ -78,7 +109,7 @@ test('two PINs turn roles on; an operator is refused every admin request in the 
   await dialog.getByTestId('roles-operator-again').fill(OPERATOR);
   await dialog.getByTestId('roles-turn-on').click();
   await expect(dialog).toHaveCount(0);
-  // Whoever set them is the admin, unlocked for a while.
+  // Whoever set them is the admin, unlocked until Lock.
   await expect(win.getByTestId('role-chip')).toHaveAttribute('data-role', 'admin');
   expect((await roles(win)).on).toBe(true);
   // Only hashes are kept, never the PINs.
@@ -186,7 +217,7 @@ test('leaving Simple Mode takes a PIN: the operator PIN for Pro Mode, the admin 
   await win.getByRole('button', { name: 'Simple Mode' }).click();
   await expect.poll(() => mode(win)).toBe('simple');
   // Entering Simple Mode locks admin at once.
-  expect((await roles(win)).adminUntil).toBeNull();
+  expect((await roles(win)).admin).toBe(false);
   await chooseMenuItem(app, 'switch-mode');
   const leave = win.getByTestId('leave-simple');
   await expect(leave).toContainText('operator PIN or the admin PIN');
@@ -233,7 +264,7 @@ test('wrong PINs are limited, over a restart too; with roles on a clean start op
   win = await operatorPage(run.app);
   await operatorReady(win);
   expect(await mode(win)).toBe('pro');
-  expect((await roles(win)).adminUntil).toBeNull();
+  expect((await roles(win)).admin).toBe(false);
   await run.app.close();
   // A clean start opens in Simple Mode.
   run = await relaunchApp(first.userData);
@@ -286,7 +317,7 @@ test('a PIN file that cannot be read keeps roles locked, over a restart; the adm
   await operatorReady(win);
   // Locked, never off: Simple Mode, admin refused, and the start notice says why.
   expect(await mode(win)).toBe('simple');
-  expect(await roles(win)).toMatchObject({ on: true, adminUntil: null, held: true });
+  expect(await roles(win)).toMatchObject({ on: true, admin: false, held: true });
   await expect(win.getByRole('alert').filter({ hasText: 'could not read its PIN file' })).toBeVisible();
   for (const pin of [OPERATOR, ADMIN]) {
     const left = await win.evaluate(
@@ -314,7 +345,7 @@ test('a PIN file that cannot be read keeps roles locked, over a restart; the adm
   run = await relaunchApp(first.userData);
   win = await operatorPage(run.app);
   await operatorReady(win);
-  expect(await roles(win)).toEqual({ on: false, adminUntil: null, waitUntil: null, held: false });
+  expect(await roles(win)).toEqual({ on: false, admin: false, waitUntil: null, held: false });
   expect(await mode(win)).toBe('pro');
   await setPins(win);
   await run.app.close();

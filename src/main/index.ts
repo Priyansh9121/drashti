@@ -2058,15 +2058,11 @@ function start(): void {
       () => audioOutput.status,
       () => roles.view(),
     ),
-    () => {
-      roles.touchAdmin();
-    },
   );
   /** A menu item that needs the admin PIN: run now, or once the operator window has the PIN typed. */
   let pendingAdmin: { run: () => void; until: number } | null = null;
   const requireAdmin = (what: string, run: () => void) => {
     if (!roles.needsAdmin()) {
-      roles.touchAdmin();
       run();
       return;
     }
