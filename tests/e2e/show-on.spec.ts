@@ -73,7 +73,7 @@ test('a display plugged in, no hall screen yet: one click on “Show on <it>” 
   await app.close();
 });
 
-test('Not now puts the offer away; the first start’s welcome offers it as its one primary', async () => {
+test('Not now puts the offer away; the first start’s welcome offers it as its one primary; Start here as a secondary', async () => {
   test.setTimeout(90_000);
   const first = await launchApp({ ...OFFER, DRASHTI_EXTRA_DISPLAYS: '1' });
   const win = await operatorPage(first.app);
@@ -96,6 +96,24 @@ test('Not now puts the offer away; the first start’s welcome offers it as its 
   await expect.poll(async () => (await hall(w)).map((s) => s.state)).toEqual(['showing']);
   await expect(welcome).toHaveCount(0);
   await app.close();
+
+  // Skip for now: Start here offers it too, in its step for the screens, as a secondary. Step 1's Import…
+  // stays its one primary; the offer under the header has its own, as a notice's next step does (Back up now).
+  const skipped = await launchApp({ ...OFFER, DRASHTI_EXTRA_DISPLAYS: '1', DRASHTI_TEST_NO_WIZARD: '0' });
+  const s = await operatorPage(skipped.app);
+  await operatorReady(s);
+  await s.getByTestId('welcome-skip').click();
+  const startHere = s.getByTestId('start-here');
+  await expect(startHere.getByTestId('show-on')).toHaveText(/^Show on /u);
+  await expect(startHere.getByTestId('show-on')).toHaveAttribute('data-variant', 'secondary');
+  await expect(startHere.locator('[data-variant="primary"]')).toHaveText(['Import…']);
+  await expect(s.getByTestId('show-on-offer').getByTestId('show-on')).toHaveAttribute(
+    'data-variant',
+    'primary',
+  );
+  await startHere.getByTestId('show-on').click();
+  await expect.poll(async () => (await hall(s)).map((x) => x.state)).toEqual(['showing']);
+  await skipped.app.close();
 });
 
 test('Set Up Screens… opens on the displays: the free one already the hall’s, one click each, then Done', async () => {

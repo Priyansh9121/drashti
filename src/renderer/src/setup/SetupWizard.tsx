@@ -611,9 +611,9 @@ export function SetupWizard({ platform }: { platform: string }) {
               the look new presentations start with.
             </p>
             <p className="text-muted">
-              Nothing changes until you press Finish at the end. Each step can be skipped to keep things as
-              they are, and the setup can be run again from View, Set Up Screens… Drashti never changes a
-              display’s resolution.
+              Done on the displays sets the screens at once; the other steps change nothing until you press
+              Finish at the end. Each step can be skipped to keep things as they are, and the setup can be run
+              again from View, Set Up Screens… Drashti never changes a display’s resolution.
             </p>
           </div>
         ) : name === 'Screens' ? (

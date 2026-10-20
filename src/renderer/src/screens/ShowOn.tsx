@@ -70,23 +70,28 @@ export async function showOn(display: DisplayInfo): Promise<boolean> {
   return true;
 }
 
-/** Show on <its name>, as a primary button (the offer, Start here, the welcome). */
+/**
+ * Show on <its name>: the primary of the offer and the welcome; a secondary in Start here, whose one primary is
+ * step 1's Import….
+ */
 export function ShowOnButton({
   display,
   onShown,
   size = 'md',
   first = false,
+  variant = 'primary',
 }: {
   display: DisplayInfo;
   onShown?: () => void;
   size?: 'sm' | 'md' | 'lg';
   /** The keyboard starts here (the welcome's one primary). */
   first?: boolean;
+  variant?: 'primary' | 'secondary';
 }) {
   const [busy, setBusy] = useState(false);
   return (
     <Button
-      variant="primary"
+      variant={variant}
       size={size}
       icon={Monitor}
       disabled={busy}
