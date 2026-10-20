@@ -7,6 +7,7 @@ import type {
   AudioLayer,
   BackgroundLayer,
   EngineState,
+  LowerThirdLayer,
   MaskLayer,
   MessageItem,
   PlaylistCursor,
@@ -14,6 +15,7 @@ import type {
   TickerLayer,
 } from '../../shared/engine/state';
 import { ENGINE_STATE_VERSION } from '../../shared/engine/state';
+import { lowerThirdSchema } from '../../shared/lower-thirds';
 import { maskSchema } from '../../shared/masks';
 import { hexColorSchema, idSchema } from '../../shared/model-schema';
 import { RECOVERY_MAX_AGE_MS } from '../../shared/recovery';
@@ -72,6 +74,8 @@ export interface SavedLive {
   lookId: string | null;
   /** The mask up on the Masks layer. */
   masks: MaskLayer | null;
+  /** The lower third up (Session 44), with when it went up: put back, it comes back still. */
+  lowerThird: LowerThirdLayer | null;
 }
 
 const backgroundSchema: z.ZodType<BackgroundLayer> = z.discriminatedUnion('kind', [
@@ -101,6 +105,10 @@ const tickerSchema: z.ZodType<TickerLayer> = z.object({
 const savedMessageSchema = messageSchema.and(z.object({ shownAt: z.number().optional() }));
 /** A saved prop or logo, with the time it went up (Session 27): put back, its videos carry on in step. */
 const savedPropSchema = propSchema.and(z.object({ shownAt: z.number().optional() }));
+/** A saved lower third (Session 44), with the time it went up. */
+const savedLowerThirdSchema: z.ZodType<LowerThirdLayer> = lowerThirdSchema.and(
+  z.object({ shownAt: z.number() }),
+);
 
 const savedSchema = z.object({
   version: z.union([z.literal(1), z.literal(2)]),
@@ -141,6 +149,8 @@ const savedSchema = z.object({
   // Files saved before Looks have none.
   lookId: idSchema.nullable().default(null),
   masks: z.unknown().default(null),
+  // Files saved before Lower Thirds (Session 44) have none.
+  lowerThird: z.unknown().default(null),
 });
 const audioLayerSchema = z.intersection(
   audioChoiceSchema,
@@ -189,6 +199,7 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
     repeat: state.repeat ? { playlistId: state.repeat.playlistId } : null,
     lookId: state.look.id === '' ? null : state.look.id,
     masks: state.layers.masks,
+    lowerThird: state.layers.lowerThird,
   };
 }
 
@@ -267,6 +278,7 @@ function liveIn(s: Saved, startLookId: string | null): SavedLive | null {
   const messages = layer(z.array(savedMessageSchema).max(50), s.messages, []);
   const ticker = layer(tickerSchema.nullable(), s.ticker, null);
   const masks = layer(maskSchema.nullable(), s.masks, null);
+  const lowerThird = layer(savedLowerThirdSchema.nullable(), s.lowerThird, null);
   const timers = same ? s.timers : [];
   const stageMessage = same ? s.stageMessage : null;
   const anything = [
@@ -280,12 +292,13 @@ function liveIn(s: Saved, startLookId: string | null): SavedLive | null {
     messages.length > 0,
     ticker !== null,
     masks !== null,
+    lowerThird !== null,
     stageMessage !== null,
     timers.length > 0,
     s.lookId !== null && s.lookId !== startLookId,
   ].some(Boolean);
   if (!anything) return null;
-  return { ...s, background, logo, audio, props, messages, ticker, masks, stageMessage, timers };
+  return { ...s, background, logo, audio, props, messages, ticker, masks, lowerThird, stageMessage, timers };
 }
 
 /**

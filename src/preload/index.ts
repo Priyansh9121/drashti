@@ -464,6 +464,13 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
+  lowerThirds: {
+    list: () => invoke(IPC.lowerThirds.list),
+    onChanged: (listener) => on(IPC.lowerThirds.changed, listener),
+    save: (id, input) => invoke(IPC.lowerThirds.save, id, input),
+    remove: (ids) => invoke(IPC.lowerThirds.remove, ids),
+    restore: (ids) => invoke(IPC.lowerThirds.restore, ids),
+  },
   midi: {
     get: () => invoke(IPC.midi.get),
     set: (settings) => invoke(IPC.midi.set, settings),

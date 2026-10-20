@@ -29,6 +29,7 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'library',
     'links',
     'looks',
+    'lowerThirds',
     'masks',
     'media',
     'messages',

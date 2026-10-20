@@ -6,6 +6,7 @@ import {
   LAYER_NAMES,
   type LayerName,
 } from '../../shared/engine/state';
+import { DEFAULT_LOWER_THIRD_LOOK } from '../../shared/lower-thirds';
 import type { EngineAction } from './actions';
 import { reduce } from './reducer';
 import { deepFreeze, textSlide } from './testing';
@@ -35,6 +36,17 @@ function fullState(): EngineState {
     { type: 'prop/show', prop: { id: 'logo', name: 'Logo', elements: [] } },
     { type: 'message/show', message: { id: 'm1', text: 'Car please move' } },
     { type: 'ticker/show', item: { id: 't1', text: 'Placeholder ticker words' }, at: 5 },
+    {
+      type: 'lowerThird/show',
+      layer: {
+        id: 'lt1',
+        lines: ['Placeholder name', 'Placeholder title'],
+        look: DEFAULT_LOWER_THIRD_LOOK,
+        where: 'both',
+        animation: 'fade-steady',
+        shownAt: 6,
+      },
+    },
     {
       type: 'mask/set',
       mask: {
@@ -165,6 +177,7 @@ describe('reduce', () => {
     it('empties every layer but keeps the cursor and black-out', () => {
       const s = fullState();
       const next = reduce(s, { type: 'layers/clearAll' });
+      expect(s.layers.lowerThird?.id).toBe('lt1');
       expect(next.layers).toEqual({
         audio: null,
         background: null,
@@ -172,6 +185,7 @@ describe('reduce', () => {
         props: [],
         messages: [],
         ticker: null,
+        lowerThird: null,
         masks: null,
       });
       expect(next.live).toBe(s.live);

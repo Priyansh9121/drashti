@@ -48,6 +48,7 @@ describe('migrations', () => {
         'messages',
         'timers',
         'macros',
+        'lower_thirds',
         'arti_schedules',
         'calendars',
         'calendar_days',

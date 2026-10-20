@@ -9,6 +9,7 @@ import type { TimerState } from '../timers';
 import type { PlaybackClip, PlaybackSeek } from '../media';
 import type { PlaybackMarker } from '../markers';
 import type { LiveZoom, PictureLook } from '../picture-look';
+import type { LowerThird } from '../lower-thirds';
 
 /**
  * Show engine state. The main process owns it; every renderer (and, later,
@@ -18,11 +19,12 @@ import type { LiveZoom, PictureLook } from '../picture-look';
  * Bump ENGINE_STATE_VERSION whenever the shape changes incompatibly. 9 (Session 27): each Look group's
  * Movement, new transition kinds, a message's shownAt; an older phone, browser page or node says
  * 'incompatible' rather than drawing a kind it does not know. 10 (Sessions 31–36): a slide's darkening
- * behind the words, which an older one would leave out.
+ * behind the words, which an older one would leave out. 11 (Session 44): the lower third's layer.
  */
-export const ENGINE_STATE_VERSION = 10;
+export const ENGINE_STATE_VERSION = 11;
 
-export type LayerName = 'audio' | 'background' | 'slide' | 'props' | 'messages' | 'ticker' | 'masks';
+export type LayerName =
+  'audio' | 'background' | 'slide' | 'props' | 'lowerThird' | 'messages' | 'ticker' | 'masks';
 
 /** Bottom to top, the order outputs composite visible layers in. Audio has no picture. */
 export const LAYER_NAMES = [
@@ -30,6 +32,7 @@ export const LAYER_NAMES = [
   'background',
   'slide',
   'props',
+  'lowerThird',
   'messages',
   'ticker',
   'masks',
@@ -251,11 +254,21 @@ export interface TickerLayer {
  */
 export type MaskLayer = Mask;
 
+/**
+ * A lower third on the screens (Session 44, shared/lower-thirds.ts): the library's, as it was when shown, so
+ * every screen, node and phone draws it without the library; and when it went up, by the engine's clock, so
+ * its in plays from then, the same frame everywhere. One at a time: another shown takes its place.
+ */
+export interface LowerThirdLayer extends LowerThird {
+  shownAt: number;
+}
+
 export interface Layers {
   audio: AudioLayer | null;
   background: BackgroundLayer | null;
   slide: SlideLayer | null;
   props: PropItem[];
+  lowerThird: LowerThirdLayer | null;
   messages: MessageItem[];
   ticker: TickerLayer | null;
   masks: MaskLayer | null;
@@ -361,10 +374,24 @@ export interface EngineState {
    * screen. Null once another slide goes up, after Clear all, and when nothing was taken off.
    */
   slideOff: { layer: SlideLayer; at: number } | null;
+  /**
+   * The lower third just hidden (Session 44), and when by the engine's clock: its out plays from then, the same on
+   * every screen. Null once one is shown again, after Clear all (which takes it off at once) and Put it back.
+   */
+  lowerThirdOff: { layer: LowerThirdLayer; at: number } | null;
 }
 
 export function emptyLayers(): Layers {
-  return { audio: null, background: null, slide: null, props: [], messages: [], ticker: null, masks: null };
+  return {
+    audio: null,
+    background: null,
+    slide: null,
+    props: [],
+    lowerThird: null,
+    messages: [],
+    ticker: null,
+    masks: null,
+  };
 }
 
 export function initialEngineState(): EngineState {
@@ -389,6 +416,7 @@ export function initialEngineState(): EngineState {
     liveZoom: null,
     look: NO_LOOK,
     slideOff: null,
+    lowerThirdOff: null,
   };
 }
 

@@ -50,6 +50,11 @@ export const GUIDE_ANSWERS: readonly GuideAnswer[] = [
     words: '**The stage message.**',
   },
   {
+    question: 'When a speaker’s name should show across the bottom, what do I do?',
+    doc: 'operator',
+    words: '**Lower Thirds.**',
+  },
+  {
     question: 'When announcements from phones are waiting, what do I do?',
     doc: 'operator',
     words: '**Announcements from phones.**',

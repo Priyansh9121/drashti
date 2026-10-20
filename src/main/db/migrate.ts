@@ -43,6 +43,7 @@ import { up as streamPlaces } from './migrations/041-stream-places';
 import { up as dropFolder } from './migrations/042-drop-folder';
 import { up as darken } from './migrations/043-darken';
 import { up as contentRev } from './migrations/044-content-rev';
+import { up as lowerThirds } from './migrations/045-lower-thirds';
 import { plural } from '../../shared/text';
 
 export interface Migration {
@@ -106,6 +107,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 42, name: 'the drop folder', up: dropFolder },
   { version: 43, name: 'darkening behind the words', up: darken },
   { version: 44, name: 'content revision', up: contentRev },
+  { version: 45, name: 'lower thirds', up: lowerThirds },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));

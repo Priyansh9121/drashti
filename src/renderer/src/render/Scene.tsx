@@ -19,6 +19,7 @@ import { textLang } from './lang';
 import { Placed } from './Placed';
 import { SlideLayerView } from './SlideLayerView';
 import { SlideLowerThird } from './LowerThird';
+import { LowerThirdView } from './LowerThirdView';
 import { ScreenPictures } from './picture-looks';
 import { ElementView } from './SlideView';
 import { TimerText } from './TimerText';
@@ -327,8 +328,8 @@ function MaskCover({ mask, layer }: { mask: Mask; layer: 'masks' | 'look' }) {
 
 /**
  * Everything one screen shows, drawn on that screen's canvas (in canvas
- * pixels). Bottom to top: background, slide, props, messages, the ticker,
- * masks, the logo, black-out. The operator preview and every output use this
+ * pixels). Bottom to top: background, slide, props, a lower third (Session 44,
+ * on the pictures it is for), messages, the ticker, masks, the logo, black-out. The operator preview and every output use this
  * same component; the preview sets `annotate` to mark problems the audience
  * never sees. What a screen shows of it is its group's settings in the live
  * Look (`look`: its layers, languages and slide style). The stream leaves
@@ -342,6 +343,7 @@ export const Scene = memo(function Scene({
   look = DEFAULT_LIVE_GROUP_LOOK,
   ticker = true,
   matte = null,
+  place = 'hall',
 }: {
   state: EngineState;
   canvas: Size;
@@ -358,6 +360,8 @@ export const Scene = memo(function Scene({
    * graphics off (nothing to key).
    */
   matte?: 'fill' | 'key' | null;
+  /** Which picture this is, for a lower third (Session 44): a hall screen, or the stream (a key and fill pair feeds it). */
+  place?: 'hall' | 'stream';
 }) {
   const { layers } = state;
   const shown = (layer: LookLayer) => look.layers.includes(layer);
@@ -429,6 +433,13 @@ export const Scene = memo(function Scene({
                   />
                 )}
                 {shown('props') && <PropsLayer props={layers.props} canvas={canvas} scaling={scaling} />}
+                <LowerThirdView
+                  layer={layers.lowerThird}
+                  off={state.lowerThirdOff}
+                  canvas={canvas}
+                  place={matte === null ? place : 'stream'}
+                  lift={bandHeight}
+                />
                 {shown('messages') && layers.messages.length > 0 && (
                   <MessageBanner
                     messages={layers.messages}

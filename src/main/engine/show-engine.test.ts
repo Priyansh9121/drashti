@@ -6,6 +6,8 @@ import type { EnginePatchMessage } from '../../shared/engine/protocol';
 import type { MediaBackground } from '../../shared/engine/state';
 import { ENGINE_STATE_VERSION, LAYER_NAMES } from '../../shared/engine/state';
 import type { SlideCue } from '../../shared/library';
+import type { LowerThird } from '../../shared/lower-thirds';
+import { DEFAULT_LOWER_THIRD_LOOK } from '../../shared/lower-thirds';
 import { MemoryPlaylistSource } from './playlist-source';
 import { ShowEngine } from './show-engine';
 import { makeSource, RecordingTransport, textSlide } from './testing';
@@ -17,6 +19,15 @@ function setup() {
   const engine = new ShowEngine(source, transport, () => ++clock);
   return { source, transport, engine };
 }
+
+/** A placeholder lower third, as the library keeps one (Session 44). */
+const PLACEHOLDER_LOWER_THIRD: LowerThird = {
+  id: 'lt',
+  lines: ['Placeholder name', 'Placeholder title'],
+  look: DEFAULT_LOWER_THIRD_LOOK,
+  where: 'both',
+  animation: 'fade-steady',
+};
 
 const goLive = (presentationId: string, slideIndex: number): EngineCommand => ({
   type: 'goLive',
@@ -227,6 +238,7 @@ describe('ShowEngine', () => {
         },
       ];
       for (const c of commands) s.engine.dispatch(c);
+      s.engine.dispatch({ type: 'showLowerThird', lowerThird: PLACEHOLDER_LOWER_THIRD });
       s.engine.showTicker({ id: 'a1', text: 'Placeholder announcement' });
       return s;
     }
@@ -242,14 +254,19 @@ describe('ShowEngine', () => {
         if (other !== layer) expect(engine.current.layers[other]).toBe(before.layers[other]);
       const patch = transport.last as EnginePatchMessage;
       const emptied = { path: ['layers', layer], value: Array.isArray(value) ? [] : null };
-      if (layer !== 'slide') expect(patch.ops).toEqual([emptied]);
-      else {
+      if (layer === 'slide') {
         // The slide taken off on its own, and when (Session 27): a lower third leaves with a fade from then.
         const off = engine.current.slideOff;
         expect(off?.layer).toBe(before.layers.slide);
         expect(typeof off?.at).toBe('number');
         expect(patch.ops).toEqual([emptied, { path: ['slideOff'], value: off }]);
-      }
+      } else if (layer === 'lowerThird') {
+        // A lower third taken off on its own (Session 44): its out plays from then.
+        const off = engine.current.lowerThirdOff;
+        expect(off?.layer).toBe(before.layers.lowerThird);
+        expect(typeof off?.at).toBe('number');
+        expect(patch.ops).toEqual([emptied, { path: ['lowerThirdOff'], value: off }]);
+      } else expect(patch.ops).toEqual([emptied]);
     });
 
     it.each(LAYER_NAMES)('clearLayer %s on an empty layer changes nothing', (layer) => {
@@ -261,6 +278,7 @@ describe('ShowEngine', () => {
     it('clearAll empties every layer, keeps the cursor, and sends one patch', () => {
       const { engine, transport } = populated();
       const count = transport.messages.length;
+      expect(engine.current.layers.lowerThird?.id).toBe(PLACEHOLDER_LOWER_THIRD.id);
       engine.dispatch({ type: 'clearAll' });
       expect(engine.current.layers).toEqual({
         audio: null,
@@ -269,6 +287,7 @@ describe('ShowEngine', () => {
         props: [],
         messages: [],
         ticker: null,
+        lowerThird: null,
         masks: null,
       });
       expect(engine.current.live.presentationId).toBe('p1');
@@ -1223,7 +1242,7 @@ describe('ShowEngine', () => {
       expect(engine.current.layers.ticker).toEqual(ticker);
     });
 
-    it('puts back the sound, props, messages, the stage message and timers, carrying on from their start', () => {
+    it('puts back the sound, props, messages, the stage message, timers and the lower third, carrying on from their start', () => {
       const transport = new RecordingTransport();
       const clock = 50_000;
       const engine = new ShowEngine(makeSource(), transport, () => clock);
@@ -1257,6 +1276,7 @@ describe('ShowEngine', () => {
           { id: 't1', startedAt: 40_000, elapsedMs: 5_000 },
           { id: 'gone', startedAt: 1, elapsedMs: 0 },
         ],
+        lowerThird: { ...PLACEHOLDER_LOWER_THIRD, shownAt: 41_000 },
       });
       expect(put).toEqual({
         look: null,
@@ -1271,9 +1291,11 @@ describe('ShowEngine', () => {
         masks: false,
         stageMessage: true,
         timers: 1,
+        lowerThird: true,
       });
-      // The sound and the timer keep their start times: they carry on, not start over.
+      // The sound, the timer and the lower third keep their start times: they carry on, not start over.
       expect(engine.current.layers.audio).toEqual(audio);
+      expect(engine.current.layers.lowerThird).toEqual({ ...PLACEHOLDER_LOWER_THIRD, shownAt: 41_000 });
       expect(engine.current.timers[0]).toMatchObject({ startedAt: 40_000, elapsedMs: 5_000 });
       expect(engine.current.layers.props.map((p) => p.id)).toEqual(['p']);
       expect(engine.current.layers.messages.map((m) => m.text)).toEqual(['Placeholder message']);

@@ -30,6 +30,8 @@ export interface RecoveryNotice {
   ticker?: number;
   /** A mask on the Masks layer. */
   masks?: boolean;
+  /** A lower third (Session 44). */
+  lowerThird?: boolean;
   stageMessage?: boolean;
   /** Timers, running or paused. */
   timers?: number;
@@ -66,6 +68,7 @@ export function recoveryText(notice: RecoveryNotice): string {
   count(notice.messages, 'a message', 'messages');
   if (notice.ticker && notice.ticker > 0) parts.push('the ticker');
   if (notice.masks) parts.push('the mask');
+  if (notice.lowerThird) parts.push('the lower third');
   if (notice.stageMessage) parts.push('the stage message');
   count(notice.timers, 'a timer', 'timers');
   if (notice.logo) parts.push('the logo');

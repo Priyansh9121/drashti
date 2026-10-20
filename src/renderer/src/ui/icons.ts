@@ -16,6 +16,8 @@ export { Megaphone, Printer, QrCode, Smartphone, TabletSmartphone } from 'lucide
 export { Inbox, ScrollText, Send } from 'lucide-react';
 // Looks (what each screen group shows), stage layouts, masks, key and fill, and MIDI.
 export { Blend, Frame, KeyboardMusic, LayoutTemplate, SwatchBook } from 'lucide-react';
+// Lower Thirds (Session 44).
+export { Captions } from 'lucide-react';
 // Shastra texts, the arti, the calendar and the idle rotation (Session 12).
 export { BookOpen, CalendarDays, Flame, GalleryHorizontalEnd, Quote } from 'lucide-react';
 // Leaving the first start's practice show (Session 26g).

@@ -2,11 +2,12 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { EngineState } from '../../shared/engine/state';
+import type { EngineState, LowerThirdLayer } from '../../shared/engine/state';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
 import { textSlide } from '../engine/testing';
 import type { RecoveryFiles } from './live-state';
 import { startingMode } from '../../shared/mode';
+import { DEFAULT_LOWER_THIRD_LOOK } from '../../shared/lower-thirds';
 import { RECOVERY_MAX_AGE_MS } from '../../shared/recovery';
 import { LiveStateWriter, savedFrom, startupRecovery, toRestore } from './live-state';
 
@@ -80,6 +81,7 @@ describe('restart recovery', () => {
       repeat: null,
       lookId: null,
       masks: null,
+      lowerThird: null,
     });
     expect(savedFrom(live({ slideIndex: null }), 'run-1').slide).toBeNull();
   });
@@ -133,9 +135,17 @@ describe('restart recovery', () => {
     expect(toRestore(files)).toMatchObject({ slide: null, playlist, background: null });
   });
 
-  it('keeps the sound, props, messages, the stage message and timers that ran', async () => {
+  it('keeps the sound, props, messages, the stage message, timers that ran and the lower third', async () => {
     const state = live({ slideIndex: null, withBackground: false });
     const audio = { id: 'a', title: 'Placeholder', mediaId: 'tune', volume: 1, loop: false, startedAt: 99 };
+    const lowerThird: LowerThirdLayer = {
+      id: 'lt',
+      lines: ['Placeholder name', 'Placeholder title'],
+      look: DEFAULT_LOWER_THIRD_LOOK,
+      where: 'hall',
+      animation: 'fade-steady',
+      shownAt: 77,
+    };
     const show: EngineState = {
       ...state,
       layers: {
@@ -143,6 +153,7 @@ describe('restart recovery', () => {
         audio,
         props: [{ id: 'p', name: 'Placeholder logo', elements: [] }],
         messages: [{ id: 'm', text: 'Placeholder message', parts: [{ kind: 'timer', timerId: 't1' }] }],
+        lowerThird,
       },
       stageMessage: 'Placeholder stage',
       timers: [
@@ -178,6 +189,8 @@ describe('restart recovery', () => {
       stageMessage: 'Placeholder stage',
       // Only timers that ran: t2 was never started.
       timers: [{ id: 't1', startedAt: 5, elapsedMs: 0 }],
+      // The lower third, from when it went up (Session 44).
+      lowerThird,
     });
   });
 

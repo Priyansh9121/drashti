@@ -13,6 +13,7 @@ import {
   initialEngineState,
   type Layers,
   type LiveCursor,
+  type LowerThirdLayer,
   type MaskLayer,
   type MessageItem,
   type MusicRun,
@@ -147,6 +148,8 @@ export interface RestoreRequest {
   ticker?: TickerLayer | null;
   /** The mask up on the Masks layer. */
   masks?: MaskLayer | null;
+  /** The lower third up (Session 44): it comes back still, as it was. */
+  lowerThird?: LowerThirdLayer | null;
   stageMessage?: string | null;
   /** Timer runs: a running timer carries on from its start time, a paused one keeps its count. */
   timers?: readonly { id: string; startedAt: number | null; elapsedMs: number }[];
@@ -171,6 +174,7 @@ export interface Restored {
   messages: number;
   ticker: number;
   masks: boolean;
+  lowerThird: boolean;
   stageMessage: boolean;
   timers: number;
 }
@@ -328,6 +332,7 @@ export class ShowEngine {
     for (const message of request.messages ?? []) actions.push({ type: 'message/show', message });
     if (request.ticker) actions.push({ type: 'ticker/set', ticker: request.ticker });
     if (request.masks) actions.push({ type: 'mask/set', mask: request.masks });
+    if (request.lowerThird) actions.push({ type: 'lowerThird/show', layer: request.lowerThird });
     if (request.stageMessage) actions.push({ type: 'stage/message', text: request.stageMessage });
     // Timers that still exist: running ones count on from their start, paused ones keep their count.
     let timers = 0;
@@ -370,6 +375,7 @@ export class ShowEngine {
       messages: request.messages?.length ?? 0,
       ticker: request.ticker?.items.length ?? 0,
       masks: Boolean(request.masks),
+      lowerThird: Boolean(request.lowerThird),
       stageMessage: Boolean(request.stageMessage),
       timers,
     };
@@ -1209,6 +1215,15 @@ export class ShowEngine {
         return { ok: true, actions: [{ type: 'message/hide', messageId: command.messageId }] };
       case 'setMask':
         return { ok: true, actions: [{ type: 'mask/set', mask: command.mask }] };
+      case 'showLowerThird':
+        return {
+          ok: true,
+          actions: [{ type: 'lowerThird/show', layer: { ...command.lowerThird, shownAt: this.now() } }],
+        };
+      case 'hideLowerThird':
+        return this.state.layers.lowerThird
+          ? { ok: true, actions: [{ type: 'lowerThird/hide', at: this.now() }] }
+          : NO_CHANGE;
       case 'startTimer':
         return this.runTimer(command.timerId, 'start');
       case 'pauseTimer':
