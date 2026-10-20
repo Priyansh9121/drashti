@@ -125,6 +125,8 @@ function runPerformanceTest(
 
 test('slide changes keep reaching the screen within a frame during a big import', async () => {
   test.setTimeout(STOP_AFTER_MS + 60_000);
+  const appearance = process.env['DRASHTI_TEST_APPEARANCE'] ?? '';
+  console.log(`The operator window's appearance: ${appearance === '' ? 'the computer’s own' : appearance}`);
   const { code, result, log } = await runPerformanceTest();
   expect(result, log.slice(-3000)).not.toBeNull();
   // The cold start on its own line, for the record, then the measured part's figures.
