@@ -60,11 +60,6 @@ export const GUIDE_ANSWERS: readonly GuideAnswer[] = [
     words: '**Announcements from phones.**',
   },
   {
-    question: 'When the strip counts down to the arti, what do I do?',
-    doc: 'operator',
-    words: '**The arti.**',
-  },
-  {
     question: 'When the music must stop during the sabha, what do I do?',
     doc: 'operator',
     words: '**Music during the sabha.**',

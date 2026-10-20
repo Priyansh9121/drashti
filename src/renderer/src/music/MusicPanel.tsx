@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { formatDuration } from '../../../shared/format';
 import type { MusicPlaylist } from '../../../shared/music';
 import { useEngine } from '../engine/engine-store';
@@ -7,11 +8,17 @@ import { useNow } from '../render/useNow';
 import { engineNow } from '../render/clock';
 import { Button, IconButton } from '../ui/Button';
 import { ConfirmDialog, Dialog } from '../ui/Dialog';
-import { Select, TextInput } from '../ui/Field';
+import { TextInput } from '../ui/Field';
+import { cx } from '../ui/cx';
+import { rowClass } from '../ui/ListRow';
+import { MenuButton } from '../ui/Menu';
+import { plural } from '../ui/text';
 import {
   ArrowDown,
   ArrowUp,
+  Import,
   ListMusic,
+  ListPlus,
   Pause,
   Pencil,
   Play,
@@ -25,7 +32,8 @@ import {
 import { Panel } from '../ui/Panel';
 import { Checkbox } from '../ui/Toggle';
 import { Truncate } from '../ui/Truncate';
-import { connectMusic, deleteMusic, musicAction, takeOutTrack, useMusic } from './music-store';
+import { connectMusic, deleteMusic, musicAction, shownMusic, takeOutTrack, useMusic } from './music-store';
+import { createAudioPlaylist, dropSounds, importSounds, takesSounds } from './audio-actions';
 
 /*
  * Audio playlists (Session 14) in the live column: music on the audio layer,
@@ -62,18 +70,12 @@ export function MusicPanel({ nested = false }: { nested?: boolean } = {}) {
   const view = useMusic((s) => s.view);
   const shownId = useMusic((s) => s.shownId);
   const playing = useMusicPlaying();
-  const [renaming, setRenaming] = useState(false);
   const [removing, setRemoving] = useState(false);
   useEffect(() => {
     connectMusic();
   }, []);
   const lists = view?.playlists ?? [];
-  const shown =
-    lists.find((p) => p.id === shownId) ??
-    lists.find((p) => p.id === playing?.music?.playlistId) ??
-    lists.find((p) => p.id === view?.lastId) ??
-    lists[0] ??
-    null;
+  const shown = shownMusic(view, shownId, playing?.music?.playlistId ?? null);
   const isShownPlaying = playing?.music?.playlistId === shown?.id;
   const paused = playing?.pausedAtMs !== undefined;
   return (
@@ -86,17 +88,6 @@ export function MusicPanel({ nested = false }: { nested?: boolean } = {}) {
       remember="music"
       bodyClassName="space-y-2 px-3 pb-3"
       data-testid="music-panel"
-      actions={
-        <Button
-          variant="ghost"
-          size="sm"
-          icon={Plus}
-          data-testid="music-new"
-          onClick={() => void musicAction(() => window.drashti.music.create('Music before sabha'))}
-        >
-          New
-        </Button>
-      }
     >
       {playing && (
         <p className="flex items-center gap-1.5 text-xs" role="status" data-testid="music-now">
@@ -106,54 +97,20 @@ export function MusicPanel({ nested = false }: { nested?: boolean } = {}) {
         </p>
       )}
       {!shown ? (
-        <p className="text-xs text-muted">
-          No music yet. <strong>New</strong> makes a list of sounds from the library to play one after another
-          (before the sabha, say), apart from the slides.
-        </p>
+        <AudioDrop playlistId={null} className="rounded-md border border-dashed border-line-strong px-3 py-3">
+          <p className="text-xs text-muted" data-testid="music-empty">
+            No audio playlists yet. <strong>+</strong> above makes one (<strong>Create playlist</strong>) or
+            brings sounds in (<strong>Import</strong>); sounds dropped here start one.
+          </p>
+        </AudioDrop>
       ) : (
         <>
-          <div className="flex items-center gap-1.5">
-            {renaming ? (
-              <TextInput
-                autoFocus
-                aria-label="Name of the music"
-                defaultValue={shown.name}
-                className="min-w-0 flex-1"
-                onBlur={(e) => {
-                  setRenaming(false);
-                  void musicAction(() => window.drashti.music.rename(shown.id, e.target.value));
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') e.currentTarget.blur();
-                  if (e.key === 'Escape') setRenaming(false);
-                }}
-              />
-            ) : (
-              <Select
-                aria-label="Which music"
-                className="min-w-0 flex-1"
-                data-testid="music-choose"
-                value={shown.id}
-                onChange={(e) => {
-                  useMusic.setState({ shownId: e.target.value });
-                }}
-              >
-                {lists.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
-            )}
-            <IconButton icon={Pencil} label="Rename" size="sm" onClick={() => setRenaming(true)} />
-            <IconButton
-              icon={Trash2}
-              label={`Delete music “${shown.name}”`}
-              size="sm"
-              data-testid="music-delete"
-              onClick={() => setRemoving(true)}
-            />
-          </div>
+          <AudioPlaylists
+            lists={lists}
+            shown={shown}
+            playingId={playing?.music?.playlistId ?? null}
+            onDelete={() => setRemoving(true)}
+          />
           <div className="flex items-center gap-1.5" role="group" aria-label="Play the music">
             <IconButton
               icon={SkipBack}
@@ -195,7 +152,9 @@ export function MusicPanel({ nested = false }: { nested?: boolean } = {}) {
             <OptionToggle playlist={shown} option="loop" />
             <OptionToggle playlist={shown} option="shuffle" />
           </div>
-          <Tracks playlist={shown} playingIndex={isShownPlaying ? (playing?.music?.index ?? null) : null} />
+          <AudioDrop playlistId={shown.id}>
+            <Tracks playlist={shown} playingIndex={isShownPlaying ? (playing?.music?.index ?? null) : null} />
+          </AudioDrop>
           <Button
             size="sm"
             icon={Plus}
@@ -224,6 +183,169 @@ export function MusicPanel({ nested = false }: { nested?: boolean } = {}) {
         </ConfirmDialog>
       )}
     </Panel>
+  );
+}
+
+/** Audio's + (Session 44): exactly two choices, a new audio playlist or sounds from the computer. */
+export function AudioAddMenu() {
+  return (
+    <MenuButton
+      label="Add to Audio"
+      title="Create playlist or import"
+      icon={Plus}
+      testId="audio-add"
+      entries={[
+        { label: 'Create playlist', icon: ListPlus, onSelect: () => void createAudioPlaylist() },
+        {
+          label: 'Import',
+          icon: Import,
+          onSelect: () => {
+            const { view, shownId } = useMusic.getState();
+            void importSounds(shownMusic(view, shownId, null)?.id ?? null);
+          },
+        },
+      ]}
+    />
+  );
+}
+
+/** Takes sounds dropped on it (files, or sounds from the library's sheet) into `playlistId` (a new one when null). */
+function AudioDrop({
+  playlistId,
+  className,
+  children,
+}: {
+  playlistId: string | null;
+  className?: string;
+  children: ReactNode;
+}) {
+  const [over, setOver] = useState(false);
+  return (
+    <div
+      data-testid="audio-drop"
+      data-playlist-id={playlistId ?? undefined}
+      className={cx('rounded-md', over && 'outline-2 outline-accent', className)}
+      onDragOver={(e) => {
+        if (!takesSounds(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'copy';
+        setOver(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false);
+      }}
+      onDrop={(e) => {
+        setOver(false);
+        dropSounds(e, playlistId);
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * The audio playlists, one a row (Session 44): the chosen one's sounds are below, with Rename and Delete at the
+ * end of its row; each row takes sounds dropped on it.
+ */
+function AudioPlaylists({
+  lists,
+  shown,
+  playingId,
+  onDelete,
+}: {
+  lists: readonly MusicPlaylist[];
+  shown: MusicPlaylist;
+  playingId: string | null;
+  onDelete: () => void;
+}) {
+  const renamingId = useMusic((s) => s.renamingId);
+  return (
+    <ul
+      className="max-h-40 space-y-0.5 overflow-y-auto"
+      aria-label="Audio playlists"
+      data-testid="music-playlists"
+    >
+      {lists.map((p) => {
+        const chosen = p.id === shown.id;
+        if (renamingId === p.id)
+          return (
+            <li key={p.id} className="py-0.5">
+              <TextInput
+                autoFocus
+                aria-label="Name of the audio playlist"
+                defaultValue={p.name}
+                className="w-full"
+                onFocus={(e) => {
+                  e.currentTarget.select();
+                }}
+                onBlur={(e) => {
+                  useMusic.setState({ renamingId: null });
+                  const name = e.target.value.trim();
+                  if (name !== '' && name !== p.name)
+                    void musicAction(() => window.drashti.music.rename(p.id, name));
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.currentTarget.blur();
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.currentTarget.value = p.name;
+                    e.currentTarget.blur();
+                  }
+                }}
+              />
+            </li>
+          );
+        return (
+          <li key={p.id} className="group relative">
+            <AudioDrop playlistId={p.id}>
+              <button
+                type="button"
+                data-testid="music-playlist"
+                data-id={p.id}
+                aria-current={chosen ? 'true' : undefined}
+                className={cx(
+                  rowClass({ selected: chosen }),
+                  'flex min-h-9 items-center gap-2 py-1 pl-2.5',
+                  chosen ? 'pr-17' : 'pr-2.5',
+                )}
+                onClick={() => {
+                  useMusic.setState({ shownId: p.id });
+                }}
+              >
+                {playingId === p.id ? (
+                  <Play size={13} aria-hidden="true" className="shrink-0 text-live" />
+                ) : (
+                  <ListMusic size={13} aria-hidden="true" className="shrink-0 text-muted" />
+                )}
+                <Truncate text={p.name} className="min-w-0 flex-1 text-sm" />
+                <span className="shrink-0 text-xs text-muted">{plural(p.tracks.length, 'sound')}</span>
+              </button>
+            </AudioDrop>
+            {chosen && (
+              <span className="absolute top-1 right-1 flex">
+                <IconButton
+                  icon={Pencil}
+                  label={`Rename “${p.name}”`}
+                  size="sm"
+                  onClick={() => {
+                    useMusic.setState({ renamingId: p.id });
+                  }}
+                />
+                <IconButton
+                  icon={Trash2}
+                  label={`Delete music “${p.name}”`}
+                  size="sm"
+                  data-testid="music-delete"
+                  onClick={onDelete}
+                />
+              </span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -260,7 +382,11 @@ function OptionToggle({ playlist, option }: { playlist: MusicPlaylist; option: '
 function Tracks({ playlist, playingIndex }: { playlist: MusicPlaylist; playingIndex: number | null }) {
   const playing = useMusicPlaying();
   if (playlist.tracks.length === 0)
-    return <p className="text-xs text-muted">No sounds in it yet: Add sounds… below.</p>;
+    return (
+      <p className="px-1 py-2 text-xs text-muted">
+        No sounds in it yet: drop sounds here, or Add sounds… below.
+      </p>
+    );
   return (
     <ol
       className="max-h-56 space-y-1 overflow-y-auto"

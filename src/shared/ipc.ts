@@ -1,5 +1,4 @@
 import type { AppearanceNow, AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
-import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
 import type { RolesResult, RolesView } from './roles';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
@@ -562,18 +561,6 @@ export const IPC = {
     setTheme: 'shastra:set-theme',
     remove: 'shastra:remove',
   },
-  /** The arti at its time (Session 12): schedules (Pro Mode), and answering the prompt (either mode). */
-  arti: {
-    view: 'arti:view',
-    save: 'arti:save',
-    setEnabled: 'arti:set-enabled',
-    remove: 'arti:remove',
-    putUp: 'arti:put-up',
-    notNow: 'arti:not-now',
-    cancel: 'arti:cancel',
-    /** main -> operator: the schedules or the prompt changed. */
-    changed: 'arti:changed',
-  },
   /** The idle rotation (Session 12): its pictures, timing and quotes (Pro Mode); starting it is an engine command. */
   idle: {
     view: 'idle:view',
@@ -973,7 +960,7 @@ export interface InvokeContract {
   [IPC.library.cancelImport]: { args: [runId: string]; result: boolean };
   [IPC.library.listImportRuns]: { args: []; result: ImportRunSummary[] };
   [IPC.library.getImportReport]: { args: [runId: string]; result: ImportReport | null };
-  [IPC.library.pickImportPaths]: { args: [kind: 'files' | 'folder']; result: string[] };
+  [IPC.library.pickImportPaths]: { args: [kind: 'files' | 'folder' | 'sounds']; result: string[] };
   [IPC.library.relinkMedia]: { args: [mediaIds?: string[]]; result: ImportResult };
   [IPC.library.setArrangement]: {
     args: [presentationId: string, arrangementId: string | null];
@@ -1083,13 +1070,6 @@ export interface InvokeContract {
   [IPC.idle.removeQuote]: { args: [quoteId: string]; result: IdleResult };
   [IPC.calendar.view]: { args: []; result: CalendarView };
   [IPC.calendar.remove]: { args: [calendarId: string]; result: CalendarResult };
-  [IPC.arti.view]: { args: []; result: ArtiView };
-  [IPC.arti.save]: { args: [scheduleId: string | null, fields: ArtiFields]; result: ArtiResult };
-  [IPC.arti.setEnabled]: { args: [scheduleId: string, enabled: boolean]; result: ArtiResult };
-  [IPC.arti.remove]: { args: [scheduleId: string]; result: ArtiResult };
-  [IPC.arti.putUp]: { args: [key: string]; result: ArtiAnswer };
-  [IPC.arti.notNow]: { args: [key: string]; result: ArtiAnswer };
-  [IPC.arti.cancel]: { args: [key: string]; result: ArtiAnswer };
   [IPC.masks.list]: { args: []; result: Mask[] };
   [IPC.masks.save]: { args: [maskId: string | null, mask: Omit<Mask, 'id'>]; result: MaskResult };
   [IPC.masks.remove]: { args: [maskId: string]; result: MaskResult };
@@ -1237,7 +1217,6 @@ export interface EventContract {
   [IPC.masks.changed]: Mask[];
   [IPC.macros.changed]: Macro[];
   [IPC.macros.countdownChanged]: MacroCountdownView;
-  [IPC.arti.changed]: ArtiView;
   [IPC.calendar.changed]: CalendarView;
   [IPC.idle.changed]: IdleView;
   [IPC.output.context]: OutputContext;

@@ -11,7 +11,7 @@ import { IPC } from './ipc';
  *   approves announcements, goes live and records.
  * - An admin also sets Drashti up: imports and removes from the library;
  *   themes, Shastra texts, calendars, the idle rotation and every schedule
- *   (arti, backups, macros' times); macros themselves and MIDI; screens,
+ *   (backups, macros' times); macros themselves and MIDI; screens,
  *   Looks, stage layouts, masks and the sound output; the stream's settings
  *   and keys; phones and nodes; backups, restores and updates; the PINs.
  *
@@ -135,9 +135,6 @@ export const ADMIN_CHANNELS: readonly InvokeChannel[] = [
   IPC.drop.pickFolder,
   IPC.drop.setOn,
   IPC.drop.importAnyway,
-  IPC.arti.save,
-  IPC.arti.setEnabled,
-  IPC.arti.remove,
   // Macros and MIDI (running a macro is the operator's).
   IPC.macros.save,
   IPC.macros.remove,

@@ -55,7 +55,6 @@ The old presentation program stays installed and untouched all day. Drashti only
 - [ ] **The logo**: in **Props**, the stamp button beside the mandir's logo prop.
 - [ ] **(operators)** Props, message templates and timers they use, from the checklist's "Features used".
 - [ ] **(operators)** **Macros** for what they do together at one press (the arti, say), and any MIDI pads (**MIDI**, **Learn**).
-- [ ] **The arti's times**, with the presentation that is the arti (admin guide, section 10).
 - [ ] **The idle rotation**: pictures and quotes from authorised sources, and which screens show it.
 - [ ] **Music** lists for before the sabha, and **markers** on any video or sound that needs a start or end point.
 - [ ] **(operators)** **Markers brought over from the old program**: open three or four videos or sounds that had start or end points (or markers) there, and check in their **Markers** that Drashti's are at the same times. They follow community notes on the file formats, never yet checked against the mandir's own files: write down any that are off.

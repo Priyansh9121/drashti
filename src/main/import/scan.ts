@@ -11,8 +11,21 @@ for (const ext of ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tif', 'tiff', 'heic', 'h
   MEDIA[ext] = 'image';
 for (const ext of ['mp4', 'm4v', 'mov', 'qt', 'avi', 'wmv', 'mkv', 'mpg', 'mpeg', 'webm', 'mts', 'm2ts'])
   MEDIA[ext] = 'video';
-for (const ext of ['mp3', 'wav', 'aif', 'aiff', 'm4a', 'aac', 'flac', 'ogg', 'oga', 'opus', 'wma'])
-  MEDIA[ext] = 'audio';
+/** Sounds Drashti imports (the Audio panel's Import offers just these, Session 44). */
+export const SOUND_EXTENSIONS = [
+  'mp3',
+  'wav',
+  'aif',
+  'aiff',
+  'm4a',
+  'aac',
+  'flac',
+  'ogg',
+  'oga',
+  'opus',
+  'wma',
+];
+for (const ext of SOUND_EXTENSIONS) MEDIA[ext] = 'audio';
 
 const PP6 = new Set(['pro6', 'pro6x', 'pro6pl', 'pro6plx', 'pro6template']);
 const PP7 = new Set(['pro', 'probundle', 'proplaylist']);

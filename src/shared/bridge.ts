@@ -1,5 +1,4 @@
 import type { AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
-import type { ArtiAnswer, ArtiFields, ArtiResult, ArtiView } from './arti';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { GuideId, GuideRead } from './guides';
 import type { IdleResult, IdleSettings, IdleView, QuoteFields, QuoteResult } from './idle';
@@ -328,7 +327,7 @@ export interface DrashtiBridge {
     listImportRuns(): Promise<ImportRunSummary[]>;
     getImportReport(runId: string): Promise<ImportReport | null>;
     /** Ask for files or a folder to import (a system dialog); [] when cancelled. */
-    pickImportPaths(kind: 'files' | 'folder'): Promise<string[]>;
+    pickImportPaths(kind: 'files' | 'folder' | 'sounds'): Promise<string[]>;
     /** Ask for a folder and look there for missing media (all, or just these). */
     relinkMedia(mediaIds?: string[]): Promise<ImportResult>;
     /** Choose the order a presentation plays in: an arrangement, or null for every slide (operator window only). */
@@ -706,23 +705,6 @@ export interface DrashtiBridge {
     view(): Promise<CalendarView>;
     onChanged(listener: (view: CalendarView) => void): () => void;
     remove(calendarId: string): Promise<CalendarResult>;
-  };
-  /**
-   * The arti at its time: schedules (changing them: operator window, Pro Mode) and the prompt, which
-   * either mode answers.
-   */
-  arti: {
-    view(): Promise<ArtiView>;
-    onChanged(listener: (view: ArtiView) => void): () => void;
-    /** Make one (no id) or save one. */
-    save(scheduleId: string | null, fields: ArtiFields): Promise<ArtiResult>;
-    setEnabled(scheduleId: string, enabled: boolean): Promise<ArtiResult>;
-    remove(scheduleId: string): Promise<ArtiResult>;
-    /** The prompt's answers, for the prompt with this key. */
-    putUp(key: string): Promise<ArtiAnswer>;
-    notNow(key: string): Promise<ArtiAnswer>;
-    /** Stop it going up by itself; the prompt stays. */
-    cancel(key: string): Promise<ArtiAnswer>;
   };
   /** Stage layouts made in Drashti: boxes on the stage canvas (changing them: operator window, Pro Mode). */
   stageLayouts: {

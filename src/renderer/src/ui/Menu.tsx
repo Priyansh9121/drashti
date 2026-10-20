@@ -229,6 +229,7 @@ export function MenuButton({
   size = 'sm',
   className = '',
   title,
+  testId,
 }: {
   /** The menu's name, for screen readers. */
   label: string;
@@ -240,6 +241,7 @@ export function MenuButton({
   className?: string;
   /** The button's label when it is only an icon (and its tooltip). */
   title?: string;
+  testId?: string;
 }) {
   const [at, setAt] = useState<MenuPlace | null>(null);
   const toggle = (e: ReactMouseEvent<HTMLButtonElement>) => {
@@ -255,6 +257,7 @@ export function MenuButton({
     'aria-expanded': at !== null,
     onClick: toggle,
     className,
+    ...(testId === undefined ? {} : { 'data-testid': testId }),
   };
   return (
     <>

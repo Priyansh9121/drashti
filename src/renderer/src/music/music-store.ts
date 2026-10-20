@@ -1,15 +1,38 @@
 import { create } from 'zustand';
-import type { MusicResult, MusicView } from '../../../shared/music';
+import type { MusicPlaylist, MusicResult, MusicView } from '../../../shared/music';
 import { pushRemoval } from '../library/undo';
 import { useNotice } from '../operator/actions';
 
 /* Audio playlists in the operator window (Session 14): the library's lists, and which one the panel shows. */
 
-export const useMusic = create<{ view: MusicView | null; shownId: string | null; adding: boolean }>(() => ({
+export const useMusic = create<{
+  view: MusicView | null;
+  shownId: string | null;
+  adding: boolean;
+  /** The audio playlist whose name is being typed in its row (Session 44: a new one at once). */
+  renamingId: string | null;
+}>(() => ({
   view: null,
   shownId: null,
   adding: false,
+  renamingId: null,
 }));
+
+/** The audio playlist the panel shows: the one chosen, else the one playing, the one played last, or the first. */
+export function shownMusic(
+  view: MusicView | null,
+  shownId: string | null,
+  playingId: string | null,
+): MusicPlaylist | null {
+  const lists = view?.playlists ?? [];
+  return (
+    lists.find((p) => p.id === shownId) ??
+    lists.find((p) => p.id === playingId) ??
+    lists.find((p) => p.id === view?.lastId) ??
+    lists[0] ??
+    null
+  );
+}
 
 let connected = false;
 

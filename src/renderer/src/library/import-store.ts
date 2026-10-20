@@ -71,7 +71,7 @@ export function closeReport(): void {
   useImports.setState({ report: null });
 }
 
-async function settle(run: Promise<ImportResult>): Promise<ImportResult> {
+async function settle(run: Promise<ImportResult>, report = true): Promise<ImportResult> {
   useImports.setState({ error: null });
   const result = await run;
   if (!result.ok) {
@@ -79,15 +79,20 @@ async function settle(run: Promise<ImportResult>): Promise<ImportResult> {
     return result;
   }
   useImports.setState((s) => ({ finished: result.run, runs: withoutRun(s.runs, result.run.id) }));
-  // The report comes up by itself, unless the show is on: a dialog would take the keyboard.
-  if (!somethingLive()) await openReport(result.run.id);
+  // The report comes up by itself, unless the show is on (a dialog would take the keyboard) or the import was
+  // for Audio (Session 44: the result line still offers it).
+  if (report && !somethingLive()) await openReport(result.run.id);
   return result;
 }
 
-/** Import files and folders (dropped, or picked in a dialog). */
-export function importPaths(paths: string[], options?: ImportOptions): Promise<ImportResult | null> {
+/** Import files and folders (dropped, or picked in a dialog); `report: false` keeps its report from opening by itself. */
+export function importPaths(
+  paths: string[],
+  options?: ImportOptions,
+  { report = true }: { report?: boolean } = {},
+): Promise<ImportResult | null> {
   if (paths.length === 0) return Promise.resolve(null);
-  return settle(window.drashti.library.importPaths(paths, options));
+  return settle(window.drashti.library.importPaths(paths, options), report);
 }
 
 /** The Import button: a system dialog for files or a folder. */

@@ -63,13 +63,11 @@ import { MasksPanel } from './MasksPanel';
 import { MacrosPanel } from './MacrosPanel';
 import { MacroEditor } from '../macros/MacroEditor';
 import { MacroCountdown } from '../macros/MacroCountdown';
-import { MusicPanel } from '../music/MusicPanel';
+import { AudioAddMenu, MusicPanel } from '../music/MusicPanel';
 import { runMacro } from '../macros/macros-store';
 import { setMidiHandler, startMidi } from '../midi/midi-store';
 import { runBack } from './actions';
 import { LooksPanel } from './LooksPanel';
-import { ArtiPrompt } from '../arti/ArtiPrompt';
-import { ArtiDialog, ArtiPanel } from '../arti/ArtiPanel';
 import { CalendarDialog } from '../calendar/CalendarDialog';
 import { IdlePanel } from '../idle/IdlePanel';
 import { openCalendar } from '../calendar/calendar-store';
@@ -281,7 +279,6 @@ function ProApp({ info }: { info: AppInfo | null }) {
     // on a 1280 × 720 display leaves 640 × 360) the window scrolls rather than cutting the Live column off.
     <div className="flex h-full bg-ink min-h-[540px] min-w-[960px] flex-col">
       <Header platform={platform} onOpenScreens={openScreens} />
-      <ArtiPrompt />
       <MacroCountdown />
       {/* A hall screen that stopped (Session 26h): in the flow, so it never covers the show controls. */}
       <EngineUnread />
@@ -327,10 +324,10 @@ function ProApp({ info }: { info: AppInfo | null }) {
                   icon={Music}
                   remember="audio"
                   help="audio"
+                  actions={<AudioAddMenu />}
                   data-testid="audio-group"
                 >
                   <MusicPanel nested />
-                  <ArtiPanel nested />
                 </PanelGroup>
                 <StageMessageControl />
                 <MessagesPanel />
@@ -387,7 +384,6 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <StageLayoutEditor />
       <MaskEditor />
       <MacroEditor />
-      <ArtiDialog />
       <CalendarDialog />
       <RolesDialog />
       <BackupsDialog />

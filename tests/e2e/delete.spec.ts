@@ -162,7 +162,9 @@ test('each row has a visible delete (playlist, playlist item, presentation, medi
 
   // Music and a sound in it.
   const music = win.getByTestId('music-panel');
-  await music.getByTestId('music-new').click();
+  await win.getByTestId('audio-add').click();
+  await win.getByRole('menuitem', { name: 'Create playlist' }).click();
+  await win.getByRole('textbox', { name: 'Name of the audio playlist' }).press('Enter');
   await music.getByTestId('music-add').click();
   const add = win.getByTestId('music-add-dialog');
   await add.getByLabel('Placeholder tone.wav').check();
@@ -178,7 +180,7 @@ test('each row has a visible delete (playlist, playlist item, presentation, medi
   await music.getByTestId('music-delete').click();
   const musicConfirm = win.getByRole('alertdialog', { name: /Delete music/ });
   await musicConfirm.getByRole('button', { name: 'Delete' }).click();
-  await expect(music.getByTestId('music-choose')).toHaveCount(0);
+  await expect(music.getByTestId('music-playlist')).toHaveCount(0);
   await expect(undo).toContainText('Deleted music');
   await undoLast();
   await expect(tracks).toHaveCount(2);

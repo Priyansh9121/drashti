@@ -42,7 +42,6 @@ describe('the admin channels', () => {
       IPC.stream.goLive,
       IPC.stream.end,
       IPC.stream.startRecording,
-      IPC.arti.putUp,
       IPC.nodes.identify,
       IPC.roles.unlock,
     ])

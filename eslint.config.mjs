@@ -122,7 +122,6 @@ export default defineConfig(
         {
           allow: [
             // Ids and codes.
-            ['src/main/arti/arti-service.ts', 'toTimeString().slice(0, 5)', 'a time, as 13:05'],
             ['src/main/backup/scheduled-backups.ts', 'toTimeString().slice(0, 5)', 'a time, as 13:05'],
             ['src/main/macros/macro-scheduler.ts', 'toTimeString().slice(0, 5)', 'a time, as 13:05'],
             ['src/main/nodes/certificate.ts', '.slice(0, 14)', 'a certificate’s time, as 20261017093000'],

@@ -92,12 +92,6 @@ export const PANEL_HELP = {
     text: 'Sounds that play one after another, apart from the slides, such as before the sabha. Choose a list and press Play; a slide with its own sound stops it.',
     guide: '**Music before the sabha.**',
   },
-  arti: {
-    title: 'Arti',
-    doc: 'operator',
-    text: 'If the admin set the arti’s time, a strip counts down to it, and at the time the arti is what Next shows. Press Next at the right moment.',
-    guide: '**The arti.**',
-  },
   idle: {
     title: 'Idle rotation',
     doc: 'operator',
@@ -149,7 +143,7 @@ export const PANEL_HELP = {
   audio: {
     title: 'Audio',
     doc: 'operator',
-    text: 'Music to play before the sabha, and the arti at its time. Play starts a list of sounds; Clear audio along the bottom, or F6, stops whatever sound is playing.',
+    text: 'Audio playlists to play before the sabha: + makes one or imports sounds, and sounds dragged onto one go in. Play starts a list; Clear audio along the bottom, or F6, stops whatever sound is playing.',
     guide: '**Audio.** In the right column',
   },
   tools: {
