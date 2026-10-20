@@ -1,8 +1,12 @@
 import { useMemo, useState } from 'react';
 import type { MaskShape, MaskShapeKind } from '../../../shared/masks';
-import { MASK_SHAPE_KINDS, MASK_SHAPE_NAMES, maskImageUrl, newMaskShape } from '../../../shared/masks';
+import { MASK_SHAPE_KINDS, MASK_SHAPE_NAMES, maskCoverUrl, newMaskShape } from '../../../shared/masks';
 import { CANVAS_PRESETS } from '../../../shared/screens';
 import { BoxCanvas } from '../boxes/BoxCanvas';
+import { useEngine } from '../engine/engine-store';
+import { Scene } from '../render/Scene';
+import { SceneBoundary } from '../render/SceneBoundary';
+import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import { useScreens } from '../screens/screens-store';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
@@ -42,6 +46,67 @@ const PATTERN: React.CSSProperties = {
     'linear-gradient(135deg, rgb(255 255 255 / 0.18), rgb(0 0 0 / 0.18)), linear-gradient(rgb(255 255 255 / 0.35) 2px, transparent 2px), linear-gradient(90deg, rgb(255 255 255 / 0.35) 2px, transparent 2px)',
   backgroundSize: '100% 100%, 120px 120px, 120px 120px',
 };
+
+/**
+ * The hall's live picture under a mask being drawn (Session 44; Priyansh: "it should allow me to add live
+ * screen which is projector screen"): the first audience group's first screen, drawn by the same Scene the
+ * outputs use from the engine's state as it is now, its Look's masks left out (the one being drawn is over
+ * it), stretched over the mask's canvas as a mask is stretched over each screen. No hall screen yet: the test
+ * pattern, and the editor says so.
+ */
+function HallUnderMask({ width, height }: { width: number; height: number }) {
+  const state = useEngine((s) => s.state);
+  const hall = useScreens((s) =>
+    s.snapshot?.groups.find((g) => g.role === 'audience' && g.screens.some((sc) => sc.nodeId === null)),
+  );
+  const live = useEngine((s) => (hall ? s.state?.look.groups[hall.id] : undefined));
+  const rev = useEngine((s) => s.rev);
+  const screen = hall?.screens.find((sc) => sc.nodeId === null);
+  const look = useMemo(() => {
+    const l = live ?? DEFAULT_LIVE_GROUP_LOOK;
+    return { ...l, mask: null, layers: l.layers.filter((x) => x !== 'masks') };
+  }, [live]);
+  if (!state || !screen) return <div data-testid="mask-pattern" style={PATTERN} />;
+  const canvas = { width: screen.canvasWidth, height: screen.canvasHeight };
+  return (
+    <div
+      data-testid="mask-live"
+      data-screen={screen.id}
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        width: canvas.width,
+        height: canvas.height,
+        transformOrigin: '0 0',
+        transform: `scale(${String(width / canvas.width)}, ${String(height / canvas.height)})`,
+      }}
+    >
+      <SceneBoundary resetKey={rev} fallbackClassName="absolute inset-0 bg-black">
+        <Scene state={state} canvas={canvas} scaling={screen.scaling} look={look} />
+      </SceneBoundary>
+    </div>
+  );
+}
+
+/** What is under the shapes, in words: the hall's screen, live, or the test pattern standing in for it. */
+function UnderSays() {
+  const screen = useScreens((s) =>
+    s.snapshot?.groups
+      .find((g) => g.role === 'audience' && g.screens.some((sc) => sc.nodeId === null))
+      ?.screens.find((sc) => sc.nodeId === null),
+  );
+  return screen ? (
+    <p className="text-xs text-muted" data-testid="mask-under">
+      Under the shapes: what “{screen.name}” shows now, live. What the mask hides is darkened.
+    </p>
+  ) : (
+    <Notice tone="info" compact data-testid="mask-under">
+      No hall screen is set up yet, so a test pattern stands in for its picture. Set Up Screens… gives it one.
+    </Notice>
+  );
+}
 
 function ShapeSettings({ shape }: { shape: MaskShape }) {
   const set = (patch: Partial<MaskShape>) => {
@@ -127,7 +192,7 @@ export function MaskEditor() {
     null,
   );
   const e = s.editing;
-  const image = useMemo(() => (e ? maskImageUrl(e) : ''), [e]);
+  const cover = useMemo(() => (e ? maskCoverUrl(e) : ''), [e]);
   if (!s.open || !e) return null;
   const dirty = isDirty(s);
   const shape = e.shapes.find((x) => x.id === s.shapeId) ?? null;
@@ -248,9 +313,20 @@ export function MaskEditor() {
         minSize={1}
         picture={
           <div style={{ position: 'absolute', inset: 0, background: '#000000' }}>
+            {/* Under the shapes (Session 44): the hall's picture as its screen shows it now, live for as long
+                as the editor is open; a test pattern while no hall screen is set up. What the mask hides is
+                darkened, so it can be fitted to what is really there. */}
+            <HallUnderMask width={e.width} height={e.height} />
             <div
               data-testid="mask-preview"
-              style={{ ...PATTERN, maskImage: image, maskSize: '100% 100%', maskRepeat: 'no-repeat' }}
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'rgb(0 0 0 / 0.8)',
+                maskImage: cover,
+                maskSize: '100% 100%',
+                maskRepeat: 'no-repeat',
+              }}
             />
           </div>
         }
@@ -260,6 +336,7 @@ export function MaskEditor() {
 
       <aside aria-label="Mask and shape settings" className="w-72 shrink-0 space-y-4 overflow-y-auto pr-1">
         {s.problem && <Notice tone="danger">{s.problem}</Notice>}
+        <UnderSays />
         <Field label="Mask name">
           <TextInput
             value={e.name}
