@@ -54,6 +54,10 @@ const TABLE: Record<string, string> = {
   'ease-glide': 'cubic-bezier(0.2, 0, 0, 1)',
   'rise-arrive': '6px',
   'press-scale': '0.97',
+  // Lively (Session 42): the band sweeps in once as the appearance changes, a block every 40 ms, all of it within
+  // the motion skills' 500 ms (one entry under 800 ms, the stagger under 500 ms in all).
+  'dur-sweep': '320ms',
+  'stagger-sweep': '40ms',
 };
 
 /** The window's own code: every .ts and .tsx under src/renderer/src but the audience screens'. */

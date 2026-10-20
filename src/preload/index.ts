@@ -647,6 +647,9 @@ if (OWN_WINDOWS.includes(pageOf(here))) {
     if (looksOtherwise && next.motion === 'lively' && quiet && !reduced && doc.startViewTransition) {
       const fade = doc.startViewTransition(() => {
         draw(next);
+        // Session 42: the new band sweeps in once (app.css, data-band-sweep: a and b in turn, so it plays again).
+        const root = dom.document.documentElement;
+        if (root) root.dataset['bandSweep'] = root.dataset['bandSweep'] === 'a' ? 'b' : 'a';
       });
       fading = fade;
       void fade.finished.finally(() => {
