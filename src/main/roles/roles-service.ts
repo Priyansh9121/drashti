@@ -5,7 +5,6 @@ import { z } from 'zod';
 import type { Role, RolesResult, RolesView } from '../../shared/roles';
 import { parsePlain } from '../../shared/plain-parse';
 import {
-  ADMIN_UNLOCK_MS,
   PIN_FIRST_WAIT_MS,
   PIN_FREE_TRIES,
   PIN_LONGEST_WAIT_MS,
@@ -71,8 +70,6 @@ export interface RolesDeps {
   changed(view: RolesView): void;
   log(level: 'info' | 'warn', message: string): void;
   cost?: { N: number; r: number; p: number };
-  /** Run `run` after `ms` (setTimeout when left out): admin locks itself when its time is up. */
-  schedule?: (ms: number, run: () => void) => () => void;
   /** Tests: how long before a PIN file that failed is read once more (250 ms). */
   retryMs?: number;
 }
@@ -108,10 +105,8 @@ export class RolesService {
   private data: RolesFile | null = null;
   /** Held locked: the PIN file could not be read (now, or at an earlier start). */
   private holding = false;
-  /** Admin is unlocked until then (0: locked). */
-  private adminUntil = 0;
-  /** Locks admin again when its time is up. */
-  private cancelExpiry: (() => void) | null = null;
+  /** Admin is unlocked (Session 44: until Lock, Simple Mode or quitting). */
+  private adminOpen = false;
 
   constructor(private readonly deps: RolesDeps) {
     this.data = this.read();
@@ -178,7 +173,7 @@ export class RolesService {
 
   adminUnlocked(): boolean {
     if (this.holding) return false;
-    return this.data === null || this.deps.now() < this.adminUntil;
+    return this.data === null || this.adminOpen;
   }
 
   /** An admin request would be refused now. */
@@ -190,7 +185,7 @@ export class RolesService {
     const now = this.deps.now();
     return {
       on: this.on(),
-      adminUntil: this.data !== null && now < this.adminUntil ? this.adminUntil : null,
+      admin: this.data !== null && this.adminOpen,
       waitUntil: this.data?.waitUntil != null && now < this.data.waitUntil ? this.data.waitUntil : null,
       held: this.holding,
     };
@@ -201,46 +196,13 @@ export class RolesService {
   }
 
   private unlockAdmin(): void {
-    this.adminUntil = this.deps.now() + ADMIN_UNLOCK_MS;
-    this.armExpiry();
+    this.adminOpen = true;
   }
 
-  /** An admin request went through: admin stays unlocked for a while from now. */
-  touchAdmin(): void {
-    if (this.data === null || this.deps.now() >= this.adminUntil) return;
-    const before = this.adminUntil;
-    this.adminUntil = this.deps.now() + ADMIN_UNLOCK_MS;
-    this.armExpiry();
-    // Tell the window only when the end moved noticeably (its countdown starts again).
-    if (this.adminUntil - before > 1000) this.changed();
-  }
-
-  private armExpiry(): void {
-    this.cancelExpiry?.();
-    const schedule =
-      this.deps.schedule ??
-      ((ms: number, run: () => void) => {
-        const t = setTimeout(run, ms);
-        return () => {
-          clearTimeout(t);
-        };
-      });
-    this.cancelExpiry = schedule(Math.max(0, this.adminUntil - this.deps.now()) + 50, () => {
-      this.cancelExpiry = null;
-      if (this.deps.now() >= this.adminUntil && this.adminUntil !== 0) {
-        this.adminUntil = 0;
-        this.deps.log('info', 'Roles: admin locked again (its time was up)');
-        this.changed();
-      }
-    });
-  }
-
-  /** Lock admin now (Lock, Simple Mode). */
+  /** Lock admin now (Lock, Simple Mode); quitting locks it too, as it is never kept. */
   lock(): RolesView {
-    const was = this.adminUntil !== 0;
-    this.adminUntil = 0;
-    this.cancelExpiry?.();
-    this.cancelExpiry = null;
+    const was = this.adminOpen;
+    this.adminOpen = false;
     if (was && this.data !== null) {
       this.deps.log('info', 'Roles: admin locked');
       this.changed();
@@ -360,16 +322,14 @@ export class RolesService {
     if (this.holding) return { ok: false, message: ROLES_HELD, view: this.view() };
     rmSync(this.deps.file, { force: true });
     this.data = null;
-    this.adminUntil = 0;
-    this.cancelExpiry?.();
-    this.cancelExpiry = null;
+    this.adminOpen = false;
     this.deps.log('info', 'Roles: turned off (both PINs removed)');
     this.changed();
     return { ok: true, view: this.view() };
   }
 
+  /** Nothing waits to run any more (Session 44: admin has no time limit); kept for the app's stops. */
   dispose(): void {
-    this.cancelExpiry?.();
-    this.cancelExpiry = null;
+    this.adminOpen = false;
   }
 }

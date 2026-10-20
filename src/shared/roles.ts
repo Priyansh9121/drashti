@@ -19,7 +19,8 @@ import { IPC } from './ipc';
  * PIN); a computer that never does works as before. With roles on, leaving
  * Simple Mode takes either PIN (the admin PIN unlocks admin as well), and
  * an admin action in Pro Mode asks for the admin PIN, which then stays
- * unlocked for ADMIN_UNLOCK_MS after the last admin action. The main process
+ * unlocked until Lock, Simple Mode or quitting (Session 44: no time limit,
+ * for an admin or an operator). The main process
  * checks every admin channel itself (ipc/handle.ts), as it does for Simple
  * Mode. PINs are kept only as a slow hash, outside the library (roles.json
  * in the data folder), so a backup never holds them and a restore never
@@ -28,8 +29,6 @@ import { IPC } from './ipc';
 
 export type Role = 'admin' | 'operator';
 
-/** Admin stays unlocked this long after the last admin action. */
-export const ADMIN_UNLOCK_MS = 10 * 60_000;
 /** Wrong PINs in a row before waiting. */
 export const PIN_FREE_TRIES = 5;
 /** The first wait, doubling with each wrong PIN after it, up to the longest. */
@@ -51,8 +50,8 @@ export const pinChangeSchema = z.object({ role: z.enum(['admin', 'operator']), p
 export interface RolesView {
   /** Two PINs are set: roles are on. */
   on: boolean;
-  /** Admin is unlocked until then (ms since the epoch), or null. */
-  adminUntil: number | null;
+  /** Admin is unlocked (Session 44: until Lock, Simple Mode or quitting; there is no time limit). */
+  admin: boolean;
   /** Too many wrong PINs: none is checked until then (ms since the epoch), or null. */
   waitUntil: number | null;
   /**
@@ -62,7 +61,7 @@ export interface RolesView {
   held: boolean;
 }
 
-export const ROLES_OFF: RolesView = { on: false, adminUntil: null, waitUntil: null, held: false };
+export const ROLES_OFF: RolesView = { on: false, admin: false, waitUntil: null, held: false };
 
 /** Why nothing is unlocked while roles are held. */
 export const ROLES_HELD =
