@@ -92,8 +92,8 @@ function WelcomeDialog() {
           style={{ ['--i' as string]: 1 }}
           className="max-w-lg text-base"
         >
-          Let’s find your screens first. It takes about a minute, and nothing reaches the hall’s screens until
-          you press Finish.
+          Let’s find your screens first. It takes a click or two, and nothing reaches the hall’s screens until
+          you choose a display for them.
         </p>
         <div
           data-motion="words"

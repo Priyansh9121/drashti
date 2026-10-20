@@ -72,8 +72,9 @@ export function StartHere() {
           title="The screens"
           text="Which screen is the hall’s, and which the stage’s"
         >
-          {/* A display connected and no hall screen yet (Session 44): one click shows on it. */}
-          {offered && <ShowOnButton display={offered} size="sm" />}
+          {/* A display connected and no hall screen yet (Session 44): one click shows on it. A secondary: step
+              1's Import… is the one primary here (the offer under the header has its own). */}
+          {offered && <ShowOnButton display={offered} size="sm" variant="secondary" />}
           <Button size="sm" icon={Monitor} onClick={() => void openSetup(1)}>
             Set Up Screens…
           </Button>
