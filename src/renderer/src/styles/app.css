@@ -217,6 +217,12 @@
   --ease-glide: cubic-bezier(0.2, 0, 0, 1);
   --rise-arrive: 6px;
   --press-scale: 0.97;
+  /*
+   * Lively (Session 42): the band sweeps in once as the appearance changes, a block every --stagger-sweep, all
+   * of it in under 500 ms (the motion skills' tables); then it is still.
+   */
+  --dur-sweep: 320ms;
+  --stagger-sweep: 40ms;
 }
 
 /*
@@ -582,25 +588,57 @@ body.web {
   height: var(--band-height);
   margin-top: calc(-1 * min(1px, var(--band-height)));
 }
+[data-band] > * {
+  transform-origin: left center;
+}
 [data-band] > :nth-child(1) {
   flex: var(--band-1) 1 0px;
   background-color: var(--color-band-1);
+  --sweep-i: 0;
 }
 [data-band] > :nth-child(2) {
   flex: var(--band-2) 1 0px;
   background-color: var(--color-band-2);
+  --sweep-i: 1;
 }
 [data-band] > :nth-child(3) {
   flex: var(--band-3) 1 0px;
   background-color: var(--color-band-3);
+  --sweep-i: 2;
 }
 [data-band] > :nth-child(4) {
   flex: var(--band-4) 1 0px;
   background-color: var(--color-band-4);
+  --sweep-i: 3;
 }
 [data-band] > :nth-child(5) {
   flex: var(--band-5) 1 0px;
   background-color: var(--color-band-5);
+  --sweep-i: 4;
+}
+/*
+ * Lively only (Session 42): as the appearance changes, the band's blocks sweep in from the left one after another,
+ * once. The preload sets data-band-sweep, a and b in turn, so each change plays it again; never as the window
+ * opens, never in Calm, and Off and reduced motion stop it with every other animation. Only transform moves, and
+ * nothing stays: once played, the blocks are as they were.
+ */
+:root[data-interface-motion='lively'][data-band-sweep='a'] [data-band] > * {
+  animation: band-sweep-a var(--dur-sweep) var(--ease-glide) calc(var(--sweep-i) * var(--stagger-sweep))
+    backwards;
+}
+:root[data-interface-motion='lively'][data-band-sweep='b'] [data-band] > * {
+  animation: band-sweep-b var(--dur-sweep) var(--ease-glide) calc(var(--sweep-i) * var(--stagger-sweep))
+    backwards;
+}
+@keyframes band-sweep-a {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes band-sweep-b {
+  from {
+    transform: scaleX(0);
+  }
 }
 @media (forced-colors: active) {
   [data-band] {

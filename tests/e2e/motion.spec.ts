@@ -466,6 +466,69 @@ test('Lively: the tab’s underline and the chosen playlist glide, cards arrive 
   await app.close();
 });
 
+test('Lively: the band sweeps in once as the appearance changes, a block at a time; never in Calm, nor with reduced motion (Session 42)', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1280, height: 720 });
+  await operatorReady(win);
+  await interfaceMotion(win, 'lively');
+  // Not as the window opened: nothing has asked the band to sweep.
+  expect(await win.evaluate(() => document.documentElement.dataset['bandSweep'] ?? null)).toBeNull();
+  await letTimePass(win, 900, 'the show has not changed for a moment, as Lively waits for');
+  /** Each sweep of a band block that starts from now: its animation and its delay. */
+  const listen = () =>
+    win.evaluate(() => {
+      const w = globalThis as unknown as { sweeps?: string[] };
+      if (!w.sweeps)
+        document.addEventListener('animationstart', (e) => {
+          const block = e.target as Element;
+          if (block.parentElement?.hasAttribute('data-band'))
+            w.sweeps?.push(`${e.animationName} ${getComputedStyle(block).animationDelay}`);
+        });
+      w.sweeps = [];
+    });
+  const sweeps = () => win.evaluate(() => (globalThis as unknown as { sweeps?: string[] }).sweeps ?? []);
+  const bandMoving = () =>
+    win.evaluate(
+      () =>
+        document
+          .getAnimations()
+          .filter((a) =>
+            ((a.effect as KeyframeEffect | null)?.target?.parentElement ?? null)?.hasAttribute('data-band'),
+          ).length,
+    );
+  const each = (name: string) => ['0s', '0.04s', '0.08s', '0.12s', '0.16s'].map((d) => `${name} ${d}`);
+
+  await listen();
+  await chooseMenuItem(app, 'appearance-dhaja');
+  await expect.poll(sweeps).toEqual(each('band-sweep-a'));
+  // Once: then it is still, and nothing keeps moving.
+  await expect.poll(bandMoving).toBe(0);
+  // The next change plays it again.
+  await listen();
+  await chooseMenuItem(app, 'appearance-tiranga');
+  await expect.poll(sweeps).toEqual(each('band-sweep-b'));
+  await expect.poll(bandMoving).toBe(0);
+
+  // Calm: no sweep.
+  await interfaceMotion(win, 'calm');
+  await listen();
+  await chooseMenuItem(app, 'appearance-holi');
+  await expect(win.locator('html')).toHaveAttribute('data-appearance', 'holi');
+  await letTimePass(win, 600, 'long enough for a sweep to have started');
+  expect(await sweeps()).toEqual([]);
+  // Lively, with the computer set to reduce motion: none either.
+  await win.emulateMedia({ reducedMotion: 'reduce' });
+  await interfaceMotion(win, 'lively');
+  await listen();
+  await chooseMenuItem(app, 'appearance-diwali');
+  await expect(win.locator('html')).toHaveAttribute('data-appearance', 'diwali');
+  await letTimePass(win, 600, 'long enough for a sweep to have started');
+  expect(await sweeps()).toEqual([]);
+  await app.close();
+});
+
 test('Lively never moves a show control or the live picture, starts nothing as the slide changes, and the window opens settled (Session 40)', async () => {
   test.setTimeout(120_000);
   const { app, userData } = await launchApp();
