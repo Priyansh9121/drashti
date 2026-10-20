@@ -2,9 +2,16 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
-## Unreleased
+## 1.0.0-alpha.8 (20 Oct 2026)
 
-- The colourful appearances have more colour: a top bar in each one's colour with a band of its colours under it, and coloured headings and marks; five new ones, Dhaja (the mandir flag's red and white, with gold), Tiranga (India's saffron, white and green), Diwali, Holi and Aarti; Black and White are as before.
+More colour: every appearance but Black and White now has a top bar in its own colour with a band of its colours under it, and there are five new ones: Dhaja (the mandir flag's colours), Tiranga (India's), Diwali, Holi and Aarti. Update after a sabha, never on the day of one.
+
+- The colourful appearances have more colour: a top bar in each one's colour with a band of its colours under it, its own colours for headings and for the tab and row you have chosen, and panels in its own hue. LIVE, ON AIR and the network sit on a plain panel in the top bar, so they always look as they did.
+- Five new appearances in View › Appearance: Dhaja (the mandir flag's red and white, with gold) and Tiranga (India's saffron, white and green, with navy), right after White, then Diwali, Holi and Aarti at the end. Only their colours are used: never a flag's shape, a logo or the Ashoka Chakra.
+- Black and White look exactly as before, and the screens in the hall, the stream and the phones never change with any appearance.
+- Your own appearance gets a top bar and band from its colour too. Make a copy can also choose its second colour, for headings and what is chosen (Choose the second colour myself): Drashti says if it could be taken for LIVE, a warning, success or danger, and offers the nearest colour that works.
+- With Interface motion set to Lively, the band sweeps in once when you change the appearance. Calm and Off never move it.
+- The appearance this computer had before the update stays chosen, your own ones too.
 
 ## 1.0.0-alpha.7 (20 Oct 2026)
 
