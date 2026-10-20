@@ -96,10 +96,7 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.idle.saveSettings,
   IPC.idle.saveQuote,
   IPC.idle.removeQuote,
-  // Macros: Simple Mode runs none (MIDI mapped to its own actions still works), and changes none.
-  IPC.macros.save,
-  IPC.macros.remove,
-  IPC.macros.run,
+  // The MIDI controller: Simple Mode changes none of it (its pads still work Simple Mode's own actions).
   IPC.midi.set,
   IPC.stageLayouts.remove,
   IPC.screens.createGroup,

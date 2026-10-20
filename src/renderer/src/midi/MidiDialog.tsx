@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import type { MidiAction } from '../../../shared/midi';
 import { inputName, MIDI_ACTION_NAMES, sameInput } from '../../../shared/midi';
-import { connectMacros, useMacros } from '../macros/macros-store';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
@@ -11,31 +10,26 @@ import { SectionTitle } from '../ui/Panel';
 import { learn, openMidi, saveMidi, useMidi } from './midi-store';
 
 /*
- * The MIDI controller (Pro Mode): the device to listen to, and what its
- * notes and controllers do. Learn, then press a pad, key or button on the
- * controller: it now does that. Next, Back, Clear all, Black-out and Logo
- * also work in Simple Mode; macros do not.
+ * The MIDI controller (Pro Mode, from More tools): the device to listen to, and what its notes and controllers
+ * do. Learn, then press a pad, key or button on the controller: it now does that. Next, Back, Clear all,
+ * Black-out and Logo work in Simple Mode too. A pad mapped to a macro before Session 44 is kept in the settings
+ * and does nothing (macros are gone); it is not listed here.
  */
 
 const same = (a: MidiAction, b: MidiAction) => JSON.stringify(a) === JSON.stringify(b);
 
 export function MidiDialog({ onClose }: { onClose: () => void }) {
   const s = useMidi();
-  const macros = useMacros((x) => x.macros);
   useEffect(() => {
-    connectMacros();
     void openMidi();
     return () => {
       learn(null);
     };
   }, []);
   const target = (action: MidiAction, name: string) => ({ action, name });
-  const targets = [
-    ...(Object.keys(MIDI_ACTION_NAMES) as (keyof typeof MIDI_ACTION_NAMES)[]).map((kind) =>
-      target({ kind }, MIDI_ACTION_NAMES[kind]),
-    ),
-    ...(macros ?? []).map((m) => target({ kind: 'macro', macroId: m.id }, `Macro: ${m.name}`)),
-  ];
+  const targets = (Object.keys(MIDI_ACTION_NAMES) as (keyof typeof MIDI_ACTION_NAMES)[]).map((kind) =>
+    target({ kind }, MIDI_ACTION_NAMES[kind]),
+  );
   const deviceNames = [...new Set([...s.devices, ...(s.settings.deviceName ? [s.settings.deviceName] : [])])];
   return (
     <Dialog
@@ -127,8 +121,7 @@ export function MidiDialog({ onClose }: { onClose: () => void }) {
           })}
         </ul>
         <p className="text-xs text-muted">
-          Next, Back, Clear all, Black-out and Logo work in Simple Mode too. Macros do not: Simple Mode runs
-          none.
+          Next, Back, Clear all, Black-out and Logo work in Simple Mode too.
         </p>
       </section>
     </Dialog>

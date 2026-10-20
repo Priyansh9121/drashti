@@ -56,7 +56,7 @@ function library(over: { idle?: string[]; live?: string[] } = {}) {
 const itemIds = (playlists: PlaylistRepo, id: string) => playlists.itemsOf(id).map((i) => i.id);
 
 describe('deleting media from the library', () => {
-  it('says where it is used: slides, playlists, music, props, themes, macros, the idle rotation, and on the screens', () => {
+  it('says where it is used: slides, playlists, music, props, themes, the idle rotation, and on the screens', () => {
     const { removal } = library({ idle: ['pic'], live: ['pic'] });
     const usage = removal.usage(['pic']);
     // A removed presentation does not count.
@@ -65,7 +65,8 @@ describe('deleting media from the library', () => {
     expect(usage.music.count).toBe(0);
     expect(usage.props.names).toEqual(['Placeholder prop']);
     expect(usage.themes.names).toEqual(['Placeholder theme']);
-    expect(usage.macros.names).toEqual(['Placeholder macro']);
+    // A library's macros (Session 44: Macros are gone) are kept as they were, and no longer counted.
+    expect(usage).not.toHaveProperty('macros');
     expect(usage.idle).toBe(true);
     expect(usage.live).toBe(true);
     expect(removal.usage(['snd']).music).toEqual({ names: ['Before sabha'], count: 1 });

@@ -5,9 +5,10 @@ import { idSchema } from './model-schema';
  * MIDI (Session 11): a controller (a pad, a keyboard, a foot switch) plugged
  * into the computer, used in the operator window only (Web MIDI, which only
  * that page is allowed; never SysEx). The operator chooses the device, then
- * Learn maps a note or a controller to a macro, or to Next, Back, Clear all,
- * Black-out or Logo. The mappings are kept in the library's settings; the
- * device is found again by its name, whenever it is plugged in.
+ * Learn maps a note or a controller to Next, Back, Clear all, Black-out or
+ * Logo. The mappings are kept in the library's settings; the device is found
+ * again by its name, whenever it is plugged in. A mapping to a macro (before
+ * Session 44, when Macros went) is still read and kept, and does nothing.
  */
 
 /** What a MIDI message is: a note going down, or a controller moving above its middle. */
@@ -19,7 +20,7 @@ export interface MidiInput {
   number: number;
 }
 
-/** What a mapped input does. Simple Mode's own actions work in Simple Mode; macros do not. */
+/** What a mapped input does (all of them in Simple Mode too); a macro's, from before Session 44, nothing. */
 export type MidiAction =
   | { kind: 'next' }
   | { kind: 'back' }

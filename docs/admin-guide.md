@@ -55,8 +55,8 @@ On the Mac, open the `.dmg` and drag Drashti into **Applications**; on Windows, 
 Drashti has three roles:
 
 - **Volunteers** run a sabha in **Simple Mode**: big buttons, nothing can be changed.
-- **Operators** run the show in **Pro Mode**: playlists, words and slides, props, messages, timers, macros, Looks, masks, announcements, going live and recording.
-- **Admins** also set Drashti up: importing and removing, themes and the logo, Shastra texts, calendars, the idle rotation and every schedule (backups, macros' times), macros and MIDI, the screens, Looks, stage layouts, masks and sound, the stream's settings and key, phones and nodes, backups, restores and updates, and the PINs.
+- **Operators** run the show in **Pro Mode**: playlists, words and slides, props, messages, timers, lower thirds, Looks, masks, announcements, going live and recording.
+- **Admins** also set Drashti up: importing and removing, themes and the logo, Shastra texts, calendars, the idle rotation and every schedule (backups), MIDI, the screens, Looks, stage layouts, masks and sound, the stream's settings and key, phones and nodes, backups, restores and updates, and the PINs.
 
 **Without PINs**, Drashti starts in **Pro Mode** whenever it was quit on purpose, even if a volunteer was using Simple Mode: a volunteer who restarts Drashti sees Pro Mode. After an unexpected stop it comes back in the mode it was in, if it is started again within 3 hours; started later, it starts as after a quit on purpose. If volunteers should never find themselves in Pro Mode, set the PINs: then Drashti always starts in Simple Mode.
 
@@ -207,7 +207,7 @@ Section 7 of `docs/parallel-run.md` has the steps: **Phones** in the header, **L
 
 ## 9. Shastra texts and calendars
 
-**Shown or hidden.** The operator window starts without the **Shastra** tab, the **Templates** beside the playlists and the library's **kirtan filters** (Category, Kavi, Raag, Occasion): volunteers rarely need them. **View › Show Shastra, Templates and Kirtan Details** (an admin's, in Pro Mode; on Windows press Alt for the menu bar) brings all three back, and turning it off hides them again. It is kept with the library, so a backup keeps it. Hiding them changes nothing else: Shastra texts, templates and kirtan details stay as they were, playlists that hold a passage still run it, the remote's library and macros and the API that name a passage keep working, and search still finds kirtans by their kavi, raag and occasion.
+**Shown or hidden.** The operator window starts without the **Shastra** tab, the **Templates** beside the playlists and the library's **kirtan filters** (Category, Kavi, Raag, Occasion): volunteers rarely need them. **View › Show Shastra, Templates and Kirtan Details** (an admin's, in Pro Mode; on Windows press Alt for the menu bar) brings all three back, and turning it off hides them again. It is kept with the library, so a backup keeps it. Hiding them changes nothing else: Shastra texts, templates and kirtan details stay as they were, playlists that hold a passage still run it, the remote's library and the API that name a passage keep working, and search still finds kirtans by their kavi, raag and occasion.
 
 Drashti comes with no scripture text and no calendar: an admin loads files prepared from a source BAPS or the mandir has authorised. The file formats are in `docs/shastra-format.md` and `docs/calendar-format.md`, with made-up examples in `docs/examples/`.
 
@@ -223,7 +223,7 @@ Drashti comes with no scripture text and no calendar: an admin loads files prepa
 
 ## 10. The idle rotation, music and markers
 
-**The idle rotation.** Darshan pictures and quotes for before the sabha, or a lobby screen. **Set up** in the **Idle rotation** panel: tick pictures from the media library, put them in order, set how long each stays up, and type the quotes (from authorised sources) with who said or wrote them. Then, in **Screens**, each group's Look says what it shows **When nothing is up**: **The idle rotation, once started** (the operator presses **Start**; it stops by itself when the first slide goes up), **The idle rotation, always** (a lobby screen), or **Nothing**. A macro at a set time can start it (18:30, say).
+**The idle rotation.** Darshan pictures and quotes for before the sabha, or a lobby screen. **Set up** in the **Idle rotation** panel: tick pictures from the media library, put them in order, set how long each stays up, and type the quotes (from authorised sources) with who said or wrote them. Then, in **Screens**, each group's Look says what it shows **When nothing is up**: **The idle rotation, once started** (the operator presses **Start**; it stops by itself when the first slide goes up), **The idle rotation, always** (a lobby screen), or **Nothing**.
 
 ![The idle rotation's pictures and quotes](screenshots/idle-dialog.png)
 
@@ -242,8 +242,6 @@ Drashti comes with no scripture text and no calendar: an admin loads files prepa
 ![The Picture editor](screenshots/picture-editor.png)
 
 **Save as MP4…** saves the part between the start and the end as a new file where you choose, named to begin with "<name> (4m 00s).mp4", never over a file already there (a free name beside it instead). Nothing is re-encoded: every picture and sound stream is copied as it is, so the quality is exactly the original's; the turn of a phone's video and the file's details are kept, and the file starts playing as it downloads. A copy can only begin at a clean frame (a keyframe), so it begins at the one at or just before the start, and the dialog says which before you save ("Saved from 0:41.2, the nearest clean frame"; the timeline marks it). A video whose picture or sound an MP4 cannot hold (VP8, ProRes, Vorbis…) says so plainly: convert it first. **Also add it to the library** (off to begin with) imports the saved file too. It runs as converting does: in the background, FFmpeg at the lowest priority, waiting while the stream is on air or recording and carrying on afterwards, keeping 2 GB free, shown in the status bar with **Stop**; a stop, a failure or quitting leaves nothing under the real name. It is an admin's, as converting is. A conversion or a save that takes longer than four times the video's length and 5 minutes more is stopped, and says so: FFmpeg may be stuck on a damaged file, so try once more, then try the file in another program.
-
-**Macros at set times.** In the macro editor, **Runs by itself**, **Add a time**. At the time, a strip counts down ten seconds with **Cancel**, in Simple Mode too. One whose time passed while Drashti was closed, or the computer slept, is not run later.
 
 ---
 

@@ -144,8 +144,8 @@ function Heading({
 }
 
 /**
- * Panels together under one heading (Session 26a: Audio holds Music; More tools holds Macros, Masks and the
- * Idle rotation, folded away to begin with). It folds as a panel does, and remembers it.
+ * Panels together under one heading (Session 26a: Audio holds Music; More tools holds Lower Thirds, Masks, the
+ * Idle rotation and the MIDI controller, folded away to begin with). It folds as a panel does, and remembers it.
  */
 export function PanelGroup({
   title,

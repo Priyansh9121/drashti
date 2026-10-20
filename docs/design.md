@@ -148,9 +148,9 @@ Every list, panel and dialog shows:
 
 There are three columns between a header and a footer:
 
-- **Left (Session 26a):** the **playlists** at the top, always there (never replaced by the open one): a heading, a labelled **+ New**, and rows that show **Rename** and **Delete** at their end on the chosen row and the row under the mouse (they keep their room, so no row changes size). Below a splitter, the **library** (Presentations and Media, the search box, then Import…, New… and, when shown, the filters).
+- **Left (Session 26a; Session 44):** the **playlists** have the whole column (never replaced by the open one): the **Library** button at its top, then a heading, a labelled **+ New**, and rows that show **Rename** and **Delete** at their end on the chosen row and the row under the mouse (they keep their room, so no row changes size). With a folder playlist open, its folders are below them, past a splitter (the main folder's own items are in the middle, a subfolder's when it is chosen, with "Main › Sub" to go back). The **library** opens over the playlists and folders as a sheet (Presentations and Media, the search box, then Import…, New… and, when shown, the filters): not modal, so a row dragged from it goes into a playlist, the sheet standing aside while the drag goes on; Esc or × shuts it. The Undo bar stays at the column's foot, and nothing in the column ever draws over the layer bar.
 - **Middle (Session 26a):** the **open playlist** above, the chosen item's **slides** below, with a remembered splitter between (`CentreColumn`). The playlist's header has its name (double-click renames), **Add files…**, **From a Link…**, its **⋯** menu and **×** (close). Its items are **cards** in a column, in order: an 80 × 45 picture (a presentation's first slide, a picture's or video's still, or the kind's icon on `panel-3`), the name, then a muted line with what it is and its length or slide count; a header is a plain bold label. The chosen card has Up and Down on a line under it; its trash keeps its place at the end of the card. With no playlist open, the slides have the whole middle. The slides are thumbnails in one grid, in play order, flowing on from one group to the next. Each thumbnail has its group's colour as a strip beside its number, and the first slide each time a group comes up carries the group's name. The thumbnail size (120 to 400 px, 170 at first) is remembered: at 170 three slides fit a row at 1280 × 720 and six at 1920 × 1080.
-- **Right (Session 26a's order):** **LIVE** (the preview, headed so; no Next preview), with **Back** and **Next** under it (Session 26g: Next the one primary in a show, with its key; Back beside it, a third of the row; each does what its key does, at once), marker jumps under them, then **Audio** (a `PanelGroup` holding Music and the Arti as nested panels), the **Stage screen** (with Edit layout…), **Messages**, **Timers** (one compact row each: name, time, then icon buttons for Start or Pause, Reset and Show on the screens, and Edit; running timers first), **Props**, **Looks**, and **More tools** (a `PanelGroup` folded away to begin with: Macros, Masks and the Idle rotation, each after a `PanelNote` saying in one line what it is).
+- **Right (Session 26a's order):** **LIVE** (the preview, headed so; no Next preview), with **Back** and **Next** under it (Session 26g: Next the one primary in a show, with its key; Back beside it, a third of the row; each does what its key does, at once), marker jumps under them, then **Audio** (a `PanelGroup` holding Music, with **+** for Create playlist and Import, and sounds dropped onto an audio playlist going into it; the Arti left in Session 44), the **Stage screen** (with Edit layout…), **Messages**, **Timers** (one compact row each: name, time, then icon buttons for Start or Pause, Reset and Show on the screens, and Edit; running timers first), **Props**, **Looks**, and **More tools** (a `PanelGroup` folded away to begin with: Masks, the Idle rotation and the MIDI controller, each after a `PanelNote` saying in one line what it is; Macros left in Session 44).
 - **Along the bottom:** Clear all (a strong secondary since Session 26g, in its old place with F1; Put it back takes that place in the warning colour), the layer clears, Logo and black-out. Under them is the status bar: screens connected, the sound output, import progress and notices.
 
 The columns are resized with `Splitter`s and the sizes are remembered on the computer (`ui/persist.ts`). Everything fits at 1280 × 720 with nothing cut off or overlapping, every control inside its column. Simple Mode is one screen with big buttons, and fits at 1280 × 720 too.
@@ -202,7 +202,7 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **Outputs are numbered the same everywhere**: the wizard's rows, and the big number Identify puts across each display. The display the controls are on carries a `warning` badge, and choosing an output there says Finish will ask first.
 - Both fit at 1280 × 720 (`tests/e2e/templates.spec.ts`, `tests/e2e/setup.spec.ts`).
 - **The first start** (Session 26g): once per library (`welcome` in the library's settings), before anything was set up, in Pro Mode only and never for a volunteer (roles on, the admin PIN not typed), the lamp lights once over `--dur-light` (1.4 s; with reduced motion it is simply lit), then the welcome's words and choices arrive one after another, with Lively's longer, bigger moves (the only place they are used). **Set Up Screens…** (the primary, with the keyboard) opens the wizard at its Screens step; **Try a practice show first** puts five placeholder slides on the operator's screen only, with a banner saying nothing is on the screens and nothing is saved, and **Leave the practice show** comes back to the welcome; **Skip for now** leaves nothing chosen, so the middle's empty place leads: the unlit lamp and three steps (Import…, New playlist, Set Up Screens…), step 1's **Import…** the one primary. Esc is Skip for now. View › Set Up Screens… still opens the wizard, ending a practice show.
-- **The practice show never leaves the window** (`practice/practice-store.ts`, `shared/practice.ts`): its state is the window's own, LIVE and the show controls draw it, and the keys, the MIDI pads and the show buttons work it while it is on; no output, node, stream, recording, phone or the API ever hears of it, and a macro never runs from it (`tests/e2e/first-start.spec.ts` checks the engine, the output's paints and picture, and the library are unchanged).
+- **The practice show never leaves the window** (`practice/practice-store.ts`, `shared/practice.ts`): its state is the window's own, LIVE and the show controls draw it, and the keys, the MIDI pads and the show buttons work it while it is on; no output, node, stream, recording, phone or the API ever hears of it (`tests/e2e/first-start.spec.ts` checks the engine, the output's paints and picture, and the library are unchanged).
 
 ## 14. The stream
 
@@ -263,10 +263,10 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **A group role like the others**, "Key and fill (for a video switcher)", with a short line under it saying what the two displays are and how to set the switcher. Each screen in the group says what it sends ("The fill (the picture)", "The key (white where the fill has something)") in a select beside it.
 - **The key is not a picture to look at**: it is only on its output. The operator's previews never show it.
 
-## 21. Macros and MIDI
+## 21. MIDI (and Macros, until Session 44)
 
-- **A macro is a coloured button.** In the Macros panel each macro is a two-column button with a strip of its colour and its name; a click runs it at once (it is a show action, like Next). Its colour is chosen from a few that read on the dark panels.
-- **The macro editor lists actions as plain sentences in order**: the action's name, then its choices (a Look, a prop, a template and its fields…), with Up, Down and Remove as icon buttons with those words as their labels. Only actions a macro may do are offered.
+- **Macros are gone** (Session 44, Lower Thirds in their place, §44): no panel, editor, times, MIDI mapping, remote buttons or network routes. A library's macros, their times, a slide's macro cue and a pad mapped to a macro are kept as they were and never run.
+- **MIDI is in More tools** (**MIDI controller…**, Session 44; it was the Macros panel's).
 - **MIDI says what it heard.** The MIDI dialog shows the device and whether it is connected (in words), every action with what it is mapped to ("Note 36, channel 1") and Learn, and a live line with the last note or controller the controller sent, so an operator can see the pad is reaching Drashti.
 
 ## 22. Shastra
@@ -276,12 +276,9 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **Texts… is setup** (Pro Mode): a table of the loaded texts with their abbreviation ("Type “PG” and a number", or "Type “PV”, a section and a number"), items, languages as badges, a theme select, and **Remove** (`ghost`, asking first in an `alertdialog`). The subtitle says that only authorised texts are loaded.
 - **Sanskrit's two scripts are named in full** everywhere a language is chosen: "Sanskrit (Devanagari)" and "Sanskrit (Gujarati script)"; badges are `SA` and `SA·GU`.
 
-## 23. The arti at its time
+## 23. The arti at its time (until Session 44)
 
-- **A strip, not a dialog.** The arti prompt is a `warning-bg` strip across the operator window under the header, never modal: the show goes on under it, and Next keeps working. It names the arti, counts down to it (tabular figures), and offers **Put up Arti now** (`primary`, the only primary there) and **Not now**. When a schedule goes up by itself, it says so in words ("goes up by itself in ten seconds") with **Cancel** beside the count.
-- **Screen readers hear it once per step.** The sentence (coming up; it is time; going up by itself) is a `role="status"` that changes only when the step does; the ticking count beside it is hidden from them, so nothing is read out every second.
-- **Simple Mode: one big button.** The same strip sits above the big buttons with an `xxl` **Put up Arti now** and an `xl` **Not now**; there is nothing to set there.
-- **Times are set in the live column.** The Arti panel lists each time as its name, "Every day 19:00" or "Sun, Wed 19:00", when it next prompts, and its presentation; a switch turns one off; **By itself** is a `warning` badge. A removed presentation says so in `warning-fg` on its row.
+- **Gone** (Session 44): no Arti panel, prompt or dialog, in Pro Mode or Simple Mode. A library's arti times are kept as they were and never prompt.
 
 ## 24. Samvat and tithi
 
@@ -324,11 +321,9 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 - **Files dropped anywhere on the operator window are imported** in Pro Mode (Session 16), as on the presentation list, which keeps its own drop overlay. An operator drags a deck onto Drashti wherever it lands; before, a file dropped outside the list did nothing at all. Simple Mode still ignores dropped files.
 - The dialog passes the accessibility checks at 1280 × 720 (`tests/e2e/scheduled-backups.spec.ts`).
 
-## 29. Macros at set times
+## 29. Macros at set times (until Session 44)
 
-- **A macro's times live in its editor**, under **Runs by itself**: one row per time (every week or one date, the days or the date, the time, an on switch, remove), and **Add a time**. The Macros panel marks a macro that runs by itself with a small clock and its time, never colour alone.
-- **The countdown is a strip, like the arti's prompt**: under the header in Pro Mode, above the big buttons in Simple Mode (`big`, as large as the arti's there), in `panel-3` with an accent border so it reads apart from the arti's yellow. It names the macro, says it runs by itself in ten seconds, counts down in large digits and offers **Cancel** (`secondary`). The sentence is a status line, read once; the digits are hidden from screen readers.
-- Both pass the accessibility checks at 1280 × 720 (`tests/e2e/scheduled-macros.spec.ts`).
+- Gone with Macros (§21). A library's macro times are kept as they were and never run; scheduled backups (§28) are the one schedule left.
 
 ## 30. Updates
 
@@ -339,7 +334,7 @@ The slide editor (`src/renderer/src/editor/`) covers the operator window, as Edi
 
 ## 31. Music (audio playlists)
 
-- **A panel in the live column**, like the arti's: which list (a select, with rename and remove beside it), then the transport in one row (previous, **Play** or **Pause** as the one `primary` button, next), then loop and shuffle as small toggles whose state is `aria-pressed` and an accent colour with words in their labels, never colour alone. What plays is a status line above, with its time left ("Paused: …" while paused).
+- **A panel in the live column**: which list (a select, with rename and remove beside it), then the transport in one row (previous, **Play** or **Pause** as the one `primary` button, next), then loop and shuffle as small toggles whose state is `aria-pressed` and an accent colour with words in their labels, never colour alone. What plays is a status line above, with its time left ("Paused: …" while paused).
 - **Tracks are compact rows**: the number (or a play mark in `live` for the one playing), the name, its length, and Up, Down and take-out buttons. A track that cannot play says so in words and cannot be clicked. **Add sounds…** opens a dialog of the library's sounds to tick.
 - **Simple Mode gets one strip**, between the previews and the key hints: the list's name and what plays, and one large button, **Play music** or **Pause music**. Nothing else about music shows there, and it still fits 1280 × 720 with nothing scrolling.
 - The panel, the add dialog and Simple Mode's strip pass the accessibility checks at 1280 × 720 (`tests/e2e/music.spec.ts`).

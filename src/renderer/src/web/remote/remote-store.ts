@@ -57,7 +57,6 @@ interface RemoteView {
   logo: { id: string; name: string } | null;
   /** The Looks, in order (which is live comes with the engine state). */
   looks: { id: string; name: string }[] | null;
-  macros: { id: string; name: string; color: string }[] | null;
   /** The loaded Shastra texts (a reference box shows when there are any). */
   shastra: { name: string; abbreviation: string; itemCount: number }[] | null;
   /**
@@ -101,7 +100,6 @@ export const useRemote = create<RemoteView>(() => ({
   templates: null,
   logo: null,
   looks: null,
-  macros: null,
   shastra: null,
   hall: null,
 }));
@@ -182,11 +180,6 @@ export function openPresentation(presentationId: string, slideId: string | null 
 async function loadTemplates(): Promise<void> {
   const r = await api<{ messages: MessageTemplate[] }>('/api/v1/messages');
   if (r.ok) useRemote.setState({ templates: r.messages });
-}
-
-async function loadMacros(): Promise<void> {
-  const r = await api<{ macros: { id: string; name: string; color: string }[] }>('/api/v1/macros');
-  if (r.ok) useRemote.setState({ macros: r.macros });
 }
 
 async function loadShastra(): Promise<void> {
@@ -271,7 +264,6 @@ export function startRemote(): void {
     void loadLogo();
     void loadLooks();
     void loadHall();
-    void loadMacros();
     void loadShastra();
     const v = useRemote.getState().viewing;
     if (v) void loadDoc(v.presentationId);
@@ -290,7 +282,6 @@ export function startRemote(): void {
     if (what === 'props') void loadLogo();
     if (what === 'looks') void loadLooks();
     if (what === 'screens') void loadHall();
-    if (what === 'macros') void loadMacros();
     if (what === 'shastra') void loadShastra();
   });
 }

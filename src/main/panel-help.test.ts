@@ -55,8 +55,8 @@ describe('"What is this?" on the operator panels', () => {
         ),
     );
     expect(without).toEqual([]);
-    // Nine since the Arti's panel left (Session 44).
-    expect(sources.reduce((n, s) => n + panelTags(s.text).length, 0)).toBeGreaterThanOrEqual(9);
+    // Eight since the Arti's and the Macros' panels left (Session 44).
+    expect(sources.reduce((n, s) => n + panelTags(s.text).length, 0)).toBeGreaterThanOrEqual(8);
   });
 
   it('two or three plain sentences each, following exactly one passage of a shipped guide (Read more opens it)', () => {

@@ -62,7 +62,7 @@ test('a lobby shows the rotation whenever nothing is up; started, the hall shows
   test.setTimeout(180_000);
   const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '2' });
   const win = await operatorPage(app);
-  // Macros, Masks and the Idle rotation are in More tools (Session 26a).
+  // The Idle rotation is in More tools (Session 26a).
   await openMoreTools(win);
   await operatorReady(win);
   await win.setViewportSize({ width: 1280, height: 720 });

@@ -42,7 +42,7 @@ describe('Simple Mode locks', () => {
     expect(SIMPLE_MODE_LOCKED).toContain(IPC.setup.welcomeSeen);
   });
 
-  it('every Session 11 request that changes something: Looks, stage layouts, masks, macros (running them too), MIDI', () => {
+  it('every Session 11 request that changes something: Looks, stage layouts, masks, MIDI', () => {
     for (const channel of [
       IPC.looks.create,
       IPC.looks.rename,
@@ -53,20 +53,11 @@ describe('Simple Mode locks', () => {
       IPC.stageLayouts.remove,
       IPC.masks.save,
       IPC.masks.remove,
-      IPC.macros.save,
-      IPC.macros.remove,
-      IPC.macros.run,
       IPC.midi.set,
     ])
       expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
     // Reading them is not locked, and neither is a window telling Drashti how long a file is.
-    for (const channel of [
-      IPC.looks.list,
-      IPC.masks.list,
-      IPC.macros.list,
-      IPC.midi.get,
-      IPC.media.reportLength,
-    ])
+    for (const channel of [IPC.looks.list, IPC.masks.list, IPC.midi.get, IPC.media.reportLength])
       expect(SIMPLE_MODE_LOCKED, channel).not.toContain(channel);
     // Switching the Look is an engine command: the engine refuses it (from anywhere) in Simple Mode, as it
     // does zooming the live picture (Session 26e, Pro Mode's).

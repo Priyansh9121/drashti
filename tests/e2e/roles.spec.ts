@@ -154,7 +154,7 @@ test('two PINs turn roles on; an operator is refused every admin request in the 
       } as never),
       networkOn: await d.network.setOn(true),
       pairNode: await d.nodes.startPairing(),
-      macro: await d.macros.save(null, { name: 'Placeholder macro', color: '#3e63dd', actions: [] }),
+      midi: await d.midi.set({ deviceName: null, mappings: [] }),
       remove: await d.library.removePresentations(['no-such-presentation']),
       pick: await d.library.pickImportPaths('files'),
       pins: await d.roles.turnOff(),

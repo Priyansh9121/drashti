@@ -165,8 +165,6 @@ const ROUTES: Route[] = [
   route('GET', '/api/v1/media/:id/preview', 'preview', (_b, p) => ({ mediaId: p['id'] })),
   route('GET', '/api/v1/looks', 'looks'),
   route('POST', '/api/v1/looks/:id/live', 'command', (_b, p) => ({ type: 'setLook', lookId: p['id'] })),
-  route('GET', '/api/v1/macros', 'macros'),
-  route('POST', '/api/v1/macros/:id/run', 'macro.run', (_b, p) => ({ macroId: p['id'] })),
   route('POST', '/api/v1/markers/:id/jump', 'command', (b, p) => ({
     type: 'jumpToMarker',
     layer: b['layer'] === 'audio' ? 'audio' : 'background',

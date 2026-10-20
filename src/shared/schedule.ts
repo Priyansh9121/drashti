@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
 /*
- * Times on a schedule (Session 12's arti, and since Session 14 scheduled
- * backups and macros): every week on chosen days, or on one date, at a time
+ * Times on a schedule (scheduled backups since Session 14; the arti's and
+ * macros' too, until Session 44): every week on chosen days, or on one date, at a time
  * of day, by this computer's local clock. A time is when it is on the
  * computer's clock, so a change to summer time moves nothing.
  */

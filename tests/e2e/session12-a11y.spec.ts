@@ -13,8 +13,9 @@ import { launchApp, openMoreTools, operatorPage, operatorReady } from './helpers
  * the idle rotation's panel and dialog; the arti left in Session 44): the
  * Idle rotation panel together with today's line along the bottom, a group's "When nothing is up", the stage layout editor with a
  * Samvat box and a quote box, a message with a Samvat field, a quote being
- * written, a macro that starts the idle rotation, and Simple Mode with
- * today's line. Placeholder names and a made-up calendar only.
+ * written, and Simple Mode with today's line (the macro that started the idle
+ * rotation left with Macros, Session 44). Placeholder names and a made-up
+ * calendar only.
  */
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -27,7 +28,7 @@ test('the new panels and dialogs pass the accessibility checks at 1280 x 720', a
   test.setTimeout(150_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
-  // Macros, Masks and the Idle rotation are in More tools (Session 26a).
+  // Masks and the Idle rotation are in More tools (Session 26a).
   await openMoreTools(win);
   await operatorReady(win);
   await win.setViewportSize({ width: 1280, height: 720 });
@@ -96,11 +97,6 @@ test('the new panels and dialogs pass the accessibility checks at 1280 x 720', a
       template: 'Today: {date}',
       fields: { date: { kind: 'samvat', lang: 'gu' } },
     });
-    await d.macros.save(null, {
-      name: 'Placeholder before sabha',
-      color: '#2f9e44',
-      actions: [{ kind: 'idle', to: 'start' }],
-    });
   }, file);
 
   // The right column's new panels, and today's line along the bottom.
@@ -136,12 +132,6 @@ test('the new panels and dialogs pass the accessibility checks at 1280 x 720', a
   await expect(idle.getByTestId('quote-form')).toBeVisible();
   await expectNoSeriousA11yIssues(win, 'writing a quote');
   await win.getByRole('button', { name: 'Close the idle rotation' }).click();
-
-  // A macro that starts the idle rotation.
-  await win.getByTestId('macros-panel').getByRole('button', { name: 'Edit' }).click();
-  await expect(win.getByRole('combobox', { name: 'The idle rotation' })).toHaveValue('start');
-  await expectNoSeriousA11yIssues(win, 'the macro editor with the idle rotation');
-  await win.getByRole('button', { name: 'Close macros' }).click();
 
   // Simple Mode, with today's line.
   await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));

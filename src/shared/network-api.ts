@@ -23,10 +23,6 @@ export const DEVICE_OPS = {
   hall: ['remote'],
   /** The Looks, in order, and which is live. */
   looks: ['remote'],
-  /** The macros (name, colour), in order. */
-  macros: ['remote'],
-  /** Run a macro (Simple Mode refuses). */
-  'macro.run': ['remote'],
   /** Play the audio playlist: on from where it was paused, or the one played last (Session 14). */
   'music.play': ['remote'],
   /** The loaded Shastra texts: name, abbreviation, how many items (Session 12). */

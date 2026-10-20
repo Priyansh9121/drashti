@@ -50,11 +50,6 @@ export const GUIDE_ANSWERS: readonly GuideAnswer[] = [
     words: '**The stage message.**',
   },
   {
-    question: 'When a macro counts down to run by itself, what do I do?',
-    doc: 'operator',
-    words: '**Macros.**',
-  },
-  {
     question: 'When announcements from phones are waiting, what do I do?',
     doc: 'operator',
     words: '**Announcements from phones.**',

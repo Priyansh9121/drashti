@@ -12,7 +12,7 @@ export interface PlayedSlide {
   transition?: Transition | null;
   /** It moves on by itself after this long; null (or left out) to wait for the operator. */
   autoAdvanceMs?: number | null;
-  /** A macro it runs when it goes up (its cue); null (or left out) for none. */
+  /** A macro cue from before Session 44, kept in the library as it was; never run (macros are gone). */
   macroId?: string | null;
 }
 

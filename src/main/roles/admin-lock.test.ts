@@ -25,10 +25,9 @@ describe('the admin channels', () => {
     expect(answers.get(IPC.app.setSingleKeys)?.()).toEqual({ ok: false, message: ADMIN_REFUSAL });
   });
 
-  it('leave running the show, playlists, words, slides and macros to the operator', () => {
+  it('leave running the show, playlists, words and slides to the operator', () => {
     for (const c of [
       IPC.engine.command,
-      IPC.macros.run,
       IPC.playlists.addItems,
       IPC.playlists.create,
       // A smart playlist's missing items out (Session 26c): the operator's, as removing items is.

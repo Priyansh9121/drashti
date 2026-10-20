@@ -37,9 +37,10 @@ import { growth, mainTotal, memoryOf, verdictLine, writeReport } from './report'
  * and a timer; the stream on air and a recording, to FFmpeg on this computer
  * (it throws the stream away); two outputs, an output node (a second
  * Drashti) with its own output, and a phone on the remote's feed. A
- * scheduled macro goes off six times, and a scheduled backup goes off while
- * on air (it waits) and goes on when the stream and the recording stop for
- * ten minutes halfway, as between two sabhas.
+ * scheduled backup goes off while on air (it waits) and goes on when the
+ * stream and the recording stop for ten minutes halfway, as between two
+ * sabhas. (Its scheduled macro, six times, left with Macros in Session 44;
+ * this soak has not been run since.)
  *
  * Every few minutes (DRASHTI_SOAK_SAMPLE_MINUTES) it records each process's
  * memory and processor, each screen's late frames and paint times, the
@@ -292,12 +293,10 @@ function watchdogLines(userData: string): number {
 
 /**
  * Main's log, read at every sample: the lines new since the last read, so what the log rotates away
- * later is still counted (Session 15's first soak lost three of the macro's runs to a busy log).
+ * later is still counted (Session 15's first soak lost three of a scheduled macro's runs to a busy log).
  */
 class LogTally {
   private since = '';
-  /** When the macro said it runs by itself. */
-  readonly macroRuns: string[] = [];
   /** Warnings by what they say (numbers left out), and how often. */
   readonly warnings = new Map<string, number>();
 
@@ -311,7 +310,6 @@ class LogTally {
         const at = line.slice(0, 24);
         if (!/^\d{4}-\d\d-\d\dT/u.test(at) || at <= this.since) continue;
         if (at > newest) newest = at;
-        if (line.includes('Macros: one runs by itself in ten seconds')) this.macroRuns.push(at);
         if (line.includes('[warn]')) {
           const key = line
             .slice(25)
@@ -401,7 +399,7 @@ test('a sabha that never stops', async () => {
     await setUpScreen(win, 'Overflow', 1);
     await expect.poll(() => outputPages(app).length).toBe(2);
 
-    // The show: a playlist of words, videos and pictures, dissolving; music; a message; a timer; a macro at times.
+    // The show: a playlist of words, videos and pictures, dissolving; music; a message; a timer.
     const show = await win.evaluate(async () => {
       const d = (globalThis as PageGlobals).drashti;
       const listed = await d.library.listPresentations();
@@ -448,27 +446,6 @@ test('a sabha that never stops', async () => {
       if (!timer.ok) throw new Error(timer.message);
       return { playlistId, firstPicture: p1, musicId: music.id, templateId: template.id, timerId: timer.id };
     });
-    // The macro shows a message at its times (one date each, this computer's time).
-    const macroTimes = [0.06, 0.22, 0.39, 0.56, 0.72, 0.89].map((f) => minuteAfter(at(f) * 60_000));
-    const macro = await win.evaluate(
-      ({ templateId, times }) =>
-        (globalThis as PageGlobals).drashti.macros.save(null, {
-          name: 'Placeholder scheduled notice',
-          color: '#2f9e44',
-          actions: [{ kind: 'showMessage', templateId, values: { plate: 'SOAK' } }],
-          schedules: times.map((t, i) => ({
-            id: `soak-${String(i)}`,
-            days: [],
-            date: t.date,
-            time: t.time,
-            enabled: true,
-          })),
-        }),
-      { templateId: show.templateId, times: macroTimes.map(localWhen) },
-    );
-    expect(macro.ok).toBe(true);
-    note(`a macro set to run by itself at ${macroTimes.map((t) => localWhen(t).time).join(', ')}`);
-
     // ---- the output node, with its own output ---------------------------------------------------------
     node = await launchNode();
     node.app.process().once('exit', (code) => {
@@ -820,7 +797,6 @@ test('a sabha that never stops', async () => {
 
     // ---- what it came to ---------------------------------------------------------------------------------
     tally.read();
-    const macroRuns = tally.macroRuns.length;
     const loudest = tally.mostOften();
     const backupsMade = existsSync(join(backups, 'Drashti scheduled backups'))
       ? readdirSync(join(backups, 'Drashti scheduled backups')).filter((f) =>
@@ -914,12 +890,6 @@ test('a sabha that never stops', async () => {
         name: 'The node stayed online',
         ok: samples.every((s) => s.nodeOnline),
         detail: `${String(samples.filter((s) => !s.nodeOnline).length)} sample(s) offline`,
-        fatal: false,
-      },
-      {
-        name: 'The scheduled macro went off at its times',
-        ok: macroRuns >= macroTimes.filter((t) => t < end).length,
-        detail: `${String(macroRuns)} of ${String(macroTimes.filter((t) => t < end).length)}`,
         fatal: false,
       },
       {
