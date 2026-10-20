@@ -26,7 +26,7 @@ The old presentation program stays installed and untouched all day. Drashti only
 
 ## 2. Bring in the library (Main)
 
-- [ ] Drag the old program's folders (its `.pro6` and `.pro` files) onto the presentation list (`docs/parallel-run.md`, section 3), and any other folders the audit named.
+- [ ] Press **Library** and drag the old program's folders (its `.pro6` and `.pro` files) onto its presentation list (`docs/parallel-run.md`, section 3), and any other folders the audit named.
 - [ ] Read the report and **write down its numbers**: presentations, playlists, media, problems.
 - [ ] **Media that could not be found** (the report's notice "… media files could not be found"): **Find missing media…**, and pick each folder the files are in (or **Find…** beside one file).
 - [ ] **Media Drashti cannot play** (the notice "… media files Drashti cannot play"): **Convert all**, and let it finish in the background.
@@ -41,12 +41,12 @@ The old presentation program stays installed and untouched all day. Drashti only
 
 ## 3. Screens and sound (Main, then the node)
 
-- [ ] **Set Up Screens…** (in **View**): **Show each display's number on it**, then for each display what it shows and its languages, as the screen map in the checklist says.
-- [ ] **Sound**: the output to the mixer, and **Play a test tone**. **(operators)** Check the mixer hears it on the right channel.
+- [ ] **Set Up Screens…** (in **View**): **Show each display's number on it**, then for each display what it shows (one click) and its languages, as the screen map in the checklist says, and **Done**. (With only the hall's display connected, **Show on** it under the top bar does the hall in one click.)
+- [ ] **Sound** (**Set Up Screens…**, then **More setup…**): the output to the mixer, and **Play a test tone**. **(operators)** Check the mixer hears it on the right channel.
 - [ ] Canvas sizes and scaling for any screen that is not 1920 × 1080 (an LED wall).
 - [ ] **(operators)** **Looks**: the everyday Look first in the list, then any others they need ("Gujarati only", "Lower thirds").
 - [ ] **(operators)** **Stage layout**: with the performers, the boxes they want on the stage screen.
-- [ ] **Masks** for any screen that is not a rectangle, or a projector that spills.
+- [ ] **Masks** for any screen that is not a rectangle, or a projector that spills: draw each over the hall screen's live picture in the mask editor, so it fits what is really there.
 - [ ] **Key and fill**, if the mandir's video switcher lays words over the camera: set the switcher's key to **pre-multiplied**, and check the words key cleanly over a camera.
 - [ ] **The node** (if there is one): **Pair a node** on Main, give the node's displays their groups, and tick **Get everything ready** in the screens dashboard. In the screens dashboard, the node says **Online** and its media all ready.
 
@@ -97,7 +97,7 @@ On each computer:
 - [ ] **The node in step**: a dissolve and a video side by side on Main's screen and the node's.
 - [ ] **(operators)** **A whole sabha rehearsed**: in Pro Mode by an operator, and in Simple Mode by a volunteer who has not used Drashti before. Write down anything they found hard.
 - [ ] **By keyboard alone** in Simple Mode: Tab to each big button, and Enter; and to **Switch to Pro Mode…** at the top right.
-- [ ] **A screen reader**, if anyone at the mandir uses one (this needs a person who uses it every day): VoiceOver on the Mac (**Cmd+F5**) or Narrator or NVDA on Windows. Check the regions are announced (header, playlists, library, slides, live, show controls, status), the buttons say what they do, the dialogs say their names, and Simple Mode's buttons can be found and pressed. On a phone, VoiceOver or TalkBack on the remote: Next and Back, and the tabs.
+- [ ] **A screen reader**, if anyone at the mandir uses one (this needs a person who uses it every day): VoiceOver on the Mac (**Cmd+F5**) or Narrator or NVDA on Windows. Check the regions are announced (header, playlists, slides, live, show controls, status, and the library while its sheet is open), the buttons say what they do, the dialogs say their names, and Simple Mode's buttons can be found and pressed. On a phone, VoiceOver or TalkBack on the remote: Next and Back, and the tabs.
 - [ ] **On the Windows PC: Windows' own text size at 200%** (Windows 11: **Settings**, **Accessibility**, **Text size**; Windows 10: **Settings**, **Ease of Access**, **Display**, **Make text bigger**; 200%, then **Apply**): the operator window's buttons, lists and dialogs still fit and can be read, and nothing is cut off. Set it back afterwards if the operators prefer.
 - [ ] **The fallback drill**: the named fallback operator quits Drashti and opens the old program. Time it: it should take under a minute.
 

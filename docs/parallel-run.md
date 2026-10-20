@@ -57,16 +57,16 @@ Drashti copies presentations, playlists, props and media from ProPresenter's fol
 
 **On the Mac (ProPresenter 6):**
 
-1. In Finder, open your home folder, then **Documents**. Drag the **ProPresenter6** folder onto Drashti's presentation list (the left-hand column, under Presentations). A dashed box says "Drop lyrics, presentations or media to import them".
-2. Then the settings folder, which holds the playlists and props: in Finder, choose **Go**, then **Go to Folder…**, type `~/Library/Application Support/RenewedVision/ProPresenter6`, press Enter, and drag the **ProPresenter6** folder you see onto the presentation list too.
+1. In Finder, open your home folder, then **Documents**. Press **Library** (at the top of Drashti's left-hand column) and drag the **ProPresenter6** folder onto its list of presentations. A dashed box says "Drop lyrics, presentations or media to import them".
+2. Then the settings folder, which holds the playlists and props: in Finder, choose **Go**, then **Go to Folder…**, type `~/Library/Application Support/RenewedVision/ProPresenter6`, press Enter, and drag the **ProPresenter6** folder you see onto the library's list too.
 3. If the audit report named other folders with presentations or media (a second drive, a Media folder somewhere else), drag those in as well.
 
 **On the Windows PC (ProPresenter 7):**
 
-1. Open File Explorer, then **Documents**. Drag the **ProPresenter** folder onto Drashti's presentation list.
+1. Open File Explorer, then **Documents**. Press **Library** (at the top of Drashti's left-hand column) and drag the **ProPresenter** folder onto its list of presentations.
 2. If the audit report named other folders (media on another drive, for example), drag those in as well.
 
-You can also use **Import…**, above the list, then **A folder…**.
+You can also use **Import…**, in the library above its list, then **A folder…**.
 
 While it imports, a progress bar shows in the status bar along the bottom, and you can keep using Drashti. When it finishes, the **report** opens. Read it:
 
@@ -80,7 +80,7 @@ While it imports, a progress bar shows in the status bar along the bottom, and y
 - **The first time**, the Mac asks whether **Drashti** may control **Keynote** (or **Microsoft PowerPoint**): choose **Allow**. If **Don't Allow** was chosen, the report says so: open **System Settings**, **Privacy & Security**, **Automation**, **Drashti**, switch **Keynote** (or **Microsoft PowerPoint**) on, and drag the deck in again.
 - **If neither is on the computer**, or a deck will not open in them (it may be damaged), the report says so: open the deck in PowerPoint (**File**, **Save As**, PDF) or Keynote (**File**, **Export To**, **PDF…**), and drag in the PDF.
 - **A problem with an import** shows in the status bar along the bottom, in yellow with a ⚠ sign: press **Report** there to read it.
-- **To remove a presentation** from the list: click it, press **Delete** (on a Mac keyboard, **⌫**) and confirm **Remove**. **Edit**, **Undo** (Cmd-Z or Ctrl-Z) brings it back.
+- **To remove a presentation** from the library: click it (or choose several: **Shift**-click, **Cmd**-click or **Ctrl**-click, **Cmd+A** or **Ctrl+A**, or drag a box over them), press **Delete** (on a Mac keyboard, **⌫**) and confirm **Remove**. **Edit**, **Undo** (Cmd-Z or Ctrl-Z) brings it back.
 
 ![The import report for a PDF, and for a PowerPoint file this computer cannot turn into pictures](screenshots/pictures-report.png)
 
@@ -96,13 +96,15 @@ Once the import is done, **back up the library** to a USB drive: choose **File**
 
 ## 4. The screens and the sound
 
-The first time Drashti starts, **Set Up Screens…** opens by itself (later, it is in **View > Set Up Screens…**; on Windows press Alt for the menu bar, or use **Set Up Screens…** in Screens). It takes a minute and changes nothing until **Finish**:
+The quickest way: with the hall's display connected and no screen showing the hall's picture yet, Drashti offers **Show on** that display, on the first start's welcome and under the top bar (with **Not now**). One click makes it the hall's screen (every language, named after the display) and shows the test slide on it for a few seconds.
 
-- **Screens**: **Show each display's number on it** puts a big number on every display for a few seconds (not on the one the controls are on), so you can see which output feeds which screens. For each display choose **The audience picture**, **The stage view (performers)** or **Not used**, and the languages a kirtan shows on it (for example Gujarati then transliteration in the hall, Gujarati only on the stage).
+**Set Up Screens…** (on the welcome, or later in **View > Set Up Screens…**; on Windows press Alt for the menu bar, or use **Set Up Screens…** in Screens) opens straight on the displays:
+
+- **Screens**: **Show each display's number on it** puts a big number on every display for a few seconds (not on the one the controls are on), so you can see which output feeds which screens. For each display, one click: **The audience picture**, **The stage view (performers)** or **Not used** (the first one free for the hall is already chosen when no screen shows the hall's picture), and the languages a kirtan shows on it (for example Gujarati then transliteration in the hall, Gujarati only on the stage). **Done** sets the screens at once, and every screen shows a test slide for a few seconds, in its own languages; if an output would cover the controls, Drashti asks first. **More setup…** goes on to the rest, which changes nothing until **Finish**:
 - **Sound**: choose the output that goes to the mixer, and **Play a test tone** to hear it.
 - **Stream** (only on the computer that streams to YouTube): what the stream shows, the camera and the sound input, and a kirtan's languages on the stream. These are YouTube's settings in Screens (below), where they can be changed at any time.
 - **Theme**: the look new presentations start with.
-- **Finish**: everything is set at once, and every screen shows a test slide for a few seconds, in its own languages. If an output would cover the controls, Drashti asks first.
+- **Finish**: the screens, the sound, the stream and the theme are set at once.
 
 Each step has **Skip this step**, which keeps things as they are. To set up by hand instead, or to change a screen's size later:
 
@@ -125,7 +127,7 @@ If an output ever covers the controls by mistake, press **Cmd+Shift+U** (Mac) or
 
 **Key and fill.** If the mandir's video switcher (an ATEM, for example) lays words over the camera, it needs two feeds from the computer: in Screens, make a group, set it to **Key and fill (for a video switcher)**, and use two displays: the first is the **fill**, the second the **key** (swap them with **Sends** if they're the wrong way round). On the switcher, set the downstream key's source to those two inputs and turn on **Pre Multiplied Key**. The words show as a lower third; black-out and the logo don't affect them.
 
-**Masks.** If a screen's picture spills somewhere it shouldn't (an LED wall that isn't a rectangle, a projector hitting a pillar), make a mask in Screens (**Edit masks…** under that group): add rectangles, rounded rectangles or ellipses over the parts to hide (or choose **Show only what is inside them**), **Save**, then choose it under **Mask** for that group. It stays on in that Look; Clear all and F7 never take it away. The **Masks** panel under the live picture is different: it puts a mask up on the audience screens for a moment, and F7 takes it down.
+**Masks.** If a screen's picture spills somewhere it shouldn't (an LED wall that isn't a rectangle, a projector hitting a pillar), make a mask in Screens (**Edit masks…** under that group). The editor shows the hall screen's live picture behind the shapes for as long as it is open, so the mask fits what is really there (with no hall screen yet, a test pattern). Add rectangles, rounded rectangles or ellipses over the parts to hide (or choose **Show only what is inside them**), **Save**, then choose it under **Mask** for that group. It stays on in that Look; Clear all and F7 never take it away. The **Masks** panel under the live picture is different: it puts a mask up on the audience screens for a moment, and F7 takes it down.
 
 ---
 
@@ -158,7 +160,7 @@ Write down anything different, with the time.
 
 To fix words on a slide, use **Edit words** above the slides. To change how a slide looks (move or resize its words, give a word its own font or size, add a shadow or an outline, a shape, a picture or a video), use **Edit slides** beside it, or double-click a slide. In the slide editor, click something to select it and drag it to move it (it snaps to the middle and edges; hold Alt to place it freely); double-click words to type in them. Shift-click (or drag a box round them) selects several: drag the box round them by its handles to resize them together, or its round handle to turn them together. **Copy** and **Paste** (Cmd+C and Cmd+V, Ctrl on Windows) copy elements to another slide, or another presentation's editor, with their look; Cmd+Shift+V pastes exactly in place. **Save** puts the change on the screens if the slide is live; **Cancel** keeps nothing. Either save can be undone with **Undo** (Cmd+Z or Ctrl+Z).
 
-**Music before the sabha.** In the **Music** panel (right column, under **Audio**): **New**, then **Add sounds…** and tick the sounds (import them first, like any media). **Play** plays them one after another, with a short fade between them; **Pause** stops where it is, and **Play** goes on from there. The loop button (on to begin with) goes round again after the last; the shuffle button mixes the order from the next Play. The music is separate from the slides: Next and Back don't touch it. A slide or item with its own sound takes over (the music stops), and **Clear audio** (the **Audio** button along the bottom, or F6) or **Clear all** stops it too; **Put it back** brings it back. In Simple Mode there is a **Play music** / **Pause music** button, and a phone remote has them in its **More** tab.
+**Music before the sabha.** In the **Music** panel (right column, under **Audio**): **+**, then **Create playlist**, then **Add sounds…** and tick the sounds (import them first, like any media), or drag sound files onto it from the Finder or Explorer (**+**, then **Import**, brings them in too). **Play** plays them one after another, with a short fade between them; **Pause** stops where it is, and **Play** goes on from there. The loop button (on to begin with) goes round again after the last; the shuffle button mixes the order from the next Play. The music is separate from the slides: Next and Back don't touch it. A slide or item with its own sound takes over (the music stops), and **Clear audio** (the **Audio** button along the bottom, or F6) or **Clear all** stops it too; **Put it back** brings it back. In Simple Mode there is a **Play music** / **Pause music** button, and a phone remote has them in its **More** tab.
 
 **Start, end and markers.** To play only part of a video or a sound, or jump to a place in it: in the media list, press its **Markers** button (a bookmark; its tooltip says "Start, end and markers of …"). Play or drag the preview to the place, then press **Here** beside **Start** or **End**, or type a name and press **Add at the time shown** for a marker; **Save**. It plays only that part everywhere it is used (a looping background goes round between the two points). While it plays, its markers are buttons under the live picture (and in a phone remote's **More** tab): a press jumps every screen and the sound there together. After importing presentations, look over any start and end points and markers the report says were read.
 
@@ -191,7 +193,7 @@ Until someone sets PINs, roles are off and everything works as above. To turn th
 With roles on:
 
 - Drashti starts in **Simple Mode**. To leave it, press **Switch to Pro Mode…** at the top right (or **View**, then **Switch to Pro Mode…**), and type the **operator PIN** (or the admin PIN). After an unexpected stop, Drashti comes back in the mode it was in, so the operator carries on (within 3 hours of the stop, as for the show itself).
-- In Pro Mode the header says **Operator**. Something only an admin may do (opening Screens to change a display, importing, a backup, a schedule…) asks for the **admin PIN** first. Admin then stays unlocked for **10 minutes** after the last thing an admin did, and the header shows **Admin** with the time left; press it to lock at once. Going into Simple Mode locks it too.
+- In Pro Mode the header says **Operator**. Something only an admin may do (opening Screens to change a display, importing, a backup, a schedule…) asks for the **admin PIN** first. Admin then stays unlocked until you lock it or quit Drashti, and the header shows **Admin · Lock**; press it to lock at once. Going into Simple Mode locks it too.
 - After **five wrong PINs** in a row, Drashti waits a minute before it checks another one, and longer after each further wrong PIN (up to 15 minutes), even if Drashti is restarted.
 - If nobody remembers the admin PIN, ask whoever looks after Drashti: they can reset it at the computer.
 - Phones and nodes keep their kinds: a Remote phone runs the show as an operator does, and pairing a phone or a node is for an admin.
@@ -415,10 +417,11 @@ On the Mac, **Cmd** is the ⌘ key; on Windows, use **Ctrl** instead. These keys
 | **F6**                                         | Clear the sound                                                                                                                                                                        |
 | **F7**                                         | Clear the Masks layer (a screen's own mask, set in its Look, stays)                                                                                                                    |
 | **F8**                                         | Clear the ticker (announcements scrolling along the bottom)                                                                                                                            |
-| **Cmd+F** / **Ctrl+F**                         | Search the library                                                                                                                                                                     |
+| **Cmd+F** / **Ctrl+F**                         | Open the library at its search box                                                                                                                                                     |
 | **Shift+F10** or the Menu key (in a list)      | The menu of a playlist, folder or item, as a right-click (on a Mac laptop: **Fn+Shift+F10**)                                                                                           |
 | **Tab** / **Shift+Tab**                        | Move through the window, region by region; **Enter** presses what has the focus (Space is Next, except in an open menu, where it chooses)                                              |
-| **Delete** or **Backspace** (in a list)        | Remove the marked presentations, playlists or items (asks first for presentations and playlists)                                                                                       |
+| **Cmd+A** / **Ctrl+A** (in a list)             | Choose the whole list (**Shift**-click chooses a run, **Cmd**- or **Ctrl**-click one more, and a box dragged from an empty place the rows it touches)                                  |
+| **Delete** or **Backspace** (in a list)        | Remove the chosen presentations, playlists or items, all at once with one Undo (asks first for presentations and playlists)                                                            |
 | **Alt+↑** / **Alt+↓** (a playlist's item)      | Move the item up or down a place (on a Mac, **Alt** is the ⌥ Option key)                                                                                                               |
 | **Cmd+Z** / **Ctrl+Z**                         | Undo the last removal, words edit, theme, or playlist add or move (in Simple Mode: put back what Clear all took down)                                                                  |
 | **Cmd+Enter** / **Ctrl+Enter** (editing words) | Save the words                                                                                                                                                                         |
