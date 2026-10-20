@@ -211,7 +211,7 @@ describe('Import from a Link: Dropbox', () => {
     expect(view.notTaken).toEqual([
       {
         name: 'Read me.txt',
-        reason: 'Not a PowerPoint file (.pptx) or an MP4 video, so it was not imported.',
+        reason: 'Not a PowerPoint file (.pptx), an MP4 video or a sound, so it was not imported.',
       },
     ]);
     expect(h.imported).toEqual([

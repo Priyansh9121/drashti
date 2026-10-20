@@ -781,7 +781,7 @@ export class LinkService {
   private async saved(folder: string, paths: string[], bytes: number): Promise<void> {
     const inFolder = (p: string) => relative(folder, p).split(sep).join('/');
     const files = paths.map(inFolder);
-    // From YouTube: the one file Drashti named (its MP4 or MP3). From Dropbox: its PowerPoints and MP4s.
+    // From YouTube: the one file Drashti named (its MP4 or MP3). From Dropbox: its PowerPoints, MP4s and sounds.
     const youtube = this.state.kind === 'youtube';
     // A Dropbox folder (Session 26c): it becomes a playlist of its own, and its PDFs and pictures wait for
     // the one button.
@@ -863,7 +863,7 @@ export class LinkService {
           taken.length === 0
             ? waiting.length > 0
               ? 'Saved. It has no PowerPoint file (.pptx) or MP4 video; its PDFs and pictures wait for Add the PDFs and pictures.'
-              : 'Saved. Nothing in it is a PowerPoint file (.pptx) or an MP4 video, so nothing was imported.'
+              : 'Saved. Nothing in it is a PowerPoint file (.pptx), an MP4 video or a sound, so nothing was imported.'
             : 'Saved, but nothing in it could be imported: see Not taken.',
       });
       return;

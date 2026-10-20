@@ -283,11 +283,15 @@ export function waitingKind(name: string): boolean {
   return /\.(pdf|jpe?g|png|webp|heic)$/iu.test(name);
 }
 
-/** What is imported from a Dropbox link: PowerPoint files and MP4 videos (PLAN §7). */
-export function takenKind(name: string): 'powerpoint' | 'video' | null {
+/**
+ * What is imported from a Dropbox link: PowerPoint files and MP4 videos (PLAN §7), and sounds (Session 44: a
+ * folder's sounds also show in Audio, music/folder-audios.ts).
+ */
+export function takenKind(name: string): 'powerpoint' | 'video' | 'sound' | null {
   const lower = name.toLowerCase();
   if (lower.endsWith('.pptx')) return 'powerpoint';
   if (lower.endsWith('.mp4')) return 'video';
+  if (/\.(mp3|m4a|aac|wav|aiff?|flac|ogg|opus)$/u.test(lower)) return 'sound';
   return null;
 }
 
@@ -310,4 +314,5 @@ export function heightLabel(height: number): string {
 }
 
 /** Why a saved file is not imported. */
-export const NOT_TAKEN_REASON = 'Not a PowerPoint file (.pptx) or an MP4 video, so it was not imported.';
+export const NOT_TAKEN_REASON =
+  'Not a PowerPoint file (.pptx), an MP4 video or a sound, so it was not imported.';
