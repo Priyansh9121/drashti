@@ -53,6 +53,11 @@ export interface PlaylistNode {
   imported: boolean;
   /** A sabha template: a running order to make playlists from, never run itself. */
   template: boolean;
+  /**
+   * Made from a folder (Session 44): a smart playlist, a Dropbox folder link's, or one an earlier version made
+   * from a link. The operator window shows it a folder at a time (shared/playlist-folders.ts).
+   */
+  fromFolder?: true;
 }
 
 /** The order a playlist item plays its presentation in. */

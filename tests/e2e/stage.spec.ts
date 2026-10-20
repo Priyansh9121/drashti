@@ -7,6 +7,7 @@ import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fix
 import {
   importAndGetIds,
   launchApp,
+  openLibrary,
   operatorPage,
   outputPages,
   type PageGlobals,
@@ -131,6 +132,7 @@ test('a stage screen follows Next with the current and next text, notes, clock a
   await expect(view).toBeVisible();
 
   // Live on slide 1: now, next, the notes and the clock; no pictures on the stage.
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Placeholder Stage Song/ })

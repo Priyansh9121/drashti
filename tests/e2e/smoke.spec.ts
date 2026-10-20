@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { TEST_LINES } from '../../src/main/db/seed';
-import { launchApp, operatorPage, useDisplay } from './helpers';
+import { launchApp, openLibrary, operatorPage, useDisplay } from './helpers';
 
 /*
  * Smoke test (runs on macOS and Windows in CI): launch the app, give the
@@ -20,6 +20,7 @@ test('smoke: launch, go live on slide 1, the output window shows it', async () =
   const output = await outputOpened;
   await operator.getByRole('button', { name: 'Close screens' }).click();
 
+  await openLibrary(operator);
   await operator
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Language test slides/ })

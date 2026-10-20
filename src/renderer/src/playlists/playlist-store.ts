@@ -15,6 +15,7 @@ import { importPaths } from '../library/import-store';
 import { leaveItem, showItem, showRepeatSteps, useLibrary } from '../library/library-store';
 import { isRepeatId, repeatPresentationId, type RepeatSettings } from '../../../shared/repeat';
 import { describeSome, pushRemoval } from '../library/undo';
+import { folderEnd, hasFolder, playlistFolders } from '../../../shared/playlist-folders';
 
 /*
  * Playlists as the operator window shows and edits them: the tree of
@@ -33,6 +34,11 @@ interface PlaylistView {
   /** The playlist whose items are shown; null shows the tree. */
   openId: string | null;
   items: PlaylistItemInfo[];
+  /**
+   * The folder of the open folder playlist shown in the middle (Session 44): its path as its header names it
+   * ("Week 1 › Videos"), '' for the top folder. Its subfolders show in the bottom left.
+   */
+  folder: string;
   /** Items marked for a list action (drag, remove): the clicked one and any added with Cmd/Ctrl or Shift. */
   marked: string[];
   anchorId: string | null;
@@ -73,6 +79,7 @@ export const usePlaylists = create<PlaylistView>(() => ({
   selectedNodeId: null,
   openId: null,
   items: [],
+  folder: '',
   marked: [],
   anchorId: null,
   renaming: null,
@@ -199,7 +206,53 @@ export function watchPlaylists(): void {
       shown !== null && was !== null && shown.playlistId === was.playlistId && shown.id === was.itemId;
     const firstLook = before.state === null && shown === null;
     if (following || firstLook) void followItem(now);
+    else if (was) followFolder(was, now);
   });
+}
+
+/** Whether the open playlist is shown a folder at a time (Session 44): made from a folder, with subfolders. */
+export function showsFolders(s: Pick<PlaylistView, 'openId' | 'tree' | 'items'>): boolean {
+  return (
+    s.tree.find((n) => n.id === s.openId)?.fromFolder === true && s.items.some((i) => i.kind === 'header')
+  );
+}
+
+/** The folder an item of the open playlist is in, when it is shown a folder at a time ('' otherwise). */
+function folderOfItem(itemId: string): string {
+  const state = usePlaylists.getState();
+  if (!showsFolders(state)) return '';
+  return playlistFolders(state.items).folderOf.get(itemId) ?? '';
+}
+
+/**
+ * Next moved on within the open folder playlist while the middle showed the folder of the item that was
+ * live (Session 44): the middle shows the folder of the one now live, so it follows the running order.
+ */
+function followFolder(was: PlaylistCursor, now: PlaylistCursor): void {
+  const state = usePlaylists.getState();
+  if (state.openId !== now.playlistId || was.playlistId !== now.playlistId || !showsFolders(state)) return;
+  const view = playlistFolders(state.items);
+  if (view.folderOf.get(was.itemId) !== state.folder) return;
+  const next = view.folderOf.get(now.itemId);
+  if (next !== undefined && next !== state.folder) usePlaylists.setState({ folder: next });
+}
+
+/** Show one of the open folder playlist's folders in the middle ('' for the top folder). */
+export function openFolder(path: string): void {
+  const state = usePlaylists.getState();
+  if (!hasFolder(playlistFolders(state.items), path)) return;
+  usePlaylists.setState({ folder: path, marked: [], anchorId: null });
+}
+
+/**
+ * Where something added to the open playlist goes when nothing in it is chosen: at the end, or, shown a folder
+ * at a time, at the end of the folder shown (after a header for it first, when it has no part of its own).
+ */
+export function addingAt(): { at: number | null; header: string | null } {
+  const state = usePlaylists.getState();
+  if (!showsFolders(state)) return { at: null, header: null };
+  const end = folderEnd(state.items, playlistFolders(state.items), state.folder);
+  return 'at' in end ? { at: end.at, header: null } : { at: end.headerAt, header: state.folder };
 }
 
 /** Open the playlist being played and show its live item. */
@@ -207,7 +260,8 @@ async function followItem(cursor: PlaylistCursor): Promise<void> {
   if (usePlaylists.getState().openId !== cursor.playlistId) await openPlaylist(cursor.playlistId);
   const item = usePlaylists.getState().items.find((i) => i.id === cursor.itemId);
   if (!item) return;
-  usePlaylists.setState({ marked: [item.id], anchorId: item.id });
+  // Shown a folder at a time (Session 44): the middle shows the folder the live item is in.
+  usePlaylists.setState({ marked: [item.id], anchorId: item.id, folder: folderOfItem(item.id) });
   await showItem({ ...item, playlistId: cursor.playlistId });
 }
 
@@ -236,7 +290,15 @@ export async function pickItem(item: PlaylistItemInfo): Promise<void> {
 }
 
 export function setView(view: PlaylistView['view']): void {
-  usePlaylists.setState({ view, openId: null, items: [], marked: [], anchorId: null, renaming: null });
+  usePlaylists.setState({
+    view,
+    openId: null,
+    items: [],
+    folder: '',
+    marked: [],
+    anchorId: null,
+    renaming: null,
+  });
 }
 
 /** Save a playlist as a template, with these items as slots; then show the template. */
@@ -315,7 +377,15 @@ export async function setItemOrder(itemId: string, order: ItemOrder): Promise<vo
 // ---- the tree ------------------------------------------------------------------
 
 export async function openPlaylist(id: string): Promise<void> {
-  usePlaylists.setState({ openId: id, selectedNodeId: id, items: [], marked: [], anchorId: null });
+  // A folder playlist opens on its top folder (Session 44): clicking the playlist goes back to it.
+  usePlaylists.setState({
+    openId: id,
+    selectedNodeId: id,
+    items: [],
+    folder: '',
+    marked: [],
+    anchorId: null,
+  });
   // Opened on Main, it counts as this week's: output nodes copy its media ahead (Session 14).
   void api()
     .opened(id)
@@ -324,7 +394,7 @@ export async function openPlaylist(id: string): Promise<void> {
 }
 
 export function closePlaylist(): void {
-  usePlaylists.setState({ openId: null, items: [], marked: [], anchorId: null, renaming: null });
+  usePlaylists.setState({ openId: null, items: [], folder: '', marked: [], anchorId: null, renaming: null });
 }
 
 export function selectNode(id: string): void {
@@ -507,6 +577,8 @@ export async function importIntoPlaylist(
   playlistId: string,
   at: number | null,
   paths: string[],
+  /** A header to put first (Session 44: a folder shown that has no part of its own yet). */
+  header: string | null = null,
 ): Promise<void> {
   if (paths.length === 0) return;
   const before = () => {
@@ -522,7 +594,11 @@ export async function importIntoPlaylist(
   // The import may have taken a while: the place is found again by the item it went before.
   const { openId, items } = usePlaylists.getState();
   const index = openId === playlistId && beforeId !== null ? items.findIndex((i) => i.id === beforeId) : -1;
-  await addFromLibrary(playlistId, index >= 0 ? index : null, made);
+  await addFromLibrary(
+    playlistId,
+    index >= 0 ? index : null,
+    header === null ? made : [{ kind: 'header', label: header }, ...made],
+  );
 }
 
 /** Add to the open playlist, after its chosen item, or at the end when none is chosen (Add to playlist). */
@@ -530,7 +606,10 @@ export async function addToOpenPlaylist(items: NewItem[]): Promise<string[]> {
   const { openId, items: now, marked } = usePlaylists.getState();
   if (!openId) return [];
   const last = now.findLastIndex((i) => marked.includes(i.id));
-  return addFromLibrary(openId, last >= 0 ? last + 1 : null, items);
+  if (last >= 0) return addFromLibrary(openId, last + 1, items);
+  // Nothing chosen: at the end, or at the end of the folder shown (Session 44).
+  const { at, header } = addingAt();
+  return addFromLibrary(openId, at, header === null ? items : [{ kind: 'header', label: header }, ...items]);
 }
 
 /**

@@ -7,6 +7,7 @@ import { expectNoSeriousA11yIssues } from './a11y';
 import {
   importAndGetIds,
   launchApp,
+  openLibrary,
   operatorPage,
   operatorReady,
   outputPage,
@@ -46,6 +47,7 @@ test('the editor warns of white words over white, darkening clears it, and Undo 
   await win.setViewportSize({ width: 1600, height: 900 });
   await operatorReady(win);
   await whiteOnWhite(win);
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Placeholder white on white/u })

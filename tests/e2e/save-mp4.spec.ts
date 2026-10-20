@@ -4,7 +4,14 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { importAndGetIds, launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+  type PageGlobals,
+} from './helpers';
 import { testFfmpeg } from './stream-helpers';
 
 /*
@@ -95,6 +102,7 @@ test('a video trimmed on its timeline and saved as an MP4, copied as it is from 
   const before = (await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia())).length;
 
   // The timeline, from the video's row in Media.
+  await openLibrary(win);
   await win.getByRole('tab', { name: 'Media' }).click();
   await win.getByTestId('media-markers').first().click();
   const dialog = win.getByTestId('markers-dialog');

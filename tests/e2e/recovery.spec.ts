@@ -9,6 +9,7 @@ import {
   importAndGetIds,
   killApp,
   launchApp,
+  openLibrary,
   operatorPage,
   outputPage,
   relaunchApp,
@@ -89,6 +90,7 @@ test('after a crash the same slide, background and black-out come back; after a 
   await second.app.close();
   const third = await relaunchApp(first.userData);
   const win3 = await operatorPage(third.app);
+  await openLibrary(win3);
   await expect(win3.getByTestId('presentation-list').getByRole('button').first()).toBeVisible();
   const layers = await win3.evaluate(async () => {
     const s = (await (globalThis as PageGlobals).drashti.engine.snapshot()).state;
@@ -103,6 +105,7 @@ test('after a crash the same slide, background and black-out come back; after a 
   await third.app.close();
   const fourth = await relaunchApp(first.userData);
   const win4 = await operatorPage(fourth.app);
+  await openLibrary(win4);
   await expect(win4.getByTestId('presentation-list').getByRole('button').first()).toBeVisible();
   expect(await win4.evaluate(() => (globalThis as PageGlobals).drashti.app.recovery())).toBeNull();
   const layers4 = await win4.evaluate(async () => {

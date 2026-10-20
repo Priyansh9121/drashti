@@ -3,7 +3,7 @@ import { chromium, expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, operatorReady, outputPage, setUpScreen } from './helpers';
+import { launchApp, openLibrary, operatorPage, operatorReady, outputPage, setUpScreen } from './helpers';
 import { setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -96,6 +96,7 @@ test('with the computer set to reduce motion, the interface does not move', asyn
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
+  await openLibrary(win);
   const tab = win.getByTestId('library-tab-presentations');
   const duration = () => tab.evaluate((el) => parseFloat(getComputedStyle(el).transitionDuration));
   // The library's tabs change colour over a moment as usual...
@@ -161,6 +162,7 @@ test('axe at 1280 x 720 on Themes, the words editor and the slide editor’s pic
   await expect(win.getByTestId('themes-panel')).toBeVisible();
   await expectNoSeriousA11yIssues(win, 'Themes');
   await win.getByRole('button', { name: 'Close themes' }).click();
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Language test slides/u })

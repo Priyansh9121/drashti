@@ -2,11 +2,12 @@ import { expect, test } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { BUILTIN_THEMES } from '../../src/shared/builtin-themes';
-import { launchApp, operatorPage, type PageGlobals } from './helpers';
+import { launchApp, openLibrary, operatorPage, type PageGlobals } from './helpers';
 
 test('a new install has the placeholder presentations in a database in userData', async () => {
   const { app, userData } = await launchApp();
   const win = await operatorPage(app);
+  await openLibrary(win);
   await expect(win.getByTestId('presentation-list').getByTestId('presentation-row')).toHaveCount(2);
   expect(existsSync(join(userData, 'drashti.sqlite'))).toBe(true);
 

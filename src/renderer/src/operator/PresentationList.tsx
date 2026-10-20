@@ -170,7 +170,8 @@ function SearchBox({ help }: { help: ReactNode }) {
             setSearch(e.target.value);
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') {
+            // Esc empties the box; empty, it shuts the library's sheet (Session 44).
+            if (e.key === 'Escape' && query !== '') {
               e.preventDefault();
               clearSearch();
             } else if (e.key === 'Enter') {
@@ -327,7 +328,7 @@ export function PresentationList({ platform }: { platform: string }) {
   return (
     <nav
       aria-label="Library"
-      className="relative flex min-h-0 flex-1 flex-col border-t border-line"
+      className="relative flex min-h-0 flex-1 flex-col"
       data-testid="library-drop"
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}

@@ -2,7 +2,15 @@ import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, operatorReady, outputPage, setUpScreen } from './helpers';
+import {
+  closeLibrary,
+  launchApp,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+  outputPage,
+  setUpScreen,
+} from './helpers';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow, WELCOME } from './placeholder-show';
 
 /*
@@ -147,15 +155,15 @@ test('Pro Mode: the keyboard goes through the window as it is laid out, its focu
     'stops out of sight',
   ).toEqual([]);
   // Every stop is in a landmark (but the dividers, which sit between them), and the regions come as
-  // they are laid out: the header, the left column (playlists, then the library), the slides, the
-  // live column, the controls along the bottom, and the status bar.
+  // they are laid out: the header, the left column (Session 44: the Library button and the playlists; the
+  // library opens over them), the slides, the live column, the controls along the bottom, and the status bar.
   expect(
     stops.filter((s) => s.region === 'none' && s.role !== 'separator').map((s) => s.name),
     'stops outside any landmark',
   ).toEqual([]);
   const order = regionOrder(stops);
   console.log(`Tab order by region: ${order.join(' > ')}`);
-  const expected = ['header', 'Playlists', 'Library', 'Slides', 'Live', 'Show controls', 'Status'];
+  const expected = ['header', 'Playlists', 'Slides', 'Live', 'Show controls', 'Status'];
   expect(order.filter((r) => expected.includes(r))).toEqual(expected);
   await app.close();
 });
@@ -353,13 +361,15 @@ test('the arrows a control uses itself never also move the slide on the screens'
   });
   const live = await slideOn(win);
   expect(live).not.toBe('');
-  // The library's tabs: the arrows go to the next tab.
+  // The library's tabs (in its sheet, Session 44): the arrows go to the next tab.
+  await openLibrary(win);
   await tabTo(win, (f) => f.testid.startsWith('library-tab-'));
   await win.keyboard.press('ArrowRight');
   await expect.poll(async () => (await focusOf(win))?.testid).not.toBe('library-tab-presentations');
   await win.keyboard.press('ArrowLeft');
   expect(await slideOn(win), "the arrows between the library's tabs moved the show").toBe(live);
   // A playlist's menu (Shift+F10, on every system): the arrows go through its choices.
+  await closeLibrary(win);
   await tabTo(win, (f) => f.testid === 'playlist-node');
   await win.keyboard.press('Shift+F10');
   await expect(win.getByRole('menu')).toBeVisible();

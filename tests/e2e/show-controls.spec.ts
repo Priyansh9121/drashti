@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helpers';
+import { chooseMenuItem, launchApp, openLibrary, operatorPage, operatorReady } from './helpers';
 
 /*
  * Show controls change at once (Session 25): Black-out, Logo, the layer clears and the live
@@ -80,6 +80,7 @@ test('Black-out, the slide clear and the live border change in the same frame, i
   await expect(win.getByTestId('blackout-button')).toHaveAccessibleName(/^Black-out(?! is on)/u);
 
   // A slide going up: its thumbnail's border, and the slide's clear, light up in the same frame.
+  await openLibrary(win);
   await win.getByTestId('presentation-list').getByRole('button').first().click();
   const thumb = win.getByTestId('slide-thumb').first();
   await expect(thumb).toBeVisible();

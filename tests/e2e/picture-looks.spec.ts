@@ -6,13 +6,15 @@ import { join } from 'node:path';
 import { settled } from './a11y';
 import type { PageGlobals } from './helpers';
 import {
+  closeLibrary,
   importAndGetIds,
   launchApp,
+  openLibrary,
   operatorPage,
   operatorReady,
   outputPages,
-  setUpScreen,
   outputReady,
+  setUpScreen,
 } from './helpers';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices';
 import { launchMain, launchNode, pairNode } from './nodes';
@@ -128,6 +130,7 @@ test('the Picture editor: zoom, move, enhance and Auto, kept with the picture, a
   const [splitId = '', dullId = ''] = await importAndGetIds(win, [split, dull]);
 
   // From the picture's row in Media.
+  await openLibrary(win);
   await win.getByRole('tab', { name: 'Media' }).click();
   await win
     .getByTestId('media-row')
@@ -187,12 +190,14 @@ test('the Picture editor: zoom, move, enhance and Auto, kept with the picture, a
     const made = await d.playlists.create('Placeholder pictures', null, false);
     if (made.ok) await d.playlists.addItems(made.ids[0] ?? '', null, [{ kind: 'media', mediaId: id }]);
   }, splitId);
+  await closeLibrary(win);
   await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder pictures' }).click();
   await expect(
     win.getByTestId('open-playlist').getByTestId('playlist-item').locator('[data-look]'),
   ).toHaveCount(1);
 
   // Auto, on a dull picture: its contrast up from its own levels.
+  await openLibrary(win);
   await win
     .getByTestId('media-row')
     .filter({ hasText: 'Placeholder dull' })
@@ -507,6 +512,7 @@ async function copyMatchesPreview(win: Page, id: string, size: { W: number; H: n
   expect(Math.min(...copyRow)).toBeLessThan(0x60 - 12);
   expect(Math.max(...copyRow)).toBeGreaterThan(0xa0 + 12);
 
+  await openLibrary(win);
   await win.getByRole('tab', { name: 'Media' }).click();
   await win
     .getByTestId('media-row')

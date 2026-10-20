@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode, TABLET } from './devices';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
+import { launchApp, openLibrary, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
 
 /*
  * Stage layouts (Session 11): with none chosen a stage screen is the Standard
@@ -58,6 +58,7 @@ test('Standard is the stage screen as before; a layout made in the editor puts e
     await d.engine.dispatch({ type: 'setStageMessage', text: 'Placeholder: two minutes' });
   });
   const stage = await outputFor(app, stageId);
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Sample kirtan/ })

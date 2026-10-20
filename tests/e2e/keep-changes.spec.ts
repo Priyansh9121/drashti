@@ -8,6 +8,7 @@ import {
   chooseMenuItem,
   importAndGetIds,
   launchApp,
+  openLibrary,
   openMoreTools,
   operatorPage,
   operatorReady,
@@ -72,6 +73,7 @@ async function presentation(win: Page, name: string, words: string): Promise<str
     },
     { name, words },
   );
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: new RegExp(`^${name}`, 'u') })
@@ -96,6 +98,7 @@ test('Edit words asks before typed words are lost, and says when saving changes 
   const grid = win.getByTestId('slide-grid');
   // Its first slide goes up: it is the live presentation.
   await grid.getByTestId('slide-thumb').first().click();
+  await openLibrary(win);
   await expect(win.getByTestId('presentation-list').getByText('Live', { exact: true })).toBeVisible();
 
   await grid.getByRole('button', { name: 'Edit words' }).click();
@@ -193,6 +196,7 @@ test('Playback markers ask before typed points are lost', async () => {
   const [mediaId = ''] = await importAndGetIds(win, [video]);
   const markers = () =>
     win.evaluate(async (mid) => (globalThis as PageGlobals).drashti.media.markers(mid), mediaId);
+  await openLibrary(win);
   await win.getByRole('tab', { name: 'Media' }).click();
   await win.getByTestId('media-markers').first().click();
   const dialog = win.getByTestId('markers-dialog');
@@ -330,6 +334,7 @@ test('the macro, stage layout and mask editors ask the same question, and Save c
 test('the slide editor asks before words still being typed in a text box are lost (Cancel)', async () => {
   const { app, win } = await start();
   await win.setViewportSize({ width: 1600, height: 900 });
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Language test slides/u })

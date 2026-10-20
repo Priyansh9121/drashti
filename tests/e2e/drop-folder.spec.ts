@@ -16,7 +16,15 @@ import { DROP_REFUSED_VIEW } from '../../src/shared/drop-folder';
 import { ADMIN_REFUSAL } from '../../src/shared/roles';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, holdStill, launchApp, letTimePass, operatorPage, operatorReady } from './helpers';
+import {
+  chooseMenuItem,
+  holdStill,
+  launchApp,
+  letTimePass,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+} from './helpers';
 import { makeTestImage, makeTestVideo } from './test-media';
 
 /*
@@ -91,6 +99,7 @@ test('pictures and videos put in the drop folder come into Media within 15 s, th
       .toEqual(['Placeholder clip.webm', 'Placeholder darshan.png']);
     expect(Date.now() - t0).toBeLessThan(15_000);
     // Under the filter in Media, with one notice for the batch.
+    await openLibrary(win);
     await win.getByTestId('library-tab-media').click();
     await win.getByTestId('media-filter-drop').click();
     await expect(win.getByTestId('media-filter-drop')).toHaveAttribute('aria-pressed', 'true');

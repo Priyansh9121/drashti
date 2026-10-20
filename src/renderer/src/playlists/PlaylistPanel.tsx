@@ -506,7 +506,8 @@ export function PlaylistPanel({ platform }: { platform: string }) {
   const view = usePlaylists((s) => s.view);
   const problem = usePlaylists((s) => s.problem);
   return (
-    <section aria-label="Playlists" data-testid="playlists" className="flex min-h-0 flex-1 flex-col">
+    // In the left column's "Playlists" landmark (operator/Layout.tsx, Session 44), with the Library button.
+    <div data-testid="playlists" className="flex min-h-0 flex-1 flex-col">
       {view === 'templates' ? <TemplateList /> : <PlaylistTree platform={platform} />}
       <SaveTemplateDialog />
       <AddSlotDialog />
@@ -518,6 +519,6 @@ export function PlaylistPanel({ platform }: { platform: string }) {
           {problem}
         </Notice>
       )}
-    </section>
+    </div>
   );
 }

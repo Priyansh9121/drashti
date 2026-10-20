@@ -320,6 +320,24 @@ export async function setUpScreen(win: Page, name = 'Main Hall', displayIndex = 
   );
 }
 
+/**
+ * The library's sheet, opened from the Library button if it is shut (Session 44: the playlists have the
+ * whole left column, and the library opens over it).
+ */
+export async function openLibrary(win: Page): Promise<Locator> {
+  const sheet = win.getByTestId('library-sheet');
+  if ((await sheet.count()) === 0) await win.getByTestId('library-button').click();
+  await expect(sheet).toBeVisible();
+  return sheet;
+}
+
+/** Shut the library's sheet if it is open, so the playlists show again in the left column. */
+export async function closeLibrary(win: Page): Promise<void> {
+  const sheet = win.getByTestId('library-sheet');
+  if ((await sheet.count()) > 0) await win.getByTestId('library-close').click();
+  await expect(sheet).toHaveCount(0);
+}
+
 /** Import files through the bridge and return the report's targets (library ids), in the order given. */
 export async function importAndGetIds(win: Page, files: string[]): Promise<string[]> {
   return win.evaluate(async (paths) => {
@@ -388,7 +406,9 @@ export async function dropFiles(
 export async function showExtras(page: Page): Promise<void> {
   const result = await page.evaluate(() => (globalThis as PageGlobals).drashti.library.setExtras(true));
   if (!result.ok) throw new Error(result.message);
-  await expect(page.getByTestId('library-tab-shastra')).toBeVisible();
+  // Shown once the window has heard: the playlists' Templates tab (the library's Shastra tab is in its sheet,
+  // Session 44, open or not).
+  await expect(page.getByTestId('playlist-view-tab-templates')).toBeVisible();
 }
 
 /** Unfold More tools (Session 26a: Macros, Masks and the Idle rotation are in it, folded away to begin with). */

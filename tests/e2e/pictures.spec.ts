@@ -10,6 +10,7 @@ import {
   dropFiles,
   importAndGetIds,
   launchApp,
+  openLibrary,
   operatorPage,
   operatorReady,
   outputPage,
@@ -69,6 +70,7 @@ test('a PDF dropped on the library becomes slides of its pages as pictures, with
   )[0]?.id;
 
   // Slides keep changing while the pages are drawn: each change still reaches the screen.
+  await openLibrary(win);
   await dropFiles(win, win.getByTestId('library-drop'), [pdf]);
   const painted: boolean[] = [];
   for (let i = 0; i < 6; i++) {
@@ -161,6 +163,7 @@ test('a PowerPoint file with nothing on the computer to save it as PDF is report
     deck,
     makeTestPptx([{ color: '1E3A8A', text: 'Placeholder slide', notes: 'Placeholder note' }]),
   );
+  await openLibrary(win);
   await dropFiles(win, win.getByTestId('library-drop'), [deck]);
   const report = win.getByTestId('import-report');
   await expect(report).toBeVisible({ timeout: 60_000 });
@@ -191,6 +194,7 @@ test('a deck’s pages stay out of the Media list: a PDF and a picture imported,
   const ids = await importAndGetIds(win, [pdf, picture]);
   expect(ids.every((id) => id !== '')).toBe(true);
   // The deck is a presentation of its three pages...
+  await openLibrary(win);
   const deck = win
     .getByTestId('presentation-list')
     .getByTestId('presentation-row')

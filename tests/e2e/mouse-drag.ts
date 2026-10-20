@@ -1,4 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
+import { expect } from '@playwright/test';
 
 /*
  * Dragging with the mouse in a test (Session 26a): pressed on the source, moved
@@ -29,9 +30,22 @@ const within = async <T>(work: Promise<T>, ms: number, what: string): Promise<T>
   }
 };
 
+/**
+ * A drag from the library's sheet (Session 44): the sheet stands aside once the drag is under way, so what it
+ * lies over (the playlists) takes the drop. Waited for, so the target is measured and dropped on uncovered.
+ */
+export async function libraryAside(page: Page, fromSheet: boolean): Promise<void> {
+  if (fromSheet) await expect(page.getByTestId('library-sheet')).toHaveAttribute('data-aside', 'true');
+}
+
+/** Whether `source` is in the library's sheet: asked before the drag, as the sheet hides once it is under way. */
+export const inLibrarySheet = (source: Locator): Promise<boolean> =>
+  source.evaluate((el) => el.closest('[data-testid="library-sheet"]') !== null);
+
 /** Drag `source` onto the top, middle or bottom of `target` with the mouse. */
 export async function mouseDrag(page: Page, source: Locator, target: Locator, where: DropAt = 'middle') {
   await source.scrollIntoViewIfNeeded();
+  const fromSheet = await inLibrarySheet(source);
   const from = await source.boundingBox();
   if (!from) throw new Error('the drag source is not visible');
   const x = from.x + from.width / 2;
@@ -46,6 +60,7 @@ export async function mouseDrag(page: Page, source: Locator, target: Locator, wh
     10_000,
     'the drag did not get under way: Chromium cancelled it as it started (its row changed under the pointer)',
   );
+  await libraryAside(page, fromSheet);
   // Measured once the drag is under way, with the target in view: on a small screen a list can
   // scroll as the source comes into view.
   await target.evaluate((el) => {

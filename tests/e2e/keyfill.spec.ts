@@ -1,7 +1,15 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { OutputGlobals, PageGlobals } from './helpers';
-import { launchApp, letTimePass, operatorPage, operatorReady, outputPages, outputReady } from './helpers';
+import {
+  launchApp,
+  letTimePass,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+  outputPages,
+  outputReady,
+} from './helpers';
 import { canvasPixels, near } from './pixels';
 
 /*
@@ -146,6 +154,7 @@ test('the fill and the key dissolve together, and paint each change within frame
   const win = await operatorPage(app);
   await operatorReady(win);
   const { fill, key } = await keyFillPair(app, win);
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Sample kirtan/ })

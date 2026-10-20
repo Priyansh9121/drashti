@@ -5,7 +5,7 @@ import type { PlaylistCursor } from '../../../shared/engine/state';
 import { useEngine } from '../engine/engine-store';
 import { requestRemoval } from '../library/import-store';
 import { undoRemoval } from '../library/undo';
-import { selectPresentation, useLibrary } from '../library/library-store';
+import { openLibrary, selectPresentation, useLibrary } from '../library/library-store';
 import { playOrder } from '../../../shared/order';
 import type { OperatorAction } from '../../../shared/keymap';
 // logo-store uses dispatch from here; both only call each other when an action runs.
@@ -186,11 +186,12 @@ async function perform(action: OperatorAction, ui: OperatorUi): Promise<void> {
     case 'moveItemDown':
       return;
     case 'findInLibrary': {
+      // The library opens as a sheet (Session 44), which puts the keyboard in its search box as it opens.
       const box = document.getElementById('library-search');
       if (box instanceof HTMLInputElement) {
         box.focus();
         box.select();
-      }
+      } else openLibrary();
       return;
     }
     case 'undo':

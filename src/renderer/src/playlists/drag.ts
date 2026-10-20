@@ -23,7 +23,15 @@ export type DragKind = keyof typeof TYPES;
  * by the drag would grow those buttons over the place it was grabbed), so nothing may change size,
  * and nothing is chosen, until the drag is over (Session 26a).
  */
-export const useDragging = create<{ on: boolean }>(() => ({ on: false }));
+export const useDragging = create<{
+  on: boolean;
+  /**
+   * A drag from the library is under way (Session 44): its sheet stands aside, so the playlists and folders
+   * it lies over show and take the drop. Set at the drag's first move, never at its start: Chromium cancels
+   * a drag whose source is gone from under the pointer as it starts.
+   */
+  aside: boolean;
+}>(() => ({ on: false, aside: false }));
 
 /**
  * Do something once the drag is over (choosing the row it came from, say): done at dragstart, it
@@ -51,11 +59,18 @@ export function startDrag(e: DragEvent, kind: DragKind, ids: readonly string[]):
   e.dataTransfer.setData(TYPES[kind], JSON.stringify(ids));
   e.dataTransfer.effectAllowed = kind === 'items' ? 'move' : 'copy';
   useDragging.setState({ on: true });
+  // From the library: its sheet stands aside once the drag has started (see `aside`).
+  const aside = () => {
+    window.removeEventListener('dragover', aside, true);
+    if (useDragging.getState().on) useDragging.setState({ aside: true });
+  };
+  if (kind !== 'items') window.addEventListener('dragover', aside, true);
   // Over when it ends (after the drop has been placed: a reset at the drop itself would bring the
   // buttons back, and move the rows, before the list reads where it landed), or, should the row it
   // came from be gone, at the next mouse move.
   const over = () => {
-    useDragging.setState({ on: false });
+    useDragging.setState({ on: false, aside: false });
+    window.removeEventListener('dragover', aside, true);
     for (const type of ['dragend', 'mousemove'] as const) window.removeEventListener(type, over, true);
   };
   for (const type of ['dragend', 'mousemove'] as const) window.addEventListener(type, over, true);

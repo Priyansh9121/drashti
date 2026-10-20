@@ -8,6 +8,7 @@ import {
   importAndGetIds,
   killApp,
   launchApp,
+  openLibrary,
   operatorPage,
   outputPage,
   relaunchApp,
@@ -55,6 +56,7 @@ test('slides move on by themselves, loop at the end, and Next starts the new sli
   await setUpScreen(win);
   const output = await outputPage(app);
   const words = output.locator('[data-layer="slide"]');
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Placeholder Timed/ })

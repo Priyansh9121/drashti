@@ -15,6 +15,12 @@ import { parsePassageId, passageId, passageKeySchema } from '../../shared/shastr
 import { ShastraRepo } from './shastra';
 import type { PlayItem } from '../engine/playlist-source';
 import type { Db } from './database';
+import {
+  filesFitFolders,
+  FROM_FOLDER_SETTINGS,
+  markedFromFolder,
+  type PartFile,
+} from '../playlists/folder-origin';
 
 const NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 
@@ -326,6 +332,8 @@ export class PlaylistRepo {
    * in order; or (templates) the sabha templates, kept apart from them.
    */
   tree(templates = false): PlaylistNode[] {
+    // Made from a folder (Session 44): shown a folder at a time. Templates never are.
+    const fromFolder = templates ? new Set<string>() : this.fromFolderIds();
     const rows = this.db
       .prepare(
         `SELECT p.id, p.name, p.is_folder, p.parent_id, p.source_kind, p.kind, p.settings,
@@ -361,6 +369,7 @@ export class PlaylistRepo {
           placeholders: r.placeholders,
           imported: r.source_kind !== null,
           template: templates,
+          ...(fromFolder.has(r.id) ? { fromFolder: true as const } : {}),
         });
         if (r.is_folder === 1) walk(r.id);
       }
@@ -515,6 +524,63 @@ export class PlaylistRepo {
       )
       .run(id, name);
     return id;
+  }
+
+  /** Mark a plain playlist as made from a folder (Session 44: a Dropbox folder link's), so it is shown a folder at a time. */
+  markFromFolder(id: string): void {
+    this.db
+      .prepare("UPDATE playlists SET settings = ? WHERE id = ? AND kind = 'normal'")
+      .run(FROM_FOLDER_SETTINGS, id);
+  }
+
+  /**
+   * The playlists made from a folder (Session 44, playlists/folder-origin.ts): smart ones, plain ones marked so,
+   * and plain ones an earlier version made from a folder link, whose files lie in the folders their headers name
+   * (marked as they are found).
+   */
+  fromFolderIds(): Set<string> {
+    const out = new Set<string>();
+    const playlists = this.db
+      .prepare(
+        "SELECT id, kind, settings FROM playlists WHERE deleted_at IS NULL AND is_folder = 0 AND is_template = 0 AND kind IN ('smart', 'normal')",
+      )
+      .all() as { id: string; kind: PlaylistKind; settings: string | null }[];
+    for (const p of playlists) if (p.kind === 'smart' || markedFromFolder(p.settings)) out.add(p.id);
+    // The rest that have headers: does each part's file lie where its header says?
+    const rows = this.db
+      .prepare(
+        `SELECT i.playlist_id, i.kind, i.label, COALESCE(m.source_path, pr.source_path) AS file
+           FROM playlist_items i
+           LEFT JOIN media m ON m.id = i.media_id
+           LEFT JOIN presentations pr ON pr.id = i.presentation_id
+          WHERE i.deleted_at IS NULL AND i.playlist_id IN (
+            SELECT h.playlist_id FROM playlist_items h
+             WHERE h.kind = 'header' AND h.deleted_at IS NULL)
+          ORDER BY i.playlist_id, i.position`,
+      )
+      .all() as { playlist_id: string; kind: string; label: string; file: string | null }[];
+    const plain = new Set(playlists.filter((p) => p.kind === 'normal' && !out.has(p.id)).map((p) => p.id));
+    const files = new Map<string, PartFile[]>();
+    let part = '';
+    let current = '';
+    for (const r of rows) {
+      if (r.playlist_id !== current) {
+        current = r.playlist_id;
+        part = '';
+      }
+      if (!plain.has(r.playlist_id)) continue;
+      if (r.kind === 'header') part = r.label;
+      else if (r.file !== null)
+        files.set(r.playlist_id, [...(files.get(r.playlist_id) ?? []), { part, file: r.file }]);
+    }
+    // Seen once as made from a folder, it is marked so: something added later from elsewhere (a kirtan, a
+    // file from the desktop) never undoes it.
+    for (const [id, found] of files)
+      if (filesFitFolders(found)) {
+        this.markFromFolder(id);
+        out.add(id);
+      }
+    return out;
   }
 
   /**

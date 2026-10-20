@@ -46,18 +46,21 @@ function makeVideo(path: string, size: string): void {
   if (r.status !== 0) throw new Error(`ffmpeg: ${r.stderr.toString()}`);
 }
 
-/** The open playlist as the window shows it: "# Header", "Name", "Name (not in the folder)". */
+/**
+ * The open playlist's whole order, as it is kept: "# Header", "Name", "Name (not in the folder)". Read from the
+ * playlist itself (Session 44: the window shows a folder playlist a folder at a time, folder-playlists.spec.ts).
+ */
 const shown = (win: Page) =>
-  win
-    .getByTestId('open-playlist')
-    .getByTestId('playlist-item')
-    .evaluateAll((els) =>
-      els.map((e) => {
-        const label = e.querySelector('[data-label]')?.textContent.trim() ?? '';
-        if (e.getAttribute('data-kind') === 'header') return `# ${label}`;
-        return e.querySelector('[data-testid="item-gone"]') ? `${label} (not in the folder)` : label;
-      }),
+  win.evaluate(async () => {
+    const open = document.querySelector('[data-testid="playlist-node"][data-open="true"]');
+    const items = await (globalThis as PageGlobals).drashti.playlists.items(
+      open?.getAttribute('data-node-id') ?? '',
     );
+    return items.map((i) => {
+      if (i.kind === 'header') return `# ${i.label}`;
+      return 'gone' in i && i.gone === true ? `${i.label} (not in the folder)` : i.label;
+    });
+  });
 
 test('a smart playlist follows a folder: files added, taken away and changed, in subfolders too, before and after a restart (Session 26c)', async () => {
   test.skip(ffmpeg === null, 'needs the bundled FFmpeg (pnpm fetch-ffmpeg)');

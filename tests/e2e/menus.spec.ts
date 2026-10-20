@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, operatorReady } from './helpers';
+import { launchApp, openLibrary, operatorPage, operatorReady } from './helpers';
 
 /*
  * Menus from the keyboard (Session 25): the choice with the focus shows the focus ring, closing
@@ -70,6 +70,7 @@ test('Esc in a menu over the slide editor closes only the menu', async () => {
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1600, height: 900 });
   await operatorReady(win);
+  await openLibrary(win);
   await win.getByTestId('presentation-list').getByRole('button').first().click();
   await win.getByTestId('edit-slides').click();
   const editor = win.getByTestId('slide-editor');
@@ -96,6 +97,7 @@ test('a library row’s menu holds the keyboard: the arrows and Space never move
   await operatorReady(win);
   // No playlist open: a presentation's menu has "Add to playlist (open a playlist first)", off, and
   // Delete… (Session 26a; before, the menu had nothing to choose).
+  await openLibrary(win);
   const row = win.getByTestId('presentation-list').getByTestId('presentation-row').first();
   await row.click();
   await expect(win.getByTestId('slide-grid')).toBeVisible();

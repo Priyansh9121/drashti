@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cocoaRtf, pp6Template } from '../../src/main/import/testing/pp6-fixtures';
-import { importAndGetIds, launchApp, operatorPage, outputPage, setUpScreen } from './helpers';
+import { importAndGetIds, launchApp, openLibrary, operatorPage, outputPage, setUpScreen } from './helpers';
 
 /*
  * Themes: a look per language, applied to a presentation (the live slide
@@ -24,6 +24,7 @@ test('a theme with a bigger Gujarati line and a smaller transliteration, applied
   const output = await outputPage(app);
 
   // A presentation made in Drashti starts with the default theme.
+  await openLibrary(win);
   await win.getByRole('button', { name: 'New…' }).click();
   const editor = win.getByTestId('words-editor');
   await editor.getByRole('textbox', { name: 'Name' }).fill('Placeholder Themed Kirtan');
@@ -85,6 +86,7 @@ test('an imported template becomes a theme from its first text box', async () =>
     ]),
   );
   await importAndGetIds(win, [template]);
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Placeholder Evening Look/ })
