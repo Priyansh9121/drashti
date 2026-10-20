@@ -72,7 +72,7 @@ function TryTheKeys({ platform }: { platform: string }) {
   ].filter((k) => k.key !== '');
   return (
     <section aria-labelledby="practice-keys" className="space-y-3 p-4 text-sm">
-      <h2 id="practice-keys" className="text-2xs font-bold tracking-wider text-muted uppercase">
+      <h2 id="practice-keys" className="text-2xs font-bold tracking-wider text-heading uppercase">
         Try the keys
       </h2>
       <p className="text-muted">They work here as in a show. Press a slide to put it up.</p>

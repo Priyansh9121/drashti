@@ -49,7 +49,7 @@ import { cutText } from '../../../shared/text';
 function Section({ title, children, testId }: { title: string; children: ReactNode; testId?: string }) {
   return (
     <section className="space-y-2 border-b border-line px-3 py-3" aria-label={title} data-testid={testId}>
-      <h3 className="text-2xs font-bold tracking-wider text-muted uppercase">{title}</h3>
+      <h3 className="text-2xs font-bold tracking-wider text-heading uppercase">{title}</h3>
       {children}
     </section>
   );

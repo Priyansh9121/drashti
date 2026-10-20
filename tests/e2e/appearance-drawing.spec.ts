@@ -19,12 +19,13 @@ const style = (l: Locator, prop: string, pseudo: string | null = null) =>
 const rgb = (hex: string) =>
   `rgb(${[1, 3, 5].map((at) => String(parseInt(hex.slice(at, at + 2), 16))).join(', ')})`;
 
-async function plainHeader(header: Locator, name: string, panel: string) {
+async function plainHeader(header: Locator, name: string, colour: string) {
   // The mark beside the name, decoration only: the heading still reads "Drashti".
   await expect(header.getByRole('heading', { level: 1 })).toHaveText(name);
   await expect(header.locator('h1 svg[data-mark]')).toBeVisible();
-  // No light across the header and no hairline: the panel's own colour, nothing drawn before it.
-  expect(await style(header, 'background-color')).toBe(rgb(panel));
+  // No light across the header and no hairline: the appearance's header colour (Session 42; Black's and White's
+  // their panel), flat, nothing drawn before it.
+  expect(await style(header, 'background-color')).toBe(rgb(colour));
   expect(await style(header, 'background-image')).toBe('none');
   expect(await style(header, 'content', '::before')).toBe('none');
   expect(await style(header.locator('.mark-halo').first(), 'content', '::before')).toBe('none');
@@ -37,7 +38,7 @@ for (const a of BUILT_IN) {
     await operatorReady(win);
     await chooseMenuItem(app, `appearance-${a.id}`);
     await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
-    await plainHeader(win.getByTestId('app-header'), 'Drashti', a.colours.panel);
+    await plainHeader(win.getByTestId('app-header'), 'Drashti', a.decoration.header);
     // Empty places: the unlit lamp, in the quietest words' colour, with no light behind it.
     const playlists = win.getByText('No playlists yet');
     await expect(playlists).toBeVisible();
@@ -65,7 +66,7 @@ for (const a of BUILT_IN) {
     await win.getByRole('button', { name: 'Simple Mode' }).click();
     const simple = win.getByTestId('simple-mode');
     await expect(simple).toBeVisible();
-    await plainHeader(simple.locator('header').first(), 'Drashti', a.colours.panel);
+    await plainHeader(simple.locator('header').first(), 'Drashti', a.decoration.header);
     await app.close();
   });
 }

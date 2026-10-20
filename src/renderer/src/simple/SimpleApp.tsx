@@ -12,6 +12,7 @@ import { PinInput, useWaitText } from '../roles/RolesDialogs';
 import { WordMark } from '../ui/Mark';
 import { Badge, LiveBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
+import { Band, HeaderStates } from '../ui/Decoration';
 import { cx } from '../ui/cx';
 import { Dialog } from '../ui/Dialog';
 import { Field, Select, TextInput } from '../ui/Field';
@@ -449,16 +450,21 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
   const covering = key('toggleBlackout') !== '';
   return (
     <div className="flex h-full min-h-0 flex-col bg-ink" data-testid="simple-mode">
-      <header className="flex h-14 bg-panel shrink-0 items-center gap-4 border-b border-line px-4">
+      <header
+        className="flex h-14 shrink-0 items-center gap-4 border-b border-line bg-header px-4 text-on-header"
+        data-header=""
+      >
         <h1 className="shrink-0 text-lg font-bold tracking-wide">
           <WordMark size={26} />
         </h1>
-        <Badge tone="info">Simple Mode</Badge>
-        <OnAirBadges size="lg" />
-        <NetworkBadge />
-        <div className="min-w-0 flex-1">
-          <LiveStatus />
-        </div>
+        <HeaderStates>
+          <Badge tone="info">Simple Mode</Badge>
+          <OnAirBadges size="lg" />
+          <NetworkBadge />
+          <div className="min-w-0 flex-1">
+            <LiveStatus />
+          </div>
+        </HeaderStates>
         {/* The way out on Simple Mode's own screen (Session 20), small and far from the big buttons:
             Windows hides the menu bar. It asks the same question as View > Switch to Pro Mode…. */}
         <Button
@@ -471,6 +477,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
           Switch to Pro Mode…
         </Button>
       </header>
+      <Band />
       <RecoveryBanner />
       {/* A hall screen that stopped (Session 26h), or no sound on the stream (Session 31): in the flow, so
           they never cover the big buttons. */}

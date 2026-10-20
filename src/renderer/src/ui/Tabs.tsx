@@ -42,7 +42,8 @@ export function Tabs<T extends string>({
   className?: string;
 }) {
   const list = useRef<HTMLDivElement>(null);
-  // Lively (Session 40): the chosen tab's underline glides from the tab chosen before.
+  // Lively (Session 40): the chosen tab's underline glides from the tab chosen before. It is in the appearance's
+  // second colour (Session 42), the one for what marks without acting.
   const underline = useRef<HTMLSpanElement>(null);
   const underlineWas = useRef<DOMRect | null>(null);
   useLayoutEffect(() => {
@@ -104,7 +105,7 @@ export function Tabs<T extends string>({
                 ref={underline}
                 aria-hidden="true"
                 data-glide=""
-                className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-accent"
+                className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-second"
               />
             )}
           </button>

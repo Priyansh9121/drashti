@@ -27,7 +27,7 @@ export function NextPreview({ stacked = false }: { stacked?: boolean }) {
   const heading = (
     <h2
       id="next-preview-title"
-      className={`text-2xs font-bold tracking-wider text-muted uppercase ${stacked ? 'flex h-6 items-center' : ''}`}
+      className={`text-2xs font-bold tracking-wider text-heading uppercase ${stacked ? 'flex h-6 items-center' : ''}`}
     >
       Next
     </h2>
