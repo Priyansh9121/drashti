@@ -45,6 +45,7 @@ const asMac = (key: string) => key.replace(/^Ctrl\+/u, 'Cmd+');
  */
 const NOT_KEYMAP: Record<string, string> = {
   'Shift+F10': 'a list’s menu, as a right-click: the list’s own key (and the system’s)',
+  'Cmd+A': 'choosing a whole list (Session 44): the list’s own key, while it has the keyboard',
   'Fn+Shift+F10': 'Shift+F10 on a Mac laptop',
   Tab: 'moving through the window: the browser’s own key',
   'Shift+Tab': 'moving back through the window: the browser’s own key',
