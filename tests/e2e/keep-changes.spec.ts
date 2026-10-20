@@ -252,7 +252,8 @@ test('the setup wizard asks before typed PINs are lost (nothing is set until Fin
   const { app, win } = await start();
   await chooseMenuItem(app, 'set-up-screens');
   const wizard = win.getByTestId('setup-wizard');
-  for (let step = 0; step < 5; step++) await wizard.getByTestId('setup-next').click();
+  // From the displays (Session 44: where it opens) to the PINs.
+  for (let step = 0; step < 4; step++) await wizard.getByTestId('setup-next').click();
   await wizard.getByRole('radio', { name: 'Set an admin PIN and an operator PIN' }).check();
   await wizard.getByTestId('setup-admin-pin').fill('2468');
   await win.keyboard.press('Escape');
@@ -263,7 +264,7 @@ test('the setup wizard asks before typed PINs are lost (nothing is set until Fin
   await expect(wizard).toHaveCount(0);
   // Nothing was set: opened again, it starts afresh, with no PINs typed.
   await chooseMenuItem(app, 'set-up-screens');
-  for (let step = 0; step < 5; step++) await wizard.getByTestId('setup-next').click();
+  for (let step = 0; step < 4; step++) await wizard.getByTestId('setup-next').click();
   await expect(wizard.getByRole('radio', { name: 'No PINs for now' })).toBeChecked();
   await app.close();
 });

@@ -9,6 +9,7 @@ import { FileText, FolderOpen, Import, Link2, ListPlus, Monitor } from '../ui/ic
 import { UnlitLamp } from '../ui/Mark';
 import { MenuButton } from '../ui/Menu';
 import { useArrival } from '../ui/motion';
+import { ShowOnButton, useDisplayOffer } from '../screens/ShowOn';
 
 /*
  * The middle of the window with nothing chosen (Session 26g, "Skip for now" on the first start
@@ -17,6 +18,7 @@ import { useArrival } from '../ui/motion';
  */
 export function StartHere() {
   const arriving = useArrival('empty');
+  const offered = useDisplayOffer();
   return (
     <div
       className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-8 text-center text-muted"
@@ -70,6 +72,8 @@ export function StartHere() {
           title="The screens"
           text="Which screen is the hall’s, and which the stage’s"
         >
+          {/* A display connected and no hall screen yet (Session 44): one click shows on it. */}
+          {offered && <ShowOnButton display={offered} size="sm" />}
           <Button size="sm" icon={Monitor} onClick={() => void openSetup(1)}>
             Set Up Screens…
           </Button>

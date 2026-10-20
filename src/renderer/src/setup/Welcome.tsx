@@ -9,6 +9,7 @@ import { Monitor, Play } from '../ui/icons';
 import { LitLamp } from '../ui/Mark';
 import { useLeaving } from '../ui/motion';
 import { openSetup } from './setup-store';
+import { ShowOnButton, useDisplayOffer } from '../screens/ShowOn';
 
 /*
  * The first start (Session 26g): once per library, the lamp lights (over --dur-light; with reduced
@@ -57,6 +58,7 @@ export function Welcome() {
 
 function WelcomeDialog() {
   const titleId = useId();
+  const offered = useDisplayOffer();
   const panel = useRef<HTMLDivElement>(null);
   // Esc is Skip for now: the window behind is ready, with its empty places leading.
   useFocusTrap(panel, skipForNow);
@@ -98,9 +100,19 @@ function WelcomeDialog() {
           style={{ ['--i' as string]: 2 }}
           className="mt-2 flex flex-wrap items-center justify-center gap-2"
         >
-          <Button variant="primary" size="lg" icon={Monitor} data-autofocus onClick={setUpTheScreens}>
-            Set Up Screens…
-          </Button>
+          {/* Session 44: with a display free for the hall, showing on it is the one obvious step. */}
+          {offered ? (
+            <>
+              <ShowOnButton display={offered} size="lg" first onShown={answer} />
+              <Button size="lg" icon={Monitor} onClick={setUpTheScreens}>
+                Set Up Screens…
+              </Button>
+            </>
+          ) : (
+            <Button variant="primary" size="lg" icon={Monitor} data-autofocus onClick={setUpTheScreens}>
+              Set Up Screens…
+            </Button>
+          )}
           <Button size="lg" icon={Play} onClick={tryPractice} data-testid="welcome-practice">
             Try a practice show first
           </Button>

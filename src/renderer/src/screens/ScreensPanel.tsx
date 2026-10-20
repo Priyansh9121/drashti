@@ -389,7 +389,7 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
             data-testid="open-setup"
             onClick={() => {
               onClose();
-              void openSetup();
+              void openSetup(1);
             }}
           >
             Set Up Screens…

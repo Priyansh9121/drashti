@@ -416,9 +416,9 @@ test('the kirtan library, screens’ languages, templates and the setup wizard',
   await shot(win, 'fill-slot');
   await win.getByTestId('fill-slot').getByRole('button', { name: 'Cancel' }).click();
 
-  // The setup wizard's screens step.
+  // The setup wizard's screens step: where it opens (Session 44).
   await chooseMenuItem(app, 'set-up-screens');
-  await win.getByTestId('setup-wizard').getByTestId('setup-next').click();
+  await expect(win.getByTestId('setup-wizard').getByTestId('setup-step')).toHaveText('Screens');
   await shot(win, 'setup-wizard');
   await app.close();
 });

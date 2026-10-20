@@ -4191,6 +4191,12 @@ function start(): void {
       settings.get('welcome') === undefined &&
       settings.get('setupWizard') === undefined,
     operatorDisplayId: operatorDisplayId(),
+    // Session 44: the display the controls are on, windowed outputs or not, and whether to offer "Show on".
+    controlsDisplayId:
+      operatorWindow && !operatorWindow.isDestroyed()
+        ? electronScreen.getDisplayMatching(operatorWindow.getBounds()).id
+        : null,
+    offer: mode === 'pro' && (!wizardOff || sw('DRASHTI_TEST_SCREEN_OFFER') === '1'),
   }));
   handle(IPC.setup.setSeen, (e) => {
     if (fromOperator(e)) settings.set('setupWizard', new Date().toISOString());
