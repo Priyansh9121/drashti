@@ -7,6 +7,7 @@ import type { Size } from '../../../shared/scaling';
 import type { StreamLayout } from '../../../shared/stream';
 import { BackgroundMedia } from '../render/BackgroundMedia';
 import { MovingLowerThird } from '../render/LowerThird';
+import { LowerThirdView } from '../render/LowerThirdView';
 import { MessageBanner, PropsLayer, Scene } from '../render/Scene';
 import { SlideLayerView } from '../render/SlideLayerView';
 
@@ -57,6 +58,7 @@ export function ProgramView({
           scaling="fit"
           look={{ ...DEFAULT_LIVE_GROUP_LOOK, languages, movement }}
           ticker={false}
+          place="stream"
         />
       </div>
     );
@@ -103,6 +105,13 @@ export function ProgramView({
         movement={movement}
       />
       {picture.props && <PropsLayer props={state.layers.props} canvas={canvas} scaling="fit" />}
+      {/* A lower third from the Lower Thirds panel, for the stream (Session 44). */}
+      <LowerThirdView
+        layer={state.layers.lowerThird}
+        off={state.lowerThirdOff}
+        canvas={canvas}
+        place="stream"
+      />
       {picture.messages && (
         <MessageBanner
           messages={state.layers.messages}

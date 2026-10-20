@@ -64,6 +64,8 @@ import { MasksPanel } from './MasksPanel';
 import { AudioAddMenu, MusicPanel } from '../music/MusicPanel';
 import { setMidiHandler, startMidi } from '../midi/midi-store';
 import { MidiTool } from '../midi/MidiTool';
+import { LowerThirdEditor } from '../lower-thirds/LowerThirdEditor';
+import { LowerThirdsPanel } from '../lower-thirds/LowerThirdsPanel';
 import { runBack } from './actions';
 import { LooksPanel } from './LooksPanel';
 import { CalendarDialog } from '../calendar/CalendarDialog';
@@ -342,6 +344,12 @@ function ProApp({ info }: { info: AppInfo | null }) {
                   data-testid="more-tools"
                 >
                   <div>
+                    <PanelNote>
+                      A lower third shows a name, a title or a place across the bottom of the picture.
+                    </PanelNote>
+                    <LowerThirdsPanel nested platform={platform} />
+                  </div>
+                  <div>
                     <PanelNote>A mask hides part of a screen, such as a corner a banner covers.</PanelNote>
                     <MasksPanel nested />
                   </div>
@@ -384,6 +392,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <StreamSettings />
       <StageLayoutEditor />
       <MaskEditor />
+      <LowerThirdEditor />
       <CalendarDialog />
       <RolesDialog />
       <BackupsDialog />

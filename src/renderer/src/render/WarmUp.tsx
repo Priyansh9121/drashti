@@ -11,6 +11,8 @@ import { MAX_TRANSITION_MS, TRANSITION_KINDS } from '../../../shared/model';
 import { WARM_UP_MARK } from '../../../shared/perf-marks';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
+import { animationById, animationLength, cutIntoUnits } from '../../../shared/lower-third-animations';
+import { DEFAULT_LOWER_THIRD_LOOK } from '../../../shared/lower-thirds';
 import { engineNow, pauseClock } from './clock';
 import { MediaUrls } from './media-urls';
 import { Scene } from './Scene';
@@ -208,6 +210,26 @@ const LOOKED: Record<string, PictureLook> = {
   [PICTURE.b]: { zoom: 1.2, x: 0.05, y: 0, brightness: 0.1, contrast: 0.1, colour: 0.2, sharpness: 0 },
 };
 
+/** The lower thirds' moves the warm-up draws (Session 44): one of each kind of drawing they ask for. */
+export const WARM_LOWER_THIRDS = [
+  'fade-steady',
+  'slide-left-steady',
+  'wipe-right-steady',
+  'softwipe-up-steady',
+  'open-centre-steady',
+  'pop-steady',
+  'grow-left-steady',
+  'stretch-up-steady',
+  'flip-up-steady',
+  'flip-left-steady',
+  'spin-steady',
+  'swing-steady',
+  'line-wipe-band-fade-steady',
+  'line-slide-left-band-wipe-steady',
+  'word-rise-band-slide-steady',
+  'letter-pop-band-wipe-steady',
+];
+
 function scenes(): WarmScene[] {
   const base = initialEngineState();
   const look = (movement: Movement, more: Partial<LiveGroupLook> = {}): LiveGroupLook => ({
@@ -316,6 +338,35 @@ function scenes(): WarmScene[] {
         },
       });
   }
+  // A lower third from the Lower Thirds panel (Session 44) part-way through each kind of move: fading, sliding,
+  // wiping and opening (a clip), growing, flipping (a perspective) and turning, and lines, words and letters
+  // each moving on a band that slides or wipes in.
+  for (const id of WARM_LOWER_THIRDS)
+    list.push({
+      key: `lower-third-panel/${id}`,
+      look: look('calm'),
+      state: (during, at) => {
+        const a = animationById(id);
+        const lines = ['Placeholder name', 'Placeholder title'];
+        const units = cutIntoUnits(lines, a).units;
+        return {
+          ...base,
+          layers: {
+            ...base.layers,
+            lowerThird: during
+              ? {
+                  id: `${W}-lower-third-${id}`,
+                  lines,
+                  look: DEFAULT_LOWER_THIRD_LOOK,
+                  where: 'both',
+                  animation: id,
+                  shownAt: at - animationLength(a, 'in', units) * PART,
+                }
+              : null,
+          },
+        };
+      },
+    });
   // The idle rotation part-way through a dissolve between two pictures (nothing else up).
   list.push({
     key: 'idle',

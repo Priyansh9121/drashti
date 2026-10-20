@@ -1,4 +1,5 @@
 import type { AppearanceNow, AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
+import type { LowerThird, LowerThirdInput, LowerThirdResult, LowerThirdsResult } from './lower-thirds';
 import type { RolesResult, RolesView } from './roles';
 import type { BackupSchedule, BackupsResult, PickFolderResult, ScheduledBackupsView } from './backups';
 import type { EventAddressPatch, EventsOutResult, EventsOutView } from './events-out';
@@ -521,6 +522,15 @@ export const IPC = {
     /** main -> operator: the Looks changed (or which is live). */
     changed: 'looks:changed',
   },
+  /** Lower Thirds (Session 44; changing them: operator window, Pro Mode). */
+  lowerThirds: {
+    list: 'lowerthirds:list',
+    save: 'lowerthirds:save',
+    remove: 'lowerthirds:remove',
+    restore: 'lowerthirds:restore',
+    /** main -> operator: the lower thirds changed. */
+    changed: 'lowerthirds:changed',
+  },
   /** The MIDI controller's settings (changing them: operator window, Pro Mode). */
   midi: {
     get: 'midi:get',
@@ -1032,6 +1042,10 @@ export interface InvokeContract {
     args: [lookId: string, groupId: string, patch: GroupLookPatch];
     result: LookResult;
   };
+  [IPC.lowerThirds.list]: { args: []; result: LowerThird[] };
+  [IPC.lowerThirds.save]: { args: [id: string | null, input: LowerThirdInput]; result: LowerThirdResult };
+  [IPC.lowerThirds.remove]: { args: [ids: string[]]; result: LowerThirdsResult };
+  [IPC.lowerThirds.restore]: { args: [ids: string[]]; result: LowerThirdsResult };
   [IPC.midi.get]: { args: []; result: MidiSettings };
   [IPC.midi.set]: { args: [settings: MidiSettings]; result: MidiResult };
   [IPC.shastra.list]: { args: []; result: ShastraTextInfo[] };
@@ -1193,6 +1207,7 @@ export interface EventContract {
   [IPC.looks.changed]: LooksView;
   [IPC.stageLayouts.changed]: StageLayout[];
   [IPC.masks.changed]: Mask[];
+  [IPC.lowerThirds.changed]: LowerThird[];
   [IPC.calendar.changed]: CalendarView;
   [IPC.idle.changed]: IdleView;
   [IPC.output.context]: OutputContext;

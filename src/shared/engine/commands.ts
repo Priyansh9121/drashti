@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CALENDAR_LANGS } from '../calendar';
+import { lowerThirdSchema } from '../lower-thirds';
 import { maskSchema } from '../masks';
 import { hexColorSchema, idSchema, slideElementSchema } from '../model-schema';
 import {
@@ -136,6 +137,12 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('showMessage'), message: messageSchema }),
   z.object({ type: z.literal('hideMessage'), messageId: id }),
   z.object({ type: z.literal('setMask'), mask }),
+  /**
+   * A lower third up (Session 44), as the library has it, in place of any up now; the same one again changes
+   * its words and look without playing its in again. hideLowerThird plays its out.
+   */
+  z.object({ type: z.literal('showLowerThird'), lowerThird: lowerThirdSchema }),
+  z.object({ type: z.literal('hideLowerThird') }),
   /** Timers: only these three change what the windows count from. */
   z.object({ type: z.literal('startTimer'), timerId: id }),
   z.object({ type: z.literal('pauseTimer'), timerId: id }),

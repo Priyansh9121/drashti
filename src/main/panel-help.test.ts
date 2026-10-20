@@ -55,8 +55,8 @@ describe('"What is this?" on the operator panels', () => {
         ),
     );
     expect(without).toEqual([]);
-    // Eight since the Arti's and the Macros' panels left (Session 44).
-    expect(sources.reduce((n, s) => n + panelTags(s.text).length, 0)).toBeGreaterThanOrEqual(8);
+    // Nine: the Arti's and the Macros' panels left, and Lower Thirds came in Macros' place (Session 44).
+    expect(sources.reduce((n, s) => n + panelTags(s.text).length, 0)).toBeGreaterThanOrEqual(9);
   });
 
   it('two or three plain sentences each, following exactly one passage of a shipped guide (Read more opens it)', () => {

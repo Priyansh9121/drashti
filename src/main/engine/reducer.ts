@@ -150,15 +150,34 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
     }
     case 'layer/clear': {
       const cleared = clearLayer(state, action.layer);
+      // The lower third taken off on its own (Session 44): its out plays from then, as hiding it does.
+      if (action.layer === 'lowerThird')
+        return cleared === state || !state.layers.lowerThird || action.at === undefined
+          ? cleared
+          : { ...cleared, lowerThirdOff: { layer: state.layers.lowerThird, at: action.at } };
       // The slide taken off on its own, and when: a lower third leaves with a short fade (Session 27).
       const off = state.layers.slide;
       if (action.layer !== 'slide' || cleared === state || !off || action.at === undefined) return cleared;
       return { ...cleared, slideOff: { layer: off, at: action.at } };
     }
     case 'layers/clearAll': {
-      // Everything at once, and at once: no lower third fades.
+      // Everything at once, and at once: no lower third fades, a Look's or one of the Lower Thirds (Session 44).
       const cleared = LAYER_NAMES.reduce<EngineState>((s, layer) => clearLayer(s, layer), state);
-      return cleared.slideOff === null ? cleared : { ...cleared, slideOff: null };
+      return cleared.slideOff === null && cleared.lowerThirdOff === null
+        ? cleared
+        : { ...cleared, slideOff: null, lowerThirdOff: null };
+    }
+    case 'lowerThird/show': {
+      // The same one again (its words or look changed while up) keeps its time: its in does not play again.
+      const was = state.layers.lowerThird;
+      const layer = was?.id === action.layer.id ? { ...action.layer, shownAt: was.shownAt } : action.layer;
+      if (sameData(was, layer) && state.lowerThirdOff === null) return state;
+      return { ...withLayers(state, { lowerThird: layer }), lowerThirdOff: null };
+    }
+    case 'lowerThird/hide': {
+      const was = state.layers.lowerThird;
+      if (!was) return state;
+      return { ...withLayers(state, { lowerThird: null }), lowerThirdOff: { layer: was, at: action.at } };
     }
     case 'blackout/set':
       return state.blackout === action.on ? state : { ...state, blackout: action.on };
@@ -173,7 +192,13 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
     case 'show/put':
       return state.live === action.live && state.layers === action.layers
         ? state
-        : { ...state, live: action.live, layers: action.layers };
+        : {
+            ...state,
+            live: action.live,
+            layers: action.layers,
+            // A lower third put back is up again: no out plays (Session 44).
+            lowerThirdOff: action.layers.lowerThird ? null : state.lowerThirdOff,
+          };
     case 'background/set':
       return sameData(state.layers.background, action.background)
         ? state

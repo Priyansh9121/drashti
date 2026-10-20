@@ -96,6 +96,10 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.idle.saveSettings,
   IPC.idle.saveQuote,
   IPC.idle.removeQuote,
+  // Lower Thirds (Session 44): Simple Mode changes none (it has none to show either).
+  IPC.lowerThirds.save,
+  IPC.lowerThirds.remove,
+  IPC.lowerThirds.restore,
   // The MIDI controller: Simple Mode changes none of it (its pads still work Simple Mode's own actions).
   IPC.midi.set,
   IPC.stageLayouts.remove,

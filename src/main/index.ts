@@ -91,6 +91,7 @@ import { IdleService } from './idle/idle-service';
 import { quoteIdSchema } from '../shared/idle';
 import { calendarIdSchema } from '../shared/calendar';
 import { AudioPlaylistRepo } from './db/audio-playlists';
+import { LowerThirdRepo } from './db/lower-thirds';
 import { MusicService } from './music/music-service';
 import { startPerfMusic, startPerfSoundCue } from './music/perf-music';
 import { musicPlaySchema } from '../shared/music';
@@ -99,6 +100,7 @@ import { mediaMarkersSchema, NO_MARKERS } from '../shared/markers';
 import { UpdateService } from './update/update-service';
 import { defaultInstaller } from './update/installer';
 import { UPDATE_BASE } from '../shared/updates';
+import { lowerThirdInputSchema } from '../shared/lower-thirds';
 import { midiSettingsSchema, NO_MIDI } from '../shared/midi';
 import { seedBuiltinThemes, seedPlaceholders, seedTemplates } from './db/seed';
 import { ShowEngine } from './engine/show-engine';
@@ -1787,6 +1789,7 @@ function start(): void {
       messages: put.messages,
       ticker: put.ticker,
       masks: put.masks,
+      lowerThird: put.lowerThird,
       stageMessage: put.stageMessage,
       timers: put.timers,
     };
@@ -3036,6 +3039,56 @@ function start(): void {
   handle(IPC.idle.removeQuote, (e, id) => {
     const which = quoteIdSchema.safeParse(id);
     return fromOperator(e) && which.success ? idleRotation.removeQuote(which.data) : notIdleOperator;
+  });
+  // ---- Lower Thirds (Session 44, shared/lower-thirds.ts): the library's, shown and hidden as engine commands --
+  const lowerThirds = new LowerThirdRepo(db);
+  // Those deleted before this start can no longer be undone.
+  lowerThirds.purge();
+  const lowerThirdsChanged = () => {
+    sendToOperator(IPC.lowerThirds.changed, lowerThirds.list());
+  };
+  const notLowerThirdOperator = {
+    ok: false as const,
+    message: 'Only the operator window can change lower thirds.',
+  };
+  const lowerThirdIds = z.array(idSchema).max(500);
+  handle(IPC.lowerThirds.list, () => lowerThirds.list());
+  handle(IPC.lowerThirds.save, (e, id, raw) => {
+    if (!fromOperator(e)) return notLowerThirdOperator;
+    const which = idSchema.nullable().safeParse(id);
+    const input = lowerThirdInputSchema.safeParse(raw);
+    if (!which.success || !input.success)
+      return { ok: false as const, message: 'That lower third cannot be kept: it needs words on a line.' };
+    const saved =
+      which.data === null
+        ? lowerThirds.create(input.data)
+        : lowerThirds.update(which.data, input.data)
+          ? which.data
+          : null;
+    if (saved === null) return { ok: false as const, message: 'That lower third no longer exists.' };
+    lowerThirdsChanged();
+    // One on the screens takes its new words and look at once, without playing its in again.
+    const shown = lowerThirds.get(saved);
+    if (shown && engine.current.layers.lowerThird?.id === saved)
+      engine.dispatch({ type: 'showLowerThird', lowerThird: shown });
+    log.info(`Lower thirds: ${which.data === null ? 'made' : 'changed'} one`);
+    return { ok: true as const, id: saved };
+  });
+  handle(IPC.lowerThirds.remove, (e, raw) => {
+    if (!fromOperator(e)) return notLowerThirdOperator;
+    const ids = lowerThirdIds.safeParse(raw);
+    if (!ids.success) return { ok: false as const, message: 'Those lower thirds cannot be deleted.' };
+    const removed = lowerThirds.remove(ids.data);
+    if (removed.length > 0) lowerThirdsChanged();
+    return { ok: true as const, ids: removed };
+  });
+  handle(IPC.lowerThirds.restore, (e, raw) => {
+    if (!fromOperator(e)) return notLowerThirdOperator;
+    const ids = lowerThirdIds.safeParse(raw);
+    if (!ids.success) return { ok: false as const, message: 'Those lower thirds cannot be brought back.' };
+    const back = lowerThirds.restore(ids.data);
+    if (back.length > 0) lowerThirdsChanged();
+    return { ok: true as const, ids: back };
   });
   // The MIDI controller's settings: which device, and what its notes and controllers do.
   handle(IPC.midi.get, () => {

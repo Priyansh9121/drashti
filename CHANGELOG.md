@@ -16,6 +16,8 @@ Each version, newest first. A version's section is what Help › Check for Updat
 - Every colourful appearance has real colour: four colours at least, with the left column, the middle, the right column and the bar along the bottom each in a colour of its own, a top bar and panel title strips that shade from one colour to the next, and coloured layer buttons. Black and White look exactly as before.
 - Twelve new appearances: Monsoon, Sandhya, Forest, Navratri, Neel, Ratna, Prabhat, Mehndi, Haldi, Himalaya, Uttarayan and Mogra.
 - The Arti panel and its reminder are gone. A library's Arti times are kept, untouched.
+- Lower Thirds, in More tools where Macros were: up to three lines (a name, a title and a place) across the bottom of the hall's screens, the stream or both, with your colours, font, size and position, and one of 279 animations in and out, found by plain words such as fade, slide left or bounce. One button shows and hides it; Clear all takes it off with the slide, and Black-out hides it with everything else.
+- Macros are gone: their panel, macros at set times, MIDI for macros, the phone remote's Macros and the network's macro routes. A library's macros are kept, untouched. The MIDI controller is now in More tools.
 
 ## 1.0.0-alpha.8 (20 Oct 2026)
 

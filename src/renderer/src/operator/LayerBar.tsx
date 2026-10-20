@@ -57,7 +57,10 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
   const blackout = state?.blackout ?? false;
   const logo = state?.logo ?? null;
   const canPutBack = state?.canPutBack ?? false;
-  const anything = layers ? clears.some((c) => !isLayerEmpty(layers, c.layer)) : false;
+  // A lower third up counts too (Session 44): Clear all takes it off with the rest.
+  const anything = layers
+    ? clears.some((c) => !isLayerEmpty(layers, c.layer)) || layers.lowerThird !== null
+    : false;
   // What is this? (Sessions 31–36): its ? in the bar, its words just above it, in the flow (never over a button).
   const help = useWhatIsThis('controls');
   return (

@@ -1,4 +1,5 @@
 import type { AppearanceView, InterfaceMotion, OwnAppearance } from './appearance/appearances';
+import type { LowerThird, LowerThirdInput, LowerThirdResult, LowerThirdsResult } from './lower-thirds';
 import type { CalendarResult, CalendarView } from './calendar';
 import type { GuideId, GuideRead } from './guides';
 import type { IdleResult, IdleSettings, IdleView, QuoteFields, QuoteResult } from './idle';
@@ -649,6 +650,16 @@ export interface DrashtiBridge {
     move(lookId: string, to: number): Promise<LookResult>;
     /** Change one group's settings in a Look. */
     setGroup(lookId: string, groupId: string, patch: GroupLookPatch): Promise<LookResult>;
+  };
+  /** Lower Thirds (Session 44): changing them is the operator window's, in Pro Mode. */
+  lowerThirds: {
+    list(): Promise<LowerThird[]>;
+    onChanged(listener: (lowerThirds: LowerThird[]) => void): () => void;
+    /** Make one (no id) or change one. */
+    save(id: string | null, input: LowerThirdInput): Promise<LowerThirdResult>;
+    /** Delete these (Undo brings them back, until Drashti next starts). */
+    remove(ids: string[]): Promise<LowerThirdsResult>;
+    restore(ids: string[]): Promise<LowerThirdsResult>;
   };
   /** The MIDI controller: which device, and what its notes and controllers do. */
   midi: {

@@ -11,6 +11,7 @@ import type {
   LayerName,
   Layers,
   LiveCursor,
+  LowerThirdLayer,
   MaskLayer,
   MessageItem,
   PlaylistCursor,
@@ -84,6 +85,10 @@ export type EngineAction =
   /** Restart recovery: the ticker as it was, carrying on in step. */
   | { type: 'ticker/set'; ticker: TickerLayer }
   | { type: 'mask/set'; mask: MaskLayer }
+  /** A lower third up (Session 44); the same one again only changes its words and look, keeping its time. */
+  | { type: 'lowerThird/show'; layer: LowerThirdLayer }
+  /** The lower third hidden: its out plays from `at`. */
+  | { type: 'lowerThird/hide'; at: number }
   /** Restart recovery: the count as it was, with the time it had left. */
   | { type: 'advance/set'; autoAdvance: { startedAt: number; durationMs: number } | null }
   /** Repeat Slides going round, or stopped (Session 26d). */
