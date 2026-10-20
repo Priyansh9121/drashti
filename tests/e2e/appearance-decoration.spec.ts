@@ -2,7 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { BLACK, builtIn, WHITE } from '../../src/shared/appearance/appearances';
 import { expectNoSeriousA11yIssues } from './a11y';
-import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helpers';
+import { chooseMenuItem, launchApp, openLibrary, operatorPage, operatorReady } from './helpers';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -20,12 +20,13 @@ const rgb = (hex: string) =>
 const style = (l: Locator, prop: string) =>
   l.evaluate((el, p) => getComputedStyle(el).getPropertyValue(p), prop);
 
-/** A show open, so there are tabs, a chosen row and headings to see. */
+/** A show open, so there are tabs, a chosen row and headings to see (the tabs in the library's sheet, Session 44). */
 async function inAShow(win: Page) {
   await win.setViewportSize({ width: 1280, height: 720 });
   await setUpPlaceholderShow(win);
   await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
   await win.getByTestId('playlist-item').filter({ hasText: KIRTAN }).click();
+  await openLibrary(win);
 }
 
 /** A panel's heading (a group's heading is in the words' own colour). */
@@ -108,7 +109,9 @@ for (const id of ['dhaja', 'tiranga']) {
 /*
  * Black and White as at 9ed5d00: what the header, the chosen tab, the chosen row and a heading draw, and where
  * the header's parts sit. Read from that build (this test's first version, run against it with
- * DRASHTI_E2E_APP_DIR) and written here; this build must draw the same.
+ * DRASHTI_E2E_APP_DIR) and written here; this build must draw the same. Session 44 moved one thing on purpose:
+ * the left column is one section now (the playlists have it all, the library in a sheet over them), so the
+ * first section under the header is the whole column, 587 px tall at 1280 by 720 (247 before).
  */
 const AT_9ED5D00: Record<string, unknown> = {
   black: {
@@ -120,7 +123,7 @@ const AT_9ED5D00: Record<string, unknown> = {
     underline: ['rgb(138, 180, 248)'],
     row: ['oklab(0.76608 -0.0191589 -0.106575 / 0.7)', 'rgb(38, 38, 43)'],
     heading: ['rgb(200, 200, 207)'],
-    under: [0, 48, 300, 247],
+    under: [0, 48, 300, 587],
     headingText: 'Music',
   },
   white: {
@@ -132,7 +135,7 @@ const AT_9ED5D00: Record<string, unknown> = {
     underline: ['rgb(29, 78, 216)'],
     row: ['oklab(0.488178 -0.0212675 -0.21611 / 0.7)', 'rgb(223, 225, 230)'],
     heading: ['rgb(67, 70, 78)'],
-    under: [0, 48, 300, 247],
+    under: [0, 48, 300, 587],
     headingText: 'Music',
   },
 };
