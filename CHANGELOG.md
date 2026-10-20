@@ -2,6 +2,10 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## Unreleased
+
+- The colourful appearances have more colour: a top bar in each one's colour with a band of its colours under it, and coloured headings and marks; five new ones, Dhaja (the mandir flag's red and white, with gold), Tiranga (India's saffron, white and green), Diwali, Holi and Aarti; Black and White are as before.
+
 ## 1.0.0-alpha.7 (20 Oct 2026)
 
 Choose how Drashti looks: Follow the computer, Black, White or seven colourful appearances, or make your own, with calm or lively motion. The plum look is gone, from the phones too. Update after a sabha, never on the day of one.
