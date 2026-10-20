@@ -1,14 +1,24 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
-import { BLACK, WHITE } from '../../src/shared/appearance/appearances';
+import { BLACK, builtIn, WHITE } from '../../src/shared/appearance/appearances';
+import { expectNoSeriousA11yIssues } from './a11y';
 import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helpers';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
 /*
- * More colourful appearances (Session 42): Black and White draw exactly as at 9ed5d00 (the values below were read
- * from that build), whatever the colourful ones now draw in the header, the band, the marks and the headings.
- * Placeholder content only.
+ * More colourful appearances (Session 42): Dhaja and Tiranga draw their header and their band in their own
+ * colours, with LIVE and the other states on a panel of their own in the header; the band is decoration only
+ * (hidden from screen readers, no words) and goes in forced colours with the rest of the decoration; axe passes,
+ * in Pro Mode and Simple Mode. Black and White draw exactly as at 9ed5d00 (the values below were read from that
+ * build), whatever the colourful ones now draw. Placeholder content only.
  */
+
+/** "#rrggbb" as getComputedStyle writes it. */
+const rgb = (hex: string) =>
+  `rgb(${[1, 3, 5].map((at) => String(parseInt(hex.slice(at, at + 2), 16))).join(', ')})`;
+
+const style = (l: Locator, prop: string) =>
+  l.evaluate((el, p) => getComputedStyle(el).getPropertyValue(p), prop);
 
 /** A show open, so there are tabs, a chosen row and headings to see. */
 async function inAShow(win: Page) {
@@ -20,6 +30,80 @@ async function inAShow(win: Page) {
 
 /** A panel's heading (a group's heading is in the words' own colour). */
 const PANEL_HEADING = 'section > header > :is(h2, h3).text-2xs';
+
+/** The band's blocks: each one's colour and width. */
+const bandBlocks = (win: Page) =>
+  win.locator('[data-band] > span').evaluateAll((spans) =>
+    spans.map((s) => ({
+      colour: getComputedStyle(s).backgroundColor,
+      width: s.getBoundingClientRect().width,
+    })),
+  );
+
+for (const id of ['dhaja', 'tiranga']) {
+  test(`${id}: its header and band in its colours, the states on a panel, the band hidden from screen readers; axe passes; forced colours take the decoration away`, async () => {
+    test.setTimeout(120_000);
+    const a = builtIn(id);
+    if (!a) throw new Error(`${id} is not a built-in appearance`);
+    const { app } = await launchApp();
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await chooseMenuItem(app, `appearance-${id}`);
+    await expect(win.locator('html')).toHaveAttribute('data-appearance', id);
+    await inAShow(win);
+    const d = a.decoration;
+    const header = win.getByTestId('app-header');
+    expect(await style(header, 'background-color')).toBe(rgb(d.header));
+    expect(await style(header.getByRole('heading', { level: 1 }), 'color')).toBe(rgb(d['on-header']));
+    expect(await style(header.getByTestId('open-stream'), 'color')).toBe(rgb(d['on-header-muted']));
+    // What is this?: its words and its edge in the header's own.
+    const help = header.getByTestId('what-is-this-stream');
+    expect(await style(help, 'color')).toBe(rgb(d['on-header-muted']));
+    expect(await style(help, 'border-top-color')).toBe(rgb(d['header-field']));
+    // LIVE, ON AIR and the network are read on the appearance's panel, never on the header's colour.
+    expect(await style(win.getByTestId('header-states'), 'background-color')).toBe(rgb(a.colours.panel));
+    await expect(win.getByTestId('header-states').getByTestId('live-status')).toBeVisible();
+
+    // The band: its colours side by side, 6 px tall, under the header; no words, and hidden from screen readers.
+    const band = win.locator('[data-band]');
+    await expect(band).toHaveAttribute('aria-hidden', 'true');
+    await expect(band).toHaveText('');
+    expect((await band.boundingBox())?.height).toBe(6);
+    const blocks = await bandBlocks(win);
+    expect(blocks.filter((b) => b.width > 0).map((b) => b.colour)).toEqual(d.band.map(rgb));
+    const widths = blocks.filter((b) => b.width > 0).map((b) => b.width);
+    expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(1);
+
+    // The second colour marks the chosen tab and the chosen row; headings are in theirs.
+    const tab = win.locator('[role="tab"][aria-selected="true"] [data-glide]').first();
+    expect(await style(tab, 'background-color')).toBe(rgb(d.second));
+    expect(await style(win.locator(PANEL_HEADING).first(), 'color')).toBe(rgb(d.heading));
+
+    await expectNoSeriousA11yIssues(win, `${id}: Pro Mode in a show`);
+    await win.getByRole('button', { name: 'Simple Mode' }).click();
+    await expect(win.getByTestId('simple-mode')).toBeVisible();
+    expect(await style(win.getByTestId('simple-mode').locator('header').first(), 'background-color')).toBe(
+      rgb(d.header),
+    );
+    await expect(win.locator('[data-band]')).toBeVisible();
+    await expectNoSeriousA11yIssues(win, `${id}: Simple Mode`);
+
+    // Forced colours (a Windows contrast theme): the system's colours, no band.
+    await win.emulateMedia({ forcedColors: 'active' });
+    await win.evaluate(
+      () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
+    );
+    await expect(win.locator('[data-band]')).toBeHidden();
+    expect(
+      await style(win.getByTestId('simple-mode').locator('header').first(), 'background-color'),
+    ).not.toBe(rgb(d.header));
+    await expectNoSeriousA11yIssues(win, `${id}: Simple Mode in forced colours`, undefined, [
+      'color-contrast',
+    ]);
+    await win.emulateMedia({ forcedColors: 'none' });
+    await app.close();
+  });
+}
 
 /*
  * Black and White as at 9ed5d00: what the header, the chosen tab, the chosen row and a heading draw, and where

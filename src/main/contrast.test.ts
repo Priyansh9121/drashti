@@ -6,6 +6,7 @@ import type { Appearance, Colours } from '../shared/appearance/appearances';
 import {
   BLACK,
   BUILT_IN,
+  builtIn,
   COLOUR_TOKENS,
   DECORATION_TOKENS,
   plainDecoration,
@@ -19,6 +20,7 @@ import {
   measureDistances,
   type Measured,
 } from '../shared/appearance/rules';
+import { hexToOklch } from '../shared/appearance/oklch';
 import { appearanceVars } from '../shared/appearance/vars';
 
 /*
@@ -170,6 +172,31 @@ describe('more colourful appearances (Session 42): more places for colour', () =
       for (let i = d.band.length; i < 5; i++) expect(vars[`--band-${String(i + 1)}`]).toBe('0');
     },
   );
+
+  it('Dhaja and Tiranga are the flags’ colours, colours only, with the flag’s red kept from Next', () => {
+    const dhaja = builtIn('dhaja');
+    const tiranga = builtIn('tiranga');
+    expect(dhaja?.name).toBe('Dhaja');
+    expect(tiranga?.name).toBe('Tiranga');
+    if (!dhaja || !tiranga) return;
+    // The mandir flag: red and white stripes, red outside, with the logo's gold between them; a deep red header.
+    const [red, white, gold] = [dhaja.decoration.band[0] ?? '', '#ffffff', dhaja.decoration.band[2] ?? ''];
+    expect(dhaja.decoration.band).toEqual([red, white, gold, white, red]);
+    expect(hexToOklch(red).h).toBeLessThan(35);
+    expect(hexToOklch(gold).h).toBeGreaterThan(60);
+    expect(hexToOklch(gold).h).toBeLessThan(100);
+    expect(hexToOklch(dhaja.decoration.header).h).toBeLessThan(35);
+    expect(hexToOklch(dhaja.decoration.header).l).toBeLessThan(0.5);
+    // Red stays in the header and the band: the next thing to do is white.
+    expect(hexToOklch(dhaja.colours.primary).c).toBeLessThan(0.03);
+    expect(hexToOklch(dhaja.colours.primary).l).toBeGreaterThan(0.95);
+    // India's flag, in the commonly published shades: saffron, white and India green, and the wheel's navy.
+    expect(tiranga.decoration.band).toEqual(['#ff9933', '#ffffff', '#138808']);
+    expect(tiranga.decoration.header).toBe('#000080');
+    expect(tiranga.colours.primary).toBe('#ff9933');
+    // Never named for an organisation.
+    for (const a of BUILT_IN) expect(a.name).not.toMatch(/baps/iu);
+  });
 
   it('would see a failure: a colourful appearance without the new colours, or with words on its header below 4.5:1', () => {
     const saffron = BUILT_IN.find((a) => a.id === 'saffron') ?? BLACK;
