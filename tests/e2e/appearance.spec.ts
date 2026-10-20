@@ -82,10 +82,24 @@ test('choosing each appearance changes the window at once, its own colour and th
     await expect.poll(() => drawn(app, win)).toEqual(looksLike(a, a.base));
     expect(await ticked(app)).toEqual([`appearance-${a.id}`]);
   }
+  // In the menu's order (Session 43: Dhaja and Tiranga after White), in the menu and the Appearance window alike.
+  const order = [FOLLOW, ...BUILT_IN.map((a) => a.id)];
+  expect(
+    await app.evaluate(({ Menu }) =>
+      (Menu.getApplicationMenu()?.getMenuItemById('appearance')?.submenu?.items ?? [])
+        .filter((i) => i.type === 'radio')
+        .map((i) => i.id),
+    ),
+  ).toEqual(order.map((id) => `appearance-${id}`));
   // From the Appearance window too: at once, and the choice shows there.
   await chooseMenuItem(app, 'appearance-window');
   const dialog = win.getByTestId('appearance-dialog');
   await expect(dialog).toBeVisible();
+  expect(
+    await dialog
+      .getByTestId('appearance-choice')
+      .evaluateAll((els) => els.map((el) => el.getAttribute('data-choice'))),
+  ).toEqual(order);
   const white = dialog.locator(`[data-testid="appearance-choice"][data-choice="${WHITE.id}"]`);
   await white.click();
   await expect(white).toHaveAttribute('aria-checked', 'true');

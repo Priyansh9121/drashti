@@ -173,10 +173,13 @@ describe('more colourful appearances (Session 42): more places for colour', () =
     },
   );
 
-  it('fourteen built-in appearances, each clearly different: two of its window, header and next thing to do at least 10 from every other’s', () => {
+  it('fourteen built-in appearances, in the menu’s order, each clearly different: two of its window, header and next thing to do at least 10 from every other’s', () => {
     expect(BUILT_IN.map((a) => a.name)).toEqual([
       'Black',
       'White',
+      // Session 43 (Priyansh's answer to Session 42): the two with a meaning first, after White.
+      'Dhaja',
+      'Tiranga',
       'Saffron',
       'Peacock',
       'Midnight Blue',
@@ -184,8 +187,6 @@ describe('more colourful appearances (Session 42): more places for colour', () =
       'Lotus',
       'Marble',
       'Tulsi',
-      'Dhaja',
-      'Tiranga',
       'Diwali',
       'Holi',
       'Aarti',

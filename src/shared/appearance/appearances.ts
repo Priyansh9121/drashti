@@ -777,6 +777,9 @@ export const AARTI: Appearance = {
 export const BUILT_IN: readonly Appearance[] = [
   BLACK,
   WHITE,
+  // Session 43 (Priyansh): the two with a meaning first, after White.
+  DHAJA,
+  TIRANGA,
   SAFFRON,
   PEACOCK,
   MIDNIGHT_BLUE,
@@ -784,8 +787,6 @@ export const BUILT_IN: readonly Appearance[] = [
   LOTUS,
   MARBLE,
   TULSI,
-  DHAJA,
-  TIRANGA,
   DIWALI,
   HOLI,
   AARTI,
