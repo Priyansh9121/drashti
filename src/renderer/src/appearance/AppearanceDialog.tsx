@@ -156,11 +156,20 @@ function AppearanceSheet({ view }: { view: AppearanceView | null }) {
   const choose = (id: string) => {
     if (id !== chosen) void chooseAppearance(id);
   };
-  /** A copy of what is shown now: its base, and its primary (or its accent, for one's own) to start from. */
+  /**
+   * A copy of what is shown now: its base, and its primary (or its accent, for one's own) to start from, with its
+   * second colour (chosen, if one's own had one chosen).
+   */
   const copyStart = (): OwnStart | null => {
     if (!view || !shown) return null;
     const own = view.own.find((o) => o.id === shown.id);
-    return { from: shown.name, base: shown.base, accent: own?.accent ?? shown.colours.primary };
+    return {
+      from: shown.name,
+      base: shown.base,
+      accent: own?.accent ?? shown.colours.primary,
+      second: own?.second ?? shown.decoration.second,
+      ownSecond: own?.second !== undefined,
+    };
   };
   return (
     <Dialog

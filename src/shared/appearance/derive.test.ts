@@ -87,6 +87,25 @@ describe('working out an appearance from a base and an accent', () => {
     }
   });
 
+  it('takes a second colour of one’s own (Session 42): kept in its hue, or refused in words with the nearest that works', () => {
+    for (const base of ['dark', 'light'] as const) {
+      const own = madeAppearance('own-c', 'Placeholder own', base, '#16a3a0', '#3aa0d8');
+      expect(appearanceProblems(own)).toEqual([]);
+      expect(Math.abs(hexToOklch(own.decoration.second).h - hexToOklch('#3aa0d8').h)).toBeLessThan(6);
+      expect(Math.abs(hexToOklch(own.decoration.heading).h - hexToOklch('#3aa0d8').h)).toBeLessThan(6);
+      expect(checkAccent(base, '#16a3a0', '#3aa0d8').ok).toBe(true);
+      // Marks that could be taken for LIVE.
+      const near = checkAccent(base, '#16a3a0', '#d0302f');
+      expect(near.ok).toBe(false);
+      expect(near.which).toBe('second');
+      expect(near.why).toMatch(
+        /^This second colour is too close to .+, so what it marks could be taken for it\. Use the nearest colour that works, or choose another\.$/u,
+      );
+      expect(near.nearest).not.toBeNull();
+      expect(checkAccent(base, '#16a3a0', near.nearest ?? '').ok, `${base} ${near.nearest ?? ''}`).toBe(true);
+    }
+  });
+
   it('round-trips colours through OKLCH', () => {
     for (const hex of ['#000000', '#ffffff', '#d42a31', '#5aa2ff', '#0b5c7a', '#ee8228'])
       expect(oklchToHex(hexToOklch(hex))).toBe(hex);

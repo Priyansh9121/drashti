@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { APPEARANCE_FILE } from './appearance-file';
+import { hexToOklch } from '../../shared/appearance/oklch';
 import { AppearanceService, type ComputerTheme } from './appearance-service';
 
 /*
@@ -121,6 +122,43 @@ describe('AppearanceService', () => {
     expect(service.remove(id)).toBe(true);
     expect(service.choice).toBe('follow');
     expect(kept(dir)).toMatchObject({ choice: 'follow', own: [] });
+  });
+
+  it('keeps one’s own second colour beside the list, so a Drashti from before Session 42 still reads the file', () => {
+    const dir = fresh();
+    const service = new AppearanceService({ userData: dir, say: () => undefined });
+    service.start(new Computer(false));
+    const refused = service.make({
+      name: 'Placeholder marks near LIVE',
+      base: 'dark',
+      accent: '#5aa2ff',
+      second: '#d0302f',
+    });
+    expect(refused.ok ? '' : refused.message).toContain('This second colour is too close to');
+    const made = service.make({
+      name: 'Placeholder second',
+      base: 'dark',
+      accent: '#5aa2ff',
+      second: '#3aa0d8',
+    });
+    expect(made.ok).toBe(true);
+    const id = made.ok ? made.id : '';
+    // The list's entries keep exactly what they kept before (alpha.7 refuses any other field in them).
+    const file = kept(dir) as { own: Record<string, unknown>[]; seconds: Record<string, string> };
+    expect(Object.keys(file.own[0] ?? {}).sort()).toEqual(['accent', 'base', 'id', 'name']);
+    expect(file.seconds).toEqual({ [id]: '#3aa0d8' });
+    const again = new AppearanceService({ userData: dir, say: () => undefined });
+    again.start(new Computer(false));
+    expect(again.own()).toEqual([
+      { id, name: 'Placeholder second', base: 'dark', accent: '#5aa2ff', second: '#3aa0d8' },
+    ]);
+    const shown = again.shown();
+    expect(shown.id).toBe(id);
+    // Its own hue, moved in lightness only as far as its rules need.
+    expect(Math.abs(hexToOklch(shown.decoration.second).h - hexToOklch('#3aa0d8').h)).toBeLessThan(6);
+    // Deleted, its second colour goes with it.
+    expect(again.remove(id)).toBe(true);
+    expect(kept(dir)).toMatchObject({ own: [], seconds: {} });
   });
 
   it('keeps the interface motion with it, and refuses one it does not know', () => {

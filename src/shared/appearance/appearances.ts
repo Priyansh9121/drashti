@@ -141,6 +141,11 @@ export interface OwnAppearance {
   base: AppearanceBase;
   /** The next thing to do's colour, "#rrggbb", as chosen. */
   accent: string;
+  /**
+   * A second colour of one's own (Session 42), "#rrggbb", for what marks and the headings; without one it is
+   * worked out from the accent (derive.ts).
+   */
+  second?: string;
 }
 
 /** The Appearance window's view: every appearance, what is chosen and what that shows now. */
