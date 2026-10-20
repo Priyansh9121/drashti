@@ -341,7 +341,7 @@ What it does with them:
 
 ![The report of a link's files](screenshots/import-link-report.png)
 
-![A Dropbox folder as one playlist, a header for each folder inside it](screenshots/dropbox-playlist.png)
+![A Dropbox folder as one playlist, a folder at a time: Week 1's own decks in the middle, its Videos folder at the bottom left, and the way back up above them](screenshots/dropbox-playlist.png)
 
 **What may be downloaded.** Only the mandir's own videos and files, or those whose owner allows the mandir to use them: that is what the tick says, each time. Ask before using anyone else's. For YouTube, YouTube's own terms say the rest (youtube.com/t/terms): they forbid downloading, except as YouTube allows or with written permission from YouTube and the rights holders.
 
@@ -372,7 +372,7 @@ A **smart playlist** follows a folder on this computer (Session 26c): what Drash
 - **At most 2,000 files.** A folder holding more is refused when the playlist is made; one that grows past it is said so, and nothing more is added or marked until some files go.
 - **Simple Mode** sees what the folder brings, and can neither make a smart playlist nor remove its missing items. Deleting a smart playlist stops it following its folder; Undo starts it again. The folder itself is never changed: Drashti only reads it.
 
-![A smart playlist following a folder, with a header for the folder inside it](screenshots/smart-playlist.png)
+![A smart playlist following a folder: its own picture in the middle, and the folder inside it at the bottom left](screenshots/smart-playlist.png)
 
 ## 16. Themes
 
