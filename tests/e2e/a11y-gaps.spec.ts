@@ -4,6 +4,7 @@ import { expectNoSeriousA11yIssues } from './a11y';
 import { device, networkOn, NETWORK_ENV } from './devices';
 import {
   launchApp,
+  openLibrary,
   operatorPage,
   operatorReady,
   outputPage,
@@ -74,6 +75,8 @@ test('in forced colours (a Windows contrast theme) the chosen tab and the focus 
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
+  // The library's tabs (Session 44: in its sheet over the left column).
+  await openLibrary(win);
   await win.emulateMedia({ forcedColors: 'active' });
   const marks = await tabMarks(win);
   const chosen = marks.filter((m) => m.chosen).map((m) => m.mark);
