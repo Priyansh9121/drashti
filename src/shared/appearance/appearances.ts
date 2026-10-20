@@ -639,6 +639,135 @@ export const TIRANGA: Appearance = {
   },
 };
 
+/**
+ * Diwali: the festival of lights at night (Session 42). Deep plum night surfaces and header, the header's name in a
+ * diya's gold; the band marigold, diya gold and rangoli pink; the next thing to do in marigold, marks and headings
+ * in lamplit lavender. Its warning is a clear lemon and its danger a rose, apart from the marigold. Ideas: the
+ * design skills' palette from the subject's own things, and 21st.dev's Cosmic Indigo and Honey Glow Gold themes
+ * (colours only).
+ */
+export const DIWALI: Appearance = {
+  id: 'diwali',
+  name: 'Diwali',
+  base: 'dark',
+  colours: {
+    ink: '#1b011a',
+    panel: '#220820',
+    'panel-2': '#2c112a',
+    'panel-3': '#3a1c37',
+    line: '#41243f',
+    'line-strong': '#573954',
+    field: '#9e829b',
+    fg: '#fcf4fb',
+    muted: '#dbccd9',
+    faint: '#b9a7b7',
+    accent: '#d9c4ff',
+    'primary-hi': '#ff9a3c',
+    primary: '#ff8c26',
+    'primary-lo': '#f27c12',
+    'on-primary': '#1e0c00',
+    'primary-edge': '#ff9433',
+    ...DARK_STATES,
+    warning: '#fff176',
+    'warning-bg': '#33300a',
+    'warning-fg': '#fff3a6',
+    danger: '#ff8fb8',
+    'danger-fg': '#ffc2d8',
+  },
+  decoration: {
+    header: '#4a1446',
+    'on-header': '#ffd98a',
+    'on-header-muted': '#f6e3c8',
+    'header-ring': '#ffd98a',
+    'header-field': '#f6e3c8',
+    second: '#d9c4ff',
+    heading: '#e2cfff',
+    band: ['#ff8f1f', '#ffc23d', '#e83e8c', '#ffc23d', '#ff8f1f'],
+  },
+};
+
+/**
+ * Holi: the festival of colours (Session 42). Light, a pale aqua like water after the colours; the header a deep
+ * turquoise; the band five gulal colours, magenta, yellow, green, turquoise and orange; the next thing to do in
+ * gulal magenta, headings in it too, and marks in a deep blue. Ideas: the design skills, and 21st.dev's Neon
+ * Magenta theme (its magenta with cyan and yellow; colours only).
+ */
+export const HOLI: Appearance = {
+  id: 'holi',
+  name: 'Holi',
+  base: 'light',
+  colours: {
+    ink: '#c8eff1',
+    panel: '#e0fbfc',
+    'panel-2': '#f5ffff',
+    'panel-3': '#bde7e9',
+    line: '#b8dee0',
+    'line-strong': '#9ac0c1',
+    field: '#4d7072',
+    fg: '#0d1516',
+    muted: '#314445',
+    faint: '#476061',
+    accent: '#1b46a3',
+    'primary-hi': '#a3127a',
+    primary: '#a1136f',
+    'primary-lo': '#880e5d',
+    'on-primary': '#ffffff',
+    'primary-edge': '#a1136f',
+    ...LIGHT_STATES,
+  },
+  decoration: {
+    header: '#0b5f73',
+    'on-header': '#f2fdff',
+    'on-header-muted': '#c8eef5',
+    'header-ring': '#f2fdff',
+    'header-field': '#c8eef5',
+    second: '#1b46a3',
+    heading: '#a1136f',
+    band: ['#e0218a', '#ffd23f', '#2fb344', '#12b5c6', '#ff7a1a'],
+  },
+};
+
+/**
+ * Aarti: the lamp offered at the end of a sabha (Session 42). Light, the warm gold of ghee light on brass; the
+ * header deep brass, its name in cream; the band kumkum crimson, gold and the flame; the next thing to do in a
+ * deep crimson, kept well apart from LIVE's red for everyone, with marks and headings in it too. Ideas: the design
+ * skills, and 21st.dev's Red Dark theme (a crimson with a gold beside it; colours only).
+ */
+export const AARTI: Appearance = {
+  id: 'aarti',
+  name: 'Aarti',
+  base: 'light',
+  colours: {
+    ink: '#f7e4bd',
+    panel: '#fff3db',
+    'panel-2': '#fffcf6',
+    'panel-3': '#f1dcb1',
+    line: '#e7d4ad',
+    'line-strong': '#c8b590',
+    field: '#766747',
+    fg: '#16130e',
+    muted: '#463f31',
+    faint: '#635a48',
+    accent: '#2f4f8f',
+    'primary-hi': '#8a1a42',
+    primary: '#7a1238',
+    'primary-lo': '#650c2d',
+    'on-primary': '#ffffff',
+    'primary-edge': '#7a1238',
+    ...LIGHT_STATES,
+  },
+  decoration: {
+    header: '#7a4f08',
+    'on-header': '#fff3d1',
+    'on-header-muted': '#ffe2a0',
+    'header-ring': '#fff3d1',
+    'header-field': '#ffe2a0',
+    second: '#6a1035',
+    heading: '#7a1238',
+    band: ['#b3122e', '#e0a526', '#f26b1d', '#e0a526', '#b3122e'],
+  },
+};
+
 /** The built-in appearances, in the menu's order (after Follow the computer). */
 export const BUILT_IN: readonly Appearance[] = [
   BLACK,
@@ -652,6 +781,9 @@ export const BUILT_IN: readonly Appearance[] = [
   TULSI,
   DHAJA,
   TIRANGA,
+  DIWALI,
+  HOLI,
+  AARTI,
 ];
 
 /** A built-in appearance by its id. */
