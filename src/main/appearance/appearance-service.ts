@@ -83,8 +83,9 @@ export class AppearanceService {
   }
 
   /**
-   * Make one's own from a name, a base and an accent, and choose it (Session 40). Every rule is measured here
-   * too, whatever the window said: one that fails is refused in its words. The new one's id, or why not.
+   * Make one's own from a name, a base and an accent (and a second colour, Session 42), and choose it (Session 40).
+   * Every rule is measured here too, whatever the window said: one that fails is refused in its words. The new
+   * one's id, or why not.
    */
   make(fields: Omit<OwnAppearance, 'id'>): { ok: true; id: string } | { ok: false; message: string } {
     const name = fields.name.trim();
@@ -97,19 +98,22 @@ export class AppearanceService {
         ok: false,
         message: `This computer keeps ${String(OWN_MAX)} of your own at most: delete one you no longer use first.`,
       };
-    const check = checkAccent(fields.base, fields.accent);
+    const check = checkAccent(fields.base, fields.accent, fields.second);
     if (!check.ok) return { ok: false, message: check.why };
     const own: OwnAppearance = {
       id: `${OWN_PREFIX}${randomBytes(6).toString('hex')}`,
       name,
       base: fields.base,
       accent: fields.accent,
+      ...(fields.second === undefined ? {} : { second: fields.second }),
     };
     this.settings = { ...this.settings, own: [...this.settings.own, own], choice: own.id };
     this.keep();
     this.setNative();
     this.tell();
-    this.deps.say(`Appearance: made “${name}” (${own.base}, ${own.accent}) and chose it`);
+    this.deps.say(
+      `Appearance: made “${name}” (${own.base}, ${own.accent}${own.second === undefined ? '' : `, second ${own.second}`}) and chose it`,
+    );
     return { ok: true, id: own.id };
   }
 

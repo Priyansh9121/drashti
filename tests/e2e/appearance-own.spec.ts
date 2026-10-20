@@ -118,6 +118,55 @@ test('make one’s own, use it, keep it over a restart, then delete it', async (
   await again.app.close();
 });
 
+test('one’s own gets a header and band from its accent, and a second colour of its own, checked as it is chosen (Session 42)', async () => {
+  test.setTimeout(120_000);
+  const { app, userData } = await launchApp(OWN_APPEARANCE);
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1440, height: 900 });
+  await operatorReady(win);
+  await chooseMenuItem(app, 'appearance-black');
+  await chooseMenuItem(app, 'appearance-window');
+  const dialog = win.getByTestId('appearance-dialog');
+  await dialog.getByTestId('appearance-copy').click();
+  const form = dialog.getByTestId('appearance-make');
+  await form.getByTestId('appearance-make-name').fill('Placeholder marks');
+  await form.getByTestId('appearance-make-accent').fill('#16a3a0');
+  await expect(form.getByTestId('appearance-make-ok')).toBeVisible();
+  // Worked out from the accent until chosen.
+  await expect(form.getByTestId('appearance-make-second-worked')).toBeVisible();
+  await form.getByTestId('appearance-make-own-second').click();
+  // Marks too near a state are refused in words, with the nearest that works.
+  await form.getByTestId('appearance-make-second').fill('#d0302f');
+  await expect(form.getByTestId('appearance-make-refused')).toContainText(
+    'This second colour is too close to',
+  );
+  await expect(form.getByTestId('appearance-make-save')).toBeDisabled();
+  await form.getByTestId('appearance-make-nearest').click();
+  await expect(form.getByTestId('appearance-make-ok')).toBeVisible();
+  await form.getByTestId('appearance-make-second').fill('#3aa0d8');
+  await expect(form.getByTestId('appearance-make-ok')).toBeVisible();
+  await expectNoSeriousA11yIssues(win, 'making one’s own appearance with a second colour');
+  await form.getByTestId('appearance-make-save').click();
+  await expect(form).toHaveCount(0);
+  const file = JSON.parse(readFileSync(join(userData, 'drashti-appearance.json'), 'utf8')) as {
+    own: { id: string }[];
+    seconds: Record<string, string>;
+  };
+  const id = file.own[0]?.id ?? '';
+  expect(file.seconds).toEqual({ [id]: '#3aa0d8' });
+  await expect(win.locator('html')).toHaveAttribute('data-appearance', id);
+  // Its own header and band, worked out from the accent.
+  const vars = await win.evaluate(() => {
+    const css = getComputedStyle(document.documentElement);
+    return ['--color-header', '--color-panel', '--band-height', '--band-3', '--band-4'].map((v) =>
+      css.getPropertyValue(v).trim(),
+    );
+  });
+  expect(vars[0]).not.toBe(vars[1]);
+  expect(vars.slice(2)).toEqual(['6px', '1', '0']);
+  await app.close();
+});
+
 test('Simple Mode refuses making or deleting an appearance', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);

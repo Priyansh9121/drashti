@@ -102,10 +102,16 @@ export function deriveColours(base: AppearanceBase, accentHex: string): Colours 
   };
 }
 
-/** An appearance made from a base and an accent, under an id and a name. */
-export function madeAppearance(id: string, name: string, base: AppearanceBase, accent: string): Appearance {
+/** An appearance made from a base and an accent (and a second colour, if one was chosen), under an id and a name. */
+export function madeAppearance(
+  id: string,
+  name: string,
+  base: AppearanceBase,
+  accent: string,
+  second?: string,
+): Appearance {
   const colours = deriveColours(base, accent);
-  return { id, name, base, colours, decoration: deriveDecoration(base, accent, colours) };
+  return { id, name, base, colours, decoration: deriveDecoration(base, accent, colours, second) };
 }
 
 /** The least CIEDE2000 between two colours over the four colour visions. */
@@ -140,8 +146,17 @@ const headingApart = (x: string, c: Colours) =>
   apart(x, c.warning) >= 10.05 &&
   apart(x, c.danger) >= 7.05;
 
-/** The decoration of an appearance made from a base and an accent (Session 42). */
-export function deriveDecoration(base: AppearanceBase, accentHex: string, c: Colours): Decoration {
+/**
+ * The decoration of an appearance made from a base and an accent (Session 42), with a second colour of one's own
+ * if one was chosen: kept in its hue, moved in lightness only as far as its rules need (checkAccent says if it is
+ * still too close to a state).
+ */
+export function deriveDecoration(
+  base: AppearanceBase,
+  accentHex: string,
+  c: Colours,
+  chosenSecond?: string,
+): Decoration {
   const a = hexToOklch(accentHex);
   const dark = base === 'dark';
   const chroma = Math.min(a.c, 0.12);
@@ -172,15 +187,19 @@ export function deriveDecoration(base: AppearanceBase, accentHex: string, c: Col
   const surfaces = [c.ink, c.panel, c['panel-2'], c['panel-3']];
   let second = c.muted;
   let heading = c.muted;
-  for (const dh of [40, -40, 80, -80, 120, -120, 180, 0]) {
-    const mark = marks(hueOf(dh), c, dark);
-    const words = reach(hexToOklch(mark), surfaces, 4.6, dark ? 1 : -1, 0.005);
-    if (markApart(mark, c) && headingApart(words, c)) {
-      second = mark;
-      heading = words;
-      break;
+  if (chosenSecond !== undefined) {
+    second = marks(hexToOklch(chosenSecond), c, dark);
+    heading = reach(hexToOklch(second), surfaces, 4.6, dark ? 1 : -1, 0.005);
+  } else
+    for (const dh of [40, -40, 80, -80, 120, -120, 180, 0]) {
+      const mark = marks(hueOf(dh), c, dark);
+      const words = reach(hexToOklch(mark), surfaces, 4.6, dark ? 1 : -1, 0.005);
+      if (markApart(mark, c) && headingApart(words, c)) {
+        second = mark;
+        heading = words;
+        break;
+      }
     }
-  }
   const tint = oklchToHex({ l: dark ? 0.9 : 0.92, c: Math.min(chroma, 0.06), h: a.h });
   return {
     header,
@@ -195,7 +214,7 @@ export function deriveDecoration(base: AppearanceBase, accentHex: string, c: Col
 }
 
 export function deriveAppearance(own: OwnAppearance): Appearance {
-  return madeAppearance(own.id, own.name, own.base, own.accent);
+  return madeAppearance(own.id, own.name, own.base, own.accent, own.second);
 }
 
 /** What each state is, in words, for a colour too close to it. */
@@ -217,32 +236,52 @@ export interface AccentCheck {
   why: string;
   /** Every rule it fails, for the curious. */
   problems: string[];
-  /** The nearest accent that passes, when this one does not (null when none is near). */
+  /** The nearest colour that passes, when this one does not (null when none is near). */
   nearest: string | null;
+  /** Which colour is refused (Session 42): the next thing to do's, or the second colour; null when neither. */
+  which: 'accent' | 'second' | null;
 }
 
-/** Whether an accent on this base meets every rule; if not, why, and the nearest one that does. */
-export function checkAccent(base: AppearanceBase, accent: string): AccentCheck {
-  const made = madeAppearance('own-check', 'Check', base, accent);
+/** The second colour's and the headings' rules (rules.ts). */
+const ofSecond = (rule: string) => /^(second|heading|the chosen row)/u.test(rule);
+
+/**
+ * Whether an accent on this base (with a second colour of one's own, if chosen) meets every rule; if not, which
+ * colour is refused, why, and the nearest one that does.
+ */
+export function checkAccent(base: AppearanceBase, accent: string, second?: string): AccentCheck {
+  const made = madeAppearance('own-check', 'Check', base, accent, second);
   const problems = appearanceProblems(made);
-  if (problems.length === 0) return { ok: true, why: '', problems, nearest: null };
+  if (problems.length === 0) return { ok: true, why: '', problems, nearest: null, which: null };
+  const which = second !== undefined && problems.every(ofSecond) ? 'second' : 'accent';
   const near = [
     ...new Set(
       measureDistances(made)
-        .filter((m) => !m.ok)
+        .filter((m) => !m.ok && ofSecond(m.what) === (which === 'second'))
         .map((m) => STATE_WORDS[m.what.split(' vs ')[1] ?? ''] ?? ''),
     ),
   ].filter((w) => w !== '');
+  if (which === 'second')
+    return {
+      ok: false,
+      why:
+        near.length > 0
+          ? `This second colour is too close to ${inWords(near)}, so what it marks could be taken for it. Use the nearest colour that works, or choose another.`
+          : 'Words in this second colour would be too hard to read. Use the nearest colour that works, or choose another.',
+      problems,
+      nearest: second === undefined ? null : nearestSecond(base, accent, second),
+      which,
+    };
   const why =
     near.length > 0
       ? `This colour is too close to ${inWords(near)}, so the next thing to do could be taken for it. Use the nearest colour that works, or choose another.`
       : 'Words on this colour would be too hard to read. Use the nearest colour that works, or choose another.';
-  return { ok: false, why, problems, nearest: nearestAccent(base, accent) };
+  return { ok: false, why, problems, nearest: nearestAccent(base, accent, second), which };
 }
 
-/** The accent nearest this one (CIEDE2000) that meets every rule on this base, or null. */
-export function nearestAccent(base: AppearanceBase, accent: string): string | null {
-  const a = hexToOklch(accent);
+/** Colours round this one, nearest first (CIEDE2000): other hues, lightnesses and strengths. */
+function around(colour: string): string[] {
+  const a = hexToOklch(colour);
   const candidates: string[] = [];
   for (let dh = -90; dh <= 90; dh += 6)
     for (const dl of [0, -0.04, 0.04, -0.08, 0.08, -0.12, 0.12, -0.18, 0.18])
@@ -250,12 +289,22 @@ export function nearestAccent(base: AppearanceBase, accent: string): string | nu
         candidates.push(
           oklchToHex({ l: Math.min(0.95, Math.max(0.2, a.l + dl)), c: a.c * cs, h: (a.h + dh + 360) % 360 }),
         );
-  const byDistance = [...new Set(candidates)]
-    .map((hex) => ({ hex, d: deltaE00(hex, accent) }))
-    .sort((x, y) => x.d - y.d);
-  for (const { hex } of byDistance) {
-    const made = madeAppearance('own-check', 'Check', base, hex);
-    if (appearanceProblems(made).length === 0) return hex;
-  }
+  return [...new Set(candidates)]
+    .map((hex) => ({ hex, d: deltaE00(hex, colour) }))
+    .sort((x, y) => x.d - y.d)
+    .map((c) => c.hex);
+}
+
+/** The accent nearest this one (CIEDE2000) that meets every rule on this base, or null. */
+export function nearestAccent(base: AppearanceBase, accent: string, second?: string): string | null {
+  for (const hex of around(accent))
+    if (appearanceProblems(madeAppearance('own-check', 'Check', base, hex, second)).length === 0) return hex;
+  return null;
+}
+
+/** The second colour nearest this one that meets every rule with this accent on this base, or null. */
+export function nearestSecond(base: AppearanceBase, accent: string, second: string): string | null {
+  for (const hex of around(second))
+    if (appearanceProblems(madeAppearance('own-check', 'Check', base, accent, hex)).length === 0) return hex;
   return null;
 }

@@ -454,8 +454,16 @@ void app.whenReady().then(() => {
 });
 // The look of Drashti's own windows (Sessions 39–40): kept per computer, outside the library, and read before
 // any window is made, so each opens on its appearance's colour and its page draws in it from the start.
-/** What a window gives to make an appearance of one's own (Session 40): checked here, every rule too. */
-const ownFieldsSchema = ownSchema.omit({ id: true });
+/**
+ * What a window gives to make an appearance of one's own (Session 40; a second colour too, Session 42): checked
+ * here, every rule too.
+ */
+const ownFieldsSchema = ownSchema.omit({ id: true }).extend({
+  second: z
+    .string()
+    .regex(/^#[0-9a-f]{6}$/u)
+    .optional(),
+});
 const appearance = new AppearanceService({
   userData: app.getPath('userData'),
   startIn: sw('DRASHTI_TEST_APPEARANCE'),
