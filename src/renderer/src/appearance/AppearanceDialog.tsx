@@ -73,7 +73,7 @@ function MotionChoice({ motion }: { motion: InterfaceMotion }) {
   };
   return (
     <section aria-labelledby={titleId} className="space-y-2" data-testid="appearance-motion">
-      <h3 id={titleId} className="text-2xs font-bold tracking-wider text-muted uppercase">
+      <h3 id={titleId} className="text-2xs font-bold tracking-wider text-heading uppercase">
         Interface motion
       </h3>
       <div
@@ -172,7 +172,7 @@ function AppearanceSheet({ view }: { view: AppearanceView | null }) {
       testId="appearance-dialog"
     >
       <div className="space-y-4">
-        <h3 id="appearance-choose" className="text-2xs font-bold tracking-wider text-muted uppercase">
+        <h3 id="appearance-choose" className="text-2xs font-bold tracking-wider text-heading uppercase">
           Choose one
         </h3>
         <div
@@ -239,7 +239,7 @@ function AppearanceSheet({ view }: { view: AppearanceView | null }) {
         )}
         {view && view.own.length > 0 && (
           <section aria-labelledby="appearance-own" className="space-y-2" data-testid="appearance-own">
-            <h3 id="appearance-own" className="text-2xs font-bold tracking-wider text-muted uppercase">
+            <h3 id="appearance-own" className="text-2xs font-bold tracking-wider text-heading uppercase">
               Your own
             </h3>
             <ul className="space-y-1">

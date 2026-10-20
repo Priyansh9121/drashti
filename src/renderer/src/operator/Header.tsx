@@ -2,6 +2,7 @@ import { useWhatIsThis } from '../help/WhatIsThis';
 import type { ReactNode } from 'react';
 import { shortcutText } from '../../../shared/keymap';
 import { openThemes } from '../themes/themes-store';
+import { Band, HeaderStates } from '../ui/Decoration';
 import { Button } from '../ui/Button';
 import { WordMark } from '../ui/Mark';
 import { Inbox, LayoutGrid, Monitor, Palette, Radio, Smartphone } from '../ui/icons';
@@ -41,7 +42,10 @@ function AnnouncementsButton({ help }: { help: ReactNode }) {
   );
 }
 
-/** Across the top: the name, what is on the screens, and the settings the operator opens. */
+/**
+ * Across the top: the name, what is on the screens, and the settings the operator opens; in the appearance's
+ * header colour (Session 42), with its band under it.
+ */
 export function Header({
   platform,
   onOpenScreens,
@@ -61,18 +65,21 @@ export function Header({
   return (
     <>
       <header
-        className="flex h-12 bg-panel shrink-0 items-center gap-4 border-b border-line px-4"
+        className="flex h-12 shrink-0 items-center gap-4 border-b border-line bg-header px-4 text-on-header"
+        data-header=""
         data-testid="app-header"
       >
         <h1 className="shrink-0 text-base font-bold tracking-wide">
           <WordMark />
         </h1>
-        <OnAirBadges />
-        {/* How many announcements wait is on the Announcements button beside it. */}
-        <NetworkBadge waiting={false} />
-        <div className="min-w-0 flex-1">
-          <LiveStatus />
-        </div>
+        <HeaderStates>
+          <OnAirBadges />
+          {/* How many announcements wait is on the Announcements button beside it. */}
+          <NetworkBadge waiting={false} />
+          <div className="min-w-0 flex-1">
+            <LiveStatus />
+          </div>
+        </HeaderStates>
         <div className="flex shrink-0 items-center gap-2">
           <Button variant="ghost" icon={Palette} onClick={() => openThemes()}>
             Themes
@@ -114,6 +121,7 @@ export function Header({
           {extra}
         </div>
       </header>
+      <Band />
       {cards.length > 0 && <div className="shrink-0 pt-2">{cards}</div>}
     </>
   );

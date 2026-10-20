@@ -52,6 +52,7 @@ export function useWhatIsThis(
       aria-expanded={open}
       aria-controls={open ? id : undefined}
       data-testid={`what-is-this-${topic}`}
+      data-what-is-this=""
       onClick={() => {
         setOpen(!open);
       }}

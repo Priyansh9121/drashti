@@ -5,7 +5,8 @@ import { Truncate } from './Truncate';
 /*
  * A row in a list (presentations, playlist items, media, themes, props):
  * a button that can be the one shown (selected), one of several marked,
- * and dragged. It never says "live" by colour: put a LiveBadge in it.
+ * and dragged. It never says "live" by colour: put a LiveBadge in it. The one shown has an edge in the
+ * appearance's second colour (Session 42), kept apart from LIVE's red by the rules.
  */
 
 export interface ListRowProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'title'> {
@@ -40,7 +41,7 @@ export function rowClass({
     dropTarget
       ? 'border-accent bg-panel-3'
       : selected
-        ? 'border-accent/70 bg-panel-3'
+        ? 'border-second/70 bg-panel-3'
         : marked
           ? 'border-line-strong bg-panel-2'
           : 'border-transparent hover:bg-panel-2',

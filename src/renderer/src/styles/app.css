@@ -546,6 +546,68 @@ body.web {
   transition-duration: var(--dur-press);
 }
 
+/*
+ * The header (Session 42), in the appearance's header colour (Black's and White's are their panel, as before): its
+ * buttons' words in on-header-muted, its controls' edges in header-field and the keyboard's ring in header-ring,
+ * all measured on the header (src/shared/appearance/rules.ts). LIVE, ON AIR and the network sit on a panel of their
+ * own there (ui/Decoration.tsx, HeaderStates), so their ring is the window's own. Unlayered: they beat the
+ * buttons' utilities, but never a button being pointed at, which has a surface of its own then.
+ */
+[data-header] [data-variant='ghost']:not(:hover) {
+  color: var(--color-on-header-muted);
+}
+[data-header] [data-variant='secondary']:not(:hover) {
+  border-color: var(--color-header-field);
+}
+[data-header] [data-what-is-this]:not(:hover) {
+  color: var(--color-on-header-muted);
+  border-color: var(--color-header-field);
+}
+[data-header] :focus-visible {
+  outline-color: var(--color-header-ring);
+}
+[data-header] [data-header-states] :focus-visible {
+  outline-color: var(--color-accent);
+}
+
+/*
+ * The band under the header (Session 42): flat blocks side by side, each its share of the width (--band-N), over
+ * the header's own edge line. Flat colours only: no gradient, blur or layer, so it asks the graphics chip for
+ * nothing new. 0 px tall in an appearance without one. Forced colours take it away, with the rest of the
+ * decoration (the system paints the header and the panels its own).
+ */
+[data-band] {
+  display: flex;
+  flex-shrink: 0;
+  height: var(--band-height);
+  margin-top: calc(-1 * min(1px, var(--band-height)));
+}
+[data-band] > :nth-child(1) {
+  flex: var(--band-1) 1 0px;
+  background-color: var(--color-band-1);
+}
+[data-band] > :nth-child(2) {
+  flex: var(--band-2) 1 0px;
+  background-color: var(--color-band-2);
+}
+[data-band] > :nth-child(3) {
+  flex: var(--band-3) 1 0px;
+  background-color: var(--color-band-3);
+}
+[data-band] > :nth-child(4) {
+  flex: var(--band-4) 1 0px;
+  background-color: var(--color-band-4);
+}
+[data-band] > :nth-child(5) {
+  flex: var(--band-5) 1 0px;
+  background-color: var(--color-band-5);
+}
+@media (forced-colors: active) {
+  [data-band] {
+    display: none;
+  }
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;

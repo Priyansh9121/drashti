@@ -9,10 +9,10 @@ import { ChevronDown, ChevronRight } from './icons';
 import { livelyNow } from './motion';
 import { usePersistentState } from './persist';
 
-/** A small heading over a part of a panel. */
+/** A small heading over a part of a panel, in the appearance's heading colour (Session 42). */
 export function SectionTitle({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <h3 className={cx('text-2xs font-bold tracking-wider text-muted uppercase', className)}>{children}</h3>
+    <h3 className={cx('text-2xs font-bold tracking-wider text-heading uppercase', className)}>{children}</h3>
   );
 }
 
@@ -63,7 +63,7 @@ export function Panel({
   const help = useWhatIsThis(topic ?? null);
   const heading = (
     <span className="flex min-w-0 items-center gap-1.5">
-      {IconShape && <IconShape size={14} aria-hidden="true" className="shrink-0 text-muted" />}
+      {IconShape && <IconShape size={14} aria-hidden="true" className="shrink-0 text-heading" />}
       <span className="truncate">{title}</span>
     </span>
   );
@@ -73,7 +73,7 @@ export function Panel({
         <Heading
           level={nested ? 3 : 2}
           id={`${id}-title`}
-          className="min-w-0 flex-1 text-2xs font-bold tracking-wider text-muted uppercase"
+          className="min-w-0 flex-1 text-2xs font-bold tracking-wider text-heading uppercase"
         >
           {collapsible ? (
             <button
