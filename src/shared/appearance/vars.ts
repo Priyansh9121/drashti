@@ -1,5 +1,5 @@
 import type { Appearance } from './appearances';
-import { COLOUR_TOKENS } from './appearances';
+import { BAND_MAX, COLOUR_TOKENS, DECORATION_TOKENS } from './appearances';
 
 /*
  * An appearance as the CSS custom properties it sets on a window's <html> (Sessions 39–40): every --color-*
@@ -7,7 +7,14 @@ import { COLOUR_TOKENS } from './appearances';
  * shapes never change with the appearance, only their colours, so a change of appearance never asks the
  * graphics chip for a new way of drawing (app.css, "Depth"): on dark surfaces they are black; on light ones a
  * soft grey; the live picture's glow is the live colour's and the primary's its own colour's.
+ *
+ * Session 42: the decoration's colours too (--color-header and the rest), and the band as BAND_MAX flat blocks:
+ * --color-band-N and --band-N (1 for a block that is there, 0 for one that is not, as its share of the width),
+ * and --band-height, 0px for an appearance with no band (Black and White), so nothing is drawn or moved there.
  */
+
+/** The band's height, when there is one. */
+export const BAND_HEIGHT = '6px';
 
 /** "#rrggbb" at an alpha, as "#rrggbbaa" (rounded to 1/255, as Tailwind writes the @theme's own). */
 export function tint(hex: string, alpha: number): string {
@@ -25,6 +32,13 @@ const DEPTH = {
 export function appearanceVars(a: Appearance): Record<string, string> {
   const vars: Record<string, string> = {};
   for (const name of COLOUR_TOKENS) vars[`--color-${name}`] = a.colours[name];
+  for (const name of DECORATION_TOKENS) vars[`--color-${name}`] = a.decoration[name];
+  const band = a.decoration.band;
+  for (let i = 0; i < BAND_MAX; i++) {
+    vars[`--color-band-${String(i + 1)}`] = band[i] ?? 'transparent';
+    vars[`--band-${String(i + 1)}`] = band[i] === undefined ? '0' : '1';
+  }
+  vars['--band-height'] = band.length > 0 ? BAND_HEIGHT : '0px';
   const d = DEPTH[a.base];
   const white = (alpha: number) => tint('#ffffff', alpha);
   Object.assign(vars, {

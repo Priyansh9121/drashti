@@ -3,10 +3,18 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { deltaE00, deltaE00Lab } from '../shared/contrast';
 import type { Appearance, Colours } from '../shared/appearance/appearances';
-import { BLACK, BUILT_IN, COLOUR_TOKENS } from '../shared/appearance/appearances';
+import {
+  BLACK,
+  BUILT_IN,
+  COLOUR_TOKENS,
+  DECORATION_TOKENS,
+  plainDecoration,
+  WHITE,
+} from '../shared/appearance/appearances';
 import {
   appearanceProblems,
   BUTTON_EDGES,
+  decorationLacks,
   measureContrast,
   measureDistances,
   type Measured,
@@ -21,6 +29,11 @@ import { appearanceVars } from '../shared/appearance/vars';
  * simulated protanopia, deuteranopia and tritanopia (src/shared/appearance/rules.ts). Ratios are compared
  * unrounded (2.999 fails 3). The buttons' classes and app.css's tokens are read from the source, so the test
  * follows any change to them. It prints each appearance's tables (docs/design.md quotes them).
+ *
+ * Session 42, more colourful appearances: the decoration's rules too (the header's words at 4.5:1, its focus ring
+ * and controls at 3:1, headings at 4.5:1, the second colour at 3:1 as drawn and apart from the states), and every
+ * appearance but Black and White more than one colour (rules.ts, decorationLacks): a header colour of its own, a
+ * band, coloured headings and surfaces that carry its hue. Black and White draw exactly as before.
  */
 
 const renderer = join(__dirname, '..', 'renderer', 'src');
@@ -109,10 +122,86 @@ describe('every built-in appearance’s contrast (docs/design.md §2)', () => {
   });
 });
 
+/** Black and White, and every other appearance (the colourful ones). */
+const PLAIN = new Set([BLACK.id, WHITE.id]);
+const COLOURFUL = BUILT_IN.filter((a) => !PLAIN.has(a.id));
+
+describe('more colourful appearances (Session 42): more places for colour', () => {
+  it('Black and White draw exactly as before: their panel for a header, no band, the focus ring’s colour to mark', () => {
+    expect(BLACK.decoration).toEqual({
+      header: '#121215',
+      'on-header': '#f5f5f7',
+      'on-header-muted': '#c8c8cf',
+      'header-ring': '#8ab4f8',
+      'header-field': '#82828d',
+      second: '#8ab4f8',
+      heading: '#c8c8cf',
+      band: [],
+    });
+    expect(WHITE.decoration).toEqual({
+      header: '#f8f8fa',
+      'on-header': '#111216',
+      'on-header-muted': '#43464e',
+      'header-ring': '#1d4ed8',
+      'header-field': '#6f737c',
+      second: '#1d4ed8',
+      heading: '#43464e',
+      band: [],
+    });
+    expect(appearanceVars(BLACK)['--band-height']).toBe('0px');
+    expect(appearanceVars(WHITE)['--band-height']).toBe('0px');
+  });
+
+  it.each(COLOURFUL.map((a) => [a.name, a] as const))(
+    '%s is more than one colour: a header of its own, a band, coloured headings, surfaces with its hue',
+    (_name, a) => {
+      const d = a.decoration;
+      console.info(
+        `${a.name}: header ${d.header} (${d['on-header']}), band ${d.band.join(' ')}, second ${d.second}, headings ${d.heading}`,
+      );
+      expect(decorationLacks(a)).toEqual([]);
+      const vars = appearanceVars(a);
+      expect(vars['--band-height']).toBe('6px');
+      for (const name of DECORATION_TOKENS) expect(vars[`--color-${name}`], name).toBe(d[name]);
+      d.band.forEach((colour, i) => {
+        expect(vars[`--color-band-${String(i + 1)}`]).toBe(colour);
+        expect(vars[`--band-${String(i + 1)}`]).toBe('1');
+      });
+      for (let i = d.band.length; i < 5; i++) expect(vars[`--band-${String(i + 1)}`]).toBe('0');
+    },
+  );
+
+  it('would see a failure: a colourful appearance without the new colours, or with words on its header below 4.5:1', () => {
+    const saffron = BUILT_IN.find((a) => a.id === 'saffron') ?? BLACK;
+    const without: Appearance = { ...saffron, decoration: plainDecoration(saffron.colours) };
+    expect(decorationLacks(without)).toEqual(
+      expect.arrayContaining([
+        'a band of 2 to 5 colours (it has 0)',
+        'a header colour apart from its panels and window',
+      ]),
+    );
+    const faint: Appearance = {
+      ...saffron,
+      decoration: { ...saffron.decoration, 'on-header': saffron.decoration.header },
+    };
+    expect(appearanceProblems(faint).some((p) => p.startsWith('words on the header: 1.00:1'))).toBe(true);
+    // And a mark that could be taken for LIVE.
+    const red: Appearance = { ...saffron, decoration: { ...saffron.decoration, second: '#d42a31' } };
+    expect(appearanceProblems(red).some((p) => p.startsWith('second vs live: '))).toBe(true);
+  });
+});
+
 describe('the tokens in app.css and the buttons in ui/Button.tsx', () => {
-  it('app.css’s @theme holds Black’s colours: what a window shows before its appearance is set', () => {
+  it('app.css’s @theme holds Black’s colours and decoration: what a window shows before its appearance is set', () => {
     const theme = coloursIn(block(/@theme\s*\{/u));
-    expect(theme).toEqual(Object.fromEntries(COLOUR_TOKENS.map((name) => [name, BLACK.colours[name]])));
+    expect(theme).toEqual({
+      ...Object.fromEntries(COLOUR_TOKENS.map((name) => [name, BLACK.colours[name]])),
+      ...Object.fromEntries(DECORATION_TOKENS.map((name) => [name, BLACK.decoration[name]])),
+    });
+    // No band before then: none of its blocks takes any room, and the strip is 0 px.
+    const root = block(/^:root\s*\{/mu);
+    expect(root).toMatch(/--band-height:\s*0px;/u);
+    for (let i = 1; i <= 5; i++) expect(root).toMatch(new RegExp(`--band-${String(i)}:\\s*0;`, 'u'));
   });
 
   it('the audience screens and the phone pages set every colour of their own, so no appearance reaches them', () => {

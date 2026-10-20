@@ -1,5 +1,5 @@
-import { contrastRatio, deltaE00 } from '../contrast';
-import type { Appearance, AppearanceBase, Colours, OwnAppearance } from './appearances';
+import { contrastRatio, deltaE00, over, VISIONS } from '../contrast';
+import type { Appearance, AppearanceBase, Colours, Decoration, OwnAppearance } from './appearances';
 import { DARK_STATES, LIGHT_STATES } from './appearances';
 import { hexToOklch, oklchToHex, type Oklch } from './oklch';
 import { appearanceProblems, measureDistances } from './rules';
@@ -11,6 +11,11 @@ import { appearanceProblems, measureDistances } from './rules';
  * primary the accent itself (made lighter or darker only as far as its words need), and the states as every
  * appearance of that base has them. Then every rule is measured (rules.ts): an accent that fails is refused in
  * plain words, with the nearest accent that passes offered.
+ *
+ * Session 42: its decoration too, from the same accent. A header in a deep shade of it with light words, a band of
+ * the primary, a light tint and a neighbouring hue, and a second colour (for what marks) and headings in the hue
+ * nearest the accent's that is kept apart from every state; each is moved in lightness as far as its rules need,
+ * so the decoration always passes and only the primary can be refused.
  */
 
 export type { OwnAppearance } from './appearances';
@@ -97,8 +102,100 @@ export function deriveColours(base: AppearanceBase, accentHex: string): Colours 
   };
 }
 
+/** An appearance made from a base and an accent, under an id and a name. */
+export function madeAppearance(id: string, name: string, base: AppearanceBase, accent: string): Appearance {
+  const colours = deriveColours(base, accent);
+  return { id, name, base, colours, decoration: deriveDecoration(base, accent, colours) };
+}
+
+/** The least CIEDE2000 between two colours over the four colour visions. */
+const apart = (x: string, y: string) => Math.min(...VISIONS.map((v) => deltaE00(x, y, v)));
+
+/** A colour that marks: 3:1 from every surface, and from the chosen row's own and outer surface at 70%. */
+function marks(colour: Oklch, c: Colours, dark: boolean): string {
+  const surfaces = [c.ink, c.panel, c['panel-2'], c['panel-3']];
+  let at = colour;
+  for (let i = 0; i < 100; i++) {
+    const hex = oklchToHex(at);
+    const row = over(hex, 0.7, c['panel-3']);
+    if (
+      surfaces.every((bg) => contrastRatio(hex, bg) >= 3.05) &&
+      contrastRatio(row, c['panel-3']) >= 3.05 &&
+      contrastRatio(row, c.panel) >= 3.05
+    )
+      return hex;
+    if ((dark && at.l >= 1) || (!dark && at.l <= 0)) return hex;
+    at = shift(at, dark ? 0.01 : -0.01);
+  }
+  return oklchToHex(at);
+}
+const markApart = (x: string, c: Colours) =>
+  apart(x, c.live) >= 10.05 &&
+  apart(x, c.warning) >= 10.05 &&
+  apart(x, c.success) >= 7.05 &&
+  apart(x, c.danger) >= 7.05;
+const headingApart = (x: string, c: Colours) =>
+  apart(x, c.live) >= 10.05 &&
+  apart(x, c.onair) >= 10.05 &&
+  apart(x, c.warning) >= 10.05 &&
+  apart(x, c.danger) >= 7.05;
+
+/** The decoration of an appearance made from a base and an accent (Session 42). */
+export function deriveDecoration(base: AppearanceBase, accentHex: string, c: Colours): Decoration {
+  const a = hexToOklch(accentHex);
+  const dark = base === 'dark';
+  const chroma = Math.min(a.c, 0.12);
+  // The header: as deep a shade of the accent as its words, its controls and a warning button need.
+  let header = '';
+  let words = '';
+  let buttons = '';
+  for (let l = dark ? 0.36 : 0.34; l >= 0.12; l -= 0.01) {
+    header = oklchToHex({ l, c: chroma, h: a.h });
+    words = reach({ l: 0.97, c: Math.min(chroma, 0.015), h: a.h }, [header], 4.6, 1, 0.005);
+    buttons = reach({ l: 0.87, c: Math.min(chroma, 0.04), h: a.h }, [header], 4.6, 1, 0.005);
+    const seen = (x: string, y: string) =>
+      Math.max(contrastRatio(x, header), contrastRatio(y, header)) >= 3.05;
+    if (
+      contrastRatio(words, header) >= 4.6 &&
+      contrastRatio(buttons, header) >= 4.6 &&
+      seen(c.field, c['panel-2']) &&
+      seen(c.warning, c['warning-bg'])
+    )
+      break;
+  }
+  // What marks and the headings: the hue nearest the accent's that stands apart from every state.
+  const hueOf = (dh: number): Oklch => ({
+    l: a.l,
+    c: Math.min(Math.max(a.c, 0.08), 0.14),
+    h: (a.h + dh + 360) % 360,
+  });
+  const surfaces = [c.ink, c.panel, c['panel-2'], c['panel-3']];
+  let second = c.muted;
+  let heading = c.muted;
+  for (const dh of [40, -40, 80, -80, 120, -120, 180, 0]) {
+    const mark = marks(hueOf(dh), c, dark);
+    const words = reach(hexToOklch(mark), surfaces, 4.6, dark ? 1 : -1, 0.005);
+    if (markApart(mark, c) && headingApart(words, c)) {
+      second = mark;
+      heading = words;
+      break;
+    }
+  }
+  const tint = oklchToHex({ l: dark ? 0.9 : 0.92, c: Math.min(chroma, 0.06), h: a.h });
+  return {
+    header,
+    'on-header': words,
+    'on-header-muted': buttons,
+    'header-ring': words,
+    'header-field': buttons,
+    second,
+    heading,
+    band: [c.primary, tint, oklchToHex({ ...a, h: (a.h + 40) % 360 })],
+  };
+}
+
 export function deriveAppearance(own: OwnAppearance): Appearance {
-  return { id: own.id, name: own.name, base: own.base, colours: deriveColours(own.base, own.accent) };
+  return madeAppearance(own.id, own.name, own.base, own.accent);
 }
 
 /** What each state is, in words, for a colour too close to it. */
@@ -126,7 +223,7 @@ export interface AccentCheck {
 
 /** Whether an accent on this base meets every rule; if not, why, and the nearest one that does. */
 export function checkAccent(base: AppearanceBase, accent: string): AccentCheck {
-  const made: Appearance = { id: 'own-check', name: 'Check', base, colours: deriveColours(base, accent) };
+  const made = madeAppearance('own-check', 'Check', base, accent);
   const problems = appearanceProblems(made);
   if (problems.length === 0) return { ok: true, why: '', problems, nearest: null };
   const near = [
@@ -157,7 +254,7 @@ export function nearestAccent(base: AppearanceBase, accent: string): string | nu
     .map((hex) => ({ hex, d: deltaE00(hex, accent) }))
     .sort((x, y) => x.d - y.d);
   for (const { hex } of byDistance) {
-    const made: Appearance = { id: 'own-check', name: 'Check', base, colours: deriveColours(base, hex) };
+    const made = madeAppearance('own-check', 'Check', base, hex);
     if (appearanceProblems(made).length === 0) return hex;
   }
   return null;
