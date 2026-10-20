@@ -243,7 +243,8 @@ test('the output windows’ memory, with DevTools attached and without (Session 
   const attachedFrom = Date.now();
   const attached = await relaunchApp(userData, COMMON);
   const attachedWin = await operatorPage(attached.app);
-  await expect(attachedWin.getByTestId('presentation-list')).toBeVisible();
+  // Drawn: the left column's Library button (Session 44: the library's list is in its sheet, shut to begin with).
+  await expect(attachedWin.getByTestId('library-button')).toBeVisible();
   await sleep(HALF_MINUTES * 60_000);
   const attachedTo = Date.now();
   const outputsAttached = outputPages(attached.app).length;

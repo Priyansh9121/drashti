@@ -454,12 +454,21 @@ async function openAsAShowDoes(name: string, count: number, everyMs: number): Pr
     note: '',
   };
   const notes: string[] = [];
-  // The library's list is the window's first data; it has opened, settled, within a second after it (an
-  // older Drashti, the paired check's base, never says so).
-  await until(() => doc.querySelector('[data-testid="presentation-row"]') !== null, 30_000);
+  // The window drawn (the library's list, or since Session 44 the Library button over the playlists); it has
+  // opened, settled, within a second after it (an older Drashti, the paired check's base, never says so).
+  await until(
+    () =>
+      doc.querySelector('[data-testid="presentation-row"]') !== null ||
+      doc.querySelector('[data-testid="library-button"]') !== null,
+    30_000,
+  );
   out.openedAt = await until(() => doc.documentElement.dataset.opened !== undefined, 3000);
   if (out.openedAt === null) notes.push('the window never said it had opened (data-opened)');
   await doc.fonts.ready;
+  // The library as an operator opens it (Session 44: a sheet, shut until the Library button opens it).
+  if (doc.querySelector('[data-testid="presentation-row"]') === null)
+    for (const button of doc.querySelectorAll('[data-testid="library-button"]')) button.click();
+  await until(() => doc.querySelector('[data-testid="presentation-row"]') !== null, 10_000);
   const id = (await d.library.listPresentations()).find((p) => p.name === name)?.id ?? '';
   const row = [...doc.querySelectorAll('[data-testid="presentation-row"]')].find((r) =>
     (r.textContent ?? '').startsWith(name),

@@ -101,10 +101,18 @@ const js = <T>(win: BrowserWindow, code: string) =>
 const paintedRev = (win: BrowserWindow) =>
   js<string>(win, `document.querySelector('[data-testid="output-root"]')?.dataset.paintedRev ?? ''`);
 
+/**
+ * The operator window works: drawn, and told by the main process what it runs (the status bar's version line,
+ * as the end-to-end tests' operatorReady reads it). Until Session 44 this read the library's list, which is
+ * now in a sheet over the playlists, shut until the Library button opens it.
+ */
 const operatorReady = async (ctx: SelfTestContext) => {
   const op = ctx.operator();
   if (!op || op.webContents.isCrashed() || op.webContents.isLoading()) return false;
-  return js<boolean>(op, `document.querySelectorAll('[data-testid="presentation-list"] button').length > 0`);
+  return js<boolean>(
+    op,
+    `/Electron \\d/.test(document.querySelector('[data-testid="app-info"]')?.textContent ?? '')`,
+  );
 };
 
 /** The engine revision the audio player follows ('' while it is loading). */
