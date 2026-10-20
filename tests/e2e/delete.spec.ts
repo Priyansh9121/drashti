@@ -10,6 +10,7 @@ import {
   chooseMenuItem,
   importAndGetIds,
   launchApp,
+  openLibrary,
   operatorPage,
   operatorReady,
   relaunchApp,
@@ -104,6 +105,7 @@ test('each row has a visible delete (playlist, playlist item, presentation, medi
   await expect(items).toHaveCount(2);
   await expect(items.first().locator('[data-label]')).toHaveText('Placeholder Song One');
   // Still in the library: nothing but the playlist lost it.
+  await openLibrary(win);
   await expect(
     win
       .getByTestId('presentation-list')

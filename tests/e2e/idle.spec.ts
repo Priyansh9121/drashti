@@ -11,6 +11,7 @@ import {
   importAndGetIds,
   launchApp,
   letTimePass,
+  openLibrary,
   openMoreTools,
   operatorPage,
   operatorReady,
@@ -161,6 +162,7 @@ test('a lobby shows the rotation whenever nothing is up; started, the hall shows
   });
 
   // The first slide up stops it: the hall and the lobby show the slide.
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Sample kirtan/ })

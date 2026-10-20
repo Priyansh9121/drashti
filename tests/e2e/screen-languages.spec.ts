@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { PageGlobals } from './helpers';
-import { launchApp, operatorPage, outputPages, setUpScreen } from './helpers';
+import { launchApp, openLibrary, operatorPage, outputPages, setUpScreen } from './helpers';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
 
@@ -89,6 +89,7 @@ test('each screen shows its own languages of a kirtan, closed up; other slides i
   ]);
 
   // The sample kirtan's first slide: one box with Gujarati, Hindi, transliteration and English.
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Sample kirtan/ })
@@ -157,6 +158,7 @@ test('each screen shows its own languages of a kirtan, closed up; other slides i
     ]);
 
   // A slide that is not a kirtan's shows in full on every screen.
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Language test slides/ })

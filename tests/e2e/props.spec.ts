@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { importAndGetIds, launchApp, operatorPage, outputPage, setUpScreen } from './helpers';
+import { importAndGetIds, launchApp, openLibrary, operatorPage, outputPage, setUpScreen } from './helpers';
 import { makeTestImage } from './test-media';
 
 /*
@@ -44,6 +44,7 @@ test('props stay up over changing slides, and come down when hidden', async () =
   await expect(propsLayer).toHaveCount(2);
   await expect(propsLayer.first()).toHaveText('Placeholder Mandir Name');
   await expect(propsLayer.nth(1).locator('img')).toHaveCount(1);
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Language test slides/ })

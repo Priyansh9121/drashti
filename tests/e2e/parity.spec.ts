@@ -1,7 +1,15 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { device, networkOn, NETWORK_ENV, pairByQr, pairingCode } from './devices';
-import { launchApp, operatorPage, operatorReady, outputPage, type PageGlobals, setUpScreen } from './helpers';
+import {
+  launchApp,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+  outputPage,
+  type PageGlobals,
+  setUpScreen,
+} from './helpers';
 import { goLive, makeSlides } from './placeholder-slides';
 
 /*
@@ -59,6 +67,7 @@ test('a slide’s shrunk words are the same size and in the same lines on the ou
   expect(onOutput?.lines).toBeGreaterThan(1);
 
   // Its thumbnail in the operator window's slide grid.
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Placeholder parity/u })

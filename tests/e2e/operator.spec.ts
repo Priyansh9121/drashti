@@ -1,7 +1,7 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import type { OutputGlobals, PageGlobals } from './helpers';
-import { launchApp, operatorPage } from './helpers';
+import { launchApp, openLibrary, operatorPage } from './helpers';
 import { KIRTAN, setUpPlaceholderShow } from './placeholder-show';
 
 async function outputPage(app: ElectronApplication): Promise<Page> {
@@ -30,6 +30,7 @@ const engineRev = (win: Page) =>
 test('operator: pick a presentation, go live by click and keyboard, clear layers, black-out', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
+  await openLibrary(win);
   const list = win.getByTestId('presentation-list');
   await expect(list.getByTestId('presentation-row')).toHaveCount(2);
   await oneScreen(win);
@@ -219,6 +220,7 @@ test('Next pressed quickly goes on through what is live, even when the window he
   await setUpPlaceholderShow(win);
   await hearLate(app);
   // Space starts the kirtan; the arrows that follow at once go on through it, not back to its start.
+  await openLibrary(win);
   await win.getByTestId('presentation-list').getByRole('button', { name: KIRTAN }).click();
   await expect(win.getByTestId('slide-thumb')).toHaveCount(5);
   await win.keyboard.press('Space');

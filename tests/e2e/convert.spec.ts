@@ -7,7 +7,14 @@ import { join } from 'node:path';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
-import { importAndGetIds, launchApp, operatorPage, operatorReady, type PageGlobals } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+  type PageGlobals,
+} from './helpers';
 import { testFfmpeg } from './stream-helpers';
 
 /*
@@ -143,6 +150,7 @@ test('convert all: each kind becomes what Drashti plays, the original stays, wha
 
   // The media list offers Convert all, once the HEVC video's own conversion has ended (while one goes the
   // bar says so instead; a slow computer takes a while: Session 26, a Windows runner).
+  await openLibrary(win);
   await win.getByRole('tab', { name: 'Media' }).click();
   await expect
     .poll(
@@ -167,6 +175,7 @@ test('convert all: each kind becomes what Drashti plays, the original stays, wha
       },
     )
     .toBe(5);
+  await openLibrary(win);
   await expectFits(win.getByTestId('media-list'), 'the media list after converting at 1280 x 720');
 
   const after = await listMedia(win);
@@ -187,6 +196,7 @@ test('convert all: each kind becomes what Drashti plays, the original stays, wha
     expect(after.find((m) => m.name === copy)?.unplayable, copy).toBeNull();
   for (const n of names) expect(after.find((m) => m.name === n)?.unplayable, n).not.toBeNull();
   // The original's row says what it became; the copy is a row of its own.
+  await openLibrary(win);
   const aviNote = win
     .getByTestId('media-row')
     .filter({ hasText: 'Placeholder old clip.avi' })

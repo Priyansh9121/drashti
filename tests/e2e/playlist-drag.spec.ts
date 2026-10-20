@@ -6,7 +6,15 @@ import { join } from 'node:path';
 import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import type { PageGlobals } from './helpers';
-import { dropFiles, importAndGetIds, launchApp, operatorPage, operatorReady } from './helpers';
+import {
+  closeLibrary,
+  dropFiles,
+  importAndGetIds,
+  launchApp,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+} from './helpers';
 import { mouseDrag } from './mouse-drag';
 import { makeTestImage } from './test-media';
 
@@ -98,6 +106,7 @@ test('dragging presentations and a .pptx deck into an empty open playlist and a 
   await expect(list).toHaveAttribute('data-count', '0');
 
   // The chosen row (it has Add to playlist under it), into the empty playlist: what Priyansh did.
+  await openLibrary(win);
   await presentation('Placeholder Katha').click();
   await expect(win.getByTestId('add-to-playlist')).toBeVisible();
   await mouseDrag(win, presentation('Placeholder Katha'), list, 'middle');
@@ -140,6 +149,7 @@ test('dragging pictures from Media, chosen and unchosen, and onto a playlist’s
   const { app, win, node, items, presentation } = await start();
   await node('Placeholder Empty').click();
   const list = win.getByTestId('open-playlist').getByTestId('playlist-items');
+  await openLibrary(win);
   await win.getByTestId('library-tab-media').click();
   const picture = (name: string) => win.getByTestId('media-item').filter({ hasText: name });
   // A chosen picture (Add to playlist under it), into the empty playlist.
@@ -163,7 +173,8 @@ test('dragging pictures from Media, chosen and unchosen, and onto a playlist’s
       'media:Placeholder Picture B.png',
     ]);
 
-  // Onto a playlist's row in the list (no playlist open): it goes at the end.
+  // Onto a playlist's row in the list (no playlist open): it goes at the end. The library's sheet over the list
+  // stands aside as the drag gets under way (Session 44), and comes back after it.
   await win.getByTestId('playlist-close').click();
   await mouseDrag(win, picture('Placeholder Picture B'), node('Placeholder Other'), 'middle');
   await expect(node('Placeholder Other')).toContainText('1');
@@ -171,6 +182,8 @@ test('dragging pictures from Media, chosen and unchosen, and onto a playlist’s
   await presentation('Placeholder Song One').click();
   await mouseDrag(win, presentation('Placeholder Song One'), node('Placeholder Other'), 'middle');
   await expect(node('Placeholder Other')).toContainText('2');
+  await expect(win.getByTestId('library-sheet')).toBeVisible();
+  await closeLibrary(win);
   await node('Placeholder Other').click();
   await expect
     .poll(() => labels(items))
@@ -181,6 +194,7 @@ test('dragging pictures from Media, chosen and unchosen, and onto a playlist’s
 test('a search result can be dragged into a playlist', async () => {
   const { app, win, node, items } = await start();
   await node('Placeholder Empty').click();
+  await openLibrary(win);
   await win.getByTestId('library-search').fill('Bravo');
   const hit = win.getByTestId('search-hit').filter({ hasText: 'Placeholder Song Two' });
   await expect(hit).toBeVisible();
@@ -283,6 +297,7 @@ test('files from the Finder or Explorer dropped on the open playlist are importe
   const { app, win, dir, node, items, presentation } = await start();
   await node('Placeholder Empty').click();
   const list = win.getByTestId('open-playlist').getByTestId('playlist-items');
+  await openLibrary(win);
   await presentation('Placeholder Song One').click();
   await mouseDrag(win, presentation('Placeholder Song One'), list, 'middle');
   await mouseDrag(win, presentation('Placeholder Song Two'), items.last(), 'bottom');

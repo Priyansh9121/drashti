@@ -5,11 +5,10 @@ import { usePersistentState } from '../ui/persist';
 import { Splitter } from '../ui/Splitter';
 
 /*
- * The operator window's columns (Session 26a): the playlists and the library
- * on the left, the open playlist and the chosen item's slides in the middle,
- * and what is live on the right, with splitters between them. Sizes are
- * remembered on this computer, and kept so the middle always has room (down
- * to a 1024-wide window).
+ * The operator window's columns (Session 26a): the playlists on the left (Session 44: the whole column, the
+ * library in a sheet over it, the open folder playlist's folders below them), the open playlist and the
+ * chosen item's slides in the middle, and what is live on the right, with splitters between them. Sizes are
+ * remembered on this computer, and kept so the middle always has room (down to a 1024-wide window).
  */
 
 const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -62,7 +61,7 @@ export function Columns({ left, middle, right }: { left: ReactNode; middle: Reac
         min={LEFT.min}
         max={Math.max(LEFT.min, leftMax)}
         defaultValue={LEFT.initial}
-        label="Resize the library and playlists"
+        label="Resize the playlists"
       />
       {/* No surface of its own: the window's ink, the appearance's (Sessions 39–40). */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="column-middle">
@@ -88,37 +87,71 @@ export function Columns({ left, middle, right }: { left: ReactNode; middle: Reac
   );
 }
 
-/** The left column: playlists above, the library below, with a splitter between (as a share of the height). */
-export function LeftColumn({ top, bottom, foot }: { top: ReactNode; bottom: ReactNode; foot: ReactNode }) {
+/**
+ * The left column (Session 44): the Library button, then the playlists, which have it all; with a folder
+ * playlist open, its folders below them, with a splitter between (as a share of the height). The library's
+ * sheet lies over the playlists and folders when it is open, between the button and the notices at its foot,
+ * which stay in view.
+ */
+export function LeftColumn({
+  head,
+  top,
+  bottom,
+  over,
+  covered,
+  foot,
+}: {
+  head: ReactNode;
+  top: ReactNode;
+  /** The open folder playlist's folders, or null. */
+  bottom: ReactNode | null;
+  /** Laid over the playlists and folders (the library's sheet); null when shut. */
+  over: ReactNode;
+  /** The sheet covers them: they take no keyboard or pointer meanwhile (inert), so nothing hidden is reached. */
+  covered: boolean;
+  foot: ReactNode;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const { height } = useElementSize(ref);
   const [share, setShare] = usePersistentState('layout.playlists', PLAYLISTS.initial, isNumber);
   const usable = Math.max(1, height);
   const topHeight = Math.round(clamp(share, PLAYLISTS.min, PLAYLISTS.max) * usable);
   return (
-    <>
-      <div ref={ref} className="flex min-h-0 flex-1 flex-col">
-        <div
-          style={{ height: height > 0 ? topHeight : `${PLAYLISTS.initial * 100}%` }}
-          className="flex min-h-0 shrink-0 flex-col"
-        >
-          {top}
+    // One landmark for the column (Session 44): the Library button, the playlists, the open playlist's folders
+    // and the library's sheet over them.
+    <section aria-label="Playlists" className="flex min-h-0 flex-1 flex-col">
+      {head}
+      <div ref={ref} className="relative flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col" inert={covered}>
+          {bottom === null ? (
+            <div className="flex min-h-0 flex-1 flex-col">{top}</div>
+          ) : (
+            <>
+              <div
+                style={{ height: height > 0 ? topHeight : `${PLAYLISTS.initial * 100}%` }}
+                className="flex min-h-0 shrink-0 flex-col"
+              >
+                {top}
+              </div>
+              <Splitter
+                orientation="horizontal"
+                value={topHeight}
+                onChange={(px) => {
+                  setShare(px / usable);
+                }}
+                min={Math.round(PLAYLISTS.min * usable)}
+                max={Math.round(PLAYLISTS.max * usable)}
+                defaultValue={Math.round(PLAYLISTS.initial * usable)}
+                label="Resize the playlists and the folders"
+              />
+              <div className="flex min-h-0 flex-1 flex-col">{bottom}</div>
+            </>
+          )}
         </div>
-        <Splitter
-          orientation="horizontal"
-          value={topHeight}
-          onChange={(px) => {
-            setShare(px / usable);
-          }}
-          min={Math.round(PLAYLISTS.min * usable)}
-          max={Math.round(PLAYLISTS.max * usable)}
-          defaultValue={Math.round(PLAYLISTS.initial * usable)}
-          label="Resize the playlists and the library"
-        />
-        <div className="flex min-h-0 flex-1 flex-col">{bottom}</div>
+        {over}
       </div>
       {foot}
-    </>
+    </section>
   );
 }
 

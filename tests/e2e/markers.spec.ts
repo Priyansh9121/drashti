@@ -10,6 +10,7 @@ import {
   holdStill,
   importAndGetIds,
   launchApp,
+  openLibrary,
   operatorPage,
   operatorReady,
   outputPages,
@@ -116,6 +117,7 @@ test('a background loops between its points; a jump to a marker lands in step on
     (await win.evaluate(() => (globalThis as PageGlobals).drashti.library.listMedia()))[0]?.id ?? '';
 
   // Its Markers button in the media list: start 0:02, end 0:06, a marker at 0:04.
+  await openLibrary(win);
   await win.getByRole('tab', { name: 'Media' }).click();
   await win.getByTestId('media-markers').first().click();
   const dialog = win.getByTestId('markers-dialog');

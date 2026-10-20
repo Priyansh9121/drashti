@@ -8,6 +8,7 @@ import {
   dropFiles,
   importAndGetIds,
   launchApp,
+  openLibrary,
   operatorPage,
   operatorReady,
   outputPage,
@@ -31,6 +32,7 @@ const KIRTAN = /Sample kirtan/;
 
 async function open(win: Page, name: RegExp | string): Promise<string> {
   // By its row (the row's trash button is named after it too: “Delete …”, Session 26a).
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByTestId('presentation-row')
@@ -211,6 +213,7 @@ test('lyrics with lines in two scripts come in as a kirtan, and the editor calls
   const dir = mkdtempSync(join(tmpdir(), 'drashti-kirtan-'));
   const file = join(dir, 'Placeholder Two Scripts.txt');
   writeFileSync(file, '[Verse]\nનમૂનાની પંક્તિ\nNamūnānī pankti\n\nબીજી પંક્તિ\nBījī pankti\n');
+  await openLibrary(win);
   await dropFiles(win, win.getByTestId('presentation-list'), [file]);
   // The report says what was mapped.
   const report = win.getByTestId('import-report');
@@ -384,6 +387,7 @@ test('kirtan details: a new category, kavi, raag, occasions and a recording; the
   );
 
   // The library filters by them.
+  await openLibrary(win);
   const list = win.getByTestId('presentation-list');
   const rows = () => list.getByRole('button').evaluateAll((els) => els.map((e) => e.textContent));
   await win.getByTestId('filter-button').click();
@@ -440,6 +444,7 @@ for (const [width, height] of [
     expect(narrowest).toBeGreaterThan(180);
     await editor.getByRole('button', { name: 'Cancel' }).click();
     // The library's filters, open, in the left column.
+    await openLibrary(win);
     await win.getByTestId('filter-button').click();
     await expectFits(win.getByTestId('kirtan-filters'), `the library filters at ${width} x ${height}`);
     await expectNoSeriousA11yIssues(win, `the library filters at ${width} x ${height}`);

@@ -6,7 +6,15 @@ import { join } from 'node:path';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, importAndGetIds, launchApp, operatorPage, outputPage, setUpScreen } from './helpers';
+import {
+  chooseMenuItem,
+  importAndGetIds,
+  launchApp,
+  openLibrary,
+  operatorPage,
+  outputPage,
+  setUpScreen,
+} from './helpers';
 import { makeTestImage } from './test-media';
 
 /*
@@ -63,6 +71,7 @@ async function importKirtan(win: Page, name: string, words: string, more: string
 
 async function openEditor(win: Page, name: string | RegExp): Promise<Locator> {
   // By its row (the row's trash button is named after it too: “Delete …”, Session 26a).
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByTestId('presentation-row')
@@ -110,6 +119,7 @@ test('edit a slide: a Gujarati word in its own font and size, a shape and a pict
     },
   );
   await importKirtan(win, 'Placeholder Editor Kirtan', '[Verse]\nનમૂના પંક્તિ\nNamūnā pankti\n', [picture]);
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Placeholder Editor Kirtan/ })

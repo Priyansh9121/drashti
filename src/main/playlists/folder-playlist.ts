@@ -81,6 +81,8 @@ export function makeFolderPlaylist(
   if (ordered.length === 0) return null;
   const free = freeName(repo, name);
   const id = repo.createAtTop(free);
+  // Shown a folder at a time (Session 44): the playlist says it came from one.
+  repo.markFromFolder(id);
   repo.addItems(id, null, ordered);
   return { id, name: free };
 }

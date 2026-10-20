@@ -5,7 +5,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cocoaRtf, pp6Playlist, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, importAndGetIds, launchApp, operatorPage } from './helpers';
+import {
+  chooseMenuItem,
+  closeLibrary,
+  importAndGetIds,
+  launchApp,
+  openLibrary,
+  operatorPage,
+} from './helpers';
+import { inLibrarySheet, libraryAside } from './mouse-drag';
 import { makeTestImage } from './test-media';
 
 /*
@@ -25,10 +33,13 @@ const song = (uuid: string, text: string) =>
  */
 async function drag(page: Page, source: Locator, target: Locator, where: 'top' | 'middle' | 'bottom') {
   await source.hover();
+  const fromSheet = await inLibrarySheet(source);
   const from = await source.boundingBox();
   if (!from) throw new Error('the drag source is not visible');
   await page.mouse.down();
   await page.mouse.move(from.x + from.width / 2 + 8, from.y + from.height / 2 + 8);
+  await page.mouse.move(from.x + from.width / 2 + 12, from.y + from.height / 2 + 12);
+  await libraryAside(page, fromSheet);
   // Measured once the drag is under way, with the target in view: on a small screen the list
   // can scroll as the source comes into view, leaving the target partly hidden.
   await target.evaluate((el) => {
@@ -101,6 +112,7 @@ test('playlists: imported ones with their placeholders, and building one by drag
     .toEqual(['header:Opening', 'presentation:Placeholder Song One', 'placeholder:Not Here']);
 
   // Dropping a presentation on the placeholder puts it there.
+  await openLibrary(win);
   await drag(
     win,
     presentations.getByRole('button', { name: /^Placeholder Song Two/ }),
@@ -118,6 +130,7 @@ test('playlists: imported ones with their placeholders, and building one by drag
   await expect(node('Sunday').getByTestId('node-placeholders')).toHaveCount(0);
 
   // A new playlist, named in place.
+  await closeLibrary(win);
   await panel.getByRole('button', { name: 'New playlist or folder' }).click();
   await win.getByRole('menuitem', { name: 'New playlist' }).click();
   // One name field at a time: a playlist's in the list, or a header's in the open playlist.
@@ -127,7 +140,9 @@ test('playlists: imported ones with their placeholders, and building one by drag
   await rename.press('Enter');
   await expect(node('Evening Sabha')).toBeVisible();
 
-  // Dropping on a playlist in the list adds to its end.
+  // Dropping on a playlist in the list adds to its end: the library's sheet over the list (Session 44) stands
+  // aside as the drag gets under way.
+  await openLibrary(win);
   await drag(
     win,
     presentations.getByRole('button', { name: /^Placeholder Song One/ }),
@@ -135,8 +150,10 @@ test('playlists: imported ones with their placeholders, and building one by drag
     'middle',
   );
   await expect(node('Evening Sabha')).toContainText('1');
+  await closeLibrary(win);
   await node('Evening Sabha').click();
   await expect(items).toHaveCount(1);
+  await openLibrary(win);
 
   // Drag in a presentation before it, and a picture from the media list after it.
   await drag(win, presentations.getByRole('button', { name: /^Placeholder Song Two/ }), items.first(), 'top');
@@ -183,6 +200,7 @@ test('playlists: imported ones with their placeholders, and building one by drag
 
   // Removing the playlist asks first; Undo brings it back with its items.
   await win.getByTestId('playlist-close').click();
+  await closeLibrary(win);
   await node('Evening Sabha').click({ button: 'right' });
   await win.getByRole('menuitem', { name: 'Delete…' }).click();
   const confirm = win.getByTestId('remove-confirm');
@@ -198,12 +216,14 @@ test('playlists: imported ones with their placeholders, and building one by drag
   // Removing a folder takes its playlists with it (the new one was made beside Sunday, in
   // the same folder); the library keeps the presentations, and Undo brings it all back.
   await win.getByTestId('playlist-close').click();
+  await closeLibrary(win);
   await node('Services').click({ button: 'right' });
   await win.getByRole('menuitem', { name: 'Delete…' }).click();
   await expect(confirm).toContainText('Delete folder “Services”?');
   await expect(confirm).toContainText('The 2 playlists in it go too.');
   await confirm.getByRole('button', { name: 'Delete' }).click();
   await expect(tree.getByTestId('playlist-node')).toHaveCount(0);
+  await openLibrary(win);
   await win.getByTestId('library-tab-presentations').click();
   // The two sample presentations a new library starts with, and the two imported.
   await expect(presentations.getByTestId('presentation-row')).toHaveCount(4);
@@ -250,6 +270,7 @@ test('a playlist built and put in order with the keyboard alone: Add to playlist
   );
 
   // A presentation: choose its row (Enter), then Add to playlist beside it (Tab, Enter).
+  await openLibrary(win);
   const library = win.getByTestId('presentation-list');
   const row = (name: string) => library.getByRole('button', { name: new RegExp(`^${name}`, 'u') });
   await row('Placeholder Keys One').focus();

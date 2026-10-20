@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
-import { importAndGetIds, launchApp, operatorPage, outputPage, setUpScreen } from './helpers';
+import { importAndGetIds, launchApp, openLibrary, operatorPage, outputPage, setUpScreen } from './helpers';
 import { makeTestImage } from './test-media';
 
 /*
@@ -41,6 +41,7 @@ test('edit the words: fix a word, add a verse, move a group; the live slide foll
   const output = await outputPage(app);
   const slideText = output.locator('[data-layer="slide"]');
 
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Placeholder Editable Song/ })
@@ -89,6 +90,7 @@ test('edit the words: fix a word, add a verse, move a group; the live slide foll
 test('a new presentation from pasted words, with a repeated chorus sung each time', async () => {
   const { app } = await launchApp();
   const win = await operatorPage(app);
+  await openLibrary(win);
   await win.getByRole('button', { name: 'New…' }).click();
   const editor = win.getByTestId('words-editor');
   await editor.getByRole('textbox', { name: 'Name' }).fill('Placeholder Pasted Kirtan');
@@ -136,6 +138,7 @@ test('words typed in a legacy font open read-only, naming the font, and cannot b
     }),
   );
   await importAndGetIds(win, [old]);
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Placeholder Legacy Kirtan/ })

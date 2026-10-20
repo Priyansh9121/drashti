@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, operatorPage, outputPage, setUpScreen } from './helpers';
+import { importAndGetIds, launchApp, openLibrary, operatorPage, outputPage, setUpScreen } from './helpers';
 import { makeTestImage, makeTestVideo } from './test-media';
 
 /*
@@ -241,6 +241,7 @@ test('images and videos placed on slides draw on the outputs; thumbnails show st
     }),
   );
   const [presentationId = ''] = await importAndGetIds(win, [show]);
+  await openLibrary(win);
   const list = win.getByTestId('presentation-list');
   await list.getByRole('button', { name: /^Placeholder Elements/ }).click();
   const grid = win.getByTestId('slide-grid');
@@ -259,6 +260,7 @@ test('images and videos placed on slides draw on the outputs; thumbnails show st
 
   // After a reload the still comes straight from the media folder: nothing is made again.
   await win.reload();
+  await openLibrary(win);
   await list.getByRole('button', { name: /^Placeholder Elements/ }).click();
   await expect.poll(() => loaded(thumbs.nth(1).locator('img[data-still="0"]'))).toBe(true);
   await expect(grid.locator('video')).toHaveCount(0);

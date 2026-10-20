@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
-import { importAndGetIds, launchApp, operatorPage, outputPage, setUpScreen } from './helpers';
+import { importAndGetIds, launchApp, openLibrary, operatorPage, outputPage, setUpScreen } from './helpers';
 
 /*
  * Arrangements set the order: the slide grid, Next and Previous follow the
@@ -33,6 +33,7 @@ test('the arrangement sets the order: a repeated chorus shows and plays each tim
   await importAndGetIds(win, [song]);
   await setUpScreen(win);
   const output = await outputPage(app);
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Placeholder Arranged Song/ })
@@ -72,6 +73,7 @@ test('the arrangement sets the order: a repeated chorus shows and plays each tim
 
   // The choice is kept with the presentation.
   await win.reload();
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Placeholder Arranged Song/ })

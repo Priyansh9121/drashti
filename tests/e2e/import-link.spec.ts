@@ -14,11 +14,11 @@ import {
   chooseMenuItem,
   holdStill,
   launchApp,
+  openLibrary,
   operatorPage,
   operatorReady,
   type PageGlobals,
 } from './helpers';
-import { mouseDrag } from './mouse-drag';
 import { testFfmpeg } from './stream-helpers';
 import { makeTestImage } from './test-media';
 
@@ -330,6 +330,7 @@ test('Dropbox: a video above 1080p ends as a 1080p copy in the library, the orig
   }, chosen);
 
   // From the library's Import menu this time.
+  await openLibrary(win);
   await win.getByRole('button', { name: 'Import…' }).click();
   await win.getByRole('menuitem', { name: 'From a Link…' }).click();
   await win.getByTestId('link-kind-dropbox').click();
@@ -496,13 +497,15 @@ test('Dropbox: a folder link becomes one playlist, folder by folder, with header
   await expect(title).toHaveText('Placeholder Sabha folder (2)', { timeout: 180_000 });
   await expect(win.getByTestId('playlist-node').first()).toContainText('Placeholder Sabha folder (2)');
   const items = win.getByTestId('open-playlist').getByTestId('playlist-item');
+  // The playlist's whole order, as kept (Session 44: the window shows it a folder at a time).
   const shown = () =>
-    items.evaluateAll((els) =>
-      els.map((e) => {
-        const label = e.querySelector('[data-label]')?.textContent.trim() ?? '';
-        return e.getAttribute('data-kind') === 'header' ? `# ${label}` : label;
-      }),
-    );
+    win.evaluate(async () => {
+      const open = document.querySelector('[data-testid="playlist-node"][data-open="true"]');
+      const all = await (globalThis as PageGlobals).drashti.playlists.items(
+        open?.getAttribute('data-node-id') ?? '',
+      );
+      return all.map((i) => (i.kind === 'header' ? `# ${i.label}` : i.label));
+    });
   await expect
     .poll(shown, { timeout: 60_000 })
     .toEqual([
@@ -558,11 +561,19 @@ test('Dropbox: a folder link becomes one playlist, folder by folder, with header
     await report.getByRole('button', { name: 'Close', exact: true }).first().click();
   await win.getByTestId('link-dialog').getByRole('button', { name: 'Close', exact: true }).click();
 
-  // Every item can be moved: a video up with Alt+↑, and a header dragged to the top.
-  await items.filter({ hasText: 'Third.mp4' }).click();
+  // Shown a folder at a time (Session 44): the top folder's own items, its folders in the bottom left, as on
+  // the computer; an item moves within its folder (Alt+↑).
+  await expect(items.locator('[data-label]')).toHaveText(['Opening video.mp4', 'Welcome', 'Notice']);
+  const folder = win.getByTestId('playlist-folder');
+  await expect
+    .poll(() => folder.evaluateAll((els) => els.map((e) => e.getAttribute('data-path'))))
+    .toEqual(['Week 1', 'Week 2']);
+  await folder.filter({ hasText: 'Week 1' }).click();
+  await folder.filter({ hasText: 'Videos' }).click();
+  await expect(items.locator('[data-label]')).toHaveText(['Clip A.mp4', 'Clip b.mp4']);
+  await items.filter({ hasText: 'Clip b.mp4' }).click();
   await win.keyboard.press('Alt+ArrowUp');
-  await expect.poll(async () => (await shown()).indexOf('Third.mp4')).toBe(10);
-  await mouseDrag(win, items.filter({ hasText: 'Week 1 › Videos › Deep' }), items.first(), 'top');
-  await expect.poll(async () => (await shown())[0]).toBe('# Week 1 › Videos › Deep');
+  await expect.poll(async () => (await shown()).indexOf('Clip b.mp4')).toBe(8);
+  await expect(items.locator('[data-label]')).toHaveText(['Clip b.mp4', 'Clip A.mp4']);
   await app.close();
 });

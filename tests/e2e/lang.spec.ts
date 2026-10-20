@@ -8,6 +8,7 @@ import { device, networkOn, NETWORK_ENV, pairByQr, pairingCode } from './devices
 import {
   importAndGetIds,
   launchApp,
+  openLibrary,
   operatorPage,
   operatorReady,
   outputPages,
@@ -173,6 +174,7 @@ test('Edit words’ fields and the library’s search say their language (Hindi,
   await operatorReady(win);
   await twoKirtans(win);
   // A line found by search.
+  await openLibrary(win);
   await win.getByTestId('library-search').fill('नमूना');
   await expect(win.getByTestId('search-line').first()).toHaveAttribute('lang', 'hi');
   await win.getByTestId('library-search').fill('');

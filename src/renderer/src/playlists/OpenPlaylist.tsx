@@ -1,5 +1,5 @@
 import { useWhatIsThis } from '../help/WhatIsThis';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, DragEvent } from 'react';
 import { create } from 'zustand';
 import { formatDuration } from '../../../shared/format';
@@ -7,8 +7,9 @@ import { actionFor, LIBRARY_KEYMAP } from '../../../shared/keymap';
 import type { RenderSlide } from '../../../shared/model';
 import type { PlaylistItemInfo, TimerCue } from '../../../shared/playlists';
 import { SMART_MAX_FILES } from '../../../shared/playlists';
+import { folderEnd, hasFolder, playlistFolders } from '../../../shared/playlist-folders';
 import { useEngine } from '../engine/engine-store';
-import { leaveItem, selectPresentation, useLibrary } from '../library/library-store';
+import { leaveItem, selectPresentation, setLibraryTab, useLibrary } from '../library/library-store';
 import { mediaKindIcon, mediaProblem } from '../library/MediaList';
 import { useExtras } from '../library/extras-store';
 import { chooseAddTo, openLinkDialog } from '../links/link-store';
@@ -27,6 +28,7 @@ import {
   Bookmark,
   BookTemplate,
   FilePlus,
+  Folder,
   FolderSync,
   Link2,
   Repeat2,
@@ -55,6 +57,7 @@ import { useSmart } from './smart-store';
 import { markersMedia, openMarkers } from '../markers/MarkersDialog';
 import { openPictureEditor } from '../pictures/PictureEditor';
 import { RepeatBar } from './RepeatBar';
+import { FolderCrumbs } from './PlaylistFolders';
 import { PlaylistsUnread } from './PlaylistsUnread';
 import {
   addFromLibrary,
@@ -74,6 +77,7 @@ import {
   renameHeader,
   renameNode,
   requestRemoveNode,
+  showsFolders,
   startRenaming,
   stopRenaming,
   templateOpen,
@@ -91,8 +95,11 @@ import {
 
 // ---- the open playlist's items ----------------------------------------------------------
 
-/** Where a drag would land: before the item at `at` (or at the end), or on a placeholder to fill it. */
-type DropSpot = { at: number } | { fill: string };
+/**
+ * Where a drag would land: before the item at `at` (or at the end), or on a placeholder to fill it. Shown a
+ * folder at a time (Session 44), the end is the folder's; one with no part of its own gets a header first.
+ */
+type DropSpot = { at: number; header?: string } | { fill: string };
 
 /** What an item is, in a word or two, on its card (Session 26a). */
 function kindWord(item: PlaylistItemInfo): string {
@@ -388,6 +395,8 @@ function itemMenu(item: PlaylistItemInfo): MenuEntry[] {
         icon: Presentation,
         onSelect: () => {
           leaveItem();
+          // The library's sheet opens on it (Session 44).
+          setLibraryTab('presentations');
           void selectPresentation(item.presentationId);
         },
       },
@@ -505,6 +514,25 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
   }, [items]);
   const marked = usePlaylists((s) => s.marked);
   const anchorId = usePlaylists((s) => s.anchorId);
+  // Made from a folder (Session 44): the folder shown has its own items here, its folders in the bottom left.
+  const byFolder = usePlaylists(showsFolders);
+  const folder = usePlaylists((s) => s.folder);
+  const view = useMemo(() => playlistFolders(items), [items]);
+  const shownFolder = byFolder && hasFolder(view, folder) ? folder : '';
+  const rows = useMemo(
+    () =>
+      items.flatMap((item, index) =>
+        !byFolder || (item.kind !== 'header' && view.folderOf.get(item.id) === shownFolder)
+          ? [{ item, index }]
+          : [],
+      ),
+    [items, byFolder, view, shownFolder],
+  );
+  const end: DropSpot = useMemo(() => {
+    if (!byFolder) return { at: items.length };
+    const at = folderEnd(items, view, shownFolder);
+    return 'at' in at ? { at: at.at } : { at: at.headerAt, header: shownFolder };
+  }, [items, byFolder, view, shownFolder]);
   const dragging = useDragging((s) => s.on);
   const renaming = usePlaylists((s) => s.renaming);
   const renameIn = usePlaylists((s) => s.renameIn);
@@ -533,7 +561,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
 
   const spotFor = (e: DragEvent): DropSpot => {
     const row = (e.target as HTMLElement).closest<HTMLElement>('[data-item-index]');
-    if (!row) return { at: items.length };
+    if (!row) return end;
     const index = Number(row.dataset['itemIndex']);
     const box = row.getBoundingClientRect();
     const part = (e.clientY - box.top) / Math.max(1, box.height);
@@ -570,7 +598,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
       const where = spotFor(e);
       setSpot(null);
       const at = 'at' in where ? where.at : items.findIndex((i) => i.id === where.fill);
-      void importIntoPlaylist(openId, at, droppedPaths(e));
+      void importIntoPlaylist(openId, at, droppedPaths(e), 'at' in where ? (where.header ?? null) : null);
       return;
     }
     if (!kind) return;
@@ -583,7 +611,14 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
     }
     if ('fill' in where)
       void fillPlaceholder(where.fill, droppedIds(e, kind === 'passages' ? 'passages' : 'presentations'));
-    else void addFromLibrary(openId, where.at, droppedItems(e));
+    else
+      void addFromLibrary(
+        openId,
+        where.at,
+        where.header === undefined
+          ? droppedItems(e)
+          : [{ kind: 'header', label: where.header }, ...droppedItems(e)],
+      );
   };
 
   const lineAt = spot && 'at' in spot ? spot.at : null;
@@ -717,6 +752,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
           onClick={closePlaylist}
         />
       </div>
+      {byFolder && <FolderCrumbs path={shownFolder} top={node?.name ?? ''} />}
       {help.card && <div className="shrink-0 pt-2">{help.card}</div>}
       {node?.kind === 'smart' && <SmartBar playlistId={openId} />}
       {node?.kind === 'repeat' && node.repeat && <RepeatBar playlistId={openId} settings={node.repeat} />}
@@ -737,21 +773,22 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
       )}
       <ul
         ref={listRef}
-        aria-label={`Items in ${node?.name ?? 'the playlist'}`}
+        aria-label={`Items in ${node?.name ?? 'the playlist'}${shownFolder === '' ? '' : `, ${shownFolder}`}`}
         data-testid="playlist-items"
-        data-count={items.length}
+        data-count={rows.length}
+        data-folder={byFolder ? shownFolder : undefined}
         // (Drops are the section's: see above.)
         // Scrolled into view, an item keeps the list's padding: never flush against the divider below,
         // whose grab area reaches a few pixels into the list (a drop there would miss the list).
         className="min-h-0 flex-1 scroll-py-2 space-y-1 overflow-y-auto px-3 py-2"
       >
-        {items.map((item, index) => {
+        {rows.map(({ item, index }, row) => {
           const isMarked = markedSet.has(item.id);
           const isLive = liveItem === item.id;
           const line =
             lineAt === index
               ? 'shadow-[0_-2px_0_0_var(--color-accent)]'
-              : lineAt === items.length && index === items.length - 1
+              : lineAt === end.at && row === rows.length - 1
                 ? 'shadow-[0_2px_0_0_var(--color-accent)]'
                 : '';
           const filling = spot !== null && 'fill' in spot && spot.fill === item.id;
@@ -874,8 +911,8 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
               {isMarked && anchorId === item.id && (
                 <MoveButtons
                   name={itemName(item)}
-                  first={index === 0}
-                  last={index === items.length - 1}
+                  first={row === 0}
+                  last={row === rows.length - 1}
                   hidden={dragging}
                   onMove={move}
                 />
@@ -899,6 +936,14 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
         {items.length === 0 && itemsUnread && (
           <li>
             <PlaylistsUnread what="items" />
+          </li>
+        )}
+        {/* A folder that holds only folders (Session 44): they are in the bottom left. */}
+        {rows.length === 0 && items.length > 0 && byFolder && (
+          <li data-testid="folder-only-folders">
+            <EmptyState icon={Folder} title="No files of its own here" compact>
+              What this folder holds is in its folders, in the bottom left of the window.
+            </EmptyState>
           </li>
         )}
         {items.length === 0 && !itemsUnread && (

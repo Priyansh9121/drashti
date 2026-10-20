@@ -12,12 +12,13 @@ import {
   chooseMenuItem,
   killApp,
   launchApp,
+  openLibrary,
   operatorPage,
   operatorReady,
   outputPages,
+  outputReady,
   relaunchApp,
   setUpScreen,
-  outputReady,
 } from './helpers';
 
 /*
@@ -55,6 +56,7 @@ const bridge = (win: Page) =>
 
 /** The sample kirtan's first slide live, a colour behind it and a message (each a layer a Look can leave out). */
 async function upOnTheScreens(win: Page): Promise<void> {
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Sample kirtan/ })
@@ -268,6 +270,7 @@ test('a library from before Looks keeps exactly what each group showed', async (
   const hallScreen = snapshot.groups[0]?.screens[0]?.id ?? '';
   const stageScreen = snapshot.groups[1]?.screens[0]?.id ?? '';
   const [hall, stage] = [await outputFor(app, hallScreen), await outputFor(app, stageScreen)];
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Sample kirtan/ })

@@ -5,7 +5,16 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { dropFiles, importAndGetIds, launchApp, openMoreTools, operatorPage, relaunchApp } from './helpers';
+import {
+  closeLibrary,
+  dropFiles,
+  importAndGetIds,
+  launchApp,
+  openLibrary,
+  openMoreTools,
+  operatorPage,
+  relaunchApp,
+} from './helpers';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -36,6 +45,7 @@ async function importGroupsKirtan(win: Page): Promise<void> {
 
 /** Show the groups kirtan's slides. */
 async function openGroupsKirtan(win: Page): Promise<void> {
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: new RegExp(`^${GROUPS_KIRTAN}`) })
@@ -91,6 +101,7 @@ async function expectContinuousGrid(win: Page, atLeast: number, what: string): P
 
 /** Open the placeholder playlist and put the kirtan's second slide live. */
 async function showRunning(win: Page) {
+  await closeLibrary(win);
   await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
   await win.getByTestId('playlist-item').filter({ hasText: KIRTAN }).click();
   await win.getByTestId('slide-thumb').nth(1).click();
@@ -104,6 +115,7 @@ test('the operator window and every panel pass the accessibility checks', async 
   // An import from the window: its report opens by itself while nothing is live.
   const dir = mkdtempSync(join(tmpdir(), 'drashti-ui-'));
   writeFileSync(join(dir, 'Placeholder Dropped Song.txt'), 'Placeholder dropped line\n');
+  await openLibrary(win);
   await dropFiles(win, win.getByTestId('library-drop'), [join(dir, 'Placeholder Dropped Song.txt')]);
   await expect(win.getByTestId('import-report')).toBeVisible();
   await expectNoSeriousA11yIssues(win, 'the import report');
@@ -157,6 +169,7 @@ test('the operator window and every panel pass the accessibility checks', async 
     [
       'Remove presentations',
       async () => {
+        await openLibrary(win);
         await win
           .getByTestId('presentation-list')
           .getByRole('button', { name: /^Placeholder Welcome/ })
@@ -297,7 +310,7 @@ test('the columns and the thumbnail size change from the keyboard, and are kept 
   expect(await expectContinuousGrid(win, usual + 1, 'the smallest size')).toBeGreaterThan(usual);
   for (let i = 0; i < 10; i++) await win.keyboard.press('ArrowRight');
   await expect(size).toHaveValue('220');
-  const library = win.getByRole('separator', { name: 'Resize the library and playlists' });
+  const library = win.getByRole('separator', { name: 'Resize the playlists' });
   const live = win.getByRole('separator', { name: 'Resize the live column' });
   await library.focus();
   // The focus ring shows where the keyboard is.
@@ -330,7 +343,7 @@ test('the columns and the thumbnail size change from the keyboard, and are kept 
     .first()
     .evaluate((el) => el.getBoundingClientRect().width);
   expect(kept).toBeGreaterThanOrEqual(220);
-  await expect(win2.getByRole('separator', { name: 'Resize the library and playlists' })).toHaveAttribute(
+  await expect(win2.getByRole('separator', { name: 'Resize the playlists' })).toHaveAttribute(
     'aria-valuenow',
     '364',
   );

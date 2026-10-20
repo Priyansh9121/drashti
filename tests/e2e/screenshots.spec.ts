@@ -15,6 +15,7 @@ import {
   importAndGetIds,
   launchApp,
   letTimePass,
+  openLibrary,
   openMoreTools,
   operatorPage,
   operatorReady,
@@ -222,6 +223,7 @@ test('the operator window and its panels', async () => {
 
   // The playlist without dragging: the chosen item's Up and Down, and Add to playlist on the
   // library's chosen row.
+  await openLibrary(win);
   await win.getByTestId('presentation-list').getByRole('button').first().click();
   await win.getByTestId('playlist-item').filter({ hasText: KIRTAN }).click();
   await expect(win.getByTestId('playlist-item-moves')).toBeVisible();
@@ -349,6 +351,7 @@ test('the kirtan library, screens’ languages, templates and the setup wizard',
   await operatorReady(win);
   await showExtras(win);
   await win.setViewportSize({ width: 1600, height: 900 });
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Sample kirtan/ })
@@ -584,6 +587,7 @@ test('converting media: the import report, then the media list while converting 
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1600, height: 900 });
   await operatorReady(win);
+  await openLibrary(win);
   await dropFiles(win, win.getByTestId('library-drop'), files);
   const report = win.getByTestId('import-report');
   await expect(report.getByTestId('report-convert-all')).toBeVisible({ timeout: 60_000 });
@@ -1146,6 +1150,7 @@ test('Shastra, timers in the running order, the arti prompt, Samvat and tithi, a
   };
 
   // Shastra: a passage found by its reference, in the slide grid; the loaded texts.
+  await openLibrary(win);
   await win.getByRole('tab', { name: 'Shastra' }).click();
   const panel = win.getByTestId('shastra-panel');
   await panel.getByTestId('shastra-reference').fill('PG 14-15');
@@ -1355,6 +1360,7 @@ test('music, markers, macros at set times, scheduled backups, and roles and PINs
   await shot(win, 'music-panel');
 
   // Setting markers on a video, then its jumps under the live picture.
+  await openLibrary(win);
   await win.getByRole('tab', { name: 'Media' }).click();
   await win.getByTestId('media-markers').first().click();
   const markers = win.getByTestId('markers-dialog');
@@ -1545,6 +1551,7 @@ test('PDF and PowerPoint as pictures: the import report and the slides (Session 
     deck,
     makeTestPptx([{ color: '1E3A8A', text: 'Placeholder slide', notes: 'Placeholder note' }]),
   );
+  await openLibrary(win);
   await dropFiles(win, win.getByTestId('library-drop'), [pdf, deck]);
   const report = win.getByTestId('import-report');
   await expect(report).toBeVisible({ timeout: 60_000 });
@@ -1927,6 +1934,7 @@ test('this session’s videos and pictures: the timeline with Save as MP4, the P
   ]);
   if (still.status !== 0) throw new Error(still.stderr.toString());
   const [, pictureId = ''] = await importAndGetIds(win, [clip, picture]);
+  await openLibrary(win);
   await win.getByRole('tab', { name: 'Media' }).click();
   await win
     .getByTestId('media-row')

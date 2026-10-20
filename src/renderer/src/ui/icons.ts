@@ -28,6 +28,8 @@ export { Cloud, Link2, MonitorPlay } from 'lucide-react';
 export { FilePlus, Repeat2, Wrench } from 'lucide-react';
 // Session 26c: a smart playlist, following a folder.
 export { FolderSync } from 'lucide-react';
+// Session 44: back up to a folder playlist's parent folder.
+export { CornerLeftUp } from 'lucide-react';
 // Session 26e: the Picture editor, and zooming the live picture.
 export { Minimize2, SlidersHorizontal, ZoomIn, ZoomOut } from 'lucide-react';
 export {

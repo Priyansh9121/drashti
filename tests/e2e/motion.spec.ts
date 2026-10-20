@@ -5,13 +5,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   chooseMenuItem,
+  closeLibrary,
   importAndGetIds,
   launchApp,
   letTimePass,
+  openLibrary,
   operatorPage,
   operatorReady,
-  relaunchApp,
   type PageGlobals,
+  relaunchApp,
 } from './helpers';
 
 /*
@@ -115,6 +117,7 @@ test('show controls, thumbnails and the live picture never move, in Pro Mode and
   const presentation = await win.evaluate(
     async () => (await (globalThis as PageGlobals).drashti.library.listPresentations())[0]?.id ?? '',
   );
+  await openLibrary(win);
   await win.getByTestId('presentation-list').getByRole('button').first().click();
   await dispatch(win, { type: 'goLive', presentationId: presentation, slideIndex: 0 });
   await expect(win.getByTestId('slide-thumb').first()).toHaveAttribute('aria-current', 'true');
@@ -165,6 +168,7 @@ test('dialogs, sheets, menus and notices arrive with their tokens, and leave uns
   const presentation = await win.evaluate(
     async () => (await (globalThis as PageGlobals).drashti.library.listPresentations())[0]?.id ?? '',
   );
+  await openLibrary(win);
   await win.getByTestId('presentation-list').getByRole('button').first().click();
   await win.keyboard.press('ArrowRight');
   await expect
@@ -286,6 +290,7 @@ async function nothingMoves(app: ElectronApplication, win: Page): Promise<void> 
   await win.getByRole('button', { name: 'Themes' }).click();
   await still(win, 'a side sheet');
   await win.keyboard.press('Escape');
+  await openLibrary(win);
   await win.getByTestId('presentation-list').getByRole('button').first().click({ button: 'right' });
   await expect(win.getByRole('menu')).toBeVisible();
   await still(win, 'a menu');
@@ -313,6 +318,7 @@ async function nothingMoves(app: ElectronApplication, win: Page): Promise<void> 
       { kind: 'presentation', presentationId: b?.id ?? '' },
     ]);
   });
+  await closeLibrary(win);
   await win
     .getByTestId('playlist-node')
     .filter({ hasText: /^Placeholder still/u })
@@ -321,6 +327,7 @@ async function nothingMoves(app: ElectronApplication, win: Page): Promise<void> 
   await win.getByTestId('playlist-item').nth(1).click();
   await win.locator('[data-move="up"]').click();
   await still(win, 'a row moving up');
+  await openLibrary(win);
   await win.getByTestId('library-tab-media').click();
   await still(win, 'a tab chosen');
   await win.getByTestId('group-more-tools-toggle').click();
@@ -439,6 +446,7 @@ test('Lively: the tab’s underline and the chosen playlist glide, cards arrive 
   expect((await started).some((a) => a.what === 'SPAN' && a.ms === 240)).toBe(true);
 
   // The tab's underline glides to the tab chosen.
+  await openLibrary(win);
   started = watchAnimations(win, 800);
   await win.getByTestId('library-tab-media').click();
   expect((await started).some((a) => a.what === 'underline' && a.ms === 240)).toBe(true);
@@ -539,6 +547,7 @@ test('Lively never moves a show control or the live picture, starts nothing as t
   const presentation = await win.evaluate(
     async () => (await (globalThis as PageGlobals).drashti.library.listPresentations())[0]?.id ?? '',
   );
+  await openLibrary(win);
   await win.getByTestId('presentation-list').getByRole('button').first().click();
   await dispatch(win, { type: 'goLive', presentationId: presentation, slideIndex: 0 });
   await expect(win.getByTestId('slide-thumb').first()).toHaveAttribute('aria-current', 'true');

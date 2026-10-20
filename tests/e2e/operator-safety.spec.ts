@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { chooseMenuItem, launchApp, needsRealScreen, operatorPage } from './helpers';
+import { chooseMenuItem, launchApp, needsRealScreen, openLibrary, operatorPage } from './helpers';
 
 const isOutput = (url: string) => url.includes('output.html');
 
@@ -7,6 +7,7 @@ test("an output on the operator's display needs consent, and Uncover gets the co
   needsRealScreen();
   const { app } = await launchApp();
   const op = await operatorPage(app);
+  await openLibrary(op);
   await expect(op.getByTestId('presentation-list').getByTestId('presentation-row')).toHaveCount(2);
   const operatorDisplay = await app.evaluate(({ BrowserWindow, screen }) => {
     const win = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('index.html'));

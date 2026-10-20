@@ -6,7 +6,15 @@ import { join } from 'node:path';
 import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { dropFiles, launchApp, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
+import {
+  dropFiles,
+  launchApp,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+  outputPages,
+  setUpScreen,
+} from './helpers';
 
 /*
  * Samvat and tithi (Session 12), from a made-up calendar written for the
@@ -115,6 +123,7 @@ test('a calendar loads; today shows in the operator window, on the stage and in 
   // Dragged onto the library, like any file: the report says what came in.
   const dir = mkdtempSync(join(tmpdir(), 'drashti-calendar-'));
   const file = calendarFile(dir, [dateIn(0), dateIn(1)]);
+  await openLibrary(win);
   await dropFiles(win, win.getByTestId('library-drop'), [file]);
   const report = win.getByTestId('import-report');
   await expect(report).toContainText(`Loaded: 2 days, ${dateIn(0)} to ${dateIn(1)}, with 1 festival.`);

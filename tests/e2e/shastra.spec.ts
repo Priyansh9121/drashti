@@ -10,6 +10,7 @@ import type { PageGlobals } from './helpers';
 import {
   dropFiles,
   launchApp,
+  openLibrary,
   operatorPage,
   operatorReady,
   outputPages,
@@ -70,6 +71,7 @@ test('a text loads from its file, again unchanged, and updated; references, nons
   const files = exampleFiles();
 
   // Dragged onto the library, like any file: the report says what came in, and opens it in Shastra.
+  await openLibrary(win);
   await dropFiles(win, win.getByTestId('library-drop'), [files.granth]);
   const report = win.getByTestId('import-report');
   await expect(report).toContainText('Placeholder Granth (PG)');

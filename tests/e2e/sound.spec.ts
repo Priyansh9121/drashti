@@ -10,6 +10,7 @@ import {
   importAndGetIds,
   launchApp,
   letTimePass,
+  openLibrary,
   operatorPage,
   outputPage,
   outputPages,
@@ -433,6 +434,7 @@ test("an audio cue plays on the audio layer with the cue's volume and looping; C
   );
   await importAndGetIds(win, [show]);
   const audio = await audioPage(app);
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Placeholder Dhun/ })

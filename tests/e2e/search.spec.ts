@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
-import { importAndGetIds, launchApp, operatorPage } from './helpers';
+import { importAndGetIds, launchApp, openLibrary, operatorPage } from './helpers';
 
 /*
  * Searching the library as you type, in each language, with Latin accents
@@ -64,6 +64,7 @@ test('search finds titles and slide text in English, Gujarati, Hindi and transli
   });
   await importAndGetIds(win, paths);
 
+  await openLibrary(win);
   const search = win.getByTestId('library-search');
   const results = win.getByTestId('search-results');
   const hits = results.getByTestId('search-hit');

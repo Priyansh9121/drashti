@@ -3,7 +3,8 @@ import type { AppInfo } from '../../../shared/app-info';
 import { connectEngine } from '../engine/engine-store';
 import { ImportReportDialog } from '../library/ImportReport';
 import { importPaths, watchImports } from '../library/import-store';
-import { loadLibrary, watchLibrary } from '../library/library-store';
+import { loadLibrary, useLibraryTab, watchLibrary } from '../library/library-store';
+import { useDragging } from '../playlists/drag';
 import { connectExtras } from '../library/extras-store';
 import { connectSmart } from '../playlists/smart-store';
 import { connectSaves } from '../markers/save-store';
@@ -47,7 +48,8 @@ import { StreamPageStopped } from '../stream/StreamPageStopped';
 import { GuidesDialog } from '../help/GuidesDialog';
 import { showGuides } from '../help/guides-store';
 import { LivePreview } from './LivePreview';
-import { PresentationList } from './PresentationList';
+import { LibraryButton, LibrarySheet } from './LibrarySheet';
+import { PlaylistFolders, usePlaylistFolders } from '../playlists/PlaylistFolders';
 import { SlideGrid } from './SlideGrid';
 import { RecoveryBanner } from './RecoveryBanner';
 import { StageMessageControl } from './StageControls';
@@ -185,6 +187,11 @@ export function App() {
 function ProApp({ info }: { info: AppInfo | null }) {
   const [screensOpen, setScreensOpen] = useState(false);
   const openId = usePlaylists((s) => s.openId);
+  const byFolder = usePlaylistFolders();
+  // The library's sheet over the playlists, unless it stands aside for a drag from it (Session 44).
+  const libraryOpen = useLibraryTab((s) => s.open);
+  const libraryAside = useDragging((s) => s.aside);
+  const libraryOver = libraryOpen && !libraryAside;
   const dashboardOpen = useNodes((s) => s.dashboard);
   const streamOpen = useStream((s) => s.panelOpen);
   const networkOpen = useNetwork((s) => s.open);
@@ -287,9 +294,14 @@ function ProApp({ info }: { info: AppInfo | null }) {
       ) : (
         <Columns
           left={
+            // Session 44: the playlists have the whole column, the open folder playlist's folders under them,
+            // and the library opens over both from the Library button.
             <LeftColumn
+              head={<LibraryButton />}
               top={<PlaylistPanel platform={platform} />}
-              bottom={<PresentationList platform={platform} />}
+              bottom={byFolder ? <PlaylistFolders /> : null}
+              over={<LibrarySheet platform={platform} />}
+              covered={libraryOver}
               foot={<UndoBar platform={platform} />}
             />
           }

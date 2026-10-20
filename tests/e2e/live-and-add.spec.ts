@@ -7,7 +7,15 @@ import { makeTestPptx } from '../../src/main/import/testing/make-pptx';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { dropboxStandIn, fileLink, type StandIn } from './dropbox-stand-in';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, launchApp, operatorPage, operatorReady, setUpScreen } from './helpers';
+import {
+  chooseMenuItem,
+  closeLibrary,
+  launchApp,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+  setUpScreen,
+} from './helpers';
 import { makeTestImage } from './test-media';
 
 /*
@@ -101,6 +109,7 @@ test('the import report adds what an import made to the open playlist, another, 
     },
     [a, b],
   );
+  await openLibrary(win);
   await win.getByRole('button', { name: 'Import…' }).click();
   await win.getByRole('menuitem', { name: 'Files…' }).click();
   const report = win.getByTestId('import-report');
@@ -128,6 +137,7 @@ test('the import report adds what an import made to the open playlist, another, 
     },
     [c],
   );
+  await openLibrary(win);
   await win.getByRole('button', { name: 'Import…' }).click();
   await win.getByRole('menuitem', { name: 'Files…' }).click();
   await expect(report).toBeVisible();
@@ -229,6 +239,7 @@ test('a folder imported with Import › A Folder… goes into a playlist in its 
   await app.evaluate(({ dialog }, folder) => {
     dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
   }, root);
+  await openLibrary(win);
   await win.getByRole('button', { name: 'Import…' }).click();
   await win.getByRole('menuitem', { name: 'A Folder…' }).click();
   const report = win.getByTestId('import-report');
@@ -238,17 +249,17 @@ test('a folder imported with Import › A Folder… goes into a playlist in its 
   await report.getByTestId('report-add-button').click();
   await expect(report.getByTestId('report-added')).toContainText('Added to “Placeholder Sabha”');
   await report.getByRole('button', { name: 'Close', exact: true }).first().click();
+  await closeLibrary(win);
   await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Sabha' }).click();
+  // The playlist's whole order, as kept (Session 44: the window shows it a folder at a time).
   const shown = () =>
-    win
-      .getByTestId('open-playlist')
-      .getByTestId('playlist-item')
-      .evaluateAll((els) =>
-        els.map((e) => {
-          const label = e.querySelector('[data-label]')?.textContent.trim() ?? '';
-          return e.getAttribute('data-kind') === 'header' ? `# ${label}` : label;
-        }),
+    win.evaluate(async () => {
+      const open = document.querySelector('[data-testid="playlist-node"][data-open="true"]');
+      const all = await (globalThis as PageGlobals).drashti.playlists.items(
+        open?.getAttribute('data-node-id') ?? '',
       );
+      return all.map((i) => (i.kind === 'header' ? `# ${i.label}` : i.label));
+    });
   // Folder by folder, depth first, A→Z with numbers in order (2 before 10), presentations before pictures.
   await expect
     .poll(shown)

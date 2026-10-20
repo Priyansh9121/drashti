@@ -8,7 +8,15 @@ import { TEST_LINES } from '../../src/main/db/seed';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import { device, networkOn, NETWORK_ENV } from './devices';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, operatorPage, operatorReady, outputPages, setUpScreen } from './helpers';
+import {
+  importAndGetIds,
+  launchApp,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+  outputPages,
+  setUpScreen,
+} from './helpers';
 
 async function outputPage(app: ElectronApplication): Promise<Page> {
   const existing = app.windows().find((w) => w.url().includes('output.html'));
@@ -35,6 +43,7 @@ test('the test slide renders all four languages with the bundled fonts, shaped c
   const testInfo = test.info();
   const { app } = await launchApp();
   const win = await operatorPage(app);
+  await openLibrary(win);
   await expect(win.getByTestId('presentation-list').getByTestId('presentation-row')).toHaveCount(2);
   const screenId = await setUpOneScreen(win);
   const output = await outputPage(app);

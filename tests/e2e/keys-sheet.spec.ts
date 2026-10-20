@@ -7,7 +7,15 @@ import { SIMPLE_MODE_REFUSAL } from '../../src/shared/mode';
 import { ADMIN_REFUSAL } from '../../src/shared/roles';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, holdStill, launchApp, operatorPage, operatorReady, relaunchApp } from './helpers';
+import {
+  chooseMenuItem,
+  holdStill,
+  launchApp,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+  relaunchApp,
+} from './helpers';
 
 /*
  * The keys sheet (Session 25): Help > Keyboard Shortcuts…, or ? when no field has the focus, in Pro
@@ -43,6 +51,7 @@ test('the keys sheet opens from the Help menu and with ?, lists every key, and i
   await win.keyboard.press('Shift+Slash');
   await expect(sheet).toHaveCount(0);
   // In a field, ? is a character: no sheet.
+  await openLibrary(win);
   const search = win.getByTestId('library-search');
   await search.focus();
   await win.keyboard.type('?');

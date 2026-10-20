@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { dropFiles, importAndGetIds, launchApp, operatorPage } from './helpers';
+import { dropFiles, importAndGetIds, launchApp, openLibrary, operatorPage } from './helpers';
 import { makeTestImage, makeTestVideo } from './test-media';
 
 const NOBODY = '00000000-0000-0000-0000-000000000000';
@@ -113,6 +113,7 @@ test('media Drashti cannot play is found at import and listed in the report, wit
     avi,
     Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('AVI '), Buffer.alloc(64)]),
   );
+  await openLibrary(win);
   await dropFiles(win, win.getByTestId('library-drop'), [image, avi]);
   const report = win.getByTestId('import-report');
   await expect(report).toBeVisible();

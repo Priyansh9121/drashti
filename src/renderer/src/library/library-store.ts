@@ -36,11 +36,26 @@ interface LibraryView {
   unreadId: string | null;
 }
 
-/** Which list the left column shows: presentations, media, or Shastra texts. */
+/** Which list the library shows: presentations, media, or Shastra texts. */
 export type LibraryTab = 'presentations' | 'media' | 'shastra';
-export const useLibraryTab = create<{ tab: LibraryTab }>(() => ({ tab: 'presentations' }));
+/**
+ * The library's list, and whether its sheet is open (Session 44): the playlists have the whole left column,
+ * and the library opens over it from the Library button, as a sheet that never holds the keyboard or the
+ * show's keys, so its rows can be dragged into the open playlist.
+ */
+export const useLibraryTab = create<{ tab: LibraryTab; open: boolean }>(() => ({
+  tab: 'presentations',
+  open: false,
+}));
+/** Show one of the library's lists, opening the sheet if it is shut. */
 export function setLibraryTab(tab: LibraryTab): void {
-  useLibraryTab.setState({ tab });
+  useLibraryTab.setState({ tab, open: true });
+}
+export function openLibrary(): void {
+  useLibraryTab.setState({ open: true });
+}
+export function closeLibrary(): void {
+  useLibraryTab.setState({ open: false });
 }
 
 export const useLibrary = create<LibraryView>(() => ({

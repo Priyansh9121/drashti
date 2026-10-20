@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, operatorPage } from './helpers';
+import { importAndGetIds, launchApp, openLibrary, operatorPage } from './helpers';
 import { makeTestImage, makeTestVideo } from './test-media';
 
 /*
@@ -48,6 +48,7 @@ test('slides and groups: added, copied, moved and removed; labels, notes, cues, 
     hue: 200,
   });
   const [id = ''] = await importAndGetIds(win, [words, picture, clip]);
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Placeholder Slides Kirtan/ })
@@ -193,6 +194,7 @@ test('Drashti’s own default transition is a cut until it is changed, and stays
     kind: 'cut',
     durationMs: 0,
   });
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Sample kirtan/ })

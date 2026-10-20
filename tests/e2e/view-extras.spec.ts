@@ -1,7 +1,15 @@
 import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, launchApp, operatorPage, operatorReady, relaunchApp } from './helpers';
+import {
+  chooseMenuItem,
+  closeLibrary,
+  launchApp,
+  openLibrary,
+  operatorPage,
+  operatorReady,
+  relaunchApp,
+} from './helpers';
 
 /*
  * Hidden, not deleted (Session 26a): the Shastra tab, the Templates beside the
@@ -23,6 +31,7 @@ test('Shastra, Templates and the kirtan filters are hidden to begin with; the Vi
   const templatesTab = win.getByTestId('playlist-view-tab-templates');
   const filters = win.getByTestId('filter-button');
   // Hidden: the library has Presentations and Media, the playlists a heading, and Import… where the filters were.
+  await openLibrary(win);
   await expect(win.getByTestId('library-tab-presentations')).toBeVisible();
   await expect(win.getByTestId('library-tab-media')).toBeVisible();
   await expect(shastraTab).toHaveCount(0);
@@ -32,6 +41,7 @@ test('Shastra, Templates and the kirtan filters are hidden to begin with; the Vi
   await expect(win.getByRole('button', { name: 'Import…' })).toBeVisible();
   expect(await menuChecked(app)).toBe(false);
   // A playlist's menu has no slots or templates either.
+  await closeLibrary(win);
   await win.evaluate(() =>
     (globalThis as PageGlobals).drashti.playlists.create('Placeholder Sunday', null, false),
   );
@@ -46,6 +56,7 @@ test('Shastra, Templates and the kirtan filters are hidden to begin with; the Vi
 
   // View › Show Shastra, Templates and Kirtan Details: all three come back.
   await chooseMenuItem(app, 'show-extras');
+  await openLibrary(win);
   await expect(shastraTab).toBeVisible();
   await expect(templatesTab).toBeVisible();
   await expect(filters).toBeVisible();
@@ -56,6 +67,7 @@ test('Shastra, Templates and the kirtan filters are hidden to begin with; the Vi
   await app.close();
   const again = await relaunchApp(userData);
   const win2 = await operatorPage(again.app);
+  await openLibrary(win2);
   await operatorReady(win2);
   await expect(win2.getByTestId('library-tab-shastra')).toBeVisible();
   expect(await menuChecked(again.app)).toBe(true);
@@ -82,6 +94,7 @@ test('Import… offers Files… (everything Drashti imports), A Folder… and Fr
       return Promise.resolve({ canceled: true, filePaths: [] });
     };
   });
+  await openLibrary(win);
   const asked = () =>
     app.evaluate(
       () =>

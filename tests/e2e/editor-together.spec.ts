@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
-import { importAndGetIds, launchApp, operatorPage, operatorReady } from './helpers';
+import { importAndGetIds, launchApp, openLibrary, operatorPage, operatorReady } from './helpers';
 
 /*
  * The slide editor (Session 11): several elements selected (Select all, or
@@ -58,6 +58,7 @@ test('several elements resize and turn together, each change one Undo; copy and 
   writeFileSync(file, '[Verse]\nનમૂના પંક્તિ\nNamūnā pankti\n\n[Chorus]\nPlaceholder chorus\n');
   const [presentationId = ''] = await importAndGetIds(win, [file]);
 
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Placeholder Together/ })
@@ -169,6 +170,7 @@ test('several elements resize and turn together, each change one Undo; copy and 
   await expect(editor).toHaveCount(0);
 
   // Into another presentation (the sample kirtan): the same words, languages and look.
+  await openLibrary(win);
   await win
     .getByTestId('presentation-list')
     .getByRole('button', { name: /^Sample kirtan/ })

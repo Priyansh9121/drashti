@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ELDHistogram } from 'node:perf_hooks';
 import type { OutputGlobals, PageGlobals } from './helpers';
-import { launchApp, operatorPage } from './helpers';
+import { launchApp, openLibrary, operatorPage } from './helpers';
 
 /*
  * Imports run in a separate worker process, so the show never waits for
@@ -59,6 +59,7 @@ test('a big import runs in its own process: every slide change still reaches the
 
   const { app } = await launchApp();
   const win = await operatorPage(app);
+  await openLibrary(win);
   await expect(win.getByTestId('presentation-list').getByTestId('presentation-row')).toHaveCount(2);
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
