@@ -79,6 +79,12 @@
   --color-header-field: #82828d; /* the edges of controls on it: 3:1 */
   --color-second: #8ab4f8; /* what marks: the chosen tab's underline, the chosen row's edge (3:1) */
   --color-heading: #c8c8cf; /* section headings' words: 4.5:1 */
+  /*
+   * Session 44: the layer buttons, a lit one's fill and an unlit one's edge; and (below) the header's far end and
+   * the panels' title strips. Black's are exactly what it drew before.
+   */
+  --color-layer: #1b1b1f;
+  --color-layer-edge: #2c2c32;
 
   /* Type: 14px body; 11px is the smallest text there is. */
   --text-2xs: 0.6875rem;
@@ -124,6 +130,17 @@
 }
 
 /*
+ * The header's far end (a gradient from header to it; flat when the same) and the panels' title strips (a gradient
+ * from strip to strip-2; none where both are the panel, as here), Session 44. Only the gradients draw them
+ * (vars.ts), never a utility, so they are kept in every page's theme (static), as every other colour is.
+ */
+@theme static {
+  --color-header-2: #121215;
+  --color-strip: #121215;
+  --color-strip-2: #121215;
+}
+
+/*
  * The shadows' tints (src/shared/appearance/vars.ts sets them with the appearance): Black's here. Dark
  * appearances' shadows are black, light ones' a soft grey; the glows take the live colour and the primary.
  */
@@ -161,6 +178,43 @@
   --color-band-3: transparent;
   --color-band-4: transparent;
   --color-band-5: transparent;
+
+  /*
+   * The window's zones (Session 44, src/shared/appearance/zones.ts): the left column, the middle, the right
+   * column and the layer bar each set the window's surfaces, dividers and controls' edges over its own
+   * ([data-zone], below), in a colour of their own. Black's are its own, so nothing is drawn differently; and the
+   * header's and the title strips' gradients are none.
+   */
+  --zone-left-ink: #09090b;
+  --zone-left-panel: #121215;
+  --zone-left-panel-2: #1b1b1f;
+  --zone-left-panel-3: #26262b;
+  --zone-left-line: #2c2c32;
+  --zone-left-line-strong: #42424a;
+  --zone-left-field: #82828d;
+  --zone-middle-ink: #09090b;
+  --zone-middle-panel: #121215;
+  --zone-middle-panel-2: #1b1b1f;
+  --zone-middle-panel-3: #26262b;
+  --zone-middle-line: #2c2c32;
+  --zone-middle-line-strong: #42424a;
+  --zone-middle-field: #82828d;
+  --zone-right-ink: #09090b;
+  --zone-right-panel: #121215;
+  --zone-right-panel-2: #1b1b1f;
+  --zone-right-panel-3: #26262b;
+  --zone-right-line: #2c2c32;
+  --zone-right-line-strong: #42424a;
+  --zone-right-field: #82828d;
+  --zone-bar-ink: #09090b;
+  --zone-bar-panel: #121215;
+  --zone-bar-panel-2: #1b1b1f;
+  --zone-bar-panel-3: #26262b;
+  --zone-bar-line: #2c2c32;
+  --zone-bar-line-strong: #42424a;
+  --zone-bar-field: #82828d;
+  --header-image: none;
+  --strip-image: none;
 
   /*
    * Motion (Session 26g, "Rising", from the design lab's table): every duration, delay,
@@ -574,6 +628,68 @@ body.web {
 }
 [data-header] [data-header-states] :focus-visible {
   outline-color: var(--color-accent);
+}
+
+/*
+ * The window's zones (Session 44): each takes its surfaces, dividers and controls' edges from the appearance's
+ * zone, so whatever is drawn inside it is in the zone's colour with no change to any part (zones.ts says why every
+ * ratio holds). Dialogs, menus and notices drawn over the window are outside every zone, in its own colours.
+ */
+[data-zone='left'] {
+  --color-ink: var(--zone-left-ink);
+  --color-panel: var(--zone-left-panel);
+  --color-panel-2: var(--zone-left-panel-2);
+  --color-panel-3: var(--zone-left-panel-3);
+  --color-line: var(--zone-left-line);
+  --color-line-strong: var(--zone-left-line-strong);
+  --color-field: var(--zone-left-field);
+}
+[data-zone='middle'] {
+  --color-ink: var(--zone-middle-ink);
+  --color-panel: var(--zone-middle-panel);
+  --color-panel-2: var(--zone-middle-panel-2);
+  --color-panel-3: var(--zone-middle-panel-3);
+  --color-line: var(--zone-middle-line);
+  --color-line-strong: var(--zone-middle-line-strong);
+  --color-field: var(--zone-middle-field);
+}
+[data-zone='right'] {
+  --color-ink: var(--zone-right-ink);
+  --color-panel: var(--zone-right-panel);
+  --color-panel-2: var(--zone-right-panel-2);
+  --color-panel-3: var(--zone-right-panel-3);
+  --color-line: var(--zone-right-line);
+  --color-line-strong: var(--zone-right-line-strong);
+  --color-field: var(--zone-right-field);
+}
+[data-zone='bar'] {
+  --color-ink: var(--zone-bar-ink);
+  --color-panel: var(--zone-bar-panel);
+  --color-panel-2: var(--zone-bar-panel-2);
+  --color-panel-3: var(--zone-bar-panel-3);
+  --color-line: var(--zone-bar-line);
+  --color-line-strong: var(--zone-bar-line-strong);
+  --color-field: var(--zone-bar-field);
+}
+
+/*
+ * The two gradients (Session 44): the header's, from its colour to its far end, and the panels' title strips', left
+ * to right. Static, in decoration only: nothing in them acts or tells a state (LIVE and ON AIR sit on a panel of
+ * their own in the header), they never move or change as anything moves, and they are flat colours' plain
+ * gradients over a rectangle, the one new way of drawing (the primary's is its own). None in Black and White, and
+ * none in forced colours (the system paints the header and the panels its own).
+ */
+[data-header] {
+  background-image: var(--header-image);
+}
+[data-strip] {
+  background-image: var(--strip-image);
+}
+@media (forced-colors: active) {
+  [data-header],
+  [data-strip] {
+    background-image: none;
+  }
 }
 
 /*

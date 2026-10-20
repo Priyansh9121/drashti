@@ -517,7 +517,10 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
       data-testid="slide-grid"
       data-presentation-id={doc.id}
     >
-      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line bg-panel px-4 py-2">
+      <div
+        className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line bg-panel px-4 py-2"
+        data-strip=""
+      >
         <h2 className="min-w-48 flex-[1_1_12rem] text-base font-bold">
           <Truncate text={doc.name} />
         </h2>

@@ -652,7 +652,10 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
       }}
       onDrop={onDrop}
     >
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-3 py-2">
+      <div
+        className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-line px-3 py-2"
+        data-strip=""
+      >
         {node?.kind === 'smart' ? (
           <FolderSync size={16} aria-hidden="true" className="shrink-0 text-muted" />
         ) : node?.kind === 'repeat' ? (

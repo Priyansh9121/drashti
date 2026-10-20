@@ -74,7 +74,7 @@ export function PlaylistFolders() {
   const up = crumbs.at(-2);
   return (
     <section aria-label="Folders" data-testid="playlist-folders" className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-10 shrink-0 items-center gap-2 border-t border-line px-3">
+      <div className="flex h-10 shrink-0 items-center gap-2 border-t border-line px-3" data-strip="">
         <Folder size={15} aria-hidden="true" className="shrink-0 text-muted" />
         <h2 className="min-w-0 flex-1 truncate text-sm font-bold text-heading">Folders in {here}</h2>
       </div>

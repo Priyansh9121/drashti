@@ -2,6 +2,8 @@ import { contrastRatio, deltaE00, over, VISIONS, type Vision } from '../contrast
 import type { Appearance, ColourToken, DecorationToken } from './appearances';
 import { BAND_MAX } from './appearances';
 import { hexToOklch } from './oklch';
+import type { Zone } from './zones';
+import { ZONE_NAMES, ZONE_TOKENS, ZONES } from './zones';
 
 /*
  * The rules every appearance meets (Sessions 39–40), from Drashti's design rules (docs/design.md §2): text at
@@ -19,6 +21,13 @@ import { hexToOklch } from './oklch';
  * below), so nothing that only marks or decorates can be taken for a state. The band carries no words, so no ratio is asked of it; and
  * LIVE, ON AIR and the network sit in the header on a panel of their own (operator/Header.tsx), never on the
  * header's colour, so the states are always read on the surfaces measured above.
+ *
+ * Session 44, more places for colour: every rule on each zone's own surfaces too (zones.ts: the left column, the
+ * middle, the right column and the layer bar); the header's rules at every point of its gradient, and the panels'
+ * title strips' as a place where words and controls sit (every text colour at 4.5:1, the focus ring, controls'
+ * edges and the chosen tab's underline at 3:1); a lit layer button's words at 4.5:1 on its fill and its dot (LIVE's
+ * red) at 3:1 there; and a lit layer button's fill, and an unlit one's edge, kept apart from the states, so a
+ * layer button's own colour is never taken for LIVE.
  */
 
 type Colour = ColourToken | DecorationToken | 'white' | 'black';
@@ -32,6 +41,8 @@ export interface ContrastRule {
   under?: Colour;
   /** A control seen by its fill or its edge (WCAG 1.4.11): `fg` or this, whichever stands out more. */
   or?: Colour;
+  /** The background is a gradient from `bg` to this (Session 44), measured at its worst point. */
+  to?: Colour;
   min: number;
   /** Where the rule comes from. */
   source: string;
@@ -134,19 +145,35 @@ export const CONTRAST_RULES: readonly ContrastRule[] = [
 function decorationRules(): ContrastRule[] {
   const header = 'operator/Header.tsx';
   return [
-    { what: 'words on the header', fg: 'on-header', bg: 'header', min: 4.5, source: 'WCAG 1.4.3' },
+    {
+      what: 'words on the header',
+      fg: 'on-header',
+      bg: 'header',
+      to: 'header-2',
+      min: 4.5,
+      source: 'WCAG 1.4.3',
+    },
     {
       what: 'the header’s buttons’ words',
       fg: 'on-header-muted',
       bg: 'header',
+      to: 'header-2',
       min: 4.5,
       source: 'WCAG 1.4.3',
     },
-    { what: 'focus ring vs header', fg: 'header-ring', bg: 'header', min: 3, source: 'WCAG 1.4.11' },
+    {
+      what: 'focus ring vs header',
+      fg: 'header-ring',
+      bg: 'header',
+      to: 'header-2',
+      min: 3,
+      source: 'WCAG 1.4.11',
+    },
     {
       what: 'control edge vs header (Screens, What is this?)',
       fg: 'header-field',
       bg: 'header',
+      to: 'header-2',
       min: 3,
       source: `WCAG 1.4.11 (${header})`,
     },
@@ -155,6 +182,7 @@ function decorationRules(): ContrastRule[] {
       fg: 'warning',
       or: 'warning-bg',
       bg: 'header',
+      to: 'header-2',
       min: 3,
       source: `WCAG 1.4.11 (${header})`,
     },
@@ -181,6 +209,45 @@ function decorationRules(): ContrastRule[] {
       min: 3,
       source: 'WCAG 1.4.11 (ui/ListRow.tsx)',
     })),
+    ...stripRules(),
+    {
+      what: 'words on a lit layer button',
+      fg: 'fg',
+      bg: 'layer',
+      min: 4.5,
+      source: 'WCAG 1.4.3 (operator/LayerBar.tsx)',
+    },
+    {
+      what: 'a lit layer button’s dot (live) on its fill',
+      fg: 'live',
+      bg: 'layer',
+      min: 3,
+      source: 'WCAG 1.4.11 (operator/LayerBar.tsx)',
+    },
+  ];
+}
+
+/** The panels' title strips (Session 44): their words, and the controls and marks on them. */
+function stripRules(): ContrastRule[] {
+  const strip = 'ui/Panel.tsx, the title strips';
+  const edges = [...new Set<Colour>(['accent', 'field', 'second', ...Object.values(BUTTON_EDGES)])];
+  return [
+    ...[...TEXT, 'heading' as const].map((fg) => ({
+      what: `${fg} on the title strips`,
+      fg,
+      bg: 'strip' as const,
+      to: 'strip-2' as const,
+      min: 4.5,
+      source: `WCAG 1.4.3 (${strip})`,
+    })),
+    ...edges.map((fg) => ({
+      what: `${fg === 'accent' ? 'focus ring' : fg === 'second' ? 'the chosen tab’s underline' : `${fg} (a control’s edge)`} vs the title strips`,
+      fg,
+      bg: 'strip' as const,
+      to: 'strip-2' as const,
+      min: 3,
+      source: `WCAG 1.4.11 (${strip})`,
+    })),
   ];
 }
 
@@ -206,6 +273,12 @@ export const DISTANCE_RULES: readonly (readonly [
   ['second vs success', 'second', 'success', 7],
   ['second vs danger', 'second', 'danger', 7],
   ['heading vs danger', 'heading', 'danger', 7],
+  // Session 44: a layer button's own colour is never taken for a state, and an unlit one's edge never for a lit
+  // one's (LIVE's red).
+  ...(['live', 'onair', 'warning'] as const).map(
+    (s) => [`a lit layer button vs ${s}`, 'layer', s, 10] as const,
+  ),
+  ['an unlit layer button’s edge vs live', 'layer-edge', 'live', 10],
 ];
 
 export interface Measured {
@@ -227,25 +300,80 @@ export function colourOf(a: Appearance, name: Colour): string {
   return name in a.colours ? a.colours[name as ColourToken] : a.decoration[name as DecorationToken];
 }
 
-/** Every contrast rule, measured on one appearance. */
-export function measureContrast(a: Appearance): Measured[] {
-  return CONTRAST_RULES.map((r) => {
-    const bg = colourOf(a, r.bg);
+/** How many points of a gradient are measured, ends included. */
+const GRADIENT_POINTS = 17;
+
+/** A gradient's colours from one end to the other, as a page draws one between two #rrggbb colours (in sRGB). */
+export function gradientPoints(from: string, to: string, n = GRADIENT_POINTS): string[] {
+  if (from === to) return [from];
+  const rgb = (hex: string) => [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
+  const [x, y] = [rgb(from), rgb(to)];
+  return Array.from({ length: n }, (_, i) => {
+    const t = i / (n - 1);
+    return `#${x
+      .map((v, k) =>
+        Math.round(v + ((y[k] ?? v) - v) * t)
+          .toString(16)
+          .padStart(2, '0'),
+      )
+      .join('')}`;
+  });
+}
+
+/** One rule on one appearance: at the worst point of its background when that is a gradient. */
+function measureRule(a: Appearance, r: ContrastRule): Measured {
+  const ends = colourOf(a, r.bg);
+  const backgrounds = r.to === undefined ? [ends] : gradientPoints(ends, colourOf(a, r.to));
+  let worst: { value: number; text: string } | null = null;
+  for (const bg of backgrounds) {
     const solid = colourOf(a, r.fg);
     const drawn = r.alpha === undefined ? solid : over(solid, r.alpha, colourOf(a, r.under ?? r.bg));
     const other = r.or === undefined ? null : colourOf(a, r.or);
     const fg = other !== null && contrastRatio(other, bg) > contrastRatio(drawn, bg) ? other : drawn;
     const value = contrastRatio(fg, bg);
     const name = fg === other ? (r.or ?? r.fg) : r.fg;
-    return {
-      what: r.what,
-      colours: `${name} ${fg}${r.alpha === undefined ? '' : ` (${solid} at ${String(r.alpha * 100)}%)`} on ${r.bg} ${bg}`,
-      value,
-      min: r.min,
-      source: r.source,
-      ok: value >= r.min,
-    };
-  });
+    const where = r.to === undefined ? `${r.bg} ${bg}` : `${r.bg}–${r.to} at ${bg}`;
+    if (worst === null || value < worst.value)
+      worst = {
+        value,
+        text: `${name} ${fg}${r.alpha === undefined ? '' : ` (${solid} at ${String(r.alpha * 100)}%)`} on ${where}`,
+      };
+  }
+  const value = worst?.value ?? 0;
+  return {
+    what: r.what,
+    colours: worst?.text ?? '',
+    value,
+    min: r.min,
+    source: r.source,
+    ok: value >= r.min,
+  };
+}
+
+/** An appearance as it is drawn inside one of its zones: the zone's surfaces over its own (Session 44). */
+export function inZone(a: Appearance, zone: Zone): Appearance {
+  return { ...a, colours: { ...a.colours, ...a.zones[zone] } };
+}
+
+const ZONED = new Set<string>(ZONE_TOKENS);
+/** Whether a rule measures a colour a zone changes. */
+const zoned = (r: ContrastRule) => [r.fg, r.bg, r.or, r.under].some((c) => c !== undefined && ZONED.has(c));
+/** Whether a zone is drawn in surfaces of its own. */
+const tinted = (a: Appearance, zone: Zone) => ZONE_TOKENS.some((t) => a.zones[zone][t] !== a.colours[t]);
+
+/**
+ * Every contrast rule, measured on one appearance; and, for each zone in colours of its own, every rule that
+ * measures a colour the zone changes, there ("…, in the left column").
+ */
+export function measureContrast(a: Appearance): Measured[] {
+  const rows = CONTRAST_RULES.map((r) => measureRule(a, r));
+  for (const zone of ZONES) {
+    if (!tinted(a, zone)) continue;
+    const z = inZone(a, zone);
+    for (const r of CONTRAST_RULES.filter(zoned))
+      rows.push({ ...measureRule(z, r), what: `${r.what}, in ${ZONE_NAMES[zone]}` });
+  }
+  return rows;
 }
 
 /** Every distance rule, measured on one appearance: the least of the four colour visions. */
@@ -304,4 +432,72 @@ export function decorationLacks(a: Appearance): string[] {
   if (a.base === 'dark' && Math.min(chroma(c.panel), chroma(c['panel-2'])) < COLOURFUL.darkPanels)
     lacks.push('panels that carry its hue');
   return lacks;
+}
+
+/*
+ * Four hues at least (Session 44; Priyansh: "mostly one or two colours"): a colourful built-in appearance draws
+ * each of its places in a colour of that place's kind, the header, the left column, the middle, the right column,
+ * the layer bar, the panels' title strips, the band and the layer buttons, with four hues at least among them, 30°
+ * or more apart in OKLCH. A place's colour carries a hue when its chroma is 0.03 at least on a dark appearance
+ * (as its panels are measured above) or 0.018 on a light one (its window's); each place gives one hue at most.
+ */
+export const HUES = { least: 4, apart: 30, dark: 0.03, light: 0.018 } as const;
+
+/** Each place an appearance draws in colour, with the colours it is drawn in. */
+export function places(a: Appearance): readonly (readonly [string, readonly string[]])[] {
+  const d = a.decoration;
+  const z = a.zones;
+  return [
+    ['the header', [d.header, d['header-2']]],
+    [ZONE_NAMES.left, [z.left.panel]],
+    [ZONE_NAMES.middle, [z.middle.ink, z.middle.panel]],
+    [ZONE_NAMES.right, [z.right.panel]],
+    [ZONE_NAMES.bar, [z.bar.panel]],
+    ['the panels’ title strips', [d.strip, d['strip-2']]],
+    ['the band', d.band],
+    ['the layer buttons', [d.layer]],
+  ];
+}
+
+/** How far apart two hues are, in degrees (0 to 180). */
+export const hueApart = (x: number, y: number): number => {
+  const d = Math.abs(x - y) % 360;
+  return d > 180 ? 360 - d : d;
+};
+
+/** A place's colours that carry a hue, with their hues. */
+function hued(a: Appearance, colours: readonly string[]): { hex: string; h: number }[] {
+  const least = a.base === 'dark' ? HUES.dark : HUES.light;
+  return colours.flatMap((hex) => {
+    const c = hexToOklch(hex);
+    return c.c >= least ? [{ hex, h: c.h }] : [];
+  });
+}
+
+/** The places with no colour of their own (a grey, or the appearance's own surfaces with no hue to them). */
+export function colourlessPlaces(a: Appearance): string[] {
+  return places(a)
+    .filter(([, colours]) => hued(a, colours).length === 0)
+    .map(([place]) => place);
+}
+
+/** The most places that each give a hue of their own, every two 30° apart or more: how many, and which. */
+export function hueCount(a: Appearance): { count: number; chosen: string[] } {
+  const options = places(a).map(([place, colours]) => ({ place, hues: hued(a, colours) }));
+  let best: string[] = [];
+  const walk = (i: number, chosen: { place: string; hex: string; h: number }[]) => {
+    if (chosen.length + (options.length - i) <= best.length) return;
+    if (i === options.length) {
+      best = chosen.map((c) => `${c.place} ${c.hex} (${String(Math.round(c.h))}°)`);
+      return;
+    }
+    const at = options[i];
+    if (at === undefined) return;
+    for (const hue of at.hues)
+      if (chosen.every((c) => hueApart(c.h, hue.h) >= HUES.apart))
+        walk(i + 1, [...chosen, { place: at.place, ...hue }]);
+    walk(i + 1, chosen);
+  };
+  walk(0, []);
+  return { count: best.length, chosen: best };
 }

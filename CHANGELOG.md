@@ -2,6 +2,21 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## Unreleased
+
+- The playlists have the whole left column now. The Library button at its top opens the library over them, with Presentations, Media, search, Import… and New…; drag from it into a playlist, or use its button.
+- A folder playlist shows one folder at a time: the main folder's own items in the middle and its folders at the bottom left, with "Main › Sub" to go back. Next, Simple Mode and the phone remote still go through the whole running order, and folder playlists made before this update open the same way.
+- A folder's sounds also show in Audio, as its name followed by " - Audios", kept in step with a smart playlist and never copied twice.
+- Drop sound files on Audio (from Finder or Explorer, or the library) and they go into the audio playlist you drop them on. Its + makes a playlist or imports sounds.
+- The empty library and the Undo notice no longer draw over the show controls at the bottom.
+- The admin and the operator stay unlocked until you press Lock (in the top bar, where the countdown was) or quit Drashti: no more ten minutes, no countdown. Drashti still asks as it starts, as before.
+- Choose many and delete many in every list you can delete from: drag a box (the list scrolls by itself at its edge), Shift-click, Cmd-click (Ctrl-click on Windows) or Cmd-A (Ctrl-A), then Delete, Backspace or the Delete button. One Undo brings them all back.
+- Plug in a display when no screen shows the hall's picture yet and Drashti offers "Show on" it: one click. Set Up Screens… opens straight on the displays, one click each, then Done.
+- The mask editor shows the hall screen's live picture behind the shapes for as long as it is open, for an admin or an operator. With no hall screen set up, it shows a test pattern and says so.
+- Every colourful appearance has real colour: four colours at least, with the left column, the middle, the right column and the bar along the bottom each in a colour of its own, a top bar and panel title strips that shade from one colour to the next, and coloured layer buttons. Black and White look exactly as before.
+- Twelve new appearances: Monsoon, Sandhya, Forest, Navratri, Neel, Ratna, Prabhat, Mehndi, Haldi, Himalaya, Uttarayan and Mogra.
+- The Arti panel and its reminder are gone. A library's Arti times are kept, untouched.
+
 ## 1.0.0-alpha.8 (20 Oct 2026)
 
 More colour: every appearance but Black and White now has a top bar in its own colour with a band of its colours under it, and there are five new ones: Dhaja (the mandir flag's colours), Tiranga (India's), Diwali, Holi and Aarti. Update after a sabha, never on the day of one.
