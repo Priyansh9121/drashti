@@ -358,7 +358,7 @@ test('the setup wizard offers to set the PINs', async () => {
   await operatorReady(win);
   await chooseMenuItem(app, 'set-up-screens');
   const wizard = win.getByTestId('setup-wizard');
-  await wizard.getByTestId('setup-next').click();
+  // It opens on the displays (Session 44).
   for (const step of ['Screens', 'Sound', 'Stream', 'Theme']) {
     await expect(wizard.getByTestId('setup-step')).toHaveText(step);
     await wizard.getByTestId('setup-skip').click();

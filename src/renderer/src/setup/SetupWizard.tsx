@@ -23,6 +23,7 @@ import { PinInput } from '../roles/RolesDialogs';
 import {
   chooseOutput,
   closeSetup,
+  finishScreens,
   finishSetup,
   goTo,
   pinsReady,
@@ -118,21 +119,40 @@ function ScreensStep() {
                   Display {i + 1}: {describeDisplay(d)}
                 </span>
                 {controls && <Badge tone="warning">The Drashti controls are here</Badge>}
-                <Select
-                  aria-label={`What display ${i + 1} shows`}
-                  data-testid="setup-use"
-                  className="w-60"
-                  value={choice.use}
-                  onChange={(e) => {
-                    chooseOutput(d.id, { use: e.target.value as OutputChoice['use'] });
-                  }}
-                >
-                  {(['audience', 'stage', 'none'] as const).map((u) => (
-                    <option key={u} value={u}>
-                      {USE_NAMES[u]}
-                    </option>
-                  ))}
-                </Select>
+              </div>
+              {/* One click each (Session 44): what it shows, as three choices side by side. */}
+              <div
+                role="radiogroup"
+                aria-label={`What display ${i + 1} shows`}
+                data-testid="setup-use"
+                data-use={choice.use}
+                className="flex flex-wrap gap-1.5"
+              >
+                {(['audience', 'stage', 'none'] as const).map((u) => (
+                  <label
+                    key={u}
+                    data-testid={`setup-use-${u}`}
+                    className={cx(
+                      'flex min-h-9 cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm',
+                      'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent',
+                      choice.use === u
+                        ? 'border-second/70 bg-panel-3 font-medium'
+                        : 'border-line hover:bg-panel-3',
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name={`setup-use-${String(d.id)}`}
+                      value={u}
+                      checked={choice.use === u}
+                      className="accent-accent"
+                      onChange={() => {
+                        chooseOutput(d.id, { use: u });
+                      }}
+                    />
+                    {USE_NAMES[u]}
+                  </label>
+                ))}
               </div>
               {controls && choice.use !== 'none' && (
                 <p className="text-xs text-warning-fg">
@@ -535,7 +555,24 @@ export function SetupWizard({ platform }: { platform: string }) {
                   Skip this step
                 </Button>
               )}
-              {last ? (
+              {/* The displays first (Session 44): Done shows them as chosen; sound, the stream, the theme
+                  and the PINs come after, with More setup. */}
+              {name === 'Screens' && (
+                <>
+                  <Button data-testid="setup-next" disabled={busy} onClick={() => goTo(step + 1)}>
+                    More setup…
+                  </Button>
+                  <Button
+                    variant="primary"
+                    data-testid="setup-screens-done"
+                    disabled={busy}
+                    onClick={() => void finishScreens()}
+                  >
+                    Done
+                  </Button>
+                </>
+              )}
+              {name === 'Screens' ? null : last ? (
                 <Button
                   variant="primary"
                   data-testid="setup-finish"
@@ -559,10 +596,13 @@ export function SetupWizard({ platform }: { platform: string }) {
         }
       >
         <h3 className="text-base font-bold" data-testid="setup-step">
-          {name}
+          {finished ? 'Finish' : name}
         </h3>
         {busy && step === 0 ? (
           <Loading label="Looking at the displays and sound outputs…" />
+        ) : finished ? (
+          // Done from any step (Session 44: Done on the displays too): what happened.
+          <FinishStep />
         ) : name === 'Welcome' ? (
           <div className="space-y-2 text-sm">
             <p>
@@ -612,6 +652,7 @@ export function SetupWizard({ platform }: { platform: string }) {
           onCancel={() => {
             useSetup.setState({ askCover: false });
           }}
+          // (Done on the displays has set the other steps aside: Finish's question repeats the same.)
           onConfirm={() => void finishSetup(true)}
           testId="setup-cover-confirm"
         >

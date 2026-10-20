@@ -4,6 +4,7 @@ import type { AudioDevice } from '../../../shared/audio';
 import type { Lang } from '../../../shared/model';
 import type { DisplayInfo } from '../../../shared/screens';
 import type { OutputUse, SetupPlan } from '../../../shared/setup';
+import { displayToOffer } from '../../../shared/setup';
 import type { DeviceChoice, StreamLayout } from '../../../shared/stream';
 import type { Theme } from '../../../shared/themes';
 import { useScreens } from '../screens/screens-store';
@@ -115,6 +116,9 @@ export async function openSetup(from = 0): Promise<void> {
       ? { use: group.role === 'stage' ? 'stage' : 'audience', languages: languages ? [...languages] : null }
       : { use: 'none', languages: null };
   }
+  // No hall screen yet (Session 44): the first display free for it starts as the hall's, the obvious choice.
+  const offered = displayToOffer(snapshot, state.controlsDisplayId);
+  if (offered) outputs[offered.id] = { use: 'audience', languages: null };
   useSetup.setState({
     busy: false,
     displays: snapshot.displays,
@@ -183,6 +187,12 @@ export function pinsReady(pins: PinChoice): { admin: string; operator: string } 
     return 'Each PIN typed twice must match.';
   if (pins.admin === pins.operator) return 'The admin PIN and the operator PIN must differ.';
   return { admin: pins.admin, operator: pins.operator };
+}
+
+/** Done on the displays (Session 44): the screens as chosen, and nothing else (sound, stream, theme and PINs as they are). */
+export async function finishScreens(coverOperator = false): Promise<void> {
+  useSetup.setState({ sound: 'skip', stream: 'skip', themeId: null, pins: 'skip' });
+  await finishSetup(coverOperator);
 }
 
 /** Apply everything chosen; with consent, outputs may cover the controls. */

@@ -42,6 +42,7 @@ import { PanelGroup, PanelNote } from '../ui/Panel';
 import { Music, Wrench } from '../ui/icons';
 import { holdOpening } from '../ui/motion';
 import { StoppedScreens } from '../screens/StoppedScreens';
+import { ShowOnOffer } from '../screens/ShowOn';
 import { EngineUnread } from './EngineUnread';
 import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { StreamPageStopped } from '../stream/StreamPageStopped';
@@ -264,13 +265,14 @@ function ProApp({ info }: { info: AppInfo | null }) {
   useEffect(() => {
     void window.drashti.setup.state().then((state) => {
       if (state.welcome) openWelcome();
-      else if (state.firstRun) void openSetup();
+      else if (state.firstRun) void openSetup(1);
     });
     return window.drashti.setup.onOpen(() => {
       setScreensOpen(false);
       stopPractice();
       closeWelcome();
-      void openSetup();
+      // Straight to the displays (Session 44): one click each, the rest after them.
+      void openSetup(1);
     });
   }, []);
 
@@ -283,6 +285,8 @@ function ProApp({ info }: { info: AppInfo | null }) {
       {/* A hall screen that stopped (Session 26h): in the flow, so it never covers the show controls. */}
       <EngineUnread />
       <StoppedScreens />
+      {/* A display connected and no hall screen yet (Session 44): Show on <it>, one click. */}
+      <ShowOnOffer />
       <NoSoundNotice />
       <StreamPageStopped />
       <RecoveryBanner />

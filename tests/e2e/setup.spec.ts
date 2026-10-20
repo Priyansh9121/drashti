@@ -70,12 +70,13 @@ test('on the first start: identify, what each output shows and its languages, a 
   expect(numbers.sort()).toEqual(['1', '2']);
 
   // The first output shows the audience picture in Gujarati then transliteration; the second the stage, in Gujarati.
-  await displays.nth(0).getByTestId('setup-use').selectOption('audience');
+  // One click each (Session 44).
+  await displays.nth(0).getByTestId('setup-use-audience').click();
   const first = displays.nth(0).getByTestId('language-picker');
   await first.getByTestId('languages-some').check();
   await first.getByRole('checkbox', { name: 'Hindi' }).uncheck();
   await first.getByRole('checkbox', { name: 'English' }).uncheck();
-  await displays.nth(1).getByTestId('setup-use').selectOption('stage');
+  await displays.nth(1).getByTestId('setup-use-stage').click();
   const second = displays.nth(1).getByTestId('language-picker');
   await second.getByTestId('languages-some').check();
   for (const name of ['Hindi', 'Transliteration', 'English'])
@@ -193,9 +194,11 @@ test('skipping every step, or closing, changes nothing; it opens again from the 
 
   await fromMenu(app);
   const wizard = win.getByTestId('setup-wizard');
-  await wizard.getByTestId('setup-next').click();
-  // It starts from the setup as it is.
-  await expect(wizard.getByTestId('setup-display').first().getByTestId('setup-use')).toHaveValue('audience');
+  // It opens on the displays (Session 44), from the setup as it is.
+  await expect(wizard.getByTestId('setup-display').first().getByTestId('setup-use')).toHaveAttribute(
+    'data-use',
+    'audience',
+  );
   for (const step of ['Screens', 'Sound', 'Stream', 'Theme', 'PINs']) {
     await expect(wizard.getByTestId('setup-step')).toHaveText(step);
     await wizard.getByTestId('setup-skip').click();
@@ -212,8 +215,7 @@ test('skipping every step, or closing, changes nothing; it opens again from the 
 
   // Choices made, then closed: still nothing changes.
   await fromMenu(app);
-  await wizard.getByTestId('setup-next').click();
-  await wizard.getByTestId('setup-display').first().getByTestId('setup-use').selectOption('none');
+  await wizard.getByTestId('setup-display').first().getByTestId('setup-use-none').click();
   await wizard.getByRole('button', { name: 'Close the setup' }).click();
   await expect(wizard).toHaveCount(0);
   expect(await groupsOf(win)).toEqual(before);
@@ -231,10 +233,9 @@ test('never covers the operator’s display without the confirm step', async () 
   });
   await fromMenu(app);
   const wizard = win.getByTestId('setup-wizard');
-  await wizard.getByTestId('setup-next').click();
   const row = wizard.locator(`[data-testid="setup-display"][data-display-id="${operatorDisplay}"]`);
   await expect(row).toContainText('The Drashti controls are here');
-  await row.getByTestId('setup-use').selectOption('audience');
+  await row.getByTestId('setup-use-audience').click();
   await expect(row).toContainText('Finish asks before it does');
   for (const step of ['Screens', 'Sound', 'Stream', 'Theme', 'PINs']) {
     await expect(wizard.getByTestId('setup-step')).toHaveText(step);
@@ -289,9 +290,8 @@ for (const [width, height] of [
     await operatorReady(win);
     await fromMenu(app);
     const wizard = win.getByTestId('setup-wizard');
-    await wizard.getByTestId('setup-next').click();
     for (const row of await wizard.getByTestId('setup-display').all()) {
-      await row.getByTestId('setup-use').selectOption('audience');
+      await row.getByTestId('setup-use-audience').click();
       await row.getByTestId('languages-some').check();
     }
     await expectFits(wizard, `the setup wizard's screens at ${width} x ${height}`);

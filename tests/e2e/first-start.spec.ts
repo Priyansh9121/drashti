@@ -182,7 +182,8 @@ test('View › Set Up Screens… still opens the wizard, from the practice show 
   await welcome.getByRole('button', { name: 'Try a practice show first' }).click();
   await expect(win.getByTestId('practice-banner')).toBeVisible();
   await chooseMenuItem(app, 'set-up-screens');
-  await expect(win.getByTestId('setup-wizard').getByTestId('setup-step')).toHaveText('Welcome');
+  // Straight to the displays (Session 44).
+  await expect(win.getByTestId('setup-wizard').getByTestId('setup-step')).toHaveText('Screens');
   await expect(win.getByTestId('practice-banner')).toHaveCount(0);
   await app.close();
 });

@@ -163,7 +163,7 @@ function NotSetUp({ what, onClose }: { what: string; onClose: () => void }) {
         icon={Wand2}
         onClick={() => {
           onClose();
-          void openSetup();
+          void openSetup(1);
         }}
       >
         Set Up Screens…
