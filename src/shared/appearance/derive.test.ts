@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { COLOUR_TOKENS } from './appearances';
-import { checkAccent, deriveAppearance, deriveColours } from './derive';
+import { checkAccent, deriveAppearance, deriveColours, madeAppearance } from './derive';
 import { hexToOklch, oklchToHex } from './oklch';
-import { appearanceProblems } from './rules';
+import { appearanceProblems, decorationLacks } from './rules';
 
 /*
  * A person's own appearance, worked out from a base and an accent (Session 40): over a sweep of accents on both
@@ -26,12 +26,7 @@ describe('working out an appearance from a base and an accent', () => {
       const unexplained: string[] = [];
       for (const accent of SWEEP) {
         const check = checkAccent(base, accent);
-        const problems = appearanceProblems({
-          id: 'own-x',
-          name: 'X',
-          base,
-          colours: deriveColours(base, accent),
-        });
+        const problems = appearanceProblems(madeAppearance('own-x', 'X', base, accent));
         expect(check.ok, accent).toBe(problems.length === 0);
         if (check.ok) {
           passed += 1;
@@ -71,6 +66,25 @@ describe('working out an appearance from a base and an accent', () => {
     expect(appearanceProblems(own)).toEqual([]);
     // The same every time: an appearance kept as its base and accent comes back the same.
     expect(deriveColours('dark', '#5aa2ff')).toEqual(own.colours);
+  });
+
+  it('works out a decoration from the accent too (Session 42): a deep header of its hue, a band, marks apart from every state', () => {
+    for (const base of ['dark', 'light'] as const) {
+      const own = deriveAppearance({ id: 'own-b', name: 'Placeholder own', base, accent: '#16a3a0' });
+      const d = own.decoration;
+      expect(appearanceProblems(own)).toEqual([]);
+      // Its surfaces are Session 40's (a trace of the accent's hue), so one kept since then looks as it did there.
+      expect(
+        decorationLacks(own).filter((l) => l !== 'panels that carry its hue'),
+        base,
+      ).toEqual([]);
+      expect(d.band).toHaveLength(3);
+      expect(d.band[0]).toBe(own.colours.primary);
+      expect(Math.abs(hexToOklch(d.header).h - hexToOklch('#16a3a0').h)).toBeLessThan(15);
+      expect(hexToOklch(d.header).l).toBeLessThan(0.4);
+      // The same every time, as the colours are.
+      expect(madeAppearance('own-b', 'Placeholder own', base, '#16a3a0').decoration).toEqual(d);
+    }
   });
 
   it('round-trips colours through OKLCH', () => {

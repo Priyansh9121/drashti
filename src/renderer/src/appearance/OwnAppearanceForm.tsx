@@ -1,6 +1,6 @@
 import { useDeferredValue, useId, useMemo, useState } from 'react';
 import type { AppearanceBase } from '../../../shared/appearance/appearances';
-import { checkAccent, deriveColours, OWN_NAME_MAX } from '../../../shared/appearance/derive';
+import { checkAccent, madeAppearance, OWN_NAME_MAX } from '../../../shared/appearance/derive';
 import { cutText } from '../../../shared/text';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
@@ -38,7 +38,7 @@ export function OwnAppearanceForm({ start, onDone }: { start: OwnStart; onDone: 
   const [checkBase, checkColour] = checking.split(' ') as [AppearanceBase, string];
   const check = useMemo(() => checkAccent(checkBase, checkColour), [checkBase, checkColour]);
   const preview = useMemo(
-    () => ({ id: 'own-preview', name, base: checkBase, colours: deriveColours(checkBase, checkColour) }),
+    () => madeAppearance('own-preview', name, checkBase, checkColour),
     [name, checkBase, checkColour],
   );
   const named = name.trim() !== '';

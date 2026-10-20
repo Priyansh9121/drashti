@@ -66,6 +66,20 @@
   --color-guide: #ff4fd8;
   --color-selection: #2563eb;
 
+  /*
+   * The decoration (Session 42): places that mark and decorate, never act or tell a state. Black's (its panel
+   * for a header, the focus ring's colour to mark, secondary words for headings) is exactly what it drew
+   * before; every other appearance has colours of its own here (src/shared/appearance/appearances.ts). Only
+   * Drashti's own windows draw these: the audience screens and the phone pages never do.
+   */
+  --color-header: #121215; /* the top bar */
+  --color-on-header: #f5f5f7; /* the name on it: 4.5:1 */
+  --color-on-header-muted: #c8c8cf; /* its buttons' words: 4.5:1 */
+  --color-header-ring: #8ab4f8; /* the focus ring on it: 3:1 */
+  --color-header-field: #82828d; /* the edges of controls on it: 3:1 */
+  --color-second: #8ab4f8; /* what marks: the chosen tab's underline, the chosen row's edge (3:1) */
+  --color-heading: #c8c8cf; /* section headings' words: 4.5:1 */
+
   /* Type: 14px body; 11px is the smallest text there is. */
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
@@ -130,6 +144,23 @@
   --depth-primary-hover: #ededf0cc;
   /* Native controls (lists, scroll bars, pickers) draw as the appearance's base. */
   color-scheme: dark;
+
+  /*
+   * The band under the header (Session 42): up to five flat blocks side by side, each --band-N wide (1 is a
+   * share of the width, 0 is none) in --color-band-N, in a strip --band-height tall. Black has none, so the strip
+   * is 0 px and nothing is drawn or moved; vars.ts sets the appearance's.
+   */
+  --band-height: 0px;
+  --band-1: 0;
+  --band-2: 0;
+  --band-3: 0;
+  --band-4: 0;
+  --band-5: 0;
+  --color-band-1: transparent;
+  --color-band-2: transparent;
+  --color-band-3: transparent;
+  --color-band-4: transparent;
+  --color-band-5: transparent;
 
   /*
    * Motion (Session 26g, "Rising", from the design lab's table): every duration, delay,
