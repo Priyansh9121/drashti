@@ -13,7 +13,7 @@ import type { Db } from '../db/database';
  * - Before: where it is used (shared/media-removal.ts), for the question.
  * - Deleting marks the media row, and the playlist items and music tracks
  *   that hold it, with one moment, so Undo puts back exactly those. Slides,
- *   props, themes, macros and the idle rotation keep pointing at it: while it
+ *   props, themes and the idle rotation keep pointing at it: while it
  *   is deleted they treat it as a missing file (nothing in its place), except
  *   that what is on the screens now stays up until it is changed.
  * - Once it can no longer be undone (Drashti starting again), its file,
@@ -77,10 +77,6 @@ export class MediaRemoval {
       `SELECT name FROM themes WHERE json_extract(definition, '$.background.mediaId') IN (${list})
         ORDER BY name COLLATE NOCASE`,
     );
-    const macros = all(
-      `SELECT DISTINCT m.name FROM macros m, json_each(m.actions) a
-        WHERE json_extract(a.value, '$.mediaId') IN (${list}) ORDER BY m.name COLLATE NOCASE`,
-    );
     const idle = this.deps.idlePictures();
     const live = this.deps.onScreens();
     return {
@@ -89,7 +85,6 @@ export class MediaRemoval {
       music: usedIn(music),
       props: usedIn(props),
       themes: usedIn(themes),
-      macros: usedIn(macros),
       idle: ids.some((id) => idle.includes(id)),
       live: ids.some((id) => live.has(id)),
     };

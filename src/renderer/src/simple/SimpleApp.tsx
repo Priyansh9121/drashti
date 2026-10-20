@@ -35,7 +35,6 @@ import { Truncate } from '../ui/Truncate';
 import { playItem, runSimpleAction, useNotice } from '../operator/actions';
 import { startRepeat, stopRepeat } from '../playlists/repeat-actions';
 import { setMidiHandler } from '../midi/midi-store';
-import { SIMPLE_MODE_REFUSAL } from '../../../shared/mode';
 import { LivePreview } from '../operator/LivePreview';
 import { leaveSimpleMode, useMode } from '../operator/mode-store';
 import { NextPreview } from '../operator/NextPreview';
@@ -52,7 +51,6 @@ import { useKeymap } from '../operator/useKeymap';
 import type { AppInfo } from '../../../shared/app-info';
 import { OnAirBadges } from '../stream/OnAirBadges';
 import { NetworkBadge } from '../network/NetworkBadge';
-import { MacroCountdown } from '../macros/MacroCountdown';
 import { MusicStrip } from '../music/MusicPanel';
 import { ScreensDashboard } from '../nodes/ScreensDashboard';
 import { useNodes } from '../nodes/nodes-store';
@@ -434,7 +432,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
     [start],
   );
   useKeymap(platform, run, SIMPLE_KEYMAP);
-  // A MIDI controller's pads do Simple Mode's own actions; Simple Mode runs no macros.
+  // A MIDI controller's pads do Simple Mode's own actions (a pad mapped to a macro before Session 44 does nothing).
   useEffect(() => {
     setMidiHandler((action) => {
       if (action.kind === 'next') run('next');
@@ -442,7 +440,6 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       else if (action.kind === 'clearAll') run('clearAll');
       else if (action.kind === 'blackout') run('toggleBlackout');
       else if (action.kind === 'logo') run('toggleLogo');
-      else useNotice.setState({ text: SIMPLE_MODE_REFUSAL });
     });
     return () => {
       setMidiHandler(null);
@@ -515,7 +512,6 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
           </p>
         </main>
       </div>
-      <MacroCountdown big />
       <NoticeArea />
       <BigButtons platform={platform} run={run} />
       <StatusBar info={info} onOpenScreens={null} />

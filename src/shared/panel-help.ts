@@ -50,12 +50,6 @@ export const PANEL_HELP = {
     text: 'A Look says what each group of screens shows: which layers, and which languages. Press one, and every screen in its group changes at once. The lit one is on the screens now.',
     guide: '**Looks.**',
   },
-  macros: {
-    title: 'Macros',
-    doc: 'operator',
-    text: 'A macro does several things at one press, as the admin set it up: for the arti, Clear all, its background and its sound. Press its button when the moment comes.',
-    guide: '**Macros.**',
-  },
   stage: {
     title: 'Stage screen',
     doc: 'operator',
@@ -149,7 +143,7 @@ export const PANEL_HELP = {
   tools: {
     title: 'More tools',
     doc: 'operator',
-    text: 'Macros, Masks and the Idle rotation, folded away until you need them. Press More tools to open them or fold them again.',
+    text: 'Masks, the Idle rotation and the MIDI controller, folded away until you need them. Press More tools to open them or fold them again.',
     guide: '**More tools.** Folded away',
   },
 } as const satisfies Record<string, PanelHelp>;

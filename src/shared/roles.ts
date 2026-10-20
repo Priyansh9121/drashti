@@ -7,11 +7,11 @@ import { IPC } from './ipc';
  *
  * - A volunteer runs a sabha in Simple Mode, which changes nothing.
  * - An operator runs the show in Pro Mode: builds playlists, edits words and
- *   slides, makes props, messages and timers, runs macros, switches Looks,
+ *   slides, makes props, messages, timers and lower thirds, switches Looks,
  *   approves announcements, goes live and records.
  * - An admin also sets Drashti up: imports and removes from the library;
  *   themes, Shastra texts, calendars, the idle rotation and every schedule
- *   (backups, macros' times); macros themselves and MIDI; screens,
+ *   (backups); MIDI; screens,
  *   Looks, stage layouts, masks and the sound output; the stream's settings
  *   and keys; phones and nodes; backups, restores and updates; the PINs.
  *
@@ -134,9 +134,7 @@ export const ADMIN_CHANNELS: readonly InvokeChannel[] = [
   IPC.drop.pickFolder,
   IPC.drop.setOn,
   IPC.drop.importAnyway,
-  // Macros and MIDI (running a macro is the operator's).
-  IPC.macros.save,
-  IPC.macros.remove,
+  // The MIDI controller.
   IPC.midi.set,
   // Screens, Looks, stage layouts, masks and the sound output.
   IPC.screens.createGroup,

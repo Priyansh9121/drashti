@@ -12,7 +12,7 @@ import { idSchema } from './model-schema';
  * When it shows is decided per screen group, in the Look ("When nothing is
  * up"):
  * - **The idle rotation, once started**: the operator starts it (the Idle
- *   rotation panel, or a macro); it shows on these screens while nothing
+ *   rotation panel); it shows on these screens while nothing
  *   else is up there, and stops by itself when the first slide or picture
  *   goes up, so a later Clear all does not bring it back.
  * - **The idle rotation, always** (a lobby screen): whenever nothing is up

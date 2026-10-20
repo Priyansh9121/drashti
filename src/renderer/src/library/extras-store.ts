@@ -8,7 +8,7 @@ import { useLibraryTab } from './library-store';
  * begin with, an admin's to turn on, kept with the library's settings. While
  * off, the operator window has no Shastra tab, no Templates beside the
  * playlists and no kirtan filters; their data, the remote's library, and the
- * macros and API that name a passage stay as they were. Search still finds
+ * API that names a passage stay as they were. Search still finds
  * kirtans by their details.
  */
 

@@ -10,7 +10,7 @@ export interface PermissionRules {
   isAudioPlayer?(contents: WebContents | null): boolean;
   /**
    * Only for the default session: true for the operator window. It alone may
-   * use MIDI (a controller mapped to Next, Back, macros...), never SysEx.
+   * use MIDI (a controller mapped to Next, Back, Clear all...), never SysEx.
    */
   isOperator?(contents: WebContents | null): boolean;
   /** Told about every permission a page checks or asks for (DRASHTI_LOG_PERMISSIONS=1). */

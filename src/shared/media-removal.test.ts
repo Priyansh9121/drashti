@@ -13,7 +13,6 @@ describe('where deleted media is used, as the question says it', () => {
       playlists: { names: ['Sunday', 'Youth', 'Evening', 'Shibir', 'Bal'], count: 7 },
       music: { names: ['Before sabha'], count: 1 },
       themes: { names: ['Placeholder theme', 'Other theme'], count: 2 },
-      macros: { names: ['Opening'], count: 1 },
       idle: true,
     };
     expect(usageLines(usage)).toEqual([
@@ -21,7 +20,6 @@ describe('where deleted media is used, as the question says it', () => {
       'The playlists “Sunday”, “Youth”, “Evening”, “Shibir”, “Bal” and 2 more: taken out of them.',
       'The music “Before sabha”: taken out of it.',
       'The themes “Placeholder theme” and “Other theme”: nothing will show in its place.',
-      'The macro “Opening”: it will not run while it is deleted.',
       'The idle rotation’s pictures: taken out of them.',
     ]);
     expect(usageLines(usage, 3)[0]).toBe(

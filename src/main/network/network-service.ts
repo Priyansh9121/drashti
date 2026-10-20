@@ -38,7 +38,6 @@ import {
   type RemoteLibraryPage,
   type RemotePresentation,
 } from '../../shared/network-api';
-import type { MacroRunResult } from '../../shared/macros';
 import type { PlaylistItemInfo, PlaylistNode } from '../../shared/playlists';
 import type { SearchResult } from '../../shared/search';
 import type { PassageResult } from '../../shared/shastra';
@@ -87,8 +86,6 @@ export interface NetworkReads {
   hall(): { groupId: string | null };
   /** The Looks, in order (a Remote switches the live one). */
   looks(): { id: string; name: string }[];
-  /** The macros, in order (a Remote runs them). */
-  macros(): { id: string; name: string; color: string }[];
   /** The loaded Shastra texts. */
   shastraTexts(): { name: string; abbreviation: string; itemCount: number }[];
   /** What a Shastra reference names (a passage that plays like a presentation), or why it names nothing. */
@@ -112,8 +109,6 @@ export interface NetworkDeps {
     state(): EngineState;
   };
   reads: NetworkReads;
-  /** Run a macro for a device (macro-service.ts), named in the log. */
-  runMacro(macroId: string, who: string): MacroRunResult;
   /** Play the audio playlist (music-service.ts): on from a pause, or the one played last. */
   playMusic(who: string): { ok: true } | { ok: false; message: string };
   /** Announcements from phones (announcement-service.ts). */
@@ -142,8 +137,6 @@ export const OP_CHANNEL: Record<DeviceOp, InvokeChannel | null> = {
   stage: IPC.screens.get,
   hall: IPC.screens.get,
   looks: IPC.looks.list,
-  macros: IPC.macros.list,
-  'macro.run': IPC.macros.run,
   // Playing music is not a change to the library: Simple Mode lets a Remote do it, as it does the window.
   'music.play': IPC.music.play,
   'shastra.texts': IPC.shastra.list,
@@ -649,8 +642,6 @@ export class NetworkService implements EngineTransport {
         return ok({ groupId: this.deps.reads.hall().groupId, clock: this.deps.reads.clockStyle() });
       case 'looks':
         return ok({ looks: this.deps.reads.looks(), liveId: this.deps.engine.state().look.id });
-      case 'macros':
-        return ok({ macros: this.deps.reads.macros() });
       case 'shastra.texts':
         return ok({ texts: this.deps.reads.shastraTexts() });
       case 'shastra': {
@@ -666,12 +657,6 @@ export class NetworkService implements EngineTransport {
         return shown.status === 200
           ? ok({ ...(shown.body as object), reference: found.passage.reference })
           : shown;
-      }
-      case 'macro.run': {
-        const id = idSchema.safeParse(args['macroId']);
-        if (!id.success) return deny(404, 'There is no such macro.');
-        const ran = this.deps.runMacro(id.data, who);
-        return ran.ok ? ok({ changed: ran.changed, rev: ran.rev }) : deny(409, ran.message);
       }
       case 'music.play': {
         const played = this.deps.playMusic(who);

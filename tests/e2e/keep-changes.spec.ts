@@ -9,7 +9,6 @@ import {
   importAndGetIds,
   launchApp,
   openLibrary,
-  openMoreTools,
   operatorPage,
   operatorReady,
 } from './helpers';
@@ -269,7 +268,7 @@ test('the setup wizard asks before typed PINs are lost (nothing is set until Fin
   await app.close();
 });
 
-test('the macro, stage layout and mask editors ask the same question, and Save changes saves', async () => {
+test('the stage layout and mask editors ask the same question, and Save changes saves', async () => {
   const { app, win } = await start();
   // A stage group and an audience group, for their editors in Screens.
   await win.evaluate(async () => {
@@ -280,30 +279,12 @@ test('the macro, stage layout and mask editors ask the same question, and Save c
     const stage = made.snapshot.groups.find((g) => g.name === 'Placeholder Stage');
     await d.screens.setGroupRole(stage?.id ?? '', 'stage');
   });
-  const listed = (what: 'macros' | 'stageLayouts' | 'masks') =>
+  const listed = (what: 'stageLayouts' | 'masks') =>
     win.evaluate(async (kind) => {
       const d = (globalThis as PageGlobals).drashti;
-      const list =
-        kind === 'macros'
-          ? await d.macros.list()
-          : kind === 'masks'
-            ? await d.masks.list()
-            : await d.stageLayouts.list();
+      const list = kind === 'masks' ? await d.masks.list() : await d.stageLayouts.list();
       return list.map((x) => x.name);
     }, what);
-
-  // A macro (Macros and Masks are in More tools, Session 26a).
-  await openMoreTools(win);
-  await win.getByTestId('macros-panel').getByRole('button', { name: 'Edit' }).click();
-  const macros = win.getByTestId('macro-editor');
-  await macros.getByTestId('macro-name').fill('Placeholder keep macro');
-  await win.keyboard.press('Escape');
-  await escKeepsEditing(win, macros);
-  expect(await listed('macros')).not.toContain('Placeholder keep macro');
-  await win.keyboard.press('Escape');
-  await answer(win, 'Save changes');
-  await expect(macros).toHaveCount(0);
-  await expect.poll(() => listed('macros')).toContain('Placeholder keep macro');
 
   // A stage layout, from the stage group in Screens.
   await win.getByRole('button', { name: 'Screens', exact: true }).click();

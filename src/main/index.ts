@@ -84,15 +84,12 @@ import { StageLayoutService } from './stage/stage-layout-service';
 import { MaskRepo } from './db/masks';
 import { MaskService } from './masks/mask-service';
 import { anyTestSwitch, sw, swMs, swOn } from './switches';
-import { MacroRepo } from './db/macros';
 import { CalendarRepo } from './db/calendar';
 import { CalendarService } from './calendar/calendar-service';
 import { QuoteRepo } from './db/quotes';
 import { IdleService } from './idle/idle-service';
 import { quoteIdSchema } from '../shared/idle';
 import { calendarIdSchema } from '../shared/calendar';
-import { MacroService } from './macros/macro-service';
-import { MacroScheduler } from './macros/macro-scheduler';
 import { AudioPlaylistRepo } from './db/audio-playlists';
 import { MusicService } from './music/music-service';
 import { startPerfMusic, startPerfSoundCue } from './music/perf-music';
@@ -505,7 +502,7 @@ const announceMinuteMs = Math.min(
   60_000,
   Math.max(100, Number(sw('DRASHTI_TEST_ANNOUNCE_MINUTE_MS') ?? 60_000) || 60_000),
 );
-// Tests only: the schedules (the arti, and since Session 14 backups and macros) read this computer's
+// Tests only: the schedules (backups; the arti's and macros' too, until Session 44) read this computer's
 // clock moved on by this much (ms), and a test can move it with globalThis.drashtiArtiClock(wallMs).
 // The engine's clock is never moved.
 const artiTestClock = sw('DRASHTI_TEST_ARTI_CLOCK') === '1' && !app.isPackaged;
@@ -1210,15 +1207,10 @@ function start(): void {
   let pictureLook: (mediaId: string) => PictureLook | null = () => null;
   /** A video's or sound's start and end points and markers (the media repo, made further down). */
   let mediaMarkers: (mediaId: string) => MediaMarkers | null = () => null;
-  /** Macros (made further down, once props, messages and media are): a slide's macro cue runs through it. */
-  let macroService: MacroService | null = null;
-  /** Macros' own times (made with the macros): told when the macros change. */
-  let macroScheduler: MacroScheduler | null = null;
   /** Audio playlists (made further down): the media library changing may change them. */
   let musicService: MusicService | null = null;
   /** Brings folder playlists' sounds into Audio (Session 44); set once the music is ready. */
   let syncAudios = (): void => undefined;
-  /** The arti schedules (made further down, once macros are): told when presentations change. */
   /** Today's calendar entry (made further down): told when an import loads a calendar. */
   let calendarService: CalendarService | null = null;
   /** The idle rotation (made further down): told when media change (a picture may have gone). */
@@ -1239,8 +1231,6 @@ function start(): void {
         simpleNow() && SIMPLE_MODE_REFUSED_COMMANDS.includes(command.type) ? SIMPLE_MODE_REFUSAL : null,
       mediaLength: (mediaId) => mediaLength(mediaId),
       mediaMarkers: (mediaId) => mediaMarkers(mediaId),
-      macroCommands: (macroId) =>
-        macroService?.commands(macroId) ?? { ok: false, message: 'Macros are not ready yet.' },
       repeatName: (playlistId) => playlists.repeatPlaylist(playlistId)?.name ?? null,
       pictureLook: (mediaId) => pictureLook(mediaId),
     },
@@ -2669,62 +2659,6 @@ function start(): void {
         : { ok: false, message: 'That message no longer exists.' };
     }),
   );
-  // ---- macros (shared/macros.ts): run as one change; Simple Mode runs none ------------------
-  const propItem = (id: string): PropItem | null => {
-    const p = props.list().find((x) => x.id === id);
-    return p ? asPropItem(p) : null;
-  };
-  const markedLogo = (): PropItem | null => {
-    const id = settings.get('logoPropId');
-    return typeof id === 'string' ? propItem(id) : null;
-  };
-  const macros = new MacroService({
-    repo: new MacroRepo(db),
-    engine: {
-      state: () => engine.current,
-      runMacro: (commands) => engine.runMacro(commands),
-    },
-    reads: {
-      prop: propItem,
-      template: (id) => messageTemplates.list().find((t) => t.id === id) ?? null,
-      media: (id) => media.kindAndName(id),
-      logo: markedLogo,
-    },
-    simple: () => mode === 'simple',
-    changed: (list) => {
-      sendToOperator(IPC.macros.changed, list);
-      network?.hint('macros');
-      // A macro's times may have changed.
-      macroScheduler?.refresh();
-    },
-    log: (message) => {
-      log.info(message);
-    },
-  });
-  macroService = macros;
-  // Macros that run by themselves at their times (Session 14): a ten-second countdown with Cancel,
-  // in either mode (the one exception to Simple Mode running no macros), never late.
-  macroScheduler = new MacroScheduler({
-    macros: () => macros.list(),
-    run: (id) => macros.run(id, 'its schedule', { scheduled: true }),
-    now: scheduleNow,
-    engineNow: Date.now,
-    changed: (view) => {
-      sendToOperator(IPC.macros.countdownChanged, view);
-    },
-    log: (level, message) => {
-      if (level === 'warn') log.warn(message);
-      else log.info(message);
-    },
-  });
-  const scheduler = macroScheduler;
-  stops.add('scheduled macros', () => {
-    scheduler.dispose();
-  });
-  handle(IPC.macros.countdown, () => scheduler.view());
-  handle(IPC.macros.cancelScheduled, (e, key) =>
-    fromOperator(e) ? scheduler.cancel(key) : scheduler.view(),
-  );
   // ---- audio playlists (Session 14): music on the audio layer, independent of the slides ------------
   const audioPlaylists = new AudioPlaylistRepo(db);
   // Music deleted, or tracks taken out, before this start can no longer be undone (Session 26a).
@@ -3044,7 +2978,6 @@ function start(): void {
     (globalThis as { drashtiArtiClock?: (wallMs: number) => void }).drashtiArtiClock = (wallMs) => {
       artiClockOffset = wallMs - Date.now();
       scheduledBackups.check();
-      scheduler.check();
     };
   // ---- Samvat and tithi: today's entry from the loaded calendars -------------------------
   const calendars = new CalendarService({
@@ -3104,14 +3037,6 @@ function start(): void {
     const which = quoteIdSchema.safeParse(id);
     return fromOperator(e) && which.success ? idleRotation.removeQuote(which.data) : notIdleOperator;
   });
-  const notMacroOperator = {
-    ok: false as const,
-    message: 'Only the operator window can change or run macros.',
-  };
-  handle(IPC.macros.list, () => macros.list());
-  handle(IPC.macros.save, (e, id, macro) => (fromOperator(e) ? macros.save(id, macro) : notMacroOperator));
-  handle(IPC.macros.remove, (e, id) => (fromOperator(e) ? macros.remove(id) : notMacroOperator));
-  handle(IPC.macros.run, (e, id) => (fromOperator(e) ? macros.run(id) : notMacroOperator));
   // The MIDI controller's settings: which device, and what its notes and controllers do.
   handle(IPC.midi.get, () => {
     const parsed = midiSettingsSchema.safeParse(settings.get('midi'));
@@ -3253,10 +3178,8 @@ function start(): void {
       },
       hall: () => ({ groupId: screenRepo.firstGroup('audience') }),
       looks: () => lookRepo.list().map((l) => ({ id: l.id, name: l.name })),
-      macros: () => macros.list().map((m) => ({ id: m.id, name: m.name, color: m.color })),
       clockStyle: mainClockStyle,
     },
-    runMacro: (id, who) => macros.run(id, who),
     playMusic: (who) => {
       const played = music.play(null);
       if (played.ok) log.info(`Music: ${who} played it`);

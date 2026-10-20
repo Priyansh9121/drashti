@@ -1010,37 +1010,6 @@ function Markers() {
   );
 }
 
-/** The macros: tapping one runs its actions as one change (Simple Mode refuses). */
-function Macros() {
-  const macros = useRemote((s) => s.macros);
-  if (!macros || macros.length === 0) return null;
-  return (
-    <section className="space-y-2" aria-labelledby="macros-title">
-      <h2 id="macros-title" className="text-base font-bold tracking-wider text-muted uppercase">
-        Macros
-      </h2>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" data-testid="remote-macros">
-        {macros.map((m) => (
-          <Button
-            key={m.id}
-            size="lg"
-            className="min-h-12 justify-start"
-            data-macro={m.id}
-            onClick={() => void tap(post(`/api/v1/macros/${encodeURIComponent(m.id)}/run`))}
-          >
-            <span
-              aria-hidden="true"
-              className="h-5 w-1.5 shrink-0 rounded-sm"
-              style={{ background: m.color }}
-            />
-            <span className="truncate">{m.name}</span>
-          </Button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 /** A Shastra passage by its reference (the loaded texts' own abbreviations): it goes up at once. */
 function Shastra() {
   const texts = useRemote((s) => s.shastra);
@@ -1089,7 +1058,6 @@ function TimersAndMessages() {
     <div className="space-y-5">
       <Looks />
       <Shastra />
-      <Macros />
       <Music />
       <Markers />
       <section className="space-y-2" aria-labelledby="timers-title">

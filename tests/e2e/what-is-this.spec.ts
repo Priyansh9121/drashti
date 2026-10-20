@@ -38,8 +38,8 @@ test('What is this? opens a panel’s words under its heading, never over the sh
   await networkOn(win);
   await showRunning(win);
 
-  // Every panel and column heading has its ?, one each (Macros, Masks and the Idle rotation in More tools,
-  // unfolded: Session 26a), and the places added in Sessions 31–36.
+  // Every panel and column heading has its ?, one each (Masks and the Idle rotation in More tools, unfolded:
+  // Session 26a), and the places added in Sessions 31–36.
   await openMoreTools(win);
   // The library's is in its sheet (Session 44).
   await openLibrary(win);

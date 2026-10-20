@@ -84,7 +84,6 @@ import type { PropFields, PropInfo, PropResult } from './props';
 import type { GroupLookPatch, LookResult, LooksView } from './looks';
 import type { StageLayout, StageLayoutResult } from './stage-layouts';
 import type { Mask, MaskResult } from './masks';
-import type { Macro, MacroCountdownView, MacroInput, MacroResult, MacroRunResult } from './macros';
 import type { MidiResult, MidiSettings } from './midi';
 import type { SearchResult } from './search';
 import type { RenderErrorReport } from './render-errors';
@@ -521,21 +520,6 @@ export const IPC = {
     setGroup: 'looks:set-group',
     /** main -> operator: the Looks changed (or which is live). */
     changed: 'looks:changed',
-  },
-  /** Macros (changing and running them: operator window, Pro Mode). */
-  macros: {
-    list: 'macros:list',
-    save: 'macros:save',
-    remove: 'macros:remove',
-    run: 'macros:run',
-    /** main -> operator: the macros changed. */
-    changed: 'macros:changed',
-    /** Macros counting down to run by themselves at their time (Session 14), in either mode. */
-    countdown: 'macros:countdown',
-    /** Cancel one counting down: it does not run this time (either mode). */
-    cancelScheduled: 'macros:cancel-scheduled',
-    /** main -> operator: what is counting down changed. */
-    countdownChanged: 'macros:countdown-changed',
   },
   /** The MIDI controller's settings (changing them: operator window, Pro Mode). */
   midi: {
@@ -1048,12 +1032,6 @@ export interface InvokeContract {
     args: [lookId: string, groupId: string, patch: GroupLookPatch];
     result: LookResult;
   };
-  [IPC.macros.list]: { args: []; result: Macro[] };
-  [IPC.macros.save]: { args: [macroId: string | null, macro: MacroInput]; result: MacroResult };
-  [IPC.macros.remove]: { args: [macroId: string]; result: MacroResult };
-  [IPC.macros.run]: { args: [macroId: string]; result: MacroRunResult };
-  [IPC.macros.countdown]: { args: []; result: MacroCountdownView };
-  [IPC.macros.cancelScheduled]: { args: [key: string]; result: MacroCountdownView };
   [IPC.midi.get]: { args: []; result: MidiSettings };
   [IPC.midi.set]: { args: [settings: MidiSettings]; result: MidiResult };
   [IPC.shastra.list]: { args: []; result: ShastraTextInfo[] };
@@ -1215,8 +1193,6 @@ export interface EventContract {
   [IPC.looks.changed]: LooksView;
   [IPC.stageLayouts.changed]: StageLayout[];
   [IPC.masks.changed]: Mask[];
-  [IPC.macros.changed]: Macro[];
-  [IPC.macros.countdownChanged]: MacroCountdownView;
   [IPC.calendar.changed]: CalendarView;
   [IPC.idle.changed]: IdleView;
   [IPC.output.context]: OutputContext;

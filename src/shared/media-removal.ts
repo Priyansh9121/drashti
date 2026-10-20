@@ -21,8 +21,6 @@ export interface MediaUsage {
   music: UsedIn;
   props: UsedIn;
   themes: UsedIn;
-  /** Macros that play it or put it up (a macro whose media is gone does not run). */
-  macros: UsedIn;
   /** It is one of the idle rotation's pictures. */
   idle: boolean;
   /** It is on the screens now (it stays up until it is changed). */
@@ -38,7 +36,6 @@ export const NOT_USED: MediaUsage = {
   music: { names: [], count: 0 },
   props: { names: [], count: 0 },
   themes: { names: [], count: 0 },
-  macros: { names: [], count: 0 },
   idle: false,
   live: false,
 };
@@ -67,12 +64,6 @@ export function usageLines(usage: MediaUsage, count = 1): string[] {
   line(usage.music, 'The music', 'The music lists', (p) => `taken out of ${p ? 'them' : 'it'}.`);
   line(usage.props, 'The prop', 'The props', () => `nothing will show in ${its} place.`);
   line(usage.themes, 'The theme', 'The themes', () => `nothing will show in ${its} place.`);
-  line(
-    usage.macros,
-    'The macro',
-    'The macros',
-    (p) => `${p ? 'they' : 'it'} will not run while it is deleted.`,
-  );
   if (usage.idle) out.push('The idle rotation’s pictures: taken out of them.');
   return out;
 }

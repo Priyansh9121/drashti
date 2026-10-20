@@ -5,16 +5,17 @@ import { launchApp, openMoreTools, operatorPage, operatorReady } from './helpers
 
 /*
  * Every panel and dialog Session 11 added passes the accessibility checks at
- * 1280 x 720: the Looks, Macros and Masks panels; Screens with the Looks,
- * a stage group's layout and a key and fill group; the stage layout, mask
- * and macro editors; the MIDI dialog. Placeholder names only.
+ * 1280 x 720: the Looks and Masks panels; Screens with the Looks, a stage
+ * group's layout and a key and fill group; the stage layout and mask editors;
+ * the MIDI dialog (Session 44: Macros are gone, and MIDI is in More tools).
+ * Placeholder names only.
  */
 
 test('the new panels and dialogs pass the accessibility checks at 1280 x 720', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp();
   const win = await operatorPage(app);
-  // Macros, Masks and the Idle rotation are in More tools (Session 26a).
+  // Masks, the Idle rotation and MIDI are in More tools (Session 26a; MIDI since Session 44).
   await openMoreTools(win);
   await operatorReady(win);
   await win.setViewportSize({ width: 1280, height: 720 });
@@ -53,18 +54,12 @@ test('the new panels and dialogs pass the accessibility checks at 1280 x 720', a
         },
       ],
     });
-    await d.macros.save(null, {
-      name: 'Placeholder arti',
-      color: '#2f9e44',
-      actions: [{ kind: 'clearAll' }, { kind: 'stageMessage', text: 'Placeholder: arti' }],
-    });
   });
 
   // The right column's new panels.
   await expect(win.getByTestId('looks-panel').getByTestId('look-button')).toHaveCount(2);
-  await expect(win.getByTestId('macros-panel').getByTestId('macro-button')).toHaveCount(1);
   await expect(win.getByTestId('masks-panel').getByTestId('mask-button')).toHaveCount(1);
-  for (const panel of ['looks-panel', 'macros-panel', 'masks-panel'])
+  for (const panel of ['looks-panel', 'masks-panel'])
     await expectNoSeriousA11yIssues(win, `the ${panel}`, `[data-testid="${panel}"]`);
   await expectNoSeriousA11yIssues(win, 'the operator window with the new panels');
 
@@ -92,12 +87,8 @@ test('the new panels and dialogs pass the accessibility checks at 1280 x 720', a
   await masks.getByRole('button', { name: 'Close masks' }).click();
   await win.getByRole('button', { name: 'Close screens' }).click();
 
-  // The macro editor and the MIDI dialog.
-  await win.getByTestId('macros-panel').getByRole('button', { name: 'Edit' }).click();
-  await expect(win.getByTestId('macro-editor').getByTestId('macro-action')).toHaveCount(2);
-  await expectNoSeriousA11yIssues(win, 'the macro editor');
-  await win.getByRole('button', { name: 'Close macros' }).click();
-  await win.getByTestId('macros-panel').getByTestId('open-midi').click();
+  // The MIDI dialog.
+  await win.getByTestId('more-tools').getByTestId('open-midi').click();
   await expect(win.getByTestId('midi-dialog')).toBeVisible();
   await expectNoSeriousA11yIssues(win, 'the MIDI dialog');
   await win.getByRole('button', { name: 'Close MIDI' }).click();

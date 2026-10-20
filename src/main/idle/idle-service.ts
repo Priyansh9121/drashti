@@ -24,7 +24,7 @@ import { nfcDeep } from '../../shared/nfc';
  * admin's settings and quotes, the pictures that are still in the media
  * library, and the quote of the day (again just after midnight), all put
  * into the engine's state so every window shows the same. Starting and
- * stopping it are engine commands (the panel, a macro); which groups show
+ * stopping it are engine commands (the panel, the remote); which groups show
  * it is in their Look.
  */
 

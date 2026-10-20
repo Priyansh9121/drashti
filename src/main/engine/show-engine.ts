@@ -117,20 +117,13 @@ export interface EngineOptions {
   looks?: LookSource;
   /**
    * Why a command is refused now, or null to run it: Simple Mode refuses
-   * switching the Look, from the window, a phone, the API or a macro alike.
+   * switching the Look, from the window, a phone or the API alike.
    */
   refuse?: (command: EngineCommand) => string | null;
   /** A media file's length in ms, when the library knows it (learned from playing it). */
   mediaLength?: (mediaId: string) => number | null;
   /** A video's or sound's start and end points and markers (Session 14), when it has any. */
   mediaMarkers?: (mediaId: string) => MediaMarkers | null;
-  /**
-   * A slide's macro cue: the commands the macro runs, or why it does not run
-   * (Simple Mode, a macro gone or forbidden): the slide then goes up alone.
-   */
-  macroCommands?: (
-    macroId: string,
-  ) => { ok: true; commands: EngineCommand[] } | { ok: false; message: string };
   /** A Repeat Slides playlist's name (Session 26d), or null when it is not one. */
   repeatName?: (playlistId: string) => string | null;
   /** A picture's look (Session 26e), or null: shown as it is. */
@@ -220,10 +213,6 @@ export class ShowEngine {
   private at: number | null = null;
   /** The change being made only adds what is known about it (a file's length): not a change to the show. */
   private bookkeeping = false;
-  /** Running a macro (or a slide's cue): slides it puts up do not set off their own cues. */
-  private inMacro = false;
-  /** The macro being run has Clear all in it: Put it back brings back what was up before it. */
-  private macroClears = false;
 
   constructor(
     private readonly source: SlideSource,
@@ -728,61 +717,8 @@ export class ShowEngine {
         });
       }
     }
-    // The slide's macro runs in the same change, after the slide is up (never when a macro put the slide up).
-    if (played.macroId && !this.inMacro && this.options.macroCommands) {
-      const macro = this.options.macroCommands(played.macroId);
-      if (macro.ok) {
-        const ran = this.resolveAll(macro.commands, actions.reduce(reduce, this.state));
-        if (ran.ok) actions.push(...ran.actions);
-      }
-    }
+    // A slide's macro cue (from before Session 44) stays in the library, and never runs: macros are gone.
     return { ok: true, actions };
-  }
-
-  /**
-   * Commands in order, each as the ones before it left the show (from
-   * `from`): their actions together, or why one cannot run. Nothing changes
-   * until the caller applies them, as one change.
-   */
-  private resolveAll(commands: readonly EngineCommand[], from: EngineState = this.state): Resolved {
-    const before = this.state;
-    const wasInMacro = this.inMacro;
-    this.inMacro = true;
-    const actions: EngineAction[] = [];
-    try {
-      this.state = from;
-      for (const command of commands) {
-        const refused = this.options.refuse?.(command) ?? null;
-        if (refused !== null) return { ok: false, error: 'forbidden', message: refused };
-        const r = this.resolve(command);
-        if (!r.ok) return r;
-        actions.push(...r.actions);
-        this.state = r.actions.reduce(reduce, this.state);
-      }
-      return { ok: true, actions };
-    } finally {
-      this.state = before;
-      this.inMacro = wasInMacro;
-    }
-  }
-
-  /**
-   * A macro: its commands in order as one change (one patch, one revision),
-   * or none of them if one cannot run. Put it back after a macro with Clear
-   * all in it brings back what was up before the macro; Back after any macro
-   * is Previous.
-   */
-  runMacro(commands: readonly EngineCommand[]): CommandResult {
-    return this.atOnce(() => {
-      const resolved = this.resolveAll(commands);
-      if (!resolved.ok) return resolved;
-      this.macroClears = commands.some((c) => c.type === 'clearAll');
-      try {
-        return this.apply(resolved.actions, 'macro');
-      } finally {
-        this.macroClears = false;
-      }
-    });
   }
 
   /**
@@ -1389,11 +1325,7 @@ export class ShowEngine {
    * changes the layers or the position forgets them (black-out, the logo,
    * timers and the stage message do not).
    */
-  private keepUndo(
-    prev: EngineState,
-    next: EngineState,
-    cause: EngineCommandType | 'macro' | null,
-  ): EngineState {
+  private keepUndo(prev: EngineState, next: EngineState, cause: EngineCommandType | null): EngineState {
     if (this.bookkeeping) {
       // What Back and Put it back would undo to stays, now as the layers are.
       if (this.cleared?.to === prev.layers) this.cleared = { ...this.cleared, to: next.layers };
@@ -1401,7 +1333,7 @@ export class ShowEngine {
       if (last?.toLayers === prev.layers) last.toLayers = next.layers;
       return next;
     }
-    if (cause === 'clearAll' || (cause === 'macro' && this.macroClears)) {
+    if (cause === 'clearAll') {
       if (next.layers !== prev.layers)
         this.cleared = { from: prev.layers, to: next.layers, repeat: prev.repeat };
     } else if (this.cleared && next.layers !== this.cleared.to) {
@@ -1418,17 +1350,11 @@ export class ShowEngine {
     return next.canPutBack === canPutBack ? next : { ...next, canPutBack };
   }
 
-  private apply(
-    actions: readonly EngineAction[],
-    cause: EngineCommandType | 'macro' | null = null,
-  ): CommandResult {
+  private apply(actions: readonly EngineAction[], cause: EngineCommandType | null = null): CommandResult {
     return this.atOnce(() => this.applyAt(actions, cause));
   }
 
-  private applyAt(
-    actions: readonly EngineAction[],
-    cause: EngineCommandType | 'macro' | null,
-  ): CommandResult {
+  private applyAt(actions: readonly EngineAction[], cause: EngineCommandType | null): CommandResult {
     const prev = this.state;
     let next = actions.reduce(reduce, prev);
     // Repeat Slides goes round only while its slides are up: anything else going up, Clear all or the

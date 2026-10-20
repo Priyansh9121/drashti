@@ -61,12 +61,9 @@ import { PropsPanel } from './PropsPanel';
 import { StageLayoutEditor } from '../stage/StageLayoutEditor';
 import { MaskEditor } from '../masks/MaskEditor';
 import { MasksPanel } from './MasksPanel';
-import { MacrosPanel } from './MacrosPanel';
-import { MacroEditor } from '../macros/MacroEditor';
-import { MacroCountdown } from '../macros/MacroCountdown';
 import { AudioAddMenu, MusicPanel } from '../music/MusicPanel';
-import { runMacro } from '../macros/macros-store';
 import { setMidiHandler, startMidi } from '../midi/midi-store';
+import { MidiTool } from '../midi/MidiTool';
 import { runBack } from './actions';
 import { LooksPanel } from './LooksPanel';
 import { CalendarDialog } from '../calendar/CalendarDialog';
@@ -244,8 +241,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       } else if (action.kind === 'clearAll') run('clearAll');
       else if (action.kind === 'blackout') run('toggleBlackout');
       else if (action.kind === 'logo') run('toggleLogo');
-      // A macro works the show itself: never during the practice show.
-      else if (!usePractice.getState().on) void runMacro(action.macroId);
+      // A pad mapped to a macro before Session 44 does nothing: macros are gone (the mapping is kept).
     });
     return () => {
       setMidiHandler(null);
@@ -281,7 +277,6 @@ function ProApp({ info }: { info: AppInfo | null }) {
     // on a 1280 × 720 display leaves 640 × 360) the window scrolls rather than cutting the Live column off.
     <div className="flex h-full bg-ink min-h-[540px] min-w-[960px] flex-col">
       <Header platform={platform} onOpenScreens={openScreens} />
-      <MacroCountdown />
       {/* A hall screen that stopped (Session 26h): in the flow, so it never covers the show controls. */}
       <EngineUnread />
       <StoppedScreens />
@@ -347,10 +342,6 @@ function ProApp({ info }: { info: AppInfo | null }) {
                   data-testid="more-tools"
                 >
                   <div>
-                    <PanelNote>A macro does several things at one press, as an admin set it up.</PanelNote>
-                    <MacrosPanel nested />
-                  </div>
-                  <div>
                     <PanelNote>A mask hides part of a screen, such as a corner a banner covers.</PanelNote>
                     <MasksPanel nested />
                   </div>
@@ -359,6 +350,12 @@ function ProApp({ info }: { info: AppInfo | null }) {
                       The idle rotation shows pictures and quotes while nothing else is up.
                     </PanelNote>
                     <IdlePanel nested />
+                  </div>
+                  <div>
+                    <PanelNote>
+                      A MIDI controller’s pads can work Next, Back, Clear all, Black-out and the Logo.
+                    </PanelNote>
+                    <MidiTool />
                   </div>
                 </PanelGroup>
               </div>
@@ -387,7 +384,6 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <StreamSettings />
       <StageLayoutEditor />
       <MaskEditor />
-      <MacroEditor />
       <CalendarDialog />
       <RolesDialog />
       <BackupsDialog />

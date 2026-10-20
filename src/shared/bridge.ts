@@ -84,7 +84,6 @@ import type { PropFields, PropInfo, PropResult } from './props';
 import type { GroupLookPatch, LookResult, LooksView } from './looks';
 import type { StageLayout, StageLayoutResult } from './stage-layouts';
 import type { Mask, MaskResult } from './masks';
-import type { Macro, MacroCountdownView, MacroInput, MacroResult, MacroRunResult } from './macros';
 import type { MidiResult, MidiSettings } from './midi';
 import type { SearchResult } from './search';
 import type { RenderErrorReport } from './render-errors';
@@ -650,20 +649,6 @@ export interface DrashtiBridge {
     move(lookId: string, to: number): Promise<LookResult>;
     /** Change one group's settings in a Look. */
     setGroup(lookId: string, groupId: string, patch: GroupLookPatch): Promise<LookResult>;
-  };
-  /** Macros: actions run in order as one change (changing and running them: operator window, Pro Mode). */
-  macros: {
-    list(): Promise<Macro[]>;
-    onChanged(listener: (macros: Macro[]) => void): () => void;
-    /** Make one (no id) or save one; refused if an action is not one a macro may do. */
-    save(macroId: string | null, macro: MacroInput): Promise<MacroResult>;
-    remove(macroId: string): Promise<MacroResult>;
-    /** Run it now (Simple Mode refuses). */
-    run(macroId: string): Promise<MacroRunResult>;
-    /** Macros counting down to run by themselves (Session 14), and Cancel (either mode). */
-    countdown(): Promise<MacroCountdownView>;
-    cancelScheduled(key: string): Promise<MacroCountdownView>;
-    onCountdown(listener: (view: MacroCountdownView) => void): () => void;
   };
   /** The MIDI controller: which device, and what its notes and controllers do. */
   midi: {

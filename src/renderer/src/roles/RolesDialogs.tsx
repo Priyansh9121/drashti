@@ -205,11 +205,11 @@ function RoleSummary() {
       </li>
       <li>
         <strong className="text-fg">Operators</strong> run the show in Pro Mode: playlists, words and slides,
-        props, messages and timers, macros, Looks, announcements, going live and recording.
+        props, messages, timers and lower thirds, Looks, announcements, going live and recording.
       </li>
       <li>
         <strong className="text-fg">Admins</strong> also set Drashti up: importing and removing, themes,
-        Shastra texts, calendars, the idle rotation and every schedule, macros, screens, Looks, stage layouts,
+        Shastra texts, calendars, the idle rotation and every schedule, MIDI, screens, Looks, stage layouts,
         masks and sound, the stream’s settings and keys, phones and nodes, backups, restores and updates, and
         these PINs.
       </li>

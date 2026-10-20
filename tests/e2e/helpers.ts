@@ -411,7 +411,7 @@ export async function showExtras(page: Page): Promise<void> {
   await expect(page.getByTestId('playlist-view-tab-templates')).toBeVisible();
 }
 
-/** Unfold More tools (Session 26a: Macros, Masks and the Idle rotation are in it, folded away to begin with). */
+/** Unfold More tools (Session 26a; Session 44: Lower Thirds, Masks, the Idle rotation and MIDI, folded away to begin with). */
 export async function openMoreTools(page: Page): Promise<void> {
   const toggle = page.getByTestId('group-more-tools-toggle');
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();

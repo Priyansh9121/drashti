@@ -11,7 +11,7 @@ import { idSchema } from './model-schema';
  * window, the remote and recovery agree.
  *
  * How it meets the rest of the audio layer: one sound at a time. A slide's
- * sound cue (or a sound item, a macro's sound, a kirtan's recording) takes
+ * sound cue (or a sound item, a kirtan's recording) takes
  * the audio layer and the music stops, with its fade; Back after that Next
  * brings it back where it would be by now. Clear audio (F6) and Clear all
  * stop it; Put it back brings it back where it would be by now. Music

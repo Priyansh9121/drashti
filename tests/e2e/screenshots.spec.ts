@@ -750,7 +750,7 @@ test('the presenter’s remote: the library and the notes on an iPhone, and an i
   await app.close();
 });
 
-test('Looks, stage layouts, masks, key and fill, macros, MIDI and the slide editor (Session 11)', async () => {
+test('Looks, stage layouts, masks, key and fill, MIDI and the slide editor (Session 11)', async () => {
   test.setTimeout(240_000);
   const { app } = await launchApp({
     DRASHTI_WINDOWED_OUTPUTS: '1',
@@ -761,10 +761,10 @@ test('Looks, stage layouts, masks, key and fill, macros, MIDI and the slide edit
   await openMoreTools(win);
   await operatorReady(win);
   await win.setViewportSize({ width: 1600, height: 900 });
-  const show = await running(win);
+  await running(win);
   // A hall, a stage, and a key and fill pair; a second Look with the hall's words as a lower third over
-  // its background; a mask, a stage layout and macros.
-  await win.evaluate(async (logoId) => {
+  // its background; a mask and a stage layout.
+  await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     const group = async (name: string, role: 'audience' | 'stage' | 'keyfill', displays: number[]) => {
       const g = await d.screens.createGroup(name);
@@ -863,31 +863,11 @@ test('Looks, stage layouts, masks, key and fill, macros, MIDI and the slide edit
       slides: 'lowerThird',
       layers: ['background', 'slide', 'props', 'messages'],
     });
-    await d.macros.save(null, {
-      name: 'Placeholder arti',
-      color: '#e8590c',
-      actions: [
-        { kind: 'clearAll' },
-        { kind: 'showProp', propId: logoId },
-        { kind: 'stageMessage', text: 'Placeholder: arti now' },
-        { kind: 'blackout', to: 'off' },
-      ],
-    });
-    await d.macros.save(null, {
-      name: 'Placeholder lower thirds on',
-      color: '#3e63dd',
-      actions: [{ kind: 'look', lookId: lowerId }],
-    });
-    await d.macros.save(null, {
-      name: 'Placeholder Standard',
-      color: '#868e96',
-      actions: [{ kind: 'look', lookId: standard }],
-    });
     await d.engine.dispatch({ type: 'setStageMessage', text: 'Placeholder: two minutes' });
     // A coloured background, so the hall's mask shows (what it hides is black).
     await d.engine.dispatch({ type: 'setBackground', background: { kind: 'color', color: '#1f3a5f' } });
-  }, show.logoPropId);
-  // The right column from its top: the Looks, Macros and Masks panels.
+  });
+  // The right column from its top: the Looks, and More tools (its file keeps its name from Session 11).
   await win.getByTestId('looks-panel').evaluate((el) => {
     el.scrollIntoView({ block: 'start' });
   });
@@ -932,10 +912,6 @@ test('Looks, stage layouts, masks, key and fill, macros, MIDI and the slide edit
   await shot(await outputs('keyfill', 'key'), 'output-key');
   await shot(await outputs('audience'), 'output-hall-lower-third');
 
-  await win.getByTestId('macros-panel').getByRole('button', { name: 'Edit' }).click();
-  await expect(win.getByTestId('macro-editor').getByTestId('macro-action')).toHaveCount(4);
-  await shot(win, 'macro-editor');
-  await win.getByRole('button', { name: 'Close macros' }).click();
   await win.evaluate(() => {
     const input = {
       id: 'pad',
@@ -955,7 +931,7 @@ test('Looks, stage layouts, masks, key and fill, macros, MIDI and the slide edit
       value: () => Promise.resolve(access),
     });
   });
-  await win.getByTestId('macros-panel').getByTestId('open-midi').click();
+  await win.getByTestId('more-tools').getByTestId('open-midi').click();
   await win.getByTestId('midi-device').selectOption('Placeholder pad');
   await shot(win, 'midi-dialog');
   await win.getByRole('button', { name: 'Close MIDI' }).click();
@@ -975,7 +951,7 @@ test('Looks, stage layouts, masks, key and fill, macros, MIDI and the slide edit
   await editor.getByRole('button', { name: 'Cancel' }).click();
   await win.getByTestId('keep-changes').getByRole('button', { name: 'Throw them away' }).click();
 
-  // The phone remote's More tab: Looks and macros.
+  // The phone remote's More tab: the Looks.
   const { base } = await networkOn(win);
   const code = await pairingCode(win, 'remote', 'Placeholder phone');
   const phone = await device('chromium');
@@ -983,7 +959,7 @@ test('Looks, stage layouts, masks, key and fill, macros, MIDI and the slide edit
     await pairByQr(phone.page, base, code, '/remote');
     await expect(phone.page.getByTestId('connection')).toHaveText('Connected');
     await phone.page.getByTestId('remote-tab-more').click();
-    await expect(phone.page.getByTestId('remote-macros')).toBeVisible();
+    await expect(phone.page.getByTestId('remote-tab-more')).toHaveAttribute('aria-selected', 'true');
     await shot(phone.page, 'phone-remote-more');
   } finally {
     await phone.close();
@@ -1286,9 +1262,9 @@ test('output nodes: the node’s window, Screens with a node, pairing, the dashb
   }
 });
 
-test('music, markers, macros at set times, scheduled backups, and roles and PINs (Session 14)', async () => {
+test('music, markers, scheduled backups, and roles and PINs (Session 14)', async () => {
   test.setTimeout(240_000);
-  const { app } = await launchApp({ DRASHTI_TEST_ARTI_CLOCK: '1' });
+  const { app } = await launchApp();
   const win = await operatorPage(app);
   await openMoreTools(win);
   await win.setViewportSize({ width: 1920, height: 1080 });
@@ -1351,33 +1327,6 @@ test('music, markers, macros at set times, scheduled backups, and roles and PINs
   });
   await expect(win.getByTestId('marker-jumps')).toContainText('Placeholder chorus');
   await shot(win, 'marker-jumps');
-
-  // A macro at a set time: its editor, then the countdown.
-  const made = await win.evaluate(() =>
-    (globalThis as PageGlobals).drashti.macros.save(null, {
-      name: 'Placeholder before sabha',
-      color: '#2f9e44',
-      actions: [{ kind: 'stageMessage', text: 'Placeholder: sabha soon' }],
-      schedules: [{ id: 'weekdays', days: [1, 2, 3, 4, 5], date: null, time: '18:30', enabled: true }],
-    }),
-  );
-  expect(made.ok).toBe(true);
-  await win.getByTestId('macros-panel').scrollIntoViewIfNeeded();
-  await win.getByTestId('macros-panel').getByRole('button', { name: 'Edit' }).click();
-  const editor = win.getByTestId('macro-editor');
-  await editor.getByTestId('macro-time').scrollIntoViewIfNeeded();
-  await shot(win, 'macro-schedule');
-  await editor.getByRole('button', { name: 'Close macros' }).click();
-  const at = new Date();
-  at.setHours(18, 30, 0, 0);
-  while (at.getTime() <= Date.now() || at.getDay() === 0 || at.getDay() === 6) at.setDate(at.getDate() + 1);
-  await app.evaluate((_electron, ms) => {
-    (globalThis as { drashtiArtiClock?: (wallMs: number) => void }).drashtiArtiClock?.(ms);
-  }, at.getTime() + 500);
-  const countdown = win.getByTestId('macro-countdown');
-  await expect(countdown).toContainText('runs by itself');
-  await shot(win, 'macro-countdown');
-  await countdown.getByTestId('macro-countdown-cancel').click();
 
   // Scheduled backups: a folder, weekdays at 03:00.
   const drive = mkdtempSync(join(tmpdir(), 'Placeholder backup drive-'));

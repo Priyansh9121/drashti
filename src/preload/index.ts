@@ -464,16 +464,6 @@ const bridge: DrashtiBridge = {
         listener();
       }),
   },
-  macros: {
-    list: () => invoke(IPC.macros.list),
-    onChanged: (listener) => on(IPC.macros.changed, listener),
-    save: (macroId, macro) => invoke(IPC.macros.save, macroId, macro),
-    remove: (macroId) => invoke(IPC.macros.remove, macroId),
-    run: (macroId) => invoke(IPC.macros.run, macroId),
-    countdown: () => invoke(IPC.macros.countdown),
-    cancelScheduled: (key) => invoke(IPC.macros.cancelScheduled, key),
-    onCountdown: (listener) => on(IPC.macros.countdownChanged, listener),
-  },
   midi: {
     get: () => invoke(IPC.midi.get),
     set: (settings) => invoke(IPC.midi.set, settings),
