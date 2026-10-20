@@ -73,32 +73,25 @@ describe('Simple Mode locks', () => {
     expect(SIMPLE_MODE_REFUSED_COMMANDS).toEqual(['setLook', 'zoomLive', 'resetLiveZoom']);
   });
 
-  it('every Session 12 request that changes something; the arti prompt is still answered', () => {
+  it('every Session 12 request that changes something', () => {
     for (const channel of [
       IPC.shastra.setTheme,
       IPC.shastra.remove,
       IPC.playlists.editSlot,
       IPC.playlists.setTimers,
-      IPC.arti.save,
-      IPC.arti.setEnabled,
-      IPC.arti.remove,
       IPC.calendar.remove,
       IPC.idle.saveSettings,
       IPC.idle.saveQuote,
       IPC.idle.removeQuote,
     ])
       expect(SIMPLE_MODE_LOCKED, channel).toContain(channel);
-    // Finding passages, reading the schedules, and answering the prompt (its big button) stay.
+    // Finding passages and reading the schedules stay.
     for (const channel of [
       IPC.shastra.list,
       IPC.shastra.tree,
       IPC.shastra.resolve,
       IPC.shastra.search,
       IPC.shastra.passage,
-      IPC.arti.view,
-      IPC.arti.putUp,
-      IPC.arti.notNow,
-      IPC.arti.cancel,
       IPC.calendar.view,
       IPC.idle.view,
     ])

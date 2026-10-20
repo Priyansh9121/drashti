@@ -140,8 +140,8 @@ function Heading({
 }
 
 /**
- * Panels together under one heading (Session 26a: Audio holds Music and the Arti; More tools holds Macros,
- * Masks and the Idle rotation, folded away to begin with). It folds as a panel does, and remembers it.
+ * Panels together under one heading (Session 26a: Audio holds Music; More tools holds Macros, Masks and the
+ * Idle rotation, folded away to begin with). It folds as a panel does, and remembers it.
  */
 export function PanelGroup({
   title,
@@ -149,6 +149,7 @@ export function PanelGroup({
   remember,
   defaultOpen = true,
   help: topic,
+  actions,
   children,
   ...data
 }: {
@@ -159,6 +160,8 @@ export function PanelGroup({
   defaultOpen?: boolean;
   /** Its "What is this?" words (Sessions 31–36), as a panel's: shared/panel-help.ts. */
   help?: PanelHelpId;
+  /** Buttons at the end of its heading (Session 44: Audio's +). */
+  actions?: ReactNode;
   children: ReactNode;
 } & DataAttributes) {
   const id = useId();
@@ -197,6 +200,7 @@ export function PanelGroup({
           </button>
         </h2>
         {help.button}
+        {actions}
       </header>
       {help.card}
       {open && (

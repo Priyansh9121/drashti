@@ -991,12 +991,11 @@ test('Looks, stage layouts, masks, key and fill, macros, MIDI and the slide edit
   await app.close();
 });
 
-test('Shastra, timers in the running order, the arti prompt, Samvat and tithi, and the idle rotation (Session 12)', async () => {
+test('Shastra, timers in the running order, Samvat and tithi, and the idle rotation (Session 12)', async () => {
   test.setTimeout(300_000);
   const { app } = await launchApp({
     DRASHTI_WINDOWED_OUTPUTS: '1',
     DRASHTI_EXTRA_DISPLAYS: '2',
-    DRASHTI_TEST_ARTI_CLOCK: '1',
   });
   const win = await operatorPage(app);
   await openMoreTools(win);
@@ -1114,17 +1113,6 @@ test('Shastra, timers in the running order, the arti prompt, Samvat and tithi, a
       ])
         await d.idle.saveQuote(null, { words, attribution: 'Placeholder' });
       await d.idle.saveSettings({ pictures: ids, secondsEach: 4, quoteOfTheDay: true });
-      const kirtan = (await d.library.listPresentations()).find((p) => p.kirtan !== null)?.id ?? '';
-      await d.arti.save(null, {
-        name: 'Placeholder evening arti',
-        presentationId: kirtan,
-        days: [0, 1, 2, 3, 4, 5, 6],
-        date: null,
-        time: '19:00',
-        promptMinutes: 5,
-        byItself: false,
-        enabled: true,
-      });
       await d.messages.create({
         name: 'Placeholder today',
         template: 'Today: {date}',
@@ -1171,34 +1159,6 @@ test('Shastra, timers in the running order, the arti prompt, Samvat and tithi, a
   await win.getByTestId('timer-cues').getByTestId('add-timer-cue').click();
   await shot(win, 'timer-cues');
   await win.getByTestId('timer-cues').getByRole('button', { name: 'Cancel' }).click();
-
-  // The arti: minutes before its time (tomorrow, on the schedules' test clock), and its schedule.
-  const tomorrow = (h: number, m: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    d.setHours(h, m, 0, 0);
-    return d.getTime();
-  };
-  const clockTo = (ms: number) =>
-    app.evaluate((_e, at) => {
-      (globalThis as { drashtiArtiClock?: (wallMs: number) => void }).drashtiArtiClock?.(at);
-    }, ms);
-  await clockTo(tomorrow(18, 56));
-  await expect(win.getByTestId('arti-prompt')).toBeVisible();
-  await win.getByTestId('arti-panel').evaluate((el) => {
-    el.scrollIntoView({ block: 'start' });
-  });
-  await shot(win, 'arti-prompt');
-  await win.getByTestId('arti-schedule').getByRole('button').first().click();
-  await expect(win.getByTestId('arti-dialog')).toBeVisible();
-  await shot(win, 'arti-dialog');
-  await win.getByRole('button', { name: 'Close the arti time' }).click();
-  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
-  await clockTo(tomorrow(19, 0));
-  await expect(win.getByTestId('simple-mode').getByTestId('arti-prompt')).toContainText('it is time');
-  await shot(win, 'simple-mode-arti');
-  await win.getByTestId('arti-not-now').click();
-  await win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('pro', 'pro'));
 
   // Samvat and tithi: the Calendar dialog, and the stage screen's clock, Samvat and quote boxes.
   await win.getByTestId('open-calendar').click();

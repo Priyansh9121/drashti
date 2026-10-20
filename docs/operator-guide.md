@@ -12,7 +12,7 @@ On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows 
 
 - **Left column:** at the top the **Playlists**, as many as you like, in folders: **+ New** makes one, and the chosen one shows **Rename** and **Delete** at its end. Below them the **Library**: Presentations and Media, with the search box and, under it, **Import…** (files, a folder, or from a link) and **New…** (a presentation from pasted words). Drag the line between them to give either more room; Drashti remembers it. The Shastra tab, the Templates and the kirtan filters show only when an admin turns on **View › Show Shastra, Templates and Kirtan Details**.
 - **Middle:** the **open playlist** at the top: its name, **Add files…**, **From a Link…** and its menu (**⋯**), then its items as cards, each with a picture, its name, what it is (a presentation, a deck, a video, a picture, a sound, a header) and its length or how many slides. Drag a card to move it, or drop presentations, pictures, videos or files anywhere on it. Below it, the **slides** of the item you clicked, in the order they play. With no playlist open (**×** closes it), the slides of the presentation chosen in the library fill the middle.
-- **Right column:** the live picture, headed **LIVE** (what the hall sees now), with **Back** and **Next** under it (Next, in the appearance's one strong colour, is always the next thing to do; each does exactly what its key does), then **Audio** (Music and the Arti), the **Stage screen**, **Messages**, **Timers** (one line each: start or pause, reset, show on the screens, Edit), **Props** and **Looks**, and **More tools**, folded away: Macros, Masks and the Idle rotation, each with a line saying what it is.
+- **Right column:** the live picture, headed **LIVE** (what the hall sees now), with **Back** and **Next** under it (Next, in the appearance's one strong colour, is always the next thing to do; each does exactly what its key does), then **Audio** (its audio playlists), the **Stage screen**, **Messages**, **Timers** (one line each: start or pause, reset, show on the screens, Edit), **Props** and **Looks**, and **More tools**, folded away: Macros, Masks and the Idle rotation, each with a line saying what it is.
 - **Along the bottom:** **Clear all** (F1), the **clear buttons** for each layer, **Logo** and **Black-out**, then the **status bar** (the version, the screens, imports, warnings).
 
 **The first start.** A new library opens with a welcome: Drashti's lamp lights, then three choices. **Set Up Screens…** opens the setup (the admin's guide has it). **Try a practice show first** puts five placeholder slides on this screen only, with a banner saying so: try Next, Back, **B**, **L** and **F1** as in a sabha; nothing goes to the hall's screens, the phones or a stream, and nothing is saved. **Leave the practice show** brings the welcome back. **Skip for now** leaves the middle of the window showing three steps to a sabha: **Import…** what you show, make **this week's playlist**, and **Set Up Screens…**. The welcome comes once; **View › Set Up Screens…** opens the setup any time.
@@ -114,7 +114,7 @@ If an admin has turned the single-letter keys off (**Keys at a glance**, below),
 
 **Looks.** If the admin made more than one Look ("Gujarati only", "Lower thirds"), switch between them in **Looks**: every screen changes at once.
 
-**Audio.** In the right column, under the live picture, **Audio** holds **Music** (lists of sounds that play one after another, for before the sabha) and the **Arti** (the arti's time and its presentation, which the admin sets). **Play** starts a list; **Clear audio** along the bottom (or **F6**) stops whatever sound is playing.
+**Audio.** In the right column, under the live picture, **Audio** holds **Music**: audio playlists, sounds that play one after another, for before the sabha. **+** at the top of **Audio** makes one (**Create playlist**) or brings sounds in from the computer (**Import**). Sounds dragged onto an audio playlist there, from the Finder (Explorer on Windows) or from the library's sheet, go into it. A folder imported as a playlist puts its sounds in an audio playlist of their own too, named after it with " - Audios" (the same sounds, not copies). **Play** starts a list; **Clear audio** along the bottom (or **F6**) stops whatever sound is playing.
 
 **More tools.** Folded away at the end of the right column: **Macros**, **Masks** and the **Idle rotation**. Press **More tools** to open it or fold it again; each tool starts with a line saying what it does.
 
@@ -129,10 +129,6 @@ If an admin has turned the single-letter keys off (**Keys at a glance**, below),
 **Markers.** While a video or a sound with markers plays, its markers are buttons under the live picture: a press jumps every screen and the sound there together. A video's start and end (where it plays from and to) are set on its timeline: **Start, end and markers…** in its card's menu, or its row in **Media** (`docs/admin-guide.md`, section 10).
 
 ![Markers under the live picture](screenshots/marker-jumps.png)
-
-**The arti.** If the admin set the arti's time, a strip under the header names it and counts down to it, from some minutes before. At the time, the arti is what Next shows: press Next at the right moment. **Put up Arti now** puts it up at once; **Not now** leaves it.
-
-![The arti prompt](screenshots/arti-prompt.png)
 
 **Music during the sabha.** A slide or item with a sound of its own stops the music (with a short fade). **Clear audio** (the **Audio** button along the bottom, or **F6**) stops it too, and **Put it back**, pressed at once, brings it back where it would be by now.
 

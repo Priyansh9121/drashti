@@ -87,9 +87,13 @@ test('tracks play one after another with fades; pause, Clear audio, Put it back,
   const idOf = (name: string) => media.find((m) => m.name.startsWith(name))?.id ?? '';
   const [toneOne, toneTwo] = [idOf('Placeholder tone one'), idOf('Placeholder tone two')];
 
-  // A list from the Music panel: New, then the two sounds.
+  // A list from Audio's + (Session 44): Create playlist, named in place, then the two sounds.
   const panel = win.getByTestId('music-panel');
-  await panel.getByTestId('music-new').click();
+  await win.getByTestId('audio-add').click();
+  await win.getByRole('menuitem', { name: 'Create playlist' }).click();
+  const name = win.getByRole('textbox', { name: 'Name of the audio playlist' });
+  await name.fill('Music before sabha');
+  await name.press('Enter');
   await panel.getByTestId('music-add').click();
   const add = win.getByTestId('music-add-dialog');
   await add.getByLabel('Placeholder tone one.wav').check();

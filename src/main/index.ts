@@ -32,7 +32,7 @@ import { copyMediaId, copyOfId, MEDIA_ID_PATTERN, MEDIA_SCHEME } from '../shared
 import { NOT_USED } from '../shared/media-removal';
 import { mediaUpNow } from '../shared/node-media';
 import { MediaRemoval } from './library/media-removal';
-import { importableExtensions } from './import/scan';
+import { importableExtensions, SOUND_EXTENSIONS } from './import/scan';
 import { addToFolderParts, makeFolderPlaylist } from './playlists/folder-playlist';
 import { syncFolderAudios } from './music/folder-audios';
 import { idSchema } from '../shared/model-schema';
@@ -85,15 +85,12 @@ import { MaskRepo } from './db/masks';
 import { MaskService } from './masks/mask-service';
 import { anyTestSwitch, sw, swMs, swOn } from './switches';
 import { MacroRepo } from './db/macros';
-import { ArtiRepo } from './db/arti';
-import { ArtiService } from './arti/arti-service';
 import { CalendarRepo } from './db/calendar';
 import { CalendarService } from './calendar/calendar-service';
 import { QuoteRepo } from './db/quotes';
 import { IdleService } from './idle/idle-service';
 import { quoteIdSchema } from '../shared/idle';
 import { calendarIdSchema } from '../shared/calendar';
-import { type ArtiAnswer, artiKeySchema } from '../shared/arti';
 import { MacroService } from './macros/macro-service';
 import { MacroScheduler } from './macros/macro-scheduler';
 import { AudioPlaylistRepo } from './db/audio-playlists';
@@ -1222,7 +1219,6 @@ function start(): void {
   /** Brings folder playlists' sounds into Audio (Session 44); set once the music is ready. */
   let syncAudios = (): void => undefined;
   /** The arti schedules (made further down, once macros are): told when presentations change. */
-  let artiService: ArtiService | null = null;
   /** Today's calendar entry (made further down): told when an import loads a calendar. */
   let calendarService: CalendarService | null = null;
   /** The idle rotation (made further down): told when media change (a picture may have gone). */
@@ -2184,8 +2180,6 @@ function start(): void {
       lastChanged = Date.now();
       sendToOperator(IPC.library.changed, { at: lastChanged, what: 'presentations' });
       network?.hint('presentations');
-      // An arti's presentation may have been renamed or removed.
-      artiService?.refresh();
       // A picture in the idle rotation may have gone (or come back).
       idleService?.refresh();
       // What the nodes should copy may have changed.
@@ -2793,28 +2787,6 @@ function start(): void {
     if (!fromOperator(e) || !parsed.success) return notMusicOperator;
     return music.play(parsed.data.playlistId, parsed.data.index);
   });
-  // ---- the arti at its time ---------------------------------------------------------------
-  const arti = new ArtiService({
-    repo: new ArtiRepo(db),
-    engine: {
-      state: () => engine.current,
-      dispatch: (command) => engine.dispatch(command),
-      onChange: (listener) => engine.onChange(listener),
-    },
-    now: scheduleNow,
-    engineNow: Date.now,
-    changed: (view) => {
-      sendToOperator(IPC.arti.changed, view);
-    },
-    log: (level, message) => {
-      if (level === 'warn') log.warn(message);
-      else log.info(message);
-    },
-  });
-  artiService = arti;
-  stops.add('arti', () => {
-    arti.dispose();
-  });
   // ---- scheduled backups (Session 14): into a folder an admin picks, at their times ----------------
   let eventsBackupsWas: ScheduledBackupsView | null = null;
   const scheduledBackups = new ScheduledBackups({
@@ -3075,7 +3047,6 @@ function start(): void {
   if (artiTestClock)
     (globalThis as { drashtiArtiClock?: (wallMs: number) => void }).drashtiArtiClock = (wallMs) => {
       artiClockOffset = wallMs - Date.now();
-      arti.check();
       scheduledBackups.check();
       scheduler.check();
     };
@@ -3137,35 +3108,6 @@ function start(): void {
     const which = quoteIdSchema.safeParse(id);
     return fromOperator(e) && which.success ? idleRotation.removeQuote(which.data) : notIdleOperator;
   });
-  const notArtiOperator = {
-    ok: false as const,
-    message: 'Only the operator window can change arti schedules.',
-  };
-  const artiGone = { ok: false as const, message: 'That arti prompt has gone.' };
-  handle(IPC.arti.view, () => arti.view());
-  handle(IPC.arti.save, (e, id, fields) => {
-    if (!fromOperator(e)) return notArtiOperator;
-    const which = idSchema.nullable().safeParse(id);
-    return which.success ? arti.save(which.data, fields) : notArtiOperator;
-  });
-  handle(IPC.arti.setEnabled, (e, id, enabled) => {
-    const which = idSchema.safeParse(id);
-    return fromOperator(e) && which.success && typeof enabled === 'boolean'
-      ? arti.setEnabled(which.data, enabled)
-      : notArtiOperator;
-  });
-  handle(IPC.arti.remove, (e, id) => {
-    const which = idSchema.safeParse(id);
-    return fromOperator(e) && which.success ? arti.remove(which.data) : notArtiOperator;
-  });
-  // Answering the prompt: the operator window, in either mode.
-  const answer = (e: IpcMainInvokeEvent, key: unknown, run: (key: string) => ArtiAnswer) => {
-    const parsed = artiKeySchema.safeParse(key);
-    return fromOperator(e) && parsed.success ? run(parsed.data) : artiGone;
-  };
-  handle(IPC.arti.putUp, (e, key) => answer(e, key, (k) => arti.putUp(k)));
-  handle(IPC.arti.notNow, (e, key) => answer(e, key, (k) => arti.notNow(k)));
-  handle(IPC.arti.cancel, (e, key) => answer(e, key, (k) => arti.cancel(k)));
   const notMacroOperator = {
     ok: false as const,
     message: 'Only the operator window can change or run macros.',
@@ -3936,18 +3878,22 @@ function start(): void {
   handle(IPC.library.pickImportPaths, async (e, kind) => {
     if (!fromOperator(e) || !operatorWindow) return [];
     const folder = kind === 'folder';
+    // Sounds only: the Audio panel's Import (Session 44).
+    const sounds = kind === 'sounds';
     const picked = await dialog.showOpenDialog(operatorWindow, {
-      title: folder ? 'Import a folder' : 'Import files',
+      title: folder ? 'Import a folder' : sounds ? 'Import sounds' : 'Import files',
       buttonLabel: 'Import',
       properties: folder ? ['openDirectory'] : ['openFile', 'multiSelections'],
       ...(folder
         ? {}
         : {
             filters: [
-              {
-                name: 'Presentations, PDFs, PowerPoint, Keynote, pictures, videos, sounds and lyrics (text or Word)',
-                extensions: IMPORTABLE_EXTENSIONS,
-              },
+              sounds
+                ? { name: 'Sounds (MP3, M4A, WAV and more)', extensions: SOUND_EXTENSIONS }
+                : {
+                    name: 'Presentations, PDFs, PowerPoint, Keynote, pictures, videos, sounds and lyrics (text or Word)',
+                    extensions: IMPORTABLE_EXTENSIONS,
+                  },
               { name: 'All files', extensions: ['*'] },
             ],
           }),

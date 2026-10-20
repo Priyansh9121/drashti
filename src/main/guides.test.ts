@@ -21,7 +21,8 @@ describe('the guides inside Drashti', () => {
     const blackOut = passagesOf(operator).find((p) => p.text.startsWith('B (or .), Black-out'));
     expect(blackOut?.section).toBe('2. Running the sabha');
     const pictures = GUIDES.flatMap((g) => imagesOf(guide(g.file)));
-    expect(pictures.length).toBeGreaterThanOrEqual(53);
+    // 52 since the arti's two pictures left with it (Session 44).
+    expect(pictures.length).toBeGreaterThanOrEqual(52);
     expect(pictures.every((p) => guidePictureName(p) !== null)).toBe(true);
     const tasks = guide('setup-day.md').flatMap((b) => (b.kind === 'list' ? b.items : []));
     expect(tasks.filter((t) => t.task === 'open').length).toBeGreaterThan(50);

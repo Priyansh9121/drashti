@@ -90,10 +90,6 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.playlists.createRepeat,
   IPC.playlists.setRepeat,
   IPC.shastra.remove,
-  // The arti: Simple Mode answers the prompt (put up, not now, cancel) and changes no schedule.
-  IPC.arti.save,
-  IPC.arti.setEnabled,
-  IPC.arti.remove,
   // Calendars: loading one is an import (locked above); removing one is locked too.
   IPC.calendar.remove,
   // The idle rotation: Simple Mode changes neither its pictures nor its quotes.

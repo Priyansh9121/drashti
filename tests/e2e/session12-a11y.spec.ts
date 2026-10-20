@@ -9,10 +9,9 @@ import { launchApp, openMoreTools, operatorPage, operatorReady } from './helpers
 /*
  * Every panel and dialog Session 12 added passes the accessibility checks at
  * 1280 x 720, beyond those its own tests check as they go (the Shastra tab
- * and Texts, the passage picker, timer cues and slots, the arti dialog and
- * prompt, the Calendar dialog, the idle rotation's panel and dialog): the
- * Arti and Idle rotation panels together with today's line along the
- * bottom, a group's "When nothing is up", the stage layout editor with a
+ * and Texts, the passage picker, timer cues and slots, the Calendar dialog,
+ * the idle rotation's panel and dialog; the arti left in Session 44): the
+ * Idle rotation panel together with today's line along the bottom, a group's "When nothing is up", the stage layout editor with a
  * Samvat box and a quote box, a message with a Samvat field, a quote being
  * written, a macro that starts the idle rotation, and Simple Mode with
  * today's line. Placeholder names and a made-up calendar only.
@@ -55,19 +54,6 @@ test('the new panels and dialogs pass the accessibility checks at 1280 x 720', a
     const d = (globalThis as PageGlobals).drashti;
     const loaded = await d.library.importPaths([path]);
     if (!loaded.ok) throw new Error(loaded.message);
-    const presentations = await d.library.listPresentations();
-    const arti = presentations[0]?.id ?? '';
-    const saved = await d.arti.save(null, {
-      name: 'Placeholder evening arti',
-      presentationId: arti,
-      days: [0, 1, 2, 3, 4, 5, 6],
-      date: null,
-      time: '19:00',
-      promptMinutes: 5,
-      byItself: true,
-      enabled: true,
-    });
-    if (!saved.ok) throw new Error(saved.message);
     await d.idle.saveQuote(null, {
       words: { en: 'Placeholder quote', gu: 'નમૂનાનું વાક્ય' },
       attribution: 'Placeholder',
@@ -119,9 +105,7 @@ test('the new panels and dialogs pass the accessibility checks at 1280 x 720', a
 
   // The right column's new panels, and today's line along the bottom.
   await expect(win.getByTestId('today-calendar')).toContainText('Placeholder festival');
-  await expect(win.getByTestId('arti-panel').getByTestId('arti-schedule')).toHaveCount(1);
-  for (const panel of ['arti-panel', 'idle-panel'])
-    await expectNoSeriousA11yIssues(win, `the ${panel}`, `[data-testid="${panel}"]`);
+  await expectNoSeriousA11yIssues(win, 'the idle-panel', '[data-testid="idle-panel"]');
   await expectNoSeriousA11yIssues(win, 'the operator window with the Session 12 panels and today’s line');
 
   // A message with a Samvat field, being changed.

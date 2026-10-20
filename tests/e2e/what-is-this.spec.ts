@@ -4,7 +4,14 @@ import { plainWords } from '../../src/shared/guides';
 import { PANEL_HELP } from '../../src/shared/panel-help';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { NETWORK_ENV, networkOn } from './devices';
-import { chooseMenuItem, launchApp, openMoreTools, operatorPage, operatorReady } from './helpers';
+import {
+  chooseMenuItem,
+  launchApp,
+  openLibrary,
+  openMoreTools,
+  operatorPage,
+  operatorReady,
+} from './helpers';
 import { KIRTAN, PLAYLIST, setUpPlaceholderShow } from './placeholder-show';
 
 /*
@@ -34,6 +41,8 @@ test('What is this? opens a panel’s words under its heading, never over the sh
   // Every panel and column heading has its ?, one each (Macros, Masks and the Idle rotation in More tools,
   // unfolded: Session 26a), and the places added in Sessions 31–36.
   await openMoreTools(win);
+  // The library's is in its sheet (Session 44).
+  await openLibrary(win);
   for (const id of Object.keys(PANEL_HELP)) {
     if (id === 'slides') continue; // the slide grid's heading shows once something is chosen
     await expect(win.getByTestId(`what-is-this-${id}`)).toHaveCount(1);

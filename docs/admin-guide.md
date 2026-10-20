@@ -56,7 +56,7 @@ Drashti has three roles:
 
 - **Volunteers** run a sabha in **Simple Mode**: big buttons, nothing can be changed.
 - **Operators** run the show in **Pro Mode**: playlists, words and slides, props, messages, timers, macros, Looks, masks, announcements, going live and recording.
-- **Admins** also set Drashti up: importing and removing, themes and the logo, Shastra texts, calendars, the idle rotation and every schedule (the arti, backups, macros' times), macros and MIDI, the screens, Looks, stage layouts, masks and sound, the stream's settings and key, phones and nodes, backups, restores and updates, and the PINs.
+- **Admins** also set Drashti up: importing and removing, themes and the logo, Shastra texts, calendars, the idle rotation and every schedule (backups, macros' times), macros and MIDI, the screens, Looks, stage layouts, masks and sound, the stream's settings and key, phones and nodes, backups, restores and updates, and the PINs.
 
 **Without PINs**, Drashti starts in **Pro Mode** whenever it was quit on purpose, even if a volunteer was using Simple Mode: a volunteer who restarts Drashti sees Pro Mode. After an unexpected stop it comes back in the mode it was in, if it is started again within 3 hours; started later, it starts as after a quit on purpose. If volunteers should never find themselves in Pro Mode, set the PINs: then Drashti always starts in Simple Mode.
 
@@ -221,11 +221,7 @@ Drashti comes with no scripture text and no calendar: an admin loads files prepa
 
 ---
 
-## 10. The arti, the idle rotation, music and markers
-
-**The arti at its time.** The **Arti** panel at the bottom of the live column: **Add** sets its name, the presentation that is the arti, the days (or one date), the time, how many minutes before to prompt the operator, and whether it goes up by itself (then only after ten seconds counted down, with **Cancel**). The switch beside each turns it off without losing it. Without the "by itself" switch, it never goes up by itself: from its time, the operator's next Next puts it up.
-
-![Setting the arti's time](screenshots/arti-dialog.png)
+## 10. The idle rotation, music and markers
 
 **The idle rotation.** Darshan pictures and quotes for before the sabha, or a lobby screen. **Set up** in the **Idle rotation** panel: tick pictures from the media library, put them in order, set how long each stays up, and type the quotes (from authorised sources) with who said or wrote them. Then, in **Screens**, each group's Look says what it shows **When nothing is up**: **The idle rotation, once started** (the operator presses **Start**; it stops by itself when the first slide goes up), **The idle rotation, always** (a lobby screen), or **Nothing**. A macro at a set time can start it (18:30, say).
 

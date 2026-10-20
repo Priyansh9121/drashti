@@ -52,7 +52,6 @@ import { useKeymap } from '../operator/useKeymap';
 import type { AppInfo } from '../../../shared/app-info';
 import { OnAirBadges } from '../stream/OnAirBadges';
 import { NetworkBadge } from '../network/NetworkBadge';
-import { ArtiPrompt } from '../arti/ArtiPrompt';
 import { MacroCountdown } from '../macros/MacroCountdown';
 import { MusicStrip } from '../music/MusicPanel';
 import { ScreensDashboard } from '../nodes/ScreensDashboard';
@@ -511,7 +510,6 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
           </p>
         </main>
       </div>
-      <ArtiPrompt big />
       <MacroCountdown big />
       <NoticeArea />
       <BigButtons platform={platform} run={run} />
