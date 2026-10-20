@@ -124,7 +124,11 @@ function PlaylistColumn() {
     return parent ? `${parent} › ${node.name}` : node.name;
   };
   return (
-    <section aria-label="Playlist" className="flex min-h-0 flex-col border-r border-line bg-panel">
+    <section
+      aria-label="Playlist"
+      className="flex min-h-0 flex-col border-r border-line bg-panel"
+      data-zone="left"
+    >
       <div className="shrink-0 space-y-2 p-3">
         {treeUnread && <PlaylistsUnread what="playlists" size="lg" />}
         {lists.length > 0 ? (
@@ -329,6 +333,7 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
     <div
       className="flex shrink-0 items-stretch gap-3 border-t border-line bg-panel p-3"
       data-testid="simple-buttons"
+      data-zone="bar"
     >
       <Button
         size="xxl"

@@ -52,6 +52,7 @@ export function Columns({ left, middle, right }: { left: ReactNode; middle: Reac
         style={{ width: leftWidth }}
         className="flex min-h-0 shrink-0 flex-col overflow-hidden bg-panel"
         data-testid="column-left"
+        data-zone="left"
       >
         {left}
       </div>
@@ -63,8 +64,12 @@ export function Columns({ left, middle, right }: { left: ReactNode; middle: Reac
         defaultValue={LEFT.initial}
         label="Resize the playlists"
       />
-      {/* No surface of its own: the window's ink, the appearance's (Sessions 39–40). */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col" data-testid="column-middle">
+      {/* The window's ink, in the middle's own colour (Session 44: its zone; Black and White their own ink). */}
+      <div
+        className="flex min-h-0 min-w-0 flex-1 flex-col bg-ink"
+        data-testid="column-middle"
+        data-zone="middle"
+      >
         {middle}
       </div>
       <Splitter
@@ -80,6 +85,7 @@ export function Columns({ left, middle, right }: { left: ReactNode; middle: Reac
         style={{ width: rightWidth }}
         className="flex min-h-0 shrink-0 flex-col bg-panel"
         data-testid="column-right"
+        data-zone="right"
       >
         {right}
       </div>

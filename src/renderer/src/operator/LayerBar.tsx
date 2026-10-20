@@ -67,6 +67,7 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
         aria-label="Show controls"
         className="flex shrink-0 items-center gap-2 overflow-x-auto border-t border-line bg-panel px-3 py-2"
         data-testid="layer-bar"
+        data-zone="bar"
       >
         {/* Put it back takes Clear all's place while it is offered: right after Clear all, with nothing left to clear. */}
         {canPutBack ? (
@@ -120,9 +121,11 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
                   aria-label={`Clear ${c.label.toLowerCase()}${on ? ' (on screen)' : ''}`}
                   className={cx(
                     'relative inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium',
+                    // Session 44: a lit one's fill and an unlit one's edge in the appearance's own (Black and
+                    // White: the raised surface and a divider, as before); lit, LIVE's red edge and dot.
                     on
-                      ? 'border-live bg-panel-2 text-fg hover:bg-panel-3'
-                      : 'cursor-not-allowed border-line bg-transparent text-faint',
+                      ? 'border-live bg-layer text-fg hover:bg-panel-3'
+                      : 'cursor-not-allowed border-layer-edge bg-transparent text-faint',
                   )}
                 >
                   <IconShape size={16} aria-hidden="true" />

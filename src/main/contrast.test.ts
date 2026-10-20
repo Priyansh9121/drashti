@@ -11,17 +11,24 @@ import {
   DECORATION_TOKENS,
   plainDecoration,
   WHITE,
+  ZONE_TINTS,
 } from '../shared/appearance/appearances';
 import {
   appearanceProblems,
   BUTTON_EDGES,
+  colourlessPlaces,
   decorationLacks,
+  hueApart,
+  hueCount,
+  HUES,
   measureContrast,
   measureDistances,
+  places,
   type Measured,
 } from '../shared/appearance/rules';
 import { hexToOklch } from '../shared/appearance/oklch';
 import { appearanceVars } from '../shared/appearance/vars';
+import { ZONE_TOKENS, ZONES, zonesOf } from '../shared/appearance/zones';
 
 /*
  * Every appearance's contrast and colour distance (Sessions 39–40; the rules are the design lab's, Session 26g, now on
@@ -127,6 +134,21 @@ describe('every built-in appearance’s contrast (docs/design.md §2)', () => {
 /** Black and White, and every other appearance (the colourful ones). */
 const PLAIN = new Set([BLACK.id, WHITE.id]);
 const COLOURFUL = BUILT_IN.filter((a) => !PLAIN.has(a.id));
+/** alpha.8's colourful ones (Session 44 reworked them). */
+const ALPHA_8 = [
+  'dhaja',
+  'tiranga',
+  'saffron',
+  'peacock',
+  'midnight-blue',
+  'sandalwood',
+  'lotus',
+  'marble',
+  'tulsi',
+  'diwali',
+  'holi',
+  'aarti',
+];
 
 describe('more colourful appearances (Session 42): more places for colour', () => {
   it('Black and White draw exactly as before: their panel for a header, no band, the focus ring’s colour to mark', () => {
@@ -138,6 +160,12 @@ describe('more colourful appearances (Session 42): more places for colour', () =
       'header-field': '#82828d',
       second: '#8ab4f8',
       heading: '#c8c8cf',
+      // Session 44: a flat header, no title strips, and the layer buttons as before.
+      'header-2': '#121215',
+      strip: '#121215',
+      'strip-2': '#121215',
+      layer: '#1b1b1f',
+      'layer-edge': '#2c2c32',
       band: [],
     });
     expect(WHITE.decoration).toEqual({
@@ -148,10 +176,23 @@ describe('more colourful appearances (Session 42): more places for colour', () =
       'header-field': '#6f737c',
       second: '#1d4ed8',
       heading: '#43464e',
+      'header-2': '#f8f8fa',
+      strip: '#f8f8fa',
+      'strip-2': '#f8f8fa',
+      layer: '#ffffff',
+      'layer-edge': '#d4d6dc',
       band: [],
     });
-    expect(appearanceVars(BLACK)['--band-height']).toBe('0px');
-    expect(appearanceVars(WHITE)['--band-height']).toBe('0px');
+    for (const a of [BLACK, WHITE]) {
+      const vars = appearanceVars(a);
+      expect(vars['--band-height']).toBe('0px');
+      // Session 44: no gradient, and every zone its own surfaces.
+      expect(vars['--header-image']).toBe('none');
+      expect(vars['--strip-image']).toBe('none');
+      for (const zone of ZONES)
+        for (const t of ZONE_TOKENS)
+          expect(vars[`--zone-${zone}-${t}`], `${a.name} ${zone} ${t}`).toBe(a.colours[t]);
+    }
   });
 
   it.each(COLOURFUL.map((a) => [a.name, a] as const))(
@@ -173,7 +214,7 @@ describe('more colourful appearances (Session 42): more places for colour', () =
     },
   );
 
-  it('fourteen built-in appearances, in the menu’s order, each clearly different: two of its window, header and next thing to do at least 10 from every other’s', () => {
+  it('twenty-six built-in appearances, in the menu’s order, each clearly different: two of its window, header and next thing to do at least 10 from every other’s', () => {
     expect(BUILT_IN.map((a) => a.name)).toEqual([
       'Black',
       'White',
@@ -190,6 +231,19 @@ describe('more colourful appearances (Session 42): more places for colour', () =
       'Diwali',
       'Holi',
       'Aarti',
+      // Session 44: twelve more.
+      'Monsoon',
+      'Sandhya',
+      'Forest',
+      'Navratri',
+      'Neel',
+      'Ratna',
+      'Prabhat',
+      'Mehndi',
+      'Haldi',
+      'Himalaya',
+      'Uttarayan',
+      'Mogra',
     ]);
     const alike: string[] = [];
     for (const [i, a] of BUILT_IN.entries())
@@ -249,9 +303,65 @@ describe('more colourful appearances (Session 42): more places for colour', () =
   });
 });
 
+/** The hue of each place, or null where it has none (rules.ts, places). */
+function placeHues(a: Appearance): (number | null)[] {
+  const least = a.base === 'dark' ? HUES.dark : HUES.light;
+  return places(a).map(([, colours]) => {
+    const hued = colours.map(hexToOklch).find((c) => c.c >= least);
+    return hued === undefined ? null : hued.h;
+  });
+}
+
+describe('real colour (Session 44): four hues at least, in every place', () => {
+  it.each(COLOURFUL.map((a) => [a.name, a] as const))(
+    '%s draws each place in a colour of its kind, with four hues at least among them',
+    (_name, a) => {
+      const hues = hueCount(a);
+      console.info(`${a.name}: ${String(hues.count)} hues: ${hues.chosen.join('; ')}`);
+      expect(colourlessPlaces(a)).toEqual([]);
+      expect(hues.count).toBeGreaterThanOrEqual(HUES.least);
+    },
+  );
+
+  it('twenty-four colourful appearances: alpha.8’s twelve, reworked, and twelve more, after Black and White', () => {
+    expect(BUILT_IN.slice(0, 2)).toEqual([BLACK, WHITE]);
+    expect(COLOURFUL.length).toBeGreaterThanOrEqual(24);
+    for (const id of ALPHA_8)
+      expect(
+        COLOURFUL.map((a) => a.id),
+        id,
+      ).toContain(id);
+  });
+
+  it('each a clearly different combination: two of a base differ in the hue of three of their places at least', () => {
+    const alike: string[] = [];
+    for (const [i, a] of COLOURFUL.entries())
+      for (const b of COLOURFUL.slice(i + 1)) {
+        if (a.base !== b.base) continue;
+        const [x, y] = [placeHues(a), placeHues(b)];
+        const differ = x.filter((h, k) => {
+          const other = y[k] ?? null;
+          return h === null || other === null ? h !== other : hueApart(h, other) >= HUES.apart;
+        }).length;
+        if (differ < 3) alike.push(`${a.name} and ${b.name}: ${String(differ)}`);
+      }
+    expect(alike).toEqual([]);
+  });
+
+  it.each(BUILT_IN.map((a) => [a.name, a] as const))(
+    '%s: its zones are its own surfaces in their hues, as zones.ts works them out (Black and White: its own)',
+    (_name, a) => {
+      const tints = ZONE_TINTS[a.id] ?? { left: null, middle: null, right: null, bar: null };
+      expect(a.zones).toEqual(zonesOf(a.colours, a.base === 'dark', tints));
+      expect(PLAIN.has(a.id), 'tinted zones but Black and White').toBe(ZONE_TINTS[a.id] === undefined);
+    },
+  );
+});
+
 describe('the tokens in app.css and the buttons in ui/Button.tsx', () => {
   it('app.css’s @theme holds Black’s colours and decoration: what a window shows before its appearance is set', () => {
-    const theme = coloursIn(block(/@theme\s*\{/u));
+    // Session 44: and the colours only the gradients draw, kept in a static theme of their own.
+    const theme = { ...coloursIn(block(/@theme\s*\{/u)), ...coloursIn(block(/@theme static\s*\{/u)) };
     expect(theme).toEqual({
       ...Object.fromEntries(COLOUR_TOKENS.map((name) => [name, BLACK.colours[name]])),
       ...Object.fromEntries(DECORATION_TOKENS.map((name) => [name, BLACK.decoration[name]])),
@@ -260,6 +370,12 @@ describe('the tokens in app.css and the buttons in ui/Button.tsx', () => {
     const root = block(/^:root\s*\{/mu);
     expect(root).toMatch(/--band-height:\s*0px;/u);
     for (let i = 1; i <= 5; i++) expect(root).toMatch(new RegExp(`--band-${String(i)}:\\s*0;`, 'u'));
+    // Session 44: every zone Black's own surfaces, and no gradient.
+    for (const zone of ZONES)
+      for (const t of ZONE_TOKENS)
+        expect(root).toMatch(new RegExp(`--zone-${zone}-${t}:\\s*${BLACK.colours[t]};`, 'u'));
+    expect(root).toMatch(/--header-image:\s*none;/u);
+    expect(root).toMatch(/--strip-image:\s*none;/u);
   });
 
   it('the audience screens and the phone pages set every colour of their own, so no appearance reaches them', () => {

@@ -69,7 +69,11 @@ export function Panel({
   );
   return (
     <section aria-labelledby={`${id}-title`} className={cx('flex min-h-0 flex-col', className)} {...data}>
-      <header className={cx('flex h-9 shrink-0 items-center gap-1 pr-3', nested ? 'pl-6' : 'pl-3')}>
+      {/* A title strip (Session 44: the appearance's, data-strip), but not a panel's set in under a group's. */}
+      <header
+        className={cx('flex h-9 shrink-0 items-center gap-1 pr-3', nested ? 'pl-6' : 'pl-3')}
+        data-strip={nested ? undefined : ''}
+      >
         <Heading
           level={nested ? 3 : 2}
           id={`${id}-title`}
@@ -175,7 +179,7 @@ export function PanelGroup({
   );
   return (
     <section aria-labelledby={`${id}-title`} className="flex min-h-0 flex-col" {...data}>
-      <header className="flex h-9 shrink-0 items-center gap-1 px-3">
+      <header className="flex h-9 shrink-0 items-center gap-1 px-3" data-strip="">
         <h2 id={`${id}-title`} className="min-w-0 flex-1 text-xs font-bold tracking-wider text-fg uppercase">
           <button
             type="button"

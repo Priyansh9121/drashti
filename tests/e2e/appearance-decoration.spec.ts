@@ -201,3 +201,73 @@ for (const a of [BLACK, WHITE]) {
     await app.close();
   });
 }
+
+/*
+ * Real colour (Session 44): each zone in its own colours (the left column, the middle, the right column, the layer
+ * bar), the header and the panels' title strips in their gradients, and the layer buttons in theirs, lit with LIVE's
+ * edge; Black and White draw them all as before. Read from the page as it draws them.
+ */
+async function zonesDrawn(win: Page) {
+  return win.evaluate(() => {
+    const css = (sel: string, p: string) => {
+      const el = document.querySelector(sel);
+      return el ? getComputedStyle(el).getPropertyValue(p) : null;
+    };
+    const lit = '[data-testid="layer-bar"] [data-lit="true"]';
+    const unlit = '[data-testid="layer-bar"] [data-show-control]:disabled';
+    return {
+      left: css('[data-testid="column-left"]', 'background-color'),
+      middle: css('[data-testid="column-middle"]', 'background-color'),
+      right: css('[data-testid="column-right"]', 'background-color'),
+      bar: css('[data-testid="layer-bar"]', 'background-color'),
+      header: css('[data-testid="app-header"]', 'background-image'),
+      strip: css('[data-testid="open-playlist"] [data-strip]', 'background-image'),
+      lit: [css(lit, 'background-color'), css(lit, 'border-top-color')],
+      unlit: css(unlit, 'border-top-color'),
+    };
+  });
+}
+
+for (const id of ['saffron', 'holi', 'black', 'white']) {
+  test(`${id}: each zone, the header, the title strips and the layer buttons in its colours (Session 44)`, async () => {
+    const a = builtIn(id);
+    if (!a) throw new Error(`${id} is not a built-in appearance`);
+    const { app } = await launchApp();
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    await chooseMenuItem(app, `appearance-${id}`);
+    await expect(win.locator('html')).toHaveAttribute('data-appearance', id);
+    await inAShow(win);
+    await win.getByTestId('library-close').click();
+    // A slide live: the slide layer's button is lit.
+    await win.getByTestId('slide-thumb').first().click();
+    await expect(win.getByTestId('layer-bar').locator('[data-lit="true"]')).toHaveCount(1);
+    const d = a.decoration;
+    const gradient = (from: string, to: string) => `linear-gradient(90deg, ${rgb(from)}, ${rgb(to)})`;
+    const plain = id === 'black' || id === 'white';
+    expect(await zonesDrawn(win)).toEqual({
+      left: rgb(a.zones.left.panel),
+      middle: rgb(a.zones.middle.ink),
+      right: rgb(a.zones.right.panel),
+      bar: rgb(a.zones.bar.panel),
+      header: plain ? 'none' : gradient(d.header, d['header-2']),
+      strip: plain ? 'none' : gradient(d.strip, d['strip-2']),
+      lit: [rgb(d.layer), rgb(a.colours.live)],
+      unlit: rgb(d['layer-edge']),
+    });
+    if (plain) {
+      // As before: the columns and the bar in the panel, the middle the window's own, nothing else drawn.
+      expect(a.zones.left.panel).toBe(a.colours.panel);
+      expect(a.zones.middle.ink).toBe(a.colours.ink);
+      expect(d.layer).toBe(a.colours['panel-2']);
+      expect(d['layer-edge']).toBe(a.colours.line);
+    } else {
+      // Four zones, four colours.
+      expect(
+        new Set([a.zones.left.panel, a.zones.middle.ink, a.zones.right.panel, a.zones.bar.panel]).size,
+      ).toBe(4);
+    }
+    await expectNoSeriousA11yIssues(win, `${id}: its zones in a show`);
+    await app.close();
+  });
+}

@@ -3,6 +3,7 @@ import type { Appearance, AppearanceBase, Colours, Decoration, OwnAppearance } f
 import { DARK_STATES, LIGHT_STATES } from './appearances';
 import { hexToOklch, oklchToHex, type Oklch } from './oklch';
 import { appearanceProblems, measureDistances } from './rules';
+import { plainZones } from './zones';
 
 /*
  * A person's own appearance (Session 40): made in the Appearance window from a base (dark or light) and one
@@ -111,7 +112,15 @@ export function madeAppearance(
   second?: string,
 ): Appearance {
   const colours = deriveColours(base, accent);
-  return { id, name, base, colours, decoration: deriveDecoration(base, accent, colours, second) };
+  // Its zones are its own surfaces (Session 44): one made from one colour keeps to it there.
+  return {
+    id,
+    name,
+    base,
+    colours,
+    decoration: deriveDecoration(base, accent, colours, second),
+    zones: plainZones(colours),
+  };
 }
 
 /** The least CIEDE2000 between two colours over the four colour visions. */
@@ -209,6 +218,12 @@ export function deriveDecoration(
     'header-field': buttons,
     second,
     heading,
+    // A flat header, no title strips, and the layer buttons as before (Session 44).
+    'header-2': header,
+    strip: c.panel,
+    'strip-2': c.panel,
+    layer: c['panel-2'],
+    'layer-edge': c.line,
     band: [c.primary, tint, oklchToHex({ ...a, h: (a.h + 40) % 360 })],
   };
 }

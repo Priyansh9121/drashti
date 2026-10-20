@@ -1,5 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import type { Appearance } from '../../src/shared/appearance/appearances';
 import { BUILT_IN } from '../../src/shared/appearance/appearances';
 import type { PageGlobals } from './helpers';
 import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helpers';
@@ -8,8 +9,9 @@ import { chooseMenuItem, launchApp, operatorPage, operatorReady } from './helper
  * What Drashti's own windows draw, in every appearance (Sessions 39–40; Session 26g's checks): the mark beside the
  * name in the logo's own colours, plain surfaces in the appearance's colours with no lamp light (nor the phone
  * pages, Black since Session 41), a warning still a filled amber rail with an icon and words, the live slide's underglow switching
- * at once, and nothing that costs a computer without a graphics chip a new way of drawing. Placeholder content
- * only.
+ * at once, and nothing that costs a computer without a graphics chip a new way of drawing. Session 44: the header
+ * and the panels' title strips may be a static gradient (decoration only), never moving and never on a show
+ * control, the live picture or words; Black and White draw none. Placeholder content only.
  */
 
 const style = (l: Locator, prop: string, pseudo: string | null = null) =>
@@ -19,14 +21,21 @@ const style = (l: Locator, prop: string, pseudo: string | null = null) =>
 const rgb = (hex: string) =>
   `rgb(${[1, 3, 5].map((at) => String(parseInt(hex.slice(at, at + 2), 16))).join(', ')})`;
 
-async function plainHeader(header: Locator, name: string, colour: string) {
+/** The header's gradient as the page reports it (Session 44): none in Black and White. */
+const headerGradient = (a: Appearance) =>
+  a.decoration.header === a.decoration['header-2']
+    ? 'none'
+    : `linear-gradient(90deg, ${rgb(a.decoration.header)}, ${rgb(a.decoration['header-2'])})`;
+
+async function plainHeader(header: Locator, name: string, a: Appearance) {
   // The mark beside the name, decoration only: the heading still reads "Drashti".
   await expect(header.getByRole('heading', { level: 1 })).toHaveText(name);
   await expect(header.locator('h1 svg[data-mark]')).toBeVisible();
   // No light across the header and no hairline: the appearance's header colour (Session 42; Black's and White's
-  // their panel), flat, nothing drawn before it.
-  expect(await style(header, 'background-color')).toBe(rgb(colour));
-  expect(await style(header, 'background-image')).toBe('none');
+  // their panel), and since Session 44 its static gradient to its far end (none in Black and White), nothing
+  // drawn before it.
+  expect(await style(header, 'background-color')).toBe(rgb(a.decoration.header));
+  expect(await style(header, 'background-image')).toBe(headerGradient(a));
   expect(await style(header, 'content', '::before')).toBe('none');
   expect(await style(header.locator('.mark-halo').first(), 'content', '::before')).toBe('none');
 }
@@ -38,7 +47,7 @@ for (const a of BUILT_IN) {
     await operatorReady(win);
     await chooseMenuItem(app, `appearance-${a.id}`);
     await expect(win.locator('html')).toHaveAttribute('data-appearance', a.id);
-    await plainHeader(win.getByTestId('app-header'), 'Drashti', a.decoration.header);
+    await plainHeader(win.getByTestId('app-header'), 'Drashti', a);
     // Empty places: the unlit lamp, in the quietest words' colour, with no light behind it.
     const playlists = win.getByText('No playlists yet');
     await expect(playlists).toBeVisible();
@@ -66,7 +75,7 @@ for (const a of BUILT_IN) {
     await win.getByRole('button', { name: 'Simple Mode' }).click();
     const simple = win.getByTestId('simple-mode');
     await expect(simple).toBeVisible();
-    await plainHeader(simple.locator('header').first(), 'Drashti', a.decoration.header);
+    await plainHeader(simple.locator('header').first(), 'Drashti', a);
     await app.close();
   });
 }
@@ -98,9 +107,11 @@ test('the live slide’s red underglow sits under the live thumbnail and moves w
 
 /**
  * What in a page costs a computer without a graphics chip (app.css, "Depth"): a soft shadow round a rounded
- * corner, any gradient but the primary's, and a shape filled with a gradient (the mark is flat beside a name),
- * each a new way of drawing for the chip to work out; and a layer of its own (will-change), which is put
- * together again at every frame. Slides themselves (inside a scene) are the audience's.
+ * corner, any gradient but the primary's and the decoration's (Session 44: the header and the title strips,
+ * static), and a shape filled with a gradient (the mark is flat beside a name), each a new way of drawing for the
+ * chip to work out; and a layer of its own (will-change), which is put together again at every frame. A
+ * decoration's gradient never moves and is never on a show control or the live picture, and no words are ever
+ * filled with one. Slides themselves (inside a scene) are the audience's.
  */
 function newWaysToDraw(page: Page) {
   return page.evaluate(() => {
@@ -149,8 +160,24 @@ function newWaysToDraw(page: Page) {
         }
         if (st.backgroundImage.includes('gradient(')) {
           const primary = pseudo === null && el.getAttribute('data-variant') === 'primary';
-          if (!primary) found.push(`${name(el, pseudo)}: ${st.backgroundImage.slice(0, 80)}`);
+          const decoration = pseudo === null && el.matches('[data-header], [data-strip], [data-decoration]');
+          if (!primary && !decoration) found.push(`${name(el, pseudo)}: ${st.backgroundImage.slice(0, 80)}`);
+          if (decoration) {
+            const seconds = (list: string) =>
+              Math.max(...list.split(',').map((t) => Number.parseFloat(t) || 0));
+            const moving =
+              st.animationName !== 'none' ||
+              (seconds(st.transitionDuration) > 0 && /all|background/u.test(st.transitionProperty));
+            if (moving) found.push(`${name(el, pseudo)}: a gradient that moves`);
+            if (
+              el.matches('[data-show-control]') ||
+              el.querySelector('[data-show-control], [data-testid="live-preview"]')
+            )
+              found.push(`${name(el, pseudo)}: a gradient under a show control or the live picture`);
+          }
         }
+        if (st.backgroundClip === 'text' || st.getPropertyValue('-webkit-background-clip') === 'text')
+          found.push(`${name(el, pseudo)}: words filled with a picture or a gradient`);
         if (st.willChange !== 'auto')
           found.push(`${name(el, pseudo)}: a layer of its own (${st.willChange})`);
         if (pseudo === null && el instanceof SVGElement && `${st.fill} ${st.stroke}`.includes('url('))

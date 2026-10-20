@@ -168,7 +168,7 @@ function PlaylistTree({ platform }: { platform: string }) {
 
   return (
     <>
-      <div className="flex h-11 shrink-0 items-center gap-1 px-3">
+      <div className="flex h-11 shrink-0 items-center gap-1 px-3" data-strip="">
         <ViewTabs />
         {/* + New (Session 26a: words, not just an icon): a playlist, a folder, or a smart playlist
             following a folder on the computer (Session 26c: an admin's, as importing is). */}
@@ -492,7 +492,7 @@ function TemplateList() {
   const [menu, setMenu] = useState<{ at: MenuPlace; node: PlaylistNode } | null>(null);
   return (
     <>
-      <div className="flex h-11 shrink-0 items-center gap-1 px-3">
+      <div className="flex h-11 shrink-0 items-center gap-1 px-3" data-strip="">
         <ViewTabs />
       </div>
       <TabPanel group="playlist-view" id="templates" className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">

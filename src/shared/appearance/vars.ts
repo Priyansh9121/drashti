@@ -1,5 +1,6 @@
 import type { Appearance } from './appearances';
 import { BAND_MAX, COLOUR_TOKENS, DECORATION_TOKENS } from './appearances';
+import { ZONE_TOKENS, ZONES } from './zones';
 
 /*
  * An appearance as the CSS custom properties it sets on a window's <html> (Sessions 39–40): every --color-*
@@ -11,6 +12,10 @@ import { BAND_MAX, COLOUR_TOKENS, DECORATION_TOKENS } from './appearances';
  * Session 42: the decoration's colours too (--color-header and the rest), and the band as BAND_MAX flat blocks:
  * --color-band-N and --band-N (1 for a block that is there, 0 for one that is not, as its share of the width),
  * and --band-height, 0px for an appearance with no band (Black and White), so nothing is drawn or moved there.
+ *
+ * Session 44: each zone's colours (--zone-<zone>-<token>, which app.css's [data-zone] sets over the window's own
+ * there), and the two gradients: --header-image, from the header's colour to its far end (none when they are the
+ * same), and --strip-image for the panels' title strips (none where both ends are the panel's, Black and White).
  */
 
 /** The band's height, when there is one. */
@@ -39,6 +44,10 @@ export function appearanceVars(a: Appearance): Record<string, string> {
     vars[`--band-${String(i + 1)}`] = band[i] === undefined ? '0' : '1';
   }
   vars['--band-height'] = band.length > 0 ? BAND_HEIGHT : '0px';
+  for (const zone of ZONES)
+    for (const name of ZONE_TOKENS) vars[`--zone-${zone}-${name}`] = a.zones[zone][name];
+  vars['--header-image'] = headerImage(a);
+  vars['--strip-image'] = stripImage(a);
   const d = DEPTH[a.base];
   const white = (alpha: number) => tint('#ffffff', alpha);
   Object.assign(vars, {
@@ -58,4 +67,20 @@ export function appearanceVars(a: Appearance): Record<string, string> {
     '--depth-primary-hover': tint(a.colours.primary, 0.8 * d.glow),
   });
   return vars;
+}
+
+/** The header's gradient, left to right, or none for a flat header (Session 44). */
+export function headerImage(a: Appearance): string {
+  const d = a.decoration;
+  return d.header === d['header-2'] ? 'none' : `linear-gradient(90deg, ${d.header}, ${d['header-2']})`;
+}
+
+/** Whether an appearance draws the panels' title strips: not where both ends are its panel (Session 44). */
+export const hasStrips = (a: Appearance): boolean =>
+  a.decoration.strip !== a.colours.panel || a.decoration['strip-2'] !== a.colours.panel;
+
+/** The title strips' gradient, left to right, or none. */
+export function stripImage(a: Appearance): string {
+  const d = a.decoration;
+  return hasStrips(a) ? `linear-gradient(90deg, ${d.strip}, ${d['strip-2']})` : 'none';
 }

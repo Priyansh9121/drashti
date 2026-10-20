@@ -80,7 +80,7 @@ export function LibrarySheet({ platform }: { platform: string }) {
         closeLibrary();
       }}
     >
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-3">
+      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-3" data-strip="">
         <BookOpen size={16} aria-hidden="true" className="shrink-0 text-muted" />
         <h2 id="library-sheet-title" className="min-w-0 flex-1 truncate text-sm font-bold text-heading">
           Library
