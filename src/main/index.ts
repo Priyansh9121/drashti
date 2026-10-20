@@ -34,6 +34,7 @@ import { mediaUpNow } from '../shared/node-media';
 import { MediaRemoval } from './library/media-removal';
 import { importableExtensions } from './import/scan';
 import { addToFolderParts, makeFolderPlaylist } from './playlists/folder-playlist';
+import { syncFolderAudios } from './music/folder-audios';
 import { idSchema } from '../shared/model-schema';
 import { z } from 'zod';
 import type { OutputContext } from '../shared/screens';
@@ -1218,6 +1219,8 @@ function start(): void {
   let macroScheduler: MacroScheduler | null = null;
   /** Audio playlists (made further down): the media library changing may change them. */
   let musicService: MusicService | null = null;
+  /** Brings folder playlists' sounds into Audio (Session 44); set once the music is ready. */
+  let syncAudios = (): void => undefined;
   /** The arti schedules (made further down, once macros are): told when presentations change. */
   let artiService: ArtiService | null = null;
   /** Today's calendar entry (made further down): told when an import loads a calendar. */
@@ -2748,6 +2751,26 @@ function start(): void {
     },
   });
   musicService = music;
+  // A folder's sounds in Audio too (Session 44, music/folder-audios.ts): "<folder> - Audios", in step with its
+  // playlist after every change to playlists, and once now for the ones an earlier version made.
+  const folderAudios = {
+    playlists,
+    audio: audioPlaylists,
+    settings: {
+      get: (key: string) => settings.get(key),
+      set: (key: string, value: unknown) => {
+        settings.set(key, value);
+      },
+    },
+  };
+  syncAudios = () => {
+    try {
+      if (syncFolderAudios(folderAudios)) sendToOperator(IPC.music.changed, music.view());
+    } catch (error) {
+      log.warn(`Audio: a folder's sounds could not be brought into Audio (${String(error)})`);
+    }
+  };
+  syncAudios();
   const notMusicOperator = { ok: false as const, message: 'Only the operator window can change music.' };
   handle(IPC.music.view, () => music.view());
   handle(IPC.music.create, (e, name) => (fromOperator(e) ? music.create(name) : notMusicOperator));
@@ -2919,7 +2942,10 @@ function start(): void {
     // A Dropbox folder as one playlist (Session 26c, src/main/playlists/folder-playlist.ts).
     folderPlaylist: ({ name, runId, files }) => {
       const made = makeFolderPlaylist(playlists, name, importRepo.report(runId)?.items ?? [], files);
-      if (made) sendToOperator(IPC.playlists.changed, { at: Date.now() });
+      if (made) {
+        sendToOperator(IPC.playlists.changed, { at: Date.now() });
+        syncAudios();
+      }
       return made;
     },
     addToFolderPlaylist: ({ playlistId, runId, files }) => {
@@ -2927,6 +2953,7 @@ function start(): void {
       if (added > 0) {
         engine.refreshNext();
         sendToOperator(IPC.playlists.changed, { at: Date.now() });
+        syncAudios();
       }
       return added;
     },
@@ -3712,6 +3739,7 @@ function start(): void {
     engine.refreshNext();
     sendToOperator(IPC.playlists.changed, { at: Date.now() });
     net.hint('playlists');
+    syncAudios();
   };
   // ---- Smart playlists (Session 26c): a playlist that follows a folder on the computer ----
   /** A test switch (never a packaged Drashti): a positive number of milliseconds, or null. */

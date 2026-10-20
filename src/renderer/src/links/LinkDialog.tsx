@@ -67,7 +67,7 @@ const KINDS: { id: LinkKind; label: string; hint: string; icon: Icon; ready: boo
   {
     id: 'dropbox',
     label: 'Dropbox',
-    hint: 'A shared link to a file or a folder. Its PowerPoint files and MP4 videos are imported.',
+    hint: 'A shared link to a file or a folder. Its PowerPoint files, MP4 videos and sounds are imported.',
     icon: Cloud,
     ready: true,
   },
