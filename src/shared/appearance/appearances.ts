@@ -551,6 +551,94 @@ export const TULSI: Appearance = {
   },
 };
 
+/**
+ * Dhaja: the mandir flag's colours (Session 42), colours only: the flag's shape, its disc and the logo it carries
+ * are never drawn. The flag has five stripes, three red and two white, and a white disc ringed red (Flags of the
+ * World); the logo on it is in red and gold. Dark maroon surfaces; the header a deep flag red, its words warm
+ * white; the band red and white stripes with the logo's gold between them. Red belongs to LIVE, so the flag's red
+ * stays in the header and the band: the next thing to do is white, marks the logo's gold, softened, and headings
+ * a warm peach. Named for the flag (dhaja), not for any organisation, so it can be used anywhere.
+ */
+export const DHAJA: Appearance = {
+  id: 'dhaja',
+  name: 'Dhaja',
+  base: 'dark',
+  colours: {
+    ink: '#1e0305',
+    panel: '#250a0b',
+    'panel-2': '#2f1314',
+    'panel-3': '#3d1f1f',
+    line: '#442727',
+    'line-strong': '#5b3b3b',
+    field: '#b18c8b',
+    fg: '#fff4f3',
+    muted: '#e0cbca',
+    faint: '#c0a7a6',
+    accent: '#ffd98a',
+    'primary-hi': '#ffffff',
+    primary: '#fdf4ec',
+    'primary-lo': '#efe0d2',
+    'on-primary': '#2a0a0e',
+    'primary-edge': '#f1dfd3',
+    ...DARK_STATES,
+  },
+  decoration: {
+    header: '#8c1a22',
+    'on-header': '#fff6ee',
+    'on-header-muted': '#ffd9d2',
+    'header-ring': '#fff6ee',
+    'header-field': '#ffd9d2',
+    second: '#ffe6a8',
+    heading: '#ffd4a8',
+    band: ['#d0202b', '#ffffff', '#f2b630', '#ffffff', '#d0202b'],
+  },
+};
+
+/**
+ * Tiranga: India's flag colours (Session 42), colours only: no Ashoka Chakra and no flag shape, which the Flag
+ * Code of India keeps for the flag itself. The commonly published shades: saffron #FF9933, white, India green
+ * #138808 and the wheel's navy #000080. Light, the flag's white for panels, with a whisper of green in the window
+ * and of saffron in what is pressed; the header the wheel's navy; the band saffron, white and green. The next thing
+ * to do in saffron, kept apart from a warning (a deep amber-brown here) and with a navy edge; marks and headings in
+ * navy. Green stays in the band, apart from success's green.
+ */
+export const TIRANGA: Appearance = {
+  id: 'tiranga',
+  name: 'Tiranga',
+  base: 'light',
+  colours: {
+    ink: '#e2efdd',
+    panel: '#f0f5fa',
+    'panel-2': '#fafdff',
+    'panel-3': '#fde3c6',
+    line: '#d0d7de',
+    'line-strong': '#b2b8bf',
+    field: '#646a70',
+    fg: '#101419',
+    muted: '#36414c',
+    faint: '#4e5c6b',
+    accent: '#1d4ed8',
+    'primary-hi': '#ffa347',
+    primary: '#ff9933',
+    'primary-lo': '#f28a1f',
+    'on-primary': '#1d0e02',
+    'primary-edge': '#1a2a8c',
+    ...LIGHT_STATES,
+    warning: '#c26a00',
+    'warning-fg': '#5c3d00',
+  },
+  decoration: {
+    header: '#000080',
+    'on-header': '#ffffff',
+    'on-header-muted': '#dfe3ff',
+    'header-ring': '#ffffff',
+    'header-field': '#dfe3ff',
+    second: '#1a2a8c',
+    heading: '#13306e',
+    band: ['#ff9933', '#ffffff', '#138808'],
+  },
+};
+
 /** The built-in appearances, in the menu's order (after Follow the computer). */
 export const BUILT_IN: readonly Appearance[] = [
   BLACK,
@@ -562,6 +650,8 @@ export const BUILT_IN: readonly Appearance[] = [
   LOTUS,
   MARBLE,
   TULSI,
+  DHAJA,
+  TIRANGA,
 ];
 
 /** A built-in appearance by its id. */
