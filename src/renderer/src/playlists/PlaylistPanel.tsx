@@ -33,6 +33,7 @@ import { RowDelete, RowRename } from '../ui/RowDelete';
 import { useExtras } from '../library/extras-store';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { plural } from '../ui/text';
+import { BoxOverlay, boxChoice, ChosenBar, isSelectAll, rowsTouching, useBoxSelect } from '../ui/select-many';
 import { droppedPaths, hasFiles } from './drag';
 import { startRepeat, stopRepeat } from './repeat-actions';
 import { PlaylistsUnread } from './PlaylistsUnread';
@@ -55,7 +56,9 @@ import {
   newFromTemplate,
   openPlaylist,
   renameNode,
+  markNode,
   requestRemoveNode,
+  requestRemoveNodes,
   selectNode,
   setView,
   startRenaming,
@@ -105,11 +108,29 @@ function PlaylistTree({ platform }: { platform: string }) {
   const selectedNodeId = usePlaylists((s) => s.selectedNodeId);
   const renaming = usePlaylists((s) => (s.renameIn === 'tree' ? s.renaming : null));
   const openId = usePlaylists((s) => s.openId);
+  // Many chosen together (Session 44): Cmd/Ctrl and Shift clicks, a box dragged in the list, Cmd-A.
+  const markedNodes = usePlaylists((s) => s.markedNodes);
+  const many = markedNodes.length > 1;
   const [menu, setMenu] = useState<{ at: MenuPlace; node: PlaylistNode } | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null);
   const help = useWhatIsThis('playlists');
   // Lively (Session 40): the chosen row's highlight glides from the row chosen before.
   const listRef = useRef<HTMLUListElement>(null);
+  const boxBase = useRef<string[]>([]);
+  const box = useBoxSelect({
+    list: listRef,
+    hits: (b) => (listRef.current ? rowsTouching(listRef.current, b) : []),
+    begin: () => {
+      boxBase.current = usePlaylists.getState().markedNodes;
+    },
+    onBox: (ids, adding) => {
+      const chosen = boxChoice(boxBase.current, ids, adding);
+      usePlaylists.setState({ markedNodes: chosen, nodeAnchor: chosen[0] ?? null });
+    },
+    onClear: () => {
+      usePlaylists.setState({ markedNodes: [], nodeAnchor: null });
+    },
+  });
   const chosenWas = useRef<DOMRect | null>(null);
   useLayoutEffect(() => {
     const list = listRef.current;
@@ -188,13 +209,32 @@ function PlaylistTree({ platform }: { platform: string }) {
         {/* A list of buttons, each a Tab stop, not an ARIA tree: a tree's arrow keys would take the
             show's own (the arrows move the slides wherever the keyboard is). Folders say whether they
             are open, and a playlist in a folder says which. */}
+        <ChosenBar
+          count={markedNodes.length}
+          noun="playlists and folders"
+          onDelete={() => {
+            requestRemoveNodes(markedNodes);
+          }}
+          onClear={() => {
+            usePlaylists.setState({ markedNodes: [], nodeAnchor: null });
+          }}
+        />
         <ul
           ref={listRef}
           aria-label="Playlists and folders"
           data-testid={tree.length > 0 ? 'playlist-tree' : undefined}
           hidden={tree.length === 0}
-          className="relative min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2"
+          tabIndex={-1}
+          onPointerDown={box.onPointerDown}
+          onKeyDown={(e) => {
+            if (!isSelectAll(e, platform)) return;
+            e.preventDefault();
+            const ids = rows.map((r) => r.node.id);
+            usePlaylists.setState({ markedNodes: ids, nodeAnchor: ids[0] ?? null });
+          }}
+          className="relative min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2 focus:outline-none"
         >
+          <BoxOverlay box={box.box} as="li" />
           {rows.map(({ node, depth }) => {
             const open = node.isFolder && !closed.includes(node.id);
             const indent = { paddingLeft: 8 + depth * 14 };
@@ -212,7 +252,7 @@ function PlaylistTree({ platform }: { platform: string }) {
                 </li>
               );
             return (
-              <li key={node.id} className="group relative flex items-center">
+              <li key={node.id} className="group relative flex items-center" data-select-id={node.id}>
                 <button
                   type="button"
                   data-testid="playlist-node"
@@ -222,8 +262,20 @@ function PlaylistTree({ platform }: { platform: string }) {
                   data-open={openId === node.id ? 'true' : undefined}
                   aria-expanded={node.isFolder ? open : undefined}
                   aria-current={selectedNodeId === node.id ? 'true' : undefined}
+                  aria-pressed={many ? markedNodes.includes(node.id) : undefined}
                   style={indent}
-                  onClick={() => {
+                  onClick={(e) => {
+                    // Cmd/Ctrl adds one more, Shift a range (Session 44); a plain click opens it.
+                    const mods = { toggle: platform === 'darwin' ? e.metaKey : e.ctrlKey, range: e.shiftKey };
+                    if (mods.toggle || mods.range) {
+                      markNode(
+                        node.id,
+                        mods,
+                        rows.map((r) => r.node.id),
+                      );
+                      return;
+                    }
+                    usePlaylists.setState({ markedNodes: [node.id], nodeAnchor: node.id });
                     if (node.isFolder) toggleFolder(node.id);
                     else void openPlaylist(node.id);
                   }}
@@ -239,7 +291,10 @@ function PlaylistTree({ platform }: { platform: string }) {
                     }
                     if (!isRemoveKey(e, platform)) return;
                     e.preventDefault();
-                    requestRemoveNode(node.id);
+                    // The chosen ones together, when this is one of them (Session 44).
+                    if (markedNodes.length > 1 && markedNodes.includes(node.id))
+                      requestRemoveNodes(markedNodes);
+                    else requestRemoveNode(node.id);
                   }}
                   onDragOver={(e) => {
                     if (node.isFolder || (!fromLibrary(e) && !hasFiles(e))) return;
@@ -265,7 +320,11 @@ function PlaylistTree({ platform }: { platform: string }) {
                     void addFromLibrary(node.id, null, droppedItems(e));
                   }}
                   className={cx(
-                    rowClass({ selected: selectedNodeId === node.id, dropTarget: dropOn === node.id }),
+                    rowClass({
+                      selected: selectedNodeId === node.id,
+                      marked: many && markedNodes.includes(node.id),
+                      dropTarget: dropOn === node.id,
+                    }),
                     // Room for Rename, Delete and the mouse's ⋯ at the end (Session 26a), and Repeat
                     // Slides' Start (Session 26d).
                     'flex min-h-8 min-w-0 items-center gap-1.5 py-1 text-sm',
@@ -324,7 +383,9 @@ function PlaylistTree({ platform }: { platform: string }) {
                   className="absolute right-8"
                   onDelete={() => {
                     selectNode(node.id);
-                    requestRemoveNode(node.id);
+                    if (markedNodes.length > 1 && markedNodes.includes(node.id))
+                      requestRemoveNodes(markedNodes);
+                    else requestRemoveNode(node.id);
                   }}
                 />
                 {/* For the mouse: the keyboard opens the same menu on the playlist itself (Shift+F10 or

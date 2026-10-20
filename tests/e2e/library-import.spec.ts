@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { makeOldWordDoc, makeTestDocx } from '../../src/main/import/testing/make-docx';
 import { cocoaRtf, pp6Presentation } from '../../src/main/import/testing/pp6-fixtures';
 import type { PageGlobals } from './helpers';
-import { chooseMenuItem, dropFiles, launchApp, operatorPage } from './helpers';
+import { chooseMenuItem, dropFiles, launchApp, openLibrary, operatorPage } from './helpers';
 
 /*
  * Importing from the operator window: drag files onto the presentation
@@ -29,6 +29,7 @@ test('drag lyrics onto the library, read the report, go live, remove and undo, i
 
   const { app } = await launchApp();
   const win = await operatorPage(app);
+  await openLibrary(win);
   const list = win.getByTestId('presentation-list');
   await expect(list.getByTestId('presentation-row')).toHaveCount(2);
   await win.evaluate(async () => {
@@ -162,6 +163,7 @@ test('Word lyrics (Session 26f): Files… offers a .docx and imports it as lyric
 
   const { app } = await launchApp();
   const win = await operatorPage(app);
+  await openLibrary(win);
   const list = win.getByTestId('presentation-list');
   await expect(list.getByTestId('presentation-row')).toHaveCount(2);
   // Import… › Files…: the dialog (answered here by the test) offers .docx, never .doc.
@@ -259,6 +261,7 @@ test('drag a .pro6 presentation in: its text goes live, and missing media is fou
 
   const { app } = await launchApp();
   const win = await operatorPage(app);
+  await openLibrary(win);
   await expect(win.getByTestId('presentation-list').getByTestId('presentation-row')).toHaveCount(2);
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
@@ -315,6 +318,7 @@ test('a file dropped anywhere on the window is imported, and a failed import sho
 
   const { app } = await launchApp();
   const win = await operatorPage(app);
+  await openLibrary(win);
   const list = win.getByTestId('presentation-list');
   await expect(list.getByTestId('presentation-row')).toHaveCount(2);
 

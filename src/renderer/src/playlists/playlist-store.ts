@@ -31,6 +31,9 @@ interface PlaylistView {
   closed: string[];
   /** The playlist or folder the tree's actions apply to. */
   selectedNodeId: string | null;
+  /** Playlists and folders chosen together (Session 44): Delete removes them all, with one Undo. */
+  markedNodes: string[];
+  nodeAnchor: string | null;
   /** The playlist whose items are shown; null shows the tree. */
   openId: string | null;
   items: PlaylistItemInfo[];
@@ -49,8 +52,15 @@ interface PlaylistView {
    * centre. Only one name field opens.
    */
   renameIn: 'tree' | 'centre';
-  /** Playlists or folders waiting for the operator to confirm removing them. */
-  confirmRemove: { ids: string[]; name: string; folder: boolean; template: boolean; inside: number } | null;
+  /** Playlists or folders waiting for the operator to confirm removing them (`name` for one, else how many). */
+  confirmRemove: {
+    ids: string[];
+    name: string;
+    folder: boolean;
+    template: boolean;
+    inside: number;
+    folders?: number;
+  } | null;
   /** The last problem, until the next change works. */
   problem: string | null;
   /**
@@ -77,6 +87,8 @@ export const usePlaylists = create<PlaylistView>(() => ({
   templates: [],
   closed: [],
   selectedNodeId: null,
+  markedNodes: [],
+  nodeAnchor: null,
   openId: null,
   items: [],
   folder: '',
@@ -476,6 +488,73 @@ export function requestRemoveNode(id: string): void {
   });
 }
 
+/** A click on a playlist or folder with Cmd/Ctrl (one more) or Shift (a range of `order`, the rows shown). */
+export function markNode(
+  id: string,
+  mods: { toggle: boolean; range: boolean },
+  order: readonly string[],
+): void {
+  const { markedNodes, nodeAnchor } = usePlaylists.getState();
+  if (mods.range && nodeAnchor !== null) {
+    const from = order.indexOf(nodeAnchor);
+    const to = order.indexOf(id);
+    if (from >= 0 && to >= 0) {
+      usePlaylists.setState({ markedNodes: order.slice(Math.min(from, to), Math.max(from, to) + 1) });
+      return;
+    }
+  }
+  const set = new Set(markedNodes);
+  if (mods.toggle && set.has(id)) set.delete(id);
+  else set.add(id);
+  usePlaylists.setState({ markedNodes: [...set], nodeAnchor: id, selectedNodeId: id });
+}
+
+/**
+ * Ask before removing many playlists and folders at once (Session 44), with what the folders hold; one in a
+ * folder that goes too is taken with it.
+ */
+export function requestRemoveNodes(ids: readonly string[]): void {
+  const { tree } = usePlaylists.getState();
+  const chosen = new Set(ids);
+  const within = (n: PlaylistNode): boolean => {
+    for (let p = n.parentId; p !== null; p = tree.find((t) => t.id === p)?.parentId ?? null)
+      if (chosen.has(p)) return true;
+    return false;
+  };
+  const nodes = tree.filter((n) => chosen.has(n.id) && !within(n));
+  if (nodes.length === 0) return;
+  const [only] = nodes;
+  if (nodes.length === 1 && only) {
+    requestRemoveNode(only.id);
+    return;
+  }
+  const folders = nodes.filter((n) => n.isFolder);
+  usePlaylists.setState({
+    confirmRemove: {
+      ids: nodes.map((n) => n.id),
+      name: '',
+      folder: folders.length > 0,
+      template: false,
+      folders: folders.length,
+      inside: folders.flatMap((f) => inside(tree, f.id)).filter((n) => !n.isFolder && !chosen.has(n.id))
+        .length,
+    },
+  });
+}
+
+/** What a removal of these says: “Name”, "3 playlists", "2 folders", "2 playlists and a folder". */
+export function removingWhat(pending: NonNullable<PlaylistView['confirmRemove']>): string {
+  const count = pending.ids.length;
+  if (count === 1)
+    return `${pending.folder ? 'folder' : pending.template ? 'template' : 'playlist'} “${pending.name}”`;
+  const folders = pending.folders ?? 0;
+  const playlists = count - folders;
+  const part = (n: number, one: string) => (n === 1 ? `a ${one}` : `${String(n)} ${one}s`);
+  if (folders === 0) return `${String(count)} playlists`;
+  if (playlists === 0) return `${String(count)} folders`;
+  return `${playlists === 1 ? 'a playlist' : `${String(playlists)} playlists`} and ${part(folders, 'folder')}`;
+}
+
 export function cancelRemoveNode(): void {
   usePlaylists.setState({ confirmRemove: null });
 }
@@ -487,8 +566,9 @@ export async function confirmRemoveNode(): Promise<void> {
   const result = await api().remove(pending.ids);
   if (!settled(result) || result.ids.length === 0) return;
   const removed = result.ids;
+  usePlaylists.setState({ markedNodes: [], nodeAnchor: null });
   pushRemoval({
-    text: `Deleted ${pending.folder ? 'folder' : pending.template ? 'template' : 'playlist'} “${pending.name}”`,
+    text: `Deleted ${removingWhat(pending)}`,
     restore: async () => {
       await api().restore(removed);
       await loadTree();

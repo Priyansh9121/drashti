@@ -51,6 +51,7 @@ import { RowDelete } from '../ui/RowDelete';
 import { EmptyState } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { plural } from '../ui/text';
+import { BoxOverlay, boxChoice, ChosenBar, isSelectAll, rowsTouching, useBoxSelect } from '../ui/select-many';
 import { afterDrag, dragKind, droppedIds, droppedPaths, hasFiles, startDrag, useDragging } from './drag';
 import { droppedItems, isRemoveKey, RenameField } from './playlist-shared';
 import { useSmart } from './smart-store';
@@ -534,6 +535,22 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
     return 'at' in at ? { at: at.at } : { at: at.headerAt, header: shownFolder };
   }, [items, byFolder, view, shownFolder]);
   const dragging = useDragging((s) => s.on);
+  // Many chosen at once (Session 44): a box dragged from an empty place in the list, Cmd-A, Shift and Cmd.
+  const boxBase = useRef<string[]>([]);
+  const box = useBoxSelect({
+    list: listRef,
+    hits: (b) => (listRef.current ? rowsTouching(listRef.current, b) : []),
+    begin: () => {
+      boxBase.current = usePlaylists.getState().marked;
+    },
+    onBox: (ids, adding) => {
+      const chosen = boxChoice(boxBase.current, ids, adding);
+      usePlaylists.setState({ marked: chosen, anchorId: chosen[0] ?? null });
+    },
+    onClear: () => {
+      usePlaylists.setState({ marked: [], anchorId: null });
+    },
+  });
   const renaming = usePlaylists((s) => s.renaming);
   const renameIn = usePlaylists((s) => s.renameIn);
   const [spot, setSpot] = useState<DropSpot | null>(null);
@@ -771,8 +788,30 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
           A template: make a playlist from it to run a sabha. It never goes on the screens itself.
         </Notice>
       )}
+      <ChosenBar
+        count={marked.length}
+        noun="items"
+        deleteLabel="Remove"
+        onDelete={() => void removeMarkedItems()}
+        onClear={() => {
+          usePlaylists.setState({ marked: [], anchorId: null });
+        }}
+      />
       <ul
         ref={listRef}
+        tabIndex={-1}
+        onPointerDown={box.onPointerDown}
+        onKeyDown={(e) => {
+          // Cmd-A (Ctrl-A): every item shown; Delete on the list itself: the chosen ones (rows take their own).
+          if (isSelectAll(e, platform)) {
+            e.preventDefault();
+            const ids = rows.map((r) => r.item.id);
+            usePlaylists.setState({ marked: ids, anchorId: ids[0] ?? null });
+          } else if (e.target === e.currentTarget && isRemoveKey(e, platform) && marked.length > 0) {
+            e.preventDefault();
+            void removeMarkedItems();
+          }
+        }}
         aria-label={`Items in ${node?.name ?? 'the playlist'}${shownFolder === '' ? '' : `, ${shownFolder}`}`}
         data-testid="playlist-items"
         data-count={rows.length}
@@ -780,8 +819,9 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
         // (Drops are the section's: see above.)
         // Scrolled into view, an item keeps the list's padding: never flush against the divider below,
         // whose grab area reaches a few pixels into the list (a drop there would miss the list).
-        className="min-h-0 flex-1 scroll-py-2 space-y-1 overflow-y-auto px-3 py-2"
+        className="relative min-h-0 flex-1 scroll-py-2 space-y-1 overflow-y-auto px-3 py-2 focus:outline-none"
       >
+        <BoxOverlay box={box.box} as="li" />
         {rows.map(({ item, index }, row) => {
           const isMarked = markedSet.has(item.id);
           const isLive = liveItem === item.id;
@@ -831,6 +871,7 @@ function PlaylistItems({ platform, openId }: { platform: string; openId: string 
               key={item.id}
               data-item-index={index}
               data-item-row={item.id}
+              data-select-id={item.id}
               // Lively (Session 40): the cards of a playlist just opened arrive one after another (app.css).
               data-lively={arriving ? 'arrive' : undefined}
               style={arriving ? ({ '--i': index } as CSSProperties) : undefined}

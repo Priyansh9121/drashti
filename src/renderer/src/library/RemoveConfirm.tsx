@@ -1,4 +1,4 @@
-import { cancelRemoveNode, confirmRemoveNode, usePlaylists } from '../playlists/playlist-store';
+import { cancelRemoveNode, confirmRemoveNode, removingWhat, usePlaylists } from '../playlists/playlist-store';
 import { ConfirmDialog } from '../ui/Dialog';
 import { cancelRemoval, confirmRemoval, useImports } from './import-store';
 
@@ -41,7 +41,7 @@ export function RemovePlaylistConfirm({ undoKey }: { undoKey: string }) {
   if (!pending) return null;
   return (
     <ConfirmDialog
-      title={`Delete ${pending.folder ? 'folder' : 'playlist'} “${pending.name}”?`}
+      title={`Delete ${removingWhat(pending)}?`}
       confirmLabel="Delete"
       onCancel={cancelRemoveNode}
       onConfirm={() => void confirmRemoveNode()}
@@ -56,7 +56,7 @@ export function RemovePlaylistConfirm({ undoKey }: { undoKey: string }) {
       )}
       <p>The presentations and media stay in the library.</p>
       <p>
-        You can bring {pending.folder ? 'it all' : 'it'} back with Undo ({undoKey}).
+        You can bring {pending.folder || pending.ids.length > 1 ? 'it all' : 'it'} back with Undo ({undoKey}).
       </p>
     </ConfirmDialog>
   );
