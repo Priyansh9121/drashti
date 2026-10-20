@@ -173,6 +173,36 @@ describe('more colourful appearances (Session 42): more places for colour', () =
     },
   );
 
+  it('fourteen built-in appearances, each clearly different: two of its window, header and next thing to do at least 10 from every other’s', () => {
+    expect(BUILT_IN.map((a) => a.name)).toEqual([
+      'Black',
+      'White',
+      'Saffron',
+      'Peacock',
+      'Midnight Blue',
+      'Sandalwood',
+      'Lotus',
+      'Marble',
+      'Tulsi',
+      'Dhaja',
+      'Tiranga',
+      'Diwali',
+      'Holi',
+      'Aarti',
+    ]);
+    const alike: string[] = [];
+    for (const [i, a] of BUILT_IN.entries())
+      for (const b of BUILT_IN.slice(i + 1)) {
+        const apart = [
+          deltaE00(a.colours.ink, b.colours.ink),
+          deltaE00(a.decoration.header, b.decoration.header),
+          deltaE00(a.colours.primary, b.colours.primary),
+        ].sort((x, y) => y - x);
+        if ((apart[1] ?? 0) < 10) alike.push(`${a.name} and ${b.name}: ${truncate(apart[1] ?? 0, 1)}`);
+      }
+    expect(alike).toEqual([]);
+  });
+
   it('Dhaja and Tiranga are the flags’ colours, colours only, with the flag’s red kept from Next', () => {
     const dhaja = builtIn('dhaja');
     const tiranga = builtIn('tiranga');
