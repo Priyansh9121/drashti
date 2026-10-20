@@ -25,6 +25,14 @@ import {
 import { EmptyState } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { layoutRows, visibleRows } from '../ui/virtual';
+import {
+  BoxOverlay,
+  boxChoice,
+  ChosenBar,
+  isSelectAll,
+  laidOutTouching,
+  useBoxSelect,
+} from '../ui/select-many';
 import { clickMedia, loadMedia, setDropOnly, shownMedia, useMedia } from './library-store';
 
 const ROW_HEIGHT = 48;
@@ -249,6 +257,28 @@ export function MediaList({ platform }: { platform: string }) {
   const layout = useMemo(() => layoutRows(heights), [heights]);
   const { start, end } = visibleRows(layout, view.top, view.height, MARGIN);
   const markedSet = new Set(marked);
+  // Many chosen at once (Session 44): a box dragged from an empty place (rows by their places), Cmd-A.
+  const boxBase = useRef<string[]>([]);
+  const box = useBoxSelect({
+    list: listRef,
+    hits: (b) =>
+      laidOutTouching(
+        media.map((m) => m.id),
+        layout.offsets,
+        heights,
+        b,
+      ),
+    begin: () => {
+      boxBase.current = useMedia.getState().marked;
+    },
+    onBox: (ids, adding) => {
+      const chosen = boxChoice(boxBase.current, ids, adding);
+      useMedia.setState({ marked: chosen, anchorId: chosen[0] ?? null });
+    },
+    onClear: () => {
+      useMedia.setState({ marked: [], anchorId: null });
+    },
+  });
   const jobs = useConvert((s) => s.jobs);
   const convertError = useConvert((s) => s.error);
   const toConvert = media.filter((m) => convertible(m) && !jobBusy(jobFor(jobs, m.id)));
@@ -316,12 +346,28 @@ export function MediaList({ platform }: { platform: string }) {
           )}
         </div>
       )}
+      <ChosenBar
+        count={marked.length}
+        noun="media files"
+        onDelete={() => void requestMediaRemoval()}
+        onClear={() => {
+          useMedia.setState({ marked: [], anchorId: null });
+        }}
+      />
       <ul
         ref={listRef}
-        className="relative min-h-0 flex-1 overflow-y-auto"
+        tabIndex={-1}
+        className="relative min-h-0 flex-1 overflow-y-auto focus:outline-none"
         data-testid="media-list"
         data-count={media.length}
+        onPointerDown={box.onPointerDown}
         onKeyDown={(e) => {
+          if (isSelectAll(e, platform)) {
+            e.preventDefault();
+            const ids = media.map((m) => m.id);
+            useMedia.setState({ marked: ids, anchorId: ids[0] ?? null });
+            return;
+          }
           // Delete (Backspace on a Mac), as in the presentation list: asks first, then Undo (Session 26a).
           if (e.repeat || actionFor(e.nativeEvent, platform, LIBRARY_KEYMAP) !== 'removeSelected') return;
           e.preventDefault();
@@ -331,6 +377,7 @@ export function MediaList({ platform }: { platform: string }) {
           setView({ top: e.currentTarget.scrollTop, height: e.currentTarget.clientHeight });
         }}
       >
+        <BoxOverlay box={box.box} as="li" />
         {media.slice(start, end).map((m, k) => {
           const i = start + k;
           return (

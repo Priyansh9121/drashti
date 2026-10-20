@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { formatDuration } from '../../../shared/format';
 import type { MusicPlaylist } from '../../../shared/music';
@@ -32,7 +32,19 @@ import {
 import { Panel } from '../ui/Panel';
 import { Checkbox } from '../ui/Toggle';
 import { Truncate } from '../ui/Truncate';
-import { connectMusic, deleteMusic, musicAction, shownMusic, takeOutTrack, useMusic } from './music-store';
+import {
+  clickedMany,
+  connectMusic,
+  deleteManyMusic,
+  deleteMusic,
+  musicAction,
+  shownMusic,
+  takeOutTrack,
+  takeOutTracks,
+  useMusic,
+} from './music-store';
+import { isRemoveKey } from '../playlists/playlist-shared';
+import { BoxOverlay, boxChoice, ChosenBar, isSelectAll, rowsTouching, useBoxSelect } from '../ui/select-many';
 import { createAudioPlaylist, dropSounds, importSounds, takesSounds } from './audio-actions';
 
 /*
@@ -66,11 +78,15 @@ function TimeLeft() {
 }
 
 /** `nested`: inside a panel group (Session 26a: Audio, More tools). */
-export function MusicPanel({ nested = false }: { nested?: boolean } = {}) {
+export function MusicPanel({
+  nested = false,
+  platform = 'darwin',
+}: { nested?: boolean; platform?: string } = {}) {
   const view = useMusic((s) => s.view);
   const shownId = useMusic((s) => s.shownId);
   const playing = useMusicPlaying();
-  const [removing, setRemoving] = useState(false);
+  // The audio playlists Delete asks about: the shown one, or the chosen ones together (Session 44).
+  const [removing, setRemoving] = useState<string[] | null>(null);
   useEffect(() => {
     connectMusic();
   }, []);
@@ -106,10 +122,13 @@ export function MusicPanel({ nested = false }: { nested?: boolean } = {}) {
       ) : (
         <>
           <AudioPlaylists
+            platform={platform}
             lists={lists}
             shown={shown}
             playingId={playing?.music?.playlistId ?? null}
-            onDelete={() => setRemoving(true)}
+            onDelete={(ids) => {
+              setRemoving(ids);
+            }}
           />
           <div className="flex items-center gap-1.5" role="group" aria-label="Play the music">
             <IconButton
@@ -153,7 +172,11 @@ export function MusicPanel({ nested = false }: { nested?: boolean } = {}) {
             <OptionToggle playlist={shown} option="shuffle" />
           </div>
           <AudioDrop playlistId={shown.id}>
-            <Tracks playlist={shown} playingIndex={isShownPlaying ? (playing?.music?.index ?? null) : null} />
+            <Tracks
+              platform={platform}
+              playlist={shown}
+              playingIndex={isShownPlaying ? (playing?.music?.index ?? null) : null}
+            />
           </AudioDrop>
           <Button
             size="sm"
@@ -168,18 +191,32 @@ export function MusicPanel({ nested = false }: { nested?: boolean } = {}) {
         </>
       )}
       <AddSoundsDialog playlistId={shown?.id ?? null} />
-      {removing && shown && (
+      {removing && removing.length > 0 && (
         <ConfirmDialog
-          title={`Delete music “${shown.name}”?`}
+          title={
+            removing.length === 1
+              ? `Delete music “${lists.find((p) => p.id === removing[0])?.name ?? ''}”?`
+              : `Delete ${String(removing.length)} audio playlists?`
+          }
           confirmLabel="Delete"
-          onCancel={() => setRemoving(false)}
+          onCancel={() => {
+            setRemoving(null);
+          }}
           onConfirm={() => {
-            setRemoving(false);
-            void deleteMusic(shown.id, shown.name);
+            const ids = removing;
+            setRemoving(null);
+            const [only] = ids;
+            if (ids.length === 1 && only !== undefined)
+              void deleteMusic(only, lists.find((p) => p.id === only)?.name ?? '');
+            else
+              void deleteManyMusic(
+                ids,
+                ids.map((id) => lists.find((p) => p.id === id)?.name ?? ''),
+              );
           }}
         >
-          The list goes; its sounds stay in the library. If it is playing, the music stops. Undo brings it
-          back.
+          {removing.length === 1 ? 'The list goes' : 'The lists go'}; the sounds stay in the library. If one
+          is playing, the music stops. Undo brings {removing.length === 1 ? 'it' : 'them'} back.
         </ConfirmDialog>
       )}
     </Panel>
@@ -250,102 +287,168 @@ function AudioDrop({
  * end of its row; each row takes sounds dropped on it.
  */
 function AudioPlaylists({
+  platform,
   lists,
   shown,
   playingId,
   onDelete,
 }: {
+  platform: string;
   lists: readonly MusicPlaylist[];
   shown: MusicPlaylist;
   playingId: string | null;
-  onDelete: () => void;
+  /** Ask about deleting these. */
+  onDelete: (ids: string[]) => void;
 }) {
   const renamingId = useMusic((s) => s.renamingId);
+  const marked = useMusic((s) => s.markedLists);
+  const listRef = useRef<HTMLUListElement>(null);
+  const boxBase = useRef<string[]>([]);
+  const box = useBoxSelect({
+    list: listRef,
+    hits: (b) => (listRef.current ? rowsTouching(listRef.current, b) : []),
+    begin: () => {
+      boxBase.current = useMusic.getState().markedLists;
+    },
+    onBox: (ids, adding) => {
+      const chosen = boxChoice(boxBase.current, ids, adding);
+      useMusic.setState({ markedLists: chosen, listAnchor: chosen[0] ?? null });
+    },
+    onClear: () => {
+      useMusic.setState({ markedLists: [], listAnchor: null });
+    },
+  });
+  const many = marked.length > 1;
+  /** Delete for this row: the chosen ones together when it is one of them. */
+  const deleting = (id: string) => (many && marked.includes(id) ? marked : [id]);
   return (
-    <ul
-      className="max-h-40 space-y-0.5 overflow-y-auto"
-      aria-label="Audio playlists"
-      data-testid="music-playlists"
-    >
-      {lists.map((p) => {
-        const chosen = p.id === shown.id;
-        if (renamingId === p.id)
-          return (
-            <li key={p.id} className="py-0.5">
-              <TextInput
-                autoFocus
-                aria-label="Name of the audio playlist"
-                defaultValue={p.name}
-                className="w-full"
-                onFocus={(e) => {
-                  e.currentTarget.select();
-                }}
-                onBlur={(e) => {
-                  useMusic.setState({ renamingId: null });
-                  const name = e.target.value.trim();
-                  if (name !== '' && name !== p.name)
-                    void musicAction(() => window.drashti.music.rename(p.id, name));
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') e.currentTarget.blur();
-                  if (e.key === 'Escape') {
-                    e.preventDefault();
-                    e.currentTarget.value = p.name;
-                    e.currentTarget.blur();
-                  }
-                }}
-              />
-            </li>
-          );
-        return (
-          <li key={p.id} className="group relative">
-            <AudioDrop playlistId={p.id}>
-              <button
-                type="button"
-                data-testid="music-playlist"
-                data-id={p.id}
-                aria-current={chosen ? 'true' : undefined}
-                className={cx(
-                  rowClass({ selected: chosen }),
-                  'flex min-h-9 items-center gap-2 py-1 pl-2.5',
-                  chosen ? 'pr-17' : 'pr-2.5',
-                )}
-                onClick={() => {
-                  useMusic.setState({ shownId: p.id });
-                }}
-              >
-                {playingId === p.id ? (
-                  <Play size={13} aria-hidden="true" className="shrink-0 text-live" />
-                ) : (
-                  <ListMusic size={13} aria-hidden="true" className="shrink-0 text-muted" />
-                )}
-                <Truncate text={p.name} className="min-w-0 flex-1 text-sm" />
-                <span className="shrink-0 text-xs text-muted">{plural(p.tracks.length, 'sound')}</span>
-              </button>
-            </AudioDrop>
-            {chosen && (
-              <span className="absolute top-1 right-1 flex">
-                <IconButton
-                  icon={Pencil}
-                  label={`Rename “${p.name}”`}
-                  size="sm"
-                  onClick={() => {
-                    useMusic.setState({ renamingId: p.id });
+    <>
+      <ChosenBar
+        count={marked.length}
+        noun="audio playlists"
+        onDelete={() => {
+          onDelete(marked);
+        }}
+        onClear={() => {
+          useMusic.setState({ markedLists: [], listAnchor: null });
+        }}
+      />
+      <ul
+        ref={listRef}
+        tabIndex={-1}
+        onPointerDown={box.onPointerDown}
+        onKeyDown={(e) => {
+          if (!isSelectAll(e, platform)) return;
+          e.preventDefault();
+          const ids = lists.map((p) => p.id);
+          useMusic.setState({ markedLists: ids, listAnchor: ids[0] ?? null });
+        }}
+        className="relative max-h-40 space-y-0.5 overflow-y-auto focus:outline-none"
+        aria-label="Audio playlists"
+        data-testid="music-playlists"
+      >
+        <BoxOverlay box={box.box} as="li" />
+        {lists.map((p) => {
+          const chosen = p.id === shown.id;
+          if (renamingId === p.id)
+            return (
+              <li key={p.id} className="py-0.5">
+                <TextInput
+                  autoFocus
+                  aria-label="Name of the audio playlist"
+                  defaultValue={p.name}
+                  className="w-full"
+                  onFocus={(e) => {
+                    e.currentTarget.select();
+                  }}
+                  onBlur={(e) => {
+                    useMusic.setState({ renamingId: null });
+                    const name = e.target.value.trim();
+                    if (name !== '' && name !== p.name)
+                      void musicAction(() => window.drashti.music.rename(p.id, name));
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur();
+                    if (e.key === 'Escape') {
+                      e.preventDefault();
+                      e.currentTarget.value = p.name;
+                      e.currentTarget.blur();
+                    }
                   }}
                 />
-                <IconButton
-                  icon={Trash2}
-                  label={`Delete music “${p.name}”`}
-                  size="sm"
-                  data-testid="music-delete"
-                  onClick={onDelete}
-                />
-              </span>
-            )}
-          </li>
-        );
-      })}
-    </ul>
+              </li>
+            );
+          return (
+            <li key={p.id} className="group relative" data-select-id={p.id}>
+              <AudioDrop playlistId={p.id}>
+                <button
+                  type="button"
+                  data-testid="music-playlist"
+                  data-id={p.id}
+                  aria-current={chosen ? 'true' : undefined}
+                  aria-pressed={many ? marked.includes(p.id) : undefined}
+                  className={cx(
+                    rowClass({ selected: chosen, marked: many && marked.includes(p.id) }),
+                    'flex min-h-9 items-center gap-2 py-1 pl-2.5',
+                    chosen ? 'pr-17' : 'pr-2.5',
+                  )}
+                  onClick={(e) => {
+                    const mods = { toggle: platform === 'darwin' ? e.metaKey : e.ctrlKey, range: e.shiftKey };
+                    if (mods.toggle || mods.range) {
+                      const { markedLists, listAnchor } = useMusic.getState();
+                      const next = clickedMany(
+                        lists.map((x) => x.id),
+                        markedLists,
+                        listAnchor,
+                        p.id,
+                        mods,
+                      );
+                      useMusic.setState({ markedLists: next.marked, listAnchor: next.anchor });
+                      return;
+                    }
+                    useMusic.setState({ shownId: p.id, markedLists: [p.id], listAnchor: p.id });
+                  }}
+                  onKeyDown={(e) => {
+                    if (!isRemoveKey(e, platform)) return;
+                    e.preventDefault();
+                    onDelete(deleting(p.id));
+                  }}
+                >
+                  {playingId === p.id ? (
+                    <Play size={13} aria-hidden="true" className="shrink-0 text-live" />
+                  ) : (
+                    <ListMusic size={13} aria-hidden="true" className="shrink-0 text-muted" />
+                  )}
+                  <Truncate text={p.name} className="min-w-0 flex-1 text-sm" />
+                  <span className="shrink-0 text-xs text-muted">{plural(p.tracks.length, 'sound')}</span>
+                </button>
+              </AudioDrop>
+              {chosen && (
+                <span className="absolute top-1 right-1 flex">
+                  <IconButton
+                    icon={Pencil}
+                    label={`Rename “${p.name}”`}
+                    size="sm"
+                    onClick={() => {
+                      useMusic.setState({ renamingId: p.id });
+                    }}
+                  />
+                  <IconButton
+                    icon={Trash2}
+                    label={`Delete music “${p.name}”`}
+                    size="sm"
+                    data-testid="music-delete"
+                    onClick={() => {
+                      onDelete(deleting(p.id));
+                    }}
+                  />
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </>
   );
 }
 
@@ -379,8 +482,47 @@ function OptionToggle({ playlist, option }: { playlist: MusicPlaylist; option: '
   );
 }
 
-function Tracks({ playlist, playingIndex }: { playlist: MusicPlaylist; playingIndex: number | null }) {
+function Tracks({
+  platform,
+  playlist,
+  playingIndex,
+}: {
+  platform: string;
+  playlist: MusicPlaylist;
+  playingIndex: number | null;
+}) {
   const playing = useMusicPlaying();
+  // Many chosen together (Session 44): Cmd/Ctrl and Shift clicks, a box dragged in the list, Cmd-A.
+  const all = useMusic((s) => s.markedTracks);
+  const ids = playlist.tracks.map((t) => t.id);
+  const marked = all.filter((id) => ids.includes(id));
+  const many = marked.length > 1;
+  const listRef = useRef<HTMLOListElement>(null);
+  const boxBase = useRef<string[]>([]);
+  const box = useBoxSelect({
+    list: listRef,
+    hits: (b) => (listRef.current ? rowsTouching(listRef.current, b) : []),
+    begin: () => {
+      boxBase.current = useMusic.getState().markedTracks;
+    },
+    onBox: (touched, adding) => {
+      const chosen = boxChoice(boxBase.current, touched, adding);
+      useMusic.setState({ markedTracks: chosen, trackAnchor: chosen[0] ?? null });
+    },
+    onClear: () => {
+      useMusic.setState({ markedTracks: [], trackAnchor: null });
+    },
+  });
+  /** Take out the chosen ones (or `one`, when it is not one of them), with one Undo. */
+  const takeOut = (one?: string) => {
+    const chosen = one !== undefined && !(many && marked.includes(one)) ? [one] : marked;
+    const tracks = playlist.tracks.flatMap((t, at) =>
+      chosen.includes(t.id) ? [{ id: t.id, at, name: t.name }] : [],
+    );
+    const [only] = tracks;
+    if (tracks.length === 1 && only) void takeOutTrack(only.id, only.at, only.name, playlist.name);
+    else void takeOutTracks(tracks, playlist.name);
+  };
   if (playlist.tracks.length === 0)
     return (
       <p className="px-1 py-2 text-xs text-muted">
@@ -388,62 +530,114 @@ function Tracks({ playlist, playingIndex }: { playlist: MusicPlaylist; playingIn
       </p>
     );
   return (
-    <ol
-      className="max-h-56 space-y-1 overflow-y-auto"
-      aria-label={`Tracks of ${playlist.name}`}
-      data-testid="music-tracks"
-    >
-      {playlist.tracks.map((t, i) => {
-        const isPlaying = playingIndex !== null && playing?.mediaId === t.mediaId && playing.title === t.name;
-        return (
-          <li
-            key={t.id}
-            data-testid="music-track"
-            data-playing={isPlaying ? 'true' : undefined}
-            className="flex items-center gap-1 rounded-md border border-line bg-panel-2 px-1.5 py-1"
-          >
-            <button
-              type="button"
-              className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-sm disabled:opacity-50"
-              disabled={!t.playable}
-              aria-label={`Play from ${t.name}`}
-              onClick={() => void musicAction(() => window.drashti.music.play(playlist.id, i))}
-            >
-              {isPlaying ? (
-                <Play size={12} aria-hidden="true" className="shrink-0 text-live" />
-              ) : (
-                <span className="w-3 shrink-0 text-right text-xs text-muted tabular-nums">{i + 1}</span>
+    <>
+      <ChosenBar
+        count={marked.length}
+        noun="sounds"
+        deleteLabel="Remove"
+        onDelete={() => {
+          takeOut();
+        }}
+        onClear={() => {
+          useMusic.setState({ markedTracks: [], trackAnchor: null });
+        }}
+      />
+      <ol
+        ref={listRef}
+        tabIndex={-1}
+        onPointerDown={box.onPointerDown}
+        onKeyDown={(e) => {
+          if (isSelectAll(e, platform)) {
+            e.preventDefault();
+            useMusic.setState({ markedTracks: ids, trackAnchor: ids[0] ?? null });
+          } else if (e.target === e.currentTarget && isRemoveKey(e, platform) && marked.length > 0) {
+            e.preventDefault();
+            takeOut();
+          }
+        }}
+        className="relative max-h-56 space-y-1 overflow-y-auto focus:outline-none"
+        aria-label={`Tracks of ${playlist.name}`}
+        data-testid="music-tracks"
+      >
+        <BoxOverlay box={box.box} as="li" />
+        {playlist.tracks.map((t, i) => {
+          const isPlaying =
+            playingIndex !== null && playing?.mediaId === t.mediaId && playing.title === t.name;
+          const isMarked = marked.includes(t.id);
+          return (
+            <li
+              key={t.id}
+              data-testid="music-track"
+              data-select-id={t.id}
+              data-marked={isMarked ? 'true' : undefined}
+              data-playing={isPlaying ? 'true' : undefined}
+              className={cx(
+                'flex items-center gap-1 rounded-md border px-1.5 py-1',
+                isMarked ? 'border-second/70 bg-panel-3' : 'border-line bg-panel-2',
               )}
-              <Truncate text={t.name} className="min-w-0 flex-1" />
-              <span className="shrink-0 text-xs text-muted tabular-nums">
-                {!t.playable ? 'Cannot play' : t.durationMs ? formatDuration(t.durationMs) : ''}
-              </span>
-            </button>
-            <IconButton
-              icon={ArrowUp}
-              label="Up"
-              size="sm"
-              disabled={i === 0}
-              onClick={() => void musicAction(() => window.drashti.music.moveTrack(t.id, i - 1))}
-            />
-            <IconButton
-              icon={ArrowDown}
-              label="Down"
-              size="sm"
-              disabled={i === playlist.tracks.length - 1}
-              onClick={() => void musicAction(() => window.drashti.music.moveTrack(t.id, i + 1))}
-            />
-            <IconButton
-              icon={Trash2}
-              label={`Remove “${t.name}” from the music`}
-              size="sm"
-              data-testid="music-track-delete"
-              onClick={() => void takeOutTrack(t.id, i, t.name, playlist.name)}
-            />
-          </li>
-        );
-      })}
-    </ol>
+            >
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-sm disabled:opacity-50"
+                disabled={!t.playable}
+                aria-label={`Play from ${t.name}`}
+                aria-pressed={many ? isMarked : undefined}
+                onClick={(e) => {
+                  // Cmd/Ctrl and Shift choose (Session 44); a plain click plays from it.
+                  const mods = { toggle: platform === 'darwin' ? e.metaKey : e.ctrlKey, range: e.shiftKey };
+                  if (mods.toggle || mods.range) {
+                    const { markedTracks, trackAnchor } = useMusic.getState();
+                    const next = clickedMany(ids, markedTracks, trackAnchor, t.id, mods);
+                    useMusic.setState({ markedTracks: next.marked, trackAnchor: next.anchor });
+                    return;
+                  }
+                  useMusic.setState({ markedTracks: [t.id], trackAnchor: t.id });
+                  void musicAction(() => window.drashti.music.play(playlist.id, i));
+                }}
+                onKeyDown={(e) => {
+                  if (!isRemoveKey(e, platform)) return;
+                  e.preventDefault();
+                  takeOut(t.id);
+                }}
+              >
+                {isPlaying ? (
+                  <Play size={12} aria-hidden="true" className="shrink-0 text-live" />
+                ) : (
+                  <span className="w-3 shrink-0 text-right text-xs text-muted tabular-nums">{i + 1}</span>
+                )}
+                <Truncate text={t.name} className="min-w-0 flex-1" />
+                <span className="shrink-0 text-xs text-muted tabular-nums">
+                  {!t.playable ? 'Cannot play' : t.durationMs ? formatDuration(t.durationMs) : ''}
+                </span>
+              </button>
+              <IconButton
+                icon={ArrowUp}
+                label="Up"
+                size="sm"
+                disabled={i === 0}
+                onClick={() => void musicAction(() => window.drashti.music.moveTrack(t.id, i - 1))}
+              />
+              <IconButton
+                icon={ArrowDown}
+                label="Down"
+                size="sm"
+                disabled={i === playlist.tracks.length - 1}
+                onClick={() => void musicAction(() => window.drashti.music.moveTrack(t.id, i + 1))}
+              />
+              <IconButton
+                icon={Trash2}
+                label={`Remove “${t.name}” from the music`}
+                size="sm"
+                data-testid="music-track-delete"
+                onClick={() => {
+                  takeOut(t.id);
+                }}
+              />
+            </li>
+          );
+        })}
+      </ol>
+    </>
   );
 }
 

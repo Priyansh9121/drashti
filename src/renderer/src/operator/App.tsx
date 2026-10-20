@@ -327,7 +327,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
                   actions={<AudioAddMenu />}
                   data-testid="audio-group"
                 >
-                  <MusicPanel nested />
+                  <MusicPanel nested platform={platform} />
                 </PanelGroup>
                 <StageMessageControl />
                 <MessagesPanel />

@@ -43,6 +43,14 @@ import { EmptyState } from '../ui/States';
 import { TabPanel, Tabs } from '../ui/Tabs';
 import { Truncate } from '../ui/Truncate';
 import { layoutRows, scrollToShow, visibleRows } from '../ui/virtual';
+import {
+  BoxOverlay,
+  boxChoice,
+  ChosenBar,
+  isSelectAll,
+  laidOutTouching,
+  useBoxSelect,
+} from '../ui/select-many';
 import { useWhatIsThis } from '../help/WhatIsThis';
 
 /** Rows in the list: a presentation, or a heading where a library starts. Fixed heights, so only rows in view are drawn. */
@@ -261,6 +269,29 @@ export function PresentationList({ platform }: { platform: string }) {
   );
   const layout = useMemo(() => layoutRows(heights), [heights]);
   const { start, end } = visibleRows(layout, view.top, view.height, MARGIN);
+  // Many chosen at once (Session 44): a box dragged from an empty place in the list (rows drawn or not, by
+  // their places), Cmd-A, and Shift and Cmd clicks as before.
+  const boxBase = useRef<string[]>([]);
+  const box = useBoxSelect({
+    list: listRef,
+    hits: (b) =>
+      laidOutTouching(
+        rows.map((r) => (r.kind === 'item' ? r.p.id : null)),
+        layout.offsets,
+        heights,
+        b,
+      ),
+    begin: () => {
+      boxBase.current = useLibrary.getState().marked;
+    },
+    onBox: (ids, adding) => {
+      const chosen = boxChoice(boxBase.current, ids, adding);
+      useLibrary.setState({ marked: chosen, anchorId: chosen[0] ?? null });
+    },
+    onClear: () => {
+      useLibrary.setState({ marked: [], anchorId: null });
+    },
+  });
 
   useEffect(() => {
     const ul = listRef.current;
@@ -318,6 +349,12 @@ export function PresentationList({ platform }: { platform: string }) {
     void importPaths(paths);
   };
   const onKeyDown = (e: KeyboardEvent<HTMLUListElement>) => {
+    if (isSelectAll(e, platform)) {
+      e.preventDefault();
+      const ids = presentations.map((p) => p.id);
+      useLibrary.setState({ marked: ids, anchorId: ids[0] ?? null });
+      return;
+    }
     if (e.repeat) return;
     if (actionFor(e.nativeEvent, platform, LIBRARY_KEYMAP) === 'removeSelected') {
       e.preventDefault();
@@ -357,6 +394,18 @@ export function PresentationList({ platform }: { platform: string }) {
       {/* What is this? sits in the search row (or the Shastra tab's first row): the tabs keep their words. */}
       {tab !== 'shastra' && <SearchBox help={help.button} />}
       {tab !== 'shastra' && <LibraryTools />}
+      {tab === 'presentations' && !searching && (
+        <ChosenBar
+          count={marked.length}
+          noun="presentations"
+          onDelete={() => {
+            requestRemoval();
+          }}
+          onClear={() => {
+            useLibrary.setState({ marked: [], anchorId: null });
+          }}
+        />
+      )}
       {tab === 'presentations' && extras && <KirtanFilters />}
       {/* Its own scrolling (Session 44): an empty place or a short list never draws out of the column,
           whatever the window's height or the notices under it. */}
@@ -378,14 +427,17 @@ export function PresentationList({ platform }: { platform: string }) {
         ) : (
           <ul
             ref={listRef}
-            className="relative min-h-0 flex-1 overflow-y-auto"
+            tabIndex={-1}
+            className="relative min-h-0 flex-1 overflow-y-auto focus:outline-none"
             data-testid="presentation-list"
             data-count={presentations.length}
+            onPointerDown={box.onPointerDown}
             onKeyDown={onKeyDown}
             onScroll={(e) => {
               setView({ top: e.currentTarget.scrollTop, height: e.currentTarget.clientHeight });
             }}
           >
+            <BoxOverlay box={box.box} as="li" />
             {rows.slice(start, end).map((row, k) => {
               const i = start + k;
               const place = {
