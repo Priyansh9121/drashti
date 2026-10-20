@@ -357,7 +357,9 @@ export function PresentationList({ platform }: { platform: string }) {
       {tab !== 'shastra' && <SearchBox help={help.button} />}
       {tab !== 'shastra' && <LibraryTools />}
       {tab === 'presentations' && extras && <KirtanFilters />}
-      <TabPanel group="library" id={tab} className="flex min-h-0 flex-1 flex-col">
+      {/* Its own scrolling (Session 44): an empty place or a short list never draws out of the column,
+          whatever the window's height or the notices under it. */}
+      <TabPanel group="library" id={tab} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {tab === 'shastra' ? (
           <ShastraPanel help={help.button} />
         ) : searching ? (
