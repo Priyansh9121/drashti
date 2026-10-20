@@ -7,10 +7,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BUILT_IN } from '../../src/shared/appearance/appearances';
 import { BUILTIN_THEMES } from '../../src/shared/builtin-themes';
+import { DEFAULT_LOWER_THIRD_LOOK } from '../../src/shared/lower-thirds';
 import type { PageGlobals } from './helpers';
 import { device, networkOn, NETWORK_ENV, pairByQr, pairingCode, TABLET } from './devices';
 import {
   chooseMenuItem,
+  closeLibrary,
   dropFiles,
   importAndGetIds,
   launchApp,
@@ -55,16 +57,22 @@ test.skip(QUIET, 'Screenshots need real windows: take them on CI (or with DRASHT
 const folder = join(__dirname, '..', '..', 'docs', 'screenshots');
 
 // The guides' pictures are in Black (Sessions 39–40), whatever the computer taking them is set to: every Drashti
-// this file starts begins in it (a test switch, ignored when packaged). Set only while this file's tests run:
+// this file starts begins in it (a test switch, ignored when packaged). Its outputs are windows of their own
+// (Session 45): no picture is taken while an output covers a display, as a full-screen one would on the computer
+// taking them (the operator window's display, or a real second one). Set only while this file's tests run:
 // loading the file to list its tests, as every run does, must change nothing, and the worker goes on to the
 // other files (where it would hide the appearance a test chose).
 const appearanceBefore = process.env['DRASHTI_TEST_APPEARANCE'];
+const windowedBefore = process.env['DRASHTI_WINDOWED_OUTPUTS'];
 test.beforeAll(() => {
   process.env['DRASHTI_TEST_APPEARANCE'] = 'black';
+  process.env['DRASHTI_WINDOWED_OUTPUTS'] = '1';
 });
 test.afterAll(() => {
   if (appearanceBefore === undefined) delete process.env['DRASHTI_TEST_APPEARANCE'];
   else process.env['DRASHTI_TEST_APPEARANCE'] = appearanceBefore;
+  if (windowedBefore === undefined) delete process.env['DRASHTI_WINDOWED_OUTPUTS'];
+  else process.env['DRASHTI_WINDOWED_OUTPUTS'] = windowedBefore;
 });
 
 /**
@@ -406,7 +414,9 @@ test('the kirtan library, screens’ languages, templates and the setup wizard',
   await win.getByRole('button', { name: 'Close screens' }).click();
   await shot(win, 'operator-kirtan-languages');
 
-  // Templates, a playlist made from one, and filling a slot.
+  // Templates, a playlist made from one, and filling a slot: in the playlists' column, under the library's
+  // sheet (Session 44), shut first.
+  await closeLibrary(win);
   await win.getByTestId('playlist-view-tab-templates').click();
   await shot(win, 'templates');
   await win.getByRole('button', { name: 'New playlist from Example: Ravi Sabha' }).click();
@@ -1662,7 +1672,7 @@ test('Import from a Link, YouTube: the choices, the tick, downloading and a refu
   await refused.app.close();
 });
 
-test('this session’s playlists: a Dropbox folder as one playlist with headers, a smart playlist, and Repeat Slides going round (Session 26c–d)', async () => {
+test('this session’s playlists: a Dropbox folder as one playlist a folder at a time, a smart playlist, and Repeat Slides going round (Session 26c–d)', async () => {
   test.setTimeout(300_000);
   const work = mkdtempSync(join(tmpdir(), 'drashti-shots-26-'));
   const media = join(work, 'made');
@@ -1735,13 +1745,20 @@ test('this session’s playlists: a Dropbox folder as one playlist with headers,
       { timeout: 180_000 },
     );
     await win.keyboard.press('Escape');
-    await expect(win.getByTestId('open-playlist').getByTestId('playlist-item')).toHaveCount(7, {
-      timeout: 60_000,
-    });
-    // Tall enough for every item: the folder's own, then Week 1's, then Week 1 › Videos'.
-    await win.setViewportSize({ width: 1280, height: 1100 });
-    await part(win, 'dropbox-playlist', [win.getByTestId('open-playlist')]);
-    await win.setViewportSize({ width: 1280, height: 720 });
+    // A folder at a time (Session 44): the top folder's own two items in the middle and Week 1 at the bottom
+    // left; then Week 1, chosen there: its own two decks, its Videos folder below, the way back up above them.
+    const items = win.getByTestId('open-playlist').getByTestId('playlist-item');
+    const folderRows = win.getByTestId('playlist-folders').getByTestId('playlist-folder');
+    await expect(items).toHaveCount(2, { timeout: 60_000 });
+    await folderRows.filter({ hasText: 'Week 1' }).click();
+    await expect(win.getByTestId('playlist-items')).toHaveAttribute('data-folder', 'Week 1');
+    await expect(items).toHaveCount(2, { timeout: 60_000 });
+    await expect(folderRows).toHaveCount(1, { timeout: 60_000 });
+    await expect(folderRows).toHaveAttribute('data-path', 'Week 1 › Videos');
+    // Its first deck chosen, as an operator would: its slide in the grid below.
+    await items.first().click();
+    await expect(win.getByTestId('slide-grid').getByRole('heading', { level: 2 })).toContainText('Katha 2');
+    await part(win, 'dropbox-playlist', [win.getByTestId('column-left'), win.getByTestId('centre-playlist')]);
 
     // A smart playlist following a folder of placeholder pictures.
     const smart = join(work, 'Placeholder Lobby folder');
@@ -1753,10 +1770,16 @@ test('this session’s playlists: a Dropbox folder as one playlist with headers,
     }, smart);
     await win.getByRole('button', { name: 'New playlist or folder' }).click();
     await win.getByRole('menuitem', { name: 'Smart Playlist from a Folder…' }).click();
-    await expect(win.getByTestId('open-playlist').getByTestId('playlist-item')).toHaveCount(3, {
-      timeout: 60_000,
-    });
-    await part(win, 'smart-playlist', [win.getByTestId('playlists'), win.getByTestId('centre-playlist')]);
+    // Its top folder's own picture in the middle, the Morning folder at the bottom left.
+    await expect(win.getByTestId('open-playlist').getByTestId('playlist-title')).toHaveText(
+      'Placeholder Lobby folder',
+    );
+    await expect(items).toHaveCount(1, { timeout: 60_000 });
+    await expect(folderRows).toHaveCount(1, { timeout: 60_000 });
+    await expect(folderRows).toHaveAttribute('data-path', 'Morning');
+    await items.first().click();
+    await expect(win.getByTestId('item-view')).toContainText('Placeholder welcome');
+    await part(win, 'smart-playlist', [win.getByTestId('column-left'), win.getByTestId('centre-playlist')]);
 
     // Repeat Slides going round: LIVE says so, with Stop (Esc).
     await win.getByRole('button', { name: 'New playlist or folder' }).click();
@@ -1959,5 +1982,59 @@ test('a stopped screen’s notice at the top of the window (Session 26h)', async
   }, screenId);
   await expect(win.getByTestId('screen-stopped-notice')).toBeVisible();
   await shot(win, 'screen-stopped-notice');
+  await app.close();
+});
+
+/*
+ * Lower Thirds (Session 44, in Macros' place), for the operator's guide (Session 45): the panel open under More
+ * tools with a placeholder lower third up over the kirtan (its button says Hide, and LIVE shows it), and its
+ * editor in front, finding an animation by its words, the chosen one held in the small picture.
+ */
+test('Lower Thirds: the panel with one up, and its editor finding an animation (Session 44)', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await win.setViewportSize({ width: 1920, height: 1080 });
+  await operatorReady(win);
+  await setUpPlaceholderShow(win);
+  await win.getByTestId('playlist-node').filter({ hasText: PLAYLIST }).click();
+  await win.getByTestId('playlist-item').filter({ hasText: KIRTAN }).click();
+  await win.getByTestId('slide-thumb').nth(1).click();
+  await expect(win.getByTestId('live-text')).toContainText('slide 2 of 5');
+  await win.evaluate(async (look) => {
+    const made = await (globalThis as PageGlobals).drashti.lowerThirds.save(null, {
+      lines: ['Placeholder speaker', 'Placeholder title', 'Placeholder place'],
+      look,
+      where: 'both',
+      animation: 'slide-left-steady',
+    });
+    if (!made.ok) throw new Error(made.message);
+  }, DEFAULT_LOWER_THIRD_LOOK);
+  await openMoreTools(win);
+  const panel = win.getByTestId('lower-thirds-panel');
+  await panel.scrollIntoViewIfNeeded();
+  const row = panel.getByTestId('lower-third-row').filter({ hasText: 'Placeholder speaker' });
+  await row.getByTestId('lower-third-show').click();
+  await expect(row).toHaveAttribute('data-up', 'true');
+  await expect(row.getByTestId('lower-third-show')).toHaveText('Hide');
+  await expect(win.getByTestId('live-preview').getByTestId('lower-third-layer')).toHaveAttribute(
+    'data-lt-phase',
+    'still',
+  );
+  await row.getByTestId('lower-third-edit').click();
+  const editor = win.getByTestId('lower-third-editor');
+  await expect(editor).toBeVisible();
+  await editor.getByTestId('lower-third-search').fill('slide');
+  await expect(editor.getByTestId('lower-third-animation').first()).toBeVisible();
+  await expect(editor.getByTestId('lower-third-animation-chosen')).toHaveText('Slide in from left');
+  await letTimePass(win, 700, 'the docs’ picture: the editor and the live picture settle');
+  // The small picture plays it in, holds it 1.2 s, then takes it out: the picture is taken while it is held.
+  const preview = editor.getByTestId('lower-third-preview').getByTestId('lower-third-layer');
+  await editor.getByRole('button', { name: 'Play again' }).click();
+  await expect(preview).toHaveAttribute('data-lt-phase', 'still');
+  await win.screenshot({ path: join(folder, 'lower-thirds.png'), scale: 'css', animations: 'disabled' });
+  await expect(preview, 'still held when the picture was taken').toHaveAttribute('data-lt-phase', 'still', {
+    timeout: 1,
+  });
   await app.close();
 });
