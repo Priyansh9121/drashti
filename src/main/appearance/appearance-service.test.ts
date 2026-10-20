@@ -161,6 +161,36 @@ describe('AppearanceService', () => {
     expect(kept(dir)).toMatchObject({ own: [], seconds: {} });
   });
 
+  it('reads a file an earlier Drashti wrote (alpha.7: no second colours), so an updated computer keeps what it showed', () => {
+    for (const [choice, shown] of [
+      ['follow', 'black'],
+      ['white', 'white'],
+      ['saffron', 'saffron'],
+      ['own-a1b2c3d4e5f6', 'own-a1b2c3d4e5f6'],
+    ] as const) {
+      const dir = fresh();
+      writeFileSync(
+        join(dir, APPEARANCE_FILE),
+        JSON.stringify({
+          version: 1,
+          choice,
+          motion: 'lively',
+          own: [{ id: 'own-a1b2c3d4e5f6', name: 'Placeholder kept', base: 'light', accent: '#0b5c7a' }],
+        }),
+      );
+      const said: string[] = [];
+      const service = new AppearanceService({ userData: dir, say: (l) => said.push(l) });
+      service.start(new Computer(true));
+      expect(said, choice).toEqual([]);
+      expect(service.choice).toBe(choice);
+      expect(service.shown().id).toBe(shown);
+      expect(service.now().motion).toBe('lively');
+      expect(service.own()).toEqual([
+        { id: 'own-a1b2c3d4e5f6', name: 'Placeholder kept', base: 'light', accent: '#0b5c7a' },
+      ]);
+    }
+  });
+
   it('keeps the interface motion with it, and refuses one it does not know', () => {
     const dir = fresh();
     const service = new AppearanceService({ userData: dir, say: () => undefined });

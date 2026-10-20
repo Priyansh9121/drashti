@@ -43,7 +43,8 @@ const BASE = process.env['DRASHTI_PIXELS_BASE'];
  * unless it says why its pixels may match. Every other frame must be the same.
  *
  * None since alpha.6 (Sessions 39–40, against Session 38's d032357, whose hall is alpha.6's): every frame
- * must be the same, the frames of alpha.6's four hall changes too. Those four, which Sessions 31–36 decided
+ * must be the same, the frames of alpha.6's four hall changes too. None against alpha.7 (9ed5d00) either
+ * (Session 43, alpha.8): Session 42's appearances change only Drashti's own windows, never the hall's. Those four, which Sessions 31–36 decided
  * and the alpha.6 round measured against alpha.5 (9df47ac), were listed here until then (f9a2ab9). A session
  * that changes what the hall sees names its changes here, against its own base.
  */
