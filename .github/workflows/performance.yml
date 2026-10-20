@@ -83,6 +83,10 @@ on:
         type: choice
         options: [as-set, above-normal, normal]
         default: as-set
+      appearance:
+        description: "The operator window's appearance for the check, by id (saffron, dhaja, …; empty: the computer's, White on CI). Session 43: a round measures a colourful one's header and band"
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -156,6 +160,8 @@ jobs:
           DRASHTI_PERF_MUSIC: ${{ (inputs.music || inputs.scenario == 'three-outputs') && '1' || '0' }}
           # Each slide change's raw times, as JSON (Sessions 31–36, PERF-2): kept 90 days, for the ledger.
           DRASHTI_PERF_RAW: ${{ runner.temp }}/perf-raw
+          # The operator window's appearance (Session 43; tests only, never packaged): empty follows the computer.
+          DRASHTI_TEST_APPEARANCE: ${{ inputs.appearance }}
         run: pnpm test:perf
       - name: Keep each slide change's raw times (90 days)
         if: always()
