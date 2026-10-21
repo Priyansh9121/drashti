@@ -44,6 +44,10 @@ export type SetupResult =
 
 /** How the wizard starts: whether this is the first start, and which display holds the controls. */
 export interface SetupState {
+  /**
+   * The wizard opens by itself: a first start, in Pro Mode, never for a volunteer (roles on, the admin PIN
+   * not typed; Session 46, when a start with roles on became Pro Mode).
+   */
   firstRun: boolean;
   /**
    * The first start's welcome (Session 26g): the lamp lights, then Set up the screens, Try a practice

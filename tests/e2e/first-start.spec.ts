@@ -16,7 +16,8 @@ import {
  * The first start (Session 26g): once per library, the lamp lights, then a welcome with three
  * choices. Set Up Screens… opens the wizard; Skip for now leaves the empty places to lead; Try a
  * practice show first puts placeholder slides on the operator's screen only, and they reach no
- * output and change nothing in the show or the library. Never in Simple Mode or for a volunteer.
+ * output and change nothing in the show or the library. Never in Simple Mode or for a volunteer, and
+ * nor is the setup wizard opened by itself for one (Session 46: with roles on, Drashti starts in Pro Mode).
  */
 
 const FIRST = { DRASHTI_TEST_NO_WIZARD: '0' };
@@ -188,8 +189,8 @@ test('View › Set Up Screens… still opens the wizard, from the practice show 
   await app.close();
 });
 
-test('never in Simple Mode, nor for a volunteer (roles on, the admin PIN not typed)', async () => {
-  const { app } = await launchApp(FIRST);
+test('never in Simple Mode, nor for a volunteer (roles on, the admin PIN not typed), nor the wizard by itself when Drashti starts again in Pro Mode with roles on (Session 46)', async () => {
+  const { app, userData } = await launchApp(FIRST);
   const { win, welcome } = await welcomeOf(app);
   await welcome.getByRole('button', { name: 'Try a practice show first' }).click();
   const state = () => win.evaluate(() => (globalThis as PageGlobals).drashti.setup.state());
@@ -207,4 +208,18 @@ test('never in Simple Mode, nor for a volunteer (roles on, the admin PIN not typ
   await expect(win.getByTestId('practice-banner')).toHaveCount(0);
   expect((await state()).welcome).toBe(false);
   await app.close();
+  // Started again with roles on: Pro Mode as the operator, admin locked (Session 46). Neither the welcome
+  // nor the setup wizard opens by itself, though neither was ever answered: both are an admin's.
+  const again = await launchApp(FIRST, userData);
+  const next = await operatorPage(again.app);
+  await operatorReady(next);
+  expect(await next.evaluate(() => (globalThis as PageGlobals).drashti.app.getMode())).toBe('pro');
+  await expect(next.getByTestId('role-chip')).toHaveAttribute('data-role', 'operator');
+  expect(await next.evaluate(() => (globalThis as PageGlobals).drashti.setup.state())).toMatchObject({
+    firstRun: false,
+    welcome: false,
+  });
+  await expect(next.getByTestId('welcome')).toHaveCount(0);
+  await expect(next.getByTestId('setup-wizard')).toHaveCount(0);
+  await again.app.close();
 });

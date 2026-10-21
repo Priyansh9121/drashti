@@ -4159,7 +4159,10 @@ function start(): void {
   // would take the show's keys).
   const wizardOff = sw('DRASHTI_TEST_NO_WIZARD') === '1' || sw('DRASHTI_SELFTEST') !== undefined;
   handle(IPC.setup.state, () => ({
-    firstRun: mode === 'pro' && !wizardOff && settings.get('setupWizard') === undefined,
+    // The wizard by itself on a first start: never for a volunteer either (Session 46: with roles on,
+    // Drashti starts in Pro Mode as the operator, and the wizard's Finish is an admin's).
+    firstRun:
+      mode === 'pro' && !wizardOff && !roles.needsAdmin() && settings.get('setupWizard') === undefined,
     // The first start's welcome (Session 26g): once per library, before anything was set up; never for
     // a volunteer (roles on and the admin PIN not typed), never in Simple Mode or on a node.
     welcome:
