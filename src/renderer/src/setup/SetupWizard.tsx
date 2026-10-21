@@ -373,9 +373,10 @@ function PinsStep() {
   return (
     <div className="space-y-3 text-sm">
       <p>
-        PINs keep setting up apart from running the show. With two PINs, Drashti starts in Simple Mode; the
-        operator PIN leaves it for Pro Mode, and the admin PIN also unlocks setting up (screens, the library,
-        schedules, backups). Without them, anyone in Pro Mode can change anything.
+        PINs keep setting up apart from running the show. With two PINs, Drashti starts in Pro Mode as the
+        operator, with no PIN to type; the admin PIN unlocks setting up (screens, the library, schedules,
+        backups), and leaving Simple Mode takes either PIN. Without them, anyone in Pro Mode can change
+        anything.
       </p>
       <fieldset className="space-y-1.5">
         <legend className="sr-only">PINs</legend>
