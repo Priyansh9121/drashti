@@ -74,7 +74,7 @@ The old presentation program stays installed and untouched all day. Drashti only
 
 - [ ] **File**, **Roles and PINs…**: an admin PIN and an operator PIN.
 - [ ] Give the operator PIN to the operators; keep the admin PIN with the admins. **Never write a PIN in the shared notebook.**
-- [ ] Check: quit and start Drashti; it opens in Simple Mode, and **Switch to Pro Mode…** (top right) with the operator PIN switches to Pro Mode.
+- [ ] Check: quit and start Drashti; it opens in Pro Mode, the header saying **Operator**, with no PIN asked. Then **Simple Mode** in the header, and **Switch to Pro Mode…** (top right) with the operator PIN switches back to Pro Mode.
 
 ## 7. The stream (the computer that streams)
 

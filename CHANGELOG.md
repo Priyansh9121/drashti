@@ -2,6 +2,10 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## Unreleased
+
+- With PINs set, Drashti starts in Pro Mode as the operator, with no PIN to type. Setting up still asks for the admin PIN, leaving Simple Mode still takes a PIN, and after an unexpected stop Drashti still comes back in the mode it was in.
+
 ## 1.0.0-alpha.9 (21 Oct 2026)
 
 The playlists have the whole left column, with the library a button away; Lower Thirds take the place of Macros, with 279 ways to come in; every colourful appearance has real colour, and there are twelve new ones; and you can choose many things and delete them at once. The Arti panel and Macros are gone, and a library's Arti times and macros are kept. Update after a sabha, never on the day of one.
