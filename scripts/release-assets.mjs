@@ -26,8 +26,9 @@ import {
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { downloadSource } from './download-source.mjs';
 import { NOTES_MAX } from './release-notes.mjs';
 
 const arg = (name, fallback = null) => {
@@ -93,7 +94,8 @@ writeFileSync(join(dir, 'drashti-update.json'), `${JSON.stringify(manifest, null
 // The sources offered with each release, pinned as the builds are and kept in the cache between runs:
 // FFmpeg's (scripts/fetch-ffmpeg.mjs), and yt-dlp's with the GPL code its builds bundle (Session 25c,
 // scripts/fetch-youtube-tools.mjs; its Mac and Windows builds hold mutagen 1.48.1, GPL version 2 or
-// later, as their own -v header lists it).
+// later, as their own -v header lists it). Each download is tried up to three times (Session 47,
+// scripts/download-source.mjs).
 const FFMPEG_SOURCE = {
   name: 'ffmpeg-9.0.2.tar.xz',
   url: 'https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz',
@@ -116,12 +118,8 @@ for (const source of [FFMPEG_SOURCE, YT_DLP_SOURCE, MUTAGEN_SOURCE]) {
   const cache = join(homedir(), '.cache', 'drashti', source.cache);
   await mkdir(cache, { recursive: true });
   const cached = join(cache, source.name);
-  if (!existsSync(cached) || (await hash(cached, 'sha256', 'hex')) !== source.sha256) {
-    const response = await fetch(source.url);
-    if (!response.ok || !response.body)
-      throw new Error(`${source.name} could not be downloaded (${response.status})`);
-    await pipeline(Readable.fromWeb(response.body), createWriteStream(cached));
-  }
+  if (!existsSync(cached) || (await hash(cached, 'sha256', 'hex')) !== source.sha256)
+    await downloadSource(source, cached, fetch, sleep);
   if ((await hash(cached, 'sha256', 'hex')) !== source.sha256)
     throw new Error(`${source.name} did not match its pinned SHA-256`);
   await pipeline(createReadStream(cached), createWriteStream(join(dir, source.name)));
