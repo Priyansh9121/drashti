@@ -17,10 +17,10 @@ import {
 
 /*
  * Roles (Session 14): an admin PIN and an operator PIN. Off until set; with
- * them, leaving Simple Mode takes a PIN, the main process refuses every
- * admin request from an operator, the admin PIN unlocks admin until Lock
- * (Session 44: no time limit), and wrong PINs are limited (over a restart too). Made-up PINs only, never
- * printed.
+ * them, a start is Pro Mode as the operator with no PIN asked (Session 46), leaving Simple Mode takes a
+ * PIN, the main process refuses every admin request from an operator, the admin PIN unlocks admin until
+ * Lock (Session 44: no time limit), and wrong PINs are limited (over a restart too). Made-up PINs only,
+ * never printed.
  */
 
 const ADMIN = '481526';
@@ -243,7 +243,7 @@ test('leaving Simple Mode takes a PIN: the operator PIN for Pro Mode, the admin 
   await app.close();
 });
 
-test('wrong PINs are limited, over a restart too; with roles on a clean start opens in Simple Mode, a crash during a show comes back as it was', async () => {
+test('wrong PINs are limited, over a restart too; with roles on a clean start opens in Pro Mode as the operator, no PIN asked (Session 46), a crash during a show comes back as it was', async () => {
   test.setTimeout(120_000);
   const first = await launchApp();
   let win = await operatorPage(first.app);
@@ -266,12 +266,18 @@ test('wrong PINs are limited, over a restart too; with roles on a clean start op
   expect(await mode(win)).toBe('pro');
   expect((await roles(win)).admin).toBe(false);
   await run.app.close();
-  // A clean start opens in Simple Mode.
+  // A clean start opens in Pro Mode as the operator (Session 46): admin locked, and nothing asks for a PIN.
   run = await relaunchApp(first.userData);
   win = await operatorPage(run.app);
   await operatorReady(win);
-  expect(await mode(win)).toBe('simple');
-  // Five wrong PINs, then a wait, even for the right one.
+  expect(await mode(win)).toBe('pro');
+  expect(await roles(win)).toMatchObject({ on: true, admin: false });
+  await expect(win.getByTestId('role-chip')).toHaveAttribute('data-role', 'operator');
+  await expect(win.getByTestId('leave-simple')).toHaveCount(0);
+  await expect(win.getByTestId('admin-pin')).toHaveCount(0);
+  // Leaving Simple Mode still takes a PIN: five wrong PINs, then a wait, even for the right one.
+  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await expect.poll(() => mode(win)).toBe('simple');
   await chooseMenuItem(run.app, 'switch-mode');
   const leave = win.getByTestId('leave-simple');
   for (let i = 0; i < 4; i++) {
@@ -290,10 +296,17 @@ test('wrong PINs are limited, over a restart too; with roles on a clean start op
   );
   expect(refused.ok ? '' : refused.message).toContain('Too many wrong PINs');
   await run.app.close();
-  // Still waiting after a restart.
+  // Still waiting after a restart, which (quit in Simple Mode) opens in Pro Mode: the admin PIN waits too,
+  // and so does leaving Simple Mode.
   run = await relaunchApp(first.userData);
   win = await operatorPage(run.app);
   await operatorReady(win);
+  expect(await mode(win)).toBe('pro');
+  const unlock = await win.evaluate((pin) => (globalThis as PageGlobals).drashti.roles.unlock(pin), ADMIN);
+  expect(unlock.ok ? '' : unlock.message).toContain('Try again in');
+  expect((await roles(win)).admin).toBe(false);
+  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await expect.poll(() => mode(win)).toBe('simple');
   const still = await win.evaluate(
     (pin) => (globalThis as PageGlobals).drashti.app.setMode('pro', pin),
     OPERATOR,
