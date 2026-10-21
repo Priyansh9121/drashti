@@ -2,7 +2,9 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
-## Unreleased
+## 1.0.0-alpha.10 (21 Oct 2026)
+
+With PINs set, Drashti now opens in Pro Mode, ready for the operator, instead of Simple Mode. Update after a sabha, never on the day of one.
 
 - With PINs set, Drashti starts in Pro Mode as the operator, with no PIN to type. Setting up still asks for the admin PIN, leaving Simple Mode still takes a PIN, and after an unexpected stop Drashti still comes back in the mode it was in.
 
