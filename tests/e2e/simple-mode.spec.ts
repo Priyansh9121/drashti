@@ -24,7 +24,8 @@ import { LOGO, setUpPlaceholderShow } from './placeholder-show';
  * three times, a video, black-out and back, the logo and back, and putting
  * things right after Clear all, checking the audience and stage screens at
  * each step. Nothing that can change the library, the screens or the sound
- * can be reached, and after a forced stop Drashti comes back in Simple Mode.
+ * can be reached, and after a forced stop Drashti comes back in Simple Mode (with PINs on too, though a
+ * clean start is Pro Mode with them since Session 46).
  */
 
 const outputs = { DRASHTI_WINDOWED_OUTPUTS: '1', DRASHTI_EXTRA_DISPLAYS: '1' };
@@ -33,6 +34,7 @@ const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
 const state = (win: Page) =>
   win.evaluate(async () => (await (globalThis as PageGlobals).drashti.engine.snapshot()).state);
 const modeOf = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.app.getMode());
+const rolesOf = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.roles.view());
 
 /** The run named in one of the restart-recovery files, or null. */
 function sessionIn(userData: string, file: string): string | null {
@@ -416,8 +418,8 @@ test('Simple Mode fits a 1280 x 720 operator display, its way out at the top', a
   await app.close();
 });
 
-test('Drashti starts in Pro Mode after a clean quit, comes back in Simple Mode after a crash in it, in Pro Mode after a crash 3 hours or more before, and in Simple Mode with PINs on', async () => {
-  test.setTimeout(180_000);
+test('Drashti starts in Pro Mode after a clean quit, comes back in Simple Mode after a crash in it, in Pro Mode after a crash 3 hours or more before, and the same with PINs on (Session 46)', async () => {
+  test.setTimeout(240_000);
   // Simple Mode, then a clean quit: the next start is in Pro Mode (Session 20).
   const first = await launchApp();
   let win = await operatorPage(first.app);
@@ -457,16 +459,35 @@ test('Drashti starts in Pro Mode after a clean quit, comes back in Simple Mode a
   await expect(win.getByTestId('simple-mode')).toHaveCount(0);
   await expect(win.getByTestId('recovery-notice')).toHaveCount(0);
 
-  // With PINs on, a clean quit starts in Simple Mode.
+  // With PINs on (Session 46), a clean quit in Simple Mode starts in Pro Mode too, as the operator: admin
+  // locked, and nothing asks for a PIN.
   const pins = await win.evaluate(() =>
     (globalThis as PageGlobals).drashti.roles.setPins({ admin: '481526', operator: '937402' }),
   );
   expect(pins.ok).toBe(true);
+  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
   await run.app.close();
   run = await relaunchApp(first.userData);
   win = await operatorPage(run.app);
   await operatorReady(win);
+  expect(await modeOf(win)).toBe('pro');
+  await expect(win.getByTestId('simple-mode')).toHaveCount(0);
+  expect(await rolesOf(win)).toMatchObject({ on: true, admin: false });
+  await expect(win.getByTestId('leave-simple')).toHaveCount(0);
+
+  // With PINs on, a crash in Simple Mode still comes back in Simple Mode: a volunteer in the middle of a
+  // sabha carries on there, admin locked.
+  await win.getByRole('button', { name: 'Simple Mode' }).click();
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  await thisRunSaved(first.userData);
+  await killApp(run.app);
+  run = await relaunchApp(first.userData);
+  win = await operatorPage(run.app);
+  await operatorReady(win);
   expect(await modeOf(win)).toBe('simple');
+  await expect(win.getByTestId('simple-mode')).toBeVisible();
+  expect(await rolesOf(win)).toMatchObject({ on: true, admin: false });
   await run.app.close();
 });
 
