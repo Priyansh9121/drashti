@@ -289,8 +289,9 @@ function RolesOff() {
         />
         {same && <p className="text-sm text-danger-fg">The admin PIN and the operator PIN must differ.</p>}
         <Notice tone="info">
-          With roles on, Drashti starts in Simple Mode, and leaving it takes a PIN: the operator PIN, or the
-          admin PIN (which also unlocks setting up). Keep the admin PIN with whoever looks after Drashti.
+          With roles on, Drashti starts in Pro Mode as the operator, with no PIN to type. Setting up asks for
+          the admin PIN, and leaving Simple Mode takes the operator PIN or the admin PIN. Keep the admin PIN
+          with whoever looks after Drashti.
         </Notice>
         {problem && (
           <p role="alert" className="text-sm text-danger-fg">
