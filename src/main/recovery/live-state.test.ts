@@ -475,7 +475,7 @@ describe('how the last run ended', () => {
    */
   describe('the mode after an unexpected stop', () => {
     const cases = (['simple', 'pro'] as const).flatMap((wasIn) =>
-      [false, true].flatMap((rolesOn) => [false, true].map((showLive) => ({ wasIn, rolesOn, showLive }))),
+      [false, true].map((showLive) => ({ wasIn, showLive })),
     );
     /** A run that stops dead, with a show live or not; returns when it last saved (the stop). */
     async function crashed(showLive: boolean): Promise<number> {
@@ -487,27 +487,25 @@ describe('how the last run ended', () => {
     }
 
     it.each(cases)(
-      'just under 3 hours later: the mode it was in ($wasIn; PINs on: $rolesOn; a show live: $showLive)',
-      async ({ wasIn, rolesOn, showLive }) => {
+      'just under 3 hours later: the mode it was in ($wasIn; a show live: $showLive)',
+      async ({ wasIn, showLive }) => {
         const stoppedAt = await crashed(showLive);
         const found = startupRecovery(files, { now: new Date(stoppedAt + RECOVERY_MAX_AGE_MS - 1) });
         expect(found).toMatchObject({ cleanQuit: false, recentStop: true, tooOld: null });
         expect(found.putBack !== null).toBe(showLive);
-        expect(startingMode({ recentStop: found.recentStop, rolesOn, wasIn })).toBe(wasIn);
+        expect(startingMode({ recentStop: found.recentStop, wasIn })).toBe(wasIn);
       },
     );
 
     it.each(cases)(
-      '3 hours or more later: as after a clean quit ($wasIn; PINs on: $rolesOn; a show live: $showLive)',
-      async ({ wasIn, rolesOn, showLive }) => {
+      '3 hours or more later: as after a clean quit, Pro Mode ($wasIn; a show live: $showLive)',
+      async ({ wasIn, showLive }) => {
         const stoppedAt = await crashed(showLive);
         for (const after of [RECOVERY_MAX_AGE_MS, RECOVERY_MAX_AGE_MS + 1, 3 * 24 * HOUR]) {
           const found = startupRecovery(files, { now: new Date(stoppedAt + after) });
           expect(found).toMatchObject({ cleanQuit: false, recentStop: false, putBack: null });
           expect(found.tooOld !== null).toBe(showLive);
-          expect(startingMode({ recentStop: found.recentStop, rolesOn, wasIn })).toBe(
-            rolesOn ? 'simple' : 'pro',
-          );
+          expect(startingMode({ recentStop: found.recentStop, wasIn })).toBe('pro');
         }
       },
     );
@@ -518,7 +516,7 @@ describe('how the last run ended', () => {
       writeFileSync(files.state, JSON.stringify({ ...raw, savedAt: 'not a time' }));
       const found = startFinds();
       expect(found).toEqual({ cleanQuit: false, recentStop: false, putBack: null, tooOld: null });
-      expect(startingMode({ recentStop: found.recentStop, rolesOn: false, wasIn: 'simple' })).toBe('pro');
+      expect(startingMode({ recentStop: found.recentStop, wasIn: 'simple' })).toBe('pro');
     });
   });
 

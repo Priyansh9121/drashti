@@ -2096,30 +2096,32 @@ function start(): void {
 
   // ---- Simple Mode ----------------------------------------------------------------
   // The mode is kept in the library's settings as it changes. Since Session 20 a start after a clean
-  // quit begins in Pro Mode, or in Simple Mode with roles on (Pro Mode takes a PIN); after an
-  // unexpected stop Drashti comes back in the mode it was in, so the operator carries on (admin
-  // locked). The same answer as restart recovery's: did the last run stop unexpectedly, less than
-  // RECOVERY_MAX_AGE_MS ago? A stop longer ago starts like a clean quit (Session 21).
+  // quit begins in Pro Mode, with roles on too since Session 46 (as the operator, admin locked, with no
+  // PIN asked; until then in Simple Mode, Pro Mode taking a PIN); after an unexpected stop Drashti comes
+  // back in the mode it was in, so the operator carries on (admin locked). The same answer as restart
+  // recovery's: did the last run stop unexpectedly, less than RECOVERY_MAX_AGE_MS ago? A stop longer
+  // ago starts like a clean quit (Session 21).
   const savedMode = settings.get('operatorMode');
   const wasIn: OperatorMode = isOperatorMode(savedMode) ? savedMode : 'pro';
   // Roles held locked (the PIN file could not be read; Sessions 31–36): Simple Mode, even after a crash in Pro.
-  let mode: OperatorMode = roles.held()
-    ? 'simple'
-    : startingMode({ recentStop: startup.recentStop, rolesOn: roles.on(), wasIn });
+  let mode: OperatorMode = roles.held() ? 'simple' : startingMode({ recentStop: startup.recentStop, wasIn });
   if (roles.held()) startNotice = startNotice ? `${startNotice}\n\n${ROLES_HELD}` : ROLES_HELD;
   if (mode !== wasIn) settings.set('operatorMode', mode);
   if (mode === 'simple')
     log.info(
-      startup.recentStop
-        ? 'Starting in Simple Mode, as before the unexpected stop'
-        : 'Roles are on: starting in Simple Mode',
+      roles.held()
+        ? 'Roles are held locked: starting in Simple Mode'
+        : 'Starting in Simple Mode, as before the unexpected stop',
     );
-  else if (wasIn === 'simple')
-    log.info(
-      startup.cleanQuit
-        ? 'Starting in Pro Mode after a clean quit'
-        : 'Starting in Pro Mode: the unexpected stop was 3 hours or more ago',
-    );
+  else {
+    if (wasIn === 'simple')
+      log.info(
+        startup.cleanQuit
+          ? 'Starting in Pro Mode after a clean quit'
+          : 'Starting in Pro Mode: the unexpected stop was 3 hours or more ago',
+      );
+    if (roles.on()) log.info('Roles are on: starting in Pro Mode as the operator, admin locked');
+  }
   simpleNow = () => mode === 'simple';
   // While it is on, every request that would change the library, screens or sound is refused here.
   lockChannels(

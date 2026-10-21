@@ -154,7 +154,8 @@ describe('roles', () => {
     const { existsSync, readdirSync, rmSync, writeFileSync } = await import('node:fs');
     writeFileSync(file, '{ not json');
     const held = make();
-    // On (so Drashti starts in Simple Mode), with admin refused and no way out by any PIN.
+    // On and held, so Drashti starts in Simple Mode (roles that are only on start in Pro Mode since
+    // Session 46), with admin refused and no way out by any PIN.
     expect(held.on()).toBe(true);
     expect(held.held()).toBe(true);
     expect(held.needsAdmin()).toBe(true);
