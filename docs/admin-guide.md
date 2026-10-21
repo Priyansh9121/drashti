@@ -58,7 +58,7 @@ Drashti has three roles:
 - **Operators** run the show in **Pro Mode**: playlists, words and slides, props, messages, timers, lower thirds, Looks, masks, announcements, going live and recording.
 - **Admins** also set Drashti up: importing and removing, themes and the logo, Shastra texts, calendars, the idle rotation and every schedule (backups), MIDI, the screens, Looks, stage layouts, masks and sound, the stream's settings and key, phones and nodes, backups, restores and updates, and the PINs.
 
-**Without PINs**, Drashti starts in **Pro Mode** whenever it was quit on purpose, even if a volunteer was using Simple Mode: a volunteer who restarts Drashti sees Pro Mode. After an unexpected stop it comes back in the mode it was in, if it is started again within 3 hours; started later, it starts as after a quit on purpose. If volunteers should never find themselves in Pro Mode, set the PINs: then Drashti always starts in Simple Mode.
+**With PINs or without**, Drashti starts in **Pro Mode** whenever it was quit on purpose, even if a volunteer was using Simple Mode: a volunteer who restarts Drashti sees Pro Mode. After an unexpected stop it comes back in the mode it was in, if it is started again within 3 hours; started later, it starts as after a quit on purpose. So the PINs do not keep volunteers out of Pro Mode: they keep setting Drashti up for the admins, and leaving Simple Mode for the operators. To hand Drashti to a volunteer, press **Simple Mode** in the header.
 
 **Turning roles on.** Until two PINs are set, roles are off and anyone can leave Simple Mode by typing **pro**. To turn them on: **File**, then **Roles and PINs…**. Type an **admin PIN** and an **operator PIN** (4 to 12 digits each, different from each other), each twice, and press **Turn on roles**. Keep the admin PIN with the admins, and give the operator PIN only to the operators.
 
@@ -66,7 +66,7 @@ Drashti has three roles:
 
 With roles on:
 
-- Drashti starts in Simple Mode after a quit on purpose. **Switch to Pro Mode…** at the top right of Simple Mode (or **View**, then **Switch to Pro Mode…**) takes the operator PIN (or the admin PIN). After an unexpected stop, Drashti comes back in the mode it was in, with admin locked, if it is started again within 3 hours (later, in Simple Mode, as after a quit on purpose).
+- Drashti starts in Pro Mode after a quit on purpose, as the operator, with admin locked: nothing asks for a PIN. (Up to alpha.9 it started in Simple Mode.) Leaving Simple Mode takes a PIN: **Switch to Pro Mode…** at the top right of Simple Mode (or **View**, then **Switch to Pro Mode…**) takes the operator PIN (or the admin PIN). After an unexpected stop, Drashti comes back in the mode it was in, with admin locked, if it is started again within 3 hours (later, in Pro Mode, as after a quit on purpose).
 - In Pro Mode the header says **Operator**. Anything only an admin may do asks for the admin PIN first. Admin then stays unlocked until you lock it or quit Drashti, however long you work: the header says **Admin · Lock**, and a press on it locks at once. Going into Simple Mode locks it too. (Before alpha.9 it locked itself 10 minutes after the last admin action.)
 - After **five wrong PINs** in a row, Drashti waits a minute before it checks another, and longer after each further wrong one (up to 15 minutes), even over a restart. The log says a PIN was wrong, never the PIN.
 

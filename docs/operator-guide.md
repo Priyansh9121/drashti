@@ -35,7 +35,7 @@ On the Mac, **Cmd** is the ⌘ key; on Windows use **Ctrl** instead. On Windows 
 
 Do these about 30 minutes before the sabha starts.
 
-1. **Switch on and start Drashti.** Without PINs it opens in Pro Mode. If the screen shows Simple Mode (big buttons, as it does with PINs set), press **Switch to Pro Mode…** at the top right, and type the **operator PIN** (or the word **pro** if PINs are not set).
+1. **Switch on and start Drashti.** It opens in Pro Mode, with nothing to type (with PINs set, the header says **Operator**). If the screen shows Simple Mode (big buttons, as when Drashti stopped unexpectedly in it), press **Switch to Pro Mode…** at the top right, and type the **operator PIN** (or the word **pro** if PINs are not set).
 2. **Check the screens.** Click the screens line in the status bar (for example "3 screens showing"). The **screens dashboard** shows a small picture of what every screen really shows, the hall's, the stage's and the second computer's (the node). Every node should say **Online** and its pictures and videos **ready** (for example "14 of 14 ready"). **Identify** puts a screen's number on it if you are not sure which is which.
 
    ![The screens dashboard](screenshots/screens-dashboard-1280x720.png)
