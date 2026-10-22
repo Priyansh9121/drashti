@@ -103,20 +103,29 @@ test('Window for Zoom… shows exactly the stream’s picture, off air; it never
   expect(await zoom.evaluate(() => document.body.innerText.trim())).toBe('');
   await expect(zoom.locator('button, input, a, [role="button"]')).toHaveCount(0);
 
-  // It never takes over: no full screen, never on top, never maximised over a display; 1280 × 720 to begin.
+  // It never takes over: no full screen, never on top, never maximised over a display. To begin, 1280 × 720,
+  // or the controls' display's width at 16:9 when that is narrower (CI's displays are 1024 wide, Session 49).
+  const first = await app.evaluate(({ BrowserWindow, screen }) => {
+    const operator = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('index.html'));
+    const area = (operator ? screen.getDisplayMatching(operator.getBounds()) : screen.getPrimaryDisplay())
+      .workArea;
+    const width = Math.min(1280, area.width);
+    return { width, height: Math.round((width * 9) / 16) };
+  });
   expect(await zoomWindow(app)).toMatchObject({
     title: 'Drashti for Zoom',
     fullScreenable: false,
     maximizable: false,
     onTop: false,
     fullScreen: false,
-    bounds: { width: 1280, height: 720 },
+    bounds: first,
   });
 
   // Moved and closed: the show and the stream are as they were, and the Program closes (nothing needs it).
+  // The new place fits a 1024 × 768 display.
   await app.evaluate(({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('zoom.html'));
-    w?.setContentBounds({ x: 120, y: 140, width: 960, height: 540 });
+    w?.setContentBounds({ x: 120, y: 140, width: 640, height: 360 });
     w?.close();
   });
   await expect.poll(async () => (await streamStatus(win)).programOn, { timeout: 15_000 }).toBe(false);
@@ -134,7 +143,7 @@ test('Window for Zoom… shows exactly the stream’s picture, off air; it never
   await windowShowing(app, isZoom, 'the window for Zoom, again');
   await expect
     .poll(async () => (await zoomWindow(app))?.bounds)
-    .toEqual({ x: 120, y: 140, width: 960, height: 540 });
+    .toEqual({ x: 120, y: 140, width: 640, height: 360 });
   // One window only: pressed again, it is the same window, brought forward.
   await win.getByTestId('open-zoom-window').click();
   await holdStill(
