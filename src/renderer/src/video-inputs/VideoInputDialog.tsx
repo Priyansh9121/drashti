@@ -20,7 +20,7 @@ import {
   nameProblem,
   nextInputName,
   NO_SOUND,
-  NOT_DRASHTI_ITSELF,
+  NOT_ITS_OWN_PICTURE,
   refusedWords,
   settingsLabel,
 } from './words';
@@ -299,7 +299,7 @@ function InputDialog({ editing, platform }: { editing: VideoInput | null; platfo
         )}
         <div className="space-y-1 text-xs text-muted">
           <p>{NO_SOUND}</p>
-          <p>{NOT_DRASHTI_ITSELF}</p>
+          <p>{NOT_ITS_OWN_PICTURE}</p>
         </div>
       </div>
     </Dialog>

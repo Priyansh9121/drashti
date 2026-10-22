@@ -115,5 +115,5 @@ export const NO_SOUND =
   'Drashti shows its picture only, never its sound: the hall’s sound comes through the mixer, as now. The stream’s sound stays its own sound input, and a mixer’s USB output can be chosen there too.';
 
 /** A mixer's program that is Drashti's own picture makes a picture inside itself. */
-export const NOT_DRASHTI_ITSELF =
+export const NOT_ITS_OWN_PICTURE =
   'If the mixer’s program shows Drashti’s own picture, showing it here makes a picture inside itself, over and over: put it up while the mixer shows a camera.';
