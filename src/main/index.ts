@@ -1078,6 +1078,9 @@ function start(): void {
       if (contents.id === operatorWindow?.webContents.id) return 'operator';
       return manager.screenIdFor(contents.id) !== undefined ? 'output' : null;
     },
+    // On a Mac, no camera until System Settings' Camera says granted: macOS never asks before the page has said
+    // why (Media's askAccess asks). Chromium's fake camera (tests) counts as granted.
+    cameraGranted: () => process.platform !== 'darwin' || inputs.access() === 'granted',
   });
   // A screen's picture (getDisplayMedia, Session 48): only what the main process decides for that page.
   applyCaptureRules(session.defaultSession, {
@@ -4532,7 +4535,8 @@ function start(): void {
     ok: false as const,
     message: 'Only the operator window can change the video inputs.',
   };
-  handle(IPC.videoInputs.list, (e) => (fromOperator(e) ? inputs.view() : { inputs: [] }));
+  // The list: the operator window's Media, and every screen's page, which opens only an input listed here.
+  handle(IPC.videoInputs.list, (e) => (screenPage(e) ? inputs.view() : { inputs: [] }));
   handle(IPC.videoInputs.add, (e, fields) => (fromOperator(e) ? inputs.add(fields) : notOperatorInputs));
   handle(IPC.videoInputs.update, (e, id, fields) =>
     fromOperator(e) ? inputs.update(id, fields) : notOperatorInputs,
