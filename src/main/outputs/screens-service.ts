@@ -393,10 +393,18 @@ export class ScreensService {
   /**
    * What each display shows: every output on a connected display, this computer's ("here") and each node's, as
    * its screen, group and role. A change that makes a display show something it did not is one Drashti asks
-   * about; turning an output off is not.
+   * about; turning an output off is not. A screen Audience or Stage has switched off shows nothing on its display
+   * (Session 51, S2-1): turned off and on again meanwhile, nothing is put on a display, so nothing is asked, and
+   * the switch on again puts it back where it was, asking nothing as ever.
    */
   placed(): Map<string, string> {
     const roles = new Map(this.repo.groupIds().map((g) => [g.id, g.role]));
+    const switchedOff = new Set(
+      this.outputs
+        .status()
+        .filter((st) => st.state === 'switched-off')
+        .map((st) => st.screenId),
+    );
     const placed = new Map<string, string>();
     const place = (where: string, screens: ScreenConfig[], displays: readonly DisplayInfo[]) => {
       const on = screens.filter(
@@ -406,7 +414,9 @@ export class ScreensService {
         on.map((sc) => ({ screenId: sc.id, key: sc.displayKey })),
         displays,
       );
+      // Matched with the rest, as the outputs are, so each keeps its own display.
       for (const sc of on) {
+        if (switchedOff.has(sc.id)) continue;
         const displayId = matched.get(sc.id);
         if (displayId !== undefined && displayId !== null)
           placed.set(

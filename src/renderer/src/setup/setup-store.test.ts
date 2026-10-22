@@ -100,6 +100,19 @@ describe('Set Up Screens… and Keep these screens?', () => {
     expect(setup.usesOf(off)).toEqual({ 1: 'none', 2: 'none', 3: 'none' });
   });
 
+  it('counts a switched-off screen’s display as in use, as the wizard does as it opens (Session 51, S2-1)', async () => {
+    const { setup } = await fresh();
+    const switchedOff = (screenId: string, displayId: number): ScreenStatus => ({
+      screenId,
+      state: 'switched-off',
+      displayId,
+    });
+    const off = { ...after, status: [switchedOff('s2', 2), switchedOff('s3', 3)] };
+    expect(setup.usesOf(off)).toEqual({ 1: 'none', 2: 'audience', 3: 'stage' });
+    // What Done set is kept, though Audience and Stage are off as the question goes.
+    expect(setup.screensKept({ 1: 'none', 2: 'audience', 3: 'stage' }, setup.usesOf(off), null)).toBe(true);
+  });
+
   it('kept: as this window answered, or else whether every display shows what was chosen', async () => {
     const { setup } = await fresh();
     const applied = { 1: 'none', 2: 'audience', 3: 'stage' } as const;
