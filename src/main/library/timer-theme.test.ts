@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TimerElement } from '../../shared/model';
-import { BUILT_IN_TIMER_LOOK, timerElement } from '../../shared/timer-slides';
+import { BUILT_IN_TIMER_LOOK, timerElement, timerLayoutElements } from '../../shared/timer-slides';
 import type { Theme } from '../../shared/themes';
 import { DEFAULT_THEME } from '../../shared/themes';
 import { readContent } from '../db/content';
@@ -59,5 +59,35 @@ describe('a Timer when a theme is applied', () => {
         verticalAlign: 'middle',
       },
     });
+  });
+
+  // Section 7's review (Session 50): applying a theme moved "Starting in" into the theme's box for the words, across
+  // the time. On a slide with a Timer the words keep their place; they take the theme's look as all words do.
+  it('keeps Timer with words in its layout: the line of words stays above the time', () => {
+    const db = openDatabase(':memory:');
+    const repo = new PresentationRepo(db);
+    let n = 0;
+    const made = timerLayoutElements(
+      'words',
+      't1',
+      BUILT_IN_TIMER_LOOK,
+      { width: 1920, height: 1080 },
+      () => {
+        n += 1;
+        return `e${String(n)}`;
+      },
+    );
+    const id = repo.insert({
+      libraryId: repo.ensureLibrary('Default'),
+      name: 'Placeholder',
+      groups: [{ name: '', slides: [{ elements: made }] }],
+    });
+    const rows = readContent(db, id);
+    if (!rows) throw new Error('no content');
+    const before = rows.elements.map((e) => [e.x, e.y, e.width, e.height]);
+    const themed = applyTheme(rows, theme);
+    expect(themed.elements.map((e) => [e.x, e.y, e.width, e.height])).toEqual(before);
+    const words = themed.elements.map((e) => elementFromRow(e)).find((e) => e.kind === 'text');
+    expect(words).toMatchObject({ style: { fontFamily: 'Placeholder Sans', color: '#ffee00' } });
   });
 });
