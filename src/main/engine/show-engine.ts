@@ -796,6 +796,16 @@ export class ShowEngine {
       const listed = this.asListed(was);
       if (!sameData(listed, was)) layers = { ...layers, background: listed };
     }
+    // The same for a video input in the picture-in-picture box (S8-1, Session 51): nothing keeps it listed once the
+    // box is off.
+    const box = layers.pip;
+    if (box?.source.kind === 'input') {
+      const input = this.options.videoInput?.(box.source.inputId) ?? null;
+      const listed = input
+        ? { ...box, source: { ...box.source, name: input.name, device: input.device } }
+        : null;
+      if (!sameData(listed, box)) layers = { ...layers, pip: listed };
+    }
     const bg = layers.background;
     const audio = layers.audio;
     const bgLength = bg?.kind === 'media' && bg.durationMs === undefined ? this.lengthOf(bg.mediaId) : {};
