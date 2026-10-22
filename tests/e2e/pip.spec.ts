@@ -28,8 +28,10 @@ import { makeTestVideo } from './test-media';
  * Media, a video input (Chromium's fake camera: DRASHTI_TEST_FAKE_DEVICES, never a real one) and a window (Session
  * 48's stand-in, a placeholder window the test opens itself: DRASHTI_TEST_WINDOW_STANDIN), each as an output
  * draws it; Swap, Take off, Clear all and Put it back; a Look leaving the box out of the hall's group; black-out
- * and the logo over it; dragging it in LIVE; the stream's Slides layout; and the phone remote. Generated media and
- * placeholder words only. Quiet: outputs as windows, nothing wider than 1024 assumed.
+ * and the logo over it; dragging it in LIVE; the stream's Slides layout; and the phone remote. Session 51: Swap
+ * moves the main picture's own change with the box at held moments; the stream's Camera layout shows the box with
+ * the hall's picture at full frame; a key and fill group leaves the box out unless its Look turns it on. Generated
+ * media and placeholder words only. Quiet: outputs as windows, nothing wider than 1024 assumed.
  */
 
 const WINDOWED = { DRASHTI_WINDOWED_OUTPUTS: '1' };
@@ -53,18 +55,31 @@ const PLACE: PipPlace = {
 
 /**
  * What a screen draws of the box: whether it is up (and swapped) on the scene, the box's own marks and how it
- * is drawn now, and the pictures drawn on the main picture and in the box (not those ready unseen for a swap).
+ * is drawn now, the pictures drawn on the main picture and in the box (not those ready unseen for a swap), and
+ * the main picture's own picture moving with the box in a swap (Session 51), drawn or not.
  */
 function drawn(page: Page) {
   return page.evaluate(() => {
     const scene = document.querySelector<HTMLElement>('[data-testid="scene"]');
     const box = document.querySelector<HTMLElement>('[data-testid="pip-box"]');
+    const moving = document.querySelector<HTMLElement>('[data-pip-main][data-pip-moving]');
     const shown = (els: Iterable<HTMLElement>, key: string) =>
       [...els].filter((e) => e.dataset['pipReady'] === undefined).map((e) => e.dataset[key] ?? '');
     return {
       canvas: scene?.dataset['canvas'] ?? '',
       pip: scene?.dataset['pip'] ?? '',
       main: shown(document.querySelectorAll<HTMLElement>('[data-pip-main]'), 'pipMain'),
+      moving: moving
+        ? {
+            picture: moving.dataset['pipMain'] ?? '',
+            shown: moving.dataset['pipReady'] === undefined,
+            at: moving.dataset['pipAt'] ?? '',
+            opacity: moving.style.opacity,
+            transform: moving.style.transform,
+            // Whole on the screen's black as it moves.
+            base: moving.querySelector(':scope > [data-pip-base]') !== null,
+          }
+        : null,
       inBox: box ? shown(box.querySelectorAll<HTMLElement>('[data-pip-slot]'), 'pipSlot') : [],
       box: box
         ? {
@@ -118,7 +133,7 @@ async function upWithBackdrop(win: Page, backdrop: string, slides: string): Prom
   await goLive(win, slides, 0);
 }
 
-test('the slides in the box from Picture in Picture…: the background alone on the main picture, the slide small in its corner; Swap at its middle; Take off, Clear all and Put it back', async () => {
+test('the slides in the box from Picture in Picture…: the background alone on the main picture, the slide small in its corner; Swap, the slide moving in and out with the box; Take off, Clear all and Put it back', async () => {
   test.setTimeout(180_000);
   const { app } = await launchApp({ ...WINDOWED, DRASHTI_TEST_CLOCK_HOLD: '1' });
   const win = await operatorPage(app);
@@ -198,28 +213,80 @@ test('the slides in the box from Picture in Picture…: the background alone on 
   await goLive(win, slides, 1);
   await expect(hall.getByTestId('pip-box')).toHaveCount(1);
 
-  // Swap, under LIVE: at its middle they change places, out of sight, the pictures for after it ready unseen.
+  // Swap, under LIVE: the box goes out and comes in again, its pictures changing places at its middle, out of
+  // sight, those for after it ready unseen. The main picture's own change moves with it (Session 51), the same
+  // move at the same moment, never a cut at the middle: here the slide comes in whole, on black, over the
+  // background as the box comes in again (a Fade, Calm: 250 ms out, then 250 ms in).
+  const moment = async (at: number, t: number) => {
+    await holdClock(app, at + t);
+    // Drawn at the moment held: the box, and the main picture's moving picture when there is one.
+    await expect
+      .poll(async () => {
+        const d = await drawn(hall);
+        return d.box?.at === String(t) && (d.moving === null || d.moving.at === String(t));
+      })
+      .toBe(true);
+    return drawn(hall);
+  };
   await heldChange(app, () => win.getByTestId('live-pip-swap').click());
   await expect.poll(async () => (await pipNow(win))?.swapped).toBe(true);
   const changedAt = (await pipNow(win))?.changed?.at ?? 0;
-  await holdClock(app, changedAt + 100);
-  await expect.poll(async () => (await drawn(hall)).box?.at).toBe('100');
-  expect(await drawn(hall)).toMatchObject({
+  expect(await moment(changedAt, 100)).toMatchObject({
     main: ['background'],
     inBox: ['slide'],
     box: { phase: 'swap', swapped: 'false' },
+    moving: { picture: 'slide', shown: false },
   });
   await expect(hall.locator('[data-pip-main="slide"][data-pip-ready]')).toHaveCount(1);
   await expect(
     hall.locator('[data-testid="pip-box"] [data-pip-slot="background"][data-pip-ready]'),
   ).toHaveCount(1);
-  await holdClock(app, changedAt + 400);
-  await expect.poll(async () => (await drawn(hall)).box?.swapped).toBe('true');
-  expect(await drawn(hall)).toMatchObject({ main: ['slide'], inBox: ['background'] });
+  // Just past the middle: the box's pictures have changed places unseen; the slide is only starting to come in,
+  // the background whole under it.
+  const middle = await moment(changedAt, 251);
+  expect(middle).toMatchObject({
+    main: ['background', 'slide'],
+    inBox: ['background'],
+    box: { phase: 'swap', swapped: 'true' },
+    moving: { picture: 'slide', shown: true, base: true },
+  });
+  expect(Number(middle.moving?.opacity)).toBeLessThan(0.01);
+  // Half way through the in: the slide half in over the background, as the box is.
+  const coming = await moment(changedAt, 375);
+  expect(coming).toMatchObject({ main: ['background', 'slide'], moving: { picture: 'slide', base: true } });
+  expect(Number(coming.moving?.opacity)).toBeCloseTo(0.5, 2);
+  expect(coming.moving?.opacity).toBe(coming.box?.opacity);
   await holdClock(app, changedAt + 3000);
   await expect.poll(async () => (await drawn(hall)).box?.phase).toBe('still');
-  expect(await drawn(hall)).toMatchObject({ pip: 'swapped', main: ['slide'], inBox: ['background'] });
+  expect(await drawn(hall)).toMatchObject({
+    pip: 'swapped',
+    main: ['slide'],
+    inBox: ['background'],
+    moving: null,
+  });
   await expect(win.getByTestId('live-pip')).toContainText('swapped');
+  // Swapped back: the slide goes out over the background as the box goes out, then comes in again in the box.
+  await heldChange(app, () => win.getByTestId('live-pip-swap').click());
+  await expect.poll(async () => (await pipNow(win))?.swapped).toBe(false);
+  const backAt = (await pipNow(win))?.changed?.at ?? 0;
+  const going = await moment(backAt, 125);
+  expect(going).toMatchObject({
+    main: ['background', 'slide'],
+    inBox: ['background'],
+    box: { phase: 'swap', swapped: 'true' },
+    moving: { picture: 'slide', shown: true, base: true },
+  });
+  expect(Number(going.moving?.opacity)).toBeCloseTo(0.5, 2);
+  expect(going.moving?.opacity).toBe(going.box?.opacity);
+  expect(await moment(backAt, 300)).toMatchObject({ main: ['background'], inBox: ['slide'], moving: null });
+  await holdClock(app, backAt + 3000);
+  await expect.poll(async () => (await drawn(hall)).box?.phase).toBe('still');
+  expect(await drawn(hall)).toMatchObject({
+    pip: 'up',
+    main: ['background'],
+    inBox: ['slide'],
+    moving: null,
+  });
   await holdClock(app, null);
 
   // Take off: the main picture is whole again at once, and the box goes out.
@@ -465,5 +532,130 @@ test('the phone remote names the box and takes it off; it has nothing to set one
   } finally {
     await phone.close();
   }
+  await app.close();
+});
+
+/** A placeholder picture for the box, made and put in Media. */
+async function boxPicture(win: Page): Promise<string> {
+  const dir = mkdtempSync(join(tmpdir(), 'drashti-pip-'));
+  const file = await drawPicture(win, join(dir, 'Placeholder box picture.png'), plain('21,128,61'));
+  const [id = ''] = await importAndGetIds(win, [file]);
+  return id;
+}
+
+test('the stream’s Camera layout shows the box with the hall’s picture at full frame, swapped as the hall has it; over its own camera, never', async () => {
+  test.setTimeout(180_000);
+  const { app } = await launchApp({ ...WINDOWED, DRASHTI_TEST_FAKE_DEVICES: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const { backdrop, slides } = await backdropAndWords(win);
+  const boxed = await boxPicture(win);
+  await setUpScreen(win);
+  const hall = await outputPage(app);
+  await outputReady(hall);
+  // A picture up behind and no slide: the Camera layout shows the hall's picture instead of its camera.
+  await dispatch(win, {
+    type: 'setBackground',
+    background: { kind: 'media', mediaId: backdrop, media: 'image', fit: 'fill', loop: false },
+  });
+  await dispatch(win, { type: 'showPip', source: { kind: 'media', mediaId: boxed }, place: PLACE });
+  await expect(hall.getByTestId('pip-box')).toHaveCount(1);
+  await win.getByTestId('open-stream').click();
+  const program = await windowShowing(app, (p) => p.url().includes('stream.html'), 'stream');
+  const root = program.getByTestId('program-root');
+  await expect(root).toHaveAttribute('data-fonts', 'ready', { timeout: 60_000 });
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.setLayout('camera'));
+  await expect(root).toHaveAttribute('data-layout', 'camera');
+  const full = program.getByTestId('program-full');
+  await expect(full).toHaveCount(1);
+  // The box with it, where the hall has it, its own picture in it.
+  await expect(full.getByTestId('pip-box')).toHaveCount(1);
+  await expect.poll(async () => (await drawn(program)).box?.phase).toBe('still');
+  const onStream = await drawn(program);
+  expect(onStream).toMatchObject({
+    pip: 'up',
+    main: ['background', 'slide'],
+    inBox: ['source'],
+    box: { source: 'media', corner: 'bottom-right', size: 'medium' },
+  });
+  expect(onStream.box?.rect).toBe(rectOn(onStream.canvas, PLACE));
+  await expect(full.locator('[data-pip-main="background"] [data-layer="background"]')).toHaveCount(1);
+  // Swapped, as the hall has it: the box's picture full, the background small in the box; and back.
+  await dispatch(win, { type: 'swapPip' });
+  await expect.poll(async () => (await drawn(program)).main, { timeout: 5000 }).toEqual(['source', 'slide']);
+  await expect.poll(async () => (await drawn(program)).inBox, { timeout: 5000 }).toEqual(['background']);
+  await dispatch(win, { type: 'swapPip' });
+  await expect
+    .poll(async () => (await drawn(program)).main, { timeout: 5000 })
+    .toEqual(['background', 'slide']);
+  // A slide with words: the stream shows its own camera with the words as a lower third, and no box.
+  await goLive(win, slides, 0);
+  await expect(full).toHaveCount(0);
+  await expect(program.getByTestId('lower-third')).toBeVisible();
+  await expect(program.getByTestId('pip-box')).toHaveCount(0);
+  await expect(hall.getByTestId('pip-box')).toHaveCount(1);
+  // The Slides layout: the hall's picture, the box with it.
+  await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.setLayout('slides'));
+  await expect(root).toHaveAttribute('data-layout', 'slides');
+  await expect(program.getByTestId('pip-box')).toHaveCount(1);
+  await win.getByRole('button', { name: 'Close stream' }).click();
+  await app.close();
+});
+
+test('a key and fill group leaves the box out unless its Look turns it on, in a Look made since too', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp(WINDOWED);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const boxed = await boxPicture(win);
+  // A key and fill group on this computer's display: its one screen is the fill.
+  const switcher = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const made = await d.screens.createGroup('Placeholder switcher');
+    if (!made.ok) throw new Error(made.message);
+    const id = made.snapshot.groups.find((g) => g.name === 'Placeholder switcher')?.id ?? '';
+    const role = await d.screens.setGroupRole(id, 'keyfill');
+    if (!role.ok) throw new Error(role.message);
+    // Keep these screens? (Session 50), wherever it asks: kept, as a test needs the output.
+    if ((await d.screens.pending()) !== null) await d.screens.keep();
+    const display = made.snapshot.displays[0]?.id ?? -1;
+    const used = await d.screens.assignDisplay(id, display, { coverOperator: true });
+    if (!used.ok) throw new Error(used.message);
+    if ((await d.screens.pending()) !== null) await d.screens.keep();
+    return id;
+  });
+  const fill = await outputPage(app);
+  await expect(fill.getByTestId('output-root')).toHaveAttribute('data-feed', 'fill');
+  await outputReady(fill);
+  const layers = async () => (await engineState(win)).look.groups[switcher]?.layers ?? [];
+  // A box up: the key and fill group leaves it out, its Look saying nothing of it.
+  await dispatch(win, { type: 'showPip', source: { kind: 'media', mediaId: boxed }, place: PLACE });
+  await expect.poll(async () => (await pipNow(win))?.source.kind).toBe('media');
+  expect(await layers()).not.toContain('pip');
+  await expect(fill.getByTestId('scene')).toHaveAttribute('data-pip', 'none');
+  await expect(fill.getByTestId('pip-box')).toHaveCount(0);
+  // A Look made since, from nothing, put live: left out there too.
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const made = await d.looks.create('Placeholder blank', null);
+    if (!made.ok) throw new Error(made.message);
+    const blank = made.view.looks.find((l) => l.name === 'Placeholder blank')?.id ?? '';
+    const live = await d.engine.dispatch({ type: 'setLook', lookId: blank });
+    if (!live.ok) throw new Error(live.message);
+  });
+  await expect.poll(async () => (await engineState(win)).look.name).toBe('Placeholder blank');
+  expect(await layers()).not.toContain('pip');
+  await expect(fill.getByTestId('scene')).toHaveAttribute('data-pip', 'none');
+  await expect(fill.getByTestId('pip-box')).toHaveCount(0);
+  // Turned on in the live Look (its tick in Screens): the fill draws it.
+  await win.evaluate(async (id) => {
+    const d = (globalThis as PageGlobals).drashti;
+    const view = await d.looks.list();
+    const shown = view.looks.find((l) => l.id === view.liveId)?.groups[id]?.layers ?? [];
+    const set = await d.looks.setGroup(view.liveId, id, { layers: [...shown, 'pip'] });
+    if (!set.ok) throw new Error(set.message);
+  }, switcher);
+  await expect(fill.getByTestId('pip-box')).toHaveCount(1);
+  expect(await layers()).toContain('pip');
   await app.close();
 });
