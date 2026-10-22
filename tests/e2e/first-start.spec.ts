@@ -20,7 +20,12 @@ import {
  * nor is the setup wizard opened by itself for one (Session 46: with roles on, Drashti starts in Pro Mode).
  */
 
-const FIRST = { DRASHTI_TEST_NO_WIZARD: '0' };
+/**
+ * A first start as a person meets it: the welcome on, and a new library without the tests' placeholder
+ * presentations (Session 50: an operator's new library has none; as helpers.ts's NO_PLACEHOLDERS), so the middle
+ * behind the welcome has nothing chosen.
+ */
+const FIRST = { DRASHTI_TEST_NO_WIZARD: '0', DRASHTI_TEST_SEED_PLACEHOLDERS: '' };
 
 const engine = (win: Page) =>
   win.evaluate(async () => {

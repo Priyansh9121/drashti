@@ -10,6 +10,8 @@ import { launchApp, operatorPage, operatorReady, type PageGlobals, relaunchApp }
  */
 
 const FIRST_RUN = { DRASHTI_TEST_NO_WIZARD: '0' };
+/** A fresh library as a person's starts (Session 50): without the tests' placeholder presentations. */
+const FRESH = { ...FIRST_RUN, DRASHTI_TEST_SEED_PLACEHOLDERS: '' };
 
 const toSimple = (win: Awaited<ReturnType<typeof operatorPage>>) =>
   win.evaluate(() => (globalThis as PageGlobals).drashti.app.setMode('simple'));
@@ -19,7 +21,7 @@ const stillToCome = (win: Awaited<ReturnType<typeof operatorPage>>) =>
   win.evaluate(() => (globalThis as PageGlobals).drashti.app.simpleFirstRun());
 
 test('a fresh library’s Simple Mode shows the three first steps once; Skip ends them, and they never come again', async () => {
-  const { app, userData } = await launchApp(FIRST_RUN);
+  const { app, userData } = await launchApp(FRESH);
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
@@ -49,7 +51,7 @@ test('a fresh library’s Simple Mode shows the three first steps once; Skip end
   await toSimple(win);
   await expect(win.getByTestId('simple-mode')).toBeVisible();
   await app.close();
-  const again = await relaunchApp(userData, FIRST_RUN);
+  const again = await relaunchApp(userData, FRESH);
   const win2 = await operatorPage(again.app);
   await operatorReady(win2);
   await toSimple(win2);

@@ -45,6 +45,8 @@ const page = (app: ElectronApplication, part: string) => app.windows().find((w) 
 test('on the first start: identify, what each output shows and its languages, a test tone, a theme, and a test slide', async () => {
   const { app } = await launchApp({
     DRASHTI_TEST_NO_WIZARD: '0',
+    // A new library as a person's starts (Session 50): without the tests' placeholder presentations.
+    DRASHTI_TEST_SEED_PLACEHOLDERS: '',
     DRASHTI_WINDOWED_OUTPUTS: '1',
     DRASHTI_EXTRA_DISPLAYS: '1',
     DRASHTI_TEST_FAKE_DEVICES: '1',
