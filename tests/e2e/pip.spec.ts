@@ -252,10 +252,10 @@ test('the slides in the box from Picture in Picture…: the background alone on 
   });
   expect(Number(middle.moving?.opacity)).toBeLessThan(0.01);
   // Half way through the in: the slide half in over the background, as the box is.
-  const coming = await moment(changedAt, 375);
-  expect(coming).toMatchObject({ main: ['background', 'slide'], moving: { picture: 'slide', base: true } });
-  expect(Number(coming.moving?.opacity)).toBeCloseTo(0.5, 2);
-  expect(coming.moving?.opacity).toBe(coming.box?.opacity);
+  const halfIn = await moment(changedAt, 375);
+  expect(halfIn).toMatchObject({ main: ['background', 'slide'], moving: { picture: 'slide', base: true } });
+  expect(Number(halfIn.moving?.opacity)).toBeCloseTo(0.5, 2);
+  expect(halfIn.moving?.opacity).toBe(halfIn.box?.opacity);
   await holdClock(app, changedAt + 3000);
   await expect.poll(async () => (await drawn(hall)).box?.phase).toBe('still');
   expect(await drawn(hall)).toMatchObject({
