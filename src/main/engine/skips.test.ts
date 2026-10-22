@@ -193,7 +193,7 @@ describe('Back 15 s, Forward 15 s and Last 10 s (Session 50)', () => {
     elapse(35_000);
     engine.dispatch(skip('audio', 'forward'));
     expect(audio(engine)).toBeNull();
-    // Going round, the last track's end goes on to the first; Last 10 s within the last 10 s goes back to them.
+    // Going round, the last track's end goes on to the first; Last 10 s within the last 10 s goes back.
     engine.dispatch({ type: 'playMusic', music: music({ loop: true }), index: 2 });
     elapse(40_000);
     engine.dispatch(skip('audio', 'last'));

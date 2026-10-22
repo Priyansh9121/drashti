@@ -77,9 +77,8 @@ function TimeLeft() {
   const a = useMusicPlaying();
   useNow(1000);
   if (!a?.durationMs) return null;
-  return (
-    <span className="shrink-0 text-muted tabular-nums">{`${formatDuration(playbackLeftMs(a, a.durationMs, engineNow()))} left`}</span>
-  );
+  const left = playbackLeftMs(a, a.durationMs, engineNow());
+  return <span className="shrink-0 text-muted tabular-nums">{`${formatDuration(left)} left`}</span>;
 }
 
 /** `nested`: inside a panel group (Session 26a: Audio, More tools). */
@@ -177,7 +176,7 @@ export function MusicPanel({
             <OptionToggle playlist={shown} option="loop" />
             <OptionToggle playlist={shown} option="shuffle" />
           </div>
-          {/* Back 15 s, Forward 15 s, Last 10 s (Session 50), beside Play and Pause: in the track playing. */}
+          {/* Back 15 s, Forward 15 s, Last 10 s (Session 50), beside Play and Pause: the track playing. */}
           <div
             className="flex flex-wrap items-center gap-1.5"
             role="group"
