@@ -16,7 +16,7 @@ Drashti runs on both of the mandir's computers. One is **Main**: it keeps the li
 - **The same version of Drashti on both.** A node refuses a Main on another version, and says so (section 2).
 - **A graphics chip that decodes video by itself**: every Mac that runs macOS 13 has one; a PC needs Intel, AMD or NVIDIA graphics (not a basic display adapter). Section 13 has what the speed tests found.
 - **A wired network between Main and the node** if at all possible, and a fixed address for Main (section 8).
-- **Room on the disk**: the media library, plus 2 GB that Drashti keeps free, plus the recordings (about 3 GB an hour). A recording goes on in parts of 3.5 GB (`… part 2.mkv`, `part 3`…), so even a USB stick formatted FAT32 takes a long sabha; Drashti says so when the folder is on one, and when the disk has room for less than an hour.
+- **Room on the disk**: the media library (with a copy beside each file Drashti converts, section 20), plus 2 GB that Drashti keeps free, plus the recordings (about 3 GB an hour). A recording goes on in parts of 3.5 GB (`… part 2.mkv`, `part 3`…), so even a USB stick formatted FAT32 takes a long sabha; Drashti says so when the folder is on one, and when the disk has room for less than an hour.
 - Each computer's **user account with a password of its own**: the PINs keep the controls apart for the people at the show, not from someone who can use the computer's account.
 
 ---
@@ -65,8 +65,8 @@ Section 2 of `docs/parallel-run.md` has the same steps for the volunteers.
 Drashti has three roles:
 
 - **Volunteers** run a sabha in **Simple Mode**: big buttons, nothing can be changed.
-- **Operators** run the show in **Pro Mode**: playlists, words and slides, props, messages, timers, lower thirds, Looks, masks, announcements, going live and recording.
-- **Admins** also set Drashti up: importing and removing, themes and the logo, Shastra texts, calendars, the idle rotation and every schedule (backups), MIDI, the screens, Looks, stage layouts, masks and sound, the stream's settings and key, phones and nodes, backups, restores and updates, and the PINs.
+- **Operators** run the show in **Pro Mode**: playlists, words and slides, props, messages, timers, lower thirds, Looks, masks, picture in picture, the **Audience** and **Stage** switches, announcements, going live and recording.
+- **Admins** also set Drashti up: importing and removing, themes and the logo, Shastra texts, calendars, the idle rotation and every schedule (backups), MIDI, the screens and the video inputs, Looks, stage layouts, masks and sound, the stream's settings and key, phones and nodes, backups, restores and updates, and the PINs.
 
 **With PINs or without**, Drashti starts in **Pro Mode** whenever it was quit on purpose, even if a volunteer was using Simple Mode: a volunteer who restarts Drashti sees Pro Mode. After an unexpected stop it comes back in the mode it was in, if it is started again within 3 hours; started later, it starts as after a quit on purpose. So the PINs do not keep volunteers out of Pro Mode: they keep setting Drashti up for the admins, and leaving Simple Mode for the operators. To hand Drashti to a volunteer, press **Simple Mode** in the header.
 
@@ -366,7 +366,7 @@ What it does with them:
 - **A file link, or a YouTube video**, goes into the playlist chosen under **When it's imported, add it to:** before Download: the open playlist to begin with, another, a new one named after it, or none.
 - **The same folder order** is used when the import report's **Add to playlist** takes a folder dropped on Drashti or chosen with **Import… › A Folder…** (there, videos, then decks, then other presentations, then pictures, then sounds).
 - **Videos no taller than Highest video quality.** A Dropbox video above it goes into the library as a **copy that tall** (1080p to begin with), made by Drashti's own conversion; the original stays in the folder as it came. One that cannot be made that tall is listed under Not taken.
-- **Above 1080p, YouTube sends VP9 or AV1, not H.264.** Drashti saves that in the MP4 as it comes, and plays it (checked with 2160p VP9 and AV1 on a Mac). A slower computer may not play 4K smoothly; anything Drashti cannot play, the import offers to convert.
+- **Above 1080p, YouTube sends VP9 or AV1, not H.264.** Drashti saves that in the MP4 as it comes, and plays it (checked with 2160p VP9 and AV1 on a Mac). A slower computer may not play 4K smoothly; anything Drashti cannot play is converted by itself as it is imported (section 20).
 - **PowerPoint files** become slides of pictures, as a `.pptx` dropped on the library does: PowerPoint or Keynote on that computer saves it as PDF first. With neither, the report says so, and how to save it as PDF by hand.
 - **On air or recording, a download waits**, asking nothing of Dropbox or YouTube, and carries on afterwards by itself. A YouTube download already going stops, and starts again afterwards from where it got to. Looking at a YouTube link waits the same way (a look already going stops, and asks again afterwards); looking at a Dropbox link does not need to. **Closing the window never stops it**: the status bar shows how it goes, and a press on that opens the window again. **Stop** stops it and keeps nothing.
 - **Drashti keeps 2 GB free** on the disk it saves to: a download that would leave less (by its size, or YouTube's estimate) does not start, and one going stops.
