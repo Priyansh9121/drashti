@@ -40,6 +40,15 @@ export function startingMode(last: { recentStop: boolean; wasIn: OperatorMode })
 
 /**
  * Engine commands Simple Mode refuses, wherever they come from (the window,
- * a phone, the API): Simple Mode keeps the live Look.
+ * a phone, the API): Simple Mode keeps the live Look, and a picture-in-picture
+ * box is set up, swapped and moved in Pro Mode only (Session 50; Take off and
+ * Clear all still take one off).
  */
-export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = ['setLook', 'zoomLive', 'resetLiveZoom'];
+export const SIMPLE_MODE_REFUSED_COMMANDS: readonly string[] = [
+  'setLook',
+  'zoomLive',
+  'resetLiveZoom',
+  'showPip',
+  'swapPip',
+  'placePip',
+];

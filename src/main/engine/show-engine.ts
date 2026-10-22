@@ -17,6 +17,8 @@ import {
   type MaskLayer,
   type MessageItem,
   type MusicRun,
+  type PipLayer,
+  type PipPlace,
   type PlaylistCursor,
   type PropItem,
   type RepeatRun,
@@ -46,7 +48,9 @@ import {
 } from '../../shared/picture-look';
 import { elapsedAt, type TimerDefinition, type TimerRun } from '../../shared/timers';
 import { remapPosition } from '../../shared/order';
+import type { VideoInput } from '../../shared/video-inputs';
 import type { EngineAction } from './actions';
+import { hidePip, leavingMedia, placePip, restoredPip, showPip, swapPip } from './pip';
 import type { MediaMarkers, PlaybackMarker } from '../../shared/markers';
 import type { PlaybackClip, PlaybackSeek } from '../../shared/media';
 import { NO_PLAYLISTS, type PlayItem, type PlaylistSource } from './playlist-source';
@@ -133,6 +137,20 @@ export interface EngineOptions {
   repeatName?: (playlistId: string) => string | null;
   /** A picture's look (Session 26e), or null: shown as it is. */
   pictureLook?: (mediaId: string) => PictureLook | null;
+  /**
+   * A media item's kind while it is in Media to play (not missing or deleted), or null: the picture-in-picture
+   * box (Session 50) takes a picture or a video as the library has it, never as a page says.
+   */
+  mediaKind?: (mediaId: string) => 'image' | 'video' | 'audio' | null;
+  /** A video input in this computer's list (Session 50), by its id, as the list names it; null when not there. */
+  inputs?: (inputId: string) => Pick<VideoInput, 'name' | 'device'> | null;
+  /**
+   * A window Show a Window… has just offered (Session 48), by its id, or null: the only windows the
+   * picture-in-picture box can hold (src/main/live-window/).
+   */
+  windows?: (id: string) => { sourceId: string; name: string } | null;
+  /** Where a new picture-in-picture box goes, as the library remembers (DEFAULT_PIP_PLACE when left out). */
+  pipPlace?: () => PipPlace;
 }
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
@@ -154,6 +172,8 @@ export interface RestoreRequest {
   masks?: MaskLayer | null;
   /** The lower third up (Session 44): it comes back still, as it was. */
   lowerThird?: LowerThirdLayer | null;
+  /** The picture-in-picture box up (Session 50): it comes back still, as it was (see pip.ts restoredPip). */
+  pip?: PipLayer | null;
   stageMessage?: string | null;
   /** Timer runs: a running timer carries on from its start time, a paused one keeps its count. */
   timers?: readonly { id: string; startedAt: number | null; elapsedMs: number }[];
@@ -179,11 +199,13 @@ export interface Restored {
   ticker: number;
   masks: boolean;
   lowerThird: boolean;
+  /** The picture-in-picture box (Session 50). */
+  pip: boolean;
   stageMessage: boolean;
   timers: number;
   /**
-   * Another app's window that was the background (Session 48), by name: never put back (it may be gone),
-   * only said. Null when there was none.
+   * Another app's window that was the background (Session 48), or else in the picture-in-picture box (Session
+   * 50), by name: never put back (it may be gone), only said. Null when there was none.
    */
   window: string | null;
 }
@@ -345,6 +367,9 @@ export class ShowEngine {
     if (request.ticker) actions.push({ type: 'ticker/set', ticker: request.ticker });
     if (request.masks) actions.push({ type: 'mask/set', mask: request.masks });
     if (request.lowerThird) actions.push({ type: 'lowerThird/show', layer: request.lowerThird });
+    // The picture-in-picture box (Session 50): never a window, a video input only while it is in the list.
+    const box = restoredPip(request.pip ?? null, this.options);
+    if (box.layer) actions.push({ type: 'pip/set', layer: box.layer });
     if (request.stageMessage) actions.push({ type: 'stage/message', text: request.stageMessage });
     // Timers that still exist: running ones count on from their start, paused ones keep their count.
     let timers = 0;
@@ -388,9 +413,10 @@ export class ShowEngine {
       ticker: request.ticker?.items.length ?? 0,
       masks: Boolean(request.masks),
       lowerThird: Boolean(request.lowerThird),
+      pip: box.layer !== null,
       stageMessage: Boolean(request.stageMessage),
       timers,
-      window,
+      window: window ?? box.window,
     };
   }
 
@@ -851,13 +877,17 @@ export class ShowEngine {
     return null;
   }
 
-  /** The looks of the pictures on the screens and coming next (Session 26e). */
+  /**
+   * The looks of the pictures on the screens and coming next (Session 26e), and of a picture-in-picture box's
+   * picture while its out plays (Session 50).
+   */
   private picturesFor(state: EngineState): Record<string, PictureLook> {
     const look = this.options.pictureLook;
     if (!look) return {};
     const { now, next } = mediaInState(state);
+    const leaving = leavingMedia(state.pipOff);
     const out: Record<string, PictureLook> = {};
-    for (const id of [...now, ...next]) {
+    for (const id of [...now, ...next, ...(leaving === null ? [] : [leaving])]) {
       const found = look(id);
       if (found) out[id] = found;
     }
@@ -1430,13 +1460,18 @@ export class ShowEngine {
           actions: [{ type: 'audio/set', audio: { ...a, music: { ...a.music, loop: command.loop } } }],
         };
       }
+      // Picture in picture (Session 50, pip.ts): what the box holds is looked up here, never taken from a page.
+      case 'showPip':
+        return showPip(this.state.layers.pip, command.source, command.place, this.now(), this.options);
+      case 'hidePip':
+        return hidePip(this.state.layers.pip, this.now());
+      case 'swapPip':
+        return swapPip(this.state.layers.pip, this.now());
+      case 'placePip':
+        return placePip(this.state.layers.pip, command.place, this.now());
       // Session 50's commands: each section's builder puts its own in place of these.
       case 'showInput':
       case 'showTimer':
-      case 'showPip':
-      case 'hidePip':
-      case 'swapPip':
-      case 'placePip':
         return { ok: false, error: 'invalid-command', message: 'Not built yet' };
     }
   }
@@ -1491,12 +1526,14 @@ export class ShowEngine {
         next = reduce(next, { type: 'zoom/set', liveZoom: null });
     }
     // The idle rotation, once started, stops by itself when a slide or a picture goes up (so a later
-    // Clear all does not bring it back).
+    // Clear all does not bring it back): a picture-in-picture box too, as it goes up (Session 50).
+    const boxUp = next.layers.pip;
     if (
       next.idle.startedAt !== null &&
       next.idle === prev.idle &&
       ((next.layers.slide !== null && next.layers.slide !== prev.layers.slide) ||
-        (next.layers.background !== null && next.layers.background !== prev.layers.background))
+        (next.layers.background !== null && next.layers.background !== prev.layers.background) ||
+        (boxUp !== null && boxUp.shownAt !== prev.layers.pip?.shownAt))
     )
       next = reduce(next, { type: 'idle/run', startedAt: null });
     // What was cued goes once it is live (however it got there).
@@ -1522,7 +1559,8 @@ export class ShowEngine {
       next.layers !== prev.layers ||
       next.next !== prev.next ||
       next.idle !== prev.idle ||
-      next.logo !== prev.logo
+      next.logo !== prev.logo ||
+      next.pipOff !== prev.pipOff
     )
       next = reduce(next, { type: 'pictures/set', pictures: this.picturesFor(next) });
     next = this.keepUndo(prev, next, cause);

@@ -155,17 +155,23 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
         return cleared === state || !state.layers.lowerThird || action.at === undefined
           ? cleared
           : { ...cleared, lowerThirdOff: { layer: state.layers.lowerThird, at: action.at } };
+      // The picture-in-picture box taken off on its own (Session 50): its out plays from then, as Take off's does.
+      if (action.layer === 'pip')
+        return cleared === state || !state.layers.pip || action.at === undefined
+          ? cleared
+          : { ...cleared, pipOff: { layer: state.layers.pip, at: action.at } };
       // The slide taken off on its own, and when: a lower third leaves with a short fade (Session 27).
       const off = state.layers.slide;
       if (action.layer !== 'slide' || cleared === state || !off || action.at === undefined) return cleared;
       return { ...cleared, slideOff: { layer: off, at: action.at } };
     }
     case 'layers/clearAll': {
-      // Everything at once, and at once: no lower third fades, a Look's or one of the Lower Thirds (Session 44).
+      // Everything at once, and at once: no lower third fades, a Look's or one of the Lower Thirds (Session 44),
+      // and no picture-in-picture box plays its out (Session 50).
       const cleared = LAYER_NAMES.reduce<EngineState>((s, layer) => clearLayer(s, layer), state);
-      return cleared.slideOff === null && cleared.lowerThirdOff === null
+      return cleared.slideOff === null && cleared.lowerThirdOff === null && cleared.pipOff === null
         ? cleared
-        : { ...cleared, slideOff: null, lowerThirdOff: null };
+        : { ...cleared, slideOff: null, lowerThirdOff: null, pipOff: null };
     }
     case 'lowerThird/show': {
       // The same one again (its words or look changed while up) keeps its time: its in does not play again.
@@ -178,6 +184,16 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       const was = state.layers.lowerThird;
       if (!was) return state;
       return { ...withLayers(state, { lowerThird: null }), lowerThirdOff: { layer: was, at: action.at } };
+    }
+    case 'pip/set':
+      // A box up (Session 50): nothing is leaving any more.
+      return sameData(state.layers.pip, action.layer) && state.pipOff === null
+        ? state
+        : { ...withLayers(state, { pip: action.layer }), pipOff: null };
+    case 'pip/hide': {
+      const was = state.layers.pip;
+      if (!was) return state;
+      return { ...withLayers(state, { pip: null }), pipOff: { layer: was, at: action.at } };
     }
     case 'blackout/set':
       return state.blackout === action.on ? state : { ...state, blackout: action.on };
@@ -196,8 +212,9 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
             ...state,
             live: action.live,
             layers: action.layers,
-            // A lower third put back is up again: no out plays (Session 44).
+            // A lower third put back is up again: no out plays (Session 44); a box too (Session 50).
             lowerThirdOff: action.layers.lowerThird ? null : state.lowerThirdOff,
+            pipOff: action.layers.pip ? null : state.pipOff,
           };
     case 'background/set':
       return sameData(state.layers.background, action.background)
