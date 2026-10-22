@@ -246,6 +246,8 @@ import { electronWindowSources } from './live-window/electron-sources';
 import { standInWindowSources } from './live-window/stand-in-sources';
 import { applyCaptureRules } from './live-window/capture-rules';
 import { PipPlaces } from './pip/pip-places';
+import { VideoInputsService } from './video-inputs/video-inputs-service';
+import { electronCamera } from './video-inputs/electron-camera';
 import { ZoomWindow } from './stream/zoom-window';
 import { openPlaceholderMeeting, PLACEHOLDER_MEETING } from './live-window/placeholder';
 import { StreamService } from './stream/stream-service';
@@ -1067,6 +1069,15 @@ function start(): void {
     mayCapture: (contents) =>
       contents !== null &&
       ((zoomWindow?.isZoomPage(contents) ?? false) || (liveWindows?.mayCapture(contents.mainFrame) ?? false)),
+    // A camera for a video input (Session 50), video alone: the operator window's page (its LIVE picture, Media's
+    // small live pictures) and every output of this computer (audience, stage, key and fill), each known by its
+    // window and its address (windows/security.ts cameraAllowed). Nothing else in this session ever gets one; the
+    // stream's page has its own session, which already may.
+    cameraPage: (contents) => {
+      if (contents === null) return null;
+      if (contents.id === operatorWindow?.webContents.id) return 'operator';
+      return manager.screenIdFor(contents.id) !== undefined ? 'output' : null;
+    },
   });
   // A screen's picture (getDisplayMedia, Session 48): only what the main process decides for that page.
   applyCaptureRules(session.defaultSession, {
@@ -1276,6 +1287,8 @@ function start(): void {
   let calendarService: CalendarService | null = null;
   /** The idle rotation (made further down): told when media change (a picture may have gone). */
   let idleService: IdleService | null = null;
+  /** This computer's video inputs (Session 50; made just below, with the engine). */
+  let videoInputs: VideoInputsService | null = null;
   const engine = new ShowEngine(
     playable,
     new FanoutTransport([transport, networkTransport, nodesTransport]),
@@ -1296,16 +1309,55 @@ function start(): void {
       pictureLook: (mediaId) => pictureLook(mediaId),
       // The picture-in-picture box (Session 50): what it holds, from the main process's own lists.
       mediaKind: (mediaId) => mediaKind(mediaId),
-      // Session 50: wired to the video inputs at merge
-      inputs: () => null,
       windows: (id) => liveWindows?.offeredWindow(id) ?? null,
       pipPlace: () => pipPlaces.place(),
+      // A video input by its id, from this computer's list (Session 50): showInput and the picture-in-picture box
+      // find it only there.
+      videoInput: (inputId) => videoInputs?.get(inputId) ?? null,
     },
   );
   // Quitting: a slide moving on by itself, or an audio playlist's next track, never fires once the library
   // has closed (seen on CI Windows: "The database connection is not open" from an auto-advance at quit).
   stops.add('engine timers', () => {
     engine.dispose();
+  });
+
+  // ---- video inputs (Session 50) ----------------------------------------------------
+  // This computer's cameras and capture inputs, named in Media; read before restart recovery puts one back.
+  const inputs = new VideoInputsService({
+    userData: app.getPath('userData'),
+    camera: electronCamera(process.platform, {
+      fake: fakeDevices,
+      // Tests only (never a packaged Drashti): how the camera's system setting stands.
+      access: sw('DRASHTI_TEST_CAMERA_ACCESS'),
+      log: (line) => {
+        log.info(line);
+      },
+    }),
+    background: () => engine.current.layers.background,
+    clearBackground: () => {
+      engine.dispatch({ type: 'clearLayer', layer: 'background' });
+    },
+    refresh: (input) => {
+      engine.refreshInput(input);
+    },
+    changed: (view) => {
+      sendToPage(operatorWindow, IPC.videoInputs.changed, view);
+    },
+    statusChanged: (status) => {
+      sendToPage(operatorWindow, IPC.videoInputs.statusChanged, status);
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+  });
+  videoInputs = inputs;
+  engine.onChange(() => {
+    inputs.follow();
+  });
+  stops.add('video inputs', () => {
+    inputs.close();
   });
   const stageLayoutRepo = new StageLayoutRepo(db);
   const maskRepo = new MaskRepo(db);
@@ -1921,6 +1973,8 @@ function start(): void {
   const saved = startup.putBack;
   if (saved) {
     const put = engine.restore(saved);
+    // A video input put back (Session 50): the first screen to draw it says whether it is on this computer.
+    if (put.input !== null) inputs.restored();
     const name = put.slide && saved.slide ? presentations.get(saved.slide.presentationId)?.name : undefined;
     recovery = {
       savedAt: saved.savedAt,
@@ -1944,10 +1998,19 @@ function start(): void {
       timers: put.timers,
       window: put.window,
       pipWindow: put.pipWindow,
+      input: put.input,
+      inputGone: put.inputGone,
     };
     // Ids and counts only in the log (the notice itself names the presentation, and a window: its name can
-    // be anything, an inbox's say, Session 48; the picture-in-picture box's too, Session 50).
-    const { slide: slideBack, window: windowName, pipWindow: boxWindowName, ...alsoBack } = put;
+    // be anything, an inbox's say, Session 48; the picture-in-picture box's too, and a video input, Session 50).
+    const {
+      slide: slideBack,
+      window: windowName,
+      pipWindow: boxWindowName,
+      input: inputName,
+      inputGone: inputNotListed,
+      ...alsoBack
+    } = put;
     log.warn(
       `Recovery after an unexpected stop: ${JSON.stringify({
         slide:
@@ -1959,6 +2022,8 @@ function start(): void {
         ...alsoBack,
         windowNotPutBack: windowName !== null,
         boxWindowNotPutBack: boxWindowName !== null,
+        inputPutBack: inputName !== null,
+        inputNotListed: inputNotListed !== null,
       })}`,
     );
   }
@@ -1979,11 +2044,13 @@ function start(): void {
             }
           : null,
       slideGone,
-      background: old.background !== null && old.background.kind !== 'window',
+      background:
+        old.background !== null && old.background.kind !== 'window' && old.background.kind !== 'input',
       window: old.background?.kind === 'window' ? old.background.name : null,
       // The picture-in-picture box (Session 50): a window in it named apart, as the background's is.
       pip: old.pip !== null && old.pip.source.kind !== 'window',
       pipWindow: old.pip?.source.kind === 'window' ? old.pip.source.name : null,
+      input: old.background?.kind === 'input' ? old.background.name : null,
       blackout: old.blackout,
       logo: old.logo !== null,
       audio: old.audio !== null,
@@ -2712,7 +2779,13 @@ function start(): void {
 
   // ---- IPC ----------------------------------------------------------------
   handle(IPC.app.getInfo, () => appInfo());
-  handle(IPC.app.recovery, () => recovery);
+  handle(IPC.app.recovery, async () => {
+    // A video input put back after the restart (Session 50): the notice waits for the first screen to say whether
+    // it is on this computer (8 s at most), and names it when it was not (it has come off the screens).
+    const gone = await inputs.settled();
+    if (gone !== null && recovery) recovery = { ...recovery, input: null, inputGone: gone };
+    return recovery;
+  });
   handle(IPC.app.startNotice, (e) => {
     if (!fromOperator(e)) return null;
     const text = startNotice;
@@ -4452,6 +4525,46 @@ function start(): void {
     if (screenPage(e) && typeof sourceId === 'string') shownWindows.ended(sourceId);
     return null;
   });
+
+  // ---- video inputs (Session 50) ----------------------------------------------------------
+  // Naming them: the operator window, Pro Mode (Simple Mode locks these channels; with roles on, an admin's).
+  const notOperatorInputs = {
+    ok: false as const,
+    message: 'Only the operator window can change the video inputs.',
+  };
+  handle(IPC.videoInputs.list, (e) => (fromOperator(e) ? inputs.view() : { inputs: [] }));
+  handle(IPC.videoInputs.add, (e, fields) => (fromOperator(e) ? inputs.add(fields) : notOperatorInputs));
+  handle(IPC.videoInputs.update, (e, id, fields) =>
+    fromOperator(e) ? inputs.update(id, fields) : notOperatorInputs,
+  );
+  handle(IPC.videoInputs.remove, (e, id) => (fromOperator(e) ? inputs.remove(id) : notOperatorInputs));
+  // Whether Drashti may use the cameras; a Mac asks only from the operator window, in Pro Mode, after it said why.
+  handle(IPC.videoInputs.access, () => inputs.access());
+  handle(IPC.videoInputs.askAccess, (e) =>
+    fromOperator(e) && mode === 'pro' ? inputs.askAccess() : inputs.access(),
+  );
+  handle(IPC.videoInputs.openSettings, async (e) => {
+    if (fromOperator(e)) await inputs.openSettings();
+    return null;
+  });
+  // How the input up now stands: said by the screens' pages drawing it (an output, the stream's page, the
+  // operator window's LIVE picture); a page that closes is forgotten.
+  const reportingPages = new Set<number>();
+  handle(IPC.videoInputs.report, (e, report) => {
+    if (!screenPage(e)) return null;
+    const page = e.sender;
+    const id = page.id;
+    if (!reportingPages.has(id)) {
+      reportingPages.add(id);
+      page.once('destroyed', () => {
+        reportingPages.delete(id);
+        inputs.pageGone(id);
+      });
+    }
+    inputs.report(id, report);
+    return null;
+  });
+  handle(IPC.videoInputs.status, () => inputs.status());
 
   // ---- the setup wizard ----------------------------------------------------------
   // Tests start with it closed, unless a test is about it; the self-tests never open it (a dialog
