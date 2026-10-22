@@ -1907,6 +1907,8 @@ export class ShowEngine {
   /** Wait for the slide up to reach zero (again when that changed), when it goes on then. */
   private scheduleZero(): void {
     const found = this.zeroFor(this.state);
+    // A zero already gone by unwaited for (the slide edited to go on at zero after it came): it holds.
+    if (found && found.at <= this.now() && found.key !== this.zeroWait?.key) this.zeroDone = found.key;
     const want = found && found.key !== this.zeroDone ? found : null;
     if ((want?.key ?? null) === (this.zeroWait?.key ?? null)) return;
     this.zeroWait?.cancel();
