@@ -16,7 +16,9 @@ import { useInputNamed } from '../video-inputs/video-inputs-store';
  * picture; nothing where it has none.
  */
 function NextInput({ name }: { name: string }) {
-  const input = useInputNamed(name);
+  const found = useInputNamed(name);
+  // Not read yet (the window has just opened): no picture for a moment.
+  const input = found === 'unread' ? null : found;
   const capture = useSmallPicture(input?.device ?? null);
   if (!input) return null;
   return (
@@ -40,8 +42,9 @@ export function NextPreview({ stacked = false }: { stacked?: boolean }) {
   const itemLabel = usePlaylists((s) =>
     next?.kind === 'slide' && next.itemId ? s.items.find((i) => i.id === next.itemId)?.label : undefined,
   );
-  // The video input behind the next slide (Session 51): whether this computer has one of its name.
-  const behind = useInputNamed(next?.kind === 'slide' ? (next.input ?? null) : null);
+  // The video input behind the next slide (Session 51): whether this computer has one of its name (counted as there
+  // until the list has been read).
+  const behind = useInputNamed(next?.kind === 'slide' ? (next.input ?? null) : null) !== null;
   let caption = 'Nothing after this';
   if (next?.kind === 'slide')
     caption = `${itemLabel ?? name ?? 'Presentation'}, slide ${next.slideIndex + 1}${next.itemId ? ' (next item)' : ''}`;

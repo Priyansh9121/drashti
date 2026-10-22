@@ -11,7 +11,7 @@ import { Image, Music } from '../ui/icons';
 import { EmptyState } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { InputPicture, useSmallPicture } from '../video-inputs/InputPicture';
-import { useVideoInputs } from '../video-inputs/video-inputs-store';
+import { NO_INPUTS, useVideoInputs } from '../video-inputs/video-inputs-store';
 
 /*
  * Choosing a picture or video from the library to put on the slide (or
@@ -89,7 +89,7 @@ export function MediaPicker({
   /** Offer sounds (and videos, for their sound) instead of pictures and videos. */
   sounds?: boolean;
 }) {
-  const inputs = useVideoInputs((s) => s.inputs);
+  const inputs = useVideoInputs((s) => s.inputs) ?? NO_INPUTS;
   const media = useMedia((s) => s.media);
   const [query, setQuery] = useState('');
   useEffect(() => {

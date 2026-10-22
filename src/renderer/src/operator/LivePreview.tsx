@@ -23,6 +23,7 @@ import { useWhatIsThis } from '../help/WhatIsThis';
 import { HOLD_WARM_UP, SKIP_WARM_UP } from '../render/warm-up-mode';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import { PipDragHandle, PipLiveStrip } from './PipLive';
+import { useInputNamed } from '../video-inputs/video-inputs-store';
 
 /**
  * What the audience sees, drawn by the same Scene component the outputs use,
@@ -64,6 +65,11 @@ export function LivePreview() {
         ),
       ]
     : [];
+  // The live slide's background cue named a video input this computer had none of (Session 51): said while Media
+  // still has none of that name, never after one is added or named so (the slide's word stays until its cues run
+  // again), and not before the window has read the list.
+  const inputMissing = state?.layers.slide?.inputMissing ?? null;
+  const stillMissing = useInputNamed(inputMissing) === null && inputMissing !== null;
   const rev = useShowRev();
   const practising = usePractice((s) => s.on);
   const help = useWhatIsThis('live');
@@ -166,11 +172,10 @@ export function LivePreview() {
           Font not on this computer: {missingFonts.join(', ')}
         </p>
       )}
-      {/* The live slide's background cue named a video input this computer has none of (Session 51). */}
-      {state?.layers.slide?.inputMissing !== undefined && (
+      {/* The live slide named a video input this computer has none of (Session 51). */}
+      {stillMissing && (
         <p className="text-xs text-warning-fg" data-testid="live-input-missing">
-          Video input not on this computer: “{state.layers.slide.inputMissing}”. The background stays as it
-          was.
+          Video input not on this computer: “{inputMissing}”. The background stays as it was.
         </p>
       )}
       {lowerThirdShort && (

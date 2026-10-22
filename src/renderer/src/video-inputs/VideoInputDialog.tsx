@@ -12,7 +12,14 @@ import { radioKeys, radioTabIndex } from '../ui/radio';
 import { EmptyState } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { InputPicture, useSmallPicture } from './InputPicture';
-import { askAccess, closeInputDialog, readAccess, saveInput, useVideoInputs } from './video-inputs-store';
+import {
+  askAccess,
+  closeInputDialog,
+  NO_INPUTS,
+  readAccess,
+  saveInput,
+  useVideoInputs,
+} from './video-inputs-store';
 import {
   accessView,
   CAMERA_WHY,
@@ -95,13 +102,15 @@ export function VideoInputDialog({ platform }: { platform: string }) {
 }
 
 function InputDialog({ editing, platform }: { editing: VideoInput | null; platform: string }) {
-  const inputs = useVideoInputs((s) => s.inputs);
+  const inputs = useVideoInputs((s) => s.inputs) ?? NO_INPUTS;
   const access = useVideoInputs((s) => s.access);
   const view = accessView(access, platform);
   const [found, setFound] = useState<Found | null>(null);
   const [looks, setLooks] = useState(0);
   const [device, setDevice] = useState<string | null>(editing?.device ?? null);
-  const [name, setName] = useState(() => editing?.name ?? nextInputName(useVideoInputs.getState().inputs));
+  const [name, setName] = useState(
+    () => editing?.name ?? nextInputName(useVideoInputs.getState().inputs ?? NO_INPUTS),
+  );
   const [fit, setFit] = useState<LiveFit>(editing?.fit ?? 'fit');
   const [typed, setTyped] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);

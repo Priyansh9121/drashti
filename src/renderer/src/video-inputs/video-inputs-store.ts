@@ -1,12 +1,12 @@
 import { create } from 'zustand';
-import {
-  type CameraAccess,
-  inputNamed,
-  type VideoInput,
-  type VideoInputFields,
-  type VideoInputStatus,
+import type {
+  CameraAccess,
+  VideoInput,
+  VideoInputFields,
+  VideoInputStatus,
 } from '../../../shared/video-inputs';
 import { dispatch } from '../operator/actions';
+import { inputOfName } from './words';
 
 /*
  * Video inputs in the operator window (Session 50): this computer's named inputs (Media's Video inputs), Add a
@@ -15,7 +15,11 @@ import { dispatch } from '../operator/actions';
  */
 
 interface VideoInputsUi {
-  inputs: VideoInput[];
+  /**
+   * This computer's inputs, as Media lists them; null until the main process has said (as the window opens), so no
+   * playlist item's or slide's input reads as missing for that moment (Session 51: useInputNamed).
+   */
+  inputs: VideoInput[] | null;
   /** The dialog: adding one (editing null) or changing one; null while shut. */
   dialog: { editing: VideoInput | null } | null;
   /** May Drashti use the cameras: null until the main process has said. */
@@ -23,8 +27,11 @@ interface VideoInputsUi {
   status: VideoInputStatus;
 }
 
+/** None: what Media, Add a Video Input… and the picker show while the list has not been read yet. */
+export const NO_INPUTS: readonly VideoInput[] = [];
+
 export const useVideoInputs = create<VideoInputsUi>(() => ({
-  inputs: [],
+  inputs: null,
   dialog: null,
   access: null,
   status: { stopped: null, access: 'unknown' },
@@ -82,11 +89,13 @@ export function closeInputDialog(): void {
 }
 
 /**
- * This computer's video input of a name (Session 51: the one a playlist item or a slide's background cue names), or
- * null: it follows Media's list as inputs are added, renamed or removed.
+ * This computer's video input of a name (Session 51: the one a playlist item or a slide's background cue names), as
+ * words.ts inputOfName finds it: the input, null when Media has none of that name (none named: null too), or
+ * 'unread' while the list has not been read yet, which counts as there. It follows Media's list as inputs are added,
+ * renamed or removed.
  */
-export function useInputNamed(name: string | null): VideoInput | null {
-  return useVideoInputs((s) => (name === null ? null : inputNamed(s.inputs, name)));
+export function useInputNamed(name: string | null): VideoInput | 'unread' | null {
+  return useVideoInputs((s) => (name === null ? null : inputOfName(s.inputs, name)));
 }
 
 /** One click: the input on the screens, as the live background with the slide staying over it. */
