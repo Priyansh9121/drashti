@@ -53,7 +53,7 @@ function setup(options: { simple?: boolean } = {}) {
       options.simple === true && SIMPLE_MODE_REFUSED_COMMANDS.includes(c.type) ? SIMPLE_MODE_REFUSAL : null,
     schedule: () => () => undefined,
   });
-  return { engine, transport, inputs, offered, advance: (ms: number) => (clock += ms) };
+  return { engine, transport, inputs, offered };
 }
 
 const show = (source: Extract<EngineCommand, { type: 'showPip' }>['source'], place?: PipPlace) =>
