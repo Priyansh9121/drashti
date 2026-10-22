@@ -1,9 +1,11 @@
 import type { LiveFit } from './engine/state';
+import { nfc } from './nfc';
 
 /*
  * Video inputs (Session 50): this computer's cameras and capture inputs (a capture card, a video mixer's program
  * out through its USB output), each named by the operator ("Input 1") and kept in Pro Mode's Media under Video
  * inputs, on this computer. One click puts one up as a live background (shared/engine/state.ts InputBackground).
+ * A playlist item or a slide's background cue can name one too (Session 51: inputNamed).
  */
 
 /** A video input as Media lists it. */
@@ -71,3 +73,23 @@ export const VIDEO_INPUTS_MAX = 20;
  * the mandir's setup does, the way a video background dissolves in with its slide; never a cut, never through black.
  */
 export const INPUT_FADE_MS = 1000;
+
+/**
+ * Two video inputs' names as the operator reads them: any letter case, any Unicode form. Media keeps each
+ * computer's names unique so (Session 50), and a playlist item or a slide's cue finds its input so (Session 51).
+ */
+export const sameInputName = (a: string, b: string): boolean => nfc(a).toLowerCase() === nfc(b).toLowerCase();
+
+/**
+ * The input of this computer's list that a playlist item or a slide's background cue names (Session 51), or null.
+ *
+ * An input belongs to one computer while the library travels (a backup put back on another computer, a spare
+ * computer taking over), so the library keeps the input's own name ("Input 1") and each computer finds its own
+ * input of that name. By the name alone, never by the id it had on the computer it was chosen on: what the
+ * playlist or the slide says is what goes up, the same on every computer, and an input renamed in Media is never
+ * put up under the name it had (the item or the slide says plainly that no input of that name is on this
+ * computer, and Next goes on past it).
+ */
+export function inputNamed(inputs: readonly VideoInput[], name: string): VideoInput | null {
+  return inputs.find((i) => sameInputName(i.name, name)) ?? null;
+}

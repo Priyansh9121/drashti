@@ -4,6 +4,8 @@ import type { BackgroundLayer, InputBackground, PipLayer } from '../../shared/en
 import { nfc } from '../../shared/nfc';
 import {
   type CameraAccess,
+  inputNamed,
+  sameInputName,
   VIDEO_INPUT_DEVICE_MAX,
   VIDEO_INPUT_NAME_MAX,
   VIDEO_INPUTS_MAX,
@@ -96,9 +98,6 @@ function boxInputOf(box: PipLayer | null): { inputId: string; name: string; show
   };
 }
 
-/** Names compared as the operator reads them: any letter case, any Unicode form. */
-const sameName = (a: string, b: string): boolean => nfc(a).toLowerCase() === nfc(b).toLowerCase();
-
 const sameStatus = (a: VideoInputStatus, b: VideoInputStatus): boolean =>
   a.access === b.access && a.stopped?.inputId === b.stopped?.inputId && a.stopped?.name === b.stopped?.name;
 
@@ -144,6 +143,15 @@ export class VideoInputsService {
   /** An input by its id, for the engine's showInput (and a picture-in-picture box's), or null. */
   get(inputId: string): VideoInput | null {
     const found = this.inputs.find((i) => i.id === inputId);
+    return found ? { ...found } : null;
+  }
+
+  /**
+   * The input a playlist item or a slide's background cue names (Session 51: shared/video-inputs.ts inputNamed),
+   * or null when this computer has none of that name.
+   */
+  named(name: string): VideoInput | null {
+    const found = inputNamed(this.inputs, name);
     return found ? { ...found } : null;
   }
 
@@ -373,7 +381,7 @@ export class VideoInputsService {
     if (name === '') return 'Give the video input a name, such as “Input 1”.';
     if (name.length > VIDEO_INPUT_NAME_MAX)
       return `A video input’s name has ${String(VIDEO_INPUT_NAME_MAX)} characters at most.`;
-    const taken = this.inputs.find((i) => i.id !== self && sameName(i.name, name));
+    const taken = this.inputs.find((i) => i.id !== self && sameInputName(i.name, name));
     if (taken) return `There is already a video input called “${taken.name}”: give this one another name.`;
     // The device's name exactly as this computer gives it: every page finds the camera by it.
     if (fields.device === '') return 'Choose one of this computer’s cameras or capture inputs.';
