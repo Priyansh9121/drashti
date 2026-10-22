@@ -145,6 +145,7 @@ import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES } from './media/media-proto
 import { saveStill } from './media/stills';
 import { SharpenedCopies } from './media/sharpened';
 import { installMenu, installNodeMenu } from './menu';
+import { choiceGuard, REPEAT_CHOICE_MS } from './shown-keys';
 import { runPerformanceTest, seedPerfLibrary } from './perftest';
 import { registerPlaylistIpc } from './playlists/playlist-ipc';
 import { startupReads } from './ipc/startup-reads';
@@ -5145,6 +5146,12 @@ function start(): void {
     setExtras(on);
     return { ok: true as const, on };
   });
+  // View › Audience and Stage chosen again within 0.7 s (Session 51): a held ⌘1 or ⌘2 repeating, where the Mac's
+  // menu still answers them (under one of the system's own boxes), never an operator choosing twice. One for each.
+  const menuSwitchChoice: Record<ScreenSwitch, () => boolean> = {
+    audience: choiceGuard(REPEAT_CHOICE_MS),
+    stage: choiceGuard(REPEAT_CHOICE_MS),
+  };
   const menuActions = (): Parameters<typeof installMenu>[0] => ({
     mode,
     switchMode,
@@ -5257,12 +5264,13 @@ function start(): void {
       },
     },
     // View › Audience and Stage (Session 50): Pro Mode's, an operator's. The tick follows the switch, not the
-    // click, until it changes (a question answered Cancel leaves it as it was).
+    // click, until it changes (a question answered Cancel leaves it as it was). A choice within 0.7 s of the last
+    // is a held key repeating (Session 51), let go by: a held ⌘1 changes the screens once, never off, on, off.
     screenSwitches: {
       on: screenSwitches.get(),
       toggle: (which) => {
         rebuildMenu();
-        if (mode === 'pro') void screenSwitches.toggle(which, askSwitchOff);
+        if (mode === 'pro' && menuSwitchChoice[which]()) void screenSwitches.toggle(which, askSwitchOff);
       },
     },
     reloadOperator: () => {

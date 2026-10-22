@@ -82,7 +82,8 @@ export interface MenuActions {
   /**
    * View › Audience and View › Stage (Session 50, Pro Mode): ticked while on; choosing one turns it off (asking
    * first while its screens show something) or on. They show Mod+1 and Mod+2 (Session 51) without binding them:
-   * those are the page's keys, so a press is acted on once, by the page, never by the menu too (see shownKey).
+   * those are the page's keys, so a press is acted on once, by the page, never by the menu too; under one of the
+   * system's own boxes, on the Mac, by the menu, once (see shownKey). A choice within 0.7 s of the last goes by.
    */
   screenSwitches: { on: ScreenSwitches; toggle: (which: ScreenSwitch) => void };
   /** Only when DRASHTI_DIAGNOSTICS=1: for the manual watchdog check. */
@@ -98,8 +99,11 @@ export interface MenuActions {
  * The keymap's key for an item that shows it and leaves it to the page (the keymap's shownInMenu: ⌘1 and ⌘2
  * beside View › Audience and Stage, Session 51). Electron hands a menu every key the page leaves alone (held, in
  * a field, under a dialog), and a page's key acts once, by the page. Windows' menu shows the key without binding
- * it (registerAccelerator: false); the Mac's binds every key it shows, so there the page takes every press of
- * these keys first (useKeymap), and none reaches the menu.
+ * it (registerAccelerator: false), so it acts from the operator window only. The Mac's binds every key it shows:
+ * the operator window takes every press of these keys first (useKeymap); Window for Zoom…, whose page has no keys,
+ * stops them before its page and the menu see them (shown-keys.ts, its before-input-event); and under one of the
+ * system's own boxes (a question, a file dialog) the menu still acts on them, as on a choice: once, since the main
+ * process lets a choice of the same item within 0.7 s of the last go by (a held key repeating).
  */
 function shownKey(action: OperatorAction): MenuItemConstructorOptions {
   const binding = KEYMAP.find((b) => b.action === action);
