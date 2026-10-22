@@ -1,13 +1,20 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import type { SlideLayer } from '../../../shared/engine/state';
 import type { Movement } from '../../../shared/looks';
 import type { Lang } from '../../../shared/model';
 import { type LowerThirdLine, lowerThird } from '../../../shared/program';
 import type { Size } from '../../../shared/scaling';
-import { engineNow } from './clock';
+import { engineNow, onClockJump } from './clock';
 import { fontFamilyFor } from './fonts';
 import { htmlLang } from './lang';
-import { type LowerThirdPhase, lowerThirdFrame, lowerThirdLength } from './lower-third-motion';
+import {
+  type LowerThirdRun,
+  lowerThirdAt,
+  lowerThirdFrame,
+  lowerThirdRunLength,
+  nextLowerThirdRun,
+} from './lower-third-motion';
 import type { UnitFrame } from './reveal';
 
 /*
@@ -50,44 +57,13 @@ function Lines({ lines }: { lines: LowerThirdLine[] }) {
   );
 }
 
-/** What a moving lower third is doing: the lines up, the lines going (changed from, or taken off), how, and since when. */
-interface Run {
-  key: string | null;
-  lines: LowerThirdLine[];
-  prev: LowerThirdLine[] | null;
-  phase: LowerThirdPhase | 'still' | 'gone';
-  start: number;
-}
-
-/** What to draw when what is up changes (a screen that comes along later draws what is up, still). */
-function nextRun(
-  was: Run,
-  key: string | null,
-  lines: LowerThirdLine[],
-  shownAt: number,
-  leaving: { at: number } | null,
-  movement: Movement,
-  now: number,
-): Run {
-  const had = was.phase !== 'gone' && was.phase !== 'out' && was.lines.length > 0 ? was.lines : null;
-  if (key !== null && lines.length > 0) {
-    const phase = had ? 'change' : 'in';
-    if (now - shownAt >= lowerThirdLength(phase, movement, lines.length))
-      return { key, lines, prev: null, phase: 'still', start: shownAt };
-    return { key, lines, prev: had, phase, start: shownAt };
-  }
-  // Taken off on its own, just now: it leaves with a short fade. Otherwise (Clear all, a slide with no
-  // words) it goes at once.
-  if (had && leaving && now - leaving.at < lowerThirdLength('out', movement, 0))
-    return { key: null, lines: [], prev: had, phase: 'out', start: leaving.at };
-  return { key: null, lines: [], prev: null, phase: 'gone', start: 0 };
-}
-
 /**
  * A slide's words as a lower third that moves (Session 27): in as it goes up, its box holding while its
  * words change to the next slide's, and out with a short fade when the slide is taken off on its own, all
  * by the engine's clock (render/lower-third-motion.ts). Clear all takes it off at once. `shownKey` names
  * what is up (a new one moves in); `leaving` says when the slide was taken off on its own (state.slideOff).
+ * Each drawing works out from the engine's time what it draws (Session 51, lowerThirdAt), the moment its
+ * motion is over too, so a key and its fill draw the same at the same moment whatever frames their windows get.
  */
 export function MovingLowerThird({
   lines,
@@ -107,7 +83,8 @@ export function MovingLowerThird({
   movement?: Movement;
 }) {
   const key = lines.length > 0 ? shownKey : null;
-  const [run, setRun] = useState<Run>(() => ({
+  // A screen that comes along later draws what is up, still.
+  const [run, setRun] = useState<LowerThirdRun>(() => ({
     key,
     lines,
     prev: null,
@@ -117,20 +94,26 @@ export function MovingLowerThird({
   const [seen, setSeen] = useState(key);
   if (seen !== key) {
     setSeen(key);
-    setRun((was) => nextRun(was, key, lines, shownAt, leaving, movement, engineNow()));
+    setRun((was) => nextLowerThirdRun(was, key, lines, shownAt, leaving, movement, engineNow()));
   }
+  // Drawn again when the clock jumps (a test holding it, the warm-up, a node's or a phone's clock set), and at
+  // the frame its motion is over (below), whatever else draws the screen again meanwhile.
+  const [, redraw] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => onClockJump(redraw), []);
+  const now = engineNow();
+  const drawn = lowerThirdAt(run, movement, now);
   const rootRef = useRef<HTMLDivElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const oldRef = useRef<HTMLDivElement>(null);
   const newRef = useRef<HTMLDivElement>(null);
-  const { phase, start } = run;
-  const going = phase === 'out' ? (run.prev ?? []) : null;
+  const { phase, start } = drawn;
+  const going = phase === 'out' ? (drawn.prev ?? []) : null;
   const shown = going ?? lines;
-  const old = phase === 'change' ? run.prev : going;
+  const old = phase === 'change' ? drawn.prev : going;
   const size = lineSize(canvas, Math.max(shown.length, old?.length ?? 0));
   const radius = size * 0.3;
   const scale = canvas.height / 1080;
-  const length = phase === 'still' || phase === 'gone' ? 0 : lowerThirdLength(phase, movement, lines.length);
+  const length = lowerThirdRunLength(drawn, movement);
   const paint = useCallback(
     (t: number) => {
       const root = rootRef.current;
@@ -167,31 +150,28 @@ export function MovingLowerThird({
     },
     [phase, movement, radius, scale],
   );
-  // Frame by frame, from the engine's clock, until it is over.
+  // Frame by frame, from the engine's clock, while it moves. At the frame it is over, drawn again at once, still
+  // (or gone), before that frame is shown: never its motion's last frame left up a frame longer.
   useEffect(() => {
     if (phase === 'still' || phase === 'gone') return;
     let frame = 0;
     const tick = () => {
       const t = engineNow() - start;
-      paint(t);
       if (t >= length) {
-        setRun((r) =>
-          r.phase === phase && r.start === start
-            ? { ...r, prev: null, phase: phase === 'out' ? 'gone' : 'still' }
-            : r,
-        );
+        flushSync(redraw);
         return;
       }
+      paint(t);
       frame = requestAnimationFrame(tick);
     };
-    tick();
+    frame = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(frame);
     };
   }, [phase, start, length, paint]);
-  // After every render, before it is painted: where it is now.
+  // After every drawing, before it is shown: as at the moment it was worked out for.
   useLayoutEffect(() => {
-    paint(engineNow() - start);
+    paint(now - start);
   });
   if (phase === 'gone') return null;
   return (
