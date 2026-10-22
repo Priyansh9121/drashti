@@ -1,6 +1,7 @@
 import type { LiveGroupLook, LiveLook } from '../../../shared/looks';
 import { groupLookIn } from '../../../shared/looks';
 import type { Size } from '../../../shared/scaling';
+import { SWITCH_NAMES } from '../../../shared/screen-switches';
 import type { ScalingMode } from '../../../shared/screens';
 import type { HallPicture } from '../../../shared/stage-layouts';
 import { STAGE_HEIGHT, STAGE_WIDTH } from '../../../shared/stage-layouts';
@@ -9,8 +10,12 @@ import { STAGE_HEIGHT, STAGE_WIDTH } from '../../../shared/stage-layouts';
  * What a stage layout's audience picture box draws (Session 50, render/AudienceBox.tsx): the hall's group
  * as the live Look sets it, at that group's screen's canvas and scaling, found the way the group's own
  * output finds its own (groupLookIn, as output/main.tsx does), so the box can never show the hall
- * differently from the hall's screens.
+ * differently from the hall's screens. With Audience off (Session 51) it keeps that picture, the one the hall
+ * comes back to, and says the hall's screens are off in a corner, so the performers are not misled.
  */
+
+/** What the box says in a corner while Audience is off: the words the status bar and a phone say. */
+export const AUDIENCE_OFF = `${SWITCH_NAMES.audience} off`;
 
 /**
  * The box's picture: 16:9, scaled into the box with black around it. The hall's canvas is placed in it as
@@ -25,6 +30,8 @@ export interface HallView {
   look: LiveGroupLook;
   canvas: Size;
   scaling: ScalingMode;
+  /** The hall's screens are off (Audience off, Session 51): the picture stays, said off in a corner. */
+  off: boolean;
 }
 
 /**
@@ -38,11 +45,13 @@ export function hallView(look: LiveLook, hall: HallPicture | null | undefined): 
       look: groupLookIn(look, null),
       canvas: { width: STAGE_WIDTH, height: STAGE_HEIGHT },
       scaling: 'fit',
+      off: false,
     };
   return {
     groupId: hall.groupId,
     look: groupLookIn(look, hall.groupId),
     canvas: { width: hall.canvasWidth, height: hall.canvasHeight },
     scaling: hall.scaling,
+    off: hall.off === true,
   };
 }

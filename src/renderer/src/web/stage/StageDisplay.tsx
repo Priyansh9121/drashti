@@ -1,11 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { groupLookIn } from '../../../../shared/looks';
+import { type HallPicture, hallPictureSchema } from '../../../../shared/stage-layouts';
 import { useEngine } from '../../engine/engine-store';
 import { preloadFonts } from '../../render/fonts';
 import { PlacedInParent } from '../../render/Placed';
+import { PreviewsContext } from '../../render/previews';
 import { StageScreen } from '../../render/StageScreen';
 import { api } from '../device';
 import { onListsChanged, onOnline, startFeed, useFeed } from '../feed';
+import { networkPreviews } from '../previews';
 import { ClockStyleContext } from '../../render/clock-style';
 import { type ClockStyle, validClockStyle } from '../../../../shared/format';
 
@@ -17,6 +20,12 @@ import { type ClockStyle, validClockStyle } from '../../../../shared/format';
  * engine's clock. Watch-only. While the connection is down it keeps the
  * last picture, as an output does, and says so in a small line; it
  * reconnects by itself.
+ *
+ * A layout's audience picture box (Session 51) draws the hall as Drashti's own
+ * stage screens draw it (its group and canvas, and Audience off, from the
+ * stage's answer), as the phone remote's live picture does: pictures and
+ * videos as the same small previews, under the same rules, and no video input
+ * or window, which are on Drashti's computer.
  */
 
 const CANVAS = { width: 1920, height: 1080 };
@@ -29,16 +38,21 @@ export function StageDisplay() {
   const [groupId, setGroupId] = useState<string | null>(null);
   const look = groupLookIn(state?.look, groupId);
   const [clockStyle, setClockStyle] = useState<ClockStyle | null>(null);
+  // The hall's picture for a layout's audience picture box (Session 51); null until said, or with no hall.
+  const [hall, setHall] = useState<HallPicture | null>(null);
+  const previews = useMemo(() => networkPreviews(), []);
   const [fullscreen, setFullscreen] = useState(false);
   useEffect(() => {
     void preloadFonts().then(() => {
       setFonts(true);
     });
     const load = () => {
-      void api<{ groupId: string | null; clock: unknown }>('/api/v1/stage').then((r) => {
+      void api<{ groupId: string | null; clock: unknown; hall?: unknown }>('/api/v1/stage').then((r) => {
         if (!r.ok) return;
         setGroupId(r.groupId);
         setClockStyle(validClockStyle(r.clock));
+        const read = hallPictureSchema.safeParse(r.hall);
+        setHall(read.success ? read.data : null);
       });
     };
     onOnline(load);
@@ -61,7 +75,9 @@ export function StageDisplay() {
         <PlacedInParent content={CANVAS} mode="fit" className="absolute inset-0">
           {/* Drashti's way of writing the time (Sessions 31–36, I18N-8), its timers' clocks too. */}
           <ClockStyleContext.Provider value={clockStyle}>
-            <StageScreen state={state} look={look} canvas={CANVAS} clockStyle={clockStyle} />
+            <PreviewsContext.Provider value={previews}>
+              <StageScreen state={state} look={look} canvas={CANVAS} clockStyle={clockStyle} hall={hall} />
+            </PreviewsContext.Provider>
           </ClockStyleContext.Provider>
         </PlacedInParent>
       ) : (
