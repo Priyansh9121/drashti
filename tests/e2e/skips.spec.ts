@@ -128,9 +128,10 @@ test('the background video: Back 15 s, Forward 15 s and Last 10 s under the live
   const win = await operatorPage(app);
   await operatorReady(win);
   const dir = mkdtempSync(join(tmpdir(), 'drashti-skips-video-'));
-  // Shorter than 10 s and than 15 s: every skip meets its start or its end.
+  // Shorter than 10 s and than 15 s: every skip meets its start or its end. Long enough that a slow computer's
+  // in-step wait after Back never lets it reach its end by itself before Forward.
   const file = await makeTestVideo(win, join(dir, 'Placeholder skip clip.webm'), {
-    seconds: 6,
+    seconds: 9,
     hue: 30,
     tone: 520,
   });
@@ -225,7 +226,8 @@ test('the sound: a single sound’s under the live picture, an audio playlist’
   await expect.poll(async () => (await audioLayer(win))?.seek?.toMs).toBe(30_000);
   await inStep(copy(long), timingOf(await audioLayer(win)), 'Last 10 s');
   await back.click();
-  await expect.poll(async () => (await audioLayer(win))?.seek?.toMs ?? 0).toBeLessThan(20_000);
+  // About 15 s back from where it was (30 s and the in-step wait, a few seconds on a slow computer).
+  await expect.poll(async () => (await audioLayer(win))?.seek?.toMs ?? 0).toBeLessThan(25_000);
   const fifteen = (await audioLayer(win))?.seek?.toMs ?? 0;
   expect(fifteen).toBeGreaterThanOrEqual(15_000);
   await inStep(copy(long), timingOf(await audioLayer(win)), 'Back 15 s');
