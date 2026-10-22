@@ -187,6 +187,20 @@ describe('the drop folder', () => {
     expect(h.mediaChanged()).toBe(1);
   });
 
+  it('takes the videos Session 50 adds (MKV, MXF, TS, VOB, FLV…) as it takes any video; sounds stay not taken', async () => {
+    for (const name of ['Arti.mkv', 'Katha.mxf', 'Sabha.ts', 'Old DVD.vob', 'Clip.flv', 'Phone.3gp'])
+      await put(name, `placeholder ${name}`);
+    await put('Dhun.mka', 'a sound');
+    await put('Bhajan.ac3', 'another sound');
+    const h = setup();
+    await h.service.setFolder(folder);
+    await h.settle();
+    expect(h.imports.map((i) => i.names.sort())).toEqual([
+      ['Arti.mkv', 'Clip.flv', 'Katha.mxf', 'Old DVD.vob', 'Phone.3gp', 'Sabha.ts'],
+    ]);
+    expect(h.service.view().notTaken.map((n) => n.name)).toEqual(['Bhajan.ac3', 'Dhun.mka']);
+  });
+
   it('a file still being written is taken only once whole', async () => {
     const h = setup();
     await h.service.setFolder(folder);
