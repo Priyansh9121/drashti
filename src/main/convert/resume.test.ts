@@ -79,8 +79,12 @@ function seeded() {
     services.push(service);
     return { service, seen };
   };
-  return { kept, air, start };
+  return { kept, air, start, library };
 }
+
+/** A file deleted from the library (Session 26a: Media's Delete…). */
+const remove = (library: Db, id: string) =>
+  library.prepare("UPDATE media SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?").run(id);
 
 /** An import report's line: a file Drashti converts by itself. */
 const converting = (mediaId: string): { issues: ImportIssue[] } => ({
@@ -149,5 +153,32 @@ describe('a conversion waiting when Drashti quits (Session 51)', () => {
     ]);
     air.busy = null;
     await until(() => seen.jobs.every((j) => j.state === 'failed'));
+  });
+});
+
+describe('a file deleted from the library while its conversion waits (Session 51 review)', () => {
+  it('is let go when its turn comes, never converted, and not asked again', async () => {
+    const { air, start, library } = seeded();
+    air.busy = ON_AIR;
+    const { service, seen } = start();
+    expect(service.convert(['m-avi', 'm-wma'])).toMatchObject({ ok: true });
+    remove(library, 'm-avi');
+    air.busy = null;
+    await until(() => seen.jobs.every((j) => j.state !== 'waiting' && j.state !== 'converting'));
+    // The deleted one let go; the other went on (and, with no FFmpeg here, failed).
+    expect(seen.jobs.map((j) => [j.mediaId, j.state])).toEqual([
+      ['m-avi', 'cancelled'],
+      ['m-wma', 'failed'],
+    ]);
+    expect(service.convert(['m-avi'])).toMatchObject({ ok: false });
+  });
+
+  it('kept from the last run: not waiting again at the next start', () => {
+    const { kept, start, library } = seeded();
+    remove(library, 'm-avi');
+    kept.value = ['m-avi', 'm-wma'];
+    const { seen } = start();
+    expect(seen.jobs.map((j) => j.mediaId)).toEqual(['m-wma']);
+    expect(kept.value).toEqual(['m-wma']);
   });
 });

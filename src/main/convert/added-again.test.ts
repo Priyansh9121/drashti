@@ -47,6 +47,16 @@ function library() {
   return db;
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function until(check: () => boolean, ms = 10_000): Promise<void> {
+  const end = Date.now() + ms;
+  while (!check()) {
+    if (Date.now() > end) throw new Error('timed out');
+    await sleep(100);
+  }
+}
+
 const undo = (db: ReturnType<typeof library>, id: string) =>
   db
     .prepare("UPDATE media_conversions SET undone_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
@@ -205,6 +215,54 @@ describe('a converted original, added again anywhere (Session 51)', () => {
       expect(jobs.map((j) => [j.mediaId, j.state])).toEqual([['avi', 'waiting']]);
       // The other, whose copy is there, is converted already.
       expect(service.convert(['aiff'])).toMatchObject({ ok: false });
+    } finally {
+      service.close();
+    }
+  });
+
+  it('what was added on an original before (since Session 9) moves to its copy once at the start, off air, kept for Undo (Session 51 review)', async () => {
+    const db = library();
+    // Added by hand from Media before Session 51: on the originals. And one on an original whose conversion was
+    // undone, which stays.
+    db.exec(`
+      INSERT INTO playlist_items (id, playlist_id, position, kind, media_id, label)
+        VALUES ('i-left', 'pl', 0, 'media', 'avi', 'Placeholder katha.avi');
+      INSERT INTO audio_playlist_tracks (id, playlist_id, media_id, position) VALUES ('t-left', 'ap', 'aiff', 0);
+      INSERT INTO media (id, kind, name, path, playable) VALUES
+        ('wmv', 'video', 'Placeholder old.wmv', 'ff/wmv.wmv', 0), ('wmv-copy', 'video', 'Placeholder old.mp4', 'gg/wmv.mp4', 1);
+      INSERT INTO media_conversions (id, original_id, converted_id, undone_at)
+        VALUES ('cv-wmv', 'wmv', 'wmv-copy', '2026-10-20T10:00:00.000Z');
+      INSERT INTO playlist_items (id, playlist_id, position, kind, media_id, label)
+        VALUES ('i-undone', 'pl', 1, 'media', 'wmv', 'Placeholder old.wmv');
+    `);
+    const on = (table: 'playlist_items' | 'audio_playlist_tracks', id: string) =>
+      (db.prepare(`SELECT media_id FROM ${table} WHERE id = ?`).get(id) as { media_id: string }).media_id;
+    let busy: string | null = 'Waits while the stream is on air or recording, then carries on by itself.';
+    const service = new ConvertService({
+      db,
+      mediaDir: join(tmpdir(), 'drashti-added-again-nowhere'),
+      ffmpegPath: () => 'placeholder-ffmpeg',
+      busy: () => busy,
+      freeBytes: () => 100 * 1024 ** 3,
+      changed: () => undefined,
+      libraryChanged: () => undefined,
+      log: () => undefined,
+      limits: { afterStartMs: 0 },
+    });
+    try {
+      // The start (the stream's own start known): on air, nothing moves.
+      service.resumeWaiting();
+      await sleep(1500);
+      expect(on('playlist_items', 'i-left')).toBe('avi');
+      busy = null;
+      await until(() => on('playlist_items', 'i-left') === 'mp4');
+      expect(on('audio_playlist_tracks', 't-left')).toBe('m4a');
+      expect(on('playlist_items', 'i-undone')).toBe('wmv');
+      // Kept with the conversion: its Undo moves them back.
+      const moved = db.prepare("SELECT moved FROM media_conversions WHERE id = 'cv-avi'").get() as {
+        moved: string;
+      };
+      expect((JSON.parse(moved.moved) as { items: string[] }).items).toEqual(['i-left']);
     } finally {
       service.close();
     }
