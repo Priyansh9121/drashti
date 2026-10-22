@@ -65,9 +65,11 @@ function useDigitMotion(
     const t = changing === null ? Infinity : engineNow() - changing;
     const moving = t < digitLength(movement);
     const f = digitFrame(movement, t);
-    for (const el of root.querySelectorAll<HTMLElement>('[data-changed] > [data-digit-now]')) {
-      el.style.opacity = moving ? String(f.in.opacity) : '';
-      el.style.transform = moving && f.in.rise !== 0 ? `translateY(${String(f.in.rise)}em)` : '';
+    // Every digit: a changed one where its change has it, the rest (one that stopped part-way too) at rest.
+    for (const el of root.querySelectorAll<HTMLElement>('[data-digit-now]')) {
+      const changed = moving && el.parentElement?.hasAttribute('data-changed') === true;
+      el.style.opacity = changed ? String(f.in.opacity) : '';
+      el.style.transform = changed && f.in.rise !== 0 ? `translateY(${String(f.in.rise)}em)` : '';
     }
     // The old digits, gone once they have moved out: not drawn, and not read.
     for (const el of root.querySelectorAll<HTMLElement>('[data-digit-was]')) {
