@@ -20,6 +20,8 @@ import { LiveZoomControls, ZoomablePreview } from './LiveZoom';
 import { useNow } from '../render/useNow';
 import { useWhatIsThis } from '../help/WhatIsThis';
 import { HOLD_WARM_UP, SKIP_WARM_UP } from '../render/warm-up-mode';
+import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
+import { PipDragHandle, PipLiveStrip } from './PipLive';
 
 /**
  * What the audience sees, drawn by the same Scene component the outputs use,
@@ -114,6 +116,10 @@ export function LivePreview() {
               {...(audience ? { look: audience.look } : {})}
             />
           )}
+          {/* The picture-in-picture box, to drag anywhere on the screen (Session 50): the show's, never practice's. */}
+          {state && !warming && !practising && (
+            <PipDragHandle state={state} canvas={canvas} look={audience?.look ?? DEFAULT_LIVE_GROUP_LOOK} />
+          )}
         </PlacedInParent>
       </SceneBoundary>
     </>
@@ -143,6 +149,7 @@ export function LivePreview() {
       >
         {practising ? picture : <ZoomablePreview>{picture}</ZoomablePreview>}
       </div>
+      <PipLiveStrip />
       {shownAs && state?.layers.slide?.slide.kirtan && (
         <p className="text-xs text-muted" data-testid="preview-languages">
           As “{shownAs.name}” shows it: {shownAs.languages.map((l) => LANG_NAMES[l]).join(', ')}

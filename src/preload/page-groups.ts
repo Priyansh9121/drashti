@@ -40,6 +40,7 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'network',
     'nodes',
     'output',
+    'pip',
     'playlists',
     'props',
     'roles',
