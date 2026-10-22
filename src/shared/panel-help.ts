@@ -71,7 +71,7 @@ export const PANEL_HELP = {
   masks: {
     title: 'Masks',
     doc: 'admin',
-    text: 'A mask hides part of the screens, or shows only what is inside it. Show one here; F7 takes the Masks layer off, and a screen’s own mask, set in its Look, stays.',
+    text: 'A mask hides part of the screens, or shows only what is inside it. Show one here; F8 takes the Masks layer off, and a screen’s own mask, set in its Look, stays.',
     guide: '**Masks.**',
   },
   messages: {
@@ -143,7 +143,7 @@ export const PANEL_HELP = {
   audio: {
     title: 'Audio',
     doc: 'operator',
-    text: 'Audio playlists to play before the sabha: + makes one or imports sounds, and sounds dragged onto one go in. Play starts a list; Clear audio along the bottom, or F6, stops whatever sound is playing.',
+    text: 'Audio playlists to play before the sabha: + makes one or imports sounds, and sounds dragged onto one go in. Play starts a list; Clear audio along the bottom, or F5, stops whatever sound is playing.',
     guide: '**Audio.** In the right column',
   },
   tools: {
