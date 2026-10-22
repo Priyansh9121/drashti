@@ -25,14 +25,15 @@ import {
   operatorPage,
   operatorReady,
 } from './helpers';
-import { makeTestImage, makeTestVideo } from './test-media';
+import { makeTestImage, makeTestTone, makeTestVideo } from './test-media';
 
 /*
- * The drop folder (Session 28, decision 21): an admin chooses a folder; pictures and videos put in it come
- * into Media by themselves, under "From the drop folder", once each has held still for 5 s (the real
- * settle time: no test switch shortens it). The folder is never written to; a file still being written is
- * taken only once whole; nothing comes in while the stream is on air (the on-air test hook stands in for
- * it); Simple Mode carries on quietly; a locked admin and Simple Mode cannot open it. Generated media only.
+ * The drop folder (Session 28, decision 21): an admin chooses a folder; pictures, videos and (Session 51)
+ * sounds put in it come into Media by themselves, under "From the drop folder", once each has held still
+ * for 5 s (the real settle time: no test switch shortens it). The folder is never written to; a file still
+ * being written is taken only once whole; nothing comes in while the stream is on air (the on-air test hook
+ * stands in for it); Simple Mode carries on quietly; a locked admin and Simple Mode cannot open it.
+ * Generated media only.
  */
 
 /** The names in Media that came from the drop folder. */
@@ -66,7 +67,7 @@ const answerFolderDialog = (app: ElectronApplication, folder: string) =>
     dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [f] });
   }, folder);
 
-test('pictures and videos put in the drop folder come into Media within 15 s, the folder untouched; a file written over 6 s is taken once, whole; nothing comes in on air', async () => {
+test('pictures, videos and sounds put in the drop folder come into Media within 15 s, the folder untouched; a file written over 6 s is taken once, whole; nothing comes in on air', async () => {
   test.setTimeout(180_000);
   const drop = mkdtempSync(join(tmpdir(), 'drashti-drop-'));
   const scratch = mkdtempSync(join(tmpdir(), 'drashti-drop-made-'));
@@ -87,7 +88,7 @@ test('pictures and videos put in the drop folder come into Media within 15 s, th
     await expectNoSeriousA11yIssues(win, 'Drop folder');
     await dialog.getByRole('button', { name: 'Close', exact: true }).click();
 
-    // A placeholder picture and video, made elsewhere and moved in whole, with a sound beside them.
+    // A placeholder picture and video, made elsewhere and moved in whole.
     await makeTestImage(win, join(scratch, 'Placeholder darshan.png'));
     await makeTestVideo(win, join(scratch, 'Placeholder clip.webm'), { seconds: 1 });
     const t0 = Date.now();
@@ -130,6 +131,19 @@ test('pictures and videos put in the drop folder come into Media within 15 s, th
       ),
     );
     expect(named).toHaveLength(1);
+
+    // A sound (Session 51): taken as pictures and videos are, under the filter, with its own notice.
+    makeTestTone(join(scratch, 'Placeholder bell.wav'), { seconds: 1 });
+    renameSync(join(scratch, 'Placeholder bell.wav'), join(drop, 'Placeholder bell.wav'));
+    await expect
+      .poll(() => fromDrop(win), { timeout: 20_000 })
+      .toEqual([
+        'Placeholder bell.wav',
+        'Placeholder clip.webm',
+        'Placeholder darshan.png',
+        'Placeholder slow.png',
+      ]);
+    await expect(win.getByText('1 sound from the drop folder is in Media.')).toBeVisible();
 
     // On air: nothing comes in until it is off air.
     await app.evaluate(() => {

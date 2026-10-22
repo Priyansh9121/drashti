@@ -52,10 +52,10 @@ function seeded() {
     writeFileSync(join(mediaDir, 'in', name), `placeholder ${name}`);
     insert.run(id, kind, name, `in/${name}`, playable);
   }
-  const kept = { value: undefined as unknown, saves: 0 };
-  const air = { busy: null as string | null };
+  const kept: { value: unknown; saves: number } = { value: undefined, saves: 0 };
+  const air: { busy: string | null } = { busy: null };
   const start = (limits: ConvertDeps['limits'] = {}) => {
-    const seen = { jobs: [] as ConversionJob[], logs: [] as string[] };
+    const seen: { jobs: ConversionJob[]; logs: string[] } = { jobs: [], logs: [] };
     const service = new ConvertService({
       db: library,
       mediaDir,
