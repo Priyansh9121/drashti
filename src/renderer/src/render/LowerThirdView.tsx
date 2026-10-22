@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from 'react';
 import type { ReactNode } from 'react';
+import { flushSync } from 'react-dom';
 import type { LowerThirdLayer } from '../../../shared/engine/state';
 import type { LowerThirdAnimation, Pose } from '../../../shared/lower-third-animations';
 import {
@@ -22,7 +23,9 @@ import { textLang } from './lang';
  * from when it was hidden, each frame worked out from the engine's clock by its animation
  * (shared/lower-third-animations.ts), so every screen, key and fill and the stream draw the same frame; only
  * opacity, transform and clip-path move. Clear all takes it off at once; Black-out and the Logo cover it, as
- * they cover the slide. The editor's preview draws the same, on the window's own clock.
+ * they cover the slide. The editor's preview draws the same, on the window's own clock. Each drawing works out
+ * what it draws from the engine's time (Session 51), the moment its in or out is over too, whatever frames its
+ * window gets.
  */
 
 type Phase = 'in' | 'still' | 'out' | 'gone';
@@ -36,7 +39,7 @@ interface Run {
 export const unitCount = (lines: readonly string[], a: LowerThirdAnimation): number =>
   cut(shownLines(lines), a).units;
 
-/** What to draw now: one up (coming in, or still), one going (out), or nothing. */
+/** What to draw at `now`: one up (coming in, or still), one going (out), or nothing. */
 function runFor(
   layer: LowerThirdLayer | null,
   off: { layer: LowerThirdLayer; at: number } | null,
@@ -87,23 +90,14 @@ export function LowerThirdView({
   /** Canvas pixels to keep clear at the bottom (the ticker's band). */
   lift?: number;
 }) {
-  const [run, setRun] = useState<Run>(() => runFor(layer, off, place, engineNow()));
-  const key = `${layer ? `${layer.id}@${String(layer.shownAt)}` : ''}|${off ? `${off.layer.id}@${String(off.at)}` : ''}|${place}`;
-  const [seen, setSeen] = useState(key);
-  if (seen !== key) {
-    setSeen(key);
-    setRun(runFor(layer, off, place, engineNow()));
-  }
-  // A test holding the clock, or the warm-up: what is drawn is worked out again for the moment held.
-  useEffect(
-    () =>
-      onClockJump(() => {
-        setRun(runFor(layer, off, place, engineNow()));
-      }),
-    [layer, off, place],
-  );
+  // Drawn again when the clock jumps (a test holding it, the warm-up, a node's or a phone's clock set), and at the
+  // frame its in or out is over (below), whatever else draws the screen again meanwhile.
+  const [, redraw] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => onClockJump(redraw), []);
+  const now = engineNow();
+  const run = runFor(layer, off, place, now);
   // The words and look follow the layer (one changed while up keeps its time).
-  const shown = layer && run.layer?.id === layer.id && run.phase !== 'out' ? layer : run.layer;
+  const shown = run.layer;
   const animation = animationById(shown?.animation ?? '');
   const { pieces, units } = useMemo(
     () => cut(shownLines(shown?.lines ?? []), animation),
@@ -131,31 +125,28 @@ export function LowerThirdView({
     },
     [phase, animation, units, length],
   );
-  // Frame by frame from the engine's clock, until it is over.
+  // Frame by frame from the engine's clock, while it moves. At the frame it is over, drawn again at once, still (or
+  // gone), before that frame is shown.
   useEffect(() => {
     if (phase !== 'in' && phase !== 'out') return;
     let frame = 0;
     const tick = () => {
       const t = engineNow() - start;
-      paint(t);
       if (t >= length) {
-        setRun((r) =>
-          r.phase === phase && r.start === start
-            ? { ...r, phase: phase === 'out' ? 'gone' : 'still', layer: phase === 'out' ? null : r.layer }
-            : r,
-        );
+        flushSync(redraw);
         return;
       }
+      paint(t);
       frame = requestAnimationFrame(tick);
     };
-    tick();
+    frame = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(frame);
     };
   }, [phase, start, length, paint]);
-  // After every render, before it is painted: where it is now.
+  // After every drawing, before it is shown: as at the moment it was worked out for.
   useLayoutEffect(() => {
-    paint(engineNow() - start);
+    paint(now - start);
   });
   if (!shown || phase === 'gone') return null;
   const look = shown.look;
