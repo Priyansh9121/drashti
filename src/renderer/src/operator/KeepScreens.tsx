@@ -84,8 +84,11 @@ function Question({ pending, platform }: { pending: PendingScreens; platform: st
   );
 }
 
-/** The question while a change waits, nothing otherwise. */
+/**
+ * The question while a change waits, nothing otherwise. Made again for each new change (a new deadline), so it
+ * opens last: over any dialog opened meanwhile (View, Set Up Screens…), with the keyboard.
+ */
 export function KeepScreensQuestion({ platform }: { platform: string }) {
   const pending = useKeepScreens((s) => s.pending);
-  return pending ? <Question pending={pending} platform={platform} /> : null;
+  return pending ? <Question key={pending.deadline} pending={pending} platform={platform} /> : null;
 }
