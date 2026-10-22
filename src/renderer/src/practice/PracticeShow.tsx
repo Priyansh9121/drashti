@@ -72,7 +72,8 @@ function TryTheKeys({ platform }: { platform: string }) {
     { what: 'Clear all', key: shortcutText('clearAll', platform, keymap) },
   ].filter((k) => k.key !== '');
   return (
-    <section aria-labelledby="practice-keys" className="space-y-3 p-4 text-sm">
+    // It scrolls in a window too short for it (Session 51), as the slides and LIVE beside it do: the column clips.
+    <section aria-labelledby="practice-keys" className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 text-sm">
       <h2 id="practice-keys" className="text-2xs font-bold tracking-wider text-heading uppercase">
         Try the keys
       </h2>
