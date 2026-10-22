@@ -55,6 +55,13 @@ export interface KeyBinding {
    * their own meaning for the key (Undo in a field undoes typing).
    */
   menuOnly?: boolean;
+  /**
+   * Shown beside its item in the application menu, and still the page's to act on (Session 51: ⌘1 and ⌘2 beside
+   * View › Audience and Stage). Windows' menu shows it without binding it (registerAccelerator: false); the
+   * Mac's acts on any key it shows that the page leaves alone, so the page takes every press of it, the ones it
+   * lets go by (held, in a field, under a dialog) included: each press acts once, by the page.
+   */
+  shownInMenu?: boolean;
 }
 
 export const KEYMAP: readonly KeyBinding[] = [
@@ -77,9 +84,9 @@ export const KEYMAP: readonly KeyBinding[] = [
   // press it, and L as before.
   { action: 'toggleLogo', keys: ['F12', 'L'], label: 'Logo' },
   // This computer's audience screens (key and fill too), or its stage screens, off and on (Session 50): off
-  // gives their displays back to the computer; the show carries on.
-  { action: 'toggleAudience', keys: ['Mod+1'], label: 'Audience on or off' },
-  { action: 'toggleStage', keys: ['Mod+2'], label: 'Stage on or off' },
+  // gives their displays back to the computer; the show carries on. View › Audience and Stage show them.
+  { action: 'toggleAudience', keys: ['Mod+1'], label: 'Audience on or off', shownInMenu: true },
+  { action: 'toggleStage', keys: ['Mod+2'], label: 'Stage on or off', shownInMenu: true },
   // Repeat Slides going round stops, its slide staying up (Session 26d). Not while a dialog, a menu, the
   // slide editor or a field has the keyboard: they keep Esc for themselves.
   { action: 'stopRepeat', keys: ['Escape'], label: 'Stop Repeat Slides' },
