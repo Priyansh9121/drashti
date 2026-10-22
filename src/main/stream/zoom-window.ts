@@ -1,6 +1,7 @@
 import { BrowserWindow, type WebContents, type WebFrameMain } from 'electron';
 import { ZOOM_WINDOW_TITLE, type ZoomProgram } from '../../shared/zoom';
 import { IPC } from '../../shared/ipc';
+import { isShownMenuKey } from '../shown-keys';
 import { windowIcon } from '../windows/app-icon';
 import { loadPage } from '../windows/renderer';
 import { pageAlive } from '../windows/send';
@@ -67,6 +68,13 @@ export class ZoomWindow {
     });
     win.setAspectRatio(16 / 9);
     win.setContentBounds(place);
+    // ⌘1 and ⌘2, which View › Audience and Stage show (Session 51): a Mac menu acts on any key it shows that the
+    // page leaves alone, and this page has no keys of its own, so they stop here, before the page and the menu see
+    // them. They act only from the operator window, as on Windows, and a held one never repeats from here.
+    if (process.platform === 'darwin')
+      win.webContents.on('before-input-event', (event, input) => {
+        if (isShownMenuKey(input, process.platform)) event.preventDefault();
+      });
     this.win = win;
     this.deps.holdProgram(true);
     this.deps.log('The window for Zoom opens');
