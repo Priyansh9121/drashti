@@ -810,6 +810,10 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   // it, and keep the rest of the show.
   handle(IPC.liveWindow.ask, () => false);
   handle(IPC.liveWindow.ended, () => null);
+  // So is a video input (Session 50): a camera on Main's computer. A node's session never gives a page a camera
+  // (no camera rule: windows/security.ts), so its screens never show one, and keep the rest of the show.
+  handle(IPC.videoInputs.access, () => 'denied' as const);
+  handle(IPC.videoInputs.report, () => null);
 
   nodeWindow = new BrowserWindow({
     width: 760,
