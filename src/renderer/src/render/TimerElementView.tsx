@@ -69,7 +69,9 @@ function useDigitMotion(
       el.style.opacity = moving ? String(f.in.opacity) : '';
       el.style.transform = moving && f.in.rise !== 0 ? `translateY(${String(f.in.rise)}em)` : '';
     }
+    // The old digits, gone once they have moved out: not drawn, and not read.
     for (const el of root.querySelectorAll<HTMLElement>('[data-digit-was]')) {
+      el.style.display = moving ? '' : 'none';
       el.style.opacity = moving ? String(f.out.opacity) : '0';
       el.style.transform = moving && f.out.rise !== 0 ? `translateY(${String(f.out.rise)}em)` : '';
     }

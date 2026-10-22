@@ -15,6 +15,8 @@ const NO_STATUS: ScreenStatus[] = [];
 export function LiveStatus() {
   const live = useEngine((s) => s.state?.live);
   const slideShown = useEngine((s) => s.state?.layers.slide !== null);
+  // A timer up alone in the slide's place (Session 50): named instead of the slide the show is at.
+  const timerAlone = useEngine((s) => s.state?.layers.slide?.timer?.name ?? null);
   const blackout = useEngine((s) => s.state?.blackout ?? false);
   const audio = useEngine((s) => s.state?.layers.audio?.title ?? null);
   const name = useLibrary((s) => s.presentations.find((p) => p.id === live?.presentationId)?.name);
@@ -23,13 +25,17 @@ export function LiveStatus() {
   // A picture, video or sound from a playlist: its name, when that playlist is open.
   const itemLabel = usePlaylists((s) => s.items.find((i) => i.id === live?.playlist?.itemId)?.label);
   let text = 'Nothing live';
-  if (live?.presentationId && live.slideIndex !== null) {
+  if (timerAlone !== null) {
+    text = `Live: Timer · ${timerAlone}`;
+  } else if (live?.presentationId && live.slideIndex !== null) {
     text = `Live: ${name ?? passage ?? 'presentation'} · slide ${live.slideIndex + 1} of ${live.slideCount}${slideShown ? '' : ' (cleared)'}`;
   } else if (live?.playlist) {
     text = `Live: ${itemLabel ?? 'playlist item'}`;
   }
   const onAir =
-    Boolean(live?.presentationId && slideShown) || Boolean(live?.playlist && !live.presentationId);
+    timerAlone !== null ||
+    Boolean(live?.presentationId && slideShown) ||
+    Boolean(live?.playlist && !live.presentationId);
   return (
     <div className="flex min-w-0 items-center gap-2 text-sm" data-testid="live-status" aria-live="polite">
       {onAir ? <LiveBadge /> : <Badge>Off</Badge>}
