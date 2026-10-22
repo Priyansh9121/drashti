@@ -77,12 +77,13 @@ describe('seedOptions (Session 50: the placeholders behind a test switch)', () =
     expect(seedOptions(switchesFor(true, {}))).toEqual({ placeholders: false });
   });
 
-  it('seeds them for the watchdog self-test run by itself, packaged too: it shows the library’s first presentation', () => {
-    // scripts/check-installers.mjs runs it on the installed app, in a data folder of its own.
-    expect(seedOptions(switchesFor(true, { DRASHTI_SELFTEST: 'watchdog' }))).toEqual({ placeholders: true });
-    expect(seedOptions(switchesFor(true, { DRASHTI_SELFTEST: 'performance' }))).toEqual({
-      placeholders: false,
-    });
+  it('never seeds them for a self-test: the watchdog’s brings slides of its own to an empty library', () => {
+    // scripts/check-installers.mjs runs it on the installed app, in a data folder of its own: it leaves nothing.
+    for (const packaged of [true, false])
+      for (const selftest of ['watchdog', 'performance', 'restore-relaunch'])
+        expect(seedOptions(switchesFor(packaged, { DRASHTI_SELFTEST: selftest })), selftest).toEqual({
+          placeholders: false,
+        });
   });
 });
 

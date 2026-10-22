@@ -119,15 +119,12 @@ export interface SeedOptions {
 }
 
 /**
- * What this start asks for (Session 50): the placeholder presentations under DRASHTI_TEST_SEED_PLACEHOLDERS=1,
- * which a packaged Drashti ignores (the end-to-end tests set it), and for the watchdog self-test run by itself
- * (DRASHTI_SELFTEST=watchdog, packaged too: it puts the library's first presentation up, in a data folder of
- * its own when scripts/check-installers.mjs runs it on the installed app).
+ * What this start asks for (Session 50): the placeholder presentations only under
+ * DRASHTI_TEST_SEED_PLACEHOLDERS=1, which a packaged Drashti ignores (the end-to-end tests set it). Never for a
+ * self-test: the watchdog's brings slides of its own to an empty library, and takes them away after.
  */
 export function seedOptions(sw: Switches): SeedOptions {
-  return {
-    placeholders: sw('DRASHTI_TEST_SEED_PLACEHOLDERS') === '1' || sw('DRASHTI_SELFTEST') === 'watchdog',
-  };
+  return { placeholders: sw('DRASHTI_TEST_SEED_PLACEHOLDERS') === '1' };
 }
 
 /** What seedLibrary added, for the log. */
