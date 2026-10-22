@@ -17,7 +17,8 @@ import { makeSlides } from './placeholder-slides';
  * alone in the slide's place over whatever background is up, counting on a hall screen; Clear slide takes it
  * off, and Next goes on from where the show was. New Timer Slide… in a presentation's slide menu adds a slide
  * with a Timer on it, which shows the time live; a countdown on it holds at 0:00, or, when it says so, the next
- * slide comes on at zero. Placeholder timers and words only; quiet; no display wider than 1024 is assumed.
+ * slide comes on at zero. The slide editor's Timer, styled as words, keeps its last minute and its zero.
+ * Placeholder timers and words only; quiet; no display wider than 1024 is assumed.
  */
 
 const snapshot = (win: Page) =>
@@ -182,6 +183,50 @@ test('New Timer Slide… adds a slide whose Timer shows the time live; at zero i
     timeout: 10_000,
   });
   expect((await snapshot(win)).live).toMatchObject({ presentationId: id, slideIndex: 2 });
+
+  await app.close();
+});
+
+test('the slide editor puts a Timer on a slide, styled as words, with its last minute and its zero', async () => {
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  const id = await makeSlides(win, 'Placeholder Editor Timer', [{ words: 'Placeholder words' }], {
+    kind: 'cut',
+    durationMs: 0,
+  });
+  await makeCountdown(win, 'Placeholder editor countdown', 90_000);
+  await openLibrary(win);
+  await win
+    .getByTestId('presentation-list')
+    .getByRole('button', { name: /^Placeholder Editor Timer/ })
+    .click();
+  await win.getByTestId('edit-slides').click();
+  const editor = win.getByTestId('slide-editor');
+
+  // Timer, then the timer: on the slide, its time live, and chosen for the inspector.
+  await editor.getByTestId('add-timer').click();
+  await win.getByRole('menuitem', { name: 'Placeholder editor countdown (Countdown)' }).click();
+  await expect(editor.getByTestId('editor-slide').locator('[data-timer-element]')).toHaveAttribute(
+    'data-time',
+    '1:30',
+  );
+  const section = editor.getByTestId('inspector-timer');
+  await expect(section.getByTestId('field-timer')).toHaveValue(/.+/);
+  await section.getByTestId('field-timer-size').fill('180');
+  await section.getByTestId('field-last-minute').click();
+  await section.getByTestId('field-at-zero').selectOption('next');
+  await editor.getByTestId('save-slides').click();
+  await expect(editor).toHaveCount(0);
+
+  const timers = await win.evaluate(async (pid) => {
+    const doc = await (globalThis as PageGlobals).drashti.library.getPresentation(pid);
+    return doc?.groups.flatMap((g) =>
+      g.slides.flatMap((s) => s.slide.elements.filter((e) => e.kind === 'timer')),
+    );
+  }, id);
+  expect(timers).toMatchObject([
+    { kind: 'timer', style: { fontSize: 180 }, lastMinute: { color: '#f5a524' }, atZero: 'next' },
+  ]);
 
   await app.close();
 });
