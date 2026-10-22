@@ -243,7 +243,8 @@ function Output() {
           </ClockStyleContext.Provider>
         </SceneBoundary>
       )}
-      {/* Stage screens show no pictures, so they load none ahead: but for a layout's audience picture (Session 50). */}
+      {/* Stage screens show no pictures, so they load none ahead: but for a layout's audience picture
+          (Session 50), which loads what comes next as the hall's screens do. */}
       {state && (!stage || showsHall(look.stageLayout)) && (
         <Preloader next={state.next} pictures={state.pictures} />
       )}

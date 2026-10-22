@@ -255,7 +255,10 @@ export function withBoxAdded(boxes: readonly StageBox[], box: StageBox): StageBo
   return box.kind === 'audience' ? [box, ...boxes] : [...boxes, box];
 }
 
-/** Whether a layout draws the hall's picture (Session 50): its screen then loads what comes next, as the hall's do. */
+/**
+ * Whether a layout draws the hall's picture (Session 50): its screen then loads what comes next, as the
+ * hall's screens do.
+ */
 export function showsHall(layout: StageLayout | null | undefined): boolean {
   return layout?.boxes.some((b) => b.kind === 'audience') ?? false;
 }

@@ -316,7 +316,10 @@ export function StageLayoutView({
   languages?: readonly Lang[] | null;
   /** How to write the time: Drashti's computer's way, on a stage display in another device's browser. */
   clockStyle?: ClockStyle | null;
-  /** The hall's group and canvas, for an audience picture box (Session 50); unknown: every layer at 1920 x 1080. */
+  /**
+   * The hall's group and canvas, for an audience picture box (Session 50); unknown: every layer and
+   * language at 1920 x 1080.
+   */
   hall?: HallPicture | null;
 }) {
   const now = useNow(250);
