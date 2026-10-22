@@ -35,7 +35,7 @@ export const PANEL_HELP = {
   slides: {
     title: 'Slides',
     doc: 'operator',
-    text: 'The slides of whatever you clicked, in the order they play. Click a slide to put it on the screens at once, or press Space for the next one. Right-click a slide for New Timer Slide…, and the ⋯ menu beside Edit slides has Delete… for the whole presentation.',
+    text: 'The slides of whatever you clicked, in the order they play. Click a slide to put it on the screens at once, or press Space for the next one. Right-click a slide for New Timer Slide…, and the ⋯ menu beside Edit slides has Delete… for the whole presentation, or Delete from the library… while a playlist item is open.',
     guide: '**Starting.**',
   },
   live: {
