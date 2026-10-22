@@ -108,6 +108,54 @@ describe('runRelink', () => {
     expect(db.prepare('SELECT COUNT(*) AS n FROM media').get()).toEqual({ n: 1 });
   });
 
+  it('keeps a playlist’s item, an audio track and a kirtan’s recording on the missing file when it is merged, on the kept file (Session 51 review)', async () => {
+    const { db, media, found } = setup();
+    writeFileSync(join(found, 'Placeholder bell.mp3'), 'placeholder bell bytes');
+    const stored = await media.importFile(join(found, 'Placeholder bell.mp3'), {
+      kind: 'media',
+      path: join(found, 'Placeholder bell.mp3'),
+    });
+    const storedId = stored.outcome === 'failed' ? '' : stored.mediaId;
+    const missingId = media.addMissing('/old/Placeholder bell.mp3', 'audio', { kind: 'pp6', path: '/p' });
+    const repo = new PresentationRepo(db);
+    const presentationId = repo.insert({
+      libraryId: repo.ensureLibrary('Default'),
+      name: 'Placeholder kirtan',
+      groups: [],
+      kirtan: {},
+    });
+    db.prepare('UPDATE kirtans SET audio_media_id = ? WHERE presentation_id = ?').run(
+      missingId,
+      presentationId,
+    );
+    db.exec(`
+      INSERT INTO playlists (id, name) VALUES ('pl', 'Placeholder list');
+      INSERT INTO audio_playlists (id, name) VALUES ('ap', 'Placeholder music');
+    `);
+    db.prepare(
+      "INSERT INTO playlist_items (id, playlist_id, position, kind, media_id, label) VALUES ('i', 'pl', 0, 'media', ?, 'Placeholder bell.mp3')",
+    ).run(missingId);
+    db.prepare(
+      "INSERT INTO audio_playlist_tracks (id, playlist_id, media_id, position) VALUES ('t', 'ap', ?, 0)",
+    ).run(missingId);
+
+    const run = await runRelink({ db, media, runId: randomUUID(), folder: found });
+    expect(run.totals).toMatchObject({ imported: 1 });
+    // Never deleted with the missing row: on the file that was already in the library.
+    expect(db.prepare("SELECT media_id FROM playlist_items WHERE id = 'i'").get()).toEqual({
+      media_id: storedId,
+    });
+    expect(db.prepare("SELECT media_id FROM audio_playlist_tracks WHERE id = 't'").get()).toEqual({
+      media_id: storedId,
+    });
+    expect(
+      db.prepare('SELECT audio_media_id FROM kirtans WHERE presentation_id = ?').get(presentationId),
+    ).toEqual({
+      audio_media_id: storedId,
+    });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM media').get()).toEqual({ n: 1 });
+  });
+
   it('says when nothing is missing', async () => {
     const { db, media, found } = setup();
     const run = await runRelink({ db, media, runId: randomUUID(), folder: found });
