@@ -402,10 +402,11 @@ export class ScreensService {
 
   /**
    * What each display shows: every output on a connected display, this computer's ("here") and each node's, as
-   * its screen, group and role. A change that makes a display show something it did not is one Drashti asks
-   * about; turning an output off is not. A screen Audience or Stage has switched off shows nothing on its display
-   * (Session 51, S2-1): turned off and on again meanwhile, nothing is put on a display, so nothing is asked, and
-   * the switch on again puts it back where it was, asking nothing as ever.
+   * its screen, group and role, and in a key and fill pair what it sends (Session 51: the key is another
+   * picture). A change that makes a display show something it did not is one Drashti asks about; turning an
+   * output off is not. A screen Audience or Stage has switched off shows nothing on its display (Session 51,
+   * S2-1): turned off and on again meanwhile, nothing is put on a display, so nothing is asked, and the switch on
+   * again puts it back where it was, asking nothing as ever.
    */
   placed(): Map<string, string> {
     const roles = new Map(this.repo.groupIds().map((g) => [g.id, g.role]));
@@ -431,7 +432,7 @@ export class ScreensService {
         if (displayId !== undefined && displayId !== null)
           placed.set(
             `${where} ${String(displayId)}`,
-            `${sc.id} ${sc.groupId} ${roles.get(sc.groupId) ?? ''}`,
+            `${sc.id} ${sc.groupId} ${roles.get(sc.groupId) ?? ''}${sc.feed ? ` ${sc.feed}` : ''}`,
           );
       }
     };
