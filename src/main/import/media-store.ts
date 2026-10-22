@@ -6,6 +6,8 @@ import { basename, join } from 'node:path';
 import { formatBytes } from '../../shared/format';
 import type { ImportIssue } from '../../shared/import';
 import type { ImportSource } from '../../shared/library';
+import type { MediaInfo } from '../convert/plan';
+import { atImport, describeMedia } from '../convert/plan';
 import type { Db } from '../db/database';
 import type { MediaKind } from './scan';
 import { fileNameOf } from './media-resolver';
@@ -27,6 +29,12 @@ export interface MediaStoreOptions {
   freeBytes?: (dir: string) => number;
   /** Space always left free on that disk, so the show never runs out. Default 2 GiB. */
   reserveBytes?: number;
+  /**
+   * The bundled FFmpeg reading what a file holds (Session 50: convert/read-info.ts), where it is there. Each
+   * video and sound is read so at import: what Drashti's player cannot play is marked so, to be converted by
+   * itself (convert/plan.ts's atImport decides).
+   */
+  readInfo?: (file: string) => Promise<MediaInfo & { timedOut?: true }>;
 }
 
 export type MediaImportResult =
@@ -38,6 +46,8 @@ export type MediaImportResult =
       name: string;
       /** What the file really is, and whether it plays. */
       probe: MediaProbe;
+      /** Converted by itself (Session 50): it cannot play as it is, and FFmpeg can make a copy that does. */
+      convert?: boolean;
     }
   | { outcome: 'failed'; issue: ImportIssue };
 
@@ -57,6 +67,10 @@ export interface StagedMedia {
   bytes: number;
   /** What it really is, and whether Drashti can play it. */
   probe: MediaProbe;
+  /** Read by the bundled FFmpeg (Session 50): `probe` says what it read. */
+  read?: boolean;
+  /** To be converted by itself once it is in the library (Session 50). */
+  convert?: boolean;
 }
 
 const GiB = 1024 ** 3;
@@ -111,6 +125,62 @@ export class MediaStore {
   }
 
   /**
+   * What FFmpeg reads in a video or sound (Session 50), where it is there: whether Drashti's player plays it,
+   * what it is in words, and whether it is converted by itself. Where FFmpeg reads nothing in it (or fails,
+   * or takes too long), the file's own header says, as before.
+   */
+  private async readWithFfmpeg(
+    kind: MediaKind,
+    file: string,
+    probe: MediaProbe,
+  ): Promise<Pick<StagedMedia, 'probe' | 'read' | 'convert'>> {
+    if (kind === 'image' || !this.options.readInfo) return { probe };
+    const info = await this.options.readInfo(file).catch(() => null);
+    if (!info || info.timedOut) return { probe };
+    const verdict = atImport(kind, info);
+    if (verdict === 'unread') return { probe };
+    const moving = kind === 'video' && info.video !== null && !info.video.still;
+    return {
+      probe: {
+        playable: verdict === 'plays' ? true : verdict === 'convert' ? false : null,
+        format: describeMedia(kind, info, extOf(file)),
+        kind: moving ? 'video' : 'audio',
+      },
+      read: true,
+      ...(verdict === 'convert' ? { convert: true } : {}),
+    };
+  }
+
+  /**
+   * Whether a .ts file is a video at all (Session 50: .ts names an MPEG transport stream, and a TypeScript
+   * file too): by its first bytes, or by FFmpeg finding a picture or sound in it.
+   */
+  private async isVideo(path: string): Promise<boolean> {
+    if ((await probeMedia(path)).kind !== 'unknown') return true;
+    const info = await this.options.readInfo?.(path).catch(() => null);
+    return !!info && !info.timedOut && (info.video !== null || info.audio !== null);
+  }
+
+  /**
+   * Whether a row that already has these bytes plays, recorded now: when it was not known (imported before),
+   * or (Session 50) when FFmpeg read the file and says otherwise. FFmpeg's "only where the computer decodes
+   * HEVC" says nothing new of a file known to play or not.
+   */
+  private markPlayable(id: string, staged: StagedMedia): void {
+    const value = playableValue(staged.probe);
+    if (staged.read && value !== null)
+      this.db
+        .prepare(
+          'UPDATE media SET playable = ?, format = ? WHERE id = ? AND (playable IS NULL OR playable <> ?)',
+        )
+        .run(value, staged.probe.format, id, value);
+    else
+      this.db
+        .prepare('UPDATE media SET playable = ?, format = ? WHERE id = ? AND playable IS NULL')
+        .run(value, staged.probe.format, id);
+  }
+
+  /**
    * Put a file's bytes into the media folder (once per sha256), checking
    * free space first. Never touches the original. No library rows (see
    * addStaged), so it never runs inside a group of database writes.
@@ -129,6 +199,17 @@ export class MediaStore {
         },
       };
     }
+    // A .ts that is no video (a TypeScript file, say) is not taken, nor copied (Session 50).
+    if (extOf(path) === 'ts' && !(await this.isVideo(path)))
+      return {
+        ok: false,
+        issue: {
+          severity: 'error',
+          code: 'not-media',
+          message: `${name} is not a video Drashti can read.`,
+          fix: null,
+        },
+      };
     let hashed: { sha256: string; bytes: number };
     try {
       hashed = await sha256File(path);
@@ -182,7 +263,10 @@ export class MediaStore {
       }
     }
     const probe = await probeMedia(target);
-    return { ok: true, staged: { kind, name, rel, ...hashed, probe } };
+    return {
+      ok: true,
+      staged: { kind, name, rel, ...hashed, ...(await this.readWithFfmpeg(kind, target, probe)) },
+    };
   }
 
   /**
@@ -202,11 +286,11 @@ export class MediaStore {
    */
   addStaged(staged: StagedMedia, source: MediaSource): Extract<MediaImportResult, { mediaId: string }> {
     const existing = this.bySha(staged.sha256);
+    // Converted by itself once it is in the library (Session 50).
+    const convert = staged.convert ? { convert: true } : {};
     if (existing) {
-      // Imported before playability was known: record it now.
-      this.db
-        .prepare('UPDATE media SET playable = ?, format = ? WHERE id = ? AND playable IS NULL')
-        .run(playableValue(staged.probe), staged.probe.format, existing.id);
+      // Imported before playability was known (or, Session 50, read by FFmpeg now): record it.
+      this.markPlayable(existing.id, staged);
       // Imported as media this time (a deck's page dropped in on its own): it shows in the Media list
       // from now on (migration 37, Session 26a).
       if (source.kind !== 'drashti')
@@ -226,6 +310,7 @@ export class MediaStore {
         bytes: staged.bytes,
         name: existing.name,
         probe: staged.probe,
+        ...convert,
       };
     }
     const id = randomUUID();
@@ -257,6 +342,7 @@ export class MediaStore {
       bytes: staged.bytes,
       name: staged.name,
       probe: staged.probe,
+      ...convert,
     };
   }
 
@@ -329,10 +415,12 @@ export class MediaStore {
     if (!stage.ok) return { outcome: 'failed', issue: stage.issue };
     const stored = stage.staged;
     const existing = this.bySha(stored.sha256);
+    const convert = stored.convert ? { convert: true } : {};
     if (existing) {
       this.db.transaction(() => {
         repoint(mediaId, existing.id);
         this.db.prepare('DELETE FROM media WHERE id = ?').run(mediaId);
+        this.markPlayable(existing.id, stored);
       })();
       return {
         outcome: 'skipped',
@@ -341,6 +429,7 @@ export class MediaStore {
         bytes: stored.bytes,
         name: existing.name,
         probe: stored.probe,
+        ...convert,
       };
     }
     this.db
@@ -362,6 +451,7 @@ export class MediaStore {
       bytes: stored.bytes,
       name: stored.name,
       probe: stored.probe,
+      ...convert,
     };
   }
 }

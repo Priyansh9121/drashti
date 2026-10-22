@@ -7,7 +7,9 @@ import type { ImportIssue } from '../../shared/import';
  * Drashti's windows (Chromium) can play it. No FFmpeg: containers and
  * codecs are recognised from their headers. What cannot play is converted
  * with the bundled FFmpeg (src/main/convert/), from the report or the
- * media list.
+ * media list. Session 50: at import, every video and sound is also read with
+ * the bundled FFmpeg where it is there (media-store.ts), and what it reads
+ * decides; this header's judgement stands where FFmpeg reads nothing.
  */
 
 export interface MediaProbe {
@@ -381,4 +383,26 @@ export function unplayableIssue(name: string, probe: MediaProbe, mediaId: string
     message: `Drashti cannot play ${name} as it is: ${probe.format}. Convert it here (in the report, or in the media list).`,
     fix: { kind: 'convert-media', mediaId, advice: unplayableAdvice(probe) },
   };
+}
+
+/**
+ * The report's line for a file Drashti converts by itself (Session 50): what it is, and that it is converted.
+ * Its fix is the conversion's, so the report shows how it goes and what it became.
+ */
+export function convertingIssue(name: string, probe: MediaProbe, mediaId: string): ImportIssue {
+  return {
+    severity: 'info',
+    code: 'converting-media',
+    message: `Drashti cannot play ${name} as it is: ${probe.format}. It converts it by itself, and uses the copy wherever this file is; the original stays as it is.`,
+    fix: { kind: 'convert-media', mediaId, advice: unplayableAdvice(probe) },
+  };
+}
+
+/** The report's lines for a media file as the import stored it: none when it plays (Session 50). */
+export function playIssues(
+  name: string,
+  stored: { probe: MediaProbe; mediaId: string; convert?: boolean },
+): ImportIssue[] {
+  if (stored.convert) return [convertingIssue(name, stored.probe, stored.mediaId)];
+  return stored.probe.playable === false ? [unplayableIssue(name, stored.probe, stored.mediaId)] : [];
 }

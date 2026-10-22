@@ -49,7 +49,7 @@ import { CALENDAR_FORMAT, readCalendarFile } from '../../shared/calendar';
 /** "1 day", "182 days". */
 const counted = (n: number, one: string): string => `${n.toLocaleString('en')} ${one}${n === 1 ? '' : 's'}`;
 import { TRANSLIT_STYLES, type TranslitStyle } from '../../shared/translit';
-import { unplayableIssue } from './probe';
+import { playIssues } from './probe';
 import { extOf, formatOf, type ScannedFile, scanPaths } from './scan';
 import type { PicturesResult } from '../../shared/pictures';
 import { pictureSourceOf } from '../../shared/pictures';
@@ -490,8 +490,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
         const stored = ctx.media.addStaged(s.staged, source);
         ids.push(stored.mediaId);
         if (s.ref.markers && ctx.media.keepMarkers(stored.mediaId, s.ref.markers)) marked++;
-        if (stored.probe.playable === false)
-          issues.push(unplayableIssue(s.staged.name, stored.probe, stored.mediaId));
+        // What cannot play: converted by itself (Session 50), or offered for Convert.
+        issues.push(...playIssues(s.staged.name, stored));
         continue;
       }
       const id = ctx.media.addMissing(s.ref.originalPath, s.ref.kind, source);
@@ -1229,10 +1229,8 @@ export async function runImport(ctx: PipelineContext): Promise<ImportRunSummary>
           target: { kind: 'media', id: result.mediaId },
           counts: result.outcome === 'imported' ? { ...NO_COUNTS, media: 1 } : NO_COUNTS,
           message: result.outcome === 'skipped' ? `Already in the media library as “${result.name}”.` : null,
-          issues:
-            result.probe.playable === false
-              ? [unplayableIssue(basename(file.path), result.probe, result.mediaId)]
-              : [],
+          // What cannot play: converted by itself (Session 50), or offered for Convert.
+          issues: playIssues(basename(file.path), result),
         };
         imports.addItem(ctx.runId, at, item);
         return item;

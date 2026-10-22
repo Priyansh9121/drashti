@@ -7,6 +7,7 @@ import { sep } from 'node:path';
 import { beginImmediately, type Db } from '../db/database';
 import { ImportRepo } from '../db/imports';
 import { schemaVersion } from '../db/migrate';
+import { readInfo } from '../convert/read-info';
 import { MediaStore } from './media-store';
 import { runImport } from './pipeline';
 import { runRelink } from './relink';
@@ -110,9 +111,14 @@ async function start(message: StartMessage): Promise<void> {
   try {
     db = openLibrary(message.dbFile, message.schemaVersion);
     const inside = message.userDataDir + sep;
+    // Every video and sound read with the bundled FFmpeg, where it is there (Session 50).
+    const ffmpeg = message.ffmpeg ?? null;
     const common = {
       db,
-      media: new MediaStore(db, { dir: message.mediaDir }),
+      media: new MediaStore(db, {
+        dir: message.mediaDir,
+        ...(ffmpeg ? { readInfo: (file: string) => readInfo(ffmpeg, file) } : {}),
+      }),
       runId: message.runId,
       skipDir: (dir: string) => dir === message.userDataDir || dir.startsWith(inside),
       onProgress: (progress: ImportProgress) => {

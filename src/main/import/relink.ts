@@ -3,7 +3,7 @@ import { emptyTotals, NO_COUNTS } from '../../shared/import';
 import type { Db } from '../db/database';
 import { addToTotals, ImportRepo, type NewImportItem } from '../db/imports';
 import type { MediaStore } from './media-store';
-import { unplayableIssue } from './probe';
+import { playIssues } from './probe';
 import { resolveMedia } from './media-resolver';
 import { scanPaths } from './scan';
 
@@ -103,8 +103,8 @@ export async function runRelink(ctx: RelinkContext): Promise<ImportRunSummary> {
           target: { kind: 'media', id: result.mediaId },
           counts: { ...NO_COUNTS, media: 1 },
           message: `Relinked to ${found.path}.`,
-          issues:
-            result.probe.playable === false ? [unplayableIssue(m.name, result.probe, result.mediaId)] : [],
+          // What cannot play: converted by itself (Session 50), or offered for Convert.
+          issues: playIssues(m.name, result),
         });
       }
     }

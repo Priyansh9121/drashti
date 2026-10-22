@@ -24,6 +24,11 @@ export interface StartMessage {
    * tests only, a stand-in saves PowerPoint files as PDF (./stand-in-converter.ts).
    */
   converters?: boolean | 'stand-in';
+  /**
+   * The bundled FFmpeg (Session 50): each video and sound is read with it at import, and what Drashti's
+   * player cannot play is marked to be converted by itself. Null or left out where it is missing.
+   */
+  ffmpeg?: string | null;
 }
 
 export interface CancelMessage {
