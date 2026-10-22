@@ -88,6 +88,11 @@ export interface SavedLive {
    * it comes back still (never a window, an input only while it is in the list: show-engine.ts decides).
    */
   pip: PipLayer | null;
+  /**
+   * A timer shown alone (Session 50), put back over `slide` (then the slide the show was at under it, not one on
+   * the screens): it is no presentation's. Left out when none.
+   */
+  timer?: { timerId: string } | null;
 }
 
 const backgroundSchema: z.ZodType<BackgroundLayer> = z.discriminatedUnion('kind', [
@@ -200,6 +205,8 @@ const savedSchema = z.object({
   lowerThird: z.unknown().default(null),
   // Files saved before picture in picture (Session 50) have none.
   pip: z.unknown().default(null),
+  // A timer shown alone (Session 50); files saved without one have none.
+  timer: z.object({ timerId: idSchema }).nullable().optional(),
 });
 const audioLayerSchema = z.intersection(
   audioChoiceSchema,
@@ -222,18 +229,29 @@ function stillBox(box: PipLayer | null): PipLayer | null {
 
 export function savedFrom(state: EngineState, session: string, now = new Date()): SavedLive {
   const slide = state.layers.slide;
+  // A timer shown alone (Session 50): the slide the show was at under it, and the timer, put back over it.
+  const alone = slide?.timer ?? null;
+  const cursor = state.live;
   return {
     version: 2,
     session,
     engineVersion: ENGINE_STATE_VERSION,
     savedAt: now.toISOString(),
-    slide: slide
-      ? {
-          presentationId: slide.presentationId,
-          slideIndex: slide.slideIndex,
-          arrangementId: state.live.arrangementId,
-        }
-      : null,
+    slide: alone
+      ? cursor.presentationId !== null && cursor.slideIndex !== null
+        ? {
+            presentationId: cursor.presentationId,
+            slideIndex: cursor.slideIndex,
+            arrangementId: cursor.arrangementId,
+          }
+        : null
+      : slide
+        ? {
+            presentationId: slide.presentationId,
+            slideIndex: slide.slideIndex,
+            arrangementId: state.live.arrangementId,
+          }
+        : null,
     playlist: state.live.playlist,
     background: state.layers.background,
     blackout: state.blackout,
@@ -257,6 +275,7 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
     masks: state.layers.masks,
     lowerThird: state.layers.lowerThird,
     pip: stillBox(state.layers.pip),
+    ...(alone ? { timer: { timerId: alone.timerId } } : {}),
   };
 }
 
@@ -355,6 +374,7 @@ function liveIn(s: Saved, startLookId: string | null): SavedLive | null {
     stageMessage !== null,
     timers.length > 0,
     s.lookId !== null && s.lookId !== startLookId,
+    s.timer != null,
   ].some(Boolean);
   if (!anything) return null;
   return {
