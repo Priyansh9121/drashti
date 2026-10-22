@@ -144,7 +144,7 @@ import { handleMediaRequest, MEDIA_SCHEME_PRIVILEGES } from './media/media-proto
 import { saveStill } from './media/stills';
 import { SharpenedCopies } from './media/sharpened';
 import { installMenu, installNodeMenu } from './menu';
-import { runPerformanceTest } from './perftest';
+import { runPerformanceTest, seedPerfLibrary } from './perftest';
 import { registerPlaylistIpc } from './playlists/playlist-ipc';
 import { startupReads } from './ipc/startup-reads';
 import { nodeWatch, SmartFolders } from './playlists/smart-folders';
@@ -1151,6 +1151,10 @@ function start(): void {
   }
   db = opened.db;
   const libraryDb: Db = db;
+  // The performance check's throwaway library gets the placeholder presentations it measures with, before the
+  // operator window opens (Session 50: a new library has none, and a packaged Drashti ignores the tests' switch).
+  if (perfTest && seedPerfLibrary(libraryDb))
+    log.info('The performance check added its placeholder presentations');
   const presentations = new PresentationRepo(db);
   const slides = new DbSlideSource(presentations);
   const screenRepo = new ScreenRepo(db);
