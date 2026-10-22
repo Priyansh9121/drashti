@@ -8,6 +8,7 @@ import type { ImportIssue } from '../../shared/import';
 import type { ImportSource } from '../../shared/library';
 import type { MediaInfo } from '../convert/plan';
 import { atImport, describeMedia } from '../convert/plan';
+import { copyFinder } from '../convert/relink';
 import type { Db } from '../db/database';
 import type { MediaKind } from './scan';
 import { fileNameOf } from './media-resolver';
@@ -98,9 +99,17 @@ export async function sha256File(path: string): Promise<{ sha256: string; bytes:
   return { sha256: hash.digest('hex'), bytes };
 }
 
+/** A converted copy standing for a media item (Session 51), as an import reports it. */
+interface StandingCopy {
+  id: string;
+  name: string;
+  probe: MediaProbe;
+}
+
 export class MediaStore {
   private readonly freeBytes: (dir: string) => number;
   private readonly reserve: number;
+  private copies: ((mediaId: string) => string) | null = null;
 
   constructor(
     private readonly db: Db,
@@ -122,6 +131,28 @@ export class MediaStore {
   private bySha(sha256: string): { id: string; name: string } | undefined {
     return this.db.prepare('SELECT id, name FROM media WHERE sha256 = ?').get(sha256) as
       { id: string; name: string } | undefined;
+  }
+
+  /**
+   * The converted copy standing for a media item (Session 51), or null: the same file imported again lands on
+   * it, as everything that used the original was moved there when it was converted, and is not converted again.
+   */
+  private copyOf(mediaId: string): StandingCopy | null {
+    this.copies ??= copyFinder(this.db);
+    const id = this.copies(mediaId);
+    if (id === mediaId) return null;
+    const row = this.db.prepare('SELECT name, kind, playable, format FROM media WHERE id = ?').get(id) as
+      { name: string; kind: MediaKind; playable: number | null; format: string | null } | undefined;
+    if (!row) return null;
+    return {
+      id,
+      name: row.name,
+      probe: {
+        playable: row.playable === null ? null : row.playable === 1,
+        format: row.format ?? 'file converted by Drashti',
+        kind: row.kind,
+      },
+    };
   }
 
   /**
@@ -291,10 +322,23 @@ export class MediaStore {
     if (existing) {
       // Imported before playability was known (or, Session 50, read by FFmpeg now): record it.
       this.markPlayable(existing.id, staged);
+      // Converted already (Session 51): its copy, which plays, is what this import adds.
+      const copy = this.copyOf(existing.id);
       // Imported as media this time (a deck's page dropped in on its own): it shows in the Media list
       // from now on (migration 37, Session 26a).
       if (source.kind !== 'drashti')
-        this.db.prepare('UPDATE media SET listed = 1 WHERE id = ? AND listed = 0').run(existing.id);
+        this.db
+          .prepare('UPDATE media SET listed = 1 WHERE id = ? AND listed = 0')
+          .run(copy?.id ?? existing.id);
+      if (copy)
+        return {
+          outcome: 'skipped',
+          mediaId: copy.id,
+          sha256: staged.sha256,
+          bytes: staged.bytes,
+          name: copy.name,
+          probe: copy.probe,
+        };
       // Deleted from the library (Session 26a), its file perhaps gone for good: brought back to life,
       // everywhere that still pointed at it.
       const revived =
@@ -417,19 +461,21 @@ export class MediaStore {
     const existing = this.bySha(stored.sha256);
     const convert = stored.convert ? { convert: true } : {};
     if (existing) {
+      // Converted already (Session 51): merged into its copy, which everything uses.
+      const copy = this.copyOf(existing.id);
       this.db.transaction(() => {
-        repoint(mediaId, existing.id);
+        repoint(mediaId, copy?.id ?? existing.id);
         this.db.prepare('DELETE FROM media WHERE id = ?').run(mediaId);
         this.markPlayable(existing.id, stored);
       })();
       return {
         outcome: 'skipped',
-        mediaId: existing.id,
+        mediaId: copy?.id ?? existing.id,
         sha256: stored.sha256,
         bytes: stored.bytes,
-        name: existing.name,
-        probe: stored.probe,
-        ...convert,
+        name: copy?.name ?? existing.name,
+        probe: copy?.probe ?? stored.probe,
+        ...(copy ? {} : convert),
       };
     }
     this.db

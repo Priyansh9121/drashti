@@ -23,7 +23,8 @@ export class MediaRepo {
   /**
    * Every media item, for the library's media list: by name. Deleted ones (Session 26a) are left out:
    * until Undo, everything else treats them as missing files. So are a deck's pages (migration 37):
-   * only what was imported as media is listed.
+   * only what was imported as media is listed. An original is converted while its copy is in the library
+   * (Session 51: with the copy deleted, Convert is offered again).
    */
   list(): MediaSummary[] {
     return (
@@ -31,7 +32,7 @@ export class MediaRepo {
         .prepare(
           `SELECT m.id, m.name, m.kind, m.missing, m.playable, m.format, m.dropped_at,
                   (SELECT c.name FROM media_conversions mc JOIN media c ON c.id = mc.converted_id
-                    WHERE mc.original_id = m.id AND mc.undone_at IS NULL
+                    WHERE mc.original_id = m.id AND mc.undone_at IS NULL AND c.deleted_at IS NULL
                     ORDER BY mc.created_at DESC LIMIT 1) AS converted_to
              FROM media m WHERE m.deleted_at IS NULL AND m.listed = 1 ORDER BY m.name COLLATE NOCASE, m.rowid`,
         )

@@ -14,6 +14,7 @@ import type { PassageKey } from '../../shared/shastra';
 import { parsePassageId, passageId, passageKeySchema } from '../../shared/shastra';
 import { ShastraRepo } from './shastra';
 import type { PlayItem } from '../engine/playlist-source';
+import { copyFinder } from '../convert/relink';
 import type { Db } from './database';
 import {
   filesFitFolders,
@@ -668,6 +669,8 @@ export class PlaylistRepo {
       `INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, media_id, label, color, hint, category, order_mode, arrangement_id, passage, timers)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
+    // An item on a converted original (added before Session 51) is copied onto its copy.
+    const copy = copyFinder(this.db);
     const start = this.order(to).length;
     items.forEach((item, i) => {
       insert.run(
@@ -676,7 +679,7 @@ export class PlaylistRepo {
         start + i,
         item.kind,
         item.kind === 'presentation' ? item.presentationId : null,
-        item.kind === 'media' ? item.mediaId : null,
+        item.kind === 'media' ? copy(item.mediaId) : null,
         item.label,
         item.kind === 'header' ? item.color : null,
         item.kind === 'placeholder' ? item.hint : null,
@@ -898,7 +901,12 @@ export class PlaylistRepo {
    * when it is null). Returns the new items' ids; none if the playlist is
    * gone or something added does not exist.
    */
-  addItems(playlistId: string, at: number | null, items: readonly NewItem[]): string[] {
+  addItems(playlistId: string, at: number | null, given: readonly NewItem[]): string[] {
+    // A converted original lands on its copy (Session 51), as every item that had it was moved there.
+    const copy = copyFinder(this.db);
+    const items = given.map((item): NewItem =>
+      item.kind === 'media' ? { ...item, mediaId: copy(item.mediaId) } : item,
+    );
     if (!this.isOpenPlaylist(playlistId, false) || this.refusal(playlistId, items) !== null) return [];
     const presentationName = this.db.prepare(
       'SELECT name FROM presentations WHERE id = ? AND deleted_at IS NULL',

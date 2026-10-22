@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { MusicPlaylist, MusicTrackInfo } from '../../shared/music';
+import { copyFinder } from '../convert/relink';
 import type { Db } from './database';
 
 /*
@@ -152,8 +153,11 @@ export class AudioPlaylistRepo {
       const insert = this.db.prepare(
         'INSERT INTO audio_playlist_tracks (id, playlist_id, media_id, position) VALUES (?, ?, ?, 0)',
       );
+      // A converted original goes in as its copy (Session 51), as every track that had it was moved there.
+      const copy = copyFinder(this.db);
       const added: string[] = [];
-      for (const mediaId of mediaIds) {
+      for (const given of mediaIds) {
+        const mediaId = copy(given);
         if (!isSound.get(mediaId)) continue;
         const id = randomUUID();
         insert.run(id, playlistId, mediaId);
