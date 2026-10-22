@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { plural } from '../shared/text';
 import type { RestoreOutcome } from './library/backup';
 import type { SelfTestCheck, SelfTestResult } from './selftest';
 
@@ -12,7 +13,11 @@ import type { SelfTestCheck, SelfTestResult } from './selftest';
  *
  *  1. The first start backs the library up (into that folder), changes the
  *     library, asks for a restore of the backup and restarts the way Restore
- *     Library… does: app.relaunch(), then a clean quit.
+ *     Library… does: app.relaunch(), then a clean quit. A new library has no
+ *     presentations (Session 50: no placeholder ones, and the check starts
+ *     Drashti, built or packaged, in a new data folder), so one goes in before
+ *     the backup: the restore must bring the backup's presentations back, not
+ *     only undo the change made after it.
  *  2. The copy that starts again finds the restore done at its start, checks
  *     the library is the backup's, writes result.json and quits.
  *
@@ -20,8 +25,12 @@ import type { SelfTestCheck, SelfTestResult } from './selftest';
  * that fails can never restart again and again.
  */
 
-const MARK = 'relaunch-selftest.json';
+export const RELAUNCH_MARK = 'relaunch-selftest.json';
 export const RELAUNCH_RESULT = 'result.json';
+/** In a new library, before the backup: the restore must bring it back. */
+const KEPT = 'Placeholder kept in the backup';
+/** After the backup: the restore must undo it. */
+const ADDED = 'Placeholder added after the backup';
 
 const markSchema = z.object({ pid: z.number(), expect: z.array(z.string()) });
 
@@ -35,8 +44,8 @@ export interface RelaunchSelfTestContext {
   names: () => string[];
   /** Back the library up into a new folder in `into`; returns that folder. */
   backUp: (into: string) => Promise<string>;
-  /** Change the library (add a presentation), so the restore has something to undo. */
-  change: () => void;
+  /** Add a placeholder presentation of this name: one for the backup to hold, and the change for the restore to undo. */
+  add: (name: string) => void;
   /** Ask for a restore from a backup folder at the next start. */
   requestRestore: (from: string) => void;
   /** Restart as Restore Library… does. */
@@ -49,12 +58,13 @@ const sameNames = (a: readonly string[], b: readonly string[]) =>
   a.length === b.length && [...a].sort().every((name, i) => name === [...b].sort()[i]);
 
 export async function runRelaunchSelfTest(ctx: RelaunchSelfTestContext): Promise<void> {
-  const markFile = join(ctx.userData, MARK);
+  const markFile = join(ctx.userData, RELAUNCH_MARK);
   if (!existsSync(markFile)) {
-    // 1. The first start.
+    // 1. The first start: in a new library, a presentation for the backup to hold first.
+    if (ctx.names().length === 0) ctx.add(KEPT);
     const expect = ctx.names();
     const folder = await ctx.backUp(ctx.workDir);
-    ctx.change();
+    ctx.add(ADDED);
     writeFileSync(markFile, JSON.stringify({ pid: process.pid, expect }));
     ctx.requestRestore(folder);
     ctx.restart();
@@ -82,7 +92,7 @@ export async function runRelaunchSelfTest(ctx: RelaunchSelfTestContext): Promise
   checks.push({
     name: 'the library is the backup’s',
     ok: mark.success && sameNames(names, mark.data.expect),
-    detail: `${names.length} presentations`,
+    detail: plural(names.length, 'presentation'),
   });
   const result: SelfTestResult = { passed: checks.every((c) => c.ok), checks };
   writeFileSync(join(ctx.workDir, RELAUNCH_RESULT), JSON.stringify(result));
