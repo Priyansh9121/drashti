@@ -831,6 +831,7 @@ With placeholder content and generated media only, from `tests/e2e/screenshots.s
 - Session 45 (on the dev Mac; placeholder content, generated media): every picture again for alpha.9 (the Library button, folder playlists, Audio's **+**, Lower Thirds in Macros' place), and one new: [Lower Thirds with one up, and its editor finding an animation](docs/screenshots/lower-thirds.png).
 - Session 47 (on the dev Mac; placeholder content, made-up PINs shown as dots): [Roles and PINs](docs/screenshots/roles-dialog.png) again for alpha.10, with its new sentence: with PINs on, Drashti starts in Pro Mode as the operator.
 - Session 48 (on the dev Mac; placeholder content, Chromium's fake camera, a placeholder window): [the window for Zoom with the stream's picture](docs/screenshots/zoom-window.png) and [Show a Window… with a placeholder window chosen](docs/screenshots/window-picker.png).
+- Session 49 (on the dev Mac; placeholder content, Chromium's fake camera, a placeholder window): both again for alpha.11, so [Show a Window…](docs/screenshots/window-picker.png)'s status bar says its version; [the window for Zoom](docs/screenshots/zoom-window.png) shows none, and differs only in the fake camera's moving pattern.
 
 ![The operator window](docs/screenshots/operator-1920x1080.png)
 
