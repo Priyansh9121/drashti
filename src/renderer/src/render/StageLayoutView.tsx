@@ -5,9 +5,10 @@ import { QUOTE_LANGS } from '../../../shared/idle';
 import type { EngineState } from '../../../shared/engine/state';
 import { languageView } from '../../../shared/language-view';
 import type { Lang } from '../../../shared/model';
-import type { StageBox, StageLayout } from '../../../shared/stage-layouts';
+import type { HallPicture, StageBox, StageLayout } from '../../../shared/stage-layouts';
 import { STAGE_HEIGHT, STAGE_WIDTH } from '../../../shared/stage-layouts';
 import { timerDuration } from '../../../shared/timers';
+import { AudienceBox } from './AudienceBox';
 import { fontFamilyFor, LANG_FONT_STACK } from './fonts';
 import { backgroundWords, kindName, StageText } from './StageView';
 import { textLang } from './lang';
@@ -21,7 +22,8 @@ import { type ClockStyle, formatClock } from '../../../shared/format';
  * 1920 x 1080 canvas, each with what it shows, in its size (or as large as
  * fits), colour and alignment. The stage screens, the stage display in a
  * browser and the layout editor's picture all draw it with this. No
- * pictures or videos, as on the Standard stage screen.
+ * pictures or videos, as on the Standard stage screen, but in the audience
+ * picture box (Session 50, AudienceBox): the hall's own picture.
  */
 
 /** The largest font size a box tries when it fits its words (canvas pixels). */
@@ -87,6 +89,27 @@ function leftOn(
 }
 
 const muted = '#8b93a3';
+
+/** A small label above a box's contents. */
+function BoxLabel({ label }: { label: string }) {
+  return (
+    <p
+      style={{
+        margin: 0,
+        fontSize: 30,
+        fontWeight: 700,
+        letterSpacing: '0.08em',
+        lineHeight: 1.25,
+        fontFamily: fontFamilyFor(null, null),
+        color: muted,
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+      }}
+    >
+      {label}
+    </p>
+  );
+}
 
 function BoxContents({
   box,
@@ -285,6 +308,7 @@ export function StageLayoutView({
   state,
   languages = null,
   clockStyle,
+  hall,
 }: {
   layout: StageLayout;
   state: EngineState;
@@ -292,6 +316,8 @@ export function StageLayoutView({
   languages?: readonly Lang[] | null;
   /** How to write the time: Drashti's computer's way, on a stage display in another device's browser. */
   clockStyle?: ClockStyle | null;
+  /** The hall's group and canvas, for an audience picture box (Session 50); unknown: every layer at 1920 x 1080. */
+  hall?: HallPicture | null;
 }) {
   const now = useNow(250);
   // Main's way of writing the time (Sessions 31–36, I18N-8): given, or the page's.
@@ -309,8 +335,6 @@ export function StageLayoutView({
         height: STAGE_HEIGHT,
         overflow: 'hidden',
         background: layout.background,
-        color: '#ffffff',
-        fontFamily: fontFamilyFor(null, null),
       }}
     >
       {layout.boxes.map((box) => (
@@ -327,29 +351,26 @@ export function StageLayoutView({
             display: 'flex',
             flexDirection: 'column',
             gap: 8,
-            color: box.color,
-            textAlign: box.align,
-            lineHeight: 1.25,
+            // The hall's picture (Session 50) takes on nothing from around it (a colour, a font, a line
+            // height, an alignment), so it draws exactly as on the hall's own screens.
+            ...(box.kind === 'audience'
+              ? {}
+              : {
+                  color: box.color,
+                  fontFamily: fontFamilyFor(null, null),
+                  textAlign: box.align,
+                  lineHeight: 1.25,
+                }),
           }}
         >
-          {box.label !== '' && (
-            <p
-              style={{
-                margin: 0,
-                fontSize: 30,
-                fontWeight: 700,
-                letterSpacing: '0.08em',
-                color: muted,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-              }}
-            >
-              {box.label}
-            </p>
+          {box.label !== '' && <BoxLabel label={box.label} />}
+          {box.kind === 'audience' ? (
+            <AudienceBox state={state} hall={hall} />
+          ) : (
+            <Sized size={box.size} again={`${box.kind}|${clock}|${JSON.stringify(contentKey(box, state))}`}>
+              <BoxContents box={box} state={state} languages={languages} clock={clock} now={now} />
+            </Sized>
           )}
-          <Sized size={box.size} again={`${box.kind}|${clock}|${JSON.stringify(contentKey(box, state))}`}>
-            <BoxContents box={box} state={state} languages={languages} clock={clock} now={now} />
-          </Sized>
         </div>
       ))}
     </div>
