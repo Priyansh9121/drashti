@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { TextElement, TimerElement } from './model';
 import { slideElementSchema } from './model-schema';
 import {
-  DRASHTI_TIMER_LOOK,
+  BUILT_IN_TIMER_LOOK,
   isTimerShowId,
   TIMER_WORDS,
   timerAloneSlide,
@@ -128,7 +128,7 @@ describe('the slide Show on the screens puts up', () => {
     // The same timer makes the same slide, so showing it again changes nothing.
     expect(timerAloneSlide('t1', look)).toEqual(slide);
     // Drashti's own look when there is no theme: white, its soft shadow.
-    expect(timerAloneSlide('t1', DRASHTI_TIMER_LOOK).elements[0]).toMatchObject({
+    expect(timerAloneSlide('t1', BUILT_IN_TIMER_LOOK).elements[0]).toMatchObject({
       style: { color: '#ffffff', shadow: true, fontFamily: null },
     });
   });

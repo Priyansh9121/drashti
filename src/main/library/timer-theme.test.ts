@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TimerElement } from '../../shared/model';
-import { DRASHTI_TIMER_LOOK, timerElement } from '../../shared/timer-slides';
+import { BUILT_IN_TIMER_LOOK, timerElement } from '../../shared/timer-slides';
 import type { Theme } from '../../shared/themes';
 import { DEFAULT_THEME } from '../../shared/themes';
 import { readContent } from '../db/content';
@@ -29,7 +29,7 @@ describe('a Timer when a theme is applied', () => {
     const repo = new PresentationRepo(db);
     const frame = { x: 384, y: 378, width: 1152, height: 324 };
     const timer: TimerElement = {
-      ...timerElement('timer', 't1', frame, DRASHTI_TIMER_LOOK, 216, 'middle'),
+      ...timerElement('timer', 't1', frame, BUILT_IN_TIMER_LOOK, 216, 'middle'),
       lastMinute: { color: '#f5a524' },
       atZero: 'next',
     };

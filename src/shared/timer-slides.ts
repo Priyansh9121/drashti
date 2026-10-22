@@ -46,7 +46,7 @@ export type TimerLook = Pick<
 >;
 
 /** Drashti's own, where there is no theme to follow: white, with its soft shadow. */
-export const DRASHTI_TIMER_LOOK: TimerLook = {
+export const BUILT_IN_TIMER_LOOK: TimerLook = {
   fontFamily: null,
   fontSize: 80,
   fontWeight: 500,

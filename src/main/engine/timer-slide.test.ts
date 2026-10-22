@@ -73,10 +73,9 @@ function setup(options: { defaultTransition?: Transition; timerLook?: boolean } 
   ]);
   let clock = 100_000;
   const waiting: { at: number; run: () => void; cancelled: boolean }[] = [];
+  const transition = options.defaultTransition;
   const engine = new ShowEngine(source, new RecordingTransport(), () => clock, playlists, {
-    ...(options.defaultTransition
-      ? { defaultTransition: () => options.defaultTransition as Transition }
-      : {}),
+    ...(transition ? { defaultTransition: () => transition } : {}),
     ...(options.timerLook === false ? {} : { timerLook: () => LOOK }),
     schedule: (delay, run) => {
       const job = { at: clock + delay, run, cancelled: false };

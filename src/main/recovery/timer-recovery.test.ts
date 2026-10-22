@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { EngineState } from '../../shared/engine/state';
 import { initialEngineState } from '../../shared/engine/state';
-import { DRASHTI_TIMER_LOOK, timerAloneSlide } from '../../shared/timer-slides';
+import { BUILT_IN_TIMER_LOOK, timerAloneSlide } from '../../shared/timer-slides';
 import { ShowEngine } from '../engine/show-engine';
 import { makeSource, RecordingTransport } from '../engine/testing';
 import type { RecoveryFiles } from './live-state';
@@ -40,7 +40,7 @@ function timerUp(): EngineState {
       slide: {
         presentationId: 'timer:t1',
         slideIndex: 0,
-        slide: timerAloneSlide('t1', DRASHTI_TIMER_LOOK),
+        slide: timerAloneSlide('t1', BUILT_IN_TIMER_LOOK),
         shownAt: 5,
         notes: '',
         transition: { kind: 'dissolve', durationMs: 500 },
