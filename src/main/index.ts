@@ -4417,7 +4417,18 @@ function start(): void {
   handle(IPC.looks.setGroup, (e, lookId, groupId, patch) =>
     fromOperator(e) ? looks.setGroup(lookId, groupId, patch) : notLookOperator,
   );
-  handle(IPC.screens.get, () => screens.snapshot());
+  // A test's first moments (Session 51, S2-4): the operator window's first ask for the screens answered this long
+  // after it asks, so a test presses a key before the window knows which screens are open. Never packaged.
+  let screensLateMs = swMs('DRASHTI_TEST_SCREENS_LATE_MS');
+  handle(IPC.screens.get, async () => {
+    const late = screensLateMs;
+    screensLateMs = null;
+    if (late !== null)
+      await new Promise((resolve) => {
+        setTimeout(resolve, late);
+      });
+    return screens.snapshot();
+  });
   handle(IPC.screens.createGroup, (e, name) => (fromOperator(e) ? screens.createGroup(name) : notAllowed));
   handle(IPC.screens.setGroupRole, (e, id, role) => {
     if (!fromOperator(e)) return notAllowed;
