@@ -356,6 +356,37 @@ describe('the picture-in-picture box in the engine', () => {
       expect(again.engine.current.layers.pip).toBeNull();
     });
 
+    // Session 51: as the background's input is (show-engine.ts restore), never left out unsaid.
+    it('names a video input no longer in this computer’s list, the box not put back; one still listed is not named', () => {
+      const saved = at({
+        source: { kind: 'input', inputId: 'in-1', name: 'Old name', device: 'Old device' },
+      });
+      const gone = setup();
+      gone.inputs.clear();
+      const put = gone.engine.restore({
+        slide: { presentationId: 'p1', slideIndex: 0 },
+        background: null,
+        blackout: false,
+        pip: saved,
+      });
+      // By the name it had then: the list no longer has it.
+      expect(put).toMatchObject({ slide: true, pip: false, pipWindow: null, pipInputGone: 'Old name' });
+      expect(gone.engine.current.layers.pip).toBeNull();
+      // Still listed: put back, and whether its camera is there the screens say (src/main/video-inputs/).
+      const listed = setup().engine.restore({ slide: null, background: null, blackout: false, pip: saved });
+      expect(listed.pip).toBe(true);
+      expect(listed.pipInputGone).toBeUndefined();
+      // Anything else in the box: nothing to name.
+      for (const source of [
+        { kind: 'slides' },
+        { kind: 'window', sourceId: MEETING.id, name: MEETING.name },
+      ] as const)
+        expect(
+          setup().engine.restore({ slide: null, background: null, blackout: false, pip: at({ source }) })
+            .pipInputGone,
+        ).toBeUndefined();
+    });
+
     it('never puts back a window (it may be gone, or be another window now), and says which it was', () => {
       const { engine } = setup();
       const put = engine.restore({

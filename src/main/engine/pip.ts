@@ -134,22 +134,25 @@ export function hidePip(was: PipLayer | null, at: number): PipResolved {
 /**
  * The box restart recovery puts back (recovery/live-state.ts): the slides or media as it was, still (its video
  * carrying on from when it went up); a video input while it is still in this computer's list, as the list names
- * it now; never a window (it may be gone, or be another window now), only named. What it was animating is not
- * put back.
+ * it now (whether its camera is there, the screens then say: src/main/video-inputs/); never a window (it may be
+ * gone, or be another window now), only named. A video input no longer in the list is named too (`inputGone`,
+ * Session 51), as the background's is. What it was animating is not put back.
  */
 export function restoredPip(
   saved: PipLayer | null,
   lookups: PipLookups,
-): { layer: PipLayer | null; window: string | null } {
-  if (!saved) return { layer: null, window: null };
+): { layer: PipLayer | null; window: string | null; inputGone: string | null } {
+  if (!saved) return { layer: null, window: null, inputGone: null };
   const { changed: _animating, ...still } = saved;
   const source = saved.source;
-  if (source.kind === 'window') return { layer: null, window: source.name };
-  if (source.kind !== 'input') return { layer: still, window: null };
+  if (source.kind === 'window') return { layer: null, window: source.name, inputGone: null };
+  if (source.kind !== 'input') return { layer: still, window: null, inputGone: null };
   const input = lookups.videoInput?.(source.inputId) ?? null;
+  if (!input) return { layer: null, window: null, inputGone: source.name };
   return {
-    layer: input ? { ...still, source: { ...source, name: input.name, device: input.device } } : null,
+    layer: { ...still, source: { ...source, name: input.name, device: input.device } },
     window: null,
+    inputGone: null,
   };
 }
 

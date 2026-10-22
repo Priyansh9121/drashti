@@ -128,6 +128,27 @@ describe('the recovery notice', () => {
     );
   });
 
+  it('names a video input in the picture-in-picture box that was not there after the restart: the box was not put back (Session 51)', () => {
+    expect(
+      recoveryText({
+        ...notice,
+        slide: { presentationName: 'Placeholder Hymn', slideNumber: 3 },
+        pipInputGone: 'Placeholder input',
+      }),
+    ).toBe(
+      'Drashti stopped unexpectedly and has put back what was live: "Placeholder Hymn", slide 3. The video input “Placeholder input” in the picture-in-picture box was not there after the restart, so the box was not put back.',
+    );
+    expect(recoveryText({ ...notice, pipInputGone: 'Placeholder input' })).toBe(
+      'Drashti stopped unexpectedly. The video input “Placeholder input” in the picture-in-picture box was not there after the restart, so the box was not put back.',
+    );
+    // The background's input and the box's, neither there: each is named.
+    expect(
+      recoveryText({ ...notice, inputGone: 'Placeholder input', pipInputGone: 'Placeholder mixer' }),
+    ).toBe(
+      'Drashti stopped unexpectedly. The video input “Placeholder input” was not there after the restart, so it was not put back. The video input “Placeholder mixer” in the picture-in-picture box was not there after the restart, so the box was not put back.',
+    );
+  });
+
   it('after a stop too long ago, says what was live and when, and that nothing went back (Session 20)', () => {
     expect(RECOVERY_MAX_AGE_MS).toBe(3 * 60 * 60 * 1000);
     // Made from the computer's own time, so it reads 18:34 wherever the test runs.

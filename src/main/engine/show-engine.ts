@@ -231,6 +231,11 @@ export interface Restored {
   input: string | null;
   /** A video input that was the background but is no longer in this computer's list, by name: only said. */
   inputGone: string | null;
+  /**
+   * A video input that was in the picture-in-picture box but is no longer in this computer's list (Session 51), by
+   * name: the box is not put back, only said. Left out when none was.
+   */
+  pipInputGone?: string;
   /** A timer shown alone came back over the slide (Session 50); left out when none did. */
   timer?: boolean;
 }
@@ -415,7 +420,8 @@ export class ShowEngine {
     if (request.ticker) actions.push({ type: 'ticker/set', ticker: request.ticker });
     if (request.masks) actions.push({ type: 'mask/set', mask: request.masks });
     if (request.lowerThird) actions.push({ type: 'lowerThird/show', layer: request.lowerThird });
-    // The picture-in-picture box (Session 50): never a window, a video input only while it is in the list.
+    // The picture-in-picture box (Session 50): never a window, a video input only while it is in the list (one no
+    // longer there is only said, Session 51; whether its camera is there the screens tell, as for the background's).
     const box = restoredPip(request.pip ?? null, this.options);
     if (box.layer) actions.push({ type: 'pip/set', layer: box.layer });
     if (request.stageMessage) actions.push({ type: 'stage/message', text: request.stageMessage });
@@ -468,6 +474,7 @@ export class ShowEngine {
       pipWindow: box.window,
       input: input?.name ?? null,
       inputGone: wasInput && !input ? wasInput.name : null,
+      ...(box.inputGone === null ? {} : { pipInputGone: box.inputGone }),
       ...(alone ? { timer: true } : {}),
     };
   }
