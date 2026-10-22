@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { openDatabase } from './db/database';
 import { PresentationRepo } from './db/presentations';
+import { SEED_KEY, seedPlaceholders } from './db/seed';
 import {
   coldStartLine,
   overlapCheck,
@@ -26,6 +27,18 @@ describe("the performance check's own library (Session 50)", () => {
     expect(repo.list().filter((p) => p.id !== measured?.id)).toHaveLength(1);
     expect(seedPerfLibrary(db)).toBe(false);
     expect(repo.list()).toHaveLength(2);
+    db.close();
+  });
+
+  it('seeds them into its library even when the library started without them (it is the check’s alone)', () => {
+    const db = openDatabase(':memory:');
+    // As a library that opened without the placeholders is marked: a later start never adds them by itself.
+    db.prepare('INSERT INTO app_meta (key, value) VALUES (?, ?)').run(SEED_KEY, 'none');
+    expect(seedPlaceholders(db)).toBe(false);
+    expect(seedPerfLibrary(db)).toBe(true);
+    const names = new PresentationRepo(db).list().map((p) => p.name);
+    expect(names).toContain(PERF_PRESENTATION);
+    expect(names).toHaveLength(2);
     db.close();
   });
 });

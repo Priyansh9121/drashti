@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import type { ELDHistogram } from 'node:perf_hooks';
 import type { DrashtiBridge } from '../shared/bridge';
 import type { Db } from './db/database';
-import { seedPlaceholders, TEST_PRESENTATION_NAME } from './db/seed';
+import { PresentationRepo } from './db/presentations';
+import { SEED_KEY, seedPlaceholders, TEST_PRESENTATION_NAME } from './db/seed';
 import type { GpuPipelines, MainWatch, PerfProfile } from './perf-watch';
 import type { ScenarioRun } from './perf-scenarios';
 import { describePriority } from './priority';
@@ -608,9 +609,13 @@ export const PERF_PRESENTATION = TEST_PRESENTATION_NAME;
  * the operator window opens: its slides go round “Language test slides”, and an operator's edits change the
  * other one's words. A new library starts without them now, and a packaged Drashti (the installed app the
  * guides run the check with, and scripts/check-video-cases.mjs) ignores the tests' switch that seeds them, so
- * the check asks for them itself. False when they were added before.
+ * the check puts them in itself. The library is the check's alone, made for this one start: they go in even
+ * though it opened without them (SEED_KEY marks what a library's first start decided). False when they are
+ * there already.
  */
 export function seedPerfLibrary(db: Db): boolean {
+  if (new PresentationRepo(db).list().some((p) => p.name === PERF_PRESENTATION)) return false;
+  db.prepare('DELETE FROM app_meta WHERE key = ?').run(SEED_KEY);
   return seedPlaceholders(db);
 }
 

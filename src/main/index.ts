@@ -1151,9 +1151,10 @@ function start(): void {
   }
   db = opened.db;
   const libraryDb: Db = db;
-  // The performance check's throwaway library gets the placeholder presentations it measures with, before the
-  // operator window opens (Session 50: a new library has none, and a packaged Drashti ignores the tests' switch).
-  if (perfTest && seedPerfLibrary(libraryDb))
+  // The performance check's own throwaway library (never one DRASHTI_USER_DATA_DIR names) gets the placeholder
+  // presentations it measures with, before the operator window opens (Session 50: a new library has none, and a
+  // packaged Drashti ignores the tests' switch).
+  if (perfTest && !userDataOverride && seedPerfLibrary(libraryDb))
     log.info('The performance check added its placeholder presentations');
   const presentations = new PresentationRepo(db);
   const slides = new DbSlideSource(presentations);
