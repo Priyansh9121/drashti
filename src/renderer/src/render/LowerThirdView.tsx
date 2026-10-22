@@ -126,8 +126,9 @@ export function LowerThirdView({
     [phase, animation, units, length],
   );
   // Frame by frame from the engine's clock, while it moves. At the frame it is over, drawn again at once, still (or
-  // gone), before that frame is shown.
-  useEffect(() => {
+  // gone), before that frame is shown. Started and stopped as each drawing is put on the page, so no frame paints
+  // a move it no longer draws.
+  useLayoutEffect(() => {
     if (phase !== 'in' && phase !== 'out') return;
     let frame = 0;
     const tick = () => {

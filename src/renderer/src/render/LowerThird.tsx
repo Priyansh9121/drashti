@@ -151,8 +151,9 @@ export function MovingLowerThird({
     [phase, movement, radius, scale],
   );
   // Frame by frame, from the engine's clock, while it moves. At the frame it is over, drawn again at once, still
-  // (or gone), before that frame is shown: never its motion's last frame left up a frame longer.
-  useEffect(() => {
+  // (or gone), before that frame is shown: never its motion's last frame left up a frame longer. Started and
+  // stopped as each drawing is put on the page, so no frame paints a motion it no longer draws.
+  useLayoutEffect(() => {
     if (phase === 'still' || phase === 'gone') return;
     let frame = 0;
     const tick = () => {
