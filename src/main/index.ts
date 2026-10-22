@@ -236,6 +236,10 @@ import { spawnEventsWorker } from './events/spawn-worker';
 import { DropFolder } from './import/drop-folder';
 import { DROP_SETTLE_MS } from '../shared/drop-folder';
 import { applyStreamSessionSecurity, createProgramWindow, STREAM_PARTITION } from './stream/program-window';
+import { LiveWindowService } from './live-window/live-window-service';
+import { electronWindowSources } from './live-window/electron-sources';
+import { standInWindowSources } from './live-window/stand-in-sources';
+import { applyCaptureRules } from './live-window/capture-rules';
 import { StreamService } from './stream/stream-service';
 import { onFat } from './stream/recording-drive';
 import { Leftovers, leftoversFile } from './system/leftovers';
@@ -1026,6 +1030,11 @@ function start(): void {
     // MIDI controllers: the operator window's page only (never SysEx).
     isOperator: (contents) => contents !== null && contents.id === operatorWindow?.webContents.id,
   });
+  // A screen's picture (getDisplayMedia, Session 48): only what the main process decides for that page.
+  applyCaptureRules(session.defaultSession, {
+    grant: (frame) => liveWindows?.grantFor(frame) ?? null,
+    log: permissionLog,
+  });
   const audioSession = session.fromPartition(AUDIO_PARTITION);
   applySessionSecurity(audioSession, {
     isAudioPlayer: (contents) => contents !== null && contents.id === audioWindow?.webContents.id,
@@ -1039,6 +1048,9 @@ function start(): void {
     logCapture: (line) => {
       log.info(line);
     },
+    // Another app's window as the background (Session 48): the stream draws it too, where the hall's does.
+    // Only a page that asked is given it (and only the screens' pages may ask: IPC.liveWindow.ask).
+    liveWindow: (frame) => liveWindows?.grantFor(frame) ?? null,
   });
   // A hung window's JavaScript stack, for the log (Sessions 31–36, ROB-1): every session's own pages.
   for (const pages of [session.defaultSession, audioSession, streamSession]) allowHangStacks(pages);
@@ -1615,6 +1627,8 @@ function start(): void {
       ? null
       : electronScreen.getDisplayMatching(operatorWindow.getBounds()).id;
   let stream: StreamService | null = null;
+  // Show a Window… (Session 48): made with the stream, below.
+  let liveWindows: LiveWindowService | null = null;
   const screens = new ScreensService(screenRepo, manager, listDisplays, operatorDisplayId, looks, {
     displays: () => nodeService?.displays() ?? [],
     screenStatus: () => nodeService?.screenStatus() ?? [],
@@ -1994,6 +2008,35 @@ function start(): void {
   const streaming = stream;
   stops.add('stream', () => {
     streaming.close();
+  });
+
+  // ---- another app's window as the background (Session 48) -------------------
+  // Tests only (never a packaged Drashti): windows the test opens, titled "Placeholder…", stand in for other
+  // apps' (no test may need Screen Recording, or see the computer's own windows).
+  const windowStandIn = app.isPackaged ? undefined : sw('DRASHTI_TEST_WINDOW_STANDIN');
+  const shownWindows = new LiveWindowService({
+    sources: windowStandIn
+      ? standInWindowSources(windowStandIn, (line) => {
+          log.info(line);
+        })
+      : electronWindowSources(process.platform),
+    showWindow: (window) => engine.showWindow(window),
+    background: () => engine.current.layers.background,
+    changed: (status) => {
+      sendToOperator(IPC.liveWindow.changed, status);
+    },
+    log: (level, message) => {
+      if (level === 'warn') log.warn(message);
+      else log.info(message);
+    },
+    now: Date.now,
+  });
+  liveWindows = shownWindows;
+  engine.onChange(() => {
+    shownWindows.follow();
+  });
+  stops.add('shown window', () => {
+    shownWindows.close();
   });
   // A passage fits where the live Look shows it: audience and key and fill groups, and the stream's
   // lower third while it is on air or recording in its Camera layout.
@@ -4155,6 +4198,34 @@ function start(): void {
   handle(IPC.stream.pageContext, (e) => (streaming.isProgram(e.sender) ? streaming.context() : null));
   handle(IPC.stream.pageInputs, (e, inputs) => {
     streaming.reportInputs(e.sender, inputs);
+    return null;
+  });
+
+  // ---- Show a Window… (Session 48) ------------------------------------------------
+  const notOperatorWindow = 'Only the operator window can show another app’s window.';
+  handle(IPC.liveWindow.list, (e) =>
+    fromOperator(e)
+      ? shownWindows.list()
+      : { ok: false as const, reason: 'unlisted' as const, message: notOperatorWindow },
+  );
+  handle(IPC.liveWindow.show, (e, id) =>
+    fromOperator(e) && typeof id === 'string'
+      ? shownWindows.show(id)
+      : { ok: false as const, message: notOperatorWindow },
+  );
+  handle(IPC.liveWindow.access, (e) => {
+    if (fromOperator(e)) void shownWindows.askAccess();
+    return null;
+  });
+  handle(IPC.liveWindow.status, () => shownWindows.current());
+  // The screens' pages only: an output, the stream's page, and the operator window's pictures of them.
+  const screenPage = (e: IpcMainInvokeEvent) =>
+    fromOperator(e) || manager.screenIdFor(e.sender.id) !== undefined || streaming.isProgram(e.sender);
+  handle(IPC.liveWindow.ask, (e, sourceId) =>
+    screenPage(e) && typeof sourceId === 'string' ? shownWindows.ask(e.senderFrame, sourceId) : false,
+  );
+  handle(IPC.liveWindow.ended, (e, sourceId) => {
+    if (screenPage(e) && typeof sourceId === 'string') shownWindows.ended(sourceId);
     return null;
   });
 

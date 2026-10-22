@@ -90,6 +90,8 @@ import type { SearchResult } from './search';
 import type { RenderErrorReport } from './render-errors';
 import type { ApplyThemeResult, Theme, ThemeFields, ThemeResult } from './themes';
 import type { TimerFields, TimerResult } from './timers';
+import type { LiveWindowResult, LiveWindowStatus, WindowList } from './live-window';
+import type { ZoomProgram } from './zoom';
 import type {
   CoverOptions,
   OutputContext,
@@ -658,6 +660,32 @@ export const IPC = {
     /** main -> the stream's page: its context changed. */
     context: 'stream:context',
   },
+  /** Show a Window… (Session 48): another app's window as the hall's background. */
+  liveWindow: {
+    /** The other apps' open windows the picker offers (operator window only; Pro Mode). */
+    list: 'livewindow:list',
+    /** Put one of the windows just offered on the screens, by its id (operator window only; Pro Mode). */
+    show: 'livewindow:show',
+    /** macOS: open System Settings at Screen Recording, after saying why (operator window only; Pro Mode). */
+    access: 'livewindow:access',
+    /** How the window on the screens stands (operator window). */
+    status: 'livewindow:status',
+    /** main -> operator: it changed (closed or hidden, open again, taken off). */
+    changed: 'livewindow:changed',
+    /** A screen's page (an output, the stream's, the operator's) asks to capture the window up now. */
+    ask: 'livewindow:ask',
+    /** A screen's page: its capture of the window ended (the window closed). */
+    ended: 'livewindow:ended',
+  },
+  /** The window for Zoom (Session 48): the stream's picture in a window of its own, for Zoom to share. */
+  zoom: {
+    /** Open it, or bring it forward (operator window only; Pro Mode). */
+    open: 'zoom:open',
+    /** The window for Zoom's page asks for the stream's picture as it stands now. */
+    program: 'zoom:program',
+    /** main -> the window for Zoom: the stream's picture is ready again (or gone). */
+    programChanged: 'zoom:program-changed',
+  },
   network: {
     /** The local network's state: on or off, its addresses, the paired devices (operator window only). */
     status: 'network:status',
@@ -1125,6 +1153,14 @@ export interface InvokeContract {
   [IPC.stream.tryAgain]: { args: []; result: StreamResult };
   [IPC.stream.pageContext]: { args: []; result: ProgramContext | null };
   [IPC.stream.pageInputs]: { args: [inputs: ProgramInputs]; result: null };
+  [IPC.liveWindow.list]: { args: []; result: WindowList };
+  [IPC.liveWindow.show]: { args: [id: string]; result: LiveWindowResult };
+  [IPC.liveWindow.access]: { args: []; result: null };
+  [IPC.liveWindow.status]: { args: []; result: LiveWindowStatus };
+  [IPC.liveWindow.ask]: { args: [sourceId: string]; result: boolean };
+  [IPC.liveWindow.ended]: { args: [sourceId: string]; result: null };
+  [IPC.zoom.open]: { args: []; result: null };
+  [IPC.zoom.program]: { args: []; result: ZoomProgram | null };
   [IPC.network.status]: { args: []; result: NetworkStatus };
   [IPC.network.setOn]: { args: [on: boolean]; result: NetworkResult };
   [IPC.network.setPort]: { args: [port: number]; result: NetworkResult };
@@ -1226,6 +1262,8 @@ export interface EventContract {
   [IPC.media.looksChanged]: Record<string, PictureLook>;
   [IPC.stream.port]: { role: 'preview' | 'encoder' };
   [IPC.stream.context]: ProgramContext;
+  [IPC.liveWindow.changed]: LiveWindowStatus;
+  [IPC.zoom.programChanged]: ZoomProgram | null;
   [IPC.network.changed]: NetworkStatus;
   [IPC.announcements.changed]: AnnouncementsView;
   [IPC.nodes.changed]: NodesStatus;

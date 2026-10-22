@@ -62,6 +62,8 @@ import type {
   StreamResult,
   StreamStatus,
 } from './stream';
+import type { LiveWindowResult, LiveWindowStatus, WindowList } from './live-window';
+import type { ZoomProgram } from './zoom';
 import type { SaveStillResult } from './media';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
@@ -562,6 +564,29 @@ export interface DrashtiBridge {
       onContext(listener: (context: ProgramContext) => void): () => void;
       reportInputs(inputs: ProgramInputs): Promise<null>;
     };
+  };
+  /** Show a Window… (Session 48): another app's window as the hall's background. */
+  liveWindow: {
+    /** The operator window: the other apps' open windows (or why there are none to offer). */
+    list(): Promise<WindowList>;
+    /** The operator window: put one of the windows just listed on the screens. */
+    show(id: string): Promise<LiveWindowResult>;
+    /** The operator window, on a Mac: System Settings at Screen Recording. */
+    access(): Promise<null>;
+    status(): Promise<LiveWindowStatus>;
+    onChanged(listener: (status: LiveWindowStatus) => void): () => void;
+    /** A screen's page: may it capture the window up now? Its next request for a picture then gets it. */
+    ask(sourceId: string): Promise<boolean>;
+    /** A screen's page: its capture of the window ended. */
+    ended(sourceId: string): Promise<null>;
+  };
+  /** The window for Zoom (Session 48). */
+  zoom: {
+    /** The operator window: open it, or bring it forward. */
+    open(): Promise<null>;
+    /** The window for Zoom's page: the stream's picture as it stands (null: not ready). */
+    program(): Promise<ZoomProgram | null>;
+    onProgram(listener: (program: ZoomProgram | null) => void): () => void;
   };
   /** The local network: phones and tablets on the mandir's Wi-Fi (operator window only). */
   network: {

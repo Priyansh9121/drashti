@@ -452,6 +452,20 @@ const bridge: DrashtiBridge = {
       reportInputs: (inputs) => invoke(IPC.stream.pageInputs, inputs),
     },
   },
+  liveWindow: {
+    list: () => invoke(IPC.liveWindow.list),
+    show: (id) => invoke(IPC.liveWindow.show, id),
+    access: () => invoke(IPC.liveWindow.access),
+    status: () => invoke(IPC.liveWindow.status),
+    onChanged: (listener) => on(IPC.liveWindow.changed, listener),
+    ask: (sourceId) => invoke(IPC.liveWindow.ask, sourceId),
+    ended: (sourceId) => invoke(IPC.liveWindow.ended, sourceId),
+  },
+  zoom: {
+    open: () => invoke(IPC.zoom.open),
+    program: () => invoke(IPC.zoom.program),
+    onProgram: (listener) => on(IPC.zoom.programChanged, listener),
+  },
   setup: {
     state: () => invoke(IPC.setup.state),
     setSeen: () => invoke(IPC.setup.setSeen),

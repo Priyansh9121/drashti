@@ -803,6 +803,10 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
   });
   // A node keeps no lengths and no stills (the library is Main's).
   handle(IPC.media.reportLength, () => null);
+  // Another app's window as the background (Session 48) is on Main's computer: a node's screens never show
+  // it, and keep the rest of the show.
+  handle(IPC.liveWindow.ask, () => false);
+  handle(IPC.liveWindow.ended, () => null);
 
   nodeWindow = new BrowserWindow({
     width: 760,

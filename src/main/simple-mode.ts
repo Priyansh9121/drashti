@@ -216,6 +216,11 @@ export const SIMPLE_MODE_LOCKED: readonly InvokeChannel[] = [
   IPC.announcements.approve,
   IPC.announcements.reject,
   IPC.announcements.takeOff,
+  // Show a Window… and the window for Zoom (Session 48) are Pro Mode's; clearing a window is not locked.
+  IPC.liveWindow.list,
+  IPC.liveWindow.show,
+  IPC.liveWindow.access,
+  IPC.zoom.open,
 ];
 
 /** Each locked channel's answer: a refusal in its own result's shape. */
@@ -227,5 +232,8 @@ export function simpleModeRefusals(sound: () => AudioOutputStatus): Map<InvokeCh
   answers.set(IPC.events.view, () => ({ available: false, message: SIMPLE_MODE_REFUSAL, addresses: [] }));
   answers.set(IPC.drop.view, () => ({ ...DROP_REFUSED_VIEW }));
   answers.set(IPC.drop.pickFolder, () => null);
+  answers.set(IPC.liveWindow.list, () => ({ ok: false, reason: 'unlisted', message: SIMPLE_MODE_REFUSAL }));
+  answers.set(IPC.liveWindow.access, () => null);
+  answers.set(IPC.zoom.open, () => null);
   return answers;
 }
