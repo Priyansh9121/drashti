@@ -107,7 +107,7 @@ export const PANEL_HELP = {
   controls: {
     title: 'Show controls',
     doc: 'operator',
-    text: 'Clear all, a clear button for each layer, Logo and Black-out, each with its key. Each changes the hall’s screens at once, and Put it back, straight after Clear all, brings back what it took off.',
+    text: 'Clear all, the layers’ clear buttons in the order of their keys, Logo and Black-out, each with its key. Each changes the hall’s screens at once, and Put it back, straight after Clear all, brings back what it took off.',
     guide: '**Covering and clearing:**',
   },
   nextback: {
