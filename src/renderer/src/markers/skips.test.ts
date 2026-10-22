@@ -13,7 +13,7 @@ const withLayers = (background: BackgroundLayer | null, audio: AudioLayer | null
   return { ...state, layers: { ...state.layers, background, audio } };
 };
 
-const video = (durationMs?: number): BackgroundLayer => ({
+const video = (durationMs?: number): Extract<BackgroundLayer, { kind: 'media' }> => ({
   kind: 'media',
   mediaId: 'video',
   media: 'video',
@@ -38,7 +38,7 @@ describe('the skip buttons (Session 50)', () => {
   it('show for a background video, waiting for its length; never for a picture, a colour or nothing', () => {
     expect(skipsOf(withLayers(video(60_000), null), 'background')).toBe('ready');
     expect(skipsOf(withLayers(video(), null), 'background')).toBe('waiting');
-    expect(skipsOf(withLayers({ ...video(60_000), media: 'image' }, null), 'background')).toBeNull();
+    expect(skipsOf(withLayers({ ...video(60_000), media: 'image' as const }, null), 'background')).toBeNull();
     expect(skipsOf(withLayers({ kind: 'color', color: '#000000' }, null), 'background')).toBeNull();
     expect(skipsOf(withLayers(null, null), 'background')).toBeNull();
     expect(skipsOf(null, 'background')).toBeNull();
