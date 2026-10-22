@@ -32,7 +32,7 @@ import { Notice } from '../ui/Notice';
 import { Panel, SectionTitle } from '../ui/Panel';
 import { Progress } from '../ui/Progress';
 import { Splitter } from '../ui/Splitter';
-import { EmptyState, ErrorState, Loading } from '../ui/States';
+import { CentredPlace, EmptyState, ErrorState, Loading } from '../ui/States';
 import { TabPanel, Tabs } from '../ui/Tabs';
 import { Checkbox, Toggle } from '../ui/Toggle';
 import { Tooltip } from '../ui/Tooltip';
@@ -434,6 +434,31 @@ function StatesSection() {
         </div>
         <div className="rounded-lg border border-line bg-panel">
           <ErrorState title="Could not load the themes" action={<Button size="sm">Try again</Button>} />
+        </div>
+      </div>
+      {/* A place's own state across its room (Session 51): centred while it fits, from its top when it does not. */}
+      <div className="grid max-w-3xl grid-cols-2 gap-4">
+        <div className="flex h-56 flex-col rounded-lg border border-line bg-panel">
+          <CentredPlace>
+            <EmptyState
+              icon={Presentation}
+              title="Nothing chosen yet"
+              action={<Button size="sm">Set Up Screens…</Button>}
+            >
+              Centred while it fits.
+            </EmptyState>
+          </CentredPlace>
+        </div>
+        <div className="flex h-32 flex-col rounded-lg border border-line bg-panel">
+          <CentredPlace>
+            <EmptyState
+              icon={Presentation}
+              title="Nothing chosen yet"
+              action={<Button size="sm">Set Up Screens…</Button>}
+            >
+              From its top, scrolling, where there is no room for it all.
+            </EmptyState>
+          </CentredPlace>
         </div>
       </div>
     </Section>

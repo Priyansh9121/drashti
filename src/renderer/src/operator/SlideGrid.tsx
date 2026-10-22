@@ -42,7 +42,7 @@ import { markersMedia, openMarkers } from '../markers/MarkersDialog';
 import { openSlideEditor } from '../editor/editor-store';
 import { openKirtan } from '../kirtans/kirtan-store';
 import { usePersistentState } from '../ui/persist';
-import { EmptyState, ErrorState, Loading } from '../ui/States';
+import { CentredPlace, EmptyState, ErrorState, Loading } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { themeFromPresentation } from '../themes/themes-store';
 import { chooseArrangement, goLive, playItem, useNotice } from './actions';
@@ -323,15 +323,14 @@ function itemArrangement(item: ShownItem & { kind: 'presentation' }, doc: Presen
 function ItemView({ item }: { item: ShownItem }) {
   const live = useEngine((s) => s.state?.live.playlist);
   const isLive = live?.playlistId === item.playlistId && live.itemId === item.id;
+  // Centred while it fits, from its top when it does not (Session 51): never under the bars below.
   const note = (title: string, text: string) => (
-    <section
-      className="flex flex-1 items-center justify-center"
-      data-testid="item-view"
-      aria-label={item.label}
-    >
-      <EmptyState icon={Presentation} title={title}>
-        {text}
-      </EmptyState>
+    <section className="flex min-h-0 flex-1 flex-col" data-testid="item-view" aria-label={item.label}>
+      <CentredPlace>
+        <EmptyState icon={Presentation} title={title}>
+          {text}
+        </EmptyState>
+      </CentredPlace>
     </section>
   );
   switch (item.kind) {
@@ -460,28 +459,30 @@ function PresentationUnread({ id }: { id: string }) {
   const name = useLibrary((s) => s.presentations.find((p) => p.id === id)?.name ?? null);
   const [trying, setTrying] = useState(false);
   return (
-    <ErrorState
-      className="flex-1 justify-center"
-      title={name ? `Drashti couldn’t open “${name}”` : 'Drashti couldn’t open the presentation'}
-      action={
-        <Button
-          variant="primary"
-          icon={RotateCcw}
-          disabled={trying}
-          data-testid="presentation-try-again"
-          onClick={() => {
-            setTrying(true);
-            void selectPresentation(id).finally(() => {
-              setTrying(false);
-            });
-          }}
-        >
-          Try again
-        </Button>
-      }
-    >
-      The screens keep what they show. If Try again doesn’t open it, tell the admin.
-    </ErrorState>
+    // Centred while it fits, from its top when it does not (Session 51): never under the bars below.
+    <CentredPlace>
+      <ErrorState
+        title={name ? `Drashti couldn’t open “${name}”` : 'Drashti couldn’t open the presentation'}
+        action={
+          <Button
+            variant="primary"
+            icon={RotateCcw}
+            disabled={trying}
+            data-testid="presentation-try-again"
+            onClick={() => {
+              setTrying(true);
+              void selectPresentation(id).finally(() => {
+                setTrying(false);
+              });
+            }}
+          >
+            Try again
+          </Button>
+        }
+      >
+        The screens keep what they show. If Try again doesn’t open it, tell the admin.
+      </ErrorState>
+    </CentredPlace>
   );
 }
 
