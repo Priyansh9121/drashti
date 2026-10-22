@@ -24,6 +24,7 @@ import type {
 import { ENGINE_STATE_VERSION } from '../../shared/engine/state';
 import { lowerThirdSchema } from '../../shared/lower-thirds';
 import { maskSchema } from '../../shared/masks';
+import type { PlaybackSeek } from '../../shared/media';
 import { hexColorSchema, idSchema } from '../../shared/model-schema';
 import { RECOVERY_MAX_AGE_MS } from '../../shared/recovery';
 
@@ -61,7 +62,7 @@ export interface SavedLive {
   blackout: boolean;
   /** The logo shown instead of the picture (Simple Mode's Logo). */
   logo: PropItem | null;
-  /** The sound playing, with when it started: it carries on from there. */
+  /** The sound playing, with when it started and where it last jumped to (Session 51): it carries on from there. */
   audio: AudioLayer | null;
   props: PropItem[];
   messages: MessageItem[];
@@ -95,6 +96,13 @@ export interface SavedLive {
   timer?: { timerId: string } | null;
 }
 
+/**
+ * Where a video or a sound last jumped to (a marker, Back 15 s, Forward 15 s, Last 10 s): put back, it plays on
+ * from there (Session 51). Its start and end points and markers are not read back: the library has them, and
+ * the engine takes them from it as it puts the file back (show-engine.ts restore).
+ */
+const seekSchema: z.ZodType<PlaybackSeek> = z.object({ at: z.number(), toMs: z.number().min(0) });
+
 const backgroundSchema: z.ZodType<BackgroundLayer> = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('color'), color: hexColorSchema }),
   z.object({
@@ -105,6 +113,7 @@ const backgroundSchema: z.ZodType<BackgroundLayer> = z.discriminatedUnion('kind'
     loop: z.boolean(),
     startedAt: z.number(),
     durationMs: z.number().positive().optional(),
+    seek: seekSchema.optional(),
   }),
   // Another app's window (Session 48): read back only to be named; the engine never puts it back.
   z.object({
@@ -216,6 +225,7 @@ const audioLayerSchema = z.intersection(
     // An audio playlist's track (Session 14): it comes back where it would be by now, or paused where it was.
     music: musicStartSchema.extend({ index: z.number().int().min(0).max(999) }).optional(),
     pausedAtMs: z.number().min(0).optional(),
+    seek: seekSchema.optional(),
   }),
 );
 const markSchema = z.object({ session: z.string().min(1).max(64) });

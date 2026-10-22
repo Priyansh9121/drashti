@@ -4,10 +4,13 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { EngineState, LowerThirdLayer, PipLayer } from '../../shared/engine/state';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
-import { textSlide } from '../engine/testing';
+import { ShowEngine } from '../engine/show-engine';
+import { makeSource, RecordingTransport, textSlide } from '../engine/testing';
 import type { RecoveryFiles } from './live-state';
 import { startingMode } from '../../shared/mode';
 import { DEFAULT_LOWER_THIRD_LOOK } from '../../shared/lower-thirds';
+import type { MediaMarkers } from '../../shared/markers';
+import { playbackPosition } from '../../shared/media';
 import { DEFAULT_PIP_PLACE } from '../../shared/pip';
 import { RECOVERY_MAX_AGE_MS } from '../../shared/recovery';
 import { LiveStateWriter, savedFrom, startupRecovery, toRestore } from './live-state';
@@ -278,6 +281,94 @@ describe('restart recovery', () => {
       // The lower third, from when it went up (Session 44).
       lowerThird,
     });
+  });
+
+  it('keeps where a video and a sound last jumped to (a marker, Back 15 s, Forward 15 s, Last 10 s), so they come back from there (Session 51)', async () => {
+    const state = live({ slideIndex: null, withBackground: false });
+    const video = {
+      ...background,
+      durationMs: 60_000,
+      clip: { startMs: 10_000, endMs: 40_000 },
+      seek: { at: 1_008_000, toMs: 33_000 },
+      marks: [{ id: 'm1', name: 'Placeholder chorus', atMs: 30_000 }],
+    };
+    const sound = {
+      id: 'a',
+      title: 'Placeholder',
+      mediaId: 'tune',
+      volume: 1,
+      loop: false,
+      startedAt: 99,
+      durationMs: 90_000,
+      clip: { startMs: 5000, endMs: null },
+      seek: { at: 1_008_000, toMs: 70_000 },
+    };
+    const writer = new LiveStateWriter(files, { throttleMs: 10 });
+    await saved(writer, { ...state, layers: { ...state.layers, background: video, audio: sound } });
+    // The jump comes back; the start and end points and the markers are the library's as they are put back
+    // (show-engine.ts restore), as every use of a file takes them.
+    const { clip: _points, marks: _markers, ...jumped } = video;
+    const { clip: _soundPoints, ...heard } = sound;
+    const back = toRestore(files);
+    expect(back?.background).toEqual(jumped);
+    expect(back?.audio).toEqual(heard);
+    // A jump kept wrong (before the file's start) leaves the layer out, as any layer kept wrong is.
+    await saved(writer, {
+      ...state,
+      layers: { ...state.layers, background: { ...video, seek: { at: 1_008_000, toMs: -1 } } },
+    });
+    expect(toRestore(files)?.background ?? null).toBeNull();
+  });
+
+  it('after an unexpected stop, a video and a sound come back from their last jump, between their start and end points (Session 51)', async () => {
+    // Since Session 14 the saved file lost both: they came back as if never jumped, over the whole file.
+    const lengths: Record<string, number> = { clouds: 60_000, tune: 90_000 };
+    const markers: Record<string, MediaMarkers> = {
+      clouds: {
+        startMs: 10_000,
+        endMs: 40_000,
+        markers: [{ id: 'm1', name: 'Placeholder chorus', atMs: 30_000 }],
+      },
+      tune: { startMs: 5000, endMs: 80_000, markers: [] },
+    };
+    const clock = { now: 1_000_000 };
+    const engine = () =>
+      new ShowEngine(makeSource(), new RecordingTransport(), () => clock.now, undefined, {
+        mediaLength: (id) => lengths[id] ?? null,
+        mediaMarkers: (id) => markers[id] ?? null,
+      });
+    const before = engine();
+    before.dispatch({
+      type: 'setBackground',
+      background: { kind: 'media', mediaId: 'clouds', media: 'video', fit: 'fill', loop: true },
+    });
+    before.dispatch({
+      type: 'playAudio',
+      audio: { id: 'a', title: 'Placeholder', mediaId: 'tune', volume: 1, loop: false },
+    });
+    // 8 s in: Forward 15 s on the video (0:18 to 0:33), Last 10 s on the sound (0:13 to 1:10).
+    clock.now += 8000;
+    before.dispatch({ type: 'skip', layer: 'background', jump: 'forward' });
+    before.dispatch({ type: 'skip', layer: 'audio', jump: 'last' });
+    const was = before.current.layers;
+    expect(was.background).toMatchObject({ clip: { startMs: 10_000 }, seek: { toMs: 33_000 } });
+    expect(was.audio).toMatchObject({ clip: { endMs: 80_000 }, seek: { toMs: 70_000 } });
+    await saved(new LiveStateWriter(files, { throttleMs: 10 }), before.current);
+    // Drashti stops dead, and starts again 2 s later.
+    clock.now += 2000;
+    const after = engine();
+    const back = toRestore(files);
+    if (!back) throw new Error('nothing to put back');
+    expect(after.restore(back)).toMatchObject({ background: true, audio: true });
+    expect(after.current.layers.background).toEqual(was.background);
+    expect(after.current.layers.audio).toEqual(was.audio);
+    // 12 s after the jumps, every screen and the audio player have them where they would be: the video round
+    // its loop between 0:10 and 0:40 (at 0:15), the sound held at its end point (1:20).
+    const bg = after.current.layers.background;
+    const heard = after.current.layers.audio;
+    if (bg?.kind !== 'media' || !heard) throw new Error('not put back');
+    expect(playbackPosition(bg, 60, clock.now + 10_000)).toBe(15);
+    expect(playbackPosition(heard, 90, clock.now + 10_000)).toBe(80);
   });
 
   it('puts props, the logo and messages back with the time they went up, so their videos carry on in step (Session 27)', async () => {
