@@ -157,7 +157,8 @@ describe('a timer on a slide', () => {
     const at = new Date(2026, 8, 29, 19, 25, 0).getTime();
     const toTime = { ...base, kind: 'countdown_to_time' as const, targetTime: '19:30', startedAt: at };
     expect(zeroAt(toTime, at)).toBe(at + 5 * 60_000);
-    expect(zeroAt({ ...toTime, startedAt: null }, at)).toBeNull();
+    // A countdown to a time counts by the clock, started or not (Session 50, section 7's review): it reaches zero then.
+    expect(zeroAt({ ...toTime, startedAt: null }, at)).toBe(at + 5 * 60_000);
     expect(countsDown(toTime)).toBe(true);
     expect(countsDown({ kind: 'clock' })).toBe(false);
   });
