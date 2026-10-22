@@ -1,10 +1,43 @@
 import { expect, test } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { EXAMPLE_TEMPLATES } from '../../src/main/db/seed';
 import { BUILTIN_THEMES } from '../../src/shared/builtin-themes';
-import { launchApp, openLibrary, operatorPage, type PageGlobals } from './helpers';
+import { expectNoSeriousA11yIssues } from './a11y';
+import { launchApp, openLibrary, operatorPage, operatorReady, type PageGlobals } from './helpers';
 
-test('a new install has the placeholder presentations in a database in userData', async () => {
+/** A library as an operator's starts (Session 50): without the tests' placeholder presentations (as helpers.ts's NO_PLACEHOLDERS). */
+const NO_PLACEHOLDERS = { DRASHTI_TEST_SEED_PLACEHOLDERS: '' } as const;
+
+test('a new library starts with no presentations: the example sabha templates and the built-in themes only, in a database in userData', async () => {
+  const { app, userData } = await launchApp(NO_PLACEHOLDERS);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  expect(existsSync(join(userData, 'drashti.sqlite'))).toBe(true);
+  const seeded = await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    return {
+      presentations: (await d.library.listPresentations()).map((p) => p.name),
+      templates: (await d.playlists.templates()).map((t) => t.name).sort(),
+      themes: (await d.themes.list()).themes.length,
+    };
+  });
+  // Session 50: no “Language test slides” or “Sample kirtan (placeholder)” to find and delete on a new laptop.
+  expect(seeded).toEqual({
+    presentations: [],
+    templates: EXAMPLE_TEMPLATES.map((t) => t.name).sort(),
+    themes: 1 + BUILTIN_THEMES.length,
+  });
+  // Nothing open in the middle: its three steps lead. The library's sheet says it is empty.
+  await expect(win.getByTestId('start-here')).toBeVisible();
+  const sheet = await openLibrary(win);
+  await expect(sheet.getByText('The library is empty')).toBeVisible();
+  await expect(sheet.getByTestId('presentation-row')).toHaveCount(0);
+  await expectNoSeriousA11yIssues(win, 'a new library, empty');
+  await app.close();
+});
+
+test('the tests’ new library has the two placeholder presentations (DRASHTI_TEST_SEED_PLACEHOLDERS, set by launchApp), and the engine reads their slides from the database', async () => {
   const { app, userData } = await launchApp();
   const win = await operatorPage(app);
   await openLibrary(win);
