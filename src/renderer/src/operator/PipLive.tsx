@@ -114,8 +114,9 @@ export function PipDragHandle({
     null,
   );
   const box = state.layers.pip;
-  if (!box || !pipShownFor(look) || (box.source.kind === 'slides' && !look.layers.includes('slide')))
-    return null;
+  // Only where LIVE draws it: a box of the slides draws nothing with no slide up.
+  const slidesAway = state.layers.slide === null || !look.layers.includes('slide');
+  if (!box || !pipShownFor(look) || (box.source.kind === 'slides' && slidesAway)) return null;
   const rect = pipRect(box.place, canvas);
   const landing = drag ? droppedPlace(box.place, canvas, drag.dx / drag.scale, drag.dy / drag.scale) : null;
   const ghost = landing ? pipRect(landing, canvas) : null;

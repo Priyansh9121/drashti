@@ -33,13 +33,14 @@ export async function rememberedPlace(): Promise<PipPlace> {
 const NOT_KEPT = 'Drashti could not keep where the box goes for next time: set it again before the next box.';
 
 /**
- * The box's place or look changed (in the dialog, or dragged in LIVE): on the screens at once while a box is up,
- * and remembered for the next one. What went wrong, in words, or null.
+ * The box's place or look changed (in the dialog, or dragged in LIVE). While a box is up it moves on the screens
+ * at once, and the main process remembers the place by itself; with none up, the place is only remembered for
+ * the next box (nothing moves). What went wrong, in words, or null.
  */
 export async function placeBox(place: PipPlace): Promise<string | null> {
   if (useEngine.getState().state?.layers.pip) {
     const moved = await window.drashti.engine.dispatch({ type: 'placePip', place });
-    if (!moved.ok) return moved.message;
+    return moved.ok ? null : moved.message;
   }
   try {
     const saved = await window.drashti.pip.savePlace(place);
@@ -55,13 +56,13 @@ export function boxName(source: PipSource, media: readonly MediaSummary[]): stri
   return pipName(source);
 }
 
-/** Where the two pictures are, in words (Swap changes them over). */
-export function boxWhere(box: PipLayer, name: string): string {
+/** Where the box's picture and the background are, in words (Swap changes them over). */
+export function boxWhere(box: PipLayer): string {
   if (box.source.kind === 'slides')
     return box.swapped
-      ? 'Swapped: the slides are full on the screens, the background small in the box.'
-      : 'The slides are small in the box; the main picture shows the background.';
+      ? 'Swapped: the slides are full on the screens, and the background is small in the box.'
+      : 'The slides are small in the box; the main picture shows the background without them.';
   return box.swapped
-    ? `Swapped: ${name} is full on the screens, the screens’ own picture small in the box.`
-    : `${name} is small in the box; the main picture is as it was.`;
+    ? 'Swapped: it fills the background’s place, under the slides, and the background is small in the box.'
+    : 'It is small in the box, over the show.';
 }

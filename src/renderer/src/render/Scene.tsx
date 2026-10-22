@@ -433,8 +433,19 @@ export const Scene = memo(function Scene({
   // Key and fill: black-out and the logo take the graphics off; the key draws every colour white, by its opacity.
   const keyed = matte !== null;
   const off = keyed && (state.blackout || state.logo !== null);
-  // The idle rotation, where this group's Look shows it, while nothing is up on these screens.
-  const nothingUp = background === null && (layers.slide === null || !shown('slide'));
+  // The picture-in-picture box (Session 50, render/pip.ts): where this group's Look shows it (else drawn as if
+  // there were none), a video input or a window only on this computer's own pages, and the slides in it only
+  // while a slide is up and the group shows the slides.
+  const live = useLiveHere();
+  const boxHere = (box: PipLayer | null): box is PipLayer =>
+    box !== null &&
+    pipShownFor(look) &&
+    pipShowsHere(box.source, live) &&
+    (box.source.kind !== 'slides' || (layers.slide !== null && shown('slide')));
+  const [run, setRun] = usePipRun(layers.pip, state.pipOff, look.movement, canvas);
+  const up = boxHere(layers.pip) ? layers.pip : null;
+  // The idle rotation, where this group's Look shows it, while nothing is up on these screens (the box counts).
+  const nothingUp = background === null && (layers.slide === null || !shown('slide')) && up === null;
   const idle =
     nothingUp && (look.idle === 'always' || (look.idle === 'started' && state.idle.startedAt !== null));
   const content: CSSProperties = matte === 'key' ? { ...FULL, filter: 'brightness(0) invert(1)' } : FULL;
@@ -443,19 +454,9 @@ export const Scene = memo(function Scene({
     () => ({ pictures: state.pictures, liveZoom: state.liveZoom }),
     [state.pictures, state.liveZoom],
   );
-  // The picture-in-picture box (Session 50, render/pip.ts): where this group's Look shows it, a video input or a
-  // window only on this computer's own pages, and the slides in it only where the group shows the slides.
-  const live = useLiveHere();
-  const boxHere = (box: PipLayer | null): box is PipLayer =>
-    box !== null &&
-    pipShownFor(look) &&
-    pipShowsHere(box.source, live) &&
-    (box.source.kind !== 'slides' || shown('slide'));
-  const [run, setRun] = usePipRun(layers.pip, state.pipOff, look.movement, canvas);
-  const up = boxHere(layers.pip) ? layers.pip : null;
   // The box as drawn: the one up, or the one going out (Take off) over the main picture, already whole again.
   const boxRun = run.layer !== null && boxHere(run.layer) ? run : null;
-  // The main picture as the box up has it; while they swap, as drawn (they change places at the swap's middle).
+  // The main picture as the box up has it; while it swaps, as drawn (they change places at the swap's middle).
   const main = pipPlaces(
     up?.source.kind ?? null,
     up !== null && run.layer === up ? run.swapped : (up?.swapped ?? false),
@@ -503,7 +504,7 @@ export const Scene = memo(function Scene({
                 <MainSlot slot={slotOf('background')}>
                   <BackgroundPicture background={background} annotate={annotate} movement={look.movement} />
                 </MainSlot>
-                {/* The box's own picture full, swapped with the screen's (Session 50). */}
+                {/* The box's own picture in the background's place, once swapped (Session 50). */}
                 <MainSlot slot={slotOf('source')}>
                   {up && <PipSourcePicture source={up.source} shownAt={up.shownAt} size={canvas} />}
                 </MainSlot>

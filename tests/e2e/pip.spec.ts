@@ -184,12 +184,19 @@ test('the slides in the box from Picture in Picture…: the background alone on 
   await expect(hall.locator('[data-pip-main="background"] [data-layer="background"]')).toHaveCount(1);
   // LIVE draws it too, and says what is in it under the picture.
   await expect(win.getByTestId('live-preview').getByTestId('pip-box')).toHaveCount(1);
-  await expect(win.getByTestId('live-pip')).toContainText('Picture in picture · The slides');
+  await expect(win.getByTestId('live-pip')).toContainText('Picture in picture · the slides');
   // The next slide goes into the box.
   await goLive(win, slides, 1);
   await expect(hall.locator('[data-testid="pip-box"] [data-layer="slide"]')).toContainText(
     'Placeholder words two',
   );
+  // With no slide up, a box of the slides draws nothing (it stays up); the slide again brings it back.
+  await dispatch(win, { type: 'clearLayer', layer: 'slide' });
+  await expect(hall.getByTestId('pip-box')).toHaveCount(0);
+  expect((await pipNow(win))?.source.kind).toBe('slides');
+  expect((await drawn(hall)).pip).toBe('none');
+  await goLive(win, slides, 1);
+  await expect(hall.getByTestId('pip-box')).toHaveCount(1);
 
   // Swap, under LIVE: at its middle they change places, out of sight, the pictures for after it ready unseen.
   await heldChange(app, () => win.getByTestId('live-pip-swap').click());
@@ -289,11 +296,11 @@ test('a video from Media, a video input and a window in the box, live and silent
     loop: true,
   });
   expect((await drawn(hall)).box).toMatchObject({ source: 'media', corner: 'bottom-right', size: 'medium' });
-  // Swapped: the video full on the main picture, the screen's own picture small in the box.
+  // Swapped: the video fills the background's place, under the slide, and the background goes in the box.
   await dispatch(win, { type: 'swapPip' });
-  await expect.poll(async () => (await drawn(hall)).main, { timeout: 5000 }).toEqual(['source']);
+  await expect.poll(async () => (await drawn(hall)).main, { timeout: 5000 }).toEqual(['source', 'slide']);
   await expect(hall.locator('[data-pip-main="source"] [data-pip-picture="media"] video')).toHaveCount(1);
-  expect((await drawn(hall)).inBox).toEqual(['background', 'slide']);
+  expect((await drawn(hall)).inBox).toEqual(['background']);
   await dispatch(win, { type: 'swapPip' });
   await expect.poll(async () => (await drawn(hall)).main, { timeout: 5000 }).toEqual(['background', 'slide']);
 
@@ -448,7 +455,7 @@ test('the phone remote names the box and takes it off; it has nothing to set one
     await expect(phone.page.getByTestId('remote-pip')).toHaveCount(0);
     await dispatch(win, { type: 'showPip', source: { kind: 'slides' }, place: PLACE });
     const named = phone.page.getByTestId('remote-pip');
-    await expect(named).toContainText('Picture in picture: The slides');
+    await expect(named).toContainText('Picture in picture: the slides');
     await dispatch(win, { type: 'swapPip' });
     await expect(named).toContainText('(swapped)');
     await named.getByTestId('remote-pip-take-off').click();

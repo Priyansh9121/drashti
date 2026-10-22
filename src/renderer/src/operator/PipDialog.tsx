@@ -324,7 +324,7 @@ function PipDialogBody() {
           >
             <span className="min-w-0 flex-1">
               <span className="block font-bold">In the box now: {boxName(box.source, allMedia)}</span>
-              <span className="block text-xs text-muted">{boxWhere(box, boxName(box.source, allMedia))}</span>
+              <span className="block text-xs text-muted">{boxWhere(box)}</span>
             </span>
             <Button
               size="sm"

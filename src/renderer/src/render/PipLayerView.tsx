@@ -190,9 +190,9 @@ export function PipBox({
 }
 
 /**
- * The box's own picture at a size (the box's, or the whole screen's once swapped): a picture or a video from
- * Media fitted inside it with black around (a video plays muted from when the box went up, round and round), a
- * video input, or another app's window, both fitted inside, live and silent.
+ * The box's own picture at a size (the box's; or the screen's, in the background's place, once swapped): a
+ * picture or a video from Media fitted inside it with black around (a video plays muted from when the box went up,
+ * round and round), a video input, or another app's window, both fitted inside, live and silent.
  */
 export function PipSourcePicture({
   source,
