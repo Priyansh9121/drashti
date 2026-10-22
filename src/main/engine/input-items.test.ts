@@ -173,6 +173,27 @@ describe('a video input as a playlist item', () => {
     });
   });
 
+  it('after a restart, the playlist’s place on an input item comes back, so Next carries on from it', () => {
+    const { engine } = show();
+    engine.dispatch(play('i-cam'));
+    const up = engine.current.layers.background;
+    if (up?.kind !== 'input') throw new Error('no input up');
+    const again = show().engine;
+    again.restore({
+      slide: null,
+      playlist: { playlistId: 'sunday', itemId: 'i-cam' },
+      background: up,
+      blackout: false,
+    });
+    expect(again.current.live.playlist).toEqual({ playlistId: 'sunday', itemId: 'i-cam' });
+    expect(again.current.layers.background).toMatchObject({ kind: 'input', inputId: 'in-1' });
+    again.dispatch({ type: 'next' });
+    expect(again.current.live).toMatchObject({
+      presentationId: 'p1',
+      playlist: { playlistId: 'sunday', itemId: 'i-p1' },
+    });
+  });
+
   it('Simple Mode’s Next puts one up through the playlist, while choosing one directly stays refused', () => {
     const { engine, setSimple } = show();
     engine.dispatch(play('i-p2'));
