@@ -8,8 +8,16 @@ import type {
   ImportRunSummary,
 } from '../../../shared/import';
 import { useEngine } from '../engine/engine-store';
+import { usePlaylists } from '../playlists/playlist-store';
 import type { ShownItem } from './library-store';
-import { chooseNothing, leaveItem, loadLibrary, selectPresentation, useLibrary } from './library-store';
+import {
+  chooseNothing,
+  leaveItem,
+  loadLibrary,
+  selectPresentation,
+  showItem,
+  useLibrary,
+} from './library-store';
 import { describeSome, pushRemoval } from './undo';
 
 /*
@@ -22,6 +30,9 @@ interface Removal {
   names: string[];
 }
 
+/** A presentation's card in a playlist, as the middle shows it. */
+type PresentationCard = ShownItem & { kind: 'presentation' };
+
 interface ImportView {
   /** Runs going or waiting, by run id, in the order they started. */
   runs: Record<string, ImportProgress>;
@@ -32,9 +43,10 @@ interface ImportView {
   report: ImportReport | null;
   /**
    * Presentations waiting for the operator to confirm removing them; `closes` when it was asked from the middle
-   * (Session 50: Delete… in the menu of the presentation open there), which then shows nothing chosen.
+   * (Session 50: Delete… in the menu of the presentation open there), which then shows nothing chosen;
+   * `fromItem`, the playlist's card the middle showed it as (Session 51), for Undo to show again.
    */
-  confirmRemove: (Removal & { live: boolean; closes?: boolean }) | null;
+  confirmRemove: (Removal & { live: boolean; closes?: boolean; fromItem?: PresentationCard }) | null;
 }
 
 export const useImports = create<ImportView>(() => ({
@@ -161,7 +173,18 @@ export function requestRemoval(of?: string): void {
  */
 export function requestRemovalOfOpen(id: string, name: string): void {
   const liveId = useEngine.getState().state?.live.presentationId ?? null;
-  useImports.setState({ confirmRemove: { ids: [id], names: [name], live: liveId === id, closes: true } });
+  // Open as a playlist's card (Session 51): that card is kept, for Undo.
+  const { item } = useLibrary.getState();
+  const fromItem = item?.kind === 'presentation' && item.presentationId === id ? item : undefined;
+  useImports.setState({
+    confirmRemove: {
+      ids: [id],
+      names: [name],
+      live: liveId === id,
+      closes: true,
+      ...(fromItem ? { fromItem } : {}),
+    },
+  });
 }
 
 /**
@@ -173,14 +196,14 @@ export const deleteOpenLabel = (item: ShownItem | null): string =>
   item ? 'Delete from the library…' : 'Delete…';
 
 /**
- * The question's line on playlists (Session 51), the same from the library's trash and the middle's menu: a
- * deleted presentation's cards stay in their playlists saying "Removed from the library", and the show passes
- * over them, until Undo brings it back.
+ * The question's line on playlists (Session 51), the same from the library's trash and the middle's menu, and
+ * true whether it is in a playlist or not: a deleted presentation's cards are not taken out (as deleted media's
+ * are) but stay where they were, marked, and the show passes over them, until Undo brings it back.
  */
-export const leavesPlaylists = (count: number): string =>
+export const playlistCardsLine = (count: number): string =>
   count === 1
-    ? 'It also leaves every playlist it is in: each shows it as removed from the library.'
-    : 'They also leave every playlist they are in: each shows them as removed from the library.';
+    ? 'Any playlist it is in keeps its card, marked Removed from the library, and Next goes past it.'
+    : 'Any playlist they are in keeps their cards, marked Removed from the library, and Next goes past them.';
 
 export function cancelRemoval(): void {
   useImports.setState({ confirmRemove: null });
@@ -193,9 +216,10 @@ export async function confirmRemoval(): Promise<void> {
   const result = await window.drashti.library.removePresentations(pending.ids);
   if (result.ok && result.ids.length > 0) {
     const ids = result.ids;
+    const { fromItem } = pending;
     pushRemoval({
       text: `Deleted ${describeSome(pending.names, ids.length, 'presentation')}`,
-      restore: () => restorePresentations(ids),
+      restore: () => restorePresentations(ids, fromItem),
     });
     // Deleted from the middle (Session 50): it shows nothing chosen, as before anything is picked.
     if (pending.closes && ids.includes(useLibrary.getState().selectedId ?? '')) chooseNothing();
@@ -203,14 +227,27 @@ export async function confirmRemoval(): Promise<void> {
   await loadLibrary();
 }
 
-/** Undo for a removal: bring the presentations back and select them. */
-async function restorePresentations(ids: string[]): Promise<void> {
+/** Is this card in the playlist open now (not closed, nor taken out of it, since)? */
+function cardOpen(card: PresentationCard): boolean {
+  const { openId, items } = usePlaylists.getState();
+  return openId === card.playlistId && items.some((i) => i.id === card.id);
+}
+
+/**
+ * Undo for a removal: bring the presentations back and select them. Deleted from a playlist's card (Session 51),
+ * the middle shows that card again while its playlist is open with it, so a slide clicked there plays in the
+ * playlist, as before; otherwise the presentation, as the library's trash leaves it.
+ */
+async function restorePresentations(ids: string[], fromItem?: PresentationCard): Promise<void> {
   const result = await window.drashti.library.restorePresentations(ids);
   await loadLibrary();
   const first = result.ok ? result.ids[0] : undefined;
-  if (first) {
-    leaveItem();
-    useLibrary.setState({ marked: result.ok ? result.ids : [], anchorId: first });
-    await selectPresentation(first);
+  if (!first) return;
+  if (fromItem && cardOpen(fromItem)) {
+    await showItem(fromItem);
+    return;
   }
+  leaveItem();
+  useLibrary.setState({ marked: result.ok ? result.ids : [], anchorId: first });
+  await selectPresentation(first);
 }

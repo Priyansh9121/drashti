@@ -1,10 +1,10 @@
 import { cancelRemoveNode, confirmRemoveNode, removingWhat, usePlaylists } from '../playlists/playlist-store';
 import { ConfirmDialog } from '../ui/Dialog';
-import { cancelRemoval, confirmRemoval, leavesPlaylists, useImports } from './import-store';
+import { cancelRemoval, confirmRemoval, playlistCardsLine, useImports } from './import-store';
 
 /**
- * "Delete these presentations?", saying they leave every playlist too (Session 51). Cancel has the focus; Undo can
- * bring them back. The library's trash, its Delete key and the middle's menu all ask this one question.
+ * "Delete these presentations?", saying what becomes of their playlists' cards (Session 51). Cancel has the focus;
+ * Undo can bring them back. The library's trash, its Delete key and the middle's menu all ask this one question.
  */
 export function RemoveConfirm({ undoKey }: { undoKey: string }) {
   const pending = useImports((s) => s.confirmRemove);
@@ -25,7 +25,7 @@ export function RemoveConfirm({ undoKey }: { undoKey: string }) {
           {pending.names.length > 8 ? ', …' : ''}
         </p>
       )}
-      <p>{leavesPlaylists(count)}</p>
+      <p>{playlistCardsLine(count)}</p>
       {pending.live && (
         <p className="text-warning-fg">
           {count === 1 ? 'It is' : 'One of them is'} on the screens now. The slide stays up until you change
