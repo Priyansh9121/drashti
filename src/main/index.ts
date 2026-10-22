@@ -58,6 +58,7 @@ import {
   startingMode,
 } from '../shared/mode';
 import { groupLookIn, type Movement, NO_LOOK } from '../shared/looks';
+import { hallPicture } from '../shared/stage-layouts';
 import { DEFAULT_THEME } from '../shared/themes';
 import type { SlideSource } from './engine/slide-source';
 import type { Db } from './db/database';
@@ -1471,6 +1472,8 @@ function start(): void {
           }
         : null,
       clockStyle: mainClockStyle(),
+      // A stage layout's audience picture box (Session 50): the first audience group's picture.
+      hall: hallPicture(screenRepo.groups()),
     };
   };
   // ---- hung, stale and given-up outputs (Session 23; outputs/heartbeat.ts, watchdog.ts) ----------

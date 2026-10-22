@@ -1,4 +1,5 @@
 import type { ClockStyle } from './format';
+import type { HallPicture } from './stage-layouts';
 
 /** How a screen's canvas is scaled into its output window. */
 export type ScalingMode = 'fit' | 'fill' | 'stretch';
@@ -156,6 +157,11 @@ export interface OutputContext {
   clockOffsetMs?: number;
   /** How Main writes the time (Sessions 31–36, I18N-8): a node in another time zone shows Main's. */
   clockStyle?: ClockStyle;
+  /**
+   * The hall's picture, for a stage layout's audience picture box (Session 50, shared/stage-layouts.ts): the
+   * first audience group, and its screen's canvas (on a node, the node's own first); null with none.
+   */
+  hall?: HallPicture | null;
 }
 
 /** What an output window says about how it draws (every few seconds). */
