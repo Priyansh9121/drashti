@@ -29,7 +29,7 @@ export const PANEL_HELP = {
   library: {
     title: 'The library',
     doc: 'operator',
-    text: 'Every presentation, picture, video and sound on this computer: type a few letters of a kirtan’s title or words in the search box to find it, then press Add to playlist. Import… brings more in, and a file Drashti can’t play says Converting… while Drashti converts it by itself. In Media, one click puts up a video input (Add a Video Input… names a camera or a mixer’s output), Show a Window… another app’s window, and Picture in Picture… something small in a corner.',
+    text: 'Every presentation, picture, video and sound on this computer: type a few letters of a kirtan’s title or words in the search box to find it, then press Add to playlist. Import… brings more in, and a file Drashti can’t play says Converting… while Drashti converts it by itself. In Media, one click puts up a video input (Add a Video Input… names a camera or a mixer’s output), Show a Window… another app’s window, and Picture in Picture… something small in a corner; right-click a video input, or drag it, to put it in a playlist instead.',
     guide: 'the **Library**',
   },
   slides: {
@@ -101,7 +101,7 @@ export const PANEL_HELP = {
   playlist: {
     title: 'The open playlist',
     doc: 'operator',
-    text: 'The playlist you opened, its items as cards in the order they play. Click an item to see its slides below it, drag a card to move it, or drop files on it to add them.',
+    text: 'The playlist you opened, its items as cards in the order they play. Click an item to see its slides below it, drag a card to move it, or drop files on it to add them. A video input from Media can be an item too: on a computer with no video input of that name, its card says Not on this computer, and Next goes past it.',
     guide: '**Middle:**',
   },
   controls: {
