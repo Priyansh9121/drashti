@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import type { Darken, Outline, Shadow, SlideElement, TextRun, TextStyle, Transition } from './model';
-import { DARKEN_KINDS, MAX_AUTO_ADVANCE_MS, MAX_TRANSITION_MS, TRANSITION_KINDS } from './model';
+import {
+  DARKEN_KINDS,
+  MAX_AUTO_ADVANCE_MS,
+  MAX_TRANSITION_MS,
+  TIMER_AT_ZERO,
+  TRANSITION_KINDS,
+} from './model';
 
 /*
  * Runtime schemas for the content model. Used to validate anything that
@@ -130,4 +136,16 @@ export const slideElementSchema: z.ZodType<SlideElement> = z.discriminatedUnion(
       volume: num.min(0).max(1).optional(),
     }),
   ),
+  // A timer on a slide (Session 50): which timer, its look as words, its last minute and its zero.
+  z.object({
+    id: idSchema,
+    kind: z.literal('timer'),
+    frame: rectSchema,
+    rotation: rotationSchema,
+    timerId: idSchema,
+    style: textStyleSchema,
+    lastMinute: z.object({ color: hexColorSchema }).nullable().optional(),
+    atZero: z.enum(TIMER_AT_ZERO).optional(),
+    opacity: num.min(0).max(1).optional(),
+  }),
 ]);
