@@ -25,6 +25,7 @@ import type { LinkOptions, LinkStats } from './link-server';
 import type { FromLinkWorker } from './worker/protocol';
 import { hashToken, newToken } from '../network/tokens';
 import type { ClockStyle } from '../../shared/format';
+import type { HallPicture } from '../../shared/stage-layouts';
 
 /*
  * Output nodes, as Main runs them (Session 13). It keeps the code on offer
@@ -54,6 +55,11 @@ export interface NodeServiceDeps {
   version: string;
   /** How Main writes the time (Sessions 31–36, I18N-8): its nodes' clocks show Main's. */
   clockStyle?(): ClockStyle;
+  /**
+   * Main's hall picture, as its own stage screens are told it (Session 51): a node with no audience screen of its
+   * own draws it in a stage layout's audience picture box, said off with Main's Audience off.
+   */
+  hall?(): HallPicture | null;
   /** Where nodes can reach Main: numbers, then its local name. */
   addresses(): string[];
   /** Listen on every interface, or on this computer only (tests). */
@@ -396,9 +402,10 @@ export class NodeService implements EngineTransport {
     });
   }
 
-  /** The screens a node shows, as it needs them. */
+  /** The screens a node shows, as it needs them: a stage screen with Main's hall picture (Session 51). */
   nodeScreens(nodeId: string): NodeScreen[] {
     const groups = new Map(this.deps.screens.groups().map((g) => [g.id, g]));
+    const hall = this.deps.hall?.() ?? null;
     return this.deps.screens.nodeScreens(nodeId).flatMap((s) => {
       const g = groups.get(s.groupId);
       return g && s.displayKey
@@ -415,6 +422,7 @@ export class NodeService implements EngineTransport {
               scaling: s.scaling,
               enabled: s.enabled,
               displayKey: s.displayKey,
+              ...(g.role === 'stage' ? { hall } : {}),
             },
           ]
         : [];

@@ -14,7 +14,10 @@ export const DEVICE_OPS = {
   status: ['remote', 'stage'],
   /** The whole engine state, with its revision. */
   state: ['remote', 'stage'],
-  /** The stage display's screen group (the first stage group) and its languages in the live Look. */
+  /**
+   * The stage display's screen group (the first stage group) and its languages in the live Look, and the hall's
+   * picture for a layout's audience picture box (Session 51).
+   */
   stage: ['stage'],
   /**
    * The hall's screen group (the first audience group), whose live Look the remote's picture follows, and how
@@ -50,8 +53,11 @@ export const DEVICE_OPS = {
   /** Fill a message template's fields and show it, or take a message off. */
   'message.show': ['remote'],
   'message.hide': ['remote'],
-  /** A small picture of a media item for a thumbnail. */
-  preview: ['remote'],
+  /**
+   * A small picture of a media item for a thumbnail, and for the pictures a page draws: the remote's live picture,
+   * and a stage display's audience picture box (Session 51).
+   */
+  preview: ['remote', 'stage'],
   /** Send an announcement for the operator to approve. */
   announce: ['announcements'],
   /** What became of an announcement this device sent. */

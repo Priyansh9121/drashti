@@ -335,8 +335,9 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         : null,
       clockOffsetMs: outputOffset(),
       ...(mainClock ? { clockStyle: mainClock } : {}),
-      // A stage layout's audience picture box (Session 50): this node's own first audience screen's picture.
-      hall: hallPictureOfScreens(paired?.screens ?? []),
+      // A stage layout's audience picture box (Session 50): this node's own first audience screen's picture; with
+      // none, Main's hall as Main sent it with this stage screen (Session 51), never every layer.
+      hall: hallPictureOfScreens(paired?.screens ?? [], s.hall ?? null),
     };
   };
   const sendContexts = () => {
