@@ -108,6 +108,16 @@ const backgroundSchema: z.ZodType<BackgroundLayer> = z.discriminatedUnion('kind'
     name: z.string().max(500),
     startedAt: z.number(),
   }),
+  // A video input (Session 50): put back while it is still in this computer's list (the engine looks it up).
+  z.object({
+    kind: z.literal('input'),
+    inputId: idSchema,
+    name: z.string().max(500),
+    device: z.string().max(500),
+    fit: z.enum(['fit', 'fill']),
+    startedAt: z.number(),
+    fade: z.object({ at: z.number(), durationMs: z.number().min(0) }).optional(),
+  }),
 ]);
 
 const tickerSchema: z.ZodType<TickerLayer> = z.object({

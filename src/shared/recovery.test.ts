@@ -93,6 +93,41 @@ describe('the recovery notice', () => {
     );
   });
 
+  it('names a video input put back, and one that was not there after the restart (Session 50)', () => {
+    expect(
+      recoveryText({
+        ...notice,
+        slide: { presentationName: 'Placeholder Hymn', slideNumber: 3 },
+        input: 'Placeholder input',
+      }),
+    ).toBe(
+      'Drashti stopped unexpectedly and has put back what was live: "Placeholder Hymn", slide 3 and the video input “Placeholder input”.',
+    );
+    expect(
+      recoveryText({
+        ...notice,
+        slide: { presentationName: 'Placeholder Hymn', slideNumber: 3 },
+        inputGone: 'Placeholder input',
+      }),
+    ).toBe(
+      'Drashti stopped unexpectedly and has put back what was live: "Placeholder Hymn", slide 3. The video input “Placeholder input” was not there after the restart, so it was not put back.',
+    );
+    expect(recoveryText({ ...notice, inputGone: 'Placeholder input' })).toBe(
+      'Drashti stopped unexpectedly. The video input “Placeholder input” was not there after the restart, so it was not put back.',
+    );
+    // A stop too long ago: named with the rest of what was live.
+    expect(
+      recoveryText({
+        ...notice,
+        savedAt: new Date(2026, 9, 9, 18, 34).toISOString(),
+        putBack: false,
+        input: 'Placeholder input',
+      }),
+    ).toBe(
+      'Drashti stopped unexpectedly on Fri 9 Oct at 18:34, 3 hours or more before it started again, so nothing was put back on the screens. What was live then: the video input “Placeholder input”.',
+    );
+  });
+
   it('after a stop too long ago, says what was live and when, and that nothing went back (Session 20)', () => {
     expect(RECOVERY_MAX_AGE_MS).toBe(3 * 60 * 60 * 1000);
     // Made from the computer's own time, so it reads 18:34 wherever the test runs.

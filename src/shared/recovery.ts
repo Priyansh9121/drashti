@@ -43,6 +43,10 @@ export interface RecoveryNotice {
   window?: string | null;
   /** Another app's window that was in the picture-in-picture box (Session 50), by name: the same. */
   pipWindow?: string | null;
+  /** The video input that was the background (Session 50), by name: put back (or, after a stop too long ago, said). */
+  input?: string | null;
+  /** A video input that was the background and was not there after the restart (Session 50), by name: only said. */
+  inputGone?: string | null;
 }
 
 function joinParts(parts: string[]): string {
@@ -66,6 +70,8 @@ export function recoveryText(notice: RecoveryNotice): string {
   const parts: string[] = [];
   if (notice.slide) parts.push(`"${notice.slide.presentationName}", slide ${notice.slide.slideNumber}`);
   if (notice.background) parts.push('the background');
+  const input = notice.input ?? null;
+  if (input !== null) parts.push(`the video input “${input}”`);
   if (notice.audio) parts.push('the sound');
   const count = (n: number | undefined, one: string, many: string) => {
     if (n && n > 0) parts.push(n === 1 ? one : `${n} ${many}`);
@@ -107,5 +113,10 @@ export function recoveryText(notice: RecoveryNotice): string {
     boxWindow === null
       ? ''
       : ` The window “${boxWindow}” was in the picture-in-picture box and was not put back, as it may be gone.`;
-  return `${put}${gone}${notBack}${boxNotBack}`;
+  const inputGone = notice.inputGone ?? null;
+  const notThere =
+    inputGone === null
+      ? ''
+      : ` The video input “${inputGone}” was not there after the restart, so it was not put back.`;
+  return `${put}${gone}${notBack}${boxNotBack}${notThere}`;
 }

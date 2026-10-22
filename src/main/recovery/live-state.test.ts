@@ -150,6 +150,28 @@ describe('restart recovery', () => {
     expect(toRestore(files)).toMatchObject({ background: window });
   });
 
+  it('keeps a video input that was the background, with its fade, so it can be put back (Session 50)', async () => {
+    const writer = new LiveStateWriter(files, { throttleMs: 10 });
+    const input = {
+      kind: 'input',
+      inputId: 'in-1',
+      name: 'Placeholder input',
+      device: 'Placeholder camera',
+      fit: 'fill',
+      startedAt: 77,
+      fade: { at: 77, durationMs: 1000 },
+    } as const;
+    const state = live({ slideIndex: null });
+    await saved(writer, { ...state, layers: { ...state.layers, background: input } });
+    expect(toRestore(files)).toMatchObject({ background: input });
+    // One kept wrong (a fit no input has) is left out, as any background kept wrong is.
+    await saved(writer, {
+      ...state,
+      layers: { ...state.layers, background: { ...input, fit: 'stretch' } as unknown as typeof input },
+    });
+    expect(toRestore(files)?.background ?? null).toBeNull();
+  });
+
   it('keeps the live Look; a Look other than the first is worth putting back on its own', async () => {
     const writer = new LiveStateWriter(files, { throttleMs: 10 });
     const nothing = initialEngineState();
