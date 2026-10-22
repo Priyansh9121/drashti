@@ -144,10 +144,14 @@ export function PipDragHandle({
           if (!drag) return;
           setDrag({ ...drag, dx: e.clientX - drag.x, dy: e.clientY - drag.y });
         }}
-        onPointerUp={() => {
+        onPointerUp={(e) => {
           setDrag(null);
-          if (!drag || !landing || Math.hypot(drag.dx, drag.dy) < CLICK) return;
-          void placeBox(landing).then((problem) => {
+          if (!drag) return;
+          // Where it was let go (not the last move drawn).
+          const dx = e.clientX - drag.x;
+          const dy = e.clientY - drag.y;
+          if (Math.hypot(dx, dy) < CLICK) return;
+          void placeBox(droppedPlace(box.place, canvas, dx / drag.scale, dy / drag.scale)).then((problem) => {
             if (problem) useNotice.setState({ text: problem });
           });
         }}
