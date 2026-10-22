@@ -1,10 +1,12 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 import { apiCall, NETWORK_ENV, networkOn, pairToken } from './devices';
+import { expectFits } from './fit';
 import {
   chooseMenuItem,
   holdStill,
   launchApp,
+  needsRealScreen,
   NO_PLACEHOLDERS,
   operatorPage,
   operatorReady,
@@ -12,6 +14,7 @@ import {
   type PageGlobals,
   relaunchApp,
   setUpScreen,
+  windowShowing,
 } from './helpers';
 
 /*
@@ -299,4 +302,274 @@ test('both are on again at every start; Simple Mode only turns them on: Mod+1 an
   await expect(stageOff).toHaveCount(0);
   expect(await switches(next)).toEqual({ audience: true, stage: true });
   await again.app.close();
+});
+
+// ---- Session 51: the reviewers' S2 items ----------------------------------------------------------------------
+
+/** The change waiting for Keep these screens?, as the main process has it. */
+const pending = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.screens.pending());
+
+/**
+ * The top bar as laid out now (Session 51, S2-3): its name, every button and the states' panel inside the window,
+ * none over another, each button's words fitting, nothing scrolling sideways; and what the states' panel holds (the
+ * network's badge, LIVE's or Off's) inside it, in sight.
+ */
+async function expectTopBarFits(win: Page, what: string): Promise<void> {
+  const problems = await win.evaluate(() => {
+    const out: string[] = [];
+    const vw = window.innerWidth;
+    if (document.documentElement.scrollWidth > vw)
+      out.push(`the page scrolls sideways (${String(document.documentElement.scrollWidth)} > ${String(vw)})`);
+    const header = document.querySelector('[data-testid="app-header"]');
+    const states = document.querySelector('[data-testid="header-states"]');
+    if (!header || !states) return ['no top bar'];
+    if (header.scrollWidth > header.clientWidth + 1) out.push('the top bar scrolls sideways');
+    const name = (el: Element) =>
+      el.getAttribute('aria-label') ?? el.getAttribute('data-testid') ?? el.textContent.trim().slice(0, 40);
+    const box = (el: Element) => el.getBoundingClientRect();
+    const parts = [...header.querySelectorAll('h1, button'), states].filter((el) => box(el).width > 0);
+    for (const el of parts) {
+      const r = box(el);
+      if (r.left < -0.5 || r.top < -0.5 || r.right > vw + 0.5)
+        out.push(`${name(el)} is cut off by the window edge`);
+      if (el instanceof HTMLButtonElement && el.scrollWidth > el.clientWidth + 1)
+        out.push(`${name(el)}: its words do not fit`);
+    }
+    parts.forEach((one, i) => {
+      for (const other of parts.slice(i + 1)) {
+        if (one.contains(other) || other.contains(one)) continue;
+        const a = box(one);
+        const b = box(other);
+        const overlap =
+          Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 &&
+          Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
+        if (overlap) out.push(`${name(one)} is over ${name(other)}`);
+      }
+    });
+    const panel = box(states);
+    for (const el of states.querySelectorAll('[data-testid="network-badge"], [data-badge]')) {
+      const r = box(el);
+      if (r.width === 0) out.push(`${name(el)} cannot be seen`);
+      else if (r.left < panel.left - 0.5 || r.right > panel.right + 0.5)
+        out.push(`${name(el)} spills out of the states' panel`);
+    }
+    return out;
+  });
+  expect(problems, what).toEqual([]);
+}
+
+test('the top bar fits at 1024 × 645 and 1280 × 720 with Phones and the PINs on: nothing cut off, nothing over another, no sideways scroll', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp(NETWORK_ENV);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await networkOn(win);
+  // Placeholder PINs, as the roles specs use.
+  const pins = await win.evaluate(() =>
+    (globalThis as PageGlobals).drashti.roles.setPins({ admin: '481526', operator: '937402' }),
+  );
+  expect(pins).toMatchObject({ ok: true });
+  const header = win.getByTestId('app-header');
+  await expect(header.getByTestId('network-badge')).toBeVisible();
+  await expect(header.getByTestId('open-announcements')).toBeVisible();
+  const chip = header.getByTestId('role-chip');
+  await expect(chip).toHaveAttribute('data-role', 'admin');
+  const sizes = [
+    [1024, 645],
+    [1280, 720],
+  ] as const;
+  for (const [width, height] of sizes) {
+    await win.setViewportSize({ width, height });
+    await expectTopBarFits(win, `the top bar at ${String(width)} × ${String(height)}, admin unlocked`);
+    // Crowded, its buttons keep their names for the keyboard and screen readers; Screens and the switches their words.
+    for (const words of ['Themes', 'Stream', 'Phones', 'Announcements', 'Simple Mode'])
+      await expect(header.getByRole('button', { name: words, exact: true })).toBeVisible();
+    await expect(header.getByRole('button', { name: 'Screens', exact: true })).toContainText('Screens');
+    await expect(header.getByTestId('switch-audience')).toContainText('On');
+    await expect(header.getByTestId('switch-stage')).toContainText('On');
+  }
+  // Locked: the operator's chip, the same.
+  await chip.click();
+  await expect(chip).toHaveAttribute('data-role', 'operator');
+  for (const [width, height] of sizes) {
+    await win.setViewportSize({ width, height });
+    await expectTopBarFits(win, `the top bar at ${String(width)} × ${String(height)}, as an operator`);
+  }
+  await app.close();
+});
+
+test('a hall screen switched off, turned off and on again in Screens, asks nothing; Audience on, it is back where it was', async () => {
+  test.setTimeout(120_000);
+  // Keep these screens? asks here, as it does for the operators.
+  const { app } = await launchApp({ ...OUTPUTS, DRASHTI_TEST_KEEP_SCREENS: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const hall = await setUpScreen(win, 'Main Hall', 0);
+  await expect.poll(() => openRoles(app)).toEqual(['audience']);
+  const place = await standing(win, hall);
+  expect(place?.state).toBe('showing');
+  // Nothing up: Mod+1 turns it off at once.
+  await win.keyboard.press(`${MOD}+1`);
+  await expect.poll(() => openRoles(app)).toEqual([]);
+
+  // In Screens, its On, off and on again: no output is put on a display while Audience is off, so nothing asks.
+  await win.keyboard.press(`${MOD}+Shift+S`);
+  const state = win.getByTestId('screen-state');
+  await expect(state).toHaveText('Switched off');
+  const on = win.getByTestId('screen-row').getByLabel('On', { exact: true });
+  await on.click();
+  await expect(state).toHaveText('Off');
+  await on.click();
+  await expect(state).toHaveText('Switched off');
+  await holdStill(
+    async () => (await pending(win)) === null && outputPages(app).every((p) => p.isClosed()),
+    1500,
+    'turned on again while Audience is off, nothing is asked and nothing opens',
+  );
+  await expect(win.getByTestId('keep-screens')).toHaveCount(0);
+  expect(await standing(win, hall)).toEqual({ state: 'switched-off', displayId: place?.displayId });
+  await win.keyboard.press('Escape');
+  await expect(win.locator('[aria-modal="true"]')).toHaveCount(0);
+
+  // Audience on: on the display it was on, never asked.
+  await win.getByTestId('switch-off-audience').getByRole('button', { name: 'Turn on Audience' }).click();
+  await expect.poll(() => openRoles(app)).toEqual(['audience']);
+  expect(await standing(win, hall)).toEqual({ state: 'showing', displayId: place?.displayId });
+  expect(await pending(win)).toBeNull();
+  await expect(win.getByTestId('keep-screens')).toHaveCount(0);
+  await app.close();
+});
+
+test('the screens dashboard shows a switched-off screen as off, never its last picture', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp(OUTPUTS);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const hall = await setUpScreen(win, 'Main Hall', 0);
+  await expect.poll(() => openRoles(app)).toEqual(['audience']);
+  await win.getByTestId('screens-summary').click();
+  const card = win.locator(`[data-testid="dashboard-display"][data-screen="${hall}"]`);
+  // Its picture first, as it shows the show (taken every 3 s while the dashboard is open).
+  await expect(card.getByTestId('dashboard-thumb')).toBeVisible({ timeout: 20_000 });
+  /** Audience off or on, as the switch does (the dashboard has the keyboard while it is open). */
+  const audience = (on: boolean) =>
+    win.evaluate(async (isOn) => {
+      const turned = await (globalThis as PageGlobals).drashti.screenSwitches.turn('audience', isOn);
+      if (!turned.ok) throw new Error(turned.message);
+    }, on);
+
+  await audience(false);
+  await expect.poll(() => openRoles(app)).toEqual([]);
+  await expect(card.getByTestId('dashboard-state')).toHaveText('Audience off');
+  await expect(card.getByTestId('dashboard-thumb')).toHaveCount(0);
+  await expect(card.getByTestId('dashboard-no-picture')).toHaveText('This computer’s desktop');
+  // Past the next picture or two the dashboard takes: its last one never comes back while it is off.
+  await holdStill(
+    async () => (await card.getByTestId('dashboard-thumb').count()) === 0,
+    4000,
+    'a switched-off screen shows no picture on the dashboard',
+  );
+
+  // On again: showing, with a picture of its own again.
+  await audience(true);
+  await expect(card.getByTestId('dashboard-state')).toHaveText('Showing');
+  await expect(card.getByTestId('dashboard-thumb')).toBeVisible({ timeout: 20_000 });
+  await app.close();
+});
+
+test('in the first moments, before the window knows which screens are open, turning one off asks', async () => {
+  test.setTimeout(150_000);
+  const { app, userData } = await launchApp(OUTPUTS);
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await hallAndStage(win, app);
+  await app.close();
+
+  // Started again, the window told the screens 20 s after it asks for them (a test's first moments, held).
+  const again = await relaunchApp(userData, { ...OUTPUTS, DRASHTI_TEST_SCREENS_LATE_MS: '20000' });
+  const next = await operatorPage(again.app);
+  await operatorReady(next);
+  await expect.poll(() => openRoles(again.app)).toEqual(['audience', 'stage']);
+  // The window does not know them yet.
+  await expect(next.getByTestId('screens-summary')).toContainText('No screens set up');
+  // Nothing is up, but nothing is known: asked first, the safe side.
+  const ask = next.getByTestId('screen-switch-ask');
+  await next.keyboard.press(`${MOD}+1`);
+  await expect(ask).toContainText('Turn Audience off?');
+  await expect(ask.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await ask.getByRole('button', { name: 'Cancel' }).click();
+  await expect(ask).toHaveCount(0);
+  expect(await switches(next)).toEqual({ audience: true, stage: true });
+  expect(await openRoles(again.app)).toEqual(['audience', 'stage']);
+  await again.app.close();
+});
+
+test('covering the controls: Mod+1’s question shows on that output too; Esc cancels, the output’s own answer counts, Enter turns Audience off', async () => {
+  needsRealScreen();
+  test.setTimeout(150_000);
+  // Real outputs (CI's one display, 1024 wide): the hall's picture over the controls.
+  const { app } = await launchApp();
+  try {
+    const win = await operatorPage(app);
+    await operatorReady(win);
+    const count = await app.evaluate(({ screen }) => screen.getAllDisplays().length);
+    test.skip(count > 1, 'Another display is free: the controls move there instead of being covered');
+    const controls = await app.evaluate(({ BrowserWindow, screen }) => {
+      const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('index.html'));
+      return w ? screen.getDisplayMatching(w.getBounds()).id : -1;
+    });
+    // On the controls' display, as Screens puts it once the operator agreed.
+    await win.evaluate(async (displayId) => {
+      const d = (globalThis as PageGlobals).drashti;
+      const created = await d.screens.createGroup('Main Hall');
+      if (!created.ok) throw new Error(created.message);
+      const groupId = created.snapshot.groups.find((g) => g.name === 'Main Hall')?.id ?? '';
+      const assigned = await d.screens.assignDisplay(groupId, displayId, { coverOperator: true });
+      if (!assigned.ok) throw new Error(assigned.message);
+    }, controls);
+    const out = await windowShowing(
+      app,
+      (p) => p.url().includes('output.html') && !p.url().includes('identify=') && !p.isClosed(),
+      'output',
+    );
+    await slideUp(win);
+    await expect(out.locator('[data-layer="slide"]')).toContainText('Placeholder switch line one');
+    const ask = win.getByTestId('screen-switch-ask');
+    const big = out.getByTestId('switch-question');
+
+    // Mod+1: asked in the window under it and, large, on the output; Turn off has the keyboard, so Enter does it.
+    await win.keyboard.press(`${MOD}+1`);
+    await expect(big).toContainText('Turn Audience off?');
+    await expect(big).toContainText('The hall’s screens will show this computer’s desktop.');
+    await expect(big).toContainText('Enter turns Audience off');
+    await expectFits(big, 'Turn Audience off? on the output over the controls');
+    await expect(ask.getByTestId('screen-switch-covered')).toBeVisible();
+    await expect(ask.getByTestId('screen-switch-turn-off')).toBeFocused();
+    // Esc: nothing changes, and the question goes from both.
+    await win.keyboard.press('Escape');
+    await expect(ask).toHaveCount(0);
+    await expect(big).toHaveCount(0);
+    expect(await switches(win)).toEqual({ audience: true, stage: true });
+    expect(out.isClosed()).toBe(false);
+
+    // The output's own Esc, as it sends it when it has the keyboard (a windowed output): the same.
+    await win.keyboard.press(`${MOD}+1`);
+    await expect(big).toBeVisible();
+    await out.evaluate(() => {
+      void (globalThis as PageGlobals).drashti.output.switchAnswer(false);
+    });
+    await expect(ask).toHaveCount(0);
+    await expect(big).toHaveCount(0);
+    expect(await switches(win)).toEqual({ audience: true, stage: true });
+
+    // Enter: Audience off; the output over the controls closes, and with it the question.
+    await win.keyboard.press(`${MOD}+1`);
+    await expect(big).toBeVisible();
+    await win.keyboard.press('Enter');
+    await expect.poll(() => switches(win)).toEqual({ audience: false, stage: true });
+    await expect.poll(() => outputPages(app).filter((p) => !p.isClosed()).length).toBe(0);
+    await expect(ask).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
 });
