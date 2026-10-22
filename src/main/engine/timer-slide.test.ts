@@ -305,6 +305,31 @@ describe('a countdown on a slide at zero', () => {
     expect(engine.current.live.slideIndex).toBe(0);
   });
 
+  it('after an unexpected restart: a zero that came while Drashti was down holds; one still to come goes on', () => {
+    // Since Session 51 the slide comes back with the time it went up, from before its countdown's zero.
+    const restart = (at: number) => {
+      const s = setup();
+      s.tick(at - s.now());
+      s.engine.restore({
+        slide: { presentationId: 'z', slideIndex: 0, shownAt: 100_000 },
+        background: null,
+        blackout: false,
+        timers: [{ id: 't1', startedAt: 100_000, elapsedMs: 0 }],
+      });
+      return s;
+    };
+    // Its zero (at 400 000) came while it was down: nothing moves on as it starts again.
+    const down = restart(450_000);
+    expect(down.pending()).toHaveLength(0);
+    down.until(900_000);
+    expect(down.engine.current.layers.slide?.slide.id).toBe('z0');
+    // Still counting as it starts again: at its zero, the next slide.
+    const counting = restart(300_000);
+    expect(counting.pending().map((j) => j.at)).toEqual([400_000]);
+    counting.until(400_000);
+    expect(counting.engine.current.layers.slide?.slide.id).toBe('z1');
+  });
+
   it('a zero that came and went unwaited for (its slide edited to go on afterwards): it holds', () => {
     const { engine, memory, until, pending, tick } = setup();
     engine.dispatch({ type: 'startTimer', timerId: 't1' });

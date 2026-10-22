@@ -54,8 +54,17 @@ export interface SavedLive {
   /** The engine state version the background was saved with; another version is not restored. */
   engineVersion: number;
   savedAt: string;
-  /** The slide on screen (not just the cursor: a cleared slide is not put back), in the order it was played in. */
-  slide: { presentationId: string; slideIndex: number; arrangementId: string | null } | null;
+  /**
+   * The slide on screen (not just the cursor: a cleared slide is not put back), in the order it was played in, and
+   * when it went up (Session 51): put back, its videos and their sound carry on from then, and it draws settled.
+   * Left out under a timer shown alone (the slide the show was at was not on the screens) and in files before.
+   */
+  slide: {
+    presentationId: string;
+    slideIndex: number;
+    arrangementId: string | null;
+    shownAt?: number;
+  } | null;
   /** The playlist item being played, so Next carries on after the restart. */
   playlist: PlaylistCursor | null;
   background: BackgroundLayer | null;
@@ -182,6 +191,8 @@ const savedSchema = z.object({
       slideIndex: z.number().int().min(0),
       // Files saved before arrangements played every slide in order.
       arrangementId: idSchema.nullable().default(null),
+      // Files saved before Session 51 have none: the slide comes back from the restart.
+      shownAt: z.number().optional(),
     })
     .nullable(),
   // Files saved before playlists could be played have none.
@@ -260,6 +271,7 @@ export function savedFrom(state: EngineState, session: string, now = new Date())
             presentationId: slide.presentationId,
             slideIndex: slide.slideIndex,
             arrangementId: state.live.arrangementId,
+            shownAt: slide.shownAt,
           }
         : null,
     playlist: state.live.playlist,
