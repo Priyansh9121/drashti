@@ -527,7 +527,8 @@ let artiClockOffset = artiTestClock ? Number(sw('DRASHTI_TEST_ARTI_OFFSET_MS') ?
 const scheduleNow = () => Date.now() + artiClockOffset;
 // Tests only (never a packaged Drashti): updates come from this server instead of GitHub Releases, and
 // install by writing what they would run into a file; a download goes at this rate; and a test can say
-// the stream is on air (globalThis.drashtiTestOnAir), for updates and link downloads only.
+// the stream is on air (globalThis.drashtiTestOnAir), for updates and link downloads (the drop folder and
+// smart playlists use it too, and Session 50's conversions, which wait while it is).
 const testUpdateBase = app.isPackaged ? undefined : sw('DRASHTI_UPDATE_URL');
 const updateBase = testUpdateBase ?? UPDATE_BASE;
 const testInstallLog = app.isPackaged ? undefined : sw('DRASHTI_TEST_UPDATE_INSTALL');
@@ -2598,7 +2599,7 @@ function start(): void {
       if (replaced) slides.invalidate(presentationId);
       libraryChanged();
     },
-    onFinished: () => {
+    onFinished: (run) => {
       // An import can change what comes next (a replaced presentation, a filled playlist).
       engine.refreshNext();
       libraryChanged(true);
@@ -2606,6 +2607,9 @@ function start(): void {
       listChanged('shastra');
       // Or a calendar.
       calendarService?.refresh();
+      // What it found Drashti's player cannot play is converted by itself (Session 50): one file at a time,
+      // a moment after the import, never while the stream is on air or recording.
+      if (run) conversions.convertImported(importRepo.report(run.id));
     },
     failRun: (runId, paths, message) => {
       importRepo.failRun(runId, paths, message);
@@ -2666,8 +2670,11 @@ function start(): void {
         arch: process.arch,
         override: sw('DRASHTI_FFMPEG'),
       }),
+    // A test can say the stream is on air (DRASHTI_TEST_ON_AIR_HOOK; Session 50: conversions at import wait).
     busy: () =>
-      streaming.inUse() ? 'Waits while the stream is on air or recording, then carries on by itself.' : null,
+      streaming.inUse() || testOnAir
+        ? 'Waits while the stream is on air or recording, then carries on by itself.'
+        : null,
     freeBytes: diskFreeBytes,
     changed: (jobs) => {
       sendToOperator(IPC.media.conversionsChanged, jobs);
