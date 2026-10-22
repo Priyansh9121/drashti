@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import type { ButtonVariant } from './Button';
 import { Button, IconButton } from './Button';
 import { cx } from './cx';
+import type { Stacked } from './dialog-stack';
 import { DialogStack } from './dialog-stack';
 import { X } from './icons';
 import { useArrival, useLeaving } from './motion';
@@ -20,17 +21,14 @@ import { useArrival, useLeaving } from './motion';
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-interface Trap {
-  readonly onTop: boolean;
+interface Trap extends Stacked<HTMLElement> {
   readonly root: HTMLElement;
-  /** Where the keyboard goes back as it closes. */
-  before: HTMLElement | null;
   /** Its own first control (or the one marked data-autofocus) takes the keyboard, unless one of its own has it. */
   focusFirst(): void;
 }
 
 /** The open dialogs, innermost last: only that one holds the keyboard. */
-const stack = new DialogStack<Trap>();
+const stack = new DialogStack<HTMLElement, Trap>();
 
 function focusables(root: HTMLElement): HTMLElement[] {
   return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
@@ -80,10 +78,9 @@ export function useFocusTrap(
       else focusFirst();
     };
     if (onTop) document.addEventListener('focusin', onFocusIn, true);
-    // Opened under one on top, it leaves that one the keyboard, which comes here as that one closes; as this one
-    // closes, the keyboard goes back where it was before that one opened.
+    // Opened under one on top, it leaves that one the keyboard, which comes here as that one closes
+    // (dialog-stack.ts).
     if (stack.push(trap)) focusFirst();
-    else trap.before = stack.innermost()?.before ?? null;
     const onKey = (e: KeyboardEvent) => {
       if (stack.innermost() !== trap) return;
       if (e.key === 'Escape' && escape.current) {
@@ -113,7 +110,10 @@ export function useFocusTrap(
     return () => {
       document.removeEventListener('keydown', onKey, true);
       if (onTop) document.removeEventListener('focusin', onFocusIn, true);
-      const { held, next } = stack.remove(trap);
+      // Its own elements, even as it goes (React has taken them out of the page by now): a dialog opened from it
+      // gives the keyboard back where this one had it from (dialog-stack.ts: an editor and its "Keep your
+      // changes?", Throw away closing both, the editor first).
+      const { held, next } = stack.remove(trap, (element) => root.contains(element));
       // Only the one holding the keyboard gives it back, where it was. One on top gives it to a dialog opened
       // meanwhile instead (where it was is under that one).
       if (!held) return;
