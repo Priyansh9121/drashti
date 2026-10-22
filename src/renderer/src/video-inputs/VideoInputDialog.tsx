@@ -150,7 +150,7 @@ function InputDialog({ editing, platform }: { editing: VideoInput | null; platfo
       title={editing ? `Change “${editing.name}”` : 'Add a Video Input'}
       subtitle="A camera or capture input on this computer (a video mixer’s program through its USB output, say), named in Media’s Video inputs. Nothing goes up until you click it there."
       onClose={closeInputDialog}
-      closeLabel={editing ? 'Close Change the video input' : 'Close Add a Video Input'}
+      closeLabel={editing ? `Close Change “${editing.name}”` : 'Close Add a Video Input'}
       size="lg"
       testId="video-input-dialog"
       footer={
