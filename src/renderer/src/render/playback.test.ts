@@ -189,6 +189,34 @@ describe('a file played once to an end point', () => {
     stop();
   });
 
+  it('held at its end point, a sound sent a little way back plays that last stretch, in step', () => {
+    // Session 51: a marker 0.3 s before its end point. Short of the 0.5 s that makes a sound jump, it was taken for
+    // one that got to its end point a moment before the clock, and held there: silent while the clock played on.
+    const v = new FakeMedia(30);
+    const timing: { clip: PlaybackClip; seek?: PlaybackSeek } = { clip: { startMs: 0, endMs: 10_000 } };
+    const stop = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'clip',
+      startedAt: Date.now(),
+      audible: true,
+      limits: SOUND_LIMITS,
+      timing: () => ({ loop: false, ...timing }),
+    });
+    runFor(v, 11_000);
+    expect(v.paused, 'held at its end point').toBe(true);
+    const back = { at: Date.now(), toMs: 9700 };
+    timing.seek = back;
+    stop.resync();
+    runFor(v, 150);
+    const off = v.currentTime - (back.toMs + Date.now() - back.at) / 1000;
+    expect(v.paused, 'playing its last 0.3 s').toBe(false);
+    expect(Math.abs(off), `${off.toFixed(3)} s off the clock`).toBeLessThan(2 / 30);
+    // And held at its end point again.
+    runFor(v, 500);
+    expect(v.paused).toBe(true);
+    expect(Math.abs(v.currentTime - 10)).toBeLessThanOrEqual(FRAME);
+    stop();
+  });
+
   it('starts held when it joins after the end point', () => {
     const v = new FakeMedia(6);
     const stop = startPlayback(v as unknown as HTMLMediaElement, {
