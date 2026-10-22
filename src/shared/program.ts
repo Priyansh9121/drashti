@@ -59,11 +59,16 @@ export type ProgramPicture =
  */
 export const LOWER_THIRD_MAX_LINES = 6;
 
-/** A slide's words for a lower third, in these languages (null: all of them): the lines shown, and how many in all. */
+/**
+ * A slide's words for a lower third, in these languages (null: all of them): the lines shown, and how many in all.
+ * None for a slide with a Timer (Session 50): its time is no line of words, so the slide is drawn whole, as a
+ * picture slide is (hasPicture), and never its words without the time.
+ */
 export function lowerThirdOf(
   slide: RenderSlide,
   languages: readonly Lang[] | null,
 ): { lines: LowerThirdLine[]; total: number } {
+  if (slide.elements.some((e) => e.kind === 'timer')) return { lines: [], total: 0 };
   const shown = languageView(slide, languages);
   const source = slide.translitOf ?? translitSource(slide.elements);
   const lines: LowerThirdLine[] = [];

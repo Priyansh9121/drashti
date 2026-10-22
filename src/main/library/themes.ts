@@ -33,6 +33,29 @@ const readText = (row: ElementRow): TextProps | null => {
 const byPosition = <T extends { position: number }>(list: readonly T[]) =>
   [...list].sort((a, b) => a.position - b.position);
 
+/**
+ * A Timer under the theme (Session 50): its digits in the theme's words (font, weight, colour, shadow), as New
+ * Timer Slide… makes them; its size, place and own settings as they were. Anything else as it is.
+ */
+function themedTimer(row: ElementRow, theme: ThemeFields): ElementRow {
+  if (row.kind !== 'timer') return row;
+  try {
+    const p = JSON.parse(row.props) as { style?: unknown };
+    if (typeof p.style !== 'object' || p.style === null) return row;
+    const en = theme.langs.en;
+    const style = {
+      ...p.style,
+      fontFamily: en.font,
+      fontWeight: en.weight,
+      color: en.color,
+      shadow: en.shadow,
+    };
+    return { ...row, props: JSON.stringify({ ...p, style }) };
+  } catch {
+    return row;
+  }
+}
+
 /** How a run in this language looks under the theme. */
 function runLook(
   t: ThemeLangStyle,
@@ -109,7 +132,7 @@ export function applyTheme(rows: ContentRows, theme: Theme, newId: () => string 
     for (const e of list) {
       const p = readText(e);
       if (!p) {
-        out.push(e);
+        out.push(themedTimer(e, theme));
         continue;
       }
       const box =
