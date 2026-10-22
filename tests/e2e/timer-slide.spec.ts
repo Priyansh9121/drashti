@@ -4,6 +4,7 @@ import type { PageGlobals } from './helpers';
 import {
   holdStill,
   launchApp,
+  NO_PLACEHOLDERS,
   openLibrary,
   operatorPage,
   outputPage,
@@ -52,7 +53,9 @@ const timerOn = (output: Page): Locator => output.locator('[data-layer="slide"] 
 const timeOn = (output: Page) => timerOn(output).first().getAttribute('data-time');
 
 test('Show on the screens puts a timer up alone, counting; Clear slide takes it off; Next goes on as before', async () => {
-  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1' });
+  // Its own slides only: with the tests' placeholder presentations, the first would be open in the middle, and
+  // Next would start it rather than go on in the slides that are up.
+  const { app } = await launchApp({ DRASHTI_WINDOWED_OUTPUTS: '1', ...NO_PLACEHOLDERS });
   const win = await operatorPage(app);
   const id = await makeSlides(
     win,
