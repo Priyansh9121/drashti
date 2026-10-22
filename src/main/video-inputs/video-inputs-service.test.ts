@@ -372,6 +372,10 @@ describe('after a restart (restart recovery put the input back)', () => {
 });
 
 describe('after a restart, a video input put back in the picture-in-picture box (Session 51)', () => {
+  it('waits up to 20 s for the first screen’s word: on CI’s Mac a screen’s first frame after a crash took up to 8', () => {
+    expect(RESTORE_WAIT_MS).toBe(20_000);
+  });
+
   it('a screen with no camera of that name: the box comes off, and the recovery notice names it', async () => {
     const { service, setBox, takenOff, cleared, waits } = setup();
     const one = added(service.add(fields), 'Placeholder input');

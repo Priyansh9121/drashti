@@ -30,8 +30,13 @@ import { readVideoInputs, writeVideoInputs } from './video-inputs-file';
  * nothing else: the stopped notice is the background's.
  */
 
-/** How long after a restart the screens have to say whether the input put back is there. */
-export const RESTORE_WAIT_MS = 8000;
+/**
+ * How long after a restart the screens have to say whether the input put back is there. Counted from the show put
+ * back, before any window has opened: CI's Mac took up to 8.1 s from Drashti starting to a screen's first frame
+ * after a crash (tests/e2e/recovery-figure.ts), so 20 s (Session 51; 8 before). Only a screen's first word ends
+ * the wait sooner; with none, the recovery notice waits this long.
+ */
+export const RESTORE_WAIT_MS = 20_000;
 
 export interface VideoInputsDeps {
   /** Drashti's data folder on this computer: the list is kept there (./video-inputs-file.ts). */
