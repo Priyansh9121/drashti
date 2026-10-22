@@ -168,4 +168,6 @@ The `live-window` scenario: the placeholder window live on two outputs and the s
 | with the window    | 10, 10 ms; 13, 16 ms                | 15, 9 ms    | 0, 0; 0, 0               | 29.7, 29.7; 3, 0     | 22.5 and 21.9 (its pattern changes 25)    | 6%, 6% of one core     |
 | without the window | 10, 13 ms; 16, 13 ms                | 44, 14 ms   | 0, 0; 0, 0               | 29.8, 29.8; 0, 0     | none                                      | 3%, 2%                 |
 
+After the kept picture's fix (`66c573e`: nothing kept once a window's capture ends, and the copy a second older shown), one more run with the window: idle p90 15 ms, just after the import 12 ms, worst block 17 ms, late frames 0 and 1, the stream 29.8 fps with none dropped, the window 21.7 frames a second on each screen, 6% of one core.
+
 Each screen captures the window itself (the outputs, the stream's page and, small, the operator window): three captures cost about 3 to 4 points of one core and no late frame, so one capture shared between them (copying frames between pages) was not needed. A real meeting's window (macOS's own window capture, Screen Recording given) has not been measured: only a person can.

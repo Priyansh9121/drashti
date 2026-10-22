@@ -2,6 +2,12 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
+## Unreleased
+
+- Zoom, both ways, with no Zoom account of Drashti's own and nothing to pay for. Window for Zoom… (in the Stream panel and the View menu) opens a window called Drashti for Zoom with exactly the stream's picture, on air or not: in Zoom, Share Screen and choose that window, with the mixer's input as Zoom's microphone. Drashti sends Zoom no sound.
+- Show a Window… (Library, then Media) shows another app's open window, a Zoom meeting say, live on the hall's screens and the stream as the background. Choose it by name with its small picture: nothing goes up until Show on the screens. Black-out and the Logo cover it, and Clear all takes it off. If it closes, the screens keep its last picture and a notice says so, with Clear the window. On a Mac, macOS asks once for Screen Recording, and may ask again after an update.
+- After an unexpected stop, a window that was on the screens is not put back, and the note at the top names it. The phone remote names it and can clear it; an output node's screens show the rest of the show without it.
+
 ## 1.0.0-alpha.10 (21 Oct 2026)
 
 With PINs set, Drashti now opens in Pro Mode, ready for the operator, instead of Simple Mode. Update after a sabha, never on the day of one.

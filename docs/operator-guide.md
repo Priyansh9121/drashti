@@ -165,7 +165,35 @@ If an admin has turned the single-letter keys off (**Keys at a glance**, below),
 3. If anything went wrong, **Help**, then **Save Diagnostics…**: a file appears on the Desktop. Send it to whoever looks after Drashti with the time and what you saw. It holds no kirtan words, names or file paths. If Drashti asks about crash files, leave **Include crash files** unticked unless the admin asks for them: they can hold words from slides.
 4. Quit Drashti, or switch to Simple Mode for the next volunteer (**View**, then **Switch to Simple Mode**). With PINs set, either one locks admin (it stays unlocked until **Lock**, Simple Mode or quitting).
 
-## 5. Keys at a glance
+## 5. Zoom
+
+Drashti works with Zoom both ways, and needs nothing paid for it: no Zoom account of its own, no paid Zoom plan, and nothing installed but Zoom itself. A free Zoom account keeps Zoom's own 40-minute limit on meetings of three or more people.
+
+**Zoom sees the stream's picture.** For a meeting that should see what YouTube sees (a sabha shared with another mandir, say):
+
+1. In the **Stream** panel, press **Window for Zoom…** (or **View**, then **Window for Zoom…**). A window called **Drashti for Zoom** opens with exactly the stream's picture: the camera with the words as a lower third, or the slides, as the stream's layout says, whether or not the stream is on air. Nothing else is drawn on it: no buttons, no words of Drashti's own.
+2. Leave it open where it can stay (beside the controls, or on a spare display), never minimised: Zoom shares only an open window. Make it bigger or smaller from a corner: it keeps the picture's shape, and opens there again next time. It never goes full screen or covers a display by itself.
+3. Zoom's microphone: in Zoom, beside **Mute**, choose the mixer's input, the same one the stream uses. For kirtans and music, turn on Zoom's **Original sound for musicians** (Zoom's settings, **Audio**). Drashti sends no sound to Zoom.
+4. In Zoom: **Share Screen**, choose the **Drashti for Zoom** window, then **Share** (leave **Share sound** off).
+5. To stop: **Stop Share** in Zoom, then close the window. Closing it changes nothing on the screens or the stream.
+
+![The window for Zoom: the stream's picture and nothing else](screenshots/zoom-window.png)
+
+**The meeting on the hall's screens.** For a speaker who joins by Zoom, shown live in the hall:
+
+1. Join the meeting in Zoom first, and leave Zoom's window open (not minimised) the way the hall should see it: speaker view or gallery view.
+2. **Library**, then **Media**, then **Show a Window…**. It lists the other apps' open windows, each by name with a small live picture: never a whole screen, and never Drashti's own. On a Mac, the first time, it says why it needs **Screen Recording** and opens System Settings, where an admin turns it on (`docs/admin-guide.md`, section 4).
+3. Choose Zoom's window (usually **Zoom Meeting**), look at its small picture (never an inbox or a chat), and press **Show on the screens**. Nothing goes up before that.
+4. It is now the background, fitted in with black around it: slides, a lower third, messages and the ticker go over it as over a video. **Black-out** and **Logo** cover it; **F1** (Clear all) or **F3** (the background) takes it off; **Put it back**, straight after Clear all, brings it back while the window is still open. The stream shows it wherever it shows the hall's background. Stage screens say **Window on the screens**, and an output node's screens (another computer's) show the rest of the show without it, as the screens dashboard says.
+5. Its sound: none from Drashti. The meeting's sound reaches the hall through the mixer, as now.
+6. If Zoom's window is closed, minimised or hidden, the screens keep its last picture and a yellow notice under the header says so: open the window again to carry on live, or press **Clear the window**.
+7. After Drashti stops unexpectedly, the window is not put back (it may be gone): the note at the top names it. Show it again with **Show a Window…**.
+
+The phone remote names it (**A window: Zoom Meeting**), and its **Clear** takes it off; a phone can never choose a window. In Simple Mode, **F3** and **Clear all** take it off too, but only Pro Mode can show one.
+
+![Show a Window: the open windows, each with a small live picture](screenshots/window-picker.png)
+
+## 6. Keys at a glance
 
 In Drashti, **Help**, then **Keyboard Shortcuts…** (or press **?** when no field is chosen) lists every key, as your computer writes it. At its top, an admin can turn the single-letter keys (**B**, **.**, **L** and **?**) off, for someone who works the computer by speaking to it or with a switch, so that a word said never blacks out the hall. Then those four keys do nothing, the list says **Off** beside them, and **Black-out** and **Logo** work from their buttons, a MIDI pad and the phone remote as always. The full key card, including the slide editor's keys, is at the end of `docs/parallel-run.md`. Going live, ending the stream and recording have no keys: always the buttons, and always a question first.
 
