@@ -107,6 +107,27 @@ describe('keymap', () => {
     expect(keyMatches(press('x'), 'X', 'darwin')).toBe(true);
   });
 
+  // Shift+Cmd+Z is Redo's key on the Mac, never Mod+Z (Session 51: the menu-keys test, its gaps closed, found
+  // Simple Mode's page taking Edit › Redo's key as Undo, Put it back). A letter with Cmd, Ctrl or Alt matches
+  // only with Shift as its binding has it; a letter alone matches with Shift or without (Caps Lock, Shift held),
+  // as a digit and "?" do (some keyboards need Shift to type them).
+  it('matches a letter with Cmd, Ctrl or Alt only with Shift as its binding has it', () => {
+    expect(actionFor(press('z', { metaKey: true, shiftKey: true }), 'darwin', SIMPLE_KEYMAP)).toBeNull();
+    expect(actionFor(press('Z', { metaKey: true, shiftKey: true }), 'darwin', SIMPLE_KEYMAP)).toBeNull();
+    expect(actionFor(press('z', { metaKey: true }), 'darwin', SIMPLE_KEYMAP)).toBe('undo');
+    expect(actionFor(press('F', { ctrlKey: true, shiftKey: true }), 'win32')).toBeNull();
+    expect(actionFor(press('f', { ctrlKey: true }), 'win32')).toBe('findInLibrary');
+    // A binding with Shift still needs it.
+    expect(actionFor(press('S', { metaKey: true, shiftKey: true }), 'darwin')).toBe('openScreens');
+    expect(actionFor(press('s', { metaKey: true }), 'darwin')).toBeNull();
+    // A letter alone, a digit with Cmd or Ctrl, and "?" match with Shift or without, as before.
+    expect(actionFor(press('B', { shiftKey: true }), 'win32')).toBe('toggleBlackout');
+    expect(actionFor(press('L', { shiftKey: true }), 'darwin')).toBe('toggleLogo');
+    expect(actionFor(press('1', { metaKey: true, shiftKey: true }), 'darwin')).toBe('toggleAudience');
+    expect(actionFor(press('2', { ctrlKey: true, shiftKey: true }), 'win32')).toBe('toggleStage');
+    expect(actionFor(press('?', { shiftKey: true }), 'darwin')).toBe('showKeys');
+  });
+
   it('ignores keys that are not bound', () => {
     expect(actionFor(press('q'), 'darwin')).toBeNull();
     expect(actionFor(press('Enter'), 'darwin')).toBeNull();

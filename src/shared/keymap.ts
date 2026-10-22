@@ -8,7 +8,8 @@
  * Nothing else in the app hard-codes a key.
  *
  * Key names are KeyboardEvent.key values, except "Space". Letters match
- * either case. "Mod+" means Cmd on macOS and Ctrl on Windows.
+ * either case (with Cmd, Ctrl or Alt, Shift as the binding has it). "Mod+"
+ * means Cmd on macOS and Ctrl on Windows.
  *
  * Bindings marked `global` also work when Drashti is not the active app
  * (the main process registers them while they are needed), so they still
@@ -208,8 +209,11 @@ export function keyMatches(input: KeyInput, binding: string, platform: string): 
   const otherMod = platform === 'darwin' ? input.ctrlKey : input.metaKey;
   if (mod !== want.mod || otherMod || input.altKey !== want.alt) return false;
   const key = normalise(input.key);
-  // Shift only matters when the binding asks for it, or for named keys (Shift+Space is not Space).
-  if (want.shift !== input.shiftKey && (want.shift || key.length > 1)) return false;
+  // Shift only matters when the binding asks for it, for named keys (Shift+Space is not Space), and for a letter
+  // with Cmd, Ctrl or Alt (Session 51: Shift+Cmd+Z is Redo's key, not Mod+Z). A letter alone matches with Shift
+  // or without (Caps Lock, Shift held), as a digit or "?" does: some keyboards need Shift to type them.
+  const letterWithMod = (want.mod || want.alt) && /^[A-Z]$/u.test(key);
+  if (want.shift !== input.shiftKey && (want.shift || key.length > 1 || letterWithMod)) return false;
   return key === normalise(want.key);
 }
 
