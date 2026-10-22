@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { type EngineState, initialEngineState } from '../../shared/engine/state';
-import type { ScreenSwitch, ScreenSwitches } from '../../shared/screen-switches';
+import { type ScreenSwitch, type ScreenSwitches, TURN_OFF } from '../../shared/screen-switches';
 import type { ScreenGroupConfig, ScreenState, ScreensSnapshot } from '../../shared/screens';
-import { ONLY_ON_IN_SIMPLE_MODE, ScreenSwitchService } from './screen-switches';
+import { ONLY_ON_IN_SIMPLE_MODE, ScreenSwitchService, switchOffBox } from './screen-switches';
 
 /*
  * Audience and Stage in the main process (Session 50): every request checked, Simple Mode only turning them on,
@@ -194,5 +194,23 @@ describe('Audience and Stage in the main process (Session 50)', () => {
     await service.toggle('stage', yes.ask);
     expect(yes.asked).toEqual([]);
     expect(service.get().stage).toBe(true);
+  });
+});
+
+describe('the View menu’s own box (Session 51, S2-7)', () => {
+  it('asks in the window’s words and case: Cancel first and kept to, and Turn off', () => {
+    expect(switchOffBox('audience')).toEqual({
+      type: 'question',
+      buttons: ['Cancel', 'Turn off'],
+      defaultId: 0,
+      cancelId: 0,
+      message: 'Turn Audience off?',
+      detail: 'The hall’s screens will show this computer’s desktop. The show carries on.',
+    });
+    expect(switchOffBox('stage')).toMatchObject({
+      message: 'Turn Stage off?',
+      detail: 'The stage screens will show this computer’s desktop. The show carries on.',
+    });
+    expect(switchOffBox('stage').buttons[1]).toBe(TURN_OFF);
   });
 });

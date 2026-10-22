@@ -5,6 +5,9 @@ import {
   openUnder,
   SCREEN_SWITCHES,
   SWITCH_NAMES,
+  SWITCH_OFF_WORDS,
+  switchOffQuestion,
+  TURN_OFF,
   type ScreenSwitch,
   type ScreenSwitches,
   type ScreenSwitchResult,
@@ -114,4 +117,26 @@ export class ScreenSwitchService {
     }
     this.turn(which, false);
   }
+}
+
+/**
+ * The View menu's own box before one goes off (Session 51, S2-7): the window's question in its words and case,
+ * Cancel first and kept to, so Enter and Esc never turn the screens off by themselves.
+ */
+export function switchOffBox(which: ScreenSwitch): {
+  type: 'question';
+  buttons: [string, string];
+  defaultId: number;
+  cancelId: number;
+  message: string;
+  detail: string;
+} {
+  return {
+    type: 'question',
+    buttons: ['Cancel', TURN_OFF],
+    defaultId: 0,
+    cancelId: 0,
+    message: switchOffQuestion(which),
+    detail: `${SWITCH_OFF_WORDS[which]} The show carries on.`,
+  };
 }
