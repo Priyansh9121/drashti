@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { CommandResult, EngineCommand } from '../../shared/engine/commands';
 import { ENGINE_STATE_VERSION, initialEngineState } from '../../shared/engine/state';
-import type { InvokeChannel } from '../../shared/ipc';
+import { IPC, type InvokeChannel } from '../../shared/ipc';
 import { SIMPLE_MODE_REFUSAL, SIMPLE_MODE_REFUSED_COMMANDS } from '../../shared/mode';
 import { DEVICE_KINDS, type NetworkStatus, PAIRING_CODE_TTL_MS } from '../../shared/network';
 import { DEVICE_OPS, type DeviceOp, REMOTE_COMMANDS } from '../../shared/network-api';
 import { DEFAULT_PIP_PLACE } from '../../shared/pip';
+import type { ScreenSwitches } from '../../shared/screen-switches';
 import { openDatabase } from '../db/database';
 import { DeviceRepo } from '../db/devices';
 import { SIMPLE_MODE_LOCKED } from '../simple-mode';
@@ -38,6 +39,8 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
   let now = 1_000_000;
   const statuses: NetworkStatus[] = [];
   const state = initialEngineState();
+  /** Main's Audience and Stage (Session 50), as the test turns them. */
+  const switches: ScreenSwitches = { audience: true, stage: true };
   const service = new NetworkService({
     devices,
     settings: { get: (k) => settings.get(k), set: (k, v) => settings.set(k, v) },
@@ -97,6 +100,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
       mediaSource: () => null,
       stage: () => ({ groupId: 'stage-group', languages: ['gu'] }),
       hall: () => ({ groupId: 'hall-group' }),
+      switches: () => ({ ...switches }),
       looks: () => [
         { id: 'look-standard', name: 'Standard' },
         { id: 'look-lower', name: 'Placeholder lower thirds' },
@@ -142,6 +146,7 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
     announced,
     statuses,
     state,
+    switches,
     fromWorker,
     tick: (ms: number) => {
       now += ms;
@@ -478,5 +483,17 @@ describe('the network in the main process', () => {
       body: { ok: false, message: SIMPLE_MODE_REFUSAL },
     });
     expect(DEVICE_KINDS).toEqual(['remote', 'stage', 'announcements']);
+  });
+
+  it('tells a Remote which of Main’s screens are off, with the hall, and gives no way to turn them (Session 50)', () => {
+    const { service, switches } = setup();
+    const remote = service.pairForCheck('remote', 'Placeholder phone').id;
+    const hall = () => service.answer({ address: PHONE, deviceId: remote, op: 'hall', args: {} });
+    expect(hall()).toMatchObject({ status: 200, body: { switches: { audience: true, stage: true } } });
+    switches.audience = false;
+    expect(hall()).toMatchObject({ status: 200, body: { switches: { audience: false, stage: true } } });
+    // Nothing a device can ask for turns them: no op of its own, and none reaches the window's request.
+    expect(Object.keys(DEVICE_OPS).filter((op) => /switch/iu.test(op))).toEqual([]);
+    expect(Object.values(OP_CHANNEL)).not.toContain(IPC.screenSwitches.turn);
   });
 });

@@ -3367,6 +3367,8 @@ function start(): void {
         return { groupId, languages: groupId ? looks.liveLanguages(groupId) : null };
       },
       hall: () => ({ groupId: screenRepo.firstGroup('audience') }),
+      // Audience and Stage (Session 50): a Remote says which are off.
+      switches: () => manager.switches(),
       looks: () => lookRepo.list().map((l) => ({ id: l.id, name: l.name })),
       clockStyle: mainClockStyle,
     },
