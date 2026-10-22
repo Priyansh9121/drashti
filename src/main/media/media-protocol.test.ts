@@ -8,11 +8,20 @@ import {
   playbackOffset,
   playbackPosition,
   sharpenedUrl,
+  SOUND_EXTENSIONS,
   SOUND_LIMITS,
   stillUrl,
+  VIDEO_EXTENSIONS,
 } from '../../shared/media';
 import type { MediaFileRow, MediaProtocolDeps } from './media-protocol';
-import { handleMediaRequest, isInside, mediaRequestOf, parseRange, stillPath } from './media-protocol';
+import {
+  contentTypeOf,
+  handleMediaRequest,
+  isInside,
+  mediaRequestOf,
+  parseRange,
+  stillPath,
+} from './media-protocol';
 
 let root: string;
 let deps: MediaProtocolDeps & { warnings: string[] };
@@ -234,6 +243,81 @@ describe('media URLs and ranges', () => {
     expect(isInside(dir, `${dir}-other`)).toBe(false);
     expect(isInside(dir, join(dir, '..', 'outside'))).toBe(false);
     expect(isInside(dir, join(root, 'outside', 'secret.txt'))).toBe(false);
+  });
+
+  it('gives every video and sound Drashti takes its type, the kinds Session 50 added among them', () => {
+    expect(
+      Object.fromEntries(
+        [
+          '3gp',
+          '3g2',
+          'flv',
+          'f4v',
+          'ogv',
+          'ts',
+          'm2t',
+          'vob',
+          'mxf',
+          'dv',
+          'asf',
+          'divx',
+          'rm',
+          'rmvb',
+          'mka',
+          'ac3',
+          'eac3',
+          'dts',
+          'caf',
+          'amr',
+          'ape',
+          'wv',
+          'mp2',
+          'au',
+          'aifc',
+          'm4b',
+          'weba',
+          'm4r',
+          'mpa',
+          'ra',
+        ].map((ext) => [ext, contentTypeOf(`/Media/ab/abcd.${ext.toUpperCase()}`)]),
+      ),
+    ).toEqual({
+      '3gp': 'video/3gpp',
+      '3g2': 'video/3gpp2',
+      flv: 'video/x-flv',
+      f4v: 'video/mp4',
+      ogv: 'video/ogg',
+      ts: 'video/mp2t',
+      m2t: 'video/mp2t',
+      vob: 'video/mpeg',
+      mxf: 'application/mxf',
+      dv: 'video/x-dv',
+      asf: 'video/x-ms-asf',
+      divx: 'video/x-msvideo',
+      rm: 'application/vnd.rn-realmedia',
+      rmvb: 'application/vnd.rn-realmedia-vbr',
+      mka: 'audio/x-matroska',
+      ac3: 'audio/ac3',
+      eac3: 'audio/eac3',
+      dts: 'audio/vnd.dts',
+      caf: 'audio/x-caf',
+      amr: 'audio/amr',
+      ape: 'audio/x-ape',
+      wv: 'audio/x-wavpack',
+      mp2: 'audio/mpeg',
+      au: 'audio/basic',
+      aifc: 'audio/aiff',
+      m4b: 'audio/mp4',
+      weba: 'audio/webm',
+      m4r: 'audio/mp4',
+      mpa: 'audio/mpeg',
+      ra: 'audio/x-pn-realaudio',
+    });
+    // Every one the import takes has a type of its own (none is served as a bare stream of bytes).
+    for (const ext of [...VIDEO_EXTENSIONS, ...SOUND_EXTENSIONS])
+      expect(contentTypeOf(`x.${ext}`), ext).not.toBe('application/octet-stream');
+    expect(contentTypeOf('x.mkv')).toBe('video/x-matroska');
+    expect(contentTypeOf('x.unknown')).toBe('application/octet-stream');
   });
 
   it('parses single byte ranges', () => {
