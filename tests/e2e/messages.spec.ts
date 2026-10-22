@@ -54,10 +54,10 @@ test('a message with a field goes up on the screens, next to another, and comes 
   await car.getByRole('button', { name: 'Update' }).click();
   await expect(banner).toHaveText('Car PLACEHOLDER-456 please move   ·   Sabha starts in 5:00');
 
-  // Take one off; the other stays. Clear messages (F5) takes the rest.
+  // Take one off; the other stays. Clear messages (F6, Session 50) takes the rest.
   await car.getByRole('button', { name: 'Take off' }).click();
   await expect(banner).toHaveText('Sabha starts in 5:00');
-  await win.keyboard.press('F5');
+  await win.keyboard.press('F6');
   await expect(banner).toHaveCount(0);
   await expect(start).not.toHaveAttribute('data-shown', 'true');
 

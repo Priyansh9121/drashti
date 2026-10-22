@@ -471,8 +471,8 @@ test("an audio cue plays on the audio layer with the cue's volume and looping; C
   );
   expect(await soundingIn(win)).toBe(0);
 
-  // Clear audio (F6) stops it; the slide stays up.
-  await win.keyboard.press('F6');
+  // Clear audio (F5, Session 50) stops it; the slide stays up.
+  await win.keyboard.press('F5');
   await expect(cue).toHaveCount(0);
   await expect(win.getByTestId('audio-status')).toHaveCount(0);
   const layers = await win.evaluate(

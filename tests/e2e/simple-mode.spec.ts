@@ -166,8 +166,8 @@ test('a short sabha in Simple Mode with the keys only, and nothing can be broken
   await expect(audience.getByTestId('blackout')).toHaveCount(0);
   expect((await state(win)).layers.background).toEqual(playing);
 
-  // The logo and back.
-  await win.keyboard.press('l');
+  // The logo (F12, as the operators press it: Session 50) and back (L).
+  await win.keyboard.press('F12');
   await expect(audience.getByTestId('logo')).toContainText(LOGO);
   await expect(win.getByTestId('simple-logo')).toHaveText(/Logo is on/u);
   await expect(stage.getByTestId('stage-view')).toContainText('LOGO ON THE AUDIENCE SCREENS');

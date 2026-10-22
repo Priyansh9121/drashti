@@ -8,7 +8,7 @@ import { canvasPixels, near } from './pixels';
 /*
  * Masks (Session 11): a group's own mask in a Look hides the right pixels on
  * that group's screens only, the inverse shows only what is inside it, and
- * the Masks layer goes up from the Masks panel and comes down with F7.
+ * the Masks layer goes up from the Masks panel and comes down with F8 (F7 before Session 50).
  * Pixels are read from the outputs' own pictures. Placeholder names only.
  */
 
@@ -40,7 +40,7 @@ const RIGHT = { x: 1440, y: 540 };
 const CENTRE = { x: 960, y: 540 };
 const CORNER = { x: 60, y: 60 };
 
-test('a group’s own mask hides the right pixels on its screens only, the inverse shows only inside it, and the Masks layer comes down with F7', async () => {
+test('a group’s own mask hides the right pixels on its screens only, the inverse shows only inside it, and the Masks layer comes down with F8', async () => {
   test.setTimeout(150_000);
   const { app } = await launchApp(TWO_OUTPUTS);
   const win = await operatorPage(app);
@@ -93,7 +93,7 @@ test('a group’s own mask hides the right pixels on its screens only, the inver
   await editor.getByRole('button', { name: 'Close masks' }).click();
   await expect.poll(() => whites(hall, [LEFT, RIGHT])).toEqual([true, false]);
 
-  // Clear all and F7 never take a group's own shape away.
+  // Clear all and F8 never take a group's own shape away.
   await win.keyboard.press('F1');
   await win.evaluate(() =>
     (globalThis as PageGlobals).drashti.engine.dispatch({
@@ -103,7 +103,7 @@ test('a group’s own mask hides the right pixels on its screens only, the inver
   );
   await expect.poll(() => whites(hall, [LEFT, RIGHT])).toEqual([true, false]);
 
-  // The Masks layer: a circle up from the Masks panel, on every audience screen, until F7.
+  // The Masks layer: a circle up from the Masks panel, on every audience screen, until F8.
   await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;
     const made = await d.masks.save(null, {
@@ -124,7 +124,7 @@ test('a group’s own mask hides the right pixels on its screens only, the inver
   // The hall has both: its own shape (the left half shows) and the circle (only its inside shows).
   await expect.poll(() => whites(hall, [LEFT, { x: 700, y: 540 }, RIGHT])).toEqual([false, true, false]);
   await expect(win.getByRole('button', { name: 'Clear masks (on screen)' })).toBeEnabled();
-  await win.keyboard.press('F7');
+  await win.keyboard.press('F8');
   await expect.poll(() => whites(side, [CENTRE, CORNER])).toEqual([true, true]);
   await expect.poll(() => whites(hall, [LEFT, RIGHT])).toEqual([true, false]);
   await app.close();
