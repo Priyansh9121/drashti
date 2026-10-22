@@ -147,3 +147,25 @@ Head `2185eae` (`phase1`: Phase A's start-up reads and exit codes, the appearanc
 | Windows | base | 13, 14, 15 ms      | 15, 15, 15 ms           | 3, 6, 5 ms            | 4.1, 6.4, 4.2 s           |
 
 Every run passed every check (7 of 7). No change. `scripts/perf-compare.mjs` on the three runs of each finds no change in any segment on either system: every median and p95 of key to main, main to frame, frame to the next and key to frame differs within a 95% interval that holds 0. Key to frame: Mac median 16 ms against 16, p95 32 against 34; Windows median 8 against 8, p95 16 against 16. The head measured fewer changes during the import (Mac 185 against 201, Windows 802 against 991) because its imports happened to end sooner (Windows 7.4, 12.4 and 12.9 s against 11.1, 15.7 and 14.5 s; Mac 3.0, 1.9 and 2.1 s against 4.0, 2.2 and 1.6 s): changes are measured until the import ends, and nothing in these sessions touches the import. The raw files were compared and then deleted with the session's other artifacts.
+
+## Session 48: Zoom, both ways (dev Mac, 22 October 2026)
+
+Local and loud on the dev Mac (M2, 8 GB), not a CI round: the streaming check (1080p30 through VideoToolbox, recording, to FFmpeg listening on this computer, the fake camera), outputs as windows, runs alternating; base `9bd4d80`, head this session's build. Late frames are counted from this session on (`late frames on the screens`), so the base has none to compare.
+
+| Streaming check                     | During the import: median, p90 | Worst block    | Stream: fps (none dropped) | Drashti, streaming alone |
+| ----------------------------------- | ------------------------------ | -------------- | -------------------------- | ------------------------ |
+| base, 2 runs                        | 8, 7 ms; 16, 14 ms             | 11, 10 ms      | 29.8, 29.8                 | 31%, 29% of one core     |
+| head, 4 runs                        | 7, 8, 8, 7 ms; 14, 14, 14, 14  | 20, 5, 3, 4 ms | 29.8, 29.9, 29.6, 29.6     | 30%, 30%, 32%, 31%       |
+| head, the window for Zoom open      | 7, 7 ms; 15, 13 ms             | 3, 3 ms        | 29.5, 29.4                 | 36%, 38%                 |
+| head, the window for Zoom at 15 fps | 7, 8 ms; 16, 16 ms             | 3, 3 ms        | 29.4, 29.7                 | 36%, 37%                 |
+
+The window for Zoom costs about 6 points of one core (its capture of the Program and drawing it); the slide changes, the main process and the stream's dropped frames (none) are as without it, and the stream's frames a second stay within the swing between runs (29.6 to 29.9 without it, 29.4 to 29.7 with it). Capturing at 15 frames a second cost the same, so it stays at 30.
+
+The `live-window` scenario: the placeholder window live on two outputs and the stream (its Slides layout), slides every two seconds, two runs each, against the same with no window put up (`DRASHTI_PERF_NO_WINDOW=1`):
+
+| live-window        | Idle p90; just after the import p90 | Worst block | Late frames, each screen | Stream: fps, dropped | The window's frames a second, each screen | Drashti, measured part |
+| ------------------ | ----------------------------------- | ----------- | ------------------------ | -------------------- | ----------------------------------------- | ---------------------- |
+| with the window    | 10, 10 ms; 13, 16 ms                | 15, 9 ms    | 0, 0; 0, 0               | 29.7, 29.7; 3, 0     | 22.5 and 21.9 (its pattern changes 25)    | 6%, 6% of one core     |
+| without the window | 10, 13 ms; 16, 13 ms                | 44, 14 ms   | 0, 0; 0, 0               | 29.8, 29.8; 0, 0     | none                                      | 3%, 2%                 |
+
+Each screen captures the window itself (the outputs, the stream's page and, small, the operator window): three captures cost about 3 to 4 points of one core and no late frame, so one capture shared between them (copying frames between pages) was not needed. A real meeting's window (macOS's own window capture, Screen Recording given) has not been measured: only a person can.

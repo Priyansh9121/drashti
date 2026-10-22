@@ -38,6 +38,14 @@ import { cutText, plural } from '../shared/text';
  *   in ten of its transitions' frames (the dissolves' smoothness), and with a
  *   trace (DRASHTI_PERF_PROFILE) the GPU must make no new pipeline during the
  *   first Bold transition (the screens warmed it up, render/WarmUp.tsx).
+ * - live-window (Session 48): another app's window live as the background on two
+ *   outputs (DRASHTI_WINDOWED_OUTPUTS, one extra display) and the stream in its
+ *   Slides layout (where words over the camera would hide it), when
+ *   DRASHTI_PERF_STREAM asks for it: a placeholder window with a moving test
+ *   pattern stands in for a meeting's (DRASHTI_TEST_WINDOW_STANDIN=1, never
+ *   packaged). Each screen must draw it live; how many of its frames each drew
+ *   is said. With DRASHTI_PERF_NO_WINDOW=1 the same, with no window put up: what it
+ *   costs is the difference.
  *
  * The videos are FFmpeg's test pattern with a tone, made by the bundled
  * FFmpeg in the check's throwaway library. Besides the usual checks, each
@@ -57,6 +65,7 @@ export const PERF_SCENARIOS = [
   'three-outputs',
   'enhanced-pictures',
   'bold-transitions',
+  'live-window',
 ] as const;
 export type PerfScenario = (typeof PERF_SCENARIOS)[number];
 
@@ -73,6 +82,14 @@ export interface ScenarioDeps {
   sharpened?: () => Promise<void>;
   /** Every screen group in the live Look to move this way (Session 27). */
   setMovement?: (movement: Movement) => void;
+  /** live-window (Session 48): open the placeholder window and put it up as the background; false if it cannot. */
+  showPlaceholderWindow?: () => Promise<boolean>;
+  /** The stream's page, while it is open (it draws the window too). */
+  program?: () => Pick<BrowserWindow, 'webContents'> | null;
+  /** live-window without the window (DRASHTI_PERF_NO_WINDOW): the same screens and stream, to compare. */
+  withoutWindow?: boolean;
+  /** live-window: the stream shows what the hall does (its Slides layout), the window included. */
+  streamSlides?: () => void;
 }
 
 /** What the slide changes go through (null: the usual three text slides), and how often. */
@@ -454,6 +471,8 @@ export function startScenario(name: PerfScenario, deps: ScenarioDeps): ScenarioR
     }
     case 'bold-transitions':
       return boldTransitions(deps);
+    case 'live-window':
+      return liveWindow(deps);
   }
   return {
     slides,
@@ -488,6 +507,107 @@ export function startScenario(name: PerfScenario, deps: ScenarioDeps): ScenarioR
           },
         ],
         summary: `scenario ${name}: ${plural(counts.length, 'screen')}, video frames shown ${kept.map(percent).join(', ')} of ${String(fps)} a second`,
+      };
+    },
+  };
+}
+
+/** Each screen's live window: frames it presented (requestVideoFrameCallback), from the first to the last. */
+const WINDOW_COUNT = `(() => {
+  const g = globalThis;
+  const f = { first: null, last: null, firstFrames: 0, lastFrames: 0, callbacks: 0 };
+  g.drashtiWindowFrames = f;
+  const watch = () => {
+    const v = document.querySelector('[data-kind="window"] video');
+    if (!v || v === g.drashtiWindowVideo) return;
+    g.drashtiWindowVideo = v;
+    const on = (now, meta) => {
+      f.callbacks++;
+      if (f.first === null) { f.first = now; f.firstFrames = meta.presentedFrames; }
+      f.last = now;
+      f.lastFrames = meta.presentedFrames;
+      v.requestVideoFrameCallback(on);
+    };
+    v.requestVideoFrameCallback(on);
+  };
+  watch();
+  g.drashtiWindowWatch = setInterval(watch, 250);
+})()`;
+
+const WINDOW_READ = `(() => {
+  const g = globalThis;
+  clearInterval(g.drashtiWindowWatch);
+  const f = g.drashtiWindowFrames;
+  const state = document.querySelector('[data-kind="window"]')?.getAttribute('data-window-state') ?? 'none';
+  if (!f || f.first === null || !(f.last > f.first)) return { state, perSecond: 0 };
+  return { state, perSecond: Math.max(f.callbacks, f.lastFrames - f.firstFrames + 1) / ((f.last - f.first) / 1000) };
+})()`;
+
+/**
+ * live-window (Session 48): the placeholder window up as the background before the measured part, on every
+ * output and the stream's page; slides change every two seconds over it, as in a sabha.
+ */
+function liveWindow(deps: ScenarioDeps): ScenarioRun {
+  const screens = (): Pick<BrowserWindow, 'webContents'>[] => {
+    const program = deps.program?.() ?? null;
+    return [...deps.outputs(), ...(program ? [program] : [])];
+  };
+  const state = (w: Pick<BrowserWindow, 'webContents'>) =>
+    w.webContents
+      .executeJavaScript(
+        `document.querySelector('[data-kind="window"]')?.getAttribute('data-window-state') ?? ''`,
+        true,
+      )
+      .catch(() => '') as Promise<string>;
+  if (deps.withoutWindow)
+    return {
+      slides: AS_IN_A_SABHA,
+      begin: () => {
+        deps.streamSlides?.();
+        return Promise.resolve();
+      },
+      end: () =>
+        Promise.resolve({
+          checks: [],
+          summary: `scenario live-window without the window (to compare): ${plural(screens().length, 'screen')}`,
+        }),
+    };
+  return {
+    slides: AS_IN_A_SABHA,
+    begin: async () => {
+      deps.streamSlides?.();
+      if (!(await deps.showPlaceholderWindow?.()))
+        throw new Error(
+          'The live-window scenario needs DRASHTI_TEST_WINDOW_STANDIN=1 (a placeholder to show).',
+        );
+      for (let i = 0; i < 150; i++) {
+        if ((await Promise.all(screens().map(state))).every((s) => s === 'live')) break;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      await Promise.all(
+        screens().map((w) => w.webContents.executeJavaScript(WINDOW_COUNT, true).catch(() => undefined)),
+      );
+    },
+    end: async () => {
+      const seen = await Promise.all(
+        screens().map(
+          (w) =>
+            w.webContents.executeJavaScript(WINDOW_READ, true).catch(() => null) as Promise<{
+              state: string;
+              perSecond: number;
+            } | null>,
+        ),
+      );
+      const shown = seen.map((s) => (s ? `${s.state} ${s.perSecond.toFixed(1)}/s` : 'none'));
+      return {
+        checks: [
+          {
+            name: 'every screen drew the window live (the outputs, and the stream when it is on)',
+            ok: seen.length > 0 && seen.every((s) => s !== null && s.state === 'live' && s.perSecond > 0),
+            detail: shown.join(', '),
+          },
+        ],
+        summary: `scenario live-window: ${plural(seen.length, 'screen')} (the stream's page last when on), window frames ${shown.join(', ')}`,
       };
     },
   };
