@@ -391,8 +391,13 @@ export class ShowEngine {
         );
         slide = true;
       }
-    } else if (playlist?.item.kind === 'media' || playlist?.item.kind === 'input') {
-      // A picture, video or sound item, or a video input's (Session 51): Next carries on from it.
+    } else if (
+      playlist?.item.kind === 'media' ||
+      playlist?.item.kind === 'input' ||
+      playlist?.item.kind === 'skip'
+    ) {
+      // A picture, video or sound item, or a video input's (Session 51); or one that reads as nothing to play now,
+      // its file or its input not here since the restart: Next carries on from its place, never from the start.
       actions.push({ type: 'live/item', playlist: playlist.cursor });
     }
     // A timer shown alone (Session 50) comes back over it as it was, still: no transition plays again.
