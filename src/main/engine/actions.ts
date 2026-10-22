@@ -45,6 +45,12 @@ export type EngineAction =
       at: number;
       /** How it comes on (a dissolve); left out for a cut. Kept when the same slide is shown again. */
       transition?: Transition;
+      /**
+       * Its cues ran (Session 51): the video input its background cue named that this computer has none of, or
+       * null when it named none or the input was there. Left out when its cues did not run (new content for the
+       * slide up, restart recovery): the slide up keeps what it said.
+       */
+      inputMissing?: string | null;
     }
   /**
    * A slide up in the slide's place that is no presentation's (Session 50: a timer shown alone); the live

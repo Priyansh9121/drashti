@@ -47,6 +47,7 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
         notes,
         at,
         transition,
+        inputMissing,
       } = action;
       const live = state.live;
       const sameCursor =
@@ -58,7 +59,15 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
       const current = state.layers.slide;
       const samePlace =
         current !== null && current.presentationId === presentationId && current.slideIndex === slideIndex;
-      const sameSlide = samePlace && current.notes === notes && sameData(current.slide, slide);
+      // The video input its cue named that is not on this computer (Session 51): as its cues found it now, or,
+      // when they did not run, as the slide up said.
+      const missing =
+        inputMissing === undefined ? (samePlace ? current.inputMissing : undefined) : inputMissing;
+      const sameSlide =
+        samePlace &&
+        current.notes === notes &&
+        sameData(current.slide, slide) &&
+        current.inputMissing === (missing ?? undefined);
       if (sameCursor && sameSlide) return state;
       // New content for the live slide (an edit or a re-import) keeps its time, so its videos carry on,
       // and how it came on (a dissolve is not run again).
@@ -80,6 +89,7 @@ export function reduce(state: EngineState, action: EngineAction): EngineState {
                 shownAt,
                 notes,
                 ...(came ? { transition: came } : {}),
+                ...(missing ? { inputMissing: missing } : {}),
               },
             },
       };
