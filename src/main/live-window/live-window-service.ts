@@ -1,6 +1,6 @@
 import type { WebFrameMain } from 'electron';
 import type { CommandResult } from '../../shared/engine/commands';
-import type { BackgroundLayer, WindowBackground } from '../../shared/engine/state';
+import type { BackgroundLayer, PipLayer, WindowBackground } from '../../shared/engine/state';
 import {
   type LiveWindowResult,
   type LiveWindowStatus,
@@ -19,6 +19,11 @@ import { othersWindows, type RawWindowSource } from './sources';
  * capture the window that is up now; its next request for the screen's picture is then given that window,
  * once (`grantFor`). Every other request is refused, so no page can ever capture a display, or a window
  * nobody chose.
+ *
+ * Picture in picture (Session 50): the box can hold a window too, one the picker has just offered
+ * (`offeredWindow`, which the engine looks up). A window in the box is up now as the background's is: a
+ * screen's page asks for it by its id, and is given that one window, once. The operator's notice ("closed or
+ * hidden", with Clear the window) stays the background's.
  */
 
 /** A window (or display) as the computer lists it, with a small picture of it. */
@@ -47,10 +52,12 @@ export interface WindowSources {
 
 export interface LiveWindowDeps {
   sources: WindowSources;
-  /** The engine's showWindow: the only way a window goes up. */
+  /** The engine's showWindow: the only way a window goes up as the background. */
   showWindow(window: Pick<WindowBackground, 'sourceId' | 'name'>): CommandResult;
   /** The background layer now. */
   background(): BackgroundLayer | null;
+  /** The picture-in-picture box now (Session 50): a window in it is up too. */
+  pip?(): PipLayer | null;
   /** The operator window is told how it stands, whenever that changes. */
   changed(status: LiveWindowStatus): void;
   log(level: 'info' | 'warn', message: string): void;
@@ -76,8 +83,8 @@ export class LiveWindowService {
   private following: string | null = null;
   private timer: NodeJS.Timeout | null = null;
   private looking = false;
-  /** Pages that asked to capture the window up now, until when. */
-  private readonly asks = new Map<string, number>();
+  /** Pages that asked to capture a window up now: which, and until when. */
+  private readonly asks = new Map<string, { sourceId: string; until: number }>();
 
   constructor(private readonly deps: LiveWindowDeps) {}
 
@@ -94,6 +101,15 @@ export class LiveWindowService {
       this.deps.log('warn', `The open windows could not be listed: ${String(error)}`);
       return { ok: false, reason: 'unlisted', message: WINDOWS_FAILED };
     }
+  }
+
+  /**
+   * A window the picker just offered, by its id, for the picture-in-picture box (Session 50); null for
+   * anything it did not offer (a display, Drashti's own windows, one never listed).
+   */
+  offeredWindow(id: string): { sourceId: string; name: string } | null {
+    const name = this.offered.get(id);
+    return name === undefined ? null : { sourceId: id, name };
   }
 
   /** macOS: say why, then System Settings at Screen Recording (the picker said why first). */
@@ -161,31 +177,40 @@ export class LiveWindowService {
     this.set({ state: open ? 'showing' : 'gone', name: bg.name });
   }
 
-  /** A screen's page asks to capture the window up now; false when that is not the window up. */
-  ask(frame: WebFrameMain | null, sourceId: string): boolean {
+  /** Whether this window is up now: the background, or in the picture-in-picture box (Session 50). */
+  private isUp(sourceId: string): boolean {
     const bg = this.deps.background();
-    if (!frame || bg?.kind !== 'window' || bg.sourceId !== sourceId) return false;
-    this.asks.set(frameKey(frame), this.deps.now() + ASK_MS);
+    if (bg?.kind === 'window' && bg.sourceId === sourceId) return true;
+    const box = this.deps.pip?.()?.source;
+    return box?.kind === 'window' && box.sourceId === sourceId;
+  }
+
+  /** A screen's page asks to capture a window up now; false when that window is not up. */
+  ask(frame: WebFrameMain | null, sourceId: string): boolean {
+    if (!frame || !this.isUp(sourceId)) return false;
+    this.asks.set(frameKey(frame), { sourceId, until: this.deps.now() + ASK_MS });
     return true;
   }
 
-  /** Whether a page asked for the window up now and may ask Chromium for a screen's picture (the permission). */
+  /** Whether a page asked for a window up now and may ask Chromium for a screen's picture (the permission). */
   mayCapture(frame: Pick<WebFrameMain, 'processId' | 'routingId'> | null): boolean {
     if (!frame) return false;
-    const until = this.asks.get(frameKey(frame));
-    return until !== undefined && until >= this.deps.now() && this.deps.background()?.kind === 'window';
+    const asked = this.asks.get(frameKey(frame));
+    return asked !== undefined && asked.until >= this.deps.now() && this.isUp(asked.sourceId);
   }
 
-  /** What a page's request for the screen's picture is given: the window up now, if it asked for it (once). */
+  /**
+   * What a page's request for the screen's picture is given: the window it asked for last, if that is still up
+   * (once). A page captures one window at a time (render/live-window.ts inTurn).
+   */
   grantFor(frame: Pick<WebFrameMain, 'processId' | 'routingId'> | null): CaptureGrant | null {
     if (!frame) return null;
     const key = frameKey(frame);
-    const until = this.asks.get(key);
-    if (until === undefined) return null;
+    const asked = this.asks.get(key);
+    if (asked === undefined) return null;
     this.asks.delete(key);
-    const bg = this.deps.background();
-    if (until < this.deps.now() || bg?.kind !== 'window') return null;
-    return this.deps.sources.grant(bg.sourceId);
+    if (asked.until < this.deps.now() || !this.isUp(asked.sourceId)) return null;
+    return this.deps.sources.grant(asked.sourceId);
   }
 
   close(): void {

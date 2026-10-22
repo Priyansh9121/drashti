@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { WebFrameMain } from 'electron';
-import type { BackgroundLayer } from '../../shared/engine/state';
+import type { BackgroundLayer, PipLayer } from '../../shared/engine/state';
+import { DEFAULT_PIP_PLACE } from '../../shared/pip';
 import type { LiveWindowStatus } from '../../shared/live-window';
 import { ASK_MS, type ListedSource, LiveWindowService, type WindowSources } from './live-window-service';
 
@@ -19,6 +20,8 @@ const display: ListedSource = { id: 'screen:0:0', name: 'Entire screen', picture
 
 function setup(options: { access?: ReturnType<WindowSources['access']>; fail?: boolean } = {}) {
   let background: BackgroundLayer | null = null;
+  /** The picture-in-picture box (Session 50). */
+  let box: PipLayer | null = null;
   let open = true;
   let clock = 1000;
   const statuses: LiveWindowStatus[] = [];
@@ -42,6 +45,7 @@ function setup(options: { access?: ReturnType<WindowSources['access']>; fail?: b
       return { ok: true, changed: true, rev: 1 };
     },
     background: () => background,
+    pip: () => box,
     changed: (s) => statuses.push(s),
     log: () => undefined,
     now: () => clock,
@@ -53,6 +57,9 @@ function setup(options: { access?: ReturnType<WindowSources['access']>; fail?: b
     grants,
     clear: () => {
       background = null;
+    },
+    setBox: (layer: PipLayer | null) => {
+      box = layer;
     },
     setOpen: (o: boolean) => {
       open = o;
@@ -136,6 +143,60 @@ describe('Show a Window… in the main process', () => {
     t.service.ask(output, meeting.id);
     t.tick(ASK_MS + 1);
     expect(t.service.grantFor(output)).toBeNull();
+    t.service.close();
+  });
+
+  it('offers the picture-in-picture box (Session 50) only a window it just listed: never a display, Drashti’s own, or one never listed', async () => {
+    const t = setup();
+    expect(t.service.offeredWindow(meeting.id)).toBeNull();
+    await t.service.list();
+    expect(t.service.offeredWindow(meeting.id)).toEqual({ sourceId: meeting.id, name: meeting.name });
+    for (const id of [display.id, own.id, 'window:999:0']) expect(t.service.offeredWindow(id)).toBeNull();
+  });
+
+  it('gives the box’s window to a page that asked for it, as it gives the background’s, and only while it is up', async () => {
+    const t = setup();
+    const output = frame(7, 1);
+    const inBox = (sourceId: string): PipLayer => ({
+      source: { kind: 'window', sourceId, name: 'Placeholder' },
+      place: DEFAULT_PIP_PLACE,
+      swapped: false,
+      shownAt: 5,
+    });
+    // Not in the box (or the box holding something else): refused.
+    expect(t.service.ask(output, meeting.id)).toBe(false);
+    t.setBox({ ...inBox(meeting.id), source: { kind: 'slides' } });
+    expect(t.service.ask(output, meeting.id)).toBe(false);
+    t.setBox(inBox(meeting.id));
+    expect(t.service.ask(output, 'window:5:0')).toBe(false);
+    expect(t.service.ask(output, meeting.id)).toBe(true);
+    expect(t.service.mayCapture(output)).toBe(true);
+    expect(t.service.mayCapture(frame(8, 1))).toBe(false);
+    expect(t.service.grantFor(frame(8, 1))).toBeNull();
+    expect(t.service.grantFor(output)).not.toBeNull();
+    expect(t.service.grantFor(output)).toBeNull();
+    expect(t.grants).toEqual([meeting.id]);
+    // Taken off after the page asked: nothing given.
+    t.service.ask(output, meeting.id);
+    t.setBox(null);
+    expect(t.service.mayCapture(output)).toBe(false);
+    expect(t.service.grantFor(output)).toBeNull();
+    // A window up as the background and another in the box: each page is given the one it asked for.
+    await t.service.list();
+    t.service.show(meeting.id);
+    t.setBox(inBox('window:77:0'));
+    t.service.ask(output, 'window:77:0');
+    t.service.grantFor(output);
+    t.service.ask(output, meeting.id);
+    t.service.grantFor(output);
+    expect(t.grants).toEqual([meeting.id, 'window:77:0', meeting.id]);
+    // The background's taken off: the box's is still given; the background's no longer.
+    t.clear();
+    expect(t.service.ask(output, meeting.id)).toBe(false);
+    expect(t.service.ask(output, 'window:77:0')).toBe(true);
+    // The operator's notice stays the background's (its Clear the window clears the background).
+    t.service.follow();
+    expect(t.service.current()).toEqual({ state: 'off', name: null });
     t.service.close();
   });
 });
