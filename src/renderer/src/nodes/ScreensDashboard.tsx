@@ -8,7 +8,7 @@ import {
   STEP_ROUND_TRIP_MS,
 } from '../../../shared/nodes';
 import type { DisplayInfo, ScreenConfig, ScreenState } from '../../../shared/screens';
-import { SWITCH_NAMES, switchFor } from '../../../shared/screen-switches';
+import { pictureWhile, SWITCH_NAMES, switchFor, SWITCHED_OFF_PICTURE } from '../../../shared/screen-switches';
 import { useNow } from '../render/useNow';
 import { useEngine } from '../engine/engine-store';
 import { connectScreens, screensAction, useScreens } from '../screens/screens-store';
@@ -20,7 +20,7 @@ import { Monitor, RotateCw, ScanEye, Settings, Trash2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { Checkbox } from '../ui/Toggle';
-import { closeDashboard, connectNodes, nodesAction, useNodes } from './nodes-store';
+import { closeDashboard, connectNodes, forgetThumbs, nodesAction, useNodes } from './nodes-store';
 import { boxThisComputerOnly, thisComputerOnly } from './this-computer-only';
 
 /*
@@ -101,6 +101,14 @@ function DisplayCard({
   // Switched off (Session 50): which switch, "Audience off", in the neutral tone of something off on purpose.
   const shown = known && state === 'switched-off' && offWords ? { ...known, text: offWords } : known;
   const name = screen?.name ?? (display.label || `Display ${number}`);
+  // In place of a picture. Switched off (Session 51, S2-5): its display shows the desktop, never its last picture.
+  const noPicture = !screen
+    ? 'Not used'
+    : state === 'showing'
+      ? 'Picture coming…'
+      : state === 'switched-off'
+        ? SWITCHED_OFF_PICTURE
+        : 'No picture';
   return (
     <li
       className="flex flex-col overflow-hidden rounded-lg border border-line bg-panel-2 shadow-card"
@@ -117,8 +125,11 @@ function DisplayCard({
             data-testid="dashboard-thumb"
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-xs text-faint">
-            {screen ? (state === 'showing' ? 'Picture coming…' : 'No picture') : 'Not used'}
+          <div
+            className="flex h-full items-center justify-center text-xs text-faint"
+            data-testid="dashboard-no-picture"
+          >
+            {noPicture}
           </div>
         )}
         <span className="absolute top-1 left-1 rounded-sm bg-black/70 px-1.5 text-xs font-bold text-white">
@@ -268,7 +279,7 @@ function DisplayGrid({
             screen={screen}
             state={state}
             output={screen ? (outputs.find((o) => o.screenId === screen.id) ?? null) : null}
-            thumb={screen ? (thumbs[screen.id]?.url ?? null) : null}
+            thumb={screen ? pictureWhile(state, thumbs[screen.id]?.url ?? null) : null}
             nodeId={nodeId}
             simple={simple}
             offWords={which ? `${SWITCH_NAMES[which]} off` : null}
@@ -416,6 +427,14 @@ export function ScreensDashboard({ simple, onSetUp }: { simple: boolean; onSetUp
   // The same in the picture-in-picture box (Session 50).
   const box = useEngine((s) => s.state?.layers.pip ?? null);
   const boxOnlyHere = boxThisComputerOnly(box);
+  // The screens switched off now, by id (a string, so the same until they change).
+  const switchedOff = useScreens(
+    (s) =>
+      s.snapshot?.status
+        .filter((st) => st.state === 'switched-off')
+        .map((st) => st.screenId)
+        .join(' ') ?? '',
+  );
   useEffect(() => {
     connectNodes();
     connectScreens();
@@ -425,6 +444,10 @@ export function ScreensDashboard({ simple, onSetUp }: { simple: boolean; onSetUp
       void window.drashti.nodes.watch(false);
     };
   }, []);
+  // A screen switched off forgets its last picture (Session 51, S2-5): on again, it shows a new one, never that.
+  useEffect(() => {
+    if (switchedOff !== '') forgetThumbs(switchedOff.split(' '));
+  }, [switchedOff]);
   const warnings = status ? nodeWarnings(status.nodes, now) : [];
   return (
     <Dialog
