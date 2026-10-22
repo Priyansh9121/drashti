@@ -1,6 +1,7 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import { Menu } from 'electron';
 import type { OperatorMode } from '../shared/mode';
+import type { ScreenSwitch, ScreenSwitches } from '../shared/screen-switches';
 
 /** The main process's priority on Windows (Session 16): ticked is above normal, the default. */
 export interface PriorityItem {
@@ -76,6 +77,13 @@ export interface MenuActions {
   safeAreas: { shown: boolean; toggle: () => void };
   /** View › Appearance (Pro Mode only). */
   appearance: AppearanceItems;
+  /**
+   * View › Audience and View › Stage (Session 50, Pro Mode): ticked while on; choosing one turns it off (asking
+   * first while its screens show something) or on. No accelerator: Mod+1 and Mod+2 are the page's keys, so a
+   * press is acted on once, by the page, and never by the menu too (Electron hands the menu what the page leaves
+   * alone, while a field or a dialog has the keyboard as well), as ? is for Keyboard Shortcuts….
+   */
+  screenSwitches: { on: ScreenSwitches; toggle: (which: ScreenSwitch) => void };
   /** Only when DRASHTI_DIAGNOSTICS=1: for the manual watchdog check. */
   diagnostics: {
     crashOperator: () => void;
@@ -166,6 +174,26 @@ export function installMenu(actions: MenuActions): void {
                 id: 'zoom-window',
                 label: 'Window for Zoom…',
                 click: actions.zoomWindow,
+              } as MenuItemConstructorOptions,
+              { type: 'separator' } as MenuItemConstructorOptions,
+              // This computer's audience screens (key and fill too) and its stage screens, off and on (Session 50).
+              {
+                id: 'screen-switch-audience',
+                label: 'Audience',
+                type: 'checkbox',
+                checked: actions.screenSwitches.on.audience,
+                click: () => {
+                  actions.screenSwitches.toggle('audience');
+                },
+              } as MenuItemConstructorOptions,
+              {
+                id: 'screen-switch-stage',
+                label: 'Stage',
+                type: 'checkbox',
+                checked: actions.screenSwitches.on.stage,
+                click: () => {
+                  actions.screenSwitches.toggle('stage');
+                },
               } as MenuItemConstructorOptions,
               { type: 'separator' } as MenuItemConstructorOptions,
               {
