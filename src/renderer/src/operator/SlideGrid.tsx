@@ -8,7 +8,7 @@ import type { BackgroundCue, PresentationDoc, SlideInfo } from '../../../shared/
 import { type OrderedSlide, playOrder } from '../../../shared/order';
 import type { ItemOrder } from '../../../shared/playlists';
 import { useEngine } from '../engine/engine-store';
-import { requestRemovalOfOpen } from '../library/import-store';
+import { deleteOpenLabel, requestRemovalOfOpen } from '../library/import-store';
 import type { ShownItem } from '../library/library-store';
 import { selectPresentation, useLibrary } from '../library/library-store';
 import { CannotPlayBadge, mediaKindLabel, mediaProblem } from '../library/MediaList';
@@ -615,7 +615,8 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
               Edit slides
             </Button>
             {/* Session 50: Delete… for the presentation open here, asked first and with Undo, as the library's
-                trash. Pro Mode only, as the whole grid is: Simple Mode never deletes. */}
+                trash. Pro Mode only, as the whole grid is: Simple Mode never deletes. Session 51: Delete from the
+                library… while a playlist item is open, as it leaves every playlist, not only this one. */}
             <MenuButton
               label="Presentation"
               title="Presentation actions"
@@ -623,7 +624,7 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
               testId="presentation-menu"
               entries={[
                 {
-                  label: 'Delete…',
+                  label: deleteOpenLabel(item),
                   icon: Trash2,
                   danger: true,
                   onSelect: () => {
