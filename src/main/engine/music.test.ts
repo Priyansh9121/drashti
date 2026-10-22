@@ -212,6 +212,33 @@ describe('audio playlists', () => {
     expect(now()).toBeGreaterThan(0);
     elapse(0);
   });
+
+  it('one that would have ended by the restart is not put back, and the notice does not say the sound came back', () => {
+    const { engine } = setup();
+    engine.dispatch({ type: 'playMusic', music: music(), index: 0 });
+    const saved = playing(engine);
+    if (!saved) throw new Error('not playing');
+    // Its three tracks last 2:15; Drashti starts again 5 minutes after the first began.
+    const fresh = setup();
+    const put = fresh.engine.restore({
+      slide: null,
+      background: null,
+      blackout: false,
+      audio: { ...saved, startedAt: fresh.now() - 5 * 60_000 },
+    });
+    expect(fresh.engine.current.layers.audio).toBeNull();
+    expect(put.audio).toBe(false);
+    // Still playing then: put back, and said so.
+    const later = setup();
+    const back = later.engine.restore({
+      slide: null,
+      background: null,
+      blackout: false,
+      audio: { ...saved, startedAt: later.now() - 65_000 },
+    });
+    expect(later.engine.current.layers.audio?.mediaId).toBe('b');
+    expect(back.audio).toBe(true);
+  });
 });
 
 describe('playback markers (Session 14)', () => {
