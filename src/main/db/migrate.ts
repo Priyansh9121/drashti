@@ -44,6 +44,7 @@ import { up as dropFolder } from './migrations/042-drop-folder';
 import { up as darken } from './migrations/043-darken';
 import { up as contentRev } from './migrations/044-content-rev';
 import { up as lowerThirds } from './migrations/045-lower-thirds';
+import { up as timerElements } from './migrations/046-timer-elements';
 import { plural } from '../../shared/text';
 
 export interface Migration {
@@ -108,6 +109,7 @@ export const MIGRATIONS: readonly Migration[] = [
   { version: 43, name: 'darkening behind the words', up: darken },
   { version: 44, name: 'content revision', up: contentRev },
   { version: 45, name: 'lower thirds', up: lowerThirds },
+  { version: 46, name: 'timers on slides', up: timerElements },
 ];
 
 export const LATEST_VERSION = Math.max(...MIGRATIONS.map((m) => m.version));
