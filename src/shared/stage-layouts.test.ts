@@ -3,6 +3,7 @@ import type { ScalingMode } from './screens';
 import type { StageLayout } from './stage-layouts';
 import {
   hallPicture,
+  hallPictureOfScreens,
   newStageBox,
   showsHall,
   STAGE_BOX_KINDS,
@@ -109,5 +110,22 @@ describe('the hall’s picture', () => {
       ]),
     ).toBeNull();
     expect(hallPicture([])).toBeNull();
+  });
+
+  it('on a node is its own first audience screen’s: the node knows only its own screens', () => {
+    const on = (groupId: string, role: 'audience' | 'stage', canvas: ReturnType<typeof screen>) => ({
+      groupId,
+      role,
+      ...canvas,
+    });
+    expect(
+      hallPictureOfScreens([
+        on('stage', 'stage', screen(1920, 1080)),
+        on('side', 'audience', screen(1280, 720, 'stretch')),
+        on('hall', 'audience', screen(1920, 1080)),
+      ]),
+    ).toEqual({ groupId: 'side', canvasWidth: 1280, canvasHeight: 720, scaling: 'stretch' });
+    expect(hallPictureOfScreens([on('stage', 'stage', screen(1920, 1080))])).toBeNull();
+    expect(hallPictureOfScreens([])).toBeNull();
   });
 });

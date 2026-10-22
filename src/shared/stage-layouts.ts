@@ -296,3 +296,14 @@ export function hallPicture(groups: readonly HallGroup[]): HallPicture | null {
     scaling: screen.scaling,
   };
 }
+
+/** One screen as hallPictureOfScreens reads it: its group, the group's role, and its canvas. */
+export type HallScreen = { groupId: string; role: ScreenRole } & HallGroup['screens'][number];
+
+/**
+ * The hall's picture among one computer's screens, in Screens' order: the first audience screen's. A node
+ * knows only its own screens, so a node's stage screens show that node's own audience picture.
+ */
+export function hallPictureOfScreens(screens: readonly HallScreen[]): HallPicture | null {
+  return hallPicture(screens.map((s) => ({ id: s.groupId, role: s.role, screens: [s] })));
+}
