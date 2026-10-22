@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import type { ButtonVariant } from './Button';
 import { Button, IconButton } from './Button';
 import { cx } from './cx';
+import { DialogStack } from './dialog-stack';
 import { X } from './icons';
 import { useArrival, useLeaving } from './motion';
 
@@ -11,14 +12,25 @@ import { useArrival, useLeaving } from './motion';
  * Dialogs. While one is open the keyboard stays inside it (Tab wraps round),
  * Esc closes it, and focus goes back where it was when it closes. The show's
  * keys are ignored meanwhile (useKeymap looks for aria-modal). A dialog
- * opened from another one takes over until it closes.
+ * opened from another one takes over until it closes, unless the one open is
+ * on top (Keep these screens?, Session 51): that one stays above every other,
+ * with the keyboard, and a dialog opened meanwhile goes under it.
  */
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+interface Trap {
+  readonly onTop: boolean;
+  readonly root: HTMLElement;
+  /** Where the keyboard goes back as it closes. */
+  before: HTMLElement | null;
+  /** Its own first control (or the one marked data-autofocus) takes the keyboard, unless one of its own has it. */
+  focusFirst(): void;
+}
+
 /** The open dialogs, innermost last: only that one holds the keyboard. */
-const stack: string[] = [];
+const stack = new DialogStack<Trap>();
 
 function focusables(root: HTMLElement): HTMLElement[] {
   return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
@@ -26,9 +38,15 @@ function focusables(root: HTMLElement): HTMLElement[] {
   );
 }
 
-/** Keep the keyboard inside `ref` while it is open; Esc calls onEscape. */
-export function useFocusTrap(ref: RefObject<HTMLElement | null>, onEscape: (() => void) | null): void {
-  const id = useId();
+/**
+ * Keep the keyboard inside `ref` while it is open; Esc calls onEscape. `onTop`: it keeps the keyboard until it
+ * closes, whatever opens meanwhile (that goes under it, and focus that lands there comes back).
+ */
+export function useFocusTrap(
+  ref: RefObject<HTMLElement | null>,
+  onEscape: (() => void) | null,
+  onTop = false,
+): void {
   const escape = useRef(onEscape);
   useEffect(() => {
     escape.current = onEscape;
@@ -36,15 +54,38 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, onEscape: (() =
   useEffect(() => {
     const root = ref.current;
     if (!root) return;
-    stack.push(id);
-    const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    // Something inside (autoFocus) may have taken the focus already; otherwise the first control.
-    if (!root.contains(document.activeElement)) {
+    const focusFirst = () => {
+      // Something inside (autoFocus) may have taken the focus already; otherwise the first control.
+      if (root.contains(document.activeElement)) return;
       const preferred = root.querySelector<HTMLElement>('[data-autofocus]') ?? focusables(root)[0] ?? root;
       preferred.focus();
-    }
+    };
+    const trap: Trap = {
+      onTop,
+      root,
+      before: document.activeElement instanceof HTMLElement ? document.activeElement : null,
+      focusFirst,
+    };
+    // On top: where the keyboard was in it, given back when focus lands outside it while it is innermost (a
+    // dialog opened meanwhile, its autoFocus). Followed from before it takes the keyboard.
+    let lastFocused: HTMLElement | null = null;
+    const onFocusIn = (e: FocusEvent) => {
+      if (!(e.target instanceof HTMLElement)) return;
+      if (root.contains(e.target)) {
+        lastFocused = e.target;
+        return;
+      }
+      if (stack.innermost() !== trap) return;
+      if (lastFocused?.isConnected) lastFocused.focus();
+      else focusFirst();
+    };
+    if (onTop) document.addEventListener('focusin', onFocusIn, true);
+    if (stack.push(trap)) focusFirst();
+    // Opened under one on top: the keyboard stays there and comes here as that one closes; as this one closes,
+    // it goes back where it was before that one opened.
+    else trap.before = stack.innermost()?.before ?? null;
     const onKey = (e: KeyboardEvent) => {
-      if (stack.at(-1) !== id) return;
+      if (stack.innermost() !== trap) return;
       if (e.key === 'Escape' && escape.current) {
         e.preventDefault();
         e.stopPropagation();
@@ -71,11 +112,15 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, onEscape: (() =
     document.addEventListener('keydown', onKey, true);
     return () => {
       document.removeEventListener('keydown', onKey, true);
-      const at = stack.lastIndexOf(id);
-      if (at >= 0) stack.splice(at, 1);
-      if (before?.isConnected) before.focus();
+      if (onTop) document.removeEventListener('focusin', onFocusIn, true);
+      const { held, next } = stack.remove(trap);
+      // Only the one holding the keyboard gives it back: where it was, or else to the dialog left under it.
+      if (!held) return;
+      const before = trap.before;
+      if (before?.isConnected && (!next || next.root.contains(before))) before.focus();
+      else next?.focusFirst();
     };
-  }, [ref, id]);
+  }, [ref, onTop]);
 }
 
 export type DialogSize = 'sm' | 'md' | 'lg' | 'xl' | 'full';
@@ -108,6 +153,7 @@ export function Dialog({
   className,
   testId,
   panelTestId,
+  onTop = false,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
@@ -136,10 +182,15 @@ export function Dialog({
   testId?: string;
   /** data-testid on the visible panel inside it. */
   panelTestId?: string;
+  /**
+   * Above every other dialog, with the keyboard, until it closes (Keep these screens?, Session 51): one opened
+   * meanwhile goes under it, so its Enter and Esc still answer it.
+   */
+  onTop?: boolean;
 }) {
   const titleId = useId();
   const panel = useRef<HTMLDivElement>(null);
-  useFocusTrap(panel, onClose);
+  useFocusTrap(panel, onClose, onTop);
   const right = placement === 'right';
   // It arrives (the dim fades, the dialog rises 8 px or a sheet slides 16 px) and leaves as quickly.
   const backdrop = useLeaving<HTMLDivElement>(right ? 'sheet' : 'dialog');
@@ -150,7 +201,8 @@ export function Dialog({
       ref={backdrop}
       data-motion={scrim}
       className={cx(
-        'fixed inset-0 z-40 flex bg-black/60',
+        'fixed inset-0 flex bg-black/60',
+        onTop ? 'z-50' : 'z-40',
         right ? 'justify-end' : 'items-center justify-center p-4',
       )}
     >
