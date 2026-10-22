@@ -245,6 +245,33 @@ describe('the picture-in-picture box in the engine', () => {
     expect(engine.current.pipOff).toBeNull();
   });
 
+  // Section 8's review (S8-1), its last part (Session 51): as the background's input does.
+  it('Put it back brings a video input back in the box as Media has it now, or not at all once removed', () => {
+    const { engine, inputs } = setup();
+    engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 0 });
+    engine.dispatch(show({ kind: 'input', inputId: 'in-1' }, DRAGGED));
+    const up = engine.current.layers.pip;
+    engine.dispatch({ type: 'clearAll' });
+    // Changed in Media meanwhile (the box off, nothing held it): it comes back so, where and as it was.
+    inputs.set('in-1', { ...CAMERA, name: 'Placeholder renamed', device: 'Placeholder other device' });
+    engine.dispatch({ type: 'putBack' });
+    expect(engine.current.layers.pip).toEqual({
+      ...up,
+      source: {
+        kind: 'input',
+        inputId: 'in-1',
+        name: 'Placeholder renamed',
+        device: 'Placeholder other device',
+      },
+    });
+    // Removed from Media meanwhile: the rest comes back, the box does not (no screen opens an input not listed).
+    engine.dispatch({ type: 'clearAll' });
+    inputs.delete('in-1');
+    engine.dispatch({ type: 'putBack' });
+    expect(engine.current.layers.pip).toBeNull();
+    expect(engine.current.layers.slide).not.toBeNull();
+  });
+
   it('black-out and the logo cover it and never take it off; Next and Previous leave it up', () => {
     const { engine } = setup();
     engine.dispatch({ type: 'goLive', presentationId: 'p1', slideIndex: 0 });
