@@ -481,6 +481,25 @@ describe('a sound the engine sends somewhere new: a skip or a jump to a marker (
     s.stop();
   });
 
+  it('a skip pressed again while its seek is still landing lands in step: that landing is not measured', () => {
+    // Its seeks take 0.1 s to land, which a skip a while before has taught it. Forward 15 s pressed twice, 50 ms
+    // apart: the first one's seek lands after the second press, aimed at the place before it. Measured from the
+    // new place, 15 s off, it taught a lead at its 0.5 s cap, and the second jump landed 0.4 s ahead.
+    const v = new FakeMedia(40, { seekMs: 100 });
+    const s = sound(v);
+    runFor(v, 2000);
+    s.jumpTo(0);
+    runFor(v, 2000);
+    s.jumpTo(s.clockMs() + 15_000);
+    runFor(v, 50);
+    s.jumpTo(s.clockMs() + 15_000);
+    // Both seeks landed (the second made at the next check), and not yet measured or aimed again.
+    runFor(v, 400);
+    const off = s.offset();
+    expect(Math.abs(off), `${off.toFixed(3)} s off the clock as it landed`).toBeLessThan(IN_STEP);
+    s.stop();
+  });
+
   it('a jump of less than half a second lands by a jump too, not eased at 2% a second', () => {
     // A jump to a marker 0.3 s before where it plays: short of the 0.5 s that makes a sound jump, it was left to
     // come back at 2% a second, 15 s.
