@@ -4334,8 +4334,11 @@ function start(): void {
     if (screenId === undefined || typeof keep !== 'boolean' || keepQuestionFor(screenId) === null)
       return null;
     log.info(`Keep these screens?: answered on the output over the controls (${keep ? 'Enter' : 'Esc'})`);
-    if (keep) keepScreens.keep();
-    else keepScreens.goBack();
+    // Once its answer has gone back to it: going back closes that very output.
+    setImmediate(() => {
+      if (keep) keepScreens.keep();
+      else keepScreens.goBack();
+    });
     return null;
   });
   handle(IPC.screens.identify, (e) => {
