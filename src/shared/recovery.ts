@@ -37,6 +37,8 @@ export interface RecoveryNotice {
   timers?: number;
   /** The Look that was live, by name, when it was not the one Drashti starts with. */
   look?: string | null;
+  /** Another app's window that was the background (Session 48), by name: never put back, only said. */
+  window?: string | null;
 }
 
 function joinParts(parts: string[]): string {
@@ -74,8 +76,10 @@ export function recoveryText(notice: RecoveryNotice): string {
   if (notice.logo) parts.push('the logo');
   if (notice.blackout) parts.push('black-out');
   if (notice.look) parts.push(`the Look “${notice.look}”`);
+  const window = notice.window ?? null;
   const gone = notice.slideGone ? ' The slide that was live is no longer in the library.' : '';
   if (notice.putBack === false) {
+    if (window !== null) parts.push(`the window “${window}”`);
     const when = stoppedWhen(notice.savedAt);
     const hours = String(RECOVERY_MAX_AGE_MS / 3_600_000);
     const live = parts.length > 0 ? ` What was live then: ${joinParts(parts)}.` : '';
@@ -88,5 +92,9 @@ export function recoveryText(notice: RecoveryNotice): string {
     parts.length > 0
       ? `Drashti stopped unexpectedly and has put back what was live: ${joinParts(parts)}.`
       : 'Drashti stopped unexpectedly.';
-  return `${put}${gone}`;
+  const notBack =
+    window === null
+      ? ''
+      : ` The window “${window}” was on the screens and was not put back, as it may be gone: Show a Window… shows it again.`;
+  return `${put}${gone}${notBack}`;
 }

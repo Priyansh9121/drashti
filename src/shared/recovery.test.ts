@@ -43,6 +43,32 @@ describe('the recovery notice', () => {
     );
   });
 
+  it('names another app’s window that was showing, and says it was not put back (Session 48)', () => {
+    expect(
+      recoveryText({
+        ...notice,
+        slide: { presentationName: 'Placeholder Hymn', slideNumber: 3 },
+        window: 'Placeholder meeting',
+      }),
+    ).toBe(
+      'Drashti stopped unexpectedly and has put back what was live: "Placeholder Hymn", slide 3. The window “Placeholder meeting” was on the screens and was not put back, as it may be gone: Show a Window… shows it again.',
+    );
+    expect(recoveryText({ ...notice, window: 'Placeholder meeting' })).toBe(
+      'Drashti stopped unexpectedly. The window “Placeholder meeting” was on the screens and was not put back, as it may be gone: Show a Window… shows it again.',
+    );
+    // A stop too long ago: named with the rest of what was live (nothing went back anyway).
+    expect(
+      recoveryText({
+        ...notice,
+        savedAt: new Date(2026, 9, 9, 18, 34).toISOString(),
+        putBack: false,
+        window: 'Placeholder meeting',
+      }),
+    ).toBe(
+      'Drashti stopped unexpectedly on Fri 9 Oct at 18:34, 3 hours or more before it started again, so nothing was put back on the screens. What was live then: the window “Placeholder meeting”.',
+    );
+  });
+
   it('after a stop too long ago, says what was live and when, and that nothing went back (Session 20)', () => {
     expect(RECOVERY_MAX_AGE_MS).toBe(3 * 60 * 60 * 1000);
     // Made from the computer's own time, so it reads 18:34 wherever the test runs.

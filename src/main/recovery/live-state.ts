@@ -89,6 +89,13 @@ const backgroundSchema: z.ZodType<BackgroundLayer> = z.discriminatedUnion('kind'
     startedAt: z.number(),
     durationMs: z.number().positive().optional(),
   }),
+  // Another app's window (Session 48): read back only to be named; the engine never puts it back.
+  z.object({
+    kind: z.literal('window'),
+    sourceId: z.string().min(1).max(200),
+    name: z.string().max(500),
+    startedAt: z.number(),
+  }),
 ]);
 
 const tickerSchema: z.ZodType<TickerLayer> = z.object({

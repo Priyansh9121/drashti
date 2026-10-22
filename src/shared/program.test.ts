@@ -143,6 +143,19 @@ describe('what the stream shows', () => {
       });
   });
 
+  it('another app’s window as the background shows where the hall’s background does (Session 48)', () => {
+    const window = live(null, {
+      layers: {
+        ...initialEngineState().layers,
+        background: { kind: 'window', sourceId: 'window:4021:0', name: 'Placeholder meeting', startedAt: 1 },
+      },
+    });
+    expect(programPicture(window, 'camera', null)).toMatchObject({ full: 'background', lowerThird: [] });
+    expect(programPicture(window, 'slides', null)).toEqual({ kind: 'scene' });
+    // Black-out and the logo are for the hall: the camera stays.
+    expect(programPicture({ ...window, blackout: true }, 'camera', null)).toMatchObject({ full: null });
+  });
+
   it('Clear slide leaves the camera alone; a picture or video going live is shown full frame', () => {
     expect(programPicture(live(null), 'camera', null)).toMatchObject({ lowerThird: [], full: null });
     const picture = live(null, {
