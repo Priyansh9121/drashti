@@ -48,9 +48,10 @@ import { elapsedAt, type TimerDefinition, type TimerRun } from '../../shared/tim
 import { remapPosition } from '../../shared/order';
 import type { EngineAction } from './actions';
 import type { MediaMarkers, PlaybackMarker } from '../../shared/markers';
-import type { PlaybackClip } from '../../shared/media';
+import type { PlaybackClip, PlaybackSeek } from '../../shared/media';
 import { NO_PLAYLISTS, type PlayItem, type PlaylistSource } from './playlist-source';
 import { reduce, sameData } from './reducer';
+import { type SkipJump, skipFrom } from './skip';
 import type { PlayedSlide, PlayOrder, SlideSource } from './slide-source';
 
 type Resolved = { ok: true; actions: EngineAction[] } | Extract<CommandResult, { ok: false }>;
@@ -84,8 +85,10 @@ const BACKWARDS: ReadonlySet<string> = new Set(['back', 'previous', 'previousIte
  * and neither is a track ending and the next starting.
  */
 const MUSIC_COMMANDS: ReadonlySet<string> = new Set([
-  // A jump to a marker moves what plays, not the slides.
+  // A jump to a marker moves what plays, not the slides; so do Back 15 s, Forward 15 s and Last 10 s
+  // (Session 50).
   'jumpToMarker',
+  'skip',
   'playMusic',
   'pauseMusic',
   'resumeMusic',
@@ -622,6 +625,7 @@ export class ShowEngine {
   private withLengths(layers: Layers): Layers {
     const playing = this.state.layers.audio;
     if (playing?.music && layers.audio !== playing) layers = { ...layers, audio: playing };
+    layers = this.withJumps(layers);
     const bg = layers.background;
     const audio = layers.audio;
     const bgLength = bg?.kind === 'media' && bg.durationMs === undefined ? this.lengthOf(bg.mediaId) : {};
@@ -632,6 +636,28 @@ export class ShowEngine {
       background: bg?.kind === 'media' ? { ...bg, ...bgLength } : bg,
       audio: audio ? { ...audio, ...audioLength } : null,
     };
+  }
+
+  /**
+   * Layers as they were (Back), each file that plays on now as it did then (the same file, from the same
+   * start) keeping where it has jumped to since: a marker, Back 15 s, Forward 15 s or Last 10 s (Session 50),
+   * so undoing a Next moves the slides, not what plays.
+   */
+  private withJumps(layers: Layers): Layers {
+    const keep = <T extends { mediaId: string | null; startedAt: number; seek?: PlaybackSeek }>(
+      was: T,
+      is: T | null,
+    ): T => {
+      if (!is || is.mediaId !== was.mediaId || is.startedAt !== was.startedAt || sameData(is.seek, was.seek))
+        return was;
+      const { seek: _then, ...rest } = was;
+      return (is.seek ? { ...rest, seek: is.seek } : rest) as T;
+    };
+    const bg = layers.background;
+    const bgNow = this.state.layers.background;
+    const background = bg?.kind === 'media' ? keep(bg, bgNow?.kind === 'media' ? bgNow : null) : bg;
+    const audio = layers.audio ? keep(layers.audio, this.state.layers.audio) : null;
+    return background === bg && audio === layers.audio ? layers : { ...layers, background, audio };
   }
 
   /** The playlist's next items after the one playing, headers included (for a stage screen). */
@@ -985,6 +1011,51 @@ export class ShowEngine {
   private musicNow(): MusicLayer | null {
     const a = this.state.layers.audio;
     return a?.music ? (a as MusicLayer) : null;
+  }
+
+  /**
+   * Back 15 s, Forward 15 s or Last 10 s (Session 50) on the background video or the sound playing: a jump,
+   * made as a jump to a marker is (the layer's seek), so every screen, the audio player, the nodes and the
+   * stream play on from there in step. At the end, the end does what it always does: a looping file goes
+   * round, one played once holds its end, an audio playlist's track goes on to the next. A paused track waits
+   * at its new point: at a track's end, the next waits at its start; the last waits at its end.
+   */
+  private skip(layer: 'background' | 'audio', jump: SkipJump): Resolved {
+    const now = this.now();
+    const noLength: Resolved = {
+      ok: false,
+      error: 'no-length',
+      message: 'Its length is not known yet: try again in a moment, once it has started playing.',
+    };
+    if (layer === 'background') {
+      const bg = this.state.layers.background;
+      if (bg?.kind !== 'media' || bg.media !== 'video')
+        return { ok: false, error: 'nothing-playing', message: 'No video is playing as the background.' };
+      const to = skipFrom(bg, jump, now);
+      if (!to) return noLength;
+      if (to.toMs === to.atMs) return NO_CHANGE;
+      return {
+        ok: true,
+        actions: [{ type: 'background/set', background: { ...bg, seek: { at: now, toMs: to.toMs } } }],
+      };
+    }
+    const a = this.state.layers.audio;
+    if (!a?.mediaId) return { ok: false, error: 'nothing-playing', message: 'No sound is playing.' };
+    const to = skipFrom(a, jump, now);
+    if (!to) return noLength;
+    // An audio playlist's track at its end: on to the next track, as at any end.
+    const next = a.music && to.atEnd ? this.musicStep(a as MusicLayer, 1, now) : null;
+    if (a.pausedAtMs !== undefined) {
+      if (next?.type === 'audio/set')
+        return { ok: true, actions: [{ type: 'audio/set', audio: { ...next.audio, pausedAtMs: 0 } }] };
+      // The last track waits at its end: Back 15 s can still bring it back, and Play ends the music.
+      const pausedAtMs = to.toMs - to.startMs;
+      if (pausedAtMs === a.pausedAtMs) return NO_CHANGE;
+      return { ok: true, actions: [{ type: 'audio/set', audio: { ...a, pausedAtMs } }] };
+    }
+    if (next) return { ok: true, actions: [next] };
+    if (to.toMs === to.atMs) return NO_CHANGE;
+    return { ok: true, actions: [{ type: 'audio/set', audio: { ...a, seek: { at: now, toMs: to.toMs } } }] };
   }
 
   /** The audio layer for a choice: as with backgrounds, the file already playing carries on. */
@@ -1348,6 +1419,8 @@ export class ShowEngine {
           return { ok: false, error: 'unknown-marker', message: 'Nothing is playing there' };
         return { ok: true, actions: [{ type: 'background/set', background: { ...bg, seek } }] };
       }
+      case 'skip':
+        return this.skip(command.layer, command.jump);
       case 'setMusicLoop': {
         const a = this.musicNow();
         if (!a) return { ok: false, error: 'no-music', message: 'No audio playlist is playing' };
@@ -1359,7 +1432,6 @@ export class ShowEngine {
       }
       // Session 50's commands: each section's builder puts its own in place of these.
       case 'showInput':
-      case 'skip':
       case 'showTimer':
       case 'showPip':
       case 'hidePip':

@@ -245,7 +245,10 @@ export type EngineErrorCode =
   | 'not-repeating'
   | 'no-picture'
   | 'unknown-input'
-  | 'no-pip';
+  | 'no-pip'
+  // Back 15 s, Forward 15 s, Last 10 s (Session 50): no video or sound there, or its length not known yet.
+  | 'nothing-playing'
+  | 'no-length';
 
 export type CommandResult =
   { ok: true; changed: boolean; rev: number } | { ok: false; error: EngineErrorCode; message: string };
