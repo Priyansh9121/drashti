@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11yIssues } from './a11y';
 import type { PageGlobals } from './helpers';
 import { chooseMenuItem, launchApp, operatorPage, operatorReady, outputPages } from './helpers';
+import { CI_WINDOW, sizeOperatorWindow } from './window-size';
 
 /*
  * Screens, the obvious made obvious (Session 44; Priyansh: "creating a screen shouldnt take this long, make
@@ -78,11 +79,14 @@ test('a display plugged in, no hall screen yet: one click on “Show on <it>” 
   await app.close();
 });
 
+// In a window CI's size, 1024 × 645, wherever it runs (Session 51): there Start here's step 3 had lain under the
+// status bar, its Show on out of reach, on every job, while a bigger window hid it.
 test('Not now puts the offer away; the first start’s welcome offers it as its one primary; Start here as a secondary', async () => {
   test.setTimeout(90_000);
   const first = await launchApp({ ...OFFER, DRASHTI_EXTRA_DISPLAYS: '1' });
   const win = await operatorPage(first.app);
   await operatorReady(win);
+  await sizeOperatorWindow(first.app, win, CI_WINDOW);
   const offer = win.getByTestId('show-on-offer');
   await expect(offer).toBeVisible();
   await offer.getByTestId('show-on-not-now').click();
@@ -93,6 +97,7 @@ test('Not now puts the offer away; the first start’s welcome offers it as its 
   const { app } = await launchApp({ ...OFFER, DRASHTI_EXTRA_DISPLAYS: '1', ...FIRST_START });
   const w = await operatorPage(app);
   await operatorReady(w);
+  await sizeOperatorWindow(app, w, CI_WINDOW);
   const welcome = w.getByTestId('welcome');
   await expect(welcome).toBeVisible();
   const show = welcome.getByTestId('show-on');
@@ -107,6 +112,7 @@ test('Not now puts the offer away; the first start’s welcome offers it as its 
   const skipped = await launchApp({ ...OFFER, DRASHTI_EXTRA_DISPLAYS: '1', ...FIRST_START });
   const s = await operatorPage(skipped.app);
   await operatorReady(s);
+  await sizeOperatorWindow(skipped.app, s, CI_WINDOW);
   await s.getByTestId('welcome-skip').click();
   const startHere = s.getByTestId('start-here');
   await expect(startHere.getByTestId('show-on')).toHaveText(/^Show on /u);
