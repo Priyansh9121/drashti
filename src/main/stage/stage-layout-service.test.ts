@@ -117,4 +117,26 @@ describe('stage layouts', () => {
     expect(t.lookRepo.get(standard)?.groups[t.stage]?.stageLayoutId).toBeNull();
     expect(t.layouts.remove(layoutId)).toMatchObject({ ok: false });
   });
+
+  it('keep the audience picture box, and draw it under the stage message through the live Look (Session 50)', () => {
+    const t = setup();
+    const boxes = [
+      { ...newStageBox('audience', 'hall'), frame: { x: 0, y: 0, width: 1920, height: 1080 } },
+      newStageBox('stageMessage', 'message'),
+    ];
+    const made = t.layouts.save(null, { name: 'Placeholder hall picture', background: '#000000', boxes });
+    expect(made).toMatchObject({ ok: true });
+    const layoutId = made.ok ? made.id : '';
+    expect(t.repo.get(layoutId)?.boxes).toEqual(boxes);
+    expect(t.looks.setGroup(t.lookRepo.firstId(), t.stage, { stageLayoutId: layoutId }).ok).toBe(true);
+    // Bottom to top: the picture first, so the stage message draws over it.
+    expect(t.engine.current.look.groups[t.stage]?.stageLayout?.boxes.map((b) => b.kind)).toEqual([
+      'audience',
+      'stageMessage',
+    ]);
+    // A layout kept before there was such a box reads as it did.
+    const before = { background: '#101010', boxes: standardAsBoxes(t.id) };
+    const kept = t.repo.create('Placeholder kept layout', before);
+    expect(t.repo.get(kept)).toEqual({ id: kept, name: 'Placeholder kept layout', ...before });
+  });
 });
