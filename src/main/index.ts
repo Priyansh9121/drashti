@@ -1317,6 +1317,8 @@ function start(): void {
       // A video input by its id, from this computer's list (Session 50): showInput and the picture-in-picture box
       // find it only there.
       videoInput: (inputId) => videoInputs?.get(inputId) ?? null,
+      // A timer shown alone (Session 50) in the words of the library's default theme.
+      timerLook: () => themeLook(themes.themeOrDefault(null), 1920, 1080).style,
     },
   );
   // Quitting: a slide moving on by itself, or an audio playlist's next track, never fires once the library

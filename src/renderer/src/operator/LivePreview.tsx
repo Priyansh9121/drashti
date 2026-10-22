@@ -7,7 +7,7 @@ import { SceneBoundary } from '../render/SceneBoundary';
 import { WarmUp } from '../render/WarmUp';
 import { useFirstGroupLook, useScreens } from '../screens/screens-store';
 import { LANG_NAMES } from '../../../shared/themes';
-import type { EngineState, RepeatRun } from '../../../shared/engine/state';
+import type { EngineState, RepeatRun, TimerShow } from '../../../shared/engine/state';
 import { LOWER_THIRD_MAX_LINES, lowerThirdOf } from '../../../shared/program';
 import { useStream } from '../stream/stream-store';
 import { missingFontsOf } from '../render/font-probe';
@@ -15,7 +15,8 @@ import { stopRepeat } from '../playlists/repeat-actions';
 import { Badge, LiveBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
-import { Repeat2, Square, Timer } from '../ui/icons';
+import { Eraser, Repeat2, Square, Timer } from '../ui/icons';
+import { dispatch } from './actions';
 import { LiveZoomControls, ZoomablePreview } from './LiveZoom';
 import { useNow } from '../render/useNow';
 import { useWhatIsThis } from '../help/WhatIsThis';
@@ -140,6 +141,7 @@ export function LivePreview() {
       </div>
       {help.card && <div className="-mx-3">{help.card}</div>}
       {state?.repeat && <Repeating run={state.repeat} />}
+      {state?.layers.slide?.timer && <TimerAlone shown={state.layers.slide.timer} />}
       <div
         className={cx(
           // The live border and its red underglow come and go in the same frame as the screens: no fade.
@@ -190,6 +192,30 @@ function Repeating({ run }: { run: RepeatRun }) {
       </span>
       <Button size="sm" icon={Square} data-testid="live-repeat-stop" onClick={() => void stopRepeat()}>
         Stop (Esc)
+      </Button>
+    </div>
+  );
+}
+
+/** A timer shown alone in the slide's place (Session 50): which, and Take off (Clear slide does the same). */
+function TimerAlone({ shown }: { shown: TimerShow }) {
+  return (
+    <div
+      role="status"
+      data-testid="live-timer"
+      className="flex min-h-9 items-center gap-2 rounded-md border border-line bg-panel-2 py-1 pr-1 pl-2 text-xs"
+    >
+      <Timer size={14} aria-hidden="true" className="shrink-0 text-muted" />
+      <span className="min-w-0 flex-1 truncate" title={shown.name}>
+        <span className="font-bold">Timer</span> · {shown.name}
+      </span>
+      <Button
+        size="sm"
+        icon={Eraser}
+        data-testid="live-timer-off"
+        onClick={() => void dispatch({ type: 'clearLayer', layer: 'slide' })}
+      >
+        Take off
       </Button>
     </div>
   );

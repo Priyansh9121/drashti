@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import type { MessageItem } from '../../../shared/engine/state';
 import type { TimerFields, TimerKind, TimerState } from '../../../shared/timers';
 import { parseDuration, TIMER_KIND_NAMES, TIMER_KINDS, timerDuration } from '../../../shared/timers';
 import { useEngine } from '../engine/engine-store';
@@ -15,17 +14,6 @@ import { Truncate } from '../ui/Truncate';
 import { dispatch, useNotice } from './actions';
 
 const NO_TIMERS: TimerState[] = [];
-const NO_MESSAGES: MessageItem[] = [];
-
-/** The message that puts a timer on the audience screens: its name, then its time. */
-const timerMessage = (t: TimerState): MessageItem => ({
-  id: `timer:${t.id}`,
-  text: `${t.name} [${TIMER_KIND_NAMES[t.kind]}]`,
-  parts: [
-    { kind: 'text', text: `${t.name} ` },
-    { kind: 'timer', timerId: t.id },
-  ],
-});
 
 function TimerForm({ initial, onDone }: { initial: TimerState | null; onDone: () => void }) {
   const [name, setName] = useState(initial?.name ?? 'Countdown');
@@ -143,7 +131,9 @@ function TimerForm({ initial, onDone }: { initial: TimerState | null; onDone: ()
 
 /**
  * One compact row a timer (Session 26a, tidied): its name and time, then Start (or Pause, or Stop for a
- * clock), Reset, Show on the screens, and Edit for the rest.
+ * clock), Reset, Show on the screens, and Edit for the rest. Show on the screens (Session 50) puts the timer up
+ * alone, in the Timer only layout, in the slide's place, over whatever background is up; again, or Clear
+ * slide (F2) or Clear all, takes it off. Next goes on from where the show was.
  */
 function TimerRow({ t, shown, onEdit }: { t: TimerState; shown: boolean; onEdit: () => void }) {
   const running = t.startedAt !== null;
@@ -193,12 +183,9 @@ function TimerRow({ t, shown, onEdit }: { t: TimerState; shown: boolean; onEdit:
         variant={shown ? 'live' : 'ghost'}
         aria-pressed={shown}
         size="sm"
+        data-testid="timer-show"
         onClick={() =>
-          void dispatch(
-            shown
-              ? { type: 'hideMessage', messageId: `timer:${t.id}` }
-              : { type: 'showMessage', message: timerMessage(t) },
-          )
+          void dispatch(shown ? { type: 'clearLayer', layer: 'slide' } : { type: 'showTimer', timerId: t.id })
         }
       />
       <Button variant="ghost" size="sm" onClick={onEdit}>
@@ -211,7 +198,8 @@ function TimerRow({ t, shown, onEdit }: { t: TimerState; shown: boolean; onEdit:
 /** Countdowns, count-ups, countdowns to a time of day and clocks: start, pause, reset, edit, show. */
 export function TimersPanel() {
   const timers = useEngine((s) => s.state?.timers) ?? NO_TIMERS;
-  const messages = useEngine((s) => s.state?.layers.messages) ?? NO_MESSAGES;
+  // The timer up alone on the screens, if one is (Session 50).
+  const alone = useEngine((s) => s.state?.layers.slide?.timer?.timerId ?? null);
   const [editing, setEditing] = useState<string | null>(null);
   const done = () => {
     setEditing(null);
@@ -255,12 +243,7 @@ export function TimersPanel() {
                 <TimerForm initial={t} onDone={done} />
               </li>
             ) : (
-              <TimerRow
-                key={t.id}
-                t={t}
-                shown={messages.some((m) => m.id === `timer:${t.id}`)}
-                onEdit={() => setEditing(t.id)}
-              />
+              <TimerRow key={t.id} t={t} shown={alone === t.id} onEdit={() => setEditing(t.id)} />
             ),
         )}
       </ul>

@@ -1,7 +1,7 @@
 import { isPassageId } from '../../../shared/shastra';
 import { isRepeatId } from '../../../shared/repeat';
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { MenuPlace } from '../ui/Menu';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { MenuEntry, MenuPlace } from '../ui/Menu';
 import { Menu, MenuButton, menuPlace } from '../ui/Menu';
 import type { PlaylistCursor } from '../../../shared/engine/state';
 import type { BackgroundCue, PresentationDoc, SlideInfo } from '../../../shared/library';
@@ -33,8 +33,10 @@ import {
   RotateCcw,
   SlidersHorizontal,
   SquarePen,
+  Timer,
   Trash2,
 } from '../ui/icons';
+import { NewTimerSlideInLibrary } from '../editor/NewTimerSlide';
 import { openPictureEditor } from '../pictures/PictureEditor';
 import { markersMedia, openMarkers } from '../markers/MarkersDialog';
 import { openSlideEditor } from '../editor/editor-store';
@@ -84,6 +86,7 @@ const Thumb = memo(function Thumb({
   found,
   group,
   firstOfRun,
+  onNewTimerSlide,
 }: {
   presentationId: string;
   presentationName: string;
@@ -101,6 +104,8 @@ const Thumb = memo(function Thumb({
   group: OrderedSlide['group'];
   /** The first slide each time its group comes up (a chorus sung again starts a new run). */
   firstOfRun: boolean;
+  /** New Timer Slide… after this slide (Session 50); left out where slides are made elsewhere. */
+  onNewTimerSlide?: (slideId: string, position: number) => void;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
   // The live slide comes into view in the same frame it turns live: never a smooth scroll (Session 25).
@@ -115,6 +120,34 @@ const Thumb = memo(function Thumb({
   // A slide with a picture on it (a deck's page, say): its right-click offers the Picture editor (Session 26e).
   const picture = info.slide.elements.find((e) => e.kind === 'image');
   const [menu, setMenu] = useState<MenuPlace | null>(null);
+  // Its right-click menu: the Picture editor for a picture, New Timer Slide… where slides are made here.
+  const entries: MenuEntry[] = [
+    ...(picture?.kind === 'image'
+      ? [
+          {
+            label: 'Picture editor…',
+            icon: SlidersHorizontal,
+            onSelect: () => {
+              openPictureEditor({
+                id: picture.mediaId,
+                name: `${presentationName}, slide ${String(position + 1)}`,
+              });
+            },
+          },
+        ]
+      : []),
+    ...(onNewTimerSlide
+      ? [
+          {
+            label: 'New Timer Slide…',
+            icon: Timer,
+            onSelect: () => {
+              onNewTimerSlide(info.id, position);
+            },
+          },
+        ]
+      : []),
+  ];
   // Words past a box on this slide (Sessions 31–36, SLD-1): marked in its corner, and said with its name.
   const [over, setOver] = useState(false);
   return (
@@ -138,7 +171,7 @@ const Thumb = memo(function Thumb({
             void openSlideEditor(presentationId, presentationName, info.id);
         }}
         onContextMenu={(e) => {
-          if (picture?.kind !== 'image') return;
+          if (entries.length === 0) return;
           e.preventDefault();
           setMenu(menuPlace(e));
         }}
@@ -200,22 +233,11 @@ const Thumb = memo(function Thumb({
           {live && <span className="font-bold tracking-wide">LIVE</span>}
         </span>
       </button>
-      {menu && picture?.kind === 'image' && (
+      {menu && entries.length > 0 && (
         <Menu
           at={menu}
           label={`Slide ${String(position + 1)}`}
-          entries={[
-            {
-              label: 'Picture editor…',
-              icon: SlidersHorizontal,
-              onSelect: () => {
-                openPictureEditor({
-                  id: picture.mediaId,
-                  name: `${presentationName}, slide ${String(position + 1)}`,
-                });
-              },
-            },
-          ]}
+          entries={entries}
           onClose={() => {
             setMenu(null);
           }}
@@ -468,7 +490,11 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
   const selectedId = useLibrary((s) => s.selectedId);
   const unreadId = useLibrary((s) => s.unreadId);
   const live = useEngine((s) => s.state?.live);
-  const liveSlideId = useEngine((s) => s.state?.layers.slide?.slide.id ?? null);
+  // A timer shown alone (Session 50) is in the slide's place but no slide of this presentation.
+  const liveSlideId = useEngine((s) => {
+    const shown = s.state?.layers.slide;
+    return shown && !shown.timer ? shown.slide.id : null;
+  });
   const focusSlideId = useLibrary((s) => s.focusSlideId);
   const isTemplate = useLibrary(
     (s) => s.presentations.find((p) => p.id === doc?.id)?.libraryName === 'Templates',
@@ -489,6 +515,11 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
   const playlist = useMemo(() => (item ? { playlistId: item.playlistId, itemId: item.id } : null), [item]);
   const [thumb, setThumb] = usePersistentState('slides.thumb', THUMB.initial, isThumbSize);
   const help = useWhatIsThis('slides');
+  // New Timer Slide… (Session 50): after which slide, while its dialog is open.
+  const [timerSlide, setTimerSlide] = useState<{ slideId: string; position: number } | null>(null);
+  const newTimerSlide = useCallback((slideId: string, position: number) => {
+    setTimerSlide({ slideId, position });
+  }, []);
   if (!doc || !order)
     return selectedId && !doc ? (
       unreadId === selectedId ? (
@@ -646,12 +677,25 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
                   found={o.position === found}
                   group={o.group}
                   firstOfRun={before?.group.id !== o.group.id || before.occurrence !== o.occurrence}
+                  // A passage's and a Repeat Slides playlist's slides are made elsewhere.
+                  onNewTimerSlide={doc.passage || doc.repeat ? undefined : newTimerSlide}
                 />
               );
             })}
           </ul>
         )}
       </div>
+      {timerSlide && (
+        <NewTimerSlideInLibrary
+          presentationId={doc.id}
+          name={doc.name}
+          afterSlideId={timerSlide.slideId}
+          position={timerSlide.position}
+          onClose={() => {
+            setTimerSlide(null);
+          }}
+        />
+      )}
     </section>
   );
 }
