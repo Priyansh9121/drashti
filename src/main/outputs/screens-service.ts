@@ -319,8 +319,10 @@ export class ScreensService {
    * role and languages simply changes (keeping its name); otherwise each
    * output joins a group with that role and those languages, made if there
    * is none ("Audience", "Stage"). "Not used" removes the display's screen.
-   * Displays that are not connected are left alone. Covering the operator's
-   * display needs consent first, before anything changes.
+   * A key and fill pair's displays, offered as the audience picture (what
+   * the pair sends), stay the pair's, with their feeds (Session 51). Displays
+   * that are not connected are left alone. Covering the operator's display
+   * needs consent first, before anything changes.
    */
   applySetup(outputs: readonly SetupOutput[], rawOptions?: unknown): ScreensResult {
     const displays = this.listDisplays();
@@ -349,7 +351,9 @@ export class ScreensService {
       const first = asked[0];
       if (!first || first.use === 'none' || asked.length !== g.screens.length) continue;
       if (!asked.every((o) => o.use === first.use && same(o.languages, first.languages))) continue;
-      if (g.role !== first.use) this.repo.setGroupRole(g.id, first.use);
+      // A key and fill pair offered as the audience picture, which is what it sends, stays a pair (Session 51).
+      if (g.role !== first.use && !(g.role === 'keyfill' && first.use === 'audience'))
+        this.repo.setGroupRole(g.id, first.use);
       if (!same(this.looks.liveLanguages(g.id), first.languages))
         this.looks.setLiveLanguages(g.id, first.languages);
     }
@@ -375,6 +379,11 @@ export class ScreensService {
       for (const sc of extra) this.repo.removeScreen(sc.id);
       if (o.use === 'none') {
         if (keep) this.repo.removeScreen(keep.id);
+        continue;
+      }
+      // A key and fill pair's screen shown as the audience picture stays in its pair, sending what it sent.
+      if (keep && o.use === 'audience' && this.repo.groupRole(keep.groupId) === 'keyfill') {
+        if (!keep.enabled) this.repo.updateScreen(keep.id, { enabled: true });
         continue;
       }
       const groupId = groupFor(o.use, o.languages);

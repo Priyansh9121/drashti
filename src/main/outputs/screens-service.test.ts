@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { NO_LOOK } from '../../shared/looks';
+import type { Lang } from '../../shared/model';
 import type { DisplayInfo } from '../../shared/screens';
 import type { Db } from '../db/database';
 import { openDatabase } from '../db/database';
@@ -410,6 +411,37 @@ describe('the setup wizard’s outputs, applied at Finish', () => {
       ['Main Hall', 'audience', ['translit', 'en'], ['Hall TV']],
       ['Stage', 'stage', null, []],
     ]);
+  });
+
+  it('keeps a key and fill pair as it is: offered as the audience picture, Done leaves its role, screens and feeds (Session 51)', () => {
+    const t = withTwo();
+    t.service.createGroup('Switcher');
+    const id = t.repo.groups()[0]?.id ?? '';
+    t.service.assignDisplay(id, 2);
+    t.service.setGroupRole(id, 'keyfill');
+    t.service.assignDisplay(id, 3);
+    const pair = () => t.repo.screens().map((sc) => [sc.name, sc.groupId, sc.feed, sc.enabled]);
+    const was = pair();
+    expect(was).toEqual([
+      ['Hall TV', id, 'fill', true],
+      ['Stage TV', id, 'key', true],
+    ]);
+    // The wizard offers both as the audience picture, in the pair's languages, and Done sends every display.
+    const languages = t.looks.liveLanguages(id);
+    const both = (l: Lang[] | null) => [
+      { displayId: 2, use: 'audience' as const, languages: l },
+      { displayId: 3, use: 'audience' as const, languages: l },
+    ];
+    expect(t.service.applySetup(both(languages)).ok).toBe(true);
+    expect(t.repo.groupRole(id)).toBe('keyfill');
+    expect(pair()).toEqual(was);
+    expect(t.repo.groups().map((g) => g.name)).toEqual(['Switcher']);
+    // Its languages changed there change in place; the pair stays the pair, the fill turned off coming back on.
+    t.service.updateScreen(t.repo.screens()[0]?.id, { enabled: false });
+    expect(t.service.applySetup(both(['gu'])).ok).toBe(true);
+    expect(t.repo.groupRole(id)).toBe('keyfill');
+    expect(t.looks.liveLanguages(id)).toEqual(['gu']);
+    expect(pair()).toEqual(was);
   });
 
   it('asks before covering the operator’s display, and changes nothing until it may', () => {
