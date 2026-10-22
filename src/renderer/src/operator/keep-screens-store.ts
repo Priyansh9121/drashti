@@ -12,9 +12,22 @@ interface KeepView {
   pending: PendingScreens | null;
   /** An answer is on its way to the main process. */
   answering: boolean;
+  /**
+   * How this window answered the question waiting, or the last one (null: not here, so by itself or on the
+   * output over the controls). Set Up Screens… reads it as the question goes.
+   */
+  answered: 'kept' | 'went-back' | null;
 }
 
-export const useKeepScreens = create<KeepView>(() => ({ pending: null, answering: false }));
+export const useKeepScreens = create<KeepView>(() => ({ pending: null, answering: false, answered: null }));
+
+/** The question as the main process says it: a new one (or a new countdown) is not answered yet. */
+function take(pending: PendingScreens | null): void {
+  useKeepScreens.setState((s) => ({
+    pending,
+    answered: pending && pending.deadline !== s.pending?.deadline ? null : s.answered,
+  }));
+}
 
 let started = false;
 
@@ -25,18 +38,18 @@ export function connectKeepScreens(): void {
   let heard = false;
   window.drashti.screens.onPending((pending) => {
     heard = true;
-    useKeepScreens.setState({ pending });
+    take(pending);
   });
   // One already waiting as the window opens (its page loaded again): unless the main process spoke since.
   void window.drashti.screens.pending().then((pending) => {
-    if (!heard) useKeepScreens.setState({ pending });
+    if (!heard) take(pending);
   });
 }
 
 /** Keep (true) or Go back (false): one answer at a time. */
 export async function answerKeepScreens(keep: boolean): Promise<void> {
   if (useKeepScreens.getState().answering) return;
-  useKeepScreens.setState({ answering: true });
+  useKeepScreens.setState({ answering: true, answered: keep ? 'kept' : 'went-back' });
   try {
     await (keep ? window.drashti.screens.keep() : window.drashti.screens.goBack());
   } finally {

@@ -33,6 +33,7 @@ import { SoundOutput } from './SoundOutput';
 import { ScreenCards } from './ScreenCards';
 import { NodesSection } from './NodesSection';
 import { DisplayRow } from './DisplayRow';
+import { useControlsDisplay } from './ShowOn';
 
 const stateText: Record<ScreenState, string> = {
   showing: 'Showing',
@@ -362,6 +363,8 @@ function CoverConfirm({ platform }: { platform: string }) {
 export function ScreensPanel({ onClose, platform }: { onClose: () => void; platform: string }) {
   const { snapshot, error, busy } = useScreens();
   const [newGroup, setNewGroup] = useState('');
+  // The display the controls are on, marked in the list (Session 50).
+  const controlsDisplayId = useControlsDisplay();
   useEffect(() => {
     connectScreens();
     connectLooks();
@@ -432,6 +435,7 @@ export function ScreensPanel({ onClose, platform }: { onClose: () => void; platf
                 display={d}
                 usedBy={usedBy.get(d.id) ?? null}
                 groups={snapshot.groups.filter((g) => g.role !== 'stream')}
+                controls={d.id === controlsDisplayId}
               />
             ))}
           </ul>

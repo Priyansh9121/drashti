@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { describeDisplay } from '../../../shared/display-match';
 import type { DisplayInfo, ScreenGroupConfig } from '../../../shared/screens';
+import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Field';
 import { Monitor } from '../ui/icons';
 import { Truncate } from '../ui/Truncate';
 import { screensAction } from './screens-store';
+
+/** Where a display is offered, the one the controls are on says so (Session 50; Set Up Screens… too). */
+export const CONTROLS_HERE = 'The controls are on this display';
 
 /** A connected display in Screens: what it is, and which group it shows (or who uses it). */
 export function DisplayRow({
@@ -13,12 +17,15 @@ export function DisplayRow({
   usedBy,
   groups,
   onUse,
+  controls = false,
 }: {
   display: DisplayInfo;
   usedBy: string | null;
   groups: ScreenGroupConfig[];
   /** Put it in this group: this computer's display unless given (a node's, Session 13). */
   onUse?: (groupId: string) => void;
+  /** The controls are on this display (Session 50). */
+  controls?: boolean;
 }) {
   const [groupId, setGroupId] = useState('');
   const target = groupId !== '' ? groupId : (groups[0]?.id ?? '');
@@ -36,6 +43,11 @@ export function DisplayRow({
           {display.internal ? ' · built in' : ''}
         </div>
       </div>
+      {controls && (
+        <span data-testid="display-controls-here">
+          <Badge tone="warning">{CONTROLS_HERE}</Badge>
+        </span>
+      )}
       {usedBy ? (
         <span className="text-xs text-muted">Used by “{usedBy}”</span>
       ) : groups.length === 0 ? (

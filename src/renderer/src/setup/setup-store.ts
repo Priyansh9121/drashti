@@ -2,11 +2,12 @@ import { create } from 'zustand';
 import { useEngine } from '../engine/engine-store';
 import type { AudioDevice } from '../../../shared/audio';
 import type { Lang } from '../../../shared/model';
-import type { DisplayInfo } from '../../../shared/screens';
+import type { DisplayInfo, ScreensSnapshot } from '../../../shared/screens';
 import type { OutputUse, SetupPlan } from '../../../shared/setup';
 import { displayToOffer } from '../../../shared/setup';
 import type { DeviceChoice, StreamLayout } from '../../../shared/stream';
 import type { Theme } from '../../../shared/themes';
+import { useKeepScreens } from '../operator/keep-screens-store';
 import { useScreens } from '../screens/screens-store';
 
 /*
@@ -40,6 +41,8 @@ interface SetupView {
   displays: DisplayInfo[];
   /** The display the Drashti controls are on (outputs there cover them). */
   operatorDisplayId: number | null;
+  /** The display the controls are on, windowed outputs or not (Session 50: marked wherever a display is offered). */
+  controlsDisplayId: number | null;
   outputs: Record<number, OutputChoice>;
   /** The step was skipped: the screens stay as they are. */
   outputsSkipped: boolean;
@@ -65,6 +68,10 @@ interface SetupView {
   askCover: boolean;
   /** Finished: how many screens show the test slide. */
   finished: { tested: number } | null;
+  /** What Done or Finish set on each display, while Keep these screens? waits (Session 50). */
+  applied: Record<number, OutputUse> | null;
+  /** Keep these screens? went back: the displays again, the choices as made, to change and press Done again. */
+  wentBack: boolean;
 }
 
 const closed: SetupView = {
@@ -72,6 +79,7 @@ const closed: SetupView = {
   step: 0,
   displays: [],
   operatorDisplayId: null,
+  controlsDisplayId: null,
   outputs: {},
   outputsSkipped: false,
   devices: [],
@@ -86,6 +94,8 @@ const closed: SetupView = {
   problem: null,
   askCover: false,
   finished: null,
+  applied: null,
+  wentBack: false,
 };
 
 export const useSetup = create<SetupView>(() => closed);
@@ -126,6 +136,7 @@ export async function openSetup(from = 0): Promise<void> {
     busy: false,
     displays: snapshot.displays,
     operatorDisplayId: state.operatorDisplayId,
+    controlsDisplayId: state.controlsDisplayId,
     outputs,
     devices: sound.devices,
     sound: sound.chosen,
@@ -160,6 +171,7 @@ export function skipStep(): void {
 export function chooseOutput(displayId: number, choice: Partial<OutputChoice>): void {
   useSetup.setState((s) => ({
     outputsSkipped: false,
+    wentBack: false,
     outputs: {
       ...s.outputs,
       [displayId]: { ...(s.outputs[displayId] ?? { use: 'none', languages: null }), ...choice },
@@ -206,8 +218,9 @@ export async function finishSetup(coverOperator = false): Promise<void> {
     useSetup.setState({ problem: `PINs: ${pins}` });
     return;
   }
-  useSetup.setState({ busy: true, problem: null, askCover: false });
-  const result = await window.drashti.setup.finish(planOf(s), { coverOperator });
+  useSetup.setState({ busy: true, problem: null, askCover: false, wentBack: false });
+  const plan = planOf(s);
+  const result = await window.drashti.setup.finish(plan, { coverOperator });
   if (!result.ok) {
     useSetup.setState({
       busy: false,
@@ -217,6 +230,11 @@ export async function finishSetup(coverOperator = false): Promise<void> {
     return;
   }
   useScreens.setState({ snapshot: result.snapshot });
+  // Keep these screens? (Session 50): the main process asked it before answering. Watched until it goes.
+  if (plan.outputs && useKeepScreens.getState().pending) {
+    watchKeepScreens();
+    useSetup.setState({ applied: Object.fromEntries(plan.outputs.map((o) => [o.displayId, o.use])) });
+  }
   // The stream's settings, where YouTube's card in Screens keeps them: the inputs on the profile in use
   // (its key can be added later, in Stream settings), the layout, and the languages in the live Look.
   if (s.stream !== 'skip') {
@@ -236,5 +254,61 @@ export async function finishSetup(coverOperator = false): Promise<void> {
     const set = await window.drashti.roles.setPins(pins);
     if (!set.ok) useSetup.setState({ problem: set.message });
   }
-  useSetup.setState({ busy: false, finished: { tested: result.tested } });
+  // Gone back already (answered at once): the displays again, not Done.
+  if (useSetup.getState().wentBack) useSetup.setState({ busy: false });
+  else useSetup.setState({ busy: false, finished: { tested: result.tested } });
+}
+
+// ---- Keep these screens? (Session 50) ------------------------------------------------------------------------
+
+/** What each display shows now, as the wizard offers it: the audience picture, the stage view, or nothing. */
+export function usesOf(
+  snapshot: Pick<ScreensSnapshot, 'displays' | 'groups' | 'status'>,
+): Record<number, OutputUse> {
+  const uses: Record<number, OutputUse> = {};
+  for (const d of snapshot.displays) {
+    const st = snapshot.status.find((x) => x.displayId === d.id && x.state === 'showing');
+    const group = st ? snapshot.groups.find((g) => g.screens.some((sc) => sc.id === st.screenId)) : undefined;
+    uses[d.id] = group ? (group.role === 'stage' ? 'stage' : 'audience') : 'none';
+  }
+  return uses;
+}
+
+/**
+ * Whether what Done or Finish set was kept, as Keep these screens? goes: as this window answered it, or else
+ * (nothing pressed, or answered on the output over the controls) whether every display shows what was chosen.
+ */
+export function screensKept(
+  applied: Readonly<Record<number, OutputUse>>,
+  now: Readonly<Record<number, OutputUse>>,
+  answered: 'kept' | 'went-back' | null,
+): boolean {
+  if (answered !== null) return answered === 'kept';
+  return Object.entries(applied).every(([id, use]) => (now[Number(id)] ?? 'none') === use);
+}
+
+let watching = false;
+
+/**
+ * Follow Keep these screens? while the wizard waits on it (once per page): gone back, the wizard is at its
+ * displays again with the choices as made, saying why, so a mistake is put right and Done pressed again.
+ */
+export function watchKeepScreens(): void {
+  if (watching) return;
+  watching = true;
+  useKeepScreens.subscribe((now, before) => {
+    if (!before.pending || now.pending) return;
+    const s = useSetup.getState();
+    if (!s.open || !s.applied) return;
+    // The screens as the main process put them back: it says so before the question goes.
+    const snapshot = useScreens.getState().snapshot;
+    const kept = snapshot
+      ? screensKept(s.applied, usesOf(snapshot), now.answered)
+      : now.answered !== 'went-back';
+    useSetup.setState(
+      kept
+        ? { applied: null }
+        : { applied: null, finished: null, step: STEPS.indexOf('Screens'), wentBack: true, problem: null },
+    );
+  });
 }
