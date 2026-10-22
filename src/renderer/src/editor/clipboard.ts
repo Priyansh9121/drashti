@@ -1,4 +1,4 @@
-import type { Rect, SlideElement, TextShadow } from '../../../shared/model';
+import type { Outline, Rect, SlideElement, TextShadow } from '../../../shared/model';
 import type { EditDoc } from '../../../shared/slide-edit';
 import { findSlide, mapSlide, newId } from './ops';
 
@@ -74,6 +74,21 @@ function rescaled(el: SlideElement, sx: number, sy: number): SlideElement {
             })),
           }
         : {}),
+    };
+  }
+  // A Timer (Session 50): its digits, shadow and outline with the height, as words.
+  if (el.kind === 'timer') {
+    const k = sy;
+    const outline: Outline | null | undefined = el.style.outline;
+    return {
+      ...el,
+      frame,
+      style: {
+        ...el.style,
+        fontSize: r2(el.style.fontSize * k),
+        shadow: scaledShadow(el.style.shadow, k),
+        ...(outline ? { outline: { ...outline, width: r2(outline.width * k) } } : {}),
+      },
     };
   }
   if (el.kind === 'shape')
