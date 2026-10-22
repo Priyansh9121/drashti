@@ -13,7 +13,8 @@ import { CI_WINDOW, sizeOperatorWindow } from './window-size';
  * from their top when they do not (a video input item's view too, Session 51's B1, under the open playlist); every
  * button of the layer bar shows its words and its key, the clears in the order of their keys, from the smallest
  * window Drashti allows (1008 px wide on Windows) to a full HD display's, in every state; and so do Simple Mode's
- * big buttons. The displays are Drashti's pretend ones.
+ * big buttons, each with its keys too. The open playlist's and the slides' "What is this?" shrink and scroll in
+ * their places, their buttons in reach. The displays are Drashti's pretend ones.
  */
 
 /** A first start as a person meets it, a display free for the hall: the welcome, then Start here behind it. */
@@ -47,7 +48,7 @@ const barNow = (win: Page, testId: string) =>
       let text = '';
       const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
       for (let n = walker.nextNode(); n; n = walker.nextNode())
-        if (!n.parentElement?.closest('kbd')) text += n.textContent ?? '';
+        if (!n.parentElement?.closest('kbd, [data-keys]')) text += n.textContent ?? '';
       return text.trim();
     };
     const boxes = [...bar.querySelectorAll('button')]
@@ -226,6 +227,43 @@ test('a video input item’s view at 1024 × 645 and 1024 × 768, on this comput
   await app.close();
 });
 
+test('the open playlist’s and the slides’ “What is this?” at 1024 × 645 and 1024 × 768, a playlist open: each shrinks and scrolls in its place, its buttons clickable', async () => {
+  test.setTimeout(90_000);
+  const { app } = await launchApp();
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  await sizeOperatorWindow(app, win, CI_WINDOW);
+  // A playlist of one placeholder presentation, open in the middle, its slides under it.
+  await win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const [first] = await d.library.listPresentations();
+    if (!first) throw new Error('no placeholder presentation');
+    const made = await d.playlists.create('Placeholder Sunday', null, false);
+    if (!made.ok) throw new Error(made.message);
+    const added = await d.playlists.addItems(made.ids[0] ?? '', null, [
+      { kind: 'presentation', presentationId: first.id },
+    ]);
+    if (!added.ok) throw new Error(added.message);
+  });
+  await win.getByTestId('playlist-node').filter({ hasText: 'Placeholder Sunday' }).click();
+  await win.getByTestId('open-playlist').getByTestId('playlist-item').click();
+  await expect(win.getByTestId('slide-grid')).toBeVisible();
+  const card = win.getByTestId('what-is-this');
+  for (const size of [CI_WINDOW, { width: 1024, height: 768 }]) {
+    const where = `${String(size.width)} × ${String(size.height)}`;
+    await sizeOperatorWindow(app, win, size);
+    // In a 1024 × 645 window the open playlist's ran under the slides' strip, and the slides' under the layer bar.
+    for (const topic of ['playlist', 'slides']) {
+      await win.getByTestId(`what-is-this-${topic}`).click();
+      await expect(card).toBeVisible();
+      await expectClickable(card.getByRole('button'), `the ${topic}’s What is this? at ${where}`);
+      await card.getByRole('button', { name: 'Got it' }).click();
+      await expect(card).toHaveCount(0);
+    }
+  }
+  await app.close();
+});
+
 test('the welcome and the practice show at 1024 × 645, every button clickable; the layer bar from 1008 px wide in every state, each button’s words and key, the clears in the order of their keys', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp(FIRST_START);
@@ -320,9 +358,18 @@ test('Simple Mode’s big buttons fit from 1008 px wide, with Black-out and the 
   expect(problem).toBe('');
   await chooseMenuItem(app, 'switch-mode');
   await expect(win.getByTestId('simple-mode')).toBeVisible();
-  // Left to right: Back, Next, then the column with Black-out over Clear all, and the Logo beside Black-out.
-  const big = (blackout: string, logo: string, clear: string) => ['Back ←', 'Next →', blackout, clear, logo];
-  await expectBarAtEveryWidth(win, 'simple-buttons', big('Black-out', 'Logo', 'Clear all'), 'as it opens');
+  // Left to right: Back, Next, then the column with Black-out over Clear all, and the Logo beside Black-out; each
+  // with its keys (Session 51), the Logo's F12 or L as the key line names them, Put it back's Undo as this computer
+  // writes it.
+  const undo = process.platform === 'darwin' ? '⌘Z' : 'Ctrl+Z';
+  const big = (blackout: string, logo: string, clear: string) => [
+    'Back ←',
+    'Next →',
+    `${blackout} B`,
+    clear,
+    `${logo} F12 L`,
+  ];
+  await expectBarAtEveryWidth(win, 'simple-buttons', big('Black-out', 'Logo', 'Clear all F1'), 'as it opens');
   await win.keyboard.press('b');
   await win.keyboard.press('F12');
   await expect(win.getByTestId('simple-blackout')).toHaveText(/Black-out is on/u);
@@ -330,7 +377,7 @@ test('Simple Mode’s big buttons fit from 1008 px wide, with Black-out and the 
   await expectBarAtEveryWidth(
     win,
     'simple-buttons',
-    big('Black-out is on', 'Logo is on', 'Clear all'),
+    big('Black-out is on', 'Logo is on', 'Clear all F1'),
     'Black-out and the Logo on',
   );
   await win.keyboard.press('F1');
@@ -338,7 +385,7 @@ test('Simple Mode’s big buttons fit from 1008 px wide, with Black-out and the 
   await expectBarAtEveryWidth(
     win,
     'simple-buttons',
-    big('Black-out is on', 'Logo is on', 'Put it back'),
+    big('Black-out is on', 'Logo is on', `Put it back ${undo}`),
     'Put it back offered, Black-out and the Logo on',
   );
   await app.close();
