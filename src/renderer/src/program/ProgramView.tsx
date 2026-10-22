@@ -6,6 +6,7 @@ import { programPicture } from '../../../shared/program';
 import type { Size } from '../../../shared/scaling';
 import type { StreamLayout } from '../../../shared/stream';
 import { BackgroundMedia } from '../render/BackgroundMedia';
+import { LiveWindowView } from '../render/LiveWindowView';
 import { MovingLowerThird } from '../render/LowerThird';
 import { LowerThirdView } from '../render/LowerThirdView';
 import { MessageBanner, PropsLayer, Scene } from '../render/Scene';
@@ -82,6 +83,7 @@ export function ProgramView({
             <div style={{ position: 'absolute', inset: 0, background: state.layers.background.color }} />
           )}
           <BackgroundMedia layer={state.layers.background} annotate={false} movement={movement} />
+          {state.layers.background?.kind === 'window' && <LiveWindowView layer={state.layers.background} />}
           {picture.full === 'slide' && (
             <SlideLayerView
               layer={state.layers.slide}

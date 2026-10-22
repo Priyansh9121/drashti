@@ -28,6 +28,7 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'kirtans',
     'library',
     'links',
+    'liveWindow',
     'looks',
     'lowerThirds',
     'masks',
@@ -51,11 +52,11 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'updates',
   ],
   // The hall's screens.
-  output: ['app', 'engine', 'media', 'output'],
+  output: ['app', 'engine', 'liveWindow', 'media', 'output'],
   // The audio player.
   audio: ['audio', 'engine', 'media'],
   // The stream's picture.
-  stream: ['app', 'engine', 'media', 'output', 'stream'],
+  stream: ['app', 'engine', 'liveWindow', 'media', 'output', 'stream'],
   // A node's own window.
   node: ['app', 'guides', 'node'],
   // A deck's PDF made into pictures.

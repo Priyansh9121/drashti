@@ -124,6 +124,9 @@ describe('Show a Window… in the main process', () => {
     expect(t.service.ask(output, 'window:5:0')).toBe(false);
     expect(t.service.ask(null, meeting.id)).toBe(false);
     expect(t.service.ask(output, meeting.id)).toBe(true);
+    // Chromium's permission for it, to that page only (the grant itself is what decides what it gets).
+    expect(t.service.mayCapture(output)).toBe(true);
+    expect(t.service.mayCapture(frame(8, 1))).toBe(false);
     // Another page that never asked gets nothing.
     expect(t.service.grantFor(frame(8, 1))).toBeNull();
     expect(t.service.grantFor(output)).not.toBeNull();

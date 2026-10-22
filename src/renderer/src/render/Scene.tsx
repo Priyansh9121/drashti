@@ -11,6 +11,7 @@ import type { TimerState } from '../../../shared/timers';
 import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { BackgroundMedia } from './BackgroundMedia';
+import { LiveWindowView } from './LiveWindowView';
 import { useEntrance } from './entrance';
 import { IdleRotation } from './IdleRotation';
 import { clockHeld, engineFrameNow, onClockJump } from './clock';
@@ -413,6 +414,7 @@ export const Scene = memo(function Scene({
                   />
                 )}
                 <BackgroundMedia layer={background} annotate={annotate} movement={look.movement} />
+                {background?.kind === 'window' && <LiveWindowView layer={background} />}
                 {idle && <IdleRotation idle={state.idle} languages={look.languages} canvas={canvas} />}
                 <SlideLayerView
                   layer={shown('slide') ? layers.slide : null}

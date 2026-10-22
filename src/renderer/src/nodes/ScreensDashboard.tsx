@@ -9,6 +9,7 @@ import {
 } from '../../../shared/nodes';
 import type { DisplayInfo, ScreenConfig, ScreenState } from '../../../shared/screens';
 import { useNow } from '../render/useNow';
+import { useEngine } from '../engine/engine-store';
 import { connectScreens, screensAction, useScreens } from '../screens/screens-store';
 import { Badge, type BadgeTone } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -388,6 +389,9 @@ export function ScreensDashboard({ simple, onSetUp }: { simple: boolean; onSetUp
   const error = useNodes((s) => s.error);
   const snapshot = useScreens((s) => s.snapshot);
   const now = useNow(2000);
+  const windowUp = useEngine((s) =>
+    s.state?.layers.background?.kind === 'window' ? s.state.layers.background.name : null,
+  );
   useEffect(() => {
     connectNodes();
     connectScreens();
@@ -443,6 +447,13 @@ export function ScreensDashboard({ simple, onSetUp }: { simple: boolean; onSetUp
             Identify all
           </Button>
         </div>
+        {windowUp && (
+          // Another app's window as the background (Session 48) is on this computer only.
+          <Notice tone="info" compact data-testid="dashboard-window">
+            The window “{windowUp}” shows on this computer’s screens only: the nodes’ screens show the rest of
+            the show without it.
+          </Notice>
+        )}
         <DisplayGrid
           displays={snapshot?.displays ?? []}
           nodeId={null}

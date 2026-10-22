@@ -169,6 +169,13 @@ export class LiveWindowService {
     return true;
   }
 
+  /** Whether a page asked for the window up now and may ask Chromium for a screen's picture (the permission). */
+  mayCapture(frame: Pick<WebFrameMain, 'processId' | 'routingId'> | null): boolean {
+    if (!frame) return false;
+    const until = this.asks.get(frameKey(frame));
+    return until !== undefined && until >= this.deps.now() && this.deps.background()?.kind === 'window';
+  }
+
   /** What a page's request for the screen's picture is given: the window up now, if it asked for it (once). */
   grantFor(frame: Pick<WebFrameMain, 'processId' | 'routingId'> | null): CaptureGrant | null {
     if (!frame) return null;

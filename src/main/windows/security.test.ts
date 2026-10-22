@@ -7,6 +7,7 @@ import {
   isAudioPage,
   isOperatorPage,
   permissionCheckAllowed,
+  screenPictureAllowed,
   secureWebContents,
 } from './security';
 
@@ -41,6 +42,17 @@ describe('permissions', () => {
       expect(permissionCheckAllowed(permission, true, AUDIO), permission).toBe(false);
       expect(permissionCheckAllowed(permission, false, OPERATOR), permission).toBe(false);
     }
+  });
+
+  it('gives a screen’s picture only to a page that may capture it now, never a camera or a microphone (Session 48)', () => {
+    // getDisplayMedia names no devices; a camera names 'video', a microphone 'audio'.
+    expect(screenPictureAllowed('media', [], true)).toBe(true);
+    expect(screenPictureAllowed('media', [], false)).toBe(false);
+    expect(screenPictureAllowed('media', ['video'], true)).toBe(false);
+    expect(screenPictureAllowed('media', ['audio'], true)).toBe(false);
+    expect(screenPictureAllowed('media', ['video', 'audio'], true)).toBe(false);
+    expect(screenPictureAllowed('media', null, true)).toBe(false);
+    expect(screenPictureAllowed('display-capture', [], true)).toBe(false);
   });
 
   it('lets only the operator window use MIDI, never SysEx', () => {

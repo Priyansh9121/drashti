@@ -43,6 +43,7 @@ import { StoppedScreens } from '../screens/StoppedScreens';
 import { EngineUnread } from '../operator/EngineUnread';
 import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { StreamPageStopped } from '../stream/StreamPageStopped';
+import { LiveWindowNotice } from '../live-window/LiveWindowNotice';
 import { SimpleFirstRun } from './SimpleFirstRun';
 import { GuidesDialog } from '../help/GuidesDialog';
 import { LiveStatus } from '../operator/StatusLine';
@@ -486,6 +487,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       <StoppedScreens />
       <NoSoundNotice />
       <StreamPageStopped />
+      <LiveWindowNotice />
       <SimpleFirstRun platform={platform} />
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(18rem,26rem)_minmax(0,1fr)]">
         <PlaylistColumn />

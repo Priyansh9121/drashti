@@ -1,5 +1,6 @@
 import { PREVIEW_FPS, PREVIEW_WIDTH } from '../../../shared/stream';
 import { cutText } from '../../../shared/text';
+import { inTurn } from '../render/live-window';
 
 /*
  * The stream's page captures its own picture (the Program), frame by frame,
@@ -192,10 +193,14 @@ async function sendSound(): Promise<void> {
 async function capture(): Promise<void> {
   const mine = ++generation;
   say(`capture ${String(mine)} asks for the picture (${String(size.width)}x${String(size.height)})`);
-  const display = await navigator.mediaDevices.getDisplayMedia({
-    video: { width: size.width, height: size.height, frameRate: 30 },
-    audio: false,
-  });
+  // In turn with a capture of another app's window up as the background (Session 48): the main process
+  // gives each request what this page asked for last, its own picture unless it asked for the window.
+  const display = await inTurn(() =>
+    navigator.mediaDevices.getDisplayMedia({
+      video: { width: size.width, height: size.height, frameRate: 30 },
+      audio: false,
+    }),
+  );
   const video = display.getVideoTracks()[0];
   if (!video) {
     say(`capture ${String(mine)} got no video track`);
