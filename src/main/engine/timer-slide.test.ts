@@ -99,7 +99,15 @@ function setup(options: { defaultTransition?: Transition; timerLook?: boolean } 
     clock = Math.max(clock, to);
   };
   const pending = () => waiting.filter((j) => !j.cancelled);
-  return { engine, asked, until, pending, now: () => clock, tick: (ms: number) => (clock += ms) };
+  return {
+    engine,
+    memory,
+    asked,
+    until,
+    pending,
+    now: () => clock,
+    tick: (ms: number) => (clock += ms),
+  };
 }
 
 describe('Show on the screens', () => {
@@ -296,6 +304,26 @@ describe('a countdown on a slide at zero', () => {
     until(500_000);
     expect(engine.current.layers.slide).toBeNull();
     expect(engine.current.live.slideIndex).toBe(0);
+  });
+
+  it('a zero that came and went unwaited for (its slide edited to go on afterwards): it holds', () => {
+    const { engine, memory, until, pending, tick } = setup();
+    engine.dispatch({ type: 'startTimer', timerId: 't1' });
+    engine.dispatch({ type: 'goLive', presentationId: 'h', slideIndex: 0 });
+    until(450_000);
+    // Edited while it is up, at 0:00, to go on at zero: nothing happens now.
+    memory.set('h', [timerOnSlide('h0', 't1', 'next'), textSlide('h1', 'Held')]);
+    engine.refreshLive('h');
+    expect(engine.current.layers.slide?.slide.elements[0]).toMatchObject({ atZero: 'next' });
+    expect(pending()).toHaveLength(0);
+    until(500_000);
+    expect(engine.current.layers.slide?.slide.id).toBe('h0');
+    // Reset and started again on it: at its zero, the next slide.
+    tick(1000);
+    engine.dispatch({ type: 'resetTimer', timerId: 't1' });
+    engine.dispatch({ type: 'startTimer', timerId: 't1' });
+    until(501_000 + 300_000);
+    expect(engine.current.layers.slide?.slide.id).toBe('h1');
   });
 
   it('a wait that comes a moment early waits again for what is left', () => {
