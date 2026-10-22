@@ -344,6 +344,9 @@ describe('Keep these screens?', () => {
       changed: (pending) => {
         told.push(pending);
       },
+      ended: (how) => {
+        ended.push(how);
+      },
       now: () => now,
       later: () => () => undefined,
       log: () => undefined,
@@ -356,6 +359,8 @@ describe('Keep these screens?', () => {
     expect(keep.goBack()).toMatchObject({ ok: false });
     expect(keep.current()).toBeNull();
     expect(told.at(-1)).toBeNull();
+    // Said whoever asked: the operator window ignores an answer that was not needed (a race with the 15 s).
+    expect(ended).toEqual(['could-not-go-back']);
   });
 });
 

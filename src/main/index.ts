@@ -197,7 +197,7 @@ import {
   showDisplayNumber,
   watchDisplays,
 } from './outputs/electron-outputs';
-import { coveringScreens, KeepScreens } from './outputs/keep-screens';
+import { COULD_NOT_GO_BACK, coveringScreens, KeepScreens } from './outputs/keep-screens';
 import { placeOperator } from './outputs/operator-guard';
 import { DISPLAY_DROP_MS, OutputManager } from './outputs/output-manager';
 import { ScreensService, type ScreensSetup } from './outputs/screens-service';
@@ -1745,7 +1745,9 @@ function start(): void {
         text:
           how === 'went-back'
             ? 'The screens went back to how they were before the change.'
-            : 'Nothing was pressed, so the screens went back to how they were before the change.',
+            : how === 'went-back-by-itself'
+              ? 'Nothing was pressed, so the screens went back to how they were before the change.'
+              : COULD_NOT_GO_BACK,
       });
     },
     asks: sw('DRASHTI_TEST_KEEP_SCREENS') !== '0',
