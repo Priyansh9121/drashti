@@ -236,7 +236,7 @@ Something small in a corner of the hall's screens while the main picture carries
 7. **Black-out** and **Logo** cover it. **Clear all** or **Take off** takes it off, and **Put it back**, straight after Clear all, brings it back.
 8. The box makes no sound: a video in it plays without its sound, going round.
 
-The stream's **Slides** layout shows it too. A Look can leave it out on a group of screens (its **Picture in picture** layer, in **Screens**). An output node's screens show a picture, a video or the slides in the box, but not a video input or a window. Where the box sits and how it looks are remembered for next time. The phone remote names it, and its **Take off** takes it off; a phone can't set one up. In Simple Mode, **Clear all** takes it off too, but only Pro Mode can set one up or swap it.
+The stream's **Slides** layout shows it too. A Look can leave it out on a group of screens (its **Picture in picture** layer, in **Screens**). An output node's screens show a picture, a video or the slides in the box, but not a video input or a window. Where the box sits and how it looks are remembered for next time. The phone remote names it, and its **Take off** takes it off; a phone can't set one up. In Simple Mode the line under the live picture names it with **Take off**, and **Clear all** takes it off too, but only Pro Mode can set one up, swap it or move it.
 
 ## 8. Keys at a glance
 
