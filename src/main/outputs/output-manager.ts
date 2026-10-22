@@ -1,4 +1,5 @@
 import { matchDisplays } from '../../shared/display-match';
+import type { ScreenSwitch, ScreenSwitches } from '../../shared/screen-switches';
 import type { DisplayInfo, DisplayKey, ScreenConfig, ScreenStatus } from '../../shared/screens';
 
 /** The parts of an output window the manager needs. */
@@ -26,6 +27,11 @@ export interface OutputManagerDeps {
   onPutBack?(screenId: string): void;
   /** Do something after a while; the answer cancels it (tests give their own clock). */
   later?(fn: () => void, ms: number): () => void;
+  /**
+   * The switch a screen answers to, Audience or Stage (Session 50), from its group's role; null for none. Left
+   * out (a node's own outputs), no switch covers any.
+   */
+  switchOf?(screen: ScreenConfig): ScreenSwitch | null;
 }
 
 /**
@@ -62,6 +68,11 @@ export class OutputManager {
   private statuses: ScreenStatus[] = [];
   /** Screens whose window the watchdog gave up on (Session 23): not "showing" until it reports again. */
   private readonly stopped = new Set<string>();
+  /**
+   * Audience and Stage turned off (Session 50): their screens' windows closed, their displays the computer's,
+   * until on again. Kept here only, so every start has both on.
+   */
+  private readonly off = new Set<ScreenSwitch>();
 
   constructor(private readonly deps: OutputManagerDeps) {}
 
@@ -86,34 +97,44 @@ export class OutputManager {
     if (!held.window.isDestroyed()) held.window.close();
   }
 
+  /** Is this screen's switch off (Session 50)? */
+  private switchedOff(screen: ScreenConfig): boolean {
+    if (this.off.size === 0 || !this.deps.switchOf) return false;
+    const which = this.deps.switchOf(screen);
+    return which !== null && this.off.has(which);
+  }
+
   reconcile(): void {
     const displays = this.deps.listDisplays();
     const screens = this.deps.screens();
     const assigned = screens.filter(
       (s): s is ScreenConfig & { displayKey: DisplayKey } => s.enabled && s.displayKey !== null,
     );
+    // Matched with the rest, so each keeps its display while off and opens on it again (Session 50).
     const matches = matchDisplays(
       assigned.map((s) => ({ screenId: s.id, key: s.displayKey })),
       displays,
     );
-    const wanted = new Set(assigned.map((s) => s.id));
+    const off = new Set(assigned.filter((s) => this.switchedOff(s)).map((s) => s.id));
+    const wanted = new Set(assigned.filter((s) => !off.has(s.id)).map((s) => s.id));
 
-    // Close windows whose screen is gone, disabled or matched elsewhere. One whose display went away, its
-    // screen still wanting it, is kept hidden a while instead (ROB-4).
+    // Close windows whose screen is gone, disabled, switched off (Session 50) or matched elsewhere. One whose
+    // display went away, its screen still wanting it, is kept hidden a while instead (ROB-4).
     for (const [screenId, entry] of this.open) {
       const displayId = matches.get(screenId);
-      if (!entry.window.isDestroyed() && displayId === entry.displayId) continue;
+      if (!entry.window.isDestroyed() && displayId === entry.displayId && wanted.has(screenId)) continue;
       this.open.delete(screenId);
       if (entry.window.isDestroyed()) continue;
       if (wanted.has(screenId) && (displayId === undefined || displayId === null))
         this.hold(screenId, entry.window);
       else entry.window.close();
     }
-    // A held window whose screen no longer wants a display (turned off, removed) closes now.
+    // A held window whose screen no longer wants a display (turned off, switched off, removed) closes now.
     for (const [screenId, held] of this.held)
       if (!wanted.has(screenId) || held.window.isDestroyed()) this.letGo(screenId);
 
     for (const screen of assigned) {
+      if (off.has(screen.id)) continue;
       const displayId = matches.get(screen.id);
       const display = displays.find((d) => d.id === displayId);
       if (!display) continue;
@@ -139,6 +160,9 @@ export class OutputManager {
     this.statuses = screens.map((s) => {
       if (!s.enabled) return { screenId: s.id, state: 'disabled', displayId: null };
       if (!s.displayKey) return { screenId: s.id, state: 'unassigned', displayId: null };
+      // Off on purpose (Session 50), with the display it opens on again.
+      if (off.has(s.id))
+        return { screenId: s.id, state: 'switched-off', displayId: matches.get(s.id) ?? null };
       const entry = this.open.get(s.id);
       if (entry && this.stopped.has(s.id))
         return { screenId: s.id, state: 'stopped', displayId: entry.displayId };
@@ -159,6 +183,24 @@ export class OutputManager {
 
   status(): ScreenStatus[] {
     return this.statuses;
+  }
+
+  /**
+   * Audience or Stage off or on (Session 50): off closes this computer's windows it covers (a held one too), so
+   * their displays go back to the computer; on opens them again, each on its own display. True when it changed.
+   */
+  setSwitch(which: ScreenSwitch, on: boolean): boolean {
+    const isOn = !this.off.has(which);
+    if (isOn === on) return false;
+    if (on) this.off.delete(which);
+    else this.off.add(which);
+    this.reconcile();
+    return true;
+  }
+
+  /** Which are on (Session 50): both, until one is turned off. */
+  switches(): ScreenSwitches {
+    return { audience: !this.off.has('audience'), stage: !this.off.has('stage') };
   }
 
   /** The screen an output window shows (or keeps through a display drop), looked up by its webContents id. */

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { DisplayInfo, DisplayKey, ScreenConfig } from '../../shared/screens';
+import { ALL_ON, switchFor } from '../../shared/screen-switches';
+import type { DisplayInfo, DisplayKey, ScreenConfig, ScreenRole } from '../../shared/screens';
 import { DISPLAY_DROP_MS, OutputManager, type OutputWindow } from './output-manager';
 
 function display(id: number, label: string, x = 0): DisplayInfo {
@@ -69,10 +70,12 @@ let saved: [string, DisplayKey][];
 let changes: number;
 let putBack: string[];
 let manager: OutputManager;
+/** Each group's role (Session 50: the switches go by it); a group not here shows the audience picture. */
+let roles: Record<string, ScreenRole>;
 
-const screen = (id: string, d: DisplayInfo | null, enabled = true): ScreenConfig => ({
+const screen = (id: string, d: DisplayInfo | null, enabled = true, groupId = 'g'): ScreenConfig => ({
   id,
-  groupId: 'g',
+  groupId,
   name: id,
   displayKey: d ? d.key : null,
   canvasWidth: 1920,
@@ -92,6 +95,7 @@ beforeEach(() => {
   putBack = [];
   waiting = [];
   now = 0;
+  roles = {};
   manager = new OutputManager({
     listDisplays: () => displays,
     screens: () => screens,
@@ -105,6 +109,7 @@ beforeEach(() => {
       changes++;
     },
     onPutBack: (id) => putBack.push(id),
+    switchOf: (s) => switchFor(roles[s.groupId] ?? 'audience'),
     later: (fn, ms) => {
       const w = { at: now + ms, fn, cancelled: false };
       waiting.push(w);
@@ -268,5 +273,148 @@ describe('OutputManager', () => {
     screens = [screen('audience', hall), screen('stage', stage)];
     manager.reconcile();
     expect(manager.status()[0]?.state).toBe('showing');
+  });
+
+  // ---- Audience and Stage (Session 50) ----------------------------------------------------------------------
+
+  const fill = display(4, 'Switcher fill', 5280);
+  const key = display(5, 'Switcher key', 7200);
+  /** The hall's screen, a key and fill pair for a video switcher, and the stage screen. */
+  const show = () => {
+    displays = [laptop, hall, stage, fill, key];
+    roles = { hall: 'audience', atem: 'keyfill', stage: 'stage' };
+    screens = [
+      screen('hall', hall, true, 'hall'),
+      screen('fill', fill, true, 'atem'),
+      screen('key', key, true, 'atem'),
+      screen('stage', stage, true, 'stage'),
+    ];
+    manager.reconcile();
+  };
+
+  it('Audience off closes every audience window, key and fill included, and only them; on opens them where they were', () => {
+    show();
+    expect(live()).toEqual(['hall@2', 'fill@4', 'key@5', 'stage@3']);
+    expect(manager.switches()).toEqual(ALL_ON);
+    expect(manager.setSwitch('audience', false)).toBe(true);
+    // Their displays are the computer's again; the stage screen carries on, the same window.
+    expect(live()).toEqual(['stage@3']);
+    expect(opened.find((w) => w.screenId === 'stage')?.closed).toBe(false);
+    expect(manager.switches()).toEqual({ audience: false, stage: true });
+    // Off on purpose, never "display not connected": each still knows its display.
+    expect(manager.status()).toEqual([
+      { screenId: 'hall', state: 'switched-off', displayId: 2 },
+      { screenId: 'fill', state: 'switched-off', displayId: 4 },
+      { screenId: 'key', state: 'switched-off', displayId: 5 },
+      { screenId: 'stage', state: 'showing', displayId: 3 },
+    ]);
+    expect(manager.windows().map((w) => w.screenId)).toEqual(['stage']);
+    // Off again changes nothing.
+    const before = changes;
+    expect(manager.setSwitch('audience', false)).toBe(false);
+    expect(changes).toBe(before);
+    // Still off through any other change (a display's resolution, a screen setting): nothing reopens them.
+    manager.reconcile();
+    expect(live()).toEqual(['stage@3']);
+    // On: a new window on each one's own display.
+    expect(manager.setSwitch('audience', true)).toBe(true);
+    expect(live()).toEqual(['stage@3', 'hall@2', 'fill@4', 'key@5']);
+    expect(opened).toHaveLength(7);
+    expect(manager.status().map((st) => st.state)).toEqual(['showing', 'showing', 'showing', 'showing']);
+    // The screens were never changed: nothing about them was saved.
+    expect(saved).toEqual([]);
+  });
+
+  it('Stage off closes only the stage windows; each switch is on and off on its own', () => {
+    show();
+    manager.setSwitch('stage', false);
+    expect(live()).toEqual(['hall@2', 'fill@4', 'key@5']);
+    expect(manager.status()[3]).toEqual({ screenId: 'stage', state: 'switched-off', displayId: 3 });
+    manager.setSwitch('audience', false);
+    expect(live()).toEqual([]);
+    expect(manager.switches()).toEqual({ audience: false, stage: false });
+    manager.setSwitch('stage', true);
+    expect(live()).toEqual(['stage@3']);
+    expect(manager.switches()).toEqual({ audience: false, stage: true });
+  });
+
+  it('a switched-off screen keeps its other states first: off (saved), or no display', () => {
+    show();
+    screens = [screen('hall', hall, false, 'hall'), screen('spare', null, true, 'hall'), ...screens.slice(1)];
+    manager.setSwitch('audience', false);
+    expect(manager.status().slice(0, 2)).toEqual([
+      { screenId: 'hall', state: 'disabled', displayId: null },
+      { screenId: 'spare', state: 'unassigned', displayId: null },
+    ]);
+    // A switched-off screen whose display is not connected says so when it is on again, not before.
+    displays = [laptop, stage, fill, key];
+    screens = [screen('hall', hall, true, 'hall'), ...screens.slice(2)];
+    manager.reconcile();
+    expect(manager.status()[0]).toEqual({ screenId: 'hall', state: 'switched-off', displayId: null });
+    manager.setSwitch('audience', true);
+    expect(manager.status()[0]).toEqual({ screenId: 'hall', state: 'missing-display', displayId: null });
+  });
+
+  it('an output held through a display drop closes at once when its switch goes off, and nothing opens it while off', () => {
+    show();
+    displays = [laptop, stage, fill, key];
+    manager.reconcile();
+    const hallWindow = opened.find((w) => w.screenId === 'hall');
+    expect(hallWindow?.hidden).toBe(true);
+    expect(hallWindow?.closed).toBe(false);
+    manager.setSwitch('audience', false);
+    expect(hallWindow?.closed).toBe(true);
+    // Its display back, and the grace over: still off.
+    displays = [laptop, hall, stage, fill, key];
+    advance(DISPLAY_DROP_MS);
+    manager.reconcile();
+    expect(live()).toEqual(['stage@3']);
+    expect(manager.status()[0]).toEqual({ screenId: 'hall', state: 'switched-off', displayId: 2 });
+  });
+
+  it('a window the watchdog gave up on, switched off, starts afresh when on again: Try again never fights the switch', () => {
+    show();
+    manager.setStopped('hall', true);
+    expect(manager.status()[0]?.state).toBe('stopped');
+    manager.setSwitch('audience', false);
+    expect(manager.status()[0]?.state).toBe('switched-off');
+    // A late word from the watchdog about the closed window changes nothing.
+    manager.setStopped('hall', true);
+    expect(manager.status()[0]?.state).toBe('switched-off');
+    expect(live()).toEqual(['stage@3']);
+    manager.setSwitch('audience', true);
+    expect(manager.status()[0]).toEqual({ screenId: 'hall', state: 'showing', displayId: 2 });
+  });
+
+  it('a group given another role follows its new switch at once', () => {
+    show();
+    manager.setSwitch('audience', false);
+    roles = { ...roles, hall: 'stage' };
+    manager.reconcile();
+    expect(live()).toEqual(['stage@3', 'hall@2']);
+  });
+
+  it('remembers nothing: a manager made at the next start has both on', () => {
+    show();
+    manager.setSwitch('audience', false);
+    manager.setSwitch('stage', false);
+    const next = new OutputManager({
+      listDisplays: () => displays,
+      screens: () => screens,
+      saveDisplayKey: () => undefined,
+      openWindow: (s, d) => new FakeWindow(s.id, d.id),
+      onChange: () => undefined,
+      switchOf: (s) => switchFor(roles[s.groupId] ?? 'audience'),
+    });
+    expect(next.switches()).toEqual(ALL_ON);
+    next.reconcile();
+    expect(next.windows().map((w) => w.screenId)).toEqual(['hall', 'fill', 'key', 'stage']);
+  });
+
+  it('closeAll closes what is open, switched off or not', () => {
+    show();
+    manager.setSwitch('stage', false);
+    manager.closeAll();
+    expect(live()).toEqual([]);
   });
 });
