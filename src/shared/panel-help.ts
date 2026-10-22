@@ -59,7 +59,7 @@ export const PANEL_HELP = {
   stage: {
     title: 'Stage screen',
     doc: 'operator',
-    text: 'What the speaker and the singers see, never the hall. Type a short message for them, such as “Two minutes left”, and send it; its own Clear takes it off.',
+    text: 'What the speaker and the singers see, never the hall. Type a short message for them, such as “Two minutes left”, and send it; its own Clear takes it off. Edit layout… can add the box “The audience picture, live”, to show them what the hall sees.',
     guide: '**The stage message.**',
   },
   props: {
@@ -83,7 +83,7 @@ export const PANEL_HELP = {
   timers: {
     title: 'Timers',
     doc: 'operator',
-    text: 'Countdowns and clocks. Press Start, then Show on the screens to put one up; the stage screens show every running timer by themselves.',
+    text: 'Countdowns and clocks. Press Start, then Show on the screens to put one up alone in the slide’s place; press it again, or Clear slide, to take it off. The stage screens show every running timer by themselves.',
     guide: '**Timers.**',
   },
   music: {
@@ -137,7 +137,7 @@ export const PANEL_HELP = {
   statusbar: {
     title: 'The status bar',
     doc: 'operator',
-    text: 'What Drashti is doing: the screens, the sound output, imports and warnings, and its version. A warning in yellow says what to look at.',
+    text: 'What Drashti is doing: the screens, the sound output, imports and warnings, and its version. A warning in yellow says what to look at: Audience off or Stage off means this computer’s hall or stage screens are switched off, and Turn on brings them back. After a screen is put on a display, Keep these screens? goes back to how they were in 15 seconds unless you press Keep.',
     guide: '**Along the bottom:**',
   },
   audio: {
