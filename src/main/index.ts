@@ -1,4 +1,4 @@
-import type { IpcMainInvokeEvent } from 'electron';
+import type { IpcMainInvokeEvent, Rectangle } from 'electron';
 import {
   app,
   autoUpdater,
@@ -197,7 +197,13 @@ import {
   showDisplayNumber,
   watchDisplays,
 } from './outputs/electron-outputs';
-import { COULD_NOT_GO_BACK, coveringScreens, KeepScreens } from './outputs/keep-screens';
+import {
+  type ControlsPlace,
+  controlsToPutBack,
+  COULD_NOT_GO_BACK,
+  coveringScreens,
+  KeepScreens,
+} from './outputs/keep-screens';
 import { placeOperator } from './outputs/operator-guard';
 import { DISPLAY_DROP_MS, OutputManager } from './outputs/output-manager';
 import { ScreensService, type ScreensSetup } from './outputs/screens-service';
@@ -1093,7 +1099,8 @@ function start(): void {
     isAudioPlayer: (contents) => contents !== null && contents.id === audioWindow?.webContents.id,
     log: permissionLog,
   });
-  // The stream's page has a session of its own: the only one allowed a camera and a sound input.
+  // The stream's page has a session of its own: the only one allowed a sound input, and a camera as the stream's own
+  // (Session 50: Drashti's screen pages and the operator window may open a video input too, video only).
   const streamSession = session.fromPartition(STREAM_PARTITION);
   applyStreamSessionSecurity(streamSession, {
     isProgram: (contents) => stream?.isProgram(contents) ?? false,
@@ -1776,9 +1783,19 @@ function start(): void {
   // After a change that puts an output on a display, 15 s to keep it, or it goes back by itself; the output over
   // the controls asks too. Tests that are not about it never ask (DRASHTI_TEST_KEEP_SCREENS=0, the tests' own
   // default); a test may give a shorter wait.
-  const coveringNow = () => coveringScreens(manager.status(), operatorDisplayId());
+  // Where the controls were when the change began (section 3's review): the guard may move them off an output put on
+  // their display to a free one, but the question belongs on that output, and going back puts them where they were.
+  // Taken with the screens at a change's start (a change while one waits keeps the first); forgotten as it ends.
+  let controlsBefore: ControlsPlace<Rectangle> | null = null;
+  const controlsDisplayId = () => (controlsBefore ? controlsBefore.displayId : operatorDisplayId());
+  const coveringNow = () => coveringScreens(manager.status(), controlsDisplayId());
   const keepScreens = new KeepScreens<ScreensSetup>({
-    capture: () => screens.setup(),
+    capture: () => {
+      const here =
+        operatorWindow && !operatorWindow.isDestroyed() && !windowedOutputs ? operatorWindow : null;
+      controlsBefore = { displayId: operatorDisplayId(), bounds: here ? here.getBounds() : null };
+      return screens.setup();
+    },
     restore: (setup, quitting) => {
       // The setup's test slide ends with the change it showed (the screens put back show the show again).
       if (!quitting) testCardUntil = 0;
@@ -1787,6 +1804,17 @@ function start(): void {
         // As Screens' own changes do: the stream's languages, and a stage display in a browser.
         streaming.contextChanged();
         net.hint('screens');
+        // The controls back where they were, if the change moved them (and that display is still there).
+        const back = controlsToPutBack(
+          controlsBefore,
+          electronScreen.getAllDisplays().map((d) => d.id),
+          operatorDisplayId(),
+        );
+        if (back && operatorWindow && !operatorWindow.isDestroyed()) {
+          log.info('Keep these screens?: the controls are put back on the display they were on.');
+          operatorWindow.setBounds(back);
+          guardOperator();
+        }
       }
       return result;
     },
@@ -1800,6 +1828,7 @@ function start(): void {
         sendToPage(win, IPC.output.keepQuestion, covering.has(screenId) ? pending : null);
     },
     ended: (how) => {
+      controlsBefore = null;
       if (how === 'kept') return;
       sendToPage(operatorWindow, IPC.app.notice, {
         text:
@@ -4844,7 +4873,7 @@ function start(): void {
   const askSwitchOff = async (which: ScreenSwitch): Promise<boolean> => {
     const box = {
       type: 'question' as const,
-      buttons: ['Cancel', 'Turn Off'],
+      buttons: ['Cancel', 'Turn off'],
       defaultId: 0,
       cancelId: 0,
       message: `Turn ${SWITCH_NAMES[which]} off?`,

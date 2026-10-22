@@ -147,7 +147,9 @@ export function cameraAllowed(
 /**
  * Permissions: every request (camera, microphone, notifications, ...) is
  * refused on every page, and every check fails, except the one the audio
- * player needs to choose a sound output. The audio player has a session of
+ * player needs to choose a sound output, MIDI for the operator window, a screen's picture to a page that may
+ * capture it now (Session 48), and a camera, video only, to Drashti's own screen pages and the operator
+ * window (Session 50, a video input). The audio player has a session of
  * its own, so what it may see can never reach the other windows (Chromium
  * shares device information between pages of one session).
  */

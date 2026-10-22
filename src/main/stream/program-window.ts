@@ -10,9 +10,11 @@ import type { CaptureGrant } from '../live-window/live-window-service';
  * the displays are doing. Its page captures itself (getDisplayMedia, allowed
  * for its own frame only) and hands the frames on to be encoded.
  *
- * It has a session of its own, the only one that may use a camera or a
- * microphone: what it is allowed can never reach another window (Chromium
- * shares device information between the pages of one session).
+ * It has a session of its own, the only one that may use a microphone (a
+ * sound input): what it is allowed can never reach another window (Chromium
+ * shares device information between the pages of one session). A camera it may
+ * use as the stream's own; since Session 50 Drashti's own screen pages and the
+ * operator window may open a video input too, video only (windows/security.ts).
  */
 
 export const STREAM_PARTITION = 'persist:drashti-stream';
