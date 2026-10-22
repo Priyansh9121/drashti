@@ -10,6 +10,7 @@ import { makeSource, RecordingTransport } from '../engine/testing';
 import { NO_PLAYLISTS } from '../engine/playlist-source';
 import { LookService } from '../looks/look-service';
 import type { PendingScreens } from '../../shared/keep-screens';
+import { switchFor } from '../../shared/screen-switches';
 import { coveringScreens, KeepScreens } from './keep-screens';
 import { OutputManager, type OutputWindow } from './output-manager';
 import { ScreensService, type ScreensSetup } from './screens-service';
@@ -567,5 +568,93 @@ describe('Keep these screens? (Session 50): the setup put back exactly, and what
     keep.goBack();
     expect(t.repo.screen(screenId)?.enabled).toBe(false);
     expect(t.open.size).toBe(0);
+  });
+});
+
+describe('Audience or Stage off (Session 51, S2-1): a switched-off screen shows nothing on its display', () => {
+  /** One display; the output windows counted as they open and close; each screen answers to its group's switch. */
+  function switched() {
+    const db = openDatabase(':memory:');
+    const r = new ScreenRepo(db);
+    const open = new Set<number>();
+    const outputs = new OutputManager({
+      listDisplays: () => [hall],
+      screens: () => r.screens(),
+      saveDisplayKey: (id, key) => {
+        r.setDisplayKey(id, key);
+      },
+      openWindow: (): OutputWindow => {
+        const id = ++windows;
+        open.add(id);
+        return {
+          webContentsId: id,
+          setBounds: () => undefined,
+          close: () => {
+            open.delete(id);
+          },
+          isDestroyed: () => !open.has(id),
+          hide: () => undefined,
+          show: () => undefined,
+        };
+      },
+      onChange: () => undefined,
+      switchOf: (sc) => switchFor(r.groupRole(sc.groupId) ?? 'audience'),
+    });
+    const s = new ScreensService(
+      r,
+      outputs,
+      () => [hall],
+      () => operatorDisplay,
+      looksOf(db),
+    );
+    const keep = new KeepScreens<ScreensSetup>({
+      capture: () => s.setup(),
+      restore: (setup, quitting) => s.putBack(setup, quitting),
+      placed: () => s.placed(),
+      coversControls: () => false,
+      snapshot: () => s.snapshot(),
+      changed: () => undefined,
+      now: () => 0,
+      later: () => () => undefined,
+    });
+    s.createGroup('Main Hall');
+    s.assignDisplay(r.groups()[0]?.id, 2);
+    return { service: s, repo: r, outputs, open, keep, screenId: r.screens()[0]?.id ?? '' };
+  }
+
+  it('turned off and on again in Screens while Audience is off asks nothing; Audience on, it is back where it was', () => {
+    const t = switched();
+    expect(t.open.size).toBe(1);
+    t.outputs.setSwitch('audience', false);
+    expect(t.open.size).toBe(0);
+    // Its display shows the computer's desktop: nothing of Drashti's is on it.
+    expect(t.service.placed()).toEqual(new Map());
+    t.keep.change(() => t.service.updateScreen(t.screenId, { enabled: false }));
+    expect(t.keep.current()).toBeNull();
+    t.keep.change(() => t.service.updateScreen(t.screenId, { enabled: true }));
+    expect(t.keep.current()).toBeNull();
+    expect(t.open.size).toBe(0);
+    expect(t.service.snapshot().status).toEqual([
+      { screenId: t.screenId, state: 'switched-off', displayId: 2 },
+    ]);
+    // Audience on again: on the display it was on, never asked.
+    t.outputs.setSwitch('audience', true);
+    expect(t.open.size).toBe(1);
+    expect(t.service.snapshot().status).toEqual([{ screenId: t.screenId, state: 'showing', displayId: 2 }]);
+    expect(t.keep.current()).toBeNull();
+  });
+
+  it('still asks when a change does put something on a display: the hall’s screen made a stage screen while Audience is off', () => {
+    const t = switched();
+    t.outputs.setSwitch('audience', false);
+    t.keep.change(() => t.service.applySetup([{ displayId: 2, use: 'stage', languages: null }]));
+    expect(t.keep.current()).not.toBeNull();
+    expect(t.open.size).toBe(1);
+    // Go back: the hall's again, so switched off with Audience.
+    t.keep.goBack();
+    expect(t.open.size).toBe(0);
+    expect(t.service.snapshot().status).toEqual([
+      { screenId: t.screenId, state: 'switched-off', displayId: 2 },
+    ]);
   });
 });

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { useEngine } from '../engine/engine-store';
 import type { AudioDevice } from '../../../shared/audio';
 import type { Lang } from '../../../shared/model';
-import type { DisplayInfo, ScreensSnapshot } from '../../../shared/screens';
+import type { DisplayInfo, ScreenGroupConfig, ScreensSnapshot } from '../../../shared/screens';
 import type { OutputUse, SetupPlan } from '../../../shared/setup';
 import { displayToOffer } from '../../../shared/setup';
 import type { DeviceChoice, StreamLayout } from '../../../shared/stream';
@@ -119,11 +119,7 @@ export async function openSetup(from = 0): Promise<void> {
   const look = useEngine.getState().state?.look;
   const outputs: Record<number, OutputChoice> = {};
   for (const d of snapshot.displays) {
-    // A screen switched off (Session 50) still has its display: Finish must not take it away.
-    const st = snapshot.status.find(
-      (x) => x.displayId === d.id && (x.state === 'showing' || x.state === 'switched-off'),
-    );
-    const group = st ? snapshot.groups.find((g) => g.screens.some((sc) => sc.id === st.screenId)) : undefined;
+    const group = groupOn(snapshot, d.id);
     const languages = group ? (look?.groups[group.id]?.languages ?? null) : null;
     outputs[d.id] = group
       ? { use: group.role === 'stage' ? 'stage' : 'audience', languages: languages ? [...languages] : null }
@@ -266,14 +262,28 @@ export async function finishSetup(coverOperator = false): Promise<void> {
 
 // ---- Keep these screens? (Session 50) ------------------------------------------------------------------------
 
+/**
+ * The group a display is used by now: its screen's, showing there, or switched off by Audience or Stage (Session
+ * 50), which keeps its display (Session 51, S2-1: Set Up Screens… counts it in use as it opens, so Finish never
+ * takes the display away, and as Keep these screens? goes, so what Done set is seen kept).
+ */
+function groupOn(
+  snapshot: Pick<ScreensSnapshot, 'groups' | 'status'>,
+  displayId: number,
+): ScreenGroupConfig | undefined {
+  const st = snapshot.status.find(
+    (x) => x.displayId === displayId && (x.state === 'showing' || x.state === 'switched-off'),
+  );
+  return st ? snapshot.groups.find((g) => g.screens.some((sc) => sc.id === st.screenId)) : undefined;
+}
+
 /** What each display shows now, as the wizard offers it: the audience picture, the stage view, or nothing. */
 export function usesOf(
   snapshot: Pick<ScreensSnapshot, 'displays' | 'groups' | 'status'>,
 ): Record<number, OutputUse> {
   const uses: Record<number, OutputUse> = {};
   for (const d of snapshot.displays) {
-    const st = snapshot.status.find((x) => x.displayId === d.id && x.state === 'showing');
-    const group = st ? snapshot.groups.find((g) => g.screens.some((sc) => sc.id === st.screenId)) : undefined;
+    const group = groupOn(snapshot, d.id);
     uses[d.id] = group ? (group.role === 'stage' ? 'stage' : 'audience') : 'none';
   }
   return uses;
