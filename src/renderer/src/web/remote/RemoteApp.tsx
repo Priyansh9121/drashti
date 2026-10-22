@@ -250,6 +250,29 @@ function LivePicture({ state }: { state: EngineState | null }) {
           </Button>
         </div>
       )}
+      {/* A timer up alone in the slide's place (Session 50): named, and taken off as the slide is. */}
+      {state?.layers.slide?.timer && (
+        <div
+          role="status"
+          data-testid="remote-timer-alone"
+          className="flex items-center gap-2 rounded-lg border border-line bg-panel-2 py-1 pr-1 pl-3"
+        >
+          <Timer size={18} aria-hidden="true" className="shrink-0 text-muted" />
+          <span className="min-w-0 flex-1 truncate text-base">
+            <span className="font-bold">Timer:</span> {state.layers.slide.timer.name}
+          </span>
+          <Button
+            size="lg"
+            className="min-h-12"
+            instant
+            icon={Eraser}
+            data-testid="remote-timer-clear"
+            onClick={() => void tap(post('/api/v1/clear/slide'))}
+          >
+            Clear
+          </Button>
+        </div>
+      )}
       {/* Repeat Slides going round (Session 26d): which, and Stop (its slide stays up). */}
       {state?.repeat && (
         <div
@@ -532,7 +555,11 @@ function Slides() {
   const doc = useRemote((s) => s.doc);
   const focusSlideId = useRemote((s) => s.focusSlideId);
   const live = useEngine((s) => s.state?.live ?? null);
-  const shownIndex = useEngine((s) => s.state?.layers.slide?.slideIndex ?? null);
+  // The live presentation's slide on the screens; a timer up alone (Session 50) is none of its slides.
+  const shownIndex = useEngine((s) => {
+    const shown = s.state?.layers.slide;
+    return shown && !shown.timer ? shown.slideIndex : null;
+  });
   // A slide a search found, once its presentation is open: into view.
   useEffect(() => {
     if (!focusSlideId || doc?.id !== viewing?.presentationId) return;
