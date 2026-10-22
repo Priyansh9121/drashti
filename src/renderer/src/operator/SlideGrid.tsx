@@ -716,7 +716,7 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
             </Button>
             {/* Session 50: Delete… for the presentation open here, asked first and with Undo, as the library's
                 trash. Pro Mode only, as the whole grid is: Simple Mode never deletes. Session 51: Delete from the
-                library… while a playlist item is open, as it leaves every playlist, not only this one. */}
+                library… while a playlist item is open, as it deletes the presentation, not only this card. */}
             <MenuButton
               label="Presentation"
               title="Presentation actions"

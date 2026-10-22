@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { PresentationDoc, PresentationSummary, RemoveResult } from '../../../shared/library';
+import type { PlaylistItemInfo } from '../../../shared/playlists';
 import { useEngine } from '../engine/engine-store';
+import { usePlaylists } from '../playlists/playlist-store';
 import {
   confirmRemoval,
   deleteOpenLabel,
-  leavesPlaylists,
+  playlistCardsLine,
   requestRemoval,
   requestRemovalOfOpen,
   useImports,
@@ -17,9 +19,9 @@ import { undoRemoval, useUndo } from './undo';
  * Delete… in the menu of the presentation open in the middle (Session 50): that presentation alone, asked
  * first, with Undo, as the library's trash does; once it is deleted the middle shows nothing chosen (not the
  * next presentation, as the library's trash leaves it). Session 51: while a playlist item is open the menu
- * says Delete from the library…, and the one question (the library's trash's too) says it also leaves every
- * playlist. The main process is stood in for by a fake that removes and restores as
- * src/main/db/presentations.ts does. Placeholder names only.
+ * says Delete from the library…, the one question (the library's trash's too) says what becomes of its
+ * playlists' cards, and Undo shows that card again while its playlist is open. The main process is stood in
+ * for by a fake that removes and restores as src/main/db/presentations.ts does. Placeholder names only.
  */
 
 interface Stored {
@@ -89,6 +91,7 @@ beforeEach(async () => {
   useUndo.setState({ stack: [] });
   useImports.setState({ confirmRemove: null });
   useEngine.setState({ state: null });
+  usePlaylists.setState({ openId: null, items: [] });
   // Bravo open in the middle, all three marked in the library.
   useLibrary.setState({
     presentations: await fake.listPresentations(),
@@ -169,9 +172,9 @@ describe('Delete… in the middle’s menu (Session 50)', () => {
 });
 
 describe('Delete from the library… while a playlist item is open (Session 51)', () => {
-  const bravoItem: ShownItem = {
+  /** Bravo's card in the playlist P, and the same card as the middle shows it. */
+  const bravoCard: PlaylistItemInfo = {
     id: 'item-1',
-    playlistId: 'P',
     kind: 'presentation',
     label: 'Placeholder Bravo',
     presentationId: 'B',
@@ -180,28 +183,59 @@ describe('Delete from the library… while a playlist item is open (Session 51)'
     arrangementName: null,
     timers: [],
   };
+  const bravoItem: ShownItem = { ...bravoCard, playlistId: 'P' };
+
+  /** Bravo opened from its card in the open playlist P, then deleted from the middle's menu. */
+  async function deleteFromCard(): Promise<void> {
+    usePlaylists.setState({ openId: 'P', items: [bravoCard] });
+    useLibrary.setState({ item: bravoItem });
+    requestRemovalOfOpen('B', 'Placeholder Bravo');
+    await confirmRemoval();
+    expect(open()).toMatchObject({ selectedId: null, item: null, nothingChosen: true });
+  }
 
   it('the menu says Delete from the library… for a playlist item, and Delete… for one opened from the library', () => {
     expect(deleteOpenLabel(bravoItem)).toBe('Delete from the library…');
     expect(deleteOpenLabel(null)).toBe('Delete…');
   });
 
-  it('the question says it also leaves every playlist, for one presentation or several', () => {
-    expect(leavesPlaylists(1)).toBe(
-      'It also leaves every playlist it is in: each shows it as removed from the library.',
+  it('the question says what becomes of the playlists’ cards, for one presentation or several', () => {
+    expect(playlistCardsLine(1)).toBe(
+      'Any playlist it is in keeps its card, marked Removed from the library, and Next goes past it.',
     );
-    expect(leavesPlaylists(3)).toBe(
-      'They also leave every playlist they are in: each shows them as removed from the library.',
+    expect(playlistCardsLine(3)).toBe(
+      'Any playlist they are in keeps their cards, marked Removed from the library, and Next goes past them.',
     );
   });
 
   it('asks the library’s trash’s question, whether it was opened from a playlist or the library', () => {
     useLibrary.setState({ item: bravoItem });
     requestRemovalOfOpen('B', 'Placeholder Bravo');
-    const fromItem = useImports.getState().confirmRemove;
+    const asked = useImports.getState().confirmRemove;
     useLibrary.setState({ item: null, marked: ['B'] });
     requestRemoval('B');
-    // The same presentation, named the same, the same count for the same words; only the middle's closes.
-    expect(fromItem).toEqual({ ...useImports.getState().confirmRemove, closes: true });
+    // The same presentation, named the same, the same count for the same words; only the middle's closes, and
+    // keeps the card it was asked from.
+    expect(asked).toEqual({ ...useImports.getState().confirmRemove, closes: true, fromItem: bravoItem });
+  });
+
+  it('Undo shows that card again while its playlist is open, so a slide clicked plays in the playlist', async () => {
+    await deleteFromCard();
+    expect(await undoRemoval()).toBe(true);
+    expect(open()).toMatchObject({ selectedId: 'B', item: bravoItem, nothingChosen: false });
+    expect(open().doc?.id).toBe('B');
+  });
+
+  it('Undo shows it as the library’s once its playlist is closed, or the card is taken out', async () => {
+    for (const since of [
+      { openId: null, items: [] },
+      { openId: 'P', items: [] },
+    ]) {
+      await deleteFromCard();
+      usePlaylists.setState(since);
+      expect(await undoRemoval()).toBe(true);
+      expect(open()).toMatchObject({ selectedId: 'B', item: null, nothingChosen: false });
+      expect(open().doc?.id).toBe('B');
+    }
   });
 });
