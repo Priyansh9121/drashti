@@ -102,6 +102,10 @@ export const ADMIN_CHANNELS: readonly InvokeChannel[] = [
   IPC.media.saveTrim,
   IPC.media.remove,
   IPC.media.restore,
+  // Video inputs (Session 50): naming this computer's inputs, as media is the admin's.
+  IPC.videoInputs.add,
+  IPC.videoInputs.update,
+  IPC.videoInputs.remove,
   // A smart playlist (Session 26c) imports what its folder holds: made as importing is.
   IPC.playlists.createSmart,
   // Themes, the logo, Shastra texts, calendars and the idle rotation.

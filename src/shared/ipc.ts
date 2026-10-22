@@ -93,6 +93,18 @@ import type { TimerFields, TimerResult } from './timers';
 import type { LiveWindowResult, LiveWindowStatus, WindowList } from './live-window';
 import type { ZoomProgram } from './zoom';
 import type {
+  CameraAccess,
+  VideoInputFields,
+  VideoInputReport,
+  VideoInputResult,
+  VideoInputsView,
+  VideoInputStatus,
+} from './video-inputs';
+import type { ScreenSwitch, ScreenSwitches, ScreenSwitchResult } from './screen-switches';
+import type { PendingScreens } from './keep-screens';
+import type { PipSettingsResult } from './pip';
+import type { PipPlace } from './engine/state';
+import type {
   CoverOptions,
   OutputContext,
   OutputReport,
@@ -604,6 +616,25 @@ export const IPC = {
     tryAgain: 'screens:try-again',
     /** main -> operator: the screen setup or display list changed. */
     changed: 'screens:changed',
+    /**
+     * Keep these screens? (Session 50): the change waiting for Keep or Go back, or null; keeping it; going back to
+     * exactly the screens as they were (also by itself after 15 s). Anyone who may change the screens answers.
+     */
+    pending: 'screens:pending',
+    keep: 'screens:keep',
+    goBack: 'screens:go-back',
+    /** main -> operator: a change began waiting, or was kept or taken back. */
+    pendingChanged: 'screens:pending-changed',
+  },
+  /**
+   * Audience and Stage (Session 50): which of this computer's outputs are on, and turning them off or on (Simple
+   * Mode may only turn them on).
+   */
+  screenSwitches: {
+    get: 'screenswitch:get',
+    turn: 'screenswitch:turn',
+    /** main -> operator: one was turned off or on. */
+    changed: 'screenswitch:changed',
   },
   /** The setup wizard (operator window only; never in Simple Mode). */
   setup: {
@@ -676,6 +707,34 @@ export const IPC = {
     ask: 'livewindow:ask',
     /** A screen's page: its capture of the window ended (the window closed). */
     ended: 'livewindow:ended',
+  },
+  /** Video inputs (Session 50): this computer's cameras and capture inputs, named and kept in Media. */
+  videoInputs: {
+    /** The named inputs on this computer. */
+    list: 'videoinput:list',
+    /** Adding, changing and removing one (operator window only; Pro Mode; an admin's with roles on). */
+    add: 'videoinput:add',
+    update: 'videoinput:update',
+    remove: 'videoinput:remove',
+    /** main -> operator: the list changed. */
+    changed: 'videoinput:changed',
+    /** Whether Drashti may use the cameras (a Mac's Camera setting; Windows' camera privacy setting). */
+    access: 'videoinput:access',
+    /** A Mac: ask for the camera, after the page has said why (operator window only; Pro Mode). */
+    askAccess: 'videoinput:ask-access',
+    /** Open System Settings (or Windows' Settings) at the camera's privacy page (operator window only). */
+    openSettings: 'videoinput:open-settings',
+    /** A page drawing the input up now says it plays, or stopped. */
+    report: 'videoinput:report',
+    /** How the input on the screens stands (operator window). */
+    status: 'videoinput:status',
+    /** main -> operator: it stopped, or came back. */
+    statusChanged: 'videoinput:status-changed',
+  },
+  /** Picture in picture (Session 50): where the box goes and how it looks, remembered in the library. */
+  pip: {
+    place: 'pip:place',
+    savePlace: 'pip:save-place',
   },
   /** The window for Zoom (Session 48): the stream's picture in a window of its own, for Zoom to share. */
   zoom: {
@@ -782,6 +841,12 @@ export const IPC = {
      * (Session 26d).
      */
     testClock: 'output:test-clock',
+    /**
+     * main -> output (Session 50): Keep these screens? on the output covering the controls, large, with its
+     * countdown (null: answered). Enter keeps and Esc goes back, through keepAnswer.
+     */
+    keepQuestion: 'output:keep-question',
+    keepAnswer: 'output:keep-answer',
   },
   pictures: {
     /** The hidden window that draws a PDF's pages (Session 15) asks what to draw (that window only). */
@@ -1120,6 +1185,12 @@ export interface InvokeContract {
   [IPC.screens.identify]: { args: []; result: null };
   [IPC.screens.uncoverOperator]: { args: []; result: ScreensResult };
   [IPC.screens.tryAgain]: { args: [screenId: string]; result: { ok: true } | { ok: false; message: string } };
+  [IPC.screens.pending]: { args: []; result: PendingScreens | null };
+  [IPC.screens.keep]: { args: []; result: ScreensResult };
+  [IPC.screens.goBack]: { args: []; result: ScreensResult };
+  [IPC.screenSwitches.get]: { args: []; result: ScreenSwitches };
+  [IPC.screenSwitches.turn]: { args: [which: ScreenSwitch, on: boolean]; result: ScreenSwitchResult };
+  [IPC.output.keepAnswer]: { args: [keep: boolean]; result: null };
   [IPC.output.getContext]: { args: []; result: OutputContext | null };
   [IPC.output.report]: { args: [report: OutputReport]; result: null };
   [IPC.setup.state]: { args: []; result: SetupState };
@@ -1159,6 +1230,20 @@ export interface InvokeContract {
   [IPC.liveWindow.status]: { args: []; result: LiveWindowStatus };
   [IPC.liveWindow.ask]: { args: [sourceId: string]; result: boolean };
   [IPC.liveWindow.ended]: { args: [sourceId: string]; result: null };
+  [IPC.videoInputs.list]: { args: []; result: VideoInputsView };
+  [IPC.videoInputs.add]: { args: [fields: VideoInputFields]; result: VideoInputResult };
+  [IPC.videoInputs.update]: {
+    args: [id: string, fields: Partial<VideoInputFields>];
+    result: VideoInputResult;
+  };
+  [IPC.videoInputs.remove]: { args: [id: string]; result: VideoInputResult };
+  [IPC.videoInputs.access]: { args: []; result: CameraAccess };
+  [IPC.videoInputs.askAccess]: { args: []; result: CameraAccess };
+  [IPC.videoInputs.openSettings]: { args: []; result: null };
+  [IPC.videoInputs.report]: { args: [report: VideoInputReport]; result: null };
+  [IPC.videoInputs.status]: { args: []; result: VideoInputStatus };
+  [IPC.pip.place]: { args: []; result: PipPlace };
+  [IPC.pip.savePlace]: { args: [place: PipPlace]; result: PipSettingsResult };
   [IPC.zoom.open]: { args: []; result: null };
   [IPC.zoom.program]: { args: []; result: ZoomProgram | null };
   [IPC.network.status]: { args: []; result: NetworkStatus };
@@ -1263,6 +1348,11 @@ export interface EventContract {
   [IPC.stream.port]: { role: 'preview' | 'encoder' };
   [IPC.stream.context]: ProgramContext;
   [IPC.liveWindow.changed]: LiveWindowStatus;
+  [IPC.videoInputs.changed]: VideoInputsView;
+  [IPC.videoInputs.statusChanged]: VideoInputStatus;
+  [IPC.screenSwitches.changed]: ScreenSwitches;
+  [IPC.screens.pendingChanged]: PendingScreens | null;
+  [IPC.output.keepQuestion]: PendingScreens | null;
   [IPC.zoom.programChanged]: ZoomProgram | null;
   [IPC.network.changed]: NetworkStatus;
   [IPC.announcements.changed]: AnnouncementsView;

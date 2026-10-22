@@ -243,7 +243,9 @@ describe('ShowEngine', () => {
       return s;
     }
 
-    it.each(LAYER_NAMES)('clearLayer %s empties that layer only, in one patch', (layer) => {
+    // The picture-in-picture box (Session 50) joins these once its command is in (section 8 adds it to populated()).
+    const POPULATED = LAYER_NAMES.filter((l) => l !== 'pip');
+    it.each(POPULATED)('clearLayer %s empties that layer only, in one patch', (layer) => {
       const { engine, transport } = populated();
       const before = engine.current;
       const result = engine.dispatch({ type: 'clearLayer', layer });
@@ -287,6 +289,7 @@ describe('ShowEngine', () => {
         props: [],
         messages: [],
         ticker: null,
+        pip: null,
         lowerThird: null,
         masks: null,
       });

@@ -64,6 +64,18 @@ import type {
 } from './stream';
 import type { LiveWindowResult, LiveWindowStatus, WindowList } from './live-window';
 import type { ZoomProgram } from './zoom';
+import type {
+  CameraAccess,
+  VideoInputFields,
+  VideoInputReport,
+  VideoInputResult,
+  VideoInputsView,
+  VideoInputStatus,
+} from './video-inputs';
+import type { ScreenSwitch, ScreenSwitches, ScreenSwitchResult } from './screen-switches';
+import type { PendingScreens } from './keep-screens';
+import type { PipSettingsResult } from './pip';
+import type { PipPlace } from './engine/state';
 import type { SaveStillResult } from './media';
 import type { DeviceKind, NetworkResult, NetworkStatus } from './network';
 import type { NodesResult, NodesStatus, NodeView, NodeViewResult, ScreenThumb } from './nodes';
@@ -580,6 +592,30 @@ export interface DrashtiBridge {
     /** A screen's page: its capture of the window ended. */
     ended(sourceId: string): Promise<null>;
   };
+  /** Video inputs (Session 50): this computer's cameras and capture inputs, named in Media. */
+  videoInputs: {
+    list(): Promise<VideoInputsView>;
+    onChanged(listener: (view: VideoInputsView) => void): () => void;
+    /** The operator window, Pro Mode: name one of this computer's inputs. */
+    add(fields: VideoInputFields): Promise<VideoInputResult>;
+    update(id: string, fields: Partial<VideoInputFields>): Promise<VideoInputResult>;
+    remove(id: string): Promise<VideoInputResult>;
+    /** May Drashti use the cameras? */
+    access(): Promise<CameraAccess>;
+    /** A Mac: ask for the camera (the page has said why first). */
+    askAccess(): Promise<CameraAccess>;
+    /** System Settings (or Windows' Settings) at the camera's privacy page. */
+    openSettings(): Promise<null>;
+    /** A page drawing the input up now: it plays, or it stopped. */
+    report(report: VideoInputReport): Promise<null>;
+    status(): Promise<VideoInputStatus>;
+    onStatus(listener: (status: VideoInputStatus) => void): () => void;
+  };
+  /** Picture in picture (Session 50): where a new box goes and how it looks, as the library remembers. */
+  pip: {
+    place(): Promise<PipPlace>;
+    savePlace(place: PipPlace): Promise<PipSettingsResult>;
+  };
   /** The window for Zoom (Session 48). */
   zoom: {
     /** The operator window: open it, or bring it forward. */
@@ -762,6 +798,20 @@ export interface DrashtiBridge {
     uncoverOperator(): Promise<ScreensResult>;
     /** Try a stopped screen on this computer again (Session 26h; Simple Mode too). */
     tryAgain(screenId: string): Promise<{ ok: true } | { ok: false; message: string }>;
+    /** Keep these screens? (Session 50): the change waiting for an answer, or null. */
+    pending(): Promise<PendingScreens | null>;
+    onPending(listener: (pending: PendingScreens | null) => void): () => void;
+    /** Keep the change. */
+    keep(): Promise<ScreensResult>;
+    /** Go back to exactly the screens as they were before it. */
+    goBack(): Promise<ScreensResult>;
+  };
+  /** Audience and Stage (Session 50): this computer's outputs of each kind, off and on. */
+  screenSwitches: {
+    get(): Promise<ScreenSwitches>;
+    onChanged(listener: (switches: ScreenSwitches) => void): () => void;
+    /** Off closes them (their displays go back to the computer); on opens them where they were. */
+    turn(which: ScreenSwitch, on: boolean): Promise<ScreenSwitchResult>;
   };
   /** For output windows. */
   output: {
@@ -778,6 +828,10 @@ export interface DrashtiBridge {
     onTestThrow(listener: () => void): () => void;
     /** Tests only (a packaged Drashti never sends it): hold the clock at a moment, or let it go (Session 26d). */
     onTestClock(listener: (at: number | null) => void): () => void;
+    /** Keep these screens? (Session 50) on this output, when it covers the controls (null: answered). */
+    onKeepQuestion(listener: (pending: PendingScreens | null) => void): () => void;
+    /** Enter (keep) or Esc (go back) on this output. */
+    keepAnswer(keep: boolean): Promise<null>;
   };
   /** For the hidden window that draws a PDF's pages as pictures (Session 15). */
   pictures: {
