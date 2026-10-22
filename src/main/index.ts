@@ -1188,7 +1188,9 @@ function start(): void {
   const slides = new DbSlideSource(presentations);
   const screenRepo = new ScreenRepo(db);
   const importRepo = new ImportRepo(db);
-  const playlists = new PlaylistRepo(db);
+  // A playlist item naming a video input (Session 51) finds this computer's input of that name: the inputs are read
+  // further down, before anything is played.
+  const playlists = new PlaylistRepo(db, (name) => videoInputs?.named(name) ?? null);
   const themes = new ThemeRepo(db);
   themes.defaultId();
   // Shastra passages play like presentations, made from their texts (Session 12).
@@ -1303,6 +1305,8 @@ function start(): void {
   let idleService: IdleService | null = null;
   /** This computer's video inputs (Session 50; made just below, with the engine). */
   let videoInputs: VideoInputsService | null = null;
+  /** Their list changed (Session 51): playlist items and what comes next may name one that is or is not here now. */
+  let inputsChanged = (): void => undefined;
   const engine = new ShowEngine(
     playable,
     new FanoutTransport([transport, networkTransport, nodesTransport]),
@@ -1328,6 +1332,8 @@ function start(): void {
       // A video input by its id, from this computer's list (Session 50): showInput and the picture-in-picture box
       // find it only there.
       videoInput: (inputId) => videoInputs?.get(inputId) ?? null,
+      // The input a slide's background cue names (Session 51), by its name, from the same list.
+      inputNamed: (name) => videoInputs?.named(name) ?? null,
       // A timer shown alone (Session 50) in the words of the library's default theme.
       timerLook: () => themeLook(themes.themeOrDefault(null), 1920, 1080).style,
     },
@@ -1365,6 +1371,7 @@ function start(): void {
     },
     changed: (view) => {
       sendToPage(operatorWindow, IPC.videoInputs.changed, view);
+      inputsChanged();
     },
     statusChanged: (status) => {
       sendToPage(operatorWindow, IPC.videoInputs.statusChanged, status);
@@ -4106,6 +4113,9 @@ function start(): void {
     net.hint('playlists');
     syncAudios();
   };
+  // A video input added, renamed or removed in Media (Session 51): the items naming one are read again, here and
+  // on the phones, marked as on this computer or not, and Next goes to it or past it.
+  inputsChanged = playlistsChanged;
   // ---- Smart playlists (Session 26c): a playlist that follows a folder on the computer ----
   /** A test switch (never a packaged Drashti): a positive number of milliseconds, or null. */
   const smartFolders = new SmartFolders({
