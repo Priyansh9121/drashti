@@ -64,13 +64,15 @@ const OWN: Partial<Record<OperatorAction, readonly string[]>> = {
 type RoleKeys = Record<Platform, readonly (readonly [role: string, accelerator: string])[]>;
 const both = (...keys: (readonly [string, string])[]): RoleKeys => ({ darwin: keys, win32: keys });
 
-/** The Electron whose roles' keys ROLE_KEYS has. A newer one fails the test until they are read again. */
-const ELECTRON_READ = '44.4.5';
+/**
+ * The Electron whose roles' keys ROLE_KEYS has: its major, as a patch keeps them. A newer major fails the test until
+ * they are read again.
+ */
+const ELECTRON_MAJOR = 44;
 
 /**
- * The keys Electron gives each role these menus use, on the Mac and on Windows, as Electron 44.4.5 has them
- * (its own menu-item roles); a submenu role's are its items'. A role not here fails the test: look up its keys
- * first.
+ * The keys Electron gives each role these menus use, on the Mac and on Windows, copied by hand from Electron 44.4.5's
+ * own menu-item roles; a submenu role's are its items'. A role not here fails the test: look up its keys first.
  */
 const ROLE_KEYS: Record<string, RoleKeys> = {
   // About, Services, Hide, Hide Others, Show All and Quit (the Mac's only).
@@ -298,13 +300,15 @@ function keysOf(template: readonly MenuItemConstructorOptions[], platform: Platf
 
 /**
  * Whatever a menu asks of a part this test does not name (a later session's): another stand-in, never a
- * key. So the menus still build as they grow, and every key in them is checked all the same.
+ * key. So the menus still build as they grow, every key in them is checked all the same, and an item made
+ * from such a part fails ("its key, as given") until the part is named here.
  */
 const standIn: unknown = new Proxy(() => standIn, {
   get: (_target, key): unknown => {
-    // Never a promise; spread, an empty list; in words, none.
+    // Never a promise; in words, none; spread or gone through, one more stand-in, so a list of items made from it
+    // holds an item whose key cannot be read, never an empty list passed over.
     if (key === 'then') return undefined;
-    if (key === Symbol.iterator) return () => [][Symbol.iterator]();
+    if (key === Symbol.iterator) return () => [standIn][Symbol.iterator]();
     if (key === Symbol.toPrimitive) return () => '';
     return standIn;
   },
@@ -446,14 +450,16 @@ describe('one press, one action: the menus never answer a key the page answers (
       expect(KEYMAP.find((b) => b.action === action)?.keys, action).toContain(key);
   });
 
-  it(`reads the roles’ keys from the Electron Drashti is built with (${ELECTRON_READ})`, () => {
+  it(`reads the roles’ keys from the Electron Drashti is built with (${String(ELECTRON_MAJOR)}.x)`, () => {
     const pkg = JSON.parse(readFileSync(join(src, '..', 'package.json'), 'utf8')) as {
       devDependencies?: Record<string, string>;
     };
+    // Its major only (as written, 44.4.5, or as a range, ^44.4.5): a patch keeps the roles' keys.
+    const major = /^[\^~]?(\d+)\./u.exec(pkg.devDependencies?.['electron'] ?? '')?.[1];
     expect(
-      pkg.devDependencies?.['electron'],
-      'a new Electron: read its roles’ keys again (ROLE_KEYS), then say which Electron they are',
-    ).toBe(ELECTRON_READ);
+      major,
+      'a new major of Electron: read its roles’ keys again (ROLE_KEYS), then say which major they are',
+    ).toBe(String(ELECTRON_MAJOR));
   });
 
   it.each(PLATFORMS)(
@@ -542,6 +548,14 @@ describe('one press, one action: the menus never answer a key the page answers (
       .filter(({ path, line }) => (builds.test(line) && path !== menuFile) || writesOut.test(line))
       .map(({ at }) => at);
     expect(found).toEqual([]);
+  });
+
+  it('fails on a list of items made from a part it does not name, never passing it over', () => {
+    // A later session's part, say a list of items the menu spreads in: one stand-in, whose key cannot be read.
+    const later = standIn as { items: readonly MenuItemConstructorOptions[] };
+    expect(() => keysOf([{ label: 'Later', submenu: [...later.items] }], 'darwin')).toThrow(
+      /its key, as given/u,
+    );
   });
 
   it('the code check reads every way a line can name F12, or 1 or 2 as a key', () => {
