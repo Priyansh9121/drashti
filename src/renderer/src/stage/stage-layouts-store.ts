@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import type { StageBox, StageLayout, StageLayoutResult } from '../../../shared/stage-layouts';
-import { standardAsBoxes } from '../../../shared/stage-layouts';
+import type { StageBox, StageBoxKind, StageLayout, StageLayoutResult } from '../../../shared/stage-layouts';
+import { MAX_STAGE_BOXES, newStageBox, standardAsBoxes, withBoxAdded } from '../../../shared/stage-layouts';
 
 /*
  * Stage layouts in the operator window: the list (kept current from the main
@@ -121,6 +121,17 @@ export function change(fn: (e: Editing) => Editing): void {
 
 export function chooseBox(boxId: string | null): void {
   useStageLayouts.setState({ boxId });
+}
+
+/**
+ * Add a box of this kind to the layout shown, and choose it (up to the most a layout holds). The audience
+ * picture (Session 50) goes under the boxes already there, so they draw over it; any other on top.
+ */
+export function addBox(kind: StageBoxKind): void {
+  const e = useStageLayouts.getState().editing;
+  if (!e || e.boxes.length >= MAX_STAGE_BOXES) return;
+  const made = newStageBox(kind, crypto.randomUUID());
+  useStageLayouts.setState({ editing: { ...e, boxes: withBoxAdded(e.boxes, made) }, boxId: made.id });
 }
 
 async function answer(run: () => Promise<StageLayoutResult>): Promise<StageLayoutResult> {
