@@ -42,8 +42,10 @@ import {
   Plus,
   Search,
   Upload,
+  Video,
 } from '../ui/icons';
 import { openWindowPicker } from '../live-window/live-window-store';
+import { openAddInput } from '../video-inputs/video-inputs-store';
 import { openLinkDialog } from '../links/link-store';
 import { useExtras } from '../library/extras-store';
 import { MenuButton } from '../ui/Menu';
@@ -229,6 +231,18 @@ function LibraryTools({ media }: { media: boolean }) {
           onClick={openWindowPicker}
         >
           Show a Window…
+        </Button>
+      )}
+      {/* Beside it (Session 50): a camera or capture input on this computer, named, then one click in Media. */}
+      {media && (
+        <Button
+          size="md"
+          icon={Video}
+          title="A camera or capture input on this computer (a video mixer’s USB output, say), named in Media"
+          data-testid="add-video-input"
+          onClick={openAddInput}
+        >
+          Add a Video Input…
         </Button>
       )}
       {extras && (

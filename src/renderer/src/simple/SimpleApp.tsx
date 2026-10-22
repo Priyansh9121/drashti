@@ -44,6 +44,7 @@ import { EngineUnread } from '../operator/EngineUnread';
 import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { StreamPageStopped } from '../stream/StreamPageStopped';
 import { LiveWindowNotice } from '../live-window/LiveWindowNotice';
+import { VideoInputNotice } from '../video-inputs/VideoInputNotice';
 import { SimpleFirstRun } from './SimpleFirstRun';
 import { GuidesDialog } from '../help/GuidesDialog';
 import { LiveStatus } from '../operator/StatusLine';
@@ -492,6 +493,7 @@ export function SimpleApp({ info }: { info: AppInfo | null }) {
       <NoSoundNotice />
       <StreamPageStopped />
       <LiveWindowNotice />
+      <VideoInputNotice platform={platform} />
       <SimpleFirstRun platform={platform} />
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(18rem,26rem)_minmax(0,1fr)]">
         <PlaylistColumn />

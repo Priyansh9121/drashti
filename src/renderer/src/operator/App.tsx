@@ -49,6 +49,9 @@ import { StreamPageStopped } from '../stream/StreamPageStopped';
 import { LiveWindowNotice } from '../live-window/LiveWindowNotice';
 import { WindowPicker } from '../live-window/WindowPicker';
 import { connectLiveWindow } from '../live-window/live-window-store';
+import { VideoInputDialog } from '../video-inputs/VideoInputDialog';
+import { VideoInputNotice } from '../video-inputs/VideoInputNotice';
+import { connectVideoInputs } from '../video-inputs/video-inputs-store';
 import { GuidesDialog } from '../help/GuidesDialog';
 import { showGuides } from '../help/guides-store';
 import { LivePreview } from './LivePreview';
@@ -108,6 +111,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectScreens();
     connectStream();
     connectLiveWindow();
+    connectVideoInputs();
     connectNetwork();
     connectAnnouncements();
     watchLibrary();
@@ -291,6 +295,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <NoSoundNotice />
       <StreamPageStopped />
       <LiveWindowNotice />
+      <VideoInputNotice platform={platform} />
       <RecoveryBanner />
       {practising ? (
         <PracticeShow platform={platform} run={run} />
@@ -392,6 +397,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <ThemesPanel />
       <AppearanceDialog />
       <WindowPicker />
+      <VideoInputDialog platform={platform} />
       {streamOpen && <StreamPanel />}
       {networkOpen && <NetworkPanel />}
       {announcementsOpen && <AnnouncementsPanel />}
