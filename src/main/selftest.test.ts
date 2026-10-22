@@ -38,7 +38,7 @@ describe('what the watchdog self-test shows (Session 50: a new library has no pl
     const words = slides.map((s) =>
       s.elements.flatMap((e) => (e.kind === 'text' ? [e.text] : [])).join(' / '),
     );
-    expect(words.every((w) => /^Placeholder/u.test(w))).toBe(true);
+    expect(words.every((w) => w.startsWith('Placeholder'))).toBe(true);
     expect(new Set(words).size).toBe(slides.length);
     shown.done();
     expect(removed).toEqual([shown.id]);
