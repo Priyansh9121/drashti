@@ -5,10 +5,14 @@ import {
   ALL_ON,
   asksFirst,
   openUnder,
+  pictureWhile,
   showsSomething,
   SWITCH_NAMES,
   SWITCH_OFF_WORDS,
   switchFor,
+  SWITCHED_OFF_PICTURE,
+  switchOffQuestion,
+  TURN_OFF,
 } from './screen-switches';
 
 /*
@@ -170,5 +174,26 @@ describe('Audience and Stage (Session 50)', () => {
     expect(asksFirst('stage', 1, nothing())).toBe(true);
     // The state not known yet: ask, the safe side.
     expect(asksFirst('audience', 1, null)).toBe(true);
+  });
+
+  it('asks in the first moments, before the window knows which screens are open (Session 51, S2-4)', () => {
+    expect(asksFirst('audience', null, nothing())).toBe(true);
+    expect(asksFirst('audience', null, null)).toBe(true);
+    expect(asksFirst('stage', null, nothing())).toBe(true);
+  });
+
+  it('says the question and its button in the app’s case, wherever it is asked (Session 51, S2-7)', () => {
+    expect(switchOffQuestion('audience')).toBe('Turn Audience off?');
+    expect(switchOffQuestion('stage')).toBe('Turn Stage off?');
+    expect(TURN_OFF).toBe('Turn off');
+  });
+
+  it('never shows a switched-off screen’s last picture on the dashboard (Session 51, S2-5)', () => {
+    expect(pictureWhile('switched-off', 'data:image/jpeg;base64,placeholder')).toBeNull();
+    expect(pictureWhile('showing', 'data:image/jpeg;base64,placeholder')).toBe(
+      'data:image/jpeg;base64,placeholder',
+    );
+    expect(pictureWhile(null, null)).toBeNull();
+    expect(SWITCHED_OFF_PICTURE).toBe('This computer’s desktop');
   });
 });
