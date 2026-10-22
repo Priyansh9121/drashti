@@ -1,7 +1,7 @@
 import type { TimerCue } from '../../shared/playlists';
 /*
  * Playlists as the show engine plays them: each item is a presentation (in
- * its order), a picture, video or sound, or something to step over.
+ * its order), a picture, video or sound, a video input (Session 51), or something to step over.
  */
 
 export type PlayItem =
@@ -21,6 +21,18 @@ export type PlayItem =
       kind: 'media';
       mediaId: string;
       media: 'image' | 'video' | 'audio';
+      label: string;
+      timers?: readonly TimerCue[];
+    }
+  /**
+   * One of this computer's video inputs (Session 51), found by the name the item keeps: it goes up as the
+   * background, as a video does. An item naming an input this computer does not have is a 'skip' instead.
+   */
+  | {
+      id: string;
+      kind: 'input';
+      /** Its id in this computer's list (shared/video-inputs.ts), as found when the items were read. */
+      inputId: string;
       label: string;
       timers?: readonly TimerCue[];
     }

@@ -2,8 +2,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { REPEAT_REFUSES } from '../../shared/repeat';
+import { inputNamed, type VideoInput } from '../../shared/video-inputs';
 import { type Db, openDatabase } from './database';
 import { LATEST_VERSION, MIGRATIONS, schemaVersion } from './migrate';
+import { PlaylistRepo } from './playlists';
 import { PresentationRepo } from './presentations';
 
 /*
@@ -174,6 +177,91 @@ describe('a video input as a playlist item in the library', () => {
     // A playlist removed for good takes its items with it, the input item too.
     db.prepare("DELETE FROM playlists WHERE id = 'sunday'").run();
     expect(db.prepare('SELECT COUNT(*) AS n FROM playlist_items').get()).toEqual({ n: 0 });
+    db.close();
+  });
+});
+
+describe('a video input as a playlist item', () => {
+  /** This computer's one video input; another computer has none of its name. */
+  const here: VideoInput = { id: 'here-1', name: 'Input 1', device: 'Placeholder camera', fit: 'fit' };
+  const thisComputer = (name: string) => inputNamed([here], name);
+  const another = (name: string) => inputNamed([], name);
+
+  it('is added from this computer’s list by its name, as Media names it, and plays as that input', () => {
+    const db = openDatabase(':memory:');
+    const playlists = new PlaylistRepo(db, thisComputer);
+    const id = playlists.create('Placeholder Sunday', null, false) ?? '';
+    const [item] = playlists.addItems(id, null, [{ kind: 'input', name: ' input 1' }]);
+    if (!item) throw new Error('not added');
+    expect(playlists.itemsOf(id)).toEqual([
+      { id: item, kind: 'input', label: 'Input 1', name: 'Input 1', missing: false, timers: [] },
+    ]);
+    expect(playlists.playItems(id)).toEqual([
+      { id: item, kind: 'input', inputId: 'here-1', label: 'Input 1', timers: [] },
+    ]);
+    // Only an input this computer has can be added (Media lists no other).
+    expect(playlists.addItems(id, null, [{ kind: 'input', name: 'Input 9' }])).toEqual([]);
+    expect(playlists.itemsOf(id)).toHaveLength(1);
+    db.close();
+  });
+
+  it('on a computer without an input of its name: marked so, and Next goes past it, saying why', () => {
+    const file = join(dir, 'library.sqlite');
+    const made = openDatabase(file);
+    const id = new PlaylistRepo(made, thisComputer).create('Placeholder Sunday', null, false) ?? '';
+    const [item] = new PlaylistRepo(made, thisComputer).addItems(id, null, [
+      { kind: 'input', name: 'Input 1' },
+    ]);
+    made.close();
+    // The library carried to another computer.
+    const db = openDatabase(file);
+    const playlists = new PlaylistRepo(db, another);
+    expect(playlists.itemsOf(id)).toEqual([
+      { id: item, kind: 'input', label: 'Input 1', name: 'Input 1', missing: true, timers: [] },
+    ]);
+    expect(playlists.playItems(id)).toEqual([
+      { id: item, kind: 'skip', why: 'The video input “Input 1” is not on this computer' },
+    ]);
+    // Back on a computer that has it, as named there.
+    const renamed = (name: string) => inputNamed([{ ...here, id: 'there-7', name: 'INPUT 1' }], name);
+    expect(new PlaylistRepo(db, renamed).playItems(id)).toEqual([
+      { id: item, kind: 'input', inputId: 'there-7', label: 'Input 1', timers: [] },
+    ]);
+    db.close();
+  });
+
+  it('runs timer cues, goes into a template and a playlist made from it, and Repeat Slides refuses it', () => {
+    const db = openDatabase(':memory:');
+    const playlists = new PlaylistRepo(db, thisComputer);
+    const id = playlists.create('Placeholder Sunday', null, false) ?? '';
+    const [item] = playlists
+      .addItems(id, null, [
+        { kind: 'header', label: 'Pravachan' },
+        { kind: 'input', name: 'Input 1' },
+      ])
+      .slice(1);
+    if (!item) throw new Error('not added');
+    expect(playlists.setTimers(item, [{ timerId: 'placeholder-timer', action: 'start' }])).toBe(true);
+    const timers = [{ timerId: 'placeholder-timer', action: 'start' }];
+    expect(playlists.itemsOf(id)[1]).toMatchObject({ kind: 'input', timers });
+    expect(playlists.playItems(id)?.[1]).toMatchObject({ kind: 'input', timers });
+    const template = playlists.saveAsTemplate(id, 'Placeholder template', []) ?? '';
+    const shape = (list: string) =>
+      playlists
+        .itemsOf(list)
+        .map((i) => (i.kind === 'input' ? [i.kind, i.name, i.timers] : [i.kind, i.label]));
+    const expected = [
+      ['header', 'Pravachan'],
+      ['input', 'Input 1', timers],
+    ];
+    expect(shape(template)).toEqual(expected);
+    const next = playlists.newFromTemplate(template, 'Placeholder next Sunday', null) ?? '';
+    expect(shape(next)).toEqual(expected);
+    // A Repeat Slides playlist goes round pictures and slides only.
+    const repeat = playlists.createRepeat('Placeholder lobby', null) ?? '';
+    expect(playlists.refusal(repeat, [{ kind: 'input', name: 'Input 1' }])).toBe(REPEAT_REFUSES);
+    expect(playlists.addItems(repeat, null, [{ kind: 'input', name: 'Input 1' }])).toEqual([]);
+    expect(REPEAT_REFUSES).toContain('a video input');
     db.close();
   });
 });
