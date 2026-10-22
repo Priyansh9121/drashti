@@ -39,7 +39,7 @@ import { idSchema } from '../shared/model-schema';
 import { z } from 'zod';
 import type { OutputContext } from '../shared/screens';
 import { missingFontsIn } from '../shared/screens';
-import { type ScreenSwitch, SWITCH_NAMES, SWITCH_OFF_WORDS, switchFor } from '../shared/screen-switches';
+import { type ScreenSwitch, switchFor } from '../shared/screen-switches';
 import type { MessageResult } from '../shared/messages';
 import type { PropResult } from '../shared/props';
 import { propFieldsSchema } from '../shared/props';
@@ -207,7 +207,7 @@ import {
 import { placeOperator } from './outputs/operator-guard';
 import { DISPLAY_DROP_MS, OutputManager } from './outputs/output-manager';
 import { ScreensService, type ScreensSetup } from './outputs/screens-service';
-import { ScreenSwitchService } from './outputs/screen-switches';
+import { ScreenSwitchService, switchOffBox } from './outputs/screen-switches';
 import { SleepGuard } from './outputs/sleep-guard';
 import { IpcTransport } from './transport/ipc-transport';
 import { AUDIO_PARTITION, createAudioWindow } from './windows/audio-window';
@@ -4953,14 +4953,8 @@ function start(): void {
    * window's switches and keys ask in the window. Never a box that holds the main process up: the show runs on.
    */
   const askSwitchOff = async (which: ScreenSwitch): Promise<boolean> => {
-    const box = {
-      type: 'question' as const,
-      buttons: ['Cancel', 'Turn off'],
-      defaultId: 0,
-      cancelId: 0,
-      message: `Turn ${SWITCH_NAMES[which]} off?`,
-      detail: `${SWITCH_OFF_WORDS[which]} The show carries on.`,
-    };
+    // In the window's words and case (Session 51, S2-7): Turn off, never Turn Off.
+    const box = switchOffBox(which);
     const parent = operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : undefined;
     const answer = parent ? await dialog.showMessageBox(parent, box) : await dialog.showMessageBox(box);
     return answer.response === 1;
