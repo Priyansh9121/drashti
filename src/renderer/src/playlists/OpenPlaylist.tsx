@@ -10,13 +10,13 @@ import { SMART_MAX_FILES } from '../../../shared/playlists';
 import { folderEnd, hasFolder, playlistFolders } from '../../../shared/playlist-folders';
 import { useEngine } from '../engine/engine-store';
 import { leaveItem, selectPresentation, setLibraryTab, useLibrary } from '../library/library-store';
-import { mediaKindIcon, mediaProblem } from '../library/MediaList';
+import { CannotPlayBadge, mediaKindIcon, mediaProblem } from '../library/MediaList';
 import { useExtras } from '../library/extras-store';
 import { chooseAddTo, openLinkDialog } from '../links/link-store';
 import { MediaStill } from '../render/MediaStill';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
-import { Badge, LiveBadge, MissingBadge, UnplayableBadge } from '../ui/Badge';
+import { Badge, LiveBadge, MissingBadge } from '../ui/Badge';
 import { Button, IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { rowTops, slideRows, useLivelyArrival } from '../ui/motion';
@@ -266,7 +266,9 @@ function ItemBody({ item, live }: { item: PlaylistItemInfo; live: boolean }) {
           Not in the folder
         </Badge>
       )}
-      {item.kind === 'media' && (item.missing ? <MissingBadge /> : problem && <UnplayableBadge />)}
+      {/* Session 50: “Converting…” while Drashti converts it; it cannot go live until then either way. */}
+      {item.kind === 'media' &&
+        (item.missing ? <MissingBadge /> : problem && <CannotPlayBadge mediaId={item.mediaId} />)}
       {liveBadge}
     </span>
   );

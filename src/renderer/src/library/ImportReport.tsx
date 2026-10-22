@@ -28,6 +28,7 @@ import {
   useImports,
 } from './import-store';
 import { convert, connectConversions, jobFor, useConvert } from './convert-store';
+import { convertedSummary, convertingWords, copyFor, jobBusy } from './converting';
 import { leaveItem, loadMedia, selectPresentation, useLibrary, useMedia } from './library-store';
 import { showTexts } from '../shastra/shastra-store';
 import { openCalendar } from '../calendar/calendar-store';
@@ -58,13 +59,16 @@ function ConvertFix({ mediaId, advice }: { mediaId: string; advice: string }) {
   const job = useConvert((s) => jobFor(s.jobs, mediaId));
   const converted = useMedia((s) => s.media.find((m) => m.id === mediaId)?.convertedTo ?? null);
   if (converted !== null || job?.state === 'done')
-    return <span className="text-success-fg">Converted: {converted ?? job?.convertedName}</span>;
-  if (job?.state === 'waiting' || job?.state === 'converting')
     return (
-      <span className="text-muted" title={job.note ?? undefined}>
-        {job.state === 'converting' && job.progress !== null
-          ? `Converting… ${Math.round(job.progress * 100)}%`
-          : 'Waiting to convert'}
+      <span className="text-success-fg" data-testid="report-converted-file">
+        Converted: {converted ?? job?.convertedName}
+      </span>
+    );
+  // Converting until it is done (Session 50), whether its turn has come or it waits for the stream.
+  if (jobBusy(job))
+    return (
+      <span className="text-muted" title={job.note ?? undefined} data-testid="report-converting">
+        {convertingWords(job)}
       </span>
     );
   return (
@@ -250,7 +254,11 @@ const choiceLabel: Record<ConflictChoice, string> = {
  * playlist, another, or a new one named after the file or folder.
  */
 function AddImported({ report }: { report: ImportReport }) {
-  const made = itemsMadeBy(report.items, report.paths);
+  const jobs = useConvert((s) => s.jobs);
+  // A file Drashti converted by itself goes in as its copy, which everything uses (Session 50).
+  const made = itemsMadeBy(report.items, report.paths).map((item) =>
+    item.kind === 'media' ? { ...item, mediaId: copyFor(item.mediaId, jobs) } : item,
+  );
   const newName = nameAfter(report.paths[0] ?? 'Imported');
   const [target, setTarget] = useState<AddTarget>(() => {
     const open = defaultTarget();
@@ -349,6 +357,24 @@ export function ImportReportDialog({ platform }: { platform: string }) {
       job?.state !== 'done'
     );
   });
+  // What Drashti converts by itself (Session 50): how many it is converting, and what it converted.
+  const byItself = [
+    ...new Set(
+      items.flatMap((i) =>
+        i.issues.flatMap((x) =>
+          x.code === 'converting-media' && x.fix?.kind === 'convert-media' ? [x.fix.mediaId] : [],
+        ),
+      ),
+    ),
+  ];
+  const convertedNames = byItself.flatMap((id) => {
+    const job = jobFor(jobs, id);
+    const name =
+      media.find((m) => m.id === id)?.convertedTo ?? (job?.state === 'done' ? job.convertedName : null);
+    return name ? [name] : [];
+  });
+  const converting = byItself.filter((id) => jobBusy(jobFor(jobs, id))).length;
+  const convertedWords = convertedSummary(converting, convertedNames);
   const missingMedia = items.reduce(
     (n, i) => n + i.issues.filter((x) => x.fix?.kind === 'relink-media').length,
     0,
@@ -433,6 +459,11 @@ export function ImportReportDialog({ platform }: { platform: string }) {
         {outcomes.length > 0 && <span className="text-muted">{outcomes.join(' · ')}.</span>}
       </p>
       <AddImported key={report.id} report={report} />
+      {convertedWords !== null && (
+        <Notice tone="info" role="none" data-testid="report-converted">
+          {convertedWords}
+        </Notice>
+      )}
       {toConvert.length > 0 && (
         <Notice
           tone="info"

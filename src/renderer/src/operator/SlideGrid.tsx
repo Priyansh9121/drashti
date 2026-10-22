@@ -11,14 +11,14 @@ import { useEngine } from '../engine/engine-store';
 import { requestRemovalOfOpen } from '../library/import-store';
 import type { ShownItem } from '../library/library-store';
 import { selectPresentation, useLibrary } from '../library/library-store';
-import { mediaKindLabel, mediaProblem } from '../library/MediaList';
+import { CannotPlayBadge, mediaKindLabel, mediaProblem } from '../library/MediaList';
 import { setItemOrder } from '../playlists/playlist-store';
 import { MediaStill } from '../render/MediaStill';
 import { PlacedInParent } from '../render/Placed';
 import { SlideView } from '../render/SlideView';
 import { OversetMark, OversetWatch } from '../render/measure';
 import { editWords } from '../library/words-store';
-import { Badge, MissingBadge, UnplayableBadge } from '../ui/Badge';
+import { Badge, MissingBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Field, Select, Slider } from '../ui/Field';
@@ -68,7 +68,7 @@ function CueBackground({ cue }: { cue: BackgroundCue }) {
           title={`${cue.name}: ${cue.unplayable}. Drashti cannot play it yet; see the import report.`}
           className="absolute top-1 left-1"
         >
-          <UnplayableBadge />
+          <CannotPlayBadge mediaId={mediaId} />
         </span>
       )}
     </span>
@@ -365,7 +365,7 @@ function ItemView({ item }: { item: ShownItem }) {
               <Truncate text={item.label} />
             </h2>
             <Badge>{mediaKindLabel[item.media]}</Badge>
-            {item.missing ? <MissingBadge /> : problem && <UnplayableBadge />}
+            {item.missing ? <MissingBadge /> : problem && <CannotPlayBadge mediaId={item.mediaId} />}
           </div>
           <button
             type="button"
