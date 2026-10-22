@@ -80,9 +80,9 @@ export function useFocusTrap(
       else focusFirst();
     };
     if (onTop) document.addEventListener('focusin', onFocusIn, true);
+    // Opened under one on top, it leaves that one the keyboard, which comes here as that one closes; as this one
+    // closes, the keyboard goes back where it was before that one opened.
     if (stack.push(trap)) focusFirst();
-    // Opened under one on top: the keyboard stays there and comes here as that one closes; as this one closes,
-    // it goes back where it was before that one opened.
     else trap.before = stack.innermost()?.before ?? null;
     const onKey = (e: KeyboardEvent) => {
       if (stack.innermost() !== trap) return;
