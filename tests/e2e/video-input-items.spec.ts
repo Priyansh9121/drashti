@@ -128,7 +128,7 @@ test('a video input as a playlist item and as a slide’s background, each up wi
   await row.getByTestId('video-input-show').click({ button: 'right' });
   await win.getByRole('menuitem', { name: 'Add to “Placeholder Sunday”' }).click();
   await closeLibrary(win);
-  const card = win.getByTestId('playlist-item').filter({ hasText: INPUT });
+  const card = win.getByTestId('open-playlist').getByTestId('playlist-item').filter({ hasText: INPUT });
   await expect(card.getByTestId('item-what')).toHaveText('Video input');
   await expect(card.getByTestId('item-input-missing')).toHaveCount(0);
   expect((await state(win)).layers.background).toBeNull();
@@ -252,7 +252,7 @@ test('an input this computer does not have: its item and slide say so plainly, n
 
   // Its card says so plainly, and the middle says why and what to do.
   await openPlaylist(win, 'Placeholder Sunday');
-  const card = win.getByTestId('playlist-item').filter({ hasText: INPUT });
+  const card = win.getByTestId('open-playlist').getByTestId('playlist-item').filter({ hasText: INPUT });
   await expect(card.getByTestId('item-input-missing')).toHaveText('Not on this computer');
   await card.click();
   const view = win.getByTestId('item-view');
