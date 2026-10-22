@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ELDHistogram } from 'node:perf_hooks';
 import type { DrashtiBridge } from '../shared/bridge';
+import type { Db } from './db/database';
+import { seedPlaceholders, TEST_PRESENTATION_NAME } from './db/seed';
 import type { GpuPipelines, MainWatch, PerfProfile } from './perf-watch';
 import type { ScenarioRun } from './perf-scenarios';
 import { describePriority } from './priority';
@@ -15,7 +17,9 @@ import { plural } from '../shared/text';
  * reaching the screen within a frame. It imports a few hundred generated
  * placeholder lyrics files into a throwaway library while changing slides
  * every 40 ms from the operator window, and measures each change from the
- * operator's request to the frame the output painted.
+ * operator's request to the frame the output painted. The slides are
+ * placeholder presentations it seeds into that library itself (Session 50,
+ * seedPerfLibrary).
  *
  * DRASHTI_SELFTEST=performance runs it headless (it prints the result and
  * exits). These timings used to be checked in CI, where virtual machines
@@ -596,8 +600,19 @@ async function coldStart(operator: BrowserWindow | null, startedAt: number): Pro
   }
 }
 
-/** The placeholder presentation the check's slides come from (seeded in every new library). */
-const PERF_PRESENTATION = 'Language test slides';
+/** The placeholder presentation the check's slides come from (seedPerfLibrary puts it in the check's library). */
+export const PERF_PRESENTATION = TEST_PRESENTATION_NAME;
+
+/**
+ * The check's own throwaway library gets the placeholder presentations it measures with (Session 50), before
+ * the operator window opens: its slides go round “Language test slides”, and an operator's edits change the
+ * other one's words. A new library starts without them now, and a packaged Drashti (the installed app the
+ * guides run the check with, and scripts/check-video-cases.mjs) ignores the tests' switch that seeds them, so
+ * the check asks for them itself. False when they were added before.
+ */
+export function seedPerfLibrary(db: Db): boolean {
+  return seedPlaceholders(db);
+}
 
 export async function runPerformanceTest(ctx: PerfContext): Promise<PerfResult> {
   const checks: PerfCheck[] = [];

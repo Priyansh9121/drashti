@@ -1,14 +1,34 @@
 import { describe, expect, it } from 'vitest';
+import { openDatabase } from './db/database';
+import { PresentationRepo } from './db/presentations';
 import {
   coldStartLine,
   overlapCheck,
   paceOf,
+  PERF_PRESENTATION,
   quickImport,
   rawChanges,
+  seedPerfLibrary,
   segmentsLine,
   settle,
   settleLine,
 } from './perftest';
+
+describe("the performance check's own library (Session 50)", () => {
+  it('seeds the placeholder presentations it measures with, once: a new library has none now', () => {
+    const db = openDatabase(':memory:');
+    const repo = new PresentationRepo(db);
+    expect(repo.list()).toEqual([]);
+    expect(seedPerfLibrary(db)).toBe(true);
+    // Its slide changes go round the three slides of one; an operator's edits change the other's words.
+    const measured = repo.list().find((p) => p.name === PERF_PRESENTATION);
+    expect(measured?.slideCount).toBe(3);
+    expect(repo.list().filter((p) => p.id !== measured?.id)).toHaveLength(1);
+    expect(seedPerfLibrary(db)).toBe(false);
+    expect(repo.list()).toHaveLength(2);
+    db.close();
+  });
+});
 
 describe("the performance check's import overlap (Session 17)", () => {
   it('reads the pace the slides really kept, never quicker than asked', () => {
