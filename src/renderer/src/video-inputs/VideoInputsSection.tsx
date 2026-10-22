@@ -108,7 +108,8 @@ export function VideoInputsSection() {
   const [removing, setRemoving] = useState<VideoInput | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const titleId = useId();
-  if (inputs.length === 0) return null;
+  // None, or not read yet (the window has just opened).
+  if (inputs === null || inputs.length === 0) return null;
   return (
     // A group, not a landmark: the window's regions stay as they are (docs/design.md, "Landmarks").
     <div

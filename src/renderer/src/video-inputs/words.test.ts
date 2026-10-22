@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import type { VideoInput } from '../../../shared/video-inputs';
 import {
   accessView,
+  inputOfName,
   inputRowNote,
   mayOpenInputs,
   nameProblem,
@@ -98,5 +100,16 @@ describe('a row of Media’s Video inputs', () => {
     );
     expect(inputRowNote({ state: 'stopped', reason: 'busy' }, 'fit')).toBe('Video input · no picture now');
     expect(inputRowNote({ state: 'stopped', reason: 'ended' }, 'fit')).toBe('Video input · no picture now');
+  });
+});
+
+describe('the input a playlist item or a slide names (Session 51)', () => {
+  it('is found by its name once the list is read; until then it counts as there, never as missing', () => {
+    const one: VideoInput = { id: 'a', name: 'Input 1', device: 'Placeholder camera', fit: 'fit' };
+    // The window has just opened: the main process has not said yet.
+    expect(inputOfName(null, 'Input 1')).toBe('unread');
+    expect(inputOfName([], 'Input 1')).toBeNull();
+    expect(inputOfName([one], 'input 1')).toBe(one);
+    expect(inputOfName([one], 'Input 2')).toBeNull();
   });
 });

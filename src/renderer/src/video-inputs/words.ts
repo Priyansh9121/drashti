@@ -1,5 +1,10 @@
 import type { LiveFit } from '../../../shared/engine/state';
-import type { CameraAccess, VideoInput, VideoInputStatus } from '../../../shared/video-inputs';
+import {
+  type CameraAccess,
+  inputNamed,
+  type VideoInput,
+  type VideoInputStatus,
+} from '../../../shared/video-inputs';
 import type { InputCaptureState, StopReason } from '../render/video-input-state';
 
 /*
@@ -98,6 +103,18 @@ export const FIT_WORDS: Record<LiveFit, { choice: string; row: string }> = {
   fit: { choice: 'Fit inside, with black around it', row: 'fitted inside' },
   fill: { choice: 'Fill the screen', row: 'filling the screen' },
 };
+
+/**
+ * This computer's input of a name (Session 51: the one a playlist item or a slide's background cue names): the input,
+ * or null when the list has none of that name; 'unread' while the list has not been read yet (the window has just
+ * opened), which counts as there: nothing says "not on this computer" for that moment.
+ */
+export function inputOfName(
+  inputs: readonly VideoInput[] | null,
+  name: string,
+): VideoInput | 'unread' | null {
+  return inputs === null ? 'unread' : inputNamed(inputs, name);
+}
 
 /** A row's second line: a video input, and how it sits, or why it has no picture now. */
 export function inputRowNote(

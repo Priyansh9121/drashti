@@ -41,7 +41,7 @@ import {
 import { NewTimerSlideInLibrary } from '../editor/NewTimerSlide';
 import { InputPicture, useSmallPicture } from '../video-inputs/InputPicture';
 import { useInputNamed } from '../video-inputs/video-inputs-store';
-import { FIT_WORDS } from '../video-inputs/words';
+import { inputRowNote } from '../video-inputs/words';
 import { openPictureEditor } from '../pictures/PictureEditor';
 import { markersMedia, openMarkers } from '../markers/MarkersDialog';
 import { openSlideEditor } from '../editor/editor-store';
@@ -357,20 +357,23 @@ function itemArrangement(item: ShownItem & { kind: 'presentation' }, doc: Presen
  * A video input item (Session 51): its live picture, a click putting it up as the background (the slide taken
  * off), or, where this computer has no input of its name, why not: Next goes past it. Centred while it fits, from
  * its top when it does not, as the middle's other places are: never under the bars below, its picture always in
- * reach (a 1024 × 645 window leaves the middle little room under the open playlist).
+ * reach (a 1024 × 645 window leaves the middle little room under the open playlist). Its line says why the
+ * picture is black when it is (unplugged, the camera refused), as Media's row does; while the window has not yet
+ * heard which inputs this computer has, it is shown as there, without its picture.
  */
 function InputItemView({ item, isLive }: { item: ShownItem & { kind: 'input' }; isLive: boolean }) {
-  const input = useInputNamed(item.name);
+  const found = useInputNamed(item.name);
+  const input = found === 'unread' ? null : found;
   const capture = useSmallPicture(input?.device ?? null);
   return (
     <section
       className="flex min-h-0 flex-1 flex-col"
       data-testid="item-view"
-      data-missing={input ? undefined : 'true'}
+      data-missing={found === null ? 'true' : undefined}
       aria-label={item.label}
     >
       <CentredPlace data-testid="input-item-place">
-        {input ? (
+        {found !== null ? (
           <div className="mx-auto w-full max-w-xl p-4">
             <div className="mb-3 flex items-center gap-2">
               <h2 className="min-w-0 text-lg font-bold">
@@ -383,7 +386,7 @@ function InputItemView({ item, isLive }: { item: ShownItem & { kind: 'input' }; 
               data-testid="item-input"
               data-show-control
               aria-current={isLive ? 'true' : undefined}
-              aria-label={`Video input: ${input.name}${isLive ? ' (live)' : ''}`}
+              aria-label={`Video input: ${input?.name ?? item.name}${isLive ? ' (live)' : ''}`}
               onClick={() => void playItem(item.playlistId, item.id)}
               className={cx(
                 // A thumbnail: live at once, with no fade (Session 26g).
@@ -397,8 +400,9 @@ function InputItemView({ item, isLive }: { item: ShownItem & { kind: 'input' }; 
                   'flex h-7 items-center gap-2 px-2 text-xs',
                   isLive ? 'bg-live text-white' : 'bg-panel-2 text-muted',
                 )}
+                data-testid="item-input-note"
               >
-                Video input · {FIT_WORDS[input.fit].row}
+                {input ? inputRowNote(capture, input.fit) : 'Video input'}
                 {isLive && <span className="ml-auto font-bold tracking-wide">LIVE</span>}
               </span>
             </button>
