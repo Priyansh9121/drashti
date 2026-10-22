@@ -1,5 +1,5 @@
 import { type EngineState, isLayerEmpty, LAYER_NAMES } from './engine/state';
-import type { ScreenRole, ScreensSnapshot } from './screens';
+import type { ScreenRole, ScreensSnapshot, ScreenState } from './screens';
 
 /*
  * Audience and Stage (Session 50): two switches, each closing this computer's output windows of its kind so their
@@ -29,6 +29,24 @@ export const SWITCH_OFF_WORDS: Readonly<Record<ScreenSwitch, string>> = {
   audience: 'The hall’s screens will show this computer’s desktop.',
   stage: 'The stage screens will show this computer’s desktop.',
 };
+
+/**
+ * The question before one goes off and its button, the same words in the window, on an output over the controls
+ * and in the View menu's own box (Session 51, S2-7: in the app's case, "Turn off", never "Turn Off").
+ */
+export const switchOffQuestion = (which: ScreenSwitch): string => `Turn ${SWITCH_NAMES[which]} off?`;
+export const TURN_OFF = 'Turn off';
+
+/**
+ * What the screens dashboard shows of a switched-off screen in place of its picture (Session 51, S2-5): its
+ * display shows the computer's desktop, so its last picture is never shown.
+ */
+export const SWITCHED_OFF_PICTURE = 'This computer’s desktop';
+
+/** The picture of a screen the dashboard shows: none while it is switched off, whatever it had before. */
+export function pictureWhile<T>(state: ScreenState | null, picture: T | null): T | null {
+  return state === 'switched-off' ? null : picture;
+}
 
 /**
  * The switch a group's screens answer to: Audience for every group that shows the audience picture (key and fill
@@ -72,9 +90,11 @@ export function showsSomething(state: EngineState): boolean {
 /**
  * Turning one off asks first while its screens show something: none of its kind open, there is nothing to ask
  * about. Stage screens always show the stage view, so Stage asks whenever one is open; Audience asks while one
- * is open and anything is up, and while the state is not known yet (the safe side).
+ * is open and anything is up, and while the state is not known yet (the safe side). How many are open not known
+ * yet (`open` null: the window's first moments, before it has the screens, Session 51, S2-4), it asks too.
  */
-export function asksFirst(which: ScreenSwitch, open: number, state: EngineState | null): boolean {
+export function asksFirst(which: ScreenSwitch, open: number | null, state: EngineState | null): boolean {
+  if (open === null) return true;
   if (open === 0) return false;
   return which === 'stage' || state === null || showsSomething(state);
 }
