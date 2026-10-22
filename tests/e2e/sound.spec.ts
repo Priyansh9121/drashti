@@ -332,7 +332,8 @@ test('only the audio player may see sound outputs; the choice is remembered, and
   await win.reload();
   expect((await outputsSeenBy(win)).every((id) => id === '')).toBe(true);
 
-  // Recording, the camera and every other permission stay refused, even to the audio player.
+  // Recording and every other permission stay refused, even to the audio player. A camera, video only, is the
+  // operator window's since Session 50 (a video input's LIVE and Media pictures), never the audio player's.
   for (const page of [win, audio]) {
     const asked = await page.evaluate(async () => {
       const media = async (constraints: MediaStreamConstraints) =>
@@ -353,10 +354,12 @@ test('only the audio player may see sound outputs; the choice is remembered, and
       return { microphone: await media({ audio: true }), camera: await media({ video: true }), states };
     });
     expect(asked.microphone).not.toBe('granted');
-    expect(asked.camera).not.toBe('granted');
-    // MIDI is the operator window's alone (Session 11: a controller's pads), never SysEx; the rest stay refused.
+    if (page === audio) expect(asked.camera).not.toBe('granted');
+    // MIDI is the operator window's alone (Session 11: a controller's pads), never SysEx; and a camera (Session 50);
+    // the rest stay refused.
     for (const [name, state] of Object.entries(asked.states))
       if (page === win && name === 'midi') expect(state).toBe('granted');
+      else if (page === win && name === 'camera') continue;
       else expect([name, state]).not.toEqual([name, 'granted']);
   }
 

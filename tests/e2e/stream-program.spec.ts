@@ -153,7 +153,7 @@ test('the Program: the camera with the words in the stream’s languages, or the
   await app.close();
 });
 
-test('only the stream’s page may use the camera and microphone; the operator window still sees no devices', async () => {
+test('only the stream’s page may use the camera and microphone; the operator window sees cameras alone, never a microphone', async () => {
   const { app } = await launchApp(FAKE);
   const win = await operatorPage(app);
   await operatorReady(win);
@@ -164,9 +164,11 @@ test('only the stream’s page may use the camera and microphone; the operator w
 
   const ask = (page: Page) =>
     page.evaluate(async () => {
-      const devices = (await navigator.mediaDevices.enumerateDevices())
+      const all = await navigator.mediaDevices.enumerateDevices();
+      const devices = all
         .filter((d) => d.kind === 'videoinput' || d.kind === 'audioinput')
         .map((d) => d.label);
+      const sounds = all.filter((d) => d.kind === 'audioinput').map((d) => d.label);
       const asked = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(
         (stream) => {
           for (const t of stream.getTracks()) t.stop();
@@ -181,11 +183,17 @@ test('only the stream’s page may use the camera and microphone; the operator w
         },
         () => 'refused',
       );
-      return { labels: devices.filter((l) => l !== ''), asked, shared };
+      return {
+        labels: devices.filter((l) => l !== ''),
+        sounds: sounds.filter((l) => l !== ''),
+        asked,
+        shared,
+      };
     });
-  // The operator window: no device names, no camera or microphone, no capture.
+  // The operator window: a camera's name, for a video input's pictures (Session 50), but never a microphone's; no
+  // camera and microphone together, no capture.
   const operator = await ask(win);
-  expect(operator.labels).toEqual([]);
+  expect(operator.sounds).toEqual([]);
   expect(operator.asked).not.toBe('granted');
   expect(operator.shared).toBe('refused');
   // The stream's page: it sees and opens them.
