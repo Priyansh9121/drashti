@@ -8,8 +8,28 @@ import { SlideView } from '../render/SlideView';
 import { useFirstGroupLanguages } from '../screens/screens-store';
 import { languageView } from '../../../shared/language-view';
 import { Music } from '../ui/icons';
+import { InputPicture, useSmallPicture } from '../video-inputs/InputPicture';
+import { useInputNamed } from '../video-inputs/video-inputs-store';
 
-/** What Next will put up: the next slide (with its background), or the next picture, video or sound. */
+/**
+ * A video input as it would go up (Session 51): this computer's input of that name, live, filling the preview's
+ * picture; nothing where it has none.
+ */
+function NextInput({ name }: { name: string }) {
+  const input = useInputNamed(name);
+  const capture = useSmallPicture(input?.device ?? null);
+  if (!input) return null;
+  return (
+    <span className="absolute inset-0" data-testid="next-input">
+      <InputPicture capture={capture} className="h-full w-full" />
+    </span>
+  );
+}
+
+/**
+ * What Next will put up: the next slide (with its background), or the next picture, video or sound; or a video
+ * input (Session 51), as an item or behind the next slide.
+ */
 export function NextPreview({ stacked = false }: { stacked?: boolean }) {
   const next = useEngine((s) => s.state?.next ?? null);
   // As the live preview: a kirtan's slide in the first audience group's languages.
@@ -20,10 +40,17 @@ export function NextPreview({ stacked = false }: { stacked?: boolean }) {
   const itemLabel = usePlaylists((s) =>
     next?.kind === 'slide' && next.itemId ? s.items.find((i) => i.id === next.itemId)?.label : undefined,
   );
+  // The video input behind the next slide (Session 51): whether this computer has one of its name.
+  const behind = useInputNamed(next?.kind === 'slide' ? (next.input ?? null) : null);
   let caption = 'Nothing after this';
   if (next?.kind === 'slide')
     caption = `${itemLabel ?? name ?? 'Presentation'}, slide ${next.slideIndex + 1}${next.itemId ? ' (next item)' : ''}`;
+  if (next?.kind === 'slide' && next.input !== undefined)
+    caption += behind
+      ? `, over the video input “${next.input}”`
+      : `, over the video input “${next.input}”, which is not on this computer: the background stays as it is`;
   if (next?.kind === 'media') caption = `${mediaKindLabel[next.media]}: ${next.label}`;
+  if (next?.kind === 'input') caption = `Video input: ${next.name}`;
   const heading = (
     <h2
       id="next-preview-title"
@@ -47,6 +74,7 @@ export function NextPreview({ stacked = false }: { stacked?: boolean }) {
       >
         {next?.kind === 'slide' && (
           <>
+            {next.input !== undefined && <NextInput name={next.input} />}
             {next.background && (
               <MediaStill
                 mediaId={next.background.mediaId}
@@ -67,6 +95,7 @@ export function NextPreview({ stacked = false }: { stacked?: boolean }) {
           ) : (
             <MediaStill mediaId={next.mediaId} media={next.media} />
           ))}
+        {next?.kind === 'input' && <NextInput name={next.name} />}
       </div>
       <div className="min-w-0 pt-0.5 text-xs">
         {!stacked && heading}

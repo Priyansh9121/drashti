@@ -60,19 +60,20 @@ export function RenameField({
   );
 }
 
-/** Presentations or media dropped from the library, as new items. */
+/** Presentations, media, passages or video inputs (Session 51: by name) dropped from the library, as new items. */
 export function droppedItems(e: DragEvent): NewItem[] {
   const kind = dragKind(e);
   if (kind === 'presentations')
     return droppedIds(e, kind).map((presentationId) => ({ kind: 'presentation', presentationId }));
   if (kind === 'media') return droppedIds(e, kind).map((mediaId) => ({ kind: 'media', mediaId }));
   if (kind === 'passages') return droppedIds(e, kind).map((passageId) => ({ kind: 'shastra', passageId }));
+  if (kind === 'inputs') return droppedIds(e, kind).map((name) => ({ kind: 'input', name }));
   return [];
 }
 
 export const fromLibrary = (e: DragEvent): boolean => {
   const kind = dragKind(e);
-  return kind === 'presentations' || kind === 'media' || kind === 'passages';
+  return kind === 'presentations' || kind === 'media' || kind === 'passages' || kind === 'inputs';
 };
 
 export const isRemoveKey = (e: KeyboardEvent, platform: string): boolean =>

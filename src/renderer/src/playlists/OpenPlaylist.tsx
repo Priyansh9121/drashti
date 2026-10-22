@@ -41,6 +41,7 @@ import {
   SquareDashed,
   Timer,
   Trash2,
+  Video,
   X,
 } from '../ui/icons';
 import type { MenuEntry, MenuPlace } from '../ui/Menu';
@@ -115,6 +116,8 @@ function kindWord(item: PlaylistItemInfo): string {
       return 'Shastra passage';
     case 'placeholder':
       return item.hint === null ? 'Slot' : 'Not found';
+    case 'input':
+      return 'Video input';
   }
 }
 
@@ -173,17 +176,17 @@ function ItemPicture({ item }: { item: PlaylistItemInfo }) {
       ? mediaKindIcon[item.media]
       : item.kind === 'shastra'
         ? BookOpen
-        : item.kind === 'placeholder'
-          ? item.hint === null
-            ? SquareDashed
-            : AlertTriangle
-          : Presentation;
+        : item.kind === 'input'
+          ? Video
+          : item.kind === 'placeholder'
+            ? item.hint === null
+              ? SquareDashed
+              : AlertTriangle
+            : Presentation;
+  const warn = (item.kind === 'placeholder' && item.hint !== null) || (item.kind === 'input' && item.missing);
   return (
     <span aria-hidden="true" className={cx(PICTURE_BOX, 'flex items-center justify-center bg-panel-3')}>
-      <KindIcon
-        size={18}
-        className={item.kind === 'placeholder' && item.hint !== null ? 'text-warning' : 'text-muted'}
-      />
+      <KindIcon size={18} className={warn ? 'text-warning' : 'text-muted'} />
     </span>
   );
 }
@@ -244,6 +247,16 @@ function ItemBody({ item, live }: { item: PlaylistItemInfo; live: boolean }) {
           ) : null)}
         {item.kind === 'shastra' && item.missing && (
           <span className="text-xs text-warning-fg">Its Shastra text is not loaded</span>
+        )}
+        {/* A video input this computer has none of (Session 51): said plainly, and Next goes past it. */}
+        {item.kind === 'input' && item.missing && (
+          <span
+            className="block truncate text-xs text-warning-fg"
+            data-testid="item-input-missing"
+            title={`No video input called “${item.name}” is on this computer, so Next goes past it. Add a Video Input… in Media can name one so.`}
+          >
+            Not on this computer
+          </span>
         )}
         {item.kind === 'placeholder' && (
           <span
@@ -354,7 +367,7 @@ function itemMenu(item: PlaylistItemInfo): MenuEntry[] {
       remove,
     ];
   const timers: MenuEntry[] =
-    item.kind === 'presentation' || item.kind === 'media' || item.kind === 'shastra'
+    item.kind === 'presentation' || item.kind === 'media' || item.kind === 'shastra' || item.kind === 'input'
       ? [
           {
             label: 'Timers when it goes up…',

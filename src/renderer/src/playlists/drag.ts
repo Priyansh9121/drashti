@@ -2,9 +2,9 @@ import type { DragEvent } from 'react';
 import { create } from 'zustand';
 
 /*
- * Dragging inside the operator window: presentations, media and Shastra
- * passages from the library into a playlist, and items within a playlist. Only the kind of
- * drag can be read while it is under way; the ids arrive with the drop.
+ * Dragging inside the operator window: presentations, media, Shastra
+ * passages and video inputs (Session 51) from the library into a playlist, and items within a playlist. Only the
+ * kind of drag can be read while it is under way; the ids arrive with the drop.
  */
 
 const TYPES = {
@@ -13,6 +13,8 @@ const TYPES = {
   items: 'application/x-drashti-playlist-items',
   /** Shastra passages (their ids), from the Shastra tab. */
   passages: 'application/x-drashti-passages',
+  /** This computer's video inputs (Session 51), by their names, from Media's Video inputs. */
+  inputs: 'application/x-drashti-inputs',
 } as const;
 
 export type DragKind = keyof typeof TYPES;

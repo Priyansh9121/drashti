@@ -166,6 +166,13 @@ export function LivePreview() {
           Font not on this computer: {missingFonts.join(', ')}
         </p>
       )}
+      {/* The live slide's background cue named a video input this computer has none of (Session 51). */}
+      {state?.layers.slide?.inputMissing !== undefined && (
+        <p className="text-xs text-warning-fg" data-testid="live-input-missing">
+          Video input not on this computer: “{state.layers.slide.inputMissing}”. The background stays as it
+          was.
+        </p>
+      )}
       {lowerThirdShort && (
         <p className="text-xs text-warning-fg" data-testid="preview-lower-third">
           Lower third shows {lowerThirdShort.shown} of {lowerThirdShort.total} lines

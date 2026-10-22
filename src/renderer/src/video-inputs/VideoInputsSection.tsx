@@ -1,6 +1,9 @@
 import { useId, useState } from 'react';
+import type { NewItem } from '../../../shared/playlists';
 import type { VideoInput } from '../../../shared/video-inputs';
 import { useEngine } from '../engine/engine-store';
+import { AddToPlaylistButton, rowMenu } from '../playlists/AddToPlaylist';
+import { startDrag } from '../playlists/drag';
 import { LiveBadge } from '../ui/Badge';
 import { ConfirmDialog } from '../ui/Dialog';
 import { Pencil } from '../ui/icons';
@@ -17,7 +20,14 @@ import { inputRowNote } from './words';
  * small live picture. One click puts it up on the screens as the live background (the slide stays over it);
  * Change and Delete sit at the end of the row, as on the library's other rows (shown on the chosen row and the
  * row under the mouse). Only while there are any: Add a Video Input… names the first.
+ *
+ * Into a playlist (Session 51), by its name, as the library's other rows go: its right-click (or Shift+F10, or the
+ * Menu key) has Add to playlist, the chosen row has it on a line under it, and it can be dragged onto a playlist.
+ * Choosing a row with the keyboard puts nothing up; a click does.
  */
+
+/** What an input's row adds to a playlist (Session 51): the input, by its name. */
+const pickInput = (name: string) => (): NewItem[] => [{ kind: 'input', name }];
 
 function InputRow({
   input,
@@ -34,9 +44,10 @@ function InputRow({
   onRemove: () => void;
 }) {
   const capture = useSmallPicture(input.device);
+  const pick = pickInput(input.name);
   return (
     <li
-      className={`${rowClass({ selected: live })} group relative flex h-14 items-center`}
+      className={`${rowClass({ selected: live })} group relative flex flex-col`}
       data-testid="video-input-row"
       data-name={input.name}
       data-live={live ? 'true' : undefined}
@@ -44,6 +55,7 @@ function InputRow({
       {/* Room at the end for Change and Delete, shown or not, so the row never changes as they show. */}
       <button
         type="button"
+        draggable
         data-testid="video-input-show"
         title={`Put “${input.name}” on the screens`}
         onFocus={onChoose}
@@ -51,7 +63,11 @@ function InputRow({
           onChoose();
           void showInput(input.id);
         }}
-        className="flex h-full min-w-0 flex-1 items-center gap-2 pr-[4.5rem] pl-1.5 text-left"
+        {...rowMenu(input.name, pick)}
+        onDragStart={(e) => {
+          startDrag(e, 'inputs', [input.name]);
+        }}
+        className="flex h-14 min-w-0 items-center gap-2 pr-[4.5rem] pl-1.5 text-left"
       >
         <InputPicture capture={capture} className="w-16 shrink-0" />
         <span className="min-w-0 flex-1">
@@ -62,6 +78,7 @@ function InputRow({
         </span>
         {live && <LiveBadge />}
       </button>
+      {chosen && <AddToPlaylistButton pick={pick} className="px-1.5 pb-1.5" />}
       <RowAction
         icon={Pencil}
         label={`Change “${input.name}”`}
