@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { InputBackground } from '../../../shared/engine/state';
 import type { MediaLayer, Slots } from './background-slots';
 import { NO_SLOTS, retryAfterLanding, slotKey, slotsReducer } from './background-slots';
 
@@ -254,5 +255,108 @@ describe('background slots', () => {
     );
     expect(onScreen(s)).toBe(slotKey(a));
     expect(s.incoming?.key).toBe(slotKey(again));
+  });
+});
+
+/*
+ * A video input (Session 50) comes and goes as a video does: the picture before it stays until it has its first
+ * frame, and it dissolves in with the fade a video gets, never a cut through black.
+ */
+describe('a video input in the background slots (Session 50)', () => {
+  const input = (
+    inputId: string,
+    startedAt: number,
+    extra: Partial<InputBackground> = {},
+  ): InputBackground => ({
+    kind: 'input',
+    inputId,
+    name: 'Placeholder input',
+    device: 'fake_device_0',
+    fit: 'fit',
+    startedAt,
+    ...extra,
+  });
+  const a = video('A', 1);
+
+  it('keeps the video before it on screen until the input has its first frame', () => {
+    const one = input('I', 5);
+    let s = run(
+      { type: 'layer', layer: a },
+      { type: 'ready', key: slotKey(a) },
+      { type: 'layer', layer: one },
+    );
+    expect(onScreen(s)).toBe(slotKey(a));
+    expect(s.incoming).toMatchObject({ key: slotKey(one), state: 'loading', layer: { kind: 'input' } });
+    s = slotsReducer(s, { type: 'ready', key: slotKey(one) });
+    expect(onScreen(s)).toBe(slotKey(one));
+    // And a video after it the same way: the input stays until the video is ready.
+    const next = video('B', 9);
+    s = slotsReducer(s, { type: 'layer', layer: next });
+    expect(onScreen(s)).toBe(slotKey(one));
+    expect(onScreen(slotsReducer(s, { type: 'ready', key: slotKey(next) }))).toBe(slotKey(next));
+  });
+
+  it('is never taken for a file of the same id', () => {
+    expect(slotKey(input('A', 1))).not.toBe(slotKey(video('A', 1)));
+    expect(slotKey(input('A', 1))).not.toBe(slotKey(input('A', 2)));
+  });
+
+  it('dissolves in with the fade a video gets, from when it is ready even after the fade’s own time', () => {
+    const one = input('I', 100, { fade: { at: 100, durationMs: 1000 } });
+    const before = run(
+      { type: 'layer', layer: a },
+      { type: 'ready', key: slotKey(a) },
+      { type: 'layer', layer: one },
+    );
+    // Ready at once: from the fade's own start, as a video's.
+    expect(slotsReducer(before, { type: 'ready', key: slotKey(one), at: 90 })).toMatchObject({
+      shown: { key: slotKey(one) },
+      leaving: { key: slotKey(a) },
+      fade: { start: 100, ms: 1000 },
+    });
+    // A capture takes a moment to open: ready after its fade's time, it still dissolves, from then.
+    expect(slotsReducer(before, { type: 'ready', key: slotKey(one), at: 2500 })).toMatchObject({
+      shown: { key: slotKey(one) },
+      leaving: { key: slotKey(a) },
+      fade: { start: 2500, ms: 1000 },
+    });
+    // A window that opens while it is up shows it whole.
+    expect(
+      run({ type: 'layer', layer: one, joined: true }, { type: 'ready', key: slotKey(one), at: 2500 }),
+    ).toMatchObject({ shown: { key: slotKey(one) }, leaving: null, fade: null });
+  });
+
+  it('carries on through a change of fit, and clears at once', () => {
+    const one = input('I', 5);
+    let s = run({ type: 'layer', layer: one }, { type: 'ready', key: slotKey(one) });
+    s = slotsReducer(s, { type: 'layer', layer: { ...one, fit: 'fill' } });
+    expect(s.shown).toMatchObject({ key: slotKey(one), state: 'ready', layer: { fit: 'fill' } });
+    expect(slotsReducer(s, { type: 'layer', layer: null })).toEqual(NO_SLOTS);
+  });
+
+  it('shows nothing when it cannot start, and comes on at once when it can (plugged in again)', () => {
+    const one = input('I', 5, { fade: { at: 5, durationMs: 1000 } });
+    let s = run(
+      { type: 'layer', layer: a },
+      { type: 'ready', key: slotKey(a) },
+      { type: 'layer', layer: one },
+      { type: 'failed', key: slotKey(one) },
+    );
+    expect(onScreen(s)).toBeNull();
+    s = slotsReducer(s, { type: 'ready', key: slotKey(one), at: 60_000 });
+    expect(s).toEqual({
+      shown: { key: slotKey(one), layer: one, state: 'ready' },
+      incoming: null,
+      leaving: null,
+      fade: null,
+    });
+    // A file that could not play stays as it is: only a node's copy landing tries it again.
+    const failed = run({ type: 'layer', layer: a }, { type: 'failed', key: slotKey(a) });
+    expect(slotsReducer(failed, { type: 'ready', key: slotKey(a), at: 9 })).toBe(failed);
+  });
+
+  it('is never tried again for a copy landing (it is no file)', () => {
+    const s = run({ type: 'layer', layer: input('I', 5) }, { type: 'failed', key: slotKey(input('I', 5)) });
+    expect(retryAfterLanding(s.shown, 3)).toBeNull();
   });
 });

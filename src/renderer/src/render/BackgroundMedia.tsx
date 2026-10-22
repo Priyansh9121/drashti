@@ -1,6 +1,8 @@
 import { type Dispatch, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
 import type { BackgroundLayer, MediaFit } from '../../../shared/engine/state';
 import {
+  isMediaSlot,
+  type MediaSlot,
   NO_SLOTS,
   retryAfterLanding,
   type Slot,
@@ -36,7 +38,7 @@ function VideoSlot({
   visible,
   dispatch,
 }: {
-  slot: Slot;
+  slot: MediaSlot;
   visible: boolean;
   dispatch: Dispatch<SlotEvent>;
 }) {
@@ -97,7 +99,7 @@ function ImageSlot({
   visible,
   dispatch,
 }: {
-  slot: Slot;
+  slot: MediaSlot;
   visible: boolean;
   dispatch: Dispatch<SlotEvent>;
 }) {
@@ -256,7 +258,7 @@ function BackgroundPlayer({
   // once for each landing (a try that fails again waits for the next one). A video that failed with a GPU
   // process that stopped loads again once another has started (Sessions 31–36, ROB-5), the same way.
   const shown = slots.shown;
-  const landed = useMediaAttempt(shown?.layer.mediaId ?? '') + useGpuRestarts();
+  const landed = useMediaAttempt(shown?.layer.kind === 'media' ? shown.layer.mediaId : '') + useGpuRestarts();
   useEffect(() => {
     const key = retryAfterLanding(shown, landed);
     if (key !== null) dispatch({ type: 'retry', key });
@@ -276,12 +278,11 @@ function BackgroundPlayer({
     >
       {list.map((slot) => {
         const visible = (slot === slots.shown || slot === slots.leaving) && slot.state === 'ready';
-        const element =
-          slot.layer.media === 'video' ? (
-            <VideoSlot slot={slot} visible={visible} dispatch={dispatch} />
-          ) : (
-            <ImageSlot slot={slot} visible={visible} dispatch={dispatch} />
-          );
+        const element = !isMediaSlot(slot) ? null : slot.layer.media === 'video' ? (
+          <VideoSlot slot={slot} visible={visible} dispatch={dispatch} />
+        ) : (
+          <ImageSlot slot={slot} visible={visible} dispatch={dispatch} />
+        );
         return (
           <div
             key={`${slot.key}#${slot.attempt ?? 0}`}
