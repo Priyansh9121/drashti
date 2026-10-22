@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_GROUP_LOOK,
   DEFAULT_LIVE_GROUP_LOOK,
+  LOOK_LAYER_NAMES,
+  LOOK_LAYERS,
   NO_LOOK,
   readGroupLook,
   storedGroupLook,
@@ -52,6 +54,8 @@ describe('a group’s settings in a Look', () => {
       }),
     ).toEqual({
       layers: ['slide', 'props'],
+      // The picture-in-picture box (Session 50) left out too, said apart (see below).
+      leftOut: ['pip'],
       languages: ['gu'],
       slides: 'lowerThird',
       stageLayoutId: 'l1',
@@ -69,9 +73,9 @@ describe('a group’s settings in a Look', () => {
         movement: 'wild',
       }),
     ).toEqual({
-      // The layers in drawing order; the languages, slide style, idle setting and Movement unreadable, so the
-      // defaults (a Look from before Session 27 has no Movement: Calm).
-      layers: ['slide', 'props'],
+      // The layers in drawing order (a list from before Session 50 shows the box); the languages, slide style,
+      // idle setting and Movement unreadable, so the defaults (a Look from before Session 27 has no Movement: Calm).
+      layers: ['slide', 'props', 'pip'],
       languages: null,
       slides: 'designed',
       stageLayoutId: null,
@@ -80,6 +84,40 @@ describe('a group’s settings in a Look', () => {
       movement: 'calm',
     });
     expect(readGroupLook({ movement: 'bold' }).movement).toBe('bold');
+  });
+
+  it('a group’s layers saved before the picture-in-picture box (Session 50) show it; only a Look saved with it left out hides it', () => {
+    expect(LOOK_LAYERS).toEqual(['background', 'slide', 'props', 'pip', 'messages', 'ticker', 'masks']);
+    expect(LOOK_LAYER_NAMES.pip).toBe('Picture in picture');
+    // A list from before: the box shows, where it draws (above the props).
+    expect(readGroupLook({ layers: ['slide', 'props', 'messages'] }).layers).toEqual([
+      'slide',
+      'props',
+      'pip',
+      'messages',
+    ]);
+    // Left out since: hidden, with the other layers as they are.
+    expect(readGroupLook({ layers: ['slide'], leftOut: ['pip'] }).layers).toEqual(['slide']);
+    expect(readGroupLook({ leftOut: ['pip'] }).layers).toEqual([
+      'background',
+      'slide',
+      'props',
+      'messages',
+      'ticker',
+      'masks',
+    ]);
+    // Anything unreadable there shows it (the default).
+    for (const leftOut of [['pip', 'pip'], ['slide'], 'pip', [7]])
+      expect(readGroupLook({ leftOut }).layers, JSON.stringify(leftOut)).toEqual(LOOK_LAYERS);
+    // Stored: the earlier layers as before, so an older Drashti reads a group's layers as they were.
+    const noBox = LOOK_LAYERS.filter((l) => l !== 'pip');
+    expect(storedGroupLook({ ...DEFAULT_GROUP_LOOK, layers: noBox })).toEqual({ leftOut: ['pip'] });
+    expect(storedGroupLook({ ...DEFAULT_GROUP_LOOK, layers: ['slide', 'pip'] })).toEqual({
+      layers: ['slide'],
+    });
+    expect(
+      readGroupLook(storedGroupLook({ ...DEFAULT_GROUP_LOOK, layers: ['slide', 'pip'] })).layers,
+    ).toEqual(['slide', 'pip']);
   });
 });
 
@@ -121,6 +159,59 @@ describe('Looks', () => {
     expect(t.engine.dispatch({ type: 'setLook', lookId: 'gone' })).toMatchObject({
       ok: false,
       error: 'unknown-look',
+    });
+  });
+
+  it('a Look saved before the picture-in-picture box (Session 50) shows it; a group can leave it out, and have it back', () => {
+    const t = setup();
+    // A Look as an earlier Drashti kept it: the hall leaves out the background and the ticker.
+    t.db
+      .prepare('UPDATE looks SET definition = ? WHERE id = ?')
+      .run(
+        JSON.stringify({ groups: { [t.hall]: { layers: ['slide', 'props', 'messages', 'masks'] } } }),
+        t.standard,
+      );
+    t.looks.groupsChanged();
+    expect(t.engine.current.look.groups[t.hall]?.layers).toEqual([
+      'slide',
+      'props',
+      'pip',
+      'messages',
+      'masks',
+    ]);
+    // Another setting changed on that group: the box still shows.
+    t.looks.setGroup(t.standard, t.hall, { languages: ['gu'] });
+    expect(t.repo.get(t.standard)?.groups[t.hall]?.layers).toContain('pip');
+    // Left out from Screens (its tick taken off): hidden on the hall's screens only, and kept so.
+    expect(t.looks.setGroup(t.standard, t.hall, { layers: ['slide', 'props', 'messages', 'masks'] }).ok).toBe(
+      true,
+    );
+    expect(t.engine.current.look.groups[t.hall]?.layers).toEqual(['slide', 'props', 'messages', 'masks']);
+    expect(t.engine.current.look.groups[t.stage]?.layers).toContain('pip');
+    const row = t.db.prepare('SELECT definition FROM looks WHERE id = ?').get(t.standard) as {
+      definition: string;
+    };
+    expect(JSON.parse(row.definition)).toEqual({
+      groups: {
+        [t.hall]: { layers: ['slide', 'props', 'messages', 'masks'], leftOut: ['pip'], languages: ['gu'] },
+      },
+    });
+    // Ticked again: back, and nothing kept about it.
+    t.looks.setGroup(t.standard, t.hall, { layers: ['slide', 'props', 'pip', 'messages', 'masks'] });
+    expect(t.engine.current.look.groups[t.hall]?.layers).toContain('pip');
+    expect(t.repo.get(t.standard)?.groups[t.hall]).toMatchObject({ languages: ['gu'] });
+    expect(
+      (t.db.prepare('SELECT definition FROM looks WHERE id = ?').get(t.standard) as { definition: string })
+        .definition,
+    ).not.toContain('leftOut');
+  });
+
+  it('a group made a key and fill pair leaves the box out, as it leaves out the background', () => {
+    const t = setup();
+    t.looks.becameKeyFill(t.hall);
+    expect(t.engine.current.look.groups[t.hall]).toMatchObject({
+      layers: ['slide', 'props', 'messages'],
+      slides: 'lowerThird',
     });
   });
 

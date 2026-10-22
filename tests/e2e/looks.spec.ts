@@ -250,7 +250,8 @@ test('a library from before Looks keeps exactly what each group showed', async (
   expect(looks.map((l) => l.name)).toEqual(['Standard']);
   expect(liveId).toBe(looks[0]?.id);
   const snapshot = await win.evaluate(() => (globalThis as PageGlobals).drashti.screens.get());
-  const all = ['background', 'slide', 'props', 'messages', 'ticker', 'masks'];
+  // Every layer, the picture-in-picture box among them (Session 50).
+  const all = ['background', 'slide', 'props', 'pip', 'messages', 'ticker', 'masks'];
   const standard = {
     layers: all,
     slides: 'designed',
