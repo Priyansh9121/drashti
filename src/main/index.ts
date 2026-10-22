@@ -39,6 +39,7 @@ import { idSchema } from '../shared/model-schema';
 import { z } from 'zod';
 import type { OutputContext } from '../shared/screens';
 import { missingFontsIn } from '../shared/screens';
+import { type ScreenSwitch, SWITCH_NAMES, SWITCH_OFF_WORDS, switchFor } from '../shared/screen-switches';
 import type { MessageResult } from '../shared/messages';
 import type { PropResult } from '../shared/props';
 import { propFieldsSchema } from '../shared/props';
@@ -199,6 +200,7 @@ import {
 import { placeOperator } from './outputs/operator-guard';
 import { DISPLAY_DROP_MS, OutputManager } from './outputs/output-manager';
 import { ScreensService } from './outputs/screens-service';
+import { ScreenSwitchService } from './outputs/screen-switches';
 import { SleepGuard } from './outputs/sleep-guard';
 import { IpcTransport } from './transport/ipc-transport';
 import { AUDIO_PARTITION, createAudioWindow } from './windows/audio-window';
@@ -1628,6 +1630,8 @@ function start(): void {
       // Out of sight, it drew nothing: it is judged again only after the grace.
       heartbeat.opened(screenId);
     },
+    // Audience or Stage (Session 50), by the screen's group.
+    switchOf: (s) => switchFor(screenRepo.groupRole(s.groupId) ?? 'audience'),
     onChange: () => {
       // A hall screen stopped, or back (events out: Session 28).
       const screensNow = manager.status().map((st): ScreenState => ({
@@ -1664,6 +1668,14 @@ function start(): void {
       const factor = electronScreen.getDisplayMatching(win.getBounds()).scaleFactor;
       local.push({ screen: s, window: { width: bounds.width * factor, height: bounds.height * factor } });
     }
+    // One switched off (Session 50) keeps its display's size: pictures' copies are not made again as it goes off
+    // and again as it comes back.
+    for (const st of manager.status()) {
+      if (st.state !== 'switched-off' || st.displayId === null) continue;
+      const s = screenRepo.screen(st.screenId);
+      const d = listDisplays().find((x) => x.id === st.displayId);
+      if (s && d) local.push({ screen: s, window: { width: d.pixelWidth, height: d.pixelHeight } });
+    }
     return largestAudienceScreen({
       local,
       screens: screenRepo.allScreens(),
@@ -1686,6 +1698,17 @@ function start(): void {
   const screens = new ScreensService(screenRepo, manager, listDisplays, operatorDisplayId, looks, {
     displays: () => nodeService?.displays() ?? [],
     screenStatus: () => nodeService?.screenStatus() ?? [],
+  });
+  // ---- Audience and Stage (Session 50; outputs/screen-switches.ts): this computer's screens off and on --------
+  // Never saved: both are on at every start.
+  const screenSwitches = new ScreenSwitchService({
+    outputs: manager,
+    simple: () => simpleNow(),
+    screens: () => ({ groups: screenRepo.groups(), status: manager.status() }),
+    state: () => engine.current,
+    log: (message) => {
+      log.info(message);
+    },
   });
 
   // ---- keeping the operator's controls reachable ----------------------------
@@ -4224,6 +4247,19 @@ function start(): void {
     return { ok: true as const };
   });
   handle(IPC.screens.removeScreen, (e, id) => (fromOperator(e) ? screens.removeScreen(id) : notAllowed));
+  // Audience and Stage (Session 50): an operator's (not an admin's), in Simple Mode only on.
+  handle(IPC.screenSwitches.get, () => screenSwitches.get());
+  handle(IPC.screenSwitches.turn, (e, which, on) =>
+    fromOperator(e)
+      ? screenSwitches.turn(which, on)
+      : { ok: false as const, message: 'Only the operator window can turn the screens off or on.' },
+  );
+  screenSwitches.onChanged((switches) => {
+    sendToOperator(IPC.screenSwitches.changed, switches);
+    // The View menu's ticks, and a Remote's word on which are off.
+    rebuildMenu();
+    net.hint('screens');
+  });
   handle(IPC.screens.identify, (e) => {
     if (!fromOperator(e)) return null;
     for (const [screenId, win] of outputWindows) {
@@ -4574,6 +4610,24 @@ function start(): void {
     },
   };
 
+  /**
+   * View › Audience or Stage, turning one off while its screens show something (Session 50): asked first, as the
+   * window's switches and keys ask in the window. Never a box that holds the main process up: the show runs on.
+   */
+  const askSwitchOff = async (which: ScreenSwitch): Promise<boolean> => {
+    const box = {
+      type: 'question' as const,
+      buttons: ['Cancel', 'Turn Off'],
+      defaultId: 0,
+      cancelId: 0,
+      message: `Turn ${SWITCH_NAMES[which]} off?`,
+      detail: `${SWITCH_OFF_WORDS[which]} The show carries on.`,
+    };
+    const parent = operatorWindow && !operatorWindow.isDestroyed() ? operatorWindow : undefined;
+    const answer = parent ? await dialog.showMessageBox(parent, box) : await dialog.showMessageBox(box);
+    return answer.response === 1;
+  };
+
   /** File > Use This Computer as a Node…: asks, then restarts as a node (an admin, Pro Mode). */
   const useAsNode = () => {
     const box = {
@@ -4791,6 +4845,15 @@ function start(): void {
       },
       open: () => {
         if (mode === 'pro') sendToOperator(IPC.appearance.open, { at: Date.now() });
+      },
+    },
+    // View › Audience and Stage (Session 50): Pro Mode's, an operator's. The tick follows the switch, not the
+    // click, until it changes (a question answered Cancel leaves it as it was).
+    screenSwitches: {
+      on: screenSwitches.get(),
+      toggle: (which) => {
+        rebuildMenu();
+        if (mode === 'pro') void screenSwitches.toggle(which, askSwitchOff);
       },
     },
     reloadOperator: () => {
