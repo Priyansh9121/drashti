@@ -240,6 +240,16 @@ describe.skipIf(!ffmpegHere(ffmpeg))('converting at import, with FFmpeg', () => 
       log: () => undefined,
       limits: { afterImportMs: 0 },
     });
+    // The MKV's start and end points and a marker (an imported presentation's, say), and that it came from the
+    // drop folder: its copy keeps them (Session 50, section 9's review), so what is relinked plays as before.
+    const marks = JSON.stringify({
+      startMs: 100,
+      endMs: 900,
+      markers: [{ id: 'mk1', name: 'Placeholder verse', atMs: 400 }],
+    });
+    library
+      .prepare("UPDATE media SET markers = ?, dropped_at = '2026-10-22T10:00:00.000Z' WHERE id = ?")
+      .run(marks, ids['Placeholder katha.mkv']);
     expect(service.convertImported({ items })).toBe(4);
     // Never while on air or recording.
     await sleep(1500);
@@ -278,6 +288,14 @@ describe.skipIf(!ffmpegHere(ffmpeg))('converting at import, with FFmpeg', () => 
     const mkv = await readInfo(ffmpeg, join(mediaDir, copyOf('Placeholder katha.mkv').path));
     expect(mkv).toMatchObject({ video: { codec: 'h264', width: 64, height: 48 }, audio: { codec: 'aac' } });
     expect(copyOf('Placeholder bhajan.wma').kind).toBe('audio');
+    expect(
+      library
+        .prepare(
+          `SELECT c.markers, c.dropped_at FROM media_conversions mc JOIN media c ON c.id = mc.converted_id
+            WHERE mc.original_id = ?`,
+        )
+        .get(ids['Placeholder katha.mkv']),
+    ).toEqual({ markers: marks, dropped_at: '2026-10-22T10:00:00.000Z' });
     // The originals stay as they were, marked as Drashti cannot play them.
     expect(
       library.prepare(`SELECT name, playable FROM media WHERE converted_from IS NULL ORDER BY name`).all(),

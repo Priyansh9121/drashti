@@ -584,16 +584,26 @@ export class ConvertService {
       { id: string; name: string } | undefined;
     const convertedId = existing?.id ?? randomUUID();
     const conversionId = randomUUID();
+    // The original's start and end points and markers, and whether it came from the drop folder (Session 50): the
+    // copy keeps them, so everything relinked to it plays as it did (the copy's timing is the original's).
+    const kept = db.prepare('SELECT markers, dropped_at FROM media WHERE id = ?').get(row.id) as
+      { markers: string | null; dropped_at: string | null } | undefined;
     const moved = db.transaction(() => {
       // The same bytes deleted from the library before (Session 26a): back, with its file.
       if (existing)
         db.prepare(
           "UPDATE media SET deleted_at = NULL, path = ?, missing = 0 WHERE id = ? AND (deleted_at IS NOT NULL OR path = '')",
         ).run(rel, existing.id);
+      if (existing && kept?.markers)
+        db.prepare('UPDATE media SET markers = ? WHERE id = ? AND markers IS NULL').run(
+          kept.markers,
+          existing.id,
+        );
       if (!existing)
         db.prepare(
-          `INSERT INTO media (id, kind, name, path, sha256, bytes, playable, format, converted_from, source_kind, source_path)
-           VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, 'media', ?)`,
+          `INSERT INTO media (id, kind, name, path, sha256, bytes, playable, format, converted_from, source_kind, source_path,
+             markers, dropped_at)
+           VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, 'media', ?, ?, ?)`,
         ).run(
           convertedId,
           KIND_OF[target],
@@ -604,6 +614,8 @@ export class ConvertService {
           TARGET_FORMAT[target],
           row.id,
           row.source_path,
+          kept?.markers ?? null,
+          kept?.dropped_at ?? null,
         );
       const m = moveMedia(db, row.id, convertedId);
       db.prepare(
