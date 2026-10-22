@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { EngineCommand } from '../../shared/engine/commands';
 import { parseEngineCommand } from '../../shared/engine/commands';
 import type { PipLayer, PipPlace } from '../../shared/engine/state';
+import { DEFAULT_LIVE_GROUP_LOOK, type LiveLook } from '../../shared/looks';
 import { SIMPLE_MODE_REFUSAL, SIMPLE_MODE_REFUSED_COMMANDS } from '../../shared/mode';
 import { mediaInState, mediaUpNow } from '../../shared/node-media';
 import { PLAIN } from '../../shared/picture-look';
@@ -29,7 +30,14 @@ const DRAGGED: PipPlace = {
   border: false,
 };
 
-function setup(options: { simple?: boolean } = {}) {
+/** A live Look whose one group moves Bold (Session 27): its screens swap the box in 600 ms, not 500. */
+const BOLD_LOOK: LiveLook = {
+  id: 'placeholder-look',
+  name: 'Placeholder bold',
+  groups: { 'placeholder-group': { ...DEFAULT_LIVE_GROUP_LOOK, movement: 'bold' } },
+};
+
+function setup(options: { simple?: boolean; bold?: boolean } = {}) {
   let clock = 1000;
   const media = new Map<string, 'image' | 'video' | 'audio'>([
     ['m-photo', 'image'],
@@ -52,8 +60,14 @@ function setup(options: { simple?: boolean } = {}) {
     refuse: (c) =>
       options.simple === true && SIMPLE_MODE_REFUSED_COMMANDS.includes(c.type) ? SIMPLE_MODE_REFUSAL : null,
     schedule: () => () => undefined,
+    ...(options.bold === true ? { looks: { look: () => null, start: () => BOLD_LOOK } } : {}),
   });
-  return { engine, transport, inputs, offered };
+  if (options.bold === true) engine.refreshLook();
+  /** Time passing on the engine's clock (each reading of it moves it on 10 ms too). */
+  const pass = (ms: number) => {
+    clock += ms;
+  };
+  return { engine, transport, inputs, offered, pass };
 }
 
 const show = (source: Extract<EngineCommand, { type: 'showPip' }>['source'], place?: PipPlace) =>
@@ -173,7 +187,7 @@ describe('the picture-in-picture box in the engine', () => {
   });
 
   it('Swap changes which picture is the main one, and back; the state keeps how it was, for the animation', () => {
-    const { engine } = setup();
+    const { engine, pass } = setup();
     expect(engine.dispatch({ type: 'swapPip' })).toMatchObject({ ok: false, error: 'no-pip' });
     engine.dispatch(show({ kind: 'input', inputId: 'in-1' }));
     const up = engine.current.layers.pip;
@@ -181,9 +195,42 @@ describe('the picture-in-picture box in the engine', () => {
     const swapped = engine.current.layers.pip;
     expect(swapped).toMatchObject({ swapped: true, place: REMEMBERED, shownAt: up?.shownAt });
     expect(swapped?.changed).toEqual({ at: expect.any(Number) as number, place: REMEMBERED, swapped: false });
+    // Once that swap is over on the screens (below), back.
+    pass(1000);
     engine.dispatch({ type: 'swapPip' });
     expect(engine.current.layers.pip).toMatchObject({ swapped: false, changed: { swapped: true } });
     expect(engine.current.layers.pip?.changed?.at).toBeGreaterThan(swapped?.changed?.at ?? 0);
+  });
+
+  it('a Swap pressed again while one still runs changes nothing, until it is over on every screen (Session 51)', () => {
+    const { engine, pass } = setup();
+    engine.dispatch(show({ kind: 'input', inputId: 'in-1' }));
+    engine.dispatch({ type: 'swapPip' });
+    const swapped = engine.current.layers.pip;
+    // Part-way through it (Calm: out 250 ms, then in 250 ms): nothing changes, nothing jumps back.
+    pass(250);
+    expect(engine.dispatch({ type: 'swapPip' })).toMatchObject({ ok: true, changed: false });
+    expect(engine.current.layers.pip).toBe(swapped);
+    // Over: swapped back.
+    pass(250);
+    expect(engine.dispatch({ type: 'swapPip' })).toMatchObject({ ok: true, changed: true });
+    expect(engine.current.layers.pip?.swapped).toBe(false);
+    // Moving the box is no swap: Swap right after a move is taken.
+    pass(1000);
+    engine.dispatch({ type: 'placePip', place: DRAGGED });
+    expect(engine.dispatch({ type: 'swapPip' })).toMatchObject({ ok: true, changed: true });
+  });
+
+  it('with a Bold group in the live Look, waits for its longer swap: 600 ms', () => {
+    const { engine, pass } = setup({ bold: true });
+    expect(engine.current.look.name).toBe('Placeholder bold');
+    engine.dispatch(show({ kind: 'slides' }));
+    engine.dispatch({ type: 'swapPip' });
+    // Over on a Calm screen, still running on the Bold group's.
+    pass(530);
+    expect(engine.dispatch({ type: 'swapPip' })).toMatchObject({ ok: true, changed: false });
+    pass(100);
+    expect(engine.dispatch({ type: 'swapPip' })).toMatchObject({ ok: true, changed: true });
   });
 
   it('placePip moves and sizes it, keeping where it was for the animation; the same place changes nothing', () => {

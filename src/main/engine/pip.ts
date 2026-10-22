@@ -1,6 +1,7 @@
 import type { CommandResult, EngineCommand } from '../../shared/engine/commands';
 import type { PipLayer, PipPlace, PipSource } from '../../shared/engine/state';
-import { DEFAULT_PIP_PLACE } from '../../shared/pip';
+import type { Movement } from '../../shared/looks';
+import { DEFAULT_PIP_PLACE, pipSwapMs } from '../../shared/pip';
 import type { VideoInput } from '../../shared/video-inputs';
 import type { EngineAction } from './actions';
 import { sameData } from './reducer';
@@ -113,9 +114,17 @@ const noPip = (doing: string): Refused => ({
   message: `No picture in picture is on the screens to ${doing}.`,
 });
 
-/** Swap: the box's picture and the main picture change places (see above), from `at`. */
-export function swapPip(was: PipLayer | null, at: number): PipResolved {
+/**
+ * Swap: the box's picture and the main picture change places (see above), from `at`. Pressed again while a swap
+ * still runs on any screen (Session 51), it changes nothing: the box and the main picture would jump back
+ * part-way. A swap runs out and in again by each group's Movement (`movements`: the live Look's), so as long as
+ * the slowest group's: 500 ms, 600 ms with a Bold group (shared/pip.ts pipSwapMs).
+ */
+export function swapPip(was: PipLayer | null, at: number, movements: readonly Movement[] = []): PipResolved {
   if (!was) return noPip('swap');
+  const last = was.changed;
+  if (last && last.swapped !== was.swapped && at - last.at < pipSwapMs(movements))
+    return { ok: true, actions: [] };
   return { ok: true, actions: [{ type: 'pip/set', layer: changedAt(was, at, { swapped: !was.swapped }) }] };
 }
 
