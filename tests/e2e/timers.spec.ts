@@ -14,7 +14,8 @@ import {
 /*
  * Timers: the engine sends only start, pause and reset; every window works
  * out the time from the shared clock, so two outputs show the same time
- * without a message every second.
+ * without a message every second. Show on the screens puts the timer up alone,
+ * in the slide's place (Session 50: before, it went up as a message).
  */
 
 const snapshot = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.engine.snapshot());
@@ -45,8 +46,9 @@ test('a countdown on the audience screens stays in step on two windows, with no 
   await expect(row.getByTestId('timer-value')).toHaveText('5:00');
   await row.getByRole('button', { name: 'Start' }).click();
   await row.getByRole('button', { name: 'Show on the screens' }).click();
-  const timerOn = (p: Page) => p.locator('[data-layer="messages"]');
-  for (const p of [a, b]) await expect(timerOn(p)).toContainText('Placeholder sabha starts in 4:');
+  const timerOn = (p: Page) => p.locator('[data-layer="slide"] [data-timer-element]');
+  const timeOf = async (p: Page) => (await timerOn(p).getAttribute('data-time')) ?? '';
+  for (const p of [a, b]) await expect(timerOn(p)).toHaveAttribute('data-time', /^4:/);
 
   const state = (await snapshot(win)).state;
   const startedAt = state.timers[0]?.startedAt ?? 0;
@@ -57,7 +59,7 @@ test('a countdown on the audience screens stays in step on two windows, with no 
   const seen: string[] = [];
   for (let i = 0; i < 3; i++) {
     await midSecond(win, startedAt);
-    const [ta, tb] = await Promise.all([timerOn(a).innerText(), timerOn(b).innerText()]);
+    const [ta, tb] = await Promise.all([timeOf(a), timeOf(b)]);
     expect(ta).toBe(tb);
     seen.push(ta);
   }
@@ -68,15 +70,15 @@ test('a countdown on the audience screens stays in step on two windows, with no 
   // Pause: both stop at the same time and stay there.
   await row.getByRole('button', { name: 'Pause' }).click();
   await expect(row).not.toHaveAttribute('data-running', 'true');
-  const paused = await timerOn(a).innerText();
+  const paused = await timeOf(a);
   await holdStill(
-    async () => (await timerOn(a).innerText()) === paused && (await timerOn(b).innerText()) === paused,
+    async () => (await timeOf(a)) === paused && (await timeOf(b)) === paused,
     1500,
     'paused, both windows stay where they stopped',
   );
   // Reset: back to 5:00 everywhere.
   await row.getByRole('button', { name: 'Reset' }).click();
-  for (const p of [a, b]) await expect(timerOn(p)).toHaveText('Placeholder sabha starts in 5:00');
+  for (const p of [a, b]) await expect(timerOn(p)).toHaveAttribute('data-time', '5:00');
 
   // Taken off the screens.
   await row.getByRole('button', { name: 'Take off the screens' }).click();

@@ -66,6 +66,7 @@ function LayoutChoice({
       <span
         className="relative block aspect-video w-full overflow-hidden rounded-md bg-black"
         data-a11y-picture
+        aria-hidden="true"
       >
         {preview && (
           <PlacedInParent content={preview} mode="fit" className="absolute inset-0">
