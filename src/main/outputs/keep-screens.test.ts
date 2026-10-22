@@ -3,7 +3,7 @@ import type { PendingScreens } from '../../shared/keep-screens';
 import { KEEP_SCREENS_MS } from '../../shared/keep-screens';
 import type { ScreensResult, ScreensSnapshot } from '../../shared/screens';
 import type { KeepEnding } from './keep-screens';
-import { coveringScreens, KeepScreens, putsOutputOn } from './keep-screens';
+import { controlsToPutBack, coveringScreens, KeepScreens, putsOutputOn } from './keep-screens';
 
 /*
  * Keep these screens? (Session 50): a change that puts an output on a display waits 15 s for Keep or Go back,
@@ -387,5 +387,20 @@ describe('what puts an output on a display, and what covers the controls', () =>
     expect(coveringScreens(status, 3)).toEqual([]);
     // Windowed outputs never cover the controls: no display for them.
     expect(coveringScreens(status, null)).toEqual([]);
+  });
+});
+
+// Section 3's review (Session 50): with another display free, the controls move off an output put on their display
+// before the question; Go back puts them back where they were, unless that display has gone.
+describe('the controls, put back where they were when the change began', () => {
+  const was = { displayId: 1, bounds: { x: 10, y: 20, width: 1280, height: 800 } };
+  it('moved to another display by the change: put back', () => {
+    expect(controlsToPutBack(was, [1, 2], 2)).toEqual(was.bounds);
+  });
+  it('still where they were, their display gone, or nothing known: left alone', () => {
+    expect(controlsToPutBack(was, [1, 2], 1)).toBeNull();
+    expect(controlsToPutBack(was, [2], 2)).toBeNull();
+    expect(controlsToPutBack(null, [1, 2], 2)).toBeNull();
+    expect(controlsToPutBack({ displayId: null, bounds: null }, [1, 2], 2)).toBeNull();
   });
 });

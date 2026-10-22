@@ -71,6 +71,27 @@ export function coveringScreens(status: readonly ScreenStatus[], controlsDisplay
     .map((st) => st.screenId);
 }
 
+/** Where the controls were when a change began: their display, and the operator window's place there. */
+export interface ControlsPlace<B> {
+  displayId: number | null;
+  bounds: B | null;
+}
+
+/**
+ * Where to put the operator window back after going back (Session 50, section 3's review): a change that puts an
+ * output on the controls' display moves them to a free display if there is one; going back puts them where they
+ * were, unless they are there already or that display has gone. Null: leave them.
+ */
+export function controlsToPutBack<B>(
+  before: ControlsPlace<B> | null,
+  displays: readonly number[],
+  nowDisplayId: number | null,
+): B | null {
+  if (!before?.bounds || before.displayId === null) return null;
+  if (!displays.includes(before.displayId) || before.displayId === nowDisplayId) return null;
+  return before.bounds;
+}
+
 /** What the operator is told when going back failed (the screens stay as changed). */
 export const COULD_NOT_GO_BACK =
   'Drashti could not put the screens back as they were. Change them in Screens.';
