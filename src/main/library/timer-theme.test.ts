@@ -87,7 +87,7 @@ describe('a Timer when a theme is applied', () => {
     const before = rows.elements.map((e) => [e.x, e.y, e.width, e.height]);
     const themed = applyTheme(rows, theme);
     expect(themed.elements.map((e) => [e.x, e.y, e.width, e.height])).toEqual(before);
-    const words = themed.elements.map((e) => elementFromRow(e)).find((e) => e.kind === 'text');
+    const words = themed.elements.map((e) => elementFromRow(e)).find((e) => e?.kind === 'text');
     expect(words).toMatchObject({ style: { fontFamily: 'Placeholder Sans', color: '#ffee00' } });
   });
 });
