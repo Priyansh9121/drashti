@@ -13,6 +13,7 @@ import { useEngine } from '../../engine/engine-store';
 import { preloadFonts } from '../../render/fonts';
 import { PlacedInParent } from '../../render/Placed';
 import { PreviewPicture, PreviewsContext } from '../../render/previews';
+import { pipName } from '../../render/pip';
 import { Scene } from '../../render/Scene';
 import { textLang } from '../../render/lang';
 import { useNow } from '../../render/useNow';
@@ -34,6 +35,7 @@ import {
   FileText,
   ListMusic,
   Pause,
+  PictureInPicture2,
   Play,
   Repeat2,
   RotateCcw,
@@ -42,6 +44,7 @@ import {
   Timer,
   Tv,
   Video,
+  X,
 } from '../../ui/icons';
 import { Notice } from '../../ui/Notice';
 import { api, current } from '../device';
@@ -137,7 +140,9 @@ function useHallLook(state: EngineState | null): LiveGroupLook {
 
 function LivePicture({ state }: { state: EngineState | null }) {
   const hallLook = useHallLook(state);
-  const up = state ? state.layers.slide !== null || state.layers.background !== null : false;
+  const up = state
+    ? state.layers.slide !== null || state.layers.background !== null || state.layers.pip !== null
+    : false;
   const named = namedBackground(state?.layers.background);
   return (
     <section className="space-y-2" aria-labelledby="live-title">
@@ -191,6 +196,30 @@ function LivePicture({ state }: { state: EngineState | null }) {
             onClick={() => void tap(post('/api/v1/clear/background'))}
           >
             Clear
+          </Button>
+        </div>
+      )}
+      {/* The picture-in-picture box (Session 50): named, and taken off; a phone never sets one up. */}
+      {state?.layers.pip && (
+        <div
+          role="status"
+          data-testid="remote-pip"
+          className="flex items-center gap-2 rounded-lg border border-line bg-panel-2 py-1 pr-1 pl-3"
+        >
+          <PictureInPicture2 size={18} aria-hidden="true" className="shrink-0 text-muted" />
+          <span className="min-w-0 flex-1 truncate text-base">
+            <span className="font-bold">Picture in picture:</span> {pipName(state.layers.pip.source)}
+            {state.layers.pip.swapped ? ' (swapped)' : ''}
+          </span>
+          <Button
+            size="lg"
+            className="min-h-12"
+            instant
+            icon={X}
+            data-testid="remote-pip-take-off"
+            onClick={() => void tap(post('/api/v1/clear/pip'))}
+          >
+            Take off
           </Button>
         </div>
       )}
