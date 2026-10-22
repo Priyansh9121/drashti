@@ -4,7 +4,7 @@ import type { PropInfo } from '../../../shared/props';
 import { useEngine } from '../engine/engine-store';
 import { dispatch, useNotice } from './actions';
 
-/** The props, and which one is the logo (Simple Mode's Logo button, the L key). */
+/** The props, and which one is the logo (Simple Mode's Logo button, the F12 and L keys). */
 export const useLogo = create<{ props: PropInfo[] | null; logoId: string | null }>(() => ({
   props: null,
   logoId: null,
