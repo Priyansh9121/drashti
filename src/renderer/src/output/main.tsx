@@ -13,6 +13,7 @@ import { Scene } from '../render/Scene';
 import { StageScreen } from '../render/StageScreen';
 import { WarmUp } from '../render/WarmUp';
 import { KeepQuestion } from './KeepQuestion';
+import { SwitchQuestion } from './SwitchQuestion';
 import { connectOutput, useOutput } from './output-store';
 import { Preloader } from './Preloader';
 import { DisplayNumber, TestCard } from './SetupCards';
@@ -257,7 +258,9 @@ function Output() {
       )}
       {context && ready && <TestCard context={context} languages={look.languages} />}
       <IdentifyOverlay />
-      {/* Keep these screens? (Session 50), over everything while this output covers the controls. */}
+      {/* The operator window's "Turn Audience off?" (Session 51), over the picture while this output covers the
+          controls; Keep these screens? (Session 50) over everything. */}
+      <SwitchQuestion />
       <KeepQuestion />
     </div>
   );

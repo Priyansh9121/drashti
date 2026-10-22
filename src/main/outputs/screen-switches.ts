@@ -140,3 +140,112 @@ export function switchOffBox(which: ScreenSwitch): {
     detail: `${SWITCH_OFF_WORDS[which]} The show carries on.`,
   };
 }
+
+/** What the window's question needs of the outputs and the operator window. */
+export interface SwitchQuestionDeps {
+  /** The outputs over the display the controls are on now, by screen (keep-screens.ts, coveringScreens). */
+  covering(): readonly string[];
+  /** Every output window open now, by screen. */
+  outputs(): readonly string[];
+  /** Show the question on an output, large in its middle, or take it off (null). */
+  show(screenId: string, which: ScreenSwitch | null): void;
+  /** Tell the operator window whether an output over the controls asks too, when that changes as it asks. */
+  covered(covered: boolean): void;
+  /** Tell the operator window the answer given on that output: true turns it off, false cancels. */
+  answered(yes: boolean): void;
+  /** Simple Mode is on: it only turns them on, and never asks. */
+  simple(): boolean;
+  log(message: string): void;
+}
+
+/**
+ * The window's question before one goes off (Mod+1, Mod+2 or the top bar's switch), also on an output over the
+ * controls (Session 51, S2-2), as Keep these screens? is: with only the one display, the question in the window
+ * under that output could not be seen. The window asks, and says so here as it opens and goes; the output over
+ * the controls shows it large, and Enter turns it off and Esc cancels. The keys reach the window under it (an
+ * output never takes the keyboard), whose dialog then has Turn off focused; an output that has the keyboard (a
+ * windowed one) answers itself, and its answer goes to the window, which acts. The window is the one place the
+ * question is kept: a phone, the View menu or another window never asks it here.
+ */
+export class SwitchQuestion {
+  private which: ScreenSwitch | null = null;
+  /** The outputs showing it now, and the question each shows. */
+  private shownOn = new Map<string, ScreenSwitch>();
+  /** Whether the window was last told an output over the controls asks too. */
+  private told = false;
+
+  constructor(private readonly deps: SwitchQuestionDeps) {}
+
+  /**
+   * The window asks "Turn … off?" now, or no longer (null): shown on the output over the controls, or taken off.
+   * True when an output over the controls asks too (the window's answer: no message follows it).
+   */
+  asking(rawWhich: unknown): boolean {
+    const which = whichSchema.safeParse(rawWhich);
+    this.which = which.success && !this.deps.simple() ? which.data : null;
+    this.told = this.follow();
+    if (this.told && this.which !== null)
+      this.deps.log(
+        `Screens: ${switchOffQuestion(this.which)} asked, the output over the controls asking too`,
+      );
+    return this.told;
+  }
+
+  /** The question an output shows now: only one over the controls, while the window asks. */
+  questionFor(screenId: string): ScreenSwitch | null {
+    return this.which !== null && this.deps.covering().includes(screenId) ? this.which : null;
+  }
+
+  /**
+   * An output's page loaded (it opened, or loaded again) and asks which screen it is: the question shown on it
+   * again if it is over the controls as the window asks, and taken off it when the question goes.
+   */
+  loaded(screenId: string): void {
+    const which = this.questionFor(screenId);
+    if (which === null) return;
+    this.shownOn.set(screenId, which);
+    this.deps.show(screenId, which);
+  }
+
+  /**
+   * The outputs changed (one opened, closed or moved; the uncover key): the question follows them, and the window
+   * is told when an output over the controls starts or stops asking.
+   */
+  refresh(): void {
+    if (this.which === null && this.shownOn.size === 0) return;
+    const covered = this.follow();
+    if (this.which === null || covered === this.told) return;
+    this.told = covered;
+    this.deps.covered(covered);
+  }
+
+  /**
+   * An output's own Enter (true) or Esc (false), when it has the keyboard: only from the output asking, and only
+   * a yes or a no. The window acts on it, as on its own buttons. True when it was taken.
+   */
+  answer(screenId: string, rawYes: unknown): boolean {
+    const which = this.questionFor(screenId);
+    if (typeof rawYes !== 'boolean' || which === null) return false;
+    this.deps.log(
+      `Screens: ${switchOffQuestion(which)} answered on the output over the controls (${rawYes ? 'Enter' : 'Esc'})`,
+    );
+    this.deps.answered(rawYes);
+    return true;
+  }
+
+  /** Show it on each open output over the controls and take it off any other; whether any shows it. */
+  private follow(): boolean {
+    const which = this.which;
+    const covering = new Set(which === null ? [] : this.deps.covering());
+    const showing = new Map<string, ScreenSwitch>();
+    for (const screenId of this.deps.outputs()) {
+      const shown = this.shownOn.get(screenId);
+      if (which !== null && covering.has(screenId)) {
+        showing.set(screenId, which);
+        if (shown !== which) this.deps.show(screenId, which);
+      } else if (shown !== undefined) this.deps.show(screenId, null);
+    }
+    this.shownOn = showing;
+    return showing.size > 0;
+  }
+}

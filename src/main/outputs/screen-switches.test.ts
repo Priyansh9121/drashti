@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { type EngineState, initialEngineState } from '../../shared/engine/state';
 import { type ScreenSwitch, type ScreenSwitches, TURN_OFF } from '../../shared/screen-switches';
 import type { ScreenGroupConfig, ScreenState, ScreensSnapshot } from '../../shared/screens';
-import { ONLY_ON_IN_SIMPLE_MODE, ScreenSwitchService, switchOffBox } from './screen-switches';
+import { ONLY_ON_IN_SIMPLE_MODE, ScreenSwitchService, SwitchQuestion, switchOffBox } from './screen-switches';
 
 /*
  * Audience and Stage in the main process (Session 50): every request checked, Simple Mode only turning them on,
@@ -212,5 +212,105 @@ describe('the View menu’s own box (Session 51, S2-7)', () => {
       detail: 'The stage screens will show this computer’s desktop. The show carries on.',
     });
     expect(switchOffBox('stage').buttons[1]).toBe(TURN_OFF);
+  });
+});
+
+describe('the window’s question on an output over the controls (Session 51, S2-2)', () => {
+  /** The outputs open now and those over the controls, stood in for by lists; what each was sent. */
+  function question() {
+    const t = { open: ['hall-1', 'stage-1'], covering: ['hall-1'], simple: false };
+    const sent: [string, ScreenSwitch | null][] = [];
+    const told: boolean[] = [];
+    const answers: boolean[] = [];
+    const logged: string[] = [];
+    const q = new SwitchQuestion({
+      covering: () => t.covering,
+      outputs: () => t.open,
+      show: (screenId, which) => sent.push([screenId, which]),
+      covered: (covered) => told.push(covered),
+      answered: (yes) => answers.push(yes),
+      simple: () => t.simple,
+      log: (message) => logged.push(message),
+    });
+    return { q, t, sent, told, answers, logged };
+  }
+
+  it('shows it only on the output over the controls, as the window asks, and takes it off as it goes', () => {
+    const { q, t, sent, told } = question();
+    expect(q.asking('audience')).toBe(true);
+    expect(sent).toEqual([['hall-1', 'audience']]);
+    expect(q.questionFor('hall-1')).toBe('audience');
+    expect(q.questionFor('stage-1')).toBeNull();
+    // Answered or cancelled in the window: taken off that output.
+    expect(q.asking(null)).toBe(false);
+    expect(sent).toEqual([
+      ['hall-1', 'audience'],
+      ['hall-1', null],
+    ]);
+    expect(q.questionFor('hall-1')).toBeNull();
+    // No output over the controls: shown nowhere, and the window hears so from its own answer.
+    t.covering = [];
+    expect(q.asking('stage')).toBe(false);
+    expect(sent).toHaveLength(2);
+    // The window learns it from each answer, never twice.
+    expect(told).toEqual([]);
+  });
+
+  it('follows the outputs: the one over the controls gone takes the question with it, and the window is told', () => {
+    const { q, t, sent, told } = question();
+    q.asking('stage');
+    // The uncover key turned the hall's output off: nothing is sent to a window that has closed.
+    t.open = ['stage-1'];
+    t.covering = [];
+    q.refresh();
+    expect(told).toEqual([false]);
+    expect(sent).toEqual([['hall-1', 'stage']]);
+    expect(q.questionFor('stage-1')).toBeNull();
+    // Another output over the controls: it asks too.
+    t.covering = ['stage-1'];
+    q.refresh();
+    expect(sent.at(-1)).toEqual(['stage-1', 'stage']);
+    expect(told).toEqual([false, true]);
+    // Nothing changed: nothing sent again.
+    q.refresh();
+    expect(sent).toHaveLength(2);
+    expect(told).toEqual([false, true]);
+  });
+
+  it('shows it again on an output over the controls whose page loads as the window asks, and takes it off after', () => {
+    const { q, sent } = question();
+    q.loaded('hall-1');
+    expect(sent).toEqual([]);
+    q.asking('audience');
+    // The output loaded again (its watchdog, say): asked again, and taken off it as the question goes.
+    q.loaded('hall-1');
+    q.loaded('stage-1');
+    expect(sent).toEqual([
+      ['hall-1', 'audience'],
+      ['hall-1', 'audience'],
+    ]);
+    q.asking(null);
+    expect(sent.at(-1)).toEqual(['hall-1', null]);
+  });
+
+  it('takes an answer only from the output asking, and only a yes or a no; the window acts on it', () => {
+    const { q, answers, logged } = question();
+    expect(q.answer('hall-1', true)).toBe(false);
+    q.asking('audience');
+    expect(q.answer('stage-1', true)).toBe(false);
+    expect(q.answer('hall-1', 'yes')).toBe(false);
+    expect(q.answer('hall-1', false)).toBe(true);
+    expect(answers).toEqual([false]);
+    expect(logged.at(-1)).toContain('Esc');
+  });
+
+  it('asks nothing in Simple Mode, which only turns them on, and nothing for anything but Audience or Stage', () => {
+    const { q, t, sent } = question();
+    t.simple = true;
+    expect(q.asking('audience')).toBe(false);
+    t.simple = false;
+    expect(q.asking('hall')).toBe(false);
+    expect(q.asking(7)).toBe(false);
+    expect(sent).toEqual([]);
   });
 });

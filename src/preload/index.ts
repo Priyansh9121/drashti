@@ -575,6 +575,15 @@ const bridge: DrashtiBridge = {
     get: () => invoke(IPC.screenSwitches.get),
     onChanged: (listener) => on(IPC.screenSwitches.changed, listener),
     turn: (which, isOn) => invoke(IPC.screenSwitches.turn, which, isOn),
+    asking: (which) => invoke(IPC.screenSwitches.asking, which),
+    onCovered: (listener) =>
+      on(IPC.screenSwitches.covered, ({ covered }) => {
+        listener(covered);
+      }),
+    onAnswered: (listener) =>
+      on(IPC.screenSwitches.answered, ({ yes }) => {
+        listener(yes);
+      }),
   },
   output: {
     getContext: () => invoke(IPC.output.getContext),
@@ -599,6 +608,11 @@ const bridge: DrashtiBridge = {
       }),
     onKeepQuestion: (listener) => on(IPC.output.keepQuestion, listener),
     keepAnswer: (keep) => invoke(IPC.output.keepAnswer, keep),
+    onSwitchQuestion: (listener) =>
+      on(IPC.output.switchQuestion, ({ which }) => {
+        listener(which);
+      }),
+    switchAnswer: (yes) => invoke(IPC.output.switchAnswer, yes),
   },
   pictures: {
     job: () => invoke(IPC.pictures.job),

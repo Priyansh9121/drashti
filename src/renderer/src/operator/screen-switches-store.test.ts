@@ -16,19 +16,41 @@ interface Fake {
   change: (switches: ScreenSwitches) => void;
   /** What the next turn answers (a refusal, say); otherwise it turns. */
   refuse: { message: string } | null;
+  /** Each question the main process was told of (null: none now), in order (Session 51, S2-2). */
+  asked: (ScreenSwitch | null)[];
+  /** Whether an output over the controls asks too, as the main process answers. */
+  covered: boolean;
+  /** The main process says an output over the controls started or stopped asking. */
+  tellCovered: (covered: boolean) => void;
 }
 
 async function connected(): Promise<Fake> {
   vi.resetModules();
   const now: ScreenSwitches = { audience: true, stage: true };
   let listener: (switches: ScreenSwitches) => void = () => undefined;
-  const fake: Omit<Fake, 'store'> = { turns: [], change: (s) => listener(s), refuse: null };
+  let coveredListener: (covered: boolean) => void = () => undefined;
+  const fake: Omit<Fake, 'store'> = {
+    turns: [],
+    change: (s) => listener(s),
+    refuse: null,
+    asked: [],
+    covered: false,
+    tellCovered: (c) => coveredListener(c),
+  };
   (globalThis as { window?: unknown }).window = {
     drashti: {
       screenSwitches: {
         get: () => Promise.resolve({ ...now }),
         onChanged: (l: (switches: ScreenSwitches) => void) => {
           listener = l;
+          return () => undefined;
+        },
+        asking: (which: ScreenSwitch | null) => {
+          fake.asked.push(which);
+          return Promise.resolve({ covered: which !== null && fake.covered });
+        },
+        onCovered: (l: (covered: boolean) => void) => {
+          coveredListener = l;
           return () => undefined;
         },
         turn: (which: ScreenSwitch, on: boolean): Promise<ScreenSwitchResult> => {
@@ -178,5 +200,49 @@ describe('Audience and Stage in the operator window (Session 50)', () => {
     await fake.store.toggleSwitch('stage');
     expect(fake.store.useScreenSwitches.getState().asking).toBe('stage');
     expect(fake.turns).toEqual([]);
+  });
+
+  it('tells the main process while it asks, and follows whether an output over the controls asks too (Session 51, S2-2)', async () => {
+    const fake = await connected();
+    await screensAre('showing', 'showing');
+    await showIs(true);
+    // A question left on an output by this window's last page is taken off as it connects.
+    expect(fake.asked).toEqual([null]);
+    fake.covered = true;
+    await fake.store.toggleSwitch('audience');
+    expect(fake.asked).toEqual([null, 'audience']);
+    expect(fake.store.useScreenSwitches.getState()).toMatchObject({ asking: 'audience', covered: true });
+    // That output stops asking (the uncover key turned it off): said here.
+    fake.tellCovered(false);
+    expect(fake.store.useScreenSwitches.getState().covered).toBe(false);
+    fake.tellCovered(true);
+    expect(fake.store.useScreenSwitches.getState().covered).toBe(true);
+    // Cancel: the main process is told it is no longer asked.
+    fake.store.cancelAsk();
+    expect(fake.asked.at(-1)).toBeNull();
+    expect(fake.store.useScreenSwitches.getState()).toMatchObject({ asking: null, covered: false });
+    // Said while nothing is asked: nothing changes.
+    fake.tellCovered(true);
+    expect(fake.store.useScreenSwitches.getState().covered).toBe(false);
+    expect(fake.turns).toEqual([]);
+  });
+
+  it('acts on the answer given on the output over the controls: Enter turns it off, Esc cancels (Session 51, S2-2)', async () => {
+    const fake = await connected();
+    await screensAre('showing', 'showing');
+    await showIs(false);
+    fake.covered = true;
+    await fake.store.toggleSwitch('stage');
+    expect(await fake.store.answerFromOutput(false)).toBeNull();
+    expect(fake.store.useScreenSwitches.getState().asking).toBeNull();
+    expect(fake.turns).toEqual([]);
+    expect(fake.asked.at(-1)).toBeNull();
+    await fake.store.toggleSwitch('stage');
+    expect(await fake.store.answerFromOutput(true)).toBeNull();
+    expect(fake.turns).toEqual([['stage', false]]);
+    expect(fake.asked.at(-1)).toBeNull();
+    // Nothing asked: an answer that comes late changes nothing.
+    expect(await fake.store.answerFromOutput(true)).toBeNull();
+    expect(fake.turns).toEqual([['stage', false]]);
   });
 });

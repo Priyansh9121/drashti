@@ -1,7 +1,8 @@
-import { useEffect, useId, useState } from 'react';
+import { type ReactNode, useEffect, useId, useState } from 'react';
 import type { PendingScreens } from '../../../shared/keep-screens';
 import { shortcutText } from '../../../shared/keymap';
 import { plural } from '../../../shared/text';
+import type { DataAttributes } from '../ui/cx';
 import { useOutput } from './output-store';
 
 /*
@@ -16,12 +17,41 @@ import { useOutput } from './output-store';
 const secondsLeft = (deadline: number, now: number) => Math.max(0, Math.ceil((deadline - now) / 1000));
 
 /** A key, as large as the words around it. */
-const Key = ({ children }: { children: string }) => (
+export const Key = ({ children }: { children: string }) => (
   <kbd className="rounded-[0.6vmin] border-[0.3vmin] border-white px-[1.2vmin] font-bold">{children}</kbd>
 );
 
-function Asked({ question }: { question: PendingScreens }) {
+/**
+ * A question asked on this output, as the controls under it cannot be seen: the picture dimmed, and a black card
+ * in its middle with its title at 9% of the display's shorter side (Keep these screens?, and since Session 51 the
+ * operator window's "Turn Audience off?"). Sized in vmin, it reads the same on any display.
+ */
+export function BigQuestion({
+  title,
+  testId,
+  children,
+  ...data
+}: { title: string; testId: string; children: ReactNode } & DataAttributes) {
   const titleId = useId();
+  return (
+    <div
+      className="absolute inset-0 z-[60] flex items-center justify-center bg-black/70 p-[4vmin]"
+      data-testid={testId}
+      role="alertdialog"
+      aria-labelledby={titleId}
+      {...data}
+    >
+      <div className="flex max-w-[86vw] flex-col items-center gap-[3vmin] rounded-[2vmin] border-[0.6vmin] border-accent bg-black px-[6vmin] py-[5vmin] text-center text-white">
+        <h1 id={titleId} className="text-[9vmin] leading-tight font-bold">
+          {title}
+        </h1>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Asked({ question }: { question: PendingScreens }) {
   const [platform, setPlatform] = useState('darwin');
   // The countdown by this computer's clock, as Main set the deadline by it: setting up, never a frame of the show.
   // eslint-disable-next-line no-restricted-properties -- Keep these screens?'s countdown (setting up, never the show)
@@ -54,26 +84,15 @@ function Asked({ question }: { question: PendingScreens }) {
   }, []);
   const seconds = secondsLeft(question.deadline, now);
   return (
-    <div
-      className="absolute inset-0 z-[60] flex items-center justify-center bg-black/70 p-[4vmin]"
-      data-testid="keep-question"
-      data-seconds={seconds}
-      role="alertdialog"
-      aria-labelledby={titleId}
-    >
-      <div className="flex max-w-[86vw] flex-col items-center gap-[3vmin] rounded-[2vmin] border-[0.6vmin] border-accent bg-black px-[6vmin] py-[5vmin] text-center text-white">
-        <h1 id={titleId} className="text-[9vmin] leading-tight font-bold">
-          Keep these screens?
-        </h1>
-        <p role="timer" className="text-[5vmin]" data-testid="keep-question-countdown">
-          {seconds > 0 ? `Going back by itself in ${plural(seconds, 'second')}.` : 'Going back now…'}
-        </p>
-        <p className="text-[3.6vmin] leading-relaxed">
-          <Key>Enter</Key> keeps · <Key>Esc</Key> goes back ·{' '}
-          <Key>{shortcutText('uncoverControls', platform)}</Key> turns this output off
-        </p>
-      </div>
-    </div>
+    <BigQuestion title="Keep these screens?" testId="keep-question" data-seconds={String(seconds)}>
+      <p role="timer" className="text-[5vmin]" data-testid="keep-question-countdown">
+        {seconds > 0 ? `Going back by itself in ${plural(seconds, 'second')}.` : 'Going back now…'}
+      </p>
+      <p className="text-[3.6vmin] leading-relaxed">
+        <Key>Enter</Key> keeps · <Key>Esc</Key> goes back ·{' '}
+        <Key>{shortcutText('uncoverControls', platform)}</Key> turns this output off
+      </p>
+    </BigQuestion>
   );
 }
 

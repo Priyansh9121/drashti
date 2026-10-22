@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { PendingScreens } from '../../../shared/keep-screens';
+import type { ScreenSwitch } from '../../../shared/screen-switches';
 import type { OutputContext } from '../../../shared/screens';
 import { setClockOffset } from '../render/clock';
 import { watchGpuRestarts, watchMediaReady } from '../render/media-attempts';
@@ -9,9 +10,16 @@ interface OutputView {
   identify: { name: string; groupName: string; until: number } | null;
   /** Keep these screens? (Session 50), while this output covers the controls and a change waits. */
   keepQuestion: PendingScreens | null;
+  /** The operator window's "Turn Audience off?" (Session 51), while this output covers the controls. */
+  switchQuestion: ScreenSwitch | null;
 }
 
-export const useOutput = create<OutputView>(() => ({ context: null, identify: null, keepQuestion: null }));
+export const useOutput = create<OutputView>(() => ({
+  context: null,
+  identify: null,
+  keepQuestion: null,
+  switchQuestion: null,
+}));
 
 let started = false;
 
@@ -33,6 +41,9 @@ export function connectOutput(): void {
   // an output that opens (or loads again) while a change waits.
   window.drashti.output.onKeepQuestion((keepQuestion) => {
     useOutput.setState({ keepQuestion });
+  });
+  window.drashti.output.onSwitchQuestion((switchQuestion) => {
+    useOutput.setState({ switchQuestion });
   });
   window.drashti.output.onIdentify((who) => {
     useOutput.setState({
