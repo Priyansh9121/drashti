@@ -21,7 +21,9 @@ import type { LowerThird } from '../lower-thirds';
  * 'incompatible' rather than drawing a kind it does not know. 10 (Sessions 31–36): a slide's darkening
  * behind the words, which an older one would leave out. 11 (Session 44): the lower third's layer. 12
  * (Session 48): another app's window as the background; and, before any release read 12 (Session 50), a video
- * input as the background, a timer shown alone in the slide's place, and the picture-in-picture box.
+ * input as the background, a timer shown alone in the slide's place, and the picture-in-picture box; and (Session
+ * 51, still before any release read 12) a video input as a playlist item and a slide's background cue: Next's
+ * 'input' kind, the next slide's `input`, a slide's `inputMissing` and a coming-up item's 'input' kind.
  */
 export const ENGINE_STATE_VERSION = 12;
 
@@ -86,6 +88,11 @@ export interface SlideLayer {
    * `timer:<timerId>`). A phone names it "Timer: <name>".
    */
   timer?: TimerShow;
+  /**
+   * Its background cue named a video input this computer has none of (Session 51), by that name: the background
+   * stayed as it was (never black because of it), and LIVE says so while the slide is up. Left out otherwise.
+   */
+  inputMissing?: string;
 }
 
 /** The timer a slide layer shows alone (Session 50). */
@@ -403,18 +410,25 @@ export type UpNext =
       slide: RenderSlide;
       /** The background its cue puts up, if it has one that can play. */
       background: MediaBackground | null;
+      /**
+       * The video input its background cue names (Session 51), by its name: this computer's input of that name
+       * goes up behind it (or, with none, the background stays as it was). Left out when it names none.
+       */
+      input?: string;
       /** The playlist item it starts, when it is in the next item. */
       itemId: string | null;
       /** Its notes, for a presenter's remote (Session 18). */
       notes: string;
     }
-  | { kind: 'media'; itemId: string; mediaId: string; media: 'image' | 'video' | 'audio'; label: string };
+  | { kind: 'media'; itemId: string; mediaId: string; media: 'image' | 'video' | 'audio'; label: string }
+  /** The next playlist item is one of this computer's video inputs (Session 51), named as Media has it now. */
+  | { kind: 'input'; itemId: string; inputId: string; name: string; label: string };
 
-/** One of the playlist's next items, for a stage screen ("coming up"). */
+/** One of the playlist's next items, for a stage screen ("coming up"); a video input since Session 51. */
 export interface UpcomingItem {
   id: string;
   label: string;
-  kind: 'presentation' | 'media' | 'header';
+  kind: 'presentation' | 'media' | 'header' | 'input';
 }
 
 /** How many of the playlist's next items the state carries. */

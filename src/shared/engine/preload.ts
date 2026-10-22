@@ -12,7 +12,8 @@ export interface PreloadMedia {
  * decode them ahead, so they appear in the same frame as the slide.
  */
 export function mediaToPreload(next: UpNext | null): PreloadMedia[] {
-  if (!next) return [];
+  // A video input (Session 51) is live: nothing to load ahead.
+  if (!next || next.kind === 'input') return [];
   if (next.kind === 'media')
     return next.media === 'audio' ? [] : [{ mediaId: next.mediaId, media: next.media }];
   const found = new Map<string, 'image' | 'video'>();

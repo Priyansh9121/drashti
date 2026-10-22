@@ -811,7 +811,8 @@ export function summary(state: EngineState): Record<string, unknown> {
     next: state.next
       ? state.next.kind === 'slide'
         ? { kind: 'slide', presentationId: state.next.presentationId, slideIndex: state.next.slideIndex }
-        : { kind: 'media', itemId: state.next.itemId, label: state.next.label }
+        : // A picture, video or sound item, or a video input's (Session 51): which, by its kind.
+          { kind: state.next.kind, itemId: state.next.itemId, label: state.next.label }
       : null,
     messages: state.layers.messages.map((m) => ({ id: m.id, text: m.text })),
     ticker: state.layers.ticker?.items.map((i) => ({ id: i.id, text: i.text })) ?? [],

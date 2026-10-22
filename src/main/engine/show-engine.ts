@@ -63,6 +63,7 @@ import type { PlayedSlide, PlayOrder, SlideSource } from './slide-source';
 
 type Resolved = { ok: true; actions: EngineAction[] } | Extract<CommandResult, { ok: false }>;
 type MediaItem = Extract<PlayItem, { kind: 'media' }>;
+type InputItem = Extract<PlayItem, { kind: 'input' }>;
 
 const NO_CHANGE: Resolved = { ok: true, actions: [] };
 
@@ -164,6 +165,11 @@ export interface EngineOptions {
    * name, device and fit.
    */
   videoInput?: (inputId: string) => VideoInput | null;
+  /**
+   * This computer's video input of a name (Session 51: shared/video-inputs.ts inputNamed), or null: the input a
+   * slide's background cue names, found as the slide goes up.
+   */
+  inputNamed?: (name: string) => VideoInput | null;
   /** How a timer shown alone looks (Session 50): the library's default theme's words; Drashti's own when left out. */
   timerLook?: () => TimerLook;
 }
@@ -385,7 +391,8 @@ export class ShowEngine {
         );
         slide = true;
       }
-    } else if (playlist?.item.kind === 'media') {
+    } else if (playlist?.item.kind === 'media' || playlist?.item.kind === 'input') {
+      // A picture, video or sound item, or a video input's (Session 51): Next carries on from it.
       actions.push({ type: 'live/item', playlist: playlist.cursor });
     }
     // A timer shown alone (Session 50) comes back over it as it was, still: no transition plays again.
@@ -850,6 +857,7 @@ export class ShowEngine {
       if (item.kind === 'presentation')
         out.push({ id: item.id, label: item.label ?? '', kind: 'presentation' });
       else if (item.kind === 'media') out.push({ id: item.id, label: item.label, kind: 'media' });
+      else if (item.kind === 'input') out.push({ id: item.id, label: item.label, kind: 'input' });
       else if (item.header) out.push({ id: item.id, label: item.label ?? '', kind: 'header' });
     }
     return out;
@@ -885,7 +893,7 @@ export class ShowEngine {
     order: PlayOrder,
     played: PlayedSlide,
     playlist: PlaylistCursor | null,
-    how: { at?: number; transition?: Transition } = {},
+    how: { at?: number; transition?: Transition; inputMissing?: string | null } = {},
   ): EngineAction {
     return {
       type: 'slide/show',
@@ -898,6 +906,7 @@ export class ShowEngine {
       notes: played.notes,
       at: how.at ?? this.now(),
       ...(how.transition ? { transition: how.transition } : {}),
+      ...(how.inputMissing !== undefined ? { inputMissing: how.inputMissing } : {}),
     };
   }
 
@@ -934,27 +943,39 @@ export class ShowEngine {
     }
     const at = this.now();
     const transition = this.transitionFor(order, played);
-    const actions: EngineAction[] = [
-      this.showAction(presentationId, slideIndex, order, played, playlist, {
-        at,
-        ...(transition ? { transition } : {}),
-      }),
-    ];
     // The slide's background and sound go on their layers; a slide without them leaves those layers as they are.
-    // A new background comes on with the slide (dissolving with it); the same file carries on.
+    // A new background comes on with the slide (dissolving with it); the same file carries on. A video input
+    // (Session 51) is this computer's input of the name the cue keeps, coming on with its own fixed fade (the same
+    // input carries on); with none of that name, the background stays as it was (never black because of it) and
+    // the slide says which input it named, for LIVE to say so.
     const fade =
       transition && transition.durationMs > 0 ? { at, durationMs: transition.durationMs } : undefined;
+    const layers: EngineAction[] = [];
+    let inputMissing: string | null = null;
     for (const cue of played.cues) {
       if (cue.kind === 'background') {
-        actions.push({ type: 'background/set', background: this.backgroundLayer(cue.background, fade) });
+        const bg = cue.background;
+        if (bg.kind === 'input') {
+          const input = this.options.inputNamed?.(bg.name) ?? null;
+          if (input) layers.push({ type: 'background/set', background: this.inputLayer(input) });
+          else inputMissing = bg.name;
+        } else layers.push({ type: 'background/set', background: this.backgroundLayer(bg, fade) });
       } else {
         const { mediaId, volume, loop } = cue;
-        actions.push({
+        layers.push({
           type: 'audio/set',
           audio: this.audioLayer({ id: mediaId, title: cue.label || cue.name, mediaId, volume, loop }),
         });
       }
     }
+    const actions: EngineAction[] = [
+      this.showAction(presentationId, slideIndex, order, played, playlist, {
+        at,
+        ...(transition ? { transition } : {}),
+        inputMissing,
+      }),
+      ...layers,
+    ];
     // A slide's macro cue (from before Session 44) stays in the library, and never runs: macros are gone.
     return { ok: true, actions };
   }
@@ -996,10 +1017,29 @@ export class ShowEngine {
     };
   }
 
+  /**
+   * A video input item (Session 51) goes up as a picture or video item does: the input as the background, with
+   * its own fixed fade (the same input carries on), and the slide taken off. Null when this computer's list no
+   * longer has it (removed since the playlist was read): nothing to play.
+   */
+  private showInputItem(cursor: PlaylistCursor, item: InputItem): Resolved | null {
+    const input = this.options.videoInput?.(item.inputId) ?? null;
+    if (!input) return null;
+    return {
+      ok: true,
+      actions: [
+        { type: 'live/item', playlist: cursor },
+        { type: 'layer/clear', layer: 'slide', at: this.now() },
+        { type: 'background/set', background: this.inputLayer(input) },
+      ],
+    };
+  }
+
   /** Start a playlist item at its first or last slide. Null when it has nothing to play. */
   private startItem(playlistId: string, item: PlayItem, from: 'first' | 'last'): Resolved | null {
     const cursor = { playlistId, itemId: item.id };
     if (item.kind === 'media') return this.showMedia(cursor, item);
+    if (item.kind === 'input') return this.showInputItem(cursor, item);
     if (item.kind === 'skip') return null;
     const order = this.source.order(item.presentationId, item.arrangementId);
     if (!order || order.slides.length === 0) return null;
@@ -1094,7 +1134,9 @@ export class ShowEngine {
         ? item.why
         : item.kind === 'presentation'
           ? 'That presentation has no slides'
-          : 'That item cannot play';
+          : item.kind === 'input'
+            ? 'That video input is not on this computer.'
+            : 'That item cannot play';
     return { ok: false, error: 'not-playable', message };
   }
 
@@ -1388,6 +1430,12 @@ export class ShowEngine {
           media: item.media,
           label: item.label,
         };
+      // A video input item (Session 51), as Media has it now; one gone from the list since is stepped over.
+      if (item.kind === 'input') {
+        const input = this.options.videoInput?.(item.inputId) ?? null;
+        if (input)
+          return { kind: 'input', itemId: item.id, inputId: input.id, name: input.name, label: item.label };
+      }
       if (item.kind === 'presentation') {
         const first = this.source.order(item.presentationId, item.arrangementId)?.slides[0];
         if (first) return this.slideUpNext(item.presentationId, 0, first, item.id);
@@ -1403,12 +1451,15 @@ export class ShowEngine {
     itemId: string | null,
   ): UpNext {
     const cue = played.cues.find((c): c is BackgroundCue => c.kind === 'background');
+    const bg = cue?.background;
     return {
       kind: 'slide',
       presentationId,
       slideIndex,
       slide: played.slide,
-      background: cue?.unplayable === null && !cue.missing ? cue.background : null,
+      background: cue?.unplayable === null && !cue.missing && bg?.kind === 'media' ? bg : null,
+      // A video input behind it (Session 51), by the name its cue keeps.
+      ...(bg?.kind === 'input' ? { input: bg.name } : {}),
       itemId,
       notes: played.notes,
     };
