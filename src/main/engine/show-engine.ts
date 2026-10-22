@@ -11,6 +11,7 @@ import {
   ENGINE_STATE_VERSION,
   type EngineState,
   initialEngineState,
+  type InputBackground,
   type Layers,
   type LiveCursor,
   type LowerThirdLayer,
@@ -47,8 +48,8 @@ import {
   slideShowing,
 } from '../../shared/picture-look';
 import { elapsedAt, type TimerDefinition, type TimerRun } from '../../shared/timers';
+import { INPUT_FADE_MS, type VideoInput } from '../../shared/video-inputs';
 import { remapPosition } from '../../shared/order';
-import type { VideoInput } from '../../shared/video-inputs';
 import type { EngineAction } from './actions';
 import { hidePip, leavingMedia, placePip, restoredPip, showPip, swapPip } from './pip';
 import type { MediaMarkers, PlaybackMarker } from '../../shared/markers';
@@ -142,8 +143,6 @@ export interface EngineOptions {
    * box (Session 50) takes a picture or a video as the library has it, never as a page says.
    */
   mediaKind?: (mediaId: string) => 'image' | 'video' | 'audio' | null;
-  /** A video input in this computer's list (Session 50), by its id, as the list names it; null when not there. */
-  inputs?: (inputId: string) => Pick<VideoInput, 'name' | 'device'> | null;
   /**
    * A window Show a Window… has just offered (Session 48), by its id, or null: the only windows the
    * picture-in-picture box can hold (src/main/live-window/).
@@ -151,6 +150,12 @@ export interface EngineOptions {
   windows?: (id: string) => { sourceId: string; name: string } | null;
   /** Where a new picture-in-picture box goes, as the library remembers (DEFAULT_PIP_PLACE when left out). */
   pipPlace?: () => PipPlace;
+  /**
+   * A video input in this computer's list (Session 50: src/main/video-inputs/), by its id, or null: the only
+   * place showInput and the picture-in-picture box (and restart recovery, Put it back and Back) find an input's
+   * name, device and fit.
+   */
+  videoInput?: (inputId: string) => VideoInput | null;
 }
 
 /** What restart recovery puts back (see recovery/live-state.ts). */
@@ -210,6 +215,10 @@ export interface Restored {
   window: string | null;
   /** Another app's window that was in the picture-in-picture box (Session 50), by name: the same. */
   pipWindow: string | null;
+  /** The video input put back as the background (Session 50), by name (not counted in `background`), or null. */
+  input: string | null;
+  /** A video input that was the background but is no longer in this computer's list, by name: only said. */
+  inputGone: string | null;
 }
 
 /**
@@ -358,7 +367,12 @@ export class ShowEngine {
     }
     // Another app's window is never put back: it may be gone, or be another window now (Session 48).
     const window = request.background?.kind === 'window' ? request.background.name : null;
-    const background = window === null ? request.background : null;
+    // A video input (Session 50) comes back while it is still in this computer's list, as the list has it now;
+    // one no longer there is only said. Whether its camera is plugged in only the screens can tell: the first
+    // to draw it says (src/main/video-inputs/), and one that is not there comes off again, named.
+    const wasInput = request.background?.kind === 'input' ? request.background : null;
+    const input = wasInput ? this.asListed(wasInput) : null;
+    const background = window !== null ? null : wasInput ? input : request.background;
     if (background) actions.push({ type: 'background/set', background });
     if (request.blackout) actions.push({ type: 'blackout/set', on: true });
     if (request.logo) actions.push({ type: 'logo/set', prop: request.logo });
@@ -406,7 +420,7 @@ export class ShowEngine {
     return {
       look: lookBack ? look.name : null,
       slide,
-      background: background !== null,
+      background: background !== null && background.kind !== 'input',
       blackout: request.blackout,
       logo: Boolean(request.logo),
       audio: Boolean(request.audio),
@@ -420,6 +434,8 @@ export class ShowEngine {
       timers,
       window,
       pipWindow: box.window,
+      input: input?.name ?? null,
+      inputGone: wasInput && !input ? wasInput.name : null,
     };
   }
 
@@ -437,6 +453,23 @@ export class ShowEngine {
         },
       ]),
     );
+  }
+
+  /**
+   * A video input changed in this computer's list while it is up (Session 50: renamed, another device, fit or
+   * fill): the screens follow at once, the input carrying on. Not a change to the show: what Back and Put it
+   * back would undo stays.
+   */
+  refreshInput(input: VideoInput): CommandResult {
+    const bg = this.state.layers.background;
+    if (bg?.kind !== 'input' || bg.inputId !== input.id) return this.unchanged();
+    const next: InputBackground = { ...bg, name: input.name, device: input.device, fit: input.fit };
+    this.bookkeeping = true;
+    try {
+      return this.apply([{ type: 'background/set', background: next }]);
+    } finally {
+      this.bookkeeping = false;
+    }
   }
 
   /**
@@ -655,6 +688,11 @@ export class ShowEngine {
     const playing = this.state.layers.audio;
     if (playing?.music && layers.audio !== playing) layers = { ...layers, audio: playing };
     layers = this.withJumps(layers);
+    // A video input as Media has it now (Session 50): renamed or set to fill since, it comes back so. One no
+    // longer in the list comes back as it was (the operator asked for it back).
+    const was = layers.background;
+    const listed = was?.kind === 'input' ? this.asListed(was) : null;
+    if (listed && !sameData(listed, was)) layers = { ...layers, background: listed };
     const bg = layers.background;
     const audio = layers.audio;
     const bgLength = bg?.kind === 'media' && bg.durationMs === undefined ? this.lengthOf(bg.mediaId) : {};
@@ -1131,6 +1169,25 @@ export class ShowEngine {
   }
 
   /**
+   * A video input as the background layer (Session 50). A new one dissolves in from the background before, over
+   * INPUT_FADE_MS (as a video does with its slide; never a cut, never through black); the one already up carries
+   * on, with its time and fade, as Media has it now.
+   */
+  private inputLayer(input: VideoInput): InputBackground {
+    const current = this.state.layers.background;
+    const listed = { inputId: input.id, name: input.name, device: input.device, fit: input.fit };
+    if (current?.kind === 'input' && current.inputId === input.id) return { ...current, ...listed };
+    const at = this.now();
+    return { kind: 'input', ...listed, startedAt: at, fade: { at, durationMs: INPUT_FADE_MS } };
+  }
+
+  /** An input background as this computer's list has it now (its time kept), or null when it is not there. */
+  private asListed(layer: InputBackground): InputBackground | null {
+    const input = this.options.videoInput?.(layer.inputId) ?? null;
+    return input ? { ...layer, name: input.name, device: input.device, fit: input.fit } : null;
+  }
+
+  /**
    * Next / previous: one slide along the live presentation. At either end,
    * a presentation played from a playlist goes on to the next item's first
    * slide (or back to the previous item's last), stepping over headers and
@@ -1472,8 +1529,14 @@ export class ShowEngine {
         return swapPip(this.state.layers.pip, this.now());
       case 'placePip':
         return placePip(this.state.layers.pip, command.place, this.now());
+      case 'showInput': {
+        // Only an input of this computer's list, looked up here: a page never names a device (Session 50).
+        const input = this.options.videoInput?.(command.inputId) ?? null;
+        if (!input)
+          return { ok: false, error: 'unknown-input', message: 'That video input is not on this computer.' };
+        return { ok: true, actions: [{ type: 'background/set', background: this.inputLayer(input) }] };
+      }
       // Session 50's commands: each section's builder puts its own in place of these.
-      case 'showInput':
       case 'showTimer':
         return { ok: false, error: 'invalid-command', message: 'Not built yet' };
     }
