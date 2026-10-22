@@ -11,7 +11,7 @@ import { keyListener } from './useKeymap';
  */
 
 /** A stand-in for the page's elements: a field is one with a field's tag name, or one that is editable. */
-class Element {
+class StandInElement {
   constructor(
     readonly tagName: string,
     readonly isContentEditable = false,
@@ -23,7 +23,7 @@ let dialogOpen = false;
 beforeEach(() => {
   dialogOpen = false;
   Object.assign(globalThis, {
-    HTMLElement: Element,
+    HTMLElement: StandInElement,
     document: {
       querySelector: (selector: string) => (selector === '[aria-modal="true"]' && dialogOpen ? {} : null),
     },
@@ -67,7 +67,7 @@ function listening(platform: 'darwin' | 'win32') {
   return { ran, onKey };
 }
 
-const typingIn = (tagName: string) => ({ target: new Element(tagName) });
+const typingIn = (tagName: string) => ({ target: new StandInElement(tagName) });
 
 describe('the operator window’s keys, as its listener takes them', () => {
   it('runs the action of a press once, and takes the press', () => {
@@ -90,7 +90,7 @@ describe('the operator window’s keys, as its listener takes them', () => {
       new Press('F2', typingIn('INPUT')),
       new Press('F7', typingIn('TEXTAREA')),
       new Press('F8', typingIn('SELECT')),
-      new Press('F6', { target: new Element('DIV', true) }),
+      new Press('F6', { target: new StandInElement('DIV', true) }),
       new Press('F12', { isComposing: true }),
     ];
     for (const p of presses) onKey(p);
