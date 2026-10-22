@@ -20,7 +20,6 @@ import { reportRenderError } from '../ui/render-errors';
 import { HOLD_WARM_UP, SKIP_WARM_UP } from '../render/warm-up-mode';
 import { ClockStyleContext } from '../render/clock-style';
 import { setLiveWindowSize } from '../render/live-window';
-import { setVideoInputSize } from '../render/video-input';
 
 /*
  * The stream's page: the Program, drawn off screen at the stream's size.
@@ -38,8 +37,6 @@ function apply(context: ProgramContext): void {
   setCaptureSize({ width: context.width, height: context.height });
   // Another app's window up as the background (Session 48), at the stream's own size.
   setLiveWindowSize({ width: context.width, height: context.height, frameRate: 30 });
-  // A video input up as the background (Session 50), at the stream's own size too.
-  setVideoInputSize({ width: context.width, height: context.height, frameRate: 30 });
   if (!context.preview) stopPreview();
   if (!context.capturing) stopEncoder();
   sound.setDelay(context.soundDelayMs);

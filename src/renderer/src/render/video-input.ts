@@ -49,7 +49,12 @@ interface Entry {
   opening: boolean;
 }
 
-let size: InputSize = { width: 1920, height: 1080, frameRate: 30 };
+/**
+ * Every page asks for the same full picture (Session 50): Chromium opens a camera once for all of Drashti's pages, in
+ * the format the first page asked for, so a smaller ask from the operator window's small pictures or a smaller
+ * stream would leave the hall's screens a small picture. Each page scales it to what it draws.
+ */
+const size: InputSize = { width: 1920, height: 1080, frameRate: 30 };
 const entries = new Map<string, Entry>();
 const listeners = new Set<() => void>();
 const OPENING: InputCapture = { stream: null, state: 'opening', reason: null };
@@ -61,15 +66,6 @@ const wanted = (): MediaTrackConstraints => ({
   height: { ideal: size.height },
   frameRate: { ideal: size.frameRate },
 });
-
-/** This page's size of capture (the operator window's pictures are small; the stream's page asks for the stream's). */
-export function setVideoInputSize(next: InputSize): void {
-  if (next.width === size.width && next.height === size.height && next.frameRate === size.frameRate) return;
-  size = next;
-  for (const entry of entries.values())
-    for (const track of entry.view.stream?.getVideoTracks() ?? [])
-      if (track.readyState === 'live') void track.applyConstraints(wanted()).catch(() => undefined);
-}
 
 function changed(): void {
   for (const listener of listeners) listener();
