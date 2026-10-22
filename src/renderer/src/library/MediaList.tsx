@@ -34,6 +34,7 @@ import {
   useBoxSelect,
 } from '../ui/select-many';
 import { clickMedia, loadMedia, setDropOnly, shownMedia, useMedia } from './library-store';
+import { VideoInputsSection } from '../video-inputs/VideoInputsSection';
 
 const ROW_HEIGHT = 48;
 const MARGIN = 600;
@@ -236,8 +237,20 @@ const MediaRow = memo(function MediaRow({
   );
 });
 
-/** Every media file in the library, to drag into a playlist. */
+/**
+ * Every media file in the library, to drag into a playlist, under this computer's video inputs (Session 50: one
+ * click puts one up).
+ */
 export function MediaList({ platform }: { platform: string }) {
+  return (
+    <>
+      <VideoInputsSection />
+      <MediaFiles platform={platform} />
+    </>
+  );
+}
+
+function MediaFiles({ platform }: { platform: string }) {
   const allMedia = useMedia((s) => s.media);
   const dropOnly = useMedia((s) => s.dropOnly);
   const media = useMemo(() => shownMedia({ media: allMedia, dropOnly }), [allMedia, dropOnly]);
