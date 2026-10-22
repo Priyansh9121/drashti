@@ -10,23 +10,24 @@ import { startPlayback } from './playback';
  * at once (Sessions 31–36). A sound the engine sends somewhere new (a skip or a
  * jump to a marker) lands in step there, and is aimed again if it lands off
  * (Session 51). A stand-in media element plays on the test's clock (fake
- * timers drive Date.now, performance.now and the timers alike).
+ * timers drive Date.now, performance.now and the timers alike); at its own end
+ * it pauses and is `ended`, as a real one is (Session 51).
  */
 
 const FRAME = 1 / 60;
 
 class FakeMedia extends EventTarget {
   duration = NaN;
-  paused = true;
   seeking = false;
   readyState = 0;
   loop = false;
   muted = false;
-  ended = false;
   private rate = 1;
   /** Where it was at `since` (Date.now()). */
   private base = 0;
   private since = 0;
+  /** Paused by pause(), or by playing to its own end (Session 51: as a real element is, there). */
+  private stopped = true;
 
   /**
    * `restart`: its own loop comes round this late (seconds), as a real element's does. `startLate`: it
@@ -41,9 +42,28 @@ class FakeMedia extends EventTarget {
     super();
   }
 
+  /** Where it plays on to from `base`, before its own end stops it. */
+  private running(): number {
+    return this.base + (Math.max(0, Date.now() - this.since) / 1000) * this.rate;
+  }
+
+  /** A real element playing once to its own end pauses there, and stays paused after a seek away. */
+  get paused(): boolean {
+    if (!this.stopped && !this.seeking && !this.loop && this.running() >= this.length) {
+      this.base = this.length;
+      this.stopped = true;
+    }
+    return this.stopped;
+  }
+
+  /** At its own end, played once: a seek away clears it at once (Chromium's position is the seek's). */
+  get ended(): boolean {
+    return !this.loop && this.readyState >= 1 && this.currentTime >= this.length;
+  }
+
   get currentTime(): number {
     if (this.paused || this.seeking) return this.base;
-    const at = this.base + (Math.max(0, Date.now() - this.since) / 1000) * this.rate;
+    const at = this.running();
     if (!this.loop || at < this.length) return Math.min(this.length, at);
     // Its own loop: back to the start, `restart` late each time round.
     const late = this.lags.restart ?? 0;
@@ -84,8 +104,10 @@ class FakeMedia extends EventTarget {
 
   play(): Promise<void> {
     if (this.paused) {
+      // At its own end, a real element starts again from the top.
+      if (this.ended) this.currentTime = 0;
       this.since = Date.now() + (this.lags.startLate ?? 0);
-      this.paused = false;
+      this.stopped = false;
       setTimeout(() => this.dispatchEvent(new Event('playing')), 0);
     }
     return Promise.resolve();
@@ -94,7 +116,7 @@ class FakeMedia extends EventTarget {
   pause(): void {
     if (this.paused) return;
     this.base = this.currentTime;
-    this.paused = true;
+    this.stopped = true;
   }
 
   /** Letting go of the file: nothing to let go of here. */
@@ -209,6 +231,47 @@ describe('a file played once to an end point', () => {
       expect(v.currentTime).toBeLessThan(16);
       stop();
     }
+  });
+
+  it('held at its own end, plays again from a jump back in step from the moment it lands, not a check later', () => {
+    // Session 51 (S6-1): held at its own end, a real element is `ended`, and play() there starts it again from
+    // the top, so it waited for the next quarter-second check: it froze up to a quarter of a second more, at a
+    // different moment on each screen, and then had to catch up.
+    for (const limits of [undefined, SOUND_LIMITS])
+      for (const how of ['played to its end', 'Forward 15 s to its end'] as const) {
+        const what = `${limits ? 'a sound' : 'a picture'}, ${how}`;
+        const v = new FakeMedia(20);
+        const timing: { seek?: PlaybackSeek } = {};
+        const stop = startPlayback(v as unknown as HTMLMediaElement, {
+          mediaId: 'once',
+          startedAt: Date.now(),
+          audible: limits !== undefined,
+          ...(limits ? { limits } : {}),
+          timing: () => ({ loop: false, ...timing }),
+        });
+        if (how === 'played to its end') runFor(v, 21_000);
+        else {
+          runFor(v, 2000);
+          timing.seek = { at: Date.now(), toMs: 20_000 };
+          stop.resync();
+          runFor(v, 1000);
+        }
+        expect(v.paused && v.ended, `${what}: held there`).toBe(true);
+        // Back 15 s: to 0:05, from now. A seek takes 5 ms here; from then on it is where the clock says.
+        const back = { at: Date.now(), toMs: 5000 };
+        timing.seek = back;
+        stop.resync();
+        vi.advanceTimersByTime(10);
+        let furthest = 0;
+        for (let i = 0; i < 1500; i++) {
+          vi.advanceTimersByTime(1);
+          const clock = (back.toMs + Date.now() - back.at) / 1000;
+          furthest = Math.max(furthest, Math.abs(v.currentTime - clock));
+        }
+        expect(furthest, `${what}: furthest from the clock after Back (s)`).toBeLessThan(1 / 30);
+        expect(v.paused, what).toBe(false);
+        stop();
+      }
   });
 });
 
