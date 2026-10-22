@@ -20,6 +20,7 @@ import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { Checkbox } from '../ui/Toggle';
 import { closeDashboard, connectNodes, nodesAction, useNodes } from './nodes-store';
+import { thisComputerOnly } from './this-computer-only';
 
 /*
  * The screens dashboard (PLAN.md 4.1, Session 13): every display, on this
@@ -389,9 +390,9 @@ export function ScreensDashboard({ simple, onSetUp }: { simple: boolean; onSetUp
   const error = useNodes((s) => s.error);
   const snapshot = useScreens((s) => s.snapshot);
   const now = useNow(2000);
-  const windowUp = useEngine((s) =>
-    s.state?.layers.background?.kind === 'window' ? s.state.layers.background.name : null,
-  );
+  // Another app's window (Session 48) or a video input (Session 50): on this computer's screens only.
+  const background = useEngine((s) => s.state?.layers.background ?? null);
+  const onlyHere = thisComputerOnly(background);
   useEffect(() => {
     connectNodes();
     connectScreens();
@@ -447,11 +448,9 @@ export function ScreensDashboard({ simple, onSetUp }: { simple: boolean; onSetUp
             Identify all
           </Button>
         </div>
-        {windowUp && (
-          // Another app's window as the background (Session 48) is on this computer only.
-          <Notice tone="info" compact data-testid="dashboard-window">
-            The window “{windowUp}” shows on this computer’s screens only: the nodes’ screens show the rest of
-            the show without it.
+        {onlyHere && (
+          <Notice tone="info" compact data-testid={`dashboard-${onlyHere.kind}`}>
+            {onlyHere.text}
           </Notice>
         )}
         <DisplayGrid

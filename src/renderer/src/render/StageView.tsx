@@ -13,12 +13,13 @@ import { type ClockStyle, formatClock } from '../../../shared/format';
 
 /**
  * What a stage screen says is up when no slide is: the background's kind, never the picture itself (another
- * app's window, Session 48, as a video).
+ * app's window, Session 48, and a video input, Session 50, as a video).
  */
 export function backgroundWords(background: EngineState['layers']['background']): string {
   if (background?.kind === 'media')
     return `${background.media === 'image' ? 'Picture' : 'Video'} on the screens`;
   if (background?.kind === 'window') return 'Window on the screens';
+  if (background?.kind === 'input') return 'Video input on the screens';
   return 'Nothing on the screens';
 }
 

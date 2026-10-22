@@ -41,6 +41,7 @@ import {
   Stamp,
   Timer,
   Tv,
+  Video,
 } from '../../ui/icons';
 import { Notice } from '../../ui/Notice';
 import { api, current } from '../device';
@@ -62,6 +63,7 @@ import {
   viewLive,
 } from './remote-store';
 import { ClockStyleContext } from '../../render/clock-style';
+import { namedBackground } from './named-background';
 import { formatClock, validClockStyle } from '../../../../shared/format';
 
 /*
@@ -136,6 +138,7 @@ function useHallLook(state: EngineState | null): LiveGroupLook {
 function LivePicture({ state }: { state: EngineState | null }) {
   const hallLook = useHallLook(state);
   const up = state ? state.layers.slide !== null || state.layers.background !== null : false;
+  const named = namedBackground(state?.layers.background);
   return (
     <section className="space-y-2" aria-labelledby="live-title">
       <div className="flex items-center gap-2">
@@ -163,24 +166,28 @@ function LivePicture({ state }: { state: EngineState | null }) {
           {state && <Scene state={state} canvas={CANVAS} scaling="fit" look={hallLook} />}
         </PlacedInParent>
       </div>
-      {/* Another app's window as the background (Session 48): named, and cleared like any background; a
-          phone can never choose one, nor draw it (it is on Main's computer). */}
-      {state?.layers.background?.kind === 'window' && (
+      {/* Another app's window (Session 48) or a video input (Session 50) as the background: named, and cleared
+          like any background; a phone can never choose one, nor draw it (it is on Main's computer). */}
+      {named && (
         <div
           role="status"
-          data-testid="remote-window"
+          data-testid={`remote-${named.kind}`}
           className="flex items-center gap-2 rounded-lg border border-line bg-panel-2 py-1 pr-1 pl-3"
         >
-          <AppWindow size={18} aria-hidden="true" className="shrink-0 text-muted" />
+          {named.kind === 'window' ? (
+            <AppWindow size={18} aria-hidden="true" className="shrink-0 text-muted" />
+          ) : (
+            <Video size={18} aria-hidden="true" className="shrink-0 text-muted" />
+          )}
           <span className="min-w-0 flex-1 truncate text-base">
-            <span className="font-bold">A window:</span> {state.layers.background.name}
+            <span className="font-bold">{named.label}</span> {named.name}
           </span>
           <Button
             size="lg"
             className="min-h-12"
             instant
             icon={Eraser}
-            data-testid="remote-window-clear"
+            data-testid={`remote-${named.kind}-clear`}
             onClick={() => void tap(post('/api/v1/clear/background'))}
           >
             Clear
