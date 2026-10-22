@@ -4,11 +4,11 @@ import { ArrowRightToLine, type Icon, RotateCcw, RotateCw } from '../ui/icons';
 import type { SkipsShown } from './skips';
 
 /*
- * Back 15 s, Forward 15 s and Last 10 s (Session 50, as on the mandir's audio controls), in Pro Mode: for the
- * background video and a single sound under the live picture, and for an audio playlist's track beside its
- * Play and Pause. Each is a jump, as to a marker, in step on every screen, the nodes and the stream (the
- * engine's skip, which keeps to the file's start and end points). Dimmed until Drashti knows how long the file
- * is, a moment after it starts. Simple Mode, the phone remote and the keys have none (not asked).
+ * Back 15 s, Forward 15 s and Last 10 s (Session 50, as on the mandir's audio controls), in Pro Mode: for
+ * the background video and a single sound under the live picture, and for an audio playlist's track beside
+ * its Play and Pause. Each is a jump, as to a marker, in step on every screen, the nodes and the stream (the
+ * engine's skip, which keeps to the file's start and end points). Dimmed until Drashti knows how long the
+ * file is, a moment after it starts. Simple Mode, the phone remote and the keys have none (not asked).
  */
 
 const SKIPS: { jump: 'back' | 'forward' | 'last'; label: string; icon: Icon }[] = [
