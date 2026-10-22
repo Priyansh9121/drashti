@@ -7,8 +7,9 @@ import type { Size } from '../../../shared/scaling';
 import { engineNow, onClockJump } from './clock';
 import { LiveWindowView } from './LiveWindowView';
 import { type PipPicture, pipPlaces, pipPose, pipRect, type PipRun, pipRunAt, poseTransform } from './pip';
-import { useInputStream } from './pip-input';
+import { KeptVideo } from './KeptVideo';
 import { ElementView } from './SlideView';
+import { useVideoInput } from './video-input';
 
 /*
  * The picture-in-picture box on a screen (Session 50, render/pip.ts): a 16:9 box over the props and under the
@@ -17,18 +18,11 @@ import { ElementView } from './SlideView';
  * from its last change, and goes out from when it was taken off, each frame worked out from the engine's clock;
  * only its opacity and transform move. Black-out and the logo cover it, as they cover the slide. A video in it
  * plays muted from when it went up; a video input and a window are opened as every picture of them is
- * (render/pip-input.ts, render/live-window.ts), video only.
+ * (render/video-input.ts, render/live-window.ts), video only.
  */
 
 const FULL: CSSProperties = { position: 'absolute', inset: 0 };
 const BLACK: CSSProperties = { ...FULL, background: '#000000' };
-const FITTED: CSSProperties = {
-  position: 'absolute',
-  inset: 0,
-  width: '100%',
-  height: '100%',
-  objectFit: 'contain',
-};
 
 /** The thin border's colour: white, a little see-through. */
 const BORDER = 'rgba(255, 255, 255, 0.85)';
@@ -253,18 +247,18 @@ function PipMedia({
   );
 }
 
+/**
+ * A video input in the box: the page's one capture of it (render/video-input.ts, shared with the background's
+ * and Media's pictures of it), keeping its last picture when it stops; nothing where this computer does not have
+ * it (a node's screens). The notice and Clear the input are the background's: the box says nothing of its own.
+ */
 function PipInputPicture({ inputId, device }: { inputId: string; device: string }) {
-  const { stream, state } = useInputStream(device);
-  const ref = useRef<HTMLVideoElement>(null);
-  useEffect(() => {
-    const v = ref.current;
-    if (!v) return;
-    v.srcObject = stream;
-    if (stream) void v.play().catch(() => undefined);
-  }, [stream]);
+  const capture = useVideoInput({ inputId, device });
   return (
-    <div data-pip-picture="input" data-input-id={inputId} data-input-state={state} style={BLACK}>
-      <video ref={ref} muted playsInline disablePictureInPicture style={FITTED} />
+    <div data-pip-picture="input" data-input-id={inputId} data-input-state={capture.state} style={BLACK}>
+      {capture.state !== 'absent' && (
+        <KeptVideo stream={capture.stream} live={capture.state === 'live'} fit="contain" />
+      )}
     </div>
   );
 }
