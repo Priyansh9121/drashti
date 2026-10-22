@@ -394,15 +394,18 @@ describe('the main picture in a swap (Session 51)', () => {
 
   it('draws both pictures through the half in which the main picture moves, the moving one over the other', () => {
     const both = (...pictures: string[]) => pictures.map((picture) => ({ picture, shown: true }));
+    // Swapped, the background is kept under the main picture, unseen and playing, so a swap back shows it at
+    // once, never black under the picture going out while it would load.
+    const kept = { picture: 'background', shown: false };
     // The slides in the box, swapped (an in): before the middle as before, the slide ready unseen; after it,
-    // the background under the slide coming in; then the slide alone.
+    // the background under the slide coming in; then the slide alone, the background kept unseen.
     const slidesIn = swapping(false, true);
     expect(pipMainPlaces('slides', runAt(slidesIn, 100), true)).toEqual([
       { picture: 'background', shown: true },
       { picture: 'slide', shown: false },
     ]);
     expect(pipMainPlaces('slides', runAt(slidesIn, 300), true)).toEqual(both('background', 'slide'));
-    expect(pipMainPlaces('slides', runAt(slidesIn, 600), true)).toEqual(both('slide'));
+    expect(pipMainPlaces('slides', runAt(slidesIn, 600), true)).toEqual([kept, ...both('slide')]);
     // Swapped back (an out): both before the middle, the slide going out over the background; then the
     // background alone.
     const slidesOut = swapping(true, false);
@@ -416,15 +419,24 @@ describe('the main picture in a swap (Session 51)', () => {
       { picture: 'slide', shown: true },
     ]);
     expect(pipMainPlaces('media', runAt(videoIn, 300), true)).toEqual(both('background', 'source', 'slide'));
-    expect(pipMainPlaces('media', runAt(videoIn, 600), true)).toEqual(both('source', 'slide'));
+    expect(pipMainPlaces('media', runAt(videoIn, 600), true)).toEqual([kept, ...both('source', 'slide')]);
     const videoOut = swapping(true, false, { source: VIDEO });
     expect(pipMainPlaces('media', runAt(videoOut, 100), false)).toEqual(
       both('background', 'source', 'slide'),
     );
     expect(pipMainPlaces('media', runAt(videoOut, 300), false)).toEqual(both('background', 'slide'));
-    // No box here, or no run of its own: as pipPlaces has it.
+    // No box here, or no run of its own: as pipPlaces has it, the background kept unseen while swapped.
     expect(pipMainPlaces(null, null, false)).toEqual(pipPlaces(null, false, false).main);
-    expect(pipMainPlaces('slides', null, true)).toEqual(both('slide'));
+    expect(pipMainPlaces('slides', null, false)).toEqual(both('background'));
+    expect(pipMainPlaces('slides', null, true)).toEqual([kept, ...both('slide')]);
+    expect(pipMainPlaces('window', null, true)).toEqual([kept, ...both('source', 'slide')]);
+    // Swapped and still, and swapping back: the same background all along, never put on the page again.
+    const still = pipRunAt(swapping(false, true, { source: VIDEO }), null, 'calm', 31_000, HD);
+    expect(pipMainPlaces('media', still, true)).toEqual([kept, ...both('source', 'slide')]);
+    expect(pipMainPlaces('media', runAt(videoOut, 0), false)[0]).toEqual({
+      picture: 'background',
+      shown: true,
+    });
   });
 });
 

@@ -476,21 +476,32 @@ export function pipMainPose(run: PipRun, now: number, canvas: Size): PipPose {
 }
 
 /**
+ * While a box is up, the main picture keeps the background in its place even where it does not show it (swapped),
+ * unseen and playing: a swap back then shows it at once. Put on the page only then, a picture or a video draws
+ * nothing until its first frame, and the picture going out over it would move over black meanwhile.
+ */
+const keptBackground = (kind: PipSource['kind'] | null, slots: PipSlot[]): PipSlot[] =>
+  kind === null || slots.some((s) => s.picture === 'background')
+    ? slots
+    : [{ picture: 'background', shown: false }, ...slots];
+
+/**
  * The main picture's pictures, bottom to top, at a moment of the box's run (`run`: the box up's own, or null when
- * this screen draws none), the box up `swapped` or not: as pipPlaces has them, but through the half of a swap in
- * which the main picture moves (pipMainMove), what it showed and what it will show alike, the moving one over the
- * other.
+ * this screen draws none), the box up `swapped` or not: as pipPlaces has them, the background kept unseen while
+ * the box is swapped (keptBackground), but through the half of a swap in which the main picture moves
+ * (pipMainMove), what it showed and what it will show alike, the moving one over the other.
  */
 export function pipMainPlaces(
   kind: PipSource['kind'] | null,
   run: Pick<PipRun, 'phase' | 'layer' | 'from' | 'swapped'> | null,
   swapped: boolean,
 ): PipSlot[] {
-  if (!run) return pipPlaces(kind, swapped, swapped).main;
+  if (!run) return keptBackground(kind, pipPlaces(kind, swapped, swapped).main);
   const move = pipMainMove(run);
   // Before the swap's middle it is drawn as it was: an out moves then, an in after it.
   const first = run.swapped !== swapped;
-  if (!move || !run.from || (move.way === 'out') !== first) return pipPlaces(kind, run.swapped, swapped).main;
+  if (!move || !run.from || (move.way === 'out') !== first)
+    return keptBackground(kind, pipPlaces(kind, run.swapped, swapped).main);
   const was = pipDraw(kind, run.from.swapped).main;
   const will = pipDraw(kind, swapped).main;
   return ORDER.filter((p) => was.includes(p) || will.includes(p)).map((picture) => ({
