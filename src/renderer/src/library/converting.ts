@@ -13,6 +13,13 @@ export const jobBusy = (
 ): job is ConversionJob & { state: 'waiting' | 'converting' } =>
   job?.state === 'waiting' || job?.state === 'converting';
 
+/**
+ * A finished conversion the operator asked for, offered for Undo (Session 50: one Drashti did by itself finishes
+ * when it will, perhaps long after, and Cmd+Z would undo it instead of the operator's own last change).
+ */
+export const offeredForUndo = (job: ConversionJob): boolean =>
+  job.state === 'done' && job.conversionId !== null && job.byItself !== true;
+
 /** The newest job for a media item. */
 export function jobFor(jobs: readonly ConversionJob[], mediaId: string): ConversionJob | undefined {
   for (let i = jobs.length - 1; i >= 0; i--) if (jobs[i]?.mediaId === mediaId) return jobs[i];

@@ -23,6 +23,8 @@ export interface ConversionJob {
   convertedId: string | null;
   convertedName: string | null;
   conversionId: string | null;
+  /** Started by Drashti itself (Session 50: an import found a file it cannot play): finished, never offered for Undo. */
+  byItself?: boolean;
 }
 
 export type ConvertResult = { ok: true; jobs: ConversionJob[] } | { ok: false; message: string };

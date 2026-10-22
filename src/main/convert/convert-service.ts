@@ -333,6 +333,7 @@ export class ConvertService {
         convertedId: null,
         convertedName: null,
         conversionId: null,
+        ...(byItself ? { byItself: true } : {}),
       };
       this.jobs.push(job);
       if (byItself)
