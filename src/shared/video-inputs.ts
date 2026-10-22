@@ -36,10 +36,15 @@ export interface VideoInputFields {
  */
 export type CameraAccess = 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown';
 
-/** A page drawing a video input says how it stands: playing, or stopped (unplugged, or taken by another app). */
+/**
+ * A page drawing a video input says how it stands: playing, or stopped (unplugged, or taken by another app).
+ * 'missing' (Session 50, for restart recovery): the page found no camera of that device's name among this
+ * computer's cameras (it can tell only once it may see their names); otherwise it is 'stopped'. Right after a
+ * restart that takes the input off and the recovery notice names it; at any other time it counts as stopped.
+ */
 export interface VideoInputReport {
   inputId: string;
-  state: 'playing' | 'stopped';
+  state: 'playing' | 'stopped' | 'missing';
 }
 
 /** How the video input on the screens stands, for the operator's notice. */
@@ -48,3 +53,15 @@ export interface VideoInputStatus {
   stopped: { inputId: string; name: string } | null;
   access: CameraAccess;
 }
+
+/** The longest name an operator gives a video input, and the longest device name kept (Session 50). */
+export const VIDEO_INPUT_NAME_MAX = 60;
+export const VIDEO_INPUT_DEVICE_MAX = 300;
+/** The most video inputs one computer keeps. */
+export const VIDEO_INPUTS_MAX = 20;
+
+/**
+ * How long a video input takes to come on (Session 50): it dissolves in from the background before, over 1 s, as
+ * the mandir's setup does, the way a video background dissolves in with its slide; never a cut, never through black.
+ */
+export const INPUT_FADE_MS = 1000;
