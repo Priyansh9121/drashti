@@ -305,10 +305,23 @@ export function watchKeepScreens(): void {
     const kept = snapshot
       ? screensKept(s.applied, usesOf(snapshot), now.answered)
       : now.answered !== 'went-back';
-    useSetup.setState(
-      kept
-        ? { applied: null }
-        : { applied: null, finished: null, step: STEPS.indexOf('Screens'), wentBack: true, problem: null },
-    );
+    if (kept) {
+      useSetup.setState({ applied: null });
+      return;
+    }
+    useSetup.setState({
+      applied: null,
+      finished: null,
+      step: STEPS.indexOf('Screens'),
+      wentBack: true,
+      problem: null,
+    });
+    // The change may have moved the controls (off an output, to a display free then): marked where they are now.
+    void window.drashti.setup.state().then((state) => {
+      useSetup.setState({
+        operatorDisplayId: state.operatorDisplayId,
+        controlsDisplayId: state.controlsDisplayId,
+      });
+    });
   });
 }
