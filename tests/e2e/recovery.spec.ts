@@ -225,9 +225,10 @@ async function audioPage(app: ElectronApplication): Promise<Page> {
 }
 
 /**
- * Wait until a window's copy of a file plays within a quarter of a second of where the engine's clock has it: from
- * its last jump, between its start and end points, round its loop (shared/media.ts playbackPosition, as every
- * screen and the audio player work it out), the median of a few looks.
+ * Wait until a window's copy of a file plays within half a second of where the engine's clock has it: from its
+ * last jump, between its start and end points, round its loop (shared/media.ts playbackPosition, as every screen
+ * and the audio player work it out), the median of a few looks. A jump or points lost put it seconds away; how
+ * finely copies keep in step is skips.spec.ts's and markers.spec.ts's to say.
  */
 async function nearTheClock(page: Page, selector: string, clock: PlaybackClock, what: string): Promise<void> {
   const until = Date.now() + 15_000;
@@ -250,7 +251,7 @@ async function nearTheClock(page: Page, selector: string, clock: PlaybackClock, 
     });
     const median = offsets.sort((a, b) => a - b)[2];
     seen.push(median === undefined ? 'none' : median.toFixed(3));
-    if (median !== undefined && Math.abs(median) < 0.25) return;
+    if (median !== undefined && Math.abs(median) < 0.5) return;
     if (Date.now() > until)
       throw new Error(
         `${what}: not where the clock has it after 15 s. Offsets, each look: ${seen.join(' ')}`,
