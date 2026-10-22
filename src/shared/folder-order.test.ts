@@ -35,6 +35,16 @@ describe('a folder’s files in a playlist’s order (Session 26c)', () => {
     ]);
   });
 
+  it('knows the videos and sounds Session 50 takes as videos and sounds (an MXF first, an MKA last)', () => {
+    expect(order(['dhun.mka', 'darshan.jpg', 'Katha.pptx', 'Arti.mxf', 'lyrics.txt', 'Bhajan.ac3'])).toEqual([
+      ['', ['Arti.mxf', 'Katha.pptx', 'lyrics.txt', 'darshan.jpg', 'Bhajan.ac3', 'dhun.mka']],
+    ]);
+    for (const video of ['a.3gp', 'a.flv', 'a.ts', 'a.vob', 'a.dv', 'a.asf', 'a.divx', 'a.ogv'])
+      expect(kindRank(video), video).toBe(0);
+    for (const sound of ['a.eac3', 'a.dts', 'a.caf', 'a.amr', 'a.ape', 'a.wv', 'a.mp2', 'a.au', 'a.m4b'])
+      expect(kindRank(sound), sound).toBe(4);
+  });
+
   it('keeps Gujarati and Hindi names, and puts other kinds after decks: presentations, pictures, sounds', () => {
     expect(order(['પ્રવચન.mp4', 'dhun.mp3', 'darshan.jpg', 'lyrics.txt', 'सभा.pdf'])).toEqual([
       ['', ['પ્રવચન.mp4', 'सभा.pdf', 'lyrics.txt', 'darshan.jpg', 'dhun.mp3']],

@@ -10,6 +10,73 @@ export const MEDIA_SCHEME = 'drashti-media';
 export const MEDIA_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
 /**
+ * The videos Drashti takes, by extension, wherever it takes media: Import…, a drop, the drop folder, a
+ * folder playlist (src/main/import/scan.ts). Session 50 added the common ones FFmpeg reads; what Drashti's
+ * player cannot play is converted by itself at import (src/main/convert/plan.ts says which).
+ */
+export const VIDEO_EXTENSIONS: string[] = [
+  'mp4',
+  'm4v',
+  'mov',
+  'qt',
+  'avi',
+  'wmv',
+  'mkv',
+  'mpg',
+  'mpeg',
+  'webm',
+  'mts',
+  'm2ts',
+  // Session 50.
+  '3gp',
+  '3g2',
+  'flv',
+  'f4v',
+  'ogv',
+  'ts',
+  'm2t',
+  'vob',
+  'mxf',
+  'dv',
+  'asf',
+  'divx',
+  'rm',
+  'rmvb',
+];
+
+/** The sounds Drashti takes (Audio's Import offers just these, Session 44), as the videos are. */
+export const SOUND_EXTENSIONS: string[] = [
+  'mp3',
+  'wav',
+  'aif',
+  'aiff',
+  'm4a',
+  'aac',
+  'flac',
+  'ogg',
+  'oga',
+  'opus',
+  'wma',
+  // Session 50.
+  'mka',
+  'ac3',
+  'eac3',
+  'dts',
+  'caf',
+  'amr',
+  'ape',
+  'wv',
+  'mp2',
+  'au',
+  'aifc',
+  'm4b',
+  'weba',
+  'm4r',
+  'mpa',
+  'ra',
+];
+
+/**
  * The URL that loads a media item's file. A later try (a node's copy that landed after the first
  * load failed) gets a URL of its own: Chromium fails a URL that failed a moment ago at once, without
  * asking for it again, for up to 30 s or more. The main process reads only the path.

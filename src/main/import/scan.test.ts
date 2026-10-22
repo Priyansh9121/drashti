@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { formatOf, importableExtensions, mediaKindOf, scanPaths } from './scan';
+import { formatOf, importableExtensions, mediaKindOf, scanPaths, SOUND_EXTENSIONS } from './scan';
 
 function tree(files: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), 'drashti-scan-'));
@@ -113,5 +113,71 @@ describe('what the Import… menu’s Files… offers (Session 26a)', () => {
     ])
       expect(offered).toContain(ext);
     expect(offered).not.toContain('doc');
+  });
+});
+
+/** The kinds Session 50 adds: the common videos FFmpeg reads, and every sound Priyansh named. */
+const NEW_VIDEOS = [
+  '3gp',
+  '3g2',
+  'flv',
+  'f4v',
+  'ogv',
+  'ts',
+  'm2t',
+  'vob',
+  'mxf',
+  'dv',
+  'asf',
+  'divx',
+  'rm',
+  'rmvb',
+];
+const NEW_SOUNDS = [
+  'mka',
+  'ac3',
+  'eac3',
+  'dts',
+  'caf',
+  'amr',
+  'ape',
+  'wv',
+  'mp2',
+  'au',
+  'aifc',
+  'm4b',
+  'weba',
+  'm4r',
+  'mpa',
+  'ra',
+];
+
+describe('every video and every sound file (Session 50)', () => {
+  it('takes the new kinds wherever Drashti takes media, by name, in any case', () => {
+    for (const ext of NEW_VIDEOS) {
+      expect(mediaKindOf(`/a/Placeholder clip.${ext}`), ext).toBe('video');
+      expect(mediaKindOf(`/a/Placeholder clip.${ext.toUpperCase()}`), ext).toBe('video');
+      // A drop, Import… and a folder playlist (which takes what formatOf calls media) alike.
+      expect(formatOf(`/a/Placeholder clip.${ext}`), ext).toBe('media');
+    }
+    for (const ext of NEW_SOUNDS) {
+      expect(mediaKindOf(`/a/Placeholder sound.${ext}`), ext).toBe('audio');
+      expect(formatOf(`/a/Placeholder sound.${ext}`), ext).toBe('media');
+    }
+    // What was taken before still is.
+    for (const ext of ['mp4', 'mov', 'mkv', 'avi', 'wmv', 'webm', 'mts', 'm2ts', 'mpg'])
+      expect(mediaKindOf(`/a/x.${ext}`), ext).toBe('video');
+    for (const ext of ['mp3', 'wav', 'aiff', 'm4a', 'aac', 'flac', 'ogg', 'opus', 'wma'])
+      expect(mediaKindOf(`/a/x.${ext}`), ext).toBe('audio');
+  });
+
+  it('offers them in Import… (Files…), and the sounds in Audio’s Import, once each', () => {
+    const offered = importableExtensions();
+    expect(new Set(offered).size).toBe(offered.length);
+    for (const ext of [...NEW_VIDEOS, ...NEW_SOUNDS]) expect(offered, ext).toContain(ext);
+    expect(new Set(SOUND_EXTENSIONS).size).toBe(SOUND_EXTENSIONS.length);
+    for (const ext of NEW_SOUNDS) expect(SOUND_EXTENSIONS, ext).toContain(ext);
+    // Audio's Import offers sounds only.
+    for (const ext of NEW_VIDEOS) expect(SOUND_EXTENSIONS, ext).not.toContain(ext);
   });
 });

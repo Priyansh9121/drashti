@@ -8,6 +8,8 @@
  * for the top folder, and none for a folder with nothing of its own.
  */
 
+import { SOUND_EXTENSIONS, VIDEO_EXTENSIONS } from './media';
+
 /** A→Z as people read it: case and accents aside, numbers by their value. */
 export const naturalCompare: (a: string, b: string) => number = new Intl.Collator('en', {
   numeric: true,
@@ -86,10 +88,11 @@ export function partsInFolderOrder<T>(
   return out;
 }
 
-const VIDEO = new Set(['mp4', 'm4v', 'mov', 'qt', 'avi', 'wmv', 'mkv', 'mpg', 'mpeg', 'webm', 'mts', 'm2ts']);
+// The videos and sounds the import takes (Session 50: one list, in shared/media.ts).
+const VIDEO = new Set(VIDEO_EXTENSIONS);
 const DECK = new Set(['pptx', 'ppt', 'key', 'pdf']);
 const PICTURE = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tif', 'tiff', 'heic', 'heif', 'webp', 'avif']);
-const SOUND = new Set(['mp3', 'wav', 'aif', 'aiff', 'm4a', 'aac', 'flac', 'ogg', 'oga', 'opus', 'wma']);
+const SOUND = new Set(SOUND_EXTENSIONS);
 
 const extOf = (path: string): string => {
   const name = nameOf(path);

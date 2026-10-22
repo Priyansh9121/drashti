@@ -2,6 +2,7 @@ import type { Dirent } from 'node:fs';
 import { lstat, readdir, stat } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import type { ImportFormat } from '../../shared/import';
+import { SOUND_EXTENSIONS, VIDEO_EXTENSIONS } from '../../shared/media';
 import { PICTURE_EXTENSIONS, pictureSourceOf } from '../../shared/pictures';
 
 export type MediaKind = 'image' | 'video' | 'audio';
@@ -9,22 +10,10 @@ export type MediaKind = 'image' | 'video' | 'audio';
 const MEDIA: Record<string, MediaKind> = {};
 for (const ext of ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tif', 'tiff', 'heic', 'heif', 'webp', 'avif'])
   MEDIA[ext] = 'image';
-for (const ext of ['mp4', 'm4v', 'mov', 'qt', 'avi', 'wmv', 'mkv', 'mpg', 'mpeg', 'webm', 'mts', 'm2ts'])
-  MEDIA[ext] = 'video';
+// Every common video and sound FFmpeg reads (Session 50: shared/media.ts lists them).
+for (const ext of VIDEO_EXTENSIONS) MEDIA[ext] = 'video';
 /** Sounds Drashti imports (the Audio panel's Import offers just these, Session 44). */
-export const SOUND_EXTENSIONS = [
-  'mp3',
-  'wav',
-  'aif',
-  'aiff',
-  'm4a',
-  'aac',
-  'flac',
-  'ogg',
-  'oga',
-  'opus',
-  'wma',
-];
+export { SOUND_EXTENSIONS };
 for (const ext of SOUND_EXTENSIONS) MEDIA[ext] = 'audio';
 
 const PP6 = new Set(['pro6', 'pro6x', 'pro6pl', 'pro6plx', 'pro6template']);
