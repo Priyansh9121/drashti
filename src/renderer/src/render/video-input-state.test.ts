@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   findInputDevice,
   inputDeviceNames,
+  notFoundReason,
   reportOf,
   retryAfterMs,
   stopReasonOf,
@@ -77,5 +78,24 @@ describe('a video input with no live picture', () => {
     expect(reportOf('stopped')).toBe('stopped');
     expect(reportOf('opening')).toBeNull();
     expect(reportOf('absent')).toBeNull();
+  });
+
+  // Restart recovery (Session 50): the main process takes a put-back input off, and the recovery notice names it,
+  // only when a screen says it is not on this computer, so only a page that can see the cameras' names says so.
+  it('says missing only when no camera of that name is there and the page can see the cameras’ names', () => {
+    expect(reportOf('stopped', 'missing')).toBe('missing');
+    for (const reason of ['refused', 'busy', 'ended', 'muted'] as const)
+      expect(reportOf('stopped', reason)).toBe('stopped');
+    expect(reportOf('live', null)).toBe('playing');
+    const named = (label: string) => ({ kind: 'videoinput', deviceId: `id-${label}`, label });
+    const hidden = { kind: 'videoinput', deviceId: '', label: '' };
+    const mic = { kind: 'audioinput', deviceId: 'mic', label: 'Placeholder microphone' };
+    // Other cameras by name, not this one: not there.
+    expect(notFoundReason([named('Placeholder camera'), mic], 'Placeholder input')).toBe('missing');
+    // No camera at all: not there either.
+    expect(notFoundReason([mic], 'Placeholder input')).toBe('missing');
+    expect(notFoundReason([], 'Placeholder input')).toBe('missing');
+    // Cameras whose names are hidden (the computer has not let Drashti use them yet): never said missing.
+    expect(notFoundReason([hidden, mic], 'Placeholder input')).toBe('refused');
   });
 });
