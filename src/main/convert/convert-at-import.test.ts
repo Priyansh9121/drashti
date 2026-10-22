@@ -351,4 +351,63 @@ describe.skipIf(!ffmpegHere(ffmpeg))('converting at import, with FFmpeg', () => 
       { name: 'Placeholder old clip.avi', playable: 0 },
     ]);
   }, 180_000);
+
+  it('converts HEVC by itself where this computer cannot play it (Session 51), into H.264 that plays', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-convert-at-import-'));
+    const source = join(dir, 'Placeholder phone.mp4');
+    const mediaDir = join(dir, 'Media');
+    mkdirSync(mediaDir);
+    make([
+      ...PICTURE,
+      '-t',
+      '1',
+      '-c:v',
+      'libx265',
+      '-tag:v',
+      'hvc1',
+      '-x265-params',
+      'log-level=error',
+      source,
+    ]);
+    const library = openDatabase(join(dir, 'drashti.sqlite'));
+    db = library;
+    // As the operator window said: this computer cannot play HEVC (Windows without Microsoft's HEVC extension).
+    const store = new MediaStore(library, {
+      dir: mediaDir,
+      freeBytes: () => 100 * 1024 ** 3,
+      readInfo: (file) => readInfo(ffmpeg, file),
+      playsHevc: false,
+    });
+    const result = await store.importFile(source, { kind: 'media', path: source });
+    if (result.outcome === 'failed') throw new Error(result.issue.message);
+    expect(result).toMatchObject({
+      convert: true,
+      probe: { playable: false, format: 'HEVC (H.265) video (MP4)' },
+    });
+    let jobs: ConversionJob[] = [];
+    service = new ConvertService({
+      db: library,
+      mediaDir,
+      ffmpegPath: () => ffmpeg,
+      busy: () => null,
+      freeBytes: () => 100 * 1024 ** 3,
+      changed: (j) => {
+        jobs = j;
+      },
+      libraryChanged: () => undefined,
+      log: () => undefined,
+      limits: { afterImportMs: 0 },
+    });
+    expect(
+      service.convertImported({ items: [{ issues: playIssues('Placeholder phone.mp4', result) }] }),
+    ).toBe(1);
+    await until(() => jobs.every((j) => j.state === 'done' || j.state === 'failed'), 60_000);
+    expect(jobs.map((j) => [j.state, j.convertedName])).toEqual([['done', 'Placeholder phone.mp4']]);
+    const copy = library
+      .prepare('SELECT c.path FROM media_conversions mc JOIN media c ON c.id = mc.converted_id')
+      .get() as { path: string };
+    const info = await readInfo(ffmpeg, join(mediaDir, copy.path));
+    expect(info.video).toMatchObject({ codec: 'h264', width: 64, height: 48 });
+    expect(atImport('video', info, false)).toBe('plays');
+  }, 90_000);
 });

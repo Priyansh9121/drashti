@@ -241,7 +241,9 @@ const READS: Record<string, string> = {
 
 /** A store whose FFmpeg reads files as READS says, noting each file it was asked to read. */
 function checking(
-  options: Partial<Pick<MediaStoreOptions, 'readInfo'>> & { reads?: Record<string, string> } = {},
+  options: Partial<Pick<MediaStoreOptions, 'readInfo' | 'playsHevc'>> & {
+    reads?: Record<string, string>;
+  } = {},
 ) {
   const t = setup();
   const asked: string[] = [];
@@ -249,6 +251,7 @@ function checking(
   const store = new MediaStore(t.db, {
     dir: t.mediaDir,
     freeBytes: () => 100 * GiB,
+    ...(options.playsHevc === undefined ? {} : { playsHevc: options.playsHevc }),
     readInfo:
       options.readInfo ??
       ((file) => {
@@ -303,6 +306,24 @@ describe('every video and sound read with FFmpeg at import (Session 50)', () => 
       { name: 'Placeholder katha.mkv', playable: 0, format: 'H.264 video with AC-3 sound (Matroska)' },
       { name: 'Placeholder phone.mov', playable: null, format: 'HEVC (H.265) video (QuickTime)' },
     ]);
+  });
+
+  it('HEVC (Session 51): converted by itself where this computer cannot play it; where it can, it plays as it is', async () => {
+    const cannot = checking({ playsHevc: false });
+    expect(await cannot.take('Placeholder phone.mov', 'placeholder mov')).toMatchObject({
+      outcome: 'imported',
+      convert: true,
+      probe: { playable: false, format: 'HEVC (H.265) video (QuickTime)', kind: 'video' },
+    });
+    expect(rows(cannot.db)).toEqual([
+      { name: 'Placeholder phone.mov', playable: 0, format: 'HEVC (H.265) video (QuickTime)' },
+    ]);
+    for (const playsHevc of [true, null]) {
+      const can = checking({ playsHevc });
+      const plays = await can.take('Placeholder phone.mov', 'placeholder mov');
+      expect(plays).toMatchObject({ probe: { playable: null, format: 'HEVC (H.265) video (QuickTime)' } });
+      expect(plays.outcome !== 'failed' && plays.convert).toBeFalsy();
+    }
   });
 
   it('keeps what the file’s own header says when FFmpeg reads nothing in it, fails, or takes too long', async () => {

@@ -345,6 +345,17 @@ describe('what Drashti’s player plays, and what is converted at import (Sessio
     expect(at('video', 'hevcAc3')).toBe('convert');
   });
 
+  it('converts HEVC where this computer cannot play it (Session 51); where it can, or before it is known, as before', () => {
+    const hevc = parseFfmpegInfo(FILES.hevc);
+    // Windows without Microsoft's HEVC extension, say.
+    expect(atImport('video', hevc, false)).toBe('convert');
+    expect(atImport('video', hevc, true)).toBe('hevc');
+    // Not known yet (the window has not said): it plays where it can, and Convert is offered where it cannot.
+    expect(atImport('video', hevc, null)).toBe('hevc');
+    // Its sound plays nowhere: converted either way.
+    expect(atImport('video', parseFfmpegInfo(FILES.hevcAc3), true)).toBe('convert');
+  });
+
   it('leaves a file FFmpeg found nothing in to its own header, as before', () => {
     expect(at('video', 'nothing')).toBe('unread');
     expect(at('audio', 'nothing')).toBe('unread');

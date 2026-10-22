@@ -98,7 +98,10 @@ export const PLAYER = {
   video: new Set(['h264', 'vp8', 'vp9', 'av1']),
   /** The H.264 Chromium decodes: 8-bit 4:2:0 (10-bit or 4:2:2 H.264 plays black). */
   h264PixelFormats: new Set(['yuv420p', 'yuvj420p']),
-  /** HEVC plays where the computer decodes it: the window asks (convert-store's playsHevc), never the import. */
+  /**
+   * HEVC plays where the computer decodes it: the window asks (convert-store's playsHevc), and since Session 51
+   * tells the import (convert/plays-hevc.ts), which converts it by itself where it cannot.
+   */
   hevc: 'hevc',
   /** Sounds: AAC, MP3, Opus, Vorbis, FLAC and uncompressed (PCM) sound. AC-3, E-AC-3 and DTS play silent. */
   audio: new Set([
@@ -125,7 +128,10 @@ export type AtImport =
   | 'plays'
   /** Drashti's player cannot play it (its container, its picture or its sound): converted by itself. */
   | 'convert'
-  /** HEVC: it plays where the computer decodes it, and the window offers Convert where it cannot. */
+  /**
+   * HEVC where this computer plays it, or before that is known: it plays as it is, and the window offers Convert
+   * where it cannot. Where it is known not to play (Session 51), HEVC is 'convert'.
+   */
   | 'hevc'
   /** FFmpeg found no picture or sound in it to play: its own header decides, as before (import/probe.ts). */
   | 'unread';
@@ -141,14 +147,21 @@ function pictureVerdict(video: NonNullable<MediaInfo['video']>): 'plays' | 'no' 
   return video.codec !== 'h264' || PLAYER.h264PixelFormats.has(video.pixFmt) ? 'plays' : 'no';
 }
 
-/** What an import does with a video or sound file Drashti took, from what FFmpeg read in it (Session 50). */
-export function atImport(kind: 'video' | 'audio', info: MediaInfo): AtImport {
+/**
+ * What an import does with a video or sound file Drashti took, from what FFmpeg read in it (Session 50), and
+ * whether this computer plays HEVC (Session 51: the window's answer; null while it is not known).
+ */
+export function atImport(
+  kind: 'video' | 'audio',
+  info: MediaInfo,
+  playsHevc: boolean | null = null,
+): AtImport {
   const picture = pictureOf(kind, info);
   if ((!picture && !info.audio) || chooseTarget(kind, info) === null) return 'unread';
   const shown = picture ? pictureVerdict(picture) : 'plays';
   const opens = PLAYER.containers.has(info.container ?? '');
   const heard = info.audio === null || PLAYER.audio.has(info.audio.codec);
-  if (!opens || shown === 'no' || !heard) return 'convert';
+  if (!opens || shown === 'no' || !heard || (shown === 'hevc' && playsHevc === false)) return 'convert';
   return shown === 'hevc' ? 'hevc' : 'plays';
 }
 

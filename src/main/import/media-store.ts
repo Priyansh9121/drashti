@@ -36,6 +36,11 @@ export interface MediaStoreOptions {
    * itself (convert/plan.ts's atImport decides).
    */
   readInfo?: (file: string) => Promise<MediaInfo & { timedOut?: true }>;
+  /**
+   * Whether this computer plays HEVC video (Session 51: the operator window's answer, null while not known).
+   * Where it cannot, HEVC is converted by itself as any file Drashti cannot play; where it can, it plays as it is.
+   */
+  playsHevc?: boolean | null;
 }
 
 export type MediaImportResult =
@@ -168,7 +173,7 @@ export class MediaStore {
     if (kind === 'image' || !this.options.readInfo) return { probe };
     const info = await this.options.readInfo(file).catch(() => null);
     if (!info || info.timedOut) return { probe };
-    const verdict = atImport(kind, info);
+    const verdict = atImport(kind, info, this.options.playsHevc ?? null);
     if (verdict === 'unread') return { probe };
     const moving = kind === 'video' && info.video !== null && !info.video.still;
     return {
