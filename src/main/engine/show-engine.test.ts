@@ -1292,6 +1292,7 @@ describe('ShowEngine', () => {
         stageMessage: true,
         timers: 1,
         lowerThird: true,
+        window: null,
       });
       // The sound, the timer and the lower third keep their start times: they carry on, not start over.
       expect(engine.current.layers.audio).toEqual(audio);
@@ -1317,6 +1318,70 @@ describe('ShowEngine', () => {
       ).toBe(false);
       expect(engine.current.layers.slide).toBeNull();
       expect(engine.current.layers.background).toEqual(background);
+    });
+  });
+
+  describe('another app’s window as the background (Session 48)', () => {
+    const meeting = { sourceId: 'window:4021:0', name: 'Placeholder meeting' };
+
+    it('puts it up as the background, live from then; slides go over it and a picture takes its place', () => {
+      const { engine } = setup();
+      expect(engine.showWindow(meeting)).toMatchObject({ ok: true, changed: true });
+      const up = engine.current.layers.background;
+      expect(up).toMatchObject({ kind: 'window', ...meeting });
+      expect(up?.kind === 'window' ? up.startedAt : 0).toBeGreaterThan(0);
+      engine.dispatch(goLive('p1', 0));
+      expect(engine.current.layers.background).toBe(up);
+      engine.dispatch({
+        type: 'setBackground',
+        background: { kind: 'media', mediaId: 'clouds', media: 'image', fit: 'fit', loop: false },
+      });
+      expect(engine.current.layers.background?.kind).toBe('media');
+    });
+
+    it('comes off with Clear all and with the background’s own clear, and Put it back brings it back as it was', () => {
+      const { engine } = setup();
+      engine.showWindow(meeting);
+      const up = engine.current.layers.background;
+      engine.dispatch({ type: 'clearAll' });
+      expect(engine.current.layers.background).toBeNull();
+      expect(engine.current.canPutBack).toBe(true);
+      engine.dispatch({ type: 'putBack' });
+      expect(engine.current.layers.background).toEqual(up);
+      engine.dispatch({ type: 'clearLayer', layer: 'background' });
+      expect(engine.current.layers.background).toBeNull();
+    });
+
+    it('is covered by black-out and the logo, never taken off by them', () => {
+      const { engine } = setup();
+      engine.showWindow(meeting);
+      const up = engine.current.layers.background;
+      engine.dispatch({ type: 'setBlackout', on: true });
+      engine.dispatch({ type: 'showLogo', prop: { id: 'logo', name: 'Logo', elements: [] } });
+      expect(engine.current.layers.background).toBe(up);
+      engine.dispatch({ type: 'hideLogo' });
+      engine.dispatch({ type: 'setBlackout', on: false });
+      expect(engine.current.layers.background).toBe(up);
+    });
+
+    it('cannot be chosen by a command: no window, phone or API names a window or a display', () => {
+      for (const background of [
+        { kind: 'window', sourceId: 'window:4021:0', name: 'Placeholder meeting' },
+        { kind: 'window', sourceId: 'screen:0:0', name: 'Entire screen' },
+      ])
+        expect(parseEngineCommand({ type: 'setBackground', background }).ok).toBe(false);
+    });
+
+    it('is never put back after a restart (the window may be gone), and says which it was', () => {
+      const { engine } = setup();
+      const put = engine.restore({
+        slide: { presentationId: 'p1', slideIndex: 0 },
+        background: { kind: 'window', ...meeting, startedAt: 42 },
+        blackout: false,
+      });
+      expect(engine.current.layers.background).toBeNull();
+      expect(engine.current.layers.slide).not.toBeNull();
+      expect(put).toMatchObject({ slide: true, background: false, window: 'Placeholder meeting' });
     });
   });
 

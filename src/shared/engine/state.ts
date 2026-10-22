@@ -19,9 +19,10 @@ import type { LowerThird } from '../lower-thirds';
  * Bump ENGINE_STATE_VERSION whenever the shape changes incompatibly. 9 (Session 27): each Look group's
  * Movement, new transition kinds, a message's shownAt; an older phone, browser page or node says
  * 'incompatible' rather than drawing a kind it does not know. 10 (Sessions 31–36): a slide's darkening
- * behind the words, which an older one would leave out. 11 (Session 44): the lower third's layer.
+ * behind the words, which an older one would leave out. 11 (Session 44): the lower third's layer. 12
+ * (Session 48): another app's window as the background.
  */
-export const ENGINE_STATE_VERSION = 11;
+export const ENGINE_STATE_VERSION = 12;
 
 export type LayerName =
   'audio' | 'background' | 'slide' | 'props' | 'lowerThird' | 'messages' | 'ticker' | 'masks';
@@ -162,12 +163,29 @@ export interface MediaBackground {
 export type BackgroundChoice = { kind: 'color'; color: string } | MediaBackground;
 
 /**
- * What the background layer shows: a colour, or an image or video from the
- * media library. A slide's background cue sets it (PLAN.md 4.3); it stays up
- * on later slides until something replaces or clears it.
+ * Another app's window, live (Session 48: a Zoom meeting's window, say), fitted inside with black around it.
+ * Only the main process puts one up, from the windows it offered (src/main/live-window/): never a command
+ * from a window, a phone or the API. Each screen on this computer captures it; output nodes, phones and
+ * stage screens cannot show it, and restart recovery never puts it back (the window may be gone).
+ */
+export interface WindowBackground {
+  kind: 'window';
+  /** The window's capture id on this computer ("window:<number>:<n>"), never a display's. */
+  sourceId: string;
+  /** Its name as the computer gives it ("Zoom Meeting"), for the operator, a stage screen and a phone. */
+  name: string;
+  /** When it went up (ms since the epoch, main-process clock): each screen captures it afresh from then. */
+  startedAt: number;
+}
+
+/**
+ * What the background layer shows: a colour, an image or video from the
+ * media library, or another app's window (Session 48). A slide's background cue sets it (PLAN.md 4.3); it
+ * stays up on later slides until something replaces or clears it.
  */
 export type BackgroundLayer =
   | { kind: 'color'; color: string }
+  | WindowBackground
   | (MediaBackground & {
       /**
        * When playback started (ms since the epoch, main-process clock). The

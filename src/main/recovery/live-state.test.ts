@@ -86,6 +86,19 @@ describe('restart recovery', () => {
     expect(savedFrom(live({ slideIndex: null }), 'run-1').slide).toBeNull();
   });
 
+  it('keeps another app’s window that was the background, so the notice can name it (Session 48)', async () => {
+    const writer = new LiveStateWriter(files, { throttleMs: 10 });
+    const window = {
+      kind: 'window',
+      sourceId: 'window:4021:0',
+      name: 'Placeholder meeting',
+      startedAt: 77,
+    } as const;
+    const state = live({ slideIndex: null });
+    await saved(writer, { ...state, layers: { ...state.layers, background: window } });
+    expect(toRestore(files)).toMatchObject({ background: window });
+  });
+
   it('keeps the live Look; a Look other than the first is worth putting back on its own', async () => {
     const writer = new LiveStateWriter(files, { throttleMs: 10 });
     const nothing = initialEngineState();

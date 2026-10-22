@@ -1792,9 +1792,11 @@ function start(): void {
       lowerThird: put.lowerThird,
       stageMessage: put.stageMessage,
       timers: put.timers,
+      window: put.window,
     };
-    // Ids and counts only in the log (the notice itself names the presentation).
-    const { slide: slideBack, ...alsoBack } = put;
+    // Ids and counts only in the log (the notice itself names the presentation, and a window: its name can
+    // be anything, an inbox's say, Session 48).
+    const { slide: slideBack, window: windowName, ...alsoBack } = put;
     log.warn(
       `Recovery after an unexpected stop: ${JSON.stringify({
         slide:
@@ -1804,6 +1806,7 @@ function start(): void {
         slideGone: recovery.slideGone,
         playlistItem: saved.playlist?.itemId ?? null,
         ...alsoBack,
+        windowNotPutBack: windowName !== null,
       })}`,
     );
   }
@@ -1824,7 +1827,8 @@ function start(): void {
             }
           : null,
       slideGone,
-      background: old.background !== null,
+      background: old.background !== null && old.background.kind !== 'window',
+      window: old.background?.kind === 'window' ? old.background.name : null,
       blackout: old.blackout,
       logo: old.logo !== null,
       audio: old.audio !== null,

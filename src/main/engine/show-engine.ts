@@ -25,6 +25,7 @@ import {
   UPCOMING_ITEMS,
   type UpcomingItem,
   type UpNext,
+  type WindowBackground,
 } from '../../shared/engine/state';
 import type { EngineTransport } from '../../shared/engine/transport';
 import type { CalendarDay } from '../../shared/calendar';
@@ -177,6 +178,11 @@ export interface Restored {
   lowerThird: boolean;
   stageMessage: boolean;
   timers: number;
+  /**
+   * Another app's window that was the background (Session 48), by name: never put back (it may be gone),
+   * only said. Null when there was none.
+   */
+  window: string | null;
 }
 
 /**
@@ -323,7 +329,10 @@ export class ShowEngine {
     } else if (playlist?.item.kind === 'media') {
       actions.push({ type: 'live/item', playlist: playlist.cursor });
     }
-    if (request.background) actions.push({ type: 'background/set', background: request.background });
+    // Another app's window is never put back: it may be gone, or be another window now (Session 48).
+    const window = request.background?.kind === 'window' ? request.background.name : null;
+    const background = window === null ? request.background : null;
+    if (background) actions.push({ type: 'background/set', background });
     if (request.blackout) actions.push({ type: 'blackout/set', on: true });
     if (request.logo) actions.push({ type: 'logo/set', prop: request.logo });
     // The sound keeps its start time, so it carries on where it would be now, as a video does.
@@ -367,7 +376,7 @@ export class ShowEngine {
     return {
       look: lookBack ? look.name : null,
       slide,
-      background: request.background !== null,
+      background: background !== null,
       blackout: request.blackout,
       logo: Boolean(request.logo),
       audio: Boolean(request.audio),
@@ -378,7 +387,24 @@ export class ShowEngine {
       lowerThird: Boolean(request.lowerThird),
       stageMessage: Boolean(request.stageMessage),
       timers,
+      window,
     };
+  }
+
+  /**
+   * Another app's window as the background (Session 48), live on every screen of this computer from now,
+   * in place of what was there. Only the main process calls this, with a window it offered and the operator
+   * chose (src/main/live-window/): no command from a window, a phone or the API can name one.
+   */
+  showWindow(window: Pick<WindowBackground, 'sourceId' | 'name'>): CommandResult {
+    return this.atOnce(() =>
+      this.apply([
+        {
+          type: 'background/set',
+          background: { kind: 'window', sourceId: window.sourceId, name: window.name, startedAt: this.now() },
+        },
+      ]),
+    );
   }
 
   /**

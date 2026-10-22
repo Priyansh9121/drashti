@@ -11,6 +11,17 @@ import { useNow } from './useNow';
 import { ClockStyleContext } from './clock-style';
 import { type ClockStyle, formatClock } from '../../../shared/format';
 
+/**
+ * What a stage screen says is up when no slide is: the background's kind, never the picture itself (another
+ * app's window, Session 48, as a video).
+ */
+export function backgroundWords(background: EngineState['layers']['background']): string {
+  if (background?.kind === 'media')
+    return `${background.media === 'image' ? 'Picture' : 'Video'} on the screens`;
+  if (background?.kind === 'window') return 'Window on the screens';
+  return 'Nothing on the screens';
+}
+
 /*
  * The stage screen (PLAN.md 4.3): what the performers need, in large text
  * on black. The slide on the screens and the one after it, the slide's
@@ -232,11 +243,7 @@ export function StageView({
                 size={sizeFor(languageView(slide.slide, languages), 92)}
               />
             ) : (
-              <p style={{ fontSize: 56, color: '#6b7280', margin: 0 }}>
-                {background?.kind === 'media'
-                  ? `${background.media === 'image' ? 'Picture' : 'Video'} on the screens`
-                  : 'Nothing on the screens'}
-              </p>
+              <p style={{ fontSize: 56, color: '#6b7280', margin: 0 }}>{backgroundWords(background)}</p>
             )}
           </StageFit>
           {slide && slide.notes.trim() !== '' && (

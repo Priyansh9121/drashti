@@ -107,6 +107,8 @@ export function programPicture(
     return { kind: 'camera', lowerThird: [], full: null, ...base };
   }
   const bg = state.layers.background;
-  if (bg?.kind === 'media') return { kind: 'camera', lowerThird: [], full: 'background', ...base };
+  // A picture, a video, or another app's window (Session 48): what the hall sees, full frame.
+  if (bg?.kind === 'media' || bg?.kind === 'window')
+    return { kind: 'camera', lowerThird: [], full: 'background', ...base };
   return { kind: 'camera', lowerThird: [], full: null, ...base };
 }

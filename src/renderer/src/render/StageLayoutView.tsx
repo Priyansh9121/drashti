@@ -9,7 +9,7 @@ import type { StageBox, StageLayout } from '../../../shared/stage-layouts';
 import { STAGE_HEIGHT, STAGE_WIDTH } from '../../../shared/stage-layouts';
 import { timerDuration } from '../../../shared/timers';
 import { fontFamilyFor, LANG_FONT_STACK } from './fonts';
-import { kindName, StageText } from './StageView';
+import { backgroundWords, kindName, StageText } from './StageView';
 import { textLang } from './lang';
 import { TimerText } from './TimerText';
 import { useNow } from './useNow';
@@ -105,13 +105,7 @@ function BoxContents({
   switch (box.kind) {
     case 'current':
       if (slide) return <StageText slide={languageView(slide.slide, languages)} />;
-      return (
-        <p style={{ margin: 0, color: muted }}>
-          {state.layers.background?.kind === 'media'
-            ? `${state.layers.background.media === 'image' ? 'Picture' : 'Video'} on the screens`
-            : 'Nothing on the screens'}
-        </p>
-      );
+      return <p style={{ margin: 0, color: muted }}>{backgroundWords(state.layers.background)}</p>;
     case 'next': {
       const next = state.next;
       if (next?.kind === 'slide') return <StageText slide={languageView(next.slide, languages)} />;
