@@ -159,7 +159,7 @@ const SAME_KEY: Record<string, string> = {
   SPACEBAR: 'SPACE',
   PLUS: '+',
   NUMDEC: '.',
-  ...Object.fromEntries([...'0123456789'].map((d) => [`NUM${d}`, d])),
+  ...Object.fromEntries(Array.from({ length: 10 }, (_, d) => [`NUM${String(d)}`, String(d)])),
 };
 
 /** A character typed with Shift on a US keyboard, as Electron reads it: "?" is Shift and "/". */
