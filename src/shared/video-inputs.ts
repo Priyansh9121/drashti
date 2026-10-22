@@ -91,5 +91,6 @@ export const sameInputName = (a: string, b: string): boolean => nfc(a).toLowerCa
  * computer, and Next goes on past it).
  */
 export function inputNamed(inputs: readonly VideoInput[], name: string): VideoInput | null {
-  return inputs.find((i) => sameInputName(i.name, name)) ?? null;
+  const wanted = name.trim();
+  return inputs.find((i) => sameInputName(i.name, wanted)) ?? null;
 }

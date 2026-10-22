@@ -1,12 +1,14 @@
 import { idSchema } from './model-schema';
 import type { RepeatSettings } from './repeat';
 import { passageIdSchema } from './shastra';
+import { VIDEO_INPUT_NAME_MAX } from './video-inputs';
 import { z } from 'zod';
 
 /*
  * Playlists as the operator window sees and edits them (PLAN.md 4.3:
  * Playlist -> PlaylistItem, a presentation, media, a header or a
- * placeholder). Folders hold playlists and other folders.
+ * placeholder; a Shastra passage since Session 12, a video input since Session 51). Folders hold playlists and
+ * other folders.
  */
 
 /**
@@ -138,14 +140,23 @@ export type PlaylistItemInfo =
    * is loaded again: `missing` while no loaded text has it. Its label is
    * the reference as it read when it was added.
    */
-  | { id: string; kind: 'shastra'; label: string; passageId: string; missing: boolean; timers: TimerCue[] };
+  | { id: string; kind: 'shastra'; label: string; passageId: string; missing: boolean; timers: TimerCue[] }
+  /**
+   * A video input (Session 51): one of a computer's cameras or capture inputs, named by its own name ("Input 1"),
+   * which each computer finds in its own list (shared/video-inputs.ts inputNamed). It goes up as the background,
+   * as a video does. `missing` while this computer has no input of that name: the item says so, playing it says
+   * why, and Next goes on past it. Its label is the input's name as it was added.
+   */
+  | { id: string; kind: 'input'; label: string; name: string; missing: boolean; timers: TimerCue[] };
 
 /** What can be added to a playlist. */
 export type NewItem =
   | { kind: 'presentation'; presentationId: string }
   | { kind: 'media'; mediaId: string }
   | { kind: 'header'; label: string }
-  | { kind: 'shastra'; passageId: string };
+  | { kind: 'shastra'; passageId: string }
+  /** One of this computer's video inputs, by its name (Session 51). */
+  | { kind: 'input'; name: string };
 
 /** A slot that asks for a Shastra passage (filling it opens the Shastra tab). */
 export const SHASTRA_SLOT = 'Shastra';
@@ -189,6 +200,9 @@ export const newItemsSchema: z.ZodType<NewItem[]> = z
       z.object({ kind: z.literal('media'), mediaId: id }).strict(),
       z.object({ kind: z.literal('header'), label: z.string().trim().min(1).max(200) }).strict(),
       z.object({ kind: z.literal('shastra'), passageId: passageIdSchema }).strict(),
+      z
+        .object({ kind: z.literal('input'), name: z.string().trim().min(1).max(VIDEO_INPUT_NAME_MAX) })
+        .strict(),
     ]),
   )
   .min(1)

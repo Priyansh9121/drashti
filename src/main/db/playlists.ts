@@ -12,6 +12,7 @@ import type { RepeatSettings } from '../../shared/repeat';
 import { DEFAULT_REPEAT, REPEAT_REFUSES, repeatSettingsOf } from '../../shared/repeat';
 import type { PassageKey } from '../../shared/shastra';
 import { parsePassageId, passageId, passageKeySchema } from '../../shared/shastra';
+import type { VideoInput } from '../../shared/video-inputs';
 import { ShastraRepo } from './shastra';
 import type { PlayItem } from '../engine/playlist-source';
 import { copyFinder } from '../convert/relink';
@@ -27,9 +28,11 @@ const NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 
 interface ItemRow {
   id: string;
-  kind: 'presentation' | 'media' | 'header' | 'placeholder' | 'shastra';
+  kind: 'presentation' | 'media' | 'header' | 'placeholder' | 'shastra' | 'input';
   /** A passage's key, as JSON (shared/shastra.ts PassageKey). */
   passage: string | null;
+  /** A video input's own name (Session 51, migration 47), for an input item. */
+  input_name: string | null;
   /** Timer cues, as JSON (shared/playlists.ts TimerCue). */
   timers: string | null;
   label: string;
@@ -76,8 +79,23 @@ function keyOf(json: string | null): PassageKey | null {
   }
 }
 
-function itemInfo(r: ItemRow, passageThere: (key: PassageKey) => boolean): PlaylistItemInfo {
+function itemInfo(
+  r: ItemRow,
+  passageThere: (key: PassageKey) => boolean,
+  input: (name: string) => VideoInput | null,
+): PlaylistItemInfo {
   switch (r.kind) {
+    case 'input': {
+      const name = r.input_name ?? r.label;
+      return {
+        id: r.id,
+        kind: 'input',
+        label: r.label,
+        name,
+        missing: input(name) === null,
+        timers: cuesOf(r.timers),
+      };
+    }
     case 'shastra': {
       const key = keyOf(r.passage);
       return {
@@ -143,6 +161,7 @@ type CopyItem = (
   | { kind: 'media'; mediaId: string; label: string }
   | { kind: 'placeholder'; label: string; hint: string | null; category: string | null }
   | { kind: 'shastra'; passage: string; label: string }
+  | { kind: 'input'; name: string; label: string }
 ) & {
   /** Its timer cues, as stored (a template keeps them; a playlist from it gets them). */
   timers?: string | null;
@@ -183,10 +202,20 @@ export interface PlaylistSummary {
   itemCount: number;
 }
 
+/** This computer's video input of a name (shared/video-inputs.ts inputNamed), or null. */
+export type InputLookup = (name: string) => VideoInput | null;
+
 export class PlaylistRepo {
   private readonly shastra: ShastraRepo;
 
-  constructor(private readonly db: Db) {
+  /**
+   * `input`: this computer's video input of a name (Session 51), for the items naming one; none when left out
+   * (an import's own repo), so every such item reads as not on this computer.
+   */
+  constructor(
+    private readonly db: Db,
+    private readonly input: InputLookup = () => null,
+  ) {
     this.shastra = new ShastraRepo(db);
   }
 
@@ -385,7 +414,7 @@ export class PlaylistRepo {
       this.db
         .prepare(
           `SELECT i.id, i.kind, i.label, i.color, i.hint, i.category, i.presentation_id, i.media_id, i.order_mode, i.arrangement_id,
-                  i.passage, i.timers,
+                  i.passage, i.timers, i.input_name,
                   p.name AS presentation_name, p.deleted_at AS presentation_deleted, a.name AS arrangement_name,
                   m.kind AS media_kind, m.missing AS media_missing, m.playable AS media_playable, m.format AS media_format,
                   p.slide_count AS presentation_slides, p.source_kind AS presentation_source, m.duration_ms AS media_duration,
@@ -398,7 +427,13 @@ export class PlaylistRepo {
             ORDER BY i.position, i.rowid`,
         )
         .all(playlistId) as ItemRow[]
-    ).map((r) => itemInfo(r, (key) => this.shastra.passage(key) !== null));
+    ).map((r) =>
+      itemInfo(
+        r,
+        (key) => this.shastra.passage(key) !== null,
+        (name) => this.input(name),
+      ),
+    );
   }
 
   /** A playlist's items as the show engine plays them, or null if the playlist does not exist (or was removed). */
@@ -457,6 +492,17 @@ export class PlaylistRepo {
                 ? `“${item.label}” is not filled in yet`
                 : `“${item.label}” was not found at import`,
           };
+        case 'input': {
+          // This computer's input of its name (Session 51), found again as the show reads the playlist.
+          const found = this.input(item.name);
+          if (!found)
+            return {
+              id: item.id,
+              kind: 'skip',
+              why: `The video input “${item.name}” is not on this computer`,
+            };
+          return { id: item.id, kind: 'input', inputId: found.id, label: item.label, timers: item.timers };
+        }
         case 'shastra':
           // A passage plays like a presentation (shared/shastra.ts), while its text is loaded.
           return item.missing
@@ -631,7 +677,10 @@ export class PlaylistRepo {
    */
   refusal(playlistId: string, items: readonly NewItem[]): string | null {
     const media = items.flatMap((i) => (i.kind === 'media' ? [i.mediaId] : []));
-    if (media.length === 0 || this.repeatPlaylist(playlistId) === null) return null;
+    const inputs = items.some((i) => i.kind === 'input');
+    if ((media.length === 0 && !inputs) || this.repeatPlaylist(playlistId) === null) return null;
+    // A video input (Session 51) is live video: it cannot go round either.
+    if (inputs) return REPEAT_REFUSES;
     const kind = this.db.prepare('SELECT kind FROM media WHERE id = ?');
     const moving = media.some((id) => (kind.get(id) as { kind: string } | undefined)?.kind !== 'image');
     return moving ? REPEAT_REFUSES : null;
@@ -666,8 +715,8 @@ export class PlaylistRepo {
   /** Copy items into a playlist at its end (headers, presentations, media and slots), in one go. */
   private copyItems(to: string, items: readonly CopyItem[]): void {
     const insert = this.db.prepare(
-      `INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, media_id, label, color, hint, category, order_mode, arrangement_id, passage, timers)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, media_id, label, color, hint, category, order_mode, arrangement_id, passage, timers, input_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     // An item on a converted original (added before Session 51) is copied onto its copy.
     const copy = copyFinder(this.db);
@@ -688,6 +737,7 @@ export class PlaylistRepo {
         item.kind === 'presentation' ? item.arrangementId : null,
         item.kind === 'shastra' ? item.passage : null,
         item.kind === 'header' || item.kind === 'placeholder' ? null : (item.timers ?? null),
+        item.kind === 'input' ? item.name : null,
       );
     });
   }
@@ -697,7 +747,7 @@ export class PlaylistRepo {
     return this.db
       .prepare(
         `SELECT i.id, i.kind, i.label, i.color, i.hint, i.category, i.presentation_id, i.media_id, i.order_mode, i.arrangement_id,
-                i.passage, i.timers, k.category AS kirtan_category, p.deleted_at AS presentation_deleted
+                i.passage, i.timers, i.input_name, k.category AS kirtan_category, p.deleted_at AS presentation_deleted
            FROM playlist_items i
            LEFT JOIN presentations p ON p.id = i.presentation_id
            LEFT JOIN kirtans k ON k.presentation_id = i.presentation_id
@@ -705,7 +755,7 @@ export class PlaylistRepo {
       )
       .all(playlistId) as {
       id: string;
-      kind: 'presentation' | 'media' | 'header' | 'placeholder' | 'shastra';
+      kind: 'presentation' | 'media' | 'header' | 'placeholder' | 'shastra' | 'input';
       label: string;
       color: string | null;
       hint: string | null;
@@ -716,6 +766,7 @@ export class PlaylistRepo {
       arrangement_id: string | null;
       passage: string | null;
       timers: string | null;
+      input_name: string | null;
       kirtan_category: string | null;
       presentation_deleted: string | null;
     }[];
@@ -739,6 +790,9 @@ export class PlaylistRepo {
           if (r.kind === 'header') return [{ kind: 'header', label: r.label, color: r.color }];
           if (r.kind === 'media' && r.media_id)
             return [{ kind: 'media', mediaId: r.media_id, label: r.label, timers: r.timers }];
+          // A video input (Session 51) stays as it is, named as it was.
+          if (r.kind === 'input' && r.input_name !== null)
+            return [{ kind: 'input', name: r.input_name, label: r.label, timers: r.timers }];
           // A passage stays as it is, or becomes a slot that asks for one.
           if (r.kind === 'shastra' && r.passage !== null)
             return slot.has(r.id)
@@ -791,6 +845,8 @@ export class PlaylistRepo {
             return [{ kind: 'placeholder', label: r.label, hint: null, category: r.category }];
           if (r.kind === 'shastra' && r.passage !== null)
             return [{ kind: 'shastra', passage: r.passage, label: r.label, timers: r.timers }];
+          if (r.kind === 'input' && r.input_name !== null)
+            return [{ kind: 'input', name: r.input_name, label: r.label, timers: r.timers }];
           if (r.presentation_id && r.presentation_deleted === null)
             return [
               {
@@ -914,9 +970,10 @@ export class PlaylistRepo {
     // Never media deleted from the library (Session 26a).
     const mediaName = this.db.prepare('SELECT name FROM media WHERE id = ? AND deleted_at IS NULL');
     const insert = this.db.prepare(
-      'INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, media_id, label, passage) VALUES (?, ?, 0, ?, ?, ?, ?, ?)',
+      'INSERT INTO playlist_items (id, playlist_id, position, kind, presentation_id, media_id, label, passage, input_name) VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?)',
     );
-    // Every item must exist before anything is written.
+    // Every item must exist before anything is written: a video input on this computer (Session 51), named as
+    // Media names it.
     const labels: string[] = [];
     const passages: (string | null)[] = [];
     for (const item of items) {
@@ -931,7 +988,9 @@ export class PlaylistRepo {
               ? display === null
                 ? undefined
                 : { name: display }
-              : { name: item.label };
+              : item.kind === 'input'
+                ? (this.input(item.name) ?? undefined)
+                : { name: item.label };
       if (!row) return [];
       labels.push(row.name);
       passages.push(key ? JSON.stringify(key) : null);
@@ -947,6 +1006,7 @@ export class PlaylistRepo {
           item.kind === 'media' ? item.mediaId : null,
           labels[i] ?? '',
           passages[i] ?? null,
+          item.kind === 'input' ? (labels[i] ?? item.name) : null,
         );
         return id;
       });
@@ -1022,12 +1082,12 @@ export class PlaylistRepo {
     );
   }
 
-  /** What an item does to timers when it goes up (none to take them away). Not headers or slots. */
+  /** What an item does to timers when it goes up (none to take them away). Not headers or slots; a video input too. */
   setTimers(itemId: string, cues: readonly TimerCue[]): boolean {
     return (
       this.db
         .prepare(
-          `UPDATE playlist_items SET timers = ? WHERE id = ? AND kind IN ('presentation', 'media', 'shastra') AND deleted_at IS NULL`,
+          `UPDATE playlist_items SET timers = ? WHERE id = ? AND kind IN ('presentation', 'media', 'shastra', 'input') AND deleted_at IS NULL`,
         )
         .run(cues.length > 0 ? JSON.stringify(cues) : null, itemId).changes === 1
     );

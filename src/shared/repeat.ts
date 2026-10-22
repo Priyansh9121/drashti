@@ -79,6 +79,6 @@ export function repeatSettingsOf(json: string | null): RepeatSettings {
   }
 }
 
-/** Why a video or sound cannot go in a Repeat Slides playlist. */
+/** Why a video, a sound or a video input (Session 51) cannot go in a Repeat Slides playlist. */
 export const REPEAT_REFUSES =
-  'Repeat Slides holds pictures and slides only: a video or a sound cannot go round in it. Put it in another playlist.';
+  'Repeat Slides holds pictures and slides only: a video, a sound or a video input cannot go round in it. Put it in another playlist.';
