@@ -80,8 +80,8 @@ const item = (id: string) => items().find((i) => i.id === id);
 describe('View › Audience and Stage (Session 50)', () => {
   it('are in Pro Mode’s View menu, ticked as they stand, each choosing its own switch', () => {
     const { chosen } = setUp('pro', { audience: false, stage: true });
-    const view = built.at(-1)?.find((m) => m.label === 'View');
-    const ids = Array.isArray(view?.submenu) ? view.submenu.map((i) => i.id) : [];
+    const view = built.at(-1)?.find((m) => m.label === 'View')?.submenu;
+    const ids = Array.isArray(view) ? view.map((i) => i.id) : [];
     expect(ids).toContain('screen-switch-audience');
     expect(ids).toContain('screen-switch-stage');
     expect(item('screen-switch-audience')).toMatchObject({
