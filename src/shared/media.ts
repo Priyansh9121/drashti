@@ -100,6 +100,46 @@ export function playbackPosition(playback: PlaybackClock, duration: number, now:
   return Math.min(from + elapsed, end);
 }
 
+/** Where a file plays between, in ms (Session 50): playbackBounds in whole milliseconds, for the engine. */
+export function playbackSpanMs(
+  clip: PlaybackClip | undefined,
+  durationMs: number,
+): { start: number; end: number } {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return { start: 0, end: 0 };
+  const start = Math.min(durationMs, Math.max(0, clip?.startMs ?? 0));
+  const end = clip?.endMs != null ? Math.min(durationMs, Math.max(start, clip.endMs)) : durationMs;
+  return { start, end };
+}
+
+/**
+ * Where a file is at `now`, in ms into it (Session 50), as playbackPosition has it on every screen; an audio
+ * playlist's track that is paused (`pausedAtMs`, played since its start point) waits where it is.
+ */
+export function playbackAtMs(
+  playback: PlaybackClock & { pausedAtMs?: number },
+  durationMs: number,
+  now: number,
+): number {
+  const { start, end } = playbackSpanMs(playback.clip, durationMs);
+  const span = end - start;
+  /** `into` ms since the start point: round again when it loops, else held at the end. */
+  const at = (into: number) =>
+    playback.loop && span > 0 ? start + (into % span) : Math.min(start + into, end);
+  if (playback.pausedAtMs !== undefined) return at(Math.max(0, playback.pausedAtMs));
+  const seek = playback.seek;
+  const from = seek ? Math.min(end, Math.max(start, seek.toMs)) : start;
+  return at(from - start + Math.max(0, now - (seek ? seek.at : playback.startedAt)));
+}
+
+/** How long a file has left at `now` (ms, Session 50): to its end point, or to the end of this time round. */
+export function playbackLeftMs(
+  playback: PlaybackClock & { pausedAtMs?: number },
+  durationMs: number,
+  now: number,
+): number {
+  return Math.max(0, playbackSpanMs(playback.clip, durationMs).end - playbackAtMs(playback, durationMs, now));
+}
+
 /**
  * How far a playing file is from where the shared clock says it should be,
  * in seconds (+ ahead, - behind). Across a loop's end, 3.9 s and 0.1 s of a

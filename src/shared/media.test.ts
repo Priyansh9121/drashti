@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { parseMarkerTime, markerTime } from './markers';
-import { playbackBounds, playbackOffset, playbackPosition } from './media';
+import {
+  playbackAtMs,
+  playbackBounds,
+  playbackLeftMs,
+  playbackOffset,
+  playbackPosition,
+  playbackSpanMs,
+} from './media';
 
 /* Where a file is on the shared clock, with start and end points and jumps (Session 14). */
 
@@ -32,6 +39,33 @@ describe('playback position', () => {
   it('measures drift across a loop by the loop’s own length', () => {
     expect(playbackOffset(5.9, 2.1, 4, true)).toBeCloseTo(-0.2, 5);
     expect(playbackOffset(5.9, 2.1, 10, false)).toBeCloseTo(3.8, 5);
+  });
+
+  it('says where a file is in whole milliseconds, as every screen has it, and where a paused track waits (Session 50)', () => {
+    const clip = { startMs: 2000, endMs: 6000 };
+    expect(playbackSpanMs(clip, 10_000)).toEqual({ start: 2000, end: 6000 });
+    expect(playbackSpanMs(undefined, 10_000)).toEqual({ start: 0, end: 10_000 });
+    expect(playbackSpanMs({ startMs: 0, endMs: 99_000 }, 10_000)).toEqual({ start: 0, end: 10_000 });
+    // The same places as playbackPosition, in ms: playing on, held at the end, going round, after a jump.
+    for (const [clock, now] of [
+      [{ startedAt: 0, loop: false }, 4000],
+      [{ startedAt: 0, loop: false }, 14_000],
+      [{ startedAt: 0, loop: true }, 14_000],
+      [{ startedAt: 0, loop: true, clip }, 5000],
+      [{ startedAt: 0, loop: false, clip }, 9000],
+      [{ startedAt: 0, loop: true, clip, seek: { at: 10_000, toMs: 5000 } }, 12_000],
+    ] as const)
+      expect(playbackAtMs(clock, 10_000, now)).toBe(playbackPosition(clock, 10, now) * 1000);
+    // Paused: played this far since its start point, whatever the time.
+    expect(playbackAtMs({ startedAt: 0, loop: false, clip, pausedAtMs: 1500 }, 10_000, 99_000)).toBe(3500);
+    expect(playbackAtMs({ startedAt: 0, loop: false, clip, pausedAtMs: 9000 }, 10_000, 0)).toBe(6000);
+    // What is left: to the end point, or to the end of this time round.
+    expect(playbackLeftMs({ startedAt: 0, loop: false, clip }, 10_000, 1000)).toBe(3000);
+    expect(playbackLeftMs({ startedAt: 0, loop: true }, 10_000, 14_000)).toBe(6000);
+    expect(playbackLeftMs({ startedAt: 0, loop: false, seek: { at: 1000, toMs: 8000 } }, 10_000, 2000)).toBe(
+      1000,
+    );
+    expect(playbackLeftMs({ startedAt: 0, loop: false }, 10_000, 99_000)).toBe(0);
   });
 
   it('writes and reads marker times', () => {
