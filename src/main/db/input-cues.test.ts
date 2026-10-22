@@ -37,7 +37,8 @@ describe('a video input as a slide’s background cue', () => {
     for (const bad of ['{"input":""}', '{"input":"   "}', '{"input":7}', 'not json'])
       expect(cueFromRow(row(bad)), bad).toBeNull();
     // A cue with a file is that file's, whatever else its settings hold.
-    expect(cueFromRow(row('{"media":"image","input":"Input 1"}', 'pic'))?.background).toMatchObject({
+    const withFile = cueFromRow(row('{"media":"image","input":"Input 1"}', 'pic'));
+    expect(withFile?.kind === 'background' ? withFile.background : null).toMatchObject({
       kind: 'media',
       mediaId: 'pic',
     });

@@ -88,8 +88,9 @@ test('a GPU crash leaves a video background playing again, at the engine’s tim
   const [presentationId = ''] = await importAndGetIds(win, [show]);
   const mediaId = await win.evaluate(async (id) => {
     const doc = await (globalThis as PageGlobals).drashti.library.getPresentation(id);
+    // Its background video's file (a video input, Session 51, has none).
     for (const cue of doc?.groups[0]?.slides[0]?.cues ?? [])
-      if (cue.kind === 'background') return cue.background.mediaId;
+      if (cue.kind === 'background' && cue.background.kind === 'media') return cue.background.mediaId;
     return '';
   }, presentationId);
   await setUpScreen(win);

@@ -126,14 +126,17 @@ test('a sabha from a playlist: the repeated chorus, headers stepped over, a pict
     win.evaluate(async () => {
       const n = (await (globalThis as PageGlobals).drashti.engine.snapshot()).state.next;
       if (!n) return null;
-      return n.kind === 'media'
-        ? { kind: n.kind, media: n.media, label: n.label }
-        : {
+      // A slide, a picture, video or sound item, or a video input item (Session 51; none in this sabha).
+      return n.kind === 'slide'
+        ? {
             kind: n.kind,
             presentationId: n.presentationId,
             slideIndex: n.slideIndex,
             nextItem: n.itemId !== null,
-          };
+          }
+        : n.kind === 'media'
+          ? { kind: n.kind, media: n.media, label: n.label }
+          : { kind: n.kind, label: n.label };
     });
   await win.keyboard.press('Space');
   await expect(liveText).toContainText('slide 1 of 4');

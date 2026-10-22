@@ -114,7 +114,9 @@ test('slide backgrounds play on the background layer of a real output', async ()
   const cueMedia = await win.evaluate(async (id) => {
     const doc = await (globalThis as PageGlobals).drashti.library.getPresentation(id);
     return (doc?.groups[0]?.slides ?? []).map((s) => {
-      for (const cue of s.cues) if (cue.kind === 'background') return cue.background.mediaId;
+      // Each slide's background file (a video input, Session 51, has none).
+      for (const cue of s.cues)
+        if (cue.kind === 'background' && cue.background.kind === 'media') return cue.background.mediaId;
       return '';
     });
   }, presentationId);
