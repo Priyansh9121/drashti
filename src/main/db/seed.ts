@@ -15,8 +15,16 @@ import { ThemeRepo } from './themes';
 
 /** Set at a library's first start: the placeholders were added then (an ISO time), or not ('none'). */
 export const SEED_KEY = 'seed.placeholder-presentations';
+/**
+ * Set at a library's first start on Session 50's Drashti or later: the placeholders an earlier Drashti added
+ * were looked at then, and each left as Drashti made it removed (library/placeholders.ts). Once per library.
+ */
+export const PLACEHOLDERS_CHECKED_KEY = 'seed.placeholders-removed';
 export const TEST_PRESENTATION_NAME = 'Language test slides';
 export const KIRTAN_PRESENTATION_NAME = 'Sample kirtan (placeholder)';
+/** Where each placeholder came from, as kept with it (its source: kind 'drashti', this ref). */
+export const TEST_PRESENTATION_REF = 'seed:language-test';
+export const KIRTAN_PRESENTATION_REF = 'seed:sample-kirtan';
 
 /** One line in each language: the text the rendering tests look for. */
 export const TEST_LINES: Record<KirtanLang, string> = {
@@ -190,7 +198,7 @@ export function seedPlaceholders(db: Db): boolean {
           ],
         },
       ],
-      source: { kind: 'drashti', path: null, ref: 'seed:language-test', importedAt: null },
+      source: { kind: 'drashti', path: null, ref: TEST_PRESENTATION_REF, importedAt: null },
     });
     repo.insert({
       libraryId,
@@ -201,7 +209,7 @@ export function seedPlaceholders(db: Db): boolean {
         slides: [{ background: '#000000', elements: [kirtanBox(k.lines)] }],
       })),
       kirtan: { category: 'Kirtan', kavi: 'Placeholder Kavi', raag: 'Placeholder Raag' },
-      source: { kind: 'drashti', path: null, ref: 'seed:sample-kirtan', importedAt: null },
+      source: { kind: 'drashti', path: null, ref: KIRTAN_PRESENTATION_REF, importedAt: null },
     });
     db.prepare('INSERT INTO app_meta (key, value) VALUES (?, ?)').run(SEED_KEY, new Date().toISOString());
   })();
