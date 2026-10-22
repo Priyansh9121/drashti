@@ -119,6 +119,45 @@ describe('a group’s settings in a Look', () => {
       readGroupLook(storedGroupLook({ ...DEFAULT_GROUP_LOOK, layers: ['slide', 'pip'] })).layers,
     ).toEqual(['slide', 'pip']);
   });
+
+  it('a key and fill group leaves the box out unless its Look turns it on (Session 51), however it was kept', () => {
+    const noBox = LOOK_LAYERS.filter((l) => l !== 'pip');
+    // Nothing said of it, or a group kept before: left out, old and new alike.
+    expect(readGroupLook(undefined, 'keyfill').layers).toEqual(noBox);
+    expect(readGroupLook({}, 'keyfill').layers).toEqual(noBox);
+    expect(
+      readGroupLook({ layers: ['slide', 'props', 'messages'], slides: 'lowerThird' }, 'keyfill').layers,
+    ).toEqual(['slide', 'props', 'messages']);
+    // Left out by Session 50's own way of keeping a new key and fill group: still out.
+    expect(readGroupLook({ layers: ['slide'], leftOut: ['pip'] }, 'keyfill').layers).toEqual(['slide']);
+    // Turned on in a Look: shown, where it draws (above the props).
+    expect(
+      readGroupLook({ layers: ['slide', 'props', 'messages'], turnedOn: ['pip'] }, 'keyfill').layers,
+    ).toEqual(['slide', 'props', 'pip', 'messages']);
+    // Anything unreadable there: the role's own default.
+    for (const turnedOn of [['pip', 'pip'], ['slide'], 'pip', [7]])
+      expect(readGroupLook({ turnedOn }, 'keyfill').layers, JSON.stringify(turnedOn)).toEqual(noBox);
+    // Kept: only what differs from the role's default, the earlier layers as an older Drashti reads them.
+    expect(storedGroupLook({ ...DEFAULT_GROUP_LOOK, layers: noBox }, 'keyfill')).toEqual({});
+    expect(storedGroupLook({ ...DEFAULT_GROUP_LOOK, layers: ['slide', 'pip'] }, 'keyfill')).toEqual({
+      layers: ['slide'],
+      turnedOn: ['pip'],
+    });
+    expect(
+      readGroupLook(
+        storedGroupLook({ ...DEFAULT_GROUP_LOOK, layers: ['slide', 'pip'] }, 'keyfill'),
+        'keyfill',
+      ).layers,
+    ).toEqual(['slide', 'pip']);
+    // Every other role as before: the box shows unless left out, and turned on means nothing more there.
+    for (const role of ['audience', 'stage', 'stream', 'other'] as const) {
+      expect(readGroupLook(undefined, role).layers, role).toEqual(LOOK_LAYERS);
+      expect(readGroupLook({ turnedOn: ['pip'] }, role).layers, role).toEqual(LOOK_LAYERS);
+      expect(storedGroupLook({ ...DEFAULT_GROUP_LOOK, layers: ['slide', 'pip'] }, role), role).toEqual({
+        layers: ['slide'],
+      });
+    }
+  });
 });
 
 describe('Looks', () => {
@@ -208,11 +247,65 @@ describe('Looks', () => {
 
   it('a group made a key and fill pair leaves the box out, as it leaves out the background', () => {
     const t = setup();
+    t.screens.setGroupRole(t.hall, 'keyfill');
     t.looks.becameKeyFill(t.hall);
     expect(t.engine.current.look.groups[t.hall]).toMatchObject({
       layers: ['slide', 'props', 'messages'],
       slides: 'lowerThird',
     });
+  });
+
+  it('a key and fill pair leaves the box out in every Look, old and new alike, until a Look turns it on (Session 51)', () => {
+    const t = setup();
+    const definition = (lookId: string): unknown =>
+      JSON.parse(
+        (t.db.prepare('SELECT definition FROM looks WHERE id = ?').get(lookId) as { definition: string })
+          .definition,
+      );
+    // A key and fill group as an earlier Drashti kept it in a Look: the words as a lower third, props, messages.
+    const switcher = t.screens.createGroup('Placeholder switcher', 'keyfill');
+    t.db.prepare('UPDATE looks SET definition = ? WHERE id = ?').run(
+      JSON.stringify({
+        groups: { [switcher]: { layers: ['slide', 'props', 'messages'], slides: 'lowerThird' } },
+      }),
+      t.standard,
+    );
+    t.looks.groupsChanged();
+    expect(t.engine.current.look.groups[switcher]?.layers).toEqual(['slide', 'props', 'messages']);
+    expect(t.looks.view().looks[0]?.groups[switcher]?.layers).not.toContain('pip');
+    // The hall's group shows it, as before.
+    expect(t.engine.current.look.groups[t.hall]?.layers).toContain('pip');
+    // A Look made since, from nothing: the key and fill group leaves it out there too, the hall shows it.
+    t.looks.create('Placeholder blank', null);
+    const blank = t.repo.list()[1];
+    expect(blank?.groups[switcher]?.layers).toEqual(LOOK_LAYERS.filter((l) => l !== 'pip'));
+    expect(blank?.groups[t.hall]?.layers).toEqual(LOOK_LAYERS);
+    // A group made a key and fill pair now: left out, kept as an earlier Drashti keeps it (nothing said of it).
+    const lobby = t.screens.createGroup('Placeholder lobby');
+    t.screens.setGroupRole(lobby, 'keyfill');
+    t.looks.becameKeyFill(lobby);
+    expect(t.engine.current.look.groups[lobby]?.layers).toEqual(['slide', 'props', 'messages']);
+    expect(definition(t.standard)).toMatchObject({
+      groups: { [lobby]: { layers: ['slide', 'props', 'messages'], slides: 'lowerThird' } },
+    });
+    expect(JSON.stringify(definition(t.standard))).not.toContain('leftOut');
+    // Turned on in the live Look (its tick in Screens): shown on that group's screens, and kept so.
+    expect(t.looks.setGroup(t.standard, switcher, { layers: ['slide', 'props', 'pip', 'messages'] }).ok).toBe(
+      true,
+    );
+    expect(t.engine.current.look.groups[switcher]?.layers).toEqual(['slide', 'props', 'pip', 'messages']);
+    expect(t.engine.current.look.groups[lobby]?.layers).toEqual(['slide', 'props', 'messages']);
+    expect(definition(t.standard)).toMatchObject({
+      groups: {
+        [switcher]: { layers: ['slide', 'props', 'messages'], turnedOn: ['pip'], slides: 'lowerThird' },
+      },
+    });
+    // Another setting changed: it stays on. Ticked off again: out, and nothing kept about it.
+    t.looks.setGroup(t.standard, switcher, { movement: 'bold' });
+    expect(t.engine.current.look.groups[switcher]?.layers).toContain('pip');
+    t.looks.setGroup(t.standard, switcher, { layers: ['slide', 'props', 'messages'] });
+    expect(t.engine.current.look.groups[switcher]?.layers).toEqual(['slide', 'props', 'messages']);
+    expect(JSON.stringify(definition(t.standard))).not.toContain('turnedOn');
   });
 
   it('follow edits to the live Look at once, and fall back to the first when it is removed', () => {

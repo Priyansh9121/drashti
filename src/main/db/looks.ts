@@ -1,18 +1,26 @@
 import { randomUUID } from 'node:crypto';
 import type { GroupLook, LookInfo } from '../../shared/looks';
 import { lookDefinitionSchema, readGroupLook, storedGroupLook } from '../../shared/looks';
+import type { ScreenRole } from '../../shared/screens';
 import type { Db } from './database';
 
 /*
  * Looks, kept in the library (migration 20). Each row's definition holds,
  * per screen group, only what that group changes from the defaults
  * (shared/looks.ts); reading fills in the rest, for every group there is.
+ * Session 51: a group's defaults follow its role as it is now (a key and fill
+ * pair leaves the picture-in-picture box out until a Look turns it on).
  */
 
 interface LookRow {
   id: string;
   name: string;
   definition: string;
+}
+
+interface GroupRow {
+  id: string;
+  role: ScreenRole;
 }
 
 const NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
@@ -40,29 +48,34 @@ export class LookRepo {
       .all() as LookRow[];
   }
 
-  private groupIds(): string[] {
-    return (
-      this.db.prepare('SELECT id FROM screen_groups ORDER BY position, rowid').all() as { id: string }[]
-    ).map((r) => r.id);
+  private groups(): GroupRow[] {
+    return this.db.prepare('SELECT id, role FROM screen_groups ORDER BY position, rowid').all() as GroupRow[];
   }
 
-  private info(row: LookRow, groupIds: readonly string[]): LookInfo {
+  /** A group's role, for its defaults (one gone or not yet made reads as an audience group's). */
+  private roleOf(groupId: string): ScreenRole {
+    const row = this.db.prepare('SELECT role FROM screen_groups WHERE id = ?').get(groupId) as
+      { role: ScreenRole } | undefined;
+    return row?.role ?? 'audience';
+  }
+
+  private info(row: LookRow, groups: readonly GroupRow[]): LookInfo {
     const stored = storedGroups(row.definition);
-    const groups: Record<string, GroupLook> = {};
-    for (const id of groupIds) groups[id] = readGroupLook(stored[id]);
-    return { id: row.id, name: row.name, groups };
+    const settings: Record<string, GroupLook> = {};
+    for (const g of groups) settings[g.id] = readGroupLook(stored[g.id], g.role);
+    return { id: row.id, name: row.name, groups: settings };
   }
 
   /** Every Look in order, each with every group's settings. */
   list(): LookInfo[] {
-    const ids = this.groupIds();
-    return this.rows().map((r) => this.info(r, ids));
+    const groups = this.groups();
+    return this.rows().map((r) => this.info(r, groups));
   }
 
   get(id: string): LookInfo | null {
     const row = this.db.prepare('SELECT id, name, definition FROM looks WHERE id = ?').get(id) as
       LookRow | undefined;
-    return row ? this.info(row, this.groupIds()) : null;
+    return row ? this.info(row, this.groups()) : null;
   }
 
   /** The Look Drashti starts with: the first. One is made if there is none (a library always has one). */
@@ -123,7 +136,8 @@ export class LookRepo {
         { definition: string } | undefined;
       if (!row) return false;
       const stored = storedGroups(row.definition);
-      const next = storedGroupLook({ ...readGroupLook(stored[groupId]), ...patch });
+      const role = this.roleOf(groupId);
+      const next = storedGroupLook({ ...readGroupLook(stored[groupId], role), ...patch }, role);
       // A group at the defaults is left out.
       const groups = {
         ...without(stored, groupId),
