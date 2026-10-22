@@ -255,33 +255,39 @@ export function useVideoInput(input: Pick<InputBackground, 'inputId' | 'device'>
   return known ? capture : ABSENT;
 }
 
-/** What this page last said of each input up now, and how many of its pictures draw it. */
+/** What this page last said of each showing of an input, and how many of its pictures draw that showing. */
 const said = new Map<string, 'playing' | 'stopped'>();
 const saying = new Map<string, number>();
 
 /**
- * Say how the input up now stands on this page (it plays, or it stopped): once for each change, however many
- * pictures of it the page draws. A picture going away (dissolving out) says nothing.
+ * Say how the input up now stands on this page (it plays, or it stopped): once for each change of each showing
+ * (`showing`: the input and when it went up), however many pictures of it the page draws. A picture going away
+ * (dissolving out) says nothing.
  */
-export function useInputReport(inputId: string, state: InputCaptureState, on: boolean): void {
+export function useInputReport(
+  inputId: string,
+  showing: string,
+  state: InputCaptureState,
+  on: boolean,
+): void {
   const report = on ? reportOf(state) : null;
   useEffect(() => {
     if (report === null) return;
-    saying.set(inputId, (saying.get(inputId) ?? 0) + 1);
-    if (said.get(inputId) !== report) {
-      said.set(inputId, report);
+    saying.set(showing, (saying.get(showing) ?? 0) + 1);
+    if (said.get(showing) !== report) {
+      said.set(showing, report);
       void videoInputsBridge()
         ?.report({ inputId, state: report })
         .catch(() => null);
     }
     return () => {
-      const left = (saying.get(inputId) ?? 1) - 1;
+      const left = (saying.get(showing) ?? 1) - 1;
       if (left > 0) {
-        saying.set(inputId, left);
+        saying.set(showing, left);
         return;
       }
-      saying.delete(inputId);
-      said.delete(inputId);
+      saying.delete(showing);
+      said.delete(showing);
     };
-  }, [inputId, report]);
+  }, [inputId, showing, report]);
 }

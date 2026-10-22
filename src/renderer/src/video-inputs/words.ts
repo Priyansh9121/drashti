@@ -110,9 +110,9 @@ export function inputRowNote(
     : 'Video input · no picture now';
 }
 
-/** No sound from it in the hall. */
+/** No sound from it in the hall; the stream's sound stays its own sound input (which a mixer's USB output can be). */
 export const NO_SOUND =
-  'Drashti shows its picture only, never its sound: the hall’s sound comes through the mixer, as now.';
+  'Drashti shows its picture only, never its sound: the hall’s sound comes through the mixer, as now. The stream’s sound stays its own sound input, and a mixer’s USB output can be chosen there too.';
 
 /** A mixer's program that is Drashti's own picture makes a picture inside itself. */
 export const NOT_DRASHTI_ITSELF =
