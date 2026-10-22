@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { mediaUrl } from '../../../shared/media';
 import type { MediaSummary } from '../../../shared/playlists';
+import type { VideoInput } from '../../../shared/video-inputs';
 import { loadMedia, useMedia } from '../library/library-store';
 import { MediaStill } from '../render/MediaStill';
 import { MissingBadge, UnplayableBadge } from '../ui/Badge';
@@ -9,11 +10,14 @@ import { TextInput } from '../ui/Field';
 import { Image, Music } from '../ui/icons';
 import { EmptyState } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
+import { InputPicture, useSmallPicture } from '../video-inputs/InputPicture';
+import { useVideoInputs } from '../video-inputs/video-inputs-store';
 
 /*
  * Choosing a picture or video from the library to put on the slide (or
  * behind it), or a sound for it. Media is imported into the library first,
- * by dragging it onto the library.
+ * by dragging it onto the library. Behind the slide, one of this computer's video inputs too (Session 51), by
+ * its name: on another computer, that computer's input of the same name goes up.
  */
 
 const KIND = { image: 'Picture', video: 'Video', audio: 'Sound' } as const;
@@ -47,18 +51,45 @@ export async function naturalSize(media: {
   return found;
 }
 
+/** One of this computer's video inputs to choose (Session 51), with its small live picture. */
+function InputChoice({ input, onChoose }: { input: VideoInput; onChoose: (name: string) => void }) {
+  const capture = useSmallPicture(input.device);
+  return (
+    <li>
+      <button
+        type="button"
+        data-testid="input-choice"
+        aria-label={`Video input: ${input.name}`}
+        onClick={() => {
+          onChoose(input.name);
+        }}
+        className="w-full overflow-hidden rounded-lg border-2 border-line bg-black text-left hover:border-field"
+      >
+        <InputPicture capture={capture} className="pointer-events-none w-full" />
+        <span className="flex h-7 items-center gap-2 bg-panel-2 px-2 text-xs text-muted">
+          <Truncate text={input.name} className="min-w-0 flex-1" />
+        </span>
+      </button>
+    </li>
+  );
+}
+
 export function MediaPicker({
   title,
   onChoose,
+  onChooseInput,
   onClose,
   sounds = false,
 }: {
   title: string;
   onChoose: (media: MediaSummary) => void;
+  /** Offer this computer's video inputs too (Session 51: a slide's background), each chosen by its name. */
+  onChooseInput?: (name: string) => void;
   onClose: () => void;
   /** Offer sounds (and videos, for their sound) instead of pictures and videos. */
   sounds?: boolean;
 }) {
+  const inputs = useVideoInputs((s) => s.inputs);
   const media = useMedia((s) => s.media);
   const [query, setQuery] = useState('');
   useEffect(() => {
@@ -90,6 +121,19 @@ export function MediaPicker({
           setQuery(e.target.value);
         }}
       />
+      {onChooseInput && !sounds && inputs.length > 0 && (
+        <section aria-label="Video inputs on this computer" className="max-h-48 shrink-0 overflow-y-auto">
+          <h3 className="pb-1 text-xs font-bold text-muted">Video inputs on this computer</h3>
+          <ul
+            className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-3"
+            data-testid="picker-inputs"
+          >
+            {inputs.map((input) => (
+              <InputChoice key={input.id} input={input} onChoose={onChooseInput} />
+            ))}
+          </ul>
+        </section>
+      )}
       {shown.length === 0 ? (
         <EmptyState icon={sounds ? Music : Image} title={sounds ? 'No sounds' : 'No pictures or videos'}>
           Drag {sounds ? 'sound files' : 'pictures and videos'} onto the library to import them, then choose

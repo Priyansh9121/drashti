@@ -14,7 +14,7 @@ import type {
 } from '../../../shared/model';
 import { countsDown, TIMER_KIND_NAMES, type TimerState } from '../../../shared/timers';
 import { useEngine } from '../engine/engine-store';
-import { legacyFontOf, slidesOf } from '../../../shared/slide-edit';
+import { cueInputName, legacyFontOf, slidesOf } from '../../../shared/slide-edit';
 import {
   drawnPx,
   FLOOR_NOTE_PX,
@@ -443,7 +443,10 @@ function Readability({ el }: { el: TextElement }) {
   const slide = useEditor((s) =>
     s.doc && s.slideId ? slidesOf(s.doc).find((x) => x.id === s.slideId) : undefined,
   );
-  const overPicture = slide?.cues.some((c) => c.kind === 'background' && c.mediaId !== null) ?? false;
+  // Over a picture or video, or a video input's live picture (Session 51).
+  const overPicture =
+    slide?.cues.some((c) => c.kind === 'background' && (c.mediaId !== null || cueInputName(c) !== null)) ??
+    false;
   const colors = [
     el.style.color,
     ...(el.runs ?? []).flatMap((r) => (r.text.trim() !== '' && r.color ? [r.color] : [])),

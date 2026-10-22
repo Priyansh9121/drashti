@@ -514,6 +514,8 @@ interface CueSettings {
   fit?: 'fit' | 'fill' | 'stretch';
   loop?: boolean;
   volume?: number;
+  /** A video input as the background (Session 51), by its own name: then the cue has no file. */
+  input?: string;
 }
 
 /** A cue's settings, read leniently. */
@@ -528,34 +530,41 @@ export function cueSettings(cue: EditSlide['cues'][number]): CueSettings {
 
 /**
  * The slide's background picture or video (a cue: it goes on the background
- * layer when the slide goes live), or none. Other cues stay as they are.
+ * layer when the slide goes live), a video input by its name (Session 51: no file, the name alone in its
+ * settings, each computer putting up its own input of that name), or none. Other cues stay as they are.
  */
 export function setBackgroundCue(
   slide: EditSlide,
-  media: { id: string; kind: 'image' | 'video'; fit: 'fit' | 'fill' | 'stretch'; loop: boolean } | null,
+  media:
+    | { id: string; kind: 'image' | 'video'; fit: 'fit' | 'fill' | 'stretch'; loop: boolean }
+    | { input: string }
+    | null,
 ): EditSlide {
   const old = slide.cues.find((c) => c.kind === 'background');
   const others = slide.cues.filter((c) => c.kind !== 'background');
   if (!media) return { ...slide, cues: others };
-  const props = {
-    ...(old ? cueSettings(old) : {}),
-    media: media.kind,
-    fit: media.fit,
-    loop: media.kind === 'video' && media.loop,
-  };
-  return {
+  const cue = (mediaId: string | null, props: CueSettings) => ({
     ...slide,
     cues: [
       {
         id: old?.id ?? newId(),
-        kind: 'background',
+        kind: 'background' as const,
         label: old?.label ?? '',
-        mediaId: media.id,
+        mediaId,
         props: JSON.stringify(props),
       },
       ...others,
     ],
-  };
+  });
+  if ('input' in media) return cue(null, { input: media.input });
+  // A picture's or video's own settings, never an input's name left from before.
+  const { input: _input, ...before } = old ? cueSettings(old) : {};
+  return cue(media.id, {
+    ...before,
+    media: media.kind,
+    fit: media.fit,
+    loop: media.kind === 'video' && media.loop,
+  });
 }
 
 /** The slide's sound (a cue on the audio layer), or none. */
