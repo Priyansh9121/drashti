@@ -1,5 +1,7 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import { Menu } from 'electron';
+import type { OperatorAction } from '../shared/keymap';
+import { KEYMAP, toAccelerator } from '../shared/keymap';
 import type { OperatorMode } from '../shared/mode';
 import type { ScreenSwitch, ScreenSwitches } from '../shared/screen-switches';
 
@@ -79,9 +81,8 @@ export interface MenuActions {
   appearance: AppearanceItems;
   /**
    * View › Audience and View › Stage (Session 50, Pro Mode): ticked while on; choosing one turns it off (asking
-   * first while its screens show something) or on. No accelerator: Mod+1 and Mod+2 are the page's keys, so a
-   * press is acted on once, by the page, and never by the menu too (Electron hands the menu what the page leaves
-   * alone, while a field or a dialog has the keyboard as well), as ? is for Keyboard Shortcuts….
+   * first while its screens show something) or on. They show Mod+1 and Mod+2 (Session 51) without binding them:
+   * those are the page's keys, so a press is acted on once, by the page, never by the menu too (see shownKey).
    */
   screenSwitches: { on: ScreenSwitches; toggle: (which: ScreenSwitch) => void };
   /** Only when DRASHTI_DIAGNOSTICS=1: for the manual watchdog check. */
@@ -91,6 +92,19 @@ export interface MenuActions {
     runSelfTest: () => void;
     openGallery: () => void;
   } | null;
+}
+
+/**
+ * The keymap's key for an item that shows it and leaves it to the page (the keymap's shownInMenu: ⌘1 and ⌘2
+ * beside View › Audience and Stage, Session 51). Electron hands a menu every key the page leaves alone (held, in
+ * a field, under a dialog), and a page's key acts once, by the page. Windows' menu shows the key without binding
+ * it (registerAccelerator: false); the Mac's binds every key it shows, so there the page takes every press of
+ * these keys first (useKeymap), and none reaches the menu.
+ */
+function shownKey(action: OperatorAction): MenuItemConstructorOptions {
+  const binding = KEYMAP.find((b) => b.action === action);
+  const key = binding?.shownInMenu === true ? binding.keys[0] : undefined;
+  return key ? { accelerator: toAccelerator(key), registerAccelerator: false } : {};
 }
 
 /**
@@ -176,12 +190,14 @@ export function installMenu(actions: MenuActions): void {
                 click: actions.zoomWindow,
               } as MenuItemConstructorOptions,
               { type: 'separator' } as MenuItemConstructorOptions,
-              // This computer's audience screens (key and fill too) and its stage screens, off and on (Session 50).
+              // This computer's audience screens (key and fill too) and its stage screens, off and on (Session 50),
+              // showing their keys (Session 51).
               {
                 id: 'screen-switch-audience',
                 label: 'Audience',
                 type: 'checkbox',
                 checked: actions.screenSwitches.on.audience,
+                ...shownKey('toggleAudience'),
                 click: () => {
                   actions.screenSwitches.toggle('audience');
                 },
@@ -191,6 +207,7 @@ export function installMenu(actions: MenuActions): void {
                 label: 'Stage',
                 type: 'checkbox',
                 checked: actions.screenSwitches.on.stage,
+                ...shownKey('toggleStage'),
                 click: () => {
                   actions.screenSwitches.toggle('stage');
                 },
