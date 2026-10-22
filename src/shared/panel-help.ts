@@ -41,7 +41,7 @@ export const PANEL_HELP = {
   live: {
     title: 'LIVE',
     doc: 'operator',
-    text: 'What the hall sees this moment. Nothing here changes the screens: the slides, Next and the buttons along the bottom do.',
+    text: 'What the hall sees this moment. Under it, Back 15 s, Forward 15 s and Last 10 s jump the background video or a single sound, everywhere at once. A picture in picture has its own line there, with Swap and Take off; drag its box in LIVE to move it.',
     guide: 'headed **LIVE**',
   },
   looks: {
@@ -89,7 +89,7 @@ export const PANEL_HELP = {
   music: {
     title: 'Music',
     doc: 'operator',
-    text: 'Sounds that play one after another, apart from the slides, such as before the sabha. Choose a list and press Play; a slide with its own sound stops it.',
+    text: 'Sounds that play one after another, apart from the slides, such as before the sabha. Choose a list and press Play, and Back 15 s, Forward 15 s and Last 10 s move in the track playing. A slide with its own sound stops the music.',
     guide: '**Music before the sabha.**',
   },
   idle: {
@@ -143,7 +143,7 @@ export const PANEL_HELP = {
   audio: {
     title: 'Audio',
     doc: 'operator',
-    text: 'Audio playlists to play before the sabha: + makes one or imports sounds, and sounds dragged onto one go in. Play starts a list; Clear audio along the bottom, or F5, stops whatever sound is playing.',
+    text: 'Audio playlists to play before the sabha: + makes one or imports sounds, and sounds dragged onto one go in. Play starts a list, and Back 15 s, Forward 15 s and Last 10 s move in its track. Clear audio along the bottom, or F5, stops whatever sound is playing.',
     guide: '**Audio.** In the right column',
   },
   tools: {
