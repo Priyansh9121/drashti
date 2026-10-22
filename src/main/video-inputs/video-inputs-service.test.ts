@@ -23,6 +23,8 @@ function setup(options: { access?: CameraAccess } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-video-inputs-'));
   dirs.push(dir);
   let background: BackgroundLayer | null = null;
+  // The video input in the picture-in-picture box (Session 50), by its id.
+  let boxInput: string | null = null;
   let access: CameraAccess = options.access ?? 'granted';
   const views: VideoInputsView[] = [];
   const statuses: VideoInputStatus[] = [];
@@ -44,6 +46,7 @@ function setup(options: { access?: CameraAccess } = {}) {
       userData: dir,
       camera,
       background: () => background,
+      boxInput: () => boxInput,
       clearBackground: () => {
         cleared++;
         background = null;
@@ -93,6 +96,9 @@ function setup(options: { access?: CameraAccess } = {}) {
     },
     setAccess: (a: CameraAccess) => {
       access = a;
+    },
+    setBox: (id: string | null) => {
+      boxInput = id;
     },
   };
 }
@@ -198,6 +204,22 @@ describe('this computer’s video inputs', () => {
       ok: false,
       message: 'That video input is no longer on this computer.',
     });
+  });
+});
+
+describe('a video input in the picture-in-picture box (Session 50, section 8 review)', () => {
+  it('is followed when it changes, and never removed while in the box, as the background’s is', () => {
+    const { service, refreshed, setBox } = setup();
+    const one = added(service.add(fields), 'Placeholder input');
+    setBox(one.id);
+    expect(service.update(one.id, { name: 'Placeholder box' }).ok).toBe(true);
+    expect(refreshed).toEqual([{ ...one, name: 'Placeholder box' }]);
+    expect(service.remove(one.id)).toEqual({
+      ok: false,
+      message: '“Placeholder box” is in the picture-in-picture box: take it off first, then remove it.',
+    });
+    setBox(null);
+    expect(service.remove(one.id).ok).toBe(true);
   });
 });
 

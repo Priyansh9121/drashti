@@ -1348,6 +1348,11 @@ function start(): void {
       },
     }),
     background: () => engine.current.layers.background,
+    // The camera in the picture-in-picture box (Session 50): followed and kept listed as the background's is.
+    boxInput: () => {
+      const source = engine.current.layers.pip?.source;
+      return source?.kind === 'input' ? source.inputId : null;
+    },
     clearBackground: () => {
       engine.dispatch({ type: 'clearLayer', layer: 'background' });
     },

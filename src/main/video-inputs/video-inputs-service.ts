@@ -37,6 +37,8 @@ export interface VideoInputsDeps {
   camera: CameraSystem;
   /** The background layer now. */
   background(): BackgroundLayer | null;
+  /** The video input in the picture-in-picture box now, by its id (Session 50), or null. */
+  boxInput?(): string | null;
   /** Take the background off (the input put back after a restart is not on this computer now). */
   clearBackground(): void;
   /** An input changed in the list while it is up: the screens follow (the engine's refreshInput). */
@@ -143,7 +145,8 @@ export class VideoInputsService {
     const kept = this.keep(this.inputs.map((i) => (i.id === was.id ? input : i)));
     if (kept) return kept;
     const bg = this.deps.background();
-    if (bg?.kind === 'input' && bg.inputId === input.id) this.deps.refresh({ ...input });
+    const inBox = this.deps.boxInput?.() === input.id;
+    if ((bg?.kind === 'input' && bg.inputId === input.id) || inBox) this.deps.refresh({ ...input });
     return { ok: true, view: this.view() };
   }
 
@@ -157,6 +160,12 @@ export class VideoInputsService {
     const bg = this.deps.background();
     if (bg?.kind === 'input' && bg.inputId === input.id)
       return { ok: false, message: `“${input.name}” is on the screens: clear it first, then remove it.` };
+    // In the picture-in-picture box (Session 50): the same, for the same reason.
+    if (this.deps.boxInput?.() === input.id)
+      return {
+        ok: false,
+        message: `“${input.name}” is in the picture-in-picture box: take it off first, then remove it.`,
+      };
     const kept = this.keep(this.inputs.filter((i) => i.id !== input.id));
     if (kept) return kept;
     this.deps.log('info', `Video input removed (${String(this.inputs.length)} on this computer)`);

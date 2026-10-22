@@ -92,6 +92,24 @@ describe('the picture-in-picture box in the engine', () => {
     expect(engine.current.layers.pip?.shownAt).toBeGreaterThan(slides?.shownAt ?? 0);
   });
 
+  // Section 8's review: a camera in the box follows a change in Media, as the background's does.
+  it('a video input in the box follows a change to it in Media', () => {
+    const { engine } = setup();
+    engine.dispatch(show({ kind: 'input', inputId: 'in-1' }));
+    const renamed = { ...CAMERA, name: 'Placeholder renamed', device: 'Placeholder other device' };
+    expect(engine.refreshInput(renamed)).toMatchObject({ ok: true, changed: true });
+    expect(engine.current.layers.pip?.source).toEqual({
+      kind: 'input',
+      inputId: 'in-1',
+      name: 'Placeholder renamed',
+      device: 'Placeholder other device',
+    });
+    // Another input, not in the box: nothing changes.
+    expect(engine.refreshInput({ ...CAMERA, id: 'in-2', name: 'Placeholder two' })).toMatchObject({
+      changed: false,
+    });
+  });
+
   it('refuses what is not there: an input not in the list, a window not just offered, media not in Media, a sound', () => {
     const { engine, transport, inputs, offered } = setup();
     expect(engine.dispatch(show({ kind: 'input', inputId: 'in-gone' }))).toMatchObject({
