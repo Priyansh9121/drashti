@@ -38,6 +38,8 @@ const stateText: Record<ScreenState, string> = {
   'missing-display': 'Display not connected',
   unassigned: 'No display',
   disabled: 'Off',
+  // Audience or Stage is off (Session 50): on purpose, never a failure.
+  'switched-off': 'Switched off',
   'node-offline': 'Node offline',
   stopped: 'Stopped',
 };
@@ -46,6 +48,7 @@ const stateTone: Record<ScreenState, string> = {
   'missing-display': 'border-warning/60 bg-warning-bg text-warning-fg',
   unassigned: 'border-line-strong bg-panel-2 text-muted',
   disabled: 'border-line-strong bg-panel-2 text-muted',
+  'switched-off': 'border-line-strong bg-panel-2 text-muted',
   'node-offline': 'border-warning/60 bg-warning-bg text-warning-fg',
   stopped: 'border-danger/60 bg-danger-bg text-danger-fg',
 };

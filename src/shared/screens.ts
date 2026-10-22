@@ -78,6 +78,11 @@ export type ScreenState =
   | 'unassigned'
   /** Turned off by the operator. */
   | 'disabled'
+  /**
+   * Its switch, Audience or Stage, is off (Session 50): its window is closed and its display is the computer's
+   * until the switch is on again, when it opens there again. On purpose, never a failure; not saved.
+   */
+  | 'switched-off'
   /** On a node that is not connected now (its screens show the last picture, if it is on). */
   | 'node-offline'
   /**

@@ -36,6 +36,8 @@ const STATE: Record<ScreenState, { text: string; tone: BadgeTone }> = {
   'missing-display': { text: 'Display not connected', tone: 'warning' },
   unassigned: { text: 'No display', tone: 'neutral' },
   disabled: { text: 'Off', tone: 'neutral' },
+  // Audience or Stage is off (Session 50): off on purpose, not failed.
+  'switched-off': { text: 'Switched off', tone: 'neutral' },
   'node-offline': { text: 'Node offline', tone: 'warning' },
   stopped: { text: 'Stopped', tone: 'danger' },
 };
