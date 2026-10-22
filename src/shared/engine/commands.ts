@@ -9,6 +9,10 @@ import {
   LAYER_NAMES,
   type MaskLayer,
   type MessageItem,
+  PIP_CORNERS,
+  PIP_MOTIONS,
+  PIP_SIZES,
+  type PipPlace,
   type PropItem,
 } from './state';
 
@@ -59,6 +63,28 @@ export const messageSchema: z.ZodType<MessageItem> = z.object({
 const mask: z.ZodType<MaskLayer> = maskSchema;
 
 const playlistCursor = z.object({ playlistId: id, itemId: id });
+
+/** Where the picture-in-picture box sits and how it looks (Session 50). */
+export const pipPlaceSchema: z.ZodType<PipPlace> = z.object({
+  corner: z.enum(PIP_CORNERS).nullable(),
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  size: z.enum(PIP_SIZES),
+  border: z.boolean(),
+  rounded: z.boolean(),
+  motion: z.enum(PIP_MOTIONS),
+});
+
+/**
+ * What the operator asks the box to hold (Session 50): the main process looks up a video input by its id in this
+ * computer's list, and a window by its id among the windows Show a Window… just offered, never a page's own.
+ */
+const pipSourceChoice = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('slides') }),
+  z.object({ kind: z.literal('media'), mediaId: id }),
+  z.object({ kind: z.literal('input'), inputId: id }),
+  z.object({ kind: z.literal('window'), id: z.string().min(1).max(200) }),
+]);
 
 /** An audio playlist as the main process reads it from the library (its tracks in play order). */
 export const musicStartSchema = z.object({
@@ -131,6 +157,8 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('showLogo'), prop: propSchema }),
   z.object({ type: z.literal('hideLogo') }),
   z.object({ type: z.literal('setBackground'), background }),
+  /** A video input from this computer's list up as the live background (Session 50), the slide staying over it. */
+  z.object({ type: z.literal('showInput'), inputId: id }),
   z.object({ type: z.literal('playAudio'), audio: audioChoiceSchema }),
   z.object({ type: z.literal('showProp'), prop: propSchema }),
   z.object({ type: z.literal('hideProp'), propId: id }),
@@ -179,6 +207,22 @@ export const engineCommandSchema = z.discriminatedUnion('type', [
     layer: z.enum(['background', 'audio']),
     markerId: z.string().min(1).max(64),
   }),
+  /**
+   * Back 15 s, Forward 15 s, or the last 10 s of the background video or the sound (Session 50), in step everywhere,
+   * never past the file's start or end points.
+   */
+  z.object({
+    type: z.literal('skip'),
+    layer: z.enum(['background', 'audio']),
+    jump: z.enum(['back', 'forward', 'last']),
+  }),
+  /** A timer up alone, in the Timer only layout, in the slide's place (Session 50: Show on the screens). */
+  z.object({ type: z.literal('showTimer'), timerId: id }),
+  /** Picture in picture (Session 50): a box up (or its picture changed), taken off, swapped, or moved. */
+  z.object({ type: z.literal('showPip'), source: pipSourceChoice, place: pipPlaceSchema.optional() }),
+  z.object({ type: z.literal('hidePip') }),
+  z.object({ type: z.literal('swapPip') }),
+  z.object({ type: z.literal('placePip'), place: pipPlaceSchema }),
 ]);
 
 export type EngineCommand = z.infer<typeof engineCommandSchema>;
@@ -199,7 +243,9 @@ export type EngineErrorCode =
   | 'no-music'
   | 'unknown-marker'
   | 'not-repeating'
-  | 'no-picture';
+  | 'no-picture'
+  | 'unknown-input'
+  | 'no-pip';
 
 export type CommandResult =
   { ok: true; changed: boolean; rev: number } | { ok: false; error: EngineErrorCode; message: string };

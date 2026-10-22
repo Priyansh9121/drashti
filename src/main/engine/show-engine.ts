@@ -1357,6 +1357,15 @@ export class ShowEngine {
           actions: [{ type: 'audio/set', audio: { ...a, music: { ...a.music, loop: command.loop } } }],
         };
       }
+      // Session 50's commands: each section's builder puts its own in place of these.
+      case 'showInput':
+      case 'skip':
+      case 'showTimer':
+      case 'showPip':
+      case 'hidePip':
+      case 'swapPip':
+      case 'placePip':
+        return { ok: false, error: 'invalid-command', message: 'Not built yet' };
     }
   }
 
