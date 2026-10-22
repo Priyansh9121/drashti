@@ -203,7 +203,7 @@ test('in Screens: the controls’ display marked; Use this display asks, Enter k
   await app.close();
 });
 
-test('covering the controls: the output asks too, large, with its countdown; Esc on it goes back, Enter keeps; the uncover key leaves the question on the controls', async () => {
+test('covering the controls: the output asks too, large, with its countdown; Esc goes back, Enter keeps; the uncover key leaves the question on the controls', async () => {
   needsRealScreen();
   test.setTimeout(150_000);
   const { app } = await launchApp({ DRASHTI_TEST_KEEP_SCREENS: '1' });
@@ -245,13 +245,14 @@ test('covering the controls: the output asks too, large, with its countdown; Esc
     await expectFits(big, 'Keep these screens? on the output over the controls');
     await expect(question.getByTestId('keep-screens-covered')).toBeVisible();
     expect(await pending(win)).toMatchObject({ coversControls: true });
-    // Esc on it goes back: the output closes, and the question goes from the controls too.
-    await out.keyboard.press('Escape');
+    // Esc goes back: an output never takes the keyboard, so the keys reach the controls under it. The output
+    // closes, and the question goes from the controls too.
+    await win.keyboard.press('Escape');
     await expect.poll(() => openOutputs(app)).toBe(0);
     await expect(question).toHaveCount(0);
     expect((await screensNow(win)).groups.find((g) => g.id === groupId)?.screens).toEqual([]);
 
-    // Covered again: Enter keeps (the keys reach the controls under the output); it stays over them.
+    // Covered again: Enter keeps; it stays over the controls.
     await cover();
     out = await openOutput(app);
     await expect(out.getByTestId('keep-question')).toBeVisible();
@@ -264,17 +265,34 @@ test('covering the controls: the output asks too, large, with its countdown; Esc
     await win.keyboard.press(uncoverKey);
     await expect.poll(() => openOutputs(app)).toBe(0);
 
-    // On again (agreed): asked again. The uncover key while it waits turns the output off, and the question
-    // stays on the controls, seen now; Keep keeps the screens as they are (the screen there, off).
+    // On again (agreed): asked again. The output's own answer, as its Esc sends it when it has the keyboard (a
+    // windowed output), goes back: off again.
     const screenId = (await screensNow(win)).groups.find((g) => g.id === groupId)?.screens[0]?.id ?? '';
-    await win.evaluate(async (id) => {
-      const r = await (globalThis as PageGlobals).drashti.screens.updateScreen(
-        id,
-        { enabled: true },
-        { coverOperator: true },
-      );
-      if (!r.ok) throw new Error(r.message);
-    }, screenId);
+    const turnOn = () =>
+      win.evaluate(async (id) => {
+        const r = await (globalThis as PageGlobals).drashti.screens.updateScreen(
+          id,
+          { enabled: true },
+          { coverOperator: true },
+        );
+        if (!r.ok) throw new Error(r.message);
+      }, screenId);
+    const enabled = async () =>
+      (await screensNow(win)).groups.find((g) => g.id === groupId)?.screens.map((sc) => [sc.id, sc.enabled]);
+    await turnOn();
+    out = await openOutput(app);
+    await expect(out.getByTestId('keep-question')).toBeVisible();
+    // Sent without waiting for the answer: going back closes this very window.
+    await out.evaluate(() => {
+      void (globalThis as PageGlobals).drashti.output.keepAnswer(false);
+    });
+    await expect.poll(() => openOutputs(app)).toBe(0);
+    await expect(question).toHaveCount(0);
+    expect(await enabled()).toEqual([[screenId, false]]);
+
+    // On again: the uncover key while it waits turns the output off, and the question stays on the controls,
+    // seen now; Keep keeps the screens as they are (the screen there, off).
+    await turnOn();
     out = await openOutput(app);
     await expect(out.getByTestId('keep-question')).toBeVisible();
     await win.keyboard.press(uncoverKey);
@@ -284,8 +302,8 @@ test('covering the controls: the output asks too, large, with its countdown; Esc
     expect(await pending(win)).toMatchObject({ coversControls: false });
     await question.getByTestId('keep-screens-keep').click();
     await expect(question).toHaveCount(0);
-    const kept = (await screensNow(win)).groups.find((g) => g.id === groupId)?.screens;
-    expect(kept?.map((sc) => [sc.id, sc.enabled])).toEqual([[screenId, false]]);
+    expect(await pending(win)).toBeNull();
+    expect(await enabled()).toEqual([[screenId, false]]);
   } finally {
     await app.close();
   }
