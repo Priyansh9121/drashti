@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { DisplayKey } from '../../shared/screens';
 import { type Db, openDatabase } from './database';
+import { NodeRepo } from './nodes';
 import { ScreenRepo } from './screens';
 
 let db: Db;
@@ -98,5 +99,70 @@ describe('ScreenRepo', () => {
     const id = repo.addScreen(g, 'S', key);
     expect(repo.removeScreen(id)).toBe(true);
     expect(repo.screen(id)).toBeNull();
+  });
+});
+
+describe('putting the screens back exactly (Keep these screens?, Session 50)', () => {
+  const node = (nodes: NodeRepo, hash: string) =>
+    nodes.add({ name: 'Placeholder Lobby PC', tokenHash: hash.repeat(64), address: null, version: '1.0.0' });
+
+  it('saves every group and screen as stored, and puts them back exactly after any change', () => {
+    const nodes = new NodeRepo(db);
+    const hall = repo.createGroup('Main Hall');
+    const stage = repo.createGroup('Stage', 'stage');
+    repo.ensureStreamGroup();
+    const tv = repo.addScreen(hall, 'Hall TV', key);
+    repo.updateScreen(tv, { canvasWidth: 1280, canvasHeight: 720, scaling: 'fill' });
+    const off = repo.addScreen(stage, 'Stage TV', { ...key, id: 3, label: 'Stage TV', x: 3360 });
+    repo.updateScreen(off, { enabled: false });
+    const lobby = repo.addScreen(
+      hall,
+      'Lobby TV',
+      { ...key, id: 7, label: 'Placeholder TV' },
+      node(nodes, 'c').id,
+    );
+    const saved = repo.saved();
+    const groups = repo.groups();
+
+    // Everything a change can do: a group made with a screen, one renamed and given another role, a screen
+    // moved and turned on, one removed, a group deleted.
+    const made = repo.createGroup('Audience');
+    repo.addScreen(made, 'Extra', { ...key, id: 4, label: 'Extra', x: 5280 });
+    repo.renameGroup(stage, 'Performers');
+    repo.setGroupRole(stage, 'audience');
+    repo.moveScreen(tv, made);
+    repo.updateScreen(off, { enabled: true });
+    repo.removeScreen(lobby);
+    repo.deleteGroup(hall);
+    expect(repo.groups()).not.toEqual(groups);
+
+    // The group made since is the one removed (its settings leave the Looks).
+    expect(repo.putBack(saved)).toEqual([made]);
+    expect(repo.groups()).toEqual(groups);
+    expect(repo.saved()).toEqual(saved);
+    expect(repo.screen(tv)).toMatchObject({
+      groupId: hall,
+      canvasWidth: 1280,
+      canvasHeight: 720,
+      scaling: 'fill',
+    });
+    expect(repo.screen(off)?.enabled).toBe(false);
+  });
+
+  it('never removes the stream’s group, and a screen on a node removed since stays gone', () => {
+    const nodes = new NodeRepo(db);
+    const hall = repo.createGroup('Hall');
+    const n = node(nodes, 'd');
+    repo.addScreen(hall, 'Lobby TV', key, n.id);
+    const saved = repo.saved();
+    // Made after the setup was taken: YouTube in Screens stays.
+    const stream = repo.ensureStreamGroup().id;
+    nodes.remove(n.id);
+    expect(repo.putBack(saved)).toEqual([]);
+    expect(repo.groups().map((g) => [g.name, g.screens.length])).toEqual([
+      ['Hall', 0],
+      ['Stream', 0],
+    ]);
+    expect(repo.streamGroup()).toEqual({ id: stream });
   });
 });

@@ -6,7 +6,9 @@ import type { SetupOutput } from '../../shared/setup';
 import type {
   CoverOptions,
   DisplayInfo,
+  DisplayKey,
   NodeDisplays,
+  ScreenConfig,
   ScreenPatch,
   ScreenStatus,
   ScreensResult,
@@ -20,8 +22,18 @@ import {
   nameSchema,
   screenPatchSchema,
 } from '../../shared/screens-schema';
-import type { ScreenRepo } from '../db/screens';
+import type { SavedScreens, ScreenRepo } from '../db/screens';
 import type { OutputManager } from './output-manager';
+
+/**
+ * The screen setup as it was, for Go back to put back exactly (Keep these screens?, Session 50): every group and
+ * screen as stored, and each group's languages in the live Look (where Screens and the setup wizard keep them).
+ */
+export interface ScreensSetup extends SavedScreens {
+  languages: Record<string, Lang[] | null>;
+}
+
+const sameLanguages = (a: Lang[] | null, b: Lang[] | null) => JSON.stringify(a) === JSON.stringify(b);
 
 /** What screen changes do to the Looks (look-service.ts), which hold each group's languages. */
 export interface ScreenLooks {
@@ -293,7 +305,7 @@ export class ScreensService {
       displays,
     );
     const screensOn = (displayId: number) => screens.filter((sc) => onDisplay.get(sc.id) === displayId);
-    const same = (a: Lang[] | null, b: Lang[] | null) => JSON.stringify(a) === JSON.stringify(b);
+    const same = sameLanguages;
     const want = new Map(wanted.map((o) => [o.displayId, o]));
 
     // A group whose connected screens all want the same new role and languages changes in place.
@@ -350,5 +362,61 @@ export class ScreensService {
     const id = idSchema.safeParse(rawId);
     if (!id.success || !this.repo.removeScreen(id.data)) return this.fail('That screen no longer exists.');
     return this.done();
+  }
+
+  // ---- Keep these screens? (Session 50) ------------------------------------------------------------------
+
+  /** The screen setup as it is now, to put back exactly. */
+  setup(): ScreensSetup {
+    const saved = this.repo.saved();
+    const languages: Record<string, Lang[] | null> = {};
+    for (const g of saved.groups) languages[g.id] = this.looks.liveLanguages(g.id);
+    return { ...saved, languages };
+  }
+
+  /**
+   * Put a setup back exactly (Go back): its groups and screens, and each group's languages in the live Look; a
+   * group made since leaves every Look. The outputs follow, unless Drashti is quitting (`quitting`): then it is
+   * only saved, and no window opens or closes (the next start shows it).
+   */
+  putBack(setup: ScreensSetup, quitting = false): ScreensResult {
+    for (const id of this.repo.putBack(setup)) this.looks.groupGone(id);
+    for (const g of setup.groups) {
+      const languages = setup.languages[g.id] ?? null;
+      if (!sameLanguages(this.looks.liveLanguages(g.id), languages))
+        this.looks.setLiveLanguages(g.id, languages);
+    }
+    this.looks.groupsChanged();
+    return quitting ? { ok: true, snapshot: this.snapshot() } : this.done();
+  }
+
+  /**
+   * What each display shows: every output on a connected display, this computer's ("here") and each node's, as
+   * its screen, group and role. A change that makes a display show something it did not is one Drashti asks
+   * about; turning an output off is not.
+   */
+  placed(): Map<string, string> {
+    const roles = new Map(this.repo.groupIds().map((g) => [g.id, g.role]));
+    const placed = new Map<string, string>();
+    const place = (where: string, screens: ScreenConfig[], displays: readonly DisplayInfo[]) => {
+      const on = screens.filter(
+        (sc): sc is ScreenConfig & { displayKey: DisplayKey } => sc.enabled && sc.displayKey !== null,
+      );
+      const matched = matchDisplays(
+        on.map((sc) => ({ screenId: sc.id, key: sc.displayKey })),
+        displays,
+      );
+      for (const sc of on) {
+        const displayId = matched.get(sc.id);
+        if (displayId !== undefined && displayId !== null)
+          placed.set(
+            `${where} ${String(displayId)}`,
+            `${sc.id} ${sc.groupId} ${roles.get(sc.groupId) ?? ''}`,
+          );
+      }
+    };
+    place('here', this.repo.screens(), this.listDisplays());
+    for (const node of this.nodes.displays()) place(node.id, this.repo.nodeScreens(node.id), node.displays);
+    return placed;
   }
 }
