@@ -78,8 +78,12 @@ export function LivePreview() {
   const canvas = { width: first?.canvasWidth ?? 1920, height: first?.canvasHeight ?? 1080 };
   const scaling = first?.scaling ?? 'fit';
   const blackout = state?.blackout ?? false;
+  // The picture-in-picture box alone is something on the screens too (Session 50).
   const somethingUp = state
-    ? state.layers.slide !== null || state.layers.background !== null || state.layers.props.length > 0
+    ? state.layers.slide !== null ||
+      state.layers.background !== null ||
+      state.layers.props.length > 0 ||
+      state.layers.pip !== null
     : false;
   // The GPU warmed up, unseen, in the LIVE picture while it would be black (Session 27, render/WarmUp.tsx):
   // anything up, or put back after a restart, shows at once instead.
