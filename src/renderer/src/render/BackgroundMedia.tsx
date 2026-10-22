@@ -1,6 +1,8 @@
-import { type Dispatch, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
+import { type Dispatch, useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
 import type { BackgroundLayer, MediaFit } from '../../../shared/engine/state';
 import {
+  type InputSlot,
+  isInputSlot,
   isMediaSlot,
   type MediaSlot,
   NO_SLOTS,
@@ -20,6 +22,8 @@ import { backgroundShowing } from '../../../shared/picture-look';
 import { PreviewPicture, usePreviewsOnly } from './previews';
 import { useGpuRestarts, useMediaAttempt } from './media-attempts';
 import { useMediaUrl } from './media-urls';
+import { KeptVideo } from './KeptVideo';
+import { useInputReport, useVideoInput } from './video-input';
 
 function style(fit: MediaFit, visible: boolean) {
   return {
@@ -153,6 +157,56 @@ function ImageSlot({
 }
 
 /**
+ * A video input as the background (Session 50): live, fitted inside or filling the screen as a video can be,
+ * and silent. It is ready on its first frame; one that cannot start (not there, refused, taken) has failed and
+ * shows nothing, until it starts. Stopped while up, it keeps its last picture. Where this computer does not
+ * have it (a node's screens) it opens nothing and draws nothing. `current`: up now (shown or on its way), not
+ * dissolving out, so the page says how it stands.
+ */
+function InputSlotView({
+  slot,
+  visible,
+  current,
+  dispatch,
+}: {
+  slot: InputSlot;
+  visible: boolean;
+  current: boolean;
+  dispatch: Dispatch<SlotEvent>;
+}) {
+  const { key, layer } = slot;
+  const capture = useVideoInput(layer);
+  useInputReport(layer.inputId, capture.state, current);
+  const loading = slot.state === 'loading';
+  const cannot = capture.state === 'stopped' || capture.state === 'absent';
+  useEffect(() => {
+    if (loading && cannot) dispatch({ type: 'failed', key });
+  }, [loading, cannot, key, dispatch]);
+  const onFrame = useCallback(() => {
+    dispatch({ type: 'ready', key, at: engineNow() });
+  }, [key, dispatch]);
+  return (
+    <div
+      data-bg-slot={key}
+      data-state={slot.state}
+      data-kind="input"
+      data-input-id={layer.inputId}
+      data-input-state={capture.state}
+      style={{ position: 'absolute', inset: 0, opacity: visible ? 1 : 0 }}
+    >
+      {capture.state !== 'absent' && (
+        <KeptVideo
+          stream={capture.stream}
+          live={capture.state === 'live'}
+          fit={OBJECT_FIT[layer.fit]}
+          onFrame={onFrame}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
  * Set the dissolve's opacities on a background's pictures: the old one out, the new one in, on the same
  * curve as the slide's (Session 27: eased, in + out = 1). A picture not in a dissolve is whole (Session 23:
  * one left with an opacity from a dissolve stayed dim).
@@ -278,11 +332,15 @@ function BackgroundPlayer({
     >
       {list.map((slot) => {
         const visible = (slot === slots.shown || slot === slots.leaving) && slot.state === 'ready';
-        const element = !isMediaSlot(slot) ? null : slot.layer.media === 'video' ? (
-          <VideoSlot slot={slot} visible={visible} dispatch={dispatch} />
-        ) : (
-          <ImageSlot slot={slot} visible={visible} dispatch={dispatch} />
-        );
+        const element = isMediaSlot(slot) ? (
+          slot.layer.media === 'video' ? (
+            <VideoSlot slot={slot} visible={visible} dispatch={dispatch} />
+          ) : (
+            <ImageSlot slot={slot} visible={visible} dispatch={dispatch} />
+          )
+        ) : isInputSlot(slot) ? (
+          <InputSlotView slot={slot} visible={visible} current={slot !== slots.leaving} dispatch={dispatch} />
+        ) : null;
         return (
           <div
             key={`${slot.key}#${slot.attempt ?? 0}`}
@@ -312,7 +370,7 @@ function BackgroundPlayer({
             borderRadius: 8,
           }}
         >
-          Background cannot play
+          {slots.shown.layer.kind === 'input' ? 'Video input has no picture' : 'Background cannot play'}
         </div>
       )}
     </div>

@@ -32,7 +32,11 @@ function CameraVideo({ stream }: { stream: MediaStream | null }) {
   );
 }
 
-/** What the stream shows, on its 1920 x 1080 canvas (see shared/program.ts for the rules). */
+/**
+ * What the stream shows, on its 1920 x 1080 canvas (see shared/program.ts for the rules). A video input up as the
+ * background (Session 50) is in the Slides layout's picture as the hall has it; the Camera layout keeps the
+ * stream's own camera (which may be the same input).
+ */
 export function ProgramView({
   state,
   layout,
@@ -82,7 +86,12 @@ export function ProgramView({
           {state.layers.background?.kind === 'color' && (
             <div style={{ position: 'absolute', inset: 0, background: state.layers.background.color }} />
           )}
-          <BackgroundMedia layer={state.layers.background} annotate={false} movement={movement} />
+          {/* A video input (Session 50) never takes the camera's place here: the stream keeps its own camera. */}
+          <BackgroundMedia
+            layer={state.layers.background?.kind === 'input' ? null : state.layers.background}
+            annotate={false}
+            movement={movement}
+          />
           {state.layers.background?.kind === 'window' && <LiveWindowView layer={state.layers.background} />}
           {picture.full === 'slide' && (
             <SlideLayerView

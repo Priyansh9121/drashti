@@ -6,10 +6,13 @@ import { App } from './App';
 import { WindowBoundary } from '../ui/WindowBoundary';
 import { reportRenderError } from '../ui/render-errors';
 import { setLiveWindowSize } from '../render/live-window';
+import { setVideoInputSize } from '../render/video-input';
 
 // The operator window's pictures of the screens are small: another app's window up as the background
-// (Session 48) is captured for them at a quarter of a hall screen's size, half as often.
+// (Session 48) is captured for them at a quarter of a hall screen's size, half as often, and so is a video
+// input (Session 50), in LIVE and Media's small pictures alike.
 setLiveWindowSize({ width: 960, height: 540, frameRate: 15 });
+setVideoInputSize({ width: 960, height: 540, frameRate: 15 });
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root');
