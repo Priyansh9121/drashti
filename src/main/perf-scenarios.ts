@@ -607,7 +607,7 @@ function liveWindow(deps: ScenarioDeps): ScenarioRun {
             detail: shown.join(', '),
           },
         ],
-        summary: `scenario live-window: ${plural(seen.length, 'screen')} (the stream's page last when on), window frames ${shown.join(', ')}`,
+        summary: `scenario live-window: ${plural(seen.length, 'screen')} (the stream’s page last when on), window frames ${shown.join(', ')}`,
       };
     },
   };
