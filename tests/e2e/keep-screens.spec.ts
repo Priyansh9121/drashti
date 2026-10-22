@@ -113,7 +113,8 @@ test('Set Up Screens… marks the controls’ display; Done asks; Esc goes back 
   await expect(wizard.getByTestId('setup-done')).toContainText('Done. A test slide is on 2 screens');
   await expect(wizard.getByTestId('setup-went-back')).toHaveCount(0);
   expect(await pending(win)).toBeNull();
-  expect(openOutputs(app)).toBe(2);
+  // The outputs opened again with that Done: each is listed once its page is (a moment after).
+  await expect.poll(() => openOutputs(app)).toBe(2);
   await app.close();
 });
 
