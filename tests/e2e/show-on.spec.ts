@@ -13,6 +13,11 @@ import { chooseMenuItem, launchApp, operatorPage, operatorReady, outputPages } f
  */
 
 const OFFER = { DRASHTI_TEST_SCREEN_OFFER: '1', DRASHTI_WINDOWED_OUTPUTS: '1' };
+/**
+ * A first start as a person meets it: the welcome on, and a new library without the tests' placeholder
+ * presentations (Session 50), so Start here is in the middle behind the welcome.
+ */
+const FIRST_START = { DRASHTI_TEST_NO_WIZARD: '0', DRASHTI_TEST_SEED_PLACEHOLDERS: '' };
 
 const plugIn = (app: ElectronApplication, n: number) =>
   app.evaluate((_electron, count) => {
@@ -85,7 +90,7 @@ test('Not now puts the offer away; the first start’s welcome offers it as its 
   await first.app.close();
 
   // A first start (the welcome on): its primary shows on the display, one click.
-  const { app } = await launchApp({ ...OFFER, DRASHTI_EXTRA_DISPLAYS: '1', DRASHTI_TEST_NO_WIZARD: '0' });
+  const { app } = await launchApp({ ...OFFER, DRASHTI_EXTRA_DISPLAYS: '1', ...FIRST_START });
   const w = await operatorPage(app);
   await operatorReady(w);
   const welcome = w.getByTestId('welcome');
@@ -99,7 +104,7 @@ test('Not now puts the offer away; the first start’s welcome offers it as its 
 
   // Skip for now: Start here offers it too, in its step for the screens, as a secondary. Step 1's Import…
   // stays its one primary; the offer under the header has its own, as a notice's next step does (Back up now).
-  const skipped = await launchApp({ ...OFFER, DRASHTI_EXTRA_DISPLAYS: '1', DRASHTI_TEST_NO_WIZARD: '0' });
+  const skipped = await launchApp({ ...OFFER, DRASHTI_EXTRA_DISPLAYS: '1', ...FIRST_START });
   const s = await operatorPage(skipped.app);
   await operatorReady(s);
   await s.getByTestId('welcome-skip').click();

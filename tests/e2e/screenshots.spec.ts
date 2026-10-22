@@ -127,7 +127,9 @@ async function running(win: Page) {
 }
 
 test('the first start: the welcome, the practice show and the three steps (Session 26g)', async () => {
-  const { app } = await launchApp({ DRASHTI_TEST_NO_WIZARD: '0' });
+  // As a person meets it (Session 50): a new library without the tests' placeholder presentations, so the
+  // middle behind the welcome has nothing chosen.
+  const { app } = await launchApp({ DRASHTI_TEST_NO_WIZARD: '0', DRASHTI_TEST_SEED_PLACEHOLDERS: '' });
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   const welcome = win.getByTestId('welcome');
