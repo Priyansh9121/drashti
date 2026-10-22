@@ -241,6 +241,7 @@ import { LiveWindowService } from './live-window/live-window-service';
 import { electronWindowSources } from './live-window/electron-sources';
 import { standInWindowSources } from './live-window/stand-in-sources';
 import { applyCaptureRules } from './live-window/capture-rules';
+import { PipPlaces } from './pip/pip-places';
 import { ZoomWindow } from './stream/zoom-window';
 import { openPlaceholderMeeting, PLACEHOLDER_MEETING } from './live-window/placeholder';
 import { StreamService } from './stream/stream-service';
@@ -1242,6 +1243,10 @@ function start(): void {
   let pictureLook: (mediaId: string) => PictureLook | null = () => null;
   /** A video's or sound's start and end points and markers (the media repo, made further down). */
   let mediaMarkers: (mediaId: string) => MediaMarkers | null = () => null;
+  /** A media item's kind while it is there to play (Session 50, the box's; the media repo, made further down). */
+  let mediaKind: (mediaId: string) => 'image' | 'video' | 'audio' | null = () => null;
+  /** Picture in picture's remembered place (Session 50): where a new box goes, kept in the library. */
+  const pipPlaces = new PipPlaces({ settings, write: laterSetting });
   /** Audio playlists (made further down): the media library changing may change them. */
   let musicService: MusicService | null = null;
   /** Brings folder playlists' sounds into Audio (Session 44); set once the music is ready. */
@@ -1268,6 +1273,12 @@ function start(): void {
       mediaMarkers: (mediaId) => mediaMarkers(mediaId),
       repeatName: (playlistId) => playlists.repeatPlaylist(playlistId)?.name ?? null,
       pictureLook: (mediaId) => pictureLook(mediaId),
+      // The picture-in-picture box (Session 50): what it holds, from the main process's own lists.
+      mediaKind: (mediaId) => mediaKind(mediaId),
+      // Session 50: wired to the video inputs at merge
+      inputs: () => null,
+      windows: (id) => liveWindows?.offeredWindow(id) ?? null,
+      pipPlace: () => pipPlaces.place(),
     },
   );
   // Quitting: a slide moving on by itself, or an audio playlist's next track, never fires once the library
@@ -1302,6 +1313,7 @@ function start(): void {
   mkdirSync(mediaDir, { recursive: true });
   const media = new MediaRepo(db);
   mediaLength = (mediaId) => media.lengthOf(mediaId);
+  mediaKind = (mediaId) => media.kindAndName(mediaId)?.kind ?? null;
   /** The largest audience screen's picture as drawn, in pixels (set once the outputs are). */
   let audienceScreenSize: (() => PixelSize | null) | null = null;
   // ---- pictures' sharpened copies (Session 26f): made once each, drawn by every screen ----------
@@ -2055,6 +2067,8 @@ function start(): void {
       : electronWindowSources(process.platform),
     showWindow: (window) => engine.showWindow(window),
     background: () => engine.current.layers.background,
+    // A window in the picture-in-picture box (Session 50) is up too: the screens' pages may ask for it.
+    pip: () => engine.current.layers.pip,
     changed: (status) => {
       sendToOperator(IPC.liveWindow.changed, status);
     },
@@ -4274,6 +4288,18 @@ function start(): void {
     return null;
   });
   handle(IPC.liveWindow.status, () => shownWindows.current());
+
+  // ---- picture in picture's remembered place (Session 50) --------------------------------------
+  handle(IPC.pip.place, () => pipPlaces.place());
+  // Locked in Simple Mode (simple-mode.ts); moving the box up remembers its place by itself (below).
+  handle(IPC.pip.savePlace, (e, place) =>
+    fromOperator(e)
+      ? pipPlaces.save(place)
+      : { ok: false as const, message: 'Only the operator window can change where the box goes.' },
+  );
+  engine.onChange((state) => {
+    pipPlaces.follow(state);
+  });
   handle(IPC.zoom.open, (e) => {
     if (fromOperator(e) && mode === 'pro') zoom.open();
     return null;
