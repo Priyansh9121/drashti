@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { SlideLayer } from '../../../shared/engine/state';
+import type { EngineState, SlideLayer } from '../../../shared/engine/state';
 import { languageView } from '../../../shared/language-view';
 import type { Movement, SlideStyle } from '../../../shared/looks';
 import type { Lang, TransitionKind } from '../../../shared/model';
@@ -10,7 +10,9 @@ import type { Size } from '../../../shared/scaling';
 import type { ScalingMode } from '../../../shared/screens';
 import { Placed } from './Placed';
 import { type Reveal, type SlideText, SlideView } from './SlideView';
+import type { TimerState } from '../../../shared/timers';
 import { clockHeld, engineNow, onClockJump } from './clock';
+import { SlideMovementContext, SlideTimersContext } from './slide-timers';
 import { linesReveal, type UnitFrame, wordsReveal } from './reveal';
 import {
   takesTime,
@@ -32,7 +34,8 @@ import {
  * engine's shownAt, so every screen is at the same point; it starts once
  * the new slide's pictures and videos are ready (until then the old slide
  * stays), and a screen that comes along after it has finished shows the
- * new slide as it is. Clearing is immediate.
+ * new slide as it is. Clearing is immediate, but for a timer shown alone (Session 50), which fades out over
+ * its transition's length from when it was taken off.
  */
 
 const keyOf = (l: SlideLayer) => `${l.slide.id}@${l.shownAt}`;
@@ -45,9 +48,30 @@ interface Showing {
   fade: { kind: TransitionKind; ms: number; start: number | null } | null;
 }
 
-/** What to show for a new state of the layer. */
-export function nextShowing(prev: Showing, layer: SlideLayer | null, now: number): Showing {
-  if (!layer) return { on: null, off: null, fade: null };
+/** The slide just taken off on its own, and when (the engine's slideOff). */
+type Leaving = EngineState['slideOff'];
+
+/** What to show for a new state of the layer (`leaving`: the slide just taken off on its own, if any). */
+export function nextShowing(
+  prev: Showing,
+  layer: SlideLayer | null,
+  now: number,
+  leaving: Leaving = null,
+): Showing {
+  if (!layer) {
+    // A timer shown alone goes off as it came on, fading over its transition's length from when it was taken
+    // off (Session 50), on the screen that was showing it; anything else goes at once.
+    const t = leaving?.layer.transition;
+    if (
+      leaving?.layer.timer &&
+      prev.on &&
+      keyOf(prev.on) === keyOf(leaving.layer) &&
+      takesTime(t) &&
+      now < leaving.at + t.durationMs
+    )
+      return { on: null, off: prev.on, fade: { kind: 'dissolve', ms: t.durationMs, start: leaving.at } };
+    return { on: null, off: null, fade: null };
+  }
   // The same slide with new content (an edit): no new transition.
   if (prev.on && keyOf(prev.on) === keyOf(layer)) return { ...prev, on: layer };
   const t = layer.transition;
@@ -235,6 +259,8 @@ function DrawnSlide({
   slides,
   text = 'shown',
   reveal,
+  movement,
+  timers,
 }: {
   layer: SlideLayer;
   canvas: Size;
@@ -245,6 +271,9 @@ function DrawnSlide({
   text?: SlideText;
   /** Its words alone, line by line or word by word. */
   reveal?: Reveal;
+  /** The screen's Movement and the state's timers, for its Timers (Session 50). */
+  movement: Movement;
+  timers: readonly TimerState[] | undefined;
 }) {
   if (slides === 'lowerThird') {
     const lines = lowerThird(layer.slide, languages);
@@ -253,14 +282,18 @@ function DrawnSlide({
     if (!hasPicture(layer.slide)) return null;
   }
   return (
-    <Placed content={layer.slide} box={canvas} mode={scaling}>
-      <SlideView
-        slide={languageView(layer.slide, languages)}
-        startedAt={layer.shownAt}
-        text={text}
-        reveal={reveal}
-      />
-    </Placed>
+    <SlideMovementContext.Provider value={movement}>
+      <SlideTimersContext.Provider value={timers ?? null}>
+        <Placed content={layer.slide} box={canvas} mode={scaling}>
+          <SlideView
+            slide={languageView(layer.slide, languages)}
+            startedAt={layer.shownAt}
+            text={text}
+            reveal={reveal}
+          />
+        </Placed>
+      </SlideTimersContext.Provider>
+    </SlideMovementContext.Provider>
   );
 }
 
@@ -271,6 +304,8 @@ export function SlideLayerView({
   languages = null,
   slides = 'designed',
   movement = 'calm',
+  leaving = null,
+  timers,
 }: {
   layer: SlideLayer | null;
   canvas: Size;
@@ -281,13 +316,17 @@ export function SlideLayerView({
   slides?: SlideStyle;
   /** How this screen's group moves (its Look, Session 27): Calm or Bold. */
   movement?: Movement;
+  /** The slide just taken off on its own (the engine's slideOff): a timer shown alone fades out (Session 50). */
+  leaving?: Leaving;
+  /** The timers of the state drawn, for the slides' Timers (Session 50); left out: this page's own. */
+  timers?: readonly TimerState[];
 }) {
   // A screen that comes along later shows the slide as it is (no fade).
   const [showing, setShowing] = useState<Showing>(() => ({ on: layer, off: null, fade: null }));
   const [seen, setSeen] = useState(layer);
   if (seen !== layer) {
     setSeen(layer);
-    setShowing((prev) => nextShowing(prev, layer, engineNow()));
+    setShowing((prev) => nextShowing(prev, layer, engineNow(), leaving));
   }
   const { on, off, fade } = showing;
   const inRef = useRef<HTMLDivElement>(null);
@@ -325,7 +364,9 @@ export function SlideLayerView({
   // How its words move while it runs (Session 27): never word by word on a kirtan's slide; slides as designed
   // only (a lower third has its own way).
   const moveNow =
-    fade !== null && slides === 'designed' ? wordsMove(kind, movement, on?.slide.kirtan === true) : null;
+    fade !== null && on !== null && slides === 'designed'
+      ? wordsMove(kind, movement, on.slide.kirtan === true)
+      : null;
   const { width, height } = canvas;
   const scaleIn = (on?.slide.height ?? 1080) / 1080;
   const scaleOut = (off?.slide.height ?? 1080) / 1080;
@@ -379,9 +420,10 @@ export function SlideLayerView({
     );
   });
 
-  if (!on) return null;
-  // One list, keyed by slide and time, so the slide going away keeps its elements (its videos play on).
-  const shown = fading && off ? [off, on] : [on];
+  if (!on && !off) return null;
+  // One list, keyed by slide and time, so the slide going away keeps its elements (its videos play on); a timer
+  // going off alone (Session 50), only it.
+  const shown = on ? (fading && off ? [off, on] : [on]) : off ? [off] : [];
   // A fade adds the new slide light for light over the old; the others draw it over.
   const adds = fading && off !== null && transitionFrame(kind, 0, movement).add;
   // A Bold move (Session 27): the words drawn apart, above both slides' pictures, shapes and colour, which
@@ -426,6 +468,8 @@ export function SlideLayerView({
                 languages={languages}
                 slides={slides}
                 text={move ? 'hidden' : 'shown'}
+                movement={movement}
+                timers={timers}
               />
             </Zoomed>
           </div>
@@ -459,6 +503,8 @@ export function SlideLayerView({
                   slides={slides}
                   text="only"
                   reveal={move === 'lines' || move === 'words' ? move : undefined}
+                  movement={movement}
+                  timers={timers}
                 />
               </div>
             );

@@ -85,9 +85,12 @@ export function lowerThird(slide: RenderSlide, languages: readonly Lang[] | null
   return lowerThirdOf(slide, languages).lines;
 }
 
-/** The slide has something to look at besides words: a picture or a video. */
+/**
+ * The slide has something to look at besides words: a picture, a video or a timer (Session 50: a timer up
+ * alone is drawn whole wherever slides are lower thirds, as a picture slide is).
+ */
 export const hasPicture = (slide: RenderSlide): boolean =>
-  slide.elements.some((e) => e.kind === 'image' || e.kind === 'video');
+  slide.elements.some((e) => e.kind === 'image' || e.kind === 'video' || e.kind === 'timer');
 
 /** What the stream draws now, in this layout. */
 export function programPicture(

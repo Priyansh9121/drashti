@@ -10,6 +10,7 @@ import type {
   TextElement,
   TextRun,
   TextShadow,
+  TimerElement,
 } from '../../../shared/model';
 import { fontFamilyFor } from './fonts';
 import { TranslitSourceContext, useHtmlLang } from './lang';
@@ -28,6 +29,7 @@ import { useMeasureReport } from './measure';
 import { missingFontsOf } from './font-probe';
 import { MIN_FIT } from '../../../shared/readable';
 import { standsUpright } from '../../../shared/text-runs';
+import { TimerElementView } from './TimerElementView';
 
 /**
  * How a slide draws its videos: 'live' plays them (outputs and the live
@@ -306,6 +308,38 @@ function TextView({
 }
 
 /**
+ * How a Timer's box is drawn (Session 50): as a text box's, in its font, size, weight, colour, shadow and
+ * outline, its digits on one line.
+ */
+export function timerBoxStyle(el: TimerElement): CSSProperties {
+  const s = el.style;
+  return {
+    ...frameStyle(el),
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: justify[s.verticalAlign],
+    textAlign: s.align,
+    fontFamily: fontFamilyFor(s.fontFamily, null),
+    fontSize: s.fontSize,
+    fontWeight: s.fontWeight,
+    lineHeight: s.lineHeight,
+    color: s.color,
+    whiteSpace: 'pre',
+    fontKerning: 'normal',
+    textShadow: s.shadow === false ? undefined : textShadowCss(s.shadow),
+    ...textOutlineCss(s.outline ?? undefined),
+    opacity: el.opacity,
+  };
+}
+
+/**
+ * Whether the slide's darkening goes behind an element as behind words (Sessions 31–36, SLD-3): a box with
+ * words, or a Timer (Session 50).
+ */
+export const darkensBehind = (el: SlideElement): boolean =>
+  el.kind === 'timer' || (el.kind === 'text' && el.text.trim() !== '');
+
+/**
  * A shape, drawn as SVG so its outline sits on its edge (half inside, half
  * outside) as in the presentation programs it came from, and an ellipse or
  * a line is exact.
@@ -486,8 +520,9 @@ export function ElementView({
 }) {
   if (el.kind === 'text') return <TextView el={el} hidden={textHidden} reveal={reveal} band={band} />;
   if (el.kind === 'shape') return <ShapeView el={el} />;
-  // A timer on a slide (Session 50): drawn once the screens can.
-  if (el.kind === 'timer') return null;
+  // A timer on a slide (Session 50): live, its digits moving on the screens, still in a thumbnail.
+  if (el.kind === 'timer')
+    return <TimerElementView el={el} box={timerBoxStyle(el)} animate={media === 'live'} band={band} />;
   return <MediaView el={el} media={media} startedAt={startedAt} />;
 }
 
@@ -520,11 +555,9 @@ export const SlideView = memo(function SlideView({
   const darken = slide.darken;
   // What its transliteration is of (Sessions 31–36, I18N-4), for its words' lang.
   const source = useMemo(() => slide.translitOf ?? translitSource(slide.elements), [slide]);
-  // The words the whole-picture darkening goes under: the first box with any (none in the words alone).
+  // The words the whole-picture darkening goes under: the first box with any, or a Timer (none in the words alone).
   const wholeUnder =
-    darken?.kind === 'whole' && text !== 'only'
-      ? slide.elements.find((e) => e.kind === 'text' && e.text.trim() !== '')?.id
-      : undefined;
+    darken?.kind === 'whole' && text !== 'only' ? slide.elements.find(darkensBehind)?.id : undefined;
   return (
     <TranslitSourceContext.Provider value={source}>
       <div
@@ -560,11 +593,7 @@ export const SlideView = memo(function SlideView({
               startedAt={startedAt}
               textHidden={text === 'hidden'}
               reveal={text === 'only' ? reveal : undefined}
-              band={
-                darken?.kind === 'band' && el.kind === 'text' && el.text.trim() !== ''
-                  ? darken.strength
-                  : undefined
-              }
+              band={darken?.kind === 'band' && darkensBehind(el) ? darken.strength : undefined}
             />
           ),
         ])}

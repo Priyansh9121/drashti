@@ -517,6 +517,9 @@ export const Scene = memo(function Scene({
                     languages={look.languages}
                     slides={look.slides}
                     movement={look.movement}
+                    // A timer shown alone fades out as it came on; its Timers' time from this state (Session 50).
+                    leaving={shown('slide') ? state.slideOff : null}
+                    timers={state.timers}
                   />
                   {lowerThirds && shown('slide') && (
                     <SlideLowerThird
