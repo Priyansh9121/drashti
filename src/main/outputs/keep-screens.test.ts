@@ -2,13 +2,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { PendingScreens } from '../../shared/keep-screens';
 import { KEEP_SCREENS_MS } from '../../shared/keep-screens';
 import type { ScreensResult, ScreensSnapshot } from '../../shared/screens';
-import type { KeepEnding } from './keep-screens';
+import type { Change, KeepEnding } from './keep-screens';
 import { controlsToPutBack, coveringScreens, KeepScreens, putsOutputOn } from './keep-screens';
 
 /*
  * Keep these screens? (Session 50): a change that puts an output on a display waits 15 s for Keep or Go back,
- * and goes back by itself to exactly the screens as they were. Here the screens are a small pretend world
- * (each screen on a display, in a group with a role), the clock the tests' own.
+ * and goes back by itself to the screens as they were. Here the screens are a small pretend world (each screen
+ * on a display, in a group with a role), the clock the tests' own; going back undoes the changes it is given
+ * (only what they changed: screens-setup.test.ts), here back to before the first.
  */
 
 interface Screen {
@@ -31,8 +32,11 @@ let now: number;
 let timers: { at: number; fn: () => void; cancelled: boolean }[];
 let told: (PendingScreens | null)[];
 let ended: KeepEnding[];
-let restored: { quitting: boolean; world: World }[];
+let restored: { quitting: boolean; changes: Change<World>[] }[];
 let order: string[];
+/** What was kept on disk, each time it changed (null: nothing waits). */
+let remembered: (Change<World>[] | null)[];
+let started: number;
 
 const advance = (ms: number) => {
   now += ms;
@@ -44,12 +48,19 @@ const advance = (ms: number) => {
 
 function keeper(options: { asks?: boolean; waitMs?: number } = {}): KeepScreens<World> {
   return new KeepScreens<World>({
+    starting: () => {
+      started++;
+    },
     capture: () => world.map((s) => ({ ...s })),
-    restore: (setup, quitting) => {
-      world = setup.map((s) => ({ ...s }));
-      restored.push({ quitting, world: setup });
+    restore: (changes, quitting) => {
+      const first = changes[0];
+      if (first) world = first.before.map((s) => ({ ...s }));
+      restored.push({ quitting, changes: [...changes] });
       order.push('restored');
       return ok();
+    },
+    remember: (changes) => {
+      remembered.push(changes ? [...changes] : null);
     },
     placed: () =>
       new Map(
@@ -110,6 +121,8 @@ beforeEach(() => {
   ended = [];
   restored = [];
   order = [];
+  remembered = [];
+  started = 0;
 });
 
 describe('Keep these screens?', () => {
@@ -139,7 +152,7 @@ describe('Keep these screens?', () => {
     expect(keep.goBack()).toMatchObject({ ok: false });
   });
 
-  it('Go back puts back exactly the screens as they were before the change, then says it was answered', () => {
+  it('Go back undoes the change, taken just before and just after it, then says it was answered', () => {
     const keep = keeper();
     const before = world.map((s) => ({ ...s }));
     keep.change(
@@ -149,9 +162,10 @@ describe('Keep these screens?', () => {
         world.push({ ...stage });
       }),
     );
+    const after = world.map((s) => ({ ...s }));
     expect(keep.goBack()).toMatchObject({ ok: true });
     expect(world).toEqual(before);
-    expect(restored).toEqual([{ quitting: false, world: before }]);
+    expect(restored).toEqual([{ quitting: false, changes: [{ before, after }] }]);
     expect(keep.current()).toBeNull();
     // The screens first, then the question goes: the operator window has the screens as they were by then.
     expect(order).toEqual(['asked', 'restored', 'answered']);
@@ -300,8 +314,9 @@ describe('Keep these screens?', () => {
         world.push({ ...stage });
       }),
     );
+    const after = world.map((s) => ({ ...s }));
     keep.quitting();
-    expect(restored).toEqual([{ quitting: true, world: before }]);
+    expect(restored).toEqual([{ quitting: true, changes: [{ before, after }] }]);
     expect(keep.current()).toBeNull();
     advance(KEEP_SCREENS_MS);
     expect(restored).toHaveLength(1);
@@ -330,6 +345,182 @@ describe('Keep these screens?', () => {
     expect(never.current()).toBeNull();
     advance(KEEP_SCREENS_MS);
     expect(world.map((s) => s.id)).toEqual(['s1', 's2']);
+  });
+
+  it('each change is taken just before and just after it; Go back is given them all, the first first', () => {
+    const keep = keeper();
+    const w0 = world.map((s) => ({ ...s }));
+    keep.change(
+      change(() => {
+        world.push({ ...stage });
+      }),
+    );
+    const w1 = world.map((s) => ({ ...s }));
+    // Renamed some other way meanwhile (Screens): not a change Keep these screens? makes.
+    world[0] = { ...hall, name: 'Main Hall' };
+    const w1b = world.map((s) => ({ ...s }));
+    // Turned off while it waits: taken in.
+    keep.change(
+      change(() => {
+        world[1] = { ...stage, on: false };
+      }),
+    );
+    const w2 = world.map((s) => ({ ...s }));
+    keep.goBack();
+    expect(restored).toEqual([
+      {
+        quitting: false,
+        changes: [
+          { before: w0, after: w1 },
+          { before: w1b, after: w2 },
+        ],
+      },
+    ]);
+  });
+
+  it('where the controls are is taken as a change begins with none waiting, never as one is added', () => {
+    const keep = keeper();
+    keep.change(
+      change(() => {
+        world.push({ ...stage });
+      }),
+    );
+    expect(started).toBe(1);
+    keep.change(
+      change(() => {
+        world.push({ ...stage, id: 's3', display: 4 });
+      }),
+    );
+    expect(started).toBe(1);
+    keep.keep();
+    // Off asks nothing, and begins afresh.
+    keep.change(
+      change(() => {
+        world[0] = { ...hall, on: false };
+      }),
+    );
+    expect(started).toBe(2);
+    // Never asking (tests not about it): nothing at all.
+    keeper({ asks: false }).change(change(() => undefined));
+    expect(started).toBe(2);
+  });
+
+  it('keeps the change waiting on disk until it is answered: a crash meanwhile goes back at the next start', () => {
+    const keep = keeper();
+    const w0 = world.map((s) => ({ ...s }));
+    keep.change(
+      change(() => {
+        world.push({ ...stage });
+      }),
+    );
+    const w1 = world.map((s) => ({ ...s }));
+    expect(remembered).toEqual([[{ before: w0, after: w1 }]]);
+    // Taken in: kept again, with it.
+    keep.change(
+      change(() => {
+        world[1] = { ...stage, on: false };
+      }),
+    );
+    const w2 = world.map((s) => ({ ...s }));
+    expect(remembered.at(-1)).toEqual([
+      { before: w0, after: w1 },
+      { before: w1, after: w2 },
+    ]);
+    // Kept: nothing waits on disk any more.
+    keep.keep();
+    expect(remembered.at(-1)).toBeNull();
+    // Gone back, by the operator or by itself: the same.
+    for (const end of [() => keep.goBack(), () => advance(KEEP_SCREENS_MS)]) {
+      remembered = [];
+      keep.change(
+        change(() => {
+          world.push({ ...stage, id: 's4', display: 5 });
+        }),
+      );
+      expect(remembered).toHaveLength(1);
+      end();
+      expect(remembered).toEqual([expect.any(Array), null]);
+    }
+    // A change that asks nothing keeps nothing.
+    remembered = [];
+    keep.change(
+      change(() => {
+        world[0] = { ...hall, width: 1280 };
+      }),
+    );
+    expect(remembered).toEqual([]);
+  });
+
+  it('quitting goes back and clears what waits on disk; if going back fails, it stays there for the next start', () => {
+    const keep = keeper();
+    keep.change(
+      change(() => {
+        world.push({ ...stage });
+      }),
+    );
+    keep.quitting();
+    expect(remembered.at(-1)).toBeNull();
+
+    const failing = new KeepScreens<World>({
+      capture: () => world.map((s) => ({ ...s })),
+      restore: () => {
+        throw new Error('the library is closed');
+      },
+      placed: () => new Map(world.map((s) => [`here ${String(s.display)}`, s.id])),
+      coversControls: () => false,
+      snapshot: () => EMPTY,
+      changed: () => undefined,
+      remember: (changes) => {
+        remembered.push(changes ? [...changes] : null);
+      },
+      now: () => now,
+      later: () => () => undefined,
+      log: () => undefined,
+    });
+    remembered = [];
+    failing.change(
+      change(() => {
+        world.push({ ...stage, id: 's5', display: 6 });
+      }),
+    );
+    failing.quitting();
+    expect(remembered).toEqual([expect.any(Array)]);
+  });
+
+  it('a change that cannot be kept on disk still asks, and goes back all the same', () => {
+    const logged: string[] = [];
+    const keep = new KeepScreens<World>({
+      capture: () => world.map((s) => ({ ...s })),
+      restore: (changes) => {
+        const first = changes[0];
+        if (first) world = first.before;
+        return ok();
+      },
+      placed: () => new Map(world.map((s) => [`here ${String(s.display)}`, s.id])),
+      coversControls: () => false,
+      snapshot: () => EMPTY,
+      changed: () => undefined,
+      remember: () => {
+        throw new Error('the disk is full');
+      },
+      now: () => now,
+      later: () => () => undefined,
+      log: (message) => {
+        logged.push(message);
+      },
+    });
+    const before = world.map((s) => ({ ...s }));
+    expect(
+      keep.change(
+        change(() => {
+          world = [...world, { ...stage }];
+        }),
+      ).ok,
+    ).toBe(true);
+    expect(keep.current()).not.toBeNull();
+    expect(keep.goBack()).toMatchObject({ ok: true });
+    expect(world).toEqual(before);
+    expect(logged.filter((m) => m.includes('the disk is full'))).toHaveLength(2);
   });
 
   it('a Go back that fails still ends the question, and says so', () => {

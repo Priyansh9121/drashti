@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { matchDisplays } from '../../shared/display-match';
+import type { GroupLook } from '../../shared/looks';
+import { DEFAULT_GROUP_LOOK } from '../../shared/looks';
 import type { Lang } from '../../shared/model';
 import { GROUP_ROLES } from '../../shared/screens';
 import type { SetupOutput } from '../../shared/setup';
@@ -22,16 +24,10 @@ import {
   nameSchema,
   screenPatchSchema,
 } from '../../shared/screens-schema';
-import type { SavedScreens, ScreenRepo } from '../db/screens';
+import type { ScreenRepo } from '../db/screens';
 import type { OutputManager } from './output-manager';
-
-/**
- * The screen setup as it was, for Go back to put back exactly (Keep these screens?, Session 50): every group and
- * screen as stored, and each group's languages in the live Look (where Screens and the setup wizard keep them).
- */
-export interface ScreensSetup extends SavedScreens {
-  languages: Record<string, Lang[] | null>;
-}
+import type { LooksSettings, ScreensChange, ScreensSetup } from './screens-setup';
+import { undoChanges } from './screens-setup';
 
 const sameLanguages = (a: Lang[] | null, b: Lang[] | null) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -46,9 +42,13 @@ export interface ScreenLooks {
   groupGone(groupId: string): void;
   /** A group became a key and fill pair: in every Look it starts with the words as a lower third, props and messages. */
   becameKeyFill(groupId: string): void;
+  /** Every Look's settings for every group (Keep these screens?: what Go back may put back). */
+  everyLook(): LooksSettings;
+  /** Groups' settings put back in Looks as they were (Go back): only those that differ from now change. */
+  putGroupsBack(settings: LooksSettings): void;
 }
 
-/** Without Looks (tests of screens alone): languages kept here. */
+/** Without Looks (tests of screens alone): languages kept here, as one Look's. */
 export function memoryScreenLooks(): ScreenLooks {
   const langs = new Map<string, Lang[] | null>();
   return {
@@ -65,6 +65,14 @@ export function memoryScreenLooks(): ScreenLooks {
       langs.delete(id);
     },
     becameKeyFill: () => undefined,
+    everyLook: () => ({
+      live: Object.fromEntries(
+        [...langs].map(([id, l]): [string, GroupLook] => [id, { ...DEFAULT_GROUP_LOOK, languages: l }]),
+      ),
+    }),
+    putGroupsBack: (settings) => {
+      for (const [id, g] of Object.entries(settings['live'] ?? {})) langs.set(id, g.languages);
+    },
   };
 }
 
@@ -366,28 +374,30 @@ export class ScreensService {
 
   // ---- Keep these screens? (Session 50) ------------------------------------------------------------------
 
-  /** The screen setup as it is now, to put back exactly. */
+  /** The screen setup as it is now: every group and screen, and each group's settings in every Look. */
   setup(): ScreensSetup {
-    const saved = this.repo.saved();
-    const languages: Record<string, Lang[] | null> = {};
-    for (const g of saved.groups) languages[g.id] = this.looks.liveLanguages(g.id);
-    return { ...saved, languages };
+    return { ...this.repo.saved(), looks: this.looks.everyLook() };
   }
 
   /**
-   * Put a setup back exactly (Go back): its groups and screens, and each group's languages in the live Look; a
-   * group made since leaves every Look. The outputs follow, unless Drashti is quitting (`quitting`): then it is
-   * only saved, and no window opens or closes (the next start shows it).
+   * Go back (Session 51, S3-4): the changes undone, the last first, each only where it is still as it left the
+   * screens (screens-setup.ts), so whatever else changed meanwhile stays. The outputs follow, unless only saving
+   * (`savedOnly`: Drashti quitting, or starting after a stop with a change unanswered): then no window opens or
+   * closes (the start opens them as they are).
    */
-  putBack(setup: ScreensSetup, quitting = false): ScreensResult {
+  undo(changes: readonly ScreensChange[], savedOnly = false): ScreensResult {
+    return this.putBack(undoChanges(this.setup(), changes), savedOnly);
+  }
+
+  /**
+   * Put a setup back exactly: its groups and screens, and each group's settings in each Look where they differ;
+   * a group made since leaves every Look. The outputs follow, unless `savedOnly` (see undo).
+   */
+  putBack(setup: ScreensSetup, savedOnly = false): ScreensResult {
     for (const id of this.repo.putBack(setup)) this.looks.groupGone(id);
-    for (const g of setup.groups) {
-      const languages = setup.languages[g.id] ?? null;
-      if (!sameLanguages(this.looks.liveLanguages(g.id), languages))
-        this.looks.setLiveLanguages(g.id, languages);
-    }
+    this.looks.putGroupsBack(setup.looks);
     this.looks.groupsChanged();
-    return quitting ? { ok: true, snapshot: this.snapshot() } : this.done();
+    return savedOnly ? { ok: true, snapshot: this.snapshot() } : this.done();
   }
 
   /**
