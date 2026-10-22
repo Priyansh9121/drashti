@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from 'react';
+import { useEffect, useLayoutEffect, useReducer, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import type { LowerThirdLayer } from '../../../shared/engine/state';
@@ -74,6 +74,37 @@ function put(el: HTMLElement, pose: Pose): void {
   el.style.transformOrigin = pose.origin;
 }
 
+/** How a lower third is drawn: what it is doing, its animation, how many units its words have, and its length. */
+interface Drawing {
+  phase: Phase;
+  animation: LowerThirdAnimation;
+  units: number;
+  length: number;
+}
+
+/**
+ * A lower third `t` ms into its in or out (still: at rest), set straight on its band and units: frame by frame,
+ * and after every drawing.
+ */
+function paintBand(
+  root: HTMLDivElement | null,
+  band: HTMLDivElement | null,
+  { phase, animation, units, length }: Drawing,
+  t: number,
+): void {
+  if (!band || !root) return;
+  const unitEls = [...band.querySelectorAll<HTMLElement>('[data-lt-unit]')];
+  root.dataset['ltAt'] = phase === 'in' || phase === 'out' ? String(Math.round(Math.min(t, length))) : '';
+  if (phase !== 'in' && phase !== 'out') {
+    put(band, REST);
+    for (const el of unitEls) put(el, REST);
+    return;
+  }
+  const frame = animationFrame(animation, phase, t, units);
+  put(band, frame.box);
+  for (const el of unitEls) put(el, frame.unit(Number(el.dataset['ltUnit'])));
+}
+
 export function LowerThirdView({
   layer,
   off,
@@ -99,37 +130,17 @@ export function LowerThirdView({
   // The words and look follow the layer (one changed while up keeps its time).
   const shown = run.layer;
   const animation = animationById(shown?.animation ?? '');
-  const { pieces, units } = useMemo(
-    () => cut(shownLines(shown?.lines ?? []), animation),
-    [shown?.lines, animation],
-  );
+  const { pieces, units } = cut(shownLines(shown?.lines ?? []), animation);
   const bandRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const { phase, start } = run;
   const length = phase === 'in' || phase === 'out' ? animationLength(animation, phase, units) : 0;
-  const paint = useCallback(
-    (t: number) => {
-      const band = bandRef.current;
-      const root = rootRef.current;
-      if (!band || !root) return;
-      const unitEls = [...band.querySelectorAll<HTMLElement>('[data-lt-unit]')];
-      root.dataset['ltAt'] = phase === 'in' || phase === 'out' ? String(Math.round(Math.min(t, length))) : '';
-      if (phase !== 'in' && phase !== 'out') {
-        put(band, REST);
-        for (const el of unitEls) put(el, REST);
-        return;
-      }
-      const frame = animationFrame(animation, phase, t, units);
-      put(band, frame.box);
-      for (const el of unitEls) put(el, frame.unit(Number(el.dataset['ltUnit'])));
-    },
-    [phase, animation, units, length],
-  );
   // Frame by frame from the engine's clock, while it moves. At the frame it is over, drawn again at once, still (or
   // gone), before that frame is shown. Started and stopped as each drawing is put on the page, so no frame paints
   // a move it no longer draws.
   useLayoutEffect(() => {
     if (phase !== 'in' && phase !== 'out') return;
+    const drawing = { phase, animation, units, length };
     let frame = 0;
     const tick = () => {
       const t = engineNow() - start;
@@ -137,17 +148,17 @@ export function LowerThirdView({
         flushSync(redraw);
         return;
       }
-      paint(t);
+      paintBand(rootRef.current, bandRef.current, drawing, t);
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [phase, start, length, paint]);
+  }, [phase, start, length, animation, units]);
   // After every drawing, before it is shown: as at the moment it was worked out for.
   useLayoutEffect(() => {
-    paint(now - start);
+    paintBand(rootRef.current, bandRef.current, { phase, animation, units, length }, now - start);
   });
   if (!shown || phase === 'gone') return null;
   const look = shown.look;
