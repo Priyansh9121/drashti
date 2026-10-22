@@ -9,8 +9,10 @@ import { ShowEngine } from '../engine/show-engine';
 import { makeSource, RecordingTransport } from '../engine/testing';
 import { NO_PLAYLISTS } from '../engine/playlist-source';
 import { LookService } from '../looks/look-service';
+import type { PendingScreens } from '../../shared/keep-screens';
+import { coveringScreens, KeepScreens } from './keep-screens';
 import { OutputManager, type OutputWindow } from './output-manager';
-import { ScreensService } from './screens-service';
+import { ScreensService, type ScreensSetup } from './screens-service';
 
 /** The library's Looks, with an engine that keeps the live one (each group's languages are there). */
 function looksOf(db: Db): LookService {
@@ -416,5 +418,154 @@ describe('the setup wizard’s outputs, applied at Finish', () => {
       t.service.applySetup([{ displayId: 2, use: 'audience', languages: null }], { coverOperator: true }).ok,
     ).toBe(true);
     expect(shape(t)).toEqual([['Audience', 'audience', null, ['Hall TV']]]);
+  });
+});
+
+describe('Keep these screens? (Session 50): the setup put back exactly, and what each display shows', () => {
+  const stageTv: DisplayInfo = {
+    ...hall,
+    id: 3,
+    label: 'Stage TV',
+    bounds: { ...hall.bounds, x: 3360 },
+    key: { ...hall.key, id: 3, label: 'Stage TV', x: 3360 },
+  };
+  /** Two displays, the output windows counted as they open and close. */
+  function two() {
+    const db = openDatabase(':memory:');
+    const r = new ScreenRepo(db);
+    const l = looksOf(db);
+    const open = new Set<number>();
+    const outputs = new OutputManager({
+      listDisplays: () => [hall, stageTv],
+      screens: () => r.screens(),
+      saveDisplayKey: (id, key) => {
+        r.setDisplayKey(id, key);
+      },
+      openWindow: (): OutputWindow => {
+        const id = ++windows;
+        open.add(id);
+        return {
+          webContentsId: id,
+          setBounds: () => undefined,
+          close: () => {
+            open.delete(id);
+          },
+          isDestroyed: () => !open.has(id),
+          hide: () => undefined,
+          show: () => undefined,
+        };
+      },
+      onChange: () => undefined,
+    });
+    const s = new ScreensService(
+      r,
+      outputs,
+      () => [hall, stageTv],
+      () => operatorDisplay,
+      l,
+    );
+    return { service: s, repo: r, looks: l, outputs, open };
+  }
+  const shape = (t: { repo: ScreenRepo; looks: LookService }) =>
+    t.repo.groups().map((g) => [g.name, g.role, t.looks.liveLanguages(g.id), g.screens.map((sc) => sc.name)]);
+
+  it('puts back exactly the screens as they were before Finish: the groups, their screens, roles and languages', () => {
+    const t = two();
+    t.service.createGroup('Main Hall');
+    const groupId = t.repo.groups()[0]?.id ?? '';
+    t.service.assignDisplay(groupId, 2);
+    t.service.setGroupLanguages(groupId, ['gu']);
+    const screens = t.repo.saved();
+    const was = shape(t);
+    const setup: ScreensSetup = t.service.setup();
+    expect(setup.languages[groupId]).toEqual(['gu']);
+
+    // Finish: the hall's display becomes the stage's, in English; the other the audience's (a group made).
+    t.service.applySetup([
+      { displayId: 2, use: 'stage', languages: ['en'] },
+      { displayId: 3, use: 'audience', languages: null },
+    ]);
+    expect(t.open.size).toBe(2);
+    expect(shape(t)).not.toEqual(was);
+
+    expect(t.service.putBack(setup)).toMatchObject({ ok: true });
+    expect(shape(t)).toEqual(was);
+    expect(t.repo.saved()).toEqual(screens);
+    // The outputs follow: one, on the hall's display.
+    expect(t.open.size).toBe(1);
+    expect(t.service.snapshot().status).toEqual([
+      { screenId: t.repo.screens()[0]?.id, state: 'showing', displayId: 2 },
+    ]);
+    // A group the change made leaves every Look.
+    expect(Object.keys(t.looks.view().looks[0]?.groups ?? {})).toEqual([groupId]);
+  });
+
+  it('as Drashti quits, only saves the setup: no window opens or closes', () => {
+    const t = two();
+    t.service.createGroup('Main Hall');
+    const setup = t.service.setup();
+    t.service.assignDisplay(t.repo.groups()[0]?.id, 2);
+    expect(t.open.size).toBe(1);
+    expect(t.service.putBack(setup, true)).toMatchObject({ ok: true });
+    expect(t.repo.screens()).toEqual([]);
+    expect(t.open.size).toBe(1);
+  });
+
+  it('what each display shows: each output on a connected display, by its screen, group and role', () => {
+    const t = two();
+    expect(t.service.placed()).toEqual(new Map());
+    t.service.createGroup('Main Hall');
+    const groupId = t.repo.groups()[0]?.id ?? '';
+    t.service.assignDisplay(groupId, 2);
+    const screenId = t.repo.screens()[0]?.id ?? '';
+    expect(t.service.placed()).toEqual(new Map([['here 2', `${screenId} ${groupId} audience`]]));
+    t.service.setGroupRole(groupId, 'stage');
+    expect(t.service.placed()).toEqual(new Map([['here 2', `${screenId} ${groupId} stage`]]));
+    // Turned off, or its display gone: nothing on a display.
+    t.service.updateScreen(screenId, { enabled: false });
+    expect(t.service.placed()).toEqual(new Map());
+  });
+
+  it('asks after Use this display and On; Go back closes the output it opened; says when the controls are covered', () => {
+    const t = two();
+    const told: (PendingScreens | null)[] = [];
+    const keep = new KeepScreens<ScreensSetup>({
+      capture: () => t.service.setup(),
+      restore: (setup, quitting) => t.service.putBack(setup, quitting),
+      placed: () => t.service.placed(),
+      coversControls: () => coveringScreens(t.outputs.status(), operatorDisplay).length > 0,
+      snapshot: () => t.service.snapshot(),
+      changed: (pending) => {
+        told.push(pending);
+      },
+      now: () => 0,
+      later: () => () => undefined,
+    });
+    operatorDisplay = 2;
+    t.service.createGroup('Hall');
+    const groupId = t.repo.groups()[0]?.id ?? '';
+
+    // On the display the controls are on (agreed to): it covers them, and says so.
+    expect(keep.change(() => t.service.assignDisplay(groupId, 2, { coverOperator: true })).ok).toBe(true);
+    expect(keep.current()).toMatchObject({ coversControls: true });
+    expect(t.open.size).toBe(1);
+    expect(keep.goBack()).toMatchObject({ ok: true });
+    expect(t.repo.screens()).toEqual([]);
+    expect(t.open.size).toBe(0);
+    expect(told.at(-1)).toBeNull();
+
+    // On the other display: asked, not covering; kept.
+    keep.change(() => t.service.assignDisplay(groupId, 3));
+    expect(keep.current()).toMatchObject({ coversControls: false });
+    keep.keep();
+    const screenId = t.repo.screens()[0]?.id ?? '';
+    // Off asks nothing; On again asks.
+    keep.change(() => t.service.updateScreen(screenId, { enabled: false }));
+    expect(keep.current()).toBeNull();
+    keep.change(() => t.service.updateScreen(screenId, { enabled: true }));
+    expect(keep.current()).not.toBeNull();
+    keep.goBack();
+    expect(t.repo.screen(screenId)?.enabled).toBe(false);
+    expect(t.open.size).toBe(0);
   });
 });

@@ -4,11 +4,42 @@ import type {
   DisplayKey,
   ScalingMode,
   ScreenConfig,
+  ScreenFeed,
   ScreenGroupConfig,
   ScreenPatch,
   ScreenRole,
 } from '../../shared/screens';
 import type { Db } from './database';
+
+/** A group as stored, to put back exactly (Keep these screens?, Session 50). */
+export interface SavedGroup {
+  id: string;
+  name: string;
+  role: ScreenRole;
+  position: number;
+}
+
+/** A screen as stored, to put back exactly. */
+export interface SavedScreen {
+  id: string;
+  groupId: string;
+  nodeId: string | null;
+  name: string;
+  /** Its display's fingerprint as stored (JSON), or null. */
+  displayKey: string | null;
+  canvasWidth: number;
+  canvasHeight: number;
+  scaling: ScalingMode;
+  enabled: boolean;
+  feed: ScreenFeed | null;
+  position: number;
+}
+
+/** Every group and screen, as stored. */
+export interface SavedScreens {
+  groups: SavedGroup[];
+  screens: SavedScreen[];
+}
 
 const displayKeySchema: z.ZodType<DisplayKey> = z.object({
   id: z.number(),
@@ -265,5 +296,84 @@ export class ScreenRepo {
 
   removeScreen(id: string): boolean {
     return this.db.prepare('DELETE FROM screens WHERE id = ?').run(id).changes > 0;
+  }
+
+  /** Every group and screen as stored (Keep these screens?, Session 50): what Go back puts back. */
+  saved(): SavedScreens {
+    const groups = this.db
+      .prepare('SELECT id, name, role, position FROM screen_groups ORDER BY position, id')
+      .all() as SavedGroup[];
+    const rows = this.db.prepare('SELECT * FROM screens ORDER BY id').all() as (ScreenRow & {
+      position: number;
+    })[];
+    return {
+      groups,
+      screens: rows.map((r) => ({
+        id: r.id,
+        groupId: r.group_id,
+        nodeId: r.node_id,
+        name: r.name,
+        displayKey: r.display_key,
+        canvasWidth: r.canvas_width,
+        canvasHeight: r.canvas_height,
+        scaling: r.scaling,
+        enabled: r.enabled === 1,
+        feed: r.feed,
+        position: r.position,
+      })),
+    };
+  }
+
+  /**
+   * Put every group and screen back exactly as saved (Go back, Session 50), in one transaction: those made
+   * since are removed (never the stream's group: YouTube in Screens stays), the rest put back as they were,
+   * those removed since made again with their own ids. A screen on a node removed since stays gone. Answers
+   * the ids of the groups removed, whose settings leave the Looks.
+   */
+  putBack(saved: SavedScreens): string[] {
+    return this.db.transaction(() => {
+      const keepGroups = new Set(saved.groups.map((g) => g.id));
+      const removed: string[] = [];
+      for (const g of this.groupIds())
+        if (!keepGroups.has(g.id) && g.role !== 'stream' && this.deleteGroup(g.id)) removed.push(g.id);
+      const putGroup = this.db.prepare(
+        `INSERT INTO screen_groups (id, name, role, position) VALUES (?, ?, ?, ?)
+           ON CONFLICT (id) DO UPDATE SET name = excluded.name, role = excluded.role, position = excluded.position,
+             updated_at = ${NOW}`,
+      );
+      for (const g of saved.groups) putGroup.run(g.id, g.name, g.role, g.position);
+      const keepScreens = new Set(saved.screens.map((s) => s.id));
+      const removeScreen = this.db.prepare('DELETE FROM screens WHERE id = ?');
+      for (const { id } of this.db.prepare('SELECT id FROM screens').all() as { id: string }[])
+        if (!keepScreens.has(id)) removeScreen.run(id);
+      const nodes = new Set(
+        (this.db.prepare('SELECT id FROM nodes').all() as { id: string }[]).map((n) => n.id),
+      );
+      const putScreen = this.db.prepare(
+        `INSERT INTO screens (id, group_id, node_id, name, display_key, canvas_width, canvas_height, scaling,
+             enabled, feed, position)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (id) DO UPDATE SET group_id = excluded.group_id, node_id = excluded.node_id,
+             name = excluded.name, display_key = excluded.display_key, canvas_width = excluded.canvas_width,
+             canvas_height = excluded.canvas_height, scaling = excluded.scaling, enabled = excluded.enabled,
+             feed = excluded.feed, position = excluded.position, updated_at = ${NOW}`,
+      );
+      for (const s of saved.screens)
+        if (s.nodeId === null || nodes.has(s.nodeId))
+          putScreen.run(
+            s.id,
+            s.groupId,
+            s.nodeId,
+            s.name,
+            s.displayKey,
+            s.canvasWidth,
+            s.canvasHeight,
+            s.scaling,
+            s.enabled ? 1 : 0,
+            s.feed,
+            s.position,
+          );
+      return removed;
+    })();
   }
 }
