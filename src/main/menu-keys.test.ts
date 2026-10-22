@@ -9,12 +9,13 @@ import type { MenuActions, NodeMenuActions } from './menu';
 import { installMenu, installNodeMenu } from './menu';
 
 /*
- * The keys the operators already press (Session 50): F12 puts the logo up, and Cmd+1 and Cmd+2 (Ctrl+1 and
- * Ctrl+2 on Windows) turn the Audience and Stage screens off and on. Nothing else in a packaged Drashti answers
- * them: no item in Main's menus or a node's, in Pro or Simple Mode, on the Mac or on Windows, with diagnostics
- * on or off, by its own accelerator or by its role's (the keys Electron gives the role), except the logo's and
- * the Audience and Stage screens' own; no key that works system-wide; and no key handler of a window's own.
- * Electron's menu is stood in for, so each menu is read just as it is built.
+ * The keys the operators already press (Session 50): F12 puts the logo up, and Cmd+1 and Cmd+2 (Ctrl+1
+ * and Ctrl+2 on Windows) turn the Audience and Stage screens off and on. Nothing else in a packaged
+ * Drashti answers them: no item in Main's menus or a node's, in Pro or Simple Mode, on the Mac or on
+ * Windows, with diagnostics on or off, by its own accelerator or by its role's (the keys Electron gives
+ * the role), except the logo's and the Audience and Stage screens' own; no key that works system-wide;
+ * and no key handler of a window's own. Electron's menu is stood in for, so each menu is read just as it
+ * is built.
  */
 
 const menus = vi.hoisted(() => ({ built: [] as MenuItemConstructorOptions[][] }));
@@ -30,7 +31,7 @@ vi.mock('electron', () => ({
 
 type Platform = 'darwin' | 'win32';
 
-/** The keys checked here, the action the keymap gives each, and the words that name that action's own items. */
+/** The keys checked here, the action the keymap gives each, and the words naming that action's items. */
 const THEIRS: readonly { key: string; action: OperatorAction; own: RegExp }[] = [
   { key: 'F12', action: 'toggleLogo', own: /\blogo\b/iu },
   { key: 'Mod+1', action: 'toggleAudience', own: /\baudience\b/iu },
@@ -40,14 +41,15 @@ const THEIRS: readonly { key: string; action: OperatorAction; own: RegExp }[] = 
 const both = (...keys: string[]): Record<Platform, readonly string[]> => ({ darwin: keys, win32: keys });
 
 /**
- * The keys Electron gives each role these menus use, on the Mac and on Windows, as Electron 44.4.5 has them (its
- * own menu-item roles); a submenu role's are its items'. A role not here fails the test: look up its keys first.
+ * The keys Electron gives each role these menus use, on the Mac and on Windows, as Electron 44.4.5 has
+ * them (its own menu-item roles); a submenu role's are its items'. A role not here fails the test: look
+ * up its keys first.
  */
 const ROLE_KEYS: Record<string, Record<Platform, readonly string[]>> = {
   // About, Services, Hide, Hide Others, Show All and Quit (the Mac's only).
   appmenu: both('Command+H', 'Command+Alt+H', 'CommandOrControl+Q'),
-  // Undo, Redo, Cut, Copy, Paste, Paste and Match Style (the Mac's), Delete and Select All, then the Mac's
-  // Substitutions and Speech, which have no keys.
+  // Undo, Redo, Cut, Copy, Paste, Paste and Match Style (the Mac's), Delete and Select All, then the
+  // Mac's Substitutions and Speech, which have no keys.
   editmenu: {
     darwin: [
       'CommandOrControl+Z',
@@ -99,7 +101,7 @@ function pressed(accelerator: string, platform: Platform): string {
   return [...[...new Set(mods)].sort(), key].join('+');
 }
 
-/** Every key a menu answers, and the item that answers it: by the item's own accelerator, or else its role's. */
+/** Every key a menu answers, and the item answering it: by its own accelerator, or else its role's. */
 function keysOf(
   template: readonly MenuItemConstructorOptions[],
   platform: Platform,
@@ -123,8 +125,8 @@ function keysOf(
 }
 
 /**
- * Whatever a menu asks of a part this test does not name (a later session's): another stand-in, never a key. So
- * the menus still build as they grow, and every key in them is checked all the same.
+ * Whatever a menu asks of a part this test does not name (a later session's): another stand-in, never a
+ * key. So the menus still build as they grow, and every key in them is checked all the same.
  */
 const standIn: unknown = new Proxy(() => standIn, {
   get: (_target, key): unknown => {
@@ -178,7 +180,7 @@ function on<T>(platform: Platform, run: () => T): T {
   }
 }
 
-/** Every menu Drashti can have on `platform`: Main's in each mode, and a node's, with diagnostics off and on. */
+/** Every menu Drashti can have on `platform`: Main's in each mode and a node's, diagnostics off and on. */
 function everyMenu(platform: Platform): { menu: string; template: MenuItemConstructorOptions[] }[] {
   return on(platform, () => {
     const out: { menu: string; template: MenuItemConstructorOptions[] }[] = [];
@@ -211,6 +213,17 @@ function sources(dir: string): string[] {
   });
 }
 
+/**
+ * A line of code naming F12, or 1 or 2 as a key: in a string, as a key handler compares it (e.key, e.code)
+ * or as the slide editor's ProseMirror keymap writes it ("Mod-1").
+ */
+const NAMES_THEM = [
+  /['"`]F12['"`]/u,
+  /\bDigit[12]\b/u,
+  /\.key\b.*['"`][12]['"`]|['"`][12]['"`].*\.key\b/u,
+  /['"`](?:(?:Shift|Alt|Mod|Ctrl|Cmd|Meta)-)+[12]['"`]/u,
+];
+
 describe('F12, Cmd+1 and Cmd+2 (Ctrl+1 and Ctrl+2 on Windows): only the logo’s and the screens’ keys (Session 50)', () => {
   it('are the keymap’s keys for the Logo and for the Audience and Stage screens', () => {
     for (const { key, action } of THEIRS)
@@ -225,7 +238,8 @@ describe('F12, Cmd+1 and Cmd+2 (Ctrl+1 and Ctrl+2 on Windows): only the logo’s
       const keys = all.flatMap(({ menu, template }) =>
         keysOf(template, platform).map((k) => ({ ...k, menu })),
       );
-      // Every key is read: the menus' own (Undo, Reload, Uncover the controls) and their roles' (Copy, Minimize).
+      // Every key is read: the menus' own (Undo, Reload, Uncover the controls) and their roles' (Copy,
+      // Minimize).
       const mod = platform === 'darwin' ? 'Cmd' : 'Ctrl';
       expect(keys.map((k) => k.key)).toEqual(
         expect.arrayContaining([`${mod}+Z`, `${mod}+R`, `${mod}+Shift+U`, `${mod}+C`, `${mod}+M`]),
@@ -255,12 +269,7 @@ describe('F12, Cmd+1 and Cmd+2 (Ctrl+1 and Ctrl+2 on Windows): only the logo’s
           .map((line, i) => ({ line, n: i + 1 }))
           // Code, not comments.
           .filter(({ line }) => !/^\s*(\/\/|\*|\/\*|\{\/\*)/u.test(line))
-          .filter(
-            ({ line }) =>
-              /['"`]F12['"`]/u.test(line) ||
-              /\bDigit[12]\b/u.test(line) ||
-              /\.key\b.*['"`][12]['"`]|['"`][12]['"`].*\.key\b/u.test(line),
-          )
+          .filter(({ line }) => NAMES_THEM.some((names) => names.test(line)))
           .map(({ line, n }) => `${relative(src, path)}:${String(n)} ${line.trim()}`),
       );
     expect(found).toEqual([]);
