@@ -1,8 +1,15 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { Fragment, memo, useLayoutEffect, useMemo, useRef } from 'react';
 import type { CalendarDay, CalendarLang } from '../../../shared/calendar';
 import { festivalsLine, samvatLine } from '../../../shared/calendar';
-import type { EngineState, MessageItem, PropItem, TickerLayer } from '../../../shared/engine/state';
+import type {
+  BackgroundLayer,
+  EngineState,
+  MessageItem,
+  PipLayer,
+  PropItem,
+  TickerLayer,
+} from '../../../shared/engine/state';
 import type { LiveGroupLook, LookLayer, Movement } from '../../../shared/looks';
 import { DEFAULT_LIVE_GROUP_LOOK } from '../../../shared/looks';
 import type { Mask } from '../../../shared/masks';
@@ -24,6 +31,9 @@ import { LowerThirdView } from './LowerThirdView';
 import { ScreenPictures } from './picture-looks';
 import { ElementView } from './SlideView';
 import { TimerText } from './TimerText';
+import { useLiveHere } from './live-here';
+import { type PipPicture, pipPlaces, pipShownFor, pipShowsHere, type PipSlot } from './pip';
+import { PipBox, PipSourcePicture, usePipRun } from './PipLayerView';
 import { MESSAGE_TEXT, TICKER_HEIGHT } from '../../../shared/safe-areas';
 
 /** Today's Samvat date and tithi, with any festival; nothing when the calendars do not give today. */
@@ -328,8 +338,53 @@ function MaskCover({ mask, layer }: { mask: Mask; layer: 'masks' | 'look' }) {
 }
 
 /**
+ * The background layer as a screen draws it: a colour, a picture or a video, or another app's window (Session
+ * 48). On the main picture, or in the picture-in-picture box when the box and the main picture are swapped
+ * (Session 50). Session 50: section 1's video input background is drawn here too, in either place.
+ */
+function BackgroundPicture({
+  background,
+  annotate,
+  movement,
+}: {
+  background: BackgroundLayer | null;
+  annotate: boolean;
+  movement: Movement;
+}) {
+  return (
+    <>
+      {background?.kind === 'color' && (
+        <div
+          data-layer="background"
+          style={{ position: 'absolute', inset: 0, background: background.color }}
+        />
+      )}
+      <BackgroundMedia layer={background} annotate={annotate} movement={movement} />
+      {background?.kind === 'window' && <LiveWindowView layer={background} />}
+    </>
+  );
+}
+
+/**
+ * One of the main picture's pictures (Session 50): always in its own place, so a background or a slide never
+ * loads again as the box comes and goes; drawn, or ready unseen while a swap goes out (render/pip.ts pipPlaces).
+ */
+function MainSlot({ slot, children }: { slot: PipSlot | undefined; children: ReactNode }) {
+  if (!slot) return null;
+  return (
+    <div
+      data-pip-main={slot.picture}
+      data-pip-ready={slot.shown ? undefined : ''}
+      style={{ ...FULL, visibility: slot.shown ? undefined : 'hidden' }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
  * Everything one screen shows, drawn on that screen's canvas (in canvas
- * pixels). Bottom to top: background, slide, props, a lower third (Session 44,
+ * pixels). Bottom to top: background, slide, props, the picture-in-picture box (Session 50), a lower third (Session 44,
  * on the pictures it is for), messages, the ticker, masks, the logo, black-out. The operator preview and every output use this
  * same component; the preview sets `annotate` to mark problems the audience
  * never sees. What a screen shows of it is its group's settings in the live
@@ -388,6 +443,43 @@ export const Scene = memo(function Scene({
     () => ({ pictures: state.pictures, liveZoom: state.liveZoom }),
     [state.pictures, state.liveZoom],
   );
+  // The picture-in-picture box (Session 50, render/pip.ts): where this group's Look shows it, a video input or a
+  // window only on this computer's own pages, and the slides in it only where the group shows the slides.
+  const live = useLiveHere();
+  const boxHere = (box: PipLayer | null): box is PipLayer =>
+    box !== null &&
+    pipShownFor(look) &&
+    pipShowsHere(box.source, live) &&
+    (box.source.kind !== 'slides' || shown('slide'));
+  const [run, setRun] = usePipRun(layers.pip, state.pipOff, look.movement, canvas);
+  const up = boxHere(layers.pip) ? layers.pip : null;
+  // The box as drawn: the one up, or the one going out (Take off) over the main picture, already whole again.
+  const boxRun = run.layer !== null && boxHere(run.layer) ? run : null;
+  // The main picture as the box up has it; while they swap, as drawn (they change places at the swap's middle).
+  const main = pipPlaces(
+    up?.source.kind ?? null,
+    up !== null && run.layer === up ? run.swapped : (up?.swapped ?? false),
+    up?.swapped ?? false,
+  ).main;
+  const slotOf = (picture: PipPicture) => main.find((s) => s.picture === picture);
+  /** One of the screen's pictures in the box, at the box's size: the slide there as designed, made small. */
+  const inBox = (picture: PipPicture, size: Size): ReactNode => {
+    if (picture === 'background')
+      return <BackgroundPicture background={background} annotate={false} movement={look.movement} />;
+    if (picture === 'slide')
+      return (
+        <SlideLayerView
+          layer={shown('slide') ? layers.slide : null}
+          canvas={size}
+          scaling={scaling}
+          languages={look.languages}
+          slides="designed"
+          movement={look.movement}
+        />
+      );
+    const box = boxRun?.layer;
+    return box ? <PipSourcePicture source={box.source} shownAt={box.shownAt} size={size} /> : null;
+  };
   return (
     <ScreenPictures.Provider value={pictures}>
       <div
@@ -395,6 +487,7 @@ export const Scene = memo(function Scene({
         data-canvas={`${canvas.width}x${canvas.height}`}
         data-look-layers={look.layers.join(',')}
         data-movement={look.movement}
+        data-pip={up ? (up.swapped ? 'swapped' : 'up') : 'none'}
         style={{
           position: 'relative',
           width: canvas.width,
@@ -407,34 +500,36 @@ export const Scene = memo(function Scene({
           {!off && (
             <>
               <div style={FULL}>
-                {background?.kind === 'color' && (
-                  <div
-                    data-layer="background"
-                    style={{ position: 'absolute', inset: 0, background: background.color }}
-                  />
-                )}
-                <BackgroundMedia layer={background} annotate={annotate} movement={look.movement} />
-                {background?.kind === 'window' && <LiveWindowView layer={background} />}
+                <MainSlot slot={slotOf('background')}>
+                  <BackgroundPicture background={background} annotate={annotate} movement={look.movement} />
+                </MainSlot>
+                {/* The box's own picture full, swapped with the screen's (Session 50). */}
+                <MainSlot slot={slotOf('source')}>
+                  {up && <PipSourcePicture source={up.source} shownAt={up.shownAt} size={canvas} />}
+                </MainSlot>
                 {idle && <IdleRotation idle={state.idle} languages={look.languages} canvas={canvas} />}
-                <SlideLayerView
-                  layer={shown('slide') ? layers.slide : null}
-                  canvas={canvas}
-                  scaling={scaling}
-                  languages={look.languages}
-                  slides={look.slides}
-                  movement={look.movement}
-                />
-                {lowerThirds && shown('slide') && (
-                  <SlideLowerThird
-                    layer={layers.slide}
-                    slideOff={state.slideOff}
-                    languages={look.languages}
+                <MainSlot slot={slotOf('slide')}>
+                  <SlideLayerView
+                    layer={shown('slide') ? layers.slide : null}
                     canvas={canvas}
-                    lift={bandHeight}
+                    scaling={scaling}
+                    languages={look.languages}
+                    slides={look.slides}
                     movement={look.movement}
                   />
-                )}
+                  {lowerThirds && shown('slide') && (
+                    <SlideLowerThird
+                      layer={layers.slide}
+                      slideOff={state.slideOff}
+                      languages={look.languages}
+                      canvas={canvas}
+                      lift={bandHeight}
+                      movement={look.movement}
+                    />
+                  )}
+                </MainSlot>
                 {shown('props') && <PropsLayer props={layers.props} canvas={canvas} scaling={scaling} />}
+                {boxRun && <PipBox run={boxRun} onRun={setRun} canvas={canvas} draw={inBox} />}
                 <LowerThirdView
                   layer={layers.lowerThird}
                   off={state.lowerThirdOff}

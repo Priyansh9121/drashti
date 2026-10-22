@@ -23,13 +23,20 @@ const FITTED: CSSProperties = {
 /** How often the kept picture is taken from the live one. */
 const KEEP_MS = 1000;
 
-export function LiveWindowView({ layer }: { layer: WindowBackground }) {
+export function LiveWindowView({
+  layer,
+  as = 'background',
+}: {
+  layer: WindowBackground;
+  /** The layer it is drawn for: the background, or the picture-in-picture box (Session 50). */
+  as?: 'background' | 'pip';
+}) {
   const previews = usePreviewsOnly();
   if (previews) return null;
-  return <LiveWindowPicture layer={layer} />;
+  return <LiveWindowPicture layer={layer} as={as} />;
 }
 
-function LiveWindowPicture({ layer }: { layer: WindowBackground }) {
+function LiveWindowPicture({ layer, as }: { layer: WindowBackground; as: 'background' | 'pip' }) {
   const { stream, state } = useLiveWindow(layer);
   const video = useRef<HTMLVideoElement>(null);
   const kept = useRef<HTMLCanvasElement>(null);
@@ -77,7 +84,8 @@ function LiveWindowPicture({ layer }: { layer: WindowBackground }) {
   const ended = state === 'ended';
   return (
     <div
-      data-layer="background"
+      data-layer={as === 'pip' ? undefined : 'background'}
+      data-pip-picture={as === 'pip' ? 'window' : undefined}
       data-kind="window"
       data-window-state={state}
       style={{ position: 'absolute', inset: 0, background: '#000000' }}

@@ -18,6 +18,7 @@ import { DisplayNumber, TestCard } from './SetupCards';
 import { reportRenderError } from '../ui/render-errors';
 import { HOLD_WARM_UP, SKIP_WARM_UP } from '../render/warm-up-mode';
 import { ClockStyleContext } from '../render/clock-style';
+import { LiveHere } from '../render/live-here';
 
 function IdentifyOverlay() {
   const identify = useOutput((s) => s.identify);
@@ -200,6 +201,9 @@ function Output() {
   const look = groupLookIn(state?.look, context?.groupId);
   // A key and fill group's screen draws the fill or the key.
   const matte = context?.role === 'keyfill' ? (context.feed ?? 'fill') : null;
+  // A node's screen (its context carries how far its clock is from Main's; Main's own never does) draws no video
+  // input or window in the picture-in-picture box: they are Main's computer's (Session 50). Nor before it knows.
+  const liveHere = context !== null && context.clockOffsetMs === undefined;
   return (
     <div
       ref={rootRef}
@@ -232,14 +236,16 @@ function Output() {
         <SceneBoundary resetKey={rev}>
           {/* Main's way of writing the time (Sessions 31–36, I18N-8): a node in another time zone shows Main's. */}
           <ClockStyleContext.Provider value={context?.clockStyle ?? null}>
-            <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
-              {stage ? (
-                <StageScreen state={state} look={look} canvas={canvas} hall={context.hall ?? null} />
-              ) : (
-                <Scene state={state} canvas={canvas} scaling={scaling} look={look} matte={matte} />
-              )}
-              {testThrow && <ThrowForTests />}
-            </PlacedInParent>
+            <LiveHere.Provider value={liveHere}>
+              <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
+                {stage ? (
+                  <StageScreen state={state} look={look} canvas={canvas} hall={context.hall ?? null} />
+                ) : (
+                  <Scene state={state} canvas={canvas} scaling={scaling} look={look} matte={matte} />
+                )}
+                {testThrow && <ThrowForTests />}
+              </PlacedInParent>
+            </LiveHere.Provider>
           </ClockStyleContext.Provider>
         </SceneBoundary>
       )}
