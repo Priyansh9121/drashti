@@ -234,7 +234,7 @@ function Output() {
           <ClockStyleContext.Provider value={context?.clockStyle ?? null}>
             <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
               {stage ? (
-                <StageScreen state={state} look={look} canvas={canvas} hall={context?.hall ?? null} />
+                <StageScreen state={state} look={look} canvas={canvas} hall={context.hall ?? null} />
               ) : (
                 <Scene state={state} canvas={canvas} scaling={scaling} look={look} matte={matte} />
               )}
