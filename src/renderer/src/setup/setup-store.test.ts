@@ -149,6 +149,42 @@ describe('Set Up Screens… and Keep these screens?', () => {
     expect(setup.useSetup.getState().wentBack).toBe(false);
   });
 
+  // Done's answer can reach the window before the main process's word that the question is waiting (two
+  // messages): the wizard then asks it, and still goes back to its displays when the change goes back.
+  it('Done answered before the question is heard here: asked, watched, and gone back to the displays', async () => {
+    const { setup, screens, keep } = await fresh();
+    (globalThis as { window?: unknown }).window = {
+      drashti: {
+        setup: {
+          finish: () => Promise.resolve({ ok: true, snapshot: after, tested: 2 }),
+          state: () => Promise.resolve({ operatorDisplayId: 1, controlsDisplayId: 1 }),
+        },
+        screens: { pending: () => Promise.resolve({ deadline: 5, coversControls: false }) },
+      },
+    };
+    setup.useSetup.setState({
+      open: true,
+      step: setup.STEPS.indexOf('Screens'),
+      displays: [display(1), display(2), display(3)],
+      outputs: {
+        1: { use: 'none', languages: null },
+        2: { use: 'audience', languages: null },
+        3: { use: 'stage', languages: null },
+      },
+    });
+    await setup.finishScreens();
+    expect(setup.useSetup.getState().applied).toEqual({ 1: 'none', 2: 'audience', 3: 'stage' });
+    // The question is heard now, and goes back.
+    keep.useKeepScreens.setState({ pending: { deadline: 5, coversControls: false } });
+    screens.useScreens.setState({ snapshot: before });
+    keep.useKeepScreens.setState({ pending: null, answered: 'went-back' });
+    expect(setup.useSetup.getState()).toMatchObject({
+      step: setup.STEPS.indexOf('Screens'),
+      finished: null,
+      wentBack: true,
+    });
+  });
+
   it('kept: Done stays done; with no question waiting, nothing is watched', async () => {
     const { setup, screens, keep } = await fresh();
     setup.watchKeepScreens();

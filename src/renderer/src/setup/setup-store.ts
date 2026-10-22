@@ -230,8 +230,13 @@ export async function finishSetup(coverOperator = false): Promise<void> {
     return;
   }
   useScreens.setState({ snapshot: result.snapshot });
-  // Keep these screens? (Session 50): the main process asked it before answering. Watched until it goes.
-  if (plan.outputs && useKeepScreens.getState().pending) {
+  // Keep these screens? (Session 50): the main process asked it before answering. Its word that the question is
+  // waiting can reach this window after the answer (two messages), so when it has not yet, it is asked. Watched
+  // until it goes.
+  const asking =
+    plan.outputs !== null &&
+    (useKeepScreens.getState().pending !== null || (await window.drashti.screens.pending()) !== null);
+  if (plan.outputs && asking) {
     watchKeepScreens();
     useSetup.setState({ applied: Object.fromEntries(plan.outputs.map((o) => [o.displayId, o.use])) });
   }
