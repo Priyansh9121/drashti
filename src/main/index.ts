@@ -103,7 +103,7 @@ import { defaultInstaller } from './update/installer';
 import { UPDATE_BASE } from '../shared/updates';
 import { lowerThirdInputSchema } from '../shared/lower-thirds';
 import { midiSettingsSchema, NO_MIDI } from '../shared/midi';
-import { seedBuiltinThemes, seedPlaceholders, seedTemplates } from './db/seed';
+import { seedLibrary, seedOptions } from './db/seed';
 import { ShowEngine } from './engine/show-engine';
 import { runEngineCommand } from './ipc/engine-ipc';
 import {
@@ -690,9 +690,12 @@ function openLibrary(): { db: Db } | { error: unknown } {
   try {
     const opened = openDatabase(libraryFile());
     try {
-      if (seedPlaceholders(opened)) log.info('Added the placeholder presentations');
-      if (seedTemplates(opened)) log.info('Added the example sabha templates');
-      if (seedBuiltinThemes(opened)) log.info('Added the built-in themes');
+      // A new library's example sabha templates and built-in themes; the placeholder presentations only for the
+      // tests (Session 50: DRASHTI_TEST_SEED_PLACEHOLDERS, which a packaged Drashti ignores).
+      const seeded = seedLibrary(opened, seedOptions(sw));
+      if (seeded.placeholders) log.info('Added the placeholder presentations');
+      if (seeded.templates) log.info('Added the example sabha templates');
+      if (seeded.themes) log.info('Added the built-in themes');
       // YouTube is the third screen (Session 26): its card in Screens is there from the start.
       if (new ScreenRepo(opened).ensureStreamGroup().made) log.info('Made the stream’s screen group');
     } catch (error) {

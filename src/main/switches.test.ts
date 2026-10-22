@@ -49,6 +49,8 @@ describe('switches', () => {
       DRASHTI_SELFTEST: 'watchdog',
       DRASHTI_USER_DATA_DIR: '/data',
       DRASHTI_TEST_FAKE_DEVICES: '1',
+      // Session 50: the placeholder presentations, which a new library starts without, for the tests only.
+      DRASHTI_TEST_SEED_PLACEHOLDERS: '1',
       DRASHTI_FFMPEG: '/elsewhere/ffmpeg',
       DRASHTI_PERF_SONGS: '50',
       DRASHTI_WINDOWED_OUTPUTS: '1',
@@ -59,6 +61,7 @@ describe('switches', () => {
     expect(packaged('DRASHTI_SELFTEST')).toBe('watchdog');
     for (const name of [
       'DRASHTI_TEST_FAKE_DEVICES',
+      'DRASHTI_TEST_SEED_PLACEHOLDERS',
       'DRASHTI_FFMPEG',
       'DRASHTI_PERF_SONGS',
       'DRASHTI_WINDOWED_OUTPUTS',
@@ -72,6 +75,7 @@ describe('switches', () => {
     expect(performance('DRASHTI_FFMPEG')).toBeUndefined();
     // Unpackaged (development, the tests): everything.
     expect(switchesFor(false, env)('DRASHTI_TEST_FAKE_DEVICES')).toBe('1');
+    expect(switchesFor(false, env)('DRASHTI_TEST_SEED_PLACEHOLDERS')).toBe('1');
     expect(ADMIN_SWITCHES.size).toBe(9);
   });
 

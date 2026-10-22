@@ -1,17 +1,90 @@
 import { describe, expect, it } from 'vitest';
 import { openDatabase } from './database';
+import { PlaylistRepo } from './playlists';
 import { PresentationRepo } from './presentations';
 import { slideLines } from '../../shared/tracks';
 import { BUILTIN_THEMES } from '../../shared/builtin-themes';
 import { DEFAULT_THEME } from '../../shared/themes';
+import { switchesFor } from '../switches';
 import {
+  EXAMPLE_TEMPLATES,
   KIRTAN_PRESENTATION_NAME,
   seedBuiltinThemes,
+  seedLibrary,
+  seedOptions,
   seedPlaceholders,
   TEST_LINES,
   TEST_PRESENTATION_NAME,
 } from './seed';
 import { ThemeRepo } from './themes';
+
+describe('seedLibrary (Session 50: a new library starts without the placeholder presentations)', () => {
+  it('gives a new library the example sabha templates and the built-in themes, and no placeholder presentations', () => {
+    const db = openDatabase(':memory:');
+    expect(seedLibrary(db, { placeholders: false })).toEqual({
+      placeholders: false,
+      templates: true,
+      themes: true,
+    });
+    expect(new PresentationRepo(db).list()).toEqual([]);
+    expect(new PlaylistRepo(db).tree(true).map((t) => t.name)).toEqual(EXAMPLE_TEMPLATES.map((t) => t.name));
+    expect(new ThemeRepo(db).list()).toHaveLength(BUILTIN_THEMES.length + 1);
+    // Once: a second start adds nothing.
+    expect(seedLibrary(db, { placeholders: false })).toEqual({
+      placeholders: false,
+      templates: false,
+      themes: false,
+    });
+  });
+
+  it('adds the placeholder presentations when asked (the tests), with the templates and themes', () => {
+    const db = openDatabase(':memory:');
+    expect(seedLibrary(db, { placeholders: true })).toEqual({
+      placeholders: true,
+      templates: true,
+      themes: true,
+    });
+    expect(new PresentationRepo(db).list().map((p) => p.name)).toEqual(
+      [TEST_PRESENTATION_NAME, KIRTAN_PRESENTATION_NAME].sort(),
+    );
+    expect(new PlaylistRepo(db).tree(true)).toHaveLength(EXAMPLE_TEMPLATES.length);
+  });
+
+  it('decides at a library’s first start: one that started without them never gains them later', () => {
+    const db = openDatabase(':memory:');
+    seedLibrary(db, { placeholders: false });
+    expect(seedLibrary(db, { placeholders: true }).placeholders).toBe(false);
+    expect(new PresentationRepo(db).list()).toEqual([]);
+    // And one that started with them keeps them, asked or not.
+    const other = openDatabase(':memory:');
+    seedLibrary(other, { placeholders: true });
+    expect(seedLibrary(other, { placeholders: false }).placeholders).toBe(false);
+    expect(new PresentationRepo(other).list()).toHaveLength(2);
+  });
+});
+
+describe('seedOptions (Session 50: the placeholders behind a test switch)', () => {
+  const asked = { DRASHTI_TEST_SEED_PLACEHOLDERS: '1' };
+
+  it('seeds them under DRASHTI_TEST_SEED_PLACEHOLDERS=1, which a packaged Drashti ignores', () => {
+    expect(seedOptions(switchesFor(false, asked))).toEqual({ placeholders: true });
+    expect(seedOptions(switchesFor(true, asked))).toEqual({ placeholders: false });
+    // The end-to-end tests' way to start without them: the switch given empty.
+    expect(seedOptions(switchesFor(false, { DRASHTI_TEST_SEED_PLACEHOLDERS: '' }))).toEqual({
+      placeholders: false,
+    });
+    expect(seedOptions(switchesFor(false, {}))).toEqual({ placeholders: false });
+    expect(seedOptions(switchesFor(true, {}))).toEqual({ placeholders: false });
+  });
+
+  it('seeds them for the watchdog self-test run by itself, packaged too: it shows the library’s first presentation', () => {
+    // scripts/check-installers.mjs runs it on the installed app, in a data folder of its own.
+    expect(seedOptions(switchesFor(true, { DRASHTI_SELFTEST: 'watchdog' }))).toEqual({ placeholders: true });
+    expect(seedOptions(switchesFor(true, { DRASHTI_SELFTEST: 'performance' }))).toEqual({
+      placeholders: false,
+    });
+  });
+});
 
 describe('seedPlaceholders', () => {
   it('adds the two placeholder presentations once', () => {

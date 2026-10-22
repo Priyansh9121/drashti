@@ -1,16 +1,19 @@
 import { BUILTIN_THEMES } from '../../shared/builtin-themes';
 import { GROUP_COLOURS } from '../../shared/group-colors';
 import type { KirtanLang, Lang, TextElement, TextStyle } from '../../shared/model';
+import type { Switches } from '../switches';
 import type { Db } from './database';
 import { PlaylistRepo } from './playlists';
 import { PresentationRepo } from './presentations';
 import { ThemeRepo } from './themes';
 
 /*
- * Placeholder content for a new install. All text here was written for
- * Drashti's tests; it is not kirtan or scripture text.
+ * What a new library starts with: the example sabha templates and the built-in themes. Drashti's two
+ * placeholder presentations are for the tests only since Session 50 (seedOptions): a new library starts
+ * without them. All text here was written for Drashti's tests; it is not kirtan or scripture text.
  */
 
+/** Set at a library's first start: the placeholders were added then (an ISO time), or not ('none'). */
 export const SEED_KEY = 'seed.placeholder-presentations';
 export const TEST_PRESENTATION_NAME = 'Language test slides';
 export const KIRTAN_PRESENTATION_NAME = 'Sample kirtan (placeholder)';
@@ -101,9 +104,51 @@ const KIRTAN_LINES: { group: string; lines: Record<KirtanLang, string> }[] = [
   },
 ];
 
+/** What a library is given as it opens. */
+export interface SeedOptions {
+  /** Drashti's two placeholder presentations (Session 50: for the tests, never an operator's new library). */
+  placeholders: boolean;
+}
+
+/**
+ * What this start asks for (Session 50): the placeholder presentations under DRASHTI_TEST_SEED_PLACEHOLDERS=1,
+ * which a packaged Drashti ignores (the end-to-end tests set it), and for the watchdog self-test run by itself
+ * (DRASHTI_SELFTEST=watchdog, packaged too: it puts the library's first presentation up, in a data folder of
+ * its own when scripts/check-installers.mjs runs it on the installed app).
+ */
+export function seedOptions(sw: Switches): SeedOptions {
+  return {
+    placeholders: sw('DRASHTI_TEST_SEED_PLACEHOLDERS') === '1' || sw('DRASHTI_SELFTEST') === 'watchdog',
+  };
+}
+
+/** What seedLibrary added, for the log. */
+export interface Seeded {
+  placeholders: boolean;
+  templates: boolean;
+  themes: boolean;
+}
+
+/**
+ * Seed a library as it opens: the example sabha templates and the built-in themes once per library, and the
+ * placeholder presentations only when asked (Session 50). Whether a library has them is decided at its first
+ * start: one that started without them never gains them later, so a test's restart keeps what it began with.
+ */
+export function seedLibrary(db: Db, options: SeedOptions): Seeded {
+  const placeholders = options.placeholders ? seedPlaceholders(db) : startWithoutPlaceholders(db);
+  return { placeholders, templates: seedTemplates(db), themes: seedBuiltinThemes(db) };
+}
+
+/** A library's first start without the placeholder presentations, kept: a later start never adds them. */
+function startWithoutPlaceholders(db: Db): false {
+  db.prepare('INSERT OR IGNORE INTO app_meta (key, value) VALUES (?, ?)').run(SEED_KEY, 'none');
+  return false;
+}
+
 /**
  * Add the two placeholder presentations once per database. Returns false
- * when they were added before (even if the operator has since deleted them).
+ * when they were added before (even if the operator has since deleted them),
+ * or the library started without them.
  */
 export function seedPlaceholders(db: Db): boolean {
   const done = db.prepare('SELECT 1 FROM app_meta WHERE key = ?').get(SEED_KEY);

@@ -57,9 +57,19 @@ function appEnv(extra: Record<string, string>): Record<string, string> {
 export const OWN_APPEARANCE = { DRASHTI_TEST_APPEARANCE: '' } as const;
 
 /**
+ * For a test of a library as an operator's starts (Session 50): without Drashti's two placeholder
+ * presentations ("Language test slides" and "Sample kirtan (placeholder)", src/main/db/seed.ts), which a new
+ * library no longer has. Every other Drashti the tests start has them (DRASHTI_TEST_SEED_PLACEHOLDERS, set by
+ * launchApp). Whether a library has them is decided at its first start: a restart keeps what it began with,
+ * whatever it is given then.
+ */
+export const NO_PLACEHOLDERS = { DRASHTI_TEST_SEED_PLACEHOLDERS: '' } as const;
+
+/**
  * Launch the built app (out/), with a fresh data folder unless one is given (to test restarts).
  * The setup wizard, which opens by itself on a first start, stays shut unless a test asks for it
- * (DRASHTI_TEST_NO_WIZARD: '0'), and Drashti starts as Main without asking (DRASHTI_ROLE). Quiet
+ * (DRASHTI_TEST_NO_WIZARD: '0'), Drashti starts as Main without asking (DRASHTI_ROLE), and a new
+ * library has the placeholder presentations the tests use (unless NO_PLACEHOLDERS). Quiet
  * locally (see QUIET).
  */
 export async function launchApp(
@@ -78,6 +88,8 @@ export async function launchApp(
       // A first start asks whether the computer is Main or a node (Session 13): tests are Main
       // unless they say otherwise (tests/e2e/nodes.ts starts nodes).
       DRASHTI_ROLE: 'main',
+      // The placeholder presentations, which a new library starts without (Session 50): the tests' slides.
+      DRASHTI_TEST_SEED_PLACEHOLDERS: '1',
       // Crash files go into the test's own output folder (Session 39), which Playwright keeps only when the
       // test fails (playwright.config.ts, preserveOutput), so a failed run's report carries them.
       ...crashFilesHere(),
