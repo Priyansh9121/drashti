@@ -313,9 +313,12 @@ export class ConvertService {
       }
       // Converted already (and not undone): everything uses the copy. What uses the original since (an import made
       // it again: a folder playlist looking again, the same file dropped again, Session 50) is moved to the copy too.
+      // A copy deleted from the library since (Session 51) stands for nothing: the original is converted again.
       const done = this.deps.db
         .prepare(
-          'SELECT id, converted_id, moved FROM media_conversions WHERE original_id = ? AND undone_at IS NULL',
+          `SELECT mc.id, mc.converted_id, mc.moved FROM media_conversions mc JOIN media c ON c.id = mc.converted_id
+            WHERE mc.original_id = ? AND mc.undone_at IS NULL AND c.deleted_at IS NULL
+            ORDER BY mc.created_at DESC, mc.rowid DESC LIMIT 1`,
         )
         .get(id) as { id: string; converted_id: string; moved: string } | undefined;
       if (done) {

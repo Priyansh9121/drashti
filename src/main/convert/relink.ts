@@ -5,7 +5,8 @@ import type { Db } from '../db/database';
  * file: slides' background and sound cues, pictures and videos placed on
  * slides, playlist items, props, theme backgrounds and kirtan recordings.
  * What was moved is kept, so Undo puts back exactly those rows that still
- * point at the converted file.
+ * point at the converted file. And what is added after (Session 51) lands on
+ * the converted file too (copyFinder).
  */
 
 export interface Moved {
@@ -28,6 +29,22 @@ export const NOTHING_MOVED: Moved = {
   themes: [],
   tracks: [],
 };
+
+/**
+ * What stands for a media item (Session 51): its converted copy while the conversion stands (not undone) and the
+ * copy is in the library, else itself. What is added after a conversion (a playlist's item, a slide's picture,
+ * video or cue, a kirtan's recording, an audio playlist's track, the same file imported again) lands on the copy,
+ * as everything that used the original was moved there; since Session 9 it landed on the original. One statement,
+ * for many ids at a time.
+ */
+export function copyFinder(db: Db): (mediaId: string) => string {
+  const copy = db.prepare(
+    `SELECT mc.converted_id AS id FROM media_conversions mc JOIN media c ON c.id = mc.converted_id
+      WHERE mc.original_id = ? AND mc.undone_at IS NULL AND c.deleted_at IS NULL
+      ORDER BY mc.created_at DESC, mc.rowid DESC LIMIT 1`,
+  );
+  return (mediaId) => (copy.get(mediaId) as { id: string } | undefined)?.id ?? mediaId;
+}
 
 /** A copy of a JSON value with every `mediaId` equal to `from` set to `to`. */
 function swapIds(value: unknown, from: string, to: string): { value: unknown; changed: boolean } {

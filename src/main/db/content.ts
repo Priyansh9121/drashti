@@ -1,6 +1,7 @@
 import type { Lang, TextRun, Transition } from '../../shared/model';
 import { transitionSchema } from '../../shared/model-schema';
 import { type BoxWords, langsOfBoxes } from '../../shared/tracks';
+import { copyFinder } from '../convert/relink';
 import type { Db } from './database';
 
 /*
@@ -190,11 +191,33 @@ export function readContent(db: Db, presentationId: string): ContentRows | null 
 }
 
 /**
+ * A picture's or video's props with its file's copy in place of a converted original (Session 51); anything else,
+ * or props that cannot be read, as they are.
+ */
+function propsWithCopy(element: ElementRow, copy: (mediaId: string) => string): string {
+  if (element.kind !== 'image' && element.kind !== 'video') return element.props;
+  let props: unknown;
+  try {
+    props = JSON.parse(element.props);
+  } catch {
+    return element.props;
+  }
+  if (typeof props !== 'object' || props === null || !('mediaId' in props)) return element.props;
+  const from = props.mediaId;
+  if (typeof from !== 'string') return element.props;
+  const to = copy(from);
+  return to === from ? element.props : JSON.stringify({ ...props, mediaId: to });
+}
+
+/**
  * Replace a presentation's content with these rows, ids and all, in the
  * caller's transaction. Keeps the stored counts the library list shows.
  */
 export function writeContent(db: Db, rows: ContentRows): void {
   const id = rows.presentationId;
+  // A converted original put on a slide lands on its copy (Session 51): a picture or video dragged in from Media
+  // and saved, a cue, a kirtan's recording, or Undo putting back what was saved before the conversion.
+  const copy = copyFinder(db);
   // Groups cascade to slides, elements, cues, arrangement entries and kirtan lines.
   db.prepare('DELETE FROM slide_groups WHERE presentation_id = ?').run(id);
   db.prepare('DELETE FROM arrangements WHERE presentation_id = ?').run(id);
@@ -226,11 +249,31 @@ export function writeContent(db: Db, rows: ContentRows): void {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   for (const e of rows.elements)
-    element.run(e.id, e.slide_id, e.position, e.kind, e.x, e.y, e.width, e.height, e.rotation, e.props);
+    element.run(
+      e.id,
+      e.slide_id,
+      e.position,
+      e.kind,
+      e.x,
+      e.y,
+      e.width,
+      e.height,
+      e.rotation,
+      propsWithCopy(e, copy),
+    );
   const cue = db.prepare(
     'INSERT INTO slide_cues (id, slide_id, position, kind, label, media_id, props) VALUES (?, ?, ?, ?, ?, ?, ?)',
   );
-  for (const c of rows.cues) cue.run(c.id, c.slide_id, c.position, c.kind, c.label, c.media_id, c.props);
+  for (const c of rows.cues)
+    cue.run(
+      c.id,
+      c.slide_id,
+      c.position,
+      c.kind,
+      c.label,
+      c.media_id === null ? null : copy(c.media_id),
+      c.props,
+    );
   const arrangement = db.prepare(
     'INSERT INTO arrangements (id, presentation_id, name, position, source_ref) VALUES (?, ?, ?, ?, ?)',
   );
@@ -243,7 +286,14 @@ export function writeContent(db: Db, rows: ContentRows): void {
     const k = rows.kirtan.row;
     db.prepare(
       'INSERT INTO kirtans (presentation_id, category, kavi, raag, occasions, audio_media_id) VALUES (?, ?, ?, ?, ?, ?)',
-    ).run(id, k.category, k.kavi, k.raag, k.occasions, k.audio_media_id);
+    ).run(
+      id,
+      k.category,
+      k.kavi,
+      k.raag,
+      k.occasions,
+      k.audio_media_id === null ? null : copy(k.audio_media_id),
+    );
   }
   const slideIds = new Set(rows.slides.map((s) => s.id));
   const auto = db.prepare('INSERT INTO kirtan_auto_lines (slide_id, lang, text) VALUES (?, ?, ?)');
