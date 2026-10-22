@@ -110,7 +110,9 @@ test('convert all: each kind becomes what Drashti plays, the original stays, wha
     'Placeholder photo.heic',
   ];
 
-  const { app } = await launchApp();
+  // Convert by hand, as for a file imported before Session 50: nothing is converted by itself at import
+  // (convert-at-import.spec.ts tries that).
+  const { app } = await launchApp({ DRASHTI_TEST_NO_CONVERT_AT_IMPORT: '1' });
   const win = await operatorPage(app);
   await win.setViewportSize({ width: 1280, height: 720 });
   await operatorReady(win);
