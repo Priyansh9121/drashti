@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nodeHealthSchema } from './nodes-schema';
+import { nodeHealthSchema, nodeScreenListSchema } from './nodes-schema';
 
 /** A node's health as it sends it, one output in the state given. */
 const health = (state: string): unknown => ({
@@ -20,5 +20,46 @@ describe("a node's health", () => {
     for (const state of ['showing', 'missing-display', 'disabled'])
       expect(nodeHealthSchema.safeParse(health(state)).success).toBe(true);
     expect(nodeHealthSchema.safeParse(health('placeholder-state')).success).toBe(false);
+  });
+});
+
+describe("a node's screens, as Main sends them", () => {
+  const screen = {
+    screenId: 'placeholder-stage-screen',
+    name: 'Placeholder stage screen',
+    groupId: 'placeholder-stage',
+    groupName: 'Placeholder stage',
+    role: 'stage',
+    feed: null,
+    canvasWidth: 1920,
+    canvasHeight: 1080,
+    scaling: 'fit',
+    enabled: true,
+    displayKey: {
+      id: 2,
+      label: 'Placeholder display',
+      pixelWidth: 1920,
+      pixelHeight: 1080,
+      x: 0,
+      y: 0,
+      internal: false,
+    },
+  };
+
+  // Session 51 (S4-2): a node with no audience screen of its own draws Main's hall in a stage layout's box.
+  it('keep Main’s hall picture on a stage screen, Audience off too; one without it reads as before', () => {
+    const hall = {
+      groupId: 'placeholder-hall',
+      canvasWidth: 1280,
+      canvasHeight: 720,
+      scaling: 'fill',
+      off: true,
+    };
+    expect(nodeScreenListSchema.parse([{ ...screen, hall }])[0]?.hall).toEqual(hall);
+    expect(nodeScreenListSchema.parse([{ ...screen, hall: null }])[0]?.hall).toBeNull();
+    expect(nodeScreenListSchema.parse([screen])[0]).toEqual(screen);
+    expect(nodeScreenListSchema.safeParse([{ ...screen, hall: { ...hall, canvasWidth: -1 } }]).success).toBe(
+      false,
+    );
   });
 });
