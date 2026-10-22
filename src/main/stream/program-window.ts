@@ -1,6 +1,7 @@
 import { BrowserWindow, type Session, type WebContents, type WebFrameMain } from 'electron';
 import { loadPage } from '../windows/renderer';
 import { secureWebPreferences } from '../windows/web-preferences';
+import type { CaptureGrant } from '../live-window/live-window-service';
 
 /*
  * The Program: what the stream shows, drawn off screen by the stream's page
@@ -49,6 +50,11 @@ export interface StreamSessionRules {
   log?(line: string): void;
   /** Each capture of the page's own picture, granted or refused: rare, so always kept (Session 18). */
   logCapture?(line: string): void;
+  /**
+   * Another app's window up as the background (Session 48): what the stream's page is given when it asked
+   * to capture it (src/main/live-window/), or null for its usual capture of its own picture.
+   */
+  liveWindow?(frame: WebFrameMain | null): CaptureGrant | null;
 }
 
 /**
@@ -71,6 +77,12 @@ export function applyStreamSessionSecurity(session: Session, rules: StreamSessio
   });
   session.setDisplayMediaRequestHandler((request, callback) => {
     const frame: WebFrameMain | null = request.frame;
+    const window = rules.liveWindow?.(frame) ?? null;
+    if (window) {
+      rules.logCapture?.('Stream capture of the window on the screens granted');
+      callback({ video: window });
+      return;
+    }
     const own =
       frame !== null &&
       frame.parent === null &&
