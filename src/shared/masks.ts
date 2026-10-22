@@ -12,11 +12,11 @@ import { idSchema } from './model-schema';
  * Masks apply in two places:
  * - In a Look, a group's mask is its screens' own shape (an LED wall's
  *   outline, a projector hitting a pillar). It is always there in that Look,
- *   over everything including the logo; Clear all, F7 and Simple Mode never
+ *   over everything including the logo; Clear all, F8 and Simple Mode never
  *   take it away.
  * - The Masks layer: the operator puts a mask from the library up on the
  *   audience screens for a while (a circle round a video, a band for the
- *   words) and takes it down with F7, Clear all or Put it back, as any layer.
+ *   words) and takes it down with F8, Clear all or Put it back, as any layer.
  *   A group's Look can leave the Masks layer out.
  * Stage screens ignore masks. The stream keeps its own rules: in the Slides
  * layout it follows the Masks layer as the hall does; in Camera and words it

@@ -99,7 +99,7 @@ describe('masks', () => {
       shapes: [wall()],
     });
     expect(t.engine.current.look.groups[t.hall]?.mask?.mode).toBe('hide');
-    // Clear all and F7 never take a group's own mask away.
+    // Clear all and F8 never take a group's own mask away.
     t.engine.dispatch({ type: 'clearAll' });
     t.engine.dispatch({ type: 'clearLayer', layer: 'masks' });
     expect(t.engine.current.look.groups[t.hall]?.mask?.id).toBe(maskId);

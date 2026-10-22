@@ -13,7 +13,7 @@ import { idSchema } from './model-schema';
  * How it meets the rest of the audio layer: one sound at a time. A slide's
  * sound cue (or a sound item, a kirtan's recording) takes
  * the audio layer and the music stops, with its fade; Back after that Next
- * brings it back where it would be by now. Clear audio (F6) and Clear all
+ * brings it back where it would be by now. Clear audio (F5) and Clear all
  * stop it; Put it back brings it back where it would be by now. Music
  * playing is never undone by Back or Put it back (it is independent of the
  * slides), and starting, pausing or moving through it does not stop them

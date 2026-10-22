@@ -309,7 +309,7 @@ export interface TickerLayer {
 
 /**
  * The Masks layer: a mask from the library (shared/masks.ts) the operator
- * put up on the audience screens, until it is cleared (F7, Clear all).
+ * put up on the audience screens, until it is cleared (F8, Clear all).
  */
 export type MaskLayer = Mask;
 
