@@ -1,14 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlaybackClip, PlaybackSeek } from '../../../shared/media';
-import { playbackOffset, SOUND_LIMITS } from '../../../shared/media';
+import { playbackOffset, playbackPosition, SOUND_LIMITS } from '../../../shared/media';
 import { startPlayback } from './playback';
 
 /*
  * A file played once with an end point stops there (Session 15): within two
  * frames of it, whatever the quarter-second checks are doing. A file that
  * loops goes round in step, and a sound that starts late is brought into step
- * at once (Sessions 31–36). A stand-in media element plays on the test's clock
- * (fake timers drive Date.now, performance.now and the timers alike).
+ * at once (Sessions 31–36). A sound the engine sends somewhere new (a skip or a
+ * jump to a marker) lands in step there, and is aimed again if it lands off
+ * (Session 51). A stand-in media element plays on the test's clock (fake
+ * timers drive Date.now, performance.now and the timers alike).
  */
 
 const FRAME = 1 / 60;
@@ -30,10 +32,11 @@ class FakeMedia extends EventTarget {
    * `restart`: its own loop comes round this late (seconds), as a real element's does. `startLate`: it
    * plays this long (ms) after play() is called, as a busy computer's sound device does. `landOff`: each
    * seek in turn lands this far from where it was aimed (seconds, + ahead), as CI's Mac's sometimes do.
+   * `seekMs`: how long a seek takes to land (5 ms when left out; about 0.1 s for CI's Windows's sound).
    */
   constructor(
     private readonly length: number,
-    private readonly lags: { restart?: number; startLate?: number; landOff?: number[] } = {},
+    private readonly lags: { restart?: number; startLate?: number; landOff?: number[]; seekMs?: number } = {},
   ) {
     super();
   }
@@ -56,7 +59,7 @@ class FakeMedia extends EventTarget {
       this.seeking = false;
       this.since = Date.now();
       this.dispatchEvent(new Event('seeked'));
-    }, 5);
+    }, this.lags.seekMs ?? 5);
   }
 
   get playbackRate(): number {
@@ -291,5 +294,99 @@ describe('a file that loops, and a sound that starts late', () => {
     const off = offset(v, startedAt, 30, false);
     expect(Math.abs(off), `${off.toFixed(3)} s off the clock`).toBeLessThan(2 / 30);
     stop();
+  });
+});
+
+describe('a sound the engine sends somewhere new: a skip or a jump to a marker (Session 51)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date', 'performance'],
+    });
+    vi.setSystemTime(new Date('2026-10-06T10:00:00Z'));
+    vi.stubGlobal('HTMLMediaElement', { HAVE_CURRENT_DATA: 2 });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  /** In step: within two frames (at 30 a second) of the clock. */
+  const IN_STEP = 2 / 30;
+
+  /** A 40 s sound played once, which the engine sends somewhere new as a skip or a jump to a marker does. */
+  const sound = (v: FakeMedia) => {
+    const timing: { seek?: PlaybackSeek } = {};
+    const startedAt = Date.now();
+    const playback = startPlayback(v as unknown as HTMLMediaElement, {
+      mediaId: 'skipped',
+      startedAt,
+      audible: true,
+      limits: SOUND_LIMITS,
+      timing: () => ({ loop: false, ...timing }),
+    });
+    /** Where the clock says it is (ms into it). */
+    const clockMs = () => playbackPosition({ startedAt, loop: false, ...timing }, 40, Date.now()) * 1000;
+    return {
+      stop: playback,
+      clockMs,
+      /** How far it is from the clock (seconds, + ahead). */
+      offset: () => v.currentTime - clockMs() / 1000,
+      /** The engine sends it to `toMs` from now, and the audio player checks it at once (as audio/main.ts does). */
+      jumpTo: (toMs: number) => {
+        timing.seek = { at: Date.now(), toMs };
+        playback.resync();
+      },
+    };
+  };
+
+  it('a skip pressed a moment after the last one landed lands in step, not 0.4 s ahead (the skips spec on Windows)', () => {
+    // Its seeks take 0.1 s to land. Pressed as quickly as CI pressed them, each skip came before the last landing
+    // was measured (300 ms after it), which was then measured from the new place: 15 or 30 s off, a lead learned
+    // from that reached its 0.5 s cap, and the next jump landed 0.4 s ahead, eased back at 2% a second.
+    const v = new FakeMedia(40, { seekMs: 100 });
+    const s = sound(v);
+    runFor(v, 2000);
+    // Back 15 s to the start, Last 10 s, Back 15 s and Forward 15 s, as far apart as CI's trace has them (ms).
+    const skips: [string, (ms: number) => number, number][] = [
+      ['Back 15 s', (ms) => Math.max(0, ms - 15_000), 472],
+      ['Last 10 s', () => 30_000, 888],
+      ['Back 15 s', (ms) => Math.max(0, ms - 15_000), 464],
+      ['Forward 15 s', (ms) => ms + 15_000, 1500],
+    ];
+    const landed: number[] = [];
+    const seen: string[] = [];
+    for (const [name, to, apart] of skips) {
+      s.jumpTo(to(s.clockMs()));
+      // Landed, and not yet measured or aimed again.
+      runFor(v, 250);
+      const off = s.offset();
+      landed.push(off);
+      seen.push(`${name} ${off.toFixed(3)}`);
+      runFor(v, apart - 250);
+    }
+    // The first, aimed by nothing learned yet, lands a seek's time behind; each after it lands in step.
+    expect(
+      landed.slice(1).every((o) => Math.abs(o) < IN_STEP),
+      `offsets as each landed: ${seen.join(', ')}`,
+    ).toBe(true);
+    const off = s.offset();
+    expect(Math.abs(off), `${off.toFixed(3)} s off the clock 1.5 s after Forward 15 s`).toBeLessThan(IN_STEP);
+    s.stop();
+  });
+
+  it('a skip that lands off is aimed again, whatever the landings before it used up', () => {
+    // Every landing until the fifth is 0.2 s ahead of where it was aimed: a jump to a marker at 0:20 and the two
+    // aimed again after it (as many as a sound has in a row), then Back 15 s, pressed before the last of those
+    // was measured. Its own landing, 0.2 s off too, is aimed again, not left to come back at 2% a second.
+    const v = new FakeMedia(40, { landOff: [0.2, 0.2, 0.2, 0.2] });
+    const s = sound(v);
+    runFor(v, 2000);
+    s.jumpTo(20_000);
+    runFor(v, 1100);
+    s.jumpTo(s.clockMs() - 15_000);
+    runFor(v, 1500);
+    const off = s.offset();
+    expect(Math.abs(off), `${off.toFixed(3)} s off the clock 1.5 s after Back 15 s`).toBeLessThan(IN_STEP);
+    s.stop();
   });
 });

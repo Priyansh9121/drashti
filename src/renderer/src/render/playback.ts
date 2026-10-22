@@ -291,6 +291,18 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
       if (hold) clearTimeout(hold);
       wrap = null;
       hold = null;
+      if (audible) {
+        // A sound the engine has sent somewhere new (Session 51: a skip, a jump to a marker). A landing or a
+        // start not yet measured, or a seek still landing, is not measured: from the new place it would seem 15
+        // or 30 s off, and a lead learned from that reached its 0.5 s cap (CI's Windows pressed the skips that
+        // quickly, and Forward 15 s landed 0.4 s ahead). And its jump may be aimed again, as a start and each
+        // time round a loop may, whatever the landings before it used up (there, two just before Forward 15 s
+        // left it none, eased back at 2% a second). Pictures as before.
+        seekFrom = 0;
+        settleFrom = 0;
+        startFrom = 0;
+        reaims = 0;
+      }
       check();
     },
   });
