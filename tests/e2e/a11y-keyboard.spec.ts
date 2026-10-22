@@ -255,23 +255,23 @@ test('Pro Mode: a whole sabha by keyboard alone', async () => {
   await win.keyboard.press('Shift+ArrowLeft');
   await expect(live).toContainText(KIRTAN);
 
-  // Black-out and the logo, on and off.
+  // Black-out and the logo, on and off: the logo with F12, as the operators press it, and L (Session 50).
   await win.keyboard.press('b');
   await expect(output.getByTestId('blackout')).toHaveCount(1);
   await win.keyboard.press('b');
   await expect(output.getByTestId('blackout')).toHaveCount(0);
-  await win.keyboard.press('l');
+  await win.keyboard.press('F12');
   await expect.poll(async () => (await engine(win)).state.logo).not.toBeNull();
   await win.keyboard.press('l');
   await expect.poll(async () => (await engine(win)).state.logo).toBeNull();
 
-  // A message, typed in its field and shown with Enter; Tab out of the field, and F5 takes it off.
+  // A message, typed in its field and shown with Enter; Tab out of the field, and F6 takes it off.
   await tabTo(win, (f) => f.tag === 'input' && f.region === 'Live' && f.name === 'plate');
   await win.keyboard.type('KB 123');
   await win.keyboard.press('Enter');
   await expect(output.locator('[data-layer="messages"]')).toContainText('Car KB 123 please move');
   await win.keyboard.press('Tab');
-  await win.keyboard.press('F5');
+  await win.keyboard.press('F6');
   await expect(output.locator('[data-layer="messages"]')).toHaveCount(0);
 
   // A timer started from its button.

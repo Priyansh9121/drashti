@@ -142,7 +142,7 @@ test('the practice show: placeholder slides on this screen only, reaching no out
   await expectNoSeriousA11yIssues(win, 'the practice show');
   const thumbs = win.getByTestId('practice-thumb');
   await expect(thumbs).toHaveCount(5);
-  // Next, Next, Back, B, L and F1 work as in a show, on the window's own LIVE.
+  // Next, Next, Back, B, F12 and L (the logo: Session 50) and F1 work as in a show, on the window's own LIVE.
   await win.keyboard.press('ArrowRight');
   await expect(thumbs.nth(0)).toHaveAttribute('aria-current', 'true');
   await expect(win.getByTestId('live-preview')).toContainText('Practice slide one');
@@ -153,7 +153,7 @@ test('the practice show: placeholder slides on this screen only, reaching no out
   await win.keyboard.press('b');
   await expect(win.getByTestId('blackout-button')).toHaveText(/Black-out is on/u);
   await win.keyboard.press('b');
-  await win.keyboard.press('l');
+  await win.keyboard.press('F12');
   await expect(win.getByTestId('logo-button')).toHaveText(/Logo is on/u);
   await win.keyboard.press('l');
   await win.keyboard.press('F1');

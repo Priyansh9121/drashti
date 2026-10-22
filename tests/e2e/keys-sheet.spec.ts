@@ -20,7 +20,7 @@ import {
 /*
  * The keys sheet (Session 25): Help > Keyboard Shortcuts…, or ? when no field has the focus, in Pro
  * Mode only. It lists every key in KEYMAP, grouped by what the operator is doing, as this computer
- * writes them, and says the keys may change after the setup day.
+ * writes them, and says they follow what the operators already press (Session 50).
  */
 
 const menuHas = (app: Awaited<ReturnType<typeof launchApp>>['app'], id: string) =>
@@ -38,9 +38,15 @@ test('the keys sheet opens from the Help menu and with ?, lists every key, and i
   await expect(sheet).toBeVisible();
   await expect(sheet.getByTestId('keys-group')).toHaveCount(KEY_GROUPS.length);
   for (const binding of KEYMAP) await expect(sheet).toContainText(binding.label);
-  await expect(sheet.getByTestId('keys-provisional')).toContainText('may change after the setup day');
+  await expect(sheet.getByTestId('keys-follow')).toHaveText(
+    'These keys follow what the operators already press.',
+  );
   // As this computer writes them: Search is ⌘F on a Mac, Ctrl+F on Windows.
   await expect(sheet).toContainText(process.platform === 'darwin' ? '⌘F' : 'Ctrl+F');
+  // The keys the operators already press (Session 50): F12 for the Logo, Cmd+1 and Cmd+2 (Ctrl+1 and
+  // Ctrl+2 on Windows) for the Audience and Stage screens.
+  const mod = process.platform === 'darwin' ? '⌘' : 'Ctrl+';
+  for (const key of ['F12', `${mod}1`, `${mod}2`]) await expect(sheet).toContainText(key);
   await expectNoSeriousA11yIssues(win, 'the keys sheet');
   await win.keyboard.press('Escape');
   await expect(sheet).toHaveCount(0);
@@ -76,6 +82,7 @@ test('the keys sheet opens from the Help menu and with ?, lists every key, and i
  * anywhere in the window, so a word said to speech software, or a key brushed, could black out the hall.
  * They stay on unless an admin turns them off, with the switch in the keys sheet: then they do nothing
  * anywhere (the window, its menus, Simple Mode), and Black-out and the Logo still work from their buttons.
+ * The Logo keeps F12 (Session 50), a named key: the window shows it beside the Logo still.
  */
 
 /** Made-up PINs only, never printed. */
@@ -156,9 +163,10 @@ test('single-letter keys (B, ., L and ?) are on to begin with, and an admin can 
   const blackoutButton = win.getByTestId('blackout-button');
   const logoButton = win.getByTestId('logo-button');
 
-  // On to begin with: they work as they always have, and the buttons show them.
+  // On to begin with: they work as they always have, and the buttons show their first keys (the Logo's is
+  // F12, as the operators press it: Session 50).
   await expect(blackoutButton.locator('kbd')).toHaveText('B');
-  await expect(logoButton.locator('kbd')).toHaveText('L');
+  await expect(logoButton.locator('kbd')).toHaveText('F12');
   await letGo(win);
   await win.keyboard.press('b');
   await expect.poll(async () => (await show(win)).blackout).toBe(true);
@@ -181,7 +189,9 @@ test('single-letter keys (B, ., L and ?) are on to begin with, and an admin can 
   expect(await singleKeys(win)).toBe(false);
   // The sheet says they are off, beside each of them too.
   await expect(sheet.getByTestId('keys-single-off')).toContainText('B, ., L and ? do nothing');
-  await expect(sheet.getByTestId('keys-off')).toHaveCount(3);
+  await expect(sheet.getByTestId('keys-single-off')).toContainText('and the Logo from F12');
+  // Black-out and this list of keys: the Logo keeps F12 (Session 50).
+  await expect(sheet.getByTestId('keys-off')).toHaveCount(2);
   await expectNoSeriousA11yIssues(win, 'the keys sheet with the single-letter keys off');
   // ? no longer closes it either; Esc does.
   await win.keyboard.press('Shift+Slash');
@@ -206,9 +216,14 @@ test('single-letter keys (B, ., L and ?) are on to begin with, and an admin can 
     return key.length === 1 && parts.every((p) => p === 'Shift');
   };
   expect((await menuAccelerators(app)).filter(single1)).toEqual([]);
-  // The buttons still work, and no longer show a key.
+  // F12 still puts the Logo up and takes it down (Session 50): a named key, never acted on by a word said.
+  await win.keyboard.press('F12');
+  await expect.poll(async () => (await show(win)).logo).not.toBeNull();
+  await win.keyboard.press('F12');
+  await expect.poll(async () => (await show(win)).logo).toBeNull();
+  // The buttons still work; Black-out's no longer shows a key, and the Logo's shows F12.
   await expect(blackoutButton.locator('kbd')).toHaveCount(0);
-  await expect(logoButton.locator('kbd')).toHaveCount(0);
+  await expect(logoButton.locator('kbd')).toHaveText('F12');
   await blackoutButton.click();
   await expect.poll(async () => (await show(win)).blackout).toBe(true);
   await blackoutButton.click();
@@ -235,6 +250,9 @@ test('single-letter keys (B, ., L and ?) are on to begin with, and an admin can 
   await expect(win2.getByTestId('simple-mode')).toBeVisible();
   const keyLine = win2.getByTestId('simple-keys');
   await expect(keyLine).toContainText('Clear all');
+  // The Logo keeps F12 there too (Session 50); only Black-out is left to its button.
+  await expect(keyLine).toContainText('Logo F12');
+  await expect(keyLine).toContainText('Black-out: its button');
   expect(await keyLine.locator('kbd').allTextContents()).not.toEqual(
     expect.arrayContaining([expect.stringMatching(/^[B.L]$/u)]),
   );
