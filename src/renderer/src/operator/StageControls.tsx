@@ -8,6 +8,7 @@ import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { TextInput } from '../ui/Field';
 import { LayoutTemplate, Tv } from '../ui/icons';
+import { useHallPicture } from '../stage/hall-picture';
 import { openStageLayouts, STANDARD } from '../stage/stage-layouts-store';
 import { Panel } from '../ui/Panel';
 import { Truncate } from '../ui/Truncate';
@@ -18,6 +19,8 @@ export function StagePreview({ className = 'w-3/5' }: { className?: string }) {
   const state = useEngine((s) => s.state);
   // As the first stage group shows it in the live Look: its layout and languages.
   const first = useFirstGroupLook('stage');
+  // A layout's audience picture box: the hall's picture, as the stage screens are told it (Session 50).
+  const hall = useHallPicture();
   return (
     <div
       className={`relative aspect-video overflow-hidden rounded-md border border-line-strong bg-black ${className}`}
@@ -32,6 +35,7 @@ export function StagePreview({ className = 'w-3/5' }: { className?: string }) {
               state={state}
               look={first?.look ?? DEFAULT_LIVE_GROUP_LOOK}
               canvas={{ width: 1920, height: 1080 }}
+              hall={hall}
             />
           </div>
         </PlacedInParent>

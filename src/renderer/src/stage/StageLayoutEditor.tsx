@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { CALENDAR_LANG_NAMES, CALENDAR_LANGS } from '../../../shared/calendar';
 import type { StageBox, StageBoxKind } from '../../../shared/stage-layouts';
 import {
-  newStageBox,
+  MAX_STAGE_BOXES,
   STAGE_BOX_KINDS,
   STAGE_BOX_NAMES,
   STAGE_HEIGHT,
@@ -25,7 +25,9 @@ import { CopyPlus, Plus, Trash2 } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { Checkbox } from '../ui/Toggle';
+import { useHallPicture } from './hall-picture';
 import {
+  addBox,
   change,
   chooseBox,
   closeStageLayouts,
@@ -77,15 +79,24 @@ function BoxSettings({ box }: { box: StageBox }) {
           </Field>
         ))}
       </div>
-      <Checkbox
-        label="Words as large as fit"
-        checked={box.size === 'fit'}
-        data-testid="stage-box-fit"
-        onChange={(e) => {
-          set({ size: e.target.checked ? 'fit' : 56 });
-        }}
-      />
-      {box.size !== 'fit' && (
+      {box.kind === 'audience' ? (
+        // The hall's picture (Session 50): no words of its own, so no size, colour or alignment.
+        <p className="text-xs text-muted" data-testid="stage-box-audience-note">
+          What the hall’s screens show now, as the first audience group shows it: the background, the slide,
+          messages and the ticker, black-out and the logo too, at 16:9 with black around it. The boxes after
+          it in the list draw over it.
+        </p>
+      ) : (
+        <Checkbox
+          label="Words as large as fit"
+          checked={box.size === 'fit'}
+          data-testid="stage-box-fit"
+          onChange={(e) => {
+            set({ size: e.target.checked ? 'fit' : 56 });
+          }}
+        />
+      )}
+      {box.kind !== 'audience' && box.size !== 'fit' && (
         <Field label="Text size">
           <NumberInput
             value={box.size}
@@ -100,31 +111,35 @@ function BoxSettings({ box }: { box: StageBox }) {
           />
         </Field>
       )}
-      <Field label="Colour">
-        <ColorInput
-          value={box.color}
-          data-testid="stage-box-color"
-          onChange={(e) => {
-            set({ color: e.target.value });
-          }}
-        />
-      </Field>
-      <Field label="Line up">
-        <Select
-          value={box.align}
-          data-testid="stage-box-align"
-          onChange={(e) => {
-            const v = e.target.value;
-            set({ align: v === 'center' || v === 'right' ? v : 'left' });
-          }}
-        >
-          {(['left', 'center', 'right'] as const).map((a) => (
-            <option key={a} value={a}>
-              {ALIGN_NAMES[a]}
-            </option>
-          ))}
-        </Select>
-      </Field>
+      {box.kind !== 'audience' && (
+        <>
+          <Field label="Colour">
+            <ColorInput
+              value={box.color}
+              data-testid="stage-box-color"
+              onChange={(e) => {
+                set({ color: e.target.value });
+              }}
+            />
+          </Field>
+          <Field label="Line up">
+            <Select
+              value={box.align}
+              data-testid="stage-box-align"
+              onChange={(e) => {
+                const v = e.target.value;
+                set({ align: v === 'center' || v === 'right' ? v : 'left' });
+              }}
+            >
+              {(['left', 'center', 'right'] as const).map((a) => (
+                <option key={a} value={a}>
+                  {ALIGN_NAMES[a]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </>
+      )}
       <Field label="Label above it" hint="Leave empty for none.">
         <TextInput
           value={box.label}
@@ -234,6 +249,8 @@ export function StageLayoutEditor() {
   const s = useStageLayouts();
   const state = useEngine((x) => x.state);
   const stage = useFirstGroupLook('stage');
+  // The audience picture box's picture (Session 50): the hall's, as the stage screens are told it.
+  const hall = useHallPicture();
   const [kind, setKind] = useState<StageBoxKind>('current');
   const [ask, setAsk] = useState<null | { why: 'switch'; to: string } | { why: 'close' } | { why: 'remove' }>(
     null,
@@ -344,6 +361,7 @@ export function StageLayoutEditor() {
                 layout={{ id: e.id ?? '', name: e.name, background: e.background, boxes: e.boxes }}
                 state={state}
                 languages={languages}
+                hall={hall}
               />
             )
           }
@@ -436,12 +454,10 @@ export function StageLayoutEditor() {
               </Select>
               <Button
                 icon={Plus}
-                disabled={e.boxes.length >= 40}
+                disabled={e.boxes.length >= MAX_STAGE_BOXES}
                 data-testid="stage-box-add"
                 onClick={() => {
-                  const made = newStageBox(kind, crypto.randomUUID());
-                  change((x) => ({ ...x, boxes: [...x.boxes, made] }));
-                  chooseBox(made.id);
+                  addBox(kind);
                 }}
               >
                 Add
