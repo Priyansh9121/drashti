@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import type { CSSProperties, ReactNode, RefObject } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PipLayer, PipSource } from '../../../shared/engine/state';
 import type { Movement } from '../../../shared/looks';
@@ -6,7 +6,17 @@ import type { MediaElement } from '../../../shared/model';
 import type { Size } from '../../../shared/scaling';
 import { engineNow, onClockJump } from './clock';
 import { LiveWindowView } from './LiveWindowView';
-import { type PipPicture, pipPlaces, pipPose, pipRect, type PipRun, pipRunAt, poseTransform } from './pip';
+import {
+  PIP_REST,
+  pipMainPose,
+  type PipPicture,
+  pipPlaces,
+  pipPose,
+  pipRect,
+  type PipRun,
+  pipRunAt,
+  poseTransform,
+} from './pip';
 import { KeptVideo } from './KeptVideo';
 import { ElementView } from './SlideView';
 import { useVideoInput } from './video-input';
@@ -16,7 +26,8 @@ import { useVideoInput } from './video-input';
  * lower third, messages and the ticker, with a thin border and rounded corners when chosen (a border-radius
  * clipping it and a border over it: no shadow, no filter). It comes in from when it went up, swaps and moves
  * from its last change, and goes out from when it was taken off, each frame worked out from the engine's clock;
- * only its opacity and transform move. Black-out and the logo cover it, as they cover the slide. A video in it
+ * only its opacity and transform move, and in a swap the main picture's own change moves with it (Session 51,
+ * usePipMainMove). Black-out and the logo cover it, as they cover the slide. A video in it
  * plays muted from when it went up; a video input and a window are opened as every picture of them is
  * (render/video-input.ts, render/live-window.ts), video only.
  */
@@ -181,6 +192,51 @@ export function PipBox({
       )}
     </div>
   );
+}
+
+/**
+ * The main picture's part in a swap (Session 51, render/pip.ts pipMainPose): the picture there that changes,
+ * drawn frame by frame from the engine's clock while its swap runs (`run`; null for a picture that does not move),
+ * so it moves as the box does at the same moment; at rest otherwise. The box hands on the run at its middle and at
+ * its end (PipBox), and so this picture's next part.
+ */
+export function usePipMainMove(ref: RefObject<HTMLElement | null>, run: PipRun | null, canvas: Size): void {
+  const { width, height } = canvas;
+  const paint = useCallback(
+    (now: number) => {
+      const el = ref.current;
+      if (!el) return;
+      const pose = run ? pipMainPose(run, now, { width, height }) : PIP_REST;
+      const { transform, transformOrigin } = poseTransform(pose);
+      el.style.opacity = pose.opacity >= 1 ? '' : String(pose.opacity);
+      el.style.transform = transform;
+      el.style.transformOrigin = transform === '' ? '' : transformOrigin;
+      // How far into the swap it was drawn (ms), for tests (a held clock), as the box says it.
+      const at = run ? Math.round(Math.min(Math.max(0, now - run.start), run.length)) : null;
+      if (at === null) el.removeAttribute('data-pip-at');
+      else el.setAttribute('data-pip-at', String(at));
+    },
+    [ref, run, width, height],
+  );
+  // Frame by frame while it swaps.
+  useEffect(() => {
+    if (!run) return;
+    const { start, length } = run;
+    let frame = 0;
+    const tick = () => {
+      const now = engineNow();
+      paint(now);
+      if (now - start < length) frame = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [run, paint]);
+  // After every render, before it is painted: where it is now (at rest once the swap is over).
+  useLayoutEffect(() => {
+    paint(engineNow());
+  });
 }
 
 /**
