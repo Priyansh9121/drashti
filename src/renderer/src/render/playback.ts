@@ -96,6 +96,8 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   let startFrom = 0;
   // How many times in a row it has been aimed again, out of step once it played on.
   let reaims = 0;
+  // A sound the engine has sent somewhere new (Session 51: resync()), not yet checked.
+  let sent = false;
   const lead = () => seekLead + settleLead;
   // How long a seek takes to land, and a sound to settle, are lengths of time on this computer (each video
   // aims its next jump by them); where a video should be is always the engine's time (clock()).
@@ -185,6 +187,8 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
   };
   const check = () => {
     if (!framed || v.seeking || v.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+    const moved = sent;
+    sent = false;
     const c = clock();
     const at = playbackPosition(c, v.duration, engineNow());
     const { start, end } = playbackBounds(c.clip, v.duration);
@@ -230,6 +234,10 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
     if (measured !== null && !correction.seek) {
       reaim = Math.abs(measured) > IN_STEP && reaims < REAIMS;
       reaims = reaim ? reaims + 1 : 0;
+    } else if (moved && !correction.seek && Math.abs(offset) > IN_STEP) {
+      // Sent a little way (Session 51), less than the half second that makes a sound jump: it lands there by a
+      // jump too, measured as every landing is, not eased at 2% a second (0.3 s took 15 s).
+      reaim = true;
     }
     // Aiming ahead past the end of a loop wraps round to its start.
     if (correction.seek || reaim)
@@ -292,16 +300,17 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
       wrap = null;
       hold = null;
       if (audible) {
-        // A sound the engine has sent somewhere new (Session 51: a skip, a jump to a marker). A landing or a
-        // start not yet measured, or a seek still landing, is not measured: from the new place it would seem 15
-        // or 30 s off, and a lead learned from that reached its 0.5 s cap (CI's Windows pressed the skips that
-        // quickly, and Forward 15 s landed 0.4 s ahead). And its jump may be aimed again, as a start and each
-        // time round a loop may, whatever the landings before it used up (there, two just before Forward 15 s
-        // left it none, eased back at 2% a second). Pictures as before.
+        // A sound the engine has sent somewhere new (Session 51: a skip, a jump to a marker) lands there by a
+        // jump, however short (check()), and may be aimed again, as a start and each time round a loop may,
+        // whatever the landings before it used up. A landing or a start not yet measured, or a seek still
+        // landing, is not measured: from the new place it would seem 15 or 30 s off. On CI's Windows, skips
+        // pressed that quickly taught the sound a lead at its 0.5 s cap, and with its re-aims used up just
+        // before, Forward 15 s landed 0.4 s ahead and was eased back at 2% a second. Pictures as before.
         seekFrom = 0;
         settleFrom = 0;
         startFrom = 0;
         reaims = 0;
+        sent = true;
       }
       check();
     },

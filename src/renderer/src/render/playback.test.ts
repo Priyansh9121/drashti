@@ -389,4 +389,17 @@ describe('a sound the engine sends somewhere new: a skip or a jump to a marker (
     expect(Math.abs(off), `${off.toFixed(3)} s off the clock 1.5 s after Back 15 s`).toBeLessThan(IN_STEP);
     s.stop();
   });
+
+  it('a jump of less than half a second lands by a jump too, not eased at 2% a second', () => {
+    // A jump to a marker 0.3 s before where it plays: short of the 0.5 s that makes a sound jump, it was left to
+    // come back at 2% a second, 15 s.
+    const v = new FakeMedia(40);
+    const s = sound(v);
+    runFor(v, 2000);
+    s.jumpTo(s.clockMs() - 300);
+    runFor(v, 1000);
+    const off = s.offset();
+    expect(Math.abs(off), `${off.toFixed(3)} s off the clock a second after the jump`).toBeLessThan(IN_STEP);
+    s.stop();
+  });
 });
