@@ -48,6 +48,7 @@ import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { StreamPageStopped } from '../stream/StreamPageStopped';
 import { LiveWindowNotice } from '../live-window/LiveWindowNotice';
 import { WindowPicker } from '../live-window/WindowPicker';
+import { PipDialog } from './PipDialog';
 import { connectLiveWindow } from '../live-window/live-window-store';
 import { VideoInputDialog } from '../video-inputs/VideoInputDialog';
 import { VideoInputNotice } from '../video-inputs/VideoInputNotice';
@@ -398,6 +399,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <AppearanceDialog />
       <WindowPicker />
       <VideoInputDialog platform={platform} />
+      <PipDialog />
       {streamOpen && <StreamPanel />}
       {networkOpen && <NetworkPanel />}
       {announcementsOpen && <AnnouncementsPanel />}

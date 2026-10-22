@@ -39,6 +39,7 @@ import {
   Import,
   Link2,
   ListFilter,
+  PictureInPicture2,
   Plus,
   Search,
   Upload,
@@ -46,6 +47,7 @@ import {
 } from '../ui/icons';
 import { openWindowPicker } from '../live-window/live-window-store';
 import { openAddInput } from '../video-inputs/video-inputs-store';
+import { openPipDialog } from './pip-store';
 import { openLinkDialog } from '../links/link-store';
 import { useExtras } from '../library/extras-store';
 import { MenuButton } from '../ui/Menu';
@@ -243,6 +245,18 @@ function LibraryTools({ media }: { media: boolean }) {
           onClick={openAddInput}
         >
           Add a Video Input…
+        </Button>
+      )}
+      {/* Beside them (Session 50): something small in a corner of the screens while the main picture carries on. */}
+      {media && (
+        <Button
+          size="md"
+          icon={PictureInPicture2}
+          title="Something small in a corner of the screens: a camera, a picture or video, a window, or the slides"
+          data-testid="pip-open"
+          onClick={openPipDialog}
+        >
+          Picture in Picture…
         </Button>
       )}
       {extras && (
