@@ -3,6 +3,7 @@ import { CALENDAR_LANGS, type CalendarLang } from './calendar';
 import type { Rect } from './model';
 import { hexColorSchema, idSchema } from './model-schema';
 import type { ScalingMode, ScreenRole } from './screens';
+import { SCALING_MODES } from './screens';
 
 /*
  * Stage layouts (Session 11): what a stage screen shows, as boxes placed on
@@ -266,14 +267,30 @@ export function showsHall(layout: StageLayout | null | undefined): boolean {
 /**
  * The hall's picture, as a stage layout's audience picture box draws it (Session 50): the first audience
  * group, whose settings in the live Look it shows, at the canvas size and scaling of that group's first
- * screen. The main process gives it to each stage screen (OutputContext); a node gives its own.
+ * screen. The main process gives it to each stage screen (OutputContext), to its nodes' stage screens and to a
+ * tablet's stage display (Session 51); a node with an audience screen of its own gives its own.
  */
 export interface HallPicture {
   groupId: string;
   canvasWidth: number;
   canvasHeight: number;
   scaling: ScalingMode;
+  /**
+   * Audience is off (Session 51): the computer showing the hall has closed its screens, so they show its desktop.
+   * The box keeps the picture and says "Audience off" in a corner, so the performers are not misled. Left out
+   * while they are on.
+   */
+  off?: boolean;
 }
+
+/** A hall's picture as another computer or a page is told it: read whole and in bounds, never trusted. */
+export const hallPictureSchema: z.ZodType<HallPicture> = z.object({
+  groupId: z.string().min(1).max(128),
+  canvasWidth: z.number().int().min(16).max(16384),
+  canvasHeight: z.number().int().min(16).max(16384),
+  scaling: z.enum(SCALING_MODES),
+  off: z.boolean().optional(),
+});
 
 /** A screen group as hallPicture reads it: its role, and its screens' canvases in order. */
 export interface HallGroup {
@@ -294,21 +311,26 @@ export interface HallGroup {
  * The hall's picture among these groups, in their order in Screens: the first audience group with a screen of
  * this computer's that is on (Session 50: what this computer's audience screens show, not a group Set Up
  * Screens… left empty, nor one whose screens are a node's or off), else the first audience group (as the remote's
- * picture follows it); 1920 x 1080 fitted while it has no screen; null with no audience group.
+ * picture follows it); 1920 x 1080 fitted while it has no screen; null with no audience group. With this
+ * computer's Audience off (`audience` false), a hall shown here is said off (Session 51): the switch closed its
+ * screens. One shown only on a node, or not at all, is not: the switch closes none of its screens.
  */
-export function hallPicture(groups: readonly HallGroup[]): HallPicture | null {
+export function hallPicture(groups: readonly HallGroup[], audience = true): HallPicture | null {
   const here = (s: HallGroup['screens'][number]) => (s.nodeId ?? null) === null && s.enabled !== false;
-  const audience = groups.filter((g) => g.role === 'audience');
-  const hall = audience.find((g) => g.screens.some(here)) ?? audience[0];
+  const all = groups.filter((g) => g.role === 'audience');
+  const shownHere = all.find((g) => g.screens.some(here));
+  const hall = shownHere ?? all[0];
   if (!hall) return null;
+  const off = !audience && shownHere !== undefined ? { off: true } : {};
   const screen = hall.screens.find(here) ?? hall.screens[0];
   if (!screen || screen.canvasWidth <= 0 || screen.canvasHeight <= 0)
-    return { groupId: hall.id, canvasWidth: STAGE_WIDTH, canvasHeight: STAGE_HEIGHT, scaling: 'fit' };
+    return { groupId: hall.id, canvasWidth: STAGE_WIDTH, canvasHeight: STAGE_HEIGHT, scaling: 'fit', ...off };
   return {
     groupId: hall.id,
     canvasWidth: screen.canvasWidth,
     canvasHeight: screen.canvasHeight,
     scaling: screen.scaling,
+    ...off,
   };
 }
 
@@ -317,8 +339,14 @@ export type HallScreen = { groupId: string; role: ScreenRole } & HallGroup['scre
 
 /**
  * The hall's picture among one computer's screens, in Screens' order: the first audience screen's. A node
- * knows only its own screens, so a node's stage screens show that node's own audience picture.
+ * knows only its own screens, so a node's stage screens show that node's own audience picture (Main's Audience
+ * switch never closes them). With no audience screen of its own, Main's hall as Main tells it (Session 51: the
+ * live Look's first audience group, as Main's own stage screens draw it, said off with Main's Audience off),
+ * never every layer and language.
  */
-export function hallPictureOfScreens(screens: readonly HallScreen[]): HallPicture | null {
-  return hallPicture(screens.map((s) => ({ id: s.groupId, role: s.role, screens: [s] })));
+export function hallPictureOfScreens(
+  screens: readonly HallScreen[],
+  main: HallPicture | null = null,
+): HallPicture | null {
+  return hallPicture(screens.map((s) => ({ id: s.groupId, role: s.role, screens: [s] }))) ?? main;
 }

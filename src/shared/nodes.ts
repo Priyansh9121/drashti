@@ -2,6 +2,7 @@ import type { EngineMessage } from './engine/protocol';
 import type { UpdateView } from './updates';
 import type { DisplayInfo, DisplayKey, ScalingMode, ScreenFeed, ScreenRole } from './screens';
 import type { ClockStyle } from './format';
+import type { HallPicture } from './stage-layouts';
 
 /*
  * Output nodes (PLAN.md 4.1, Session 13). The same Drashti app, started as a
@@ -53,6 +54,12 @@ export interface NodeScreen {
   scaling: ScalingMode;
   enabled: boolean;
   displayKey: DisplayKey;
+  /**
+   * A stage screen's: Main's hall picture (Session 51), which a layout's audience picture box draws on a node with
+   * no audience screen of its own (shared/stage-layouts.ts, hallPictureOfScreens); null with no audience group.
+   * Left out on other screens.
+   */
+  hall?: HallPicture | null;
 }
 
 /** A media file a node should have a copy of, in the order to copy them. */

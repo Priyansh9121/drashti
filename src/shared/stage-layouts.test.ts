@@ -4,6 +4,7 @@ import type { StageLayout } from './stage-layouts';
 import {
   hallPicture,
   hallPictureOfScreens,
+  hallPictureSchema,
   newStageBox,
   showsHall,
   STAGE_BOX_KINDS,
@@ -151,5 +152,75 @@ describe('the hall’s picture', () => {
     ).toEqual({ groupId: 'side', canvasWidth: 1280, canvasHeight: 720, scaling: 'stretch' });
     expect(hallPictureOfScreens([on('stage', 'stage', screen(1920, 1080))])).toBeNull();
     expect(hallPictureOfScreens([])).toBeNull();
+  });
+
+  // Session 51 (S4-2): a node with no audience screen drew every layer and language; it draws Main's hall now, the
+  // Look's first audience group as Main's own stage screens draw it.
+  it('on a node with no audience screen of its own is Main’s, Audience off too; its own comes first', () => {
+    const stage = { groupId: 'stage', role: 'stage' as const, ...screen(1920, 1080) };
+    const main = {
+      groupId: 'hall',
+      canvasWidth: 1280,
+      canvasHeight: 720,
+      scaling: 'fill' as const,
+      off: true,
+    };
+    expect(hallPictureOfScreens([stage], main)).toEqual(main);
+    expect(hallPictureOfScreens([], main)).toEqual(main);
+    // Main's switch never closes a node's own screens: the node's own audience picture, never said off.
+    expect(
+      hallPictureOfScreens([stage, { groupId: 'side', role: 'audience', ...screen(1024, 768) }], main),
+    ).toEqual({ groupId: 'side', canvasWidth: 1024, canvasHeight: 768, scaling: 'fit' });
+    expect(hallPictureOfScreens([stage], null)).toBeNull();
+  });
+
+  // Session 51 (S4-3): Audience off closes this computer's screens of the hall, and the box keeps its picture and
+  // says so, so the performers are not misled. Only a hall shown here is closed by this computer's switch.
+  it('is said off while Audience is off and the hall is shown on this computer, and only then', () => {
+    const here = (w: number, h: number) => ({ ...screen(w, h), nodeId: null, enabled: true });
+    const groups = [
+      { id: 'stage', role: 'stage' as const, screens: [here(1920, 1080)] },
+      { id: 'hall', role: 'audience' as const, screens: [here(1280, 720)] },
+    ];
+    const on = { groupId: 'hall', canvasWidth: 1280, canvasHeight: 720, scaling: 'fit' };
+    expect(hallPicture(groups)).toEqual(on);
+    expect(hallPicture(groups, true)).toEqual(on);
+    expect(hallPicture(groups, false)).toEqual({ ...on, off: true });
+    // A hall whose screens are all a node's, or all turned off in Screens: this computer's switch closes none.
+    const elsewhere = [
+      {
+        id: 'hall',
+        role: 'audience' as const,
+        screens: [
+          { ...screen(1920, 1080), nodeId: 'n1', enabled: true },
+          { ...screen(1920, 1080), nodeId: null, enabled: false },
+        ],
+      },
+    ];
+    expect(hallPicture(elsewhere, false)).toEqual({
+      groupId: 'hall',
+      canvasWidth: 1920,
+      canvasHeight: 1080,
+      scaling: 'fit',
+    });
+    expect(hallPicture([{ id: 'emptied', role: 'audience', screens: [] }], false)).not.toHaveProperty('off');
+    expect(hallPicture([], false)).toBeNull();
+  });
+
+  it('is read from another computer or a page only whole and in bounds', () => {
+    const on = { groupId: 'hall', canvasWidth: 1280, canvasHeight: 720, scaling: 'fill' };
+    const hall = { ...on, off: true };
+    expect(hallPictureSchema.parse(hall)).toEqual(hall);
+    expect(hallPictureSchema.parse(on)).toEqual(on);
+    for (const bad of [
+      { ...hall, groupId: '' },
+      { ...hall, canvasWidth: 0 },
+      { ...hall, canvasHeight: 1.5 },
+      { ...hall, scaling: 'placeholder' },
+      { ...hall, off: 'yes' },
+      null,
+      'hall',
+    ])
+      expect(hallPictureSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
   });
 });
