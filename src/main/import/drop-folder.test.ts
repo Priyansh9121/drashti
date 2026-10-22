@@ -5,6 +5,7 @@ import { basename, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cloudOf, droppedName, type DropFolderView } from '../../shared/drop-folder';
 import { NO_COUNTS, type ImportItemReport } from '../../shared/import';
+import { SOUND_EXTENSIONS } from '../../shared/media';
 import { openDatabase, type Db } from '../db/database';
 import { DropFolder } from './drop-folder';
 
@@ -149,7 +150,7 @@ function setup(options: { db?: Db; maxBytes?: number; air?: { on: boolean }; sim
 }
 
 describe('the drop folder', () => {
-  it('takes pictures and videos once each has held still for 5 s; lists the rest; passes over what is being written', async () => {
+  it('takes pictures, videos and sounds once each has held still for 5 s; lists the rest; passes over what is being written', async () => {
     await put('Darshan.png', 'picture one');
     await put('Clip.webm', 'video one');
     await put('Talk.mp3', 'a sound');
@@ -162,32 +163,27 @@ describe('the drop folder', () => {
     expect(await h.service.setFolder(folder)).toMatchObject({ ok: true });
     // Seen once: nothing is taken before it has held still.
     expect(h.imports).toEqual([]);
-    expect(h.service.view()).toMatchObject({ state: 'watching', waiting: 2 });
+    expect(h.service.view()).toMatchObject({ state: 'watching', waiting: 3 });
     h.clock.now += 4999;
     await h.service.scan();
     expect(h.imports).toEqual([]);
     h.clock.now += 1;
     await h.service.scan();
-    expect(h.imports.map((i) => i.names.sort())).toEqual([['Clip.webm', 'Darshan.png']]);
-    expect(h.dropped()).toEqual(['Clip.webm', 'Darshan.png']);
+    expect(h.imports.map((i) => i.names.sort())).toEqual([['Clip.webm', 'Darshan.png', 'Talk.mp3']]);
+    expect(h.dropped()).toEqual(['Clip.webm', 'Darshan.png', 'Talk.mp3']);
     expect(h.service.view().notTaken).toEqual([
       {
         name: 'Notes.pdf',
-        reason: 'Only pictures and videos are taken from the drop folder.',
-        tooLarge: false,
-      },
-      {
-        name: 'Talk.mp3',
-        reason: 'Only pictures and videos are taken from the drop folder.',
+        reason: 'Only pictures, videos and sounds are taken from the drop folder.',
         tooLarge: false,
       },
     ]);
     // One quiet notice for the batch.
-    expect(h.notices).toEqual(['2 pictures and videos from the drop folder are in Media.']);
+    expect(h.notices).toEqual(['3 files from the drop folder are in Media.']);
     expect(h.mediaChanged()).toBe(1);
   });
 
-  it('takes the videos Session 50 adds (MKV, MXF, TS, VOB, FLV…) as it takes any video; sounds stay not taken', async () => {
+  it('takes the videos and sounds Session 50 adds (MKV, MXF, TS, VOB, FLV…; MKA, AC-3…) as it takes any', async () => {
     for (const name of ['Arti.mkv', 'Katha.mxf', 'Sabha.ts', 'Old DVD.vob', 'Clip.flv', 'Phone.3gp'])
       await put(name, `placeholder ${name}`);
     await put('Dhun.mka', 'a sound');
@@ -196,9 +192,25 @@ describe('the drop folder', () => {
     await h.service.setFolder(folder);
     await h.settle();
     expect(h.imports.map((i) => i.names.sort())).toEqual([
-      ['Arti.mkv', 'Clip.flv', 'Katha.mxf', 'Old DVD.vob', 'Phone.3gp', 'Sabha.ts'],
+      ['Arti.mkv', 'Bhajan.ac3', 'Clip.flv', 'Dhun.mka', 'Katha.mxf', 'Old DVD.vob', 'Phone.3gp', 'Sabha.ts'],
     ]);
-    expect(h.service.view().notTaken.map((n) => n.name)).toEqual(['Bhajan.ac3', 'Dhun.mka']);
+    expect(h.service.view().notTaken).toEqual([]);
+  });
+
+  it('takes every sound Drashti takes (Session 51), into Media with the drop folder’s mark; the notice says sounds', async () => {
+    const names = SOUND_EXTENSIONS.map((ext) => `Placeholder ${ext}.${ext}`);
+    for (const name of names) await put(name, `placeholder ${name}`);
+    const h = setup();
+    await h.service.setFolder(folder);
+    await h.settle();
+    expect(h.imports.map((i) => i.names.sort())).toEqual([[...names].sort()]);
+    expect(h.dropped()).toEqual([...names].sort());
+    expect(h.service.view().notTaken).toEqual([]);
+    expect(h.notices).toEqual([`${String(names.length)} sounds from the drop folder are in Media.`]);
+    // One more, on its own: one sound.
+    await put('Placeholder bell.wav', 'placeholder bell');
+    await h.settle();
+    expect(h.notices.at(-1)).toBe('1 sound from the drop folder is in Media.');
   });
 
   it('a file still being written is taken only once whole', async () => {
@@ -313,7 +325,7 @@ describe('the drop folder', () => {
     );
     expect(after).toEqual(before);
     // The one that would not import is listed, with why.
-    expect(h.service.view().notTaken.map((n) => n.name)).toEqual(['broken.png', 'Talk.mp3']);
+    expect(h.service.view().notTaken.map((n) => n.name)).toEqual(['broken.png']);
   });
 
   it('in Simple Mode it carries on, with no notice', async () => {

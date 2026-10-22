@@ -20,8 +20,9 @@ import { mediaKindOf } from './scan';
  * The drop folder (Session 28, decision 21), built on the smart playlists' looking, settling and watching
  * (playlists/smart-folders.ts) as one flat folder that only ever adds to the library:
  *
- * - Pictures and videos only; names a browser or an editor leaves while writing (.part, .crdownload,
- *   .download, .tmp, ~$…) and hidden ones are passed over. Anything else is listed as not taken.
+ * - Pictures, videos and (Session 51) sounds, every type Drashti takes; names a browser or an editor leaves
+ *   while writing (.part, .crdownload, .download, .tmp, ~$…) and hidden ones are passed over. Anything else is
+ *   listed as not taken.
  * - A file is taken once its size and time have held still for 5 s (and, on Windows, once nothing else
  *   has it open): one still being copied or downloaded is never taken half-way. Taken again only if it
  *   changes; a file that goes leaves its media in the library.
@@ -115,6 +116,13 @@ const inside = (child: string, parent: string) => {
 };
 
 const plural = (n: number, one: string, many: string) => `${String(n)} ${n === 1 ? one : many}`;
+
+/** What a batch taken is, for its notice: pictures and videos, sounds (Session 51), or files of both. */
+function batchWords(names: readonly string[]): [one: string, many: string] {
+  const sounds = names.filter((n) => mediaKindOf(n) === 'audio').length;
+  if (sounds === 0) return ['picture or video', 'pictures and videos'];
+  return sounds === names.length ? ['sound', 'sounds'] : ['file', 'files'];
+}
 
 const GiB = 1024 ** 3;
 /** "2 GB" for the limit itself; a test's own limit in bytes. */
@@ -386,8 +394,8 @@ export class DropFolder {
         this.pending.delete(name);
         continue;
       }
-      const kind = mediaKindOf(name);
-      if (kind !== 'image' && kind !== 'video') {
+      // Pictures, videos and (Session 51) sounds: every media file Drashti takes.
+      if (mediaKindOf(name) === null) {
         this.pending.delete(name);
         this.record(
           folder,
@@ -395,7 +403,7 @@ export class DropFolder {
           found,
           'not-taken',
           null,
-          'Only pictures and videos are taken from the drop folder.',
+          'Only pictures, videos and sounds are taken from the drop folder.',
         );
         continue;
       }
@@ -455,7 +463,7 @@ export class DropFolder {
     const items = this.deps.report(result.runId)?.items ?? [];
     const made = madeFrom(items, given);
     const at = new Date(this.deps.now()).toISOString();
-    let taken = 0;
+    const took: string[] = [];
     const mark = this.deps.db.prepare('UPDATE media SET dropped_at = COALESCE(dropped_at, ?) WHERE id = ?');
     this.deps.db.transaction(() => {
       for (const g of given) {
@@ -464,7 +472,7 @@ export class DropFolder {
         if (m?.kind === 'media') {
           mark.run(at, m.mediaId);
           this.record(folder, g.relative, found, 'taken', m.mediaId, null);
-          taken += 1;
+          took.push(g.relative);
         } else {
           const item = items.find((i) => i.sourcePath === g.path);
           this.record(
@@ -478,6 +486,7 @@ export class DropFolder {
         }
       }
     })();
+    const taken = took.length;
     const failed = names.length - taken;
     this.last = { at: this.deps.now(), taken };
     this.deps.log(
@@ -488,7 +497,7 @@ export class DropFolder {
     // One quiet notice for the batch, in Pro Mode only.
     if (!this.deps.simpleMode() && (taken > 0 || failed > 0))
       this.deps.notice(
-        `${plural(taken, 'picture or video', 'pictures and videos')} from the drop folder ${taken === 1 ? 'is' : 'are'} in Media.${failed > 0 ? ` ${plural(failed, 'file was', 'files were')} not taken: see File › Drop Folder….` : ''}`,
+        `${plural(taken, ...batchWords(took))} from the drop folder ${taken === 1 ? 'is' : 'are'} in Media.${failed > 0 ? ` ${plural(failed, 'file was', 'files were')} not taken: see File › Drop Folder….` : ''}`,
       );
     this.changed();
   }
