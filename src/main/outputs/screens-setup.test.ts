@@ -156,10 +156,13 @@ describe('Go back undoes only what the change changed (Session 51)', () => {
       screens: [screen('tv', 'hall', { enabled: false })],
       looks: { L1: { hall: look() } },
     };
-    // On (it asks), then the hall renamed in Screens, then the canvas changed (taken in).
+    // On (it asks), then the hall renamed in Screens, then a second screen on another display (it asks again).
     const s1: ScreensSetup = { ...s0, screens: [screen('tv', 'hall')] };
     const s1b: ScreensSetup = { ...s1, groups: [group('hall', { name: 'Main Hall' })] };
-    const s2: ScreensSetup = { ...s1b, screens: [screen('tv', 'hall', { canvasWidth: 1280 })] };
+    const s2: ScreensSetup = {
+      ...s1b,
+      screens: [screen('tv', 'hall'), screen('tv2', 'hall', { displayKey: JSON.stringify({ id: 3 }) })],
+    };
     expect(
       undoChanges(s2, [
         { before: s0, after: s1 },

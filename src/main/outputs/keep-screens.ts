@@ -10,7 +10,8 @@ import type { ScreenStatus, ScreensResult, ScreensSnapshot } from '../../shared/
  * just after the change, and Go back undoes only what the change changed (Session 51, screens-setup.ts), so
  * whatever else changed meanwhile stays. Turning an output off asks nothing. A second change while one waits is
  * added to the first, so Go back returns to the screens before both, and its countdown starts again; a change
- * that puts nothing new on a display (an output turned off) is taken in without a question of its own.
+ * that puts nothing new on a display while one waits (an output turned off, a screen renamed) asks nothing, and
+ * stays as it is when Go back undoes the ones asked about (Session 51's review).
  * Quitting while one waits goes back too, so the next start never opens a change nobody kept; and the changes
  * waiting are kept on disk until answered (Session 51, S3-2), so after a crash or a power cut the next start
  * goes back to the screens as they were before them.
@@ -169,19 +170,10 @@ export class KeepScreens<S> {
       this.changing = false;
     }
     if (!result.ok) return result;
-    const made: Change<S> = { before, after: this.deps.capture() };
-    if (putsOutputOn(was, this.deps.placed())) this.ask(made);
-    else this.takeIn(made);
+    // Something new on a display asks; anything else is no question, nor one Go back undoes (a countdown goes on).
+    if (putsOutputOn(was, this.deps.placed())) this.ask({ before, after: this.deps.capture() });
+    else this.refresh();
     return result;
-  }
-
-  /** A change that puts nothing new on a display while one waits: Go back undoes it too; the countdown goes on. */
-  private takeIn(made: Change<S>): void {
-    const w = this.waiting;
-    if (!w) return;
-    w.changes.push(made);
-    this.remember(w.changes);
-    this.refresh();
   }
 
   private ask(made: Change<S>): void {
@@ -244,7 +236,7 @@ export class KeepScreens<S> {
   }
 
   /**
-   * The screens changed some other way (Uncover, a display came or went), or a change was taken in: whether an
+   * The screens changed some other way (Uncover, a display came or went, a change that asks nothing): whether an
    * output covers the controls is said again when that changed. The question and its countdown stay.
    */
   refresh(): void {

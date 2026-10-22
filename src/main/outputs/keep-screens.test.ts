@@ -259,7 +259,7 @@ describe('Keep these screens?', () => {
     expect(restored).toHaveLength(1);
   });
 
-  it('a change that puts nothing on a display while one waits is taken in: Go back undoes it too', () => {
+  it('a change that puts nothing on a display while one waits asks nothing, and Go back leaves it as it is', () => {
     const keep = keeper();
     const before = world.map((s) => ({ ...s }));
     keep.change(
@@ -267,17 +267,20 @@ describe('Keep these screens?', () => {
         world.push({ ...stage });
       }),
     );
+    const after = world.map((s) => ({ ...s }));
     const asked = keep.current();
     advance(5000);
+    // An output turned off, a screen renamed (Session 51's review): not the change asked about.
     keep.change(
       change(() => {
-        world[0] = { ...hall, on: false };
+        world[0] = { ...hall, on: false, name: 'Main Hall' };
       }),
     );
     // The same question, its countdown going on.
     expect(keep.current()).toEqual(asked);
     expect(keep.goBack()).toMatchObject({ ok: true });
-    expect(world).toEqual(before);
+    // Go back undoes only the change it asked about.
+    expect(restored).toEqual([{ quitting: false, changes: [{ before, after }] }]);
   });
 
   it('says when an output covers the controls, and again when that changes (Uncover turned it off)', () => {
@@ -359,10 +362,10 @@ describe('Keep these screens?', () => {
     // Renamed some other way meanwhile (Screens): not a change Keep these screens? makes.
     world[0] = { ...hall, name: 'Main Hall' };
     const w1b = world.map((s) => ({ ...s }));
-    // Turned off while it waits: taken in.
+    // Another output on a display while it waits: asked again, with the first.
     keep.change(
       change(() => {
-        world[1] = { ...stage, on: false };
+        world.push({ ...stage, id: 's3', display: 4 });
       }),
     );
     const w2 = world.map((s) => ({ ...s }));
@@ -415,16 +418,24 @@ describe('Keep these screens?', () => {
     );
     const w1 = world.map((s) => ({ ...s }));
     expect(remembered).toEqual([[{ before: w0, after: w1 }]]);
-    // Taken in: kept again, with it.
+    // A change that asks nothing while it waits leaves what is on disk as it is.
     keep.change(
       change(() => {
-        world[1] = { ...stage, on: false };
+        world[0] = { ...hall, width: 1280 };
+      }),
+    );
+    expect(remembered).toHaveLength(1);
+    const w1b = world.map((s) => ({ ...s }));
+    // Another output on a display while it waits: kept again, with the first.
+    keep.change(
+      change(() => {
+        world.push({ ...stage, id: 's3', display: 4 });
       }),
     );
     const w2 = world.map((s) => ({ ...s }));
     expect(remembered.at(-1)).toEqual([
       { before: w0, after: w1 },
-      { before: w1, after: w2 },
+      { before: w1b, after: w2 },
     ]);
     // Kept: nothing waits on disk any more.
     keep.keep();
