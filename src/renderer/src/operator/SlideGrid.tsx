@@ -2,12 +2,13 @@ import { isPassageId } from '../../../shared/shastra';
 import { isRepeatId } from '../../../shared/repeat';
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MenuPlace } from '../ui/Menu';
-import { Menu, menuPlace } from '../ui/Menu';
+import { Menu, MenuButton, menuPlace } from '../ui/Menu';
 import type { PlaylistCursor } from '../../../shared/engine/state';
 import type { BackgroundCue, PresentationDoc, SlideInfo } from '../../../shared/library';
 import { type OrderedSlide, playOrder } from '../../../shared/order';
 import type { ItemOrder } from '../../../shared/playlists';
 import { useEngine } from '../engine/engine-store';
+import { requestRemovalOfOpen } from '../library/import-store';
 import type { ShownItem } from '../library/library-store';
 import { selectPresentation, useLibrary } from '../library/library-store';
 import { mediaKindLabel, mediaProblem } from '../library/MediaList';
@@ -24,6 +25,7 @@ import { Field, Select, Slider } from '../ui/Field';
 import {
   Bookmark,
   LayoutGrid,
+  MoreHorizontal,
   Music,
   Palette,
   Pencil,
@@ -31,6 +33,7 @@ import {
   RotateCcw,
   SlidersHorizontal,
   SquarePen,
+  Trash2,
 } from '../ui/icons';
 import { openPictureEditor } from '../pictures/PictureEditor';
 import { markersMedia, openMarkers } from '../markers/MarkersDialog';
@@ -579,6 +582,24 @@ function PresentationGrid({ item }: { item: SlidesItem | null }) {
             >
               Edit slides
             </Button>
+            {/* Session 50: Delete… for the presentation open here, asked first and with Undo, as the library's
+                trash. Pro Mode only, as the whole grid is: Simple Mode never deletes. */}
+            <MenuButton
+              label="Presentation"
+              title="Presentation actions"
+              icon={MoreHorizontal}
+              testId="presentation-menu"
+              entries={[
+                {
+                  label: 'Delete…',
+                  icon: Trash2,
+                  danger: true,
+                  onSelect: () => {
+                    requestRemovalOfOpen(doc.id, doc.name);
+                  },
+                },
+              ]}
+            />
           </>
         )}
         <LayoutGrid size={15} aria-hidden="true" className="shrink-0 text-muted" />

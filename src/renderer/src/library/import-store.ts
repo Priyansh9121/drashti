@@ -8,7 +8,7 @@ import type {
   ImportRunSummary,
 } from '../../../shared/import';
 import { useEngine } from '../engine/engine-store';
-import { leaveItem, loadLibrary, selectPresentation, useLibrary } from './library-store';
+import { chooseNothing, leaveItem, loadLibrary, selectPresentation, useLibrary } from './library-store';
 import { describeSome, pushRemoval } from './undo';
 
 /*
@@ -29,8 +29,11 @@ interface ImportView {
   error: string | null;
   /** The report on screen, if any. */
   report: ImportReport | null;
-  /** Presentations waiting for the operator to confirm removing them. */
-  confirmRemove: (Removal & { live: boolean }) | null;
+  /**
+   * Presentations waiting for the operator to confirm removing them; `closes` when it was asked from the middle
+   * (Session 50: Delete… in the menu of the presentation open there), which then shows nothing chosen.
+   */
+  confirmRemove: (Removal & { live: boolean; closes?: boolean }) | null;
 }
 
 export const useImports = create<ImportView>(() => ({
@@ -150,6 +153,16 @@ export function requestRemoval(of?: string): void {
   useImports.setState({ confirmRemove: { ids, names, live: liveId !== null && ids.includes(liveId) } });
 }
 
+/**
+ * Ask before deleting the presentation open in the middle (Session 50: Delete… in its header's menu): that one
+ * alone, whatever else is marked in the library. The same question and the same Undo as the library's trash;
+ * once it is deleted the middle shows nothing chosen, never the next presentation by itself.
+ */
+export function requestRemovalOfOpen(id: string, name: string): void {
+  const liveId = useEngine.getState().state?.live.presentationId ?? null;
+  useImports.setState({ confirmRemove: { ids: [id], names: [name], live: liveId === id, closes: true } });
+}
+
 export function cancelRemoval(): void {
   useImports.setState({ confirmRemove: null });
 }
@@ -165,6 +178,8 @@ export async function confirmRemoval(): Promise<void> {
       text: `Deleted ${describeSome(pending.names, ids.length, 'presentation')}`,
       restore: () => restorePresentations(ids),
     });
+    // Deleted from the middle (Session 50): it shows nothing chosen, as before anything is picked.
+    if (pending.closes && ids.includes(useLibrary.getState().selectedId ?? '')) chooseNothing();
   }
   await loadLibrary();
 }
