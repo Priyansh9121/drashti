@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EASE } from '../../src/renderer/src/render/easing';
 import { dipsAndOvershoots, type FrameLight, swings } from '../../src/shared/flash';
-import { TRANSITION_KINDS, type TransitionKind } from '../../src/shared/model';
+import { MAX_TRANSITION_MS, TRANSITION_KINDS, type TransitionKind } from '../../src/shared/model';
 import type { Movement } from '../../src/shared/looks';
 import type { PageGlobals } from './helpers';
 import {
@@ -300,8 +300,9 @@ test('a screen reloaded part-way through any transition shows the new slide whol
     drawPicture(win, join(dir, 'Placeholder bright.png'), [...BRIGHT]),
   ]);
   const [dark = '', bright = ''] = await importAndGetIds(win, files);
-  // Long enough that the screen is back while it still runs.
-  const MS = 8000;
+  // Long enough that the screen is back while it still runs: the longest Drashti allows (10 s), so a slow
+  // machine has room (an 8 s one ended first on a slow Windows CI machine, Session 49).
+  const MS = MAX_TRANSITION_MS;
   const id = await makeSlides(win, 'Placeholder reload slides', [{ picture: dark }, { picture: bright }], {
     kind: 'cut',
     durationMs: 0,
