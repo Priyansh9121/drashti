@@ -107,6 +107,7 @@ test('Black-out, the slide clear and the live border change in the same frame, i
   await changesAtOnce(win, '[data-testid="simple-blackout"]', 'backgroundColor', 'bg-live', () =>
     win.keyboard.press('b'),
   );
-  await expect(win.getByTestId('simple-blackout')).toHaveAccessibleName('Black-out is on');
+  // Its words, then its key (Session 51: Simple Mode's big buttons show their keys, as Pro Mode's do).
+  await expect(win.getByTestId('simple-blackout')).toHaveAccessibleName(/^Black-out is on/u);
   await app.close();
 });

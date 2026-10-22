@@ -29,7 +29,7 @@ import {
   Eraser,
   Video,
 } from '../ui/icons';
-import { Kbd } from '../ui/Kbd';
+import { Kbd, WordsOverKeys } from '../ui/Kbd';
 import { readPersisted, writePersisted } from '../ui/persist';
 import { EmptyState } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
@@ -344,7 +344,11 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
   const blackout = state?.blackout ?? false;
   const logo = state?.logo ?? null;
   const canPutBack = state?.canPutBack ?? false;
-  const key = (action: OperatorAction) => shortcutText(action, platform, SIMPLE_KEYMAP);
+  // Each shows its keys as they act now (Session 51), as the key line names them: none for Black-out, and the
+  // Logo's F12 alone, while an admin has turned B, . and L off.
+  const keymap = useKeymapNow(SIMPLE_KEYMAP);
+  const key = (action: OperatorAction) => shortcutText(action, platform, keymap);
+  const logoKeys = keymap.find((b) => b.action === 'toggleLogo')?.keys.map((k) => keyText(k, platform)) ?? [];
   return (
     <div
       className="flex shrink-0 items-stretch gap-3 border-t border-line bg-panel p-3"
@@ -373,7 +377,8 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
         Next
       </Button>
       {/* Room for "Black-out is on" and "Logo is on" side by side, each in its half (Session 51: at 22rem they ran
-          out of the window with both on), with Back and Next still fitting a 1024-wide window. */}
+          out of the window with both on), their keys under their words, so Back and Next still fit a 1008-wide
+          window beside them. */}
       <div className="flex w-[28rem] shrink-0 flex-col gap-2">
         <div className="flex gap-2">
           <Button
@@ -385,7 +390,10 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
             onClick={() => run('toggleBlackout')}
             className="flex-1"
           >
-            {blackout ? 'Black-out is on' : 'Black-out'}
+            <WordsOverKeys
+              words={blackout ? 'Black-out is on' : 'Black-out'}
+              keys={[key('toggleBlackout')]}
+            />
           </Button>
           <Button
             size="xl"
@@ -396,7 +404,7 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
             onClick={() => run('toggleLogo')}
             className="flex-1"
           >
-            {logo ? 'Logo is on' : 'Logo'}
+            <WordsOverKeys words={logo ? 'Logo is on' : 'Logo'} keys={logoKeys} />
           </Button>
         </div>
         {canPutBack ? (
@@ -408,7 +416,7 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
             data-testid="simple-put-back"
             onClick={() => run('undo')}
           >
-            Put it back
+            <WordsOverKeys words="Put it back" keys={[key('undo')]} />
           </Button>
         ) : (
           <Button
@@ -418,7 +426,7 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
             data-testid="simple-clear-all"
             onClick={() => run('clearAll')}
           >
-            Clear all
+            <WordsOverKeys words="Clear all" keys={[key('clearAll')]} />
           </Button>
         )}
       </div>

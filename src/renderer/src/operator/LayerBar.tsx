@@ -23,7 +23,7 @@ import {
   Sticker,
   Type,
 } from '../ui/icons';
-import { Kbd } from '../ui/Kbd';
+import { WordsOverKeys } from '../ui/Kbd';
 import { Tooltip } from '../ui/Tooltip';
 
 /*
@@ -56,19 +56,6 @@ const icons: Record<ClearedLayer, Icon> = {
 
 /** Clear all's, the Logo's and Black-out's size below 1440 px, a size smaller, their keys under their words. */
 const SMALLER_BELOW_1440 = 'max-[1440px]:gap-1.5 max-[1440px]:px-3 max-[1440px]:text-sm';
-
-/**
- * A bar button's words with its key under them (Session 51), or, `beside` from 1440 px, after them as before.
- * No key (Black-out with the single-letter keys off), the words alone.
- */
-function WordsAndKey({ words, kbd, beside = false }: { words: string; kbd: string; beside?: boolean }) {
-  return (
-    <span className={cx('flex flex-col items-center', beside && 'min-[1440px]:flex-row min-[1440px]:gap-3')}>
-      {words}
-      {kbd && <Kbd>{kbd}</Kbd>}
-    </span>
-  );
-}
 
 export function LayerBar({ platform, run }: { platform: string; run: (action: OperatorAction) => void }) {
   // The show, or the practice show while it is on (Session 26g).
@@ -128,7 +115,7 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
               run('clearAll');
             }}
           >
-            <WordsAndKey words="Clear all" kbd={key('clearAll')} beside />
+            <WordsOverKeys words="Clear all" keys={[key('clearAll')]} besideFrom1440 />
           </Button>
         )}
         <div role="group" aria-label="Clear one layer" className="flex items-center gap-1.5">
@@ -162,7 +149,7 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
                   )}
                 >
                   <IconShape size={16} aria-hidden="true" className="hidden shrink-0 min-[1280px]:block" />
-                  <WordsAndKey words={c.label} kbd={key(c.action)} />
+                  <WordsOverKeys words={c.label} keys={[key(c.action)]} />
                   {/* Beside its key, in the corner its word leaves free. */}
                   {on && (
                     <span
@@ -188,7 +175,7 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
           }}
           data-testid="logo-button"
         >
-          <WordsAndKey words={logo ? 'Logo is on' : 'Logo'} kbd={key('toggleLogo')} beside />
+          <WordsOverKeys words={logo ? 'Logo is on' : 'Logo'} keys={[key('toggleLogo')]} besideFrom1440 />
         </Button>
         <Button
           variant={blackout ? 'live' : 'secondary'}
@@ -201,10 +188,10 @@ export function LayerBar({ platform, run }: { platform: string; run: (action: Op
           }}
           data-testid="blackout-button"
         >
-          <WordsAndKey
+          <WordsOverKeys
             words={blackout ? 'Black-out is on' : 'Black-out'}
-            kbd={key('toggleBlackout')}
-            beside
+            keys={[key('toggleBlackout')]}
+            besideFrom1440
           />
         </Button>
       </section>

@@ -24,7 +24,7 @@ import {
   Trash2,
   X,
 } from '../ui/icons';
-import { Kbd } from '../ui/Kbd';
+import { Kbd, WordsOverKeys } from '../ui/Kbd';
 import { ListRow } from '../ui/ListRow';
 import { Menu, MenuButton, menuPlace } from '../ui/Menu';
 import type { MenuEntry, MenuPlace } from '../ui/Menu';
@@ -133,18 +133,19 @@ function ButtonsSection() {
         <IconButton icon={Trash2} label="Delete this prop" variant="danger" />
         <IconButton icon={X} label="Close" kbd="Esc" />
       </Row>
+      {/* Each with its keys (Session 51): beside the words on Back and Next, under them on the narrower ones. */}
       <Row label="Simple Mode (xl and xxl)">
-        <Button size="xxl" variant="secondary" icon={SkipBack}>
+        <Button size="xxl" variant="secondary" icon={SkipBack} kbd="←">
           Back
         </Button>
-        <Button size="xxl" variant="primary" iconEnd={SkipForward}>
+        <Button size="xxl" variant="primary" iconEnd={SkipForward} kbd="→">
           Next
         </Button>
         <Button size="xl" variant="secondary" instant icon={BlackOut}>
-          Black-out
+          <WordsOverKeys words="Black-out" keys={['B']} />
         </Button>
         <Button size="xl" variant="live" icon={Stamp}>
-          Logo is on
+          <WordsOverKeys words="Logo is on" keys={['F12', 'L']} />
         </Button>
       </Row>
     </Section>
