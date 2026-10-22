@@ -197,9 +197,10 @@ import {
   showDisplayNumber,
   watchDisplays,
 } from './outputs/electron-outputs';
+import { coveringScreens, KeepScreens } from './outputs/keep-screens';
 import { placeOperator } from './outputs/operator-guard';
 import { DISPLAY_DROP_MS, OutputManager } from './outputs/output-manager';
-import { ScreensService } from './outputs/screens-service';
+import { ScreensService, type ScreensSetup } from './outputs/screens-service';
 import { ScreenSwitchService } from './outputs/screen-switches';
 import { SleepGuard } from './outputs/sleep-guard';
 import { IpcTransport } from './transport/ipc-transport';
@@ -1647,6 +1648,8 @@ function start(): void {
         if (context) sendToPage(win, IPC.output.context, context);
       }
       guardOperator();
+      // Keep these screens? (Session 50): whether an output covers the controls, said again when that changed.
+      keepScreens.refresh();
       // A stopped output (Session 23) is still on its display and tried again: the display stays awake.
       sleepGuard.update(
         manager.status().filter((st) => st.state === 'showing' || st.state === 'stopped').length,
@@ -1710,6 +1713,57 @@ function start(): void {
       log.info(message);
     },
   });
+
+  // ---- Keep these screens? (Session 50) ----------------------------------------------------------------
+  // After a change that puts an output on a display, 15 s to keep it, or it goes back by itself; the output over
+  // the controls asks too. Tests that are not about it never ask (DRASHTI_TEST_KEEP_SCREENS=0, the tests' own
+  // default); a test may give a shorter wait.
+  const coveringNow = () => coveringScreens(manager.status(), operatorDisplayId());
+  const keepScreens = new KeepScreens<ScreensSetup>({
+    capture: () => screens.setup(),
+    restore: (setup, quitting) => {
+      const result = screens.putBack(setup, quitting);
+      if (!quitting) {
+        // As Screens' own changes do: the stream's languages, and a stage display in a browser.
+        streaming.contextChanged();
+        net.hint('screens');
+      }
+      return result;
+    },
+    placed: () => screens.placed(),
+    coversControls: () => coveringNow().length > 0,
+    snapshot: () => screens.snapshot(),
+    changed: (pending) => {
+      sendToPage(operatorWindow, IPC.screens.pendingChanged, pending);
+      const covering = new Set(pending?.coversControls ? coveringNow() : []);
+      for (const [screenId, win] of outputWindows)
+        sendToPage(win, IPC.output.keepQuestion, covering.has(screenId) ? pending : null);
+    },
+    ended: (how) => {
+      if (how === 'kept') return;
+      sendToPage(operatorWindow, IPC.app.notice, {
+        text:
+          how === 'went-back'
+            ? 'The screens went back to how they were before the change.'
+            : 'Nothing was pressed, so the screens went back to how they were before the change.',
+      });
+    },
+    asks: sw('DRASHTI_TEST_KEEP_SCREENS') !== '0',
+    waitMs: swMs('DRASHTI_TEST_KEEP_SCREENS_MS') ?? undefined,
+    now: Date.now,
+    log: (message) => {
+      log.info(message);
+    },
+  });
+  // Quitting before an answer goes back (saved only): the next start never opens a change nobody kept.
+  stops.add('keep these screens', () => {
+    keepScreens.quitting();
+  });
+  /** Keep these screens? as an output shows it: only one over the controls, while a change waits. */
+  const keepQuestionFor = (screenId: string) => {
+    const pending = keepScreens.current();
+    return pending?.coversControls && coveringNow().includes(screenId) ? pending : null;
+  };
 
   // ---- keeping the operator's controls reachable ----------------------------
   const uncoverAccelerator = acceleratorFor('uncoverControls');
@@ -3738,7 +3792,9 @@ function start(): void {
       return sent;
     };
   handle(IPC.screens.assignNodeDisplay, (e, groupId, nodeId, displayId) =>
-    fromOperator(e) ? screens.assignNodeDisplay(groupId, nodeId, displayId) : notAllowed,
+    fromOperator(e)
+      ? keepScreens.change(() => screens.assignNodeDisplay(groupId, nodeId, displayId))
+      : notAllowed,
   );
   const notNetworkOperator = {
     ok: false as const,
@@ -4209,11 +4265,14 @@ function start(): void {
     net.hint('screens');
     return result;
   });
+  // Use this display and On (Session 50): a change that puts an output on a display asks Keep these screens?
   handle(IPC.screens.assignDisplay, (e, groupId, displayId, options) =>
-    fromOperator(e) ? screens.assignDisplay(groupId, displayId, options) : notAllowed,
+    fromOperator(e)
+      ? keepScreens.change(() => screens.assignDisplay(groupId, displayId, options))
+      : notAllowed,
   );
   handle(IPC.screens.updateScreen, (e, id, patch, options) =>
-    fromOperator(e) ? screens.updateScreen(id, patch, options) : notAllowed,
+    fromOperator(e) ? keepScreens.change(() => screens.updateScreen(id, patch, options)) : notAllowed,
   );
   handle(IPC.screens.uncoverOperator, (e) => {
     if (!fromOperator(e)) return notAllowed;
@@ -4259,6 +4318,21 @@ function start(): void {
     // The View menu's ticks, and a Remote's word on which are off.
     rebuildMenu();
     net.hint('screens');
+  });
+  // Keep these screens? (Session 50): answered in the operator window, by whoever made the change (in Simple Mode
+  // too), or on the output over the controls (Enter keeps, Esc goes back).
+  handle(IPC.screens.pending, (e) => (fromOperator(e) ? keepScreens.current() : null));
+  handle(IPC.screens.keep, (e) => (fromOperator(e) ? keepScreens.keep() : notAllowed));
+  handle(IPC.screens.goBack, (e) => (fromOperator(e) ? keepScreens.goBack() : notAllowed));
+  handle(IPC.output.keepAnswer, (e, keep) => {
+    const screenId = manager.screenIdFor(e.sender.id);
+    // Only the output the question is on answers it, and only with a yes or a no.
+    if (screenId === undefined || typeof keep !== 'boolean' || keepQuestionFor(screenId) === null)
+      return null;
+    log.info(`Keep these screens?: answered on the output over the controls (${keep ? 'Enter' : 'Esc'})`);
+    if (keep) keepScreens.keep();
+    else keepScreens.goBack();
+    return null;
   });
   handle(IPC.screens.identify, (e) => {
     if (!fromOperator(e)) return null;
@@ -4445,7 +4519,8 @@ function start(): void {
       return { ok: false, message: 'That theme is no longer there.' };
     // The screens first: covering the operator's display asks before anything changes.
     if (outputs) {
-      const applied = screens.applySetup(outputs, options);
+      // Keep these screens? (Session 50): Go back puts back the screens only; the sound and theme stay as chosen.
+      const applied = keepScreens.change(() => screens.applySetup(outputs, options));
       if (!applied.ok) return applied;
       net.hint('screens');
     }
@@ -4470,6 +4545,10 @@ function start(): void {
 
   handle(IPC.output.getContext, (event) => {
     const screenId = manager.screenIdFor(event.sender.id);
+    // Keep these screens? on an output over the controls that opened, or loaded again, as a change waits: sent
+    // before the answer, so after the page listens for it (output-store.ts listens first).
+    const question = screenId ? keepQuestionFor(screenId) : null;
+    if (question && screenId) sendToPage(outputWindows.get(screenId), IPC.output.keepQuestion, question);
     return screenId ? contextFor(screenId) : null;
   });
 
