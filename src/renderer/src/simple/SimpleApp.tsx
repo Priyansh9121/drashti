@@ -27,6 +27,7 @@ import {
   Square,
   Stamp,
   Eraser,
+  Video,
 } from '../ui/icons';
 import { Kbd } from '../ui/Kbd';
 import { readPersisted, writePersisted } from '../ui/persist';
@@ -71,8 +72,12 @@ import { useNodes } from '../nodes/nodes-store';
 const NEXT_UNREAD =
   'Next has nothing to start: Drashti couldn’t read the playlist. Press Try again beside it.';
 
+// A video input item (Session 51) goes up through the playlist, as its Next does; Simple Mode never chooses one in
+// Media (the engine refuses showInput).
 const playable = (i: PlaylistItemInfo) =>
-  (i.kind === 'presentation' && i.presentationName !== null) || (i.kind === 'media' && !i.missing);
+  (i.kind === 'presentation' && i.presentationName !== null) ||
+  (i.kind === 'media' && !i.missing) ||
+  (i.kind === 'input' && !i.missing);
 
 /** Which playlist: the one played last, else the one that was open, else the first. */
 function usePlaylistChoice() {
@@ -195,7 +200,8 @@ function PlaylistColumn() {
             );
           const isLive = liveItem === item.id || repeatItem === item.id;
           const can = playable(item);
-          const KindIcon = item.kind === 'media' ? mediaKindIcon[item.media] : Presentation;
+          const KindIcon =
+            item.kind === 'media' ? mediaKindIcon[item.media] : item.kind === 'input' ? Video : Presentation;
           const name = item.kind === 'presentation' ? (item.presentationName ?? item.label) : item.label;
           return (
             <li key={item.id}>
@@ -221,7 +227,17 @@ function PlaylistColumn() {
                   {item.kind === 'media' && (
                     <span className="text-xs text-muted">{mediaKindLabel[item.media]}</span>
                   )}
-                  {!can && <span className="text-xs text-warning-fg">Cannot play</span>}
+                  {item.kind === 'input' && (
+                    <span
+                      className={cx('text-xs', can ? 'text-muted' : 'text-warning-fg')}
+                      data-testid="simple-input-note"
+                    >
+                      {can ? 'Video input' : 'Video input · not on this computer'}
+                    </span>
+                  )}
+                  {!can && item.kind !== 'input' && (
+                    <span className="text-xs text-warning-fg">Cannot play</span>
+                  )}
                 </span>
                 {isLive && <LiveBadge />}
               </button>

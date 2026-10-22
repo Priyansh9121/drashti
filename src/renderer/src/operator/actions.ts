@@ -135,7 +135,13 @@ async function perform(action: OperatorAction, ui: OperatorUi): Promise<void> {
   switch (action) {
     case 'next':
       if (itemIsLive || selectedIsLive) return dispatch({ type: 'next' });
-      if (item && (item.kind === 'media' || (item.kind === 'presentation' && item.presentationName !== null)))
+      // A picture, video or sound item, a video input's (Session 51), or a presentation: it starts.
+      if (
+        item &&
+        (item.kind === 'media' ||
+          item.kind === 'input' ||
+          (item.kind === 'presentation' && item.presentationName !== null))
+      )
         return playItem(item.playlistId, item.id);
       if (!item && selectedId && doc?.id === selectedId && doc.groups.some((g) => g.slides.length > 0))
         return goLive(selectedId, 0, playOrder(doc, doc.selectedArrangementId).arrangementId);

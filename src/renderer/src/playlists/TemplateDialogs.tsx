@@ -104,7 +104,10 @@ function SaveTemplate({ playlistId }: { playlistId: string }) {
             return (
               <li key={item.id} className="flex items-center gap-2 text-sm">
                 <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                <span className="text-xs text-muted">{item.kind === 'media' ? 'Kept' : 'A slot'}</span>
+                {/* A video input (Session 51) is kept as a picture or video is. */}
+                <span className="text-xs text-muted">
+                  {item.kind === 'media' || item.kind === 'input' ? 'Kept' : 'A slot'}
+                </span>
               </li>
             );
           const kirtan = kirtanOf.get(item.presentationId);

@@ -3,7 +3,7 @@ import { isRepeatId } from '../../../shared/repeat';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MenuEntry, MenuPlace } from '../ui/Menu';
 import { Menu, MenuButton, menuPlace } from '../ui/Menu';
-import type { PlaylistCursor } from '../../../shared/engine/state';
+import type { MediaBackground, PlaylistCursor } from '../../../shared/engine/state';
 import type { BackgroundCue, PresentationDoc, SlideInfo } from '../../../shared/library';
 import { type OrderedSlide, playOrder } from '../../../shared/order';
 import type { ItemOrder } from '../../../shared/playlists';
@@ -23,6 +23,7 @@ import { Button } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Field, Select, Slider } from '../ui/Field';
 import {
+  AlertTriangle,
   Bookmark,
   LayoutGrid,
   MoreHorizontal,
@@ -35,8 +36,12 @@ import {
   SquarePen,
   Timer,
   Trash2,
+  Video,
 } from '../ui/icons';
 import { NewTimerSlideInLibrary } from '../editor/NewTimerSlide';
+import { InputPicture, useSmallPicture } from '../video-inputs/InputPicture';
+import { useInputNamed } from '../video-inputs/video-inputs-store';
+import { FIT_WORDS } from '../video-inputs/words';
 import { openPictureEditor } from '../pictures/PictureEditor';
 import { markersMedia, openMarkers } from '../markers/MarkersDialog';
 import { openSlideEditor } from '../editor/editor-store';
@@ -57,8 +62,8 @@ export const THUMB = { initial: 170, min: 120, max: 400 };
 const isThumbSize = (v: unknown): v is number => typeof v === 'number' && v >= THUMB.min && v <= THUMB.max;
 
 /** The slide's own background (its background cue), behind its thumbnail: the image, or a video's still frame. */
-function CueBackground({ cue }: { cue: BackgroundCue }) {
-  const { mediaId, media, fit } = cue.background;
+function CueBackground({ cue, background }: { cue: BackgroundCue; background: MediaBackground }) {
+  const { mediaId, media, fit } = background;
   return (
     <span data-testid="thumb-background" data-media-id={mediaId} title={cue.name} className="contents">
       <MediaStill mediaId={mediaId} media={media} fit={fit} />
@@ -71,6 +76,31 @@ function CueBackground({ cue }: { cue: BackgroundCue }) {
           <CannotPlayBadge mediaId={mediaId} />
         </span>
       )}
+    </span>
+  );
+}
+
+/**
+ * The video input behind a slide (Session 51), in its caption, by the name its cue keeps: marked when this
+ * computer has none of that name (the background then stays as it was when the slide goes up).
+ */
+function ThumbInput({ name, live }: { name: string; live: boolean }) {
+  const here = useInputNamed(name) !== null;
+  const Mark = here ? Video : AlertTriangle;
+  return (
+    <span
+      className={cx('flex min-w-0 items-center gap-1', !here && !live && 'text-warning-fg')}
+      data-testid="thumb-input"
+      data-input={name}
+      data-missing={here ? undefined : 'true'}
+      title={
+        here
+          ? `The video input “${name}” behind it`
+          : `No video input called “${name}” is on this computer: the background stays as it was when this slide goes up`
+      }
+    >
+      <Mark size={12} aria-hidden="true" className="shrink-0" />
+      <span className="truncate">{name}</span>
     </span>
   );
 }
@@ -116,6 +146,9 @@ const Thumb = memo(function Thumb({
     if (found) ref.current?.scrollIntoView({ block: 'center' });
   }, [found]);
   const background = info.cues.find((c): c is BackgroundCue => c.kind === 'background');
+  // Its picture or video behind it, or a video input by name (Session 51), named in its caption.
+  const behind = background?.background;
+  const inputName = behind?.kind === 'input' ? behind.name : null;
   const sound = info.cues.find((c) => c.kind === 'audio');
   // A slide with a picture on it (a deck's page, say): its right-click offers the Picture editor (Session 26e).
   const picture = info.slide.elements.find((e) => e.kind === 'image');
@@ -186,7 +219,7 @@ const Thumb = memo(function Thumb({
         )}
       >
         <span className="pointer-events-none relative block aspect-video w-full" data-a11y-picture>
-          {background && <CueBackground cue={background} />}
+          {background && behind?.kind === 'media' && <CueBackground cue={background} background={behind} />}
           <PlacedInParent content={info.slide} mode="fit" className="absolute inset-0">
             <OversetWatch onChange={setOver}>
               <SlideView slide={info.slide} media="still" />
@@ -220,6 +253,7 @@ const Thumb = memo(function Thumb({
           ) : (
             <span className="flex-1" />
           )}
+          {inputName !== null && <ThumbInput name={inputName} live={live} />}
           {sound && (
             <span
               className="flex min-w-0 items-center gap-1"
@@ -319,6 +353,66 @@ function itemArrangement(item: ShownItem & { kind: 'presentation' }, doc: Presen
   return doc.selectedArrangementId;
 }
 
+/**
+ * A video input item (Session 51): its live picture, a click putting it up as the background (the slide taken
+ * off), or, where this computer has no input of its name, why not: Next goes past it.
+ */
+function InputItemView({ item, isLive }: { item: ShownItem & { kind: 'input' }; isLive: boolean }) {
+  const input = useInputNamed(item.name);
+  const capture = useSmallPicture(input?.device ?? null);
+  if (!input)
+    return (
+      <section
+        className="flex flex-1 items-center justify-center"
+        data-testid="item-view"
+        data-missing="true"
+        aria-label={item.label}
+      >
+        <EmptyState icon={Video} title="Not on this computer">
+          No video input called “{item.name}” is on this computer, so Next goes past it. Add a Video Input… in
+          Media can name one “{item.name}”: then it goes up from here.
+        </EmptyState>
+      </section>
+    );
+  return (
+    <section className="min-h-0 flex-1 overflow-y-auto p-4" data-testid="item-view" aria-label={item.label}>
+      <div className="mb-3 flex items-center gap-2">
+        <h2 className="min-w-0 text-lg font-bold">
+          <Truncate text={item.label} />
+        </h2>
+        <Badge>Video input</Badge>
+      </div>
+      <button
+        type="button"
+        data-testid="item-input"
+        data-show-control
+        aria-current={isLive ? 'true' : undefined}
+        aria-label={`Video input: ${input.name}${isLive ? ' (live)' : ''}`}
+        onClick={() => void playItem(item.playlistId, item.id)}
+        className={cx(
+          // A thumbnail: live at once, with no fade (Session 26g).
+          'w-full max-w-xl overflow-hidden rounded-lg border-2 bg-black text-left',
+          isLive ? 'border-live shadow-live-thumb' : 'border-line shadow-thumb hover:border-field',
+        )}
+      >
+        <InputPicture capture={capture} className="pointer-events-none w-full" />
+        <span
+          className={cx(
+            'flex h-7 items-center gap-2 px-2 text-xs',
+            isLive ? 'bg-live text-white' : 'bg-panel-2 text-muted',
+          )}
+        >
+          Video input · {FIT_WORDS[input.fit].row}
+          {isLive && <span className="ml-auto font-bold tracking-wide">LIVE</span>}
+        </span>
+      </button>
+      <p className="mt-2 text-sm text-muted">
+        Goes up as the background, coming on over 1 second, and takes the slide off.
+      </p>
+    </section>
+  );
+}
+
 /** A playlist item that is not a presentation: a picture, video or sound to put up, or a note. */
 function ItemView({ item }: { item: ShownItem }) {
   const live = useEngine((s) => s.state?.live.playlist);
@@ -351,6 +445,8 @@ function ItemView({ item }: { item: ShownItem }) {
         'Its text is not loaded',
         `“${item.label}” is a Shastra passage whose text is not loaded. It comes back when the text is loaded again (Shastra, Texts…).`,
       );
+    case 'input':
+      return <InputItemView item={item} isLive={isLive} />;
     case 'media': {
       const problem = mediaProblem(item);
       return (

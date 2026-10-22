@@ -335,6 +335,9 @@ export function StageView({
               <p
                 style={{ fontSize: 48, color: '#c9ced8', margin: 0 }}
               >{`${kindName[next.media]}: ${next.label}`}</p>
+            ) : next?.kind === 'input' ? (
+              // A video input item (Session 51): named, as a stage screen never draws it.
+              <p style={{ fontSize: 48, color: '#c9ced8', margin: 0 }}>{`Video input: ${next.name}`}</p>
             ) : (
               <p style={{ fontSize: 48, color: '#6b7280', margin: 0 }}>End</p>
             )}

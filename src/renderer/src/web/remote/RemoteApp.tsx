@@ -308,6 +308,8 @@ function NextLine({ state }: { state: EngineState | null }) {
       <span className="shrink-0 font-bold tracking-wider text-muted uppercase">Next</span>
       {!next && <span className="text-muted">Nothing after this</span>}
       {next?.kind === 'media' && <span className="truncate text-fg">{next.label}</span>}
+      {/* A video input item (Session 51): named; a phone never draws one. */}
+      {next?.kind === 'input' && <span className="truncate text-fg">{`Video input: ${next.name}`}</span>}
       {next?.kind === 'slide' && (
         <div
           className="w-28 shrink-0 overflow-hidden rounded border border-line bg-black"
@@ -516,7 +518,8 @@ function SlideThumb({
             className="relative aspect-video w-full"
           >
             <div style={{ position: 'relative', width: s.slide.slide.width, height: s.slide.slide.height }}>
-              {bg?.kind === 'background' && (
+              {/* A picture or video behind it; a video input (Session 51) is Main's alone, never drawn here. */}
+              {bg?.kind === 'background' && bg.background.kind === 'media' && (
                 <PreviewPicture
                   mediaId={bg.background.mediaId}
                   style={{
@@ -643,7 +646,9 @@ function Slides() {
 const playable = (i: PlaylistItemInfo) =>
   (i.kind === 'presentation' && i.presentationName !== null) ||
   (i.kind === 'shastra' && !i.missing) ||
-  (i.kind === 'media' && !i.missing && i.unplayable === null);
+  (i.kind === 'media' && !i.missing && i.unplayable === null) ||
+  // A video input item (Session 51), while Main's computer has one of its name: tapped, it goes up there.
+  (i.kind === 'input' && !i.missing);
 
 function Playlist() {
   const playlists = useRemote((s) => s.playlists);
@@ -718,6 +723,11 @@ function Playlist() {
                 <span className="min-w-0 flex-1 truncate text-fg">{i.label}</span>
                 {i.kind === 'media' && (
                   <Badge>{i.media === 'image' ? 'Picture' : i.media === 'video' ? 'Video' : 'Sound'}</Badge>
+                )}
+                {i.kind === 'input' && (
+                  <Badge tone={i.missing ? 'warning' : 'neutral'} data-testid="remote-item-input">
+                    {i.missing ? 'Not on Drashti’s computer' : 'Video input'}
+                  </Badge>
                 )}
                 {i.kind === 'placeholder' && <Badge tone="warning">Empty</Badge>}
                 {isLive && <LiveBadge />}

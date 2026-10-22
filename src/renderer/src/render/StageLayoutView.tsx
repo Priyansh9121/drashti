@@ -138,6 +138,8 @@ function BoxContents({
         return <StageText slide={languageView(next.slide, languages)} timers={state.timers} />;
       if (next?.kind === 'media')
         return <p style={{ margin: 0 }}>{`${kindName[next.media]}: ${next.label}`}</p>;
+      // A video input item (Session 51): named, as the screens never draw it here.
+      if (next?.kind === 'input') return <p style={{ margin: 0 }}>{`Video input: ${next.name}`}</p>;
       return <p style={{ margin: 0, color: muted }}>End</p>;
     }
     case 'notes':

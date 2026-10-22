@@ -78,7 +78,7 @@ interface PlaylistView {
   /** The slot being renamed or given another category: its dialog is open. */
   editingSlot: Extract<PlaylistItemInfo, { kind: 'placeholder' }> | null;
   /** The item whose timer cues are being set: its dialog is open. */
-  cuesFor: Extract<PlaylistItemInfo, { kind: 'presentation' | 'media' | 'shastra' }> | null;
+  cuesFor: Extract<PlaylistItemInfo, { kind: 'presentation' | 'media' | 'shastra' | 'input' }> | null;
 }
 
 export const usePlaylists = create<PlaylistView>(() => ({

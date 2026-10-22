@@ -1,9 +1,10 @@
 import { create } from 'zustand';
-import type {
-  CameraAccess,
-  VideoInput,
-  VideoInputFields,
-  VideoInputStatus,
+import {
+  type CameraAccess,
+  inputNamed,
+  type VideoInput,
+  type VideoInputFields,
+  type VideoInputStatus,
 } from '../../../shared/video-inputs';
 import { dispatch } from '../operator/actions';
 
@@ -78,6 +79,14 @@ export function openChangeInput(input: VideoInput): void {
 
 export function closeInputDialog(): void {
   useVideoInputs.setState({ dialog: null });
+}
+
+/**
+ * This computer's video input of a name (Session 51: the one a playlist item or a slide's background cue names), or
+ * null: it follows Media's list as inputs are added, renamed or removed.
+ */
+export function useInputNamed(name: string | null): VideoInput | null {
+  return useVideoInputs((s) => (name === null ? null : inputNamed(s.inputs, name)));
 }
 
 /** One click: the input on the screens, as the live background with the slide staying over it. */
