@@ -90,8 +90,8 @@ export function LowerThirdView({
   /** Canvas pixels to keep clear at the bottom (the ticker's band). */
   lift?: number;
 }) {
-  // Drawn again when the clock jumps (a test holding it, the warm-up, a node's or a phone's clock set), and at the
-  // frame its in or out is over (below), whatever else draws the screen again meanwhile.
+  // Drawn again when the clock jumps (a test holding it, the warm-up, a node's or a phone's clock set) and at the
+  // frame its in or out is over (below). Every drawing, whatever asked for it, draws what the engine's time says now.
   const [, redraw] = useReducer((n: number) => n + 1, 0);
   useEffect(() => onClockJump(redraw), []);
   const now = engineNow();
