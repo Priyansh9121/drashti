@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useId } from 'react';
 import { create } from 'zustand';
-import { KEY_GROUPS, KEYMAP, keyText, SINGLE_KEYS_TEXT } from '../../../shared/keymap';
+import { KEY_GROUPS, KEYMAP, keyText, shortcutText, SINGLE_KEYS_TEXT } from '../../../shared/keymap';
 import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Kbd } from '../ui/Kbd';
@@ -12,7 +12,8 @@ import { useKeymapNow, useSingleKeys } from './single-keys-store';
  * Mode (Simple Mode keeps its key line). Built from KEYMAP and grouped by what the operator is doing
  * (KEY_GROUPS), each key as this computer writes it, so it never drifts from the keys. It holds the
  * switch for the single-letter keys (Session 37, WCAG 2.1.4): an admin's, on to begin with; off, the sheet
- * says Off beside each key it took away.
+ * says Off beside each key it took away. The keys are the ones the operators already press, and it says so
+ * (Session 50).
  */
 
 export const useKeysSheet = create<{ open: boolean }>(() => ({ open: false }));
@@ -29,6 +30,8 @@ export function KeysSheet({ platform }: { platform: string }) {
   const open = useKeysSheet((s) => s.open);
   const singleOn = useSingleKeys((s) => s.on !== false);
   const keymap = useKeymapNow();
+  // The Logo's key while the single-letter keys are off (Session 50: F12, as the operators press it).
+  const logoKey = shortcutText('toggleLogo', platform, keymap);
   const ids = useId();
   // ? closes it again (the show's keys are off while a dialog is open, so the sheet listens itself), while
   // the single-letter keys are on.
@@ -80,7 +83,7 @@ export function KeysSheet({ platform }: { platform: string }) {
         ) : (
           <p className="text-xs text-muted" data-testid="keys-single-off">
             Off on this computer: {SINGLE_KEYS_TEXT} do nothing. Black-out and the Logo still work from their
-            buttons, a MIDI pad and the phone remote.
+            buttons, a MIDI pad and the phone remote{logoKey && `, and the Logo from ${logoKey}`}.
           </p>
         )}
       </div>
@@ -126,8 +129,8 @@ export function KeysSheet({ platform }: { platform: string }) {
             </dl>
           </section>
         ))}
-        <p className="text-xs text-muted [column-span:all]" data-testid="keys-provisional">
-          These keys may change after the setup day, to the keys the operators already press.
+        <p className="text-xs text-muted [column-span:all]" data-testid="keys-follow">
+          These keys follow what the operators already press.
         </p>
       </div>
     </Dialog>

@@ -38,6 +38,9 @@ import { Tooltip } from '../ui/Tooltip';
  * no aria-pressed besides.
  */
 
+// In the order they have always had; each shows its key from the keymap. Session 50 moved the keys to the
+// ones the operators already press (F5 the sound, F6 messages, F7 the ticker, F8 masks) and left the
+// buttons where they were.
 const clears: { action: OperatorAction; layer: LayerName; label: string; icon: Icon }[] = [
   { action: 'clearSlide', layer: 'slide', label: 'Slide', icon: Type },
   { action: 'clearBackground', layer: 'background', label: 'Background', icon: Image },
@@ -51,7 +54,8 @@ const clears: { action: OperatorAction; layer: LayerName; label: string; icon: I
 export function LayerBar({ platform, run }: { platform: string; run: (action: OperatorAction) => void }) {
   // The show, or the practice show while it is on (Session 26g).
   const state = useShowState();
-  // The keys beside its buttons, as they act now: none for Black-out or the Logo while B, . and L are off.
+  // The keys beside its buttons, as they act now: none for Black-out while B, . and L are off; the Logo
+  // keeps F12 (Session 50).
   const keymap = useKeymapNow();
   const layers = state?.layers;
   const blackout = state?.blackout ?? false;
