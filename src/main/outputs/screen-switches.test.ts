@@ -14,11 +14,11 @@ function setUp(options: { simple?: boolean; open?: Partial<Record<ScreenSwitch, 
   const off = new Set<ScreenSwitch>();
   const changes: ScreenSwitches[] = [];
   const logged: string[] = [];
-  const t = {
+  const t: { simple: boolean; state: EngineState; hall: ScreenState; stage: ScreenState } = {
     simple: options.simple ?? false,
-    state: initialEngineState() as EngineState,
-    hall: options.open?.audience ?? ('showing' as ScreenState),
-    stage: options.open?.stage ?? ('showing' as ScreenState),
+    state: initialEngineState(),
+    hall: options.open?.audience ?? 'showing',
+    stage: options.open?.stage ?? 'showing',
   };
   const groups: ScreenGroupConfig[] = [
     {

@@ -104,24 +104,28 @@ export function ScreenSwitchAsk({ platform }: { platform: string }) {
 /** The status bar's word while one is off, with Turn on: one click (both modes). */
 export function SwitchedOffStatus() {
   const switches = useScreenSwitches((s) => s.switches);
-  return SCREEN_SWITCHES.filter((which) => !switches[which]).map((which) => (
-    <div
-      key={which}
-      role="status"
-      data-testid={`switch-off-${which}`}
-      className="flex shrink-0 items-center gap-1.5 rounded-sm bg-warning-bg px-1.5 py-0.5 text-warning-fg"
-    >
-      <MonitorOff size={13} aria-hidden="true" className="shrink-0" />
-      <span className="font-medium">{SWITCH_NAMES[which]} off</span>
-      <Button
-        variant="secondary"
-        size="sm"
-        className="h-5"
-        aria-label={`Turn on ${SWITCH_NAMES[which]}`}
-        onClick={() => void turnOnIfOff(which).then(say)}
-      >
-        Turn on
-      </Button>
-    </div>
-  ));
+  return (
+    <>
+      {SCREEN_SWITCHES.filter((which) => !switches[which]).map((which) => (
+        <div
+          key={which}
+          role="status"
+          data-testid={`switch-off-${which}`}
+          className="flex shrink-0 items-center gap-1.5 rounded-sm bg-warning-bg px-1.5 py-0.5 text-warning-fg"
+        >
+          <MonitorOff size={13} aria-hidden="true" className="shrink-0" />
+          <span className="font-medium">{SWITCH_NAMES[which]} off</span>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="h-5"
+            aria-label={`Turn on ${SWITCH_NAMES[which]}`}
+            onClick={() => void turnOnIfOff(which).then(say)}
+          >
+            Turn on
+          </Button>
+        </div>
+      ))}
+    </>
+  );
 }

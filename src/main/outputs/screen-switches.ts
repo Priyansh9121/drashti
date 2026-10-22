@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { EngineState } from '../../shared/engine/state';
 import {
-  asksFirst,
+  asksFirst as asksFirstFor,
   openUnder,
   SCREEN_SWITCHES,
   SWITCH_NAMES,
@@ -90,7 +90,7 @@ export class ScreenSwitchService {
 
   /** Whether turning it off asks first now: while its screens on this computer are open and show something. */
   asksFirst(which: ScreenSwitch): boolean {
-    return asksFirst(which, openUnder(this.deps.screens(), which), this.deps.state());
+    return asksFirstFor(which, openUnder(this.deps.screens(), which), this.deps.state());
   }
 
   /**
