@@ -787,7 +787,7 @@ describe('Audience or Stage off (Session 51, S2-1): a switched-off screen shows 
     );
     const keep = new KeepScreens<ScreensSetup>({
       capture: () => s.setup(),
-      restore: (setup, quitting) => s.putBack(setup, quitting),
+      restore: (changes, quitting) => s.undo(changes, quitting),
       placed: () => s.placed(),
       coversControls: () => false,
       snapshot: () => s.snapshot(),
