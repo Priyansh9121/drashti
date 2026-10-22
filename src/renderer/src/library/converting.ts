@@ -8,7 +8,9 @@ import { plural } from '../../../shared/text';
  */
 
 /** A conversion waiting or going on. */
-export const jobBusy = (job: ConversionJob | undefined): job is ConversionJob =>
+export const jobBusy = (
+  job: ConversionJob | undefined,
+): job is ConversionJob & { state: 'waiting' | 'converting' } =>
   job?.state === 'waiting' || job?.state === 'converting';
 
 /** The newest job for a media item. */
