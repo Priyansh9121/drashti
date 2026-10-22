@@ -5,8 +5,10 @@ import { usePreviewsOnly } from './previews';
 
 /*
  * Another app's window as the background (Session 48): live, fitted inside the screen with black around it,
- * and silent. Its picture is kept about once a second, so when the window closes (its live picture then
- * turns black) the screen keeps the last one, and the operator's notice says why. Phones and tablets draw
+ * and silent. Its picture is kept about once a second, so when the window closes the screen keeps the last
+ * one, and the operator's notice says why. As its capture ends the video shows black, and after a still while (a
+ * shared slide) that black was the next frame and was kept (caught by show-a-window.spec.ts): nothing is kept
+ * once it has ended, and what shows is the copy kept a second before the newest. Phones and tablets draw
  * nothing for it (a phone names it instead), nor does a node's screen (the window is on Main's computer).
  */
 
@@ -41,16 +43,28 @@ function LiveWindowPicture({ layer }: { layer: WindowBackground }) {
     const v = video.current;
     const c = kept.current;
     if (!v || !c || !stream) return;
+    const track = stream.getVideoTracks()[0];
+    // The newest copy, never shown: what it held goes into the shown one as the next is taken.
+    const newest = document.createElement('canvas');
+    let copies = 0;
     let last = -Infinity;
     let handle = 0;
     let on = true;
+    const into = (to: HTMLCanvasElement, from: CanvasImageSource, width: number, height: number) => {
+      if (to.width !== width) to.width = width;
+      if (to.height !== height) to.height = height;
+      to.getContext('2d')?.drawImage(from, 0, 0);
+    };
     const keep = (now: number) => {
-      if (!on) return;
+      // Ended: the video now shows black, and the copies keep what came before.
+      if (!on || track?.readyState === 'ended') return;
       if (now - last >= KEEP_MS && v.videoWidth > 0) {
         last = now;
-        if (c.width !== v.videoWidth) c.width = v.videoWidth;
-        if (c.height !== v.videoHeight) c.height = v.videoHeight;
-        c.getContext('2d')?.drawImage(v, 0, 0);
+        if (copies > 0) into(c, newest, newest.width, newest.height);
+        into(newest, v, v.videoWidth, v.videoHeight);
+        // The first copy is shown too, until there is one a second older.
+        if (copies === 0) into(c, newest, newest.width, newest.height);
+        copies++;
       }
       handle = v.requestVideoFrameCallback(keep);
     };

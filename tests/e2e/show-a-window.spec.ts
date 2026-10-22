@@ -6,6 +6,7 @@ import { device, NETWORK_ENV, networkOn, pairByQr, pairingCode } from './devices
 import {
   killApp,
   launchApp,
+  letTimePass,
   openLibrary,
   operatorPage,
   operatorReady,
@@ -244,10 +245,22 @@ test('a window closed or hidden keeps its last picture on the screens, with a no
   await expect(notice).toHaveCount(0, { timeout: 10_000 });
 
   // Closed: its live picture ends; the screen shows the last one kept, never black, and the notice says so.
+  // Still for a while first, as a shared slide often is: no new frame comes, and the black its video shows as
+  // the capture ends was once what got kept.
+  await app.evaluate(
+    ({ BrowserWindow }, id) =>
+      BrowserWindow.fromId(id)?.webContents.executeJavaScript(
+        'for (let i = 1; i < 1000; i++) clearInterval(i)',
+      ),
+    meeting,
+  );
+  await letTimePass(hall, 1500, 'a still window gives no new frame');
   await placeholder(app, meeting, 'close');
   await expect(hall.locator('[data-kind="window"]')).toHaveAttribute('data-window-state', 'ended', {
     timeout: 10_000,
   });
+  // And it stays so, as copies would have gone on being taken.
+  await letTimePass(hall, 2500, 'the kept picture stays after a copy would have been taken twice more');
   expect((await drawn(hall)).blue).toBe(true);
   await expect(notice).toBeVisible({ timeout: 10_000 });
   await notice.getByTestId('live-window-clear').click();
