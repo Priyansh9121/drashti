@@ -5,6 +5,7 @@ import {
   chooseMenuItem,
   holdStill,
   launchApp,
+  NO_PLACEHOLDERS,
   operatorPage,
   operatorReady,
   outputPages,
@@ -86,7 +87,9 @@ const slideOnScreens = (win: Page) =>
 
 test('Mod+1 asks first while the hall’s screens show something; off closes only them, the show carries on, and on opens them where they were', async () => {
   test.setTimeout(120_000);
-  const { app } = await launchApp(OUTPUTS);
+  // Its own slides only (Session 50): with the tests' placeholder presentations, the first would be open in the
+  // middle, and Next would start it rather than go on in the slides that are up.
+  const { app } = await launchApp({ ...OUTPUTS, ...NO_PLACEHOLDERS });
   const win = await operatorPage(app);
   await operatorReady(win);
   const { hall } = await hallAndStage(win, app);
