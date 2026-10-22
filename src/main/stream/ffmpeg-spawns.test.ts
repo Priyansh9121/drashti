@@ -11,6 +11,8 @@ import { describe, expect, it } from 'vitest';
 
 const FILES = [
   'src/main/convert/convert-service.ts',
+  // Reading what a file holds, for a conversion and (Session 50) each video and sound at import.
+  'src/main/convert/read-info.ts',
   'src/main/convert/trim-saves.ts',
   'src/main/network/previews.ts',
   'src/main/stream/ffmpeg-selftest.ts',
