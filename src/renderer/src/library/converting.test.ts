@@ -7,6 +7,7 @@ import {
   jobBusy,
   jobFor,
   mediaProblem,
+  offeredForUndo,
   someNames,
 } from './converting';
 
@@ -84,5 +85,15 @@ describe('a file Drashti converts (Session 50)', () => {
     expect(someNames(['A', 'B', 'C', 'D', 'E', 'F', 'G'])).toBe('A, B, C, D, E and 2 more');
     expect(someNames(['A', 'B', 'C'])).toBe('A, B and C');
     expect(someNames(['A'])).toBe('A');
+  });
+
+  // Section 9's review: a conversion Drashti did by itself (an import found the file) finished later, perhaps hours
+  // after; Cmd+Z then undid it instead of the operator's own last change. Only one asked for is offered.
+  it('offers for Undo a conversion the operator asked for, never one Drashti did by itself', () => {
+    const done = { state: 'done' as const, conversionId: 'cv1' };
+    expect(offeredForUndo(job(done))).toBe(true);
+    expect(offeredForUndo(job({ ...done, byItself: true }))).toBe(false);
+    expect(offeredForUndo(job({ state: 'converting', conversionId: null }))).toBe(false);
+    expect(offeredForUndo(job({ state: 'done', conversionId: null }))).toBe(false);
   });
 });

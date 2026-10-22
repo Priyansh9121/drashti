@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { ConversionJob } from '../../../shared/convert';
 import { HEVC_TYPE, isHevc } from '../../../shared/convert';
 import type { MediaSummary } from '../../../shared/playlists';
+import { offeredForUndo } from './converting';
 import { pushRemoval } from './undo';
 
 /*
@@ -46,9 +47,14 @@ let connected = false;
 
 function accept(jobs: ConversionJob[]): void {
   useConvert.setState({ jobs });
-  // Each conversion that finishes can be undone (the original used again where it was).
+  // Each conversion the operator asked for that finishes can be undone (the original used again where it was); one
+  // Drashti did by itself is not offered (Session 50).
   for (const job of jobs) {
-    if (job.state !== 'done' || !job.conversionId || undoable.has(job.conversionId)) continue;
+    if (!job.conversionId || undoable.has(job.conversionId)) continue;
+    if (!offeredForUndo(job)) {
+      if (job.state === 'done') undoable.add(job.conversionId);
+      continue;
+    }
     undoable.add(job.conversionId);
     const conversionId = job.conversionId;
     pushRemoval({
