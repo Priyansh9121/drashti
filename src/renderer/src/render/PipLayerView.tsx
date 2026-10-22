@@ -23,7 +23,7 @@ import {
 } from './pip';
 import { KeptVideo } from './KeptVideo';
 import { ElementView } from './SlideView';
-import { useVideoInput } from './video-input';
+import { useInputReport, useVideoInput } from './video-input';
 
 /*
  * The picture-in-picture box on a screen (Session 50, render/pip.ts): a 16:9 box over the props and under the
@@ -270,7 +270,7 @@ export function PipSourcePicture({
     case 'media':
       return <PipMedia mediaId={source.mediaId} media={source.media} shownAt={shownAt} size={size} />;
     case 'input':
-      return <PipInputPicture inputId={source.inputId} device={source.device} />;
+      return <PipInputPicture inputId={source.inputId} device={source.device} shownAt={shownAt} />;
     case 'window':
       return (
         <div data-pip-picture="window-box" style={BLACK}>
@@ -319,10 +319,12 @@ function PipMedia({
 /**
  * A video input in the box: the page's one capture of it (render/video-input.ts, shared with the background's
  * and Media's pictures of it), keeping its last picture when it stops; nothing where this computer does not have
- * it (a node's screens). The notice and Clear the input are the background's: the box says nothing of its own.
+ * it (a node's screens). The notice and Clear the input are the background's: the box says only how it stands,
+ * for restart recovery's check (Session 51: put back with no camera of its name here, the box comes off).
  */
-function PipInputPicture({ inputId, device }: { inputId: string; device: string }) {
+function PipInputPicture({ inputId, device, shownAt }: { inputId: string; device: string; shownAt: number }) {
   const capture = useVideoInput({ inputId, device });
+  useInputReport(inputId, `box:${inputId}@${String(shownAt)}`, capture.state, true, capture.reason, true);
   return (
     <div data-pip-picture="input" data-input-id={inputId} data-input-state={capture.state} style={BLACK}>
       {capture.state !== 'absent' && (

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import type { BackgroundLayer, InputBackground } from '../../shared/engine/state';
+import type { BackgroundLayer, InputBackground, PipLayer } from '../../shared/engine/state';
 import { nfc } from '../../shared/nfc';
 import {
   type CameraAccess,
@@ -25,7 +25,9 @@ import { readVideoInputs, writeVideoInputs } from './video-inputs-file';
  * the stream's page, the operator window's LIVE picture) says whether it plays or stopped; the operator's notice
  * says it stopped while any of them says so, and goes when they all play it again. After a restart, the input
  * put back waits for the first page's word: no camera of its name on this computer, and it comes off, named in
- * the recovery notice; otherwise it stays.
+ * the recovery notice; otherwise it stays. An input put back in the picture-in-picture box is checked the same way
+ * (Session 51), from the pages' pictures of the box: not there, the box comes off, named. The box's pictures say
+ * nothing else: the stopped notice is the background's.
  */
 
 /** How long after a restart the screens have to say whether the input put back is there. */
@@ -37,10 +39,15 @@ export interface VideoInputsDeps {
   camera: CameraSystem;
   /** The background layer now. */
   background(): BackgroundLayer | null;
-  /** The video input in the picture-in-picture box now, by its id (Session 50), or null. */
-  boxInput?(): string | null;
+  /**
+   * The picture-in-picture box now (Session 50), or null: a video input in it is kept listed and followed as the
+   * background's is, and checked after a restart as the background's is (Session 51).
+   */
+  box(): PipLayer | null;
   /** Take the background off (the input put back after a restart is not on this computer now). */
   clearBackground(): void;
+  /** Take the picture-in-picture box off (the input put back in it after a restart is not on this computer now). */
+  takeOffBox(): void;
   /** An input changed in the list while it is up: the screens follow (the engine's refreshInput). */
   refresh(input: VideoInput): void;
   /** The operator window is told of every change to the list. */
@@ -63,6 +70,7 @@ const fieldsSchema = z.object({
 const reportSchema: z.ZodType<VideoInputReport> = z.object({
   inputId: z.string().min(1).max(512),
   state: z.enum(['playing', 'stopped', 'missing']),
+  box: z.boolean().optional(),
 });
 
 const CANNOT_KEEP = 'That video input cannot be kept.';
@@ -71,11 +79,26 @@ const GONE = 'That video input is no longer on this computer.';
 /** One showing of an input: the same input put up again, or on another device, is another. */
 const showingOf = (bg: InputBackground): string => `${bg.inputId}@${String(bg.startedAt)}:${bg.device}`;
 
+/** The video input in the picture-in-picture box, with its showing (the box's: another box is another), or null. */
+function boxInputOf(box: PipLayer | null): { inputId: string; name: string; showing: string } | null {
+  if (!box) return null;
+  const { source, shownAt } = box;
+  if (source.kind !== 'input') return null;
+  return {
+    inputId: source.inputId,
+    name: source.name,
+    showing: `${source.inputId}@${String(shownAt)}:${source.device}`,
+  };
+}
+
 /** Names compared as the operator reads them: any letter case, any Unicode form. */
 const sameName = (a: string, b: string): boolean => nfc(a).toLowerCase() === nfc(b).toLowerCase();
 
 const sameStatus = (a: VideoInputStatus, b: VideoInputStatus): boolean =>
   a.access === b.access && a.stopped?.inputId === b.stopped?.inputId && a.stopped?.name === b.stopped?.name;
+
+/** Where restart recovery put an input back: as the background, or in the picture-in-picture box (Session 51). */
+type Place = 'background' | 'box';
 
 interface Pending {
   showing: string;
@@ -91,9 +114,13 @@ export class VideoInputsService {
   private readonly words = new Map<number, VideoInputReport['state']>();
   private stopped: VideoInputStatus['stopped'] = null;
   private told: VideoInputStatus | null = null;
-  /** After a restart: the input put back, until a page says whether it is there. */
-  private pending: Pending | null = null;
-  private settledWith: Promise<string | null> = Promise.resolve(null);
+  /** After a restart: the input put back (the background, or in the box), until a page says whether it is there. */
+  private readonly waiting: Record<Place, Pending | null> = { background: null, box: null };
+  /** What each wait found: the input's name when it was not on this computer (taken off), else null. */
+  private readonly answers: Record<Place, Promise<string | null>> = {
+    background: Promise.resolve(null),
+    box: Promise.resolve(null),
+  };
 
   constructor(private readonly deps: VideoInputsDeps) {
     this.inputs = readVideoInputs(
@@ -145,7 +172,7 @@ export class VideoInputsService {
     const kept = this.keep(this.inputs.map((i) => (i.id === was.id ? input : i)));
     if (kept) return kept;
     const bg = this.deps.background();
-    const inBox = this.deps.boxInput?.() === input.id;
+    const inBox = this.inBox()?.inputId === input.id;
     if ((bg?.kind === 'input' && bg.inputId === input.id) || inBox) this.deps.refresh({ ...input });
     return { ok: true, view: this.view() };
   }
@@ -161,7 +188,7 @@ export class VideoInputsService {
     if (bg?.kind === 'input' && bg.inputId === input.id)
       return { ok: false, message: `“${input.name}” is on the screens: clear it first, then remove it.` };
     // In the picture-in-picture box (Session 50): the same, for the same reason.
-    if (this.deps.boxInput?.() === input.id)
+    if (this.inBox()?.inputId === input.id)
       return {
         ok: false,
         message: `“${input.name}” is in the picture-in-picture box: take it off first, then remove it.`,
@@ -196,11 +223,16 @@ export class VideoInputsService {
   report(page: number, raw: unknown): void {
     const parsed = reportSchema.safeParse(raw);
     if (!parsed.success) return;
-    const { inputId, state } = parsed.data;
+    const { inputId, state, box } = parsed.data;
+    // Of the box's picture (Session 51): heard only by its check after a restart.
+    if (box === true) {
+      this.boxSays(inputId, state);
+      return;
+    }
     const bg = this.deps.background();
     if (bg?.kind !== 'input' || bg.inputId !== inputId) return;
     this.follow();
-    const pending = this.pending;
+    const pending = this.waiting.background;
     if (pending?.showing === showingOf(bg)) {
       if (state === 'missing') {
         // Not on this computer after the restart: off the screens, and the recovery notice names it.
@@ -227,6 +259,9 @@ export class VideoInputsService {
 
   /** The show changed: follow the background (an input up, put back, replaced or cleared). */
   follow(): void {
+    // The box's input put back after a restart (Session 51): another box, or none, ends its check.
+    const box = this.waiting.box;
+    if (box && box.showing !== this.inBox()?.showing) box.done(null);
     const bg = this.deps.background();
     const showing = bg?.kind === 'input' ? showingOf(bg) : null;
     if (showing === this.following) {
@@ -238,20 +273,68 @@ export class VideoInputsService {
     this.following = showing;
     this.words.clear();
     this.stopped = null;
-    if (this.pending && this.pending.showing !== showing) this.pending.done(null);
+    const pending = this.waiting.background;
+    if (pending && pending.showing !== showing) pending.done(null);
     this.publish();
   }
 
   /**
-   * Restart recovery has just put an input back: the first page to draw it says whether it is on this computer
-   * (`settled` answers then, or after RESTORE_WAIT_MS with no word, or once something else is up).
+   * Restart recovery has just put the show back: an input it put back as the background, or in the
+   * picture-in-picture box (Session 51), waits for the first page drawing it there to say whether it is on this
+   * computer (`settled` and `boxSettled` answer then, or after RESTORE_WAIT_MS with no word, or once something
+   * else is up there).
    */
   restored(): void {
     const bg = this.deps.background();
-    if (bg?.kind !== 'input') return;
-    this.follow();
+    if (bg?.kind === 'input') {
+      this.follow();
+      this.waitFor('background', showingOf(bg), bg.name);
+    }
+    const box = this.inBox();
+    if (box) this.waitFor('box', box.showing, box.name);
+  }
+
+  /** The name of the input restart recovery put back that was not on this computer (taken off), or null. */
+  settled(): Promise<string | null> {
+    return this.answers.background;
+  }
+
+  /** The same for the input it put back in the picture-in-picture box (Session 51: the box taken off). */
+  boxSettled(): Promise<string | null> {
+    return this.answers.box;
+  }
+
+  close(): void {
+    this.waiting.background?.done(null);
+    this.waiting.box?.done(null);
+  }
+
+  /** The video input in the picture-in-picture box now (Session 50), with its showing, or null. */
+  private inBox(): ReturnType<typeof boxInputOf> {
+    return boxInputOf(this.deps.box());
+  }
+
+  /** A page says how the box's input stands: right after a restart, one not on this computer takes the box off. */
+  private boxSays(inputId: string, state: VideoInputReport['state']): void {
+    const pending = this.waiting.box;
+    const box = this.inBox();
+    if (!pending || box?.inputId !== inputId || box.showing !== pending.showing) return;
+    if (state !== 'missing') {
+      pending.done(null);
+      return;
+    }
+    this.deps.log(
+      'warn',
+      'The video input put back in the picture-in-picture box after the restart is not on this computer: taken off',
+    );
+    pending.done(pending.name);
+    this.deps.takeOffBox();
+  }
+
+  /** Wait for the first page's word on the input put back in `place` after a restart, at most RESTORE_WAIT_MS. */
+  private waitFor(place: Place, showing: string, name: string): void {
     let answer: (gone: string | null) => void = () => undefined;
-    this.settledWith = new Promise((resolve) => {
+    this.answers[place] = new Promise((resolve) => {
       answer = resolve;
     });
     const schedule =
@@ -264,28 +347,19 @@ export class VideoInputsService {
       });
     let cancel: () => void = () => undefined;
     const pending: Pending = {
-      showing: showingOf(bg),
-      name: bg.name,
+      showing,
+      name,
       done: (gone) => {
-        if (this.pending !== pending) return;
-        this.pending = null;
+        if (this.waiting[place] !== pending) return;
+        this.waiting[place] = null;
         cancel();
         answer(gone);
       },
     };
-    this.pending = pending;
+    this.waiting[place] = pending;
     cancel = schedule(RESTORE_WAIT_MS, () => {
       pending.done(null);
     });
-  }
-
-  /** The name of the input restart recovery put back that was not on this computer (taken off), or null. */
-  settled(): Promise<string | null> {
-    return this.settledWith;
-  }
-
-  close(): void {
-    this.pending?.done(null);
   }
 
   /** A name and a device as they are kept, or why not. */

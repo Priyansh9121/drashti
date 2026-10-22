@@ -2,7 +2,8 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { BackgroundLayer, InputBackground } from '../../shared/engine/state';
+import type { BackgroundLayer, InputBackground, PipLayer } from '../../shared/engine/state';
+import { DEFAULT_PIP_PLACE } from '../../shared/pip';
 import type { CameraAccess, VideoInput, VideoInputsView, VideoInputStatus } from '../../shared/video-inputs';
 import type { CameraSystem } from './camera';
 import { VIDEO_INPUTS_FILE } from './video-inputs-file';
@@ -23,8 +24,9 @@ function setup(options: { access?: CameraAccess } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'drashti-video-inputs-'));
   dirs.push(dir);
   let background: BackgroundLayer | null = null;
-  // The video input in the picture-in-picture box (Session 50), by its id.
-  let boxInput: string | null = null;
+  // The picture-in-picture box (Session 50), holding a video input or not, and how often it was taken off.
+  let box: PipLayer | null = null;
+  let takenOff = 0;
   let access: CameraAccess = options.access ?? 'granted';
   const views: VideoInputsView[] = [];
   const statuses: VideoInputStatus[] = [];
@@ -46,10 +48,15 @@ function setup(options: { access?: CameraAccess } = {}) {
       userData: dir,
       camera,
       background: () => background,
-      boxInput: () => boxInput,
+      box: () => box,
       clearBackground: () => {
         cleared++;
         background = null;
+        service?.follow();
+      },
+      takeOffBox: () => {
+        takenOff++;
+        box = null;
         service?.follow();
       },
       refresh: (input) => refreshed.push(input),
@@ -90,6 +97,7 @@ function setup(options: { access?: CameraAccess } = {}) {
     waits,
     up,
     cleared: () => cleared,
+    takenOff: () => takenOff,
     setBackground: (layer: BackgroundLayer | null) => {
       background = layer;
       service.follow();
@@ -97,8 +105,22 @@ function setup(options: { access?: CameraAccess } = {}) {
     setAccess: (a: CameraAccess) => {
       access = a;
     },
-    setBox: (id: string | null) => {
-      boxInput = id;
+    /** This input in the box, up from `shownAt` (the engine tells the service of each change), or none. */
+    setBox: (input: VideoInput | null, shownAt = 6000) => {
+      box = input
+        ? {
+            source: { kind: 'input', inputId: input.id, name: input.name, device: input.device },
+            place: DEFAULT_PIP_PLACE,
+            swapped: false,
+            shownAt,
+          }
+        : null;
+      service.follow();
+    },
+    /** Anything else in the box (the slides). */
+    setBoxSlides: () => {
+      box = { source: { kind: 'slides' }, place: DEFAULT_PIP_PLACE, swapped: false, shownAt: 7000 };
+      service.follow();
     },
   };
 }
@@ -211,7 +233,7 @@ describe('a video input in the picture-in-picture box (Session 50, section 8 rev
   it('is followed when it changes, and never removed while in the box, as the background’s is', () => {
     const { service, refreshed, setBox } = setup();
     const one = added(service.add(fields), 'Placeholder input');
-    setBox(one.id);
+    setBox(one);
     expect(service.update(one.id, { name: 'Placeholder box' }).ok).toBe(true);
     expect(refreshed).toEqual([{ ...one, name: 'Placeholder box' }]);
     expect(service.remove(one.id)).toEqual({
@@ -346,5 +368,141 @@ describe('after a restart (restart recovery put the input back)', () => {
     none.service.restored();
     expect(await none.service.settled()).toBeNull();
     expect(none.waits).toEqual([]);
+  });
+});
+
+describe('after a restart, a video input put back in the picture-in-picture box (Session 51)', () => {
+  it('a screen with no camera of that name: the box comes off, and the recovery notice names it', async () => {
+    const { service, setBox, takenOff, cleared, waits } = setup();
+    const one = added(service.add(fields), 'Placeholder input');
+    setBox(one);
+    service.restored();
+    let answer: string | null | undefined;
+    void service.boxSettled().then((gone) => {
+      answer = gone;
+    });
+    await Promise.resolve();
+    expect(answer).toBeUndefined();
+    expect(waits.map((w) => w.ms)).toEqual([RESTORE_WAIT_MS]);
+    // What a page says of the background's picture is not the box's.
+    service.report(PAGE_OUTPUT, { inputId: one.id, state: 'missing' });
+    expect(takenOff()).toBe(0);
+    service.report(PAGE_OUTPUT, { inputId: one.id, state: 'missing', box: true });
+    expect(await service.boxSettled()).toBe('Placeholder input');
+    expect(answer).toBe('Placeholder input');
+    expect(takenOff()).toBe(1);
+    expect(waits[0]?.cancelled).toBe(true);
+    // The background was not the input: nothing of it comes off, and its own answer names nothing.
+    expect(cleared()).toBe(0);
+    expect(await service.settled()).toBeNull();
+    // The box says nothing of its own to the operator's stopped notice (that is the background's).
+    expect(service.status().stopped).toBeNull();
+  });
+
+  it('there (playing, or stopped by another app): it stays, and a later page with no such camera never takes it off', async () => {
+    for (const state of ['playing', 'stopped'] as const) {
+      const { service, setBox, takenOff } = setup();
+      const one = added(service.add(fields), 'Placeholder input');
+      setBox(one);
+      service.restored();
+      service.report(PAGE_LIVE, { inputId: one.id, state, box: true });
+      service.report(PAGE_OUTPUT, { inputId: one.id, state: 'missing', box: true });
+      expect(await service.boxSettled()).toBeNull();
+      expect(takenOff()).toBe(0);
+      expect(service.status().stopped).toBeNull();
+    }
+  });
+
+  it('no screen says, another input is said, or the operator changed the box first: it stays as the operator has it', async () => {
+    const waited = setup();
+    const one = added(waited.service.add(fields), 'Placeholder input');
+    const two = added(waited.service.add({ ...fields, name: 'Placeholder mixer' }), 'Placeholder mixer');
+    waited.setBox(one);
+    waited.service.restored();
+    // Another input than the box's: not its word.
+    waited.service.report(PAGE_LIVE, { inputId: two.id, state: 'missing', box: true });
+    expect(waited.takenOff()).toBe(0);
+    waited.waits[0]?.run();
+    expect(await waited.service.boxSettled()).toBeNull();
+    waited.service.report(PAGE_LIVE, { inputId: one.id, state: 'missing', box: true });
+    expect(waited.takenOff()).toBe(0);
+
+    // Taken off, another input in the box, the slides in it, or the same input up again (another showing).
+    const changes: ((s: ReturnType<typeof setup>, input: VideoInput) => void)[] = [
+      (s) => {
+        s.setBox(null);
+      },
+      (s, input) => {
+        s.setBox({ ...input, id: 'another-input' });
+      },
+      (s) => {
+        s.setBoxSlides();
+      },
+      (s, input) => {
+        s.setBox(input, 9000);
+      },
+    ];
+    for (const change of changes) {
+      const changed = setup();
+      const three = added(changed.service.add(fields), 'Placeholder input');
+      changed.setBox(three);
+      changed.service.restored();
+      change(changed, three);
+      expect(await changed.service.boxSettled()).toBeNull();
+      changed.service.report(PAGE_LIVE, { inputId: three.id, state: 'missing', box: true });
+      expect(changed.takenOff()).toBe(0);
+    }
+
+    // Nothing in the box: nothing to wait for.
+    const none = setup();
+    none.setBoxSlides();
+    none.service.restored();
+    expect(await none.service.boxSettled()).toBeNull();
+    expect(none.waits).toEqual([]);
+  });
+
+  it('the background’s and the box’s are each checked on their own, the same input or two', async () => {
+    // Two inputs: the box's is not there, the background's is.
+    const two = setup();
+    const one = added(two.service.add(fields), 'Placeholder input');
+    const mixer = added(
+      two.service.add({ name: 'Placeholder mixer', device: 'Placeholder capture', fit: 'fill' }),
+      'Placeholder mixer',
+    );
+    two.up(one);
+    two.setBox(mixer);
+    two.service.restored();
+    expect(two.waits.map((w) => w.ms)).toEqual([RESTORE_WAIT_MS, RESTORE_WAIT_MS]);
+    two.service.report(PAGE_LIVE, { inputId: one.id, state: 'playing' });
+    two.service.report(PAGE_LIVE, { inputId: mixer.id, state: 'missing', box: true });
+    expect(await two.service.settled()).toBeNull();
+    expect(await two.service.boxSettled()).toBe('Placeholder mixer');
+    expect(two.cleared()).toBe(0);
+    expect(two.takenOff()).toBe(1);
+
+    // One input both full and in the box, not there: each place hears its own pictures, and both come off.
+    const same = setup();
+    const input = added(same.service.add(fields), 'Placeholder input');
+    same.up(input);
+    same.setBox(input);
+    same.service.restored();
+    same.service.report(PAGE_OUTPUT, { inputId: input.id, state: 'missing' });
+    expect(await same.service.settled()).toBe('Placeholder input');
+    expect(same.takenOff()).toBe(0);
+    same.service.report(PAGE_OUTPUT, { inputId: input.id, state: 'missing', box: true });
+    expect(await same.service.boxSettled()).toBe('Placeholder input');
+    expect(same.cleared()).toBe(1);
+    expect(same.takenOff()).toBe(1);
+  });
+
+  it('quitting ends the wait: nothing is taken off', async () => {
+    const { service, setBox, takenOff } = setup();
+    const one = added(service.add(fields), 'Placeholder input');
+    setBox(one);
+    service.restored();
+    service.close();
+    expect(await service.boxSettled()).toBeNull();
+    service.report(PAGE_LIVE, { inputId: one.id, state: 'missing', box: true });
+    expect(takenOff()).toBe(0);
   });
 });

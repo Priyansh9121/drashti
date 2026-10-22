@@ -260,7 +260,8 @@ const saying = new Map<string, number>();
 /**
  * Say how the input up now stands on this page (it plays, it stopped, or no camera of its name is here): once for
  * each change of each showing (`showing`: the input and when it went up), however many pictures of it the page
- * draws. A picture going away (dissolving out) says nothing.
+ * draws. A picture going away (dissolving out) says nothing. `box`: said of the picture-in-picture box's picture
+ * (Session 51), which only answers restart recovery's check.
  */
 export function useInputReport(
   inputId: string,
@@ -268,6 +269,7 @@ export function useInputReport(
   state: InputCaptureState,
   on: boolean,
   reason: StopReason | null = null,
+  box = false,
 ): void {
   const report = on ? reportOf(state, reason) : null;
   useEffect(() => {
@@ -276,7 +278,7 @@ export function useInputReport(
     if (said.get(showing) !== report) {
       said.set(showing, report);
       void videoInputsBridge()
-        ?.report({ inputId, state: report })
+        ?.report({ inputId, state: report, ...(box ? { box } : {}) })
         .catch(() => null);
     }
     return () => {
@@ -288,5 +290,5 @@ export function useInputReport(
       saying.delete(showing);
       said.delete(showing);
     };
-  }, [inputId, showing, report]);
+  }, [inputId, showing, report, box]);
 }
