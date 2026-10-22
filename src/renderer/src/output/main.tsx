@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import '../render/fonts.css';
 import '../styles/app.css';
 import { groupLookIn } from '../../../shared/looks';
+import { showsHall } from '../../../shared/stage-layouts';
 import { connectEngine, useEngine } from '../engine/engine-store';
 import { engineNow, holdClock } from '../render/clock';
 import { preloadFonts } from '../render/fonts';
@@ -233,7 +234,7 @@ function Output() {
           <ClockStyleContext.Provider value={context?.clockStyle ?? null}>
             <PlacedInParent content={canvas} mode={scaling} className="absolute inset-0">
               {stage ? (
-                <StageScreen state={state} look={look} canvas={canvas} />
+                <StageScreen state={state} look={look} canvas={canvas} hall={context?.hall ?? null} />
               ) : (
                 <Scene state={state} canvas={canvas} scaling={scaling} look={look} matte={matte} />
               )}
@@ -242,8 +243,10 @@ function Output() {
           </ClockStyleContext.Provider>
         </SceneBoundary>
       )}
-      {/* Stage screens show no pictures, so they load none ahead. */}
-      {state && !stage && <Preloader next={state.next} pictures={state.pictures} />}
+      {/* Stage screens show no pictures, so they load none ahead: but for a layout's audience picture (Session 50). */}
+      {state && (!stage || showsHall(look.stageLayout)) && (
+        <Preloader next={state.next} pictures={state.pictures} />
+      )}
       {context && ready && <TestCard context={context} languages={look.languages} />}
       <IdentifyOverlay />
     </div>

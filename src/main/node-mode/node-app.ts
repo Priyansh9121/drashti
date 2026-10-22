@@ -23,6 +23,7 @@ import {
 import { mediaWantListSchema, nodeNameFrom, nodeScreenListSchema } from '../../shared/nodes-schema';
 import type { DisplayInfo, OutputContext, OutputReport, ScreenConfig } from '../../shared/screens';
 import { missingFontsIn } from '../../shared/screens';
+import { hallPicture } from '../../shared/stage-layouts';
 import type { CrashFilesChoice, DiagnosticsInput } from '../diagnostics';
 import { saveNodeDiagnostics } from '../diagnostics';
 import { handle } from '../ipc/handle';
@@ -334,6 +335,8 @@ export function startNode(deps: NodeAppDeps): NodeAppHandle {
         : null,
       clockOffsetMs: outputOffset(),
       ...(mainClock ? { clockStyle: mainClock } : {}),
+      // A stage layout's audience picture box (Session 50): this node's own first audience screen's picture.
+      hall: hallPicture((paired?.screens ?? []).map((n) => ({ id: n.groupId, role: n.role, screens: [n] }))),
     };
   };
   const sendContexts = () => {
