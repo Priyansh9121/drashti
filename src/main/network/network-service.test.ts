@@ -98,7 +98,18 @@ function setup(options: { locked?: boolean; lockEverything?: boolean } = {}) {
       messages: () => [{ id: 'm1', name: 'Car', template: 'Car {plate} please move', fields: {} }],
       logo: () => ({ id: 'logo', name: 'Placeholder logo', elements: [] }),
       mediaSource: () => null,
-      stage: () => ({ groupId: 'stage-group', languages: ['gu'] }),
+      // The hall's picture for a layout's audience box (Session 51), said off while Main's Audience is off.
+      stage: () => ({
+        groupId: 'stage-group',
+        languages: ['gu'],
+        hall: {
+          groupId: 'hall-group',
+          canvasWidth: 1280,
+          canvasHeight: 720,
+          scaling: 'fill',
+          ...(switches.audience ? {} : { off: true }),
+        },
+      }),
       hall: () => ({ groupId: 'hall-group' }),
       switches: () => ({ ...switches }),
       looks: () => [
@@ -495,6 +506,30 @@ describe('the network in the main process', () => {
       body: { ok: false, message: SIMPLE_MODE_REFUSAL },
     });
     expect(DEVICE_KINDS).toEqual(['remote', 'stage', 'announcements']);
+  });
+
+  // Session 51 (S4-4): a tablet's stage display draws a layout's audience picture box as Main's stage screens do.
+  it('tells a stage display the hall’s picture for a layout’s audience box, said off with Audience off', () => {
+    const { service, switches } = setup();
+    const stage = service.pairForCheck('stage', 'Placeholder tablet').id;
+    const answer = () => service.answer({ address: PHONE, deviceId: stage, op: 'stage', args: {} });
+    const hall = { groupId: 'hall-group', canvasWidth: 1280, canvasHeight: 720, scaling: 'fill' };
+    expect(answer()).toEqual({
+      status: 200,
+      body: {
+        ok: true,
+        groupId: 'stage-group',
+        languages: ['gu'],
+        clock: { locale: 'en-GB', timeZone: 'Europe/London' },
+        hall,
+      },
+    });
+    switches.audience = false;
+    expect(answer()).toMatchObject({ status: 200, body: { hall: { ...hall, off: true } } });
+    // Its pictures are the remote's small previews (the network server serves them, by the same rules), and the
+    // remote's own hall stays the remote's.
+    expect(DEVICE_OPS.preview).toEqual(['remote', 'stage']);
+    expect(service.answer({ address: PHONE, deviceId: stage, op: 'hall', args: {} }).status).toBe(403);
   });
 
   it('tells a Remote which of Main’s screens are off, with the hall, and gives no way to turn them (Session 50)', () => {

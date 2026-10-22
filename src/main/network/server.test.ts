@@ -383,6 +383,22 @@ describe('the network server', () => {
     expect(big.status).toBe(413);
   });
 
+  // Session 51 (S4-4): a tablet's stage display draws the audience picture box from the same small previews as a
+  // remote's live picture, under the same rules (a paired device's token, a media id); an announcements poster none.
+  it('gives a stage display the same small previews as a remote, and an announcements poster none', async () => {
+    const { port } = await start();
+    const preview = (headers: Record<string, string>) =>
+      call(port, '/api/v1/media/placeholder-media/preview', { headers });
+    // The stand-in main process knows no media: past the device's kind, there is no such item.
+    for (const token of [REMOTE_TOKEN, STAGE_TOKEN]) {
+      const answer = await preview(bearer(token));
+      expect(answer.status, token).toBe(404);
+      expect(answer.body).toContain('There is no such media item.');
+    }
+    expect((await preview(bearer(ANNOUNCE_TOKEN))).status).toBe(403);
+    expect((await preview({})).status).toBe(401);
+  });
+
   it('pairs with the right code, and refuses an address after five wrong ones', async () => {
     const { port } = await start();
     const pair = (code: string) =>

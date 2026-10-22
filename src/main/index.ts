@@ -1551,6 +1551,14 @@ function start(): void {
   const outputNames = new Map<string, string>();
   /** Until when the setup wizard's test slide shows on every output (ms since the epoch). */
   let testCardUntil = 0;
+  /**
+   * The hall's picture as this computer's stage screens draw it in a layout's audience picture box (Session 50): the
+   * first audience group shown here, said off while Audience is off (Session 51). Its nodes' stage screens and a
+   * tablet's stage display are told the same.
+   */
+  const hallHere = () => hallPicture(screenRepo.groups(), manager.switches().audience);
+  /** The hall as a tablet's stage display was last told it, to tell it again when it changes (Session 51). */
+  let hallTold = '';
   const contextFor = (screenId: string): OutputContext | null => {
     const s = screenRepo.screen(screenId);
     if (!s) return null;
@@ -1576,8 +1584,9 @@ function start(): void {
           }
         : null,
       clockStyle: mainClockStyle(),
-      // A stage layout's audience picture box (Session 50): the first audience group's picture.
-      hall: hallPicture(screenRepo.groups()),
+      // A stage layout's audience picture box (Session 50): the first audience group's picture, said off with
+      // Audience off (Session 51; the switch's reconcile sends every output its context again).
+      hall: hallHere(),
     };
   };
   // ---- hung, stale and given-up outputs (Session 23; outputs/heartbeat.ts, watchdog.ts) ----------
@@ -1727,6 +1736,13 @@ function start(): void {
       );
       // Nodes follow their screens' settings (groups, canvases, names) as they change.
       nodeService?.screensChanged();
+      // A tablet's stage display draws the hall in a layout's audience picture box (Session 51): it reads it again
+      // when it changed (a screen given to the hall, its canvas, Audience off or on).
+      const hall = JSON.stringify(hallHere());
+      if (hall !== hallTold) {
+        hallTold = hall;
+        net.hint('screens');
+      }
       // Sharpened copies follow the screens' size (Session 26g).
       void sharpened.screensChanged();
     },
@@ -3587,7 +3603,8 @@ function start(): void {
         }),
       stage: () => {
         const groupId = screenRepo.firstGroup('stage');
-        return { groupId, languages: groupId ? looks.liveLanguages(groupId) : null };
+        // A layout's audience picture box on a tablet (Session 51): the hall as this computer's stage screens draw it.
+        return { groupId, languages: groupId ? looks.liveLanguages(groupId) : null, hall: hallHere() };
       },
       hall: () => ({ groupId: screenRepo.firstGroup('audience') }),
       // Audience and Stage (Session 50): a Remote says which are off.
@@ -3703,6 +3720,8 @@ function start(): void {
     },
     version: appVersion(),
     clockStyle: mainClockStyle,
+    // A node with no audience screen of its own draws this hall in a stage layout's box (Session 51).
+    hall: hallHere,
     // Listening on this computer only (tests, the performance check), this computer is the only address.
     addresses: () =>
       networkLocalOnly || perfTest

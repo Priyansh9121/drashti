@@ -43,6 +43,7 @@ import type { ScreenSwitches } from '../../shared/screen-switches';
 import type { SearchResult } from '../../shared/search';
 import type { PassageResult } from '../../shared/shastra';
 import { referenceInputSchema } from '../../shared/shastra';
+import type { HallPicture } from '../../shared/stage-layouts';
 import type { DeviceRepo, DeviceRow } from '../db/devices';
 import { localInterfaceAddresses } from './addresses';
 import type { NetworkWorker } from './network-worker';
@@ -80,9 +81,11 @@ export interface NetworkReads {
   mediaSource(mediaId: string): PreviewSource | null;
   /**
    * The stage display's group (the first stage group, or null when there is
-   * none) and its languages in the live Look (null: all of them).
+   * none) and its languages in the live Look (null: all of them); and the hall's
+   * picture for a layout's audience picture box, as this computer's stage screens
+   * draw it, said off with Audience off (Session 51).
    */
-  stage(): { groupId: string | null; languages: Lang[] | null };
+  stage(): { groupId: string | null; languages: Lang[] | null; hall: HallPicture | null };
   /** The hall's group (the first audience group, or null when there is none): a remote shows the slide as it does. */
   hall(): { groupId: string | null };
   /** Main's Audience and Stage (Session 50): a Remote says which are off, and cannot turn them. */
@@ -639,6 +642,7 @@ export class NetworkService implements EngineTransport {
           languages: stage.languages,
           groupId: stage.groupId,
           clock: this.deps.reads.clockStyle(),
+          hall: stage.hall,
         });
       }
       case 'hall':
