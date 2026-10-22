@@ -1348,13 +1348,14 @@ function start(): void {
       },
     }),
     background: () => engine.current.layers.background,
-    // The camera in the picture-in-picture box (Session 50): followed and kept listed as the background's is.
-    boxInput: () => {
-      const source = engine.current.layers.pip?.source;
-      return source?.kind === 'input' ? source.inputId : null;
-    },
+    // The camera in the picture-in-picture box (Session 50): followed and kept listed as the background's is, and
+    // checked after a restart as the background's is (Session 51).
+    box: () => engine.current.layers.pip,
     clearBackground: () => {
       engine.dispatch({ type: 'clearLayer', layer: 'background' });
+    },
+    takeOffBox: () => {
+      engine.dispatch({ type: 'clearLayer', layer: 'pip' });
     },
     refresh: (input) => {
       engine.refreshInput(input);
@@ -2013,8 +2014,9 @@ function start(): void {
   const saved = startup.putBack;
   if (saved) {
     const put = engine.restore(saved);
-    // A video input put back (Session 50): the first screen to draw it says whether it is on this computer.
-    if (put.input !== null) inputs.restored();
+    // A video input put back (Session 50; in the picture-in-picture box too, Session 51): the first screen to draw it
+    // says whether it is on this computer.
+    inputs.restored();
     const name = put.slide && saved.slide ? presentations.get(saved.slide.presentationId)?.name : undefined;
     recovery = {
       savedAt: saved.savedAt,
@@ -2848,6 +2850,9 @@ function start(): void {
     // it is on this computer (8 s at most), and names it when it was not (it has come off the screens).
     const gone = await inputs.settled();
     if (gone !== null && recovery) recovery = { ...recovery, input: null, inputGone: gone };
+    // One put back in the picture-in-picture box (Session 51): the same, the box taken off.
+    const boxGone = await inputs.boxSettled();
+    if (boxGone !== null && recovery) recovery = { ...recovery, pip: false, pipInputGone: boxGone };
     return recovery;
   });
   handle(IPC.app.startNotice, (e) => {

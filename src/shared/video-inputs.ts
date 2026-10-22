@@ -45,6 +45,12 @@ export type CameraAccess = 'granted' | 'denied' | 'not-determined' | 'restricted
 export interface VideoInputReport {
   inputId: string;
   state: 'playing' | 'stopped' | 'missing';
+  /**
+   * Said of the picture-in-picture box's picture of it (Session 51), not the background's: heard only right after a
+   * restart, when one not there takes the box off and the recovery notice names it. The stopped notice stays the
+   * background's.
+   */
+  box?: boolean;
 }
 
 /** How the video input on the screens stands, for the operator's notice. */
