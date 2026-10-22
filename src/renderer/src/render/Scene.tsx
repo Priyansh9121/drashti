@@ -476,6 +476,8 @@ export const Scene = memo(function Scene({
           languages={look.languages}
           slides="designed"
           movement={look.movement}
+          // A Timer on the slide in the box counts from the state drawn, as the main picture's does (Session 50).
+          timers={state.timers}
         />
       );
     const box = boxRun?.layer;
