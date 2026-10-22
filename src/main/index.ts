@@ -2040,6 +2040,7 @@ function start(): void {
       pipWindow: put.pipWindow,
       input: put.input,
       inputGone: put.inputGone,
+      pipInputGone: put.pipInputGone ?? null,
     };
     // Ids and counts only in the log (the notice itself names the presentation, and a window: its name can
     // be anything, an inbox's say, Session 48; the picture-in-picture box's too, and a video input, Session 50).
@@ -2049,6 +2050,7 @@ function start(): void {
       pipWindow: boxWindowName,
       input: inputName,
       inputGone: inputNotListed,
+      pipInputGone: boxInputNotListed,
       ...alsoBack
     } = put;
     log.warn(
@@ -2064,6 +2066,7 @@ function start(): void {
         boxWindowNotPutBack: boxWindowName !== null,
         inputPutBack: inputName !== null,
         inputNotListed: inputNotListed !== null,
+        boxInputNotListed: boxInputNotListed !== undefined,
       })}`,
     );
   }

@@ -47,6 +47,11 @@ export interface RecoveryNotice {
   input?: string | null;
   /** A video input that was the background and was not there after the restart (Session 50), by name: only said. */
   inputGone?: string | null;
+  /**
+   * A video input that was in the picture-in-picture box and was not there after the restart (Session 51), by name:
+   * the box was not put back (or came off again), only said.
+   */
+  pipInputGone?: string | null;
 }
 
 function joinParts(parts: string[]): string {
@@ -118,5 +123,10 @@ export function recoveryText(notice: RecoveryNotice): string {
     inputGone === null
       ? ''
       : ` The video input “${inputGone}” was not there after the restart, so it was not put back.`;
-  return `${put}${gone}${notBack}${boxNotBack}${notThere}`;
+  const boxInputGone = notice.pipInputGone ?? null;
+  const boxNotThere =
+    boxInputGone === null
+      ? ''
+      : ` The video input “${boxInputGone}” in the picture-in-picture box was not there after the restart, so the box was not put back.`;
+  return `${put}${gone}${notBack}${boxNotBack}${notThere}${boxNotThere}`;
 }
