@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DisplayInfo, ScreenGroupConfig, ScreensSnapshot, ScreenStatus } from '../../../shared/screens';
 
 /*
@@ -63,6 +63,21 @@ const after: ScreensSnapshot = {
 /** As it was before: nothing shown anywhere. */
 const before: ScreensSnapshot = { ...after, groups: [group('stream', 'stream', [])], status: [] };
 
+/** The main process, as far as the wizard asks it after going back: where the controls are now. */
+function controlsNowOn(displayId: number): void {
+  (globalThis as { window?: unknown }).window = {
+    drashti: {
+      setup: {
+        state: () => Promise.resolve({ operatorDisplayId: displayId, controlsDisplayId: displayId }),
+      },
+    },
+  };
+}
+
+afterEach(() => {
+  delete (globalThis as { window?: unknown }).window;
+});
+
 /** Fresh stores (each connects once per page). */
 async function fresh() {
   vi.resetModules();
@@ -106,10 +121,14 @@ describe('Set Up Screens… and Keep these screens?', () => {
     setup.useSetup.setState({
       open: true,
       step: setup.STEPS.indexOf('Finish'),
+      operatorDisplayId: 1,
+      controlsDisplayId: 1,
       outputs: chosen,
       applied: { 1: 'audience', 2: 'audience', 3: 'stage' },
       finished: { tested: 3 },
     });
+    // The controls moved off the output put on their display (to display 3, free then), and stay there.
+    controlsNowOn(3);
     keep.useKeepScreens.setState({ pending: { deadline: 1, coversControls: true } });
     // Nothing pressed: the main process put the screens back, then said the question went.
     screens.useScreens.setState({ snapshot: before });
@@ -120,6 +139,10 @@ describe('Set Up Screens… and Keep these screens?', () => {
       wentBack: true,
       applied: null,
       outputs: chosen,
+    });
+    // Marked where the controls are now.
+    await vi.waitFor(() => {
+      expect(setup.useSetup.getState()).toMatchObject({ operatorDisplayId: 3, controlsDisplayId: 3 });
     });
     // Choosing again puts the note away.
     setup.chooseOutput(1, { use: 'none' });
