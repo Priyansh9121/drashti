@@ -16,8 +16,11 @@ import type { ScreenStatus, ScreensResult, ScreensSnapshot } from '../../shared/
 /** What each display shows: for each display with an output on it, which screen, of which group and role. */
 export type Placed = ReadonlyMap<string, string>;
 
-/** How a question ended: kept, gone back (Go back, Esc), or gone back by itself (nothing pressed in time). */
-export type KeepEnding = 'kept' | 'went-back' | 'went-back-by-itself';
+/**
+ * How a question ended: kept, gone back (Go back, Esc), gone back by itself (nothing pressed in time), or a Go back
+ * that failed (the screens stay as changed, and the question goes all the same).
+ */
+export type KeepEnding = 'kept' | 'went-back' | 'went-back-by-itself' | 'could-not-go-back';
 
 export interface KeepScreensDeps<S> {
   /** The screen setup now, to put back exactly. */
@@ -32,7 +35,7 @@ export interface KeepScreensDeps<S> {
   snapshot(): ScreensSnapshot;
   /** The change waiting for an answer changed (null: answered, or gone back). */
   changed(pending: PendingScreens | null): void;
-  /** A question ended (the operator is told when the screens went back). */
+  /** A question ended: the operator is told when the screens went back, or could not (whoever answered). */
   ended?(how: KeepEnding): void;
   /** False: never ask (tests that are not about it, DRASHTI_TEST_KEEP_SCREENS=0). */
   asks?: boolean;
@@ -67,6 +70,10 @@ export function coveringScreens(status: readonly ScreenStatus[], controlsDisplay
     .filter((st) => (st.state === 'showing' || st.state === 'stopped') && st.displayId === controlsDisplayId)
     .map((st) => st.screenId);
 }
+
+/** What the operator is told when going back failed (the screens stay as changed). */
+export const COULD_NOT_GO_BACK =
+  'Drashti could not put the screens back as they were. Change them in Screens.';
 
 interface Waiting<S> {
   /** The screens as they were before the first change it asks about. */
@@ -146,26 +153,25 @@ export class KeepScreens<S> {
     waiting.cancel();
     this.waiting = null;
     let result: ScreensResult;
+    let how: KeepEnding = keep ? 'kept' : byItself ? 'went-back-by-itself' : 'went-back';
     try {
       result = keep ? { ok: true, snapshot: this.deps.snapshot() } : this.deps.restore(waiting.before, false);
     } catch (error) {
       this.log(`could not go back (${error instanceof Error ? error.message : String(error)})`);
-      result = {
-        ok: false,
-        message: 'Drashti could not put the screens back as they were. Change them in Screens.',
-      };
+      how = 'could-not-go-back';
+      result = { ok: false, message: COULD_NOT_GO_BACK };
     }
     // After the screens are back: the operator window has them as they were by the time the question goes.
     this.deps.changed(null);
-    const how: KeepEnding = keep ? 'kept' : byItself ? 'went-back-by-itself' : 'went-back';
-    this.log(
-      how === 'kept'
-        ? 'kept'
-        : how === 'went-back'
-          ? 'went back, as asked'
-          : 'nothing pressed, so it went back',
-    );
-    if (result.ok) this.deps.ended?.(how);
+    if (how !== 'could-not-go-back')
+      this.log(
+        how === 'kept'
+          ? 'kept'
+          : how === 'went-back'
+            ? 'went back, as asked'
+            : 'nothing pressed, so it went back',
+      );
+    this.deps.ended?.(how);
     return result;
   }
 
