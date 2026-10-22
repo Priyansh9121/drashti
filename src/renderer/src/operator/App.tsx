@@ -46,6 +46,9 @@ import { ShowOnOffer } from '../screens/ShowOn';
 import { EngineUnread } from './EngineUnread';
 import { NoSoundNotice } from '../stream/NoSoundNotice';
 import { StreamPageStopped } from '../stream/StreamPageStopped';
+import { LiveWindowNotice } from '../live-window/LiveWindowNotice';
+import { WindowPicker } from '../live-window/WindowPicker';
+import { connectLiveWindow } from '../live-window/live-window-store';
 import { GuidesDialog } from '../help/GuidesDialog';
 import { showGuides } from '../help/guides-store';
 import { LivePreview } from './LivePreview';
@@ -104,6 +107,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectEngine();
     connectScreens();
     connectStream();
+    connectLiveWindow();
     connectNetwork();
     connectAnnouncements();
     watchLibrary();
@@ -286,6 +290,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <ShowOnOffer />
       <NoSoundNotice />
       <StreamPageStopped />
+      <LiveWindowNotice />
       <RecoveryBanner />
       {practising ? (
         <PracticeShow platform={platform} run={run} />
@@ -386,6 +391,7 @@ function ProApp({ info }: { info: AppInfo | null }) {
       <SlideEditor platform={platform} />
       <ThemesPanel />
       <AppearanceDialog />
+      <WindowPicker />
       {streamOpen && <StreamPanel />}
       {networkOpen && <NetworkPanel />}
       {announcementsOpen && <AnnouncementsPanel />}

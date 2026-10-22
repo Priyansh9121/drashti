@@ -1029,6 +1029,8 @@ function start(): void {
     log: permissionLog,
     // MIDI controllers: the operator window's page only (never SysEx).
     isOperator: (contents) => contents !== null && contents.id === operatorWindow?.webContents.id,
+    // A screen's picture (Session 48): a screen's page that just asked for the window up as the background.
+    mayCapture: (contents) => contents !== null && (liveWindows?.mayCapture(contents.mainFrame) ?? false),
   });
   // A screen's picture (getDisplayMedia, Session 48): only what the main process decides for that page.
   applyCaptureRules(session.defaultSession, {
@@ -4218,6 +4220,7 @@ function start(): void {
     return null;
   });
   handle(IPC.liveWindow.status, () => shownWindows.current());
+
   // The screens' pages only: an output, the stream's page, and the operator window's pictures of them.
   const screenPage = (e: IpcMainInvokeEvent) =>
     fromOperator(e) || manager.screenIdFor(e.sender.id) !== undefined || streaming.isProgram(e.sender);
@@ -4573,6 +4576,7 @@ function start(): void {
           sendToOperator(IPC.setup.open, { at: Date.now() });
         });
     },
+
     backUpLibrary: () => {
       if (mode === 'pro')
         requireAdmin('back up the library', () => {

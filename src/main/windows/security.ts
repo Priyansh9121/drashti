@@ -13,6 +13,12 @@ export interface PermissionRules {
    * use MIDI (a controller mapped to Next, Back, Clear all...), never SysEx.
    */
   isOperator?(contents: WebContents | null): boolean;
+  /**
+   * Only for the default session (Session 48): whether a page may ask for a screen's picture now (a screen's
+   * page that asked for the window up as the background, or the window for Zoom). What it is given, if
+   * anything, the session's capture rules decide (src/main/live-window/capture-rules.ts).
+   */
+  mayCapture?(contents: WebContents | null): boolean;
   /** Told about every permission a page checks or asks for (DRASHTI_LOG_PERMISSIONS=1). */
   log?(line: string): void;
 }
@@ -58,6 +64,19 @@ export function permissionCheckAllowed(
 }
 
 /**
+ * A request for a screen's picture (getDisplayMedia): Chromium asks it as 'media' naming no devices, where a
+ * camera names 'video' and a microphone 'audio' (Session 48, measured). Allowed only to a page that may
+ * capture now; never a camera or a microphone.
+ */
+export function screenPictureAllowed(
+  permission: string,
+  mediaTypes: readonly string[] | null,
+  mayCapture: boolean,
+): boolean {
+  return permission === 'media' && mediaTypes !== null && mediaTypes.length === 0 && mayCapture;
+}
+
+/**
  * Permissions: every request (camera, microphone, notifications, ...) is
  * refused on every page, and every check fails, except the one the audio
  * player needs to choose a sound output. The audio player has a session of
@@ -67,8 +86,12 @@ export function permissionCheckAllowed(
 export function applySessionSecurity(session: Session, rules: PermissionRules = {}): void {
   session.setPermissionRequestHandler((contents, permission, callback, details) => {
     const url = details.requestingUrl || contents.getURL();
-    // MIDI for the operator window's own page, never SysEx; nothing else is ever asked for and given.
-    const allowed = permission === 'midi' && (rules.isOperator?.(contents) ?? false) && isOperatorPage(url);
+    // MIDI for the operator window's own page, never SysEx; a screen's picture to a page that may capture it
+    // now (Session 48); nothing else is ever asked for and given.
+    const media = 'mediaTypes' in details ? (details.mediaTypes ?? []) : null;
+    const allowed =
+      (permission === 'midi' && (rules.isOperator?.(contents) ?? false) && isOperatorPage(url)) ||
+      screenPictureAllowed(permission, media, rules.mayCapture?.(contents) ?? false);
     rules.log?.(`Permission ${allowed ? 'given' : 'refused'}: ${permission} for ${url}`);
     callback(allowed);
   });

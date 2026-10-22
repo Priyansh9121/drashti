@@ -32,7 +32,18 @@ import { startDrag } from '../playlists/drag';
 import { Badge, LiveBadge } from '../ui/Badge';
 import { Button, IconButton } from '../ui/Button';
 import { TextInput } from '../ui/Field';
-import { FileText, FolderOpen, Import, Link2, ListFilter, Plus, Search, Upload } from '../ui/icons';
+import {
+  AppWindow,
+  FileText,
+  FolderOpen,
+  Import,
+  Link2,
+  ListFilter,
+  Plus,
+  Search,
+  Upload,
+} from '../ui/icons';
+import { openWindowPicker } from '../live-window/live-window-store';
 import { openLinkDialog } from '../links/link-store';
 import { useExtras } from '../library/extras-store';
 import { MenuButton } from '../ui/Menu';
@@ -199,7 +210,7 @@ function SearchBox({ help }: { help: ReactNode }) {
  * Under the search box, where the kirtan filters were (Session 26a): Import…, New… (from pasted words)
  * and, with View › Show Shastra, Templates and Kirtan Details, the filters' button.
  */
-function LibraryTools() {
+function LibraryTools({ media }: { media: boolean }) {
   const filtersOn = useFilters((s) => s.open || filtering(s.f));
   const extras = useExtras((s) => s.on);
   return (
@@ -208,6 +219,18 @@ function LibraryTools() {
       <Button size="md" icon={Plus} title="A new presentation from pasted words" onClick={newFromWords}>
         New…
       </Button>
+      {/* Beside the media that go up as the background (Session 48): another app's window, live. */}
+      {media && (
+        <Button
+          size="md"
+          icon={AppWindow}
+          title="Another app’s window (a Zoom meeting, say), live as the background"
+          data-testid="show-a-window"
+          onClick={openWindowPicker}
+        >
+          Show a Window…
+        </Button>
+      )}
       {extras && (
         <IconButton
           icon={ListFilter}
@@ -393,7 +416,7 @@ export function PresentationList({ platform }: { platform: string }) {
       {help.card}
       {/* What is this? sits in the search row (or the Shastra tab's first row): the tabs keep their words. */}
       {tab !== 'shastra' && <SearchBox help={help.button} />}
-      {tab !== 'shastra' && <LibraryTools />}
+      {tab !== 'shastra' && <LibraryTools media={tab === 'media'} />}
       {tab === 'presentations' && !searching && (
         <ChosenBar
           count={marked.length}

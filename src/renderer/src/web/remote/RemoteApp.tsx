@@ -25,6 +25,7 @@ import { Badge, LiveBadge } from '../../ui/Badge';
 import { Button } from '../../ui/Button';
 import { cx } from '../../ui/cx';
 import {
+  AppWindow,
   BlackOut,
   BookOpen,
   ChevronLeft,
@@ -162,6 +163,30 @@ function LivePicture({ state }: { state: EngineState | null }) {
           {state && <Scene state={state} canvas={CANVAS} scaling="fit" look={hallLook} />}
         </PlacedInParent>
       </div>
+      {/* Another app's window as the background (Session 48): named, and cleared like any background; a
+          phone can never choose one, nor draw it (it is on Main's computer). */}
+      {state?.layers.background?.kind === 'window' && (
+        <div
+          role="status"
+          data-testid="remote-window"
+          className="flex items-center gap-2 rounded-lg border border-line bg-panel-2 py-1 pr-1 pl-3"
+        >
+          <AppWindow size={18} aria-hidden="true" className="shrink-0 text-muted" />
+          <span className="min-w-0 flex-1 truncate text-base">
+            <span className="font-bold">A window:</span> {state.layers.background.name}
+          </span>
+          <Button
+            size="lg"
+            className="min-h-12"
+            instant
+            icon={Eraser}
+            data-testid="remote-window-clear"
+            onClick={() => void tap(post('/api/v1/clear/background'))}
+          >
+            Clear
+          </Button>
+        </div>
+      )}
       {/* Repeat Slides going round (Session 26d): which, and Stop (its slide stays up). */}
       {state?.repeat && (
         <div
