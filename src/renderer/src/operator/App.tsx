@@ -81,6 +81,8 @@ import { CalendarDialog } from '../calendar/CalendarDialog';
 import { IdlePanel } from '../idle/IdlePanel';
 import { openCalendar } from '../calendar/calendar-store';
 import { isTyping, useKeymap } from './useKeymap';
+import { KeepScreensQuestion } from './KeepScreens';
+import { connectKeepScreens } from './keep-screens-store';
 import { watchProps } from './logo-store';
 import { connectMode, useMode } from './mode-store';
 import { connectSingleKeys, useSingleKeys } from './single-keys-store';
@@ -114,6 +116,7 @@ function useConnections(setInfo: (info: AppInfo) => void): void {
     connectScreens();
     // Audience and Stage (Session 50): in both modes (Simple Mode's status bar turns one on).
     connectScreenSwitches();
+    connectKeepScreens();
     connectStream();
     connectLiveWindow();
     connectVideoInputs();
@@ -192,7 +195,13 @@ export function App() {
   const keysKnown = useSingleKeys((s) => s.on !== null);
   useConnections(setInfo);
   if (mode === null || !keysKnown) return null;
-  return mode === 'simple' ? <SimpleApp info={info} /> : <ProApp info={info} />;
+  return (
+    <>
+      {mode === 'simple' ? <SimpleApp info={info} /> : <ProApp info={info} />}
+      {/* Keep these screens? (Session 50): in either mode, after a change that put an output on a display. */}
+      <KeepScreensQuestion platform={info?.platform ?? 'darwin'} />
+    </>
+  );
 }
 
 function ProApp({ info }: { info: AppInfo | null }) {
