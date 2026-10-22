@@ -1,16 +1,21 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import type { ScreensResult } from '../../src/shared/screens';
 import { expectNoSeriousA11yIssues } from './a11y';
 import { expectFits } from './fit';
 import type { PageGlobals } from './helpers';
 import {
   chooseMenuItem,
   holdStill,
+  killApp,
   launchApp,
   needsRealScreen,
   operatorPage,
   operatorReady,
   outputPages,
+  relaunchApp,
   windowShowing,
 } from './helpers';
 
@@ -25,6 +30,10 @@ import {
  * the displays are Drashti's pretend ones and the outputs windows (DRASHTI_WINDOWED_OUTPUTS,
  * DRASHTI_EXTRA_DISPLAYS), which never cover the controls; the output over the controls is checked on a real
  * screen (CI's one display, 1024 wide).
+ *
+ * Session 51: Screens' Shows and a key and fill pair's Sends ask too; Go back puts back only what the change
+ * changed; a dialog opened while the question waits goes under it; and a change waiting when Drashti stops dead
+ * goes back at the next start.
  */
 
 const ASKS = { DRASHTI_TEST_KEEP_SCREENS: '1', DRASHTI_WINDOWED_OUTPUTS: '1' };
@@ -49,6 +58,29 @@ const screensNow = (win: Page) =>
 const pending = (win: Page) => win.evaluate(() => (globalThis as PageGlobals).drashti.screens.pending());
 
 const openOutputs = (app: ElectronApplication) => outputPages(app).filter((p) => !p.isClosed()).length;
+
+/** A group made through the bridge, as Screens makes it: its id. */
+const makeGroup = (win: Page, name: string) =>
+  win.evaluate(async (n) => {
+    const made = await (globalThis as PageGlobals).drashti.screens.createGroup(n);
+    if (!made.ok) throw new Error(made.message);
+    return made.snapshot.groups.find((g) => g.name === n)?.id ?? '';
+  }, name);
+
+/** A screen change through the bridge, as Screens sends it; it must be taken (asked or not). */
+const screensChange = async (run: () => Promise<ScreensResult>): Promise<void> => {
+  const result = await run();
+  if (!result.ok) throw new Error(result.message);
+};
+
+/** Each group's languages in the live Look, by group name. */
+const languagesNow = (win: Page) =>
+  win.evaluate(async () => {
+    const d = (globalThis as PageGlobals).drashti;
+    const { state } = await d.engine.snapshot();
+    const { groups } = await d.screens.get();
+    return Object.fromEntries(groups.map((g) => [g.name, state.look.groups[g.id]?.languages ?? null]));
+  });
 
 /** An output window that is open now (one closed a moment ago is passed over). */
 const openOutput = (app: ElectronApplication) =>
@@ -308,4 +340,204 @@ test('covering the controls: the output asks too, large, with its countdown; Esc
   } finally {
     await app.close();
   }
+});
+
+// ---- Session 51 (S3-2 to S3-5) ---------------------------------------------------------------------------------
+
+test('Screens’ Shows and a key and fill pair’s Sends ask too: Esc goes back to the role as it was, Enter keeps, Go back sends the fill again', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp({ ...ASKS, DRASHTI_EXTRA_DISPLAYS: '2' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  // A group on both pretend displays, each kept.
+  const groupId = await makeGroup(win, 'Switcher');
+  for (const displayId of [PRETEND, PRETEND + 1]) {
+    await screensChange(() =>
+      win.evaluate(({ g, d }) => (globalThis as PageGlobals).drashti.screens.assignDisplay(g, d), {
+        g: groupId,
+        d: displayId,
+      }),
+    );
+    await screensChange(() => win.evaluate(() => (globalThis as PageGlobals).drashti.screens.keep()));
+  }
+  await expect.poll(() => openOutputs(app)).toBe(2);
+  const before = await screensNow(win);
+  await win.getByRole('button', { name: 'Screens', exact: true }).click();
+  const shows = win.getByTestId('group-role');
+  const question = win.getByTestId('keep-screens');
+
+  // Shows: the stage view. Asked; Esc goes back to the audience picture, exactly as it was.
+  await shows.selectOption('stage');
+  await expect(question).toContainText('Keep these screens?');
+  await expect(question.getByTestId('keep-screens-keep')).toBeFocused();
+  await win.keyboard.press('Escape');
+  await expect(question).toHaveCount(0);
+  await expect.poll(() => screensNow(win)).toEqual(before);
+  await expect(shows).toHaveValue('audience');
+
+  // Shows: key and fill. Asked; Enter keeps: the first display sends the fill, the second the key.
+  await shows.selectOption('keyfill');
+  await expect(question).toContainText('Keep these screens?');
+  await win.keyboard.press('Enter');
+  await expect(question).toHaveCount(0);
+  const sends = win.getByTestId('screen-feed');
+  await expect(sends).toHaveCount(2);
+  await expect(sends.first()).toHaveValue('fill');
+  await expect(sends.last()).toHaveValue('key');
+
+  // Sends: the key on the first too. Asked; Go back sends the fill again.
+  await sends.first().selectOption('key');
+  await expect(question).toContainText('Keep these screens?');
+  await question.getByTestId('keep-screens-go-back').click();
+  await expect(question).toHaveCount(0);
+  await expect(sends.first()).toHaveValue('fill');
+  expect(await pending(win)).toBeNull();
+  await app.close();
+});
+
+test('Go back puts back only what the change changed: another group’s languages, changed while it waited, stay', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp({ ...ASKS, DRASHTI_EXTRA_DISPLAYS: '2' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const hall = await makeGroup(win, 'Main Hall');
+  await screensChange(() =>
+    win.evaluate(({ g, d }) => (globalThis as PageGlobals).drashti.screens.assignDisplay(g, d), {
+      g: hall,
+      d: PRETEND,
+    }),
+  );
+  await screensChange(() => win.evaluate(() => (globalThis as PageGlobals).drashti.screens.keep()));
+  await screensChange(() =>
+    win.evaluate((g) => (globalThis as PageGlobals).drashti.screens.setGroupLanguages(g, ['gu']), hall),
+  );
+  const lobby = await makeGroup(win, 'Lobby');
+  await screensChange(() =>
+    win.evaluate((g) => (globalThis as PageGlobals).drashti.screens.setGroupLanguages(g, ['en']), lobby),
+  );
+
+  // Set Up Screens…'s Done, as the wizard sends it: the hall in English, the stage view on the other display.
+  const done = await win.evaluate(
+    (d) =>
+      (globalThis as PageGlobals).drashti.setup.finish({
+        outputs: [
+          { displayId: d, use: 'audience', languages: ['en'] },
+          { displayId: d + 1, use: 'stage', languages: null },
+        ],
+        sound: 'skip',
+        themeId: null,
+      }),
+    PRETEND,
+  );
+  expect(done.ok).toBe(true);
+  const question = win.getByTestId('keep-screens');
+  await expect(question).toContainText('Keep these screens?');
+  expect(await languagesNow(win)).toMatchObject({ 'Main Hall': ['en'], Lobby: ['en'] });
+  // While it waits, the lobby in Hindi (Screens' languages: not part of the change).
+  await screensChange(() =>
+    win.evaluate((g) => (globalThis as PageGlobals).drashti.screens.setGroupLanguages(g, ['hi']), lobby),
+  );
+
+  // Go back: the hall in Gujarati again and the stage gone; the lobby stays in Hindi.
+  await win.keyboard.press('Escape');
+  await expect(question).toHaveCount(0);
+  await expect.poll(() => languagesNow(win)).toMatchObject({ 'Main Hall': ['gu'], Lobby: ['hi'] });
+  expect((await screensNow(win)).groups.map((g) => [g.name, g.screens.length])).toEqual([
+    ['Main Hall', 1],
+    ['Lobby', 0],
+    ['Stream', 0],
+  ]);
+  await expect.poll(() => openOutputs(app)).toBe(1);
+  await app.close();
+});
+
+test('a dialog opened while the question waits goes under it: Keep keeps the keyboard, Esc and Enter answer it, then that dialog has the keyboard', async () => {
+  test.setTimeout(120_000);
+  const { app } = await launchApp({ ...ASKS, DRASHTI_EXTRA_DISPLAYS: '1' });
+  const win = await operatorPage(app);
+  await operatorReady(win);
+  const groupId = await makeGroup(win, 'Main Hall');
+  const ask = () =>
+    screensChange(() =>
+      win.evaluate(({ g, d }) => (globalThis as PageGlobals).drashti.screens.assignDisplay(g, d), {
+        g: groupId,
+        d: PRETEND,
+      }),
+    );
+  const question = win.getByTestId('keep-screens');
+  const keep = question.getByTestId('keep-screens-keep');
+  /** Whether the question is what is drawn at Keep's middle: nothing over it. */
+  const questionOnTop = () =>
+    win.evaluate(() => {
+      const button = document.querySelector('[data-testid="keep-screens-keep"]');
+      if (!button) return false;
+      const box = button.getBoundingClientRect();
+      return button.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2));
+    });
+
+  // Asked; Help › Guides… opened meanwhile, from the menu: under the question, which keeps the keyboard.
+  await ask();
+  await expect(keep).toBeFocused();
+  await chooseMenuItem(app, 'guides');
+  const guides = win.getByTestId('guides');
+  await expect(guides).toBeVisible();
+  await expect.poll(questionOnTop).toBe(true);
+  await expect(keep).toBeFocused();
+  // Esc goes back; the guides stay, with the keyboard now (Esc closes them).
+  await win.keyboard.press('Escape');
+  await expect(question).toHaveCount(0);
+  await expect.poll(() => openOutputs(app)).toBe(0);
+  await expect(guides).toBeVisible();
+  await win.keyboard.press('Escape');
+  await expect(guides).toHaveCount(0);
+
+  // Asked again; the keys sheet opened meanwhile: Enter keeps.
+  await ask();
+  await chooseMenuItem(app, 'keyboard-shortcuts');
+  const keys = win.getByTestId('keys-sheet');
+  await expect(keys).toBeVisible();
+  await expect.poll(questionOnTop).toBe(true);
+  await expect(keep).toBeFocused();
+  await win.keyboard.press('Enter');
+  await expect(question).toHaveCount(0);
+  expect(await pending(win)).toBeNull();
+  await expect.poll(() => openOutputs(app)).toBe(1);
+  await expect(keys).toBeVisible();
+  await win.keyboard.press('Escape');
+  await expect(keys).toHaveCount(0);
+  await app.close();
+});
+
+test('Drashti stopped dead while the question waits: the next start goes back to the screens as they were, opens no output for the change, and says so', async () => {
+  test.setTimeout(150_000);
+  const env = { ...ASKS, DRASHTI_EXTRA_DISPLAYS: '1' };
+  const first = await launchApp(env);
+  const win = await operatorPage(first.app);
+  await operatorReady(win);
+  const groupId = await makeGroup(win, 'Main Hall');
+  const before = await screensNow(win);
+  await screensChange(() =>
+    win.evaluate(({ g, d }) => (globalThis as PageGlobals).drashti.screens.assignDisplay(g, d), {
+      g: groupId,
+      d: PRETEND,
+    }),
+  );
+  await expect(win.getByTestId('keep-screens')).toContainText('Keep these screens?');
+  await expect.poll(() => openOutputs(first.app)).toBe(1);
+  // Kept on disk while it waits (written before the change's answer): then a crash or a power cut.
+  const waiting = join(first.userData, 'keep-screens.json');
+  expect(existsSync(waiting)).toBe(true);
+  await killApp(first.app);
+
+  const second = await relaunchApp(first.userData, env);
+  const win2 = await operatorPage(second.app);
+  await operatorReady(win2);
+  expect((await screensNow(win2)).groups).toEqual(before.groups);
+  await holdStill(() => openOutputs(second.app) === 0, 3000, 'no output opens for a change nobody kept');
+  expect(await pending(win2)).toBeNull();
+  expect(existsSync(waiting)).toBe(false);
+  await expect(win2.getByTestId('operator-notice')).toContainText(
+    'Drashti stopped before the change to the screens was kept, so they went back to how they were before it.',
+  );
+  await second.app.close();
 });
