@@ -212,7 +212,7 @@ test('one press acts once: the View menu’s Audience and Stage carry no key, th
   await win.keyboard.press(`${MOD}+1`);
   await expect.poll(() => openRoles(app)).toEqual([]);
   await holdStill(
-    async () => (await switches(win)).audience === false && outputPages(app).length === 0,
+    async () => !(await switches(win)).audience && outputPages(app).length === 0,
     1500,
     'one press of Mod+1 turned Audience off once, and nothing turned it back on',
   );
