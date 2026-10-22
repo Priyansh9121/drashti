@@ -2,7 +2,9 @@
 
 Each version, newest first. A version's section is what Help › Check for Updates… and its release page show, so it is written for the people who run Drashti, in plain words: only "- " lists, no other formatting, and at most 4,000 characters. Changes not released yet wait under Unreleased, at the top; a release gives them their version's heading.
 
-## Unreleased
+## 1.0.0-alpha.11 (22 Oct 2026)
+
+Zoom works both ways: a Zoom meeting can see the stream's picture, and a Zoom meeting's window can show live on the hall's screens and the stream. Update the node computer the same evening: until it runs this version, as Main does, it says so and its screens keep their last picture. A phone page left open from before needs reloading. Update after a sabha, never on the day of one.
 
 - Zoom, both ways, with no Zoom account of Drashti's own and nothing to pay for. Window for Zoom… (in the Stream panel and the View menu) opens a window called Drashti for Zoom with exactly the stream's picture, on air or not: in Zoom, Share Screen and choose that window, with the mixer's input as Zoom's microphone. Drashti sends Zoom no sound.
 - Show a Window… (Library, then Media) shows another app's open window, a Zoom meeting say, live on the hall's screens and the stream as the background. Choose it by name with its small picture: nothing goes up until Show on the screens. Black-out and the Logo cover it, and Clear all takes it off. If it closes, the screens keep its last picture and a notice says so, with Clear the window. On a Mac, macOS asks once for Screen Recording, and may ask again after an update.
