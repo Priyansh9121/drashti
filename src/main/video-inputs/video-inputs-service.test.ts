@@ -73,7 +73,7 @@ function setup(options: { access?: CameraAccess } = {}) {
       startedAt,
     };
     background = layer;
-    service?.follow();
+    service.follow();
     return layer;
   };
   return {
@@ -89,7 +89,7 @@ function setup(options: { access?: CameraAccess } = {}) {
     cleared: () => cleared,
     setBackground: (layer: BackgroundLayer | null) => {
       background = layer;
-      service?.follow();
+      service.follow();
     },
     setAccess: (a: CameraAccess) => {
       access = a;

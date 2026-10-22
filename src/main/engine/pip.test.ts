@@ -75,7 +75,12 @@ describe('the picture-in-picture box in the engine', () => {
       parseEngineCommand({ type: 'showPip', source: { kind: 'input', inputId: 'in-1', device: 'Another' } }),
     ).toEqual({ ok: true, command: { type: 'showPip', source: { kind: 'input', inputId: 'in-1' } } });
     engine.dispatch(show({ kind: 'input', inputId: 'in-1' }));
-    expect(engine.current.layers.pip?.source).toEqual({ kind: 'input', inputId: 'in-1', ...CAMERA });
+    expect(engine.current.layers.pip?.source).toEqual({
+      kind: 'input',
+      inputId: 'in-1',
+      name: CAMERA.name,
+      device: CAMERA.device,
+    });
     engine.dispatch(show({ kind: 'window', id: MEETING.id }));
     expect(engine.current.layers.pip?.source).toEqual({
       kind: 'window',
@@ -319,7 +324,12 @@ describe('the picture-in-picture box in the engine', () => {
         source: { kind: 'input', inputId: 'in-1', name: 'Old name', device: 'Old device' },
       });
       expect(engine.restore({ slide: null, background: null, blackout: false, pip: saved }).pip).toBe(true);
-      expect(engine.current.layers.pip?.source).toEqual({ kind: 'input', inputId: 'in-1', ...CAMERA });
+      expect(engine.current.layers.pip?.source).toEqual({
+        kind: 'input',
+        inputId: 'in-1',
+        name: CAMERA.name,
+        device: CAMERA.device,
+      });
       const again = setup();
       again.inputs.clear();
       expect(again.engine.restore({ slide: null, background: null, blackout: false, pip: saved }).pip).toBe(

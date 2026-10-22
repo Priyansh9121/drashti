@@ -36,7 +36,7 @@ export interface PermissionRules {
    */
   cameraGranted?(): boolean;
   /** Tests only: what counts as one of Drashti's own pages (left out: the built renderer's, or Vite's). */
-  isOwnPage?(url: string): boolean;
+  isOwnPage?: (url: string) => boolean;
   /** Told about every permission a page checks or asks for (DRASHTI_LOG_PERMISSIONS=1). */
   log?(line: string): void;
 }
