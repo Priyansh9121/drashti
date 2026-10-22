@@ -356,7 +356,9 @@ function BigButtons({ platform, run }: { platform: string; run: (action: Operato
       >
         Next
       </Button>
-      <div className="flex w-[22rem] shrink-0 flex-col gap-2">
+      {/* Room for "Black-out is on" and "Logo is on" side by side, each in its half (Session 51: at 22rem they ran
+          out of the window with both on), with Back and Next still fitting a 1024-wide window. */}
+      <div className="flex w-[28rem] shrink-0 flex-col gap-2">
         <div className="flex gap-2">
           <Button
             size="xl"
