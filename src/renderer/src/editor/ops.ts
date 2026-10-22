@@ -18,7 +18,7 @@ import { mainLang } from '../../../shared/text-runs';
 import { boundsOf, centerOf, normalizeAngle, type Point, rotatePoint } from './geometry';
 import { NEW_TEXT_LINE_HEIGHT } from '../../../shared/model';
 import {
-  DRASHTI_TIMER_LOOK,
+  BUILT_IN_TIMER_LOOK,
   timerElement,
   timerLayoutElements,
   type TimerLayout,
@@ -277,7 +277,7 @@ export function newTimerElement(
     newId(),
     timerId,
     { x: Math.round((size.width - width) / 2), y: Math.round((size.height - height) / 2), width, height },
-    look?.style ?? DRASHTI_TIMER_LOOK,
+    look?.style ?? BUILT_IN_TIMER_LOOK,
     Math.round(size.height * 0.2),
     'middle',
   );
@@ -401,7 +401,7 @@ export function newTimerSlide(
 ): EditSlide {
   return {
     ...newSlide(look),
-    elements: timerLayoutElements(layout, timerId, look?.style ?? DRASHTI_TIMER_LOOK, size, newId, words),
+    elements: timerLayoutElements(layout, timerId, look?.style ?? BUILT_IN_TIMER_LOOK, size, newId, words),
   };
 }
 

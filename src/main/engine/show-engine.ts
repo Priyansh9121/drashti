@@ -49,7 +49,7 @@ import {
   slideShowing,
 } from '../../shared/picture-look';
 import { elapsedAt, type TimerDefinition, type TimerRun, zeroAt } from '../../shared/timers';
-import { DRASHTI_TIMER_LOOK, timerAloneSlide, type TimerLook, timerShowId } from '../../shared/timer-slides';
+import { BUILT_IN_TIMER_LOOK, timerAloneSlide, type TimerLook, timerShowId } from '../../shared/timer-slides';
 import { INPUT_FADE_MS, type VideoInput } from '../../shared/video-inputs';
 import { remapPosition } from '../../shared/order';
 import type { EngineAction } from './actions';
@@ -642,7 +642,7 @@ export class ShowEngine {
     return {
       presentationId: timerShowId(t.id),
       slideIndex: 0,
-      slide: timerAloneSlide(t.id, this.options.timerLook?.() ?? DRASHTI_TIMER_LOOK),
+      slide: timerAloneSlide(t.id, this.options.timerLook?.() ?? BUILT_IN_TIMER_LOOK),
       shownAt: this.now(),
       notes: '',
       ...(transition ? { transition } : {}),

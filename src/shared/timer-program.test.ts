@@ -3,7 +3,7 @@ import type { EngineState } from './engine/state';
 import { initialEngineState } from './engine/state';
 import type { RenderSlide } from './model';
 import { hasPicture, lowerThirdOf, programPicture } from './program';
-import { DRASHTI_TIMER_LOOK, timerAloneSlide, timerLayoutElements } from './timer-slides';
+import { BUILT_IN_TIMER_LOOK, timerAloneSlide, timerLayoutElements } from './timer-slides';
 
 /*
  * A slide with a Timer wherever slides are lower thirds (Session 50): the stream's Camera layout and a Look
@@ -21,7 +21,7 @@ const withWords = (): RenderSlide => {
     elements: timerLayoutElements(
       'words',
       't1',
-      DRASHTI_TIMER_LOOK,
+      BUILT_IN_TIMER_LOOK,
       { width: 1920, height: 1080 },
       () => `e${String(++n)}`,
     ),
@@ -38,13 +38,13 @@ const up = (slide: RenderSlide): EngineState => {
 
 describe('a slide with a Timer where slides are lower thirds', () => {
   it('is something to look at besides words, with no lines of its own for a lower third', () => {
-    expect(hasPicture(timerAloneSlide('t1', DRASHTI_TIMER_LOOK))).toBe(true);
+    expect(hasPicture(timerAloneSlide('t1', BUILT_IN_TIMER_LOOK))).toBe(true);
     expect(hasPicture(withWords())).toBe(true);
     expect(lowerThirdOf(withWords(), null)).toEqual({ lines: [], total: 0 });
   });
 
   it('is drawn whole on the stream’s Camera layout, instead of the camera, as a picture slide is', () => {
-    for (const slide of [timerAloneSlide('t1', DRASHTI_TIMER_LOOK), withWords()])
+    for (const slide of [timerAloneSlide('t1', BUILT_IN_TIMER_LOOK), withWords()])
       expect(programPicture(up(slide), 'camera', null)).toMatchObject({
         kind: 'camera',
         lowerThird: [],
