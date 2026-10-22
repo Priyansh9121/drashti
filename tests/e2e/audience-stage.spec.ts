@@ -22,8 +22,8 @@ import {
  * computer, and taking them again. Off closes those output windows; the show carries on (the engine, LIVE, the
  * other switch's screens). Turning one off asks first while its screens show something; on never asks. The
  * status bar says "Audience off" or "Stage off" with Turn on, in Simple Mode too (which can only turn them on).
- * Both are on again at every start. Mod+1 and Mod+2 are the page's keys only (the View menu's items carry no
- * accelerator), so one press acts once.
+ * Both are on again at every start. Mod+1 and Mod+2 are the page's keys: the View menu's items show them without
+ * binding them (Session 51), so one press acts once.
  *
  * Two outputs on one computer, as quiet runs make them: windowed, the second on a pretend display. No window is
  * assumed wider than 1024: the keys and the status bar do the switching here, never a header button that a
@@ -199,20 +199,33 @@ test('Mod+2 asks first whenever a stage screen is open, closes only the stage sc
   await app.close();
 });
 
-test('one press acts once: the View menu’s Audience and Stage carry no key, their ticks follow, and Uncover leaves them alone', async () => {
+test('one press acts once: the View menu’s Audience and Stage show their keys unbound, their ticks follow, and Uncover leaves them alone', async () => {
   test.setTimeout(120_000);
   const { app } = await launchApp(OUTPUTS);
   const win = await operatorPage(app);
   await operatorReady(win);
   const hall = await setUpScreen(win, 'Main Hall', 0);
   await expect.poll(() => openRoles(app)).toEqual(['audience']);
+  // Each item as the menu has it now, built again with every change: its tick, and its key shown and left unbound
+  // (Session 51; function-keys.spec.ts presses the keys in a field and under a dialog).
   const item = (id: string) =>
     app.evaluate(({ Menu }, itemId) => {
       const found = Menu.getApplicationMenu()?.getMenuItemById(itemId);
-      return found ? { checked: found.checked, accelerator: found.accelerator ?? null } : null;
+      return found
+        ? {
+            checked: found.checked,
+            accelerator: found.accelerator ?? null,
+            registerAccelerator: found.registerAccelerator,
+          }
+        : null;
     }, id);
-  expect(await item('screen-switch-audience')).toEqual({ checked: true, accelerator: null });
-  expect(await item('screen-switch-stage')).toEqual({ checked: true, accelerator: null });
+  const shown = (checked: boolean, accelerator: string) => ({
+    checked,
+    accelerator,
+    registerAccelerator: false,
+  });
+  expect(await item('screen-switch-audience')).toEqual(shown(true, 'CommandOrControl+1'));
+  expect(await item('screen-switch-stage')).toEqual(shown(true, 'CommandOrControl+2'));
 
   // Nothing is up on the hall's screen: Mod+1 turns it off at once, and once (a second act would turn it back on).
   await win.keyboard.press(`${MOD}+1`);
@@ -223,7 +236,8 @@ test('one press acts once: the View menu’s Audience and Stage carry no key, th
     'one press of Mod+1 turned Audience off once, and nothing turned it back on',
   );
   await expect(win.getByTestId('screen-switch-ask')).toHaveCount(0);
-  await expect.poll(() => item('screen-switch-audience')).toEqual({ checked: false, accelerator: null });
+  await expect.poll(() => item('screen-switch-audience')).toEqual(shown(false, 'CommandOrControl+1'));
+  expect(await item('screen-switch-stage')).toEqual(shown(true, 'CommandOrControl+2'));
 
   // Uncover the controls works as before, apart from the switches: it leaves them as they are (windowed outputs
   // never cover the controls, so here it turns nothing off either).
@@ -234,7 +248,7 @@ test('one press acts once: the View menu’s Audience and Stage carry no key, th
   // The View menu's item turns it on (nothing to ask), and its tick follows.
   await chooseMenuItem(app, 'screen-switch-audience');
   await expect.poll(() => openRoles(app)).toEqual(['audience']);
-  await expect.poll(() => item('screen-switch-audience')).toEqual({ checked: true, accelerator: null });
+  await expect.poll(() => item('screen-switch-audience')).toEqual(shown(true, 'CommandOrControl+1'));
   await app.close();
 });
 
