@@ -158,6 +158,28 @@ describe('this computer’s video inputs', () => {
     expect(make().view()).toEqual(service.view());
   });
 
+  it('finds the input a playlist item or a slide names by its name alone, as Media compares names (Session 51)', () => {
+    const { service } = setup();
+    const one = added(service.add(fields), 'Placeholder input');
+    // Any letter case, any Unicode form: the name Media keeps unique.
+    expect(service.named('placeholder INPUT')).toEqual(one);
+    const accented = added(
+      service.add({ ...fields, name: 'Café input', device: 'Placeholder capture' }),
+      'Café input',
+    );
+    expect(service.named('Café input')).toEqual(accented);
+    // Another computer's input, or one renamed since: none of that name here.
+    expect(service.named('Input 9')).toBeNull();
+    const renamed = service.update(one.id, { name: 'Placeholder mixer' });
+    expect(renamed.ok).toBe(true);
+    expect(service.named('Placeholder input')).toBeNull();
+    expect(service.named('Placeholder mixer')?.id).toBe(one.id);
+    // A copy: changing what was found changes nothing kept.
+    const found = service.named('Placeholder mixer');
+    if (found) found.name = 'Changed';
+    expect(service.named('Placeholder mixer')?.name).toBe('Placeholder mixer');
+  });
+
   it('refuses what it cannot keep, and says why', () => {
     const { service, views } = setup();
     added(service.add(fields), 'Placeholder input');
