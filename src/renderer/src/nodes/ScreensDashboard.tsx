@@ -21,7 +21,7 @@ import { Notice } from '../ui/Notice';
 import { SectionTitle } from '../ui/Panel';
 import { Checkbox } from '../ui/Toggle';
 import { closeDashboard, connectNodes, nodesAction, useNodes } from './nodes-store';
-import { thisComputerOnly } from './this-computer-only';
+import { boxThisComputerOnly, thisComputerOnly } from './this-computer-only';
 
 /*
  * The screens dashboard (PLAN.md 4.1, Session 13): every display, on this
@@ -413,6 +413,9 @@ export function ScreensDashboard({ simple, onSetUp }: { simple: boolean; onSetUp
   // Another app's window (Session 48) or a video input (Session 50): on this computer's screens only.
   const background = useEngine((s) => s.state?.layers.background ?? null);
   const onlyHere = thisComputerOnly(background);
+  // The same in the picture-in-picture box (Session 50).
+  const box = useEngine((s) => s.state?.layers.pip ?? null);
+  const boxOnlyHere = boxThisComputerOnly(box);
   useEffect(() => {
     connectNodes();
     connectScreens();
@@ -471,6 +474,11 @@ export function ScreensDashboard({ simple, onSetUp }: { simple: boolean; onSetUp
         {onlyHere && (
           <Notice tone="info" compact data-testid={`dashboard-${onlyHere.kind}`}>
             {onlyHere.text}
+          </Notice>
+        )}
+        {boxOnlyHere && (
+          <Notice tone="info" compact data-testid={`dashboard-pip-${boxOnlyHere.kind}`}>
+            {boxOnlyHere.text}
           </Notice>
         )}
         <DisplayGrid
