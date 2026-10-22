@@ -2847,7 +2847,7 @@ function start(): void {
   handle(IPC.app.getInfo, () => appInfo());
   handle(IPC.app.recovery, async () => {
     // A video input put back after the restart (Session 50): the notice waits for the first screen to say whether
-    // it is on this computer (8 s at most), and names it when it was not (it has come off the screens).
+    // it is on this computer (20 s at most), and names it when it was not (it has come off the screens).
     const gone = await inputs.settled();
     if (gone !== null && recovery) recovery = { ...recovery, input: null, inputGone: gone };
     // One put back in the picture-in-picture box (Session 51): the same, the box taken off.
