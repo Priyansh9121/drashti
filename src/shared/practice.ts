@@ -62,7 +62,7 @@ export function practiceSlides(): RenderSlide[] {
 /** What each practice slide is called in its caption (its group). */
 export const practiceLabels = (): string[] => LINES.map((l) => l.label);
 
-/** The placeholder logo L puts up in practice: never the mandir's own. */
+/** The placeholder logo F12 or L puts up in practice: never the mandir's own. */
 export const PRACTICE_LOGO: PropItem = {
   id: 'practice-logo',
   name: 'Placeholder logo',
