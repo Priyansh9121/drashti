@@ -29,13 +29,13 @@ export const PANEL_HELP = {
   library: {
     title: 'The library',
     doc: 'operator',
-    text: 'Every presentation, picture, video and sound on this computer. Type a few letters of a kirtan’s title or words in the search box to find it. Choose one and press Add to playlist to put it in the open playlist, bring more in with Import…, or, in Media, show another app’s window (a Zoom meeting) live with Show a Window….',
+    text: 'Every presentation, picture, video and sound on this computer: type a few letters of a kirtan’s title or words to find it, then press Add to playlist. Import… brings more in, and a file Drashti can’t play says Converting… while Drashti converts it by itself. In Media, one click puts up a video input (Add a Video Input… names a camera or a mixer’s output), Show a Window… another app’s window, and Picture in Picture… something small in a corner.',
     guide: 'the **Library**',
   },
   slides: {
     title: 'Slides',
     doc: 'operator',
-    text: 'The slides of whatever you clicked, in the order they play. Click a slide to put it on the screens at once, or press Space for the next one.',
+    text: 'The slides of whatever you clicked, in the order they play. Click a slide to put it on the screens at once, or press Space for the next one. Right-click a slide for New Timer Slide…, and the ⋯ menu beside Edit slides has Delete… for the whole presentation.',
     guide: '**Starting.**',
   },
   live: {
