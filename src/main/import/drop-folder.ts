@@ -32,6 +32,8 @@ import { mediaKindOf } from './scan';
  */
 
 const SETTING = 'dropFolder';
+/** Why a file is not taken for its type (Session 51: sounds are taken too). */
+const NOT_MEDIA = 'Only pictures, videos and sounds are taken from the drop folder.';
 /** Watching stopped with an error: watched again after this long (the scan carries on meanwhile). */
 const REWATCH_MS = 5000;
 
@@ -117,11 +119,14 @@ const inside = (child: string, parent: string) => {
 
 const plural = (n: number, one: string, many: string) => `${String(n)} ${n === 1 ? one : many}`;
 
-/** What a batch taken is, for its notice: pictures and videos, sounds (Session 51), or files of both. */
-function batchWords(names: readonly string[]): [one: string, many: string] {
-  const sounds = names.filter((n) => mediaKindOf(n) === 'audio').length;
+/**
+ * What a batch taken is, for its notice, by what was stored: pictures and videos, sounds (Session 51), or files of
+ * both.
+ */
+function batchWords(kinds: readonly (string | null)[]): [one: string, many: string] {
+  const sounds = kinds.filter((k) => k === 'audio').length;
   if (sounds === 0) return ['picture or video', 'pictures and videos'];
-  return sounds === names.length ? ['sound', 'sounds'] : ['file', 'files'];
+  return sounds === kinds.length ? ['sound', 'sounds'] : ['file', 'files'];
 }
 
 const GiB = 1024 ** 3;
@@ -389,22 +394,23 @@ export class DropFolder {
     const ready: string[] = [];
     for (const [name, found] of files) {
       const row = rows.get(name);
-      // As it was when it was taken, or listed as not taken: nothing to do.
+      const kind = mediaKindOf(name);
+      // As it was when it was taken, or listed as not taken: nothing to do. But one listed for its type alone (not
+      // over the size limit) is judged again (Session 51 review: alpha.10 listed sounds, and the videos Session 50
+      // added, as not taken), and one still not taken says why in today's words.
       if (row?.size === found.size && row.mtime_ms === found.mtimeMs) {
-        this.pending.delete(name);
-        continue;
+        const forItsType = row.state === 'not-taken' && found.size <= this.maxBytes;
+        if (!forItsType || kind === null) {
+          if (forItsType && row.reason !== NOT_MEDIA)
+            this.record(folder, name, found, 'not-taken', null, NOT_MEDIA);
+          this.pending.delete(name);
+          continue;
+        }
       }
       // Pictures, videos and (Session 51) sounds: every media file Drashti takes.
-      if (mediaKindOf(name) === null) {
+      if (kind === null) {
         this.pending.delete(name);
-        this.record(
-          folder,
-          name,
-          found,
-          'not-taken',
-          null,
-          'Only pictures, videos and sounds are taken from the drop folder.',
-        );
+        this.record(folder, name, found, 'not-taken', null, NOT_MEDIA);
         continue;
       }
       if (!heldStill(this.pending, name, found, now, this.deps.settleMs)) continue;
@@ -463,8 +469,10 @@ export class DropFolder {
     const items = this.deps.report(result.runId)?.items ?? [];
     const made = madeFrom(items, given);
     const at = new Date(this.deps.now()).toISOString();
-    const took: string[] = [];
+    // What each file taken was stored as (a picture, a video or a sound), for the notice.
+    const took: (string | null)[] = [];
     const mark = this.deps.db.prepare('UPDATE media SET dropped_at = COALESCE(dropped_at, ?) WHERE id = ?');
+    const storedAs = this.deps.db.prepare('SELECT kind FROM media WHERE id = ?');
     this.deps.db.transaction(() => {
       for (const g of given) {
         const found = files.get(g.relative) ?? { size: 0, mtimeMs: 0 };
@@ -472,7 +480,7 @@ export class DropFolder {
         if (m?.kind === 'media') {
           mark.run(at, m.mediaId);
           this.record(folder, g.relative, found, 'taken', m.mediaId, null);
-          took.push(g.relative);
+          took.push((storedAs.get(m.mediaId) as { kind: string } | undefined)?.kind ?? null);
         } else {
           const item = items.find((i) => i.sourcePath === g.path);
           this.record(
@@ -494,10 +502,12 @@ export class DropFolder {
       `Drop folder: ${String(taken)} file(s) taken${anyway ? ' (imported anyway)' : ''}, ${String(failed)} not`,
     );
     if (taken > 0) this.deps.mediaChanged();
-    // One quiet notice for the batch, in Pro Mode only.
+    // One quiet notice for the batch, in Pro Mode only; when nothing came in, only what was not taken.
     if (!this.deps.simpleMode() && (taken > 0 || failed > 0))
       this.deps.notice(
-        `${plural(taken, ...batchWords(took))} from the drop folder ${taken === 1 ? 'is' : 'are'} in Media.${failed > 0 ? ` ${plural(failed, 'file was', 'files were')} not taken: see File › Drop Folder….` : ''}`,
+        taken === 0
+          ? `${plural(failed, 'file', 'files')} from the drop folder ${failed === 1 ? 'was' : 'were'} not taken: see File › Drop Folder….`
+          : `${plural(taken, ...batchWords(took))} from the drop folder ${taken === 1 ? 'is' : 'are'} in Media.${failed > 0 ? ` ${plural(failed, 'file was', 'files were')} not taken: see File › Drop Folder….` : ''}`,
       );
     this.changed();
   }
