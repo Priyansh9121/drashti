@@ -103,7 +103,7 @@ const letGo = (win: Page) =>
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   });
 
-/** A placeholder prop marked as the logo, so L has something to put up. */
+/** A placeholder prop marked as the logo, so F12 and L have something to put up. */
 async function markLogo(win: Page): Promise<void> {
   const problem = await win.evaluate(async () => {
     const d = (globalThis as PageGlobals).drashti;

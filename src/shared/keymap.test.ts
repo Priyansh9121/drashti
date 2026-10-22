@@ -53,7 +53,9 @@ describe('keymap', () => {
     expect(shortcutText('previousItem', 'win32')).toBe('Shift+←');
   });
 
-  it('shows and hides the logo with L', () => {
+  it('shows and hides the logo with F12 and L', () => {
+    expect(actionFor(press('F12'), 'darwin')).toBe('toggleLogo');
+    expect(actionFor(press('F12'), 'win32')).toBe('toggleLogo');
     expect(actionFor(press('l'), 'darwin')).toBe('toggleLogo');
     expect(actionFor(press('L', { shiftKey: true }), 'win32')).toBe('toggleLogo');
   });
