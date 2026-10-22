@@ -15,6 +15,8 @@ import { Bookmark, Download, Play, X } from '../ui/icons';
 import { plural } from '../ui/text';
 import { Checkbox } from '../ui/Toggle';
 import { showSave, stopSave, useSaves } from './save-store';
+import { SkipButtons } from './SkipButtons';
+import { type SkipsShown, skipsOf } from './skips';
 import { Timeline } from './Timeline';
 
 /*
@@ -457,43 +459,61 @@ function MarkersForm({ media, start }: { media: MediaSummary; start: MediaMarker
   );
 }
 
-/** Under the live picture: jump the background video or the sound playing to one of its markers. */
+/**
+ * Under the live picture: the background video's and a single sound's Back 15 s, Forward 15 s and Last 10 s
+ * (Session 50; an audio playlist's track has them beside its Play and Pause, in the Music panel), and jumps to
+ * the markers of the background video or the sound playing. One row each, as long as it plays.
+ */
 export function MarkerJumps() {
   const bg = useEngine((s) => {
     const b = s.state?.layers.background;
     return b?.kind === 'media' ? (b.marks ?? null) : null;
   });
   const audio = useEngine((s) => s.state?.layers.audio?.marks ?? null);
-  if (!bg && !audio) return null;
+  const bgSkips = useEngine((s) => skipsOf(s.state, 'background'));
+  const soundSkips = useEngine((s) => skipsOf(s.state, 'sound'));
+  const bgRow = bg !== null || bgSkips !== null;
+  const soundRow = audio !== null || soundSkips !== null;
+  if (!bgRow && !soundRow) return null;
   const jump = (layer: 'background' | 'audio', markerId: string) => {
     void window.drashti.engine.dispatch({ type: 'jumpToMarker', layer, markerId }).then((r) => {
       if (!r.ok) useNotice.setState({ text: r.message });
     });
   };
-  const row = (layer: 'background' | 'audio', marks: PlaybackMarker[]) => (
+  const row = (layer: 'background' | 'audio', skips: SkipsShown, marks: PlaybackMarker[] | null) => (
     <div
       className="flex flex-wrap items-center gap-1.5"
       role="group"
-      aria-label={`Jump the ${layer === 'audio' ? 'sound' : 'background'} to a marker`}
+      aria-label={layer === 'audio' ? 'The sound playing' : 'The background video'}
+      data-testid={layer === 'audio' ? 'playing-sound' : 'playing-background'}
     >
       <span className="text-xs text-muted">{layer === 'audio' ? 'Sound' : 'Background'}:</span>
-      {marks.map((m) => (
-        <Button
-          key={m.id}
-          size="sm"
-          icon={Bookmark}
-          data-testid="marker-jump"
-          onClick={() => jump(layer, m.id)}
+      {skips && <SkipButtons layer={layer} shown={skips} />}
+      {marks && (
+        <div
+          className="flex flex-wrap items-center gap-1.5"
+          role="group"
+          aria-label={`Jump the ${layer === 'audio' ? 'sound' : 'background'} to a marker`}
         >
-          {m.name}
-        </Button>
-      ))}
+          {marks.map((m) => (
+            <Button
+              key={m.id}
+              size="sm"
+              icon={Bookmark}
+              data-testid="marker-jump"
+              onClick={() => jump(layer, m.id)}
+            >
+              {m.name}
+            </Button>
+          ))}
+        </div>
+      )}
     </div>
   );
   return (
     <div className="space-y-1.5 px-3 pt-2" data-testid="marker-jumps">
-      {bg && row('background', bg)}
-      {audio && row('audio', audio)}
+      {bgRow && row('background', bgSkips, bg)}
+      {soundRow && row('audio', soundSkips, audio)}
     </div>
   );
 }

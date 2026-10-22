@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { formatDuration } from '../../../shared/format';
+import { playbackLeftMs } from '../../../shared/media';
 import type { MusicPlaylist } from '../../../shared/music';
 import { useEngine } from '../engine/engine-store';
+import { SkipButtons } from '../markers/SkipButtons';
+import { skipsOf } from '../markers/skips';
 import { loadMedia, useMedia } from '../library/library-store';
 import { useNow } from '../render/useNow';
 import { engineNow } from '../render/clock';
@@ -66,14 +69,16 @@ export function useMusicPlaying() {
 const dispatch = (type: 'pauseMusic' | 'resumeMusic' | 'musicNext' | 'musicPrevious') =>
   window.drashti.engine.dispatch({ type });
 
-/** "2:31 left" for the track playing (paused: where it is); it ticks only while it shows. */
+/**
+ * "2:31 left" for the track playing (paused: where it is), to its end point and from where it jumped to (a
+ * marker, Back 15 s, Forward 15 s or Last 10 s: Session 50); it ticks only while it shows.
+ */
 function TimeLeft() {
   const a = useMusicPlaying();
   useNow(1000);
   if (!a?.durationMs) return null;
-  const into = a.pausedAtMs ?? engineNow() - a.startedAt;
   return (
-    <span className="shrink-0 text-muted tabular-nums">{`${formatDuration(Math.max(0, a.durationMs - into))} left`}</span>
+    <span className="shrink-0 text-muted tabular-nums">{`${formatDuration(playbackLeftMs(a, a.durationMs, engineNow()))} left`}</span>
   );
 }
 
@@ -94,6 +99,7 @@ export function MusicPanel({
   const shown = shownMusic(view, shownId, playing?.music?.playlistId ?? null);
   const isShownPlaying = playing?.music?.playlistId === shown?.id;
   const paused = playing?.pausedAtMs !== undefined;
+  const skips = useEngine((s) => skipsOf(s.state, 'music'));
   return (
     <Panel
       nested={nested}
@@ -170,6 +176,15 @@ export function MusicPanel({
             <span className="flex-1" />
             <OptionToggle playlist={shown} option="loop" />
             <OptionToggle playlist={shown} option="shuffle" />
+          </div>
+          {/* Back 15 s, Forward 15 s, Last 10 s (Session 50), beside Play and Pause: in the track playing. */}
+          <div
+            className="flex flex-wrap items-center gap-1.5"
+            role="group"
+            aria-label="Move in the track playing"
+            data-testid="music-skips"
+          >
+            <SkipButtons layer="audio" shown={isShownPlaying ? skips : null} />
           </div>
           <AudioDrop playlistId={shown.id}>
             <Tracks
