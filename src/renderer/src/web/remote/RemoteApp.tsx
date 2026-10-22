@@ -18,6 +18,7 @@ import { Scene } from '../../render/Scene';
 import { textLang } from '../../render/lang';
 import { useNow } from '../../render/useNow';
 import { groupLookIn, type LiveGroupLook } from '../../../../shared/looks';
+import { SCREEN_SWITCHES, type ScreenSwitches, SWITCH_NAMES } from '../../../../shared/screen-switches';
 import { languageView } from '../../../../shared/language-view';
 import { SlideView } from '../../render/SlideView';
 import { TimerText } from '../../render/TimerText';
@@ -143,11 +144,9 @@ function useHallLook(state: EngineState | null): LiveGroupLook {
  * Which of Main's screens are off, Audience and Stage (Session 50), in words: "Audience off", "Stage off" or
  * both; null while both are on. A phone says so, and cannot turn them (the operator does, in Drashti).
  */
-function switchedOffWords(switches: { audience: boolean; stage: boolean } | undefined): string | null {
+function switchedOffWords(switches: ScreenSwitches | undefined): string | null {
   if (!switches) return null;
-  const off = [switches.audience ? null : 'Audience', switches.stage ? null : 'Stage'].filter(
-    (name): name is string => name !== null,
-  );
+  const off = SCREEN_SWITCHES.filter((which) => !switches[which]).map((which) => SWITCH_NAMES[which]);
   return off.length === 0 ? null : `${off.join(' and ')} off`;
 }
 
