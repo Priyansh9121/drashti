@@ -25,8 +25,9 @@ interface LibraryView {
   /** A slide to bring into view in the grid (a search found it). */
   focusSlideId: string | null;
   /**
-   * Nothing is chosen on purpose (Session 26g: Skip for now on the first start): the middle shows its
-   * three steps, and the first presentation is not chosen by itself until the operator picks one.
+   * Nothing is chosen on purpose (Session 26g: Skip for now on the first start; Session 50: the presentation
+   * open in the middle deleted there): the middle shows its three steps, and the first presentation is not
+   * chosen by itself until the operator picks one.
    */
   nothingChosen: boolean;
   /**
@@ -88,7 +89,10 @@ function took(id: string, doc: PresentationDoc | null): void {
   useLibrary.setState({ doc, unreadId: doc ? null : id });
 }
 
-/** Choose nothing (the first start's Skip for now): the middle's empty place leads, its steps first. */
+/**
+ * Choose nothing (the first start's Skip for now, or Delete… in the middle: Session 50): the middle's empty place
+ * leads, its steps first.
+ */
 export function chooseNothing(): void {
   useLibrary.setState({ selectedId: null, doc: null, marked: [], item: null, nothingChosen: true });
 }
