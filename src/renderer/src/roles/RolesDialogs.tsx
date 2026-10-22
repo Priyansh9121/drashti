@@ -9,6 +9,7 @@ import { Field, TextInput } from '../ui/Field';
 import { Lock, LockOpen } from '../ui/icons';
 import { Notice } from '../ui/Notice';
 import { Tooltip } from '../ui/Tooltip';
+import { ICON_IF_NARROW, WORDS_IF_NARROW } from '../operator/top-bar';
 import { answerAdminPin, askAdminPin, closeRolesDialog, useRoles } from './roles-store';
 
 /*
@@ -115,18 +116,22 @@ function AdminPinForm({ what }: { what: string | null }) {
 }
 
 /** Who is at the controls (roles on): Operator, or Admin and Lock. */
-export function RoleChip() {
+/**
+ * Who is at the controls, in the top bar while roles are on. `compact`: the top bar is crowded (Session 51,
+ * operator/top-bar.ts), so below 1680 px wide it shows its icon alone, its tooltip saying the rest.
+ */
+export function RoleChip({ compact = false }: { compact?: boolean }) {
   const view = useRoles((s) => s.view);
   if (!view.on) return null;
-  if (view.admin) return <AdminChip />;
-  return <OperatorChip />;
+  if (view.admin) return <AdminChip compact={compact} />;
+  return <OperatorChip compact={compact} />;
 }
 
 /**
  * Admin, unlocked until Lock (Session 44; Priyansh: "admin can use it for as long as he wants, not 10
  * minutes"): Lock, where the countdown was, locks it; Simple Mode and quitting lock it too.
  */
-function AdminChip() {
+function AdminChip({ compact }: { compact: boolean }) {
   return (
     <Tooltip content="Admin is unlocked until you lock it, change to Simple Mode or quit." side="bottom">
       <Button
@@ -136,24 +141,33 @@ function AdminChip() {
         data-role="admin"
         aria-label="Admin is unlocked. Lock"
         onClick={() => void window.drashti.roles.lock()}
+        className={compact ? ICON_IF_NARROW : undefined}
       >
-        Admin · Lock
+        <span className={compact ? WORDS_IF_NARROW : undefined}>Admin · Lock</span>
       </Button>
     </Tooltip>
   );
 }
 
-function OperatorChip() {
+function OperatorChip({ compact }: { compact: boolean }) {
   return (
-    <Tooltip content="Running the show as an operator. Unlock admin with the admin PIN." side="bottom">
+    <Tooltip
+      content={
+        compact
+          ? 'Operator: running the show as an operator. Unlock admin with the admin PIN.'
+          : 'Running the show as an operator. Unlock admin with the admin PIN.'
+      }
+      side="bottom"
+    >
       <Button
         variant="ghost"
         icon={Lock}
         data-testid="role-chip"
         data-role="operator"
         onClick={() => void askAdminPin()}
+        className={compact ? ICON_IF_NARROW : undefined}
       >
-        Operator
+        <span className={compact ? WORDS_IF_NARROW : undefined}>Operator</span>
       </Button>
     </Tooltip>
   );

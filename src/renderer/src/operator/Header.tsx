@@ -13,19 +13,34 @@ import { OnAirBadges } from '../stream/OnAirBadges';
 import { openStreamPanel } from '../stream/stream-store';
 import { enterSimpleMode } from './mode-store';
 import { Tooltip } from '../ui/Tooltip';
+import { cx } from '../ui/cx';
 import { LiveStatus } from './StatusLine';
 import { RoleChip } from '../roles/RolesDialogs';
+import { useRoles } from '../roles/roles-store';
 import { ScreenSwitchButtons } from './ScreenSwitches';
+import { COUNT_IF_NARROW, ICON_IF_NARROW, WORDS_IF_NARROW } from './top-bar';
+
+/** Whether the Announcements button shows: while the network is on, or while any is waiting or on the screens. */
+function useAnnouncementsShown(): boolean {
+  const networkOn = useNetwork((s) => s.status?.on ?? false);
+  const waiting = useAnnouncements((s) => s.view?.waiting.length ?? 0);
+  const showing = useAnnouncements((s) => s.view?.showing.length ?? 0);
+  return networkOn || waiting > 0 || showing > 0;
+}
+
+/** A button's words: for screen readers only while a crowded top bar shows its icon alone (top-bar.ts). */
+function Words({ crowded, children }: { crowded: boolean; children: string }) {
+  return <span className={crowded ? WORDS_IF_NARROW : undefined}>{children}</span>;
+}
 
 /**
  * Announcements from phones: shown while the network is on, or while any is
  * waiting or on the screens, with how many are waiting.
  */
-function AnnouncementsButton({ help }: { help: ReactNode }) {
-  const networkOn = useNetwork((s) => s.status?.on ?? false);
+function AnnouncementsButton({ help, crowded }: { help: ReactNode; crowded: boolean }) {
+  const shown = useAnnouncementsShown();
   const waiting = useAnnouncements((s) => s.view?.waiting.length ?? 0);
-  const showing = useAnnouncements((s) => s.view?.showing.length ?? 0);
-  if (!networkOn && waiting === 0 && showing === 0) return null;
+  if (!shown) return null;
   return (
     <span className="flex items-center gap-0.5">
       <Tooltip content="Announcements sent from phones, waiting for you to approve them" side="bottom">
@@ -34,8 +49,17 @@ function AnnouncementsButton({ help }: { help: ReactNode }) {
           icon={Inbox}
           onClick={openAnnouncements}
           data-testid="open-announcements"
+          className={cx(crowded && (waiting > 0 ? COUNT_IF_NARROW : ICON_IF_NARROW))}
         >
-          {waiting > 0 ? `Announcements (${waiting})` : 'Announcements'}
+          {waiting > 0 ? (
+            // How many wait stays in sight beside the icon, one line of words with it ("Announcements (2)").
+            <span>
+              <span className={crowded ? WORDS_IF_NARROW : undefined}>Announcements </span>
+              {`(${String(waiting)})`}
+            </span>
+          ) : (
+            <Words crowded={crowded}>Announcements</Words>
+          )}
         </Button>
       </Tooltip>
       {help}
@@ -63,6 +87,19 @@ export function Header({
   const phones = useWhatIsThis('phones', { compact: true });
   const announcements = useWhatIsThis('announcements', { compact: true });
   const cards = [stream.card, phones.card, announcements.card].filter(Boolean);
+  // Phones or the PINs on (Session 51, S2-3): below 1680 px wide, some buttons show their icon alone (top-bar.ts).
+  const rolesOn = useRoles((s) => s.view.on);
+  const crowded = useAnnouncementsShown() || rolesOn;
+  const themes = (
+    <Button
+      variant="ghost"
+      icon={Palette}
+      onClick={() => openThemes()}
+      className={cx(crowded && ICON_IF_NARROW)}
+    >
+      <Words crowded={crowded}>Themes</Words>
+    </Button>
+  );
   return (
     <>
       <header
@@ -81,14 +118,25 @@ export function Header({
             <LiveStatus />
           </div>
         </HeaderStates>
-        <div className="flex shrink-0 items-center gap-2">
-          <Button variant="ghost" icon={Palette} onClick={() => openThemes()}>
-            Themes
-          </Button>
+        <div className="flex shrink-0 items-center gap-2" data-crowded={crowded ? 'true' : undefined}>
+          {/* Its icon alone says nothing: crowded, its tooltip names it. */}
+          {crowded ? (
+            <Tooltip content="Themes" side="bottom" describes={false}>
+              {themes}
+            </Tooltip>
+          ) : (
+            themes
+          )}
           <span className="flex items-center gap-0.5">
             <Tooltip content="The stream to YouTube, and recording" side="bottom">
-              <Button variant="ghost" icon={Radio} onClick={openStreamPanel} data-testid="open-stream">
-                Stream
+              <Button
+                variant="ghost"
+                icon={Radio}
+                onClick={openStreamPanel}
+                data-testid="open-stream"
+                className={cx(crowded && ICON_IF_NARROW)}
+              >
+                <Words crowded={crowded}>Stream</Words>
               </Button>
             </Tooltip>
             {stream.button}
@@ -98,13 +146,19 @@ export function Header({
               content="Phones and tablets on this Wi-Fi: a remote, a stage screen, announcements"
               side="bottom"
             >
-              <Button variant="ghost" icon={Smartphone} onClick={openNetwork} data-testid="open-network">
-                Phones
+              <Button
+                variant="ghost"
+                icon={Smartphone}
+                onClick={openNetwork}
+                data-testid="open-network"
+                className={cx(crowded && ICON_IF_NARROW)}
+              >
+                <Words crowded={crowded}>Phones</Words>
               </Button>
             </Tooltip>
             {phones.button}
           </span>
-          <AnnouncementsButton help={announcements.button} />
+          <AnnouncementsButton help={announcements.button} crowded={crowded} />
           <Tooltip content="Screens and sound" kbd={shortcutText('openScreens', platform)} side="bottom">
             <Button variant="secondary" icon={Monitor} onClick={onOpenScreens}>
               Screens
@@ -112,13 +166,22 @@ export function Header({
           </Tooltip>
           {/* Audience and Stage (Session 50): this computer's screens of each kind, off and on. */}
           <ScreenSwitchButtons platform={platform} />
-          <RoleChip />
+          <RoleChip compact={crowded} />
           <Tooltip
-            content="One screen with big buttons, for volunteers. Nothing can be changed there."
+            content={
+              crowded
+                ? 'Simple Mode: one screen with big buttons, for volunteers. Nothing can be changed there.'
+                : 'One screen with big buttons, for volunteers. Nothing can be changed there.'
+            }
             side="bottom"
           >
-            <Button variant="ghost" icon={LayoutGrid} onClick={() => void enterSimpleMode()}>
-              Simple Mode
+            <Button
+              variant="ghost"
+              icon={LayoutGrid}
+              onClick={() => void enterSimpleMode()}
+              className={cx(crowded && ICON_IF_NARROW)}
+            >
+              <Words crowded={crowded}>Simple Mode</Words>
             </Button>
           </Tooltip>
           {extra}
