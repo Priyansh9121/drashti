@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode, RefObject } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import type { PipLayer, PipSource } from '../../../shared/engine/state';
 import type { Movement } from '../../../shared/looks';
 import type { MediaElement } from '../../../shared/model';
@@ -7,6 +8,7 @@ import type { Size } from '../../../shared/scaling';
 import { engineNow, onClockJump } from './clock';
 import { LiveWindowView } from './LiveWindowView';
 import {
+  keptPipRun,
   PIP_REST,
   pipMainPose,
   type PipPicture,
@@ -15,7 +17,9 @@ import {
   pipRect,
   type PipRun,
   pipRunAt,
+  pipRunLater,
   poseTransform,
+  samePipRun,
 } from './pip';
 import { KeptVideo } from './KeptVideo';
 import { ElementView } from './SlideView';
@@ -39,46 +43,30 @@ const BLACK: CSSProperties = { ...FULL, background: '#000000' };
 const BORDER = 'rgba(255, 255, 255, 0.85)';
 
 /**
- * The box's run on this screen (render/pip.ts pipRunAt): worked out again whenever the engine's state for it,
- * the group's Movement or the canvas changes, and when the clock jumps (a test holding it, the warm-up). The box
- * hands on the next run itself, at a swap's or a move's middle and at each end (`setRun`).
+ * The box's run on this screen (render/pip.ts pipRunAt), worked out from the engine's state and the engine's time
+ * at every drawing (Session 51), so whatever draws the screen again draws the box as the time has it, a swap's or a
+ * move's middle and each end included. The run is kept while it draws the same (keptPipRun), so nothing drawn from
+ * it is drawn again for nothing. `refresh` works it out again now, drawing the screen again only if the box changed:
+ * when the clock jumps (a test holding it, the warm-up, a node's offset set), and at the frame a swap or a move
+ * reaches its middle or anything its end (PipBox). Before, every clock jump drew the whole screen again.
  */
 export function usePipRun(
   layer: PipLayer | null,
   off: { layer: PipLayer; at: number } | null,
   movement: Movement,
   canvas: Size,
-): [PipRun, (next: PipRun) => void] {
+): [PipRun, () => void] {
   const { width, height } = canvas;
-  const [run, setRun] = useState<PipRun>(() =>
-    pipRunAt(layer, off, movement, engineNow(), { width, height }),
-  );
-  const [seen, setSeen] = useState({ layer, off, movement, width, height });
-  if (
-    seen.layer !== layer ||
-    seen.off !== off ||
-    seen.movement !== movement ||
-    seen.width !== width ||
-    seen.height !== height
-  ) {
-    setSeen({ layer, off, movement, width, height });
-    setRun(pipRunAt(layer, off, movement, engineNow(), { width, height }));
-  }
-  useEffect(
-    () =>
-      onClockJump(() => {
-        setRun(pipRunAt(layer, off, movement, engineNow(), { width, height }));
-      }),
-    [layer, off, movement, width, height],
-  );
-  return [run, setRun];
+  const latest = pipRunAt(layer, off, movement, engineNow(), { width, height });
+  const [kept, setKept] = useState(latest);
+  const run = keptPipRun(kept, latest);
+  if (run !== kept) setKept(run);
+  const refresh = useCallback(() => {
+    setKept((was) => keptPipRun(was, pipRunAt(layer, off, movement, engineNow(), { width, height })));
+  }, [layer, off, movement, width, height]);
+  useEffect(() => onClockJump(refresh), [refresh]);
+  return [run, refresh];
 }
-
-/** The same run at `now`, worked out from itself: where its middle or its end has brought it. */
-const runAgain = (run: PipRun, now: number, canvas: Size): PipRun =>
-  run.phase === 'out'
-    ? pipRunAt(null, run.layer ? { layer: run.layer, at: run.start } : null, run.movement, now, canvas)
-    : pipRunAt(run.layer, null, run.movement, now, canvas);
 
 const moves = (run: PipRun) =>
   run.phase === 'in' || run.phase === 'out' || run.phase === 'swap' || run.phase === 'move';
@@ -90,8 +78,11 @@ export function PipBox({
   draw,
 }: {
   run: PipRun;
-  /** The run once a swap or a move reaches its middle, or anything its end: the screen draws as it then has it. */
-  onRun: (next: PipRun) => void;
+  /**
+   * Works the run out again now (usePipRun's refresh): at the frame a swap or a move reaches its middle, or
+   * anything its end, the screen is drawn again as the time then has it.
+   */
+  onRun: () => void;
   canvas: Size;
   /** One of the screen's pictures (the background, the box's own, the slide), drawn at the box's size. */
   draw: (picture: PipPicture, size: Size) => ReactNode;
@@ -99,6 +90,8 @@ export function PipBox({
   const ref = useRef<HTMLDivElement>(null);
   const { width, height } = canvas;
   const moving = moves(run);
+  // The moment this drawing was worked out for (the run with it, by the screen).
+  const drawnAt = engineNow();
   const paint = useCallback(
     (now: number) => {
       const el = ref.current;
@@ -115,33 +108,33 @@ export function PipBox({
     },
     [run, moving, width, height],
   );
-  // Frame by frame from the engine's clock while it moves; at a middle or an end, the screen is told.
-  useEffect(() => {
+  // Frame by frame from the engine's clock while it moves. At the frame a swap or a move reaches its middle, or it
+  // ends, the screen is drawn again at once (flushSync), before that frame is shown: never a frame of the old
+  // pictures, place or phase after the time has changed them. Started and stopped as each drawing is put on the
+  // page, so no frame paints a move it no longer draws.
+  useLayoutEffect(() => {
     if (!moving) return;
     let frame = 0;
+    let live = true;
     const tick = () => {
       const now = engineNow();
-      paint(now);
-      const next = runAgain(run, now, { width, height });
-      if (
-        next.phase !== run.phase ||
-        next.swapped !== run.swapped ||
-        next.place !== run.place ||
-        next.layer !== run.layer
-      ) {
-        onRun(next);
-        return;
+      if (!samePipRun(pipRunLater(run, now, { width, height }), run)) {
+        flushSync(onRun);
+        // Drawn again with its next run: that drawing's own loop goes on.
+        if (!live) return;
       }
+      paint(now);
       frame = requestAnimationFrame(tick);
     };
-    tick();
+    frame = requestAnimationFrame(tick);
     return () => {
+      live = false;
       cancelAnimationFrame(frame);
     };
   }, [moving, run, paint, onRun, width, height]);
-  // After every render, before it is painted: where it is now.
+  // After every drawing, before it is shown: as at the moment it was worked out for.
   useLayoutEffect(() => {
-    paint(engineNow());
+    paint(drawnAt);
   });
   const { layer, place } = run;
   if (!layer || !place) return null;
@@ -197,11 +190,13 @@ export function PipBox({
 /**
  * The main picture's part in a swap (Session 51, render/pip.ts pipMainPose): the picture there that changes,
  * drawn frame by frame from the engine's clock while its swap runs (`run`; null for a picture that does not move),
- * so it moves as the box does at the same moment; at rest otherwise. The box hands on the run at its middle and at
- * its end (PipBox), and so this picture's next part.
+ * so it moves as the box does at the same moment; at rest otherwise. The box draws the screen again at the swap's
+ * middle and at its end (PipBox), and so this picture's next part.
  */
 export function usePipMainMove(ref: RefObject<HTMLElement | null>, run: PipRun | null, canvas: Size): void {
   const { width, height } = canvas;
+  // The moment this drawing was worked out for (the run with it, by the screen).
+  const drawnAt = engineNow();
   const paint = useCallback(
     (now: number) => {
       const el = ref.current;
@@ -218,8 +213,8 @@ export function usePipMainMove(ref: RefObject<HTMLElement | null>, run: PipRun |
     },
     [ref, run, width, height],
   );
-  // Frame by frame while it swaps.
-  useEffect(() => {
+  // Frame by frame while it swaps, started and stopped as each drawing is put on the page.
+  useLayoutEffect(() => {
     if (!run) return;
     const { start, length } = run;
     let frame = 0;
@@ -228,14 +223,14 @@ export function usePipMainMove(ref: RefObject<HTMLElement | null>, run: PipRun |
       paint(now);
       if (now - start < length) frame = requestAnimationFrame(tick);
     };
-    tick();
+    frame = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(frame);
     };
   }, [run, paint]);
-  // After every render, before it is painted: where it is now (at rest once the swap is over).
+  // After every drawing, before it is shown: as at the moment it was worked out for (at rest once it is over).
   useLayoutEffect(() => {
-    paint(engineNow());
+    paint(drawnAt);
   });
 }
 

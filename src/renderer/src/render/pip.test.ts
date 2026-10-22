@@ -3,6 +3,7 @@ import type { PipLayer, PipPlace } from '../../../shared/engine/state';
 import type { LookLayer } from '../../../shared/looks';
 import {
   droppedPlace,
+  keptPipRun,
   PIP_REST,
   pipDraw,
   pipLength,
@@ -14,8 +15,10 @@ import {
   pipPose,
   pipRect,
   pipRunAt,
+  pipRunLater,
   pipShownFor,
   pipShowsHere,
+  samePipRun,
 } from './pip';
 
 /* The picture-in-picture box on the screens (Session 50): where it sits, how it moves, and what goes where. */
@@ -251,6 +254,53 @@ describe('how the box moves', () => {
     expect(frame(20_000)).toMatchObject({ opacity: 1, scaleX: 1 });
     expect(frame(20_249).opacity).toBeLessThan(0.01);
     expect(frame(20_249).scaleX).toBeLessThan(0.86);
+  });
+});
+
+describe('a screen’s run of the box, worked out at every drawing (Session 51)', () => {
+  const swapped = box({ swapped: true, changed: { at: 30_000, place: place(), swapped: false } });
+
+  it('is kept while it draws the same, so a clock that jumps draws nothing again that has not changed', () => {
+    const first = pipRunAt(swapped, null, 'calm', 30_100, HD);
+    // Later in the same half: the same, so the one the screen has is kept.
+    expect(samePipRun(first, pipRunAt(swapped, null, 'calm', 30_200, HD))).toBe(true);
+    expect(keptPipRun(first, pipRunAt(swapped, null, 'calm', 30_200, HD))).toBe(first);
+    // Past the middle its pictures have changed places: the new one.
+    const second = pipRunAt(swapped, null, 'calm', 30_300, HD);
+    expect(samePipRun(first, second)).toBe(false);
+    expect(keptPipRun(first, second)).toBe(second);
+    // Still, at any later moment, and gone, likewise.
+    const still = pipRunAt(swapped, null, 'calm', 31_000, HD);
+    expect(keptPipRun(still, pipRunAt(swapped, null, 'calm', 99_000, HD))).toBe(still);
+    const gone = pipRunAt(null, null, 'calm', 31_000, HD);
+    expect(keptPipRun(gone, pipRunAt(null, null, 'calm', 99_000, HD))).toBe(gone);
+    // Another box (even one alike), another Movement, or gone instead: not the same.
+    expect(samePipRun(still, pipRunAt({ ...swapped }, null, 'calm', 31_000, HD))).toBe(false);
+    expect(samePipRun(still, pipRunAt(swapped, null, 'bold', 31_000, HD))).toBe(false);
+    expect(samePipRun(gone, still)).toBe(false);
+    // A move: the same until its middle (a fade changes place there), then the new place.
+    const moved = box({ changed: { at: 40_000, place: place({ corner: 'top-left' }), swapped: false } });
+    const early = pipRunAt(moved, null, 'calm', 40_050, HD);
+    expect(keptPipRun(early, pipRunAt(moved, null, 'calm', 40_200, HD))).toBe(early);
+    expect(samePipRun(early, pipRunAt(moved, null, 'calm', 40_300, HD))).toBe(false);
+  });
+
+  it('worked out again from itself, reaches a swap’s or a move’s middle and each end by the time alone', () => {
+    const first = pipRunAt(swapped, null, 'calm', 30_100, HD);
+    expect(samePipRun(pipRunLater(first, 30_249, HD), first)).toBe(true);
+    expect(pipRunLater(first, 30_250, HD)).toMatchObject({ phase: 'swap', swapped: true });
+    expect(pipRunLater(first, 30_500, HD)).toMatchObject({ phase: 'still', swapped: true });
+    // Coming in: still at its end, whatever frames the screen drew before.
+    const coming = pipRunAt(box(), null, 'calm', 10_100, HD);
+    expect(pipRunLater(coming, 10_299, HD)).toMatchObject({ phase: 'in' });
+    expect(pipRunLater(coming, 10_300, HD)).toMatchObject({ phase: 'still' });
+    // Going out: gone at its end.
+    const leaving = pipRunAt(null, { layer: box(), at: 20_000 }, 'calm', 20_100, HD);
+    expect(samePipRun(pipRunLater(leaving, 20_249, HD), leaving)).toBe(true);
+    expect(pipRunLater(leaving, 20_250, HD)).toMatchObject({ phase: 'gone', layer: null });
+    // Worked out as the screen would from the engine's state at that moment.
+    for (const t of [30_100, 30_249, 30_250, 30_499, 30_500, 31_000])
+      expect(samePipRun(pipRunLater(first, t, HD), pipRunAt(swapped, null, 'calm', t, HD))).toBe(true);
   });
 });
 

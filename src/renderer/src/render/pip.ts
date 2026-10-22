@@ -221,6 +221,42 @@ export function pipRunAt(
 }
 
 /**
+ * The same run at `now`, worked out from itself (its own box, or the one going out): where a swap's or a move's
+ * middle, or its end, has brought it by the time alone (Session 51), as pipRunAt has it from the engine's state.
+ */
+export const pipRunLater = (run: PipRun, now: number, canvas: Size): PipRun =>
+  run.phase === 'out'
+    ? pipRunAt(null, run.layer ? { layer: run.layer, at: run.start } : null, run.movement, now, canvas)
+    : pipRunAt(run.layer, null, run.movement, now, canvas);
+
+/**
+ * Two runs that draw the same (Session 51): the same box, in the same phase from the same moment, its pictures
+ * and its place alike, by the same Movement.
+ */
+export function samePipRun(a: PipRun, b: PipRun): boolean {
+  return (
+    a.layer === b.layer &&
+    a.phase === b.phase &&
+    a.start === b.start &&
+    a.length === b.length &&
+    a.swapped === b.swapped &&
+    a.place === b.place &&
+    a.movement === b.movement &&
+    (a.from === b.from ||
+      (a.from !== null &&
+        b.from !== null &&
+        a.from.place === b.from.place &&
+        a.from.swapped === b.from.swapped))
+  );
+}
+
+/**
+ * The run a screen draws (Session 51): worked out at every drawing, but the one it has kept while it draws the
+ * same, so a clock that jumps (a test holding it, the warm-up, a node's offset) draws nothing again for nothing.
+ */
+export const keptPipRun = (was: PipRun, now: PipRun): PipRun => (samePipRun(was, now) ? was : now);
+
+/**
  * The box part-way: its opacity, how far it is from its place (canvas pixels), and its scale about its middle
  * (or about its top left, for a glide from another place and size).
  */

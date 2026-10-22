@@ -467,7 +467,8 @@ export const Scene = memo(function Scene({
     pipShownFor(look) &&
     pipShowsHere(box.source, live) &&
     (box.source.kind !== 'slides' || (layers.slide !== null && shown('slide')));
-  const [run, setRun] = usePipRun(layers.pip, state.pipOff, look.movement, canvas);
+  // Worked out at every drawing from the engine's time, kept while it draws the same (Session 51).
+  const [run, refreshRun] = usePipRun(layers.pip, state.pipOff, look.movement, canvas);
   const up = boxHere(layers.pip) ? layers.pip : null;
   // The idle rotation, where this group's Look shows it, while nothing is up on these screens (the box counts).
   const nothingUp = background === null && (layers.slide === null || !shown('slide')) && up === null;
@@ -559,7 +560,7 @@ export const Scene = memo(function Scene({
                   )}
                 </MainSlot>
                 {shown('props') && <PropsLayer props={layers.props} canvas={canvas} scaling={scaling} />}
-                {boxRun && <PipBox run={boxRun} onRun={setRun} canvas={canvas} draw={inBox} />}
+                {boxRun && <PipBox run={boxRun} onRun={refreshRun} canvas={canvas} draw={inBox} />}
                 <LowerThirdView
                   layer={layers.lowerThird}
                   off={state.lowerThirdOff}
