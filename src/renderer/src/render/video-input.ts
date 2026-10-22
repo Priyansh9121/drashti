@@ -3,6 +3,7 @@ import type { DrashtiBridge } from '../../../shared/bridge';
 import type { InputBackground } from '../../../shared/engine/state';
 import {
   findInputDevice,
+  notFoundReason,
   type InputCaptureState,
   reportOf,
   retryAfterMs,
@@ -110,8 +111,9 @@ async function open(entry: Entry): Promise<void> {
   let stream: MediaStream | null = null;
   let reason: StopReason = 'busy';
   try {
-    const id = findInputDevice(await navigator.mediaDevices.enumerateDevices(), entry.device);
-    if (id === null) reason = 'missing';
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const id = findInputDevice(devices, entry.device);
+    if (id === null) reason = notFoundReason(devices, entry.device);
     else
       stream = await navigator.mediaDevices.getUserMedia({
         video: { deviceId: { exact: id }, ...wanted() },
@@ -256,21 +258,22 @@ export function useVideoInput(input: Pick<InputBackground, 'inputId' | 'device'>
 }
 
 /** What this page last said of each showing of an input, and how many of its pictures draw that showing. */
-const said = new Map<string, 'playing' | 'stopped'>();
+const said = new Map<string, 'playing' | 'stopped' | 'missing'>();
 const saying = new Map<string, number>();
 
 /**
- * Say how the input up now stands on this page (it plays, or it stopped): once for each change of each showing
- * (`showing`: the input and when it went up), however many pictures of it the page draws. A picture going away
- * (dissolving out) says nothing.
+ * Say how the input up now stands on this page (it plays, it stopped, or no camera of its name is here): once for
+ * each change of each showing (`showing`: the input and when it went up), however many pictures of it the page
+ * draws. A picture going away (dissolving out) says nothing.
  */
 export function useInputReport(
   inputId: string,
   showing: string,
   state: InputCaptureState,
   on: boolean,
+  reason: StopReason | null = null,
 ): void {
-  const report = on ? reportOf(state) : null;
+  const report = on ? reportOf(state, reason) : null;
   useEffect(() => {
     if (report === null) return;
     saying.set(showing, (saying.get(showing) ?? 0) + 1);

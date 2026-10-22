@@ -56,8 +56,26 @@ export function retryAfterMs(reason: StopReason): number | null {
   return reason === 'refused' ? 10_000 : 3000;
 }
 
-/** What the page says of the input up now (shared/video-inputs.ts VideoInputReport), or nothing yet. */
-export function reportOf(state: InputCaptureState): 'playing' | 'stopped' | null {
+/**
+ * Why no camera of the input's name was found: not there (other cameras show their names, or there are none), or
+ * refused when every camera's name is hidden (the computer has not let Drashti use them yet), which says nothing
+ * of whether this one is there.
+ */
+export function notFoundReason(devices: readonly SeenDevice[], label: string): StopReason {
+  const cameras = devices.filter((d) => d.kind === 'videoinput');
+  return cameras.length > 0 && cameras.every((d) => d.label === '') && label !== '' ? 'refused' : 'missing';
+}
+
+/**
+ * What the page says of the input up now (shared/video-inputs.ts VideoInputReport), or nothing yet. Missing only
+ * when the page saw that no camera of its name is there (Session 50: restart recovery then takes it off and names
+ * it); a stop for any other reason is said as stopped.
+ */
+export function reportOf(
+  state: InputCaptureState,
+  reason: StopReason | null = null,
+): 'playing' | 'stopped' | 'missing' | null {
   if (state === 'live') return 'playing';
-  return state === 'stopped' ? 'stopped' : null;
+  if (state !== 'stopped') return null;
+  return reason === 'missing' ? 'missing' : 'stopped';
 }

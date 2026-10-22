@@ -176,7 +176,7 @@ function InputSlotView({
 }) {
   const { key, layer } = slot;
   const capture = useVideoInput(layer);
-  useInputReport(layer.inputId, key, capture.state, current);
+  useInputReport(layer.inputId, key, capture.state, current, capture.reason);
   const loading = slot.state === 'loading';
   const cannot = capture.state === 'stopped' || capture.state === 'absent';
   useEffect(() => {
