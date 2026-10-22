@@ -114,11 +114,12 @@ export function useFocusTrap(
       document.removeEventListener('keydown', onKey, true);
       if (onTop) document.removeEventListener('focusin', onFocusIn, true);
       const { held, next } = stack.remove(trap);
-      // Only the one holding the keyboard gives it back: where it was, or else to the dialog left under it.
+      // Only the one holding the keyboard gives it back, where it was. One on top gives it to a dialog opened
+      // meanwhile instead (where it was is under that one).
       if (!held) return;
       const before = trap.before;
-      if (before?.isConnected && (!next || next.root.contains(before))) before.focus();
-      else next?.focusFirst();
+      if (onTop && next && !(before && next.root.contains(before))) next.focusFirst();
+      else if (before?.isConnected) before.focus();
     };
   }, [ref, onTop]);
 }
