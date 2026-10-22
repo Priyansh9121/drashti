@@ -2,14 +2,27 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { GUIDES, passagesHolding } from '../shared/guides';
+import type { OperatorAction } from '../shared/keymap';
+import { shortcutText } from '../shared/keymap';
 import { parseMarkdown, passagesOf } from '../shared/markdown';
+import type { PanelHelpId } from '../shared/panel-help';
 import { PANEL_HELP } from '../shared/panel-help';
 
 /*
  * "What is this?" on each operator panel (Session 25): every panel has its two or three sentences, each
  * follows one passage of a guide shipped with Drashti, which its Read more opens (Sessions 31–36), and
- * every text is used by a panel.
+ * every text is used by a panel. A key a card names is the keymap's (Session 50).
  */
+
+/**
+ * The cards that name a key, and whose key it is (Session 50: F5 and F6, and F7 and F8, changed places to the
+ * keys the operators already press). Every other card names none.
+ */
+const KEY_NAMED: Partial<Record<PanelHelpId, OperatorAction>> = {
+  props: 'clearProps',
+  masks: 'clearMasks',
+  audio: 'clearAudio',
+};
 
 const app = join(__dirname, '..', '..');
 const renderer = join(app, 'src', 'renderer', 'src');
@@ -67,6 +80,16 @@ describe('"What is this?" on the operator panels', () => {
       const found = passagesHolding(passages[help.doc] ?? [], help.guide);
       expect(found.length, `${id}'s passage in the ${help.doc} guide: ${help.guide}`).toBe(1);
       expect(found[0]?.heading, `${id} opens a passage, not a heading`).toBe(false);
+    }
+  });
+
+  it('names a key as the keymap has it: its action’s, on the cards that name one, and none on the others (Session 50)', () => {
+    for (const [id, help] of Object.entries(PANEL_HELP)) {
+      const action = KEY_NAMED[id as PanelHelpId];
+      // F-keys are written the same on the Mac and on Windows.
+      expect(help.text.match(/\bF\d{1,2}\b/gu) ?? [], `${id}: ${help.text}`).toEqual(
+        action ? [shortcutText(action, 'darwin')] : [],
+      );
     }
   });
 
