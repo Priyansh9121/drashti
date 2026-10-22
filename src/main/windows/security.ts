@@ -22,8 +22,10 @@ export interface PermissionRules {
   /**
    * Only for the default session on Main (Session 50): which of Drashti's screen pages this is, for a camera
    * (a video input): the operator window's (its LIVE picture, Media's small live pictures of its video inputs)
-   * or one of this computer's outputs'; null for every other window (the window for Zoom, the gallery, a PDF's
-   * hidden window...). A node's session and the audio player's leave it out: they never open a camera.
+   * or one of this computer's outputs' (audience, stage and key and fill alike: each draws the hall's picture,
+   * a stage screen in its box of the audience picture); null for every other window (the window for Zoom, the
+   * gallery, a PDF's hidden window...). A node's session and the audio player's leave it out: they never open
+   * a camera.
    */
   cameraPage?(contents: WebContents | null): CameraPage | null;
   /** Tests only: what counts as one of Drashti's own pages (left out: the built renderer's, or Vite's). */

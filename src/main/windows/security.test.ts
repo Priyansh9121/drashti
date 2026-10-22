@@ -103,7 +103,10 @@ describe('a camera for a video input (Session 50)', () => {
   it('is given, alone, to the operator window’s page and to an output’s, each known by its window and its address', () => {
     expect(camera()).toBe(true);
     expect(camera({ page: 'output', url: OUTPUT })).toBe(true);
+    // Every output of this computer is an output page: audience, stage (its box of the audience picture), key
+    // and fill.
     expect(camera({ page: 'output', url: `${OUTPUT}?screen=s1` })).toBe(true);
+    expect(camera({ page: 'output', url: `${OUTPUT}?screen=stage-1` })).toBe(true);
     // In development, from Vite's server.
     expect(camera({ url: 'http://localhost:5173/' })).toBe(true);
     expect(camera({ page: 'output', url: 'http://localhost:5173/output.html' })).toBe(true);
