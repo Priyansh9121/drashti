@@ -267,6 +267,10 @@ export function startPlayback(v: HTMLMediaElement, options: PlaybackOptions): Pl
             // (CI's Mac: a sound landed 0.2 s off just after two aimed again, and was left to its 2%).
             reaims = 0;
             jump(bounds.start + ((there - bounds.start + lead()) % length) - lead());
+            // Held up past the file's own end (a busy moment) with its own loop off (start and end points), it had
+            // stopped there: it plays on from where it lands at once (Session 51), not frozen (and silent) until
+            // the next check, up to a quarter of a second.
+            if (v.paused) void v.play().catch(() => undefined);
           },
           Math.max(0, ((left - HOLD_EARLY) / v.playbackRate) * 1000),
         );

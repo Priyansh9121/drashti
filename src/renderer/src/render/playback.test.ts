@@ -47,12 +47,17 @@ class FakeMedia extends EventTarget {
     return this.base + (Math.max(0, Date.now() - this.since) / 1000) * this.rate;
   }
 
-  /** A real element playing once to its own end pauses there, and stays paused after a seek away. */
-  get paused(): boolean {
+  /** Played on to its own end, not looping: stopped there, as a real element is the moment it gets there. */
+  private stopAtEnd(): void {
     if (!this.stopped && !this.seeking && !this.loop && this.running() >= this.length) {
       this.base = this.length;
       this.stopped = true;
     }
+  }
+
+  /** A real element playing once to its own end pauses there, and stays paused after a seek away. */
+  get paused(): boolean {
+    this.stopAtEnd();
     return this.stopped;
   }
 
@@ -73,6 +78,8 @@ class FakeMedia extends EventTarget {
   }
 
   set currentTime(value: number) {
+    // A seek finds it as it is: stopped at its own end if it got there meanwhile (and it stays paused).
+    this.stopAtEnd();
     this.base = Math.max(0, Math.min(this.length, value + (this.lags.landOff?.shift() ?? 0)));
     this.seeking = true;
     setTimeout(() => {
@@ -385,6 +392,40 @@ describe('a file that loops, and a sound that starts late', () => {
     const off = offset(v, startedAt, 30, false);
     expect(Math.abs(off), `${off.toFixed(3)} s off the clock`).toBeLessThan(2 / 30);
     stop();
+  });
+
+  it('a loop to the file’s own end whose turn round comes late plays on from its start at once, not a check later', () => {
+    // Session 51: with start and end points the element's own loop is off, so a turn round held up past the
+    // file's own end (a busy moment) found it stopped there, and its jump left it paused until the next check:
+    // up to a quarter of a second frozen, and silent in the audio player.
+    for (const limits of [undefined, SOUND_LIMITS]) {
+      const what = limits ? 'a sound' : 'a picture';
+      const v = new FakeMedia(4);
+      v.loop = true;
+      const startedAt = Date.now();
+      const clip = { startMs: 1000, endMs: null };
+      const stop = startPlayback(v as unknown as HTMLMediaElement, {
+        mediaId: 'loop-to-its-end',
+        startedAt,
+        audible: limits !== undefined,
+        ...(limits ? { limits } : {}),
+        timing: () => ({ loop: true, clip }),
+      });
+      // A moment before the file's own end (0:04), its turn round waiting.
+      for (let i = 0; i < 10_000 && v.currentTime < 3.98; i++) vi.advanceTimersByTime(1);
+      // Busy for 40 ms: the turn round comes once the file has stopped at its end.
+      vi.setSystemTime(Date.now() + 40);
+      vi.advanceTimersByTime(30);
+      let furthest = 0;
+      for (let i = 0; i < 400; i++) {
+        vi.advanceTimersByTime(1);
+        const clock = playbackPosition({ startedAt, loop: true, clip }, 4, Date.now());
+        furthest = Math.max(furthest, Math.abs(playbackOffset(v.currentTime, clock, 3, true)));
+      }
+      expect(furthest, `${what}: furthest from the clock after its turn round (s)`).toBeLessThan(1 / 30);
+      expect(v.paused, what).toBe(false);
+      stop();
+    }
   });
 });
 
