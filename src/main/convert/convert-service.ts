@@ -127,6 +127,8 @@ interface MediaRow {
   name: string;
   path: string;
   source_path: string | null;
+  /** 1: deleted from the library (Session 26a), perhaps while its conversion waited. */
+  deleted: number;
 }
 
 const idsSchema = z.array(z.string().min(1).max(100)).min(1).max(10_000);
@@ -245,6 +247,8 @@ export class ConvertService {
   private keptNow = '';
   /** Quitting: what changes from now on is not kept (what was waiting or going on starts again next time). */
   private closed = false;
+  /** Once off air after the start (Session 51 review): what still uses a converted original moves to its copy. */
+  private followAtStart = false;
 
   /** How long reading what a file holds may take (tests give less). */
   private probeMs(): number {
@@ -292,6 +296,33 @@ export class ConvertService {
           ? '1 conversion waiting when Drashti last stopped starts again by itself'
           : `${String(resumed)} conversions waiting when Drashti last stopped start again by themselves`,
       );
+    // And, once off air, what was added on a converted original before Session 51 moves to its copy.
+    this.followAtStart = true;
+  }
+
+  /**
+   * What still uses an original whose conversion stands, its copy in the library, moves to the copy (Session 51
+   * review: added by hand before Session 51, it had landed on the original), kept with the conversion for its Undo.
+   */
+  private followStanding(): void {
+    const standing = this.deps.db
+      .prepare(
+        `SELECT mc.id, mc.original_id, mc.converted_id, mc.moved FROM media_conversions mc
+           JOIN media c ON c.id = mc.converted_id
+          WHERE mc.undone_at IS NULL AND c.deleted_at IS NULL ORDER BY mc.created_at DESC, mc.rowid DESC`,
+      )
+      .all() as { id: string; original_id: string; converted_id: string; moved: string }[];
+    const followed = new Set<string>();
+    for (const done of standing) {
+      // The newest conversion of each original, as copyFinder takes it.
+      if (followed.has(done.original_id)) continue;
+      followed.add(done.original_id);
+      this.followCopy(
+        done.original_id,
+        done,
+        'What still used a file converted before now uses its copy (added on the original before Session 51)',
+      );
+    }
   }
 
   list(): ConversionJob[] {
@@ -320,8 +351,11 @@ export class ConvertService {
 
   private row(id: string): MediaRow | null {
     return (
-      (this.deps.db.prepare('SELECT id, kind, name, path, source_path FROM media WHERE id = ?').get(id) as
-        MediaRow | undefined) ?? null
+      (this.deps.db
+        .prepare(
+          'SELECT id, kind, name, path, source_path, deleted_at IS NOT NULL AS deleted FROM media WHERE id = ?',
+        )
+        .get(id) as MediaRow | undefined) ?? null
     );
   }
 
@@ -378,9 +412,10 @@ export class ConvertService {
       const row = this.row(id);
       if (!row) continue;
       // Only what Drashti cannot play: files marked so at import, and HEVC (which the window offers only
-      // where this computer cannot play it).
-      const kind = this.deps.db.prepare('SELECT playable, format FROM media WHERE id = ?').get(id) as
-        { playable: number | null; format: string | null } | undefined;
+      // where this computer cannot play it). Never a file deleted from the library (Session 51 review).
+      const kind = this.deps.db
+        .prepare('SELECT playable, format FROM media WHERE id = ? AND deleted_at IS NULL')
+        .get(id) as { playable: number | null; format: string | null } | undefined;
       if (kind?.playable !== 0 && !isHevc(kind?.format ?? null)) continue;
       const pending = this.jobs.some(
         (j) => j.mediaId === id && (j.state === 'waiting' || j.state === 'converting'),
@@ -456,7 +491,11 @@ export class ConvertService {
    * What uses an original converted already is moved to its copy (Session 50, section 9's review), and added to what
    * the conversion's Undo moves back.
    */
-  private followCopy(originalId: string, done: { id: string; converted_id: string; moved: string }): void {
+  private followCopy(
+    originalId: string,
+    done: { id: string; converted_id: string; moved: string },
+    said = 'A file converted already was used again: what uses it now uses its copy',
+  ): void {
     const db = this.deps.db;
     const more = moveMedia(db, originalId, done.converted_id);
     const lists = Object.values(more) as (string[] | undefined)[];
@@ -477,7 +516,7 @@ export class ConvertService {
       tracks: [...(was.tracks ?? []), ...(more.tracks ?? [])],
     };
     db.prepare('UPDATE media_conversions SET moved = ? WHERE id = ?').run(JSON.stringify(merged), done.id);
-    this.deps.log('info', 'A file converted already was used again: what uses it now uses its copy');
+    this.deps.log('info', said);
     this.deps.libraryChanged(presentationsMoved(db, more));
   }
 
@@ -508,6 +547,10 @@ export class ConvertService {
 
   private watch(): void {
     const busy = this.deps.busy();
+    if (this.followAtStart && !busy) {
+      this.followAtStart = false;
+      this.followStanding();
+    }
     const file = this.runningFile;
     if (file) {
       if (busy && file.child && !file.stop) {
@@ -571,6 +614,15 @@ export class ConvertService {
     };
     if (!ffmpeg) return fail('Drashti’s copy of FFmpeg is missing.');
     if (!row) return fail('That file is no longer in the library.');
+    // Deleted from the library while it waited (Session 51 review): let go, never converted.
+    if (row.deleted === 1) {
+      job.state = 'cancelled';
+      job.progress = null;
+      this.deps.log('info', 'A file deleted from the library while its conversion waited is not converted');
+      this.changed();
+      this.watch();
+      return false;
+    }
     const source = join(this.deps.mediaDir, row.path);
     if (!existsSync(source)) return fail('The file is missing from Drashti’s media folder.');
     const size = statSync(source).size;
@@ -736,6 +788,11 @@ export class ConvertService {
           kept?.dropped_at ?? null,
         );
       const m = moveMedia(db, row.id, convertedId);
+      // Converted again (its copy deleted since, Session 51 review): the conversions before stand no more, so this
+      // one's Undo puts the original back (the same bytes bring the deleted copy back, under one of them).
+      db.prepare(
+        "UPDATE media_conversions SET undone_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE original_id = ? AND undone_at IS NULL",
+      ).run(row.id);
       db.prepare(
         'INSERT INTO media_conversions (id, original_id, converted_id, moved) VALUES (?, ?, ?, ?)',
       ).run(conversionId, row.id, convertedId, JSON.stringify(m));

@@ -16,6 +16,7 @@ import type { ConversionJob } from '../../shared/convert';
 import { type Db, openDatabase } from '../db/database';
 import { sha256File } from '../import/media-store';
 import { ConvertService } from './convert-service';
+import { copyFinder } from './relink';
 import { trimArgs } from './trim';
 import { ffmpegHere } from '../testing/ffmpeg-here';
 
@@ -187,6 +188,51 @@ describe.skipIf(!ffmpegHere(ffmpeg))('converting media, with FFmpeg', () => {
     // Nothing is left behind in the work folder.
     expect(readFileSync(join(mediaDir, converted('m-avi').path)).length).toBeGreaterThan(0);
   }, 180_000);
+
+  it('converted again once its copy was deleted: the conversion before stands no more, so this one’s Undo puts the original back (Session 51 review)', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'drashti-convert-'));
+    const mediaDir = join(dir, 'Media');
+    mkdirSync(join(mediaDir, 'in'), { recursive: true });
+    make(['-f', 'lavfi', '-i', 'sine=r=48000:d=1', '-t', '1', join(mediaDir, 'in', 'Placeholder bell.aiff')]);
+    const library = openDatabase(join(dir, 'drashti.sqlite'));
+    db = library;
+    library
+      .prepare(
+        "INSERT INTO media (id, kind, name, path, playable) VALUES ('snd', 'audio', 'Placeholder bell.aiff', 'in/Placeholder bell.aiff', 0)",
+      )
+      .run();
+    let jobs: ConversionJob[] = [];
+    const converting = new ConvertService({
+      db: library,
+      mediaDir,
+      ffmpegPath: () => ffmpeg,
+      busy: () => null,
+      freeBytes: () => 100 * 1024 ** 3,
+      changed: (j) => {
+        jobs = j;
+      },
+      libraryChanged: () => undefined,
+      log: () => undefined,
+    });
+    service = converting;
+    const convertOnce = async () => {
+      expect(converting.convert(['snd'])).toMatchObject({ ok: true });
+      await until(() => jobs.at(-1)?.state === 'done' || jobs.at(-1)?.state === 'failed');
+      expect(jobs.at(-1)?.state).toBe('done');
+      return { conversion: jobs.at(-1)?.conversionId ?? '', copy: jobs.at(-1)?.convertedId ?? '' };
+    };
+    const first = await convertOnce();
+    library
+      .prepare("UPDATE media SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?")
+      .run(first.copy);
+    // Converted again: a copy again (the same bytes bring the deleted one back), and only this conversion stands.
+    const second = await convertOnce();
+    const standing = () => library.prepare('SELECT id FROM media_conversions WHERE undone_at IS NULL').all();
+    expect(standing()).toEqual([{ id: second.conversion }]);
+    expect(converting.undo(second.conversion)).toEqual({ ok: true });
+    expect(standing()).toEqual([]);
+    expect(copyFinder(library)('snd')).toBe('snd');
+  }, 60_000);
 
   it('can be cancelled (even while FFmpeg reads the file), clears what a stop left, and refuses to start with less than 2 GB free', async () => {
     dir = mkdtempSync(join(tmpdir(), 'drashti-convert-'));
