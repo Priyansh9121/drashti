@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react';
 import { describeDisplay } from '../../../shared/display-match';
 import { shortcutText } from '../../../shared/keymap';
 import { LANG_NAMES } from '../../../shared/themes';
+import { CONTROLS_HERE } from '../screens/DisplayRow';
 import { LanguagePicker } from '../screens/LanguagePicker';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -71,7 +72,9 @@ function ScreensStep() {
   const displays = useSetup((s) => s.displays);
   const outputs = useSetup((s) => s.outputs);
   const operatorDisplayId = useSetup((s) => s.operatorDisplayId);
+  const controlsDisplayId = useSetup((s) => s.controlsDisplayId);
   const skipped = useSetup((s) => s.outputsSkipped);
+  const wentBack = useSetup((s) => s.wentBack);
   return (
     <div className="space-y-3">
       <p className="text-sm">
@@ -96,10 +99,20 @@ function ScreensStep() {
           Skipped: the screens stay as they are. Choose below to set them after all.
         </Notice>
       )}
+      {/* Keep these screens? went back (Session 50): the choices as made, to put right. */}
+      {wentBack && (
+        <Notice tone="info" data-testid="setup-went-back">
+          The screens went back to how they were. Change what each display shows, then press Done.
+        </Notice>
+      )}
       <ol className="space-y-2" aria-label="Displays">
         {displays.map((d, i) => {
           const choice: OutputChoice = outputs[d.id] ?? { use: 'none', languages: null };
-          const controls = d.id === operatorDisplayId;
+          // The display the controls are on, windowed outputs or not; an output there covers them only when
+          // outputs fill their displays.
+          const controls = d.id === controlsDisplayId;
+          const covers = d.id === operatorDisplayId;
+          const markId = `setup-controls-${String(d.id)}`;
           return (
             <li
               key={d.id}
@@ -118,12 +131,17 @@ function ScreensStep() {
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">
                   Display {i + 1}: {describeDisplay(d)}
                 </span>
-                {controls && <Badge tone="warning">The Drashti controls are here</Badge>}
+                {controls && (
+                  <span id={markId} data-testid="setup-controls-here">
+                    <Badge tone="warning">{CONTROLS_HERE}</Badge>
+                  </span>
+                )}
               </div>
               {/* One click each (Session 44): what it shows, as three choices side by side. */}
               <div
                 role="radiogroup"
                 aria-label={`What display ${i + 1} shows`}
+                aria-describedby={controls ? markId : undefined}
                 data-testid="setup-use"
                 data-use={choice.use}
                 className="flex flex-wrap gap-1.5"
@@ -154,7 +172,7 @@ function ScreensStep() {
                   </label>
                 ))}
               </div>
-              {controls && choice.use !== 'none' && (
+              {covers && choice.use !== 'none' && (
                 <p className="text-xs text-warning-fg">
                   An output here covers the Drashti controls. Finish asks before it does.
                 </p>
@@ -445,6 +463,7 @@ function PinsStep() {
 function FinishStep() {
   const state = useSetup();
   const plan = planOf(state);
+  const controlsDisplayId = state.controlsDisplayId;
   const finished = state.finished;
   if (finished)
     return (
@@ -468,6 +487,14 @@ function FinishStep() {
               Display {i + 1}: {USE_NAMES[o.use]}
               {o.use !== 'none' &&
                 `, ${o.languages ? o.languages.map((l) => LANG_NAMES[l]).join(', ') : 'every language'}`}
+              {o.displayId === controlsDisplayId && (
+                <>
+                  {' '}
+                  <span className="font-medium" data-testid="setup-summary-controls">
+                    ({CONTROLS_HERE.toLowerCase()})
+                  </span>
+                </>
+              )}
             </li>
           ))
         )}

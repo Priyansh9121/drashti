@@ -53,6 +53,22 @@ export function useDisplayOffer(): DisplayInfo | null {
   return displayToOffer(snapshot, controls);
 }
 
+/**
+ * The display the controls are on (Session 50: Screens marks it where it offers displays), read as Screens opens
+ * and again as displays come and go. Not now stays as it was.
+ */
+export function useControlsDisplay(): number | null {
+  const snapshot = useScreens((s) => s.snapshot);
+  const controls = useOffer((s) => s.controls);
+  const displays = snapshot?.displays.map((d) => String(d.id)).join(' ') ?? '';
+  useEffect(() => {
+    void window.drashti.setup.state().then((state) => {
+      useOffer.setState({ controls: state.controlsDisplayId });
+    });
+  }, [displays]);
+  return controls;
+}
+
 /** Show on <display>: it becomes the hall's screen. True when it did. */
 export async function showOn(display: DisplayInfo): Promise<boolean> {
   const result = await window.drashti.setup.finish(

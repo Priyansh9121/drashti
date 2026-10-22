@@ -85,7 +85,7 @@ describe('Keep these screens?, as the operator window learns it', () => {
     tell(null);
     answer({ ok: true, snapshot: EMPTY });
     await kept;
-    expect(store.useKeepScreens.getState()).toEqual({ pending: null, answering: false });
+    expect(store.useKeepScreens.getState()).toEqual({ pending: null, answering: false, answered: 'kept' });
     // An answer that came too late (the question had gone by itself) says nothing: the main process told.
     tell(asked);
     const late = store.answerKeepScreens(false);
@@ -93,6 +93,28 @@ describe('Keep these screens?, as the operator window learns it', () => {
     await late;
     expect(sent).toEqual(['keep', 'goBack']);
     expect(store.useKeepScreens.getState().answering).toBe(false);
+  });
+
+  it('remembers the answer this window gave, until the next question (Set Up Screens… reads it)', async () => {
+    const { store, tell, answer } = await connected(() => Promise.resolve(null));
+    tell(asked);
+    expect(store.useKeepScreens.getState().answered).toBeNull();
+    const back = store.answerKeepScreens(false);
+    // Known before the main process says the question went (Set Up Screens… reads it then).
+    expect(store.useKeepScreens.getState().answered).toBe('went-back');
+    tell(null);
+    answer({ ok: true, snapshot: EMPTY });
+    await back;
+    expect(store.useKeepScreens.getState().answered).toBe('went-back');
+    // A new question: not answered here yet. The same one again (whether it covers the controls): as it was.
+    tell(asked);
+    expect(store.useKeepScreens.getState().answered).toBeNull();
+    void store.answerKeepScreens(true);
+    tell({ ...asked, coversControls: true });
+    expect(store.useKeepScreens.getState().answered).toBe('kept');
+    // A second change starts the countdown again: a new question.
+    tell(covering);
+    expect(store.useKeepScreens.getState().answered).toBeNull();
   });
 
   it('counts whole seconds left, never below none', async () => {
