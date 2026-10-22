@@ -231,6 +231,23 @@ describe('a camera for a video input (Session 50)', () => {
     expect(asks(output, 'midi', {})).toBe(false);
   });
 
+  it('a Mac: no camera until the system says granted, so macOS never asks before Drashti has said why', () => {
+    let granted = false;
+    const { page, asks, checks } = stand({ cameraPage, cameraGranted: () => granted });
+    const operator = page(operatorPage, OPERATOR);
+    const output = page(outputPage, OUTPUT);
+    expect(asks(operator, 'media', { mediaTypes: ['video'] })).toBe(false);
+    expect(asks(output, 'media', { mediaTypes: ['video'] })).toBe(false);
+    // The cameras' names are no question to macOS: Media lists them before it asks.
+    expect(checks(operator, 'media', { mediaType: 'video' })).toBe(true);
+    // Asked after the page said why, and allowed.
+    granted = true;
+    expect(asks(operator, 'media', { mediaTypes: ['video'] })).toBe(true);
+    expect(asks(output, 'media', { mediaTypes: ['video'] })).toBe(true);
+    // Never sound, granted or not.
+    expect(asks(output, 'media', { mediaTypes: ['video', 'audio'] })).toBe(false);
+  });
+
   it('nowhere else: a session without the rule (the audio player’s, a node’s) never gives a camera', () => {
     const audio = stand({ isAudioPlayer: (c) => c?.id === operatorPage });
     const node = stand({ isOperator: () => false });
