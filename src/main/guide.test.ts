@@ -34,7 +34,7 @@ const written = (key: string) =>
 
 /** What a bold span says when it is a key: modifiers, then one key. */
 const KEY =
-  /^(?:(?:Cmd|Ctrl|Shift|Alt|Fn|Option)\+)*(?:F\d{1,2}|Space|Esc|Enter|Tab|Delete|Backspace|Page (?:Up|Down)|[←→↑↓]|[A-Z]|[.?])$/u;
+  /^(?:(?:Cmd|Ctrl|Shift|Alt|Fn|Option)\+)*(?:F\d{1,2}|Space|Esc|Enter|Tab|Delete|Backspace|Page (?:Up|Down)|[←→↑↓]|[A-Z0-9]|[.?])$/u;
 
 /** A key as KEYMAP would hold it in the guides' spelling: Windows' Ctrl is the Mac's Cmd. */
 const asMac = (key: string) => key.replace(/^Ctrl\+/u, 'Cmd+');

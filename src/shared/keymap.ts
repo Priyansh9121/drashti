@@ -1,10 +1,11 @@
 /**
  * Every operator keyboard shortcut, in one place.
  *
- * PROVISIONAL: these defaults follow common presentation software. Once the
- * operators' setup checklist (tools/audit/SETUP-CHECKLIST.md, section 3) is
- * back, change the keys below to match what they press in ProPresenter
- * today. Nothing else in the app hard-codes a key.
+ * The keys are the ones the mandir's operators already press (Session 50): their presentation program's
+ * Presentation and Screens menus, photographed on 22 Oct 2026. F1 to F4 were already the same; F5 (sound)
+ * and F6 (messages), and F7 (the ticker, their "announcements") and F8 (masks), changed places from
+ * Drashti's own; F12 is the logo, beside L; Mod+1 and Mod+2 turn the Audience and Stage screens off and on.
+ * Nothing else in the app hard-codes a key.
  *
  * Key names are KeyboardEvent.key values, except "Space". Letters match
  * either case. "Mod+" means Cmd on macOS and Ctrl on Windows.
@@ -28,6 +29,8 @@ export type OperatorAction =
   | 'clearMasks'
   | 'toggleBlackout'
   | 'toggleLogo'
+  | 'toggleAudience'
+  | 'toggleStage'
   | 'stopRepeat'
   | 'openScreens'
   | 'uncoverControls'
@@ -64,14 +67,19 @@ export const KEYMAP: readonly KeyBinding[] = [
   { action: 'clearSlide', keys: ['F2'], label: 'Clear slide' },
   { action: 'clearBackground', keys: ['F3'], label: 'Clear background' },
   { action: 'clearProps', keys: ['F4'], label: 'Clear props' },
-  { action: 'clearMessages', keys: ['F5'], label: 'Clear messages' },
-  { action: 'clearAudio', keys: ['F6'], label: 'Clear audio' },
-  { action: 'clearMasks', keys: ['F7'], label: 'Clear masks' },
+  { action: 'clearAudio', keys: ['F5'], label: 'Clear audio' },
+  { action: 'clearMessages', keys: ['F6'], label: 'Clear messages' },
   // The announcements ticker (Session 10).
-  { action: 'clearTicker', keys: ['F8'], label: 'Clear ticker' },
+  { action: 'clearTicker', keys: ['F7'], label: 'Clear ticker' },
+  { action: 'clearMasks', keys: ['F8'], label: 'Clear masks' },
   { action: 'toggleBlackout', keys: ['B', '.'], label: 'Black-out' },
-  // The logo instead of the picture, and back (the prop marked as the logo in Pro Mode).
-  { action: 'toggleLogo', keys: ['L'], label: 'Logo' },
+  // The logo instead of the picture, and back (the prop marked as the logo in Pro Mode): F12, as the operators
+  // press it, and L as before.
+  { action: 'toggleLogo', keys: ['F12', 'L'], label: 'Logo' },
+  // This computer's audience screens (key and fill too), or its stage screens, off and on (Session 50): off
+  // gives their displays back to the computer; the show carries on.
+  { action: 'toggleAudience', keys: ['Mod+1'], label: 'Audience on or off' },
+  { action: 'toggleStage', keys: ['Mod+2'], label: 'Stage on or off' },
   // Repeat Slides going round stops, its slide staying up (Session 26d). Not while a dialog, a menu, the
   // slide editor or a field has the keyboard: they keep Esc for themselves.
   { action: 'stopRepeat', keys: ['Escape'], label: 'Stop Repeat Slides' },
@@ -104,10 +112,10 @@ export const KEY_GROUPS: readonly { title: string; actions: readonly OperatorAct
       'clearSlide',
       'clearBackground',
       'clearProps',
-      'clearMessages',
       'clearAudio',
-      'clearMasks',
+      'clearMessages',
       'clearTicker',
+      'clearMasks',
     ],
   },
   { title: 'Covering the picture', actions: ['toggleBlackout', 'toggleLogo'] },
@@ -115,7 +123,10 @@ export const KEY_GROUPS: readonly { title: string; actions: readonly OperatorAct
     title: 'The library and playlists',
     actions: ['findInLibrary', 'moveItemUp', 'moveItemDown', 'removeSelected', 'undo'],
   },
-  { title: 'Screens, and this list', actions: ['openScreens', 'uncoverControls', 'showKeys'] },
+  {
+    title: 'Screens, and this list',
+    actions: ['openScreens', 'toggleAudience', 'toggleStage', 'uncoverControls', 'showKeys'],
+  },
 ];
 
 /** Keys the page listens for everywhere (not scoped to a list, not owned by the menu). */

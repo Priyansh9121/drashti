@@ -96,11 +96,13 @@ Do these about 30 minutes before the sabha starts.
 | Key or button                                          | What it does                                                                                                                                         |
 | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **B** (or **.**), **Black-out**                        | Black on the hall's screens, and back exactly as it was. The stage screens keep the words.                                                           |
-| **L**, **Logo**                                        | The mandir's logo instead of the picture, and back                                                                                                   |
+| **F12** (or **L**), **Logo**                           | The mandir's logo instead of the picture, and back                                                                                                   |
 | **F1**, **Clear all**                                  | Everything off the hall's screens. Straight after it, **Put it back** brings it all back.                                                            |
-| **F2**, **F3**, **F4**, **F5**, **F6**, **F7**, **F8** | One layer off each, in this order: the slide's words (the background stays), the background, props, messages, the sound, the Masks layer, the ticker |
+| **F2**, **F3**, **F4**, **F5**, **F6**, **F7**, **F8** | One layer off each, in this order: the slide's words (the background stays), the background, props, the sound, messages, the ticker, the Masks layer |
 
 A clear button is lit, with a dot, while its layer is on the screens.
+
+**Cmd+1** (Ctrl+1 on Windows) turns this computer's audience screens off and on again; **Cmd+2** (Ctrl+2) does the same for its stage screens.
 
 If an admin has turned the single-letter keys off (**Keys at a glance**, below), **B**, **.** and **L** do nothing: use the **Black-out** and **Logo** buttons.
 
