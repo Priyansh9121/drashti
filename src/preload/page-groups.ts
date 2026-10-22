@@ -45,6 +45,8 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'props',
     'roles',
     'screens',
+    // Audience and Stage (Session 50).
+    'screenSwitches',
     'setup',
     'shastra',
     'stageLayouts',
