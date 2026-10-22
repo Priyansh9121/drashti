@@ -1,22 +1,32 @@
+import { useEffect, useId } from 'react';
 import { type OperatorAction, shortcutText } from '../../../shared/keymap';
 import {
   SCREEN_SWITCHES,
   type ScreenSwitch,
   SWITCH_NAMES,
   SWITCH_OFF_WORDS,
+  switchOffQuestion,
+  TURN_OFF,
 } from '../../../shared/screen-switches';
 import { Button } from '../ui/Button';
-import { ConfirmDialog } from '../ui/Dialog';
+import { Dialog } from '../ui/Dialog';
 import { MonitorOff } from '../ui/icons';
 import { Tooltip } from '../ui/Tooltip';
 import { useNotice } from './actions';
-import { cancelAsk, confirmAsk, toggleSwitch, turnOnIfOff, useScreenSwitches } from './screen-switches-store';
+import {
+  answerFromOutput,
+  cancelAsk,
+  confirmAsk,
+  toggleSwitch,
+  turnOnIfOff,
+  useScreenSwitches,
+} from './screen-switches-store';
 
 /*
  * Audience and Stage (Session 50) in the operator window: the top bar's two switches beside Screens (Pro Mode),
  * each saying On or Off in words; the question before one goes off while its screens show something; and, while
  * one is off, the status bar's "Audience off" with Turn on, in both modes (Simple Mode's only way to change
- * them, and only on).
+ * them, and only on). When an output covers these controls, it asks the same, large (Session 51, S2-2).
  */
 
 const KEY: Record<ScreenSwitch, OperatorAction> = { audience: 'toggleAudience', stage: 'toggleStage' };
@@ -80,25 +90,71 @@ export function ScreenSwitchButtons({ platform }: { platform: string }) {
   );
 }
 
+/**
+ * The question itself, as a confirmation asks (an alertdialog, Cancel then the danger button), with the keyboard
+ * on Cancel, so Enter or Esc never turns the screens off unseen. While an output covers these controls and asks
+ * the same in its middle (Session 51, S2-2), Turn off has it instead, so Enter does what that output says.
+ */
+function Asking({ which, covered, platform }: { which: ScreenSwitch; covered: boolean; platform: string }) {
+  const textId = useId();
+  const name = SWITCH_NAMES[which];
+  return (
+    <Dialog
+      title={switchOffQuestion(which)}
+      role="alertdialog"
+      size="sm"
+      onClose={cancelAsk}
+      closeButton={false}
+      describedBy={textId}
+      testId="screen-switch-ask"
+      footer={
+        <>
+          <Button data-autofocus={covered ? undefined : true} onClick={cancelAsk}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            data-autofocus={covered ? true : undefined}
+            data-testid="screen-switch-turn-off"
+            onClick={() => void confirmAsk().then(say)}
+          >
+            {TURN_OFF}
+          </Button>
+        </>
+      }
+    >
+      <div id={textId} className="space-y-2 text-sm text-muted">
+        <p>{SWITCH_OFF_WORDS[which]}</p>
+        <p>
+          The show carries on. {name} On ({shortcutText(KEY[which], platform)}) puts them back where they
+          were.
+        </p>
+        {covered && (
+          <p data-testid="screen-switch-covered">
+            An output covers these controls now and asks the same in its middle: Enter turns {name} off, Esc
+            cancels.
+          </p>
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
 /** "Turn Audience off?": asked before one goes off while its screens show something (Pro Mode). */
 export function ScreenSwitchAsk({ platform }: { platform: string }) {
   const asking = useScreenSwitches((s) => s.asking);
-  if (!asking) return null;
-  const name = SWITCH_NAMES[asking];
-  return (
-    <ConfirmDialog
-      title={`Turn ${name} off?`}
-      confirmLabel="Turn off"
-      onCancel={cancelAsk}
-      onConfirm={() => void confirmAsk().then(say)}
-      testId="screen-switch-ask"
-    >
-      <p>{SWITCH_OFF_WORDS[asking]}</p>
-      <p>
-        The show carries on. {name} On ({shortcutText(KEY[asking], platform)}) puts them back where they were.
-      </p>
-    </ConfirmDialog>
+  const covered = useScreenSwitches((s) => s.covered);
+  // Answered on the output over these controls, as it had the keyboard: acted on here, as this window's buttons.
+  useEffect(
+    () =>
+      window.drashti.screenSwitches.onAnswered((yes) => {
+        void answerFromOutput(yes).then(say);
+      }),
+    [],
   );
+  if (!asking) return null;
+  // Made again when an output over the controls starts or stops asking, so the keyboard starts where it should.
+  return <Asking key={covered ? 'covered' : 'here'} which={asking} covered={covered} platform={platform} />;
 }
 
 /** The status bar's word while one is off, with Turn on: one click (both modes). */

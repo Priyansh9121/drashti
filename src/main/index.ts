@@ -207,7 +207,7 @@ import {
 import { placeOperator } from './outputs/operator-guard';
 import { DISPLAY_DROP_MS, OutputManager } from './outputs/output-manager';
 import { ScreensService, type ScreensSetup } from './outputs/screens-service';
-import { ScreenSwitchService, switchOffBox } from './outputs/screen-switches';
+import { ScreenSwitchService, SwitchQuestion, switchOffBox } from './outputs/screen-switches';
 import { SleepGuard } from './outputs/sleep-guard';
 import { IpcTransport } from './transport/ipc-transport';
 import { AUDIO_PARTITION, createAudioWindow } from './windows/audio-window';
@@ -1731,6 +1731,8 @@ function start(): void {
       guardOperator();
       // Keep these screens? (Session 50): whether an output covers the controls, said again when that changed.
       keepScreens.refresh();
+      // And Audience and Stage's question (Session 51): on the output over the controls, wherever that is now.
+      switchQuestion.refresh();
       // A stopped output (Session 23) is still on its display and tried again: the display stays awake.
       sleepGuard.update(
         manager.status().filter((st) => st.state === 'showing' || st.state === 'stopped').length,
@@ -1878,6 +1880,27 @@ function start(): void {
     const pending = keepScreens.current();
     return pending?.coversControls && coveringNow().includes(screenId) ? pending : null;
   };
+
+  // ---- Audience and Stage's question on an output over the controls (Session 51, S2-2) ----------------------
+  // The window asks "Turn Audience off?" itself (Mod+1, Mod+2, the top bar's switch) and says so here; with an
+  // output over the controls (one display), that output asks the same, large, as Keep these screens? does.
+  const switchQuestion = new SwitchQuestion({
+    covering: () => coveringScreens(manager.status(), operatorDisplayId()),
+    outputs: () => [...outputWindows.keys()],
+    show: (screenId, which) => {
+      sendToPage(outputWindows.get(screenId), IPC.output.switchQuestion, { which });
+    },
+    covered: (covered) => {
+      sendToPage(operatorWindow, IPC.screenSwitches.covered, { covered });
+    },
+    answered: (yes) => {
+      sendToPage(operatorWindow, IPC.screenSwitches.answered, { yes });
+    },
+    simple: () => simpleNow(),
+    log: (message) => {
+      log.info(message);
+    },
+  });
 
   // ---- keeping the operator's controls reachable ----------------------------
   const uncoverAccelerator = acceleratorFor('uncoverControls');
@@ -4504,6 +4527,16 @@ function start(): void {
       ? screenSwitches.turn(which, on)
       : { ok: false as const, message: 'Only the operator window can turn the screens off or on.' },
   );
+  // The window's question before one goes off (Session 51): shown too on an output over the controls.
+  handle(IPC.screenSwitches.asking, (e, which) => ({
+    covered: fromOperator(e) ? switchQuestion.asking(which) : false,
+  }));
+  // Its answer on that output, as it had the keyboard (a windowed one): the window acts on it.
+  handle(IPC.output.switchAnswer, (e, yes) => {
+    const screenId = manager.screenIdFor(e.sender.id);
+    if (screenId !== undefined) switchQuestion.answer(screenId, yes);
+    return null;
+  });
   screenSwitches.onChanged((switches) => {
     sendToOperator(IPC.screenSwitches.changed, switches);
     // The View menu's ticks, and a Remote's word on which are off.
@@ -4784,6 +4817,8 @@ function start(): void {
     // before the answer, so after the page listens for it (output-store.ts listens first).
     const question = screenId ? keepQuestionFor(screenId) : null;
     if (question && screenId) sendToPage(outputWindows.get(screenId), IPC.output.keepQuestion, question);
+    // Audience and Stage's question too (Session 51), the same way.
+    if (screenId) switchQuestion.loaded(screenId);
     return screenId ? contextFor(screenId) : null;
   });
 

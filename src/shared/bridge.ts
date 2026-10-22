@@ -812,6 +812,15 @@ export interface DrashtiBridge {
     onChanged(listener: (switches: ScreenSwitches) => void): () => void;
     /** Off closes them (their displays go back to the computer); on opens them where they were. */
     turn(which: ScreenSwitch, on: boolean): Promise<ScreenSwitchResult>;
+    /**
+     * The window's question before one goes off opened, or went (null), Session 51: an output over the controls
+     * asks the same. Whether one does.
+     */
+    asking(which: ScreenSwitch | null): Promise<{ covered: boolean }>;
+    /** An output over the controls started or stopped asking too, while the window asks. */
+    onCovered(listener: (covered: boolean) => void): () => void;
+    /** The answer given on that output, as it had the keyboard: true turns it off, false cancels. */
+    onAnswered(listener: (yes: boolean) => void): () => void;
   };
   /** For output windows. */
   output: {
@@ -832,6 +841,10 @@ export interface DrashtiBridge {
     onKeepQuestion(listener: (pending: PendingScreens | null) => void): () => void;
     /** Enter (keep) or Esc (go back) on this output. */
     keepAnswer(keep: boolean): Promise<null>;
+    /** The operator window's "Turn … off?" (Session 51) on this output, when it covers the controls (null: gone). */
+    onSwitchQuestion(listener: (which: ScreenSwitch | null) => void): () => void;
+    /** Enter (turn it off) or Esc (cancel) on this output. */
+    switchAnswer(yes: boolean): Promise<null>;
   };
   /** For the hidden window that draws a PDF's pages as pictures (Session 15). */
   pictures: {

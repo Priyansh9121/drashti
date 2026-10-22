@@ -635,6 +635,15 @@ export const IPC = {
     turn: 'screenswitch:turn',
     /** main -> operator: one was turned off or on. */
     changed: 'screenswitch:changed',
+    /**
+     * The window's question before one goes off opened, or went (null), Session 51: an output over the controls
+     * asks the same, large. Answered with whether one does.
+     */
+    asking: 'screenswitch:asking',
+    /** main -> operator: an output over the controls started or stopped asking too, while the window asks. */
+    covered: 'screenswitch:covered',
+    /** main -> operator: the answer given on that output, as it had the keyboard (Enter yes, Esc no). */
+    answered: 'screenswitch:answered',
   },
   /** The setup wizard (operator window only; never in Simple Mode). */
   setup: {
@@ -847,6 +856,12 @@ export const IPC = {
      */
     keepQuestion: 'output:keep-question',
     keepAnswer: 'output:keep-answer',
+    /**
+     * main -> output (Session 51): the operator window's "Turn Audience off?" on the output covering the controls
+     * (null: answered, or gone). Its own Enter turns it off and Esc cancels, through switchAnswer.
+     */
+    switchQuestion: 'output:switch-question',
+    switchAnswer: 'output:switch-answer',
   },
   pictures: {
     /** The hidden window that draws a PDF's pages (Session 15) asks what to draw (that window only). */
@@ -1190,7 +1205,9 @@ export interface InvokeContract {
   [IPC.screens.goBack]: { args: []; result: ScreensResult };
   [IPC.screenSwitches.get]: { args: []; result: ScreenSwitches };
   [IPC.screenSwitches.turn]: { args: [which: ScreenSwitch, on: boolean]; result: ScreenSwitchResult };
+  [IPC.screenSwitches.asking]: { args: [which: ScreenSwitch | null]; result: { covered: boolean } };
   [IPC.output.keepAnswer]: { args: [keep: boolean]; result: null };
+  [IPC.output.switchAnswer]: { args: [yes: boolean]; result: null };
   [IPC.output.getContext]: { args: []; result: OutputContext | null };
   [IPC.output.report]: { args: [report: OutputReport]; result: null };
   [IPC.setup.state]: { args: []; result: SetupState };
@@ -1351,8 +1368,11 @@ export interface EventContract {
   [IPC.videoInputs.changed]: VideoInputsView;
   [IPC.videoInputs.statusChanged]: VideoInputStatus;
   [IPC.screenSwitches.changed]: ScreenSwitches;
+  [IPC.screenSwitches.covered]: { covered: boolean };
+  [IPC.screenSwitches.answered]: { yes: boolean };
   [IPC.screens.pendingChanged]: PendingScreens | null;
   [IPC.output.keepQuestion]: PendingScreens | null;
+  [IPC.output.switchQuestion]: { which: ScreenSwitch | null };
   [IPC.zoom.programChanged]: ZoomProgram | null;
   [IPC.network.changed]: NetworkStatus;
   [IPC.announcements.changed]: AnnouncementsView;

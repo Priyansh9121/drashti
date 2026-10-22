@@ -15,6 +15,9 @@ import { useScreens } from '../screens/screens-store';
  * back to the computer; on opens them again where they were. Turning one off asks first while its screens show
  * something (the top bar's switch, Mod+1 and Mod+2), and in the window's first moments, before it has the
  * screens (Session 51, S2-4); on never asks. Simple Mode only turns them on. Both are on at every start.
+ *
+ * The question is this window's own, and the main process is told as it opens and goes (Session 51, S2-2): an
+ * output over the controls then asks the same, large, in its middle, Enter turning it off and Esc cancelling.
  */
 
 interface SwitchesView {
@@ -23,15 +26,31 @@ interface SwitchesView {
   known: boolean;
   /** Turning this one off waits for the operator's answer, or null. */
   asking: ScreenSwitch | null;
+  /** While it asks: an output covers these controls and asks the same in its middle. */
+  covered: boolean;
 }
 
 export const useScreenSwitches = create<SwitchesView>(() => ({
   switches: { ...ALL_ON },
   known: false,
   asking: null,
+  covered: false,
 }));
 
 let connected = false;
+/** A question on its way: the main process is told before it opens, so it opens once, keyboard and all. */
+let opening = false;
+
+/** Tell the main process the question that is open now (null: none); whether an output over the controls asks too. */
+async function tellAsking(which: ScreenSwitch | null): Promise<boolean> {
+  try {
+    return (await window.drashti.screenSwitches.asking(which)).covered;
+  } catch (error: unknown) {
+    // The window asks all the same: only the output over the controls does not.
+    console.warn('The main process could not be told of the question', error);
+    return false;
+  }
+}
 
 /** Learn them from the main process and follow each change (once per page). */
 export function connectScreenSwitches(): void {
@@ -40,6 +59,12 @@ export function connectScreenSwitches(): void {
   window.drashti.screenSwitches.onChanged((switches) => {
     useScreenSwitches.setState({ switches, known: true });
   });
+  // An output over the controls started or stopped asking too (the uncover key, say): only while it asks here.
+  window.drashti.screenSwitches.onCovered((covered) => {
+    if (useScreenSwitches.getState().asking) useScreenSwitches.setState({ covered });
+  });
+  // A question this window's last page left on an output (it loaded again) is taken off.
+  void tellAsking(null);
   void window.drashti.screenSwitches.get().then(
     (switches) => {
       useScreenSwitches.setState({ switches, known: true });
@@ -71,27 +96,48 @@ export function switchAsksFirst(which: ScreenSwitch): boolean {
 
 /**
  * Pro Mode's switch, key or menu: on at once; off at once while its screens show nothing, else asked first.
- * Nothing while a question is open. The problem in words, or null.
+ * Nothing while a question is open, or on its way. The problem in words, or null.
  */
-export function toggleSwitch(which: ScreenSwitch): Promise<string | null> {
+export async function toggleSwitch(which: ScreenSwitch): Promise<string | null> {
   const { switches, asking } = useScreenSwitches.getState();
-  if (asking) return Promise.resolve(null);
+  if (asking || opening) return null;
   if (!switches[which]) return turnSwitch(which, true);
   if (!switchAsksFirst(which)) return turnSwitch(which, false);
-  useScreenSwitches.setState({ asking: which });
-  return Promise.resolve(null);
+  opening = true;
+  try {
+    const covered = await tellAsking(which);
+    useScreenSwitches.setState({ asking: which, covered });
+  } finally {
+    opening = false;
+  }
+  return null;
 }
 
 /** The question answered Turn off. */
 export function confirmAsk(): Promise<string | null> {
   const which = useScreenSwitches.getState().asking;
-  useScreenSwitches.setState({ asking: null });
-  return which ? turnSwitch(which, false) : Promise.resolve(null);
+  useScreenSwitches.setState({ asking: null, covered: false });
+  if (!which) return Promise.resolve(null);
+  void tellAsking(null);
+  return turnSwitch(which, false);
 }
 
 /** The question answered Cancel (or closed): nothing changes. */
 export function cancelAsk(): void {
-  useScreenSwitches.setState({ asking: null });
+  const { asking } = useScreenSwitches.getState();
+  useScreenSwitches.setState({ asking: null, covered: false });
+  if (asking) void tellAsking(null);
+}
+
+/**
+ * Answered on the output over the controls, as that output had the keyboard (Session 51, S2-2): Enter (true)
+ * turns it off, Esc (false) cancels, as this window's own buttons do. An answer when nothing is asked does nothing.
+ */
+export function answerFromOutput(yes: boolean): Promise<string | null> {
+  if (!useScreenSwitches.getState().asking) return Promise.resolve(null);
+  if (yes) return confirmAsk();
+  cancelAsk();
+  return Promise.resolve(null);
 }
 
 /** Simple Mode's key and the status bar's Turn on: on if it is off, never off. */
