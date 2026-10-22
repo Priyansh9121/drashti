@@ -2,7 +2,8 @@ import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react';
 import type { EngineState } from '../../../shared/engine/state';
 import { languageView } from '../../../shared/language-view';
-import type { Lang, RenderSlide, TextElement } from '../../../shared/model';
+import type { Lang, RenderSlide, TextElement, TimerElement } from '../../../shared/model';
+import type { TimerState } from '../../../shared/timers';
 import { fontFamilyFor } from './fonts';
 import { htmlLang, textLang } from './lang';
 import { translitSource } from '../../../shared/tracks';
@@ -36,6 +37,10 @@ export const kindName = { image: 'Picture', video: 'Video', audio: 'Sound' } as 
 const textElements = (slide: RenderSlide) =>
   slide.elements.filter((e): e is TextElement => e.kind === 'text' && e.text.trim() !== '');
 
+/** A slide's Timers (Session 50): a stage screen shows their time, live, after its words. */
+const timerElements = (slide: RenderSlide) =>
+  slide.elements.filter((e): e is TimerElement => e.kind === 'timer');
+
 /** Smaller type for longer text: the size a slide's words start from (and never go above) on the Standard stage. */
 function sizeFor(slide: RenderSlide, base: number): number {
   const chars = textElements(slide).reduce((n, e) => n + e.text.length, 0);
@@ -48,16 +53,19 @@ function sizeFor(slide: RenderSlide, base: number): number {
 /**
  * A slide's words in their own fonts (legacy fonts included), one box after
  * another, in one size and colour (left out: the size and colour around it,
- * as a stage layout's box sets them).
+ * as a stage layout's box sets them); then its Timers' time, live (Session 50).
  */
 export function StageText({
   slide,
   size,
   dim = false,
+  timers = [],
 }: {
   slide: RenderSlide;
   size?: number;
   dim?: boolean;
+  /** The state's timers, for the slide's Timers. */
+  timers?: readonly TimerState[];
 }) {
   // What its transliteration is of (Sessions 31–36, I18N-4), for the words' lang.
   const source = slide.translitOf ?? translitSource(slide.elements);
@@ -96,6 +104,16 @@ export function StageText({
                 );
               })
             : el.text}
+        </p>
+      ))}
+      {timerElements(slide).map((el) => (
+        <p
+          key={el.id}
+          data-stage-element={el.id}
+          data-stage-timer={el.timerId}
+          style={{ margin: '0 0 0.35em', whiteSpace: 'nowrap' }}
+        >
+          <TimerText timer={timers.find((t) => t.id === el.timerId)} />
         </p>
       ))}
     </div>
@@ -237,11 +255,18 @@ export function StageView({
                 ? ' · LOGO ON THE AUDIENCE SCREENS'
                 : ''}
           </p>
+          {/* A timer shown alone (Session 50): named, its time in the box. */}
+          {slide?.timer && (
+            <p data-testid="stage-timer-alone" style={{ fontSize: 40, color: '#8b93a3', margin: 0 }}>
+              Timer: {slide.timer.name}
+            </p>
+          )}
           <StageFit testId="stage-current">
             {slide ? (
               <StageText
                 slide={languageView(slide.slide, languages)}
                 size={sizeFor(languageView(slide.slide, languages), 92)}
+                timers={state.timers}
               />
             ) : (
               <p style={{ fontSize: 56, color: '#6b7280', margin: 0 }}>{backgroundWords(background)}</p>
@@ -304,6 +329,7 @@ export function StageView({
                 slide={languageView(next.slide, languages)}
                 size={sizeFor(languageView(next.slide, languages), 56)}
                 dim
+                timers={state.timers}
               />
             ) : next?.kind === 'media' ? (
               <p

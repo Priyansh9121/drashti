@@ -130,11 +130,12 @@ function BoxContents({
   const slide = state.layers.slide;
   switch (box.kind) {
     case 'current':
-      if (slide) return <StageText slide={languageView(slide.slide, languages)} />;
+      if (slide) return <StageText slide={languageView(slide.slide, languages)} timers={state.timers} />;
       return <p style={{ margin: 0, color: muted }}>{backgroundWords(state.layers.background)}</p>;
     case 'next': {
       const next = state.next;
-      if (next?.kind === 'slide') return <StageText slide={languageView(next.slide, languages)} />;
+      if (next?.kind === 'slide')
+        return <StageText slide={languageView(next.slide, languages)} timers={state.timers} />;
       if (next?.kind === 'media')
         return <p style={{ margin: 0 }}>{`${kindName[next.media]}: ${next.label}`}</p>;
       return <p style={{ margin: 0, color: muted }}>End</p>;

@@ -78,3 +78,36 @@ describe('the slide layer on a screen', () => {
     expect(fadeAt({ ms: 1000, start: 5000 }, 9000)).toBe(1);
   });
 });
+
+describe('a timer shown alone on a screen (Session 50)', () => {
+  const timer = (shownAt: number): SlideLayer => ({
+    ...layer('timer:t1', shownAt, { kind: 'push', durationMs: 600 }),
+    presentationId: 'timer:t1',
+    timer: { timerId: 't1', name: 'Placeholder countdown' },
+  });
+
+  it('goes off with its transition’s length, fading from when it was taken off', () => {
+    const t = timer(1000);
+    const up = { on: t, off: null, fade: null };
+    expect(nextShowing(up, null, 5010, { layer: t, at: 5000 })).toEqual({
+      on: null,
+      off: t,
+      fade: { kind: 'dissolve', ms: 600, start: 5000 },
+    });
+    // A screen that hears of it once the fade is over, or never saw it: nothing to fade.
+    expect(nextShowing(up, null, 5600, { layer: t, at: 5000 })).toEqual(none);
+    expect(nextShowing(none, null, 5010, { layer: t, at: 5000 })).toEqual(none);
+  });
+
+  it('any other slide taken off, or Clear all (nothing leaving), goes at once', () => {
+    const a = layer('a', 1000, { kind: 'dissolve', durationMs: 600 });
+    expect(nextShowing({ on: a, off: null, fade: null }, null, 5010, { layer: a, at: 5000 })).toEqual(none);
+    const t = timer(1000);
+    expect(nextShowing({ on: t, off: null, fade: null }, null, 5010, null)).toEqual(none);
+    // Another timer than the one on this screen: not this one's out.
+    const other = { ...timer(2000), slide: { ...t.slide, id: 'timer:t2' } };
+    expect(nextShowing({ on: t, off: null, fade: null }, null, 5010, { layer: other, at: 5000 })).toEqual(
+      none,
+    );
+  });
+});
