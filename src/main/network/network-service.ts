@@ -39,6 +39,7 @@ import {
   type RemotePresentation,
 } from '../../shared/network-api';
 import type { PlaylistItemInfo, PlaylistNode } from '../../shared/playlists';
+import type { ScreenSwitches } from '../../shared/screen-switches';
 import type { SearchResult } from '../../shared/search';
 import type { PassageResult } from '../../shared/shastra';
 import { referenceInputSchema } from '../../shared/shastra';
@@ -84,6 +85,8 @@ export interface NetworkReads {
   stage(): { groupId: string | null; languages: Lang[] | null };
   /** The hall's group (the first audience group, or null when there is none): a remote shows the slide as it does. */
   hall(): { groupId: string | null };
+  /** Main's Audience and Stage (Session 50): a Remote says which are off, and cannot turn them. */
+  switches(): ScreenSwitches;
   /** The Looks, in order (a Remote switches the live one). */
   looks(): { id: string; name: string }[];
   /** The loaded Shastra texts. */
@@ -639,7 +642,11 @@ export class NetworkService implements EngineTransport {
         });
       }
       case 'hall':
-        return ok({ groupId: this.deps.reads.hall().groupId, clock: this.deps.reads.clockStyle() });
+        return ok({
+          groupId: this.deps.reads.hall().groupId,
+          clock: this.deps.reads.clockStyle(),
+          switches: this.deps.reads.switches(),
+        });
       case 'looks':
         return ok({ looks: this.deps.reads.looks(), liveId: this.deps.engine.state().look.id });
       case 'shastra.texts':
