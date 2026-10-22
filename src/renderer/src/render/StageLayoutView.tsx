@@ -265,6 +265,9 @@ function BoxContents({
                 : 'Nothing on the audience screens'}
         </span>
       );
+    case 'audience':
+      // Drawn by the box itself (AudienceBox), never as words.
+      return null;
     case 'text':
       return (
         <p
@@ -377,6 +380,8 @@ function contentKey(box: StageBox, state: EngineState): unknown {
       return [box.calendar, box.lang, state.calendar];
     case 'quote':
       return state.quote;
+    case 'audience':
+      return null;
     case 'text':
       return box.text;
   }

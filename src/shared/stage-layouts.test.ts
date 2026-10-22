@@ -1,0 +1,113 @@
+import { describe, expect, it } from 'vitest';
+import type { ScalingMode } from './screens';
+import type { StageLayout } from './stage-layouts';
+import {
+  hallPicture,
+  newStageBox,
+  showsHall,
+  STAGE_BOX_KINDS,
+  STAGE_BOX_LABELS,
+  STAGE_BOX_NAMES,
+  stageBoxSchema,
+  stageLayoutDefinitionSchema,
+  standardAsBoxes,
+  withBoxAdded,
+} from './stage-layouts';
+
+/* The audience picture, live, as a stage layout's box (Session 50), and the hall's picture it draws. */
+
+const layout = (boxes: StageLayout['boxes']): StageLayout => ({
+  id: 'placeholder-layout',
+  name: 'Placeholder layout',
+  background: '#000000',
+  boxes,
+});
+
+describe('the audience picture box', () => {
+  it('is a kind of box of its own, made 16:9 in the middle of the canvas, with no label', () => {
+    expect(STAGE_BOX_KINDS).toContain('audience');
+    expect(STAGE_BOX_NAMES.audience).toBe('The audience picture, live');
+    expect(STAGE_BOX_LABELS.audience).toBe('');
+    const box = newStageBox('audience', 'hall');
+    expect(box).toMatchObject({ kind: 'audience', label: '' });
+    expect(box.frame).toEqual({ x: 480, y: 270, width: 960, height: 540 });
+    expect(stageBoxSchema.safeParse(box).success).toBe(true);
+  });
+
+  it('is in no built-in layout: Standard as boxes (Duplicate starts from it) has none', () => {
+    let n = 0;
+    const kinds = standardAsBoxes(() => `box-${String(++n)}`).map((b) => b.kind);
+    expect(kinds).not.toContain('audience');
+    expect(kinds).toEqual(['stageMessage', 'current', 'screensState', 'notes', 'clock', 'timer', 'next']);
+  });
+
+  it('goes under the boxes already there when added, so they draw over it; any other box goes on top', () => {
+    const message = newStageBox('stageMessage', 'message');
+    const clock = newStageBox('clock', 'clock');
+    const hall = newStageBox('audience', 'hall');
+    expect(withBoxAdded([message, clock], hall).map((b) => b.id)).toEqual(['hall', 'message', 'clock']);
+    const timer = newStageBox('timer', 'timer');
+    expect(withBoxAdded([hall, message, clock], timer).map((b) => b.id)).toEqual([
+      'hall',
+      'message',
+      'clock',
+      'timer',
+    ]);
+    expect(withBoxAdded([], hall)).toEqual([hall]);
+  });
+
+  it('is kept in a stored layout, and a layout stored before it reads as it did', () => {
+    let n = 0;
+    const before = { background: '#101010', boxes: standardAsBoxes(() => `box-${String(++n)}`) };
+    expect(stageLayoutDefinitionSchema.parse(JSON.parse(JSON.stringify(before)))).toEqual(before);
+    const withHall = {
+      background: '#000000',
+      boxes: [
+        { ...newStageBox('audience', 'hall'), frame: { x: 0, y: 0, width: 1920, height: 1080 } },
+        newStageBox('stageMessage', 'message'),
+      ],
+    };
+    expect(stageLayoutDefinitionSchema.parse(JSON.parse(JSON.stringify(withHall)))).toEqual(withHall);
+  });
+
+  it('marks a layout that draws the hall’s picture', () => {
+    expect(showsHall(null)).toBe(false);
+    expect(showsHall(layout([newStageBox('clock', 'clock')]))).toBe(false);
+    expect(showsHall(layout([newStageBox('audience', 'hall'), newStageBox('clock', 'clock')]))).toBe(true);
+  });
+});
+
+describe('the hall’s picture', () => {
+  const screen = (canvasWidth: number, canvasHeight: number, scaling: ScalingMode = 'fit') => ({
+    canvasWidth,
+    canvasHeight,
+    scaling,
+  });
+
+  it('is the first audience group’s, at its first screen’s canvas and scaling', () => {
+    expect(
+      hallPicture([
+        { id: 'stage', role: 'stage', screens: [screen(1920, 1080)] },
+        { id: 'keyfill', role: 'keyfill', screens: [screen(1920, 1080)] },
+        { id: 'hall', role: 'audience', screens: [screen(1280, 720, 'fill'), screen(1920, 1080)] },
+        { id: 'side', role: 'audience', screens: [screen(1024, 768)] },
+      ]),
+    ).toEqual({ groupId: 'hall', canvasWidth: 1280, canvasHeight: 720, scaling: 'fill' });
+  });
+
+  it('is 1920 x 1080, fitted, while that group has no screen; none without an audience group', () => {
+    expect(hallPicture([{ id: 'hall', role: 'audience', screens: [] }])).toEqual({
+      groupId: 'hall',
+      canvasWidth: 1920,
+      canvasHeight: 1080,
+      scaling: 'fit',
+    });
+    expect(
+      hallPicture([
+        { id: 'stage', role: 'stage', screens: [screen(1920, 1080)] },
+        { id: 'stream', role: 'stream', screens: [] },
+      ]),
+    ).toBeNull();
+    expect(hallPicture([])).toBeNull();
+  });
+});

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { CALENDAR_LANGS, type CalendarLang } from './calendar';
 import type { Rect } from './model';
 import { hexColorSchema, idSchema } from './model-schema';
+import type { ScalingMode, ScreenRole } from './screens';
 
 /*
  * Stage layouts (Session 11): what a stage screen shows, as boxes placed on
@@ -38,6 +39,11 @@ export type StageBoxKind =
   | 'mediaLeft'
   /** Whether the audience screens are black, show the logo, or show the picture. */
   | 'screensState'
+  /**
+   * What the hall's screens show at that moment (Session 50): the first audience group's picture, black-out
+   * and the logo too, scaled into the box at 16:9 with black around it.
+   */
+  | 'audience'
   /** Words that stay the same. */
   | 'text';
 
@@ -53,6 +59,7 @@ export const STAGE_BOX_KINDS = [
   'upcoming',
   'mediaLeft',
   'screensState',
+  'audience',
   'text',
 ] as const satisfies readonly StageBoxKind[];
 
@@ -68,6 +75,7 @@ export const STAGE_BOX_NAMES: Record<StageBoxKind, string> = {
   upcoming: 'Next items in the playlist',
   mediaLeft: 'Time left on the video or sound',
   screensState: 'The audience screens (black-out, logo)',
+  audience: 'The audience picture, live',
   text: 'Fixed text',
 };
 
@@ -84,6 +92,7 @@ export const STAGE_BOX_LABELS: Record<StageBoxKind, string> = {
   upcoming: 'COMING UP',
   mediaLeft: 'TIME LEFT',
   screensState: '',
+  audience: '',
   text: '',
 };
 
@@ -177,9 +186,16 @@ export function newStageBox(kind: StageBoxKind, id: string): StageBox {
     kind === 'upcoming' ||
     kind === 'samvat' ||
     kind === 'quote';
-  const width = wide ? 1100 : 600;
-  const height =
-    kind === 'current' ? 600 : kind === 'clock' || kind === 'mediaLeft' || kind === 'samvat' ? 160 : 300;
+  // The audience picture (Session 50): 16:9, half the canvas each way.
+  const picture = kind === 'audience';
+  const width = picture ? STAGE_WIDTH / 2 : wide ? 1100 : 600;
+  const height = picture
+    ? STAGE_HEIGHT / 2
+    : kind === 'current'
+      ? 600
+      : kind === 'clock' || kind === 'mediaLeft' || kind === 'samvat'
+        ? 160
+        : 300;
   return {
     id,
     kind,
@@ -229,4 +245,54 @@ export function standardAsBoxes(newId: () => string): StageLayout['boxes'] {
     ),
     box('next', { x: 1162, y: 560, width: 710, height: 472 }, { size: 56, color: '#c9ced8', label: 'NEXT' }),
   ];
+}
+
+/**
+ * A layout's boxes with one more (bottom to top). The audience picture (Session 50) goes under the boxes
+ * already there, so the stage message, the clock and the timers draw over it; any other box goes on top.
+ */
+export function withBoxAdded(boxes: readonly StageBox[], box: StageBox): StageBox[] {
+  return box.kind === 'audience' ? [box, ...boxes] : [...boxes, box];
+}
+
+/** Whether a layout draws the hall's picture (Session 50): its screen then loads what comes next, as the hall's do. */
+export function showsHall(layout: StageLayout | null | undefined): boolean {
+  return layout?.boxes.some((b) => b.kind === 'audience') ?? false;
+}
+
+/**
+ * The hall's picture, as a stage layout's audience picture box draws it (Session 50): the first audience
+ * group, whose settings in the live Look it shows, at the canvas size and scaling of that group's first
+ * screen. The main process gives it to each stage screen (OutputContext); a node gives its own.
+ */
+export interface HallPicture {
+  groupId: string;
+  canvasWidth: number;
+  canvasHeight: number;
+  scaling: ScalingMode;
+}
+
+/** A screen group as hallPicture reads it: its role, and its screens' canvases in order. */
+export interface HallGroup {
+  id: string;
+  role: ScreenRole;
+  screens: readonly { canvasWidth: number; canvasHeight: number; scaling: ScalingMode }[];
+}
+
+/**
+ * The hall's picture among these groups, in their order in Screens: the first audience group's (as the
+ * remote's picture follows it), 1920 x 1080 fitted while it has no screen; null with no audience group.
+ */
+export function hallPicture(groups: readonly HallGroup[]): HallPicture | null {
+  const hall = groups.find((g) => g.role === 'audience');
+  if (!hall) return null;
+  const screen = hall.screens[0];
+  if (!screen || screen.canvasWidth <= 0 || screen.canvasHeight <= 0)
+    return { groupId: hall.id, canvasWidth: STAGE_WIDTH, canvasHeight: STAGE_HEIGHT, scaling: 'fit' };
+  return {
+    groupId: hall.id,
+    canvasWidth: screen.canvasWidth,
+    canvasHeight: screen.canvasHeight,
+    scaling: screen.scaling,
+  };
 }
