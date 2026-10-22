@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { EngineState } from '../../shared/engine/state';
-import type { LiveGroupLook, LiveLook, LookInfo, LookResult, LooksView } from '../../shared/looks';
-import { groupLookPatchSchema, lookNameSchema, NO_LOOK } from '../../shared/looks';
+import type { GroupLook, LiveGroupLook, LiveLook, LookInfo, LookResult, LooksView } from '../../shared/looks';
+import { groupLookPatchSchema, lookNameSchema, NO_LOOK, storedGroupLook } from '../../shared/looks';
 import type { Lang } from '../../shared/model';
 import { idSchema } from '../../shared/model-schema';
 import type { Mask } from '../../shared/masks';
@@ -187,6 +187,25 @@ export class LookService implements LookSource {
   /** A group was deleted: no Look keeps its settings. */
   groupGone(groupId: string): void {
     this.deps.repo.forgetGroup(groupId);
+    this.done();
+  }
+
+  /** Every Look's settings for every group, by Look id (Keep these screens?: what Go back may put back). */
+  everyLook(): Record<string, Record<string, GroupLook>> {
+    return Object.fromEntries(this.deps.repo.list().map((look) => [look.id, look.groups]));
+  }
+
+  /**
+   * Groups' settings put back in Looks as they were (Keep these screens?'s Go back, Session 51): by Look id, then
+   * group id; only those that differ from now change, in Looks and groups there are.
+   */
+  putGroupsBack(settings: Record<string, Record<string, GroupLook>>): void {
+    for (const look of this.deps.repo.list())
+      for (const [groupId, now] of Object.entries(look.groups)) {
+        const was = settings[look.id]?.[groupId];
+        if (was && JSON.stringify(storedGroupLook(was)) !== JSON.stringify(storedGroupLook(now)))
+          this.deps.repo.setGroup(look.id, groupId, was);
+      }
     this.done();
   }
 }

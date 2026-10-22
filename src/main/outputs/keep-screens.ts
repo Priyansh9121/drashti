@@ -6,11 +6,14 @@ import type { ScreenStatus, ScreensResult, ScreensSnapshot } from '../../shared/
  * Keep these screens? (Session 50; Priyansh: in Set Up Screens… he chose the display his controls are on as the
  * audience picture by mistake, and couldn't get back). After a change that puts an output on a display (Set Up
  * Screens…'s Done or Finish, Show on, Screens' Use this display and On), Drashti asks for 15 s, with Keep and Go
- * back. Nothing pressed, it goes back by itself to exactly the screens as they were: the setup is taken before
- * the change, and Go back puts it back. Turning an output off asks nothing. A second change while one waits
- * keeps the first setup, so Go back returns to the screens before both, and its countdown starts again; a change
- * that puts nothing new on a display (an output turned off, Uncover) is taken in without a question of its own.
- * Quitting while one waits goes back too, so the next start never opens a change nobody kept.
+ * back. Nothing pressed, it goes back by itself to the screens as they were: the setup is taken just before and
+ * just after the change, and Go back undoes only what the change changed (Session 51, screens-setup.ts), so
+ * whatever else changed meanwhile stays. Turning an output off asks nothing. A second change while one waits is
+ * added to the first, so Go back returns to the screens before both, and its countdown starts again; a change
+ * that puts nothing new on a display (an output turned off) is taken in without a question of its own.
+ * Quitting while one waits goes back too, so the next start never opens a change nobody kept; and the changes
+ * waiting are kept on disk until answered (Session 51, S3-2), so after a crash or a power cut the next start
+ * goes back to the screens as they were before them.
  */
 
 /** What each display shows: for each display with an output on it, which screen, of which group and role. */
@@ -22,11 +25,22 @@ export type Placed = ReadonlyMap<string, string>;
  */
 export type KeepEnding = 'kept' | 'went-back' | 'went-back-by-itself' | 'could-not-go-back';
 
+/** One change: the screen setup just before it, and just after. */
+export interface Change<S> {
+  before: S;
+  after: S;
+}
+
 export interface KeepScreensDeps<S> {
-  /** The screen setup now, to put back exactly. */
+  /** A change begins with none waiting: what going back returns to begins here (where the controls are). */
+  starting?(): void;
+  /** The screen setup now, taken just before and just after each change. */
   capture(): S;
-  /** Put a setup back. `quitting`: Drashti is quitting, so it is only saved (no window opens or closes). */
-  restore(setup: S, quitting: boolean): ScreensResult;
+  /**
+   * Undo the changes, the last first, each only where it is still as it left the screens. `quitting`: Drashti is
+   * quitting, so it is only saved (no window opens or closes).
+   */
+  restore(changes: readonly Change<S>[], quitting: boolean): ScreensResult;
   /** What each display shows now. */
   placed(): Placed;
   /** An output covers the controls now: it asks the same, large, in its middle. */
@@ -35,6 +49,12 @@ export interface KeepScreensDeps<S> {
   snapshot(): ScreensSnapshot;
   /** The change waiting for an answer changed (null: answered, or gone back). */
   changed(pending: PendingScreens | null): void;
+  /**
+   * The changes waiting for an answer, kept on disk until it comes (null: answered, gone back, or Drashti quit and
+   * went back), so a crash or a power cut meanwhile goes back at the next start. One that cannot be kept is said
+   * in the log; the question goes on.
+   */
+  remember?(changes: readonly Change<S>[] | null): void;
   /** A question ended: the operator is told when the screens went back, or could not (whoever answered). */
   ended?(how: KeepEnding): void;
   /** False: never ask (tests that are not about it, DRASHTI_TEST_KEEP_SCREENS=0). */
@@ -97,8 +117,8 @@ export const COULD_NOT_GO_BACK =
   'Drashti could not put the screens back as they were. Change them in Screens.';
 
 interface Waiting<S> {
-  /** The screens as they were before the first change it asks about. */
-  before: S;
+  /** The changes it asks about, the first first: Go back undoes them all. */
+  changes: Change<S>[];
   deadline: number;
   coversControls: boolean;
   cancel: () => void;
@@ -119,6 +139,16 @@ export class KeepScreens<S> {
     this.deps.log?.(`Keep these screens?: ${message}`);
   }
 
+  private remember(changes: readonly Change<S>[] | null): void {
+    try {
+      this.deps.remember?.(changes);
+    } catch (error) {
+      this.log(
+        `could not keep the change on disk (${error instanceof Error ? error.message : String(error)})`,
+      );
+    }
+  }
+
   /** The change waiting for Keep or Go back, or null. */
   current(): PendingScreens | null {
     const w = this.waiting;
@@ -128,8 +158,8 @@ export class KeepScreens<S> {
   /** Make a screen change; one that puts an output on a display then waits for Keep or Go back. */
   change(run: () => ScreensResult): ScreensResult {
     if (this.deps.asks === false) return run();
-    // With one waiting, the screens before it are the ones Go back returns to.
-    const before = this.waiting ? this.waiting.before : this.deps.capture();
+    if (!this.waiting) this.deps.starting?.();
+    const before = this.deps.capture();
     const was = this.deps.placed();
     this.changing = true;
     let result: ScreensResult;
@@ -139,19 +169,32 @@ export class KeepScreens<S> {
       this.changing = false;
     }
     if (!result.ok) return result;
-    if (putsOutputOn(was, this.deps.placed())) this.ask(before);
-    else this.refresh();
+    const made: Change<S> = { before, after: this.deps.capture() };
+    if (putsOutputOn(was, this.deps.placed())) this.ask(made);
+    else this.takeIn(made);
     return result;
   }
 
-  private ask(before: S): void {
+  /** A change that puts nothing new on a display while one waits: Go back undoes it too; the countdown goes on. */
+  private takeIn(made: Change<S>): void {
+    const w = this.waiting;
+    if (!w) return;
+    w.changes.push(made);
+    this.remember(w.changes);
+    this.refresh();
+  }
+
+  private ask(made: Change<S>): void {
+    // With one waiting, Go back undoes both.
+    const changes = [...(this.waiting?.changes ?? []), made];
     this.waiting?.cancel();
     const ms = this.deps.waitMs ?? KEEP_SCREENS_MS;
     const cancel = (this.deps.later ?? realLater)(() => {
       this.answer(false, true);
     }, ms);
     const coversControls = this.deps.coversControls();
-    this.waiting = { before, deadline: this.now() + ms, coversControls, cancel };
+    this.waiting = { changes, deadline: this.now() + ms, coversControls, cancel };
+    this.remember(changes);
     this.log(
       `asked, ${String(Math.round(ms / 1000))} s to answer${coversControls ? ', an output over the controls asking too' : ''}`,
     );
@@ -163,7 +206,7 @@ export class KeepScreens<S> {
     return this.answer(true, false);
   }
 
-  /** Go back to exactly the screens as they were before the change. */
+  /** Go back to the screens as they were before the change: only what it changed goes back. */
   goBack(): ScreensResult {
     return this.answer(false, false);
   }
@@ -176,12 +219,16 @@ export class KeepScreens<S> {
     let result: ScreensResult;
     let how: KeepEnding = keep ? 'kept' : byItself ? 'went-back-by-itself' : 'went-back';
     try {
-      result = keep ? { ok: true, snapshot: this.deps.snapshot() } : this.deps.restore(waiting.before, false);
+      result = keep
+        ? { ok: true, snapshot: this.deps.snapshot() }
+        : this.deps.restore(waiting.changes, false);
     } catch (error) {
       this.log(`could not go back (${error instanceof Error ? error.message : String(error)})`);
       how = 'could-not-go-back';
       result = { ok: false, message: COULD_NOT_GO_BACK };
     }
+    // Answered: nothing waits on disk (a Go back that failed too: the operator is told to change them in Screens).
+    this.remember(null);
     // After the screens are back: the operator window has them as they were by the time the question goes.
     this.deps.changed(null);
     if (how !== 'could-not-go-back')
@@ -197,8 +244,8 @@ export class KeepScreens<S> {
   }
 
   /**
-   * The screens changed some other way (Uncover, a display came or went): whether an output covers the
-   * controls is said again when that changed. The question and its countdown stay.
+   * The screens changed some other way (Uncover, a display came or went), or a change was taken in: whether an
+   * output covers the controls is said again when that changed. The question and its countdown stay.
    */
   refresh(): void {
     const w = this.waiting;
@@ -216,11 +263,13 @@ export class KeepScreens<S> {
     waiting.cancel();
     this.waiting = null;
     try {
-      this.deps.restore(waiting.before, true);
+      this.deps.restore(waiting.changes, true);
+      this.remember(null);
       this.log('Drashti quit before an answer, so it went back');
     } catch (error) {
+      // Still on disk: the next start goes back.
       this.log(
-        `could not go back as Drashti quit (${error instanceof Error ? error.message : String(error)})`,
+        `could not go back as Drashti quit (${error instanceof Error ? error.message : String(error)}); the next start goes back`,
       );
     }
   }

@@ -206,7 +206,8 @@ import {
 } from './outputs/keep-screens';
 import { placeOperator } from './outputs/operator-guard';
 import { DISPLAY_DROP_MS, OutputManager } from './outputs/output-manager';
-import { ScreensService, type ScreensSetup } from './outputs/screens-service';
+import { ScreensService } from './outputs/screens-service';
+import type { ScreensSetup } from './outputs/screens-setup';
 import { ScreenSwitchService, SwitchQuestion, switchOffBox } from './outputs/screen-switches';
 import { SleepGuard } from './outputs/sleep-guard';
 import { IpcTransport } from './transport/ipc-transport';
@@ -1815,16 +1816,17 @@ function start(): void {
   const controlsDisplayId = () => (controlsBefore ? controlsBefore.displayId : operatorDisplayId());
   const coveringNow = () => coveringScreens(manager.status(), controlsDisplayId());
   const keepScreens = new KeepScreens<ScreensSetup>({
-    capture: () => {
+    starting: () => {
       const here =
         operatorWindow && !operatorWindow.isDestroyed() && !windowedOutputs ? operatorWindow : null;
       controlsBefore = { displayId: operatorDisplayId(), bounds: here ? here.getBounds() : null };
-      return screens.setup();
     },
-    restore: (setup, quitting) => {
+    capture: () => screens.setup(),
+    restore: (changes, quitting) => {
       // The setup's test slide ends with the change it showed (the screens put back show the show again).
       if (!quitting) testCardUntil = 0;
-      const result = screens.putBack(setup, quitting);
+      // Only what the changes changed goes back (Session 51): whatever else changed meanwhile stays.
+      const result = screens.undo(changes, quitting);
       if (!quitting) {
         // As Screens' own changes do: the stream's languages, and a stage display in a browser.
         streaming.contextChanged();
