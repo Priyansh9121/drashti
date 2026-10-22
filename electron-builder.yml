@@ -135,6 +135,25 @@ mac:
 dmg:
   # The disk image's own icon when it is opened in Finder.
   icon: build/icon.icns
+  # Its window (Session 50, section 11): a picture of the two steps a new Mac needs, as Drashti has no paid
+  # Developer ID: drag Drashti to Applications, then the first time, System Settings › Privacy & Security ›
+  # Open Anyway. Made from build/background.svg, drawn at the window's size in points, with its Retina
+  # background@2x.png beside it (scripts/make-dmg-background.mjs); electron-builder joins the two and sizes
+  # the window by the picture. The app and the Applications link sit at the two ends of its arrow, x and y
+  # each icon's centre in points from the top left (src/main/release-checks/dmg-background.test.ts).
+  background: build/background.png
+  window:
+    width: 660
+    height: 400
+  iconSize: 80
+  contents:
+    - x: 176
+      y: 152
+      type: file
+    - x: 484
+      y: 152
+      type: link
+      path: /Applications
 win:
   # The app (and so its Start menu entry and its windows in the taskbar); the windows also name it
   # themselves (src/main/windows/app-icon.ts), from the copy beside the app's resources.
