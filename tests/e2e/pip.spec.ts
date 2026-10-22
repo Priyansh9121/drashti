@@ -580,6 +580,15 @@ test('the stream’s Camera layout shows the box with the hall’s picture at fu
   });
   expect(onStream.box?.rect).toBe(rectOn(onStream.canvas, PLACE));
   await expect(full.locator('[data-pip-main="background"] [data-layer="background"]')).toHaveCount(1);
+  // A prop up: drawn once, in the hall's picture, the box over it as on the hall's screens.
+  await dispatch(win, {
+    type: 'showProp',
+    prop: { id: 'placeholder-prop', name: 'Placeholder prop', elements: [] },
+  });
+  await expect(full.locator('[data-layer="props"] ~ [data-testid="pip-box"]')).toHaveCount(1);
+  await expect(program.locator('[data-layer="props"]')).toHaveCount(1);
+  await dispatch(win, { type: 'hideProp', propId: 'placeholder-prop' });
+  await expect(program.locator('[data-layer="props"]')).toHaveCount(0);
   // Swapped, as the hall has it: the box's picture full, the background small in the box; and back.
   await dispatch(win, { type: 'swapPip' });
   await expect.poll(async () => (await drawn(program)).main, { timeout: 5000 }).toEqual(['source', 'slide']);
@@ -594,6 +603,42 @@ test('the stream’s Camera layout shows the box with the hall’s picture at fu
   await expect(program.getByTestId('lower-third')).toBeVisible();
   await expect(program.getByTestId('pip-box')).toHaveCount(0);
   await expect(hall.getByTestId('pip-box')).toHaveCount(1);
+  // A video input behind (Chromium's fake camera), the slides in the box and a picture slide up: at full frame
+  // the hall's picture, the input its main picture and the slide small in the box; swapped, the box shows the
+  // input. With a box up the input is the hall's picture, never black there.
+  const inputId = await win.evaluate(
+    async (device) => {
+      const made = await (globalThis as PageGlobals).drashti.videoInputs.add({
+        name: 'Placeholder input',
+        device,
+        fit: 'fit',
+      });
+      if (!made.ok) throw new Error(made.message);
+      return made.view.inputs.find((i) => i.name === 'Placeholder input')?.id ?? '';
+    },
+    await fakeCamera(win),
+  );
+  await dispatch(win, { type: 'showInput', inputId });
+  await dispatch(win, { type: 'showPip', source: { kind: 'slides' }, place: PLACE });
+  const pictureSlide = await makeSlides(win, 'Placeholder picture slide', [{ picture: boxed }], {
+    kind: 'cut',
+    durationMs: 0,
+  });
+  await goLive(win, pictureSlide, 0);
+  await expect(full).toHaveCount(1);
+  await expect(
+    full.locator('[data-pip-main="background"]:not([data-pip-ready]) [data-kind="input"]'),
+  ).toHaveCount(1);
+  await expect(full.locator('[data-testid="pip-box"] [data-layer="slide"]')).toHaveCount(1);
+  await dispatch(win, { type: 'swapPip' });
+  await expect(
+    full.locator(
+      '[data-testid="pip-box"] [data-pip-slot="background"]:not([data-pip-ready]) [data-kind="input"]',
+    ),
+  ).toHaveCount(1, { timeout: 5000 });
+  await expect(
+    full.locator('[data-pip-main="slide"]:not([data-pip-ready]) [data-layer="slide"]'),
+  ).toHaveCount(1);
   // The Slides layout: the hall's picture, the box with it.
   await win.evaluate(() => (globalThis as PageGlobals).drashti.stream.setLayout('slides'));
   await expect(root).toHaveAttribute('data-layout', 'slides');
