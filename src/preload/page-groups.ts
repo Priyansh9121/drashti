@@ -8,7 +8,8 @@ import type { DrashtiBridge } from '../shared/bridge';
  */
 
 export type BridgeGroup = keyof DrashtiBridge;
-export type BridgePage = 'index' | 'output' | 'audio' | 'stream' | 'node' | 'pdf' | 'sharpen' | 'gallery';
+export type BridgePage =
+  'index' | 'output' | 'audio' | 'stream' | 'node' | 'pdf' | 'sharpen' | 'gallery' | 'zoom';
 
 export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   // The operator window: everything but the node's window, the PDF window and the sharpening window.
@@ -50,6 +51,7 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
     'themes',
     'timers',
     'updates',
+    'zoom',
   ],
   // The hall's screens.
   output: ['app', 'engine', 'liveWindow', 'media', 'output'],
@@ -65,6 +67,8 @@ export const PAGE_GROUPS: Record<BridgePage, readonly BridgeGroup[]> = {
   sharpen: ['sharpen'],
   // The component gallery (Diagnostics).
   gallery: ['app', 'guides'],
+  // The window for Zoom (Session 48): the stream's picture only.
+  zoom: ['app', 'zoom'],
 };
 
 /** The page a window shows, from its address (its file's name; Vite's root is the operator's), or null. */

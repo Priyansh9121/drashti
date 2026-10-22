@@ -33,6 +33,8 @@ export interface MenuActions {
   switchMode: () => void;
   /** View > Set Up Screens…: the setup wizard (Pro Mode only). */
   setUpScreens: () => void;
+  /** View > Window for Zoom… (Session 48): the stream's picture in a window Zoom can share (Pro Mode only). */
+  zoomWindow: () => void;
   reloadOperator: () => void;
   /** Edit > Undo: the operator page decides (typing in a field, or the last removal). */
   undo: { accelerator: string | null; run: () => void };
@@ -159,6 +161,11 @@ export function installMenu(actions: MenuActions): void {
                 id: 'set-up-screens',
                 label: 'Set Up Screens…',
                 click: actions.setUpScreens,
+              } as MenuItemConstructorOptions,
+              {
+                id: 'zoom-window',
+                label: 'Window for Zoom…',
+                click: actions.zoomWindow,
               } as MenuItemConstructorOptions,
               { type: 'separator' } as MenuItemConstructorOptions,
               {
