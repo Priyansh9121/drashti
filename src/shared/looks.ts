@@ -3,6 +3,7 @@ import { IDLE_WHENS, type IdleWhen } from './idle';
 import type { Lang } from './model';
 import { idSchema } from './model-schema';
 import type { Mask } from './masks';
+import type { ScreenRole } from './screens';
 import type { StageLayout } from './stage-layouts';
 import { groupLanguagesSchema } from './screens-schema';
 
@@ -58,7 +59,7 @@ export const LOOK_LAYER_NAMES: Record<LookLayer, string> = {
  * Layers that came after Looks were first kept (Session 50: the picture-in-picture box). A group's stored
  * `layers` lists only the earlier ones it shows (as an older Drashti reads it), and a later layer it leaves out
  * is kept apart, in `leftOut`: so a group saved before a layer came shows it, and only a Look saved with it
- * left out hides it.
+ * left out hides it (Session 51: unless the group's role leaves it out, LATER_OFF_FOR below).
  */
 const LATER_LOOK_LAYERS = ['pip'] as const satisfies readonly LookLayer[];
 type LaterLookLayer = (typeof LATER_LOOK_LAYERS)[number];
@@ -66,6 +67,18 @@ const isLater = (layer: LookLayer): layer is LaterLookLayer =>
   (LATER_LOOK_LAYERS as readonly LookLayer[]).includes(layer);
 /** The layers a group's stored `layers` lists (those it shows): the earlier ones. */
 const EARLIER_LOOK_LAYERS = LOOK_LAYERS.filter((l) => !isLater(l));
+
+/**
+ * Later layers a group of a role leaves out until a Look turns them on (Session 51): a key and fill pair keys its
+ * graphics over a video switcher's picture, so it leaves the box out, in Looks kept before and since alike. A
+ * group's stored `turnedOn` lists those a Look turns on; its role decides the rest, as it is now.
+ */
+const LATER_OFF_FOR: Partial<Record<ScreenRole, readonly LaterLookLayer[]>> = { keyfill: ['pip'] };
+const offFor = (role: ScreenRole, layer: LaterLookLayer): boolean =>
+  LATER_OFF_FOR[role]?.includes(layer) === true;
+/** The layers a group of this role shows when its Look says nothing of them. */
+const defaultLayers = (role: ScreenRole): LookLayer[] =>
+  LOOK_LAYERS.filter((l) => !isLater(l) || !offFor(role, l));
 
 /** How a group's screens draw slides: as designed, or the words as a lower third (the stream's). */
 export type SlideStyle = 'designed' | 'lowerThird';
@@ -174,8 +187,8 @@ export const lookLayersSchema = z
   .array(z.enum(LOOK_LAYERS))
   .max(LOOK_LAYERS.length)
   .refine((list) => new Set(list).size === list.length, 'a layer is listed twice');
-/** A group's stored later layers it leaves out (see LATER_LOOK_LAYERS). */
-const leftOutSchema = z
+/** A group's stored later layers it leaves out, or a Look turns on (see LATER_LOOK_LAYERS and LATER_OFF_FOR). */
+const laterLayersSchema = z
   .array(z.enum(LATER_LOOK_LAYERS))
   .max(LATER_LOOK_LAYERS.length)
   .refine((list) => new Set(list).size === list.length, 'a layer is listed twice');
@@ -204,17 +217,25 @@ export const lookDefinitionSchema = z.object({
   groups: z.record(idSchema, z.unknown()).default({}),
 });
 
-/** One group's stored settings, the defaults filled in; parts that do not read are the defaults. */
-export function readGroupLook(raw: unknown): GroupLook {
-  const out: GroupLook = { ...DEFAULT_GROUP_LOOK, layers: [...DEFAULT_GROUP_LOOK.layers] };
+/**
+ * One group's stored settings, the defaults filled in (a later layer's by the group's `role`, Session 51); parts
+ * that do not read are the defaults.
+ */
+export function readGroupLook(raw: unknown, role: ScreenRole = 'audience'): GroupLook {
+  const out: GroupLook = { ...DEFAULT_GROUP_LOOK, layers: defaultLayers(role) };
   if (typeof raw !== 'object' || raw === null) return out;
   const r = raw as Record<string, unknown>;
-  // The earlier layers as listed (every one when there is no list); a later one unless kept as left out.
+  // The earlier layers as listed (every one when there is no list); a later one unless kept as left out, and
+  // where its role leaves it out, only when kept as turned on.
   const layers = lookLayersSchema.safeParse(r['layers']);
-  const leftOut = leftOutSchema.safeParse(r['leftOut']);
+  const leftOut = laterLayersSchema.safeParse(r['leftOut']);
+  const turnedOn = laterLayersSchema.safeParse(r['turnedOn']);
   const off: readonly LookLayer[] = leftOut.success ? leftOut.data : [];
+  const on: readonly LookLayer[] = turnedOn.success ? turnedOn.data : [];
   out.layers = LOOK_LAYERS.filter((l) =>
-    isLater(l) ? !off.includes(l) : !layers.success || layers.data.includes(l),
+    isLater(l)
+      ? !off.includes(l) && (!offFor(role, l) || on.includes(l))
+      : !layers.success || layers.data.includes(l),
   );
   const languages = groupLanguagesSchema.safeParse(r['languages']);
   if (languages.success) out.languages = languages.data;
@@ -231,13 +252,18 @@ export function readGroupLook(raw: unknown): GroupLook {
   return out;
 }
 
-/** What to store for a group: only what differs from the defaults (nothing at all for the defaults). */
-export function storedGroupLook(g: GroupLook): Record<string, unknown> {
+/**
+ * What to store for a group: only what differs from the defaults (nothing at all for the defaults), a later
+ * layer's by the group's `role` (Session 51).
+ */
+export function storedGroupLook(g: GroupLook, role: ScreenRole = 'audience'): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   const shown = EARLIER_LOOK_LAYERS.filter((l) => g.layers.includes(l));
   if (shown.length < EARLIER_LOOK_LAYERS.length) out['layers'] = shown;
-  const leftOut = LATER_LOOK_LAYERS.filter((l) => !g.layers.includes(l));
+  const leftOut = LATER_LOOK_LAYERS.filter((l) => !g.layers.includes(l) && !offFor(role, l));
   if (leftOut.length > 0) out['leftOut'] = leftOut;
+  const turnedOn = LATER_LOOK_LAYERS.filter((l) => g.layers.includes(l) && offFor(role, l));
+  if (turnedOn.length > 0) out['turnedOn'] = turnedOn;
   if (g.languages !== null) out['languages'] = g.languages;
   if (g.slides !== 'designed') out['slides'] = g.slides;
   if (g.stageLayoutId !== null) out['stageLayoutId'] = g.stageLayoutId;
