@@ -6,6 +6,8 @@ import type { MusicPlaylist } from '../../../shared/music';
 import { useEngine } from '../engine/engine-store';
 import { SkipButtons } from '../markers/SkipButtons';
 import { skipsOf } from '../markers/skips';
+import { connectConversions, jobFor, useConvert } from '../library/convert-store';
+import { jobBusy } from '../library/converting';
 import { loadMedia, useMedia } from '../library/library-store';
 import { useNow } from '../render/useNow';
 import { engineNow } from '../render/clock';
@@ -68,6 +70,17 @@ export function useMusicPlaying() {
 
 const dispatch = (type: 'pauseMusic' | 'resumeMusic' | 'musicNext' | 'musicPrevious') =>
   window.drashti.engine.dispatch({ type });
+
+/** A track that cannot play: “Converting…” while Drashti converts it (Session 50), and it plays after. */
+function CannotPlay({ mediaId }: { mediaId: string }) {
+  const busy = useConvert((s) => jobBusy(jobFor(s.jobs, mediaId)));
+  useEffect(() => {
+    connectConversions();
+  }, []);
+  return (
+    <span data-testid={busy ? 'track-converting' : undefined}>{busy ? 'Converting…' : 'Cannot play'}</span>
+  );
+}
 
 /**
  * "2:31 left" for the track playing (paused: where it is), to its end point and from where it jumped to (a
@@ -621,7 +634,13 @@ function Tracks({
                 )}
                 <Truncate text={t.name} className="min-w-0 flex-1" />
                 <span className="shrink-0 text-xs text-muted tabular-nums">
-                  {!t.playable ? 'Cannot play' : t.durationMs ? formatDuration(t.durationMs) : ''}
+                  {!t.playable ? (
+                    <CannotPlay mediaId={t.mediaId} />
+                  ) : t.durationMs ? (
+                    formatDuration(t.durationMs)
+                  ) : (
+                    ''
+                  )}
                 </span>
               </button>
               <IconButton

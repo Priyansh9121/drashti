@@ -6,7 +6,7 @@ import { afterDrag, startDrag } from '../playlists/drag';
 import { actionFor, LIBRARY_KEYMAP } from '../../../shared/keymap';
 import { RowDelete } from '../ui/RowDelete';
 import { requestMediaRemoval } from './media-removal';
-import { MissingBadge } from '../ui/Badge';
+import { Badge, MissingBadge, UnplayableBadge } from '../ui/Badge';
 import type { Icon } from '../ui/icons';
 import { Bookmark, Film, Image, Music, SlidersHorizontal, Wand2, X } from '../ui/icons';
 import { openPictureEditor } from '../pictures/PictureEditor';
@@ -22,6 +22,7 @@ import {
   jobFor,
   useConvert,
 } from './convert-store';
+import { convertingWords, jobBusy } from './converting';
 import { EmptyState } from '../ui/States';
 import { Truncate } from '../ui/Truncate';
 import { layoutRows, visibleRows } from '../ui/virtual';
@@ -46,19 +47,35 @@ export const mediaKindIcon: Record<keyof typeof mediaKindLabel, Icon> = {
   audio: Music,
 };
 
-/** A conversion waiting or going on. */
-const jobBusy = (job: ConversionJob | undefined) => job?.state === 'waiting' || job?.state === 'converting';
+/** What is wrong with a media file, if anything (Session 50: “Converting…” while Drashti converts it). */
+export { mediaProblem } from './converting';
 
-/** What is wrong with a media file, if anything. */
-export function mediaProblem(m: { missing: boolean; unplayable: string | null }): string | null {
-  if (m.missing) return 'File missing';
-  if (m.unplayable !== null) return 'Can’t play';
-  return null;
+/**
+ * “Can’t play”, or “Converting…” while Drashti converts it (Session 50), on a playlist's item and the slides'
+ * view of it: either way it cannot go live yet.
+ */
+export function CannotPlayBadge({ mediaId }: { mediaId: string }) {
+  const busy = useConvert((s) => jobBusy(jobFor(s.jobs, mediaId)));
+  useEffect(() => {
+    connectConversions();
+  }, []);
+  return busy ? (
+    <Badge
+      tone="info"
+      icon={Wand2}
+      data-testid="badge-converting"
+      title="Drashti is converting it to a file it plays: it can go live once that is done."
+    >
+      Converting…
+    </Badge>
+  ) : (
+    <UnplayableBadge />
+  );
 }
 
 /** Convert (Try again after a failure), or Cancel while it waits or converts, at the end of a row. */
 function ConvertControl({ m, job }: { m: MediaSummary; job: ConversionJob | undefined }) {
-  if (job && jobBusy(job))
+  if (jobBusy(job))
     return (
       <IconButton
         icon={X}
@@ -106,13 +123,14 @@ function MediaNote({ m, job }: { m: MediaSummary; job: ConversionJob | undefined
           className="w-12 shrink-0"
           data-testid="convert-progress"
         />
-        <span className="truncate tabular-nums">Converting… {Math.round(job.progress * 100)}%</span>
+        <span className="truncate tabular-nums">{convertingWords(job)}</span>
       </span>
     );
-  if (job && jobBusy(job))
+  // Waiting its turn, or for the stream to go off air: converting all the same, until it is done (Session 50).
+  if (jobBusy(job))
     return (
       <span className={`${line} text-muted`} title={job.note ?? undefined} data-testid="media-note">
-        Waiting to convert
+        {convertingWords(job)}
       </span>
     );
   if (job?.state === 'failed')

@@ -1,5 +1,7 @@
 import type { DragEvent } from 'react';
 import { itemsMadeBy } from '../../../shared/import-items';
+import { useConvert } from '../library/convert-store';
+import { copyFor } from '../library/converting';
 import { importPaths } from '../library/import-store';
 import { useNotice } from '../operator/actions';
 import { dragKind, droppedIds, droppedPaths, hasFiles } from '../playlists/drag';
@@ -52,9 +54,12 @@ export async function importSoundsInto(playlistId: string | null, paths: readonl
   if (!result?.ok) return;
   const report = await window.drashti.library.getImportReport(result.run.id);
   const made = itemsMadeBy(report?.items ?? [], [...paths]);
+  // A sound Drashti converted by itself goes in as its copy (Session 50); one still converting moves to its
+  // copy once that is done, as everything that uses it does.
+  const jobs = useConvert.getState().jobs;
   await addSoundsTo(
     playlistId,
-    made.flatMap((i) => (i.kind === 'media' ? [i.mediaId] : [])),
+    made.flatMap((i) => (i.kind === 'media' ? [copyFor(i.mediaId, jobs)] : [])),
   );
 }
 

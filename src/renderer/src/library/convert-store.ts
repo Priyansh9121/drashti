@@ -10,6 +10,9 @@ import { pushRemoval } from './undo';
  * conversion that finished.
  */
 
+// The newest job for a media item (Session 50: in converting.ts, with what a converting file says).
+export { jobFor } from './converting';
+
 interface ConvertStore {
   jobs: ConversionJob[];
   error: string | null;
@@ -76,10 +79,4 @@ export async function convert(mediaIds: string[]): Promise<void> {
 export async function cancelConversion(jobId: string | null): Promise<void> {
   const result = await window.drashti.media.cancelConversion(jobId);
   if (result.ok) useConvert.setState({ jobs: result.jobs });
-}
-
-/** The newest job for a media item. */
-export function jobFor(jobs: readonly ConversionJob[], mediaId: string): ConversionJob | undefined {
-  for (let i = jobs.length - 1; i >= 0; i--) if (jobs[i]?.mediaId === mediaId) return jobs[i];
-  return undefined;
 }
